@@ -1,0 +1,37 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4 is CSS-first: this @theme block IS the config. No tailwind.config.js, ever.
+ * The design system (docs/design-brief.md, pulled once F08 has screens) owns the real
+ * token ramps. What's here keeps the build green and gives prettier-plugin-tailwindcss a
+ * stylesheet to sort classes against.
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html {
+  /* iOS: never let Safari zoom on input focus. Design system enforces 16px min on inputs. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
