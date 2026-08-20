@@ -29,6 +29,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # package-lock.json was written by npm 12, which records
+      # node_modules/vitest/node_modules/@esbuild/aix-ppc64 with os:["aix"] but WITHOUT
+      # optional:true. Older npm (the one bundled with the Node 22 image) then treats that
+      # entry as a required dependency and `npm ci` dies with EBADPLATFORM on linux/x64.
+      # Pinning npm to the version that wrote the lockfile is the fix; do not "solve" this
+      # with --no-optional (that removes the esbuild binary vitest needs) or by swapping in
+      # `npm install` (that discards the lockfile's determinism).
+      - name: Pin npm to the version that wrote package-lock.json
+        run: npm i -g npm@12.0.1
+
       - run: npm ci
 
       # Roadmap section 4.1's literal requirement, given a real exit code (Task 23).
