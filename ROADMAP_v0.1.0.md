@@ -381,9 +381,21 @@ their own data — they must never read as the app scolding a stranger.
 
 ### 4.7 Badge art style — vastly different from `daily-words`
 
-> **R-34 resolved (R-36): keep the navy patches, let them be loud.** The app is warm cream
-> paper; the patches are dark navy twill. The clash is deliberate — the shelf stays quiet so the
-> patches can be loud. F10's style block ships unchanged.
+> **R-34 resolved (R-36); rationale restated for the v2 design in R-43.** Keep the navy patches,
+> let them be loud — **the decision is unchanged, only its reasoning moved.**
+>
+> This section was first written against a warm cream app. Since the v2 design revamp the app is
+> a **sky-blue canvas (`--paper #c9e9fb`) with white cards**, and the patches are still dark navy
+> twill. The clash survives the repaint intact, and is arguably louder for it: navy against sky
+> reads as a *sewn-on object* more strongly than navy against cream ever did, because there is no
+> shared warmth to soften the join. What actually carries the decision never depended on the
+> paper colour — the shelf stays quiet so the patches can be loud, and the patch is the only
+> saturated, tactile, non-flat thing anywhere in the app.
+>
+> The v2 design confirms this rather than contradicting it: its `BadgeTile` ships a navy
+> placeholder (`#1d2436`, dashed `#46557a` border, `#93a5d4` label) and repeats the same
+> sentence — *"the shelf stays quiet so the patches can be loud."* **F10's style block ships
+> unchanged.**
 
 The reference deck (`/home/miftah/daily-words/.claude/skills/generate-badge-art/style.md`) is a
 **19th-century letterpress ration coupon**: square, flat cream paper, exactly two flat inks
@@ -408,7 +420,7 @@ letterpress seal cannot.
 
 **Constraints kept from the reference, because they are craft not style:** no text anywhere, full
 bleed, one clear silhouette that reads at 40 px, one subject per badge, no trophies/laurels/
-ribbons, and an anchor image that every subsequent generation references so the twenty patches
+ribbons, and an anchor image that every subsequent generation references so the 22 patches
 share a twill tone, a border weight and a thread gauge.
 
 ### 4.8 Routes
@@ -460,7 +472,7 @@ Eleven. Each gets a plan in `docs/plans/`.
 | **F07** | Insights | `lib/llm/narrate.ts`, session/week/month prompts, Zod + repair, `facts_hash` caching, cron refresh | F06 |
 | **F08** | Views, charts & trends | `/`, `/r/[id]`, `/trends`, pace+HR dual axis, zone bar, splits table, weekly/monthly graphs | F06, F07 |
 | **F09** | Badges & achievements | `lib/badges/*`, evaluation on commit, `/me` shelf, records display | F06 |
-| **F10** | Badge art skill | `.claude/skills/generate-badge/`, `style.md`, `tools/gen_badge_art.py`, `tools/check_badge_art.py`, 20 patches | F09 (catalog only) |
+| **F10** | Badge art skill | `.claude/skills/generate-badge/`, `style.md`, `tools/gen_badge_art.py`, `tools/check_badge_art.py`, 22 patches | F09 (catalog only) |
 | **F11** | Sharing | `shares`, `/s/[token]`, share button, revocation | F03, F08 |
 
 **Design system:** `docs/design-brief.md` already exists. Pull it via `DesignSync` once F08 has

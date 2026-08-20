@@ -7,6 +7,28 @@ Pulled via `DesignSync`. Normalised tokens live in `docs/design/tokens.css`.
 **The design wins over the feature plans wherever they disagree**, except where an iOS constraint
 is at stake. Rulings continue `RECONCILIATION_v0.1.0.md`'s numbering from **R-29**.
 
+> ## ⚠️ Superseded on the aesthetics by the v2 revamp
+>
+> This file records the **v1 pull**. On 2026-08-20 the Claude Design project was fully revamped:
+> warm cream + Georgia + system-mono + no-shadows became **sky blue + white cards + Poppins-only
+> + soft shadows**. Everything below about *colour, typeface, radii and elevation is historical.*
+> `docs/design/tokens.css` and `RECONCILIATION_v0.1.0.md` **R-41 – R-46** are current.
+>
+> | v1 ruling | status after v2 |
+> |---|---|
+> | **R-29** honesty marks = three underlines | **revised by R-46** — same three states, now `scan` / `edited` / `check` pill chips |
+> | **R-30** partial-km bar shortened | **stands**, and v2 elaborates it (bar length = pace, colour = dominant zone) |
+> | **R-31** correction sheet shows a screenshot crop | **narrowed by R-45** — the whole source screenshot, zoomable, not a per-field crop; no bounding boxes were ever measured |
+> | **R-32** Century Club is 100 km | **regressed in v2, repaired by R-42** — the locked-tile example is now `double_century` |
+> | **R-33** catalog is 22 keys | **regressed in v2 ("9 of 20"), repaired by R-42** — 44 stale "twenty"/"20" references corrected across ROADMAP, design-brief, F09, F10 |
+> | **R-34 / R-36** keep the navy patches | **stands; rationale restated by R-43** — the cream-paper argument is gone, the decision is not |
+> | **R-35** adopted without comment | stands |
+>
+> New with v2, ruled in `RECONCILIATION`: **R-41** (extraction progress may not claim
+> per-screenshot state — the design changed, D4 stands), **R-44** (locked badge tiles show
+> progress only where progress is a number), **R-45** (field provenance is by section).
+
+
 > **Note on project type.** This is a `PROJECT_TYPE_PROJECT` (design *canvas*), not a
 > `PROJECT_TYPE_DESIGN_SYSTEM`. It is fully readable and re-pullable, but it will not appear in
 > `list_projects`, which filters to design-system projects — fetch it by id. The type is
@@ -14,7 +36,10 @@ is at stake. Rulings continue `RECONCILIATION_v0.1.0.md`'s numbering from **R-29
 
 ---
 
-## The direction, in one paragraph
+## The direction, in one paragraph — v1, historical
+
+> Superseded by the v2 revamp; see the banner above. Kept because F10's patch decision
+> (R-43) is still argued against it.
 
 Warm paper (`#f0ede4`) and near-black ink, not white-and-grey. **Georgia** for anything that is
 *language* — the coach's prose, screen titles, flags, empty states — and the **system monospace**

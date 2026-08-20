@@ -481,3 +481,166 @@ started running in a loop, which D4's single-shot background job precludes.
 duplicate of the first is a credential-rotation bug waiting to happen: rotate one, forget the
 other, and vision fails while narrative keeps working — the most confusing possible failure mode
 for this app, because the run still uploads and only the numbers go missing.
+
+---
+
+### R-41 · Extraction progress may not claim per-screenshot state. The design changes; D4 stands. ⚠️ design change
+
+The v2 design's progress screen reports **per-screenshot** work — `Summary — distance and pace
+read`, `Splits — reading the table now`, `Heart rate — waiting`, a skeleton captioned `reading
+the splits table · 2 of 3 screenshots` — and shows a live `10.67 km` mid-flight. `02
+Components` states the principle behind it: *"Progress is stated honestly in words — which
+screenshot, which section — never as a fake percentage."*
+
+**The architecture cannot supply any of that, and F01 already shipped it.** Extraction is one
+vision call carrying all three images, ~33.7 s median, returning a single JSON object at the
+end (`IMPLEMENTATION_PLAN` §1.3, roadmap D4, F01 §2). There is no per-image signal, no section
+ordering, and no partial value until the call returns. `2 of 3 screenshots` would be precisely
+the fabricated progress the design's own principle forbids — the design is honest in intent and
+dishonest in effect, because it was drawn against an architecture that does not exist.
+
+**Ruling: the UI changes, not the pipeline.** The three rejected alternatives, for the record:
+
+| Alternative | Rejected because |
+|---|---|
+| Three per-image calls, sequential or parallel | `IMPLEMENTATION_PLAN` measured the parallel variant as **less accurate**, and `tests/research/score.test.ts` encodes that exact failure ("the class of error the parallel-call variant made") as a regression test. Trading 108/108 extraction accuracy for a nicer spinner is the worst trade in this project |
+| Stream the single call (SSE) and parse partial JSON | Field order is not guaranteed, so a partially-parsed object yields arbitrary sections in arbitrary order. Fragile, and it buys a progress bar |
+| Keep the design and fake the staging on a timer | Directly violates D1's spirit and the design's own stated principle. The app would claim "distance and pace read" while knowing nothing |
+
+**What the progress UI must say instead** — honest by construction, because every claim is
+something the client actually knows:
+
+- **that all three screenshots are read in one pass**, stated plainly — this is the interesting
+  truth, not a limitation to hide;
+- **how long it usually takes** (~35 s, from the measured median) and **how long it has actually
+  taken** (a live elapsed count);
+- the three uploaded screenshots shown as **participating in this one pass** — never as a
+  sequence with individual states;
+- **no partial numbers.** Nothing is known until the call returns.
+
+The skeleton itself stays exactly as designed — *"the skeleton is the run card it is about to
+become"* is a good idea that costs nothing and claims nothing. `extractions.status`
+(`pending → ok|repaired|failed`) remains the only progress state that exists, and the poll
+endpoint returns only that.
+
+---
+
+### R-42 · Two count regressions the v2 design re-introduced. Repaired.
+
+The revamp reverted two decisions this document had already made.
+
+**Century Club.** `02 Components`' locked `BadgeTile` reads *"Century Club — 200 km in a
+calendar month, you're at 116"*. **R-32** already ruled this: `century_club` is **100 km**;
+200 km is `double_century`. The example was also internally impossible — at 116 km a 100 km
+badge is *earned*, so it could never render as locked. Repaired by making the locked example
+**`double_century`** — "200 km in a calendar month, you're at 116" is then both correct and
+genuinely locked, and it keeps the illustrative numbers the designer chose.
+
+**Shelf count.** The v2 profile screen reads `9 of 20`. **R-33** grew the catalog to **22 keys**
+and that is what §4.6 lists. The prose had drifted everywhere: **44 stale references** across
+`ROADMAP` §4.7/§5, `docs/design-brief.md`, F09 and F10 said "twenty" or "20". All corrected to
+22. `F10`'s "two hundred and twenty" is a pixel dimension and was deliberately left alone.
+Historical statements inside this document and `DESIGN_INTEGRATION.md` — "the existing twenty",
+"grows from 20 to 22" — are records of what was true when written and stay as they are.
+
+`gen_badge_art.py`'s key-diff guard would have caught the shelf count on F10's first run. It
+would not have caught the Century Club copy, because that lives in design prose, not in the
+catalog. Copy that restates a threshold is a second source of truth for that threshold; F09 must
+render badge conditions **from `lib/badges/catalog.ts`**, never from hand-written strings.
+
+---
+
+### R-43 · §4.7's navy-patch rationale, restated for a sky-blue app. Decision unchanged.
+
+**R-36** kept the navy embroidered patches, reasoning that *"the app is warm cream paper; the
+patches are dark navy twill — the clash is deliberate."* Since the v2 revamp the app is a
+sky-blue canvas with white cards, so that sentence is now factually wrong.
+
+**The conclusion survives; only the reasoning moved.** What carried R-36 never depended on the
+paper being cream — it was that the shelf stays quiet so the patches can be loud, and that the
+patch is the only saturated, tactile, non-flat object in the app. Both still hold, and the clash
+is arguably *louder* against sky than against cream, because there is no shared warmth softening
+the join.
+
+The v2 design agrees with itself here: `BadgeTile` ships a navy placeholder (`#1d2436`, dashed
+`#46557a` border, `#93a5d4` label) and repeats the same sentence verbatim. §4.7's blockquote is
+rewritten; **F10's style block ships unchanged**, which matters because F10 spends real money —
+~$0.04 × 22 images — against that block.
+
+---
+
+### R-44 · Locked badge tiles show progress, but only where progress is a number.
+
+New v2 requirement: a locked `BadgeTile` states its condition *and the runner's distance from
+it* — "200 km in a calendar month / you're at 116" — described as *"an invitation, not a nag."*
+Adopted; it is the friendliest thing in the revamp and it fits the core tenet.
+
+But most of the 22 rules have **no meaningful scalar progress**. "Second half faster than first"
+is not 60% done; `tourist` either fires or does not. Inventing a percentage for those would be
+the same dishonesty R-41 just removed from the progress screen.
+
+**Ruling: `lib/badges/catalog.ts` gains an optional `progress` descriptor, and only the badges
+that genuinely accumulate get one.** Everything else renders condition-only.
+
+| Progress shown | Badges |
+|---|---|
+| distance this month vs target | `century_club` (100 km), `double_century` (200 km) |
+| count vs target | `dawn_patrol` (10 runs before 06:00) |
+| runs this ISO week vs 4 | `self_reward` |
+| consecutive qualifying weeks vs 4 | `consistency_gremlin` |
+| **condition only, no number** | the other 16 — every session-scoped shape rule |
+
+Tone rule from §4.6 still binds: a locked tile is an invitation. `redline_republic` must never
+render as "you're 12% of the way to spending 40% of a run in zone 5."
+
+---
+
+### R-45 · Field provenance is by section, not per field. R-31's crop degrades to the source screenshot.
+
+The v2 design asks for two related things: the correction sheet shows *"the region of your
+screenshot this number was read from"* (**R-31**), and the stat card *"names its screenshot
+sources."*
+
+A true per-field **crop needs bounding boxes**, which means the vision model returning
+coordinates per field. Nothing in `IMPLEMENTATION_PLAN` measured that. It would enlarge the
+extraction schema on the exact call whose latency budget already has no slack (F01 §2.3: ~55 s
+worst case inside a 60 s ceiling), and a wrong box is worse than no box — it would point the
+runner's eye at the wrong number while asking them to trust it.
+
+**Ruling, and it needs no schema change.** Provenance is resolved **by section**:
+
+- every extracted field belongs to exactly one section — `summary`, `splits`, or `heartrate` —
+  which the Zod schema already partitions;
+- `run_photos.kind` already carries those same three values (§4.3);
+- so a field's source photo is the photo whose `kind` matches the field's section. Derived, not
+  stored. No new column, no new model output.
+
+The correction sheet therefore shows **the whole source screenshot**, zoomable, rather than a
+tight crop — captioned with the section it came from. The stat card's footer names the source
+photos the same way. If per-field boxes are ever wanted, that is a post-v0.1.0 change gated on
+measuring what the coordinates cost, not an F05 assumption.
+
+---
+
+### R-46 · The honesty marks are chips now, not underlines. R-29 revised, not reversed.
+
+**R-29** adopted three underline treatments for the three states a number can be in: dotted for
+read-from-image, solid accent for corrected-by-hand, dashed warn for worth-checking. The v2
+`01 Foundations` keeps all three states and re-expresses them as **pill chips**:
+
+| state | v1 (R-29) | v2 |
+|---|---|---|
+| read from an image | dotted `ink-3` underline | `scan` chip, `rule-2` on `ink-3` |
+| corrected by hand | solid `accent` underline | `edited` chip, `z2` mint on white — plus a mint dot on the value in `Card · Stat` |
+| worth checking | dashed `warn` underline | `check` chip, `warn` on `ink`, and the value itself turns `warn` |
+
+Adopted as revised. The chips are better on a touch screen: a 1 px underline is invisible at
+arm's length and unhittable as a tap target, whereas a chip is legible and can carry the word.
+It also names the state in text instead of asking the runner to learn a legend of line styles —
+which matters more here than anywhere, because these marks are how D1's "a human confirms every
+run" becomes visible.
+
+The *semantics* are untouched and remain the visual expression of `extractions.corrections`
+(R-7) and `runs.corrected_at` (R-8). `edited` is the only one that is a stored fact; `scan` is
+the default state of every extracted field; `check` is a validation result, computed, and R-7's
+`checkId` is what identifies which check fired.

@@ -146,7 +146,7 @@ without scolding me about it.**
 
 ### The badges — the one loud thing
 
-Twenty achievement badges, deliberately funny. The artwork is generated separately as
+22 achievement badges, deliberately funny. The artwork is generated separately as
 **1970s embroidered running-club patches** — dark navy twill, five saturated thread colours,
 satin stitch, a raised merrowed border, and silhouettes that vary per badge (shield, hexagon,
 chevron, rounded triangle). **You are not designing the patches themselves** — you are designing

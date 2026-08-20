@@ -2,21 +2,21 @@
 
 **Owns:** `.claude/skills/generate-badge/SKILL.md`, `.claude/skills/generate-badge/style.md`,
 `tools/gen_badge_art.py`, `tools/check_badge_art.py`, `tools/make_badge_assets.py`, and the
-twenty generated patches under `assets/badges/`.
+22 generated patches under `assets/badges/`.
 
 **Depends on:** F09 (badge catalog only — `lib/badges/catalog.ts` must exist and be stable
 before any money is spent). Last in build order for exactly that reason: F10 spends real
 dollars and real wall-clock time per image, and the one thing that must not move under it is the
-set of twenty keys.
+set of 22 keys.
 
-**Reads:** `ROADMAP_v0.1.0.md` §4.1 (environment / key hygiene), §4.6 (badge catalog, the twenty
+**Reads:** `ROADMAP_v0.1.0.md` §4.1 (environment / key hygiene), §4.6 (badge catalog, the 22
 keys), §4.7 (art style direction), D12 (offline generation, committed, no runtime image calls).
 **Descends from:** `/home/miftah/daily-words/.claude/skills/generate-badge-art/{SKILL.md,style.md}`
 and `/home/miftah/daily-words/tools/{gen_badge_art.py,check_badge_art.py}` — read in full before
 this plan was written, and referenced throughout by section.
 
 This plan does not touch roadmap §4.6 or §4.7. No `## Contract deltas` section follows because
-none is needed: §4.6 already lists exactly twenty keys, one per scene line below, and §4.7's
+none is needed: §4.6 already lists exactly 22 keys, one per scene line below, and §4.7's
 seven axes are fully specified in the style block below without contradicting anything the
 roadmap says. Where this plan makes a choice the roadmap left open — thread hex values, the
 outer-silhouette-shape assignment, the skill's exact file layout — that is this plan's job to
@@ -74,7 +74,7 @@ look-at-it step are per badge, and a loop makes both ceremonial. At ~$0.04 and 4
 generation, a batch loop is also real money and real wall-clock time spent before a human has
 looked at any of it (§8).
 
-The art style, the twenty scenes and the reasoning behind them live in `style.md` next to this
+The art style, the 22 scenes and the reasoning behind them live in `style.md` next to this
 file. The full design record is `docs/plans/F10-badge-art-skill.md`. Read `style.md`; read the
 plan only when you are about to change the style.
 
@@ -97,7 +97,7 @@ ls assets/badges/_anchor.png
 ```
 
 - **Present** → every generation uses `--reference assets/badges/_anchor.png`. This is not
-  optional. Twenty badges must share one twill tone, one merrowed-border weight, one satin-stitch
+  optional. 22 badges must share one twill tone, one merrowed-border weight, one satin-stitch
   gauge and one raking-light direction, and every one of those is a continuous quantity a text
   prompt specifies loosely and an image specifies exactly.
 - **Absent** → you are generating the anchor. §8 of this skill's design plan recommends
@@ -170,7 +170,7 @@ Then judge in this order, because the order is roughly the frequency of failure:
   round. *Nothing measures this* — there is no OCR here, and the merrowed border's own texture
   (dense, regular, zigzag) is the one cheap proxy that is blind by construction, for the same
   reason the reference's lozenge-and-dot band was.
-- **Is it a shoe, a medal, or a stopwatch?** None of the twenty scenes in `style.md` calls for any
+- **Is it a shoe, a medal, or a stopwatch?** None of the 22 scenes in `style.md` calls for any
   of the three objects a "running app achievement badge" prompt gravitates to regardless of what
   is actually asked for. Seeing one means the model ignored the scene, not that it satisfied it.
   Reject and re-state the scene's actual physical object in `--note`.
@@ -317,7 +317,7 @@ suspected.
 
 `gen_badge_art.py` refuses to start unless the set of keys inside `<!-- SCENES -->` is exactly the
 set of keys in `BADGE_CATALOG` in `lib/badges/catalog.ts`. A scene line with no badge, or a badge
-with no scene line, is a startup error rather than a surprise twenty images later.
+with no scene line, is a startup error rather than a surprise 22 images later.
 
 ---
 
@@ -347,15 +347,15 @@ likeliest reason this style burns an attempt — check the merrowed border and t
 
 SUBSTRATE: dark navy cotton twill, near #1B2A44, with a visible diagonal weave — the fabric's own
 grain must read under the raking light as fine, regular texture, not a flat digital navy fill. A
-generous margin of bare twill surrounds the patch on every side, the same fabric on all twenty
-badges, so the set reads as one bolt of cloth cut twenty times.
+generous margin of bare twill surrounds the patch on every side, the same fabric on all 22
+badges, so the set reads as one bolt of cloth cut 22 times.
 
 THE PATCH: one solid embroidered shape, centred, occupying about 80 percent of the image width.
 Its outer silhouette is load-bearing and is named per badge below — a shield, a hexagon, a
 chevron, or a rounded triangle — and it is never a plain circle in a square, which is the shape
 every generic "embroidered patch" defaults to and the one shape this deck must never produce. Its
 edge is a merrowed border: a thick, rounded, rope-like band of tight overlock zigzag stitching in
-bone-white thread, the one element every one of the twenty badges shares exactly, at the same
+bone-white thread, the one element every one of the 22 badges shares exactly, at the same
 gauge and the same width. Inside that border sits this badge's own subject, alone, filling most of
 the interior with generous room at the corners.
 
@@ -400,7 +400,7 @@ metallic bevel.
 TONE: loud, sporty, a little absurd — a patch a running club had made as an inside joke and wore
 anyway. It contains no trophies, no laurel wreaths, no ribbons, no rosettes, no cups, no crowns,
 no medals, no stopwatches, no running shoes, and no ticks. Those seven objects are the default a
-request like this pulls toward regardless of what is actually asked for, and none of the twenty
+request like this pulls toward regardless of what is actually asked for, and none of the 22
 subjects below is any of them; seeing one in a candidate means the model ignored its scene, not
 that it satisfied it.
 
@@ -411,7 +411,7 @@ no thread-count texture — that exists only at full resolution.
 
 ONE SUBJECT, ITS OWN SUBJECT. The twill, the merrowed border, the five threads and the one
 signature thread belong to the whole set; what sits inside the border belongs to this badge alone.
-Do not fall back on a running shoe, a medal, or a stopwatch as a default centre — twenty patches
+Do not fall back on a running shoe, a medal, or a stopwatch as a default centre — 22 patches
 converging on the same three objects is the way this set fails.
 <!-- /STYLE BLOCK -->
 ```
@@ -424,7 +424,7 @@ One line per badge, appended to the style block as `SUBJECT FOR THIS BADGE:`. Ea
 **distinct central object and a distinct internal geometry**, an **outer silhouette shape**, and
 **where the single signature thread goes** — the run-insights equivalent of the reference deck's
 "where does the vermilion mark go," and for the same reason: a mark that lands in the same
-relative place twenty times stops being a second pass and starts being a logo.
+relative place 22 times stops being a second pass and starts being a logo.
 
 Three rules carried over unchanged from the deck this skill descends from:
 
@@ -436,7 +436,7 @@ rim" fixes the arrangement without enumerating anything; an instruction like "tw
 correctly formed" reads as anatomical enumeration and produces worse results, not better ones.
 
 **Avoid faces of numbers and faces of clocks.** Anything with a dial invites numerals, and
-numerals are text. Not one of these twenty scenes uses a clock, a watch face, a gauge or a scale
+numerals are text. Not one of these 22 scenes uses a clock, a watch face, a gauge or a scale
 for exactly this reason — `late_start` and `warmup_who` both name lateness/urgency without a
 timepiece anywhere in the deck.
 
@@ -488,11 +488,11 @@ match / torn flag / hanging sloth / collapsing step-ladder / hydrant jet / groun
 blank signpost / yarn-wound post / bunting between two posts / half-lit moon / sweating piggy bank
 / burst ceiling board / gremlin-on-blocks / lighthouse beam / folded map-and-pin.
 
-**No shoes, no medals, no stopwatches, checked against all twenty.** A "running app achievement
+**No shoes, no medals, no stopwatches, checked against all 22.** A "running app achievement
 badge" prompt gravitates to exactly these three objects regardless of the scene it is given —
 they are the training distribution's default answer to "draw a badge for a runner" the way an
 open book was the reference deck's default answer to "draw a badge for a word game." None of the
-twenty subjects above is a shoe, a medal or a stopwatch, and the style block names all three
+22 subjects above is a shoe, a medal or a stopwatch, and the style block names all three
 directly so that a candidate reaching for one is flagged as ignoring its scene rather than merely
 disliked.
 
@@ -535,7 +535,7 @@ against a rounded-body-with-ears shape — so the collision, such as it is, was 
 silhouette; it was in the *habit* of reaching for "one drop" as the default signature-thread event
 whenever a scene doesn't obviously suggest one. `self_reward`'s signature was moved to the glaze
 edge at the bite instead, specifically so this deck does not open with two liquid-drop signatures
-in its first twenty badges — a habit worth naming even though, at 40 px, neither drip would have
+in its first 22 badges — a habit worth naming even though, at 40 px, neither drip would have
 been visible either way.
 
 **Three "light source" badges, tallied rather than treated as a collision.** `early_bird` (a sun
@@ -587,7 +587,7 @@ scripts parse:
 
 - **Why five threads plus a signature, not four.** §4.7's table says "4–5 saturated thread
   colours." Five gives each scene a real choice (two or three of five, never all five) without
-  making any one thread do too much work across twenty badges — the reference deck's two-ink
+  making any one thread do too much work across 22 badges — the reference deck's two-ink
   economy works because a seal is small and simple; a satin-stitch patch with real interior detail
   needs more colour vocabulary to avoid every badge reading as a silhouette in one flat hue.
 - **Why the signature thread is a colour used nowhere else, rather than one of the five used
@@ -598,7 +598,7 @@ scripts parse:
   mark.
 - **Why bone/cream carries the merrowed border on every badge, unconditionally.** The reference
   deck's shared element is the double rule; this deck's is the merrowed edge. Fixing its colour
-  across all twenty (rather than letting it vary per badge like the interior threads do) is what
+  across all 22 (rather than letting it vary per badge like the interior threads do) is what
   makes the anchor-image discipline actually enforceable — `check_badge_art.py`'s anchor-agreement
   check (§6.9 below) needs one stable, comparable border to measure drift against.
 - **Why the outer shape is named per scene line instead of left to the model.** Leaving it
@@ -746,7 +746,7 @@ reference's `seal_radius` and `seal_centre_offset` are built on a **radial ink-d
 assume the shared element is a circle and fit a first-harmonic offset to a ring of samples taken
 at every angle. That assumption is not just imprecise here, it is **categorically wrong**, because
 this deck's shared element is *not* rotationally symmetric — the outer shape is a shield, a
-hexagon, a chevron or a rounded triangle, varying **by design** across the twenty badges (§4.7).
+hexagon, a chevron or a rounded triangle, varying **by design** across the 22 badges (§4.7).
 A radial fit run against a hexagon will not find its edge the way it finds a circle's, and running
 it against a chevron is close to meaningless. This needs a different foreground-detection
 strategy entirely: build the same "how much darker/more saturated than the substrate is this
@@ -762,7 +762,7 @@ ceiling both, rather than a ceiling alone.
 
 **9 — anchor agreement → mostly survives, one term redefined.** `9b`'s plate-luminance-vs-anchor
 comparison is exactly the right instinct and needs no conceptual change, only recomputing against
-the navy baseline instead of cream — it is still asking "are all twenty badges stitched on the
+the navy baseline instead of cream — it is still asking "are all 22 badges stitched on the
 same shade of the same fabric," which is precisely what the anchor exists to guarantee. `9a`'s
 seal-radius-vs-anchor **must be redefined** from "ring radius" to "foreground bounding-box width,"
 per the check-8 rewrite — and it must be compared **within reason across different outer shapes**,
@@ -809,7 +809,7 @@ placeholder values (a neutral off-white and a near-black — exact placeholder h
 since they exist only to keep the script runnable during F10's own build-out) so nothing here is
 blocked on F08 finishing first; (2) the *last* task before generating any real badge (task 10 in
 §8 below) is confirming the placeholders have been swapped for F08's actual tokens, because
-judging twenty badges against the wrong background is twenty wasted LOOK AT IT passes.
+judging 22 badges against the wrong background is 22 wasted LOOK AT IT passes.
 
 ### 5.4 `tools/make_badge_assets.py`
 
@@ -871,7 +871,7 @@ Unchanged in spirit from the reference deck's rule, restated in run-insights' ow
 ## 7. Cost and pacing
 
 `qwen/qwen-image-3-pro` is **~$0.04 and 4–5 minutes per image**, per the roadmap header and per
-the reference tool's own measured note. Twenty badges at up to three attempts each is a real
+the reference tool's own measured note. 22 badges at up to three attempts each is a real
 budget: **worst case, 60 generations, ~$2.40 and up to five hours of wall-clock time**, before
 counting the anchor run itself or any scene-line rewrites that avoid spending a third attempt.
 Typical cost will be much lower — the reference deck's own history shows most badges land in one
@@ -879,8 +879,8 @@ or two attempts, and a scene-line fix (§SKILL.md step 6) is free — but "worst
 to plan sessions around, not the median.
 
 **One badge per invocation, never a batch loop, is a cost control as much as a judgment control.**
-A script that looped over all twenty keys would spend the full worst-case budget before a single
-human had looked at a single theme strip, and — worse — it would do it *twenty times over* on the
+A script that looped over all 22 keys would spend the full worst-case budget before a single
+human had looked at a single theme strip, and — worse — it would do it *22 times over* on the
 same structural mistake if the style block itself needed a scene-line fix after badge one.
 
 What this means for sequencing, concretely:
@@ -899,7 +899,7 @@ What this means for sequencing, concretely:
 3. **Budget three-to-five badges per working session.** At worst case (three attempts, ~15
    minutes of generation time alone per badge, plus the LOOK AT IT review time that is not
    optional), five badges is a multi-hour session even before any style-block revision work. This
-   is not a task to attempt as a single continuous run across all twenty.
+   is not a task to attempt as a single continuous run across all 22.
 4. **A style-block revision (bumping to v2) invalidates the anchor and every promoted badge's
    claim to be "current."** If a structural problem surfaces after several badges are already
    approved under v1, that is a stop-and-decide moment for a human, exactly as the reference
@@ -956,10 +956,10 @@ sequenced by the operator, not folded into an art-generation loop).
 12. **Once six badges are approved, re-derive every numeric band in `check_badge_art.py` from the
     observed distribution**, recording the observed range in a comment next to each band exactly
     as the reference tool's own header requires. Do this once, not per badge.
-13. **Run `tools/make_badge_assets.py`** once all twenty are promoted, in its own commit, alongside
+13. **Run `tools/make_badge_assets.py`** once all 22 are promoted, in its own commit, alongside
     a green `npm run badges:check` and `npm run typecheck`.
 14. **Full-shelf visual QA:** generate (or reuse check_badge_art.py's per-badge theme strips to
-    assemble) one contact sheet of all twenty badges at 40 px, side by side, and look at it once as
+    assemble) one contact sheet of all 22 badges at 40 px, side by side, and look at it once as
     a set — a step the reference deck's own SKILL.md doesn't need as heavily because that deck grew
     across many separate sessions over months, while this deck is built in one concentrated project
     phase where cross-badge drift is more likely to go unnoticed badge-by-badge and easier to catch
@@ -972,26 +972,26 @@ sequenced by the operator, not folded into an art-generation loop).
 Before F10 is considered done:
 
 - `python3 tools/gen_badge_art.py --dry-run --all` runs clean — the `<!-- SCENES -->` key set
-  matches `BADGE_CATALOG` in `lib/badges/catalog.ts` exactly, twenty keys each way.
-- All twenty `assets/badges/<key>.png` + `.txt` sidecar pairs exist, each one promoted from a
+  matches `BADGE_CATALOG` in `lib/badges/catalog.ts` exactly, 22 keys each way.
+- All 22 `assets/badges/<key>.png` + `.txt` sidecar pairs exist, each one promoted from a
   candidate that passed every hard check in `check_badge_art.py` and a documented LOOK AT IT
   review (theme strip, ring crop, centre crop, judged in the order SKILL.md specifies).
-- `assets/badges/_anchor.png` exists and is a copy of one of the twenty approved masters.
+- `assets/badges/_anchor.png` exists and is a copy of one of the 22 approved masters.
 - `tools/make_badge_assets.py` has been run once; `public/badges/**` is populated with content-
   hashed filenames; `lib/badges/badge-art.ts` is a total `Record<BadgeKey, BadgeArt>` — confirmed
   by `npm run typecheck` passing.
 - `grep -rE 'OPENROUTER_API_KEY' app/ lib/ components/` returns nothing, and `npm run
   badges:check` (or its CI equivalent) asserts this mechanically rather than by inspection.
 - `check_badge_art.py`'s numeric bands have been re-derived once from the observed distribution
-  of the twenty approved badges (§9 task 12), with the observed ranges recorded in comments —
+  of the 22 approved badges (§9 task 12), with the observed ranges recorded in comments —
   not left at their pre-generation guesses.
 - The full-shelf contact sheet (§9 task 14) has been reviewed once, specifically checking the
   collision-audit pairs named in `style.md` (`century_club`/`double_century`,
   `groundhog_day`/`consistency_gremlin`, the three-post tally, the three-light-source tally) for
   convergence that individual per-badge review could plausibly have missed.
 - No shoe, medal, stopwatch, trophy, ribbon, rosette, laurel, cup, crown or tick appears anywhere
-  in the twenty approved masters.
-- No lettering of any kind appears anywhere in the twenty approved masters, confirmed by a human
+  in the 22 approved masters.
+- No lettering of any kind appears anywhere in the 22 approved masters, confirmed by a human
   reading each `.ring.png` at generation time — this is the one property nothing in
   `check_badge_art.py` measures, by design (§5.2, `NOT_MEASURED`), and it is also the property
   most likely to be wrong if skipped.

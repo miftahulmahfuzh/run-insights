@@ -18,9 +18,9 @@ resolution (`lib/metrics/hrMax.ts`, F02).
 
 ## 0. What this feature is, in one paragraph
 
-Twenty small facts about a runner's history, evaluated in TypeScript against rows a human has
+22 small facts about a runner's history, evaluated in TypeScript against rows a human has
 already confirmed, never against a raw extraction. F09 owns three things that must never drift
-apart: the **catalog** (`lib/badges/catalog.ts`, the 20 keys — F10's hard interface), the
+apart: the **catalog** (`lib/badges/catalog.ts`, the 22 keys — F10's hard interface), the
 **rules** (`lib/badges/rules.ts`, one predicate per key, pure functions with no DB and no
 ambient clock — mirroring the `daily-words` `evaluateBadges(ctx)` contract cited in the brief),
 and the **`/me` page**, which is the only place any of this becomes visible. The genuinely hard
@@ -123,7 +123,7 @@ needs to branch on).
 ```ts
 // lib/badges/catalog.ts
 /**
- * The 20 badges. AUTHORITATIVE — roadmap §4.6. F10's `gen_badge_art.py` refuses to start
+ * The 22 badges. AUTHORITATIVE — roadmap §4.6. F10's `gen_badge_art.py` refuses to start
  * unless BADGE_KEYS below equals the key set inside `style.md`'s `<!-- SCENES -->` block —
  * this array is a hard interface, not an implementation detail. Order below IS shelf order
  * and IS the order `evaluateSessionBadges` etc. push into, following `daily-words`' precedent
@@ -182,7 +182,7 @@ export function badgeScope(key: BadgeKey): BadgeScope {
 
 **Metadata is a separate file, `lib/badges/meta.ts`, for the same reason `daily-words` split
 `badge-meta.ts` from `badges.ts`:** `catalog.ts` is imported by the review-commit path (every
-run review, hot) and by `/me` (cold, full page). Twenty condition sentences plus twenty glosses
+run review, hot) and by `/me` (cold, full page). 22 condition sentences plus 22 glosses
 is a few KB that has no business riding along on every review commit. `meta.ts` is imported
 only by the `/me` page and by the test suite.
 
