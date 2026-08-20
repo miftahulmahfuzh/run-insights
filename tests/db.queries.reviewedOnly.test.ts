@@ -80,6 +80,44 @@ describe('reviewed-only queries', () => {
     expect(params).toContain('r1')
   })
 
+  it('getObservedMaxHrRun filters on reviewed_at — F02’s resolver reads this one, not the max()', async () => {
+    fake.enqueue([])
+    await q.getObservedMaxHrRun('u1')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getObservedMaxHrRun compares against the estimate in SQL and takes the highest, singly', async () => {
+    fake.enqueue([])
+    await q.getObservedMaxHrRun('u1', { minBpm: 187 })
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"runs"."max_hr" > $')
+    expect(sql).toContain('order by "runs"."max_hr" desc')
+    expect(sql).toContain('limit $')
+    expect(params).toContain(187)
+  })
+
+  it('getObservedMaxHrRun adds the asOf cutoff only when asked for one', async () => {
+    fake.enqueue([])
+    await q.getObservedMaxHrRun('u1')
+    expect(fake.only().sql).not.toContain('"occurred_on" <=')
+
+    fake.reset()
+    fake.enqueue([])
+    await q.getObservedMaxHrRun('u1', { asOf: '2026-08-19' })
+    expect(fake.only().sql).toContain('"runs"."occurred_on" <= $')
+  })
+
+  it('getPreviousReviewedRun filters on reviewed_at and takes the nearest earlier day', async () => {
+    fake.enqueue([])
+    await q.getPreviousReviewedRun('u1', '2026-08-20')
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"reviewed_at" is not null')
+    expect(sql).toContain('"runs"."occurred_on" < $')
+    expect(sql).toContain('order by "runs"."occurred_on" desc')
+    expect(sql).toContain('limit $')
+    expect(params).toContain('2026-08-20')
+  })
+
   it('every reviewed-only query is also user-scoped', async () => {
     const calls: Array<() => Promise<unknown>> = [
       () => q.listRuns('u1'),
@@ -102,6 +140,15 @@ describe('draft-visible queries', () => {
     fake.enqueue([])
     await q.getRunIdForExtraction('u1', 'x1')
     expect(fake.only().sql).not.toContain('"reviewed_at" is not null')
+  })
+
+  it('getRun does NOT filter reviewed_at — "show me this row" is not an aggregate', async () => {
+    fake.enqueue([])
+    await q.getRun('u1', 'r1')
+    const { sql, params } = fake.only()
+    expect(sql).not.toContain('"reviewed_at" is not null')
+    expect(sql).toContain('"runs"."user_id" = $')
+    expect(params).toContain('r1')
   })
 
   it('getRunDetail does NOT filter reviewed_at', async () => {
@@ -127,6 +174,7 @@ describe('the invariant is complete', () => {
       'getMonthlyTotals',
       'getObservedMaxHr',
       'getObservedMaxHrExcludingRun',
+      'getObservedMaxHrRun',
       'getRunsBetween',
       'getRunsInIsoWeek',
       'getRunsInMonth',

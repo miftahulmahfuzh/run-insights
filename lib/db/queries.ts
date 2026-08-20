@@ -1,5 +1,19 @@
 import type { BatchItem } from 'drizzle-orm/batch'
-import { and, asc, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  sql,
+} from 'drizzle-orm'
 
 import {
   addMonths,
@@ -650,6 +664,94 @@ export async function getObservedMaxHrExcludingRun(
     .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt), sql`${runs.id} <> ${runId}`))
   const value = rows[0]?.value
   return value == null ? null : Number(value)
+}
+
+/** Which run holds the observed max, not just what it was. See `getObservedMaxHrRun`. */
+export interface ObservedMaxHr {
+  runId: string
+  maxHr: number
+  occurredOn: DateISO
+}
+
+/**
+ * The attributed form of `getObservedMaxHr`, and the only query `lib/metrics/hrMax.ts` uses for
+ * rule 2 of roadmap §4.4. Three things it does that the plain `max()` above cannot:
+ *
+ *   - **Names the run.** F02 §4.5's transition banner says *"your watch recorded 189 bpm on this
+ *     run"*; that sentence needs an id and a date, not a number.
+ *   - **Filters in SQL, not in TypeScript.** `minBpm` is the Tanaka estimate. Roadmap §4.4 does
+ *     not say "prefer whichever number loaded first" — it says an observation wins when it
+ *     *exceeds* the formula, and `ORDER BY max_hr DESC LIMIT 1` over that predicate is that rule,
+ *     expressed once. Never fetch runs and reduce over them in application code.
+ *   - **Takes an `asOf` cutoff**, which is the whole of `resolveHrMaxAsOf`: "what was true then"
+ *     is this same query with one more predicate, not a second algorithm.
+ *
+ * Reads `runs_user_maxhr_idx` (R-12). Reviewed-only (D16): an unreviewed max HR is a number a
+ * vision model asserted and no human confirmed, and it would move the denominator under every
+ * %HRmax figure in the app.
+ */
+export async function getObservedMaxHrRun(
+  userId: string,
+  options: { minBpm?: number; asOf?: DateISO } = {},
+): Promise<ObservedMaxHr | null> {
+  const { minBpm = 0, asOf } = options
+  const rows = await db
+    .select({ runId: runs.id, maxHr: runs.maxHr, occurredOn: runs.occurredOn })
+    .from(runs)
+    .where(
+      and(
+        eq(runs.userId, userId),
+        isNotNull(runs.reviewedAt),
+        isNotNull(runs.maxHr),
+        gt(runs.maxHr, minBpm),
+        asOf ? lte(runs.occurredOn, asOf) : undefined,
+      ),
+    )
+    .orderBy(desc(runs.maxHr))
+    .limit(1)
+  const row = rows[0]
+  if (!row || row.maxHr == null) return null
+  return { runId: row.runId, maxHr: row.maxHr, occurredOn: row.occurredOn }
+}
+
+/**
+ * One run, no children. `getRunDetail` is the right call for a page; this is for the callers that
+ * only need a column or two off the parent row — F02's `hrMaxTransitionAt` wants `occurred_on` and
+ * nothing else, and paying for four statements and eleven splits to get it would be silly.
+ *
+ * Draft-visible, exactly like `getRunDetail`: the reviewed-data invariant governs aggregates, not
+ * "show me this row".
+ */
+export async function getRun(userId: string, runId: string): Promise<Run | null> {
+  const rows = await db
+    .select()
+    .from(runs)
+    .where(and(eq(runs.id, runId), eq(runs.userId, userId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * The reviewed run immediately before `occurredOn`. F02's `hrMaxTransitionAt` compares "what HRmax
+ * resolved to as of the previous run" against "as of this one"; that comparison needs a
+ * predecessor, and a runner's first run has none — which is why this returns `null` rather than
+ * throwing.
+ *
+ * Reviewed-only (D16): an unreviewed row is not a point in the runner's history yet.
+ */
+export async function getPreviousReviewedRun(
+  userId: string,
+  occurredOn: DateISO,
+): Promise<Run | null> {
+  const rows = await db
+    .select()
+    .from(runs)
+    .where(
+      and(eq(runs.userId, userId), isNotNull(runs.reviewedAt), lt(runs.occurredOn, occurredOn)),
+    )
+    .orderBy(desc(runs.occurredOn))
+    .limit(1)
+  return rows[0] ?? null
 }
 
 /* ============================================================================

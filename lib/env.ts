@@ -62,7 +62,20 @@ const authSchema = z.object({
   AUTH_SECRET: nonEmpty('AUTH_SECRET'),
   AUTH_GOOGLE_ID: nonEmpty('AUTH_GOOGLE_ID'),
   AUTH_GOOGLE_SECRET: nonEmpty('AUTH_GOOGLE_SECRET'),
-  AUTH_URL: z.url('AUTH_URL must be an absolute URL').optional(), // production only
+  /**
+   * PRODUCTION ONLY (roadmap §4.1). Locally and on preview it must be left unset so Auth.js infers
+   * the origin from the request — a hardcoded origin on a preview deployment sends the OAuth
+   * callback to the wrong host.
+   *
+   * The `''` case is not sloppiness, it is the literal shape of the instruction: `.env.example`
+   * ships the key with an empty value and tells the reader to leave it that way, and a key present
+   * with an empty value is exactly how a dotenv file spells "unset". Without this preprocess,
+   * following the instruction crashes the build.
+   */
+  AUTH_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.url('AUTH_URL must be an absolute URL').optional(),
+  ),
 })
 
 /** F04 owns this. Vercel injects it once a Blob store is linked to the project. */

@@ -811,3 +811,157 @@ max_hr DESC)` index needed to make §4.4's resolver query non-degenerate (§7) �
 both were already the only reading consistent with §4.8's literal route table and §4.4's literal
 resolution order, respectively. Flagging them here so F03 and F09 don't have to re-derive the
 same reasoning independently.
+
+---
+
+## 11. Execution record — 2026-08-21
+
+F02 executed end to end. 240 unit tests and 53 integration tests green; `typecheck`, `lint`,
+`format:check` and `next build` clean; the auth handshake, all seven protected routes and the two
+public ones verified live against a running dev server; the whole HRmax chain verified against real
+Neon Postgres.
+
+### What shipped
+
+| Path | Contents |
+|---|---|
+| `auth.config.ts` | Adapter-free Auth.js config — Google only, JWT sessions, `pages.signIn: '/'`, `trustHost` |
+| `auth.ts` | Node-runtime instance with the Drizzle adapter; `authEnv()` at module scope |
+| `proxy.ts` | Positive matcher: `/upload`, `/r/:path*`, `/x/:path*`, `/trends`, `/me`, `/onboarding` |
+| `app/api/auth/[...nextauth]/route.ts` | `export const { GET, POST } = handlers` |
+| `lib/auth/requireUserId.ts` | `getUserId`, `requireUserId`, `requireUserIdApi`, `UnauthorizedError`, `unauthorizedJson` |
+| `lib/auth/actions.ts`, `lib/auth/safeNext.ts` | Sign-in / sign-out actions and the open-redirect guard |
+| `types/next-auth.d.ts` | `session.user.id: string` |
+| `lib/metrics/age.ts` | `ageFromBirthYear`, `birthYearFromAge` |
+| `lib/metrics/hrMax.ts` | `resolveHrMax`, `resolveHrMaxAsOf`, `hrMaxTransitionAt`, `tanakaEstimate` |
+| `lib/profile/schema.ts` | `profileFormSchema`, `profileWriteSchema`, `toProfileWrite`, `ProfileFormState`, `fieldErrorsOf` |
+| `lib/profile/actions.ts` | `saveOnboardingAction`, `skipOnboardingAction`, `updateProfileAction` |
+| `lib/db/queries.ts` | **+3 queries** — `getObservedMaxHrRun`, `getRun`, `getPreviousReviewedRun` (see delta 1) |
+| `lib/cn.ts` | Class-name joiner |
+| `components/ui/` | `Button`/`ButtonLink`/`LoadingDots`, `Card`/`Eyebrow`/`Stat`, `Field`/`Input`/`NumberInput` |
+| `components/auth/` | `SignInCard`, `SignOutButton`, `AccountMenu` |
+| `components/profile/ProfileForm.tsx` | One client form, two modes, `useActionState` |
+| `app/page.tsx` | The three-way gate: signed out / not onboarded / onboarded |
+| `app/onboarding/page.tsx`, `app/me/page.tsx` | The two profile screens |
+| 5 unit suites + 1 integration suite | 47 + 13 tests |
+
+### Verified live against a running dev server
+
+```
+/api/auth/providers   -> {"google":{...,"callbackUrl":".../api/auth/callback/google"}}
+/api/auth/session     -> null   (signed out)
+
+/upload               -> 307  location: /?next=%2Fupload
+/trends               -> 307  location: /?next=%2Ftrends
+/me                   -> 307  location: /?next=%2Fme
+/onboarding           -> 307  location: /?next=%2Fonboarding
+/r/abc123def456       -> 307  location: /?next=%2Fr%2Fabc123def456
+/r/abc123def456/edit  -> 307  location: /?next=%2Fr%2Fabc123def456%2Fedit
+/x/abc123def456       -> 307  location: /?next=%2Fx%2Fabc123def456
+
+/                     -> 200  (the sign-in screen; NOT a redirect — R-24)
+/s/faketoken0123456   -> 404  (no route yet; the point is it is not a 307 — INVARIANT B)
+/api/health           -> 200  (R-14, still unauthenticated)
+
+?next=https://evil.com  and  ?next=//evil.com   both render  value="/"
+```
+
+**The proxy bundle stays DB-free.** `.next/server/middleware.js` pulls two chunks; neither contains
+`drizzle-orm`, `@neondatabase`, `DrizzleAdapter` or `pg-core`. That is the entire payoff of the
+`auth.config.ts` / `auth.ts` split, measured rather than assumed.
+
+### Measured facts that only a real database could establish
+
+Thirteen integration tests in `tests/integration/hrMax.int.test.ts`, against Neon:
+
+| Claim | Result |
+|---|---|
+| A run with `max_hr IS NULL` cannot satisfy `max_hr > 0` | **Confirmed** — SQL drops it; it does not compare as 0, which would have returned `{ bpm: null }` and made every downstream %HRmax `NaN` |
+| `occurred_on` arrives as a `'YYYY-MM-DD'` string, not a `Date` | Confirmed — D6's "no timezone reasoning" survives into `HrMax.observedOn` |
+| With three qualifying observations, the resolver returns the **highest**, not the newest | Confirmed (189 → 191 when a 191 lands three days later) |
+| An unreviewed run carrying `max_hr = 210` cannot move the ceiling | Confirmed — D16 holds at the resolver, not just at the rollups |
+| `measured` beats a higher `observed` | Confirmed (172 wins over 191) |
+| `resolveHrMaxAsOf` reproduces history exactly: 187 on 08-19, 189 on 08-20, 191 on 08-22 | Confirmed |
+| `hrMaxTransitionAt` fires on the 08-20 run and is silent on every other | Confirmed |
+| U2 sees nothing of U1's ceiling through any of the four entry points | Confirmed |
+
+### Contract deltas as built
+
+1. **The three new queries live in `lib/db/queries.ts`, not inline in `lib/metrics/hrMax.ts`.**
+   §4.2 of this plan sketches the resolver calling `db.query.runs.findFirst` directly. F03 shipped a
+   different convention — every read and write in one module, `userId` first, enforced by
+   `scripts/check-data-layer-invariants.mjs` and asserted by `tests/db.ownership.test.ts` and
+   `tests/db.queries.reviewedOnly.test.ts`. Putting the resolver's SQL anywhere else would have put
+   it outside both guards. `getObservedMaxHrRun(userId, { minBpm, asOf })` collapses §4.2's query and
+   §4.5's `resolveHrMaxAsOf` variant into one function with one optional predicate, which is what
+   "a thin wrapper, not a new algorithm" actually looks like in code.
+
+2. **All three new queries are reviewed-only except `getRun`.** §4.2 does not mention D16 at all.
+   It has to apply: an unreviewed `max_hr` is a number a vision model asserted and no human
+   confirmed, and letting one set the denominator would silently rescale every %HRmax in the app.
+   `getRun` is draft-visible, exactly like `getRunDetail` — "show me this row" is not an aggregate.
+
+3. **`hrMaxTransitionAt` returns `from: HrMax | null`,** not §4.5's `from: HrMax` with a
+   `{ bpm: 0, source: 'estimated' }` stand-in. A synthetic zero is a number that was never true;
+   `null` says "there was nothing to compare against", which is what actually happened.
+
+4. **Its five statements run sequentially, not in a `Promise.all`.** Two indexed single-row reads
+   apiece; the parallelism buys nothing measurable and costs the deterministic statement order that
+   lets the unit suite assert this function's SQL without a database.
+
+5. **Weight rounds to one decimal rather than failing `multipleOf(0.1)`.** §5.2 specifies the
+   validator. `numeric(4,1)` would round anyway, so rejecting 55.55 shows an error for a value the
+   database was always going to accept as 55.6. Rounding in the schema keeps the validated value and
+   the stored value identical.
+
+6. **`skipOnboardingAction` writes only `onboarded_at`.** §5.3's version sets it via an insert whose
+   conflict branch also touches nothing else, which is the same behaviour — but stated as "an empty
+   form" it invites a future refactor into `saveOnboardingAction({})`, which would wipe a profile
+   already filled in through `/me` when someone taps "Skip" on a back-navigation to `/onboarding`.
+
+7. **`lib/env.ts`'s `AUTH_URL` now treats `''` as unset.** Roadmap §4.1 ships the key in
+   `.env.example` with an empty value and instructs the reader to leave it that way locally and on
+   preview. `z.url().optional()` fails on a present-but-empty string, so following the instruction
+   crashed `next build`. A `preprocess` maps `''` to `undefined`; a *wrong* URL still fails loudly.
+
+8. **The CI workflow gained three dummy `AUTH_*` values.** `auth.ts` calls `authEnv()` at module
+   scope, so `next build`'s page-data collection reaches it for every protected route. `AUTH_URL`
+   stays unset in CI on purpose — it is production-only.
+
+9. **F02 shipped `components/ui/`.** The plan's file inventory assumes primitives exist; nothing in
+   the repo had any. `Button`, `Card`, `Field` are built from the v2 tokens in `app/globals.css` —
+   no borders on surfaces, tinted fills, 8/14/22 radii, Poppins 500/600/700. `Button`'s `primary` is
+   `bg-ink text-card` rather than the cyan accent: white on `#23beeb` lands near 2:1, well under
+   WCAG's 4.5:1, while ink-on-card is ~14:1 and inverts correctly in dark mode.
+
+10. **No `TabBar`.** Roadmap §4.8's four-tab bar with the raised coral Upload FAB belongs to F08,
+    which owns the views it navigates between. `/` and `/me` link to each other in the meantime.
+
+11. **Dates render as raw ISO in `/me`'s HRmax panel.** R-23 makes `lib/format.ts` the single
+    formatting authority and no such module exists yet. `2026-08-20` is unambiguous and honest;
+    F06/F08 replace it when they create that module.
+
+### Notes for whoever picks up F04, F05, F06 and F09
+
+- `requireUserId()` in Server Actions and Server Components; `requireUserIdApi()` + the
+  `UnauthorizedError` catch in `/api/extract` and `/api/extract/[id]`. Never `requireUserId()` in a
+  Route Handler — a 307 to HTML is a terrible answer to `fetch()`.
+- **`resolveHrMax` is the only way to get an HRmax.** Never read `profiles.max_hr` or
+  `runs.max_hr` directly, and never write Tanaka inline — `tanakaEstimate` is exported if you need
+  to *name* the estimate in copy, as `/me` does.
+- **When it returns `null`, omit the field.** Not `0`, not a constant, not `220 − age`. §4.6 has the
+  per-caller table. The `null` row of §6.4's degradation matrix is the acceptance criterion.
+- **F06:** call `hrMaxTransitionAt(userId, runId)` once per run-detail render and show the §4.5
+  banner when it is non-null. It names both numbers on purpose; do not shorten it to "we updated
+  your max heart rate".
+- **F07/F11:** freeze `hrMaxUsed` + `hrMaxSource` into `insights.payload` at generation time (R-11).
+  `/s/[token]` must never call `resolveHrMax` live — INVARIANT B, and the route has no `userId` to
+  scope with anyway.
+- **F09:** `new_ceiling` uses `getObservedMaxHrExcludingRun`, which is the *only* sanctioned caller
+  of that query. Every other badge and metric uses `resolveHrMax`, including for the run's own
+  %HRmax (R-3).
+- Adding a protected page means adding one line to `proxy.ts`'s matcher **and** one assertion to
+  `tests/auth.proxy.matcher.test.ts`. Adding a public one means doing nothing — the safer default,
+  because every page also enforces auth itself.
+- **F08 replaces `app/page.tsx`'s placeholder body. It must not touch the gate above it** — the
+  signed-out / not-onboarded / onboarded branch is the one thing that route exists to decide.
