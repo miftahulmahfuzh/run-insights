@@ -184,3 +184,30 @@ state so it invites rather than nags.
 Foundations (colour tokens light + dark, type scale, spacing, radius, the zone palette), then
 the components, then the ten screens as a prototype. Show me the run detail screen twice — once
 for a good run, once for the ugly one above.
+
+---
+
+## Where this landed — v2, 2026-08-20
+
+This brief is the *prompt*, deliberately open-ended about aesthetics ("pick a typeface with
+genuinely good tabular figures", "keep the shadow and border-radius vocabulary tiny"). It has been
+run twice, and the second run replaced the first wholesale rather than refining it:
+
+| | v1 | **v2 — current** |
+|---|---|---|
+| Surface | warm cream `#f0ede4` | **sky `#c9e9fb`, white cards** |
+| Accent | pine green `#2f5d50` | **cyan `#23beeb`** |
+| Type | Georgia prose + system mono for numbers | **Poppins only**, 500 / 600 / 700 |
+| Zones | muted earth | **candy, `#38c3ee` → `#ff5e5b`** |
+| Radii | 2 / 6 / 10 | **8 / 14 / 22** |
+| Elevation | *no shadows anywhere*, hairline + card-over-paper | ***no borders on surfaces***, tinted fill or soft shadow |
+
+**Re-running this brief from scratch will not reproduce v2** — it is under-specified on exactly
+the axes that changed. If you want to iterate rather than restart, start from the existing canvas
+(`01 Foundations`, `02 Components`, `Run Insights v2`) and from `docs/design/tokens.css`, which is
+the normalised copy of what shipped.
+
+Two things below survived both runs unchanged and should be treated as settled, not preferences:
+the **iOS constraints** (16 px minimum inputs, safe-area insets, 44 pt tap targets, `100dvh`) and
+the **number formats** (`10.67 km`, `1:18:36`, `7'22"`, `173`, `144 spm`, period decimal
+separator). The **honesty marks** survived too, re-expressed from underlines to chips — see R-46.

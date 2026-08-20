@@ -1,37 +1,171 @@
 @import 'tailwindcss';
 
 /*
- * Tailwind v4 is CSS-first: this @theme block IS the config. No tailwind.config.js, ever.
- * The design system (docs/design-brief.md, pulled once F08 has screens) owns the real
- * token ramps. What's here keeps the build green and gives prettier-plugin-tailwindcss a
- * stylesheet to sort classes against.
+ * Tailwind v4 is CSS-first: the @theme block below IS the config. No tailwind.config.js, ever.
+ *
+ * Design tokens are v2, mirrored from docs/design/tokens.css (which carries the provenance and
+ * the non-token rules). Keep the two in step: re-pull the design, update that file, mirror here.
+ *
+ * Two layers, deliberately:
+ *   1. `:root` holds the RAW tokens (--paper, --ink, --z4 ...) in both colour schemes.
+ *   2. `@theme inline` maps them onto Tailwind's namespaces (--color-*, --radius-*, --shadow-*).
+ *
+ * `inline` is the load-bearing keyword. Without it Tailwind copies each token's *value* into the
+ * utilities at build time, which freezes the light palette and breaks dark mode. With it, a
+ * utility compiles to `background-color: var(--paper)` and follows whichever scheme is live.
  */
-@theme {
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #c9e9fb;
+  --paper-2: #f1f7fb;
+  --card: #ffffff;
+
+  --ink: #1d2733;
+  --ink-2: #55636f;
+  --ink-3: #93a2b0;
+
+  --rule: #e3ecf3;
+  --rule-2: #ecf3f8;
+
+  --accent: #23beeb;
+  --accent-soft: #dff4fc;
+
+  --miss: #c7d5df;
+  --red: #ff5e5b;
+  --warn: #ffaa2b;
+  --warn-soft: #fff3dc;
+
+  /* Z1 <140 · Z2 141-151 · Z3 152-163 · Z4 164-174 · Z5 175+ */
+  --z1: #38c3ee;
+  --z2: #3fd68f;
+  --z3: #ffc531;
+  --z4: #ff9345;
+  --z5: #ff5e5b;
+
+  --sh: 0 10px 24px rgba(23, 62, 92, 0.1);
+  --sh-lg: 0 24px 60px rgba(23, 62, 92, 0.18);
+
+  /* Fixed chrome pads by these — the TabBar's bottom inset, notably. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/*
+ * No dark-mode toggle, per the roadmap's core tenet — this media query IS the entire dark-mode
+ * feature. There is no `data-theme` attribute and no plan may add one. Every colour is defined
+ * in both schemes; none is defined only here.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0e1b26;
+    --paper-2: #162834;
+    --card: #1c3040;
+
+    --ink: #f2f7fa;
+    --ink-2: #b4c2cd;
+    --ink-3: #7c8d9b;
+
+    --rule: #294051;
+    --rule-2: #223749;
+
+    --accent: #3fc9f0;
+    --accent-soft: #12374a;
+
+    --miss: #33475a;
+    --red: #ff7b72;
+    --warn: #ffb84d;
+    --warn-soft: #3a2f16;
+
+    /* Zone hues do not change: they encode data, not chrome. */
+    --sh: 0 10px 24px rgba(0, 0, 0, 0.35);
+    --sh-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
   }
 }
 
-html {
-  /* iOS: never let Safari zoom on input focus. Design system enforces 16px min on inputs. */
-  -webkit-text-size-adjust: 100%;
+@theme inline {
+  /* One family. --font-poppins is injected by next/font in app/layout.tsx; the stack after it
+     is what renders if the font fails to load, so it must be a real fallback, not a flourish. */
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-card: var(--card);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-rule: var(--rule);
+  --color-rule-2: var(--rule-2);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-miss: var(--miss);
+  --color-red: var(--red);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+
+  --color-z1: var(--z1);
+  --color-z2: var(--z2);
+  --color-z3: var(--z3);
+  --color-z4: var(--z4);
+  --color-z5: var(--z5);
+
+  /* Four radii, literal: unlike colours these are identical in both schemes. */
+  --radius-chip: 8px;
+  --radius-field: 14px;
+  --radius-card: 22px;
+  --radius-pill: 999px;
+
+  --shadow-card: var(--sh);
+  --shadow-sheet: var(--sh-lg);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  -webkit-tap-highlight-color: transparent;
+@layer base {
+  html {
+    /* iOS: never let Safari zoom on input focus. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /*
+   * 16px is the iOS constraint, not a taste call: Safari zooms the viewport on focus for
+   * anything smaller, and the design brief makes this one of the rules that wins over the
+   * design. The correction sheet's input is 20px, comfortably clear of it.
+   */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-3);
+  }
+}
+
+/* Used by the extraction skeleton (R-41) and any other pending-state placeholder. */
+@keyframes ri-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ri-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -443,6 +443,21 @@ share a twill tone, a border weight and a thread gauge.
 /api/health           unauthenticated liveness probe (R-14)
 ```
 
+**Navigation is a four-tab bottom bar**, from the v2 design's `TabBar`. The routes above are
+the surface; this is how a phone reaches them:
+
+| tab | route | note |
+|---|---|---|
+| Runs | `/` | default landing once signed in |
+| **Upload** | `/upload` | **centre, raised, coral (`--z5`)** — a circular FAB breaking the bar's top edge, not a peer of the other three. It is the one flow that matters (§1), and the IA says so |
+| Trends | `/trends` | |
+| Me | `/me` | profile, records, badge shelf |
+
+`/r/[id]`, `/x/[extractionId]`, `/r/[id]/edit`, `/onboarding` and `/s/[token]` are **not** tabs —
+they are pushed screens or standalone pages. The bar pads its bottom by `--safe-bottom`
+(home-indicator inset), which is inert without `viewport-fit=cover` in the root layout. `/s/[token]`
+shows no tab bar at all: a shared run is read-only and its viewer has no account to navigate.
+
 **Canonical origin is `https://runins.site`.** `www.runins.site` 301s to the apex. Share links
 (`/s/<token>`) are built from that origin — never from `VERCEL_URL`, whose per-deployment
 hostname would produce links that die on the next deploy.
