@@ -1,6 +1,6 @@
 # F03 — Data Layer
 
-**Status:** planned · **Depends on:** F01 (Foundation) · **Blocks:** F02, F04, F05, F06, F07, F08, F09, F11
+**Status:** SHIPPED 2026-08-20 (see §12) · **Depends on:** F01 (Foundation) · **Blocks:** F02, F04, F05, F06, F07, F08, F09, F11
 **Owner of:** `lib/db/*`, `lib/id.ts`, `lib/date/*`, `drizzle.config.ts`, `drizzle/`
 
 > **This is the keystone feature.** Every other feature reads or writes through this module set.
@@ -1579,3 +1579,135 @@ consuming plan.
 | `lib/db/schema.ts` | all tables, relations, row types (`Run`, `RunDetail`'s constituents, `Profile`, `Extraction`, …) | F02, F04, F05, F06, F07, F08, F09, F11 |
 | `lib/db/index.ts` | `db`, `schema` | every feature that touches the DB |
 | `lib/db/queries.ts` | everything in §5.6 — ownership predicates, `commitExtractedRun`, `confirmRun`, `getRunDetail`, `listRuns`, `getRunsInIsoWeek`, `getRunsInMonth`, `getMonthlyTotals`, `getAllTimeTotals`, `getObservedMaxHr`, extraction CRUD + `getExtractionErrorProfile`, `getProfile`/`upsertProfile`, `getRecords`/`replaceRecords`, `getBadges`/`upsertBadge`, `createShare`/`getActiveShareForRun`/`revokeShare`/`getRunByShareToken`, `NotFoundError`, `DuplicateRunError` | F02 (`getObservedMaxHr`, `getProfile`/`upsertProfile`), F04 (`createExtraction`, `commitExtractedRun`, extraction marks), F05 (`confirmRun`, `recordCorrections`, `getRunDetail`), F06 (`getRunDetail`, rollups, `replaceRecords`), F07 (rollups, `insights` table), F08 (`listRuns`, rollups, `getRunDetail`), F09 (`getRunDetail`, `getBadges`/`upsertBadge`), F11 (`createShare`/`revokeShare`/`getRunByShareToken`) |
+
+---
+
+## 12. Execution record — 2026-08-20
+
+F03 executed end to end. Migration generated, applied to Neon and verified; 188 unit tests and 40
+integration tests green; `typecheck`, `lint`, `format:check` and `next build` clean.
+
+**Where this plan was overruled.** The plan was written before `RECONCILIATION_v0.1.0.md`
+existed, and R-1 in particular invalidates its §2.6/D6 model. The roadmap-plus-reconciliation pair
+wins (roadmap preamble), so what shipped follows those and not §5.3's schema block. The
+differences are listed under "Contract deltas as built" below; §1–§11 above are otherwise intact
+and still describe what was built.
+
+### What shipped
+
+| Path | Contents |
+|---|---|
+| `lib/id.ts` | nanoid-compatible ids, no dependency. `newRunId`/`newExtractionId`/`newPhotoId`/`newInsightId` (12 chars), `newShareToken` (16 chars, 96 bits), `isValidId`, `isValidShareToken` |
+| `lib/date/ranges.ts` | `monthRange`, `addMonths`, `monthKey`, `isoWeekRange`, `isoWeekKeyOf`, `addDays`, `daysBetween`, validators. Zero dependencies, zero timezone reasoning |
+| `lib/db/schema.ts` | 14 tables (4 Auth.js + 10 app), 8 named indexes, relations, row types |
+| `lib/db/index.ts` | `neon()` + `drizzle()`, `globalThis` cache, eager construction, `process.env.DATABASE_URL` read directly |
+| `lib/db/queries.ts` | 45 exported functions across nine sections |
+| `drizzle/0000_confused_madame_hydra.sql` | The one migration, applied |
+| `scripts/check-data-layer-invariants.mjs` | CI guard: no `delete(extractions)`, and `getRunByShareToken` is still the only unscoped read |
+| `tests/support/fakeDb.ts` | The recording driver the unit suites run against |
+| 14 unit suites + 1 integration suite | 188 + 40 tests |
+
+### The migration, verified against the live database
+
+`information_schema` / `pg_constraint` / `pg_indexes` on `ep-winter-bonus-azjhv7a4`:
+
+```
+TABLES (14): account, badges, extractions, insights, profiles, records, run_photos,
+             run_splits, run_zones, runs, session, shares, user, verificationToken
+FKS: 17 total, 15 cascade
+NON-CASCADE: badges_run_id_runs_id_fk = n (set null, R-22)
+             runs_extraction_id_extractions_id_fk = a (no action, D3)
+runs_user_occurred_started_unq  UNIQUE (user_id, occurred_on,
+                                COALESCE(started_at, '00:00:00'::time))     <- R-5, live
+shares_run_id_active_unq        UNIQUE (run_id) WHERE (revoked_at IS NULL)  <- partial, live
+runs_user_maxhr_idx             (user_id, max_hr DESC)                      <- R-12
+insights_latest_idx             (user_id, scope, scope_key, created_at DESC)<- R-12
+```
+
+Every §6 checklist item passed, and the two that are easiest to get silently wrong — the
+`coalesce` expression index and the partial share index — are now asserted against the migration
+FILE as well as the schema object (`tests/db.queries.commitRun.test.ts`), because a schema object
+that says `coalesce` and a migration that does not would leave production unguarded.
+
+### Measured facts that only a real database could establish
+
+| Claim | Result |
+|---|---|
+| `getRunDetail` is one HTTP round trip for a run with 11 splits + 5 zones + 2 photos | **1 request**, counted at `neonConfig.fetchFunction` |
+| Two runs on one day with **both** `started_at` NULL collide | **They do** — the literal roadmap `UNIQUE` would have let both in |
+| `SUM(integer)` arrives as a string | **It does**; every aggregate needed `.mapWith(Number)` |
+| A draft run (`reviewed_at IS NULL`) is invisible to rollups but visible to `getRunDetail` | Confirmed on both sides |
+| Deleting a run SET NULLs its badge instead of deleting it | Confirmed |
+| Whole suite under `TZ=America/New_York` | **40/40 identical** — D6's "no timezone reasoning in this module" holds |
+
+The integration suite is safe against a shared database: it creates two users with a unique
+suffix and deletes them in `afterAll`, which cascades everything away. Verified — all 11 tables
+back to 0 rows afterwards.
+
+### Contract deltas as built (supersede §10 where they differ)
+
+1. **`commitExtractedRun` creates a REVIEWED run, and is the only thing that creates a run at
+   all (R-1).** The plan's §2.6 has F04 insert a draft at extraction time so `/r/[id]/review` has
+   a stable URL. R-1 killed that: `occurred_on` is NOT NULL and unknown at upload, so a draft
+   needs a placeholder date, and the R-5 index then rejects the second upload of any day — two
+   weekend runs, one broken app. The signature keeps its name; `reviewedAt` is set at INSERT, and
+   the function also backfills `run_photos.run_id` for the extraction's photos.
+
+2. **`confirmRun` does not exist; `applyRunCorrections` replaces it.** With the run born reviewed,
+   nothing needs to *set* `reviewed_at` later. What F05 needs instead is the R-8 post-review edit:
+   same wholesale child replacement, but it stamps `corrected_at` and never touches
+   `reviewed_at`. It maps a dedupe collision (from an edited date) to `DuplicateRunError` too.
+
+3. **`run_photos` gained a lifecycle of its own** — `attachExtractionPhotos`,
+   `listExtractionPhotos`, `setPhotoExcludedFromShare` (R-11), `updatePhotoBlobLocation` (R-15's
+   rotation), `deletePhoto`. The plan had none of these because in its model photos attached to a
+   run. `runPhotoOwnedBy` therefore accepts EITHER parent: an extraction before the commit, a run
+   after it.
+
+4. **`markExtraction*` and `recordCorrections` take `userId` first**, like everything else. The
+   plan omitted it on the marks because the background job "already owns the id". It also always
+   has the userId, so the scoping invariant costs nothing and holds without exception —
+   `scripts/check-data-layer-invariants.mjs` can then enforce the rule mechanically instead of
+   listing per-function exemptions.
+
+5. **`corrections` is `Record<string, CorrectionEvent[]>` (R-7), and the error-profile query counts
+   EVENTS.** `getExtractionErrorProfile` gained `extractionCount` alongside `correctionCount`, and
+   guards `jsonb_array_length` with `jsonb_typeof(...) = 'array'` — the function raises on a
+   non-array, so one pre-R-7 row would otherwise take the whole query down.
+
+6. **Insight queries ship here** (`getInsight`, `getLatestInsight`, `saveInsight`), which the plan
+   listed only as "the `insights` table". `saveInsight` is insert-if-new (`ON CONFLICT DO NOTHING`,
+   then read the winner), never an upsert: an insight a runner has already read is immutable, and
+   a cron refresh racing a page view must not rewrite it.
+
+7. **`getRunByShareToken` returns more than the plan's `SharedRun`** — `activityType`, `location`,
+   `maxHr`, `activeKcal`, `avgCadence`, non-excluded `photos` (R-11), and `insightPayload`: the
+   frozen session insight, which is what lets `/s/[token]` render a %HRmax without resolving HRmax
+   live (R-11 / F02 INVARIANT B). Still an explicit column list, still no `note`/`userId`/email.
+   **F11 must strip `doNext` and `questionForRunner` from that payload (R-27).**
+
+8. **Two additions the later features need:** `getRunsBetween` (R-6's rolling 7/28-day ACWR
+   windows are neither a week nor a month) and `getObservedMaxHrExcludingRun` (R-3 point 3 —
+   F09's `new_ceiling` badge, and *only* that; using it for metrics would reintroduce the formula
+   estimate exactly where the measurement is strongest).
+
+9. **`db:push` was not added** to `package.json`, though §3 lists it. There is one database and
+   `db:push` against it would bypass the migration history the §6 checklist depends on. `db:check`
+   and `test:int` were added.
+
+### Notes for whoever picks up F02, F04 and F05
+
+- `lib/db/index.ts` deliberately does **not** import `lib/env.ts` (D8). Do not "tidy" that: the
+  `server-only` import in `lib/env.ts` would take every unit test with it.
+- Read a full run with `getRunDetail` and nothing else. It is 4 statements in one batch and one
+  snapshot; a `SELECT run` followed by two awaited child selects is three round trips AND a
+  consistency gap.
+- Every new mutation starts with `const userId = await requireUserId()` and passes it as the first
+  argument. `scripts/check-data-layer-invariants.mjs` fails the build on a new unscoped export,
+  and `tests/db.ownership.test.ts` fails on a dropped ownership predicate.
+- Adding a rollup means adding it to `tests/db.queries.reviewedOnly.test.ts`. That file's last
+  test enumerates every rollup-shaped export by name specifically so a new one cannot slip in
+  without a human deciding whether it is reviewed-only.
+- `tests/support/fakeDb.ts` is how to unit-test a query without a database: `installFakeDb()`,
+  then `await import('@/lib/db/queries')`. It records real generated SQL, so assertions about a
+  `WHERE` clause are assertions about what Postgres would actually receive.

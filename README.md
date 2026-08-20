@@ -3,7 +3,7 @@
 Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade analysis of that
 run, that week, and that month.
 
-**[runins.site](https://runins.site)** · v0.1.0 · planning complete, implementation not started
+**[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer · next: F02 auth
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
@@ -83,7 +83,16 @@ good schema.
 ```bash
 cp .env.example .env.local     # then fill it — see docs/google-auth-setup.md
 node research/show-metrics.mjs # deterministic metrics, no API key needed
+
+npm run db:smoke               # is Neon reachable on the pooled string?
+npm run db:migrate             # apply drizzle/ to the database
+npm test                       # unit suites; never touches a database
+TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
 ```
+
+`npm test` is safe by construction: `tests/integration/**` is excluded unless
+`VITEST_INTEGRATION=1`, and every other suite runs against a recording fake driver that generates
+real SQL and sends none of it anywhere.
 
 ## Licence
 
