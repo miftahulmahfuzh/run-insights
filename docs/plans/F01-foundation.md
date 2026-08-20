@@ -1585,7 +1585,11 @@ directly, right now, before F04 builds real extraction on top of it.
 Deploy a **throwaway** route (delete it after this task passes) that proves the shape works:
 
 ```ts
-// app/api/_probe-after/route.ts — TEMPORARY, delete after Task 31 passes
+// app/api/probe-after/route.ts — TEMPORARY, delete after Task 31 passes
+// NOTE: the path must NOT start with an underscore. This plan originally said
+// `app/api/_probe-after/` — the App Router treats a `_`-prefixed folder as a PRIVATE
+// folder and excludes it from routing entirely, so the probe deployed and returned 404
+// with no error anywhere. Corrected 2026-08-20 during execution.
 import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { neon } from '@neondatabase/serverless'
@@ -1608,7 +1612,7 @@ export async function POST() {
 
 ```bash
 vercel deploy --prod
-time curl -s -X POST https://<production-alias>/api/_probe-after; echo
+time curl -s -X POST https://<production-alias>/api/probe-after; echo
 ```
 
 **Expected:** the `curl` returns in well under 1 second (proving the response doesn't wait on
@@ -1623,7 +1627,7 @@ any extraction code is written against a false assumption.
 Delete the probe route once this passes:
 
 ```bash
-rm -rf app/api/_probe-after
+rm -rf app/api/probe-after
 git add -A && git commit -m "chore(f01): remove after() verification probe (Task 31 passed)"
 git push
 ```
@@ -1890,3 +1894,96 @@ touching every query file.
 `typescript@5.9.3` deliberately, matching the exact versions `expense-tracking`'s F01 validated
 this stack against. If newer majors are wanted, do that upgrade as an isolated change after F01
 is green, not folded into it.
+
+---
+
+## Execution record — 2026-08-20
+
+F01 executed end to end. Every §7 verification block passed. What follows is measured, not
+predicted; it closes this plan's open questions.
+
+### Infrastructure as built
+
+| Fact | Value |
+|---|---|
+| Vercel project | `jmt-arot/run-insights` (`prj_feczjBken0K6CdbL4MWNYtANe8TF`) |
+| Vercel plan | **Hobby** — confirms Q2. `maxDuration = 60` is the ceiling; §2.4's Pro path stays the escape hatch |
+| Function region | `sin1` (also set as the project default; `iad1` was the default and had to be changed) |
+| Node.js runtime | `22.x` — changed from the `24.x` default for parity with local `v22.23.1` |
+| Production alias | `run-insights-phi.vercel.app` |
+| Custom domain | `runins.site` + `www.runins.site` (301 → apex) attached to the project. **DNS not yet live** — the domain is delegated to `ns1/ns2.domainesia.net` but DomaiNesia has no zone for it, so it currently returns SERVFAIL ("lame delegation") |
+| Neon | `ep-winter-bonus-azjhv7a4`, `ap-southeast-1` — already existed, satisfying Q1 |
+| Blob store | `run-insights-photos` (`store_pteZannCcA27S5kn`), **public**, `sin1` |
+| Env vars | 11 vars × 3 environments + production-only `AUTH_URL`; Preview count **12** after the Blob token (not §Task 28's 13 — R-40 removed one variable) |
+| Git integration | connected automatically by `vercel link`; push to `main` → production |
+
+### Task 31 — `after()` / `waitUntil`, the F04 gate: **PASSED**
+
+Verified by writing to Neon from inside the `after()` callback rather than only logging, so the
+evidence is queryable instead of scraped:
+
+```
+POST /api/probe-after  ->  HTTP 200 in 0.370 s   (an 8 s task was already scheduled)
+after() completed      ->  8166 ms and 8011 ms after request start, two runs
+                           both rows landed in Neon from inside the callback
+```
+
+**Vercel honors `waitUntil` on this account, plan tier and region.** §2's whole mechanism is
+sound and F04 may build `runExtraction` on it. The probe route and its `_probe_after` table were
+both removed afterwards; production's route list is back to `/`, `/api/extract`,
+`/api/extract/[id]`, `/api/health`.
+
+### Measured latencies
+
+| Path | Latency |
+|---|---|
+| Neon from the dev machine, pooled, cold | 770 ms |
+| Neon from the dev machine, unpooled, warm | 133 ms |
+| Neon from `sin1` (production `/api/health`), cold | 1122 ms |
+| Neon from `sin1`, warm | **7–63 ms** |
+
+The `sin1` ↔ `ap-southeast-1` pairing lands far inside §Task 26's hoped-for ~50 ms, which
+matters because §2.3's 55 s deadline has no margin to donate to database round-trips.
+
+### Open questions, resolved
+
+| Q | Resolution |
+|---|---|
+| Q1 Neon region | Already `ap-southeast-1`. Confirmed by 7 ms warm queries from `sin1`. |
+| Q2 Hobby 60 s ceiling | Project reports plan `hobby`. Ceiling stands; §2.3's discipline is required, not optional. |
+| Q3 Does `after()` work here? | **Yes, proven live.** See Task 31 above. |
+| Q4 Keep `/api/health` public? | Kept, per the plan's own recommendation. F02's `proxy.ts` matcher must exclude it. |
+| Q5 One z.ai key or two? | **One** — superseded by R-40 before execution. `lib/env.ts` has no `LLM_VISION_API_KEY` and must never gain one. |
+| Q6 `noUncheckedIndexedAccess` | Left on. F03 onward must write `rows[0]?.x`. |
+| Q7 ESLint 9 / TypeScript 5.9 | Left pinned as written. |
+
+### Deviations from this plan, and why
+
+1. **`lib/format` was not created as a directory.** Task 12's `mkdir` list includes it, but the
+   ownership table specifies `lib/format.ts` — a file, F03's. An empty directory of that name
+   would collide with it.
+2. **`AGENTS.md` / `CLAUDE.md` were kept, not deleted-and-regenerated.** Task 3 deletes them so
+   `next dev` can rewrite the managed block; the copies `create-next-app@16.3.1` emitted are from
+   the exact pinned version, so there was nothing stale to avoid, and keeping them removed the
+   risk of losing `CLAUDE.md`'s `@AGENTS.md` include line.
+3. **`docs` added to `.prettierignore`.** Prettier exploded `docs/design/tokens.css`'s
+   deliberately packed declarations. Same rationale the plan already gives for excluding
+   `research/`; reformatting DesignSync output fights the next pull.
+4. **Verification #7's grep was tightened** to look for the schema *field* (`LLM_VISION_API_KEY:`)
+   rather than the bare string, because `lib/env.ts` names the variable in a comment explaining
+   why it must not be reintroduced.
+5. **Verification #10's grep string was wrong.** It greps for `research/score.mjs` in `npm test`
+   output, but Vitest's default reporter prints the test *file* (`tests/research/score.test.ts`).
+   The test does run; use `npx vitest run --reporter=verbose` if a grep-able assertion is wanted.
+6. **The probe route path lost its underscore** — see the note in Task 31's code block.
+7. **`vercel link` and `vercel blob create-store` both append a blanket `.env*` to
+   `.gitignore`**, which lands *after* `!.env.example` and silently re-ignores the committed
+   template. Removed both times. Expect it again after any `vercel env pull`.
+
+### Still outstanding
+
+- **DNS at DomaiNesia** — the one step that cannot be done from this repo. Until the zone exists,
+  `https://runins.site` does not resolve and `AUTH_URL` points at a dead host, so F02 must not
+  test Google sign-in against the apex yet.
+- A `score.mjs` count assertion was added (`total === 108`) so the fixture's size is pinned by a
+  test rather than by prose.
