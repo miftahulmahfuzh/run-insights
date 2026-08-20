@@ -1,0 +1,27 @@
+/* Run Insights — design tokens
+ * Pulled from Claude Design project b383f65b-1bb5-4c8a-979d-32add72688bc on 2026-08-20
+ * via DesignSync. Normalised from the inline <helmet> block of the .dc.html artboards.
+ *
+ * DO NOT hand-edit. Re-pull instead, and record any ruling in DESIGN_INTEGRATION.md.
+ */
+
+:root {
+  --paper: #f0ede4; --paper-2: #e8e4d9; --card: #fbfaf5;
+  --ink: #20211d; --ink-2: #5d5c52; --ink-3: #8f8d81;
+  --rule: #d8d3c4; --rule-2: #eae6da;
+  --accent: #2f5d50; --accent-soft: #e0e8e2;
+  --miss: #bfb9a9; --red: #8a3324; --warn: #a8842c;
+  --z1: #56789b; --z2: #567d4e; --z3: #a8842c; --z4: #b05c2a; --z5: #8a3324;
+  --r-chip: 2px; --r-field: 6px; --r-card: 10px; --r-pill: 999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #131311; --paper-2: #1a1a17; --card: #1e1e1a;
+    --ink: #eeebe1; --ink-2: #a5a398; --ink-3: #6e6d64;
+    --rule: #2e2e28; --rule-2: #242420;
+    --accent: #86bba6; --accent-soft: #1e2a25;
+    --miss: #4a4a42; --red: #c97a62; --warn: #c9a84c;
+    --z1: #7fa3c4; --z2: #8db07f; --z3: #c9a84c; --z4: #cf8352; --z5: #c97a62;
+  }
+}

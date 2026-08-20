@@ -1,0 +1,382 @@
+{
+  "wall": 16202,
+  "parts": [
+    {
+      "file": "1.png",
+      "name": "summary",
+      "ms": 8569,
+      "usage": {
+        "completion_tokens": 107,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "prompt_tokens": 1888,
+        "prompt_tokens_details": {
+          "cached_tokens": 286
+        },
+        "total_tokens": 1995
+      },
+      "json": {
+        "activityType": "Outdoor Run",
+        "goal": "Open Goal",
+        "dateLabel": "Thu, 20 Aug",
+        "startTime": "7.07 AM",
+        "endTime": "8.26 AM",
+        "location": "Tangerang",
+        "durationSec": 4716,
+        "distanceKm": 10.67,
+        "activeKcal": 646,
+        "totalKcal": 747,
+        "elevationGainM": 15,
+        "avgCadenceSpm": 144,
+        "avgPaceSecPerKm": 442,
+        "avgHrBpm": 173
+      },
+      "rawText": "{\"activityType\":\"Outdoor Run\",\"goal\":\"Open Goal\",\"dateLabel\":\"Thu, 20 Aug\",\"startTime\":\"7.07 AM\",\"endTime\":\"8.26 AM\",\"location\":\"Tangerang\",\"durationSec\":4716,\"distanceKm\":10.67,\"activeKcal\":646,\"totalKcal\":747,\"elevationGainM\":15,\"avgCadenceSpm\":144,\"avgPaceSecPerKm\":442,\"avgHrBpm\":173}"
+    },
+    {
+      "file": "2.png",
+      "name": "splits",
+      "ms": 16179,
+      "usage": {
+        "completion_tokens": 402,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "prompt_tokens": 1832,
+        "prompt_tokens_details": {
+          "cached_tokens": 286
+        },
+        "total_tokens": 2234
+      },
+      "json": {
+        "splits": [
+          {
+            "km": 1,
+            "timeSec": 396,
+            "paceSecPerKm": 436,
+            "hrBpm": 154,
+            "cadenceSpm": 154,
+            "partial": false
+          },
+          {
+            "km": 2,
+            "timeSec": 428,
+            "paceSecPerKm": 428,
+            "hrBpm": 171,
+            "cadenceSpm": 148,
+            "partial": false
+          },
+          {
+            "km": 3,
+            "timeSec": 431,
+            "paceSecPerKm": 431,
+            "hrBpm": 168,
+            "cadenceSpm": 151,
+            "partial": false
+          },
+          {
+            "km": 4,
+            "timeSec": 431,
+            "paceSecPerKm": 431,
+            "hrBpm": 173,
+            "cadenceSpm": 148,
+            "partial": false
+          },
+          {
+            "km": 5,
+            "timeSec": 423,
+            "paceSecPerKm": 423,
+            "hrBpm": 179,
+            "cadenceSpm": 146,
+            "partial": false
+          },
+          {
+            "km": 6,
+            "timeSec": 440,
+            "paceSecPerKm": 440,
+            "hrBpm": 177,
+            "cadenceSpm": 145,
+            "partial": false
+          },
+          {
+            "km": 7,
+            "timeSec": 452,
+            "paceSecPerKm": 452,
+            "hrBpm": 177,
+            "cadenceSpm": 143,
+            "partial": false
+          },
+          {
+            "km": 8,
+            "timeSec": 474,
+            "paceSecPerKm": 474,
+            "hrBpm": 175,
+            "cadenceSpm": 139,
+            "partial": false
+          },
+          {
+            "km": 9,
+            "timeSec": 467,
+            "paceSecPerKm": 467,
+            "hrBpm": 174,
+            "cadenceSpm": 138,
+            "partial": false
+          },
+          {
+            "km": 10,
+            "timeSec": 480,
+            "paceSecPerKm": 480,
+            "hrBpm": 176,
+            "cadenceSpm": 136,
+            "partial": false
+          },
+          {
+            "km": 11,
+            "timeSec": 288,
+            "paceSecPerKm": 429,
+            "hrBpm": 183,
+            "cadenceSpm": 145,
+            "partial": true
+          }
+        ]
+      },
+      "rawText": "{\"splits\":[{\"km\":1,\"timeSec\":396,\"paceSecPerKm\":436,\"hrBpm\":154,\"cadenceSpm\":154,\"partial\":false},{\"km\":2,\"timeSec\":428,\"paceSecPerKm\":428,\"hrBpm\":171,\"cadenceSpm\":148,\"partial\":false},{\"km\":3,\"timeSec\":431,\"paceSecPerKm\":431,\"hrBpm\":168,\"cadenceSpm\":151,\"partial\":false},{\"km\":4,\"timeSec\":431,\"paceSecPerKm\":431,\"hrBpm\":173,\"cadenceSpm\":148,\"partial\":false},{\"km\":5,\"timeSec\":423,\"paceSecPerKm\":423,\"hrBpm\":179,\"cadenceSpm\":146,\"partial\":false},{\"km\":6,\"timeSec\":440,\"paceSecPerKm\":440,\"hrBpm\":177,\"cadenceSpm\":145,\"partial\":false},{\"km\":7,\"timeSec\":452,\"paceSecPerKm\":452,\"hrBpm\":177,\"cadenceSpm\":143,\"partial\":false},{\"km\":8,\"timeSec\":474,\"paceSecPerKm\":474,\"hrBpm\":175,\"cadenceSpm\":139,\"partial\":false},{\"km\":9,\"timeSec\":467,\"paceSecPerKm\":467,\"hrBpm\":174,\"cadenceSpm\":138,\"partial\":false},{\"km\":10,\"timeSec\":480,\"paceSecPerKm\":480,\"hrBpm\":176,\"cadenceSpm\":136,\"partial\":false},{\"km\":11,\"timeSec\":288,\"paceSecPerKm\":429,\"hrBpm\":183,\"cadenceSpm\":145,\"partial\":true}]}"
+    },
+    {
+      "file": "3.png",
+      "name": "hr",
+      "ms": 10281,
+      "usage": {
+        "completion_tokens": 181,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "prompt_tokens": 1864,
+        "prompt_tokens_details": {
+          "cached_tokens": 286
+        },
+        "total_tokens": 2045
+      },
+      "json": {
+        "avgHrBpm": 173,
+        "maxHrBpm": null,
+        "restingHrBpm": null,
+        "hrZones": [
+          {
+            "zone": 1,
+            "durationSec": 104,
+            "minBpm": null,
+            "maxBpm": 139
+          },
+          {
+            "zone": 2,
+            "durationSec": 25,
+            "minBpm": 141,
+            "maxBpm": 151
+          },
+          {
+            "zone": 3,
+            "durationSec": 303,
+            "minBpm": 152,
+            "maxBpm": 163
+          },
+          {
+            "zone": 4,
+            "durationSec": 2165,
+            "minBpm": 164,
+            "maxBpm": 174
+          },
+          {
+            "zone": 5,
+            "durationSec": 1998,
+            "minBpm": 175,
+            "maxBpm": null
+          }
+        ],
+        "postWorkoutHr": [
+          {
+            "label": "185BPM",
+            "bpm": 185
+          },
+          {
+            "label": "162BPM",
+            "bpm": 162
+          },
+          {
+            "label": "169BPM",
+            "bpm": 169
+          }
+        ]
+      },
+      "rawText": "{\"avgHrBpm\":173,\"maxHrBpm\":null,\"restingHrBpm\":null,\"hrZones\":[{\"zone\":1,\"durationSec\":104,\"minBpm\":null,\"maxBpm\":139},{\"zone\":2,\"durationSec\":25,\"minBpm\":141,\"maxBpm\":151},{\"zone\":3,\"durationSec\":303,\"minBpm\":152,\"maxBpm\":163},{\"zone\":4,\"durationSec\":2165,\"minBpm\":164,\"maxBpm\":174},{\"zone\":5,\"durationSec\":1998,\"minBpm\":175,\"maxBpm\":null}],\"postWorkoutHr\":[{\"label\":\"185BPM\",\"bpm\":185},{\"label\":\"162BPM\",\"bpm\":162},{\"label\":\"169BPM\",\"bpm\":169}]}"
+    }
+  ],
+  "merged": {
+    "activityType": "Outdoor Run",
+    "goal": "Open Goal",
+    "dateLabel": "Thu, 20 Aug",
+    "startTime": "7.07 AM",
+    "endTime": "8.26 AM",
+    "location": "Tangerang",
+    "durationSec": 4716,
+    "distanceKm": 10.67,
+    "activeKcal": 646,
+    "totalKcal": 747,
+    "elevationGainM": 15,
+    "avgCadenceSpm": 144,
+    "avgPaceSecPerKm": 442,
+    "avgHrBpm": 173,
+    "splits": [
+      {
+        "km": 1,
+        "timeSec": 396,
+        "paceSecPerKm": 436,
+        "hrBpm": 154,
+        "cadenceSpm": 154,
+        "partial": false
+      },
+      {
+        "km": 2,
+        "timeSec": 428,
+        "paceSecPerKm": 428,
+        "hrBpm": 171,
+        "cadenceSpm": 148,
+        "partial": false
+      },
+      {
+        "km": 3,
+        "timeSec": 431,
+        "paceSecPerKm": 431,
+        "hrBpm": 168,
+        "cadenceSpm": 151,
+        "partial": false
+      },
+      {
+        "km": 4,
+        "timeSec": 431,
+        "paceSecPerKm": 431,
+        "hrBpm": 173,
+        "cadenceSpm": 148,
+        "partial": false
+      },
+      {
+        "km": 5,
+        "timeSec": 423,
+        "paceSecPerKm": 423,
+        "hrBpm": 179,
+        "cadenceSpm": 146,
+        "partial": false
+      },
+      {
+        "km": 6,
+        "timeSec": 440,
+        "paceSecPerKm": 440,
+        "hrBpm": 177,
+        "cadenceSpm": 145,
+        "partial": false
+      },
+      {
+        "km": 7,
+        "timeSec": 452,
+        "paceSecPerKm": 452,
+        "hrBpm": 177,
+        "cadenceSpm": 143,
+        "partial": false
+      },
+      {
+        "km": 8,
+        "timeSec": 474,
+        "paceSecPerKm": 474,
+        "hrBpm": 175,
+        "cadenceSpm": 139,
+        "partial": false
+      },
+      {
+        "km": 9,
+        "timeSec": 467,
+        "paceSecPerKm": 467,
+        "hrBpm": 174,
+        "cadenceSpm": 138,
+        "partial": false
+      },
+      {
+        "km": 10,
+        "timeSec": 480,
+        "paceSecPerKm": 480,
+        "hrBpm": 176,
+        "cadenceSpm": 136,
+        "partial": false
+      },
+      {
+        "km": 11,
+        "timeSec": 288,
+        "paceSecPerKm": 429,
+        "hrBpm": 183,
+        "cadenceSpm": 145,
+        "partial": true
+      }
+    ],
+    "maxHrBpm": null,
+    "restingHrBpm": null,
+    "hrZones": [
+      {
+        "zone": 1,
+        "durationSec": 104,
+        "minBpm": null,
+        "maxBpm": 139
+      },
+      {
+        "zone": 2,
+        "durationSec": 25,
+        "minBpm": 141,
+        "maxBpm": 151
+      },
+      {
+        "zone": 3,
+        "durationSec": 303,
+        "minBpm": 152,
+        "maxBpm": 163
+      },
+      {
+        "zone": 4,
+        "durationSec": 2165,
+        "minBpm": 164,
+        "maxBpm": 174
+      },
+      {
+        "zone": 5,
+        "durationSec": 1998,
+        "minBpm": 175,
+        "maxBpm": null
+      }
+    ],
+    "postWorkoutHr": [
+      {
+        "label": "185BPM",
+        "bpm": 185
+      },
+      {
+        "label": "162BPM",
+        "bpm": 162
+      },
+      {
+        "label": "169BPM",
+        "bpm": 169
+      }
+    ]
+  },
+  "s": {
+    "pass": 102,
+    "total": 108,
+    "pct": "94.4",
+    "errs": [
+      "startTime: got \"7.07 AM\" want \"07:07\"",
+      "endTime: got \"8.26 AM\" want \"08:26\"",
+      "maxHrBpm: got null want 189",
+      "restingHrBpm: got null want 72",
+      "splits[0].paceSecPerKm: got 436 want 396",
+      "hrZones[0].maxBpm: got 139 want 140"
+    ]
+  }
+}

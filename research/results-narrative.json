@@ -1,0 +1,219 @@
+{
+  "facts": {
+    "profile": {
+      "age": 30,
+      "heightCm": 169,
+      "weightKg": 55
+    },
+    "weeklyContext": {
+      "runsPerWeek": 4,
+      "typicalDistanceKm": 10.5,
+      "monthlyVolumeKm": 180
+    },
+    "session": {
+      "date": "Thu, 20 Aug",
+      "distanceKm": 10.67,
+      "duration": "1:18:36",
+      "avgPace": "7'22\"/km",
+      "avgHr": 173,
+      "maxHr": 189,
+      "avgCadence": 144,
+      "elevationGainM": 15,
+      "activeKcal": 646
+    },
+    "computed": {
+      "estimatedHrMax": 187,
+      "avgHrPctOfMax": 92.5,
+      "aerobicDecouplingPct": 12.3,
+      "firstToSecondHalfDriftSecPerKm": 41,
+      "paceStdDevSec": 24.7,
+      "fastestKm": {
+        "km": 1,
+        "pace": "6'36\""
+      },
+      "slowestKm": {
+        "km": 10,
+        "pace": "8'00\""
+      },
+      "cadenceFadeSpm": -18,
+      "hrRecovery1MinBpm": 23,
+      "percentTimeInZone4And5": 90.6,
+      "zoneBreakdown": [
+        {
+          "zone": 1,
+          "pct": 2.3,
+          "duration": "1:44"
+        },
+        {
+          "zone": 2,
+          "pct": 0.5,
+          "duration": "0:25"
+        },
+        {
+          "zone": 3,
+          "pct": 6.6,
+          "duration": "5:03"
+        },
+        {
+          "zone": 4,
+          "pct": 47.1,
+          "duration": "36:05"
+        },
+        {
+          "zone": 5,
+          "pct": 43.5,
+          "duration": "33:18"
+        }
+      ]
+    },
+    "splits": [
+      {
+        "km": 1,
+        "pace": "6'36\"",
+        "hr": 154,
+        "cadence": 154,
+        "partial": false
+      },
+      {
+        "km": 2,
+        "pace": "7'08\"",
+        "hr": 171,
+        "cadence": 148,
+        "partial": false
+      },
+      {
+        "km": 3,
+        "pace": "7'11\"",
+        "hr": 168,
+        "cadence": 151,
+        "partial": false
+      },
+      {
+        "km": 4,
+        "pace": "7'11\"",
+        "hr": 173,
+        "cadence": 148,
+        "partial": false
+      },
+      {
+        "km": 5,
+        "pace": "7'03\"",
+        "hr": 179,
+        "cadence": 146,
+        "partial": false
+      },
+      {
+        "km": 6,
+        "pace": "7'20\"",
+        "hr": 177,
+        "cadence": 145,
+        "partial": false
+      },
+      {
+        "km": 7,
+        "pace": "7'32\"",
+        "hr": 177,
+        "cadence": 143,
+        "partial": false
+      },
+      {
+        "km": 8,
+        "pace": "7'54\"",
+        "hr": 175,
+        "cadence": 139,
+        "partial": false
+      },
+      {
+        "km": 9,
+        "pace": "7'47\"",
+        "hr": 174,
+        "cadence": 138,
+        "partial": false
+      },
+      {
+        "km": 10,
+        "pace": "8'00\"",
+        "hr": 176,
+        "cadence": 136,
+        "partial": false
+      },
+      {
+        "km": 11,
+        "pace": "7'09\"",
+        "hr": 183,
+        "cadence": 145,
+        "partial": true
+      }
+    ],
+    "flags": [
+      {
+        "code": "HIGH_DECOUPLING",
+        "severity": "warn",
+        "value": 12.3
+      },
+      {
+        "code": "TOO_MUCH_HARD",
+        "severity": "warn",
+        "value": 90.6
+      },
+      {
+        "code": "POSITIVE_SPLIT",
+        "severity": "info",
+        "value": 40.8
+      },
+      {
+        "code": "CADENCE_FADE",
+        "severity": "warn",
+        "value": -18
+      },
+      {
+        "code": "VERY_HIGH_AVG_HR",
+        "severity": "warn",
+        "value": 92.5
+      },
+      {
+        "code": "FAST_START",
+        "severity": "info",
+        "value": 396
+      }
+    ]
+  },
+  "out": {
+    "doNext": [
+      "Run your next easy sessions capped at zone 2, conversational pace — if HR climbs above ~154, walk until it drops",
+      "Fix the front-loaded pacing: no km faster than your target pace, aim to finish at the same pace you started",
+      "Shorten your stride and aim for a steady ~160 spm to counter the 18 spm fade late in runs"
+    ],
+    "headline": "10.7 km run almost entirely in zone 4-5 — too hard to be easy, too slow to be a workout",
+    "observations": [
+      {
+        "detail": "90.6% of the run was spent above zone 3. Avg HR was 92.5% of estimated max (187 is a formula estimate, not measured), and max HR hit 189. This is race-effort heart rate on a training-day pace.",
+        "metric": "90.6% in zone 4-5, avg HR 173"
+      },
+      {
+        "detail": "Aerobic decoupling of 12.3% with pace drifting +41 sec/km in the second half while HR stayed flat-to-higher. Your engine couldn't hold the pace as fatigue built.",
+        "metric": "12.3% decoupling, +41 sec/km drift"
+      },
+      {
+        "detail": "First km at 6'36\" vs slowest at 8'00\" (km 10). You started too fast and spent the rest of the run paying for it, fading every km from 5 onward.",
+        "metric": "6'36\" km 1 → 8'00\" km 10"
+      },
+      {
+        "detail": "Cadence fell 18 spm across the run (154 → 136) with no elevation gain to explain it. Form collapsed as fatigue set in.",
+        "metric": "-18 spm cadence fade"
+      }
+    ],
+    "questionForRunner": "Was there a reason for the aggressive opening km — racing a segment, running with someone, or just feeling good?",
+    "verdict": "hard",
+    "whatHappened": "You ran 10.67 km at 7'22\"/km average, but the effort was far above what the pace suggests. Your heart rate sat at 173 avg (92.5% of your estimated max of 187 — note that's a formula, not a lab measurement), and you spent 90.6% of the run in zones 4 and 5. The run started fast (6'36\\\" first km) and steadily degraded to 8'00\\\" by km 10 as cadence dropped 18 spm."
+  },
+  "usage": {
+    "input_tokens": 1743,
+    "output_tokens": 546,
+    "cache_read_input_tokens": 0,
+    "server_tool_use": {
+      "web_search_requests": 0
+    },
+    "service_tier": "standard"
+  }
+}
