@@ -16,12 +16,15 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:int": "VITEST_INTEGRATION=1 vitest run tests/integration",
     "test:live": "LLM_LIVE_TEST=1 vitest run --dir . --testNamePattern=live",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
-    "ci:openrouter-guard": "node scripts/check-openrouter-boundary.mjs"
+    "ci:openrouter-guard": "node scripts/check-openrouter-boundary.mjs",
+    "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",

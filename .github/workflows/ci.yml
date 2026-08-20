@@ -45,6 +45,12 @@ jobs:
       - name: OPENROUTER_API_KEY boundary guard
         run: npm run ci:openrouter-guard
 
+      # F03's two grep-able invariants: the extractions audit trail has no delete path, and
+      # getRunByShareToken is still the only unscoped read. Both are security/data-integrity
+      # properties that a unit test can only assert about code it happens to import.
+      - name: Data-layer invariant guard
+        run: npm run ci:data-layer-guard
+
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

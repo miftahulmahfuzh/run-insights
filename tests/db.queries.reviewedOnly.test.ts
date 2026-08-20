@@ -1,0 +1,136 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
+
+/**
+ * The reviewed-data invariant (roadmap D16 / R-13), asserted query by query.
+ *
+ * This file exists because of the shape of the failure it guards. Forgetting
+ * `reviewed_at is not null` on the eleventh rollup does not crash and does not look wrong: it
+ * produces a plausible number that is quietly too high, and it stays wrong until somebody adds
+ * up their own runs by hand. Every reviewed-only function is therefore named here explicitly,
+ * and adding a new rollup without adding it to this list is the mistake this test is for.
+ */
+
+type Queries = typeof import('@/lib/db/queries')
+
+let fake: FakeDb
+let q: Queries
+
+beforeEach(async () => {
+  vi.resetModules()
+  fake = installFakeDb()
+  q = await import('@/lib/db/queries')
+})
+
+afterEach(() => {
+  uninstallFakeDb()
+  vi.resetModules()
+})
+
+describe('reviewed-only queries', () => {
+  it('listRuns filters on reviewed_at', async () => {
+    fake.enqueue([])
+    await q.listRuns('u1')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getRunsInIsoWeek filters on reviewed_at', async () => {
+    fake.enqueue([])
+    await q.getRunsInIsoWeek('u1', '2026-W34')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getRunsInMonth filters on reviewed_at', async () => {
+    fake.enqueue([])
+    await q.getRunsInMonth('u1', '2026-08')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getRunsBetween filters on reviewed_at', async () => {
+    fake.enqueue([])
+    await q.getRunsBetween('u1', '2026-07-24', '2026-08-21')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getMonthlyTotals filters on reviewed_at', async () => {
+    fake.enqueue([])
+    await q.getMonthlyTotals('u1', 6, '2026-08')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getAllTimeTotals filters on reviewed_at', async () => {
+    fake.enqueue([[0, 0, 0, null, null]])
+    await q.getAllTimeTotals('u1')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getObservedMaxHr filters on reviewed_at — a hallucinated 210 must never become a ceiling', async () => {
+    fake.enqueue([[null]])
+    await q.getObservedMaxHr('u1')
+    expect(fake.only().sql).toContain('"reviewed_at" is not null')
+  })
+
+  it('getObservedMaxHrExcludingRun filters on reviewed_at and excludes the run', async () => {
+    fake.enqueue([[null]])
+    await q.getObservedMaxHrExcludingRun('u1', 'r1')
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"reviewed_at" is not null')
+    expect(sql).toContain('<>')
+    expect(params).toContain('r1')
+  })
+
+  it('every reviewed-only query is also user-scoped', async () => {
+    const calls: Array<() => Promise<unknown>> = [
+      () => q.listRuns('u1'),
+      () => q.getRunsInIsoWeek('u1', '2026-W34'),
+      () => q.getRunsInMonth('u1', '2026-08'),
+      () => q.getRunsBetween('u1', '2026-08-01', '2026-08-08'),
+      () => q.getMonthlyTotals('u1', 3, '2026-08'),
+    ]
+    for (const call of calls) {
+      fake.reset()
+      fake.enqueue([])
+      await call()
+      expect(fake.only().sql).toMatch(/"runs"\."user_id" = \$\d/)
+    }
+  })
+})
+
+describe('draft-visible queries', () => {
+  it('getRunIdForExtraction does NOT filter reviewed_at — it resolves a redirect target', async () => {
+    fake.enqueue([])
+    await q.getRunIdForExtraction('u1', 'x1')
+    expect(fake.only().sql).not.toContain('"reviewed_at" is not null')
+  })
+
+  it('getRunDetail does NOT filter reviewed_at', async () => {
+    fake.enqueue([], [], [], [])
+    await q.getRunDetail('u1', 'r1')
+    // The column appears in the SELECT list of a full-table read; what must be absent is the
+    // PREDICATE.
+    expect(fake.sqlAt(0)).not.toContain('"reviewed_at" is not null')
+  })
+})
+
+describe('the invariant is complete', () => {
+  it('names every rollup-shaped export, so a new one cannot be added silently', async () => {
+    // If this list and the module diverge, one of two things happened: a new aggregate was added
+    // without a reviewed_at assertion above, or one was renamed. Both need a human.
+    const exportedRollups = Object.keys(q)
+      .filter((name) =>
+        /^(list|get)Runs|^getMonthlyTotals$|^getAllTimeTotals$|^getObservedMaxHr/.test(name),
+      )
+      .sort()
+    expect(exportedRollups).toEqual([
+      'getAllTimeTotals',
+      'getMonthlyTotals',
+      'getObservedMaxHr',
+      'getObservedMaxHrExcludingRun',
+      'getRunsBetween',
+      'getRunsInIsoWeek',
+      'getRunsInMonth',
+      'listRuns',
+    ])
+  })
+})
