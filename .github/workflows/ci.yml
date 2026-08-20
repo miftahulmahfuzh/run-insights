@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # CI-only dummy values. next build only validates SHAPE (lib/env.ts is a Zod schema,
+      # not a live connection check) — nothing here ever reaches a real z.ai or Neon host.
+      # NEVER put a real secret in this block; see docs/plans/F01-foundation.md section 4.
+      #
+      # One key, both endpoints (R-40). There is deliberately no LLM_VISION_API_KEY.
+      LLM_API_KEY: ci-dummy-key
+      LLM_VISION_BASE_URL: https://api.z.ai/api/coding/paas/v4
+      LLM_VISION_MODEL: glm-4.6v
+      LLM_BASE_URL: https://api.z.ai/api/anthropic
+      LLM_MODEL: glm-5.3
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+      DATABASE_URL_UNPOOLED: postgres://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Roadmap section 4.1's literal requirement, given a real exit code (Task 23).
+      - name: OPENROUTER_API_KEY boundary guard
+        run: npm run ci:openrouter-guard
+
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+
+      # Runs tests/research/score.test.ts among everything else — the D13 requirement.
+      # No network call happens in this step; see Task 22's rationale for why score.mjs
+      # specifically is CI-safe and the rest of research/ deliberately is not.
+      - run: npm test
+
+      - run: npm run build

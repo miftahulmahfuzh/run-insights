@@ -4,3 +4,7 @@ drizzle
 package-lock.json
 *.md
 research
+
+# Design-system artifacts arrive via DesignSync with deliberately packed lines
+# (same reason research/ is excluded). Reformatting them fights the next pull.
+docs
