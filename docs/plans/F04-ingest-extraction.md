@@ -159,7 +159,7 @@ exists to get a request that clears this floor, and to do something sane when it
 
 ```
 POST https://api.z.ai/api/coding/paas/v4/chat/completions
-Authorization: Bearer <LLM_VISION_API_KEY>
+Authorization: Bearer <LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */>
 Content-Type: application/json
 ```
 
@@ -783,7 +783,7 @@ export async function callVisionWithFetch(
   try {
     res = await fetchImpl(`${env.LLM_VISION_BASE_URL}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.LLM_VISION_API_KEY}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */}` },
       body: JSON.stringify({
         model: env.LLM_VISION_MODEL,
         max_tokens: MAX_TOKENS,
@@ -1025,7 +1025,7 @@ claiming a different kind than what the authenticated upload session actually de
 - `run_photos.kind` (§4.3) already has the `'summary'|'splits'|'heartrate'|'other'` enum this
   plan's `ScreenKind` mirrors (F04 only ever produces the first three; `'other'` is F05/user
   territory for photos that end up attached to a run without feeding extraction).
-- `LLM_VISION_API_KEY` / `LLM_VISION_BASE_URL` / `LLM_VISION_MODEL` (§4.1) are already specified,
+- `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */` / `LLM_VISION_BASE_URL` / `LLM_VISION_MODEL` (§4.1) are already specified,
   already pointed at the coding endpoint, already separate from the narrative model's env group.
 - Routes `/upload`, `/api/upload`, `/api/extract`, `/api/extract/[id]` (§4.8) are already listed
   with the exact responsibilities this plan implements.
@@ -1120,7 +1120,7 @@ place to pin down so F05 doesn't have to guess them.
     latency under ~40s across 3 consecutive runs. Not run on every PR; run manually or on a
     schedule, because it costs money and can flake on vendor availability (§1.2's
     `glm-4.6v-flash` overload note is a reminder this vendor's uptime is not guaranteed).
-24. **CI env-hygiene assertion** — `grep -rE 'LLM_VISION_API_KEY' app/ components/` must return
+24. **CI env-hygiene assertion** — `grep -rE 'LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */' app/ components/` must return
     empty (mirrors the roadmap's `OPENROUTER_API_KEY` grep pattern, §4.1) to catch an accidental
     client-side leak of the vision key.
 25. **`/dev/extract` harness (optional, recommended)** — a dev-only page that runs the full
@@ -1151,7 +1151,7 @@ clear — not new numbers invented for this plan.
 | 11 | A response missing a field the prompt asked for (simulating z.ai's measured `required`-non-enforcement, §1.6) is caught by Zod and does not crash the route; it either repairs successfully or reaches `failed`/`validation` cleanly | §5.1 |
 | 12 | With only `summary`+`splits` uploaded, the returned `ExtractedSession` has `hrZones: []`, `postWorkoutHr: []`, `maxHrBpm: null`, `restingHrBpm: null` **even if the mocked model response populates them** | §5.2, §5.3 |
 | 13 | On `status: 'failed'`, the object handed to F05 has `session: null` and F05's review contract renders an all-blank, fully editable form keyed to the same `extractionId` | §8.1 |
-| 14 | `grep -rE 'LLM_VISION_API_KEY' app/ components/` is empty in CI | Task 24, mirrors roadmap §4.1 |
+| 14 | `grep -rE 'LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */' app/ components/` is empty in CI | Task 24, mirrors roadmap §4.1 |
 | 15 | Worst-case designed budget (primary timeout + repair timeout + overhead) stays under 60s in the repair-attempted path; verified against real measured repair latency once Task 19 lands, and this document's §4.6 table updated to match | §4.6 |
 | 16 | `POST /api/extract` returns within ~500ms (the client never waits for the 33.7s extraction) | §4.1, §4.2 |
 

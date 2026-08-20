@@ -65,7 +65,7 @@ yet — Task 16 adds the placeholder, a real Neon project is a Task 26 precondit
 
 | Value | Source | Known now? |
 |---|---|---|
-| `LLM_VISION_API_KEY` / `LLM_API_KEY` (same z.ai key works both endpoints — see roadmap §4.1) | z.ai console | integrator supplies |
+| `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */` / `LLM_API_KEY` (same z.ai key works both endpoints — see roadmap §4.1) | z.ai console | integrator supplies |
 | `DATABASE_URL` / `DATABASE_URL_UNPOOLED` | Neon console, **create the project in `ap-southeast-1`** — see §5 Q1 | integrator supplies |
 | `AUTH_SECRET` | generated in Task 17 | generated locally |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | F02's walkthrough | not yet — F01 reserves the schema slot only |
@@ -737,7 +737,7 @@ git commit -m "chore(f01): tsconfig, next.config, eslint flat config, prettier, 
 # --- Vision: glm-4.6v via z.ai CODING endpoint (F04) ------------------------
 # OpenAI-shaped. NOT the Anthropic base URL — that endpoint silently drops images and
 # invents numbers. See IMPLEMENTATION_PLAN.md §1.1 before ever changing this URL.
-LLM_VISION_API_KEY=
+LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */=
 LLM_VISION_BASE_URL=https://api.z.ai/api/coding/paas/v4
 LLM_VISION_MODEL=glm-4.6v
 
@@ -792,7 +792,7 @@ add_env() {
 }
 
 touch .env.local
-add_env LLM_VISION_API_KEY '<<PASTE z.ai API KEY — same key works both endpoints>>'
+add_env LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */ '<<PASTE z.ai API KEY — same key works both endpoints>>'
 add_env LLM_VISION_BASE_URL 'https://api.z.ai/api/coding/paas/v4'
 add_env LLM_VISION_MODEL 'glm-4.6v'
 add_env LLM_BASE_URL 'https://api.z.ai/api/anthropic'
@@ -806,7 +806,7 @@ rm -f .env.local.bak.*   # only after confirming the pasted values are correct
 ```
 
 `LLM_API_KEY` was already present (empty) from before this plan ran — `add_env` skips it if
-non-empty, or fills it if still blank; use the same z.ai key as `LLM_VISION_API_KEY`.
+non-empty, or fills it if still blank; use the same z.ai key as `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */`.
 
 Verify:
 
@@ -875,7 +875,7 @@ const coreSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   // F04 — glm-4.6v, OpenAI-shaped, coding/paas/v4. Plain fetch, no SDK (roadmap section 3).
-  LLM_VISION_API_KEY: nonEmpty('LLM_VISION_API_KEY'),
+  LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */: nonEmpty('LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */'),
   LLM_VISION_BASE_URL: z.url('LLM_VISION_BASE_URL must be an absolute URL'),
   LLM_VISION_MODEL: nonEmpty('LLM_VISION_MODEL'),
 
@@ -1361,7 +1361,7 @@ jobs:
       # CI-only dummy values. next build only validates SHAPE (lib/env.ts is a Zod schema,
       # not a live connection check) — nothing here ever reaches a real z.ai or Neon host.
       # NEVER put a real secret in this block; see docs/plans/F01-foundation.md section 4.
-      LLM_VISION_API_KEY: ci-dummy-key
+      LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */: ci-dummy-key
       LLM_VISION_BASE_URL: https://api.z.ai/api/coding/paas/v4
       LLM_VISION_MODEL: glm-4.6v
       LLM_API_KEY: ci-dummy-key
@@ -1514,7 +1514,7 @@ args). Write the same kind of guarded script this repo needs — one invocation 
 **File: `/home/miftah/run-insights/scripts/vercel-env-push.sh`** (adapt
 `expense-tracking/scripts/vercel-env-push.sh` if it exists there, or write fresh following its
 description in that repo's runbook Step 2 — the variable list here is roadmap §4.1's thirteen
-names: `LLM_VISION_API_KEY`, `LLM_VISION_BASE_URL`, `LLM_VISION_MODEL`, `LLM_API_KEY`,
+names: `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */`, `LLM_VISION_BASE_URL`, `LLM_VISION_MODEL`, `LLM_API_KEY`,
 `LLM_BASE_URL`, `LLM_MODEL`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`,
 `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_URL` (production-only), `CRON_SECRET`; plus
 `BLOB_READ_WRITE_TOKEN` once Task 29 creates the store).
@@ -1689,7 +1689,7 @@ git ls-files | grep -qx '.env.example' && ! git ls-files | grep -q '^\.env\.loca
 git grep -I -l -E 'postgres(ql)?://[^ ]*:[^ @]+@' -- . ':!docs' ':!*.example' && { echo "LEAK"; exit 1; } || echo "OK no connection strings in tracked files"
 
 # 7. lib/env.ts is server-only and validates the vision group, not just DB.
-head -1 lib/env.ts | grep -q "server-only" && grep -q "LLM_VISION_API_KEY" lib/env.ts && grep -q "LLM_VISION_BASE_URL" lib/env.ts && echo "OK lib/env.ts covers both LLM clients"
+head -1 lib/env.ts | grep -q "server-only" && grep -q "LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */" lib/env.ts && grep -q "LLM_VISION_BASE_URL" lib/env.ts && echo "OK lib/env.ts covers both LLM clients"
 
 # 8. The OPENROUTER_API_KEY boundary is empty, with a real exit code.
 npm run ci:openrouter-guard
@@ -1783,7 +1783,7 @@ import type { CoreEnv, AuthEnv, BlobEnv, CronEnv } from '@/lib/env'
 
 | Export | Shape | Availability | Consumers |
 |---|---|---|---|
-| `env` | `{ NODE_ENV, LLM_VISION_API_KEY, LLM_VISION_BASE_URL, LLM_VISION_MODEL, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, DATABASE_URL, DATABASE_URL_UNPOOLED }` | validated eagerly — missing/malformed fails the **build** | F03 (`lib/db/client.ts`), F04 (`lib/llm/vision.ts` uses `LLM_VISION_*`), F07 (`lib/llm/narrate.ts` uses `LLM_*`) |
+| `env` | `{ NODE_ENV, LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */, LLM_VISION_BASE_URL, LLM_VISION_MODEL, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, DATABASE_URL, DATABASE_URL_UNPOOLED }` | validated eagerly — missing/malformed fails the **build** | F03 (`lib/db/client.ts`), F04 (`lib/llm/vision.ts` uses `LLM_VISION_*`), F07 (`lib/llm/narrate.ts` uses `LLM_*`) |
 | `authEnv()` | `{ AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, AUTH_URL? }` | validated on first call — call at module scope in `auth.ts` | F02 |
 | `blobEnv()` | `{ BLOB_READ_WRITE_TOKEN }` | validated on first call | F04 |
 | `cronEnv()` | `{ CRON_SECRET }` | validated on first call | F07 |
@@ -1857,7 +1857,7 @@ passes?** Same tradeoff `expense-tracking` faced (Contract delta 1's "Risk accep
 Recommendation: keep it — it's genuinely useful on every future deploy, and this app has no
 public traffic to leak reconnaissance to. F02's `proxy.ts` matcher must exclude it either way.
 
-**Q5 — `LLM_VISION_API_KEY` and `LLM_API_KEY`: one z.ai key or two?** Roadmap §4.1 lists them
+**Q5 — `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */` and `LLM_API_KEY`: one z.ai key or two?** Roadmap §4.1 lists them
 as separate variables (correctly — different endpoints, different request shapes), but
 `IMPLEMENTATION_PLAN.md`'s research scripts use a single `LLM_API_KEY` against
 `api.z.ai/api/coding/paas/v4`. In practice a single z.ai account key almost certainly works

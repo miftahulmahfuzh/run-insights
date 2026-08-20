@@ -443,3 +443,41 @@ bury it in a tooltip. F11 uses this text verbatim on the revoke confirmation.
 | Design brief status | **Historical.** The design it briefed exists; keep the file for provenance and do not maintain it. |
 
 **Nothing in v0.1.0 is now blocked on an author decision.**
+
+### R-40 · One z.ai key, two endpoints. `LLM_VISION_API_KEY` is deleted. ⚠️ contract change
+
+Roadmap §4.1 specified a separate `LLM_VISION_API_KEY` alongside `LLM_API_KEY`. **That was an
+error of symmetry, not of fact** — the two *base URLs* differ, so the env block was drafted as
+though the two *credentials* did too. They never did.
+
+Every measurement in `IMPLEMENTATION_PLAN.md` §1 was taken with a single key: `research/lib.mjs`
+reads `process.env.LLM_API_KEY` for the coding/vision endpoint, and `research/narrate.mjs` reads
+the same variable for the Anthropic endpoint. There was never a second credential to test with.
+
+Re-verified live on 2026-08-20 with one Authorization value:
+
+```
+VISION   glm-4.6v @ coding/paas/v4 : 200  in=1502  "The distance is 10.67KM and the average pace is 7'22"/KM."
+NARRATE  glm-5.3  @ api/anthropic  : 200  in=14    "OK"
+```
+
+`in=1502` is the token-floor canary passing — the image was genuinely processed, not silently
+dropped.
+
+**Ruling:** `LLM_VISION_API_KEY` is removed from §4.1, `.env.example`, `.env.local`, and F01's
+`lib/env.ts` schema. `lib/llm/vision.ts` authenticates with `env.LLM_API_KEY` and differs from
+`lib/llm/narrate.ts` only in base URL, request shape, and header name (`Authorization: Bearer`
+vs `x-api-key`). `LLM_VISION_BASE_URL` and `LLM_VISION_MODEL` remain — those genuinely differ.
+
+**On cost, stated precisely.** There is **no additional monetary cost**: the GLM Coding Plan
+subscription already covers `glm-4.6v`, which is why the bake-off reached it while
+`glm-5v-turbo` returned `1311 not included in your plan` and `glm-ocr` returned `1113
+insufficient balance`. What vision calls *do* consume is the **same plan quota** as every other
+coding-plan request, including Claude Code usage on this machine. At the author's volume — ~17
+runs a month, one extraction each — that is negligible. It would only matter if extraction
+started running in a loop, which D4's single-shot background job precludes.
+
+**F01 must not add a `LLM_VISION_API_KEY` entry to `lib/env.ts`.** A second variable holding a
+duplicate of the first is a credential-rotation bug waiting to happen: rotate one, forget the
+other, and vision fails while narrative keeps working — the most confusing possible failure mode
+for this app, because the run still uploads and only the numbers go missing.

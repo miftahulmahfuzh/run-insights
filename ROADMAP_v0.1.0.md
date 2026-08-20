@@ -104,13 +104,15 @@ this run.** It is a deliberately unflattering run (90.6% in zones 4–5, +41 s/k
 ### 4.1 Environment
 
 ```bash
+# ONE z.ai key serves both endpoints — the coding-plan subscription covers glm-4.6v
+# and glm-5.3 alike. There is no separate vision key. Verified live (R-40).
+LLM_API_KEY=
+
 # Vision — glm-4.6v. OpenAI-shaped. NOT the Anthropic base URL. See IMPLEMENTATION_PLAN §1.1.
-LLM_VISION_API_KEY=
 LLM_VISION_BASE_URL=https://api.z.ai/api/coding/paas/v4
 LLM_VISION_MODEL=glm-4.6v
 
 # Narrative — glm-5.3. Anthropic-compatible. No trailing slash, no /v1 suffix.
-LLM_API_KEY=
 LLM_BASE_URL=https://api.z.ai/api/anthropic
 LLM_MODEL=glm-5.3
 

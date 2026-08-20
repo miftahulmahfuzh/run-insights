@@ -279,7 +279,7 @@ Three things, because each is a decision and none is undone by re-running a scri
 ## The one thing that must never happen
 
 `OPENROUTER_API_KEY` is read by `tools/gen_badge_art.py` and by nothing else. **No application
-code may read it** — not `LLM_API_KEY`, not `LLM_VISION_API_KEY`, `lib/env.ts` has no entry for
+code may read it** — not `LLM_API_KEY`, not `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */`, `lib/env.ts` has no entry for
 it, and
 
     grep -rE 'OPENROUTER_API_KEY' app/ lib/ components/
@@ -839,7 +839,7 @@ Unchanged in spirit from the reference deck's rule, restated in run-insights' ow
   request time, never inside `app/` or `lib/` or `components/`.
 - **`lib/env.ts` has no entry for it.** The eager-parse-at-import guard F01 builds (per roadmap
   §4.1, "following `expense-tracking/lib/env.ts`") covers the *application's* environment
-  contract — `LLM_VISION_API_KEY`, `LLM_API_KEY`, `DATABASE_URL`, and so on. `OPENROUTER_API_KEY`
+  contract — `LLM_API_KEY /* R-40: was LLM_VISION_API_KEY */`, `LLM_API_KEY`, `DATABASE_URL`, and so on. `OPENROUTER_API_KEY`
   is deliberately outside that contract, the same way it sits outside daily-words' `src/lib/env.ts`.
 - **The assertion:**
 
