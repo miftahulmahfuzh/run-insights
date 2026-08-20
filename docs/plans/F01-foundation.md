@@ -1446,7 +1446,17 @@ Vercel account state to react to when its runbook was written), **no infrastruct
 for run-insights.** This plan writes the steps to execute once, not a record of what already
 happened — treat every "expected output" below as a prediction to verify, not history.
 
-**Deliberate simplification versus the sibling app: no custom domain for v0.1.0.** This is a
+> **⚠️ SUPERSEDED, 2026-08-20 — the paragraph below lost.** It proposed skipping the custom
+> domain, which contradicts **ROADMAP §4.8 ("Canonical origin is `https://runins.site`")** —
+> and it never declared that as a Contract delta, so it was a silent divergence, not an agreed
+> simplification. Adjudicated in favour of the roadmap. **`https://runins.site` is the
+> production origin.** Concretely: `AUTH_URL=https://runins.site` in the production environment
+> only, F02's Google OAuth redirect URI uses that host, and F11 builds `/s/<token>` links from
+> it — never from `VERCEL_URL`. Attach the domain during Task 30 (`vercel domains add`, then
+> `www` 301s to the apex) following `expense-tracking`'s runbook Step 4–5. The reasoning below
+> is kept only to explain why the Vercel alias appears in Tasks 30–31's example commands.
+
+**~~Deliberate simplification versus the sibling app: no custom domain for v0.1.0.~~** This is a
 single-user reading app (roadmap's core tenet), not a public product — `<project>.vercel.app`
 is a fine permanent home, and skipping DNS removes an entire class of misconfiguration risk
 (apex-vs-CNAME rules, nameserver confusion, TTL waits) for zero product cost. A domain can be
@@ -1820,8 +1830,12 @@ Vercel environments — miss one and preview builds fail with a banner naming ex
 
 ### Deployment facts downstream plans can rely on
 
-- Production origin: the Vercel-issued `run-insights-<words>.vercel.app` alias — **no custom
-  domain in v0.1.0** (see §5). F02's Google OAuth redirect URI must use that exact alias host.
+- Production origin: **`https://runins.site`**, per ROADMAP §4.8 — the custom domain ships in
+  v0.1.0 after all (see §5's superseded note). `AUTH_URL=https://runins.site`, production
+  environment only. F02's Google OAuth redirect URI must use that host, and F11 builds
+  `/s/<token>` links from it, never from `VERCEL_URL`. The Vercel-issued
+  `run-insights-<words>.vercel.app` alias remains valid and is what Tasks 30–31 probe before
+  DNS propagates.
 - Vercel function region: `sin1`, matched to the Neon `ap-southeast-1` project.
 - Vercel plan: **Hobby**, with `/api/extract`'s `maxDuration = 60` as the load-bearing number
   in this whole plan — see §2.4 for the Pro-upgrade escape hatch if it's ever not enough.

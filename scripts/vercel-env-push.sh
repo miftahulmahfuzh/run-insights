@@ -98,26 +98,18 @@ done
 # *.vercel.app origin, so pinning it would break the OAuth callback there. Auth.js infers
 # the origin from the request in dev and preview instead.
 #
-# There is NO default here on purpose. ROADMAP §4.8 says the canonical origin is
-# https://runins.site; docs/plans/F01-foundation.md §5 says v0.1.0 ships with no custom
-# domain and lives on the Vercel-issued alias. Those disagree, and guessing would silently
-# break Google OAuth. Pass the decision in explicitly:
+# ROADMAP §4.8 is authoritative: the canonical origin is https://runins.site. F01's §5 had
+# proposed skipping the custom domain; that was adjudicated against on 2026-08-20 and its
+# paragraph is marked superseded. Override only to test against a Vercel alias:
 #
-#   RUN_INSIGHTS_ORIGIN=https://runins.site ./scripts/vercel-env-push.sh --apply
+#   RUN_INSIGHTS_ORIGIN=https://run-insights-xyz.vercel.app ./scripts/vercel-env-push.sh --apply
 #
-ORIGIN="${RUN_INSIGHTS_ORIGIN:-}"
-if [[ -z "$ORIGIN" ]]; then
-  echo
-  echo "skip  AUTH_URL -> production (RUN_INSIGHTS_ORIGIN not set)"
-  echo "      Set it to the production origin once decided, e.g."
-  echo "        RUN_INSIGHTS_ORIGIN=https://runins.site $0 --apply"
-  echo "      F02's Google OAuth redirect URI must use the SAME host."
-else
-  echo
-  echo "push  AUTH_URL -> production ($ORIGIN)"
-  if $APPLY; then
-    printf '%s' "$ORIGIN" | vercel env add AUTH_URL production --force
-  fi
+ORIGIN="${RUN_INSIGHTS_ORIGIN:-https://runins.site}"
+echo
+echo "push  AUTH_URL -> production ($ORIGIN)"
+echo "      F02's Google OAuth redirect URI must use the SAME host."
+if $APPLY; then
+  printf '%s' "$ORIGIN" | vercel env add AUTH_URL production --force
 fi
 
 if $APPLY; then
