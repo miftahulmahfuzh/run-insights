@@ -29,7 +29,7 @@ with no scene line, is a startup error rather than a surprise 22 images later.
 Sent identically with every single badge.
 
 ```
-<!-- STYLE BLOCK v1 -->
+<!-- STYLE BLOCK v2 -->
 A single embroidered cloth patch, sewn onto a scrap of dark navy cotton twill, in the manner of a
 1970s amateur running-club jacket patch — the kind a local road-race club had made by the gross
 and stitched onto windbreakers.
@@ -59,19 +59,25 @@ chevron, or a rounded triangle — and it is never a plain circle in a square, w
 every generic "embroidered patch" defaults to and the one shape this deck must never produce. Its
 edge is a merrowed border: a thick, rounded, rope-like band of tight overlock zigzag stitching in
 bone-white thread, the one element every one of the 22 badges shares exactly, at the same
-gauge and the same width. Inside that border sits this badge's own subject, alone, filling most of
-the interior with generous room at the corners.
+gauge and the same width. Inside that border the whole interior is filled edge to edge with a
+solid field of slate-sky-blue satin stitch — the same field colour on all 22 badges, so the patch
+reads as one bright solid shape and not as an outline drawn on cloth. This badge's own subject is
+stitched on top of that field, alone, filling most of it with generous room at the corners. The
+field is never left as bare navy twill: a patch is a solid stitched object sewn onto the cloth,
+and the cloth must never show through inside the border.
 
 THREAD: five saturated colours, laid as dense machine embroidery, and nothing else.
   - Cardinal red, near #C23B2E
   - Kelly green, near #2E7D46
   - Marigold gold, near #E3A72E
   - Bone / cream, near #EDE3C8 — carries the merrowed border and any bright highlight row
-  - Slate sky blue, near #4C8FB0 — used sparingly; the navy substrate already reads as the "blue"
-    of the piece, so this colour appears only where a subject specifically needs a cool note,
-    never as a background wash
-Each badge draws its subject from two or three of these five — never all five in one badge, and
-never fewer than two, or the patch reads as flat rather than embroidered.
+  - Slate sky blue, near #4C8FB0 — carries the interior field of every badge, the one ground
+    colour the whole set shares, and appears in a subject only where that subject specifically
+    needs a cool note of its own
+Bone and slate are the set's furniture: bone is always the border and slate is always the field,
+on all 22 badges. Each badge then draws its SUBJECT from two or three of the remaining colours —
+never all of them in one badge, and never fewer than two, or the patch reads as flat rather than
+embroidered.
 
 THE SIGNATURE THREAD: one colour outside the five above — a bright safety-orange bullion thread,
 near #F2600C — worked as a single small satin-stitch accent on every badge and nowhere else: the
@@ -150,7 +156,7 @@ TECHNIQUE paragraph carries that weight so the individual scene lines don't have
 
 ```
 <!-- SCENES -->
-- early_bird: A single rooster in profile on a fence rail, neck stretched fully forward and beak lifted into a plain rising sun disc that sits directly behind its head, the comb a small stitched crest along the skull. SHAPE: shield. SIGNATURE THREAD: the sun disc's rim, one continuous bright ring behind the rooster's head.
+- early_bird: A single rooster in profile on a fence rail, neck stretched fully forward and beak lifted into a plain rising sun disc that sits directly behind its head, the comb a small stitched crest along the skull. SHAPE: shield. SIGNATURE THREAD: the rooster's open beak.
 - late_start: A single sunflower long past its bloom, head drooped heavy on a bent stem, one wilted petal already fallen and lying below it. SHAPE: hexagon. SIGNATURE THREAD: the one fallen petal, stitched apart from the flower's own thread.
 - self_reward: A single glazed doughnut lying flat, one large bite already taken from its edge. SHAPE: shield. SIGNATURE THREAD: the ring of glaze right at the edge of the bite, where the crumb shows through.
 - negative_split: A single comet crossing the patch on the diagonal, its tail a wide fan of parallel stitched lines at the trailing end, narrowing along its length to one small bright point at the head. SHAPE: chevron. SIGNATURE THREAD: the comet's head, the one point the whole tail narrows into.
@@ -234,6 +240,39 @@ different animal. Two winding-line badges is a real collision risk the way two o
 the reference deck, so `late_start` was rewritten to a wilted sunflower before a single image was
 generated, and the snail is recorded here so nobody reintroduces it as a "fix" for some other
 badge later.
+
+### What the anchor run changed, and why v2 exists
+
+**The interior field is the set's second piece of furniture, and v1 did not say so.** v1's PATCH
+paragraph named the subject and the border and left the ground unspecified, while its THREAD
+paragraph forbade slate sky blue "as a background wash". Attempt 1 filled the shield with pale
+slate anyway and read *well* at 40 px; attempt 2, corrected to leave the ground as bare navy
+twill, obeyed the contract and read *worse* — the patch became a thin bone outline whose interior
+merged with the navy margin, and against the app's dark `--paper` (`#0E1B26`) the whole object
+nearly vanished into the page. Two attempts, two opposite failures, one cause: **v1 had no answer
+for what is inside the border**, so the model supplied one and the contract could only say no.
+
+v2 answers it. Slate sky blue is promoted from "used sparingly" to the shared interior field, and
+bone stays the shared border, so a badge is a bright solid shape on dark cloth at any size —
+which is what "READ AT FORTY PIXELS" was always asking for and what a real club patch actually is.
+The cost is one colour's worth of freedom per badge; the gain is that all 22 read as one set at
+shelf size, which is the only size that matters.
+
+**This bump cost nothing, and that is exactly why it happened now.** A style-block revision
+invalidates every promoted badge's claim to be current (plan §7 task 4), so it is a
+stop-and-decide once art exists. At the anchor run, zero badges are promoted — surfacing a
+structural contract problem here is the anchor's whole job, and the moment it is cheapest to act
+on. A v2 discovered at badge sixteen would have cost fifteen regenerations.
+
+**early_bird's signature thread was a ring, and the anchor run proved that cannot work.** The line
+first read *"the sun disc's rim, one continuous bright ring behind the rooster's head"* — which is
+an **outline**, the one thing the style block says the signature must never become. Attempt 1
+executed it faithfully and measured 5.29% signature share against a 3.00% ceiling, with the orange
+reading as a second border rather than as a second pass. The fault was the scene line's, not the
+model's, so it was rewritten to **the rooster's open beak** before the second attempt rather than
+after three. Recorded because the mistake is easy to repeat: any scene whose obvious "bright
+accent" is the *edge* of a round thing — a rim, a halo, a hoop, a collar — is asking for an
+outline, and the fix is always to move the mark to a small solid feature instead.
 
 **self_reward and sweat_equity both originally used a dripping bead as the signature thread.**
 The doughnut's glaze and the piggy bank's sweat are visually distinct objects — a ring shape
