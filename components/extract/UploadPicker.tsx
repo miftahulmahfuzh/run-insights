@@ -7,17 +7,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Card, LoadingDots } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import {
-  DEFAULT_KIND_BY_INDEX,
   MAX_IMAGES,
-  SCREEN_KINDS,
   SCREEN_KIND_LABEL,
   SHOT_PREFIX,
   TYPICAL_EXTRACTION_SECONDS,
   type ScreenKind,
 } from '@/lib/extract/constants'
+import { planPicked } from '@/lib/extract/planPicked'
 import { reassignKind } from '@/lib/extract/reassignKind'
 import { newId } from '@/lib/id'
-import { compressForExtraction, rejectionReason } from '@/lib/photos/compressForExtraction'
+import { compressForExtraction } from '@/lib/photos/compressForExtraction'
 import type { ExtractAcceptedResponse, ExtractionBlobRef } from '@/lib/schema/extractionResult'
 import { KindSelector } from './KindSelector'
 
@@ -89,6 +88,28 @@ export function UploadPicker() {
    * stale `gen` out of a closure. A superseded upload's result is dropped; its bytes sit
    * unreferenced in Blob, which is already what happens to the blob a kind change abandons.
    */
+  /**
+   * One `process` start per (tile, generation) — belt and braces over the purity fix below.
+   *
+   * The duplicate uploads card #6 measured came from `onPick` launching `process` inside a
+   * `setTiles` updater, which Strict Mode double-invokes in dev; §5 removes that cause outright.
+   * This is the second line of defence, for whatever reintroduces a replay later — a future
+   * concurrent-rendering behaviour, or an edit that double-calls from somewhere new. A key is
+   * `id:gen`, so `changeKind`'s generation bump mints a fresh one and re-uploads exactly as it
+   * does today; the guard is invisible to every path that already works.
+   *
+   * The `catch` **deletes** the key, and that is load-bearing. A guard that only ever adds is a
+   * guard that silently no-ops a legitimate second attempt: there is no retry affordance today,
+   * but "Upload failed — tap to retry" is the obvious next feature here and would arrive at the
+   * same `gen` and do nothing, which is a worse bug than this one because the guard would be
+   * hiding it. A failed attempt wrote no blob, so letting it run again costs nothing, and the
+   * guard keeps its real job — blocking a replay of a start still in flight or already succeeded.
+   *
+   * Not pruned by `remove`: `newId()` never repeats and tiles cap at `MAX_IMAGES`, so a prefix
+   * scan to reclaim three strings would be noise.
+   */
+  const started = useRef(new Set<string>())
+
   const patchIfCurrent = useCallback((id: string, gen: number, next: Partial<Tile>) => {
     setTiles((current) =>
       current.map((t) => (t.id === id && t.gen === gen ? { ...t, ...next } : t)),
@@ -97,6 +118,9 @@ export function UploadPicker() {
 
   const process = useCallback(
     async (tile: Tile, file: File) => {
+      const key = `${tile.id}:${tile.gen}`
+      if (started.current.has(key)) return
+      started.current.add(key)
       try {
         const compressed = await compressForExtraction(file)
         patchIfCurrent(tile.id, tile.gen, {
@@ -127,6 +151,7 @@ export function UploadPicker() {
           },
         })
       } catch (cause) {
+        started.current.delete(key) // a failure is retryable; a success is not repeatable
         patchIfCurrent(tile.id, tile.gen, {
           state: 'error',
           error: cause instanceof Error ? cause.message : 'Upload failed.',
@@ -136,61 +161,56 @@ export function UploadPicker() {
     [patchIfCurrent],
   )
 
+  /**
+   * Take the picked files, and do every side effect exactly once.
+   *
+   * ── WHY IT IS SHAPED LIKE THIS ──────────────────────────────────────────────────────────────
+   * F04 made the decisions from *inside* a `setTiles` updater and launched `process` from in there
+   * too. `next.config.ts` sets `reactStrictMode: true`, and Strict Mode double-invokes updaters on
+   * purpose to surface impure ones — so in dev one picked file minted two upload tokens and wrote
+   * **two** blobs, one of them orphaned in the store for good, plus a stray `File` in `filesRef`
+   * under an id no tile has. Measured on card #6; see docs/plans/F17-onpick-purity.md §1.
+   *
+   * So: decide purely (`planPicked`), hand `setTiles` a **value** rather than an updater, and run
+   * the effects afterwards. There is then nothing for Strict Mode to double-invoke. Reading
+   * `tiles` from the closure is safe for the reason `changeKind` gives below — this only ever runs
+   * from the file input's `change` event, so the closure is current by construction.
+   */
   const onPick = (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(event.target.files ?? [])
     event.target.value = '' // so re-picking the same file fires change again
     if (picked.length === 0) return
-    setFormError(null)
 
-    setTiles((current) => {
-      const room = MAX_IMAGES - current.length
-      if (room <= 0) {
-        setFormError(`Three screenshots is the most one run can have.`)
-        return current
+    // Room, rejections, kind defaults and every message the runner might see — all of it decided
+    // in `lib/`, where `environment: 'node'` can prove it exhaustively.
+    const { accepted, error } = planPicked(tiles, picked)
+    setFormError(error) // `null` on the happy path, so this both sets and clears
+    if (accepted.length === 0) return
+
+    const added = accepted.map(({ file, kind }) => {
+      const previewUrl = URL.createObjectURL(file)
+      previewsRef.current.push(previewUrl)
+      const tile: Tile = {
+        id: newId(),
+        gen: 0,
+        name: file.name,
+        previewUrl,
+        kind,
+        state: 'compressing',
+        error: null,
+        blob: null,
+        originalBytes: file.size,
+        compressedBytes: null,
       }
-      if (picked.length > room) {
-        setFormError(`Only the first ${room} of those were added — three is the maximum.`)
-      }
-
-      const usedKinds = new Set(current.map((t) => t.kind))
-      const added: Tile[] = []
-
-      for (const file of picked.slice(0, room)) {
-        const reason = rejectionReason(file)
-        if (reason) {
-          setFormError(reason)
-          continue
-        }
-        // Default by pick order (1st Summary, 2nd Splits, 3rd Heart Rate — the order the screens
-        // appear in the Fitness app), skipping any kind a tile already claims so two tiles never
-        // start out fighting over one screen.
-        const preferred = DEFAULT_KIND_BY_INDEX[current.length + added.length] ?? SCREEN_KINDS[0]
-        const kind = usedKinds.has(preferred)
-          ? (SCREEN_KINDS.find((k) => !usedKinds.has(k)) ?? preferred)
-          : preferred
-        usedKinds.add(kind)
-
-        const previewUrl = URL.createObjectURL(file)
-        previewsRef.current.push(previewUrl)
-        const tile: Tile = {
-          id: newId(),
-          gen: 0,
-          name: file.name,
-          previewUrl,
-          kind,
-          state: 'compressing',
-          error: null,
-          blob: null,
-          originalBytes: file.size,
-          compressedBytes: null,
-        }
-        added.push(tile)
-        filesRef.current.set(tile.id, file)
-        void process(tile, file)
-      }
-
-      return [...current, ...added]
+      return { tile, file }
     })
+
+    setTiles([...tiles, ...added.map((a) => a.tile)])
+
+    for (const { tile, file } of added) {
+      filesRef.current.set(tile.id, file)
+      void process(tile, file)
+    }
   }
 
   /**
