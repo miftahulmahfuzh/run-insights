@@ -14,6 +14,7 @@ import {
   lte,
   sql,
 } from 'drizzle-orm'
+import { getTableColumns } from 'drizzle-orm'
 
 import {
   addMonths,
@@ -376,6 +377,47 @@ export async function applyRunCorrections(
   }
 }
 
+/**
+ * The five values `runs.intent` may hold, as a list a `<select>` or a chip row can iterate.
+ *
+ * The TYPE lives in `./schema` (F03 owns it, and the column is typed against it). This is only the
+ * runtime tuple, and the `satisfies` keeps the two from drifting: drop a member from either and the
+ * compiler objects here rather than at the one call site that happened to use it.
+ */
+export const RUN_INTENTS = [
+  'easy',
+  'tempo',
+  'long',
+  'race',
+  'unspecified',
+] as const satisfies readonly RunIntent[]
+
+/**
+ * `runs.intent`, and nothing else.
+ *
+ * **Why this is not `applyRunCorrections`.** That function sets `corrected_at`, which answers "when
+ * did a human last change a number the model read off a screenshot" (R-8). Intent is not such a
+ * number: nothing extracted it, no correction log entry describes it, and it is the runner
+ * answering F07's `questionForRunner` about a run whose measurements are already confirmed.
+ * Routing it through the corrections path would stamp `corrected_at` on a run nobody corrected and
+ * quietly pollute the extraction error profile that `getExtractionErrorProfile` reads.
+ *
+ * `null` clears it — a mis-tap on a phone must be undoable, and "unspecified" is a real answer
+ * distinct from "not answered".
+ */
+export async function setRunIntent(
+  userId: string,
+  runId: string,
+  intent: RunIntent | null,
+): Promise<void> {
+  const rows = await db
+    .update(runs)
+    .set({ intent, updatedAt: new Date() })
+    .where(and(eq(runs.id, runId), eq(runs.userId, userId)))
+    .returning({ id: runs.id })
+  if (rows.length === 0) throw new NotFoundError('Run not found')
+}
+
 export interface RunDetail extends Run {
   splits: RunSplit[]
   zones: RunZone[]
@@ -440,6 +482,48 @@ export async function listRuns(
         opts.beforeOccurredOn ? lt(runs.occurredOn, opts.beforeOccurredOn) : undefined,
       ),
     )
+    .orderBy(desc(runs.occurredOn), desc(runs.startedAt))
+    .limit(limit)
+}
+
+/** A list row: the run, plus how many screenshots it was read from. */
+export interface RunWithPhotoCount extends Run {
+  photoCount: number
+}
+
+/**
+ * `/`'s list read: reviewed-only, newest first, **with each run's screenshot count in the same
+ * statement**.
+ *
+ * A `LEFT JOIN ... GROUP BY` rather than a second query keyed on the returned ids, for the reason
+ * §5 gives for every aggregate here: two statements answering one screen's question is two chances
+ * to disagree, and it is also a second HTTP round trip on the app's landing page. The join
+ * multiplies each run by its photos (three, at most, per F04) before collapsing them, which is a
+ * few dozen rows for a 60-run page.
+ *
+ * `beforeOccurredOn` is the §2.1 cursor: `/` renders one page and offers "earlier runs" rather than
+ * building virtualisation for a dataset that is ~200 rows a YEAR.
+ */
+export async function listRunsWithPhotoCounts(
+  userId: string,
+  opts: { limit?: number; beforeOccurredOn?: DateISO } = {},
+): Promise<RunWithPhotoCount[]> {
+  const limit = opts.limit ?? 60
+  return db
+    .select({
+      ...getTableColumns(runs),
+      photoCount: sql<number>`count(${runPhotos.id})`.mapWith(Number),
+    })
+    .from(runs)
+    .leftJoin(runPhotos, eq(runPhotos.runId, runs.id))
+    .where(
+      and(
+        eq(runs.userId, userId),
+        isNotNull(runs.reviewedAt),
+        opts.beforeOccurredOn ? lt(runs.occurredOn, opts.beforeOccurredOn) : undefined,
+      ),
+    )
+    .groupBy(runs.id)
     .orderBy(desc(runs.occurredOn), desc(runs.startedAt))
     .limit(limit)
 }

@@ -1071,3 +1071,123 @@ requiring its own justification of this depth — this waiver does not generalis
 attention is not a contract change but a documented exception to the *dataviz skill's*
 general guidance (§12), which the roadmap does not mention and therefore cannot
 conflict with.
+
+---
+
+# Execution record — F08 shipped 2026-08-21
+
+> Status: **implemented.** Written after the fact, against the code that exists. Where this section
+> and the plan above disagree, this section is what shipped and says why.
+
+## What landed
+
+| Task (§10) | Where |
+|---|---|
+| 1 · `lib/format.ts` | extended, not replaced — `formatDistanceCompact`, `formatPaceDelta`, `formatPercent`, `formatVolumeDelta`, `formatDayShort`, `formatDayCompact`, `isoWeekLabel`, `formatMonthLabel`, `formatMonthName`, `formatZoneBounds`. `tests/format.test.ts` +30 assertions |
+| 2 · weeks-in-month | `lib/charts/weeksInMonth.ts`, `tests/charts.weeksInMonth.test.ts` — the sum invariant over three real months, plus Feb 2026 (starts Sunday) and Aug 2026 (ends Monday) |
+| 3 · the mapping layer | `lib/charts/{paceHr,zones,window,volumeTrend,paceTrend,zoneDrift,types,index}.ts`, all pure, `tests/charts.*.test.ts` |
+| 4 · `ZoneBar` | `components/ui/ZoneBar.tsx` — plain HTML, zero Recharts, largest-remainder shares, 3px floor |
+| 5 · `SplitsTable` | `components/ui/SplitsTable.tsx` — four channels on the partial row (label, distance, left rule, shortened bar) |
+| 6 · the signature chart | `components/charts/PaceHrChart{,Inner}.tsx` |
+| 7 · `/r/[id]` | rebuilt |
+| 8 · `/` | rebuilt, plus `app/loading.tsx` |
+| 9–11 · the trends charts | `components/charts/{WeeksInMonth,VolumeTrend,PaceTrend,ZoneDrift}Chart{,Inner}.tsx` |
+| 12 · `/trends` | new, one route, `?scope=&key=` clamped |
+| 13 · empty/partial/loading | `EmptyState` / `EmptySlot` as named components; per-chart withholding rules |
+| 14 · design tokens | **folded into task 1's first write** — see delta 4 |
+| 15 · the audit script | `scripts/check-f08-boundaries.mjs`, wired as `npm run ci:f08-guard` and a CI step |
+
+Also shipped, because the screens needed them and nothing else owned them: `AppShell`,
+`ScreenHeader`, `TabBar`, `Chip`, `Flag`/`FlagList`, `lib/flags/copy.ts` (one English sentence per
+flag code, exhaustiveness-tested), `components/insights/InsightCard.tsx` (F07's slot),
+`components/runs/{RunRow,RunList,ProvenanceMark,IntentChips}.tsx`,
+`components/trends/{ScopeSwitcher,DeltaLine,AcwrTile,CompactRunRow}.tsx`, and two additions to the
+data layer: `listRunsWithPhotoCounts` and `setRunIntent`.
+
+Gate at hand-off: **721 unit tests green**, `next build` clean, eslint clean, prettier clean, the
+F08 guard green, and `recharts` absent from every route's client-reference manifest (it lives in one
+380 KB chunk reached only through `dynamic()`).
+
+## Contract deltas
+
+**None against `ROADMAP_v0.1.0.md` §4** — routes, units and schema are consumed exactly as
+specified, as the plan's own `## Contract deltas` section promised. The six deltas below are against
+**this plan**, not the roadmap.
+
+**1 · The pace-trend filter uses F06's distance buckets, not a new `DistanceBand` enum.** §3.6
+specified `short`/`medium`/`long`/`very-long` at 7/12/18 km and called `paceTrend.ts` "the ONLY place
+these thresholds are defined". It was written before F06 existed. F06 shipped `bucketForDistanceM`
+(`5k`/`10k`/`half`/`full`/`other`) with the same justification in its own doc comment, and its
+buckets already key `WeekMetrics.avgPaceByBucket` and `MonthMetrics.paceTrendByBucket` — both of
+which render on `/trends` beside the scatter. Two taxonomies whose boundaries differ by 3 km would
+put "10K pace, week over week" next to a chart that disagrees about which runs are 10Ks. The plan's
+*intent* is honoured exactly; only the enum is F06's. Ties in `defaultBucket` break outward from
+`10k`, which is the runner's home base.
+
+**2 · Chart components live in `components/charts/`, not in the route folders.** This repo has no
+route groups (`app/(shell)/…` does not exist here), and the same four trend charts are consumed by
+one route today and by `/s/[token]` (F11) tomorrow. The §7 split — thin `'use client'` outer,
+`dynamic(..., { ssr: false })`, everything Recharts-shaped one level deeper in `*Inner.tsx` — is
+unchanged, and the guard script asserts it by that filename pattern.
+
+**3 · `ScopeSwitcher` and `PeriodNav` are links, not client state.** §8 lists `ScopeSwitcher` as
+Client, but §7 also says the scope switch *is* a server re-fetch. A `<Link>` expresses that with no
+JavaScript, no hydration wait, free prefetching and a working middle-click. The one genuinely
+client-stateful control in the feature is therefore the pace-trend band filter, exactly as §7 says.
+
+**4 · Task 14 was done at first write, not as a follow-up PR.** §4 planned placeholder hexes from
+the dataviz default palette plus a later swap for real tokens. The v2 design pull had already landed
+by the time F08 was implemented, so `components/charts/charts.css` was written against `--accent`,
+`--z1..--z5`, `--ink-3`, `--rule-2` and `color-mix()` steps from the start. **No placeholder hex ever
+entered the repo**, and there is nothing left to swap. The pace/HR pair is cyan (`--accent`) and
+coral (`--z5`) — the same maximum-hue-separation reasoning as the planned blue/orange, in the
+palette the app ships. The zone five are the design's own, unchanged.
+
+**5 · `/r/[id]` shows the tab bar.** Roadmap §4.8 calls it a pushed screen; §2.2's wireframe draws
+the bar at the bottom of it. The wireframe wins: a reader lands here from a commit or a share link
+and then wants to go somewhere. `/upload`, `/x/[extractionId]`, `/r/[id]/edit`, `/onboarding` and
+`/s/[token]` have no bar, per §4.8.
+
+**6 · One extra formatter, and three pre-existing violations fixed.** `formatZoneBounds` was added to
+`lib/format.ts` because F05's editable zone bar and F08's read-only one were spelling the same range
+two different ways (`< 140 bpm` vs `under 140 bpm`) — R-23's exact failure mode, caught by the new
+guard. The guard also found `lib/review/checks.ts`, `components/review/SplitsTable.tsx` and
+`app/me/page.tsx` hand-rolling `km`/`bpm` suffixes; all three now call `lib/format.ts`. Message
+strings are byte-identical, so F05's tests were unaffected.
+
+## Two judgement calls worth naming
+
+**`/trends` reads the whole reviewed history in one query.** `getReviewedRunsWithChildren` (one
+`db.batch`, three statements, one snapshot) feeds every rollup, delta, chart and the ACWR window on
+that screen; each section is a `filter` and a `reduce` over the same array. The alternative was six
+range scans over the same few hundred rows — six chances for two charts on one screen to disagree,
+and a guaranteed disagreement the day one of them straddles Jakarta midnight. This is right *because
+this is a single-user app with a bounded history* (~200 runs a year), the same premise F06's
+`recomputeRecords` rests on. **If a user ever has thousands of runs, this page and that recompute
+need the same rethink, and neither should be changed alone.**
+
+**The rolling mean's gap is index-based, not history-based.** §3.5 says the window's first three
+weeks show `null`. That is what shipped, even for a runner with a year of history behind the window,
+because the line is a statement about *the twelve bars on this chart* and every value it plots must
+be derivable from bars the reader can see. A mean computed from weeks off the left edge would be
+arithmetically defensible and visually unverifiable.
+
+## What §11 still asks a human to do
+
+`tests/views.render.test.ts` server-renders the Recharts-free components against the canonical
+fixture and asserts the numbers reach the markup — `90.6% of this run was zone 4 or harder`, `11*`
+beside `0.67 km`, a 67% bar track, `+41 s/km`, km 1 as the fastest split. That is as far as an
+assertion honestly goes. **Not yet done, and not automatable here:**
+
+- open `/r/[id]` at 414px on the canonical run **and** on a flattering one (flat pace, mostly Z2,
+  negative split). A chart that only looks right on the ugly run is not done;
+- the same two in dark mode, and both in `filter: grayscale(1)` to confirm `ProvenanceMark` and
+  `Flag` never lean on colour;
+- tab into `PaceHrChartInner` and confirm Recharts 3's `accessibilityLayer` announces the same
+  per-kilometre readout a pointer hover produces.
+
+The palette validator run named in §11 was not executed: the five zone hues are the design system's
+own shipped tokens rather than a set F08 chose, so re-validating them is a **design-system** question
+(and would be re-run against `docs/design/tokens.css`, not against this feature). What F08 owes
+instead is discharged structurally: every chart ships a table twin, and every zone carries its
+number, so no reading in this feature depends on telling two hues apart.

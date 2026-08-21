@@ -4,7 +4,7 @@ import * as React from 'react'
 
 import { Button } from '@/components/ui'
 import { Sheet } from '@/components/ui/Sheet'
-import { formatDuration, formatPace } from '@/lib/format'
+import { formatBpm, formatDuration, formatPace } from '@/lib/format'
 import type { DraftSplit } from '@/lib/review/draft'
 import {
   parseDurationInput,
@@ -155,7 +155,7 @@ export function SplitsTable({
                       `Edit kilometre ${split.km}` +
                       (split.partial ? ', partial' : '') +
                       `, ${formatDuration(split.timeSec)}, ${formatPace(split.paceSecPerKm, true)}` +
-                      (split.hrBpm ? `, ${split.hrBpm} bpm` : '')
+                      (split.hrBpm ? `, ${formatBpm(split.hrBpm)}` : '')
                     }
                     className="text-[12px] font-semibold text-accent"
                   >

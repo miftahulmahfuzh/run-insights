@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+/* F08's chart token bridge. Must sit with the other @import rules: CSS requires every @import
+   before any other statement. See the file itself for why Recharts needs a stylesheet at all. */
+@import '../components/charts/charts.css';
+
 /*
  * Tailwind v4 is CSS-first: the @theme block below IS the config. No tailwind.config.js, ever.
  *

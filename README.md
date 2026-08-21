@@ -4,8 +4,8 @@ Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade ana
 run, that week, and that month.
 
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
-profile, **F04** ingest & vision extraction, **F05** review & correction, **F06** metrics & records ·
-next: F08 views, charts & trends
+profile, **F04** ingest & vision extraction, **F05** review & correction, **F06** metrics & records,
+**F08** views, charts & trends · next: F07 insights
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
@@ -109,6 +109,36 @@ rather than signs.
 Personal records are recomputed wholesale on every commit, never incremented: a correction that
 drops a run below a qualifier has to be able to **remove** a record, and an upsert cannot express
 that (R-10).
+
+---
+
+## One chart is allowed to break the rules, and it argues its case
+
+The `dataviz` guidance names dual-axis charts as its top anti-pattern: two scales whose alignment
+is arbitrary invent a correlation the data does not contain. Run Insights ships exactly one, on
+`/r/[id]`, and the exemption is fenced rather than assumed (F08 §12, upheld by **R-25**):
+
+- pace and heart rate are **two readings of the same kilometre**, not two independently sampled
+  series whose x-axis correspondence is a choice;
+- both domains are anchored to the run's own min and max plus a **fixed** pad, never a percentage
+  one that would widen with the run's variance — a reviewer re-deriving either axis gets this chart;
+- the pace axis is **inverted, and says so in words** (`PACE (FASTER ↑)`), because "up is faster"
+  everywhere in this app is a global rule, not a per-chart trick;
+- the claim it makes is one `lib/metrics/*` already proved arithmetically and the `InsightCard`
+  above it states in prose — the chart illustrates a finding, it does not manufacture one;
+- every value it plots is also printed in the splits table one scroll below it.
+
+`npm run ci:f08-guard` fails the build if a second `yAxisId` appears anywhere, if `recharts` is
+imported outside the six lazily-loaded `components/charts/*Inner.tsx` files (a seventh importer
+taxes `/` and `/upload` — screens with no chart at all — with ~100 KB), or if any component
+hand-rolls a unit suffix around `lib/format.ts`. The waiver does not generalise, and the check is
+what keeps that true.
+
+Everything else follows the ordinary rules, including the ones that are easy to skip: five zone
+percentages that sum to exactly 100 by largest-remainder apportionment, a 4-week rolling mean whose
+first three points are a **visible gap** rather than a guess, a pace-trend regression withheld until
+four weeks exist, a distance-band filter so a 5 km can never be plotted next to a 15 km, and a
+table twin under every chart so no number is reachable only by hovering a thumb over a phone.
 
 ---
 

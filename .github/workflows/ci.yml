@@ -64,6 +64,13 @@ jobs:
       - name: Client secret-boundary guard
         run: npm run ci:client-secret-guard
 
+      # F08 Task 15. Three properties a unit test cannot see: recharts confined to the six lazy
+      # chart chunks (a second importer taxes every route with ~100 KB), the dual-axis waiver
+      # (section 12 / R-25) confined to one file, and no component hand-rolling a unit suffix
+      # around lib/format.ts (R-23 — the rule that keeps `10.67 km` from drifting back to a comma).
+      - name: F08 view-boundary guard
+        run: npm run ci:f08-guard
+
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

@@ -1,0 +1,207 @@
+/*
+ * F08 §4 — the token bridge, and the only place a chart colour is decided.
+ *
+ * WHY THIS FILE EXISTS AT ALL. Recharts writes `fill` and `stroke` as SVG **presentation
+ * attributes**, and `var()` inside a presentation attribute is not reliably resolved (Safari, in
+ * particular, ignores it). A CSS *declaration* outranks a presentation attribute in the cascade, so
+ * a class rule here beats whatever Recharts wrote inline. That is the whole technique: every
+ * `<Line>`, `<Bar>`, `<Cell>`, `<Area>` and `<Scatter>` in `components/charts/*Inner.tsx` carries a
+ * className and **zero inline hex**, and this file paints them from the design tokens.
+ *
+ * What it buys: a light/dark flip repaints every chart in the app with no JavaScript, no re-render
+ * and no `prefers-color-scheme` listener, because the tokens themselves flip (see app/globals.css).
+ *
+ * WHY THE DOUBLE SELECTORS. Recharts puts a className on a `<g>` layer for series components and
+ * directly on the shape for `<Cell>`. Rather than depend on which, each rule targets the element
+ * and its descendants — belt and braces against a minor-version change in where the class lands.
+ *
+ * ── THE PALETTE, AND WHY IT IS THE TOKEN SET RATHER THAN THE PLAN'S HEXES ──────────────────────
+ * F08's plan §4 lists placeholder hexes from the dataviz skill's default palette and makes "swap
+ * them for the real design tokens" its own task (§10 task 14), on the explicit expectation that the
+ * first guess would not survive contact with the real surfaces. The v2 design pull has since landed
+ * (docs/design/tokens.css, mirrored into app/globals.css), so that swap is done HERE, at first
+ * write, and no placeholder hex ever entered the repo:
+ *
+ *   pace line   --accent  (cyan #23beeb)   the app's one brand hue, and pace is the subject
+ *   HR line     --z5      (coral #ff5e5b)  maximum-effort red; a heart line in the zone-5 colour
+ *   zones 1-5   --z1..--z5                 the design's own five, cool to warm, unchanged
+ *   volume bars --accent, in three ordinal steps mixed toward --card for partial and in-progress
+ *   mean line   --accent mixed toward --ink — a DARKER STEP OF THE SAME HUE, never a second series
+ *                                            colour: it is a statistic about the bars, not a rival
+ *
+ * The cyan/coral pair is the same *reasoning* the plan's blue/orange pair had — maximum adjacent
+ * hue separation for colour-vision deficiency — expressed in the palette the app actually ships.
+ * Every chart also prints its values in a table twin, so no reading depends on telling two hues
+ * apart (dataviz's actual requirement, discharged structurally rather than by palette luck).
+ */
+
+/* ---- chrome: axes, grid, labels ---------------------------------------------------------- */
+
+.ri-chart .recharts-cartesian-axis-tick-value,
+.ri-chart .recharts-cartesian-axis-tick-value tspan {
+  fill: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ri-chart .recharts-cartesian-axis-line,
+.ri-chart .recharts-cartesian-axis-tick-line {
+  stroke: var(--rule);
+}
+
+/* Solid hairlines only. Dashed gridlines are a documented anti-pattern: they compete with the
+   dashed "this one is different" marks the partial-km dot and the empty states rely on. */
+.ri-chart .recharts-cartesian-grid line {
+  stroke: var(--rule-2);
+  stroke-dasharray: none;
+}
+
+.ri-chart .recharts-label,
+.ri-chart .recharts-label tspan,
+.ri-chart .recharts-text.ri-endpoint,
+.ri-chart .recharts-text.ri-endpoint tspan {
+  fill: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ri-chart .recharts-cartesian-axis-label,
+.ri-chart .recharts-cartesian-axis-label tspan {
+  fill: var(--ink-3);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+/* ---- §3.1 the signature chart: pace and heart rate --------------------------------------- */
+
+.ri-pace-line .recharts-curve,
+.ri-pace-line.recharts-curve {
+  stroke: var(--accent);
+}
+
+.ri-hr-line .recharts-curve,
+.ri-hr-line.recharts-curve {
+  stroke: var(--z5);
+}
+
+.ri-pace-dot,
+.ri-pace-dot circle {
+  fill: var(--accent);
+  /* A surface-coloured ring, so the two lines read crisply where they cross near km 4-5. */
+  stroke: var(--card);
+}
+
+.ri-hr-dot,
+.ri-hr-dot circle {
+  fill: var(--z5);
+  stroke: var(--card);
+}
+
+/* The partial kilometre's dot: dashed outline, NOT a colour change — the same non-colour channel
+   the splits table and the axis tick use (D14 on three channels, never on hue). */
+.ri-partial-dot,
+.ri-partial-dot circle {
+  fill: var(--card);
+  stroke: var(--ink-3);
+  stroke-dasharray: 2 2;
+}
+
+/* ---- §3.4 / §3.5 weekly volume bars, three ordinal steps of one hue ---------------------- */
+
+.ri-bar-complete,
+.ri-bar-complete path {
+  fill: var(--accent);
+}
+
+.ri-bar-partial,
+.ri-bar-partial path {
+  fill: color-mix(in oklab, var(--accent) 55%, var(--card));
+}
+
+.ri-bar-current,
+.ri-bar-current path {
+  fill: color-mix(in oklab, var(--accent) 32%, var(--card));
+}
+
+.ri-mean-line .recharts-curve,
+.ri-mean-line.recharts-curve {
+  stroke: color-mix(in oklab, var(--accent) 60%, var(--ink));
+}
+
+.ri-mean-dot,
+.ri-mean-dot circle {
+  fill: color-mix(in oklab, var(--accent) 60%, var(--ink));
+  stroke: var(--card);
+}
+
+/* ---- §3.6 pace trend: one series, so one hue and no legend ------------------------------- */
+
+.ri-scatter path,
+.ri-scatter circle {
+  fill: var(--accent);
+  /* 70%, so a busy training week's overlapping dots do not fully occlude each other. */
+  fill-opacity: 0.7;
+}
+
+.ri-trend-line {
+  stroke: var(--accent);
+}
+
+/* ---- §3.2 / §3.7 the five zones, one palette for "zone" everywhere in the app ------------ */
+
+.ri-zone-1,
+.ri-zone-1 path {
+  fill: var(--z1);
+}
+.ri-zone-2,
+.ri-zone-2 path {
+  fill: var(--z2);
+}
+.ri-zone-3,
+.ri-zone-3 path {
+  fill: var(--z3);
+}
+.ri-zone-4,
+.ri-zone-4 path {
+  fill: var(--z4);
+}
+.ri-zone-5,
+.ri-zone-5 path {
+  fill: var(--z5);
+}
+
+/* A stacked area's fills ARE the data, so they run at full opacity — unlike a line chart's context
+   wash. The 2px separator between adjacent bands is the surface colour, the same "surface gap"
+   the zone bar applies between its segments. */
+.ri-zone-area .recharts-curve {
+  stroke: var(--card);
+  stroke-width: 2;
+}
+
+/* ---- tooltip: an HTML card, not SVG, so it takes the app's own surface -------------------- */
+
+.ri-tooltip {
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--sh);
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ri-tooltip-label {
+  color: var(--ink-3);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Recharts draws the crosshair band with the `cursor` prop; this keeps it a wash rather than a
+   line, so a thumb-sized hit area does not look like a data mark. */
+.ri-chart .recharts-rectangle.recharts-tooltip-cursor {
+  fill: var(--accent-soft);
+  fill-opacity: 0.7;
+}

@@ -6,12 +6,21 @@ import {
   formatCadence,
   formatClock,
   formatDay,
+  formatDayCompact,
+  formatDayShort,
+  formatDistanceCompact,
   formatDistanceKm,
   formatDistanceM,
   formatDuration,
   formatElevation,
   formatKcal,
+  formatMonthLabel,
+  formatMonthName,
   formatPace,
+  formatPaceDelta,
+  formatPercent,
+  formatVolumeDelta,
+  isoWeekLabel,
   MISSING,
 } from '@/lib/format'
 
@@ -136,5 +145,89 @@ describe('formatClock', () => {
   it('narrows the time column back to what the screenshot printed', () => {
     expect(formatClock('07:07:00')).toBe('07:07')
     expect(formatClock(null)).toBe(MISSING)
+  })
+})
+
+/* ============================================================================
+ * F08's additions — plan §5. Same rule as everything above: the expected string is
+ * read off the canonical fixture or off a wireframe in the plan, never invented here.
+ * ==========================================================================*/
+
+describe('compact distance — for axis ticks, and only for axis ticks', () => {
+  it('drops the decimals a 180px axis cannot carry', () => {
+    expect(formatDistanceCompact(5000)).toBe('5 km')
+    expect(formatDistanceCompact(45000)).toBe('45 km')
+    expect(formatDistanceCompact(10670)).toBe('11 km')
+  })
+
+  it('still degrades to an em dash rather than to "0 km"', () => {
+    expect(formatDistanceCompact(null)).toBe(MISSING)
+  })
+
+  it('does not replace the two-decimal rule for a real measurement', () => {
+    // §4.2's rule is unchanged: a number a reader might re-add keeps its decimals.
+    expect(formatDistanceM(TRUTH.distanceKm * 1000)).toBe('10.67 km')
+  })
+})
+
+describe('pace delta — the fixture’s own +41 s/km', () => {
+  it('renders the canonical positive split exactly as the roadmap states it', () => {
+    expect(formatPaceDelta(41)).toBe('+41 s/km')
+  })
+
+  it('uses a real minus sign, not a hyphen', () => {
+    expect(formatPaceDelta(-12)).toBe('−12 s/km')
+    expect(formatPaceDelta(-12)).not.toBe('-12 s/km')
+  })
+
+  it('says zero without a sign', () => {
+    expect(formatPaceDelta(0)).toBe('0 s/km')
+  })
+})
+
+describe('percent — one convention, 0 to 100, decided once', () => {
+  it('renders the fixture’s Z4+Z5 share to one decimal', () => {
+    expect(formatPercent(90.6, 1)).toBe('90.6%')
+  })
+
+  it('defaults to whole percentages', () => {
+    expect(formatPercent(47)).toBe('47%')
+  })
+
+  it('takes a percentage, never a fraction — 0.906 is nine tenths of one percent', () => {
+    expect(formatPercent(0.906, 1)).toBe('0.9%')
+  })
+})
+
+describe('volume delta — direction carried by a word and an arrow, never by colour', () => {
+  it('renders the wireframe’s own examples', () => {
+    expect(formatVolumeDelta(12)).toBe('↑ 12%')
+    expect(formatVolumeDelta(-4)).toBe('↓ 4%')
+  })
+
+  it('says "flat" rather than drawing an arrow at nothing', () => {
+    expect(formatVolumeDelta(0)).toBe('flat')
+    expect(formatVolumeDelta(0.2)).toBe('flat')
+  })
+})
+
+describe('dates and periods — the labels the list and the trends screens need', () => {
+  it('renders a run row’s day without a comma', () => {
+    expect(formatDayShort('2026-08-18')).toBe('Tue 18 Aug')
+    expect(formatDayCompact('2026-08-18')).toBe('18 Aug')
+  })
+
+  it('names an ISO week by the Monday that owns it', () => {
+    expect(isoWeekLabel('2026-W34')).toBe('Week of 17 Aug 2026')
+  })
+
+  it('names 2026-W01 by a Monday in the PREVIOUS calendar year, because it is one', () => {
+    // ISO 8601's rule, inherited from lib/date/ranges.ts rather than re-derived here.
+    expect(isoWeekLabel('2026-W01')).toBe('Week of 29 Dec 2025')
+  })
+
+  it('spells a month out with its year, and without it where the year would be noise', () => {
+    expect(formatMonthLabel('2026-08')).toBe('August 2026')
+    expect(formatMonthName('2026-07')).toBe('July')
   })
 })

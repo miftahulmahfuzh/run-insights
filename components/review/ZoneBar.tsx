@@ -4,7 +4,7 @@ import * as React from 'react'
 
 import { Button } from '@/components/ui'
 import { Sheet } from '@/components/ui/Sheet'
-import { formatDuration } from '@/lib/format'
+import { formatDuration, formatZoneBounds } from '@/lib/format'
 import type { DraftZone } from '@/lib/review/draft'
 import { parseDurationInput, parseIntInput, toDurationInput, toIntInput } from '@/lib/review/inputs'
 import type { ReviewPhoto } from '@/lib/review/loadReview'
@@ -166,12 +166,15 @@ export function ZoneBar({
   )
 }
 
-/** `< 140 bpm`, `164–174 bpm`, `175+ bpm`. Zone 1 has no floor and zone 5 no ceiling, by design. */
+/**
+ * Zone 1 has no floor and zone 5 no ceiling, by design.
+ *
+ * The spelling moved to `lib/format.ts` as `formatZoneBounds` when F08 landed its own read-only zone
+ * bar: two components were formatting the same range two different ways, which is precisely what
+ * R-23 exists to prevent. This wrapper stays so the call sites below read the same as before.
+ */
 function boundsLabel(zone: DraftZone): string {
-  if (zone.minBpm === null && zone.maxBpm === null) return 'no range'
-  if (zone.minBpm === null) return `< ${zone.maxBpm} bpm`
-  if (zone.maxBpm === null) return `${zone.minBpm}+ bpm`
-  return `${zone.minBpm}–${zone.maxBpm} bpm`
+  return formatZoneBounds(zone.minBpm, zone.maxBpm)
 }
 
 function ZoneSheet({

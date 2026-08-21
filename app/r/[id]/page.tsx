@@ -1,10 +1,14 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { Card, Eyebrow, Stat } from '@/components/ui'
+import { PaceHrChart } from '@/components/charts/PaceHrChart'
+import { InsightCard } from '@/components/insights/InsightCard'
+import { IntentChips } from '@/components/runs/IntentChips'
+import { ProvenanceMark } from '@/components/runs/ProvenanceMark'
+import { AppShell, Card, Eyebrow, FlagList, SplitsTable, Stat, ZoneBar } from '@/components/ui'
 import { requireUserId } from '@/lib/auth/requireUserId'
-import { jakartaDayOf } from '@/lib/date/ranges'
-import { getRunDetail } from '@/lib/db/queries'
+import { fastestSlowestFullKm, toPaceHrPoints, toZoneShares } from '@/lib/charts'
+import { getExtraction, getLatestInsight, getRunDetail } from '@/lib/db/queries'
 import {
   formatBpm,
   formatCadence,
@@ -15,63 +19,117 @@ import {
   formatElevation,
   formatKcal,
   formatPace,
+  formatPercent,
 } from '@/lib/format'
 import { isValidId } from '@/lib/id'
+import { computeSessionMetrics, evaluateSessionFlags, resolveHrMax } from '@/lib/metrics'
+import type { ZoneRow } from '@/lib/metrics'
 
 /**
- * `/r/[id]` — the committed run.
+ * `/r/[id]` — §2.2. The screen this whole app exists to render.
  *
- * **F08 owns this screen and will replace the body wholesale** with the hero, the analysis, the
- * pace+HR dual axis and the zone bar its plan describes. What is here is the minimum that makes
- * F05 a working feature rather than a form that saves into the dark: `commitReview` redirects
- * here, and a redirect to a 404 is not a finished flow.
+ * **One hero figure: the distance.** Everything else steps down from it. The analysis card sits
+ * above the charts because the words are the point and the charts are the evidence — this is a
+ * reading app, not a dashboard (the roadmap's core tenet, and the reason there is no grid of tiles).
  *
- * Two things below are F05's own and should survive the replacement, because nothing else in the
- * product renders them:
+ * ── THE FETCH BOUNDARY ─────────────────────────────────────────────────────────────────────────
+ * Two round trips, and the second one is conditional:
  *
- *   - the **provenance line** (§9.3): "Reviewed 20 Aug · edited 22 Aug", which is what makes
- *     `reviewed_at` and `corrected_at` two different questions rather than one confusing one;
- *   - the **link to `/r/[id]/edit`**, which is the only way into the post-review correction path.
+ *   1. `Promise.all([getRunDetail, resolveHrMax, getLatestInsight])` — the run with its splits,
+ *      zones and photos in one batched snapshot (four statements, one HTTP request), the HRmax
+ *      resolution, and F07's prose.
+ *   2. `getExtraction`, only when the run came from one, only for the corrections COUNT that
+ *      `ProvenanceMark` prints.
+ *
+ * **Every number below is F06's.** `computeSessionMetrics` is called exactly once, server-side, and
+ * nothing on this page re-derives a metric from raw splits — D2's rule is that the LLM writes prose
+ * only, and F08's version of it is that the VIEW renders numbers only.
+ *
+ * Draft-visible by design (`getRunDetail` carries no `reviewed_at` filter): a run must render
+ * whatever its review state. The reviewed-data invariant (D16) governs rollups, records and badges —
+ * "show me this row" is a different question, and `ProvenanceMark` is what answers it honestly.
  */
 export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
   const userId = await requireUserId()
   const { id } = await params
   if (!isValidId(id)) notFound()
 
-  const run = await getRunDetail(userId, id)
+  const [run, hrMax, insight] = await Promise.all([
+    getRunDetail(userId, id),
+    resolveHrMax(userId),
+    getLatestInsight(userId, 'session', id),
+  ])
   if (!run) notFound()
 
-  const fullSplits = run.splits.filter((s) => !s.partial)
-  const zoneTotal = run.zones.reduce((sum, z) => sum + z.durationSec, 0)
+  const extraction = run.extractionId ? await getExtraction(userId, run.extractionId) : null
+  const correctedFieldCount = Object.keys(extraction?.corrections ?? {}).length
+
+  // `run_zones.zone` is a plain `int` in Postgres; F04's Zod schema enforces the 1..5 domain on the
+  // way in, so this narrowing restates a guarantee rather than assuming one (same note as F06's
+  // records gateway).
+  const zones: ZoneRow[] = run.zones.map((z) => ({
+    zone: z.zone as ZoneRow['zone'],
+    durationSec: z.durationSec,
+    minBpm: z.minBpm,
+    maxBpm: z.maxBpm,
+  }))
+  const splits = run.splits.map((s) => ({
+    km: s.km,
+    timeSec: s.timeSec,
+    paceSec: s.paceSec,
+    hr: s.hr,
+    cadence: s.cadence,
+    partial: s.partial,
+  }))
+
+  const metrics = computeSessionMetrics(
+    {
+      runId: run.id,
+      occurredOn: run.occurredOn,
+      distanceM: run.distanceM,
+      durationSec: run.durationSec,
+      avgHrBpm: run.avgHr,
+      splits,
+      zones,
+      recovery: { endHrBpm: run.endHrBpm, hrAt1MinBpm: run.hr1MinPostBpm },
+    },
+    hrMax,
+  )
+  const flags = evaluateSessionFlags(metrics, splits.find((s) => !s.partial) ?? null)
+
+  const points = toPaceHrPoints(splits, run.distanceM)
+  const { fastestKm, slowestKm } = fastestSlowestFullKm(points)
+  const zoneShares = toZoneShares(zones)
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-[470px] p-5 pb-[calc(2rem+var(--safe-bottom))]">
-      <header className="mb-5 flex items-baseline justify-between">
+    <AppShell>
+      <header className="mb-5 flex items-baseline justify-between gap-3">
         <Link href="/" className="text-[13px] font-semibold text-accent">
-          ← Runs
+          ‹ Runs
         </Link>
-        <Link href={`/r/${id}/edit`} className="text-[13px] font-semibold text-accent">
-          Correct
-        </Link>
+        <div className="flex items-baseline gap-4">
+          {/* F05's post-review correction path — the only way into it, so it must survive here. */}
+          <Link href={`/r/${id}/edit`} className="text-[13px] font-semibold text-accent">
+            Correct
+          </Link>
+          {/* F11's slot. Rendered as nothing until sharing lands: a dead "Share" that does not share
+              is worse than no button, and reserving the space costs a comment rather than a layout. */}
+        </div>
       </header>
 
       <Card>
-        <div className="mb-4 flex items-baseline justify-between gap-3">
-          <Eyebrow>{run.activityType}</Eyebrow>
-          {run.source === 'manual' && (
-            <span className="rounded-chip bg-rule-2 px-2 py-0.5 text-[10px] font-semibold text-ink-3">
-              entered by hand
-            </span>
-          )}
-        </div>
+        <Eyebrow className="mb-3">
+          {[formatDay(run.occurredOn), run.location].filter(Boolean).join(' · ')}
+        </Eyebrow>
 
         <Stat
-          label={formatDay(run.occurredOn)}
+          label={run.activityType}
           value={formatDistanceM(run.distanceM)}
           size="hero"
           note={
             [
-              run.location,
+              formatDuration(run.durationSec),
+              formatPace(run.avgPaceSec, true),
               run.startedAt && `${formatClock(run.startedAt)}–${formatClock(run.endedAt)}`,
             ]
               .filter(Boolean)
@@ -80,101 +138,92 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
         />
 
         <div className="mt-5 grid grid-cols-3 gap-x-4 gap-y-5">
-          <Stat label="Duration" value={formatDuration(run.durationSec)} />
-          <Stat label="Avg pace" value={formatPace(run.avgPaceSec, true)} />
-          <Stat label="Avg HR" value={formatBpm(run.avgHr)} />
-          <Stat label="Max HR" value={formatBpm(run.maxHr)} />
-          <Stat label="Cadence" value={formatCadence(run.avgCadence)} />
-          <Stat label="Active" value={formatKcal(run.activeKcal)} />
-          <Stat label="Elevation" value={formatElevation(run.elevationM)} />
-          <Stat label="At the end" value={formatBpm(run.endHrBpm)} />
-          <Stat label="+1 min" value={formatBpm(run.hr1MinPostBpm)} />
+          <Stat label="Avg HR" value={formatBpm(run.avgHr)} size="sm" />
+          <Stat label="Max HR" value={formatBpm(run.maxHr)} size="sm" />
+          <Stat label="Cadence" value={formatCadence(run.avgCadence)} size="sm" />
+          <Stat label="Active" value={formatKcal(run.activeKcal)} size="sm" />
+          <Stat label="Elevation" value={formatElevation(run.elevationM)} size="sm" />
+          {/* A recovery of 23 means the heart rate CAME DOWN 23 bpm in the minute after
+              finishing. Bigger is better, which is not obvious from a bare number, so the label
+              says "drop" rather than dressing the value in a minus sign. */}
+          <Stat label="1-min drop" value={formatBpm(metrics.hrRecovery1MinBpm)} size="sm" />
         </div>
 
-        {/* §9.3 — two columns, two different questions. `reviewed_at` is written once and never
-            moves; `corrected_at` is the last post-review edit. */}
-        <p className="mt-5 text-[11px] font-medium text-ink-3">
-          Reviewed {formatDay(run.reviewedAt && jakartaDayOf(run.reviewedAt))}
-          {run.correctedAt && ` · edited ${formatDay(jakartaDayOf(run.correctedAt))}`}
-        </p>
+        {/*
+          Roadmap §4.4: "every metric that divides by HRmax carries the source through to the UI,
+          and the UI shows it." This is that sentence, rendered. When HRmax cannot be resolved at
+          all, nothing here appears — an app with no signal for HRmax shows no HRmax-derived number
+          (D11), not one computed against a hardcoded 190.
+        */}
+        {metrics.avgHrPctMax != null && hrMax && (
+          <div className="mt-5 rounded-field bg-paper-2 p-4">
+            <Stat
+              label="Average, as a share of your maximum"
+              value={formatPercent(metrics.avgHrPctMax, 1)}
+              note={`of ${formatBpm(hrMax.bpm)} · ${hrMax.source}${
+                hrMax.source === 'observed' && hrMax.observedOn
+                  ? `, from your run of ${formatDay(hrMax.observedOn)}`
+                  : ''
+              }`}
+            />
+          </div>
+        )}
+
+        <div className="mt-5">
+          <ProvenanceMark
+            source={run.source}
+            reviewedAt={run.reviewedAt}
+            correctedAt={run.correctedAt}
+            correctedFieldCount={correctedFieldCount}
+          />
+        </div>
 
         {run.note && <p className="mt-3 text-[13px] font-medium text-ink-2">{run.note}</p>}
+
+        <div className="mt-5 border-t border-rule-2 pt-5">
+          <IntentChips runId={run.id} intent={run.intent} />
+        </div>
       </Card>
 
-      {run.splits.length > 0 && (
-        <Card className="mt-4">
-          <div className="mb-3 flex items-baseline justify-between">
+      <div className="mt-4">
+        <InsightCard payload={insight?.payload ?? null} scopeLabel="This run">
+          {/* F06's flags live inside F07's card: the prose and the measurements that provoked it are
+              one reading, and splitting them into two cards makes the reader join them up. */}
+          <FlagList flags={flags} />
+        </InsightCard>
+      </div>
+
+      {points.length > 0 && (
+        <div className="mt-4">
+          <PaceHrChart points={points} />
+        </div>
+      )}
+
+      <Card className="mt-4 p-5">
+        <Eyebrow className="mb-3">Time in zone</Eyebrow>
+        <ZoneBar
+          shares={zoneShares}
+          caption={
+            metrics.hardPct == null
+              ? undefined
+              : /* The design brief asks for 90.6% to be unmissable "without scolding me about it".
+                   One plain sentence, no colour, no icon, no bold: the number is the emphasis. */
+                `${formatPercent(metrics.hardPct, 1)} of this run was zone 4 or harder.`
+          }
+        />
+      </Card>
+
+      {points.length > 0 && (
+        <Card className="mt-4 p-5">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
             <Eyebrow>Splits</Eyebrow>
-            <span className="text-[11px] font-semibold text-ink-3">{run.splits.length}</span>
+            <span className="text-[11px] font-semibold text-ink-3 tabular-nums">
+              {metrics.fullSplitCount} full km
+            </span>
           </div>
-          <table className="w-full text-[13px] tabular-nums">
-            <thead>
-              <tr className="text-left text-[11px] font-semibold text-ink-3">
-                <th className="pb-2 font-semibold">Km</th>
-                <th className="pb-2 font-semibold">Time</th>
-                <th className="pb-2 font-semibold">Pace</th>
-                <th className="pb-2 text-right font-semibold">HR</th>
-                <th className="pb-2 text-right font-semibold">Cad</th>
-              </tr>
-            </thead>
-            <tbody>
-              {run.splits.map((split) => (
-                <tr
-                  key={split.km}
-                  className={
-                    split.partial
-                      ? 'border-t border-l-2 border-rule-2 border-l-warn'
-                      : 'border-t border-rule-2'
-                  }
-                >
-                  <td className="py-1.5 pl-1.5 font-semibold text-ink">
-                    {split.km}
-                    {split.partial && (
-                      <span className="ml-1 text-[10px] font-semibold text-ink-3">part</span>
-                    )}
-                  </td>
-                  <td className="py-1.5 text-ink-2">{formatDuration(split.timeSec)}</td>
-                  <td className="py-1.5 text-ink-2">{formatPace(split.paceSec)}</td>
-                  <td className="py-1.5 text-right text-ink-2">{split.hr ?? '—'}</td>
-                  <td className="py-1.5 text-right text-ink-2">{split.cadence ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-3 text-[11px] font-medium text-ink-3">
-            {/* D14 restated where it is acted on, not only where it is decided. */}
-            {fullSplits.length} full {fullSplits.length === 1 ? 'kilometre' : 'kilometres'}
-            {run.splits.length > fullSplits.length &&
-              ', plus a partial final kilometre left out of every pace average'}
-            .
-          </p>
+          <SplitsTable points={points} zones={zones} fastestKm={fastestKm} slowestKm={slowestKm} />
         </Card>
       )}
-
-      {run.zones.length > 0 && zoneTotal > 0 && (
-        <Card className="mt-4">
-          <Eyebrow>Heart-rate zones</Eyebrow>
-          <ul className="mt-3 space-y-1.5 text-[13px] tabular-nums">
-            {run.zones.map((zone) => (
-              <li key={zone.zone} className="flex items-baseline gap-3">
-                <span className="font-semibold text-ink">Z{zone.zone}</span>
-                <span className="ml-auto text-ink-2">{formatDuration(zone.durationSec)}</span>
-                <span className="w-9 text-right text-ink-3">
-                  {Math.round((zone.durationSec / zoneTotal) * 100)}%
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      <Card className="mt-4 text-center">
-        <p className="text-[13px] font-semibold text-ink">Analysis, charts and records — F08/F09</p>
-        <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] font-medium text-ink-2">
-          The numbers above are confirmed and stored. Everything computed from them lands with the
-          next features.
-        </p>
-      </Card>
-    </main>
+    </AppShell>
   )
 }

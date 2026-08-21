@@ -1,4 +1,4 @@
-import { formatDuration, formatPace } from '@/lib/format'
+import { formatDistanceKm, formatDuration, formatPace } from '@/lib/format'
 import type { DraftSplit, DraftZone, FieldPath, ReviewDraft } from './draft'
 
 /**
@@ -195,7 +195,8 @@ export function partialConsistency(splits: DraftSplit[], distanceKm: number | nu
       id,
       ok: false,
       message:
-        `${distanceKm.toFixed(2)} km means the last kilometre is only ${remainderKm.toFixed(2)} km, ` +
+        `${formatDistanceKm(distanceKm)} means the last kilometre is only ` +
+        `${formatDistanceKm(remainderKm)}, ` +
         `but km ${last.km} is not marked partial. An unmarked partial km is averaged as a full ` +
         `one, which turns a fade into a sprint everywhere downstream.`,
       fieldPaths: [`splits.${idx}.partial`],
@@ -214,7 +215,7 @@ export function partialConsistency(splits: DraftSplit[], distanceKm: number | nu
         id,
         ok: false,
         message:
-          `Km ${last.km} is marked partial (${remainderKm.toFixed(2)} km) at ` +
+          `Km ${last.km} is marked partial (${formatDistanceKm(remainderKm)}) at ` +
           `${formatPace(last.paceSecPerKm, true)}, but its time works out to ` +
           `${formatPace(impliedPace, true)} — check the time or the pace on that row.`,
         fieldPaths: [`splits.${idx}.paceSecPerKm`, `splits.${idx}.timeSec`],
@@ -232,7 +233,7 @@ export function partialConsistency(splits: DraftSplit[], distanceKm: number | nu
       id,
       ok: false,
       message:
-        `Km ${last.km} is marked partial, but ${distanceKm.toFixed(2)} km leaves no part-kilometre ` +
+        `Km ${last.km} is marked partial, but ${formatDistanceKm(distanceKm)} leaves no part-kilometre ` +
         `for it to be. Either the distance or the partial mark is wrong.`,
       fieldPaths: [`splits.${idx}.partial`, 'distanceKm'],
     }

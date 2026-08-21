@@ -1,9 +1,8 @@
-import Link from 'next/link'
-
 import { AccountMenu } from '@/components/auth/AccountMenu'
 import { ProfileForm } from '@/components/profile/ProfileForm'
-import { Card, Eyebrow } from '@/components/ui'
+import { AppShell, Card, Eyebrow, ScreenHeader } from '@/components/ui'
 import { requireUserId } from '@/lib/auth/requireUserId'
+import { formatBpm } from '@/lib/format'
 import { getProfile } from '@/lib/db/queries'
 import { ageFromBirthYear } from '@/lib/metrics/age'
 import { resolveHrMax, tanakaEstimate, type HrMax } from '@/lib/metrics/hrMax'
@@ -19,6 +18,10 @@ import { updateProfileAction } from '@/lib/profile/actions'
  * The HRmax panel is here rather than only on a run detail page for one reason: a runner who sees
  * "91.5% of max" somewhere in the app should be able to find out *why that denominator* without
  * hunting. It is the whole of D11's honesty promise, rendered as one paragraph.
+ *
+ * F08's only change here: the page now sits in `AppShell`, so the Me tab is reachable from the tab
+ * bar and this screen carries the bar back. The header's hand-rolled "Runs" link is gone with it —
+ * the bar is the navigation now, and two ways back to the same place is one too many.
  */
 export default async function MePage() {
   const userId = await requireUserId()
@@ -26,13 +29,8 @@ export default async function MePage() {
   const hrMax = await resolveHrMax(userId)
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-[470px] p-5 pb-[calc(2rem+var(--safe-bottom))]">
-      <header className="mb-5 flex items-baseline justify-between">
-        <h1 className="text-[26px] font-bold tracking-[-0.02em] text-ink">Me</h1>
-        <Link href="/" className="text-[13px] font-semibold text-accent">
-          Runs
-        </Link>
-      </header>
+    <AppShell>
+      <ScreenHeader title="Me" />
 
       {/* F09 slot: lifetime distance as the hero number, total runs, total time. */}
       {/* F09 slot: the ten personal records. */}
@@ -59,7 +57,7 @@ export default async function MePage() {
       </Card>
 
       <AccountMenu />
-    </main>
+    </AppShell>
   )
 }
 
@@ -104,8 +102,10 @@ function HrMaxPanel({ hrMax, birthYear }: { hrMax: HrMax | null; birthYear: numb
         {hrMax.source === 'observed' && (
           <>
             Your watch recorded this on your run of {hrMax.observedOn}
-            {estimate != null ? ` — higher than the ${estimate} bpm your age predicts.` : '.'} Real
-            evidence beats a formula, so this is what your percentages use.
+            {estimate != null
+              ? ` — higher than the ${formatBpm(estimate)} your age predicts.`
+              : '.'}{' '}
+            Real evidence beats a formula, so this is what your percentages use.
           </>
         )}
         {hrMax.source === 'estimated' &&

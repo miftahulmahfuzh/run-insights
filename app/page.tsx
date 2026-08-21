@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
-import { AccountMenu } from '@/components/auth/AccountMenu'
 import { SignInCard } from '@/components/auth/SignInCard'
-import { ButtonLink, Card } from '@/components/ui'
+import { RunList } from '@/components/runs/RunList'
+import { AppShell, ButtonLink, EmptyState, ScreenHeader } from '@/components/ui'
 import { getUserId } from '@/lib/auth/requireUserId'
 import { safeNext } from '@/lib/auth/safeNext'
-import { getProfile } from '@/lib/db/queries'
+import { isValidDateISO, todayInJakarta } from '@/lib/date/ranges'
+import { getProfile, listRunsWithPhotoCounts } from '@/lib/db/queries'
+import { formatDayCompact } from '@/lib/format'
 
 /**
  * `/` — the runs list (R-24: there is no marketing page), and therefore the one route that must
@@ -16,12 +18,22 @@ import { getProfile } from '@/lib/db/queries'
  *   signed in, not onboarded   -> redirect to /onboarding
  *   signed in and onboarded    -> the runs list
  *
- * That three-way branch is why this file belongs to F02 and not to F08. **F08 replaces the
- * placeholder body below; it must not touch the gate above it.**
+ * That three-way branch is F02's and **F08 has not touched it** — only the body below it, which was
+ * a placeholder card. `proxy.ts` deliberately does not match `/` (matching it would bounce the
+ * sign-in screen to itself); the gate here is the real one, as INVARIANT A says it always is.
  *
- * `proxy.ts` deliberately does not match `/` — matching it would bounce the sign-in screen to
- * itself. The gate here is the real one, as INVARIANT A says it always is.
+ * **One query.** `listRunsWithPhotoCounts` is reviewed-only (D16), newest first, and carries each
+ * run's screenshot count in the same statement. The week dividers' totals are reduced from the rows
+ * it returned — never a second query, which could disagree with the rows on screen.
+ *
+ * **A run mid-extraction never appears here**, by construction rather than by filter: per D1 a run
+ * only exists in `runs` once a human has reviewed it, and a pending extraction lives on `/upload`'s
+ * own polling UI (F04). A newly-saved run needs no special treatment on this screen — by the time
+ * it is in `runs` it is exactly as real as every other row.
  */
+
+const PAGE_SIZE = 60
+
 export default async function Page({ searchParams }: PageProps<'/'>) {
   const userId = await getUserId()
   if (!userId) {
@@ -32,30 +44,79 @@ export default async function Page({ searchParams }: PageProps<'/'>) {
   const profile = await getProfile(userId)
   if (!profile?.onboardedAt) redirect('/onboarding')
 
+  const { before } = await searchParams
+  // An invalid or absent cursor silently falls back to "from the top", the same clamp the trends
+  // scope switcher applies — a hand-edited URL should never be an error page.
+  const beforeOccurredOn = isValidDateISO(before) ? before : undefined
+
+  const runs = await listRunsWithPhotoCounts(userId, {
+    limit: PAGE_SIZE,
+    beforeOccurredOn,
+  })
+  const todayISO = todayInJakarta()
+
+  // A full page suggests there may be more. `occurred_on` is the cursor, so a day with several runs
+  // is not split across pages: `lt(occurredOn, cursor)` starts the next page at the previous day.
+  const oldest = runs[runs.length - 1]
+  const nextCursor = runs.length === PAGE_SIZE && oldest ? oldest.occurredOn : null
+
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-[470px] p-5 pb-[calc(2rem+var(--safe-bottom))]">
-      <header className="mb-5 flex items-baseline justify-between">
-        <h1 className="text-[26px] font-bold tracking-[-0.02em] text-ink">Runs</h1>
-        <Link href="/me" className="text-[13px] font-semibold text-accent">
-          Me
-        </Link>
-      </header>
+    <AppShell>
+      <ScreenHeader
+        title="Runs"
+        action={
+          beforeOccurredOn ? (
+            <Link href="/" className="text-[13px] font-semibold text-accent">
+              Back to latest
+            </Link>
+          ) : undefined
+        }
+      />
 
-      {/* F08 replaces everything from here down with the real list, grouped by week. */}
-      <Card className="text-center">
-        <p className="mb-1.5 text-[17px] font-semibold text-ink">No runs yet</p>
-        <p className="mx-auto mb-6 max-w-[30ch] text-[13px] font-medium text-ink-2">
-          Screenshot a run in the Fitness app, then upload it here. Reading it takes about half a
-          minute.
-        </p>
-        <ButtonLink href="/upload" variant="primary" size="lg" fullWidth>
-          Upload a run
-        </ButtonLink>
-      </Card>
+      {runs.length === 0 ? (
+        beforeOccurredOn ? (
+          <EmptyState
+            title="Nothing earlier"
+            description="You have reached the beginning of your history."
+            action={
+              <ButtonLink href="/" variant="secondary" size="md">
+                Back to latest
+              </ButtonLink>
+            }
+          />
+        ) : (
+          /* The brand-new user. No chart machinery is imported on this path at all — a user with no
+             runs must not download Recharts to be told they have none (§9). */
+          <EmptyState
+            title="No runs yet"
+            description="Screenshot a run in the Fitness app, then tap the + tab. Reading it takes about half a minute."
+            action={
+              <ButtonLink href="/upload" variant="primary" size="lg" fullWidth>
+                Upload a run
+              </ButtonLink>
+            }
+          />
+        )
+      ) : (
+        <>
+          <RunList
+            runs={runs}
+            todayISO={todayISO}
+            photoCounts={Object.fromEntries(runs.map((r) => [r.id, r.photoCount]))}
+          />
 
-      <div className="mt-8">
-        <AccountMenu />
-      </div>
-    </main>
+          {nextCursor && (
+            <div className="mt-7 text-center">
+              <Link
+                href={`/?before=${nextCursor}`}
+                className="text-[13px] font-semibold text-accent"
+              >
+                Runs before {formatDayCompact(nextCursor)}
+              </Link>
+            </div>
+          )}
+        </>
+      )}
+    </AppShell>
   )
 }

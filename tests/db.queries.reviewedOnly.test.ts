@@ -35,6 +35,17 @@ describe('reviewed-only queries', () => {
     expect(fake.only().sql).toContain('"reviewed_at" is not null')
   })
 
+  it('listRunsWithPhotoCounts filters on reviewed_at — the list read, with its join', async () => {
+    fake.enqueue([])
+    await q.listRunsWithPhotoCounts('u1')
+    const { sql } = fake.only()
+    expect(sql).toContain('"reviewed_at" is not null')
+    // The LEFT JOIN to run_photos must not have loosened the predicate: the count is per RUN, and
+    // the run is still the thing being filtered.
+    expect(sql).toContain('left join "run_photos"')
+    expect(sql).toContain('group by')
+  })
+
   it('getRunsInIsoWeek filters on reviewed_at', async () => {
     fake.enqueue([])
     await q.getRunsInIsoWeek('u1', '2026-W34')
@@ -136,6 +147,7 @@ describe('reviewed-only queries', () => {
   it('every reviewed-only query is also user-scoped', async () => {
     const calls: Array<() => Promise<unknown>> = [
       () => q.listRuns('u1'),
+      () => q.listRunsWithPhotoCounts('u1'),
       () => q.getRunsInIsoWeek('u1', '2026-W34'),
       () => q.getRunsInMonth('u1', '2026-08'),
       () => q.getRunsBetween('u1', '2026-08-01', '2026-08-08'),
@@ -197,6 +209,7 @@ describe('the invariant is complete', () => {
       'getRunsInIsoWeek',
       'getRunsInMonth',
       'listRuns',
+      'listRunsWithPhotoCounts',
     ])
   })
 })
