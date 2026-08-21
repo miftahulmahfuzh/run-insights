@@ -67,14 +67,37 @@ PANEL = 768
 SMALL = 192
 QUALITY = 90
 METHOD = 6
-# The lossy/lossless choice is a judgement to make while looking at the first
-# promoted badge, not a number to trust from a plan, and NOTHING HAS BEEN
-# MEASURED HERE YET — this deck has zero approved masters. quality=90 is the
-# starting point the reference deck settled on after measuring its own (96–154 kB
-# per 768² badge, a maximum difference of 6/255 against lossless at the size the
-# panel actually draws). A satin-stitch patch has more high-frequency texture
-# than a line engraving, so expect larger files and check the merrowed border for
-# ringing at 220 css px before trusting this. `--lossless` is one flag away.
+# MEASURED, 22 badges, style v2, against the master downsampled to the 220 css px
+# a panel actually draws (the acceptance test this comment used to only ask for):
+#
+#   quality  kB @768²   max diff / 255   mean diff / 255
+#   90       279        12               1.11
+#   85       230        13               1.31
+#   78       184        18               1.56
+#   65       150        21               1.80
+#
+#   panel px kB @q90    max diff / 255   mean diff / 255
+#   768      279        12               1.11
+#   640      195        16               1.28
+#   512      123        21               1.47
+#
+# quality=90 at 768² is kept. There is no ringing on the merrowed border and no
+# cliff anywhere in either curve — the whole q90→q65 range moves the mean by
+# 0.7/255 — so nothing here is being paid for a visible defect.
+#
+# The prediction in the plan held: a satin-stitch patch carries far more
+# high-frequency texture than the line engraving this pipeline descends from, and
+# its files are roughly 2x that deck's 96–154 kB at the same setting. 22 panels
+# is ~6.2 MB.
+#
+# WORTH KNOWING BEFORE ANY FUTURE TUNING: nothing fetches the 768² derivative
+# today. `BadgeShelf` draws the 192² mark at 56 css px (~13 kB each); the panel
+# size is provisioned for a badge detail view that does not exist yet. If that
+# view never ships, dropping PANEL to 512 saves 56% for a max difference of
+# 21/255 at the draw size — a decision to make when there is a screen to judge it
+# on, not now. Content-hashed filenames make it free whenever it happens.
+#
+# `--lossless` remains one flag away if a future style block makes the stitch finer.
 
 # Same shape as gen_badge_art.py's pair, and for the same reason: the catalog is
 # the single source of truth for the key set. Kept as its own copy rather than

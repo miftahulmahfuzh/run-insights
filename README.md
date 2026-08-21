@@ -6,7 +6,7 @@ run, that week, and that month.
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
 profile, **F04** ingest & vision extraction, **F05** review & correction, **F06** metrics & records,
 **F08** views, charts & trends, **F07** insights, **F09** badges & achievements, **F11** sharing,
-**F10** badge-art skill (the machinery; the 22 patches are generated one at a time by hand)
+**F10** badge art — all 22 patches generated, promoted and on the shelf. **v0.1.0 is feature-complete.**
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
@@ -149,9 +149,10 @@ D12: badge art is generated offline and committed. There is no runtime image gen
 in the app — at ~$0.04 and 4–5 minutes per image, a shelf that drew itself on demand would be a
 bill and a latency budget in exchange for nothing a build step can't do better.
 
-So F10 ships **machinery, not pictures**: a skill (`.claude/skills/generate-badge/`), a style
-contract, three Python tools and a CI guard. The 22 patches arrive one at a time afterwards,
-because every one of them needs a human to look at it.
+So F10 is **machinery first, pictures second**: a skill (`.claude/skills/generate-badge/`), a
+style contract, four Python tools and a CI guard — then 22 patches generated one at a time, each
+judged by eye before promotion. The deck took **35 generations for 22 badges** (~$1.40), inside
+the plan's ~60/$2.40 worst case.
 
 - **`style.md` is an interface, not a document.** `gen_badge_art.py` parses its
   `<!-- STYLE BLOCK vN -->` and `<!-- SCENES -->` fences, and **refuses to start** unless the scene
@@ -182,6 +183,27 @@ because every one of them needs a human to look at it.
   so the measurement tool can be exercised — and its floors shown to actually catch a flat,
   weaveless "sticker" fill — without an API call. Controls are never a source for re-deriving a
   band; they are drawn by arithmetic and a real candidate is photographed thread.
+
+Three things the deck taught that the plan could not have known, all recorded in its §12:
+
+- **The anchor is a ruler, not a stencil.** The plan made every badge generate against
+  `_anchor.png`, reasoning that twill tone and stitch gauge are continuous quantities a prompt
+  specifies loosely. Sound a priori, false for this model: three generations of one badge from an
+  identical prompt showed `input_references` transferring the *subject* hard (it redrew the
+  anchor's rooster instead of a doughnut, twice) and the *cloth tone* not at all — 9.5 and 9.3
+  points of drift with the anchor, **1.9 without it**. What holds the deck together is the style
+  block plus one fixed seed. The anchor's real job is check 9's baseline, which is how this was
+  caught.
+- **Two instrument fixes, neither a loosened band.** The twill check was sampling a fixed outer
+  frame that a 96%-tall patch reaches into — it was measuring the patch and calling it cloth. And
+  check 9a was comparing a hexagon's bounding box against a shield's: the first two hexagons
+  "drifted" 8.8% and 9.3% while landing 0.4 points apart *from each other*. Both were fixed at the
+  instrument, with every already-passing badge unmoved — the signature of a correctness fix rather
+  than a capitulation.
+- **The contact sheet earned its place on the first run.** `century_club` and `double_century`
+  both ended up as "a vertical post with something wound round it" — the exact escalation-pair
+  collision the audit predicted, arrived at by a route it did not. Every per-badge check passed
+  it; the whole shelf in one line of sight caught it in a second.
 
 Filenames under `public/badges/` carry the first 8 hex of their master's SHA-256, which is the only
 reason `next.config.ts` may serve them `immutable` for a year: regenerating a patch changes its

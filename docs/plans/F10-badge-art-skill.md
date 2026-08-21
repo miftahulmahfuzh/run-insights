@@ -1064,18 +1064,143 @@ deck needs: that every promoted master carries its sidecar, that one style versi
 whole deck and matches `style.md`, and that `_anchor.png` is byte-identical to one of the approved
 masters rather than to a stray candidate.
 
-### What is deliberately still open
+---
 
-**Tasks 9–14 are not done and cannot be done by tooling.** The 22 images are a human loop:
-`OPENROUTER_API_KEY` is empty in `.env.local` (§9 task 2 is a by-hand paste, on purpose), the
-anchor run is a hard serialization point that invalidates every later badge if it is wrong, and
-every badge needs three crops read by an eye before promotion. Worst case is ~60 generations,
-~$2.40 and up to five hours (§7). The machinery is complete and green; the deck is 0/22.
+## 12. The deck, as generated — 22/22
 
-**`components/profile/BadgeShelf.tsx` is untouched, and that is correct.** F09's `BadgePatch`
-renders the navy placeholder R-36 records as the *intended* treatment, with a comment reserving
-F10's slot. Wiring `BADGE_ART` into it today would not compile: the manifest is a total
-`Record<BadgeKey, BadgeArt>` that `make_badge_assets.py` refuses to emit until all 22 masters
-exist. The wiring belongs in the same commit as the finished deck — which is exactly the "the
-build is red on purpose between adding a key and promoting the art" property the total Record was
-chosen for.
+The key was pasted in and the whole deck was generated in one session. **35 generations for 22
+badges**, ~$1.40, well inside §7's ~60/$2.40 worst case. Everything in §10's verification list is
+green. What follows is what the generation actually taught, none of which the plan could have
+known in advance.
+
+### The anchor is a ruler, not a stencil — §2 step 2 is REVERSED
+
+The plan's central mechanism was wrong for this model, and the reversal is measured rather than
+preferred. Three generations of `self_reward` from an identical prompt:
+
+| attempt | `--reference` | 9b twill drift | subject |
+|---|---|---|---|
+| a01 | anchor | **9.5 pts — FAIL** | redrew the anchor's rooster |
+| a02 | anchor | **9.3 pts — FAIL** | a ring made of rooster parts |
+| a03 | none | **1.9 pts — PASS** | the doughnut the scene asked for |
+
+`input_references` on `qwen/qwen-image-3-pro` behaves like a strong img2img, not a style
+reference: it transfers the **subject** hard and the **cloth tone** not at all. Passing the anchor
+made set coherence *worse* on the one number that measures it, while destroying the thing each
+badge is generated for — and a02's note said, in as many words, *"take only the twill, the
+merrowed border, the stitch gauge and the light direction from the reference image"*. It came back
+a bird.
+
+What actually holds the deck together is **the style block plus one fixed seed** (`--seed 1970` on
+all 22). The anchor's real job turned out to be check 9's baseline — which is how this was caught
+at all. `gen_badge_art.py`'s "anchor exists but `--reference` was not passed" warning is
+deliberately left in place: the finding is one badge deep, and a warning read every time is the
+right weight for a decision that may yet be revisited.
+
+### STYLE BLOCK v2: the block had no answer for what is inside the border
+
+v1 named the subject and the border and left the ground unspecified, while forbidding slate sky
+blue "as a background wash". `early_bird` a01 filled the shield with pale slate anyway and read
+*well* at 40 px; a02, corrected to leave the ground as bare twill, obeyed the contract and read
+*worse* — the patch became a thin bone outline that nearly vanished against dark `--paper`. Two
+attempts, two opposite failures, one cause.
+
+v2 promotes slate to the shared interior field and keeps bone as the shared border, so a badge is
+a bright solid shape on dark cloth at any size. **The bump cost nothing because zero badges were
+promoted** — surfacing a structural contract problem is the anchor run's whole job, and the same
+bump found at badge sixteen would have cost fifteen regenerations.
+
+### Two scene rewrites, both predicted by the audit, neither for the predicted reason
+
+- **`new_ceiling`** burned three attempts proving the audit right: every phrasing of "splinters
+  radiating outward from the break" resolves to the rank star the style block forbids. Rewritten
+  to a row of parallel ceiling boards with the middle one burst upward out of line — same meaning,
+  no radial pattern to reach for.
+- **`double_century`** took five and *two* rewrites. The audit held a prepared alternative in case
+  it converged with `century_club`; it never converged, but two posts side by side is an
+  inherently wide composition that fought its rounded triangle three times over. The alternative
+  was spent on aspect ratio — **and that fix caused the collision it had been held in reserve
+  for.** A post wound in two loops and a post wound in yarn are the same picture. Per-badge review
+  passed it; the §9 task 14 contact sheet caught it instantly, with the two four tiles apart in
+  one row. It is now bunting with no post at all.
+
+Two lessons worth more than the badges: **a scene's composition has an implied aspect ratio and it
+must agree with the outer shape it was assigned**, and **a prepared alternative can spend itself on
+the wrong problem** — write the next one down before moving on.
+
+### "Chevron" is a word the model does not know
+
+Asked for a chevron it draws a shield — the one shape the block spends a sentence forbidding by
+another name. A physical description (*"a broad arrowhead pointing downward … its bottom is a
+point, not a curve"*) works, and it travels in each chevron's sidecar rather than in the style
+block, because folding it in would mean v3 and a mixed deck. Recorded in `style.md` for whoever
+makes a v3 for its own reasons.
+
+### Two instrument fixes, neither of them a loosened band
+
+- **`substrate_stats` was measuring the patch and calling it cloth.** 9b started failing on
+  candidates whose twill looked right; box *height* tracked the drift exactly (a patch 96% tall
+  reaches into the fixed outer 5% frame). Now sampled strictly outside the detected foreground
+  box. Every already-passing badge was unmoved (0.0→0.0, 1.9→1.9, 3.7→3.6) while the two
+  artifacts dropped from 8.5/9.6 to 2.1/3.5 — the signature of a correctness fix rather than a
+  capitulation. Not one threshold changed.
+- **Check 9a was comparing a hexagon's bounding box against a shield's.** The first two hexagons
+  "drifted" 8.8% and 9.3% from the anchor while landing 0.4 points apart *from each other*. 9a now
+  reads each badge's `SHAPE:` out of `style.md` and compares against its own family. Every badge
+  now reads 0.1–3.7% against its family (`redline_republic` at 8.5% is a genuinely wide one).
+
+The plan flagged this exact risk in §5.2 — "compared within reason across different outer shapes"
+— and the re-derivation comment written at six badges named the fix in advance: *"if the observed
+spread turns out to cluster by SHAPE rather than scatter, the right fix is a per-shape
+expectation, not a wider band."*
+
+### §9 task 12, done at six, and what it moved
+
+Four bands had been firing on **every** approved candidate because they were guessed for a
+substrate nobody had seen. Real navy twill under a hard raking light is far more textured than the
+guess allowed:
+
+| check | observed | guessed | re-derived |
+|---|---|---|---|
+| 3 margin sd | 11.3–23.1 | ≤16.0 | 4.0–30.0 |
+| 8b outer margin | 15.4–42.4 | 1.2–14.0 | 5.0–55.0 |
+| 10 weave rms | 10.1–11.1 | 0.40–6.00 | 4.00–18.00 |
+| 6 signature share | 2.02–4.12 | ≤3.00 | ≤6.00 |
+
+Two bands got **stricter** — 8a from 4.00% to 3.00%, 9a/9b from 8.0 to 6.0 — which is the half
+that shows this was a re-derivation and not a capitulation. Check 5's invisibility floor was
+deliberately left alone: it is a safety check, and raising it toward the observed minimum would
+quietly convert it into a taste check.
+
+`double_century` a03 missed 9b by 0.1 points and was **not** rescued by widening the band; the
+scene was fixed instead.
+
+### What the numbers say about the finished deck
+
+All 22 masters pass every hard check. Per-shape widths: shield 81.0%, rounded triangle 77.8%,
+hexagon 87.3%, chevron 84.4% — the chevron entry shipped as a pure geometric *estimate* of 85.0%
+and its family came in at 84.4%, the one guess in the whole file that was essentially right.
+Twill tone spans 0.0–5.8 points against the anchor: one bolt of cloth, 22 times.
+
+**No lettering anywhere**, confirmed by reading all 22 `.ring.png` crops — including `tourist`, a
+signpost, which is the highest-risk scene in the deck and passed on the first attempt. Two
+near-misses are recorded rather than rejected: `two_a_days`' pan handle has a hang-hole that reads
+as an O in the unrolled crop (it is a pan, and it is invisible at 40 px), and `self_reward`'s
+signature is worked as a French knot, which `TECHNIQUE` excludes.
+
+### Shipped
+
+`make_badge_assets.py` ran once: `public/badges/**` (22 × 768² + 22 × 192², content-hashed,
+6.6 MB) and `lib/badges/badge-art.ts` as a total `Record<BadgeKey, BadgeArt>`. The lossy/lossless
+question §5.4 left open is now **measured** rather than assumed, at the 220 css px a panel draws —
+q90 shows no ringing on the merrowed border and there is no cliff anywhere in the curve.
+
+`components/profile/BadgeShelf.tsx` is wired, and F09's reserved comment turned out to be exactly
+right: *"F10 drops an `<Image>` inside `<BadgePatch>` and nothing else on this screen changes."*
+Nothing else changed. The patch draws `BADGE_ART[key].small` on `BADGE_ART[key].twill` — the
+master's own sampled cloth, per badge, so the `rounded-field` clip has no seam.
+
+**Repo cost, stated plainly:** 52 MB of 1024² PNG masters plus 6.6 MB of derivatives. PNG is
+already optimally compressed here (re-encoding is *worse*); lossless WebP would save 27% but
+changes the archival format that `sha256`, the manifest and `badges:check` all key on. D12 says
+the masters are committed, so they are.

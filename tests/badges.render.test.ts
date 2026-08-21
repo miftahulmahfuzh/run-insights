@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { BADGE_ART } from '@/lib/badges/badge-art'
 
 import { BadgeShelf } from '@/components/profile/BadgeShelf'
 import { RecordsTable } from '@/components/profile/RecordsTable'
@@ -72,12 +73,27 @@ describe('BadgeShelf', () => {
   })
 
   it('draws the locked patches dashed and desaturated, and the earned ones solid (R-36/R-43)', () => {
-    // The navy is a material, not a theme token: `#1d2436` is the design's own BadgeTile value and
-    // it does not change with the colour scheme, because twill does not.
-    expect(html).toContain('bg-[#1d2436]')
     expect(html).toContain('border-dashed')
     expect(html).toContain('grayscale')
     expect(html).toContain('border-solid')
+  })
+
+  it('draws F10’s art on each badge’s own sampled twill, never a shared placeholder', () => {
+    // This assertion used to read `toContain('bg-[#1d2436]')` — the navy placeholder F09 shipped
+    // while F10's art did not exist. R-36 recorded that navy as the *intended* treatment rather
+    // than a stand-in, and it turned out to be the navy F10's style block asked the model for, so
+    // the repaint is a substitution and not a reversal. What replaced it is stronger to assert.
+    for (const key of ['early_bird', 'boring_excellence'] as const) {
+      const art = BADGE_ART[key]
+      expect(html).toContain(art.small)
+      // Content-hashed, which is what licenses the `immutable` header in next.config.ts.
+      expect(art.small).toMatch(/^\/badges\/[a-z0-9_]+\.[0-9a-f]{8}\.sm\.webp$/)
+      // Per badge, not one constant: every master's cloth is separately generated, and the box
+      // behind the art has to be that master's own twill or its clipped corners show a seam.
+      expect(html).toContain(`background-color:${art.twill}`)
+    }
+    // The placeholder is gone rather than merely covered.
+    expect(html).not.toContain('bg-[#1d2436]')
   })
 })
 

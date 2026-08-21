@@ -133,7 +133,8 @@ SIGNATURE_HUE = (15.0, 35.0)
 #
 #   shield           80.1  80.5  81.6  82.4  80.9  80.5     mean 81.0, spread 2.3
 #   rounded triangle 76.2  84.4  76.2  75.8  76.6  77.7     mean 77.8, spread 8.6
-#   hexagon          87.1  87.5                             mean 87.3, spread 0.4
+#   hexagon          87.1  87.5  88.7  85.2  87.9           mean 87.3, spread 3.5
+#   chevron          84.0  81.2  85.2  86.3  85.2           mean 84.4, spread 5.1
 #
 # The two hexagons land 0.4 points apart — as tight a cluster as the deck has —
 # and seven points clear of every shield. Measured against a shield anchor they
@@ -146,14 +147,16 @@ SIGNATURE_HUE = (15.0, 35.0)
 # per-shape expectation, not a wider band" — and it is why the band is NOT being
 # widened to paper over the difference.
 #
-# (observed, 14 badges, v2) for shield and rounded triangle; (observed, 2) for
-# hexagon; CHEVRON IS A GEOMETRIC ESTIMATE with no images behind it at all,
-# marked as such, and it is the first entry to re-derive once that family lands.
+# All four are now (observed, 22 badges, v2). The chevron entry shipped as a
+# geometric ESTIMATE of 0.850 with no images behind it; its family came in at a
+# mean of 84.4, so the guess was high by 0.6 points — the one number in this file
+# a pure geometric argument got essentially right, recorded because the other
+# three guesses were not close.
 SHAPE_WIDTH = {
     "shield": 0.810,
     "rounded triangle": 0.778,
     "hexagon": 0.873,
-    "chevron": 0.850,  # ESTIMATE, 0 badges — a chevron is wide like a hexagon
+    "chevron": 0.844,
 }
 # ±10%, which passes every promoted badge (worst: redline_republic, a genuinely
 # wide rounded triangle at 8.5% from its family mean) and still catches a gross
@@ -756,10 +759,9 @@ def measure(path: Path, rep: Report, anchor_stats=None):
         elif shape:
             expected = SHAPE_WIDTH[shape]
             drift = abs(box_w - expected) / expected * 100
-            note = " (ESTIMATE, 0 badges)" if shape == "chevron" else ""
             rep.hard("9a patch width vs shape", drift <= SHAPE_WIDTH_TOLERANCE,
                      f"{box_w * 100:.1f}% vs {shape} expectation "
-                     f"{expected * 100:.1f}%{note} — {drift:.1f}% "
+                     f"{expected * 100:.1f}% — {drift:.1f}% "
                      f"(≤{SHAPE_WIDTH_TOLERANCE:.1f})")
         elif a_w is not None:
             # No shape on file for this key — fall back to the anchor, and say

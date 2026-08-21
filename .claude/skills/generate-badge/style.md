@@ -169,7 +169,7 @@ TECHNIQUE paragraph carries that weight so the individual scene lines don't have
 - groundhog_day: A single groundhog shown from the shoulders up, popping out of a round burrow hole with both forepaws braced flat on the rim. SHAPE: hexagon. SIGNATURE THREAD: the groundhog's nose.
 - tourist: A single signpost with three blank arrow-shaped boards fixed to it at different heights and angles, every board bare of any word. SHAPE: chevron. SIGNATURE THREAD: the tip of whichever board points furthest from the other two.
 - century_club: A single fence post wrapped in one thick, tightly wound ball of coarse thread, the loose tail end trailing off the ball and down across the ground. SHAPE: shield. SIGNATURE THREAD: the trailing tail end of the wound thread.
-- double_century: A single tall bare post standing alone with two full loops of bunting circling it, one loop hung above the other, each sagging into its own deep curve around the post. SHAPE: rounded triangle. SIGNATURE THREAD: the lowest point of the lower loop.
+- double_century: A long string of bunting hung from a single hook at the top of the patch and folded once, so two identical lengths of triangular flags hang straight down side by side, each ending in its own point near the foot. SHAPE: rounded triangle. SIGNATURE THREAD: the flag at the very bottom of the longer of the two lengths.
 - half_ish: A single full moon shown exactly half lit and half in shadow, one hard straight line dividing the bright half from the dark half down the centre. SHAPE: hexagon. SIGNATURE THREAD: the dividing line itself, running from the moon's top edge to its bottom.
 - sweat_equity: A single round piggy bank standing alone, one heavy bead of sweat forming at its snout, its back entirely bare of any slot or mark. SHAPE: chevron. SIGNATURE THREAD: the bead of sweat at the snout.
 - new_ceiling: A row of parallel wooden ceiling boards running straight across the patch, with the middle board burst upward out of line with its neighbours and its ends splintered where it tore free, a dark gap showing beneath it. SHAPE: shield. SIGNATURE THREAD: the splintered end of the displaced board.
@@ -188,6 +188,28 @@ Shape distribution, recorded rather than left implicit: **shield** × 6 (`early_
 **rounded triangle** × 6 (`metronome`, `redline_republic`, `warmup_who`, `double_century`,
 `consistency_gremlin`, `long_way_home`). Uneven on purpose — real patch collections repeat
 shapes — but no two badges flagged as adjacent in the audit below share a shape.
+
+### "Chevron" has to be described, not named
+
+The style block names four outer shapes and the model knows three of them. Asked for a chevron it
+draws a **shield** — `negative_split` a01 did exactly that, and a shield is the very shape the
+block spends a sentence forbidding by another name. The word is the problem: on a patch, "chevron"
+reads to the model as heraldry or as rank insignia, and the rank reading is the "award" register
+the block rules out.
+
+What works is a physical description, passed as a `--note` alongside the scene:
+
+> The patch's outer silhouette is a CHEVRON: a broad arrowhead pointing downward, wide and
+> straight across its top edge, its two sides running down and inward to meet at a single point at
+> the bottom, with the bone merrowed border following that V shape the whole way round. It is not
+> a shield and its bottom is a point, not a curve.
+
+**This is deliberately NOT folded into the style block.** Doing so would bump it to v3 and
+invalidate every badge already promoted under v2 — eighteen of them by the time this was
+discovered — and `badges:check` treats a mixed deck as a failure rather than a warning. The note
+travels in each chevron's `.txt` sidecar instead, which is exactly what the sidecar is for: the
+prompt as sent, beside the image it produced. A future v3, made for its own reasons, should absorb
+this paragraph into the PATCH section and drop the note.
 
 ### The collision audit
 
@@ -208,34 +230,50 @@ open book was the reference deck's default answer to "draw a badge for a word ga
 directly so that a candidate reaching for one is flagged as ignoring its scene rather than merely
 disliked.
 
-**The post: three badges use a vertical post as base furniture.** `redline_republic` (a flag on a
-bare pole), `century_club` (a fence post wound in yarn) and `double_century` (two posts joined by
-bunting) all stand something upright and alone. Three uses of the same understructure is at the
-edge of tolerable, and they are kept distinct because the post is never the *subject* in any of
-the three — the torn fly, the wound ball, and the sagging bunting curve are what the eye lands
-on, and each of those three silhouettes is unlike the other two. If a future revision needs one
-changed, `century_club` is the one to move: the wound-yarn ball reads as a subject in its own
-right even without the post, and the prepared alternative is the same ball resting loose in a
-wooden crate.
+**The post: down to two badges, after the full-shelf sheet said three was one too many.**
+`redline_republic` (a flag on a bare pole) and `century_club` (a fence post wound in yarn) both
+stand something upright and alone, and they stay distinct because the post is the subject in
+neither — the torn fly and the wound ball are what the eye lands on, and those two silhouettes are
+unlike. `double_century` used to be the third and no longer is; see the escalation-pair note
+below. If a future revision needs one of the remaining two moved, `century_club` is the one: the
+wound-yarn ball reads as a subject in its own right even without the post, and the prepared
+alternative is the same ball resting loose in a wooden crate.
 
 **century_club / double_century is a deliberate escalation pair, like `full_week`/`year_end` in
 the reference deck, and it is watched the same way.** They share a theme (accumulated distance)
 and a base object (a fence post) but not a silhouette — a compact wound ball against a stack of
 sagging loops.
 
-**The prepared alternative was spent, for a reason nobody predicted.** This note used to say that
-if the two converged, `double_century` would move to "a single post strung with two full loops of
-bunting circling it". They never converged — three attempts at the original two-post line all drew
-a perfectly distinct picture. What failed was the SILHOUETTE: two posts side by side is an
-inherently wide composition, and it fought the rounded triangle every time (90.6% × 74.6%, then
-85.2% × 73.8%, then a squat dome that was no longer a triangle at all). 9a and 8a traded failures
-across all three. The single-post-two-loops line is naturally tall and narrow, which is what a
-rounded triangle wants — so the alternative was adopted for aspect ratio rather than for
-collision, and it pays a second dividend: the post tally below drops from three to two.
+**This pair took two scene rewrites, and the second one is why the full-shelf sheet exists.**
 
-Recorded because the lesson generalises past this badge: **a scene's composition has an implied
-aspect ratio, and it must agree with the outer shape it was assigned.** Anything wide belongs in a
-chevron or a hexagon; a rounded triangle wants a tall subject with a narrow top.
+The prepared alternative went first, and for a reason nobody predicted. Three attempts at the
+original "two posts joined by bunting" line all drew a perfectly distinct picture — they never
+converged with `century_club` at all. What failed was the SILHOUETTE: two posts side by side is an
+inherently wide composition and it fought the rounded triangle every time (90.6% × 74.6%, then
+85.2% × 73.8%, then a squat dome that was no longer a triangle). 9a and 8a traded failures across
+all three. So the audit's standing alternative — a single post strung with two full loops — was
+spent on aspect ratio rather than on collision, because it is naturally tall and narrow.
+
+**And that fix caused the collision the note had been holding in reserve for.** A post wound in
+two loops and a post wound in a ball of yarn are the same picture. Per-badge review passed it —
+every hard check was green and the subject matched its scene — and the contact sheet caught it
+immediately, with the two sitting four tiles apart in the same row. This is precisely the failure
+mode §9 task 14 predicts: convergence is invisible one badge at a time and obvious with the whole
+shelf in one line of sight.
+
+`double_century` is now bunting with no post at all: one string hung from a single hook and folded
+once, so two identical lengths of flags hang side by side. It keeps the "double" reading, it is
+tall and narrow, and it takes the post tally to two.
+
+Two lessons, both of which generalise past this badge:
+
+**A scene's composition has an implied aspect ratio, and it must agree with the outer shape it was
+assigned.** Anything wide belongs in a chevron or a hexagon; a rounded triangle wants a tall
+subject with a narrow top.
+
+**A prepared alternative can spend itself on the wrong problem.** When one is used for a reason
+other than the collision it was written for, write the next one down before moving on — this note
+had none in reserve the second time, and the replacement had to be invented under pressure.
 
 **groundhog_day / consistency_gremlin: two creatures on/in something round-adjacent, checked and
 separated on purpose.** `groundhog_day` is a bust — shoulders up, emerging from a hole, paws

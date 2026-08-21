@@ -1,11 +1,11 @@
-badge:          double_century
+badge:          tourist
 provider:       openrouter
 model:          qwen/qwen-image-3-pro
 seed:           1970
 style version:  v2
 reference:      (none — anchor run)
 resolution:     1K 1:1  (expect 1024²)
-image sha256:   38a2231481b5b1f0ecc26b5524aa82ff6b4ff44e6d8b87d782298a681ecab52c
+image sha256:   2a9a41bf03563fe48708fd70684a0e1434efb6e8be5bb7b178e691b020b2761c
 
 --- prompt as sent ---
 A single embroidered cloth patch, sewn onto a scrap of dark navy cotton twill, in the manner of a
@@ -101,4 +101,6 @@ signature thread belong to the whole set; what sits inside the border belongs to
 Do not fall back on a running shoe, a medal, or a stopwatch as a default centre — 22 patches
 converging on the same three objects is the way this set fails.
 
-SUBJECT FOR THIS BADGE: A long string of bunting hung from a single hook at the top of the patch and folded once, so two identical lengths of triangular flags hang straight down side by side, each ending in its own point near the foot. SHAPE: rounded triangle. SIGNATURE THREAD: the flag at the very bottom of the longer of the two lengths.
+SUBJECT FOR THIS BADGE: A single signpost with three blank arrow-shaped boards fixed to it at different heights and angles, every board bare of any word. SHAPE: chevron. SIGNATURE THREAD: the tip of whichever board points furthest from the other two.
+
+CORRECTION FOR THIS ATTEMPT: The patch's outer silhouette is a CHEVRON: a broad arrowhead pointing downward, wide and straight across its top edge, its two sides running down and inward to meet at a single point at the bottom, with the bone merrowed border following that V shape the whole way round. It is not a shield and its bottom is a point, not a curve. Every arrow board is a plain flat panel of smooth satin stitch, completely blank from end to end, carrying nothing but its own colour.

@@ -1,5 +1,8 @@
+import Image from 'next/image'
 import { cn } from '@/lib/cn'
 import { formatDay } from '@/lib/format'
+import { BADGE_ART, BADGE_ART_SMALL_SIZE } from '@/lib/badges/badge-art'
+import type { BadgeKey } from '@/lib/badges/types'
 import type { Shelf, ShelfEntry } from '@/lib/badges/shelf'
 
 /**
@@ -14,18 +17,21 @@ import type { Shelf, ShelfEntry } from '@/lib/badges/shelf'
  * reference table a runner reads once (§10.2's own framing), and a table is a list.
  *
  * ── THE PATCH IS THE ONE SATURATED OBJECT IN THE APP (R-36 / R-43) ──────────────────────────
- * `#1d2436` navy with a `#46557a` border and a `#93a5d4` label are the design's own `BadgeTile`
- * values, and they are literals here rather than theme tokens on purpose: the patch is dark navy
- * *twill*, a material, and a material does not change colour when the OS switches to dark mode.
- * Everything around it is tokenised and follows the theme; the patch does not. "The shelf stays
- * quiet so the patches can be loud" is a layout instruction as much as a palette one.
+ * `#46557a` is the design's own `BadgeTile` border, a literal here rather than a theme token on
+ * purpose: the patch is dark navy *twill*, a material, and a material does not change colour when
+ * the OS switches to dark mode. Everything around it is tokenised and follows the theme; the patch
+ * does not. "The shelf stays quiet so the patches can be loud" is a layout instruction as much as
+ * a palette one. The navy the design chose for its placeholder turned out to be the navy F10's
+ * style block asked the model for — `#1d2436` against a generated `#1b2a44`-ish twill — so the
+ * repaint is a substitution, not a reconciliation.
  *
- * ── F10'S SLOT ──────────────────────────────────────────────────────────────────────────────
- * D12 forbids runtime image generation, and F10 has not generated the 22 patches yet, so the patch
- * renders as the navy placeholder the design shipped — which R-36 records as the *intended* final
- * treatment, not a stand-in to be re-themed. When `public/badges/<key>.png` exists, F10 drops an
- * `<Image>` inside `<BadgePatch>` and nothing else on this screen changes. Rendering a broken
- * `<img>` in the meantime would be worse than rendering the placeholder honestly.
+ * ── F10 HAS LANDED, AND NOTHING ELSE ON THIS SCREEN CHANGED ─────────────────────────────────
+ * This block used to say that when the art existed, F10 would "drop an `<Image>` inside
+ * `<BadgePatch>` and nothing else on this screen changes." That is exactly what happened: the
+ * layout, the row structure, the locked treatment and the copy are untouched, and `BadgePatch` now
+ * draws `BADGE_ART[key].small` on `BADGE_ART[key].twill`. D12 still holds — the 22 patches were
+ * generated offline by `.claude/skills/generate-badge` and committed; nothing here calls an image
+ * API at request time, and `BADGE_ART` is a plain data module.
  */
 export function BadgeShelf({ shelf }: { shelf: Shelf }) {
   return (
@@ -50,7 +56,7 @@ function BadgeRow({ entry }: { entry: ShelfEntry }) {
   const earned = entry.earned != null
   return (
     <div className="flex items-start gap-4">
-      <BadgePatch title={entry.title} earned={earned} />
+      <BadgePatch badgeKey={entry.key} earned={earned} />
 
       <div className="min-w-0 flex-1">
         <p
@@ -84,39 +90,54 @@ function BadgeRow({ entry }: { entry: ShelfEntry }) {
 }
 
 /**
- * The patch itself: a 56 px navy square with a merrowed-looking border, holding the badge's initials
- * until F10's art lands.
+ * The patch itself: F10's embroidered art at 56 px, on the twill that art was sampled from.
+ *
+ * ── WHY THE BACKGROUND IS `art.twill` AND NOT A TOKEN ───────────────────────────────────────
+ * The master is a square of navy cloth with the patch sewn onto it, full bleed (F10 style block).
+ * Drawn inside a `rounded-field` box, its own corners get clipped — so the box is painted with the
+ * exact twill `make_badge_assets.py` sampled from that master's outer frame, and the join is
+ * invisible. Per badge, not one shared constant: every master's cloth is separately generated and
+ * `badges:check` recomputes the value from the master rather than trusting the manifest.
+ *
+ * R-36 / R-43 still hold and this is what they were describing: the patch is a *material*, so it
+ * does not change colour when the OS switches to dark mode. Everything around it is tokenised.
+ * "The shelf stays quiet so the patches can be loud."
  *
  * Locked patches are desaturated and dashed rather than hidden (§10.2). The dashed border is the
  * app's established vocabulary for "a different kind of thing, not something gone wrong" — the same
  * treatment `EmptyState` and the splits table's partial row use.
+ *
+ * `unoptimized`: these are already 192² WebP sized for exactly this box, content-hashed, and served
+ * `immutable` by `next.config.ts`. Routing them through the optimizer would re-encode an asset that
+ * was encoded for this purpose and bill a transformation for it.
  */
-function BadgePatch({ title, earned }: { title: string; earned: boolean }) {
+function BadgePatch({ badgeKey, earned }: { badgeKey: BadgeKey; earned: boolean }) {
+  const art = BADGE_ART[badgeKey]
   return (
     <div
       aria-hidden
       className={cn(
-        'grid h-14 w-14 shrink-0 place-items-center rounded-field border-2 text-center',
-        'bg-[#1d2436] text-[10px] leading-tight font-bold tracking-[0.04em] text-[#93a5d4]',
+        'h-14 w-14 shrink-0 overflow-hidden rounded-field border-2',
         earned
           ? 'border-solid border-[#46557a]'
           : 'border-dashed border-[#46557a] opacity-40 grayscale',
       )}
+      style={{ backgroundColor: art.twill }}
     >
-      {initialsOf(title)}
+      <Image
+        // Empty alt, inside an aria-hidden box: the badge's title, its condition and its earned
+        // date are all rendered as real text in the row beside this. A screen reader announcing
+        // the picture too would read every badge twice.
+        src={art.small}
+        alt=""
+        width={BADGE_ART_SMALL_SIZE}
+        height={BADGE_ART_SMALL_SIZE}
+        className="h-full w-full object-cover"
+        unoptimized
+        // Twenty-two of these on one screen. Only the first few are above the fold, and the
+        // browser's own lazy default is the right call for the rest.
+        loading="lazy"
+      />
     </div>
   )
-}
-
-/**
- * Two letters from the title, as a stand-in for art that does not exist yet. Deliberately not the
- * badge key: `fast_start_fool` truncated to eight characters reads as a variable name, and a shelf
- * of variable names looks like a bug rather than a placeholder.
- */
-function initialsOf(title: string): string {
-  const letters = title
-    .split(/[\s?-]+/)
-    .filter(Boolean)
-    .map((word) => word[0]!.toUpperCase())
-  return letters.slice(0, 2).join('')
 }
