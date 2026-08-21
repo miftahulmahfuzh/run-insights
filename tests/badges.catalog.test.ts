@@ -179,6 +179,30 @@ describe('the copy — all 22, in register', () => {
     }
   })
 
+  it('stays inside F12\u2019s length budget \u2014 one clause, one line', () => {
+    /*
+     * The first cut of `meta.ts` spent 3330 characters on 22 badges, most of it a gloss restating
+     * what the condition above it had already said. It was halved on instruction, and this is the
+     * mechanism that keeps it halved: every other rule in that file is a rule about *voice*, and a
+     * rule about voice does not stop a sentence from growing a second clause.
+     *
+     * Per-string caps rather than only a total, because a total lets one badge eat another's
+     * budget. `boring_excellence` is the outlier and is allowed to be: it genuinely names three
+     * separate numbers, which is why the condition cap is not tighter than 100.
+     */
+    let total = 0
+    for (const key of BADGE_KEYS) {
+      const { condition, gloss } = BADGE_META[key]
+      expect(condition.length, `${key} condition`).toBeLessThanOrEqual(100)
+      expect(gloss.length, `${key} gloss`).toBeLessThanOrEqual(70)
+      // One sentence, or at most two short ones. Three is a paragraph.
+      expect((gloss.match(/[.?]/g) ?? []).length, `${key} gloss sentences`).toBeLessThanOrEqual(2)
+      total += condition.length + gloss.length
+    }
+    // Half of 3330, with nothing to spare. Raising this number is a decision, not a tidy-up.
+    expect(total).toBeLessThanOrEqual(1665)
+  })
+
   it('states each threshold once, through lib/format.ts', () => {
     // R-23: the unit comes from the formatter, so a condition can never spell `10,67 km`.
     expect(BADGE_META.sweat_equity.condition).toContain('1000 kcal')

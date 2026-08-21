@@ -55,13 +55,37 @@ describe('BadgeShelf', () => {
 
   it('prints a locked badge’s condition and gloss in full', () => {
     expect(html).toContain(BADGE_META.half_ish.condition.replace(/'/g, '&#x27;'))
-    expect(html).toContain('The watch counted every one of them.')
+    expect(html).toContain('The legs paid the bill.')
   })
 
   it('dates an earned badge and only mentions the count once it means something', () => {
     expect(html).toContain('Thu, 20 Aug 2026')
-    expect(html).toContain('earned 3 times')
-    expect(html).not.toContain('earned 1 times')
+    // `tourist` was earned three times, `late_start` once. The row names which earning the date
+    // belongs to; the pill on the patch carries the number itself.
+    expect(html).toContain('most recent of 3')
+    expect(html).toContain('\u00d73')
+    expect(html).not.toContain('most recent of 1')
+    expect(html).not.toContain('\u00d71')
+  })
+
+  it('makes every row a button that names its own state (F12)', () => {
+    // Twenty-two rows, twenty-two buttons, and no twenty-third: the panel is ONE dialog driven by
+    // the selection, so a shut shelf ships no extra control.
+    expect(html.match(/<button/g)).toHaveLength(22)
+    expect(html).toContain('aria-label="Tourist \u2014 earned 3 times. Show the badge."')
+    expect(html).toContain('aria-label="Fashionably Late \u2014 earned once. Show the badge."')
+    expect(html).toContain('aria-label="Half-ish \u2014 not yet earned. Show the badge."')
+  })
+
+  it('renders no panel content while the shelf is shut', () => {
+    // The <dialog> is in the markup; its subtree is not. A shut panel whose prose stays in the
+    // document is prose a screen reader reaches in the reading order of everything else on /me.
+    expect(html).toContain('<dialog')
+    expect(html).not.toContain('Earned once')
+    expect(html).not.toContain('Not yet earned')
+    // The 768px art belongs to the panel alone. The shelf draws the 192px derivative.
+    expect(html).not.toContain(BADGE_ART.tourist.src)
+    expect(html).toContain(BADGE_ART.tourist.small)
   })
 
   it('carries R-44’s progress line on the accumulating badges, and nowhere else', () => {
