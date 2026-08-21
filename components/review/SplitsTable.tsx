@@ -264,6 +264,8 @@ function SplitSheet({
               return r.value === null ? { value: split.timeSec, invalid: true } : { value: r.value }
             }}
             onChange={(timeSec) => onChange({ timeSec })}
+            mask="mm:ss"
+            deferError
             aria-label="Split time"
           />
         </SheetField>
@@ -279,6 +281,8 @@ function SplitSheet({
                 : { value: r.value }
             }}
             onChange={(paceSecPerKm) => onChange({ paceSecPerKm })}
+            mask="mm:ss"
+            deferError
             aria-label="Split pace"
           />
         </SheetField>

@@ -214,7 +214,7 @@ function ZoneSheet({
         <div>
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
             <span className="text-xs font-semibold tracking-[0.02em] text-ink-2">Time in zone</span>
-            <span className="text-[10px] font-medium text-ink-3">mm:ss</span>
+            <span className="text-[10px] font-medium text-ink-3">h:mm:ss</span>
           </div>
           <ParsedInput
             value={zone.durationSec}
@@ -226,6 +226,8 @@ function ZoneSheet({
                 : { value: r.value }
             }}
             onChange={(durationSec) => onChange({ durationSec })}
+            mask="hh:mm:ss"
+            deferError
             aria-label={`Time in zone ${zone.zone}`}
           />
           {errors[path('durationSec')] && (

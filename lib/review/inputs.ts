@@ -125,14 +125,71 @@ export function toDistanceInput(km: number | null): string {
   return km === null || !Number.isFinite(km) ? '' : km.toFixed(2)
 }
 
-/** `'07:07'`, `'7:07'`, `'0707'` → `'07:07'`; anything else is invalid. */
-export function parseClockInput(text: string): { value: string | null; invalid?: true } {
-  if (blank(text)) return { value: null }
-  const trimmed = text.trim()
-  const digits = trimmed.replace(/\D/g, '')
-  if (digits.length !== 3 && digits.length !== 4) return { value: null, invalid: true }
-  const h = Number(digits.slice(0, digits.length - 2))
-  const m = Number(digits.slice(-2))
-  if (h > 23 || m > 59) return { value: null, invalid: true }
-  return { value: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` }
+/**
+ * ── THE MASK ────────────────────────────────────────────────────────────────────────────────
+ *
+ * `inputMode="numeric"` asks the OS for a digits-only keypad and both iOS and Android oblige:
+ * **there is no colon key on it.** Duration, average pace, split time, split pace and time-in-zone
+ * all want one, which made five fields on the review screen impossible to correct on a phone —
+ * on the one screen whose entire justification is correcting a field the model got wrong.
+ *
+ * No `inputMode` value fixes this. `tel` offers `+ * #`, `decimal` offers only the decimal
+ * separator, and `text` buries `:` two taps deep on iOS behind a letter keyboard. So the separator
+ * stops being typed instead: digits shift in from the right and this function draws the colons.
+ *
+ * It is display-only. The parsers above are untouched — `parseDurationInput('11:83')` already
+ * says `invalid` because only the leading field may exceed 59, and that is exactly the answer the
+ * mask's intermediate states need.
+ *
+ * It lives here rather than in `ParsedInput` because `vitest.config.ts` runs `environment: 'node'`
+ * and its `include` matches `*.test.ts` only — this repo has no component tests, so logic inside a
+ * component is logic no test can reach.
+ */
+export type TimeMaskShape = 'mm:ss' | 'hh:mm:ss'
+
+/**
+ * A pace is never hours, and a field that cannot hold six digits cannot hold `436` for `6'36"`.
+ *
+ * The ceiling this implies is `59:59` rather than `99:59`, because `toDurationInput` rolls past
+ * sixty minutes into a third group: 3600 s renders `1:00:00`, which no four-digit mask can hold.
+ * A kilometre slower than an hour is not a slow run, so the shape stops there.
+ */
+const MASK_DIGITS: Record<TimeMaskShape, number> = { 'mm:ss': 4, 'hh:mm:ss': 6 }
+
+/**
+ * `'11836'` → `'1:18:36'`, `'448'` → `'4:48'`, `'11'` → `'0:11'`.
+ *
+ * Four steps, one reason each:
+ *
+ * 1. **Strip non-digits.** Makes the function idempotent over its own output — which is what lets
+ *    `ParsedInput` re-seed through it without drift — and means a desktop user typing `4:48` still
+ *    lands on `4:48`, because the colon is dropped and `448` re-lays into the same place.
+ * 2. **Drop leading zeros, then cap.** Dropping them is what makes the field CLEARABLE, and that
+ *    is not a detail: step 3 pads, padding inflates the digit count, and without this step
+ *    backspacing out of `0:01` leaves `00`, which re-pads to `0:00` and sticks there forever. A
+ *    blank is a legitimate value on every one of these fields — the parse contract above exists to
+ *    keep blank and nonsense apart — so a mask that cannot reach blank is a broken mask. Dropping
+ *    first also stops padded zeros from eating the digit budget the cap allows.
+ * 3. **Pad to three.** So one keystroke reads `0:01` and not a bare `1` that looks like a whole
+ *    number sitting in a duration field.
+ * 4. **Group from the right in twos**, rendering only the groups present.
+ *
+ * Intermediate invalid states are unavoidable and deliberate: `1:18:36` is reached by typing
+ * `1,1,8,3,6`, and the fourth keystroke is `11:83`. Refusing that keystroke would make the
+ * destination unreachable, so `ParsedInput`'s `deferError` holds the message instead of the mask
+ * blocking the entry.
+ */
+export function maskTimeInput(text: string, shape: TimeMaskShape): string {
+  const digits = text.replace(/\D/g, '').replace(/^0+/, '').slice(0, MASK_DIGITS[shape])
+  if (digits === '') return ''
+
+  const groups: string[] = []
+  let rest = digits.padStart(3, '0')
+  while (rest.length > 2) {
+    groups.unshift(rest.slice(-2))
+    rest = rest.slice(0, -2)
+  }
+  // The leading group is the only one allowed to be a single digit.
+  groups.unshift(rest)
+  return groups.join(':')
 }

@@ -6,7 +6,6 @@ import { CONTROL_CLASS } from '@/components/ui'
 import { formatPace } from '@/lib/format'
 import type { ReviewDraft } from '@/lib/review/draft'
 import {
-  parseClockInput,
   parseDistanceInput,
   parseDurationInput,
   parsePaceInput,
@@ -92,6 +91,8 @@ export function HeroFields({
             toText={toDurationInput}
             parse={parseDurationInput}
             onChange={(durationSec) => onChange({ durationSec })}
+            mask="hh:mm:ss"
+            deferError
             placeholder="1:18:36"
             aria-label="Duration"
           />
@@ -108,6 +109,8 @@ export function HeroFields({
             toText={toPaceInput}
             parse={parsePaceInput}
             onChange={(avgPaceSecPerKm) => onChange({ avgPaceSecPerKm })}
+            mask="mm:ss"
+            deferError
             placeholder="7:22"
             aria-label="Average pace, minutes and seconds per kilometre"
           />
@@ -133,12 +136,7 @@ export function HeroFields({
           )}
         </HeroField>
 
-        <HeroField
-          label="Started"
-          hint="24h"
-          chip={chipFor('startTime')}
-          error={errors['startTime']}
-        >
+        <HeroField label="Started" chip={chipFor('startTime')} error={errors['startTime']}>
           <ClockInput
             value={draft.startTime}
             onChange={(startTime) => onChange({ startTime })}
@@ -146,7 +144,7 @@ export function HeroFields({
           />
         </HeroField>
 
-        <HeroField label="Ended" hint="24h" chip={chipFor('endTime')} error={errors['endTime']}>
+        <HeroField label="Ended" chip={chipFor('endTime')} error={errors['endTime']}>
           <ClockInput
             value={draft.endTime}
             onChange={(endTime) => onChange({ endTime })}
@@ -172,10 +170,21 @@ export function HeroFields({
 }
 
 /**
- * A time field is not a number field: `07:07` has a leading zero that matters and a colon the
- * numeric keypad does not offer. `parseClockInput` reads the digits and inserts the colon, so
- * `0707` and `7:07` both work — but the local text has to survive the intermediate `70`, which is
- * why this holds its own state the same way `ParsedInput` does.
+ * **The platform's own rolling clock, which is the whole reason this is native.** A hand-rolled
+ * text field here was typeable — `parseClockInput` stripped non-digits, so `0707` worked on the
+ * numeric keypad — but it looked impossible, and a control that looks impossible on a correction
+ * screen is a control nobody corrects with.
+ *
+ * The formats already agree, which is what makes this a deletion rather than a port:
+ * `type="time"` emits zero-padded `HH:mm` or `''`, and `lib/review/schema.ts`'s `clockTime`
+ * requires precisely zero-padded `HH:mm` — it rejects `'7:07'`. **The native control cannot
+ * produce the one shape the schema refuses**, so there is no parse step at all.
+ *
+ * The Date field two cells up is already a native `type="date"`, so this ends the state where two
+ * of three date/time fields were native and one was not. The cost is the same bargain that field
+ * already struck: the browser owns the control's internals, so styling is height, font and colour.
+ * No `hint` either — the value is always 24h but the DISPLAY follows the device locale, so a
+ * "24h" label would be a promise this component does not control.
  */
 function ClockInput({
   value,
@@ -187,14 +196,12 @@ function ClockInput({
   label: string
 }) {
   return (
-    <ParsedInput<string | null>
-      value={value}
-      toText={(v) => v ?? ''}
-      parse={parseClockInput}
-      onChange={onChange}
-      placeholder="07:07"
+    <input
+      type="time"
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value || null)}
       aria-label={label}
-      invalidMessage="Use a 24-hour time like 07:07."
+      className={CONTROL_CLASS}
     />
   )
 }
