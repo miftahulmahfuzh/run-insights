@@ -5,7 +5,6 @@ import imageCompression from 'browser-image-compression'
 import {
   COMPRESSION_LIB_URL,
   COMPRESSION_MAX_ITERATION,
-  MAX_SOURCE_BYTES,
   MAX_UPLOAD_BYTES,
   TARGET_MAX_MB,
   TARGET_QUALITY,
@@ -29,17 +28,6 @@ export interface CompressedShot {
   height: number
   originalBytes: number
   compressedBytes: number
-}
-
-export function rejectionReason(file: File): string | null {
-  if (!file.type.startsWith('image/') && !/\.(png|jpe?g|heic|heif|webp)$/i.test(file.name)) {
-    return `“${file.name}” is not an image.`
-  }
-  if (file.size === 0) return `“${file.name}” is empty.`
-  if (file.size > MAX_SOURCE_BYTES) {
-    return `“${file.name}” is too large (${Math.round(file.size / 1e6)} MB).`
-  }
-  return null
 }
 
 export async function compressForExtraction(
