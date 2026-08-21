@@ -295,3 +295,92 @@ domain is 0–3599, and the ceiling is an hour.
 
 No code change needed; the shape is still right for a pace. But the plan asserted a bound the
 implementation does not have, so the bound is corrected here and in the `MASK_DIGITS` comment.
+
+---
+
+# F14 round 2 — 2026-08-21 — the sheet that stole the keyboard
+
+Reported from a phone immediately after round 1 landed: **editing a heart-rate zone, every single
+digit dismissed the keyboard.** One digit, keyboard gone, tap the field again.
+
+## 7. Root cause, four links long, none of them in ZoneBar
+
+```
+keystroke in the zone sheet
+  → ParsedInput pushes the value up
+  → ReviewClient's `draft` useState updates            (ReviewClient.tsx:95)
+  → ReviewClient re-renders, so ZoneBar re-renders
+  → ZoneBar mints a NEW `onClose={() => setEditing(null)}`   (ZoneBar.tsx:162)
+  → Sheet's effect listed `onClose` in its deps, so they compare unequal
+  → React tears the effect down and re-runs it
+  → the effect calls `panelRef.current?.focus()`        (Sheet.tsx:69)
+  → focus leaves the input, and iOS drops the keyboard
+```
+
+**The dependency was spurious.** `onClose` is only ever *read inside* the Escape listener — it is
+never consulted to decide whether the effect should re-run. Listing it turned "focus the panel when
+the sheet opens" into "focus the panel whenever the parent re-renders", on a surface whose entire
+content is text inputs.
+
+### 7.1 Not an F14 regression
+
+`components/ui/Sheet.tsx` is not in `3759b71`; the effect landed with F05 in `182745f`. Tracing the
+pre-mask code confirms it: zone 1 with `durationSec: 0` displayed `0:00`, typing `5` gave `0:005`,
+and `parseDurationInput` read that as a valid 5 seconds — so `onChange` fired and focus was stolen
+on the first digit then too. Round 1 neither caused this nor hid it.
+
+### 7.2 It was never only the zone sheet
+
+`SplitsTable.tsx:195` passes the identical inline `onClose`, so correcting a split had the same bug.
+It was fixed by the same one-line change, which is the argument for fixing `Sheet` rather than
+memoising at the call sites: a `useCallback` in `ZoneBar` would have fixed the reported screen and
+left the trap armed in the other one, and for every component that opens a sheet later.
+
+### 7.3 The fix
+
+`onClose` moves into a ref synced by its own effect, the Escape listener reads
+`onCloseRef.current()`, and the focus effect keys on `[open]` alone.
+
+## 8. The sweep
+
+Every effect dependency array under `components/` and `app/` was read. Two others take unstable
+function props, and neither is this bug:
+
+- **`ScreenshotStrip.tsx:116`** — `[index, photos.length, onIndex, onClose]`. Re-runs the same way,
+  but the effect only adds a keydown listener and locks body overflow. **No `focus()` call**, so
+  there is nothing to steal, and the listener genuinely wants a fresh `onIndex`. Left alone.
+- **`ShareButton.tsx:62`** — a `useCallback`, not an effect.
+
+The combination that bites is *unstable dependency plus a focus call*, and `Sheet` was the only
+place it occurred.
+
+## 9. How this is tested, given there are no component tests
+
+`tests/ui.sheetFocus.test.ts` asserts the dependency list of the effect that focuses the panel does
+not contain `onClose`, in the static-source idiom `tests/share.bundle.test.ts` already established
+for this repo. Verified both ways: re-arming `[open, onClose]` fails exactly the one key assertion,
+restoring the fix passes all four.
+
+A text scan is the right instrument, not a compromise. The property being asserted is *"can this
+effect re-run on a re-render?"* — which lives in the dependency list, not in any one rendered
+scenario. A jsdom test would prove it for the interaction it simulated; this proves it for every
+consumer of `Sheet`, including ones a future feature adds, and it fails naming the dependency rather
+than reporting a lost keyboard three components away from the cause.
+
+**It also has nothing else guarding it: `eslint.config.mjs` configures no `react-hooks` plugin, so
+`exhaustive-deps` is not running.** Nothing flagged the original dependency, and nothing would stop
+a future edit re-adding it — which is precisely the gap this test fills. Two mistakes while writing
+it are worth recording, because both are traps for the next structural test in this repo:
+
+1. Anchoring on the first `React.useEffect` in the file measured the **new ref-sync effect**, whose
+   deps legitimately *are* `[onClose]`. The anchor has to be the focus call.
+2. Scanning the raw file found `panelRef.current?.focus()` **inside the doc comment explaining the
+   fix** before finding it in the code. `readRepoCode` exists for exactly this, and its own comment
+   says why: "a guard that fires on its own explanation gets silenced, and then it protects
+   nothing."
+
+## 10. Verification
+
+`npm test` — **1058 passed, 73 files** · `tsc --noEmit` clean · `npm run lint` clean · `next build`
+compiles. Still unverified by anything automated, and still the part that matters: that the keyboard
+actually stays up on a phone.

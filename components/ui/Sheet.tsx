@@ -37,6 +37,26 @@ export function Sheet({ open, onClose, title, subtitle, footer, children }: Shee
   const panelRef = React.useRef<HTMLDivElement>(null)
   const titleId = React.useId()
 
+  /**
+   * **`onClose` is deliberately not a dependency of the effect below, and this ref is why.**
+   *
+   * Every call site passes an inline arrow — `onClose={() => setEditing(null)}` — so `onClose` has
+   * a new identity on every render of the parent. When it was listed as a dependency, a keystroke
+   * inside the sheet pushed a value up to the review draft, re-rendered the parent, minted a new
+   * `onClose`, and made React tear the effect down and re-run it. The effect's other job is
+   * `panelRef.current?.focus()`, so focus left the input and iOS dropped the keyboard — one digit
+   * per keyboard, on the screen whose whole purpose is careful correction.
+   *
+   * The listener never needed a dependency on `onClose`; it needed the *latest* one. So it reads
+   * this ref, and the effect keys on `open` alone. Fixing it here rather than memoising at the two
+   * call sites is the point: a `useCallback` in `ZoneBar` would leave the trap armed for the next
+   * component that opens a sheet, which has no reason to know it exists.
+   */
+  const onCloseRef = React.useRef(onClose)
+  React.useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
   React.useEffect(() => {
     if (!open) return
 
@@ -51,7 +71,7 @@ export function Sheet({ open, onClose, title, subtitle, footer, children }: Shee
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
-        onClose()
+        onCloseRef.current()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -61,7 +81,7 @@ export function Sheet({ open, onClose, title, subtitle, footer, children }: Shee
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
