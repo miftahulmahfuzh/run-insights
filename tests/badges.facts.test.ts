@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  foldAwards,
   previousIsoWeek,
   qualifyingWeekStreak,
   runsOnDay,
@@ -8,6 +9,7 @@ import {
   totalDistanceM,
   weekRunCounts,
 } from '@/lib/badges/facts'
+import type { BadgeAward } from '@/lib/badges/types'
 import { canonicalRecordRun, canonicalSession } from './fixtures/canonicalRun'
 
 /**
@@ -119,5 +121,135 @@ describe('qualifyingWeekStreak', () => {
 
   it('treats a missing week as a break, not as a zero-run week to skip', () => {
     expect(qualifyingWeekStreak(new Map([['2026-W34', 4]]), '2026-W34', 4, 26)).toBe(1)
+  })
+})
+
+describe('foldAwards — F13, where the count comes from', () => {
+  /** One ledger row. `createdAt` only ever matters as a same-day tie-break. */
+  function award(over: Partial<BadgeAward> & { key: string; dedupeKey: string }): BadgeAward {
+    return {
+      runId: null,
+      scopeKey: null,
+      earnedOn: '2026-08-20',
+      createdAt: new Date('2026-08-20T00:00:00Z'),
+      count: 1,
+      ...over,
+    }
+  }
+
+  it('THE DEFECT: run A, run B, then a re-review of A — the count stays at 2', () => {
+    // F12 §4.1 walked this and got 3, because `isNews` compared the incoming earn against the one
+    // run the row remembered. Re-committing A cannot write a second (user, early_bird, A) row, so
+    // there is nothing here to fold but the two that exist.
+    const rows: BadgeAward[] = [
+      award({ key: 'early_bird', dedupeKey: 'run_a', runId: 'run_a', earnedOn: '2026-07-04' }),
+      award({ key: 'early_bird', dedupeKey: 'run_b', runId: 'run_b', earnedOn: '2026-08-20' }),
+      // the re-review of A: `insertBadgeAward` returned false and wrote nothing
+    ]
+    expect(foldAwards(rows)).toEqual([
+      {
+        key: 'early_bird',
+        runId: 'run_b',
+        scopeKey: null,
+        firstEarnedOn: '2026-07-04',
+        earnedOn: '2026-08-20',
+        count: 2,
+      },
+    ])
+  })
+
+  it('takes the first and latest days from the extremes, not from row order', () => {
+    const rows = [
+      award({ key: 'tourist', dedupeKey: 'r2', runId: 'r2', earnedOn: '2026-08-20' }),
+      award({ key: 'tourist', dedupeKey: 'r3', runId: 'r3', earnedOn: '2026-05-01' }),
+      award({ key: 'tourist', dedupeKey: 'r1', runId: 'r1', earnedOn: '2026-06-15' }),
+    ]
+    const [fold] = foldAwards(rows)
+    expect(fold!.firstEarnedOn).toBe('2026-05-01')
+    expect(fold!.earnedOn).toBe('2026-08-20')
+    expect(fold!.runId).toBe('r2') // the row holding the latest day, whatever order it arrived in
+  })
+
+  it('SUMS the count column rather than counting rows — pre-F13 history survives', () => {
+    // A row written before the migration carries the aggregate it had then. Counting rows would
+    // silently delete four earnings off the user's shelf; summing preserves what happened.
+    const rows = [
+      award({ key: 'self_reward', dedupeKey: '2026-W30', scopeKey: '2026-W30', count: 5 }),
+      award({ key: 'self_reward', dedupeKey: '2026-W34', scopeKey: '2026-W34' }),
+    ]
+    expect(foldAwards(rows)[0]!.count).toBe(6)
+  })
+
+  it('breaks a same-day tie on created_at, so the fold is deterministic', () => {
+    const rows = [
+      award({
+        key: 'two_a_days',
+        dedupeKey: 'morning',
+        runId: 'morning',
+        createdAt: new Date('2026-08-20T01:00:00Z'),
+      }),
+      award({
+        key: 'two_a_days',
+        dedupeKey: 'evening',
+        runId: 'evening',
+        createdAt: new Date('2026-08-20T13:00:00Z'),
+      }),
+    ]
+    expect(foldAwards(rows)[0]!.runId).toBe('evening')
+    expect(foldAwards([...rows].reverse())[0]!.runId).toBe('evening')
+  })
+
+  it('folds one entry per key and leaves a key with no rows absent', () => {
+    const rows = [
+      award({ key: 'late_start', dedupeKey: 'r1', runId: 'r1' }),
+      award({ key: 'century_club', dedupeKey: '2026-08', scopeKey: '2026-08' }),
+      award({ key: 'late_start', dedupeKey: 'r2', runId: 'r2', earnedOn: '2026-08-27' }),
+    ]
+    const folded = foldAwards(rows)
+    // Absence is what `buildShelf` reads as "locked", so a zero row would light up 22 tiles.
+    expect(folded.map((f) => f.key)).toEqual(['late_start', 'century_club'])
+    expect(foldAwards([])).toEqual([])
+  })
+
+  it('carries the LATEST award’s scope key for a period badge', () => {
+    const rows = [
+      award({
+        key: 'self_reward',
+        dedupeKey: '2026-W30',
+        scopeKey: '2026-W30',
+        earnedOn: '2026-07-20',
+      }),
+      award({
+        key: 'self_reward',
+        dedupeKey: '2026-W34',
+        scopeKey: '2026-W34',
+        earnedOn: '2026-08-20',
+      }),
+    ]
+    expect(foldAwards(rows)[0]!.scopeKey).toBe('2026-W34')
+  })
+
+  it('keeps a session award whose run was deleted — R-22 folded, not dropped', () => {
+    // `badges.run_id` is ON DELETE SET NULL, so the row outlives the run with a null runId and its
+    // dedupe_key intact. The badge still happened; the fold must still report it.
+    const rows = [award({ key: 'half_ish', dedupeKey: 'deleted_run', runId: null })]
+    expect(foldAwards(rows)).toEqual([
+      {
+        key: 'half_ish',
+        runId: null,
+        scopeKey: null,
+        firstEarnedOn: '2026-08-20',
+        earnedOn: '2026-08-20',
+        count: 1,
+      },
+    ])
+  })
+
+  it('does not impose catalog order — that belongs to buildShelf and badgesForRun', () => {
+    const rows = [
+      award({ key: 'boring_excellence', dedupeKey: 'r1', runId: 'r1' }), // last in the catalog
+      award({ key: 'early_bird', dedupeKey: 'r2', runId: 'r2' }), // first in the catalog
+    ]
+    expect(foldAwards(rows).map((f) => f.key)).toEqual(['boring_excellence', 'early_bird'])
   })
 })

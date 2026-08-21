@@ -355,9 +355,26 @@ describe('insights — R-11 and R-12', () => {
 })
 
 describe('records and badges — the asymmetry is the point (D7 / R-10 / R-22)', () => {
-  it('both are keyed (user_id, key): one row per key per user', () => {
+  it('records is keyed (user_id, key); badges is a ledger keyed (user_id, key, dedupe_key)', () => {
+    // F13. One record row per key, because a record is a statement about the current best. One
+    // badge row per EARN, because a badge is a fact about the past and the count of them is the
+    // thing the shelf reports — a count the primary key now enforces instead of an increment.
     expect(compositePk(schema.records)).toEqual(['user_id', 'key'])
-    expect(compositePk(schema.badges)).toEqual(['user_id', 'key'])
+    expect(compositePk(schema.badges)).toEqual(['user_id', 'key', 'dedupe_key'])
+  })
+
+  it('badges.dedupe_key is a NOT NULL text column, and is NOT generated', () => {
+    const column = columnMap(schema.badges).get('dedupe_key')
+    expect(sqlType(schema.badges, 'dedupe_key')).toBe('text')
+    expect(column?.notNull).toBe(true)
+    /* The whole of F13 §2.2. A generated `coalesce(run_id, scope_key, '')` would recompute when
+     * R-22's SET NULL fires, collapse every session award for the deleted run onto one key, and
+     * make deleting that run fail on a primary-key violation. */
+    expect(column?.generated).toBeUndefined()
+  })
+
+  it('indexes (user_id, run_id) — the ledger is too long to filter in TypeScript', () => {
+    expect(indexNames(schema.badges)).toContain('badges_user_run_idx')
   })
 
   it('records.run_id is NOT NULL and cascades — a record without its run is meaningless', () => {
@@ -396,7 +413,9 @@ describe('records and badges — the asymmetry is the point (D7 / R-10 / R-22)',
     expect(nonCascade.sort()).toEqual(['badges.run_id=set null', 'runs.extraction_id=no action'])
   })
 
-  it('badges.count defaults to 1 — the first earn is one earn, not zero', () => {
+  it('badges.count defaults to 1 — every row this app writes is exactly one earn', () => {
+    // Post-F13 the column is a fold, not a tally: it reads 1 on every row written since the
+    // ledger migration, and carries the pre-ledger aggregate on the rows that predate it.
     expect(columnMap(schema.badges).get('count')?.default).toBe(1)
   })
 })

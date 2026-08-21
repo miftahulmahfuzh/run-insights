@@ -242,12 +242,16 @@ describe('dbBadgeGateway.loadPeriodFacts', () => {
 })
 
 describe('badgesForRun', () => {
-  it('returns only this run’s badges, in catalog order, and never a period badge', async () => {
+  it('asks the database for this run’s awards and folds them into catalog order', async () => {
+    /* A real `WHERE run_id = $1` since F13 — the ledger holds one row per earn and grows without
+     * bound, so the old TypeScript filter over the user's whole badge history no longer has the
+     * shape it was justified by. The rows the driver returns are already this run's. */
     fake.enqueue([
       tableRow(schema.badges, {
         key: 'tourist',
         runId: RUN,
         scopeKey: null,
+        dedupeKey: RUN,
         earnedOn: '2026-08-20',
         count: 1,
       }),
@@ -255,26 +259,102 @@ describe('badgesForRun', () => {
         key: 'late_start',
         runId: RUN,
         scopeKey: null,
+        dedupeKey: RUN,
         earnedOn: '2026-08-20',
-        count: 1,
-      }),
-      tableRow(schema.badges, {
-        key: 'century_club',
-        runId: null,
-        scopeKey: '2026-08',
-        earnedOn: '2026-08-31',
-        count: 1,
-      }),
-      tableRow(schema.badges, {
-        key: 'half_ish',
-        runId: 'another_run',
-        scopeKey: null,
-        earnedOn: '2026-07-01',
         count: 1,
       }),
     ])
 
     const rows = await gateway.badgesForRun('u1', RUN)
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"run_id" = $')
+    expect(params).toEqual(['u1', RUN])
     expect(rows.map((r) => r.key)).toEqual(['late_start', 'tourist'])
+    // Folded, so a caller gets a StoredBadge and not a raw ledger row: one award is a count of one
+    // whose first and latest days are the same day.
+    expect(rows[0]).toEqual({
+      key: 'late_start',
+      runId: RUN,
+      scopeKey: null,
+      firstEarnedOn: '2026-08-20',
+      earnedOn: '2026-08-20',
+      count: 1,
+    })
+  })
+})
+
+describe('readBadges', () => {
+  it('folds the ledger — two awards of one key become one entry with a count of two', async () => {
+    // The whole of F12 §4.1's fix, seen from the gateway: the count is rows summed, not a column
+    // the application incremented when it guessed the earn was new.
+    fake.enqueue([
+      tableRow(schema.badges, {
+        key: 'early_bird',
+        runId: 'run_a',
+        scopeKey: null,
+        dedupeKey: 'run_a',
+        earnedOn: '2026-07-04',
+        count: 1,
+      }),
+      tableRow(schema.badges, {
+        key: 'early_bird',
+        runId: 'run_b',
+        scopeKey: null,
+        dedupeKey: 'run_b',
+        earnedOn: '2026-08-20',
+        count: 1,
+      }),
+    ])
+
+    const rows = await gateway.dbBadgeGateway.readBadges('u1')
+    expect(rows).toEqual([
+      {
+        key: 'early_bird',
+        runId: 'run_b',
+        scopeKey: null,
+        firstEarnedOn: '2026-07-04',
+        earnedOn: '2026-08-20',
+        count: 2,
+      },
+    ])
+  })
+})
+
+describe('earn', () => {
+  it('stamps the dedupe key from the earn’s scope and reports whether a row was written', async () => {
+    // A session earn dedupes on the run; the boolean is what `newlyEarned` is built from.
+    fake.enqueue([{ key: 'late_start' }])
+    await expect(
+      gateway.dbBadgeGateway.earn('u1', {
+        key: 'late_start',
+        runId: RUN,
+        scopeKey: null,
+        earnedOn: '2026-08-20',
+      }),
+    ).resolves.toBe(true)
+    expect(fake.only().params).toContain(RUN)
+
+    // The same earn again: ON CONFLICT DO NOTHING returns nothing, and so does this.
+    fake.reset()
+    fake.enqueue([])
+    await expect(
+      gateway.dbBadgeGateway.earn('u1', {
+        key: 'late_start',
+        runId: RUN,
+        scopeKey: null,
+        earnedOn: '2026-08-20',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('dedupes a lifetime badge on the empty string — one row per account, forever', async () => {
+    fake.enqueue([{ key: 'dawn_patrol' }])
+    await gateway.dbBadgeGateway.earn('u1', {
+      key: 'dawn_patrol',
+      runId: null,
+      scopeKey: null,
+      earnedOn: '2026-08-20',
+    })
+    expect(fake.only().params).toContain('')
   })
 })

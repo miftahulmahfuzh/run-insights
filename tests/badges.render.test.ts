@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BADGE_ART } from '@/lib/badges/badge-art'
 
+import { BadgeDialog } from '@/components/profile/BadgeDialog'
 import { BadgeShelf } from '@/components/profile/BadgeShelf'
 import { RecordsTable } from '@/components/profile/RecordsTable'
 import { BADGE_META } from '@/lib/badges/meta'
@@ -30,8 +31,22 @@ const FACTS: PeriodFacts = {
 }
 
 const rows: StoredBadge[] = [
-  { key: 'late_start', runId: 'run_canonical', scopeKey: null, earnedOn: '2026-08-20', count: 1 },
-  { key: 'tourist', runId: 'run_canonical', scopeKey: null, earnedOn: '2026-08-20', count: 3 },
+  {
+    key: 'late_start',
+    runId: 'run_canonical',
+    scopeKey: null,
+    firstEarnedOn: '2026-08-20',
+    earnedOn: '2026-08-20',
+    count: 1,
+  },
+  {
+    key: 'tourist',
+    runId: 'run_canonical',
+    scopeKey: null,
+    firstEarnedOn: '2026-07-04',
+    earnedOn: '2026-08-20',
+    count: 3,
+  },
 ]
 
 describe('BadgeShelf', () => {
@@ -118,6 +133,39 @@ describe('BadgeShelf', () => {
     }
     // The placeholder is gone rather than merely covered.
     expect(html).not.toContain('bg-[#1d2436]')
+  })
+})
+
+describe('BadgeDialog — the dates line (F13)', () => {
+  /** The panel's markup with one entry open. The effect that calls `showModal()` never runs under
+   *  `renderToStaticMarkup`, but the subtree is what `entry &&` renders, which is what we assert. */
+  function panel(key: 'late_start' | 'tourist') {
+    const shelf = buildShelf(rows, FACTS)
+    const entry = shelf.entries.find((e) => e.key === key)!
+    return renderToStaticMarkup(createElement(BadgeDialog, { entry, onClose: () => {} }))
+  }
+
+  it('prints the span on a badge earned more than once — count, first, latest', () => {
+    // `tourist`: three earnings between 4 Jul and 20 Aug. Before F13 the first date did not exist
+    // in the schema and the line could only say "Most recently".
+    const html = panel('tourist')
+    expect(html).toContain('\u00d73')
+    expect(html).toContain('first')
+    expect(html).toContain('Sat, 4 Jul 2026')
+    expect(html).toContain('latest')
+    expect(html).toContain('Thu, 20 Aug 2026')
+    // The wording the old one-row schema forced, now that there is a real first to name.
+    expect(html).not.toContain('Most recently')
+  })
+
+  it('says "Earned <day>" once and no more on a badge earned exactly once', () => {
+    // A count of one has one date, and printing it twice either side of "first … latest" would be
+    // a scoreboard flourish over a single fact.
+    const html = panel('late_start')
+    expect(html).toContain('Earned Thu, 20 Aug 2026')
+    expect(html).not.toContain('first')
+    expect(html).not.toContain('latest')
+    expect(html).toContain('Earned once') // the count, spelled out, is unchanged
   })
 })
 

@@ -9,7 +9,9 @@ import {
   type SessionFacts,
 } from '@/lib/badges/evaluate'
 import { badgeScope } from '@/lib/badges/catalog'
-import type { BadgeEarn, StoredBadge } from '@/lib/badges/types'
+import { dedupeKeyFor } from '@/lib/badges/evaluate'
+import { foldAwards } from '@/lib/badges/facts'
+import type { BadgeAward, BadgeEarn, StoredBadge } from '@/lib/badges/types'
 import { computeSessionMetrics } from '@/lib/metrics/session'
 import { canonicalRecordRun, canonicalRunFacts, canonicalSession } from './fixtures/canonicalRun'
 
@@ -20,10 +22,16 @@ import { canonicalRecordRun, canonicalRunFacts, canonicalSession } from './fixtu
  * §8.2's nightly sweep both rest on. Evaluating the same commit twice, or sweeping a period that has
  * already been awarded, must write nothing the second time. Without that, a post-review edit becomes
  * a way to inflate a count, and the cron backstop becomes a nightly `count += 1` machine.
+ *
+ * **The fake is a ledger keyed on `(key, dedupe_key)`, because since F13 that is the primary key.**
+ * A fake that kept one row per key could not fail the defect this feature exists to fix — it would
+ * model the schema that had the bug. Every count here comes out of `foldAwards`, exactly as the
+ * real gateway's does.
  */
 
 const USER = 'user_1'
 const RUN = canonicalSession.runId
+const DAY = canonicalSession.occurredOn
 
 const SESSION: SessionFacts = {
   run: {
@@ -54,35 +62,61 @@ const BUSY_PERIOD: PeriodFacts = {
 }
 
 /**
- * A gateway that remembers. `earn` applies the same semantics `upsertBadge` does — insert, or
- * `count += 1` with `earned_on`/`run_id`/`scope_key` moved forward — so a test that awards twice
- * sees what the database would hold, not what the evaluator hoped it would.
+ * A gateway that remembers, as a multiset keyed by `(key, dedupeKey)` — the primary key F13 widened
+ * `badges` to. `earn` is `ON CONFLICT DO NOTHING`: it returns false and writes nothing when that
+ * exact award is already on the ledger, which is the whole of the idempotency contract.
  */
 function fakeGateway(options: {
   commit?: CommitFacts | null
   period?: PeriodFacts
-  stored?: StoredBadge[]
-}): BadgeGateway & { rows: Map<string, StoredBadge>; earns: BadgeEarn[] } {
-  const rows = new Map<string, StoredBadge>((options.stored ?? []).map((b) => [b.key, b]))
+  stored?: BadgeAward[]
+}): BadgeGateway & {
+  ledger: Map<string, BadgeAward>
+  earns: BadgeEarn[]
+  fold: (key: string) => StoredBadge | undefined
+} {
+  const ledger = new Map<string, BadgeAward>(
+    (options.stored ?? []).map((row) => [`${row.key}\u0000${row.dedupeKey}`, row]),
+  )
   const earns: BadgeEarn[] = []
+  let clock = 0
+  const fold = (key: string) => foldAwards([...ledger.values()]).find((b) => b.key === key)
   return {
-    rows,
+    ledger,
     earns,
+    fold,
     loadCommitFacts: () => Promise.resolve(options.commit ?? null),
     loadPeriodFacts: () => Promise.resolve(options.period ?? QUIET_PERIOD),
-    readBadges: () => Promise.resolve([...rows.values()]),
+    readBadges: () => Promise.resolve(foldAwards([...ledger.values()])),
     earn: (_userId, earn) => {
       earns.push(earn)
-      const existing = rows.get(earn.key)
-      rows.set(earn.key, {
+      const dedupeKey = dedupeKeyFor(earn)
+      const pk = `${earn.key}\u0000${dedupeKey}`
+      if (ledger.has(pk)) return Promise.resolve(false)
+      ledger.set(pk, {
         key: earn.key,
         runId: earn.runId,
         scopeKey: earn.scopeKey,
+        dedupeKey,
         earnedOn: earn.earnedOn,
-        count: (existing?.count ?? 0) + 1,
+        // Insertion order stands in for `created_at`; it is only ever a same-day tie-break.
+        createdAt: new Date(Date.UTC(2026, 0, 1) + (clock += 1000)),
+        count: 1,
       })
-      return Promise.resolve()
+      return Promise.resolve(true)
     },
+  }
+}
+
+/** One pre-existing ledger row, spelled out where a test needs history it did not create. */
+function storedAward(over: Partial<BadgeAward> & { key: string; dedupeKey: string }): BadgeAward {
+  return {
+    runId: null,
+    scopeKey: null,
+    earnedOn: '2026-08-20',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    count: 1,
+    ...over,
   }
 }
 
@@ -169,7 +203,7 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     const second = await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
     expect(second.newlyEarned).toEqual([])
     expect(second.qualified).toEqual(first.qualified)
-    expect(gateway.rows.get('late_start')!.count).toBe(1)
+    expect(gateway.fold('late_start')!.count).toBe(1)
   })
 
   it('re-earns a session badge for a DIFFERENT run, and moves the row forward', async () => {
@@ -187,17 +221,55 @@ describe('§7 — what counts as a re-earn, per scope', () => {
       { ...gateway, loadCommitFacts: () => Promise.resolve(later) },
     )
     expect(second.newlyEarned).toContain('late_start')
-    const row = gateway.rows.get('late_start')!
+    const row = gateway.fold('late_start')!
     expect(row.count).toBe(2)
     expect(row.runId).toBe('run_second')
     expect(row.earnedOn).toBe('2026-08-27')
+    // And the first earning is still legible, which is the other half of what the ledger bought.
+    expect(row.firstEarnedOn).toBe('2026-08-20')
+  })
+
+  it('THE DEFECT (F12 §4.1): re-committing an EARLIER run leaves the count alone', async () => {
+    /* Run A earns it, run B earns it, then A is re-reviewed because a split was wrong. The old
+     * `isNews` compared A against the one run the row remembered — B — decided A was news, and
+     * wrote `count = 3`. There is no comparison left to get wrong: the insert for A collides with
+     * A's own row and the database declines it. */
+    const gateway = fakeGateway({ commit: commitFacts() })
+    await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
+
+    const runB: CommitFacts = commitFacts({
+      ...SESSION,
+      run: { ...SESSION.run, runId: 'run_b', occurredOn: '2026-08-27' },
+    })
+    await evaluateBadgesForCommit(
+      USER,
+      'run_b',
+      { recordsMovedToThisRun: [] },
+      { ...gateway, loadCommitFacts: () => Promise.resolve(runB) },
+    )
+    expect(gateway.fold('late_start')!.count).toBe(2)
+
+    // The re-review of A. Same facts, same run, and nothing qualifies as news.
+    const reReview = await evaluateBadgesForCommit(
+      USER,
+      RUN,
+      { recordsMovedToThisRun: [] },
+      gateway,
+    )
+    expect(reReview.qualified).toContain('late_start')
+    expect(reReview.newlyEarned).toEqual([])
+    const row = gateway.fold('late_start')!
+    expect(row.count).toBe(2)
+    // B is still the latest earner: a re-review of A does not drag the date backwards either.
+    expect(row.earnedOn).toBe('2026-08-27')
+    expect(row.runId).toBe('run_b')
   })
 
   it('earns a week badge once per ISO week, not once per qualifying run', async () => {
     const gateway = fakeGateway({ commit: commitFacts(SESSION, BUSY_PERIOD), period: BUSY_PERIOD })
     const first = await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
     expect(first.newlyEarned).toContain('self_reward')
-    expect(gateway.rows.get('self_reward')!.scopeKey).toBe('2026-W34')
+    expect(gateway.fold('self_reward')!.scopeKey).toBe('2026-W34')
 
     // A fifth run in the same week qualifies again and changes nothing — the row already names the
     // week, which is what "fires once per qualifying week" means mechanically.
@@ -213,14 +285,12 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     )
     expect(second.qualified).toContain('self_reward')
     expect(second.newlyEarned).not.toContain('self_reward')
-    expect(gateway.rows.get('self_reward')!.count).toBe(1)
+    expect(gateway.fold('self_reward')!.count).toBe(1)
   })
 
   it('earns a week badge again in a new week', async () => {
     const gateway = fakeGateway({
-      stored: [
-        { key: 'self_reward', runId: null, scopeKey: '2026-W34', earnedOn: '2026-08-20', count: 1 },
-      ],
+      stored: [storedAward({ key: 'self_reward', dedupeKey: '2026-W34', scopeKey: '2026-W34' })],
       commit: commitFacts(SESSION, {
         ...BUSY_PERIOD,
         week: { weekKey: '2026-W35', runsThisWeek: 4, consecutiveQualifyingWeeks: 5 },
@@ -228,14 +298,33 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     })
     const result = await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
     expect(result.newlyEarned).toContain('self_reward')
-    expect(gateway.rows.get('self_reward')!.count).toBe(2)
+    expect(gateway.fold('self_reward')!.count).toBe(2)
+  })
+
+  it('does not re-earn a week badge when a run from an OLDER week is re-reviewed', async () => {
+    // The week-shaped half of the same defect: after W35 has qualified, re-reviewing a W34 run
+    // used to see `scopeKey !== '2026-W35'` and fire again.
+    const gateway = fakeGateway({
+      stored: [
+        storedAward({ key: 'self_reward', dedupeKey: '2026-W34', scopeKey: '2026-W34' }),
+        storedAward({
+          key: 'self_reward',
+          dedupeKey: '2026-W35',
+          scopeKey: '2026-W35',
+          earnedOn: '2026-08-27',
+        }),
+      ],
+      commit: commitFacts(SESSION, BUSY_PERIOD), // BUSY_PERIOD's week is 2026-W34
+    })
+    const result = await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
+    expect(result.qualified).toContain('self_reward')
+    expect(result.newlyEarned).not.toContain('self_reward')
+    expect(gateway.fold('self_reward')!.count).toBe(2)
   })
 
   it('earns a month badge once per calendar month', async () => {
     const gateway = fakeGateway({
-      stored: [
-        { key: 'century_club', runId: null, scopeKey: '2026-08', earnedOn: '2026-08-20', count: 1 },
-      ],
+      stored: [storedAward({ key: 'century_club', dedupeKey: '2026-08', scopeKey: '2026-08' })],
       commit: commitFacts(SESSION, BUSY_PERIOD),
     })
     const result = await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
@@ -248,15 +337,31 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     // re-firing at 20 and 30 would turn one observation into a scoreboard — the streak-pressure
     // mechanic the roadmap's core tenet rules out.
     const gateway = fakeGateway({
-      stored: [
-        { key: 'dawn_patrol', runId: null, scopeKey: null, earnedOn: '2026-06-01', count: 1 },
-      ],
+      stored: [storedAward({ key: 'dawn_patrol', dedupeKey: '', earnedOn: '2026-06-01' })],
       commit: commitFacts(SESSION, { ...BUSY_PERIOD, lifetime: { dawnRunCount: 40 } }),
     })
     const result = await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
     expect(result.qualified).toContain('dawn_patrol')
     expect(result.newlyEarned).not.toContain('dawn_patrol')
-    expect(gateway.rows.get('dawn_patrol')!.count).toBe(1)
+    expect(gateway.fold('dawn_patrol')!.count).toBe(1)
+  })
+
+  it('earns dawn_patrol exactly once however many sweeps run — every scope, one dedupe key', () => {
+    // The lifetime dedupe key is '' for every earn, so the second insert can only ever collide.
+    expect(dedupeKeyFor({ key: 'dawn_patrol', runId: null, scopeKey: null, earnedOn: DAY })).toBe(
+      '',
+    )
+  })
+
+  it('refuses to build a dedupe key for a mis-stamped earn rather than inventing one', () => {
+    // `earn.runId ?? earn.scopeKey ?? ''` would quietly file a session badge under the lifetime
+    // key and dedupe every run's award onto one row. A session earn with no run is a bug.
+    expect(() =>
+      dedupeKeyFor({ key: 'late_start', runId: null, scopeKey: null, earnedOn: DAY }),
+    ).toThrow(/late_start/)
+    expect(() =>
+      dedupeKeyFor({ key: 'self_reward', runId: null, scopeKey: null, earnedOn: DAY }),
+    ).toThrow(/self_reward/)
   })
 
   it('never removes a row, whatever stops qualifying', async () => {
@@ -264,15 +369,21 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     // schema already agreed — `badges.run_id` is ON DELETE SET NULL (R-22), the one non-cascade FK.
     const gateway = fakeGateway({
       stored: [
-        { key: 'half_ish', runId: 'old_run', scopeKey: null, earnedOn: '2026-01-01', count: 1 },
+        storedAward({
+          key: 'half_ish',
+          dedupeKey: 'old_run',
+          runId: 'old_run',
+          earnedOn: '2026-01-01',
+        }),
       ],
       commit: commitFacts(),
     })
     await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
-    expect(gateway.rows.get('half_ish')).toEqual({
+    expect(gateway.fold('half_ish')).toEqual({
       key: 'half_ish',
       runId: 'old_run',
       scopeKey: null,
+      firstEarnedOn: '2026-01-01',
       earnedOn: '2026-01-01',
       count: 1,
     })
@@ -304,7 +415,12 @@ describe('sweepPeriodBadges — §8.2’s backstop', () => {
     await sweepPeriodBadges(USER, '2026-08-21', gateway)
     const second = await sweepPeriodBadges(USER, '2026-08-22', gateway)
     expect(second.newlyEarned).toEqual([])
-    expect(gateway.rows.get('century_club')!.count).toBe(1)
+    expect(gateway.fold('century_club')!.count).toBe(1)
+    expect(gateway.fold('dawn_patrol')!.count).toBe(1)
+    // Sixteen earns attempted across two nights; eight rows on the ledger. The other eight were
+    // declined by the primary key, and `newlyEarned` named none of them.
+    expect(gateway.earns).toHaveLength(8)
+    expect(gateway.ledger.size).toBe(4)
   })
 
   it('writes nothing at all for a quiet user', async () => {

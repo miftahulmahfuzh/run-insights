@@ -16,8 +16,10 @@ import type { BadgeEarn, BadgeKey, StoredBadge } from './types'
 /**
  * The orchestration layer: builds nothing, computes nothing, decides two things.
  *
- *   1. which of `rules.ts`' answers are **news** (§1.1 step 5, and the `count` policy in §7)
- *   2. what `run_id` / `scope_key` / `earned_on` each earn is stamped with
+ *   1. what `run_id` / `scope_key` / `earned_on` / `dedupe_key` each earn is stamped with
+ *   2. nothing else — **which earns are news is the primary key's answer, not this file's** (F13).
+ *      `badges` holds one row per `(user, key, dedupe_key)`, so `gateway.earn` reports whether it
+ *      wrote and `newlyEarned` is that report rather than a prediction of it.
  *
  * Every read goes through an injected `BadgeGateway`, never a direct `db` import — the same shape
  * and the same reason as `lib/records/recompute.ts`: `catalog.ts`, `meta.ts` and `rules.ts` stay
@@ -66,9 +68,10 @@ export interface BadgeGateway {
   loadCommitFacts(userId: string, runId: string): Promise<CommitFacts | null>
   /** The week/month/lifetime half alone, anchored on a day. The cron sweep and `/me` both use it. */
   loadPeriodFacts(userId: string, anchorDay: DateISO): Promise<PeriodFacts>
+  /** The award ledger, folded to one entry per key. */
   readBadges(userId: string): Promise<StoredBadge[]>
-  /** Insert, or `count += 1` with `earned_on`/`run_id`/`scope_key` moved forward. */
-  earn(userId: string, earn: BadgeEarn): Promise<void>
+  /** Insert one award. **False when the row already existed** — the dedupe is the PK, not a read. */
+  earn(userId: string, earn: BadgeEarn): Promise<boolean>
 }
 
 export interface BadgeAwardResult {
@@ -173,11 +176,55 @@ function toEarns(keys: readonly BadgeKey[], stamp: Omit<BadgeEarn, 'key'>): Badg
 }
 
 /**
- * Write the earns that are news, skip the ones already on the shelf, and return both lists.
+ * **The earn's scope identity — what the primary key dedupes on, and the whole of §7's `count`
+ * policy now that a constraint enforces it rather than a comparison.**
+ *
+ *   `session`   the run id. One row per run, so re-committing a run after a post-review edit
+ *               inserts nothing: the run earned it once, and an edit is not a second run.
+ *   `week`      the ISO week. Four runs in a week fires once; a fifth collides with that row.
+ *   `month`     the calendar month, on the same reasoning.
+ *   `lifetime`  the empty string. One row per account, forever. §7 argues this asymmetry for
+ *               `dawn_patrol`: a lifetime count has no period to re-cross within, and re-firing at
+ *               20 and 30 turns one observation into a scoreboard — the exact streak-pressure
+ *               mechanic the roadmap's core tenet rules out.
+ *
+ * A switch on the scope rather than `earn.runId ?? earn.scopeKey ?? ''`, which would produce the
+ * same four answers today and would silently produce a WRONG one the first time a stamp is
+ * mis-built. A session earn with a null runId is a bug, and this is where it should be loud.
+ *
+ * Note what no code path here does: **remove a row.** §1.2 takes the position that badges are never
+ * revoked while records are always recomputed, and the schema agrees — `badges.run_id` is
+ * `ON DELETE SET NULL` (R-22), the one non-cascade FK in the file, so a badge survives the deletion
+ * of the run that earned it and keeps the `dedupe_key` naming it. A correction can make a run
+ * *newly* earn a badge; it can never take one back. A newspaper prints a correction without
+ * recalling the copies it delivered.
+ */
+export function dedupeKeyFor(earn: BadgeEarn): string {
+  switch (badgeScope(earn.key)) {
+    case 'session':
+      if (!earn.runId) throw new Error(`session badge ${earn.key} earned with no runId`)
+      return earn.runId
+    case 'week':
+    case 'month':
+      if (!earn.scopeKey) throw new Error(`period badge ${earn.key} earned with no scopeKey`)
+      return earn.scopeKey
+    case 'lifetime':
+      return ''
+  }
+}
+
+/**
+ * Write every earn, and report which ones actually landed.
  *
  * Sequential rather than batched: at most a handful of rows per commit, each one an independent
- * upsert, and a failure on the fourth must not roll back the first three — a badge that was
- * genuinely earned is not made less true by the next one failing to save.
+ * insert, and a failure on the fourth must not roll back the first three — a badge that was
+ * genuinely earned is not made less true by the next one failing to save. (It is also why F13
+ * widened `badges` instead of adding a second table: `neon-http` has no `db.transaction()`, so a
+ * ledger row plus an aggregate update would be two unbound writes and a drift bug.)
+ *
+ * There is no read here any more. `gateway.earn` returns whether the insert wrote a row, so
+ * `newlyEarned` is what the database did rather than what a comparison predicted it would do —
+ * more accurate as well as one query cheaper.
  */
 async function award(
   userId: string,
@@ -189,52 +236,11 @@ async function award(
    * lifetime would interleave them by scope — and a caller rendering "you earned X and Y" should
    * read the same sequence the shelf shows (§2). */
   const earns = [...unordered].sort((a, b) => catalogIndex(a.key) - catalogIndex(b.key))
-  const qualified = earns.map((e) => e.key)
   if (earns.length === 0) return NOTHING
-
-  const existing = new Map<string, StoredBadge>(
-    (await gateway.readBadges(userId)).map((b) => [b.key, b]),
-  )
 
   const newlyEarned: BadgeKey[] = []
   for (const earn of earns) {
-    if (!isNews(existing.get(earn.key), earn)) continue
-    await gateway.earn(userId, earn)
-    newlyEarned.push(earn.key)
+    if (await gateway.earn(userId, earn)) newlyEarned.push(earn.key)
   }
-  return { newlyEarned, qualified }
-}
-
-/**
- * **The idempotency rule, and the whole of §7's `count` policy in one function.**
- *
- * `badges` holds one row per `(user_id, key)`, so `count` is the only way a re-earned badge is
- * legible at all — and what counts as a re-earn differs by scope:
- *
- *   `session`   a DIFFERENT run. Re-committing the same run after a post-review edit must not
- *               increment anything: the run earned it once, and an edit is not a second run.
- *   `week`      a different ISO week. Four runs in a week fires once; a fifth changes nothing,
- *               because the row already names that week.
- *   `month`     a different calendar month, on the same reasoning.
- *   `lifetime`  never. §7 argues this asymmetry for `dawn_patrol`: a lifetime count has no period
- *               to re-cross within, and re-firing at 20 and 30 turns one observation into a
- *               scoreboard — the exact streak-pressure mechanic the roadmap's core tenet rules out.
- *
- * Note what this function never does: **remove a row.** §1.2 takes the position that badges are
- * never revoked while records are always recomputed, and the schema already agrees — `badges.run_id`
- * is `ON DELETE SET NULL` (R-22), the one non-cascade FK in the file, so a badge survives the
- * deletion of the run that earned it. A correction can make a run *newly* earn a badge; it can
- * never take one back. A newspaper prints a correction without recalling the copies it delivered.
- */
-function isNews(existing: StoredBadge | undefined, earn: BadgeEarn): boolean {
-  if (!existing) return true
-  switch (badgeScope(earn.key)) {
-    case 'session':
-      return existing.runId !== earn.runId
-    case 'week':
-    case 'month':
-      return existing.scopeKey !== earn.scopeKey
-    case 'lifetime':
-      return false
-  }
+  return { newlyEarned, qualified: earns.map((e) => e.key) }
 }

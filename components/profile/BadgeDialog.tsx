@@ -170,12 +170,22 @@ function Panel({
         <p className="mt-1.5 text-[13px] font-medium text-ink-3">{entry.gloss}</p>
 
         {/* `earned_on` is the day the badge is *about*, never the instant its row was written: a
-            backfilled run's badge is dated to the run. The column moves forward on every re-earn
-            (queries.ts `upsertBadge`), so on a count above one it is the LATEST and the label says
-            so rather than implying a first. */}
+            backfilled run's badge is dated to the run.
+
+            Both ends of the span, because F13's ledger holds every award as its own row and the
+            first one is now a fact rather than an inference. A badge earned twelve times says when
+            it started and when it last happened; the 10 in between are a log, not a record, and
+            the panel deliberately does not list them. */}
         {earned && (
           <p className="mt-3 text-[12px] font-semibold text-ink-2 tabular-nums">
-            {earned.count === 1 ? 'Earned' : 'Most recently'} {formatDay(earned.earnedOn)}
+            {earned.count === 1 ? (
+              <>Earned {formatDay(earned.earnedOn)}</>
+            ) : (
+              <>
+                ×{earned.count} · first {formatDay(earned.firstEarnedOn)} · latest{' '}
+                {formatDay(earned.earnedOn)}
+              </>
+            )}
           </p>
         )}
 

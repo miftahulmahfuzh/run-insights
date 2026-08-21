@@ -75,11 +75,34 @@ export interface BadgeEarn {
   earnedOn: DateISO
 }
 
-/** A `badges` row as F09 reads it back — the four columns any decision here depends on. */
-export interface StoredBadge {
+/**
+ * One row of the award ledger, as read back.
+ *
+ * F13 made `badges` one row per EARN rather than one row per key, so this is the raw shape and
+ * `StoredBadge` below is what a key's rows fold to. `createdAt` is here for one reason: it is the
+ * tie-break in `foldAwards`, so that two awards dated the same day still resolve to a single
+ * deterministic "latest".
+ */
+export interface BadgeAward {
   key: string
   runId: string | null
   scopeKey: string | null
+  dedupeKey: string
+  earnedOn: DateISO
+  createdAt: Date
+  /** Earnings folded into this row: 1, except on rows predating F13. See `schema.ts`. */
+  count: number
+}
+
+/** The per-key fold of a user's awards — what the shelf and the panel read. */
+export interface StoredBadge {
+  key: string
+  /** From the LATEST award. Null for a period badge, or a session badge whose run was deleted. */
+  runId: string | null
+  scopeKey: string | null
+  /** The earliest award's day. Equal to `earnedOn` when the badge was earned once. */
+  firstEarnedOn: DateISO
+  /** The latest award's day — what "most recently" means on the shelf and in the panel. */
   earnedOn: DateISO
   count: number
 }

@@ -149,6 +149,11 @@ applied. So:
 
 ### 4.1 What was NOT built, and the honest limit
 
+> **Both halves of this section were fixed in F13 — see `F13-badge-award-ledger.md`.** `badges` is
+> now keyed `(user_id, key, dedupe_key)`, one row per award: `isNews` is gone, the count is the
+> rows folded, and the panel prints *"×12 · first Sat, 4 Jul 2026 · latest Thu, 20 Aug 2026"*. What
+> follows is the state at F12 and the reasoning that argued for the ledger, kept as written.
+
 `daily-words` shows *"×3 · first 4 Jul · latest 20 Aug"* because it stores one row per award.
 This repo stores one row per `(user_id, key)` and `upsertBadge` moves `earned_on` **forward** on
 each re-earn, so there is no first date to print. The panel therefore says *"Most recently
@@ -162,6 +167,11 @@ increments the count a third time. Fixing it properly means a `badge_awards` led
 earn, `count`/`first`/`latest` derived from it — which is a schema delta, a migration and a
 gateway rewrite, and none of the three is in this ask. It is worth doing next; the count is
 otherwise a lower bound that inflates only under re-review.
+
+F13 did it next, and widened `badges` rather than adding the second table this paragraph imagined:
+`neon-http` has no `db.transaction()`, so a ledger insert plus an aggregate update would be two
+unbound writes and a drift bug traded for a counting bug. Deriving the aggregate leaves nothing to
+drift.
 
 ---
 

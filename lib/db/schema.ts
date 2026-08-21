@@ -406,12 +406,36 @@ export const badges = pgTable(
      */
     runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
     scopeKey: text('scope_key'), // '2026-W34' | '2026-08' for period badges
+    /**
+     * F13 — the earn's own scope identity, and the third of the primary key. One row per
+     * `(user, key, dedupe_key)`: a run id for a session badge, '2026-W34' for a week, '2026-08'
+     * for a month, '' for a lifetime badge. Re-committing a run cannot insert a second row for it,
+     * so the count is enforced by this constraint rather than by a read-then-compare that can only
+     * see the LATEST earn (the count-inflation defect, F12 §4.1).
+     *
+     * **A plain column, never `GENERATED ALWAYS AS (coalesce(run_id, scope_key, ''))`.** `run_id`
+     * is ON DELETE SET NULL (R-22 above), so a generated column would recompute on that SET NULL,
+     * collapse every session award for the deleted run to '', and make `DELETE FROM runs` fail on
+     * a primary-key violation. Written once at insert, this retains the deleted run's id forever —
+     * which is R-22 extended to the dedupe identity.
+     */
+    dedupeKey: text('dedupe_key').notNull(),
     earnedOn: date('earned_on', { mode: 'string' }).notNull(),
-    /** Times re-earned. Incremented by upsertBadge, never overwritten. */
+    /**
+     * Earnings folded into this row. **1 for every row this app writes.** Pre-ledger rows carry
+     * the aggregate they had before F13's migration, which could not be itemised into real awards
+     * without fabricating run ids and dates — so it is preserved here instead of discarded. A read
+     * sums the column; it never counts rows.
+     */
     count: integer('count').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.key] })],
+  (t) => [
+    primaryKey({ columns: [t.userId, t.key, t.dedupeKey] }),
+    /* `getBadgeAwardsForRun`'s index. The ledger grows without bound, so F11's "what did this run
+     * earn" can no longer be a TypeScript filter over every row the user holds. */
+    index('badges_user_run_idx').on(t.userId, t.runId),
+  ],
 )
 
 export const shares = pgTable(

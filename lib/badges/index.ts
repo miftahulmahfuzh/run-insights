@@ -43,6 +43,7 @@ export {
 } from './rules'
 
 export {
+  foldAwards,
   previousIsoWeek,
   qualifyingWeekStreak,
   runsOnDay,
@@ -56,6 +57,7 @@ export { readProgress, type ProgressReading } from './progress'
 export { buildShelf, type Shelf, type ShelfEntry } from './shelf'
 
 export type {
+  BadgeAward,
   BadgeDefinition,
   BadgeEarn,
   BadgeKey,

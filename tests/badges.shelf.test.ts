@@ -26,7 +26,14 @@ const FIXTURE_ROWS: StoredBadge[] = [
   'tourist',
   'new_ceiling',
   'long_way_home',
-].map((key) => ({ key, runId: 'run_canonical', scopeKey: null, earnedOn: '2026-08-20', count: 1 }))
+].map((key) => ({
+  key,
+  runId: 'run_canonical',
+  scopeKey: null,
+  firstEarnedOn: '2026-08-20',
+  earnedOn: '2026-08-20',
+  count: 1,
+}))
 
 describe('buildShelf', () => {
   const shelf = buildShelf(FIXTURE_ROWS, FACTS)
@@ -40,10 +47,37 @@ describe('buildShelf', () => {
     expect(shelf.lockedCount).toBe(15)
   })
 
-  it('carries the earned date and the count on an earned entry', () => {
+  it('carries both earned dates and the count on an earned entry', () => {
     const earned = shelf.entries.find((e) => e.key === 'late_start')!
-    expect(earned.earned).toEqual({ earnedOn: '2026-08-20', count: 1 })
+    expect(earned.earned).toEqual({
+      firstEarnedOn: '2026-08-20',
+      earnedOn: '2026-08-20',
+      count: 1,
+    })
     expect(earned.progress).toBeNull()
+  })
+
+  it('carries the FIRST earning through, so the panel can print a span (F13)', () => {
+    // The two dates come off the ledger's extremes and the shelf passes both along untouched —
+    // before F13 the first was not recorded anywhere and could only have been invented.
+    const span = buildShelf(
+      [
+        {
+          key: 'early_bird',
+          runId: 'run_latest',
+          scopeKey: null,
+          firstEarnedOn: '2026-07-04',
+          earnedOn: '2026-08-20',
+          count: 12,
+        },
+      ],
+      FACTS,
+    )
+    expect(span.entries.find((e) => e.key === 'early_bird')!.earned).toEqual({
+      firstEarnedOn: '2026-07-04',
+      earnedOn: '2026-08-20',
+      count: 12,
+    })
   })
 
   it('shows a locked badge its full condition and gloss — nothing is teased', () => {
@@ -69,7 +103,14 @@ describe('buildShelf', () => {
     const withGhost = buildShelf(
       [
         ...FIXTURE_ROWS,
-        { key: 'rain_tax', runId: null, scopeKey: null, earnedOn: '2026-01-01', count: 3 },
+        {
+          key: 'rain_tax',
+          runId: null,
+          scopeKey: null,
+          firstEarnedOn: '2025-11-01',
+          earnedOn: '2026-01-01',
+          count: 3,
+        },
       ],
       FACTS,
     )
@@ -112,7 +153,14 @@ describe('R-44 — the locked progress line', () => {
     const earnedCentury = buildShelf(
       [
         ...FIXTURE_ROWS,
-        { key: 'century_club', runId: null, scopeKey: '2026-08', earnedOn: '2026-08-25', count: 1 },
+        {
+          key: 'century_club',
+          runId: null,
+          scopeKey: '2026-08',
+          firstEarnedOn: '2026-08-25',
+          earnedOn: '2026-08-25',
+          count: 1,
+        },
       ],
       FACTS,
     )

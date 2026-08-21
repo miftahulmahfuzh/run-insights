@@ -2,6 +2,8 @@ import { neonConfig } from '@neondatabase/serverless'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { foldAwards } from '@/lib/badges/facts'
+
 /**
  * Integration suite — runs against a REAL Postgres.
  *
@@ -470,32 +472,73 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
     })
   })
 
-  describe('badges — earned facts, never revoked', () => {
-    it('increments count on a re-earn and moves earned_on forward', async () => {
-      await q.upsertBadge(U1, 'redline_republic', {
+  describe('badges — an append-only ledger the primary key dedupes (F13)', () => {
+    it('inserts one row per earn and declines the same earn twice', async () => {
+      // The old shape incremented a count here. The new one cannot: the second insert collides
+      // with `(user_id, key, dedupe_key)` and `ON CONFLICT DO NOTHING` swallows it, which is what
+      // makes re-committing a run a no-op at the database rather than at a function's discretion.
+      const first = await q.insertBadgeAward(U1, 'redline_republic', {
         runId: fixtureRunId,
         scopeKey: null,
+        dedupeKey: fixtureRunId,
         earnedOn: '2026-08-20',
       })
-      await q.upsertBadge(U1, 'redline_republic', {
+      expect(first).toBe(true)
+
+      const again = await q.insertBadgeAward(U1, 'redline_republic', {
         runId: fixtureRunId,
         scopeKey: null,
-        earnedOn: '2026-08-25',
+        dedupeKey: fixtureRunId,
+        earnedOn: '2026-08-25', // a later date changes nothing; the identity is the run
       })
-      const badges = await q.getBadges(U1)
-      const redline = badges.find((b) => b.key === 'redline_republic')
-      expect(redline?.count).toBe(2)
-      expect(redline?.earnedOn).toBe('2026-08-25')
+      expect(again).toBe(false)
+
+      const awards = (await q.getBadgeAwards(U1)).filter((b) => b.key === 'redline_republic')
+      expect(awards).toHaveLength(1)
+      expect(awards[0]?.count).toBe(1)
+      expect(awards[0]?.earnedOn).toBe('2026-08-20')
     })
 
-    it('accepts a month-scoped badge with no run', async () => {
-      await q.upsertBadge(U1, 'century_club', {
-        runId: null,
-        scopeKey: '2026-08',
-        earnedOn: '2026-08-31',
-      })
-      const badges = await q.getBadges(U1)
-      expect(badges.find((b) => b.key === 'century_club')?.scopeKey).toBe('2026-08')
+    it('accepts a second award of the same badge under a different dedupe key', async () => {
+      // Two months, two rows, one key — and `foldAwards` is what turns them back into a count.
+      expect(
+        await q.insertBadgeAward(U1, 'century_club', {
+          runId: null,
+          scopeKey: '2026-07',
+          dedupeKey: '2026-07',
+          earnedOn: '2026-07-31',
+        }),
+      ).toBe(true)
+      expect(
+        await q.insertBadgeAward(U1, 'century_club', {
+          runId: null,
+          scopeKey: '2026-08',
+          dedupeKey: '2026-08',
+          earnedOn: '2026-08-31',
+        }),
+      ).toBe(true)
+
+      const awards = (await q.getBadgeAwards(U1)).filter((b) => b.key === 'century_club')
+      expect(awards).toHaveLength(2)
+      expect(awards.map((a) => a.scopeKey)).toEqual(['2026-07', '2026-08']) // ordered by earned_on
+      expect(foldAwards(awards)).toEqual([
+        {
+          key: 'century_club',
+          runId: null,
+          scopeKey: '2026-08',
+          firstEarnedOn: '2026-07-31',
+          earnedOn: '2026-08-31',
+          count: 2,
+        },
+      ])
+    })
+
+    it('getBadgeAwardsForRun returns this run’s awards and no period badge', async () => {
+      const forRun = await q.getBadgeAwardsForRun(U1, fixtureRunId)
+      expect(forRun.map((a) => a.key)).toContain('redline_republic')
+      // `century_club` has a null run_id, so no `WHERE run_id = $1` can ever reach it.
+      expect(forRun.map((a) => a.key)).not.toContain('century_club')
+      expect(forRun.every((a) => a.runId === fixtureRunId)).toBe(true)
     })
   })
 
@@ -618,9 +661,10 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
         )
       ).runId
       const share = await q.createShare(U1, doomed)
-      await q.upsertBadge(U1, 'half_ish', {
+      await q.insertBadgeAward(U1, 'half_ish', {
         runId: doomed,
         scopeKey: null,
+        dedupeKey: doomed,
         earnedOn: '2026-04-04',
       })
 
@@ -632,11 +676,18 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
       expect(await db.select().from(s.runZones).where(eq(s.runZones.runId, doomed))).toHaveLength(0)
       expect(await q.getRunByShareToken(share.token)).toBeNull()
 
-      // R-22 — the badge survives the run that earned it, with a null run_id. Deleting badge
-      // history because a run was deleted would be a lie about the past.
-      const badge = (await q.getBadges(U1)).find((b) => b.key === 'half_ish')
-      expect(badge).toBeDefined()
-      expect(badge?.runId).toBeNull()
+      /* R-22 — the badge survives the run that earned it, with a null run_id. Deleting badge
+       * history because a run was deleted would be a lie about the past.
+       *
+       * And F13 §2.2, which is why `dedupe_key` is a plain column: had it been
+       * `GENERATED ALWAYS AS (coalesce(run_id, scope_key, ''))`, the SET NULL above would have
+       * recomputed it to '' — colliding with the lifetime row and making this very `deleteRun`
+       * fail on a primary-key violation. The delete succeeding IS the assertion; the key still
+       * naming the deleted run is what makes a re-upload count as a fresh earn. */
+      const award = (await q.getBadgeAwards(U1)).find((b) => b.key === 'half_ish')
+      expect(award).toBeDefined()
+      expect(award?.runId).toBeNull()
+      expect(award?.dedupeKey).toBe(doomed)
     })
 
     it('deleting a run leaves its extraction (and the extraction’s photos) intact — D3', async () => {

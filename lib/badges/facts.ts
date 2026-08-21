@@ -8,6 +8,7 @@ import {
 import { computeSessionMetrics } from '@/lib/metrics/session'
 import type { SplitRow } from '@/lib/metrics/types'
 import type { WindowRun } from './rules'
+import type { BadgeAward, StoredBadge } from './types'
 
 /**
  * The pure half of fact-building. `gateway.ts` fetches rows and calls these; it contains no
@@ -58,6 +59,70 @@ export function toWindowRun(
     avgPaceSec: run.avgPaceSec,
     decouplingPct: metrics.decouplingPct,
   }
+}
+
+/**
+ * **F13's fold: the award ledger's rows collapsed to one entry per badge.**
+ *
+ * This is where the count comes from now. Before F13 `badges` held one row per `(user, key)` and
+ * `count` was incremented by the application, which could only compare the incoming earn against
+ * the LAST one recorded — so re-reviewing an earlier run looked like a fresh earn and the number
+ * inflated (F12 §4.1). The primary key does that job now, and all that is left here is arithmetic
+ * over rows that already exist.
+ *
+ * It lives in `facts.ts` and not in `gateway.ts` for the reason the gateway states about itself:
+ * it touches the database and does no arithmetic. Sorting and summing rows is arithmetic. It also
+ * means the case that matters most — run A, run B, re-review A — is three literal rows and one
+ * assertion, with no connection.
+ *
+ * The rules, each of which has a test:
+ *
+ *   - `count` **sums the column**, never counts rows. A row written before the migration carries
+ *     the aggregate it had then, and discarding it would take history off the user's shelf.
+ *   - `firstEarnedOn` is the earliest `earned_on`, `earnedOn` the latest.
+ *   - `runId` / `scopeKey` come from the row holding that latest day, ties broken by `created_at`
+ *     so the fold is deterministic when two awards share a date.
+ *   - a key with no rows is **absent**, not a zero row — `buildShelf` reads absence as "locked".
+ *   - **catalog order is not applied here.** `buildShelf` iterates the catalog and `badgesForRun`
+ *     sorts by `catalogIndex`; imposing it a third time would be a third place to get it wrong.
+ *     Keys come out in the order they were first seen.
+ */
+export function foldAwards(rows: readonly BadgeAward[]): StoredBadge[] {
+  const byKey = new Map<string, { fold: StoredBadge; latest: BadgeAward }>()
+
+  for (const row of rows) {
+    const entry = byKey.get(row.key)
+    if (!entry) {
+      byKey.set(row.key, {
+        latest: row,
+        fold: {
+          key: row.key,
+          runId: row.runId,
+          scopeKey: row.scopeKey,
+          firstEarnedOn: row.earnedOn,
+          earnedOn: row.earnedOn,
+          count: row.count,
+        },
+      })
+      continue
+    }
+    entry.fold.count += row.count
+    if (row.earnedOn < entry.fold.firstEarnedOn) entry.fold.firstEarnedOn = row.earnedOn
+    if (isLater(row, entry.latest)) {
+      entry.latest = row
+      entry.fold.earnedOn = row.earnedOn
+      entry.fold.runId = row.runId
+      entry.fold.scopeKey = row.scopeKey
+    }
+  }
+
+  return [...byKey.values()].map((entry) => entry.fold)
+}
+
+/** `earned_on` first — the day the badge is about — then `created_at` to break a same-day tie. */
+function isLater(row: BadgeAward, incumbent: BadgeAward): boolean {
+  if (row.earnedOn !== incumbent.earnedOn) return row.earnedOn > incumbent.earnedOn
+  return row.createdAt.getTime() > incumbent.createdAt.getTime()
 }
 
 /** Reviewed runs per ISO week. The key is `insights.scope_key`'s week format, so it joins cleanly. */

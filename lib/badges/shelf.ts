@@ -33,8 +33,12 @@ export interface ShelfEntry {
   title: string
   condition: string
   gloss: string
-  /** null when the badge has never been earned. */
-  earned: { earnedOn: DateISO; count: number } | null
+  /**
+   * null when the badge has never been earned. `earnedOn` is the LATEST earning and
+   * `firstEarnedOn` the first — equal at a count of one, and the panel says so rather than
+   * printing the same date twice.
+   */
+  earned: { firstEarnedOn: DateISO; earnedOn: DateISO; count: number } | null
   /**
    * R-44's locked-tile line: present only for a **locked** badge that genuinely accumulates. An
    * earned badge needs no progress, and 17 of the 22 have no honest number to show.
@@ -62,7 +66,9 @@ export function buildShelf(stored: readonly StoredBadge[], facts: PeriodFacts): 
       title: definition.title,
       condition: meta.condition,
       gloss: meta.gloss,
-      earned: row ? { earnedOn: row.earnedOn, count: row.count } : null,
+      earned: row
+        ? { firstEarnedOn: row.firstEarnedOn, earnedOn: row.earnedOn, count: row.count }
+        : null,
       progress: !row && definition.progress ? readProgress(definition.progress, facts) : null,
     }
   })

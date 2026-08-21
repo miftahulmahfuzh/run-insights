@@ -9,20 +9,28 @@ import {
 } from '@/lib/date/ranges'
 import {
   countReviewedRunsStartedBefore,
-  getBadges,
+  getBadgeAwards,
+  getBadgeAwardsForRun,
   getRunDetail,
   getReviewedRunWindow,
   getRunsBetween,
   getRunsInMonth,
   hasOtherReviewedRunAtLocation,
-  upsertBadge,
+  insertBadgeAward,
 } from '@/lib/db/queries'
 import type { Run } from '@/lib/db/schema'
 import { computeSessionMetrics } from '@/lib/metrics/session'
 import type { ZoneRow } from '@/lib/metrics/types'
 import { BADGE_THRESHOLDS as T, catalogIndex } from './catalog'
-import type { BadgeGateway, CommitFacts, PeriodFacts, SessionFacts } from './evaluate'
 import {
+  dedupeKeyFor,
+  type BadgeGateway,
+  type CommitFacts,
+  type PeriodFacts,
+  type SessionFacts,
+} from './evaluate'
+import {
+  foldAwards,
   qualifyingWeekStreak,
   runsOnDay,
   toWindowRun,
@@ -127,21 +135,19 @@ export const dbBadgeGateway: BadgeGateway = {
     return (await loadPeriod(userId, anchorDay)).facts
   },
 
+  /* The ledger, folded. The arithmetic is `foldAwards`' and not this file's — same division of
+   * labour as every other read here, and it is what makes the count testable without a database. */
   async readBadges(userId: string): Promise<StoredBadge[]> {
-    const rows = await getBadges(userId)
-    return rows.map((row) => ({
-      key: row.key,
-      runId: row.runId,
-      scopeKey: row.scopeKey,
-      earnedOn: row.earnedOn,
-      count: row.count,
-    }))
+    return foldAwards(await getBadgeAwards(userId))
   },
 
-  async earn(userId: string, earn: BadgeEarn): Promise<void> {
-    await upsertBadge(userId, earn.key, {
+  /* Returns whether a row was actually written, which is what `newlyEarned` is built from. The
+   * dedupe is the primary key's job: this issues the insert and reports what the database did. */
+  async earn(userId: string, earn: BadgeEarn): Promise<boolean> {
+    return insertBadgeAward(userId, earn.key, {
       runId: earn.runId,
       scopeKey: earn.scopeKey,
+      dedupeKey: dedupeKeyFor(earn),
       earnedOn: earn.earnedOn,
     })
   },
@@ -151,19 +157,21 @@ export const dbBadgeGateway: BadgeGateway = {
  * Every badge this one run earned, in catalog order.
  *
  * F11's promised read: a shared run may render `long_way_home` / `new_ceiling` inline, and it must
- * be able to ask that question without importing the evaluator or knowing what a rule is. Filtered
- * in TypeScript off `getBadges` rather than issued as a second query — a user has at most 22 badge
- * rows, so a `WHERE run_id = $1` would be a round trip to avoid iterating an array of 22.
+ * be able to ask that question without importing the evaluator or knowing what a rule is. A real
+ * `WHERE run_id = $1` since F13 — the ledger holds one row per earn and grows without bound, so
+ * filtering the user's whole history in TypeScript is no longer the cheaper half of the trade.
+ *
+ * Folded even though a run can earn a given badge only once: the fold is what produces a
+ * `StoredBadge`, and one row folds to a count of 1 with `firstEarnedOn` equal to `earnedOn`.
  *
  * Note what this returns for a period badge: nothing. `badges.run_id` is null for week, month and
  * lifetime scopes (§4.3: "the run that earned it, if session-scoped"), so `century_club` never
  * shows up against a single run — which is correct, because no single run earned it.
  */
 export async function badgesForRun(userId: string, runId: string): Promise<StoredBadge[]> {
-  const rows = await dbBadgeGateway.readBadges(userId)
-  return rows
-    .filter((row) => row.runId === runId)
-    .sort((a, b) => catalogIndex(a.key) - catalogIndex(b.key))
+  return foldAwards(await getBadgeAwardsForRun(userId, runId)).sort(
+    (a, b) => catalogIndex(a.key) - catalogIndex(b.key),
+  )
 }
 
 /**

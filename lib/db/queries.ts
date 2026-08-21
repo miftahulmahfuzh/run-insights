@@ -1540,33 +1540,67 @@ export async function replaceRecords(
   await runBatch(statements)
 }
 
-export async function getBadges(userId: string): Promise<Badge[]> {
-  return db.select().from(badges).where(eq(badges.userId, userId)).orderBy(asc(badges.key))
+/**
+ * Every award row for a user, oldest first within each key. `foldAwards` turns them into the
+ * per-key shelf entries; nothing reads a raw row and calls it "the badge".
+ */
+export async function getBadgeAwards(userId: string): Promise<Badge[]> {
+  return db
+    .select()
+    .from(badges)
+    .where(eq(badges.userId, userId))
+    .orderBy(asc(badges.key), asc(badges.earnedOn))
 }
 
 /**
- * Per-key upsert, and the opposite shape to `replaceRecords` on purpose: a badge, once earned, is
- * a fact about the past ("you did run 100 km that month") and is never revoked by a later
- * correction to a different run. So the first earn inserts `count = 1` and a re-earn increments
- * it and moves `earned_on` forward — it never overwrites the count.
+ * The awards one run earned — F11's inline "what did this run get" read.
+ *
+ * A real `WHERE run_id = $1` rather than the TypeScript filter this used to be. The old comment
+ * argued a user has at most 22 badge rows so a second round trip was not worth it; post-F13 the
+ * ledger holds one row per earn and grows without bound, so `badges_user_run_idx` is what answers
+ * this instead of an array scan over the user's whole history.
+ *
+ * A period badge never appears here: `run_id` is null for week, month and lifetime scopes, which
+ * is correct — no single run earned `century_club`.
  */
-export async function upsertBadge(
+export async function getBadgeAwardsForRun(userId: string, runId: string): Promise<Badge[]> {
+  return db
+    .select()
+    .from(badges)
+    .where(and(eq(badges.userId, userId), eq(badges.runId, runId)))
+    .orderBy(asc(badges.key))
+}
+
+/**
+ * **One award, deduped by the primary key rather than by a read.** Returns false when the row was
+ * already there.
+ *
+ * The opposite shape to `replaceRecords` on purpose, and no longer the same shape as it was before
+ * F13. A record is a statement about the current best, so a correction must be able to REMOVE one.
+ * A badge is a fact about the past, so an earn is only ever INSERTED — and whether this earn is a
+ * new one is `(user_id, key, dedupe_key)`'s question to answer, not the application's. The old
+ * `ON CONFLICT DO UPDATE … count + 1` had to guess, and guessed wrong every time a run other than
+ * the most recent earner was re-reviewed (F12 §4.1).
+ *
+ * There is no update branch and no delete anywhere in this file for `badges`: §8 of F13 is explicit
+ * that nothing may remove an award row.
+ */
+export async function insertBadgeAward(
   userId: string,
   key: string,
-  earn: { runId: string | null; scopeKey: string | null; earnedOn: DateISO },
-): Promise<void> {
-  await db
+  award: {
+    runId: string | null
+    scopeKey: string | null
+    dedupeKey: string
+    earnedOn: DateISO
+  },
+): Promise<boolean> {
+  const rows = await db
     .insert(badges)
-    .values({ userId, key, ...earn, count: 1 })
-    .onConflictDoUpdate({
-      target: [badges.userId, badges.key],
-      set: {
-        runId: earn.runId,
-        scopeKey: earn.scopeKey,
-        earnedOn: earn.earnedOn,
-        count: sql`${badges.count} + 1`,
-      },
-    })
+    .values({ userId, key, ...award, count: 1 })
+    .onConflictDoNothing()
+    .returning({ key: badges.key })
+  return rows.length > 0
 }
 
 export async function createShare(userId: string, runId: string): Promise<{ token: string }> {
