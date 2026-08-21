@@ -129,6 +129,13 @@ If the matching `kind` wasn't uploaded (a 1- or 2-screenshot run), the sheet fal
 whichever photos exist, in `sort_order`, so the reviewer always has *something* to check against
 rather than a blank panel.
 
+> **This section is ratified by R-45, which was amended on 2026-08-21 to adopt it.** The ruling had
+> specified section-based provenance but missed the 1-or-2-screenshot fallback and said nothing
+> about orientation; both of this plan's answers were folded into it verbatim. Note also that
+> `02 Components.dc.html` still says *"crop"* — that wording predates the ruling. **Build the
+> whole-image sheet described above, not a crop.** Per-field bounding boxes are a post-v0.1.0
+> change gated on measuring what the coordinates cost on the one call with no latency slack.
+
 ### 2.3 Provenance and low-confidence marks are visual, not just functional
 
 Per the design brief's "honesty rule," every field on this screen (and later on `/r/[id]`, F08's

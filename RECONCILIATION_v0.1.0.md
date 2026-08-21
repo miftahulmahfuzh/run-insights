@@ -620,6 +620,34 @@ tight crop — captioned with the section it came from. The stat card's footer n
 photos the same way. If per-field boxes are ever wanted, that is a post-v0.1.0 change gated on
 measuring what the coordinates cost, not an F05 assumption.
 
+**Amended 2026-08-21, after F04 landed and F05 was re-read.** This ruling was incomplete in one
+place and is superseded by F05's own plan in another; both are folded in here, since this document
+supersedes plan files and an F05 session should not have to reconcile them itself.
+
+1. **The missing case: a 1- or 2-screenshot run has no matching `kind`.** As written, "a field's
+   source photo is the photo whose `kind` matches the field's section" has no answer when that
+   screenshot was never uploaded — and `/upload` accepts 1–3, so this is the common case, not an
+   edge one. **F05's rule stands and is adopted verbatim:** fall back to whichever photos exist,
+   in `sort_order`, so the reviewer always has *something* to check a value against rather than a
+   blank panel.
+
+2. **Orientation is stacked, not side-by-side.** F05 §2.2 reasoned this out independently: at
+   414 px nothing legible fits beside an input, so the source screenshot is pinned **above** the
+   fields it was read from, pinch-zoomable, not scrolling with the sheet body. That is "the value
+   next to the screenshot it came from" in the only orientation a phone supports. Adopted.
+
+3. **The dependency is already built.** F04 stores `kind` as a client-chosen, Zod-validated value
+   with duplicates rejected (`lib/schema/extractionResult.ts`), and exposes `kinds` and `photos`
+   on its result for exactly this purpose. The v2 design's upload screen — three labelled slots,
+   Summary / Splits / Heart rate — is what makes it client-chosen rather than inferred. Nothing
+   about provenance needs discovering at F05 time.
+
+**Known stale copy, deliberately not chased into the design.** `02 Components.dc.html` still
+describes this sheet as showing *"the region of your screenshot this number was read from"* and
+*"the screenshot crop the value came from"*. That is the pre-ruling wording. The canvas is a
+design source, not an implementation contract, and F05 implements this ruling — but if the canvas
+is ever re-pulled, do not let those two strings re-open a settled question.
+
 ---
 
 ### R-46 · The honesty marks are chips now, not underlines. R-29 revised, not reversed.
