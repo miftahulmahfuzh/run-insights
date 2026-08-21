@@ -26,16 +26,36 @@ wrong picture.
 If the key is in `BADGE_CATALOG` but has no line inside `<!-- SCENES -->` in `style.md`, stop and
 say so. `gen_badge_art.py` will refuse to start anyway; you should say why before it does.
 
-### 2. Find the anchor
+### 2. Find the anchor — and do NOT pass it as `--reference`
 
 ```bash
 ls assets/badges/_anchor.png
 ```
 
-- **Present** → every generation uses `--reference assets/badges/_anchor.png`. This is not
-  optional. 22 badges must share one twill tone, one merrowed-border weight, one satin-stitch
-  gauge and one raking-light direction, and every one of those is a continuous quantity a text
-  prompt specifies loosely and an image specifies exactly.
+**The anchor is check 9's baseline, not a generation input. This reverses the design plan, and
+the reversal is measured rather than preferred.** The plan reasoned that 22 badges must share one
+twill tone, one border weight, one stitch gauge and one light direction, and that each is a
+continuous quantity a text prompt specifies loosely and an image specifies exactly. Sound a
+priori; false for this model. On `self_reward`, three generations from the identical prompt:
+
+| attempt | `--reference` | 9b twill drift | subject |
+|---|---|---|---|
+| a01 | anchor | **9.5 pts — FAIL** | redrew the anchor's rooster |
+| a02 | anchor | **9.3 pts — FAIL** | a ring made of rooster parts |
+| a03 | none | **1.9 pts — PASS** | the doughnut the scene asked for |
+
+`input_references` on `qwen/qwen-image-3-pro` behaves like a strong img2img, not a style
+reference: it transfers the **subject** hard and the **cloth tone** not at all. Passing the anchor
+made set coherence *worse* on the one number that measures it, while destroying the very thing
+each badge is generated for. A second badge is not a second opinion — watch 9a/9b on every badge
+and say so in your report if unreferenced generations start drifting past 8 points.
+
+**What actually holds the deck together is the style block plus one fixed seed.** Use
+`--seed 1970` on every badge, the way `early_bird` and `self_reward` were generated; they landed
+1.9 points apart on twill tone with no reference between them.
+
+- **Present** → generate *without* `--reference`, and let `check_badge_art.py` compare against it.
+  Check 9 is where the anchor earns its keep, and it is how this finding was caught at all.
 - **Absent** → you are generating the anchor. §8 of this skill's design plan recommends
   `early_bird` for the anchor run — it is a shield, it exercises two of the five main threads
   plus the signature thread, and its subject (a rooster against a sun disc) is simple enough to
@@ -47,8 +67,13 @@ ls assets/badges/_anchor.png
 ### 3. Generate
 
 ```bash
-python3 tools/gen_badge_art.py <key> [--reference assets/badges/_anchor.png]
+python3 tools/gen_badge_art.py <key> --seed 1970
 ```
+
+The tool warns when an anchor exists and `--reference` was not passed. **That warning is now
+expected and correct** — see step 2. It is left in place rather than removed because the finding
+behind the reversal is one badge deep, and a warning that has to be read every time is the right
+weight for a decision that may yet be revisited.
 
 Writes `assets/badges/_candidates/<key>.aNN.png` and a `.txt` sidecar holding the exact prompt,
 the model, the seed, the style version and the reference used. The sidecar is why a candidate you
