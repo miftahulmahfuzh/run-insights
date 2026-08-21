@@ -144,6 +144,74 @@ describe('reviewed-only queries', () => {
     expect(params).toContain('2026-08-20')
   })
 
+  it('getReviewedRunWindow filters reviewed_at, orders by the R-5 position, and limits', async () => {
+    fake.enqueue([['r1', '2026-08-20', '07:07:00', 10_670, 4716, 173, 442]], [])
+    const window = await q.getReviewedRunWindow(
+      'u1',
+      { occurredOn: '2026-08-20', startedAt: '07:07:00' },
+      4,
+    )
+    expect(window).toEqual([
+      {
+        id: 'r1',
+        occurredOn: '2026-08-20',
+        startedAt: '07:07:00',
+        distanceM: 10_670,
+        durationSec: 4716,
+        avgHr: 173,
+        avgPaceSec: 442,
+        splits: [],
+      },
+    ])
+
+    const first = fake.sqlAt(0)
+    expect(first).toContain('"reviewed_at" is not null')
+    // The row-value comparison is the same total order the R-5 dedupe index imposes, so "before
+    // this run" means one thing across the codebase — and a NULL start time sorts as midnight
+    // rather than dropping the row.
+    expect(first).toContain('coalesce')
+    expect(first).toContain('limit $')
+    // The splits read is scoped through the run's OWNER and restricted to the ids the reviewed-only
+    // statement above just returned. It does not repeat `reviewed_at`, and does not need to: an id
+    // that reached this list has already passed that filter.
+    expect(fake.sqlAt(1)).toContain('"run_splits"."run_id" in')
+    expect(fake.sqlAt(1)).toMatch(/"runs"\."user_id" = \$\d/)
+  })
+
+  it('getReviewedRunWindow refuses an unbounded limit', async () => {
+    await expect(
+      q.getReviewedRunWindow('u1', { occurredOn: '2026-08-20', startedAt: null }, 0),
+    ).rejects.toThrow(RangeError)
+  })
+
+  it('getReviewedRunWindow issues no second statement when the window is empty', async () => {
+    fake.enqueue([])
+    expect(
+      await q.getReviewedRunWindow('u1', { occurredOn: '2026-08-20', startedAt: null }, 4),
+    ).toEqual([])
+    expect(fake.queries).toHaveLength(1)
+  })
+
+  it('countReviewedRunsStartedBefore filters reviewed_at and compares as a time', async () => {
+    // A mapped select comes back positionally from the driver — see tests/support/fakeDb.ts.
+    fake.enqueue([['3']])
+    expect(await q.countReviewedRunsStartedBefore('u1', '06:00:00')).toBe(3)
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"reviewed_at" is not null')
+    expect(sql).toContain('::time')
+    expect(params).toContain('06:00:00')
+  })
+
+  it('hasOtherReviewedRunAtLocation filters reviewed_at and excludes the run itself', async () => {
+    fake.enqueue([])
+    expect(await q.hasOtherReviewedRunAtLocation('u1', 'Tangerang', 'r1')).toBe(false)
+    const { sql, params } = fake.only()
+    expect(sql).toContain('"reviewed_at" is not null')
+    expect(sql).toContain('<>')
+    expect(params).toContain('Tangerang')
+    expect(params).toContain('r1')
+  })
+
   it('every reviewed-only query is also user-scoped', async () => {
     const calls: Array<() => Promise<unknown>> = [
       () => q.listRuns('u1'),
@@ -152,6 +220,8 @@ describe('reviewed-only queries', () => {
       () => q.getRunsInMonth('u1', '2026-08'),
       () => q.getRunsBetween('u1', '2026-08-01', '2026-08-08'),
       () => q.getMonthlyTotals('u1', 3, '2026-08'),
+      () => q.countReviewedRunsStartedBefore('u1', '06:00:00'),
+      () => q.hasOtherReviewedRunAtLocation('u1', 'Tangerang', 'r1'),
     ]
     for (const call of calls) {
       fake.reset()
@@ -193,21 +263,24 @@ describe('the invariant is complete', () => {
     // without a reviewed_at assertion above, or one was renamed. Both need a human.
     const exportedRollups = Object.keys(q)
       .filter((name) =>
-        /^(list|get)Runs|^getReviewedRuns|^getMonthlyTotals$|^getAllTimeTotals$|^getObservedMaxHr/.test(
+        /^(list|get)Runs|^getReviewedRun|^getMonthlyTotals$|^getAllTimeTotals$|^getObservedMaxHr|^countReviewedRuns|^hasOtherReviewedRun/.test(
           name,
         ),
       )
       .sort()
     expect(exportedRollups).toEqual([
+      'countReviewedRunsStartedBefore',
       'getAllTimeTotals',
       'getMonthlyTotals',
       'getObservedMaxHr',
       'getObservedMaxHrExcludingRun',
       'getObservedMaxHrRun',
+      'getReviewedRunWindow',
       'getReviewedRunsWithChildren',
       'getRunsBetween',
       'getRunsInIsoWeek',
       'getRunsInMonth',
+      'hasOtherReviewedRunAtLocation',
       'listRuns',
       'listRunsWithPhotoCounts',
     ])

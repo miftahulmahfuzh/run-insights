@@ -7,6 +7,7 @@ import {
   NotFoundError,
   recordCorrections,
 } from '@/lib/db/queries'
+import type { BadgeKey } from '@/lib/badges/types'
 import type { CorrectionEvent } from '@/lib/db/schema'
 import { onRunCommitted } from '@/lib/derived/invalidate'
 import { checkIdForFieldPath, failingChecks } from './checks'
@@ -57,7 +58,19 @@ export interface CommitDeps {
   invalidate?: typeof onRunCommitted
 }
 
-export type CommitOutcome = { ok: true; runId: string } | { ok: false; state: CommitReviewState }
+/**
+ * `newlyEarned` is F09 §1.1 step 6: the badge keys this commit actually wrote, so a screen can say
+ * "you earned Fashionably Late" without a second round trip. It is `[]` rather than absent when
+ * nothing was earned, when invalidation failed, and on the already-committed short-circuit below —
+ * a caller never has to distinguish "no badges" from "we did not look".
+ *
+ * Nothing consumes it yet: `commitReviewAction` redirects to `/r/[id]`, so the review screen has no
+ * response to render it into. The value is threaded here anyway because the alternative is a screen
+ * that later wants it re-plumbing the whole commit path, and because it is the only cheap moment
+ * this answer exists — after the redirect it costs a query.
+ */
+export type CommitOutcome =
+  { ok: true; runId: string; newlyEarned: BadgeKey[] } | { ok: false; state: CommitReviewState }
 
 export async function commitReview(
   userId: string,
@@ -113,7 +126,7 @@ export async function commitReview(
    * would surface as a confusing duplicate error rather than a no-op. Answer with the run they
    * already have. */
   if (context.mode === 'review' && context.committedRunId) {
-    return { ok: true, runId: context.committedRunId }
+    return { ok: true, runId: context.committedRunId, newlyEarned: [] }
   }
 
   /* 2 — attribute each edit to the check that pointed at it, if any. Computed against the
@@ -185,9 +198,12 @@ export async function commitReview(
     }
   }
 
-  /* 5 — invalidation. Never allowed to fail the save (plan §7.3). */
+  /* 5 — invalidation. Never allowed to fail the save (plan §7.3). Records, then badges, then the
+   * insight sweep — the order lives inside `onRunCommitted`, which is also where the reasoning for
+   * it is written down. */
+  let newlyEarned: BadgeKey[] = []
   try {
-    await invalidate({
+    const outcome = await invalidate({
       runId: committedRunId,
       userId,
       changedFieldPaths,
@@ -196,6 +212,7 @@ export async function commitReview(
         context.baseline.occurredOn !== draft.occurredOn ? context.baseline.occurredOn : null,
       phase,
     })
+    newlyEarned = outcome?.newlyEarned ?? []
   } catch (err) {
     console.error('[review] onRunCommitted failed; derived data is behind', {
       runId: committedRunId,
@@ -203,7 +220,7 @@ export async function commitReview(
     })
   }
 
-  return { ok: true, runId: committedRunId }
+  return { ok: true, runId: committedRunId, newlyEarned }
 }
 
 /**

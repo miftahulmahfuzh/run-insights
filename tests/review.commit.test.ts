@@ -94,7 +94,7 @@ describe('the golden path — TRUTH committed unmodified', () => {
     const invalidate = vi.fn()
     const outcome = await commitReview(USER, payload(baselineDraft()), { now, invalidate })
 
-    expect(outcome).toEqual({ ok: true, runId: 'run123456789' })
+    expect(outcome).toEqual({ ok: true, runId: 'run123456789', newlyEarned: [] })
     expect(queries.commitExtractedRun).toHaveBeenCalledTimes(1)
     const [userId, input, options] = queries.commitExtractedRun.mock.calls[0]!
     expect(userId).toBe(USER)
@@ -407,7 +407,7 @@ describe('failure modes', () => {
     queries.getRunIdForExtraction.mockResolvedValue('alreadyrun12')
     const outcome = await commitReview(USER, payload(baselineDraft()), { now })
 
-    expect(outcome).toEqual({ ok: true, runId: 'alreadyrun12' })
+    expect(outcome).toEqual({ ok: true, runId: 'alreadyrun12', newlyEarned: [] })
     expect(queries.commitExtractedRun).not.toHaveBeenCalled()
     expect(queries.recordCorrections).not.toHaveBeenCalled()
   })
@@ -420,7 +420,7 @@ describe('failure modes', () => {
     draft.location = 'Serpong'
 
     const outcome = await commitReview(USER, payload(draft), { now })
-    expect(outcome).toEqual({ ok: true, runId: 'run123456789' })
+    expect(outcome).toEqual({ ok: true, runId: 'run123456789', newlyEarned: [] })
     error.mockRestore()
   })
 
@@ -430,7 +430,7 @@ describe('failure modes', () => {
 
     const outcome = await commitReview(USER, payload(baselineDraft()), { now, invalidate })
 
-    expect(outcome).toEqual({ ok: true, runId: 'run123456789' })
+    expect(outcome).toEqual({ ok: true, runId: 'run123456789', newlyEarned: [] })
     expect(queries.commitExtractedRun).toHaveBeenCalledTimes(1)
     expect(error).toHaveBeenCalled()
     error.mockRestore()

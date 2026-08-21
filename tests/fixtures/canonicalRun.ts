@@ -60,6 +60,18 @@ export const canonicalSession: SessionInput = {
   recovery: { endHrBpm: 185, hrAt1MinBpm: 162 },
 }
 
+/**
+ * The `runs` columns F09's badge rules read that no metric needs: the wall-clock start, and the
+ * place. `TRUTH.startTime` is `'07:07'`; Postgres widens a `time` to `'07:07:00'` and that is the
+ * shape `runs.started_at` comes back as, so the fixture stores the widened form — `early_bird` and
+ * `late_start` compare it as a string and must be given the string the database would hand them.
+ */
+export const canonicalRunFacts = {
+  startedAt: '07:07:00',
+  endedAt: '08:26:00',
+  location: 'Tangerang',
+} as const
+
 /** The same run with the scalar columns the record catalog reads. `avgPaceSec` is `runs.avg_pace_sec`. */
 export const canonicalRecordRun: RecordRunRow = {
   ...canonicalSession,

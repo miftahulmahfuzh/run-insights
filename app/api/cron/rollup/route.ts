@@ -1,3 +1,5 @@
+import { sweepPeriodBadges } from '@/lib/badges/evaluate'
+import { dbBadgeGateway } from '@/lib/badges/gateway'
 import { addDays, monthKey as monthKeyOf, isoWeekKeyOf, todayInJakarta } from '@/lib/date/ranges'
 import { listActiveUserIds } from '@/lib/db/queries'
 import { cronEnv } from '@/lib/env'
@@ -29,6 +31,18 @@ import { getOrCreateInsight } from '@/lib/llm/narrate'
  * a burst, and a personal app is not where to find out. Every user is wrapped in its own `try`,
  * because a cron that aborts on the first bad row silently stops serving everyone after it in the
  * list — the worst failure mode available to a background job.
+ *
+ * ── F09'S BADGE SWEEP RIDES ALONG, AND GOES FIRST ─────────────────────────────────────────────
+ * `sweepPeriodBadges` re-checks each active user's week, month and lifetime rules — three cheap
+ * indexed queries, no model call. F09 §8.2 is candid that v0.1.0 does not strictly need it: every
+ * period rule already fires at the commit that satisfies it, whatever order runs are reviewed in.
+ * It is a backstop for the day something can change an aggregate WITHOUT a commit (a deleted run, a
+ * correction that moves a run across a week boundary), bought for almost nothing because this job
+ * already walks the same user list.
+ *
+ * It runs BEFORE the two insight generations, not after, precisely because it is the cheap half: if
+ * the soft deadline expires mid-user, the work that gets skipped should be the 15 s model call that
+ * a page view will happily do on demand, not the 30 ms query that nothing else will retry.
  *
  * ── IT STOPS ITSELF BEFORE THE PLATFORM DOES ──────────────────────────────────────────────────
  * A generation measured 13–16 s live, and week + month for one cold user can therefore exceed the
@@ -72,6 +86,7 @@ export async function GET(request: Request): Promise<Response> {
   let generated = 0
   let failed = 0
   let skipped = 0
+  let badgesEarned = 0
 
   for (const [index, userId] of userIds.entries()) {
     if (Date.now() > deadline) {
@@ -81,6 +96,16 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     try {
+      /* Its own try: a badge sweep that fails must not cost this user their insight refresh, and a
+       * missing badge is recoverable (tomorrow's sweep, or the next commit) in a way a half-written
+       * loop iteration is not. */
+      try {
+        const swept = await sweepPeriodBadges(userId, todayISO, dbBadgeGateway)
+        badgesEarned += swept.newlyEarned.length
+      } catch (cause) {
+        console.warn('[cron rollup] badge sweep failed', { userId, error: String(cause) })
+      }
+
       const week = await loadWeekFacts(userId, weekKey, todayISO)
       const weekResult = await getOrCreateInsight(userId, 'week', weekKey, week)
       if (weekResult.payload != null && !weekResult.cached) generated++
@@ -108,6 +133,7 @@ export async function GET(request: Request): Promise<Response> {
     generated,
     failed,
     skipped,
+    badgesEarned,
     weekKey,
     monthKey,
   })

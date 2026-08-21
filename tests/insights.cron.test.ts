@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GET } from '@/app/api/cron/rollup/route'
+import { sweepPeriodBadges } from '@/lib/badges/evaluate'
 import { listActiveUserIds } from '@/lib/db/queries'
 import { loadMonthFacts, loadWeekFacts } from '@/lib/insights/load'
 import { getOrCreateInsight } from '@/lib/llm/narrate'
@@ -21,11 +22,18 @@ process.env.CRON_SECRET = 'cron-secret-for-tests'
 vi.mock('@/lib/db/queries', () => ({ listActiveUserIds: vi.fn() }))
 vi.mock('@/lib/insights/load', () => ({ loadWeekFacts: vi.fn(), loadMonthFacts: vi.fn() }))
 vi.mock('@/lib/llm/narrate', () => ({ getOrCreateInsight: vi.fn() }))
+/* F09's sweep rides along in this route (§8.2). Mocked here for the same reason the other three
+ * are: the real one reaches Neon, and a cron test that quietly did network I/O would be worse than
+ * no cron test. `dbBadgeGateway` is mocked too — it opens with `import 'server-only'` and its only
+ * job in the route is to be passed through. */
+vi.mock('@/lib/badges/evaluate', () => ({ sweepPeriodBadges: vi.fn() }))
+vi.mock('@/lib/badges/gateway', () => ({ dbBadgeGateway: {} }))
 
 const listUsers = vi.mocked(listActiveUserIds)
 const week = vi.mocked(loadWeekFacts)
 const month = vi.mocked(loadMonthFacts)
 const generate = vi.mocked(getOrCreateInsight)
+const sweep = vi.mocked(sweepPeriodBadges)
 
 function request(authorization?: string): Request {
   return new Request('https://runins.site/api/cron/rollup', {
@@ -58,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   week.mockResolvedValue({} as never)
   month.mockResolvedValue({} as never)
+  sweep.mockResolvedValue({ newlyEarned: [], qualified: [] })
 })
 
 describe('GET /api/cron/rollup — the guard', () => {
@@ -145,5 +154,65 @@ describe('GET /api/cron/rollup — the loop', () => {
     expect(body.monthKey).toMatch(/^\d{4}-\d{2}$/)
     expect(generate.mock.calls[0]?.[2]).toBe(body.weekKey)
     expect(generate.mock.calls[1]?.[2]).toBe(body.monthKey)
+  })
+})
+
+describe('GET /api/cron/rollup — F09’s badge sweep', () => {
+  const authorized = () => request('Bearer cron-secret-for-tests')
+
+  it('sweeps every active user’s week, month and lifetime badges', async () => {
+    listUsers.mockResolvedValue(['u1', 'u2'])
+    generate.mockResolvedValue(generated())
+
+    const body = (await (await GET(authorized())).json()) as { badgesEarned: number }
+
+    expect(sweep).toHaveBeenCalledTimes(2)
+    expect(sweep.mock.calls.map((c) => c[0])).toEqual(['u1', 'u2'])
+    // Anchored on today in Jakarta, the same day the two insight scopes are keyed off.
+    expect(sweep.mock.calls[0]?.[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(body.badgesEarned).toBe(0)
+  })
+
+  it('reports what it awarded', async () => {
+    listUsers.mockResolvedValue(['u1'])
+    generate.mockResolvedValue(cacheHit())
+    sweep.mockResolvedValue({
+      newlyEarned: ['century_club', 'self_reward'],
+      qualified: ['century_club', 'self_reward'],
+    })
+
+    const body = (await (await GET(authorized())).json()) as { badgesEarned: number }
+    expect(body.badgesEarned).toBe(2)
+  })
+
+  it('runs BEFORE the two generations, so a deadline cuts the model call and not the query', async () => {
+    // §8.2's ordering argument: the sweep is three indexed queries and nothing else will retry it,
+    // while an insight a page view will happily regenerate on demand.
+    const order: string[] = []
+    listUsers.mockResolvedValue(['u1'])
+    sweep.mockImplementation(async () => {
+      order.push('badges')
+      return { newlyEarned: [], qualified: [] }
+    })
+    generate.mockImplementation(async () => {
+      order.push('insight')
+      return generated()
+    })
+
+    await GET(authorized())
+    expect(order).toEqual(['badges', 'insight', 'insight'])
+  })
+
+  it('does not cost the user their insight refresh when the sweep fails', async () => {
+    listUsers.mockResolvedValue(['u1'])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    sweep.mockRejectedValue(new Error('neon is down'))
+    generate.mockResolvedValue(generated())
+
+    const body = (await (await GET(authorized())).json()) as { generated: number; failed: number }
+
+    expect(body).toMatchObject({ generated: 2, failed: 0 })
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

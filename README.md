@@ -5,7 +5,7 @@ run, that week, and that month.
 
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
 profile, **F04** ingest & vision extraction, **F05** review & correction, **F06** metrics & records,
-**F08** views, charts & trends · next: F07 insights
+**F08** views, charts & trends, **F07** insights, **F09** badges & achievements · next: F11 sharing
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs

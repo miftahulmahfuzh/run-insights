@@ -9,8 +9,8 @@ though F09 only touches it indirectly — see §6).
 `long_way_home` / `new_ceiling` inline — F09 exposes a pure `badgesForRun()` read for that).
 **Contract sections this plan is bound by:** roadmap D1 (review-only evaluation), D12 (badge art
 is offline, F09 never generates images), §4.3 (`badges` and `records` DDL — F09 does not alter
-either), §4.5 (record keys, read-only from F09's side), §4.6 (**the 20-key catalog — see §11,
-no deltas**), §4.8 (`/me` route), §4.9 (fires-test + non-fires-test per badge, fixture-based).
+either), §4.5 (record keys, read-only from F09's side), §4.6 (**the 22-key catalog — see §11 and
+§14.1; no deltas**), §4.8 (`/me` route), §4.9 (fires-test + non-fires-test per badge, fixture-based).
 **Does not own:** badge artwork (F10), the metrics themselves (`lib/metrics/*`, F06), HRmax
 resolution (`lib/metrics/hrMax.ts`, F02).
 
@@ -208,6 +208,9 @@ export const BADGE_META: Record<BadgeKey, BadgeMeta> = {
 ---
 
 ## 3. Badge copy — all 20, in full
+
+> **Twenty here, twenty-two shipped.** R-33 added `two_a_days` and `boring_excellence` after this
+> table was written; their copy is in §14.1. The register rule below governs all 22.
 
 **Register, enforced the same way `daily-words` enforces its own:** impersonal, present tense,
 no second person, no exclamation, no flattery. This is not a style preference — it is what lets
@@ -458,6 +461,8 @@ Treating the fixture (`research/schema.mjs`'s `TRUTH`, roadmap: 2026-08-20, 07:0
 
 ### 9.1 Full walk of all 20
 
+> The two R-33 keys are walked in §14.1. Neither fires here, so **the earned set is still seven**.
+
 | key | fires? | why |
 |---|---|---|
 | `early_bird` | no | started 07:07, outside 05:00–05:30 |
@@ -558,7 +563,7 @@ change that makes it pass by loosening the threshold gets caught immediately.
 
 ### 10.2 Unearned badges: visible-but-locked, full title AND explanation — not hidden
 
-Decision, and the reasoning: **show all 20 slots always; earned ones render F10's colour art
+Decision, and the reasoning: **show all 22 slots always; earned ones render F10's colour art
 with the `earned_on` date; locked ones render the same art desaturated to grayscale at reduced
 opacity, with the title and the `condition`/`gloss` text both fully visible.** Nothing about a
 locked badge is redacted or teased.
@@ -660,3 +665,104 @@ roadmap's own worked figures (the 46 s example), not changes to what the catalog
   `gen_badge_art.py` runs against `style.md`, it either accepts `BADGE_KEYS` unchanged or
   refuses to start — a startup error here is a stronger signal than any test F09 can write
   against its own catalog file.
+
+---
+
+## 14. Amendments, written while implementing (2026-08-21)
+
+Five places where the shipped code differs from what this file said, each recorded here rather
+than left for a reader to discover by diffing. **§11 still says "no contract deltas" and that is
+still true** — every difference below is either a correction of this plan against an existing
+reconciliation ruling, or a mechanism choice that produces exactly the behaviour §4 and §7
+describe.
+
+### 14.1 The catalog is 22 keys. §2, §3 and §9.1 were written before R-33.
+
+This plan's §0 says "22 small facts" and its §11 promises to match §4.6 — but the array in §2, the
+copy table in §3 and the walk in §9.1 all list **twenty**, because they were written against the
+pre-design-pull roadmap. **R-33 grew the catalog to 22** (restoring `sandbagger`, `warmup_who` and
+`double_century`, adopting `two_a_days` and `boring_excellence`, cutting `rain_tax` because Apple
+Fitness screenshots carry no weather data), and **R-42 recorded that 44 stale "twenty" references
+were corrected** — this file's three tables were missed in that sweep. `lib/badges/catalog.ts`
+implements roadmap §4.6's 22, which is what F10's key-diff guard will hold it to.
+
+The two keys §3 and §4 never got rules or copy for, defined here:
+
+| key | scope | predicate | copy |
+|---|---|---|---|
+| `two_a_days` | session | two or more reviewed runs share this run's `occurred_on` | *Two reviewed runs land on the same calendar day.* / "One day, two entries. Whatever the second one was for, the legs went out and did it twice." |
+| `boring_excellence` | session | three consecutive runs (this one + 2 prior) whose `avg_pace_sec` spread is ≤ 10 s/km **and** whose `|decoupling|` is each under 5%; edge-fired like `groundhog_day` | *3 consecutive runs whose average paces sit within 10 seconds a kilometre of each other, none of them decoupling by more than 5 percent.* / "Three runs that could be swapped for one another without anyone noticing…" |
+
+`boring_excellence` takes the definition R-33 gave it. Two decisions inside it are the
+implementation's own: a run whose decoupling could not be computed **disqualifies** the window
+rather than counting as 0 (— "we don't know" is not evidence of steadiness), and distance is
+deliberately not part of the rule (that is `groundhog_day`'s question, and this badge is about
+pacing discipline).
+
+**§9.1's earned set is unchanged at seven.** Neither new key fires on the canonical fixture:
+one run on 2026-08-20, and a window of one.
+
+### 14.2 Crossings are implemented as "qualifies now, deduped by `scope_key`".
+
+§4 describes the period rules as crossings — `self_reward` fires as a week's count goes 3→4 and
+does not re-fire at 5 — and §8.1's contexts carry a before-and-after pair to express that. The
+shipped rules take only the *current* value, and `evaluate.ts` decides whether that is news by
+comparing against the `badges` row already there: session keys re-earn on a **different run**,
+week and month keys on a **different `scope_key`**, `dawn_patrol` never.
+
+Same observable behaviour, one less thing to thread — and it buys a property the before/after
+shape does not have: **the whole evaluation is idempotent.** That is what makes §8.2's nightly
+sweep safe to run against periods already awarded, and what stops a post-review edit of an
+unchanged run from inflating a `count`. `tests/badges.evaluate.test.ts` asserts both directions.
+
+### 14.3 `new_ceiling` / `long_way_home` read `RecomputeResult.changed`, not the `records` table.
+
+§6 says these read the freshly recomputed record's `run_id`. They read F06's returned `changed`
+array instead, filtered to this run — which `lib/records/recompute.ts` documents as existing for
+exactly this caller. The difference matters on a **re-commit**: the full `rows` set would still
+name this run as the holder on every later edit of it, so `long_way_home` would re-fire for a run
+that has been the longest all along. `changed` means the record *moved*, which is what the badge
+is about.
+
+### 14.4 The `/me` shelf is a list, not the design's grid.
+
+§10.1's wireframe and the v2 design both draw a grid of tiles. §10.2 requires a locked badge's
+condition **and** gloss to be fully readable, and at 414 px a four-across grid gives each tile
+~90 px — two sentences do not fit, and truncating them is the redaction §10.2 argues against. The
+patch keeps its size and its R-36/R-43 treatment; the tile is laid out as a row. §10.2's own
+framing is what settles it: this is a reference table, and a table is a list.
+
+### 14.5 `newlyEarned` is threaded as far as the commit outcome, and no further.
+
+§1.1 step 6 asks for it "so the review screen can show *you earned X* without a second round
+trip". F05's `commitReviewAction` **redirects** to `/r/[id]`, so the review screen has no response
+to render it into. `onRunCommitted` returns it and `CommitOutcome` carries it, because that is the
+one cheap moment the answer exists — after the redirect it costs a query. Nothing consumes it yet;
+`badgesForRun(userId, runId)` (§ F11's promised read, in `gateway.ts`) is how a screen asks later.
+
+### 14.6 What shipped, by file
+
+```
+lib/badges/catalog.ts    22 keys + BADGE_THRESHOLDS + R-44's progress descriptors
+lib/badges/types.ts      BadgeKey/BadgeScope/BadgeEarn/StoredBadge — type-only, client-safe
+lib/badges/meta.ts       22 condition/gloss pairs, every number from BADGE_THRESHOLDS (R-42)
+lib/badges/rules.ts      the 22 predicates. pure: no DB, no clock, no gateway import
+lib/badges/facts.ts      pure fact-builders (window decoupling, week counts, streak walk)
+lib/badges/gateway.ts    the only DB-touching file. `server-only`. refuses an unreviewed run
+lib/badges/evaluate.ts   evaluateBadgesForCommit + sweepPeriodBadges + the isNews rule
+lib/badges/progress.ts   R-44's locked-tile sentence
+lib/badges/shelf.ts      §10.2's 22 rows, catalog order, earned/locked
+lib/records/labels.ts    F09's half of the records display: labels + formatRecordValue
+components/profile/BadgeShelf.tsx · RecordsTable.tsx
+app/me/page.tsx          lifetime totals, records, shelf — six reads, one Promise.all
+lib/db/queries.ts        +getReviewedRunWindow, +countReviewedRunsStartedBefore,
+                         +hasOtherReviewedRunAtLocation (all reviewed-only, all asserted)
+lib/derived/invalidate.ts  the F09 section: records → badges, failures swallowed
+app/api/cron/rollup/route.ts  §8.2's sweep, run BEFORE the two generations
+```
+
+Tests: `badges.catalog` (13), `badges.rules.fixture` (54 — the seven-badge set plus a
+fires/does-not-fire pair per key), `badges.facts` (12), `badges.evaluate` (15),
+`badges.gateway` (11), `badges.shelf` (10), `badges.render` (8), plus new sections in
+`derived.invalidate`, `insights.cron` and `db.queries.reviewedOnly`. 940 pass; no test touches a
+database or an LLM.

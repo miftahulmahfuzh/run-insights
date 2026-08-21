@@ -1,10 +1,13 @@
 import 'server-only'
 
+import { evaluateBadgesForCommit, type BadgeAwardResult } from '@/lib/badges/evaluate'
+import { dbBadgeGateway } from '@/lib/badges/gateway'
 import { isoWeekKeyOf, monthKey as monthKeyOf } from '@/lib/date/ranges'
 import { deleteInsightsForScope } from '@/lib/db/queries'
 import type { CorrectionEvent, InsightScope } from '@/lib/db/schema'
 import { dbRecordsGateway } from '@/lib/records/gateway'
 import { recomputeRecords, type RecomputeResult } from '@/lib/records/recompute'
+import type { RecordKey } from '@/lib/records/types'
 
 /**
  * **The invalidation contract.** Shipped by F05 as a real, exported, currently-no-op function —
@@ -46,6 +49,21 @@ export interface InvalidateDeps {
   recomputeRecordsFor?: (userId: string) => Promise<RecomputeResult>
   /** F07's half, injected on the same terms and for the same reason. */
   sweepInsights?: (userId: string, scope: InsightScope, scopeKey: string) => Promise<void>
+  /** F09's half. Takes the record keys that just moved to this run — see the F09 section below. */
+  evaluateBadgesFor?: (
+    userId: string,
+    runId: string,
+    recordsMovedToThisRun: readonly RecordKey[],
+  ) => Promise<BadgeAwardResult>
+}
+
+/**
+ * What the commit path learns from invalidation. Only badges produce anything a screen could show —
+ * records and insights are read back from their own tables — so this is one field, and it exists so
+ * that "you earned Fashionably Late" never needs a second round trip to discover.
+ */
+export interface InvalidateOutcome {
+  newlyEarned: BadgeAwardResult['newlyEarned']
 }
 
 /**
@@ -107,22 +125,34 @@ export function insightScopesFor(event: RunChangeEvent): Array<[InsightScope, st
  * the mechanism is a compare-and-regenerate rather than an exact-tuple lookup that would have
  * silently served nothing forever after any correction.
  *
- * ── F09 (badges) — NOT YET BUILT ────────────────────────────────────────────────────────────
- * Delete session-scoped badge rows where `run_id = runId`, re-run every session-scoped rule
- * against the corrected run, re-insert what still fires. For week- and month-scoped rules whose
- * `scope_key` covers this run's new *or former* period, recompute that scope_key fresh — same
- * "recompute, never increment" discipline as records, for the same reason: a correction can make
- * an earned badge stop being earned. Move a run across a week boundary and `self_reward`'s "4
- * runs in one ISO week" no longer holds for the week it left.
+ * ── F09 (badges) — LANDED, AND IT DELIBERATELY DOES NOT DO WHAT THIS COMMENT ONCE SAID ──────
+ * The note F05 left here proposed deleting session-scoped badge rows for the run and re-inserting
+ * whatever still fires — records' "recompute, never increment" discipline applied to badges.
+ * **F09 took the opposite position, and the schema in this repo already agreed with it.**
  *
- * Note the one asymmetry with records: `badges.run_id` is `ON DELETE SET NULL` (R-22), so badge
- * history survives a deleted run. Recomputation here must not resurrect a badge for a run that is
- * gone, nor delete the historical row for one that fired legitimately.
+ * `badges.run_id` is declared `ON DELETE SET NULL` (R-22), the one non-cascade FK in `schema.ts`:
+ * when the run that earned a badge is deleted, the badge row survives, orphaned but intact. A
+ * schema that wanted badges to die with their run would have cascaded like every other FK. So
+ * **badges are never revoked; records are always recomputed**, and the asymmetry is the design
+ * rather than a shortcut. `records.longest_distance` answers "what is my longest run, right now";
+ * `badges.long_way_home.earned_on` answers "on what date did a run first feel like my longest".
+ * A correction moves the record and leaves the badge, the way a newspaper prints a correction
+ * without recalling the copies it already delivered.
+ *
+ * What a correction CAN do is make a run newly earn something — a `redline_republic` percentage
+ * corrected upward past 40% — because the data is still human-reviewed, just reviewed twice. So
+ * this runs on every phase, including `post-review-edit`, and `evaluate.ts`'s `isNews` is what
+ * keeps a re-commit of an unchanged run from inflating any `count`.
+ *
+ * ORDER IS LOAD-BEARING: records first, badges second. `new_ceiling` and `long_way_home` are
+ * one-line reads of `RecomputeResult.changed` — "did a record just move to this run" — so running
+ * them before the recompute would evaluate them against yesterday's shelf, and re-deriving them
+ * here would be the second implementation of one comparison that D2 warns about for metrics.
  */
 export async function onRunCommitted(
   event: RunChangeEvent,
   deps: InvalidateDeps = {},
-): Promise<void> {
+): Promise<InvalidateOutcome> {
   const recompute =
     deps.recomputeRecordsFor ?? ((userId: string) => recomputeRecords(userId, dbRecordsGateway))
 
@@ -134,8 +164,16 @@ export async function onRunCommitted(
    * committed, a human confirmed those numbers, and losing their save because a derived shelf
    * could not be rebuilt is the wrong trade in every direction. The next commit recomputes from
    * scratch anyway — that is the whole point of "recompute, never increment". */
+  let recordsMovedToThisRun: RecordKey[] = []
   try {
-    await recompute(event.userId)
+    const result = await recompute(event.userId)
+    /* The keys whose holder is now THIS run, computed at the exact moment it happened. `changed`
+     * rather than the full `rows` set on purpose: `rows` would report this run as the holder on
+     * every later edit of it, and `long_way_home` would then re-fire for a run that has been the
+     * longest all along. `changed` means the record MOVED, which is what the badge is about. */
+    recordsMovedToThisRun = result.changed
+      .filter((record) => record.runId === event.runId)
+      .map((record) => record.key)
   } catch (error) {
     console.error('[invalidate] record recompute failed', {
       runId: event.runId,
@@ -164,7 +202,27 @@ export async function onRunCommitted(
     }
   }
 
-  // F09 (badges) fills in its own section here. Deliberately not a
-  // `throw new Error('not implemented')`: the commit path is live and a throw would make every
-  // save log an error nobody can act on.
+  /* F09. Same failure policy, one degree more consequential: a badge that fails to save here is
+   * not re-derived by the next page view the way an insight is, because a badge is a fact about a
+   * moment rather than a function of current state. The nightly sweep (§8.2) recovers the week,
+   * month and lifetime ones; a lost session badge stays lost until that run is edited again. That
+   * is still the right trade against losing a human's confirmed save — and it is the reason the
+   * sweep exists at all despite not being needed for correctness today. */
+  const evaluateBadges =
+    deps.evaluateBadgesFor ??
+    ((userId: string, runId: string, moved: readonly RecordKey[]) =>
+      evaluateBadgesForCommit(userId, runId, { recordsMovedToThisRun: moved }, dbBadgeGateway))
+
+  try {
+    const { newlyEarned } = await evaluateBadges(event.userId, event.runId, recordsMovedToThisRun)
+    return { newlyEarned }
+  } catch (error) {
+    console.error('[invalidate] badge evaluation failed', {
+      runId: event.runId,
+      userId: event.userId,
+      phase: event.phase,
+      error,
+    })
+    return { newlyEarned: [] }
+  }
 }
