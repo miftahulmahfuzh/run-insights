@@ -25,6 +25,7 @@
     "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
+    "blob:reap": "node --env-file=.env.local scripts/blob-reap.mjs",
     "ci:openrouter-guard": "node scripts/check-openrouter-boundary.mjs",
     "badges:check": "node scripts/check-badge-art.mjs",
     "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs",
