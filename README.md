@@ -4,7 +4,7 @@ Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade ana
 run, that week, and that month.
 
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
-profile · next: F04 ingest & vision extraction
+profile, **F04** ingest & vision extraction · next: F05 review & correction
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
@@ -87,8 +87,17 @@ node research/show-metrics.mjs # deterministic metrics, no API key needed
 
 npm run db:smoke               # is Neon reachable on the pooled string?
 npm run db:migrate             # apply drizzle/ to the database
-npm test                       # unit suites; never touches a database
+npm test                       # unit suites; never touches a database, never calls an LLM
 TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
+npm run test:live:vision       # opt-in: calls glm-4.6v for real. Costs money
+```
+
+Uploading a run needs a Vercel Blob store linked to the project (`BLOB_READ_WRITE_TOKEN`).
+`scripts/f04-e2e-probe.mjs` walks the whole ingest pipeline once against the real Blob store, the
+real model and the real database, then deletes what it made:
+
+```bash
+node --env-file=.env.local scripts/f04-e2e-probe.mjs path/to/a-screenshot.png
 ```
 
 Sign-in needs a Google OAuth client — `docs/google-auth-setup.md` has the console walkthrough.
@@ -96,8 +105,14 @@ Leave `AUTH_URL` **empty** locally and on preview; it is production-only, and Au
 origin from the request everywhere else.
 
 `npm test` is safe by construction: `tests/integration/**` is excluded unless
-`VITEST_INTEGRATION=1`, and every other suite runs against a recording fake driver that generates
-real SQL and sends none of it anywhere.
+`VITEST_INTEGRATION=1`, `tests/live/**` unless `LLM_LIVE_TEST=1`, and every other suite runs
+against a recording fake driver that generates real SQL and sends none of it anywhere. The vision
+client is exercised with an injected `fetch`, so the token-floor guard is tested against the
+measured failure body without a network.
+
+The live vision suite additionally needs the three canonical screenshots, which are **no longer in
+the repo or the image cache**. It skips with a message naming what is missing —
+`docs/plans/F04-ingest-extraction.md` §13 records which tasks that leaves open.
 
 ## Licence
 

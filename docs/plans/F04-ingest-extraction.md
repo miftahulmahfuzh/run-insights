@@ -1,5 +1,7 @@
 # F04 — Ingest & Vision Extraction
 
+**Status:** SHIPPED 2026-08-21 (see §13). Tasks 20/23 open — the canonical screenshots are gone.
+
 > **Feature:** 1–3 Apple Fitness screenshots → client compression → Vercel Blob → `glm-4.6v`
 > vision extraction → a validated, human-reviewable `ExtractedSession`.
 > **Depends on:** F01 (scaffold, `lib/env.ts`), F03 (Drizzle schema, `db`, `newId()`)
@@ -1158,3 +1160,196 @@ clear — not new numbers invented for this plan.
 Anything that fails item 1 or item 3 blocks merge outright — those two are, respectively, the
 regression test for the entire feature's reason to exist and the guard for the single most
 expensive failure mode measured against this vendor.
+
+---
+
+## 13. Execution record — 2026-08-21
+
+F04 executed. **357 unit tests green** (up from 228), `typecheck` / `lint` / `format:check` /
+`next build` clean, three CI guards green, and the assembled pipeline verified against the live
+Blob store, the live `glm-4.6v` endpoint and the live Neon database.
+
+Two of this plan's designed numbers turned out to be wrong and were corrected by measurement; one
+of its assumptions was already settled by the reconciliation; three tasks could not be closed
+because the canonical screenshots are no longer on disk. All of that is below rather than
+smoothed over.
+
+### What shipped
+
+| Path | Contents |
+|---|---|
+| `lib/extract/constants.ts` | every tunable, dependency-free, each number tagged MEASURED or DESIGNED |
+| `lib/schema/extractedSession.ts` | the Zod schema, `FIELD_SOURCES`, `makeExtractedSessionSchema`, `sectionForField` (R-45), `emptyExtractedSession` |
+| `lib/schema/extractionResult.ts` | the wire contract — `ExtractRequestSchema`, `ExtractionResult`, the failure copy |
+| `lib/llm/prompts/extraction.ts` | the production prompt: rules 1–7 verbatim from the 108/108 recipe, plus additive 6a/8/9 |
+| `lib/llm/extractJson.ts` | `extractJsonObject`, ported from `research/score.mjs` and tested for parity with it |
+| `lib/llm/vision.ts` | the one `fetch`, **the token-floor guard**, `callVisionPrimary`, `callVisionRepair` |
+| `lib/llm/extract.ts` | `extractSession` — Zod, the budget-gated text-only repair, the terminal outcome |
+| `lib/llm/runExtractionJob.ts` | the `after()` body: blob fetch → data URI → extract → terminal row |
+| `lib/extract/readExtraction.ts` | the DTO read + the stale-pending self-heal, shared by the poll and the page |
+| `lib/photos/resizeTarget.ts` · `compressForExtraction.ts` | the long-edge arithmetic, and the 560w/q80 client compressor |
+| `lib/format.ts` | §4.2's units. **F08 owns this**; F04 seeded the five functions the hand-off needs |
+| `app/api/upload/route.ts` | the Blob client-upload handshake, `kind` carried in the signed token |
+| `app/api/extract/route.ts` · `[id]/route.ts` | 202-and-`after()`, and the poll |
+| `app/upload/page.tsx` + `components/extract/UploadPicker.tsx` | the picker, per-tile kind, compress + upload progress |
+| `app/x/[extractionId]/page.tsx` + `ExtractionGate` | R-1's pre-commit route; the F04/F05 seam is `ExtractionGate`'s branch |
+| `components/extract/ExtractingSkeleton.tsx` | R-41's honest progress screen |
+| `scripts/check-client-secret-boundary.mjs` | Task 24, as three narrow rules |
+| `scripts/copy-image-compression-worker.mjs` | self-hosts the compression worker; `predev`/`prebuild` |
+| `scripts/f04-e2e-probe.mjs` | the assembled-pipeline probe (below). Not a test — it spends money |
+| `research/fixtures/golden-response.json` + `README.md` | the offline regression artefact, with its provenance stated |
+| 8 new suites | `vision`, `extract`, `extractJson`, `extractedSession`, `extractionResult`, `resizeTarget`, `readExtraction`, `pollSchedule`, `format`, `goldenFixture` |
+
+### Measured facts that only the live endpoint could establish
+
+Task 19 had never been run. It was run, and it changed two constants.
+
+| Claim | Result |
+|---|---|
+| **A production text-only repair's latency** | **11,460 ms** (in=1184, out=338). The plan's designed `REPAIR_TIMEOUT_MS` was **12,000 ms** — 540 ms of margin. **Raised to 18,000 ms.** |
+| **The gate that guards it** | `MIN_REPAIR_BUDGET_MS` was 6,000 ms, i.e. it would wave through a repair with 6 s left that needs 11.5 s — failing at its one job. **Raised to 14,000 ms.** |
+| **A text-only repair's token cost** | **1,135** prompt tokens, not the ~35 a bare text turn costs: the system prompt's nine rules plus the SHAPE block plus the malformed reply. A "text-only" repair costs about as much as one image. |
+| **Why that sharpens R-2's corollary** | 1,135 clears a 1-image floor but sits **below** the 3 × 500 = 1,500 floor a three-screenshot upload carries. Had the repair inherited the primary's image count, **every repair after a three-image upload would have died with a spurious `VisionTokenFloorError`.** `imageCount: 0` is the difference between the repair path working and never working. |
+| One real image, our exact body shape | HTTP 200, **1,411** prompt tokens — clears 1 × 500 by 2.8×, and falls short of 3 × 500, so a 3-image request that delivered one image trips exactly as designed |
+| The endpoint accepts the production body verbatim | `thinking: {type:'disabled'}` + OpenAI-shaped `image_url` parts → 200. No SDK, one `fetch`, as specified |
+
+### The assembled pipeline, verified end to end
+
+`node --env-file=.env.local scripts/f04-e2e-probe.mjs <image>` — a throwaway user, a real Blob
+PUT, a real server-side fetch of that blob, a real vision call with the shipped prompt, a real
+terminal `extractions` row, then a cascade delete.
+
+**Scope, stated honestly:** the probe REPLAYS the job's sequence rather than importing
+`runExtractionJob.ts` (TypeScript behind the `@/` alias with a `server-only` marker, and no TS
+loader exists in a plain `node` script). It reads the prompt out of the shipping module so the
+wording cannot drift. What it therefore proves is every seam *outside* the TypeScript; the
+TypeScript between those seams is what the 357 unit tests cover. Output of the run:
+
+```
+[2] uploading  2010 KB -> shots/prtk3g8z0000-UMlMspw5f1FFAph1nCvU65AJHb4Raw.jpg
+[4] blob fetched back server-side: 2744651 chars of base64
+    HTTP 200 in 12163ms · prompt_tokens=2400 · completion=119
+[5] CLEARS: 2400 >= 500 -> safe to parse
+    model said: distanceKm=null durationSec=null splits=0 hrZones=0
+[6] {"status":"ok","error_code":null,"prompt_tokens":2400,"image_count":1}
+    run_photos: {"kind":"summary","run_id":null}   <- R-1
+    runs for this user: 0                          <- D1
+```
+
+Three things worth naming in that output. **R-1 holds**: the photo row exists with `run_id NULL`,
+attached to the extraction. **D1 holds**: a completed extraction created zero `runs` rows.
+And the image was a 19th-century illustration of a jar, not a workout — the model returned
+`distanceKm: null` and empty arrays rather than inventing a run. RULE 1 is doing its job on an
+input it was never shown.
+
+### Contract deltas as built
+
+1. **`extractions.blob_urls` holds `{url, pathname, kind}` per screenshot, not a bare URL list.**
+   Same `jsonb` column, no migration — this plan's §9 called it a convention and it is. The `kind`
+   has to live here because it parameterises the provenance guard, and that guard is only sound if
+   `kindsPresent` comes from our own upload record rather than from the model's reply. Two F03 test
+   call sites were updated with it.
+
+2. **`markExtractionFailed` gained an optional `promptTokens`.** A `token_floor` row whose canary
+   reads 141 is the difference, months later, between "the vendor dropped the images" and "the
+   model wrote bad JSON". The plan stored the canary only on success.
+
+3. **`FIELD_OWNERSHIP` became `FIELD_SOURCES`: a list of screens per field, not one owner per
+   field.** The plan's table was flagged as an unverified assumption with a task to check it
+   (Task 6); **R-4 already settled it by reading the three screenshots**, so the task is closed by
+   citation rather than by re-doing it. R-4 also found the thing that forced the shape change:
+   `avgHrBpm` is on the summary *and* the heart-rate screen, and a single-owner table would have
+   wrongly nulled it out for anyone who uploaded only the heart-rate screenshot.
+
+4. **`splits` requires the splits screen, even though R-4 records the summary previewing its first
+   three rows.** Those three rows are real, but a three-row array for an eleven-km run is a
+   silently truncated table, and completeness is load-bearing for every pace average (D14), for
+   `metronome` / `fast_start_fool`, and for F05's split-sum cross-check. A truncated splits table
+   is the exact failure `tests/research/score.test.ts` exists to catch; it must not be reachable
+   through a legitimate upload. RULE 6a tells the model the same thing.
+
+5. **The repair gate measures ELAPSED time, not the primary call's timeout.** §8's
+   `budgetLeft = remainingBudgetMs - PRIMARY_TIMEOUT_MS` understates the remaining budget by up to
+   45 s on the happy path, which would have skipped almost every repair that could have succeeded.
+   `extractSession` takes an injected clock so this is a test, not a `setTimeout`.
+
+6. **`lib/photos/regions.ts` was NOT built.** `DESIGN_INTEGRATION.md`'s R-31 asked for hand-authored
+   normalised-rect maps per screen kind; **R-45 superseded that** — provenance is by section, the
+   correction sheet shows the whole source screenshot, and a field's source photo is derived from
+   `sectionForField()`. That helper ships instead, which is the entire F04 half of R-45. (The rects
+   could not have been authored anyway: they needed the screenshots, which are gone.)
+
+7. **`maxDuration` is a literal `60`, not the shared constant.** Segment config exports are
+   statically analysed and an imported constant makes `next build` reject the route outright
+   ("Invalid segment configuration export detected") — the same trap `proxy.ts`'s matcher
+   documents. `tests/extract.pollSchedule.test.ts` reads the literal back out of the route source
+   and asserts it against `FUNCTION_MAX_DURATION_S`, so the two copies cannot drift.
+
+8. **`ExtractionBlobRefSchema` validates the blob URL's host.** Not in the plan, and it is the
+   SSRF boundary: the background job fetches these URLs server-side, so without the refinement a
+   crafted `POST /api/extract` would read `169.254.169.254` and base64 the result into a prompt.
+   Five hostile URLs are in the test.
+
+9. **`lib/format.ts` shipped early.** F08 owns it (R-23), but the hand-off screen is the first
+   thing in the app to render a measurement, and inlining `(m/1000).toFixed(2)` in a component
+   would have created the second source of truth R-23 exists to prevent. Five functions, written
+   to §4.2 rather than to the screen's convenience.
+
+10. **`/x/[extractionId]` ships with F04's waiting half and an explicit F05 slot**, following F02's
+    precedent at `/` and `/me`. `ExtractionGate`'s status branch IS the seam: F05 replaces the two
+    terminal branches, and the route, the poll, the skeleton and the DTO stay. The `ok` branch
+    renders the extracted values **read-only** so the pipeline is verifiable by a human today; it
+    saves nothing, and the banner says so.
+
+### Gaps — what is NOT done, and why
+
+**The three canonical screenshots are gone.** `research/lib.mjs` reads them from
+`/home/miftah/.claude/image-cache/3a4e3940-…/`, which has been cleared, and nothing in `research/`
+preserved either the images or the raw text of the 108/108 runs — `results-repeat.json` kept only
+scores, timings and token counts. Consequences, stated rather than papered over:
+
+| Task | Status |
+|---|---|
+| **20** — re-validate the labelled prompt at 108/108 | **OPEN.** The additive rules 6a/8/9 are unverified against the fixture. They are additive to the proven block, which is the safest form of change, but "safest" is not "verified". |
+| **23** — tagged live suite, 108/108 across ≥3 runs | **OPEN.** Written and committed, gated on `RI_FIXTURE_DIR`, skips loudly with a message naming what is missing. Runnable the moment the images come back. |
+| **21** — the golden fixture | **Shipped as a RECONSTRUCTION, labelled as one.** `research/fixtures/README.md` says exactly what it is (the ground truth serialised as the model returns it, in a real envelope, with the measured `usage`), what it proves (the scorer, the extractor, the schema, the guard) and what it does not (that the vendor still returns 108/108 today). Replace it with a real capture when the images return; the test needs no change. |
+| **19** — measure repair latency | **CLOSED**, and it moved two constants. A text-only repair needs no screenshots, which is why this one was reachable. |
+| **6** — verify the field-ownership table | **CLOSED by R-4**, which resolved it from the screenshots before they were lost. |
+
+**Acceptance criterion 7 is partially met.** The plan asks for a unit test that decodes the
+compressor's output and asserts `min(width, height) === 560 ± 5`. `browser-image-compression`
+needs a DOM, `Image`, `OffscreenCanvas` and a real JPEG encoder; this repo's Vitest runs in `node`
+with no jsdom and no `canvas` binding, so that decode is not reachable from the suite. What ships
+instead is `lib/photos/resizeTarget.test.ts`, which proves the arithmetic that IS the bug —
+including the fixture geometry, five real iPhone geometries, the landscape case, the no-upscale
+case, and an explicit `not.toBe(560)` assertion whose only job is to fail if someone "simplifies"
+the compressor back to passing the naive value. **The pixel-level assertion is a manual QA step**:
+upload a screenshot, confirm the tile reports ~55–60 KB, and check the stored `run_photos.width`
+is near 560. Criterion 8 (JPEG at ~q80, ~50–60 KB) is met the same way.
+
+**No route-handler integration test.** `app/api/extract/route.ts` imports `auth.ts`, which
+constructs Auth.js with the Drizzle adapter at module scope; standing that up under Vitest costs
+more than it proves. What is tested instead: the request schema (12 cases, including five hostile
+URLs), the DTO read and the self-heal against the fake driver, and the whole route path once, for
+real, by `scripts/f04-e2e-probe.mjs`.
+
+### Notes for whoever picks up F05
+
+- **Read `lib/schema/extractionResult.ts` first.** `ExtractionResult` is the entire hand-off
+  contract, and its doc comment has the four-row table of what you receive per status. The
+  `failed` row is §8.1: same form, every field blank, still keyed to this `extractionId`.
+- **The seam is `ExtractionGate`'s status branch**, nothing above it. Replace `ExtractedSummary` +
+  `ReviewSlot` with the correction form, and `FailedHandoff`'s second card with the blank form.
+  Leave the route, the poll, the skeleton and `readExtractionResult` alone.
+- `sectionForField(field)` is R-45's provenance in one call — the source photo is the one whose
+  `kind` matches. Do not add bounding boxes; R-45 rejected them and the extraction prompt is
+  measured at 108/108 as it stands.
+- `emptyExtractedSession()` returns a fresh object every call. It has to: a module-level constant
+  shared the same `splits` array across every blank form in the process, which the
+  "returns a fresh object each call" test caught before it could ship.
+- `commitExtractedRun` is still the only thing that creates a run (R-1), and `runs.extraction_id`
+  must point at the extraction even when it `failed` — that is what makes "these numbers are 100%
+  human-entered" an auditable claim rather than a comment.
+- The units in `ExtractedSession` are the MODEL's units (`distanceKm` as a float, `paceSecPerKm` as
+  an int). Converting to the stored integers of §4.2 — metres, seconds — is F05's job at commit,
+  and `lib/format.ts` is where the rendering half already lives.

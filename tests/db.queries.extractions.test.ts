@@ -39,9 +39,15 @@ describe('append-only, enforced not just documented', () => {
 describe('lifecycle', () => {
   it('createExtraction opens the row as pending, with the blob urls and model', async () => {
     fake.enqueue([])
+    // F04 widened `blob_urls` from a bare url list to `{url, pathname, kind}` per screenshot: the
+    // `kind` is what parameterises the provenance guard, and it has to come from our own upload
+    // record rather than from the model's reply. Same jsonb column, no migration.
     const { id } = await q.createExtraction(
       'u1',
-      ['https://b/1.jpg', 'https://b/2.jpg'],
+      [
+        { url: 'https://b/1.jpg', pathname: 'shots/1.jpg', kind: 'summary' },
+        { url: 'https://b/2.jpg', pathname: 'shots/2.jpg', kind: 'splits' },
+      ],
       'glm-4.6v',
     )
     expect(id).toHaveLength(12)

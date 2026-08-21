@@ -8,3 +8,7 @@ research
 # Design-system artifacts arrive via DesignSync with deliberately packed lines
 # (same reason research/ is excluded). Reformatting them fights the next pull.
 docs
+
+# browser-image-compression's UMD bundle, copied out of node_modules on predev/prebuild (F04).
+# Third-party minified output, gitignored, regenerated every build.
+public/vendor

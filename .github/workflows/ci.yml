@@ -57,6 +57,13 @@ jobs:
       - name: Data-layer invariant guard
         run: npm run ci:data-layer-guard
 
+      # F04 Task 24. LLM_API_KEY is the one credential sent to a paid endpoint, and `lib/env.ts`'s
+      # server-only poison pill is bypassed entirely by reading process.env directly in a client
+      # file. A name-level grep over app/ and components/ catches that in the diff. It also fails
+      # on any NEXT_PUBLIC_ prefix at all, which roadmap section 4.1 forbids outright.
+      - name: Client secret-boundary guard
+        run: npm run ci:client-secret-guard
+
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

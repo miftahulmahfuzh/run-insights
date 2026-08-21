@@ -39,6 +39,7 @@ import {
   users,
   type Badge,
   type Extraction,
+  type ExtractionBlobUrls,
   type ExtractionCorrections,
   type ExtractionStatus,
   type Insight,
@@ -766,9 +767,14 @@ export async function getPreviousReviewedRun(
  * `scripts/check-extractions-append-only.mjs` enforces this in CI.
  * ==========================================================================*/
 
+/**
+ * `blobUrls` carries `{url, pathname, kind}` per screenshot rather than a bare URL list: `kind`
+ * is what parameterises F04's provenance guard, and it has to come from our own upload record
+ * rather than from the model's reply. See `extractions.blob_urls` in `schema.ts`.
+ */
 export async function createExtraction(
   userId: string,
-  blobUrls: string[],
+  blobUrls: ExtractionBlobUrls,
   model: string,
 ): Promise<{ id: string }> {
   const id = newExtractionId()
@@ -844,13 +850,19 @@ export async function markExtractionRepaired(
   await markExtraction(userId, id, { status: 'repaired', rawResponse, promptTokens })
 }
 
+/**
+ * `promptTokens` is optional but is passed on the F04 path even here: a `token_floor` row whose
+ * canary reads 141 is the difference, months later, between "the vendor dropped the images" and
+ * "the model wrote bad JSON".
+ */
 export async function markExtractionFailed(
   userId: string,
   id: string,
   errorCode: string,
   rawResponse?: unknown,
+  promptTokens?: number | null,
 ): Promise<void> {
-  await markExtraction(userId, id, { status: 'failed', errorCode, rawResponse })
+  await markExtraction(userId, id, { status: 'failed', errorCode, rawResponse, promptTokens })
 }
 
 /**

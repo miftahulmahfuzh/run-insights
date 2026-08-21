@@ -1,0 +1,18 @@
+{
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"activityType\": \"Outdoor Run\",\n  \"goal\": \"Open Goal\",\n  \"dateLabel\": \"Thu, 20 Aug\",\n  \"startTime\": \"07:07\",\n  \"endTime\": \"08:26\",\n  \"location\": \"Tangerang\",\n  \"durationSec\": 4716,\n  \"distanceKm\": 10.67,\n  \"activeKcal\": 646,\n  \"totalKcal\": 747,\n  \"elevationGainM\": 15,\n  \"avgCadenceSpm\": 144,\n  \"avgPaceSecPerKm\": 442,\n  \"avgHrBpm\": 173,\n  \"maxHrBpm\": 189,\n  \"restingHrBpm\": 72,\n  \"splits\": [\n    {\n      \"km\": 1,\n      \"timeSec\": 396,\n      \"paceSecPerKm\": 396,\n      \"hrBpm\": 154,\n      \"cadenceSpm\": 154,\n      \"partial\": false\n    },\n    {\n      \"km\": 2,\n      \"timeSec\": 428,\n      \"paceSecPerKm\": 428,\n      \"hrBpm\": 171,\n      \"cadenceSpm\": 148,\n      \"partial\": false\n    },\n    {\n      \"km\": 3,\n      \"timeSec\": 431,\n      \"paceSecPerKm\": 431,\n      \"hrBpm\": 168,\n      \"cadenceSpm\": 151,\n      \"partial\": false\n    },\n    {\n      \"km\": 4,\n      \"timeSec\": 431,\n      \"paceSecPerKm\": 431,\n      \"hrBpm\": 173,\n      \"cadenceSpm\": 148,\n      \"partial\": false\n    },\n    {\n      \"km\": 5,\n      \"timeSec\": 423,\n      \"paceSecPerKm\": 423,\n      \"hrBpm\": 179,\n      \"cadenceSpm\": 146,\n      \"partial\": false\n    },\n    {\n      \"km\": 6,\n      \"timeSec\": 440,\n      \"paceSecPerKm\": 440,\n      \"hrBpm\": 177,\n      \"cadenceSpm\": 145,\n      \"partial\": false\n    },\n    {\n      \"km\": 7,\n      \"timeSec\": 452,\n      \"paceSecPerKm\": 452,\n      \"hrBpm\": 177,\n      \"cadenceSpm\": 143,\n      \"partial\": false\n    },\n    {\n      \"km\": 8,\n      \"timeSec\": 474,\n      \"paceSecPerKm\": 474,\n      \"hrBpm\": 175,\n      \"cadenceSpm\": 139,\n      \"partial\": false\n    },\n    {\n      \"km\": 9,\n      \"timeSec\": 467,\n      \"paceSecPerKm\": 467,\n      \"hrBpm\": 174,\n      \"cadenceSpm\": 138,\n      \"partial\": false\n    },\n    {\n      \"km\": 10,\n      \"timeSec\": 480,\n      \"paceSecPerKm\": 480,\n      \"hrBpm\": 176,\n      \"cadenceSpm\": 136,\n      \"partial\": false\n    },\n    {\n      \"km\": 11,\n      \"timeSec\": 288,\n      \"paceSecPerKm\": 429,\n      \"hrBpm\": 183,\n      \"cadenceSpm\": 145,\n      \"partial\": true\n    }\n  ],\n  \"hrZones\": [\n    {\n      \"zone\": 1,\n      \"durationSec\": 104,\n      \"minBpm\": null,\n      \"maxBpm\": 140\n    },\n    {\n      \"zone\": 2,\n      \"durationSec\": 25,\n      \"minBpm\": 141,\n      \"maxBpm\": 151\n    },\n    {\n      \"zone\": 3,\n      \"durationSec\": 303,\n      \"minBpm\": 152,\n      \"maxBpm\": 163\n    },\n    {\n      \"zone\": 4,\n      \"durationSec\": 2165,\n      \"minBpm\": 164,\n      \"maxBpm\": 174\n    },\n    {\n      \"zone\": 5,\n      \"durationSec\": 1998,\n      \"minBpm\": 175,\n      \"maxBpm\": null\n    }\n  ],\n  \"postWorkoutHr\": [\n    {\n      \"label\": \"8.26\",\n      \"bpm\": 185\n    },\n    {\n      \"label\": \"1 MIN\",\n      \"bpm\": 162\n    },\n    {\n      \"label\": \"2 MIN\",\n      \"bpm\": 169\n    }\n  ]\n}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 3277,
+    "completion_tokens": 940,
+    "total_tokens": 4217
+  },
+  "model": "glm-4.6v"
+}

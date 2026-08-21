@@ -7,7 +7,9 @@
   },
   "scripts": {
     "dev": "next dev",
+    "predev": "node scripts/copy-image-compression-worker.mjs",
     "build": "next build",
+    "prebuild": "node scripts/copy-image-compression-worker.mjs",
     "start": "next start",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
@@ -24,7 +26,9 @@
     "db:studio": "drizzle-kit studio",
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
     "ci:openrouter-guard": "node scripts/check-openrouter-boundary.mjs",
-    "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs"
+    "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs",
+    "ci:client-secret-guard": "node scripts/check-client-secret-boundary.mjs",
+    "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",

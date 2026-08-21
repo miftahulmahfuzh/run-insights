@@ -116,7 +116,14 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
 
     // An extraction with two photos attached at upload time (R-1: no run exists yet).
     extractionId = (
-      await q.createExtraction(U1, ['https://blob/1.jpg', 'https://blob/2.jpg'], 'glm-4.6v')
+      await q.createExtraction(
+        U1,
+        [
+          { url: 'https://blob/1.jpg', pathname: '1.jpg', kind: 'summary' },
+          { url: 'https://blob/2.jpg', pathname: '2.jpg', kind: 'splits' },
+        ],
+        'glm-4.6v',
+      )
     ).id
     await q.attachExtractionPhotos(U1, extractionId, [
       { blobUrl: 'https://blob/1.jpg', pathname: '1.jpg', kind: 'summary' },

@@ -141,6 +141,22 @@ export type CorrectionEvent = {
 
 export type ExtractionCorrections = Record<string, CorrectionEvent[]>
 
+/**
+ * One screenshot as sent to the vision model. Structural on purpose: `lib/db/schema.ts` stays
+ * free of `zod` and of F04's module graph, and `ExtractionBlobRefSchema`
+ * (`lib/schema/extractionResult.ts`) is the runtime validator every writer goes through.
+ */
+export type ExtractionBlobRefRow = {
+  url: string
+  pathname: string
+  /** 'summary' | 'splits' | 'heartrate' — F04 never writes 'other' into an extraction. */
+  kind: PhotoKind
+  width?: number | null
+  height?: number | null
+  bytes?: number | null
+}
+export type ExtractionBlobUrls = ExtractionBlobRefRow[]
+
 export const extractions = pgTable(
   'extractions',
   {
@@ -148,8 +164,20 @@ export const extractions = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** The screenshots as uploaded to Blob, in review order. */
-    blobUrls: jsonb('blob_urls').$type<string[]>().notNull(),
+    /**
+     * The screenshots as uploaded to Blob, in the order the model was shown them.
+     *
+     * F04 owns the shape inside this column (its plan §9) — a convention, not a migration, since
+     * the column is `jsonb`. Each entry carries the `kind` because `kind` is what parameterises
+     * the provenance guard in `lib/schema/extractedSession.ts`, and that guard must be able to
+     * answer "which screens did we actually send?" from OUR records rather than from the model's
+     * reply. `ExtractionBlobRefSchema` in `lib/schema/extractionResult.ts` is the validator.
+     *
+     * `run_photos` also holds these three rows (R-1). The duplication is deliberate: `run_photos`
+     * is the mutable, user-facing photo lifecycle (exclude-from-share, blob rotation, deletion),
+     * while this column is the immutable audit record of what was sent to the model.
+     */
+    blobUrls: jsonb('blob_urls').$type<ExtractionBlobUrls>().notNull(),
     model: text('model').notNull(), // 'glm-4.6v'
     /**
      * The D3 token-floor canary, persisted. The Anthropic endpoint answers 200 with invented

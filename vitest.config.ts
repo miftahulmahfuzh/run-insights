@@ -10,6 +10,13 @@ import { defineConfig } from 'vitest/config'
  *     so a plain `npm test` never reaches a real database.
  */
 const integration = process.env.VITEST_INTEGRATION === '1'
+/**
+ * `tests/live/**` calls the real `glm-4.6v` endpoint: it costs money, it takes ~35 s per case, and
+ * it can flake on vendor availability (`IMPLEMENTATION_PLAN.md` §1.2's overload note). Excluded
+ * from every default run; `npm run test:live:vision` sets this and opts in. §4.9's "no test may
+ * call a live LLM except the explicitly-tagged live suites" is enforced here, not by convention.
+ */
+const live = process.env.LLM_LIVE_TEST === '1'
 
 export default defineConfig({
   resolve: {
@@ -29,7 +36,14 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     include: ['tests/**/*.test.ts', 'lib/**/*.test.ts', 'app/**/*.test.ts'],
-    exclude: ['node_modules/**', '.next/**', ...(integration ? [] : ['tests/integration/**'])],
+    exclude: [
+      'node_modules/**',
+      '.next/**',
+      ...(integration ? [] : ['tests/integration/**']),
+      ...(live ? [] : ['tests/live/**']),
+    ],
+    /** A live vision call is ~35 s; the default 5 s timeout would fail it before it answered. */
+    testTimeout: live ? 180_000 : 5_000,
     setupFiles: ['tests/support/setup.ts'],
   },
 })

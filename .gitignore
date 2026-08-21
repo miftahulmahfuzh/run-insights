@@ -43,3 +43,8 @@ next-env.d.ts
 
 # badge-art generation scratch (F10) — only the chosen patches are committed
 assets/badges/_candidates/
+
+# browser-image-compression's worker bundle, copied from node_modules by
+# scripts/copy-image-compression-worker.mjs on predev/prebuild (F04). A build artefact:
+# committing it would let a stale copy survive a dependency bump.
+/public/vendor/
