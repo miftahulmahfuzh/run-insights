@@ -78,6 +78,15 @@ jobs:
       - name: F07 LLM payload-boundary guard
         run: npm run ci:llm-payload-guard
 
+      # F11. Properties of the ONE unauthenticated route that a unit test either cannot see or would
+      # need the whole Next runtime to see: app/s/ stays four files (a new route there is a new
+      # public surface, and D7 admits no Route Handler under /s), the page names no resolveHrMax and
+      # hand-rolls no Tanaka fallback (F02 INVARIANT B), it pulls in no analytics package (the
+      # pathname IS the bearer token), and the owner-side share controls stay in the authenticated
+      # tree.
+      - name: F11 share-boundary guard
+        run: npm run ci:f11-guard
+
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

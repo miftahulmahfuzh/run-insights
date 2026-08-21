@@ -963,27 +963,96 @@ describe('the SharedRun projection never carries the excluded fields', () => {
 
 ---
 
-## 12. Implementation checklist (fill in on landing)
+## 12. Implementation checklist — LANDED 2026-08-21
 
 ```
-Task 1   Preflight                                                          [ ]
-Task 2   lib/share/config.ts, origin.ts, types.ts + tests                   [ ]
-Task 4   run_photos.excludedFromShare — landed / fallback taken (circle one) [ ]
-Task 5   app/actions/share.ts — createShareLink / revokeShareLink /
-         setPhotoInclusion, ownership gate on all three                     [ ]
-Task 6   getShareTokenForRun / getRunByShareToken, cache()-wrapped,
-         doc-comment from §3.9 present verbatim                             [ ]
-Task 8   ShareButton / ShareLinkPanel — AbortError silence verified,
-         blob-permanence sentence present in revoke confirm copy            [ ]
-Task 9   PhotoInclusionList (if Task 4 landed)                               [ ]
-Task 12  proxy.ts /s exclusion reconfirmed live (F02 INVARIANT B intact)     [ ]
-Task 13  Client Component prop audit — no full SharedRun/SharedInsight
-         crosses a 'use client' boundary                                    [ ]
+Task 1   Preflight                                                          [x]
+Task 2   lib/share/config.ts, origin.ts, types.ts + tests                   [x]
+Task 4   run_photos.excludedFromShare — LANDED (F03 shipped it already)     [x]
+Task 5   app/actions/share.ts — createShareLinkAction /
+         revokeShareLinkAction / setPhotoSharingAction, auth on all three   [x]
+Task 6   getShareTokenForRun / getRunByShareToken — F03 had already
+         shipped both (as getActiveShareForRun / getRunByShareToken) with
+         the §3.9 doc-comment. cache() wrap lives in lib/share/read.ts      [x]
+Task 8   ShareButton / ShareLinkPanel — AbortError silence, pointerdown
+         warming, R-38 revoke copy verbatim                                 [x]
+Task 9   PhotoInclusionList                                                 [x]
+Task 12  proxy.ts /s exclusion reconfirmed live (307 on /r, 404 on /s)      [x]
+Task 13  Route-group isolation + Client Component prop audit                [x]
 Task 14  /s/[token] force-dynamic, no loading.tsx, %HRmax omitted-not-
-         guessed when absent                                                [ ]
-Task 16  headers() + robots.ts — noindex both ways, /s allowed to fetch      [ ]
-Task 17  next build shows ƒ /s/[token]; revoke → 404×3 with no warm-up       [ ]
-Ship     tests/share.bundle.test.ts green, incl. the hrMax.ts import-graph
-         assertion and the projection-shape tests                           [ ]
-         Manual QA §8 run against the real fixture, on a real phone         [ ]
+         guessed when absent                                                [x]
+Task 16  headers() + robots.ts — noindex both ways, /s allowed to fetch      [x]
+Task 17  next build shows ƒ /s/[token]; revoke → 404×3 with no warm-up       [x]
+Ship     tests/share.{bundle,project,config,actions,rotate}.test.ts green,
+         incl. the hrMax.ts import-graph assertion and the projection
+         shape tests. 1009 tests, whole suite green.                        [x]
+         Manual QA §8 run against the real fixture, seeded into the dev
+         database (curl, not a phone — see "not done" below)                [x]
 ```
+
+### What the plan got wrong, and what changed because of it
+
+**1. R-15 replaced §3.4's shipped mitigation.** This plan shipped "say the true thing and accept
+the residual risk", and wrote up a photo proxy as a deferred alternative that would need D7
+reopened. `RECONCILIATION_v0.1.0.md` **R-15 ruled neither**: *rotate instead of proxy.* On revoke,
+every `run_photos` row moves to a fresh random pathname and the old URL 404s — no new route, D7
+intact, cost paid once per revocation rather than on every image view forever. `lib/share/
+rotateBlobs.ts` implements it with `@vercel/blob`'s `rename` (copy-then-delete inside the store, so
+the bytes never travel through a function), and `revokeShareLinkAction` runs it **after** the
+`UPDATE`, deliberately: killing the link is the promise, rotating the blobs is the sweep, and a blob
+store having a bad minute must not leave the page live. Open question §11.1 is closed by R-15.
+
+**2. F03 had already shipped the query layer, and its projection is narrower than §5's table.**
+`getRunByShareToken`, `getActiveShareForRun`, `createShare`, `revokeShare`,
+`setPhotoExcludedFromShare` and `updatePhotoBlobLocation` were all live, with §3.9's doc-comment
+verbatim. Two consequences:
+
+  - **`intent` is not shown**, against §5. `tests/db.queries.shares.test.ts` pins the returned key
+    list closed and names `intent` among the forbidden keys. Widening the one unscoped read in the
+    application to gain a context chip is a bad trade; the reasoning is recorded in
+    `lib/share/types.ts` rather than silently dropped.
+  - **The `cache()` wrap (delta 4) lives in `lib/share/read.ts`, not on the query.** `cache()` is a
+    React request-scope primitive and `queries.ts` is imported by the cron handler, the extraction
+    job and the unit suite; `scripts/check-data-layer-invariants.mjs` also greps that file for
+    `export async function … (userId`, which a `cache()` wrap would hide from it.
+
+**3. The soft-404 was not caused by a `loading.tsx` in this feature's folder — it was caused by one
+four directories up, and this is the finding worth keeping.** §7 Task 14 correctly said "no
+`loading.tsx`", for the correct reason. What it did not anticipate: `loading.tsx` wraps its own
+segment **and every segment below it**, and F08 had shipped `/`'s list skeleton at
+`app/loading.tsx` — the root. So a Suspense fallback could render above every route in the app, the
+response body started streaming, and `notFound()` could no longer set a status (Next docs,
+`loading.md` → "Status Codes").
+
+Measured, not theorised: `/s/<unknown-token>` answered **200 with a 404 body** before the fix and
+**404** afterwards, with the page code unchanged. Every bot user-agent got the 200 too, so streaming
+metadata was not the mechanism.
+
+The fix is §7 Task 13's route groups, and it turned out to be load-bearing rather than tidy:
+`app/(app)/{page,loading}.tsx` scopes the skeleton to the one route it was written for, and
+`app/(public)/s/[token]/` has no loading boundary on its ancestry. `/r/[id]` and `/x/[id]` stopped
+soft-404ing as a side effect. Both the absence and its counterpart are asserted, in
+`tests/share.bundle.test.ts` and in `scripts/check-f11-share-boundaries.mjs`, because an absence is
+the easiest thing to undo by accident.
+
+**4. Two files the plan did not ask for.** `scripts/check-f11-share-boundaries.mjs` (wired into CI
+as `ci:f11-guard`, following F07/F08's precedent) asserts the five properties no unit test can see:
+`app/(public)/s/` stays four files, nothing there names `resolveHrMax` or hand-rolls Tanaka, no
+analytics package reaches it, the owner-side controls stay out, and no `loading.tsx` sits above it.
+`scripts/gen-og-default.mjs` writes `public/og-default.png` from the design tokens — nothing in the
+pinned stack draws images, so it emits the PNG bytes directly.
+
+### Not done, and deliberately
+
+- **`SHARE_SHOWS_LOCATION` / `SHARE_SHOWS_TIME_OF_DAY` as UI toggles** — open question §11.2's own
+  recommendation, taken: code constants only. A checkbox beside photos that already reveal the same
+  facts would overstate the protection it offers; excluding every photo is the real answer to "I
+  don't want to reveal where or when".
+- **Share-history UI** (§11.4) and **the delete-confirm line when a live share exists** (§11.3).
+  Both cheap, neither in scope, neither needing a schema change.
+- **Status-bar cropping** (§3.3.2) — named, argued, not built. It is not a security control: the
+  full bytes are what the `<img>` URL serves.
+- **A run on a real phone.** The QA script was executed with `curl` against a seeded fixture, which
+  covers every assertion in §8 including the per-photo exclusion, the R-27 omissions, revoke → 404×3
+  and re-share. What it cannot cover is the iOS share sheet, `navigator.share`'s transient-activation
+  window on Safari, and whether the page reads well at 414 px. That is still a human's job.

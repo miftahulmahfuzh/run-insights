@@ -6,10 +6,18 @@ import { InsightCard } from '@/components/insights/InsightCard'
 import { InsightTrigger } from '@/components/insights/InsightTrigger'
 import { IntentChips } from '@/components/runs/IntentChips'
 import { ProvenanceMark } from '@/components/runs/ProvenanceMark'
+import { PhotoInclusionList } from '@/components/share/PhotoInclusionList'
+import { ShareButton } from '@/components/share/ShareButton'
+import { ShareLinkPanel } from '@/components/share/ShareLinkPanel'
 import { AppShell, Card, Eyebrow, FlagList, SplitsTable, Stat, ZoneBar } from '@/components/ui'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { fastestSlowestFullKm, toPaceHrPoints, toZoneShares } from '@/lib/charts'
-import { getExtraction, getLatestInsight, getRunDetail } from '@/lib/db/queries'
+import {
+  getActiveShareForRun,
+  getExtraction,
+  getLatestInsight,
+  getRunDetail,
+} from '@/lib/db/queries'
 import {
   formatBpm,
   formatCadence,
@@ -25,6 +33,7 @@ import {
 import { isValidId } from '@/lib/id'
 import { computeSessionMetrics, evaluateSessionFlags, resolveHrMax } from '@/lib/metrics'
 import type { ZoneRow } from '@/lib/metrics'
+import { shareUrl } from '@/lib/share/origin'
 
 /**
  * `/r/[id]` — §2.2. The screen this whole app exists to render.
@@ -55,12 +64,25 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
   const { id } = await params
   if (!isValidId(id)) notFound()
 
-  const [run, hrMax, insight] = await Promise.all([
+  /*
+   * F11 joins this fetch rather than adding a round trip: whether a live share exists has to be
+   * known on FIRST paint, or the panel below flashes "not shared" at a runner who shared this run
+   * last week. `getActiveShareForRun` is one indexed lookup on the partial unique index.
+   */
+  const [run, hrMax, insight, share] = await Promise.all([
     getRunDetail(userId, id),
     resolveHrMax(userId),
     getLatestInsight(userId, 'session', id),
+    getActiveShareForRun(userId, id),
   ])
   if (!run) notFound()
+
+  /*
+   * The absolute URL is built HERE, on the server, from `AUTH_URL` — never in the client from
+   * `window.location.origin`. A runner who taps Share on a Vercel preview deployment would otherwise
+   * send a link on a hostname that dies at the next push. See lib/share/origin.ts.
+   */
+  const shareLink = share ? shareUrl(share.token) : null
 
   const extraction = run.extractionId ? await getExtraction(userId, run.extractionId) : null
   const correctedFieldCount = Object.keys(extraction?.corrections ?? {}).length
@@ -113,8 +135,10 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
           <Link href={`/r/${id}/edit`} className="text-[13px] font-semibold text-accent">
             Correct
           </Link>
-          {/* F11's slot. Rendered as nothing until sharing lands: a dead "Share" that does not share
-              is worse than no button, and reserving the space costs a comment rather than a layout. */}
+          {/* F11's slot, now filled. The URL is passed in so a run that is ALREADY shared reaches
+              `navigator.share()` synchronously inside the tap — no mint round trip, no Safari
+              transient-activation problem. See ShareButton's own note on why that matters. */}
+          <ShareButton runId={run.id} url={shareLink} />
         </div>
       </header>
 
@@ -241,6 +265,35 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
           <SplitsTable points={points} zones={zones} fastestKm={fastestKm} slowestKm={slowestKm} />
         </Card>
       )}
+
+      {/*
+        Sharing sits at the BOTTOM of the run, deliberately, and in this order.
+
+        The photo list comes first because it is the decision you make BEFORE you share — the flag
+        lives on the photo, not on the link (§3.3.2), so it is meaningful whether or not a link
+        exists — and because putting a privacy control after the button that publishes is an
+        invitation to discover it too late. The link panel follows, carrying the state and the
+        destructive action.
+
+        Neither is above the charts: this is a reading app, and the run is what you came for.
+      */}
+      {run.photos.length > 0 && (
+        <div className="mt-4">
+          <PhotoInclusionList
+            runId={run.id}
+            photos={run.photos.map((p) => ({
+              id: p.id,
+              blobUrl: p.blobUrl,
+              kind: p.kind,
+              excludedFromShare: p.excludedFromShare,
+            }))}
+          />
+        </div>
+      )}
+
+      <div className="mt-4">
+        <ShareLinkPanel runId={run.id} token={share?.token ?? null} url={shareLink} />
+      </div>
     </AppShell>
   )
 }

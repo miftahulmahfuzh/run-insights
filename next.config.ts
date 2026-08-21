@@ -10,6 +10,39 @@ const nextConfig: NextConfig = {
     remotePatterns: [{ protocol: 'https', hostname: '**.public.blob.vercel-storage.com' }],
   },
 
+  /**
+   * Headers for the one public route (F11 §3.4 / Task 16). Four, each doing a distinct job:
+   *
+   *   - `Cache-Control: private, no-store` — **revocation has to bite on the next request.** The
+   *     page is already `force-dynamic`, but a shared CDN or a corporate proxy caching an HTML
+   *     response would serve a run the runner believes they deleted. `private` forbids the shared
+   *     caches; `no-store` forbids the browser's own.
+   *   - `X-Robots-Tag: noindex, nofollow, noarchive` — belt to the page's `generateMetadata`
+   *     braces. The header covers responses a meta tag cannot reach (a redirect, a 404, a fetch by
+   *     something that never parses HTML) and is honoured by intermediary caches. `noarchive`
+   *     matters specifically here: an indexed *snapshot* of a run would outlive revocation in
+   *     somebody else's storage.
+   *   - `Referrer-Policy: strict-origin-when-cross-origin` — **the pathname IS the bearer token.**
+   *     Every screenshot on the page is a cross-origin Blob URL, and a full-path `Referer` on those
+   *     requests would hand the live share token to a third-party host in a log line. This trims it
+   *     to the origin.
+   *
+   * The matcher is `/s/:token` and not `/s/:path*`: there is exactly one page under `/s`, and a
+   * wildcard would quietly cover a future subroute that had not been reasoned about.
+   */
+  async headers() {
+    return [
+      {
+        source: '/s/:token',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0, must-revalidate' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ]
+  },
+
   // No `eslint` key: `next build` no longer runs the linter in Next 16.
   // No `webpack` key: Turbopack is the default bundler.
 }

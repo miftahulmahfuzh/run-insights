@@ -30,6 +30,8 @@
     "ci:client-secret-guard": "node scripts/check-client-secret-boundary.mjs",
     "ci:f08-guard": "node scripts/check-f08-boundaries.mjs",
     "ci:llm-payload-guard": "node scripts/check-llm-payload-boundary.mjs",
+    "ci:f11-guard": "node scripts/check-f11-share-boundaries.mjs",
+    "og:default": "node scripts/gen-og-default.mjs",
     "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live/vision.live.test.ts",
     "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts"
   },
