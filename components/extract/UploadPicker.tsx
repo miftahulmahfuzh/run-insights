@@ -2,7 +2,7 @@
 
 import { upload } from '@vercel/blob/client'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button, Card, LoadingDots } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -15,6 +15,7 @@ import {
   TYPICAL_EXTRACTION_SECONDS,
   type ScreenKind,
 } from '@/lib/extract/constants'
+import { reassignKind } from '@/lib/extract/reassignKind'
 import { newId } from '@/lib/id'
 import { compressForExtraction, rejectionReason } from '@/lib/photos/compressForExtraction'
 import type { ExtractAcceptedResponse, ExtractionBlobRef } from '@/lib/schema/extractionResult'
@@ -37,6 +38,11 @@ type TileState = 'compressing' | 'uploading' | 'ready' | 'error'
 
 interface Tile {
   id: string
+  /**
+   * Bumped every time this tile's kind changes. `process` writes only through `patchIfCurrent`,
+   * which drops a result whose generation has since moved on — see the race note on `changeKind`.
+   */
+  gen: number
   name: string
   previewUrl: string
   kind: ScreenKind
@@ -73,15 +79,27 @@ export function UploadPicker() {
    */
   const filesRef = useRef(new Map<string, File>())
 
-  const patch = useCallback((id: string, next: Partial<Tile>) => {
-    setTiles((current) => current.map((t) => (t.id === id ? { ...t, ...next } : t)))
+  /**
+   * Write to a tile, but only if it is still the generation that asked.
+   *
+   * Changing a kind restarts `process` on a tile whose previous `process` may still be in flight,
+   * and that older promise ends by writing `state: 'ready'` and a `blob` carrying the **stale**
+   * kind — clobbering the newer one with a lie about provenance. The generation is compared
+   * *inside* the updater, against the state React is about to reduce over, so it can never read a
+   * stale `gen` out of a closure. A superseded upload's result is dropped; its bytes sit
+   * unreferenced in Blob, which is already what happens to the blob a kind change abandons.
+   */
+  const patchIfCurrent = useCallback((id: string, gen: number, next: Partial<Tile>) => {
+    setTiles((current) =>
+      current.map((t) => (t.id === id && t.gen === gen ? { ...t, ...next } : t)),
+    )
   }, [])
 
   const process = useCallback(
     async (tile: Tile, file: File) => {
       try {
         const compressed = await compressForExtraction(file)
-        patch(tile.id, {
+        patchIfCurrent(tile.id, tile.gen, {
           state: 'uploading',
           compressedBytes: compressed.compressedBytes,
         })
@@ -97,7 +115,7 @@ export function UploadPicker() {
           clientPayload: JSON.stringify({ kind: tile.kind }),
         })
 
-        patch(tile.id, {
+        patchIfCurrent(tile.id, tile.gen, {
           state: 'ready',
           blob: {
             url: result.url,
@@ -109,13 +127,13 @@ export function UploadPicker() {
           },
         })
       } catch (cause) {
-        patch(tile.id, {
+        patchIfCurrent(tile.id, tile.gen, {
           state: 'error',
           error: cause instanceof Error ? cause.message : 'Upload failed.',
         })
       }
     },
-    [patch],
+    [patchIfCurrent],
   )
 
   const onPick = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,6 +174,7 @@ export function UploadPicker() {
         previewsRef.current.push(previewUrl)
         const tile: Tile = {
           id: newId(),
+          gen: 0,
           name: file.name,
           previewUrl,
           kind,
@@ -174,17 +193,47 @@ export function UploadPicker() {
     })
   }
 
+  /**
+   * Give a tile the kind the runner tapped, **swapping** with whichever tile already held it.
+   *
+   * Swapping is what makes this control editable at all. Disabling the kinds a neighbour held
+   * froze the whole thing on a full three-screen upload, because there are exactly as many kinds
+   * as slots (F16 §1). `reassignKind` keeps them distinct after every tap instead, so
+   * "Read this run" is never dead and there is no invalid state to explain.
+   *
+   * Both changed tiles re-compress and re-PUT. The kind is baked into a signed upload token, so an
+   * already-uploaded blob cannot be relabelled after the fact; rather than send a blob whose token
+   * says one thing and whose request body says another, we redo it from the original bytes — ~60 KB
+   * and a second each, concurrent, and a fair price for never lying about provenance. (The token's
+   * `kind` is read by nothing *today* — `onUploadCompleted` is inert under R-1 — which is exactly
+   * why relabelling in place would be a trap for whoever makes that webhook a writer. Plan §3.)
+   *
+   * The `process` calls sit OUTSIDE the `setTiles` updater on purpose: React StrictMode may invoke
+   * an updater twice in dev, which would double-fire an upload. This only ever runs from a tap, so
+   * the `tiles` closure is current by construction.
+   */
   const changeKind = (id: string, kind: ScreenKind) => {
-    const tile = tiles.find((t) => t.id === id)
-    const file = filesRef.current.get(id)
-    if (!tile || tile.kind === kind || !file) return
+    const { entries, changed } = reassignKind(tiles, id, kind)
+    if (changed.length === 0) return
 
-    // The kind was baked into a signed upload token, so an already-uploaded blob cannot be
-    // relabelled after the fact. Rather than send a blob whose token says one thing and whose
-    // request body says another, clear the reference and redo it from the original bytes — 60 KB
-    // and a second, which is a fair price for never lying to the server about provenance.
-    patch(id, { kind, blob: null, state: 'compressing', error: null })
-    void process({ ...tile, kind }, file)
+    // All-or-nothing: a swap redoes both tiles or neither, so one can never be stranded in
+    // `compressing` with no upload running. Unreachable in practice — `filesRef` is written on
+    // pick and cleared only by `remove`, which drops the tile too — which is why it fails closed.
+    const files = changed.map((cid) => filesRef.current.get(cid))
+    if (files.some((file) => !file)) return
+
+    const bumped = entries.map((tile) =>
+      changed.includes(tile.id)
+        ? { ...tile, gen: tile.gen + 1, blob: null, state: 'compressing' as const, error: null }
+        : tile,
+    )
+    setTiles(bumped)
+
+    changed.forEach((cid, i) => {
+      const tile = bumped.find((t) => t.id === cid)
+      const file = files[i]
+      if (tile && file) void process(tile, file)
+    })
   }
 
   const remove = (id: string) => {
@@ -192,14 +241,6 @@ export function UploadPicker() {
     setTiles((current) => current.filter((t) => t.id !== id))
     setFormError(null)
   }
-
-  const takenBy = useMemo(() => {
-    const map = new Map<string, ReadonlySet<ScreenKind>>()
-    for (const tile of tiles) {
-      map.set(tile.id, new Set(tiles.filter((t) => t.id !== tile.id).map((t) => t.kind)))
-    }
-    return map
-  }, [tiles])
 
   const ready = tiles.length > 0 && tiles.every((t) => t.state === 'ready' && t.blob)
   const kindsChosen = tiles.map((t) => SCREEN_KIND_LABEL[t.kind]).join(' · ')
@@ -267,7 +308,6 @@ export function UploadPicker() {
                 <div className="min-w-0 flex-1">
                   <KindSelector
                     value={tile.kind}
-                    taken={takenBy.get(tile.id) ?? new Set()}
                     onChange={(kind) => changeKind(tile.id, kind)}
                     disabled={submitting}
                   />
