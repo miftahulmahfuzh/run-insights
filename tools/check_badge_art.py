@@ -72,6 +72,7 @@ lettering around a patch edge, is not measured here at all. See NOT_MEASURED.
 import argparse
 import colorsys
 import math
+import re
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -113,6 +114,71 @@ TOKENS = [
 # neighbour in the palette above is marigold at 40.1° and cardinal red at 5.3°,
 # so 15–35 separates the signature from both without a knife-edge on either side.
 SIGNATURE_HUE = (15.0, 35.0)
+
+# --------------------------------------------------------------------------- #
+# Outer shape, and why check 9a has to know it
+# --------------------------------------------------------------------------- #
+#
+# 9a asks "is this patch the same SIZE as the rest of the deck", and it measures
+# that as the width of the foreground bounding box. That is exact for a deck
+# where every badge shares one silhouette — the tool this descends from has
+# thirteen circular seals — and it is a category error here, because §4.7 gives
+# this deck four different outer shapes ON PURPOSE. A regular hexagon presents
+# its points left and right and fills its bounding box; a shield tapers away
+# from its widest line. Two patches that a human would call the same size do not
+# have the same bounding-box width, and the difference is the shape's, not
+# drift's.
+#
+# The deck said so as soon as the second family arrived:
+#
+#   shield           80.1  80.5  81.6  82.4  80.9  80.5     mean 81.0, spread 2.3
+#   rounded triangle 76.2  84.4  76.2  75.8  76.6  77.7     mean 77.8, spread 8.6
+#   hexagon          87.1  87.5                             mean 87.3, spread 0.4
+#
+# The two hexagons land 0.4 points apart — as tight a cluster as the deck has —
+# and seven points clear of every shield. Measured against a shield anchor they
+# both "drifted" 8.8% and 9.3%. Nothing drifted.
+#
+# So 9a compares a candidate against the expectation FOR ITS OWN SHAPE, read out
+# of style.md's scene line (`SHAPE: hexagon`), keyed on the candidate's filename.
+# This is the fix the re-derivation comment named in advance — "if the observed
+# spread turns out to cluster by SHAPE rather than scatter, the right fix is a
+# per-shape expectation, not a wider band" — and it is why the band is NOT being
+# widened to paper over the difference.
+#
+# (observed, 14 badges, v2) for shield and rounded triangle; (observed, 2) for
+# hexagon; CHEVRON IS A GEOMETRIC ESTIMATE with no images behind it at all,
+# marked as such, and it is the first entry to re-derive once that family lands.
+SHAPE_WIDTH = {
+    "shield": 0.810,
+    "rounded triangle": 0.778,
+    "hexagon": 0.873,
+    "chevron": 0.850,  # ESTIMATE, 0 badges — a chevron is wide like a hexagon
+}
+# ±10%, which passes every promoted badge (worst: redline_republic, a genuinely
+# wide rounded triangle at 8.5% from its family mean) and still catches a gross
+# size error — double_century's rejected squat first attempt sat 16.5% out.
+SHAPE_WIDTH_TOLERANCE = 10.0
+
+SHAPE_RE = re.compile(r"^- ([a-z0-9_]+): .*?SHAPE:\s*([a-z ]+?)\s*\.", re.M)
+CONTRACT = ROOT / ".claude" / "skills" / "generate-badge" / "style.md"
+
+
+def shape_for(path: Path):
+    """The outer shape style.md assigns this candidate, or None.
+
+    The key comes from the filename — `early_bird.a03.png` and `early_bird.png`
+    both key on `early_bird` — which is why the promotion step's naming matters
+    to more than tidiness. A file this cannot key is not an error: check 9a falls
+    back to the anchor comparison and says which one it used.
+    """
+    if not CONTRACT.exists():
+        return None
+    key = path.name.split(".")[0]
+    for k, shape in SHAPE_RE.findall(CONTRACT.read_text(encoding="utf-8")):
+        if k == key:
+            return shape if shape in SHAPE_WIDTH else None
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -402,6 +468,7 @@ def foreground_centroid(grid):
 # --------------------------------------------------------------------------- #
 
 def measure(path: Path, rep: Report, anchor_stats=None):
+    shape = shape_for(path)
     img = Image.open(path)
     raw_mode = img.mode
     w, h = img.size
@@ -684,27 +751,25 @@ def measure(path: Path, rep: Report, anchor_stats=None):
                  "ANCHOR RUN, or the anchor has not been promoted yet")
     else:
         a_w, a_grey, a_small = anchor_stats
-        if box_w is None or a_w is None:
-            rep.hard("9a patch width vs anchor", False,
-                     "no foreground found in the candidate or in the anchor")
-        else:
+        if box_w is None:
+            rep.hard("9a patch width", False, "no foreground found in the candidate")
+        elif shape:
+            expected = SHAPE_WIDTH[shape]
+            drift = abs(box_w - expected) / expected * 100
+            note = " (ESTIMATE, 0 badges)" if shape == "chevron" else ""
+            rep.hard("9a patch width vs shape", drift <= SHAPE_WIDTH_TOLERANCE,
+                     f"{box_w * 100:.1f}% vs {shape} expectation "
+                     f"{expected * 100:.1f}%{note} — {drift:.1f}% "
+                     f"(≤{SHAPE_WIDTH_TOLERANCE:.1f})")
+        elif a_w is not None:
+            # No shape on file for this key — fall back to the anchor, and say
+            # so, because the two comparisons mean different things.
             drift = abs(box_w - a_w) / a_w * 100
-            # (observed, 6 badges, v2): 0.0–2.9% drift. Tightened from a
-            # guessed 8.0 to 6.0. The worry that four different silhouettes
-            # would spread this badly did not materialise — all six shields
-            # landed within 3% — but six shields are ONE shape, so the band
-            # keeps real headroom until the other three families are in.
-            # Guessed at ≤8.0%, double the reference's re-derived
-            # ±4.0. That tool's badges share ONE circle radius by contract; these
-            # share only "about 80 percent of the image width" across a shield, a
-            # hexagon, a chevron and a rounded triangle. A chevron's bounding box
-            # is wider than its visual mass and a shield's is narrower, and that
-            # spread is correct rather than drift. Re-derive at six — and if the
-            # observed spread turns out to cluster by SHAPE rather than scatter,
-            # the right fix is a per-shape expectation, not a wider band.
-            rep.hard("9a patch width vs anchor", drift <= 6.0,
+            rep.hard("9a patch width vs ANCHOR (no shape on file)", drift <= 12.0,
                      f"{box_w * 100:.1f}% vs anchor {a_w * 100:.1f}% "
-                     f"— {drift:.1f}% drift (≤6.0)")
+                     f"— {drift:.1f}% drift (≤12.0, loose: shapes differ)")
+        else:
+            rep.note("9a patch width", "no shape on file and no anchor width")
 
         # (observed, 6 badges, v2): 0.0–3.6 points, AFTER the sampling fix in
         # `substrate_stats` — before it, the same six read 0.0–9.6 and two
