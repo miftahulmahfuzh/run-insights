@@ -92,6 +92,16 @@ export interface ExtractionResult {
   errorCode: ExtractionErrorCode | string | null
   /** The kinds actually uploaded, in display order — F05's screenshot strip and R-45 provenance. */
   kinds: ScreenKind[]
+  /**
+   * The uploaded screenshots, **guaranteed ordered by `sort_order`** (then `created_at`), which
+   * `listExtractionPhotos` enforces in SQL.
+   *
+   * That ordering is load-bearing for **R-45 as amended**: a field's source photo is the one whose
+   * `kind` matches `sectionForField(field)`, but a 1- or 2-screenshot run has no such photo — and
+   * `/upload` accepts 1–3, so that is the common case rather than an edge one. The amended rule
+   * falls back to whichever photos exist, *in `sort_order`*, so the reviewer always has something
+   * to check a value against instead of a blank panel. F05 can take this array's order as given.
+   */
   photos: Array<{ url: string; kind: ScreenKind; width: number | null; height: number | null }>
   /** The D3 canary, surfaced so a failure is diagnosable without opening the database. */
   promptTokens: number | null

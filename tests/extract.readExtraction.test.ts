@@ -193,6 +193,17 @@ describe('readExtractionResult', () => {
     expect(result?.promptTokens).toBe(141)
   })
 
+  it('returns photos ordered by sort_order — R-45 (amended) depends on it', async () => {
+    // The amended R-45 falls back to "whichever photos exist, in sort_order" when the field's own
+    // section was never uploaded — which /upload makes the common case, since it accepts 1-3. So
+    // the ordering is a contract, not an incidental, and it is enforced in SQL rather than by the
+    // caller sorting a list it was handed.
+    fake.enqueue([row()], [PHOTO])
+    await reader.readExtractionResult('u1', 'extract01234')
+    const select = fake.queries.find((q) => q.sql.includes('"run_photos"'))
+    expect(select?.sql).toMatch(/order by .*"sort_order"/)
+  })
+
   it('serialises timestamps as ISO strings — a JSON body has no Date', async () => {
     fake.enqueue(
       [row({ status: 'ok', completedAt: new Date().toISOString(), rawResponse: null })],
