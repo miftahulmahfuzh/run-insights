@@ -26,6 +26,7 @@
     "db:studio": "drizzle-kit studio",
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
     "ci:openrouter-guard": "node scripts/check-openrouter-boundary.mjs",
+    "badges:check": "node scripts/check-badge-art.mjs",
     "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs",
     "ci:client-secret-guard": "node scripts/check-client-secret-boundary.mjs",
     "ci:f08-guard": "node scripts/check-f08-boundaries.mjs",

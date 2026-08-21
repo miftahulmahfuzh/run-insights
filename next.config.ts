@@ -32,6 +32,20 @@ const nextConfig: NextConfig = {
    */
   async headers() {
     return [
+      /**
+       * F10 / D12. `public/badges/<key>.<hash8>.webp` carries the first 8 hex of its master's
+       * SHA-256 in the filename, written by `tools/make_badge_assets.py` and recomputed from
+       * the master by `npm run badges:check`. That is what makes a one-year immutable cache
+       * safe rather than reckless: regenerating a patch changes its bytes, its hash and its
+       * URL, so every cache in the world misses correctly instead of serving last season's
+       * artwork until 2027. **Do not put slug-named art under this path** — the header would
+       * pin it for a year, and the orphan sweep in `make_badge_assets.py` (plus §4 of
+       * `badges:check`) is what keeps a superseded file from lingering there at all.
+       */
+      {
+        source: '/badges/:file*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
       {
         source: '/s/:token',
         headers: [

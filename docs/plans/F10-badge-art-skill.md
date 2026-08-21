@@ -997,3 +997,85 @@ Before F10 is considered done:
   most likely to be wrong if skipped.
 - CI is green: `npm run typecheck`, `npm run badges:check`, and whatever test suite F01 wires up
   by the time F10 runs.
+
+---
+
+## 11. As built — five divergences from this plan, and why
+
+Recorded here rather than by editing the sections above, so the plan stays readable as what was
+decided in advance and this section stays readable as what actually happened. **None of these
+touches roadmap §4.6 or §4.7**, so there is still no `## Contract deltas` section.
+
+**1. Twenty-two scenes, not twenty.** §3's `<!-- SCENES -->` block shipped with twenty lines and
+§1's table says "deck size 20", both written before R-33 grew §4.6 from 20 keys to 22. F09 shipped
+the 22-key catalog, so `style.md` carries 22 scene lines and `gen_badge_art.py`'s parity assertion
+would have refused to start otherwise — which is the guard doing exactly its job, before any money
+was spent. The two new scenes were written against the collision audit rather than appended to it:
+
+- `two_a_days` — a cast-iron pan seen from above holding two fried eggs, signature thread on the
+  second yolk. A hexagon. The audit gained a **disc tally** for it: `early_bird`'s sun is a
+  backdrop behind a rooster, `half_ish`'s moon is split by a hard line, and this pan's handle is
+  the silhouette. If a candidate loses the handle it resolves to a plain circle, which is the
+  failure to catch.
+- `boring_excellence` — a spirit level lying dead flat, bubble centred between two scribe marks,
+  signature thread on the bubble. A chevron. Recorded in the audit as **the pair to watch against
+  `metronome`**: both are precision instruments that say "steady" without a dial, kept apart on
+  silhouette (a tall pyramid against a long horizontal bar) and by the absence of numerals on
+  either, which is what keeps both out of the clock/gauge family the scene rules forbid.
+
+Shape distribution is now shield × 6, hexagon × 5, chevron × 5, rounded triangle × 6.
+
+**2. §5.3's dependency is closed, and no placeholder shipped.** That section instructed the theme
+strip to be written against clearly-labelled placeholder backgrounds because
+`docs/design-brief.md` was still a prompt waiting to be pasted into Claude Design. F08 has since
+shipped and `app/globals.css` carries the real tokens, so `check_badge_art.py` composites against
+`--paper` `#C9E9FB` (light) and `#0E1B26` (dark) directly. **§9 task 10 is therefore already
+done** and is not a gate on badge two. These are the only app design tokens anywhere in F10, and
+they appear in the *strip* rather than in the *prompt* — the patch palette is deliberately not the
+app's (R-36 / R-43).
+
+**3. §5.1's coordination point resolved as the two-line change it promised, not a redesign.** F09
+shipped `BADGE_CATALOG` as a `readonly BadgeDefinition[]` built by a `badge(key, title, scope)`
+helper rather than as the `{ key: "...", … }` object literals the reference tool's `KEY_RE`
+expected. The array literal is still the thing being parsed; only one entry's shape differs, so
+`KEY_RE` matches `badge('key', …)`. Three files carry that pair of expressions — both Python tools
+and `scripts/check-badge-art.mjs` — and all three fail loudly rather than returning zero keys.
+
+**4. `tools/make_badge_control.py` is new, and it is why any of this is verified.** F10 ships a
+measurement tool for a deck that does not exist yet: zero approved masters, so every band in
+`check_badge_art.py` is a documented guess with nothing on disk to run it against. The control
+tool draws four synthetic patches from `style.md`'s own hex values — a plausible one, a flat
+weaveless one, an off-centre one, and a bleached one — which makes the checker's behaviour
+demonstrable for free. All four behave as designed: the good control clears every hard check, the
+flat one fails check 3's variance **floor** (and warns on 8b and 10), the off-centre one fails 8a
+at 9.5%, and the bleached one fails check 3's grey band and, against the good one as anchor, 9b at
+67 points. **A control is not a fixture and is never a source for re-deriving a band** — it is
+drawn by arithmetic and a real candidate is photographed thread. §9 task 12 still reads six
+approved masters.
+
+**5. `badges:check` is `.mjs`, and it passes on an empty deck.** §6 left the choice between a
+script and a Vitest test to F01's convention; the convention turned out to be
+`scripts/check-*.mjs` plus a named CI step, so that is what shipped, and
+`scripts/check-openrouter-boundary.mjs` was refactored to export its grep so there is one
+implementation behind both `npm run ci:openrouter-guard` and `badges:check` §1. The script has to
+be meaningful in three states — no masters, some, all 22 — so it reports which state it is in
+rather than failing on an incomplete deck. It also asserts three things §6 did not ask for and the
+deck needs: that every promoted master carries its sidecar, that one style version covers the
+whole deck and matches `style.md`, and that `_anchor.png` is byte-identical to one of the approved
+masters rather than to a stray candidate.
+
+### What is deliberately still open
+
+**Tasks 9–14 are not done and cannot be done by tooling.** The 22 images are a human loop:
+`OPENROUTER_API_KEY` is empty in `.env.local` (§9 task 2 is a by-hand paste, on purpose), the
+anchor run is a hard serialization point that invalidates every later badge if it is wrong, and
+every badge needs three crops read by an eye before promotion. Worst case is ~60 generations,
+~$2.40 and up to five hours (§7). The machinery is complete and green; the deck is 0/22.
+
+**`components/profile/BadgeShelf.tsx` is untouched, and that is correct.** F09's `BadgePatch`
+renders the navy placeholder R-36 records as the *intended* treatment, with a comment reserving
+F10's slot. Wiring `BADGE_ART` into it today would not compile: the manifest is a total
+`Record<BadgeKey, BadgeArt>` that `make_badge_assets.py` refuses to emit until all 22 masters
+exist. The wiring belongs in the same commit as the finished deck — which is exactly the "the
+build is red on purpose between adding a key and promoting the art" property the total Record was
+chosen for.

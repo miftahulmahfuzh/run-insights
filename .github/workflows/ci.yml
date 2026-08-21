@@ -51,6 +51,15 @@ jobs:
       - name: OPENROUTER_API_KEY boundary guard
         run: npm run ci:openrouter-guard
 
+      # F10 Task 8. The badge deck's own integrity, in four parts: the key boundary again
+      # (one implementation, shared with the guard above), style.md's scene lines against
+      # BADGE_CATALOG, every promoted master's sidecar and style version, and — once art
+      # exists — every shipped filename's SHA-256 recomputed from its master plus an orphan
+      # sweep of public/badges/. It passes on an empty deck and says so: F10 ships the
+      # machinery before the 22 images, which cost real money and need a human's eye each.
+      - name: Badge art deck guard
+        run: npm run badges:check
+
       # F03's two grep-able invariants: the extractions audit trail has no delete path, and
       # getRunByShareToken is still the only unscoped read. Both are security/data-integrity
       # properties that a unit test can only assert about code it happens to import.

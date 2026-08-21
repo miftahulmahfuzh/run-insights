@@ -5,7 +5,8 @@ run, that week, and that month.
 
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
 profile, **F04** ingest & vision extraction, **F05** review & correction, **F06** metrics & records,
-**F08** views, charts & trends, **F07** insights, **F09** badges & achievements · next: F11 sharing
+**F08** views, charts & trends, **F07** insights, **F09** badges & achievements, **F11** sharing,
+**F10** badge-art skill (the machinery; the 22 patches are generated one at a time by hand)
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
@@ -142,6 +143,54 @@ table twin under every chart so no number is reachable only by hovering a thumb 
 
 ---
 
+## The badge art is made by hand, one patch at a time, and the tooling enforces that
+
+D12: badge art is generated offline and committed. There is no runtime image generation anywhere
+in the app — at ~$0.04 and 4–5 minutes per image, a shelf that drew itself on demand would be a
+bill and a latency budget in exchange for nothing a build step can't do better.
+
+So F10 ships **machinery, not pictures**: a skill (`.claude/skills/generate-badge/`), a style
+contract, three Python tools and a CI guard. The 22 patches arrive one at a time afterwards,
+because every one of them needs a human to look at it.
+
+- **`style.md` is an interface, not a document.** `gen_badge_art.py` parses its
+  `<!-- STYLE BLOCK vN -->` and `<!-- SCENES -->` fences, and **refuses to start** unless the scene
+  keys are exactly `BADGE_CATALOG`'s 22. A badge with no scene, or a scene with no badge, is a
+  startup error rather than a surprise 22 images later. `npm run badges:check` asserts the same
+  parity from the other side, in CI, where no API key exists.
+- **One badge per invocation, never a batch loop.** The three-attempt cap and the look-at-it step
+  are per badge; a loop makes both ceremonial, and it would spend the full worst-case budget
+  before a human had judged a single patch.
+- **Nothing is judged from the 1024² master.** `check_badge_art.py` writes a contact strip of the
+  badge at **40 px and 220 px against the app's real `--paper` in both themes**, plus the patch
+  edge unrolled (where lettering hides) and the subject at 2× (where anatomy hides). At 1024 every
+  stitch looks considered, and the app never draws it at 1024.
+- **Ten measurements, and every band is a labelled guess.** The tool this descends from re-derived
+  its thresholds from a thirteen-badge distribution; this deck has zero images, so each band says
+  `(guess, 0 badges)` in place and the standing rule is: *do not tighten anything until six badges
+  are approved.* A threshold that fails on something harmless is a threshold somebody comments out.
+- **Same craft, opposite medium.** Every constraint the reference deck earned — no text, full
+  bleed, one silhouette, one subject, an anchor image every later badge is generated against —
+  survives untouched, because none of them is about ink and paper. Everything that *is* about ink
+  and paper was rebuilt: the substrate check inverts (navy is cool, dark, and deliberately
+  textured, so its variance gets a **floor** as well as a ceiling), the "unauthorised blue/violet"
+  guard is deleted outright rather than re-tuned (the substrate *is* navy, so it would fail every
+  correct candidate), and the ring-geometry fit is replaced entirely — this deck's outer shape is a
+  shield, a hexagon, a chevron or a rounded triangle by design, and a radial harmonic fit against
+  a chevron is close to meaningless.
+- **`tools/make_badge_control.py` draws synthetic patches from the style block's own hex values**,
+  so the measurement tool can be exercised — and its floors shown to actually catch a flat,
+  weaveless "sticker" fill — without an API call. Controls are never a source for re-deriving a
+  band; they are drawn by arithmetic and a real candidate is photographed thread.
+
+Filenames under `public/badges/` carry the first 8 hex of their master's SHA-256, which is the only
+reason `next.config.ts` may serve them `immutable` for a year: regenerating a patch changes its
+bytes, its hash and its URL, so every cache misses correctly. `npm run badges:check` recomputes
+that hash from the master and sweeps for orphans, which is what turns "the shipped file is the
+approved master" from a hope into a checked statement.
+
+---
+
 ## The documents
 
 | File | What it is |
@@ -152,6 +201,8 @@ table twin under every chart so no number is reachable only by hovering a thumb 
 | [`docs/plans/F01`–`F11`](docs/plans/) | One comprehensive plan per feature, ~11,700 lines. |
 | [`docs/design/DESIGN_INTEGRATION.md`](docs/design/DESIGN_INTEGRATION.md) | What came back from Claude Design and how it overrode the plans. |
 | [`docs/google-auth-setup.md`](docs/google-auth-setup.md) | Google OAuth + DomaiNesia DNS, step by step. |
+| [`.claude/skills/generate-badge/`](.claude/skills/generate-badge/) | F10's badge-art skill: the loop, and `style.md` — the parsed style contract and all 22 scenes. |
+| [`assets/badges/README.md`](assets/badges/README.md) | The three human acts between a generated candidate and a shipped patch. |
 | [`research/`](research/) | The live feasibility harness and the 108-field fixture. Stays in the repo; `score.mjs` runs in CI. |
 
 **Read `RECONCILIATION_v0.1.0.md` before any plan file.** The eleven plans were written
@@ -190,6 +241,9 @@ npm run db:migrate             # apply drizzle/ to the database
 npm test                       # unit suites; never touches a database, never calls an LLM
 TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
 npm run test:live:vision       # opt-in: calls glm-4.6v for real. Costs money
+
+npm run badges:check           # F10's deck: key boundary, style.md ↔ catalog parity, hashes
+python3 tools/gen_badge_art.py --dry-run --all   # every prompt, no key read, nothing sent
 ```
 
 Reviewing is `/x/[extractionId]`, not `/r/[id]/review` — under R-1 no `runs` row exists until the
