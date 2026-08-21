@@ -71,6 +71,13 @@ jobs:
       - name: F08 view-boundary guard
         run: npm run ci:f08-guard
 
+      # F07 Task 12. Two properties no unit test can see: body weight never appears anywhere in
+      # the LLM payload directories (D15/R-28 asked for "enforced structurally", and a type only
+      # protects the path that goes through it), and getOrCreateInsight — a 10-35 s call on a
+      # cache miss — is never awaited from a page render (plan section 7.2).
+      - name: F07 LLM payload-boundary guard
+        run: npm run ci:llm-payload-guard
+
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

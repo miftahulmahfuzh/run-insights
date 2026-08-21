@@ -191,12 +191,29 @@ describe('getRunByShareToken — THE one unscoped read', () => {
     expect(shared?.insightPayload).toBeNull()
   })
 
-  it('is the ONLY exported function that does not take userId first', async () => {
+  it('is one of exactly four exported functions that do not take userId first', async () => {
     const source = (await import('node:fs')).readFileSync('lib/db/queries.ts', 'utf8')
     const exported = [...source.matchAll(/export (?:async )?function (\w+)\(([^)]*)/g)]
     const unscoped = exported
       .filter(([, , args]) => !/^\s*userId/.test(args ?? ''))
       .map(([, name]) => name)
-    expect(unscoped.sort()).toEqual(['fillZeroMonths', 'getRunByShareToken', 'isUniqueViolation'])
+    /*
+     * Two of these touch no database at all (`fillZeroMonths` is pure, `isUniqueViolation` is a
+     * predicate over an error object), so the unscoped READS are two:
+     *
+     *   · `getRunByShareToken` — roadmap D9, where the token IS the credential;
+     *   · `listActiveUserIds`  — F07's cron, which has no session and whose whole job is to
+     *     enumerate users. It returns ids and nothing else, and every read inside the cron's loop
+     *     is scoped to one of them.
+     *
+     * A FIFTH name appearing here is the thing to argue about in review — see
+     * `scripts/check-data-layer-invariants.mjs`, which fails CI on the same list.
+     */
+    expect(unscoped.sort()).toEqual([
+      'fillZeroMonths',
+      'getRunByShareToken',
+      'isUniqueViolation',
+      'listActiveUserIds',
+    ])
   })
 })

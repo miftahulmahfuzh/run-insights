@@ -55,6 +55,20 @@ export function computeVolumeDelta(currentM: number, previousM: number): VolumeD
   return { kind: 'pct', pct, direction, currentM, previousM }
 }
 
+/**
+ * The period-scope companion to `flags.ts`'s seven session codes.
+ *
+ * `jumpWarning` is a boolean on `WeekMetrics` because "week volume jumped" has no meaning at
+ * session scope — but F07's insight memory (R-19) diffs *codes* between two periods to work out
+ * what is new, resolved or persisting, so a period-scoped concern needs a code to be diffable at
+ * all. It is declared here, next to the rule that decides it, rather than in the narrative layer:
+ * the catalog of things this app is willing to flag stays entirely F06's, and a narrator that
+ * coins its own code is a narrator making a claim nobody wrote or tested.
+ *
+ * `acwr.ts` exports `ACWR_OUT_OF_RANGE` for the same reason and on the same terms.
+ */
+export const VOLUME_JUMP = 'VOLUME_JUMP'
+
 /** One reviewed run, reduced to what a week rollup reads. */
 export interface WeekRunSummary {
   runId: string

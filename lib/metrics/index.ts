@@ -42,6 +42,7 @@ export {
   computeVolumeDelta,
   computeWeekMetrics,
   paceByBucket,
+  VOLUME_JUMP,
   type DistanceBucket,
   type VolumeDelta,
   type WeekMetrics,

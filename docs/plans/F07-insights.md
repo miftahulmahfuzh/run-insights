@@ -798,3 +798,119 @@ export async function GET(req: Request) {
 - **Intent write-back, end to end:** on the canonical run (whose flags include `FAST_START` and `HIGH_DECOUPLING` — exactly the pattern that should trigger a `questionForRunner` about intent), answer the question with "Tempo/hard on purpose." Reload the run page: the new narrative should no longer ask about intent (rule 6, §2.1), and should reference the effort as deliberate. Reload `/trends` for the week containing that run: its `facts_hash` should differ from before the answer (Task 11's assertion, now observed live).
 - **Insight fatigue, week 2:** manually seed a second week's facts with `previousInsight` pointing at week 1's real captured headline and `doNext`. Confirm the week-2 output's `headline` string is not equal to week 1's, and that `trendSincePrevious.flagsPersisting`/`flagsResolved`/`flagsNew` are referenced sensibly rather than the three observations simply repeating.
 - **Cron idempotency:** run `/api/cron/rollup` twice in a row against the same seeded data with no new runs in between. Second run must make **zero** LLM calls (assert via a spy on the injected client) — the entire steady-state cost claim in §8 rests on this being true, not assumed.
+
+---
+
+## What landed
+
+| Task (§9) | Where |
+|---|---|
+| 1 · directories | `lib/llm/{client,schema,factsHash,facts,narrate}.ts`, `lib/llm/prompts/narrate.ts`, `lib/insights/{load,actions}.ts`. No fixture copy — `research/results-narrative.json` is read straight from `research/`, so there is one canonical capture and no chance of two drifting |
+| 2 · `lib/llm/schema.ts` | `Observation`, `InsightPayloadSchema`, `StoredSessionInsightPayload` (R-11), `describeInsightIssues`. `tests/llm.schema.test.ts`, 16 cases |
+| 3 · `lib/llm/factsHash.ts` | `canonicalize` + `factsHash`. `tests/llm.factsHash.test.ts`, 10 cases |
+| 4 · prompts | `lib/llm/prompts/narrate.ts` — three system prompts verbatim from §2, `REPORT_TOOL`, three `*_PROMPT_VERSION`, `REPAIR_PREAMBLE`, `systemPromptFor`, `promptVersionFor`. Placed in `prompts/` beside F04's `extraction.ts` rather than at `lib/llm/prompt.ts`, matching the directory that already existed |
+| 5 · `lib/llm/client.ts` | New. F04 colocated nothing — its vision client is a bare `fetch` and shares no code with the SDK |
+| 6 · `narrateWith` | `lib/llm/narrate.ts`. `tests/llm.narrate.test.ts` covers all five listed branches plus the request surface, the `promptVersion` strip, the per-scope token ceiling, a repair that itself throws, and a `max_tokens` stop |
+| 7 · session facts | `buildSessionFacts`. The §4.9 substring proof is `tests/llm.facts.test.ts` |
+| 8 · live smoke | `tests/live/narrate.live.test.ts`, `npm run test:live:narrate`. **Green.** Numeric fidelity asserted on every one-decimal figure the model quotes |
+| 9 · week/month facts | `buildWeekFacts`, `buildMonthFacts`, `buildTrendSincePrevious`, `aggregatePeriodFlags`, `summarisePreviousInsight` |
+| 10 · cache | `getOrCreateInsight` + `dbInsightStore` over F03's `getLatestInsight`/`saveInsight`; `getPreviousInsight` in `lib/insights/load.ts` |
+| 11 · intent write-back | `tests/llm.facts.test.ts` — the hash moves when `intent` goes `null → 'tempo'` |
+| 12 · `/api/cron/rollup` | Route + `vercel.json` cron at `0 20 * * *` UTC = 03:00 Jakarta. `tests/insights.cron.test.ts`, 8 cases. Plus `scripts/check-llm-payload-boundary.mjs`, wired as `npm run ci:llm-payload-guard` and a CI step |
+| 13 · the F08 boundary | `lib/llm/README.md`, and the boundary is a CI guard rather than only a document |
+
+Also shipped, because the feature does not work without them: `lib/insights/load.ts` (the fetching
+half), `lib/insights/actions.ts` (three Server Actions),
+`components/insights/InsightTrigger.tsx` (the non-blocking trigger), the F07 half of
+`lib/derived/invalidate.ts`, and two data-layer additions — `deleteInsightsForScope` and
+`listActiveUserIds`.
+
+Gate at hand-off: **798 unit tests green**, the live narrative suite green against real `glm-5.3`,
+`next build` clean, eslint and prettier clean, and all five CI guards passing.
+
+## Contract deltas
+
+**Against `ROADMAP_v0.1.0.md` §4: none.** `insights_latest_idx` was already in the schema (R-12
+adopted this plan's own delta before it was written). Routes, units and the `insights` table are
+consumed exactly as specified. The deltas below are against **this plan**.
+
+**1 · The tool schema ships with property descriptions, and they are the highest-value change in
+the feature.** §2.4's `REPORT_TOOL` carried none — the reasonable default, since the `required`
+array is what a tool schema is for. Measured live against `glm-5.3` on 2026-08-21:
+
+| variant | first attempts that validated |
+|---|---|
+| no property descriptions (as planned) | **0 / 3** — `title` absent from all four observations, every time |
+| a hard rule added to the system prompt | 1 / 4 |
+| short `description` on every property | **5 / 6**, every title present |
+| the same, with one extra clause on `metric` | 2 / 4 |
+
+§0.3 was right that the server does not enforce `required`; what it could not know is that the
+*descriptions* do most of the enforcing this endpoint respects. The repair round-trip covered the
+failures either way, so this is not a correctness fix — it is a latency and cost fix worth roughly
+5 s and one whole model call on **every insight the app generates**. The last row is why the
+descriptions are terse rather than thorough: more words made it worse.
+
+The `metric` example earns its place separately. Without it the model wrote
+`"percentTimeInZone4And5: 90.6; avgHr 173"` — it copies the JSON field names out of the facts
+object. One example of how a runner reads a number stopped that.
+
+**2 · §7.1's timeouts were too tight to ship, and are raised.** The plan's 15 s / 10 s / 28 s came
+from `research/results-narrative.json`'s ~10 s, which was measured against **`glm-5.2`**. Fifteen
+live `glm-5.3` calls measured **10.2 – 16.4 s**, clustering at 13–16 s. A 15 s primary timeout
+would have aborted about a third of them and reported `unavailable` for a model that was a second
+away from answering. Session is now 25 s / 18 s / 45 s, week and month 28 s / 20 s / 50 s. Cost:
+nothing, because the timeout only binds when something has already gone wrong.
+
+**3 · The cron stops itself at 55 s.** A consequence of delta 2: week + month for one cold user can
+now exceed the 60 s ceiling on its own. The loop checks a soft deadline before each scope and
+returns `{ skipped }` rather than being killed mid-call. Nothing is lost — the cache means the next
+run resumes exactly where this one stopped, and a page view generates it sooner.
+
+**4 · The committed fixture violates the contract twice, not once.** §0.3 named the missing
+`title`. Writing `tests/llm.schema.test.ts` against the real capture rather than a hand-written
+malformed object found the second: an **87-character `headline`** against a 70-character rule
+stated in the prompt AND in the tool schema's `maxLength`. Both are now pinned.
+
+**5 · `VOLUME_JUMP` is declared in F06, not here.** R-19's diff works on flag *codes*, so a
+period-scoped concern needs a code to be diffable — but §2's own rule is that the narrator never
+coins one. `WeekMetrics.jumpWarning` therefore gained an exported code constant in
+`lib/metrics/week.ts`, next to the rule that decides it, on the same terms as `acwr.ts`'s existing
+`ACWR_OUT_OF_RANGE`. The catalog of things this app is willing to flag stays entirely F06's.
+
+**6 · `getOrCreateInsight` reads the newest row, not the exact `(scope_key, facts_hash)` tuple —
+and `lib/derived/invalidate.ts` pays for it.** That file warned against a recency read, correctly:
+it renders stale prose next to corrected numbers. But an exact-tuple read cannot *notice* staleness
+— it just misses forever and quietly serves nothing after any correction. F07 keeps the recency
+read, compares the stored hash against a freshly computed one, and regenerates on a mismatch; the
+commit path additionally sweeps the affected session, week and month rows so the gap between a
+correction and its regeneration shows no narrative rather than the wrong one. The property the
+warning protected holds; the mechanism is compare-and-regenerate.
+
+**7 · `listActiveUserIds` is the second unscoped query in `lib/db/queries.ts`.** The cron has no
+session and its job is to enumerate users, so a `userId` first parameter would be a lie. It returns
+ids and nothing else, and every read inside the loop is scoped to one of them. Added to the
+allowlist in `scripts/check-data-layer-invariants.mjs` and to the assertion in
+`tests/db.queries.shares.test.ts`, so a *third* exception still has to be argued for in a diff.
+
+**8 · Two additions to the fact shapes.** `WeekMetricsFacts` and `MonthMetricsFacts` carry
+`comparableDistanceBucket` alongside their matched-distance pace — "7'10\"/km at 10K" is a fact a
+coach can use and "7'10\"/km at some distance" is not. `MonthMetricsFacts` also carries `runCount`,
+which §6.2 omitted and every sentence about a month wants.
+
+## What §10 still asks a human to do
+
+The offline suite, the live suite and the guards are green. Three checks in §10 are genuinely
+manual and were **not** performed, because they need a browser and a seeded database:
+
+- the kill-switch test — set `LLM_API_KEY` to garbage, load `/r/[id]`, confirm the metrics, charts
+  and splits all render and the card shows the unavailable line with no 500 and no unhandled
+  rejection. The unit suite proves `narrateWith` never throws; it cannot prove the page survives;
+- the intent write-back, end to end — answer "Tempo/hard on purpose" on the canonical run and
+  confirm the regenerated narrative stops asking. `tests/llm.facts.test.ts` proves the hash moves,
+  which is the mechanical half;
+- insight fatigue at week 2 — needs two real weeks of history behind it.
+
+One further thing worth a human's judgement rather than a test: **the week and month budgets in
+`BUDGET` have no live measurement.** They are the session's numbers scaled for a larger payload.
+Re-measure once `/trends` has run against real history, the same way delta 2 was found.

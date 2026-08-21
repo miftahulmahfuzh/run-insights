@@ -1318,6 +1318,52 @@ export async function saveInsight(
   return { id: existing.id, created: false }
 }
 
+/**
+ * Hygiene, not correctness — and the distinction matters enough to state at the definition.
+ *
+ * Caching is keyed on `facts_hash`, so a corrected run already misses its cached insight on the
+ * next read and regenerates. What this removes is the *stale row itself*, which F08 renders
+ * straight from `getLatestInsight` while the fresh one is still being written: without it, a
+ * runner who corrects a split sees the old prose sitting under the new numbers for one page load.
+ * Deleting is the honest state — no narrative — until the model has read the corrected facts.
+ *
+ * This is the one deletion in the insights table and it is deliberately narrow: a single
+ * `(user, scope, scope_key)` triple, called only from `lib/derived/invalidate.ts`. `extractions`
+ * is a different matter entirely and stays append-only (F03 D3).
+ */
+export async function deleteInsightsForScope(
+  userId: string,
+  scope: InsightScope,
+  scopeKey: string,
+): Promise<void> {
+  await db
+    .delete(insights)
+    .where(
+      and(eq(insights.userId, userId), eq(insights.scope, scope), eq(insights.scopeKey, scopeKey)),
+    )
+}
+
+/**
+ * **The one query in this file that is not ownership-scoped, and the second sanctioned exception
+ * overall.** `/api/cron/rollup` has no session — it is authenticated by `CRON_SECRET` — and its
+ * whole job is to enumerate users, so a `userId` parameter would be a lie.
+ *
+ * It returns ids and nothing else: no run data, no profile, no email. The cron then loops and
+ * every read inside the loop is scoped to one id, so the unscoped surface is exactly this one
+ * `SELECT DISTINCT` and stops there. `scripts/check-data-layer-invariants.mjs` names it in its
+ * allowlist so a THIRD exception still has to be argued for in a diff.
+ *
+ * "Active" is deliberately generous — anyone with a reviewed run since `sinceISO`. A runner who
+ * took three weeks off still wants their week to be readable when they come back.
+ */
+export async function listActiveUserIds(sinceISO: DateISO): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: runs.userId })
+    .from(runs)
+    .where(and(isNotNull(runs.reviewedAt), gte(runs.occurredOn, sinceISO)))
+  return rows.map((row) => row.userId)
+}
+
 export async function getRecords(userId: string): Promise<RecordRow[]> {
   return db.select().from(records).where(eq(records.userId, userId)).orderBy(asc(records.key))
 }

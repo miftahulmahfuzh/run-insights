@@ -29,7 +29,9 @@
     "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs",
     "ci:client-secret-guard": "node scripts/check-client-secret-boundary.mjs",
     "ci:f08-guard": "node scripts/check-f08-boundaries.mjs",
-    "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live"
+    "ci:llm-payload-guard": "node scripts/check-llm-payload-boundary.mjs",
+    "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live/vision.live.test.ts",
+    "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",

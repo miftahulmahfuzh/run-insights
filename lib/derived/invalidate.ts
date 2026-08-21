@@ -1,6 +1,8 @@
 import 'server-only'
 
-import type { CorrectionEvent } from '@/lib/db/schema'
+import { isoWeekKeyOf, monthKey as monthKeyOf } from '@/lib/date/ranges'
+import { deleteInsightsForScope } from '@/lib/db/queries'
+import type { CorrectionEvent, InsightScope } from '@/lib/db/schema'
 import { dbRecordsGateway } from '@/lib/records/gateway'
 import { recomputeRecords, type RecomputeResult } from '@/lib/records/recompute'
 
@@ -42,6 +44,32 @@ export interface InvalidateDeps {
    * that a failure inside it is swallowed — without a database. Production passes nothing.
    */
   recomputeRecordsFor?: (userId: string) => Promise<RecomputeResult>
+  /** F07's half, injected on the same terms and for the same reason. */
+  sweepInsights?: (userId: string, scope: InsightScope, scopeKey: string) => Promise<void>
+}
+
+/**
+ * Every `(scope, scope_key)` an insight could exist under that this commit just invalidated.
+ *
+ * Deduped, because a run that moved between two days in the SAME week produces the same week key
+ * twice and there is no reason to issue the delete twice. Exported so the contract test can
+ * assert the set — the interesting property is *which* scopes get swept when a date moves, and
+ * that is worth pinning independently of how they are swept.
+ */
+export function insightScopesFor(event: RunChangeEvent): Array<[InsightScope, string]> {
+  const keys: Array<[InsightScope, string]> = [['session', event.runId]]
+  for (const day of [event.occurredOn, event.previousOccurredOn]) {
+    if (day == null) continue
+    keys.push(['week', isoWeekKeyOf(day)], ['month', monthKeyOf(day)])
+  }
+
+  const seen = new Set<string>()
+  return keys.filter(([scope, key]) => {
+    const id = `${scope}:${key}`
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
 }
 
 /**
@@ -59,17 +87,25 @@ export interface InvalidateDeps {
  * functions computed on read, with no cache and no stored rows to invalidate. `records` is the
  * feature's only persisted output.
  *
- * ── F07 (insights) — NOT YET BUILT ──────────────────────────────────────────────────────────
- * Delete `insights` rows for `(userId, 'session', runId)`, for `(userId, 'week',
+ * ── F07 (insights) — LANDED ─────────────────────────────────────────────────────────────────
+ * `insights` rows are deleted for `(userId, 'session', runId)`, `(userId, 'week',
  * isoWeekKeyOf(occurredOn))` and `(userId, 'month', monthKey(occurredOn))` — plus the same two
- * for `previousOccurredOn` when the date itself moved.
+ * for `previousOccurredOn` when the date itself moved, because the week and month the run LEFT
+ * are now wrong too.
  *
- * This deletion is hygiene, not correctness: caching is keyed on `facts_hash`, so a changed
- * metric already misses the cache on the next read. The correctness requirement is the other half
- * of the same rule, and it binds F07 and F08 rather than this function: **an insight is fetched
- * by the full tuple `(user_id, scope, scope_key, facts_hash)` — never by `(user_id, scope,
- * scope_key)` ordered by recency.** The latter renders a stale narrative next to corrected
- * numbers, silently, which is the exact failure D2 exists to prevent one layer down.
+ * This deletion is hygiene, not correctness: caching is keyed on `facts_hash`, so a changed metric
+ * already misses the cache on the next read and regenerates. What the sweep prevents is narrower
+ * and entirely about what a reader sees: F08 renders `getLatestInsight(userId, scope, scopeKey)`
+ * server-side, so between the correction and the regeneration the page would show yesterday's
+ * prose sitting under today's corrected numbers. Deleting makes that window show *no* narrative,
+ * which is the honest state, and `components/insights/InsightTrigger.tsx` fills it in.
+ *
+ * The original note here warned against fetching by `(user_id, scope, scope_key)` ordered by
+ * recency. F07 kept that read — it is the only way to notice a STALE insight and regenerate it —
+ * and paid for it with this sweep plus a hash comparison inside `getOrCreateInsight`. The
+ * property the warning was protecting (never render prose derived from superseded numbers) holds;
+ * the mechanism is a compare-and-regenerate rather than an exact-tuple lookup that would have
+ * silently served nothing forever after any correction.
  *
  * ── F09 (badges) — NOT YET BUILT ────────────────────────────────────────────────────────────
  * Delete session-scoped badge rows where `run_id = runId`, re-run every session-scoped rule
@@ -109,7 +145,26 @@ export async function onRunCommitted(
     })
   }
 
-  // F07 (insights) and F09 (badges) fill in their own sections here. Deliberately not a
+  /* F07. Same failure policy as above: a sweep that fails leaves a stale row, and a stale row is
+   * a cosmetic problem for one page load — `getOrCreateInsight` still misses on the hash and
+   * writes a fresh row that immediately wins `getLatestInsight`'s `created_at DESC`. Losing the
+   * runner's save over it would not be. */
+  const sweep = deps.sweepInsights ?? deleteInsightsForScope
+  for (const [scope, scopeKey] of insightScopesFor(event)) {
+    try {
+      await sweep(event.userId, scope, scopeKey)
+    } catch (error) {
+      console.error('[invalidate] insight sweep failed', {
+        runId: event.runId,
+        userId: event.userId,
+        scope,
+        scopeKey,
+        error,
+      })
+    }
+  }
+
+  // F09 (badges) fills in its own section here. Deliberately not a
   // `throw new Error('not implemented')`: the commit path is live and a throw would make every
   // save log an error nobody can act on.
 }

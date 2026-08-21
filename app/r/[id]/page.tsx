@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 
 import { PaceHrChart } from '@/components/charts/PaceHrChart'
 import { InsightCard } from '@/components/insights/InsightCard'
+import { InsightTrigger } from '@/components/insights/InsightTrigger'
 import { IntentChips } from '@/components/runs/IntentChips'
 import { ProvenanceMark } from '@/components/runs/ProvenanceMark'
 import { AppShell, Card, Eyebrow, FlagList, SplitsTable, Stat, ZoneBar } from '@/components/ui'
@@ -190,6 +191,22 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
           {/* F06's flags live inside F07's card: the prose and the measurements that provoked it are
               one reading, and splitting them into two cards makes the reader join them up. */}
           <FlagList flags={flags} />
+          {/*
+            F07's generation trigger (§7.2). It runs AFTER this server render, never inside it, so
+            a 10-35 s model call cannot delay a screen whose numbers are already final.
+
+            The `key` is load-bearing, not a lint appeasement: answering the intent question or
+            correcting a field changes the facts and therefore the hash, and `revalidatePath` alone
+            would re-render this subtree with the trigger's "already fired" ref intact. Keying on
+            the two fields that can change the facts from this page remounts it, which is exactly
+            the semantics wanted — new facts, new attempt.
+          */}
+          <InsightTrigger
+            key={`${run.intent ?? 'none'}:${run.correctedAt?.toISOString() ?? ''}`}
+            target={{ scope: 'session', runId: run.id }}
+            hasInsight={insight?.payload != null}
+            enabled={run.reviewedAt != null}
+          />
         </InsightCard>
       </div>
 

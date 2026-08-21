@@ -1,4 +1,5 @@
 import { InsightCard } from '@/components/insights/InsightCard'
+import { InsightTrigger } from '@/components/insights/InsightTrigger'
 import { PaceTrendChart } from '@/components/charts/PaceTrendChart'
 import { VolumeTrendChart } from '@/components/charts/VolumeTrendChart'
 import { WeeksInMonthChart } from '@/components/charts/WeeksInMonthChart'
@@ -236,7 +237,16 @@ function WeekRollup({
       </Card>
 
       <div className="mt-4">
-        <InsightCard payload={insight?.payload ?? null} scopeLabel="This week" />
+        <InsightCard payload={insight?.payload ?? null} scopeLabel="This week">
+          {/* Usually a no-op: the nightly cron has already written this week, so the action is a
+              hash hit and returns in milliseconds. It earns its place on the first view of a new
+              week, and on any view after a correction swept the row. */}
+          <InsightTrigger
+            target={{ scope: 'week', periodKey: weekKey }}
+            hasInsight={insight?.payload != null}
+            enabled={thisWeek.length > 0}
+          />
+        </InsightCard>
       </div>
     </>
   )
@@ -359,7 +369,13 @@ function MonthRollup({
       </Card>
 
       <div className="mt-4">
-        <InsightCard payload={insight?.payload ?? null} scopeLabel="This month" />
+        <InsightCard payload={insight?.payload ?? null} scopeLabel="This month">
+          <InsightTrigger
+            target={{ scope: 'month', periodKey: monthKey }}
+            hasInsight={insight?.payload != null}
+            enabled={thisMonth.length > 0}
+          />
+        </InsightCard>
       </div>
     </>
   )
