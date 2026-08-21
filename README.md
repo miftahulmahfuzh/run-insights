@@ -4,12 +4,12 @@ Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade ana
 run, that week, and that month.
 
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
-profile, **F04** ingest & vision extraction · next: F05 review & correction
+profile, **F04** ingest & vision extraction, **F05** review & correction · next: F06 metrics & records
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
-   │                   (background, ~33 s)         (mandatory)           │
-   └──► extractions ──► run_photos                                       ▼
+   │                   (background, ~33 s)      /x/[extractionId]        │
+   └──► extractions ──► run_photos              (mandatory — D1)         ▼
                                              deterministic metrics ──► glm-5.3 narrative
                                                         │
                                                         ├──► personal records
@@ -52,6 +52,32 @@ the constant.
 
 That last row is why every number in this app is computed in TypeScript and the LLM only writes
 prose about numbers it was handed.
+
+---
+
+## Why 108/108 still means a human checks every run
+
+The same measurement run that scored 108/108 five times also produced the number F05 is built
+around: the **parallel-call variant scored 102/108**, and its worst miss was reading a split's
+pace as `436` s off a cell that plainly says `6'36"` (396 s) — while getting the other 101 fields
+right, including the other ten splits. **A model can be locally wrong and globally convincing.**
+Nothing about 107 correct fields signals that the 108th is broken.
+
+At ~17 runs a month that is roughly one wrong field a month, and a wrong split does not fail
+loudly: it sits in `runs`, feeds `avg_pace_sec`, feeds every rollup, every personal record and
+every badge built on it, until a chart looks odd and nobody can say which of forty runs is at
+fault. So extraction never auto-saves (D1), and `runs.reviewed_at` has exactly one writer.
+
+Review would be worthless if it were 108 taps, and the thing that makes it one tap instead is
+that **confidence is derived from arithmetic, not from the model**. Four quantities are supposed
+to agree by construction — splits sum to the duration, zones sum to the duration, distance × pace
+is the duration, and a partial final kilometre's pace matches its own time. When they agree,
+nothing is flagged and confirming is a single tap. When they don't, the disagreement points at
+the wrong number far more precisely than a self-rated confidence score could, because it comes
+from the data rather than from the process that produced the error.
+
+The canonical fixture passes all four, and `tests/review.checks.test.ts` holds them to both
+directions: green on the real ground truth, red on the misread that actually happened.
 
 ---
 
@@ -104,6 +130,12 @@ npm test                       # unit suites; never touches a database, never ca
 TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
 npm run test:live:vision       # opt-in: calls glm-4.6v for real. Costs money
 ```
+
+Reviewing is `/x/[extractionId]`, not `/r/[id]/review` — under R-1 no `runs` row exists until the
+commit, so there is no run id to address yet. `/r/[id]/edit` is the post-review correction, and it
+is the same component tree pointed at a different baseline: the stored run rather than the model's
+original guess. Both write `extractions.corrections`, append-only, which is what turns a month of
+human fixes into a measured error profile (`getExtractionErrorProfile`).
 
 Uploading a run needs a Vercel Blob store linked to the project (`BLOB_READ_WRITE_TOKEN`).
 `scripts/f04-e2e-probe.mjs` walks the whole ingest pipeline once against the real Blob store, the

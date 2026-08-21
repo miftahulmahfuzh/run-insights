@@ -129,3 +129,29 @@ export function addDays(dateISO: DateISO, delta: number): DateISO {
 export function daysBetween(a: DateISO, b: DateISO): number {
   return Math.round((+utcDay(b) - +utcDay(a)) / 86_400_000)
 }
+
+/**
+ * The calendar day an instant falls on **in Asia/Jakarta** (roadmap D6), as 'YYYY-MM-DD'.
+ *
+ * The one place in the codebase that converts an instant into a day. Everything downstream of
+ * `runs.occurred_on` is string math on the result (see rule 2 at the top of this file), so this
+ * function is where the timezone decision is spent, and it is spent exactly once.
+ *
+ * `en-CA` is not a locale preference — it is the only widely-supported locale whose short date
+ * format IS ISO 8601, which makes `formatToParts` unnecessary. The `timeZone` option does the
+ * real work: a run uploaded at 06:00 Jakarta on the 21st is the 21st, not the 20th, however the
+ * server's own clock is set (Vercel's is UTC).
+ */
+export function jakartaDayOf(instant: Date): DateISO {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant)
+}
+
+/** Today, in Jakarta. `now` is a parameter so a test can pin the instant, not mock global time. */
+export function todayInJakarta(now: Date = new Date()): DateISO {
+  return jakartaDayOf(now)
+}

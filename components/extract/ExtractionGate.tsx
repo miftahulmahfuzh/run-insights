@@ -1,25 +1,30 @@
 'use client'
 
-import Link from 'next/link'
+import * as React from 'react'
+import { useRouter } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { errorCopy, type ExtractionResult } from '@/lib/schema/extractionResult'
-import { ExtractedSummary } from './ExtractedSummary'
+import { isTerminal, type ExtractionResult } from '@/lib/schema/extractionResult'
 import { ExtractingSkeleton } from './ExtractingSkeleton'
 import { useExtractionStatus } from './useExtractionStatus'
 
 /**
- * `/x/[extractionId]`'s client half: poll until terminal, then hand off.
+ * `/x/[extractionId]`'s waiting half: poll until terminal, then hand the screen back to the
+ * server.
  *
- * **THE F04/F05 SEAM IS THIS COMPONENT'S `switch`.** F04 owns everything up to and including the
- * terminal status; F05 replaces the two hand-off branches below with the real correction form and
- * the commit action. The route, the poll, the skeleton and the status contract stay.
+ * **This component used to BE the F04/F05 seam** — a `switch` on the terminal status that rendered
+ * a read-only summary. F05 cut the seam somewhere better. The review screen needs three things
+ * this client component cannot have: the extraction's stored `corrections` (R-7), the raw vendor
+ * reply for the disclosure, and — above all — a **server-resolved baseline**, because the `from`
+ * side of every correction event must come from the database and not from whatever the browser
+ * believes it was shown.
  *
- * Task 18's contract, rendered:
- *
- *   pending           → the R-41 progress screen
- *   ok | repaired     → the extracted values (F05: the correction form, pre-filled)
- *   failed            → the failure copy + an all-blank path (F05: the same form, empty — §8.1)
+ * So the hand-off is a `router.refresh()`. The poll's only remaining job is to notice that the
+ * status went terminal and ask the server to re-render the page, which then takes the review
+ * branch and never mounts this component again. The alternative — passing a review context down
+ * through the poll — would mean the pre-commit screen is assembled partly on the server and partly
+ * from a JSON payload the client has been holding, which is exactly the ambiguity D1 cannot
+ * tolerate.
  */
 export function ExtractionGate({
   extractionId,
@@ -28,119 +33,42 @@ export function ExtractionGate({
   extractionId: string
   initial: ExtractionResult
 }) {
+  const router = useRouter()
   const { result, pollError, gaveUp, elapsedSec, refresh } = useExtractionStatus(
     extractionId,
     initial,
   )
   const current = result ?? initial
+  const done = isTerminal(current.status)
 
-  if (current.status === 'pending') {
+  // Once, on the transition. `router.refresh()` is idempotent but not free, and the poll hook
+  // stops on a terminal status anyway — the guard is for the re-render React does between the
+  // refresh being requested and the new tree arriving.
+  const refreshed = React.useRef(false)
+  React.useEffect(() => {
+    if (!done || refreshed.current) return
+    refreshed.current = true
+    router.refresh()
+  }, [done, router])
+
+  if (done) {
     return (
-      <ExtractingSkeleton
-        photos={current.photos}
-        elapsedSec={elapsedSec}
-        gaveUp={gaveUp}
-        pollError={pollError}
-        onRetry={refresh}
-      />
+      <Card className="text-center" role="status" aria-live="polite">
+        <p className="text-[15px] font-semibold text-ink">Opening the numbers…</p>
+        <p className="mx-auto mt-1.5 max-w-[32ch] text-[12px] font-medium text-ink-2">
+          Reading finished. Loading them so you can check them.
+        </p>
+      </Card>
     )
   }
 
-  if (current.status === 'failed' || current.session === null) {
-    return <FailedHandoff result={current} />
-  }
-
   return (
-    <div className="space-y-4">
-      <NotSavedYetBanner repaired={current.status === 'repaired'} />
-      <ExtractedSummary session={current.session} kinds={current.kinds} />
-      <ReviewSlot />
-    </div>
-  )
-}
-
-/**
- * D1, stated on screen rather than assumed. Nothing about this extraction is in `runs` yet, and
- * under R-1 there is not even a placeholder row — so the honest thing to say is that leaving now
- * loses nothing.
- */
-function NotSavedYetBanner({ repaired }: { repaired: boolean }) {
-  return (
-    <Card className="bg-accent-soft p-4">
-      <p className="text-[13px] font-semibold text-ink">Nothing has been saved yet.</p>
-      <p className="mt-1 text-[12px] font-medium text-ink-2">
-        These are the reader&apos;s numbers, not yours. A run only exists once you have checked
-        them.
-        {repaired && ' The reader needed a second attempt to get the shape right — worth a look.'}
-      </p>
-    </Card>
-  )
-}
-
-/**
- * F05's slot. Deliberately not a fake button: an affordance that looks like it commits a run and
- * does not would be a worse lie than saying plainly what is missing.
- */
-function ReviewSlot() {
-  return (
-    <Card className="text-center">
-      <p className="text-[13px] font-semibold text-ink">Review and correct — next feature</p>
-      <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] font-medium text-ink-2">
-        F05 turns this read-only view into a per-field correction form and writes the confirmed run.
-        Until then the extraction is kept as an audit record and no run is created.
-      </p>
-      <Link href="/upload" className="mt-4 inline-block text-[13px] font-semibold text-accent">
-        Read another run
-      </Link>
-    </Card>
-  )
-}
-
-/**
- * §8.1 — "fail to manual entry", which is not a second UI. F05's review screen renders in its
- * empty state, keyed to this same `extractionId`, so `runs.extraction_id` still points at the
- * failed attempt: an honest record that this run's numbers are 100% human-entered.
- */
-function FailedHandoff({ result }: { result: ExtractionResult }) {
-  return (
-    <div className="space-y-4">
-      <Card>
-        <p className="text-[17px] font-semibold text-ink">The reader could not do this one</p>
-        <p className="mt-1.5 max-w-[36ch] text-[13px] font-medium text-ink-2">
-          {errorCopy(result.errorCode)}
-        </p>
-        {result.errorCode === 'token_floor' && (
-          <p className="mt-3 rounded-field bg-warn-soft p-3 text-[12px] font-medium text-ink-2">
-            This is the failure the app watches hardest for: the reader answered without the images,
-            so its numbers were invented. They were thrown away unread rather than shown to you.
-            {result.promptTokens !== null &&
-              ` (${result.promptTokens} input tokens — far too few.)`}
-          </p>
-        )}
-        <div className="mt-5 flex gap-2">
-          <Link
-            href="/upload"
-            className="grid h-11 flex-1 place-items-center rounded-field bg-ink text-[14px] font-semibold text-card"
-          >
-            Try again
-          </Link>
-          <Link
-            href="/"
-            className="grid h-11 flex-1 place-items-center rounded-field bg-paper-2 text-[14px] font-semibold text-ink"
-          >
-            Not now
-          </Link>
-        </div>
-      </Card>
-
-      <Card className="text-center">
-        <p className="text-[13px] font-semibold text-ink">Entering it by hand — next feature</p>
-        <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] font-medium text-ink-2">
-          F05&apos;s review screen doubles as the manual path: the same form, every field blank,
-          still attached to this reading attempt so the record stays honest about where the numbers
-          came from.
-        </p>
-      </Card>
-    </div>
+    <ExtractingSkeleton
+      photos={current.photos}
+      elapsedSec={elapsedSec}
+      gaveUp={gaveUp}
+      pollError={pollError}
+      onRetry={refresh}
+    />
   )
 }

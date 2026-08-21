@@ -813,3 +813,99 @@ loosely enough that F05 and F06 could otherwise disagree about them.
      `reviewed_at` didn't move and `corrected_at` did.
   5. Force an `extractions.status = 'failed'` row, confirm the manual-entry banner and blank
      fields render, and that a fully hand-typed commit succeeds with `source = 'manual'`.
+
+---
+
+## 12. Execution record — 2026-08-21
+
+Shipped. `npm test` 500 green across 36 files, typecheck clean, lint clean, `next build` clean,
+all three CI guards green.
+
+### 12.1 What was built
+
+| Module | What it owns |
+|---|---|
+| `lib/review/checks.ts` | The four consistency checks (§3), pure, plus `checkIdForFieldPath` — the attribution the corrections log needs |
+| `lib/review/draft.ts` | `ReviewDraft`, the three hydrations, `resolveOccurredOn`, `flattenDraft`, `diffCorrections`, `mergeCorrections` |
+| `lib/review/schema.ts` | The commit-payload Zod schema and `toRunInput` — D5's unit conversion, once |
+| `lib/review/inputs.ts` | Text ↔ integer parsing for every editable control |
+| `lib/review/loadReview.ts` | The two server-resolved baselines (`/x/[id]` and `/r/[id]/edit`) |
+| `lib/review/commit.ts` | The orchestration: baseline → validate → write → log → invalidate |
+| `lib/review/actions.ts` | The Server Action boundary: auth, revalidate, redirect |
+| `lib/derived/invalidate.ts` | §7.1's contract, shipped as a real documented no-op |
+| `components/review/*` | `ReviewScreen`, `ReviewClient`, `ConsistencyBanner`, `HeroFields`, `SplitsTable`+sheet, `ZoneBar`+sheet, `MoreDetails`, `ScreenshotStrip`+viewer, `RawResponseDisclosure`, `RetryExtraction`, `HonestyChip`, `ParsedInput` |
+| `components/ui/Sheet.tsx` | The bottom-sheet primitive (new to the design system) |
+| `app/x/[extractionId]`, `app/r/[id]/edit`, `app/r/[id]` | R-14's three routes |
+
+Tests: `tests/review.checks.test.ts` (23), `review.draft.test.ts` (39), `review.schema.test.ts`
+(26), `review.inputs.test.ts` (24), `review.commit.test.ts` (24), `derived.invalidate.test.ts`.
+
+### 12.2 Deviations from this plan, and why
+
+1. **The route is `/x/[extractionId]`, not `/r/[id]/review`, and §9 delta 1 is dead.** R-1 ruled
+   against this plan's placeholder-`runs`-row proposal — `occurred_on` is NOT NULL and unknown at
+   upload, so a placeholder needs a placeholder date and the second upload of any day collides
+   with the R-5 dedupe index. **F05 now creates the `runs` row**, in `commitExtractedRun`, and
+   backfills `run_photos.run_id`. Everything else in §9 stands: deltas 2 (array-per-field) and 3
+   (`corrected_at`) both shipped, as R-7 and R-8.
+
+2. **CHK-3's field paths are `distanceKm`, not `distanceM`.** The draft mirrors the extractor's
+   field names exactly (§6.1's whole premise — a correction path *is* the extractor's path), and
+   the extractor returns kilometres. Metres appear once, in `toRunInput`.
+
+3. **Zero splits and zero zones are legal; §10 item 3's "1–20 splits" is not.** `/upload` accepts
+   one screenshot, and the provenance guard nulls the splits array out for a summary-only upload
+   precisely so no invented rows reach a reviewer. Requiring a row would make that ordinary upload
+   uncommittable. Zones are 0 or exactly 5 — never a partial set, because Apple prints all five or
+   none and a truncated denominator is undetectable downstream.
+
+4. **The hero fields are edited in place, not through a sheet.** §2.2's sheet pattern is right for
+   splits and zones — a row at a time, screenshot pinned above. It is wrong for the three CHK-3
+   inputs: a check that says "check the distance, the pace and the duration" wants all three
+   visible together, and a sheet shows them one at a time. Provenance is still R-45's: the strip
+   is above, and every photo opens full-screen and pinch-zoomable.
+
+5. **`intent` and `note` were added to the draft.** Neither is in this plan, and both are `runs`
+   columns with no other writer anywhere in the product. Without them here they are dead schema.
+   They sit in "More details" and carry no `scan` chip, because they were never on a screenshot.
+
+6. **`occurredOn` is a draft field the extractor has no equivalent for.** `runs.occurred_on` is
+   NOT NULL and Apple prints no year. `resolveOccurredOn` guesses in the one safe direction — a
+   run cannot be in the future — the label sits under the input as the evidence, and the guess is
+   diffed like any other field, so "how often is it wrong" is measurable.
+
+7. **`phase: 'manual'` is a transcript, not a diff.** §6.1 says `from` is always null for manual
+   entry. Diffing against the blank draft did not deliver that: `emptyDraft` pre-fills today's
+   date and "Outdoor Run", so those two leaked in as `from` values and would have been counted as
+   model output by §6.2's query. `diffCorrections` now special-cases the phase and records every
+   entered value as arriving from nothing. **Caught by the §8 test, not by review.**
+
+8. **The commit is one transaction plus two follow-ups, not one transaction.** §7.3 asks for
+   `runs` + children + `extractions.corrections` in a single transaction. F03's published surface
+   writes corrections through `recordCorrections`, and `commitExtractedRun` takes no extra
+   statements. The run goes first; a corrections-log failure is logged and the save stands. The
+   exposure is lost analytics on one commit, against the alternative exposure of a corrections log
+   describing a run that does not exist.
+
+9. **`ExtractedSummary.tsx` was deleted.** Its own docblock said F05 replaces it wholesale.
+
+10. **`/r/[id]` was built, minimally.** `commitReview` redirects there and F08 has not landed; a
+    redirect to a 404 is not a finished flow. It carries two things F08 must keep: §9.3's
+    provenance line ("Reviewed 20 Aug · edited 22 Aug") and the link into `/r/[id]/edit`.
+
+11. **The F04/F05 seam moved out of `ExtractionGate`'s `switch`.** The review screen needs the
+    stored `corrections`, the raw vendor reply, and above all a **server-resolved baseline**. The
+    poll's only remaining job is to `router.refresh()` when the status turns terminal.
+
+### 12.3 What is deliberately still open
+
+- **The tolerances are seeded, not tuned** (§3). One ground-truth fixture exists.
+  `getExtractionErrorProfile` is the mechanism for revisiting them after a month of real
+  corrections; a check that never fires on real data and never gets reviewed is a check on paper.
+- **`onRunCommitted` is a no-op**, by design, with each downstream feature's obligations written
+  out in its body. `tests/derived.invalidate.test.ts` exists to stop a future author replacing it
+  with `throw new Error('not implemented')`, which would make every commit log an unactionable
+  error.
+- **§11's manual QA checklist has not been run** — it needs the live Blob store, the live model
+  and a real database. Every case on it is covered by an automated test except the two that are
+  inherently visual: the "Jump ↓" scroll and the pinch-zoom viewer.

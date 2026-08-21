@@ -87,3 +87,34 @@ export function formatKcal(kcal: number | null | undefined): string {
 export function formatElevation(metres: number | null | undefined): string {
   return isNum(metres) ? `${Math.round(metres)} m` : MISSING
 }
+
+/**
+ * `'2026-08-20'` → `'Thu, 20 Aug 2026'`.
+ *
+ * Roadmap §4.2 defines a rule for every measured quantity and says nothing about dates, because
+ * until F05 there was no screen that rendered one. This is written to the same spirit: one
+ * spelling, decided here, used everywhere.
+ *
+ * **`timeZone: 'UTC'` is load-bearing, not boilerplate.** `runs.occurred_on` is already the
+ * correct Asia/Jakarta calendar day (D6) by the time it is stored — `todayInJakarta` spent that
+ * decision once. Parsing it back through a local timezone would spend it a second time and
+ * subtract a day for any viewer west of Jakarta. The string is a day, not an instant, and this
+ * formats it as one.
+ */
+export function formatDay(dateISO: string | null | undefined): string {
+  if (!dateISO || !/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return MISSING
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(`${dateISO}T00:00:00Z`))
+}
+
+/** `'07:07:00'` → `'07:07'`. Postgres `time` widens what the screenshot printed; this narrows it. */
+export function formatClock(value: string | null | undefined): string {
+  if (!value) return MISSING
+  const m = value.match(/^(\d{2}):(\d{2})/)
+  return m ? `${m[1]}:${m[2]}` : value
+}

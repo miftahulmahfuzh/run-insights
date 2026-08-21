@@ -4,6 +4,8 @@ import { TRUTH } from '../research/schema.mjs'
 import {
   formatBpm,
   formatCadence,
+  formatClock,
+  formatDay,
   formatDistanceKm,
   formatDistanceM,
   formatDuration,
@@ -104,5 +106,35 @@ describe('missing values', () => {
     // 0 kcal and 0 m elevation are legitimate readings; only null means "not visible".
     expect(formatKcal(0)).toBe('0 kcal')
     expect(formatElevation(0)).toBe('0 m')
+  })
+})
+
+describe('formatDay (F05 — the run date)', () => {
+  it('renders the canonical fixture’s day', () => {
+    expect(formatDay('2026-08-20')).toBe('Thu, 20 Aug 2026')
+  })
+
+  it('does NOT shift the day into the viewer’s timezone', () => {
+    // `occurred_on` is a calendar day, already resolved to Asia/Jakarta at write time (D6).
+    // Parsing it back through a local zone would subtract a day for anyone west of Jakarta.
+    const previous = process.env.TZ
+    try {
+      process.env.TZ = 'America/Los_Angeles'
+      expect(formatDay('2026-08-20')).toContain('20 Aug')
+    } finally {
+      process.env.TZ = previous
+    }
+  })
+
+  it('degrades rather than rendering Invalid Date', () => {
+    expect(formatDay(null)).toBe(MISSING)
+    expect(formatDay('20 Aug')).toBe(MISSING)
+  })
+})
+
+describe('formatClock', () => {
+  it('narrows the time column back to what the screenshot printed', () => {
+    expect(formatClock('07:07:00')).toBe('07:07')
+    expect(formatClock(null)).toBe(MISSING)
   })
 })
