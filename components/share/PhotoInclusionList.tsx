@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { setPhotoSharingAction } from '@/app/actions/share'
 import { Card, Eyebrow } from '@/components/ui/Card'
+import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { SCREEN_KIND_LABEL, type ScreenKind } from '@/lib/extract/constants'
 import { SHARE_PHOTO_WARNING } from '@/lib/share/config'
 import {
@@ -12,6 +13,7 @@ import {
   PHOTO_EXCLUDED,
   PHOTO_INCLUDED,
   PHOTO_TOGGLE_FAILED,
+  PHOTO_ZOOM_HINT,
 } from '@/lib/share/copy'
 
 export interface InclusionPhoto {
@@ -45,6 +47,22 @@ export interface InclusionPhoto {
  * The checkbox flips immediately and flips back if the write fails. A control that waits 200 ms per
  * tap reads as broken, and a control that lies about a privacy setting is worse than one that is
  * slow — so the failure path restores the true value *and* says so.
+ *
+ * ── TWO TARGETS PER ROW, NOT ONE (card #8) ────────────────────────────────────────────────────
+ * The row used to be a single `<label>` wrapping the thumbnail, the text and the checkbox — which
+ * is exactly *why* a tap anywhere toggled inclusion, and why there was no way to look at the
+ * screenshot you were deciding about. It is now two sibling targets: the left region opens the
+ * full-screen viewer, the right 72 px toggles.
+ *
+ * The `<label>` had to stop wrapping the row rather than merely shrink, because **HTML forbids a
+ * `<button>` inside a `<label>`** — a nested interactive control there has no defined activation
+ * behaviour, so "tap the thumbnail to zoom" was unreachable without this restructuring. The label
+ * still *wraps its own input*, which keeps the implicit association and means the whole 72 px
+ * column activates the checkbox with no `htmlFor`/`id` pair to keep in sync.
+ *
+ * The padding moved off the `<li>` and onto the button, so the label stretches to the row's full
+ * height instead of leaving a 10 px border belonging to neither target: a 72 × ~57 px toggle, past
+ * the 44 pt minimum, and a size that does not change with the length of the label text.
  */
 export function PhotoInclusionList({
   runId,
@@ -57,6 +75,18 @@ export function PhotoInclusionList({
     Object.fromEntries(photos.map((p) => [p.id, p.excludedFromShare])),
   )
   const [error, setError] = React.useState<string | null>(null)
+  const [viewing, setViewing] = React.useState<number | null>(null)
+
+  /**
+   * The viewer's photo list is **every** row, not the tapped one, which is what makes the swipe
+   * worth having here — and it includes the excluded ones, because every row is listed and so
+   * every row should be reachable. `blobUrl` is mapped to `url`: the only reason this component
+   * needs an adapter at all is the field name.
+   */
+  const viewerPhotos = React.useMemo(
+    () => photos.map((p) => ({ url: p.blobUrl, kind: p.kind })),
+    [photos],
+  )
 
   if (photos.length === 0) return null
 
@@ -79,9 +109,15 @@ export function PhotoInclusionList({
       <ul className="mt-4 space-y-2">
         {photos.map((photo, index) => {
           const isExcluded = excluded[photo.id] ?? photo.excludedFromShare
+          const label = SCREEN_KIND_LABEL[photo.kind as ScreenKind] ?? `Screenshot ${index + 1}`
           return (
-            <li key={photo.id}>
-              <label className="flex items-center gap-3 rounded-field bg-paper-2 p-2.5">
+            <li key={photo.id} className="flex items-stretch rounded-field bg-paper-2">
+              <button
+                type="button"
+                onClick={() => setViewing(index)}
+                className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left"
+                aria-label={`Open ${label} full screen`}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted, already
                     compressed to ~55 KB by the client before upload (F04 §3). next/image would
                     re-optimise a file that is already at its target size, on a paid transform
@@ -89,28 +125,26 @@ export function PhotoInclusionList({
                 <img
                   src={photo.blobUrl}
                   alt=""
-                  className={`h-[52px] w-[38px] rounded-[8px] object-cover ${
+                  className={`h-[52px] w-[38px] shrink-0 rounded-[8px] object-cover ${
                     isExcluded ? 'opacity-40' : ''
                   }`}
                 />
                 <span className="min-w-0 flex-1">
                   {/* A filename-free label. The pathname is a random string with no meaning to a
                       reader, and the kind is what they actually recognise. */}
-                  <span className="block text-[13px] font-semibold text-ink">
-                    {SCREEN_KIND_LABEL[photo.kind as ScreenKind] ?? `Screenshot ${index + 1}`}
-                  </span>
+                  <span className="block text-[13px] font-semibold text-ink">{label}</span>
                   <span className="block text-[11px] font-medium text-ink-3">
-                    {isExcluded ? PHOTO_EXCLUDED : PHOTO_INCLUDED}
+                    {isExcluded ? PHOTO_EXCLUDED : PHOTO_INCLUDED} · {PHOTO_ZOOM_HINT}
                   </span>
                 </span>
+              </button>
+              <label className="flex w-[72px] shrink-0 items-center justify-center">
                 <input
                   type="checkbox"
                   checked={!isExcluded}
                   onChange={(e) => toggle(photo.id, e.currentTarget.checked)}
                   className="size-6 accent-[var(--accent)]"
-                  aria-label={`Include the ${
-                    SCREEN_KIND_LABEL[photo.kind as ScreenKind] ?? `screenshot ${index + 1}`
-                  } in the shared page`}
+                  aria-label={`Include ${label} in the shared page`}
                 />
               </label>
             </li>
@@ -119,6 +153,15 @@ export function PhotoInclusionList({
       </ul>
 
       {error && <p className="mt-3 text-[12px] font-semibold text-red">{error}</p>}
+
+      {viewing !== null && viewerPhotos[viewing] && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          index={viewing}
+          onIndex={setViewing}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </Card>
   )
 }

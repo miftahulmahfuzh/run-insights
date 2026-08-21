@@ -71,6 +71,17 @@ export const PHOTO_EXCLUDED = 'Not shared'
 export const PHOTO_TOGGLE_FAILED = 'Could not save that just now.'
 
 /**
+ * The hint that teaches the split target on each row (card #8): the left of the row opens the
+ * screenshot, the right of it toggles whether the screenshot is shared.
+ *
+ * Worded identically to the hint `components/review/SheetSource` already shows, so the two places
+ * a screenshot can be tapped teach the same gesture in the same words rather than each inventing
+ * a phrasing. It sits on the status line because that line is already per-row and already reads as
+ * a description of this row rather than an instruction for the list.
+ */
+export const PHOTO_ZOOM_HINT = 'tap to zoom'
+
+/**
  * Why this control exists at all, in one line under the heading: the flag is a property of the
  * photo, not of any one link, so it survives revoke-and-re-share and can be set before a link has
  * ever existed.
