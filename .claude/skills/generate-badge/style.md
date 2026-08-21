@@ -169,7 +169,7 @@ TECHNIQUE paragraph carries that weight so the individual scene lines don't have
 - groundhog_day: A single groundhog shown from the shoulders up, popping out of a round burrow hole with both forepaws braced flat on the rim. SHAPE: hexagon. SIGNATURE THREAD: the groundhog's nose.
 - tourist: A single signpost with three blank arrow-shaped boards fixed to it at different heights and angles, every board bare of any word. SHAPE: chevron. SIGNATURE THREAD: the tip of whichever board points furthest from the other two.
 - century_club: A single fence post wrapped in one thick, tightly wound ball of coarse thread, the loose tail end trailing off the ball and down across the ground. SHAPE: shield. SIGNATURE THREAD: the trailing tail end of the wound thread.
-- double_century: Two identical bare posts standing apart, joined by one long line of bunting strung between them and sagging in a single deep curve at its lowest point. SHAPE: rounded triangle. SIGNATURE THREAD: the lowest point of the sagging curve.
+- double_century: A single tall bare post standing alone with two full loops of bunting circling it, one loop hung above the other, each sagging into its own deep curve around the post. SHAPE: rounded triangle. SIGNATURE THREAD: the lowest point of the lower loop.
 - half_ish: A single full moon shown exactly half lit and half in shadow, one hard straight line dividing the bright half from the dark half down the centre. SHAPE: hexagon. SIGNATURE THREAD: the dividing line itself, running from the moon's top edge to its bottom.
 - sweat_equity: A single round piggy bank standing alone, one heavy bead of sweat forming at its snout, its back entirely bare of any slot or mark. SHAPE: chevron. SIGNATURE THREAD: the bead of sweat at the snout.
 - new_ceiling: A row of parallel wooden ceiling boards running straight across the patch, with the middle board burst upward out of line with its neighbours and its ends splintered where it tore free, a dark gap showing beneath it. SHAPE: shield. SIGNATURE THREAD: the splintered end of the displaced board.
@@ -220,10 +220,22 @@ wooden crate.
 
 **century_club / double_century is a deliberate escalation pair, like `full_week`/`year_end` in
 the reference deck, and it is watched the same way.** They share a theme (accumulated distance)
-and a base object (a fence post) but not a silhouette — a compact wound ball against a long
-sagging line. If they converge in generation, `double_century` is the one to change; a single
-post strung with two full loops of bunting circling it, rather than two posts joined by one line,
-is the prepared alternative, and it keeps the "double" reading.
+and a base object (a fence post) but not a silhouette — a compact wound ball against a stack of
+sagging loops.
+
+**The prepared alternative was spent, for a reason nobody predicted.** This note used to say that
+if the two converged, `double_century` would move to "a single post strung with two full loops of
+bunting circling it". They never converged — three attempts at the original two-post line all drew
+a perfectly distinct picture. What failed was the SILHOUETTE: two posts side by side is an
+inherently wide composition, and it fought the rounded triangle every time (90.6% × 74.6%, then
+85.2% × 73.8%, then a squat dome that was no longer a triangle at all). 9a and 8a traded failures
+across all three. The single-post-two-loops line is naturally tall and narrow, which is what a
+rounded triangle wants — so the alternative was adopted for aspect ratio rather than for
+collision, and it pays a second dividend: the post tally below drops from three to two.
+
+Recorded because the lesson generalises past this badge: **a scene's composition has an implied
+aspect ratio, and it must agree with the outer shape it was assigned.** Anything wide belongs in a
+chevron or a hexagon; a rounded triangle wants a tall subject with a narrow top.
 
 **groundhog_day / consistency_gremlin: two creatures on/in something round-adjacent, checked and
 separated on purpose.** `groundhog_day` is a bust — shoulders up, emerging from a hole, paws
