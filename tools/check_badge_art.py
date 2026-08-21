@@ -85,7 +85,22 @@ except ImportError:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent.parent
 ANCHOR = ROOT / "assets" / "badges" / "_anchor.png"
 
-MASTER = 1024
+# 4:3, NOT square, and the ratio is the load-bearing half.
+#
+# F10 shipped 1024² masters against a `BadgeDialog` band that is `aspect-[4/3]`,
+# so the dialog drew the square art `h-full w-auto` and painted the ~12.5% of
+# band either side with the MEAN of the master's outer frame. That mean cannot be
+# right: the style block's light rakes from the upper LEFT, so every master's
+# left edge is lighter than its right — measured across all 22 as up to 12.4
+# sRGB apart (two_a_days; boring_excellence 9.8, century_club 8.5) — and one flat
+# colour lands between the two, wrong at BOTH seams. The twill's diagonal weave
+# grain has no flat-fill equivalent either, so the seam showed as
+# texture-stops-here even where the value matched.
+#
+# So the master is now the band's own shape and the dialog paints nothing.
+# `tools/extend_badge_art.py` is what converted the deck, and its header carries
+# the full argument.
+MASTER_W, MASTER_H = 1024, 768
 
 # app/globals.css, verbatim: --paper in each colour scheme. These are the ONLY
 # app design tokens anywhere in F10, and they appear here rather than in the
@@ -482,8 +497,9 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     # returns a 2048² master AFTER the money is spent.
     rep.hard(
         "1 geometry",
-        (w, h) == (MASTER, MASTER),
-        f"{w}×{h}, ratio {w / h:.4f} (want {MASTER}×{MASTER}, 1.0000)",
+        (w, h) == (MASTER_W, MASTER_H),
+        f"{w}×{h}, ratio {w / h:.4f} "
+        f"(want {MASTER_W}×{MASTER_H}, {MASTER_W / MASTER_H:.4f})",
     )
 
     # 2 — alpha (hard). Also unchanged. The patch is full-bleed ON its substrate,
@@ -746,7 +762,8 @@ def measure(path: Path, rep: Report, anchor_stats=None):
         rep.note("9 patch width", "no foreground found")
     else:
         rep.note("9 patch width", f"{box_w * 100:.1f}% of image width "
-                                  f"(style block asks for ~80%)")
+                                  f"(the style block's ~80% is of a SQUARE frame, "
+                                  f"so ~{80 * h / w:.0f}% here)")
 
     if anchor_stats is None:
         rep.note("9 anchor agreement",
@@ -757,7 +774,23 @@ def measure(path: Path, rep: Report, anchor_stats=None):
         if box_w is None:
             rep.hard("9a patch width", False, "no foreground found in the candidate")
         elif shape:
-            expected = SHAPE_WIDTH[shape]
+            # SCALED BY THE FRAME'S OWN ASPECT, and the numbers in SHAPE_WIDTH are
+            # NOT re-derived. They were observed as a fraction of image WIDTH on
+            # square masters, where a frame's width and its height are the same
+            # number — so "the patch that occupies 87.3% of the cloth" was
+            # measurable either way and width was simply the one picked. On the
+            # 4:3 masters the two stop agreeing, and HEIGHT is the one that
+            # matters: `BadgeDialog` draws the master to fill a 4:3 band, so what
+            # sets the patch's apparent size in the panel is its height as a
+            # fraction of the frame's height. Multiplying by h/w converts the
+            # observed number into the same physical patch on a wider frame,
+            # which is exactly what `extend_badge_art.py` crops to — the two
+            # agree by construction rather than by coincidence.
+            #
+            # On a square master h/w is 1 and this is the old check unchanged,
+            # which is why the conversion is a factor here rather than a second
+            # table nobody would keep in step.
+            expected = SHAPE_WIDTH[shape] * h / w
             drift = abs(box_w - expected) / expected * 100
             rep.hard("9a patch width vs shape", drift <= SHAPE_WIDTH_TOLERANCE,
                      f"{box_w * 100:.1f}% vs {shape} expectation "
@@ -851,6 +884,20 @@ def _highpass(px, x, y):
 # LOOK AT IT — the three crops
 # --------------------------------------------------------------------------- #
 
+def centre_square(img):
+    """The master's central square — what `make_badge_assets.py` ships as `small`.
+
+    A no-op on a square master, so nothing that calls this had to learn whether
+    the deck had been widened yet.
+    """
+    w, h = img.size
+    if w == h:
+        return img
+    if w > h:
+        return img.crop(((w - h) // 2, 0, (w + h) // 2, h))
+    return img.crop((0, (h - w) // 2, w, (h + w) // 2))
+
+
 def write_theme_strip(img, out: Path):
     """The badge at 40px and 220px, on light --paper and on dark --paper.
 
@@ -862,22 +909,34 @@ def write_theme_strip(img, out: Path):
     The shelf's own 2px border and rounded corner are not drawn here on purpose:
     the question this strip answers is whether the PATCH separates from the page
     on its own, before any chrome helps it.
+
+    THE TWO CELLS TAKE DIFFERENT ROUTES OUT OF THE MASTER, because the app does.
+    `BadgeShelf`'s tile is square and it draws a square derivative, so the 40px
+    cell is a CENTRE SQUARE CROP — the same crop `make_badge_assets.py` writes as
+    `small`. `BadgeDialog`'s band is 4:3 and the master now is too, so the panel
+    cell keeps the master's aspect at the band's real css size, 360×270. Resizing
+    a 4:3 master into a square cell — which this did before the masters changed
+    shape — squashes a hexagon into something no reviewer should be asked to
+    judge.
     """
     pad, gap = 32, 32
-    sizes = [40, 220]
-    row_h = max(sizes) + pad * 2
-    W = sum(sizes) + gap + pad * 2
+    mark = 40                                  # BadgeShelf, 56 css px, judged smaller
+    panel_w = 360                              # BadgeDialog's max-w-[360px] band
+    panel_h = round(panel_w * img.height / img.width)
+    row_h = max(mark, panel_h) + pad * 2
+    W = mark + panel_w + gap + pad * 2
 
     # Two full-width rows, each its own theme's --paper, stacked. Building the
     # rows whole is what keeps the dark cell's background exactly #0E1B26 rather
     # than whatever a partial paste happened to leave behind.
+    square = centre_square(img)
     strip = Image.new("RGB", (W, row_h * 2))
     for row, bg in enumerate([PAPER_LIGHT, PAPER_DARK]):
         band = Image.new("RGB", (W, row_h), bg)
         x = pad
-        for s in sizes:
-            band.paste(img.resize((s, s), Image.LANCZOS), (x, (row_h - s) // 2))
-            x += s + gap
+        for src, (cw, ch) in ((square, (mark, mark)), (img, (panel_w, panel_h))):
+            band.paste(src.resize((cw, ch), Image.LANCZOS), (x, (row_h - ch) // 2))
+            x += cw + gap
         strip.paste(band, (0, row * row_h))
     strip.save(out)
     return out
@@ -905,9 +964,14 @@ def write_ring_crop(img, box_w, out: Path):
     """
     w, h = img.size
     px = img.load()
-    cx = cy = (w - 1) / 2.0
+    # Both axes, separately. This read `cx = cy = (w - 1) / 2` while every master
+    # was square, which put the unrolling centre 128 px BELOW the patch on the
+    # 4:3 masters — the band then crossed the merrowed border at the top and the
+    # bare twill at the bottom, which is a crop that hides the one thing it is
+    # for. `r_out` is clamped against the shorter axis for the same reason.
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
     half = (box_w if box_w else 0.80) * w / 2.0
-    r_out = min(half * 1.06, cx - 1)
+    r_out = min(half * 1.06, cx - 1, cy - 1)
     r_in = half * 0.70
 
     steps = int(2 * math.pi * r_out)
@@ -947,10 +1011,13 @@ def write_centre_crop(img, box_w, out: Path):
     is also where the stitch question is settled: satin rows with a lit edge and
     a shadowed edge, or a smooth airbrushed fill.
     """
-    w, _ = img.size
+    w, h = img.size
     r = (box_w if box_w else 0.80) * w / 2.0 * 0.80
-    c = (w - 1) / 2.0
-    box = (int(c - r), int(c - r), int(c + r), int(c + r))
+    # Per-axis centre, and clamped: this used `(w - 1) / 2` for BOTH coordinates,
+    # which on a 4:3 master crops a square from below the subject.
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    r = min(r, cx, cy)
+    box = (int(cx - r), int(cy - r), int(cx + r), int(cy + r))
     crop = img.crop(box)
     crop = crop.resize((crop.width * 2, crop.height * 2), Image.LANCZOS)
     crop.save(out)

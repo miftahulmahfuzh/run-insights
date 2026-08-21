@@ -6,7 +6,7 @@ import Image from 'next/image'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { formatDay } from '@/lib/format'
-import { BADGE_ART, BADGE_ART_SIZE } from '@/lib/badges/badge-art'
+import { BADGE_ART, BADGE_ART_HEIGHT, BADGE_ART_WIDTH } from '@/lib/badges/badge-art'
 import type { ShelfEntry } from '@/lib/badges/shelf'
 
 /**
@@ -32,14 +32,27 @@ import type { ShelfEntry } from '@/lib/badges/shelf'
  * compile to `background-color: var(--ink)` against an element that cannot see `--ink` and the
  * scrim would silently vanish. A literal rgba in both schemes is the only form that holds.
  *
- * ── THE PICTURE IS A BAND, NOT A TILE ───────────────────────────────────────────────────────
- * F10's masters are a square of navy twill with the patch sewn onto it, full bleed. Dropped into a
- * padded white panel, the cloth stops at the image's edge and the whole thing reads as a sticker
- * on a sheet of paper. So the band is painted with `art.twill` — the exact colour
- * `make_badge_assets.py` sampled from that master's outer frame — and the image sits inside it at
- * `object-contain`. The band is wider than the art is; the gap on either side is the same cloth,
- * so there is no seam and, critically, **no crop**: the patch is never cut to fill a rectangle.
- * This is the twill argument `BadgeShelf` already makes for its 56px patch, at 4× the size.
+ * ── THE PICTURE IS A BAND, AND THE ART IS NOW THAT BAND'S OWN SHAPE ──────────────────────────
+ * The masters are a rectangle of navy twill with the patch sewn onto it, full bleed. Dropped into
+ * a padded white panel the cloth would stop at the image's edge and read as a sticker on a sheet
+ * of paper, so the picture is a band flush to three edges of the panel rather than a tile inside
+ * it. That much has not changed.
+ *
+ * What changed is that the art fits. F10 shipped 1024² masters into this 4:3 band, so the square
+ * art was drawn `h-full w-auto` and the ~12.5% of band either side was painted with `art.twill`,
+ * the mean of that master's outer frame. A mean cannot match a photograph of cloth in two ways at
+ * once: the raking light the patches are lit by comes from the upper LEFT, so every master's left
+ * edge is measurably lighter than its right — up to 12.4 of 255 apart on `two_a_days` — and one
+ * flat colour lands between the two, visibly wrong at BOTH seams rather than at neither. The
+ * twill's diagonal weave grain has no flat-fill equivalent either, so the join read as
+ * texture-stops-here even on the badges whose value happened to match.
+ *
+ * `tools/extend_badge_art.py` widened all 22 masters to the band's own 4:3 by extending each
+ * badge's own cloth, so the band now paints nothing and there is no seam to match. `object-cover`
+ * on identical aspect ratios crops nothing — it is here to swallow sub-pixel rounding rather than
+ * to fill a rectangle, and **the patch is still never cut**. `art.twill` stays as the band's
+ * background colour so a slow decode shows cloth rather than card; `BadgeShelf` still needs it for
+ * real, because its tile is square and its 56px mark is a square crop.
  *
  * ── WHAT THE PANEL SAYS THAT THE ROW DOES NOT ───────────────────────────────────────────────
  * The row is a reference table: title, condition, gloss, date. The panel adds the two things a
@@ -137,13 +150,12 @@ function Panel({
              `BadgeShelf` makes for its 56px patch. */
           src={art.src}
           alt=""
-          width={BADGE_ART_SIZE}
-          height={BADGE_ART_SIZE}
-          /* `h-full w-auto max-w-none`: the art is square and the band is 4:3, so height is the
-             constraint and `max-w-none` stops Tailwind's preflight from shrinking it to the band's
-             width. The cloth either side is the same colour as the cloth inside it. */
-          className={cn('h-full w-auto max-w-none', !earned && 'opacity-50 grayscale')}
-          /* Already a 768² WebP, content-hashed and served `immutable` by next.config.ts.
+          width={BADGE_ART_WIDTH}
+          height={BADGE_ART_HEIGHT}
+          /* The art and the band are both 4:3, so this fills the band exactly. See the note above
+             on why `object-cover` here is not a crop. */
+          className={cn('h-full w-full object-cover', !earned && 'opacity-50 grayscale')}
+          /* Already a 768×576 WebP, content-hashed and served `immutable` by next.config.ts.
              Re-encoding it through the optimizer would bill a transformation for an asset that was
              encoded for exactly this box. */
           unoptimized

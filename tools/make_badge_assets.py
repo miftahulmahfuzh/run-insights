@@ -8,10 +8,31 @@
 Design record: docs/plans/F10-badge-art-skill.md §5.4, and D12 (offline
 generation, committed, no runtime image calls).
 
-  assets/badges/<key>.png                1024² PNG, lossless, never edited in place
-    → public/badges/<key>.<hash8>.webp     768²  — the panel
-    → public/badges/<key>.<hash8>.sm.webp  192²  — the shelf mark
+  assets/badges/<key>.png                1024×768 PNG, lossless, never edited in place
+    → public/badges/<key>.<hash8>.webp     768×576  — the panel, the master's own 4:3
+    → public/badges/<key>.<hash8>.sm.webp  192²     — the shelf mark, a CENTRE SQUARE CROP
     → lib/badges/badge-art.ts              the manifest, a TOTAL Record
+
+THE MASTERS ARE 4:3, AND THE TWO DERIVATIVES TAKE DIFFERENT ROUTES OUT OF THEM.
+
+F10 shipped 1024² masters against a `BadgeDialog` band that is `aspect-[4/3]`, so
+the dialog drew the square art `h-full w-auto` and painted the ~12.5% of band
+either side with `BADGE_ART.twill`, the mean of the master's outer frame. That
+mean is wrong at both seams at once — the style block's light rakes from the upper
+LEFT, so each master's left edge is up to 12.4 sRGB lighter than its right — and a
+flat fill has no weave grain, so the seam showed as texture-stops-here even where
+the value matched. `tools/extend_badge_art.py` converted the deck; its header
+carries the full argument and the per-badge measurements.
+
+So `src` is now the master's own 4:3, and the panel paints nothing. But the SHELF
+mark is square — `BadgeShelf` draws it in a square box at 56 css px — and neither
+letterboxing (which shrinks the patch inside its own tile) nor squashing (which
+distorts a hexagon) is acceptable there. It is a centre square crop instead, and
+that crop is exactly a no-op on the deck's geometry: the patch on a 4:3 master
+spans `SHAPE_WIDTH × 3/4` of 1024 px, and cropping to the central 768×768 divides
+by that same 3/4, so the mark's patch fraction comes out at `SHAPE_WIDTH` — the
+number the square masters had. The shelf is bit-for-bit the same composition it
+always was, which is why this change touched no shelf code.
 
 ONE DECK. The tool this descends from carries a `DECKS` table because
 daily-words ships badge medals AND level panels; Run Insights has only the badge
@@ -59,8 +80,11 @@ URL = "/badges"
 MANIFEST = ROOT / "lib" / "badges" / "badge-art.ts"
 SOURCE = ROOT / "lib" / "badges" / "catalog.ts"
 
-MASTER_SIZE = 1024
-PANEL = 768
+MASTER_W, MASTER_H = 1024, 768
+# The panel derivative keeps the master's 4:3 exactly. 768 wide, not 768 tall:
+# the measured quality table below was taken at 768 across, and width is what
+# `BadgeDialog`'s 360 css px band actually consumes.
+PANEL_W, PANEL_H = 768, 576
 # 192, for a shelf mark `BadgeShelf` currently draws at 56 css px — 3× on a
 # phone, with room for a future panel that draws it larger. It costs about 2 kB
 # over a tighter size and lets a consumer draw it smaller, which is always safe.
@@ -203,9 +227,11 @@ def emit_manifest(entries, style_versions):
         "import type { BadgeKey } from './types'",
         "",
         "export interface BadgeArt {",
-        f"  /** {PANEL}×{PANEL} WebP for a badge panel. */",
+        f"  /** {PANEL_W}×{PANEL_H} WebP for a badge panel — the master's own 4:3. */",
         "  src: string",
-        f"  /** {SMALL}×{SMALL} WebP for the shelf mark, drawn at 56 css px. */",
+        f"  /** {SMALL}×{SMALL} WebP for the shelf mark, drawn at 56 css px. A CENTRE",
+        "   *  SQUARE CROP of the master, not a squash of it: the shelf tile is square,",
+        "   *  and the crop restores exactly the patch fraction the square masters had. */",
         "  small: string",
         "  /** SHA-256 of `assets/badges/<key>.png`, the approved master. */",
         "  sha256: string",
@@ -214,6 +240,12 @@ def emit_manifest(entries, style_versions):
         "   * A tile can paint its own background with this so the square art sits inside a",
         "   * rounded field with no seam and no crop. Sampled from the master, never chosen;",
         "   * `npm run badges:check` recomputes it exactly as it recomputes `sha256`.",
+        "   *",
+        "   * `BadgeShelf` still needs this: its tile is square and `small` is square, so",
+        "   * the rounded field around a 56px mark is still painted rather than drawn.",
+        "   * `BadgeDialog` no longer does — `src` is the band's own 4:3 and fills it — but",
+        "   * it keeps painting the band behind the image anyway, so a slow decode shows",
+        "   * cloth rather than card.",
         "   */",
         "  twill: string",
         "  /** The style.md version this image was generated against. */",
@@ -221,7 +253,8 @@ def emit_manifest(entries, style_versions):
         "}",
         "",
         "/** Intrinsic pixel sizes, so a consumer never has to restate them. */",
-        f"export const BADGE_ART_SIZE = {PANEL}",
+        f"export const BADGE_ART_WIDTH = {PANEL_W}",
+        f"export const BADGE_ART_HEIGHT = {PANEL_H}",
         f"export const BADGE_ART_SMALL_SIZE = {SMALL}",
         "",
         "export const BADGE_ART: Record<BadgeKey, BadgeArt> = {",
@@ -283,22 +316,34 @@ def main():
                   f"when you promote.", file=sys.stderr)
 
         img = Image.open(master).convert("RGB")
-        if img.size != (MASTER_SIZE, MASTER_SIZE):
-            sys.exit(f"error: {master} is {img.size[0]}×{img.size[1]}, want {MASTER_SIZE}²")
+        if img.size != (MASTER_W, MASTER_H):
+            sys.exit(f"error: {master} is {img.size[0]}×{img.size[1]}, "
+                     f"want {MASTER_W}×{MASTER_H}")
 
         # Sampled here, off the master already in memory, so the file is read
         # once and both fields of the entry describe the same bytes.
         entries.append((key, sha, twill_hex(img)))
 
-        for size, suffix in ((PANEL, "webp"), (SMALL, "sm.webp")):
+        # The shelf mark's square comes from a CROP of the master, not from a
+        # resize of it — see the header. Taken before either derivative is
+        # written so the crop is of the master's own pixels, never of the
+        # already-downsampled panel.
+        square = img.crop(((MASTER_W - MASTER_H) // 2, 0,
+                           (MASTER_W + MASTER_H) // 2, MASTER_H))
+
+        for src, (ow, oh), suffix in (
+            (img, (PANEL_W, PANEL_H), "webp"),
+            (square, (SMALL, SMALL), "sm.webp"),
+        ):
             out = PUBLIC / f"{key}.{h8}.{suffix}"
             expected.add(out.name)
             if args.dry_run:
-                print(f"would write {out.relative_to(ROOT)}  ({size}²)")
+                print(f"would write {out.relative_to(ROOT)}  ({ow}×{oh})")
                 continue
             opts = {"lossless": True} if args.lossless else {"quality": QUALITY}
-            img.resize((size, size), Image.LANCZOS).save(out, "WEBP", method=METHOD, **opts)
-            print(f"{out.relative_to(ROOT)}  {size}²  {out.stat().st_size / 1024:.0f} kB")
+            src.resize((ow, oh), Image.LANCZOS).save(out, "WEBP", method=METHOD, **opts)
+            print(f"{out.relative_to(ROOT)}  {ow}×{oh}  "
+                  f"{out.stat().st_size / 1024:.0f} kB")
 
     # Orphans: a stale hash left behind by a regeneration. Only files matching the
     # generated shape for a known key are removed; anything else is reported and

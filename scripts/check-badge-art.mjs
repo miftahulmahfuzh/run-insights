@@ -111,7 +111,7 @@ section(`§1  OPENROUTER_API_KEY stays outside ${BOUNDARY_DIRS.join('/, ')}/`)
   const result = checkOpenRouterBoundary()
   assert(
     result.ok,
-    'the key is named by tools/gen_badge_art.py and by nothing that ships',
+    'the key is named by tools/{gen,extend}_badge_art.py and by nothing that ships',
     result.ok ? '' : `${result.reason}\n${result.detail}`,
   )
 }

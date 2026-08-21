@@ -90,10 +90,39 @@ carrying an unused branch now.
 without reading the key, touching the network or writing a file; use it whenever you have edited
 `style.md` and want to see what would be sent.
 
-### 4. Measure
+### 3b. Widen it to 4:3
+
+**A square candidate is not a master.** The deck's masters are `1024×768`, because
+`BadgeDialog`'s art band is `aspect-[4/3]` and a square master left the dialog painting the
+12.5% either side with a flat mean of the master's outer frame — wrong at both seams at once,
+since the raking light makes every master's left edge up to 12.4/255 lighter than its right, and
+flat with no weave grain either way. So the last step of making a badge is extending its own
+cloth sideways:
 
 ```bash
-python3 tools/check_badge_art.py assets/badges/_candidates/<key>.aNN.png
+python3 tools/extend_badge_art.py <key> --source assets/badges/_candidates/<key>.aNN.png
+```
+
+`--source` is not optional here. A badge being made for the first time has no master, and the
+default (`assets/badges/<key>.png`) would silently widen the *previous* one.
+
+**`gen_badge_art.py` still generates at 1:1 and that is deliberate.** The style block's
+composition rules — 80% of the image width, a generous margin on every side — and all four
+`SHAPE_WIDTH` numbers in `check_badge_art.py` were written and observed on square frames.
+Regenerating at 4:3 would invalidate every one of them. A badge is invented square and then
+widened; read `tools/extend_badge_art.py`'s header for the whole argument, including why it uses
+the cheap `qwen/qwen-image-3` (**measured $0.033 a call**) where generation uses the pro model.
+
+The tool writes `<key>.wNN.png` (cropped so the patch lands on its shape's deck-wide size),
+`<key>.wNN.raw.png` (the generation before that crop, so a different crop is free) and a sidecar
+that **inherits `style version:` from the source's sidecar** rather than re-reading `style.md`.
+
+### 4. Measure
+
+Measure the **widened** candidate — that is the file that becomes the master:
+
+```bash
+python3 tools/check_badge_art.py assets/badges/_candidates/<key>.wNN.png
 ```
 
 Ten measurements, not the reference tool's nine — §5.2 of the design plan adds one with no
@@ -212,8 +241,12 @@ Three things, because each is a decision and none is undone by re-running a scri
 - **It never writes to `assets/badges/`.** That is source art. Promotion of a candidate is a
   human act; suggest it and stop:
 
-      cp assets/badges/_candidates/<key>.aNN.png assets/badges/<key>.png
-      cp assets/badges/_candidates/<key>.aNN.txt assets/badges/<key>.txt
+      cp assets/badges/_candidates/<key>.wNN.png assets/badges/<key>.png
+      cp assets/badges/_candidates/<key>.wNN.txt assets/badges/<key>.txt
+
+  **The `.wNN` pair, not the `.aNN` pair.** The square generation is an intermediate; step 3b's
+  widened output is the master. Promoting an `.aNN` file puts a 1024² image where a 1024×768 one
+  belongs, and `make_badge_assets.py` exits on it rather than shipping it.
 
   **Both files, always.** `make_badge_assets.py` reads the style version out of the sidecar, and
   it reads it from there rather than from `style.md` on purpose: taking the current version would

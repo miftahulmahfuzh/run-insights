@@ -1,5 +1,5 @@
-// OPENROUTER_API_KEY is build-time-only, read by tools/gen_badge_art.py (F10) and by
-// NOTHING at runtime. If this script ever fails, something in app/, lib/, or components/
+// OPENROUTER_API_KEY is build-time-only, read by tools/gen_badge_art.py (F10) and
+// tools/extend_badge_art.py (F15) and by NOTHING at runtime. If this script ever fails, something in app/, lib/, or components/
 // started reading a key meant only for an offline image-generation skill — fix the import,
 // don't silence this check. See ROADMAP_v0.1.0.md section 4.1 and D12.
 //

@@ -22,9 +22,11 @@
 import type { BadgeKey } from './types'
 
 export interface BadgeArt {
-  /** 768×768 WebP for a badge panel. */
+  /** 768×576 WebP for a badge panel — the master's own 4:3. */
   src: string
-  /** 192×192 WebP for the shelf mark, drawn at 56 css px. */
+  /** 192×192 WebP for the shelf mark, drawn at 56 css px. A CENTRE
+   *  SQUARE CROP of the master, not a squash of it: the shelf tile is square,
+   *  and the crop restores exactly the patch fraction the square masters had. */
   small: string
   /** SHA-256 of `assets/badges/<key>.png`, the approved master. */
   sha256: string
@@ -33,6 +35,12 @@ export interface BadgeArt {
    * A tile can paint its own background with this so the square art sits inside a
    * rounded field with no seam and no crop. Sampled from the master, never chosen;
    * `npm run badges:check` recomputes it exactly as it recomputes `sha256`.
+   *
+   * `BadgeShelf` still needs this: its tile is square and `small` is square, so
+   * the rounded field around a 56px mark is still painted rather than drawn.
+   * `BadgeDialog` no longer does — `src` is the band's own 4:3 and fills it — but
+   * it keeps painting the band behind the image anyway, so a slow decode shows
+   * cloth rather than card.
    */
   twill: string
   /** The style.md version this image was generated against. */
@@ -40,162 +48,163 @@ export interface BadgeArt {
 }
 
 /** Intrinsic pixel sizes, so a consumer never has to restate them. */
-export const BADGE_ART_SIZE = 768
+export const BADGE_ART_WIDTH = 768
+export const BADGE_ART_HEIGHT = 576
 export const BADGE_ART_SMALL_SIZE = 192
 
 export const BADGE_ART: Record<BadgeKey, BadgeArt> = {
   early_bird: {
-    src: '/badges/early_bird.5cb505c5.webp',
-    small: '/badges/early_bird.5cb505c5.sm.webp',
-    sha256: '5cb505c59dac7c7071abcfb15e4b57dfc809e0b3e5f9d1035f4459489b55a094',
-    twill: '#0d1b31',
+    src: '/badges/early_bird.9703edee.webp',
+    small: '/badges/early_bird.9703edee.sm.webp',
+    sha256: '9703edee31a5abe10aa3f81fffc485f428f4ecc9b9a738c76cdb8635d4b7c057',
+    twill: '#0a152c',
     styleVersion: 'v2',
   },
   late_start: {
-    src: '/badges/late_start.bfca7354.webp',
-    small: '/badges/late_start.bfca7354.sm.webp',
-    sha256: 'bfca7354d49e72f2ae5e6e941e03ac89db56e66bf4fa42c330974183672b9222',
-    twill: '#0f1c35',
+    src: '/badges/late_start.510b5c02.webp',
+    small: '/badges/late_start.510b5c02.sm.webp',
+    sha256: '510b5c023a3da80080b39a3ad7a98c4bf79165d5ac84d897fc60db7e87142417',
+    twill: '#0e1a33',
     styleVersion: 'v2',
   },
   self_reward: {
-    src: '/badges/self_reward.7c888e64.webp',
-    small: '/badges/self_reward.7c888e64.sm.webp',
-    sha256: '7c888e643c02b7496751bc96dc51c35055629f517053bc8fb3ae0e5db9180293',
-    twill: '#0f1d34',
+    src: '/badges/self_reward.2234a58d.webp',
+    small: '/badges/self_reward.2234a58d.sm.webp',
+    sha256: '2234a58dd83e348c1da2a3ffeab19fc416436ffe7df41094b77ff81dc0277256',
+    twill: '#0f1b35',
     styleVersion: 'v2',
   },
   negative_split: {
-    src: '/badges/negative_split.e61a7a1a.webp',
-    small: '/badges/negative_split.e61a7a1a.sm.webp',
-    sha256: 'e61a7a1af2d9ad18283b3b0699dfa72d41bd2ba7c06cbfff52eef8270a3a18bb',
-    twill: '#0f1b30',
+    src: '/badges/negative_split.9dbc8bb2.webp',
+    small: '/badges/negative_split.9dbc8bb2.sm.webp',
+    sha256: '9dbc8bb221220e281295a4eec63d5fc7b80c2d14c18902a82f63c8cf9459d4c6',
+    twill: '#0d182d',
     styleVersion: 'v2',
   },
   metronome: {
-    src: '/badges/metronome.35ff9b83.webp',
-    small: '/badges/metronome.35ff9b83.sm.webp',
-    sha256: '35ff9b831cc6acf77e0e78be9c32297699bc0aa0c4b080715911c61983a895c9',
-    twill: '#131f35',
+    src: '/badges/metronome.7d7c8e76.webp',
+    small: '/badges/metronome.7d7c8e76.sm.webp',
+    sha256: '7d7c8e76a56bd2809e3970a43b51d2b4c67849ee1625ad0501a59d9d52e104a1',
+    twill: '#101b32',
     styleVersion: 'v2',
   },
   fast_start_fool: {
-    src: '/badges/fast_start_fool.9fd3511f.webp',
-    small: '/badges/fast_start_fool.9fd3511f.sm.webp',
-    sha256: '9fd3511f6077b4a620ff4f589a19b6df0c1718195cd7b52c08eb9c86d2470077',
-    twill: '#132037',
+    src: '/badges/fast_start_fool.abc05269.webp',
+    small: '/badges/fast_start_fool.abc05269.sm.webp',
+    sha256: 'abc0526963f5f08ba3f0ef2fa2879929e9d0bba5e83fd6bfdb5ab87e5dc2ace5',
+    twill: '#0e1a34',
     styleVersion: 'v2',
   },
   redline_republic: {
-    src: '/badges/redline_republic.11356ef8.webp',
-    small: '/badges/redline_republic.11356ef8.sm.webp',
-    sha256: '11356ef8c02b5f0455663faf15471dff61c85d23b0ba0dc8c2b4ff573f062e9b',
-    twill: '#0e1b30',
+    src: '/badges/redline_republic.129bfc37.webp',
+    small: '/badges/redline_republic.129bfc37.sm.webp',
+    sha256: '129bfc3781b7f5db6cc036c9099e41adc9053e7ccf6dd9ec54344eaef09f4e59',
+    twill: '#0e1930',
     styleVersion: 'v2',
   },
   sandbagger: {
-    src: '/badges/sandbagger.e73b2161.webp',
-    small: '/badges/sandbagger.e73b2161.sm.webp',
-    sha256: 'e73b2161e9090166ee6d5b50f0a73ba3670790140dc58f3c57c2045fb12edade',
-    twill: '#14233b',
+    src: '/badges/sandbagger.1aee3df0.webp',
+    small: '/badges/sandbagger.1aee3df0.sm.webp',
+    sha256: '1aee3df0276f7da78d1fcd8045aa844823bf49d18f01ad0679afec60c81e805d',
+    twill: '#0e1c37',
     styleVersion: 'v2',
   },
   cadence_collapse: {
-    src: '/badges/cadence_collapse.064b2c94.webp',
-    small: '/badges/cadence_collapse.064b2c94.sm.webp',
-    sha256: '064b2c94619f3c139e10d2f3907a55b94d67574d8fc19886d5a4a385b0954ce0',
-    twill: '#101e35',
+    src: '/badges/cadence_collapse.e3b4efeb.webp',
+    small: '/badges/cadence_collapse.e3b4efeb.sm.webp',
+    sha256: 'e3b4efebbc2e7a5b0fef0a00926110166692f870bdec8db028ad9f93418b7d57',
+    twill: '#0f1b35',
     styleVersion: 'v2',
   },
   warmup_who: {
-    src: '/badges/warmup_who.a967d10d.webp',
-    small: '/badges/warmup_who.a967d10d.sm.webp',
-    sha256: 'a967d10d97e32c737c217bd6390d89c6bafa5d899c7712e130100b2a19b10003',
-    twill: '#132037',
+    src: '/badges/warmup_who.a5584b0e.webp',
+    small: '/badges/warmup_who.a5584b0e.sm.webp',
+    sha256: 'a5584b0e3b6f4b659780920236775210dbd1921ac63f21b46efefd00b8f61fc1',
+    twill: '#0f1a33',
     styleVersion: 'v2',
   },
   groundhog_day: {
-    src: '/badges/groundhog_day.b8747cf7.webp',
-    small: '/badges/groundhog_day.b8747cf7.sm.webp',
-    sha256: 'b8747cf70ba0639f6ea24877090767002ac6fdef624fecc56f8c2313eb0f4f28',
-    twill: '#101e35',
+    src: '/badges/groundhog_day.2211bc4d.webp',
+    small: '/badges/groundhog_day.2211bc4d.sm.webp',
+    sha256: '2211bc4d944566fdac4a638ed2825c877bc4660ee9b0fab3179c7140594998cd',
+    twill: '#0e1b33',
     styleVersion: 'v2',
   },
   tourist: {
-    src: '/badges/tourist.2a9a41bf.webp',
-    small: '/badges/tourist.2a9a41bf.sm.webp',
-    sha256: '2a9a41bf03563fe48708fd70684a0e1434efb6e8be5bb7b178e691b020b2761c',
-    twill: '#111e36',
+    src: '/badges/tourist.38ef252a.webp',
+    small: '/badges/tourist.38ef252a.sm.webp',
+    sha256: '38ef252ac98ebf00e861d9501020d66de3c938a0a59acb37e8f86ead512ff13d',
+    twill: '#0e1a33',
     styleVersion: 'v2',
   },
   century_club: {
-    src: '/badges/century_club.a81a5da7.webp',
-    small: '/badges/century_club.a81a5da7.sm.webp',
-    sha256: 'a81a5da7e9f68820f9e093ff0f4521230ba6f93b17af5db16134445f350b57cd',
-    twill: '#162338',
+    src: '/badges/century_club.c607fd25.webp',
+    small: '/badges/century_club.c607fd25.sm.webp',
+    sha256: 'c607fd255f19b54a83cc35ef6e08ba101600cafc2d97e6b2194f2c465925a044',
+    twill: '#0e1b32',
     styleVersion: 'v2',
   },
   double_century: {
-    src: '/badges/double_century.38a22314.webp',
-    small: '/badges/double_century.38a22314.sm.webp',
-    sha256: '38a2231481b5b1f0ecc26b5524aa82ff6b4ff44e6d8b87d782298a681ecab52c',
-    twill: '#0f1b30',
+    src: '/badges/double_century.0b4846a6.webp',
+    small: '/badges/double_century.0b4846a6.sm.webp',
+    sha256: '0b4846a68b907441d81e1b5066e8f751858251d20ac032695ea74f1492eef924',
+    twill: '#0d172e',
     styleVersion: 'v2',
   },
   half_ish: {
-    src: '/badges/half_ish.e2fd8395.webp',
-    small: '/badges/half_ish.e2fd8395.sm.webp',
-    sha256: 'e2fd8395cfc93a018462a8b83152014478c1c25f4ee4ff639d89c2ec30c0cfcf',
-    twill: '#101e36',
+    src: '/badges/half_ish.1d34671f.webp',
+    small: '/badges/half_ish.1d34671f.sm.webp',
+    sha256: '1d34671f141331a7c01f16e853c115fab87c53df4ef6c11c375e453700e8d387',
+    twill: '#0e1b34',
     styleVersion: 'v2',
   },
   sweat_equity: {
-    src: '/badges/sweat_equity.1a3c6cee.webp',
-    small: '/badges/sweat_equity.1a3c6cee.sm.webp',
-    sha256: '1a3c6cee2e43db0717d2b933bdf9a519faa3dea87f09233b4f8c6aec2e571f81',
-    twill: '#0d1c32',
+    src: '/badges/sweat_equity.03f2d915.webp',
+    small: '/badges/sweat_equity.03f2d915.sm.webp',
+    sha256: '03f2d91592a011cd47f4480faa646b486a06ed8a218a8aa4eb63476db7274868',
+    twill: '#0a1831',
     styleVersion: 'v2',
   },
   new_ceiling: {
-    src: '/badges/new_ceiling.7a7cb756.webp',
-    small: '/badges/new_ceiling.7a7cb756.sm.webp',
-    sha256: '7a7cb756f4c58bf095fce8851d4ad87fe94d17e3ea3e2ee405a987e05be06d6f',
-    twill: '#0f1d35',
+    src: '/badges/new_ceiling.c25c6feb.webp',
+    small: '/badges/new_ceiling.c25c6feb.sm.webp',
+    sha256: 'c25c6febfef5c9dd1b608ba123def85db2d2fc11a7c5c1cce5e41ba0cccf35e3',
+    twill: '#0e1b35',
     styleVersion: 'v2',
   },
   consistency_gremlin: {
-    src: '/badges/consistency_gremlin.da3ad9f0.webp',
-    small: '/badges/consistency_gremlin.da3ad9f0.sm.webp',
-    sha256: 'da3ad9f0d44d49d73ee813f2cb6ea71cdf2e85bf7417cc7d191c32347f9b81e9',
-    twill: '#141f34',
+    src: '/badges/consistency_gremlin.83f4c6d8.webp',
+    small: '/badges/consistency_gremlin.83f4c6d8.sm.webp',
+    sha256: '83f4c6d8af8f5da36f17209c8c9f59a42fc5d63d8c12bd130646577abec88a4c',
+    twill: '#121b33',
     styleVersion: 'v2',
   },
   dawn_patrol: {
-    src: '/badges/dawn_patrol.110655f7.webp',
-    small: '/badges/dawn_patrol.110655f7.sm.webp',
-    sha256: '110655f7712fd04640525dea02b50a06b0cf1a45df6e060e906cb7cf3e68acaa',
-    twill: '#0f1d34',
-    styleVersion: 'v2',
-  },
-  long_way_home: {
-    src: '/badges/long_way_home.0f4e123a.webp',
-    small: '/badges/long_way_home.0f4e123a.sm.webp',
-    sha256: '0f4e123abaad31f111fc78b1c352f69469d1aa2ea125e36d615491833cad1771',
+    src: '/badges/dawn_patrol.f4796897.webp',
+    small: '/badges/dawn_patrol.f4796897.sm.webp',
+    sha256: 'f4796897ca79d88b6f67944de3a32e63b9fe76265e7f4fe2f6107e49007e1cb8',
     twill: '#0f1c35',
     styleVersion: 'v2',
   },
+  long_way_home: {
+    src: '/badges/long_way_home.9ae94209.webp',
+    small: '/badges/long_way_home.9ae94209.sm.webp',
+    sha256: '9ae942094b18ebd0641603a357f3b104f351252ef41af7bf03b61e92e9a79c02',
+    twill: '#0d1833',
+    styleVersion: 'v2',
+  },
   two_a_days: {
-    src: '/badges/two_a_days.dceedf4d.webp',
-    small: '/badges/two_a_days.dceedf4d.sm.webp',
-    sha256: 'dceedf4d7753a65de269e467a33a543f805f556fb9e787826e4cda8c255feba1',
-    twill: '#121f35',
+    src: '/badges/two_a_days.cf5b11d4.webp',
+    small: '/badges/two_a_days.cf5b11d4.sm.webp',
+    sha256: 'cf5b11d44e203ead7f0349bd2969f22dd5850d57c453848b2c63f4782a9e5065',
+    twill: '#111d36',
     styleVersion: 'v2',
   },
   boring_excellence: {
-    src: '/badges/boring_excellence.d15437ac.webp',
-    small: '/badges/boring_excellence.d15437ac.sm.webp',
-    sha256: 'd15437ac4b4d9b4d4991cb943dec3a0fd1efecd01c0cf9d71d027bc037ec0f09',
-    twill: '#101e35',
+    src: '/badges/boring_excellence.fbda7e82.webp',
+    small: '/badges/boring_excellence.fbda7e82.sm.webp',
+    sha256: 'fbda7e821bf28b8629edef33993977be1984575073ae76661c0c90f4c03d23b6',
+    twill: '#0e1b33',
     styleVersion: 'v2',
   },
 }
