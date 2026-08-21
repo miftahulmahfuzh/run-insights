@@ -1,0 +1,106 @@
+badge:          sandbagger
+provider:       openrouter
+model:          qwen/qwen-image-3-pro
+seed:           1970
+style version:  v2
+reference:      (none — anchor run)
+resolution:     1K 1:1  (expect 1024²)
+image sha256:   e73b2161e9090166ee6d5b50f0a73ba3670790140dc58f3c57c2045fb12edade
+
+--- prompt as sent ---
+A single embroidered cloth patch, sewn onto a scrap of dark navy cotton twill, in the manner of a
+1970s amateur running-club jacket patch — the kind a local road-race club had made by the gross
+and stitched onto windbreakers.
+
+FULL BLEED — THIS IS THE MOST IMPORTANT RULE. The navy twill fills the entire image, edge to edge
+and corner to corner, with the patch sewn onto it. Do not render a photograph of a patch sitting
+on a table, on a jacket sleeve, on a felt board, in a flat-lay with scissors or a spool of thread
+beside it, held in a hand, pinned to a corkboard, or inside a product-mockup frame. No hoop, no
+embroidery machine, no shadow cast onto a surface behind the fabric, no vignette, no rounded
+photo corners, no white margin. The image IS the twill, and the patch IS sewn onto it — nothing
+else exists in the frame.
+
+NO TEXT ANYWHERE. No club name, no arced rocker text across the top, no motto, no date, no
+number, no initial, no monogram, no size label, no maker's tag, no glyph or mark in any alphabet.
+Real patches of this kind are covered in lettering; this one carries none. The application prints
+the title beneath the picture. Any text is an automatic rejection, and lettering is the single
+likeliest reason this style burns an attempt — check the merrowed border and the interior both.
+
+SUBSTRATE: dark navy cotton twill, near #1B2A44, with a visible diagonal weave — the fabric's own
+grain must read under the raking light as fine, regular texture, not a flat digital navy fill. A
+generous margin of bare twill surrounds the patch on every side, the same fabric on all 22
+badges, so the set reads as one bolt of cloth cut 22 times.
+
+THE PATCH: one solid embroidered shape, centred, occupying about 80 percent of the image width.
+Its outer silhouette is load-bearing and is named per badge below — a shield, a hexagon, a
+chevron, or a rounded triangle — and it is never a plain circle in a square, which is the shape
+every generic "embroidered patch" defaults to and the one shape this deck must never produce. Its
+edge is a merrowed border: a thick, rounded, rope-like band of tight overlock zigzag stitching in
+bone-white thread, the one element every one of the 22 badges shares exactly, at the same
+gauge and the same width. Inside that border the whole interior is filled edge to edge with a
+solid field of slate-sky-blue satin stitch — the same field colour on all 22 badges, so the patch
+reads as one bright solid shape and not as an outline drawn on cloth. This badge's own subject is
+stitched on top of that field, alone, filling most of it with generous room at the corners. The
+field is never left as bare navy twill: a patch is a solid stitched object sewn onto the cloth,
+and the cloth must never show through inside the border.
+
+THREAD: five saturated colours, laid as dense machine embroidery, and nothing else.
+  - Cardinal red, near #C23B2E
+  - Kelly green, near #2E7D46
+  - Marigold gold, near #E3A72E
+  - Bone / cream, near #EDE3C8 — carries the merrowed border and any bright highlight row
+  - Slate sky blue, near #4C8FB0 — carries the interior field of every badge, the one ground
+    colour the whole set shares, and appears in a subject only where that subject specifically
+    needs a cool note of its own
+Bone and slate are the set's furniture: bone is always the border and slate is always the field,
+on all 22 badges. Each badge then draws its SUBJECT from two or three of the remaining colours —
+never all of them in one badge, and never fewer than two, or the patch reads as flat rather than
+embroidered.
+
+THE SIGNATURE THREAD: one colour outside the five above — a bright safety-orange bullion thread,
+near #F2600C — worked as a single small satin-stitch accent on every badge and nowhere else: the
+raised, glinting mark that is this deck's one wildly out-of-register colour, the way a second
+pass through a press leaves one mark slightly off true in the deck this style descends from. It
+never fills the whole subject, never becomes an outline, and never appears twice on the same
+badge. Where it goes is named per badge below, and it is the one thing about each badge that is
+genuinely singular.
+
+TECHNIQUE: dense satin stitch for every filled area — parallel rows of thread laid edge to edge,
+thick enough to sit proud of the twill and cast their own thread-width shadow. Fine contour and
+internal linework is chain stitch, laid in one unbroken continuous line, never a dotted or broken
+run — a broken run of small stitches reads as a row of letters at 40 px, which is the exact
+failure this rule exists to prevent. No cross-stitch, no French knots, no fringe, no sequins, no
+visible felt applique beneath the thread, and no flat printed or vector-look fill anywhere — every
+surface must show the ridge-and-valley texture of individual stitch rows. A flat, smooth,
+poster-like fill is the single most likely quiet failure of this style, the exact way "old paper"
+was the reference deck's: if a passage looks airbrushed rather than stitched, it has drifted out
+of the contract even when the drawing is otherwise correct.
+
+LIGHT: one hard, raking light from the upper left, low and directional, the way a patch
+photographed for a catalogue is lit to sell its texture. Every satin-stitch row throws a thin
+bright highlight on its lit edge and a thin core-shadow on its dark edge; the whole patch casts
+one soft, close contact shadow onto the twill immediately around its own merrowed border — never
+a floating drop shadow, never a shadow implying distance from the cloth. The sheen is thread
+sheen: a slight directional gloss along each row's lit edge, not a painterly glow and not a
+metallic bevel.
+
+TONE: loud, sporty, a little absurd — a patch a running club had made as an inside joke and wore
+anyway. It contains no trophies, no laurel wreaths, no ribbons, no rosettes, no cups, no crowns,
+no medals, no stopwatches, no running shoes, and no ticks. Those objects are the default a
+request like this pulls toward regardless of what is actually asked for, and none of the 22
+subjects below is any of them; seeing one in a candidate means the model ignored its scene, not
+that it satisfied it.
+
+READ AT FORTY PIXELS. The application draws this forty pixels wide on a shelf and about two
+hundred and twenty in a panel. One bold, unmistakable outer silhouette, one high-contrast interior
+mass, heavy stitch rows that survive the reduction, and no detail — no fine chain-stitch flourish,
+no thread-count texture — that exists only at full resolution.
+
+ONE SUBJECT, ITS OWN SUBJECT. The twill, the merrowed border, the five threads and the one
+signature thread belong to the whole set; what sits inside the border belongs to this badge alone.
+Do not fall back on a running shoe, a medal, or a stopwatch as a default centre — 22 patches
+converging on the same three objects is the way this set fails.
+
+SUBJECT FOR THIS BADGE: A single sloth hanging by one raised arm from a bare horizontal bar, its other three limbs and its head all hanging loose and unbothered. SHAPE: shield. SIGNATURE THREAD: one small flower tucked behind the sloth's ear.
+
+CORRECTION FOR THIS ATTEMPT: The sloth dangles from a plain bare bar by a single raised arm, its whole body hanging straight down below that one grip in a long loose drop, head lolling to one side and eyes half closed — slack and heavy like laundry on a line. The twill around the patch is a fine, close, worsted navy weave with a quiet diagonal grain, the smooth dark cloth of a club windbreaker.

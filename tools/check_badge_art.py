@@ -209,17 +209,48 @@ class Report:
 # Geometry helpers
 # --------------------------------------------------------------------------- #
 
-def substrate_stats(px, w, h):
-    """The bare twill, sampled from the outer 5% frame.
+def substrate_stats(px, w, h, box=None):
+    """The bare twill, sampled from the frame OUTSIDE the patch.
 
-    The patch occupies about 80% of the width, so from 90% of the half-width
-    outward is bare cloth by construction. Taking the substrate from a frame
-    rather than from "the darkest pixels" is what keeps a badge with a large
-    dark interior from measuring its own subject and calling it the fabric.
+    Taking the substrate from a frame rather than from "the darkest pixels" is
+    what keeps a badge with a large dark interior from measuring its own subject
+    and calling it the fabric. But a FIXED frame only works while the patch is
+    the size the style block asks for, and this one measured six generations
+    before that assumption broke:
+
+        badge                box (w × h)      9b drift
+        early_bird  a03      80.1% × 89.1%     (anchor)
+        self_reward a03      80.5% × 89.1%      1.9  PASS
+        sandbagger  a01      80.5% × 89.5%      3.8  PASS
+        sandbagger  a03      81.6% × 95.7%      7.7  PASS, only just
+        century_club a02     82.4% × 95.3%      8.5  FAIL
+        century_club a03     81.6% × 96.1%      9.6  FAIL
+
+    Width barely moves; HEIGHT is what tracks the drift. A patch 96% tall
+    reaches into the outer 5% frame on the top and bottom edges, so the "twill"
+    sample is part bone merrowed border and part slate field — and it reports
+    the cloth as several points lighter than it is. That is the instrument
+    reading the subject, which is precisely the fault the tool this descends
+    from corrected twice in its own centre-offset check. **It is a correctness
+    fix, not a band loosened because it fired**: the bands are untouched, and a
+    candidate whose twill is genuinely pale still fails.
+
+    So: pass the foreground box and this samples the margin strictly outside it,
+    with the 5% frame as a floor so a modest patch measures exactly what it
+    always did. `box` is in 256-grid units; None keeps the old fixed frame, which
+    is what the first pass needs before any box has been found.
 
     Returns (mean_rgb, mean_grey_srgb, median_rel_luminance).
     """
-    band = max(1, int(round(min(w, h) * 0.05)))
+    if box is not None:
+        n = 256
+        x0, y0, x1, y1 = box
+        # The smallest gap between the patch and any edge, minus a two-pixel
+        # guard for the contact shadow the style block asks the patch to cast.
+        gap = min(x0, y0, n - 1 - x1, n - 1 - y1) / n
+        band = max(1, int(round(min(w, h) * max(0.02, gap - 2 / n))))
+    else:
+        band = max(1, int(round(min(w, h) * 0.05)))
     rs, gs, bs, greys, lums = [], [], [], [], []
     for y in range(h):
         edge_row = y < band or y >= h - band
@@ -433,7 +464,15 @@ def measure(path: Path, rep: Report, anchor_stats=None):
         + (f" — {'; '.join(bad)}" if bad else ""),
     )
 
-    substrate_rgb, substrate_grey, substrate_lum = substrate_stats(px, w, h)
+    # TWO PASSES, for the reason substrate_stats' docstring gives: the box is
+    # needed to sample the cloth, and an estimate of the cloth is needed to find
+    # the box. The first pass uses the fixed 5% frame; if that frame turns out
+    # to be clear of the patch the second pass reproduces it exactly, so a
+    # normally-sized badge measures what it always did.
+    substrate_rgb, _, _ = substrate_stats(px, w, h)
+    grid = foreground_map(img, substrate_rgb)
+    box = foreground_box(grid)
+    substrate_rgb, substrate_grey, substrate_lum = substrate_stats(px, w, h, box)
 
     # 4 — palette agreement (hard). The colorimetry is the reference's and is
     # sound; the token list is this deck's seven, and the "unauthorised
@@ -544,9 +583,8 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     rep.soft("7 legibility at 40px", tsd >= 18.0,
              f"stddev {tsd:.1f} sRGB (≥18.0) — dissolves at shelf size below this")
 
-    # 8 — composition safety (bounding box hard, margin advisory).
-    grid = foreground_map(img, substrate_rgb)
-    box = foreground_box(grid)
+    # 8 — composition safety (bounding box hard, margin advisory). `grid` and
+    # `box` were computed above, because the substrate sample depends on them.
     n = len(grid)
     if box is None:
         rep.hard("8a patch centred", False,
@@ -823,12 +861,12 @@ def anchor_statistics(anchor=ANCHOR):
         return None
     a = Image.open(anchor).convert("RGB")
     ap = a.load()
-    a_rgb, a_grey, _ = substrate_stats(ap, a.width, a.height)
+    a_rgb, _, _ = substrate_stats(ap, a.width, a.height)
     a_box = foreground_box(foreground_map(a, a_rgb))
+    _, a_grey, _ = substrate_stats(ap, a.width, a.height, a_box)
     a_w = None
     if a_box:
-        n = 256
-        a_w = (a_box[2] - a_box[0] + 1) / n
+        a_w = (a_box[2] - a_box[0] + 1) / 256
     return a_w, a_grey, a.resize((256, 256), Image.BILINEAR).load()
 
 
