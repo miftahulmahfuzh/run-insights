@@ -101,6 +101,37 @@ describe('SplitsTable marks the partial kilometre on every channel D14 asks for'
     expect(html).toContain('width:67%')
   })
 
+  it('gives pace, heart rate and cadence a cell each — never 6\u201936\u201d154154 in one', () => {
+    // Issue #2. Km 1 is the row that proves it: its HR and cadence are BOTH 154, so a table that
+    // collapses the three metrics into one cell reproduces the exact string from the bug report.
+    // Asserting cells rather than class names — a restyle that keeps three columns should pass.
+    const row = html.split('<tr').find((r) => r.includes('fastest'))!
+    const cells = row.split('<td').slice(1)
+
+    const paceCell = cells.find((c) => c.includes('6&#x27;36&quot;'))!
+    expect(paceCell).toBeDefined()
+    expect(paceCell).not.toContain('154')
+    expect(cells.filter((c) => c.includes('>154<'))).toHaveLength(2)
+  })
+
+  it('keeps a horizontal gutter on each numeric column, which is what stops the collision', () => {
+    // The companion to the test above, and the one that actually fails on the bug as reported.
+    // The structural assertion cannot catch it: pace, HR and cadence were ALWAYS separate cells,
+    // so `6'36\u2033154154` and the fixed table produce identical element structure. The only thing
+    // that differs is the padding, so the padding is what gets asserted — accepting that this
+    // couples the test to class names, because nothing else here can see a layout collision.
+    const row = html.split('<tr').find((r) => r.includes('fastest'))!
+    const numericCells = row
+      .split('<td')
+      .slice(1)
+      .filter((c) => c.includes('text-right'))
+
+    expect(numericCells).toHaveLength(3)
+    for (const cell of numericCells) {
+      expect(cell).toMatch(/\bpl-3\b/)
+    }
+  })
+
   it('highlights km 1 as the fastest — the partial row is never a candidate', () => {
     const rows = html.split('<tr')
     const partialRow = rows.find((row) => row.includes('11*'))!
