@@ -33,6 +33,7 @@
     "ci:llm-payload-guard": "node scripts/check-llm-payload-boundary.mjs",
     "ci:f11-guard": "node scripts/check-f11-share-boundaries.mjs",
     "og:default": "node scripts/gen-og-default.mjs",
+    "icon:assets": "python3 tools/make_icon_assets.py",
     "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live/vision.live.test.ts",
     "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts"
   },

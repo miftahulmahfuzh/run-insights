@@ -44,7 +44,16 @@ next-env.d.ts
 # badge-art generation scratch (F10) — only the chosen patches are committed
 assets/badges/_candidates/
 
+# app-icon generation scratch — same rule. What IS committed is the chosen silhouette and the two
+# composed masters beside it, so `tools/make_icon_assets.py` can rebuild every shipped PNG from
+# what is in the repo without another paid image call.
+assets/icon/_candidates/
+
 # browser-image-compression's worker bundle, copied from node_modules by
 # scripts/copy-image-compression-worker.mjs on predev/prebuild (F04). A build artefact:
 # committing it would let a stale copy survive a dependency bump.
 /public/vendor/
+
+# Python bytecode from the tools/ scripts
+__pycache__/
+*.pyc

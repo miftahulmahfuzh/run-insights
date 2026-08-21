@@ -266,7 +266,38 @@ npm run test:live:vision       # opt-in: calls glm-4.6v for real. Costs money
 
 npm run badges:check           # F10's deck: key boundary, style.md ↔ catalog parity, hashes
 python3 tools/gen_badge_art.py --dry-run --all   # every prompt, no key read, nothing sent
+
+npm run icon:assets            # rebuild every shipped app icon from the committed silhouette
+python3 tools/gen_app_icon.py --all --dry-run    # the icon prompts, no key read, nothing sent
 ```
+
+### The home-screen icon
+
+"Add to Home Screen" is a real install, not a bookmark, and the two things that make it one are
+`app/manifest.ts` (`display: 'standalone'`) and `app/apple-icon.png` (the `apple-touch-icon` Safari
+reads). Both read their names and colours from `lib/pwa.ts`, and `tests/pwa.install.test.ts` asserts
+the whole contract — including that each icon file exists, is the size it claims, and carries no
+alpha channel, because iOS mattes a transparent icon onto black.
+
+`lib/pwa.ts` is also where to look before switching `statusBarStyle` to `'black-translucent'`: it is
+`'default'` on purpose, because almost nothing in this app pads `env(safe-area-inset-top)` yet and
+translucent would slide the screen titles under the notch.
+
+The art is two steps, offline and committed, the same rule D12 sets for badge art — no runtime image
+calls, no key on the server:
+
+```bash
+python3 tools/gen_app_icon.py plain      # candidates → assets/icon/_candidates/ (gitignored)
+cp assets/icon/_candidates/plain.aNN.png assets/icon/silhouette.png   # pick one, by looking at it
+npm run icon:assets                      # compose + write public/icons/* and app/*-icon.png
+```
+
+The split is deliberate: the model draws the runner, and `tools/make_icon_assets.py` draws the
+ground, the zone bar, the scale and the centring from `globals.css`'s real tokens. It has to, because
+the model returned `#2dc1f9` for a `#23beeb` ground, desaturated the zone colours, and twice ignored
+an instruction to keep the bar clear of the bottom edge — where Android's circular crop would have
+eaten it. Regenerating after a palette change makes the icon follow the design system instead of
+drifting from it, which is the same argument `scripts/gen-og-default.mjs` makes for the share image.
 
 Reviewing is `/x/[extractionId]`, not `/r/[id]/review` — under R-1 no `runs` row exists until the
 commit, so there is no run id to address yet. `/r/[id]/edit` is the post-review correction, and it
