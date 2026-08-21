@@ -8,10 +8,15 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { score } from '../../research/score.mjs'
+import { TRUTH } from '../../research/schema.mjs'
 import { extractJsonObject } from '@/lib/llm/extractJson'
 import { TOKEN_FLOOR_PER_IMAGE } from '@/lib/llm/vision'
+import {
+  MIN_REPAIR_BUDGET_MS,
+  REPAIR_TIMEOUT_MS,
+  TARGET_SHORT_EDGE_PX,
+} from '@/lib/extract/constants'
 import { makeExtractedSessionSchema, type ScreenKind } from '@/lib/schema/extractedSession'
-import { TARGET_SHORT_EDGE_PX } from '@/lib/extract/constants'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -23,32 +28,31 @@ import { TARGET_SHORT_EDGE_PX } from '@/lib/extract/constants'
  *  reminder this vendor's uptime is not guaranteed. §4.9's "no test may call a live LLM except
  *  the explicitly-tagged live suites" is this file's whole reason for existing separately.
  *
- *  ── WHY IT SKIPS TODAY ────────────────────────────────────────────────────────────────────
- *  It needs the three canonical screenshots, and they are **no longer on disk.**
- *  `research/lib.mjs` reads them from an image-cache directory that has since been cleared, and
- *  nothing in `research/` preserved either the images or the raw text of the 108/108 runs — only
- *  their scores and timings (`results-repeat.json`).
+ *  ── THE FIXTURES ARE COMMITTED ────────────────────────────────────────────────────────────
+ *  `research/fixtures/screenshots/shipped/{1,2,3}.jpg` — the three canonical screenshots at the
+ *  **shipped 560w/q80 recipe**, i.e. exactly what a browser upload sends. Committed on
+ *  2026-08-21 (they had been lost from the image cache, which is why an earlier revision of this
+ *  file was gated on an env var and skipped). `research/fixtures/screenshots/{1,2,3}.png` are the
+ *  739x1600 originals they are derived from, and `scripts/shipped-image-recipe.py` regenerates
+ *  the derivation.
  *
- *  So this suite is written to be RUNNABLE THE MOMENT THEY COME BACK, and to skip loudly rather
- *  than silently pass in the meantime:
+ *  Sending the SHIPPED recipe rather than the originals is the point: it is what production
+ *  actually puts on the wire (~3,600 input tokens, against 5,494 for the originals), so a
+ *  regression in accuracy at the compressed size is caught here rather than in production.
  *
- *      RI_FIXTURE_DIR=/path/to/the/three/screenshots npm run test:live:vision
+ *  `RI_FIXTURE_DIR` still overrides the directory, for pointing the suite at a different run.
  *
- *  expecting `1.png` (summary), `2.png` (splits), `3.png` (heartrate) — the names
- *  `research/run-extract.mjs` already uses. Until then `npm run test:live:vision` reports these
- *  as skipped, and the offline gate (`tests/research/goldenFixture.test.ts`) is what actually
- *  runs on every PR.
- *
- *  Tasks 19, 20 and 23 are therefore **NOT closed**, and the F04 execution record says so rather
- *  than claiming a measurement that was not taken.
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-const FIXTURE_DIR = process.env.RI_FIXTURE_DIR ?? ''
+const DEFAULT_FIXTURE_DIR = 'research/fixtures/screenshots/shipped'
+const FIXTURE_DIR = process.env.RI_FIXTURE_DIR ?? DEFAULT_FIXTURE_DIR
+/** `.jpg` in the default directory (the shipped recipe); an override may hold `.png` originals. */
+const EXT = existsSync(path.join(FIXTURE_DIR, '1.jpg')) ? 'jpg' : 'png'
 const FILES: Array<{ file: string; kind: ScreenKind }> = [
-  { file: '1.png', kind: 'summary' },
-  { file: '2.png', kind: 'splits' },
-  { file: '3.png', kind: 'heartrate' },
+  { file: `1.${EXT}`, kind: 'summary' },
+  { file: `2.${EXT}`, kind: 'splits' },
+  { file: `3.${EXT}`, kind: 'heartrate' },
 ]
 
 const haveFixtures =
@@ -61,16 +65,15 @@ const runnable = haveFixtures && haveKey
 const ALL_KINDS: ReadonlySet<ScreenKind> = new Set(['summary', 'splits', 'heartrate'])
 
 /**
- * Loads the fixtures as data URIs. NOTE: these are the ORIGINAL PNGs, not the shipped 560w/q80
- * JPEGs — the compression step runs in a browser and cannot run here. So `prompt_tokens` will
- * read ~5,143 (the "original png 739w" row of `research/downscale.mjs`), not the 3,277 the
- * production client produces. The assertion below accounts for that explicitly rather than
- * pretending this measures the shipped recipe's token cost.
+ * Loads the fixtures as data URIs, with the media type matching what is on disk. By default these
+ * are the 560x1212 q80 JPEGs the browser would have produced, so `prompt_tokens` lands near the
+ * ~3,600 production really pays rather than the 5,494 the 739x1600 originals cost.
  */
 function loadImages() {
+  const mime = EXT === 'jpg' ? 'image/jpeg' : 'image/png'
   return FILES.map(({ file, kind }) => ({
     kind,
-    dataUri: `data:image/png;base64,${readFileSync(path.join(FIXTURE_DIR, file)).toString('base64')}`,
+    dataUri: `data:${mime};base64,${readFileSync(path.join(FIXTURE_DIR, file)).toString('base64')}`,
   }))
 }
 
@@ -104,14 +107,28 @@ describe.skipIf(!runnable)('live: glm-4.6v against the three real screenshots', 
     const { callVisionPrimary } = await import('@/lib/llm/vision')
     const result = await callVisionPrimary(loadImages(), { timeoutMs: 120_000 })
 
+    // Clears 1,500 by more than 2x, which is the margin §1 designed for.
     expect(result.promptTokens).toBeGreaterThan(TOKEN_FLOOR_PER_IMAGE * 3)
-    // The originals are 739w, which `research/downscale.mjs` measured at 5,143 input tokens. The
-    // shipped 560w/q80 recipe costs 3,277 — a number only a browser-compressed upload produces,
-    // so it is asserted in the offline suite against the fixture instead of here.
-    expect(result.promptTokens).toBeGreaterThan(3_000)
+
     console.log(
-      `[live] token cost for 3 ORIGINAL pngs: ${result.promptTokens} (shipped 560w/q80 recipe: 3277, target short edge ${TARGET_SHORT_EDGE_PX}px)`,
+      `[live] token cost for 3 images at ${EXT === 'jpg' ? `the shipped recipe (short edge ${TARGET_SHORT_EDGE_PX}px, q80)` : 'ORIGINAL 739x1600 png'}: ` +
+        `${result.promptTokens}`,
     )
+
+    // MEASURED 2026-08-21: **3,628** at the shipped recipe, **5,494** at original PNG size.
+    // `research/downscale.mjs` recorded 3,277 and 5,143 for the same two variants — ours run ~350
+    // higher in both because the production prompt carries RULES 6a/8/9 on top of the wording
+    // that was scored. The delta is the prompt, not the pixels: it is the SAME ~350 either way.
+    //
+    // The band below is wide on purpose. This assertion's job is to catch the image size silently
+    // changing (the §3.1 trap reopening would roughly halve it; sending originals by mistake would
+    // add ~1,900), not to pin a vendor's tokeniser to the digit.
+    if (EXT === 'jpg') {
+      expect(result.promptTokens).toBeGreaterThan(3_000)
+      expect(result.promptTokens).toBeLessThan(4_200)
+    } else {
+      expect(result.promptTokens).toBeGreaterThan(5_000)
+    }
   })
 
   it('live: three consecutive runs all score 108/108 — acceptance criterion 2', async () => {
@@ -140,41 +157,69 @@ describe.skipIf(!runnable)('live: glm-4.6v against the three real screenshots', 
 })
 
 /**
- * These two need a real key but NO screenshots, so unlike everything above they are runnable
- * today — the text-only repair carries no images by ruling (R-2), and the token-floor reality
- * check only needs *an* image, not the canonical one.
+ * These two need a real key but no fixtures at all: R-2 makes the repair text-only, so there is
+ * nothing to attach. They were the only live coverage F04 had on the day the screenshots were
+ * missing, and they are kept separate because that independence is useful — a fixture problem
+ * cannot mask a repair-path regression.
  */
-describe.skipIf(!haveKey)('live: what can be measured without the canonical screenshots', () => {
-  it('live: TASK 19 — measures the real text-only repair latency', async () => {
-    // The repair budget in `lib/extract/constants.ts` is DESIGNED, not measured: no repair
-    // round-trip has ever been timed on this path. R-2 made the repair text-only, which should
-    // make it far cheaper than the 20 s the plan budgeted when it still resent three images — but
-    // "should" is not a measurement. This is the one that turns it into one.
-    const { callVisionRepairWithFetch, callVisionRepair } = await import('@/lib/llm/vision')
-    expect(typeof callVisionRepairWithFetch).toBe('function')
+describe.skipIf(!haveKey)('live: the repair path — text-only, so it needs no screenshots', () => {
+  it('live: TASK 19 — a REALISTIC full-session repair, timed', async () => {
+    // Task 19 closed on 2026-08-21, and its result moved two constants twice. The first attempt
+    // repaired a truncated stub and reported 11,460 ms — which is what made 18 s look safe. It is
+    // not: latency tracks COMPLETION tokens, and a stub repair emits ~338 of them where a real one
+    // has to re-emit the whole session (~1,070). So this test asks for the realistic thing.
+    //
+    // MEASURED, three samples: 27,640 / 31,905 / 34,872 ms, all at out~1,070.
+    // See lib/extract/constants.ts for what those numbers cost the design.
+    const { callVisionRepair } = await import('@/lib/llm/vision')
+
+    // The full 108-field session with one split's hrBpm missing — the exact vendor failure
+    // IMPLEMENTATION_PLAN §1.6 measured, and the one the repair exists for.
+    const malformed = JSON.stringify(
+      {
+        ...TRUTH,
+        splits: TRUTH.splits.map((sp, i) => (i === 3 ? { ...sp, hrBpm: undefined } : sp)),
+      },
+      null,
+      2,
+    )
 
     const startedAt = Date.now()
     const result = await callVisionRepair(
       {
         kinds: ['summary', 'splits', 'heartrate'],
-        // A deliberately truncated reply — the shape a `finish_reason: 'length'` produces, which
-        // is also the cheapest realistic thing to ask a repair to fix.
-        malformedText: '{"activityType": "Outdoor Run", "distanceKm": 10.67, "splits": [{"km": 1,',
-        issues: '- splits.0.timeSec: Invalid input: expected number, received undefined',
+        malformedText: malformed,
+        issues: '- splits.3.hrBpm: Invalid input: expected number, received undefined',
       },
-      { timeoutMs: 60_000 },
+      { timeoutMs: 120_000 },
     )
     const ms = Date.now() - startedAt
 
     console.log(
-      `[live] TASK 19 — text-only repair: ${ms}ms, in=${result.promptTokens} out=${result.completionTokens}. ` +
-        `Update REPAIR_TIMEOUT_MS / MIN_REPAIR_BUDGET_MS in lib/extract/constants.ts and §4.6 of ` +
-        `docs/plans/F04-ingest-extraction.md against this number.`,
+      `[live] TASK 19 — full-session text-only repair: ${ms}ms, in=${result.promptTokens} ` +
+        `out=${result.completionTokens} (~${(ms / (result.completionTokens || 1)).toFixed(0)}ms/token). ` +
+        `Measured band 27.6-34.9s; REPAIR_TIMEOUT_MS=${REPAIR_TIMEOUT_MS}, gate=${MIN_REPAIR_BUDGET_MS}.`,
     )
 
-    // The only hard assertion: a text-only repair must be cheap in tokens. If it is not, an image
-    // is being resent somewhere and R-2 has been violated.
-    expect(result.promptTokens).toBeLessThan(TOKEN_FLOOR_PER_IMAGE * 3)
+    // No image was resent (R-2 / D17): the prompt cost must stay well under what the images cost.
+    expect(result.promptTokens).toBeLessThan(3_000)
+    // It must complete inside the timeout the constants promise, or that timeout is a lie.
+    expect(ms).toBeLessThan(REPAIR_TIMEOUT_MS)
+
+    // The repair produced a SHAPE-valid session — and note what it could not do. With no image in
+    // the request it cannot recover the value it was told about; all three measured samples
+    // returned `hrBpm: null` there, keeping every other field intact. That is RULE 1 working, not
+    // the repair failing, and it is why a `repaired` status should make a reviewer look harder.
+    const repaired = makeExtractedSessionSchema(ALL_KINDS).safeParse(extractJsonObject(result.text))
+    expect(repaired.success).toBe(true)
+    if (repaired.success) {
+      expect(repaired.data.splits).toHaveLength(11)
+      expect(repaired.data.distanceKm).toBe(10.67)
+      console.log(
+        `[live] repaired splits[3].hrBpm = ${repaired.data.splits[3]?.hrBpm} ` +
+          `(truth 173 — null here is correct: the image is not in a text-only repair)`,
+      )
+    }
   })
 
   it('live: the guard’s two thresholds behave as designed against the REAL endpoint', async () => {
@@ -197,7 +242,7 @@ describe.skipIf(!haveKey)('live: what can be measured without the canonical scre
     )
     console.log(
       `[live] production text-only repair prompt_tokens = ${repair.promptTokens} ` +
-        `(one real image ~1400 · the shipped 3-image request 3277 · the 3-image floor 1500)`,
+        `(one real image ~1400 · the shipped 3-image request 3628 · the 3-image floor 1500)`,
     )
 
     // MEASURED 2026-08-21: **1135 tokens** — and that number is the interesting part of this test.
@@ -217,12 +262,13 @@ describe.skipIf(!haveKey)('live: what can be measured without the canonical scre
   })
 })
 
-describe.skipIf(haveFixtures)('live suite prerequisites', () => {
+describe.skipIf(haveFixtures && haveKey)('live suite prerequisites', () => {
   it('says exactly what is missing, rather than passing quietly', () => {
     const missing: string[] = []
     if (!haveFixtures) {
       missing.push(
-        `the three canonical screenshots (set RI_FIXTURE_DIR to a directory holding ${FILES.map((f) => f.file).join(', ')})`,
+        `the fixtures in ${FIXTURE_DIR} (${FILES.map((f) => f.file).join(', ')}) — they are ` +
+          `committed, so this means the checkout is incomplete; or set RI_FIXTURE_DIR`,
       )
     }
     if (!haveKey) missing.push('a real LLM_API_KEY (load .env.local)')

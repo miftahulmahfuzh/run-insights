@@ -37,6 +37,19 @@ after which the model invents plausible numbers. Asked for the distance in a scr
 | Cost per run | ~$0.006 |
 | LLM computing its own metrics | **aerobic decoupling came back −14.1% when the truth is +12.3%** |
 
+Re-measured against the shipped code on 2026-08-21, with the production prompt rather than the
+research one:
+
+| What was measured | Result |
+|---|---|
+| Accuracy, production prompt @ 560w/q80 | **108/108, three runs in a row** · median 38 s · 3,628 tokens |
+| The 560w recipe, in actual pixels | 739×1600 → **560×1212**, short edge exactly 560, 55–70 KB |
+| A text-only repair round-trip | 25–35 s, ~1,070 completion tokens — about what the primary call costs |
+
+That last row is the uncomfortable one: two calls of that size do not fit Vercel Hobby's 60 s
+ceiling, so the repair is best-effort and usually skipped. `lib/extract/constants.ts` says so at
+the constant.
+
 That last row is why every number in this app is computed in TypeScript and the LLM only writes
 prose about numbers it was handed.
 
@@ -110,9 +123,10 @@ against a recording fake driver that generates real SQL and sends none of it any
 client is exercised with an injected `fetch`, so the token-floor guard is tested against the
 measured failure body without a network.
 
-The live vision suite additionally needs the three canonical screenshots, which are **no longer in
-the repo or the image cache**. It skips with a message naming what is missing —
-`docs/plans/F04-ingest-extraction.md` §13 records which tasks that leaves open.
+The live vision suite needs only a real `LLM_API_KEY`: the three canonical screenshots are
+committed under `research/fixtures/screenshots/`, both as captured (739×1600) and at the 560w/q80
+recipe the browser actually uploads. It last scored **108/108 three runs running**, median 38 s —
+see `docs/plans/F04-ingest-extraction.md` §13 for the full measurement table.
 
 ## Licence
 

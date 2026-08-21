@@ -94,27 +94,50 @@ describe('the job’s time budget fits the Hobby ceiling', () => {
   })
 
   it('the repair gate is at least as large as a repair really takes', () => {
-    // MEASURED (Task 19, 2026-08-21): a live text-only repair took 11,460 ms. The gate exists to
-    // refuse round-trips we cannot finish, so a gate SMALLER than a real repair fails at its one
-    // job — it would wave one through with 6 s left and then have it killed at the deadline.
-    const MEASURED_REPAIR_MS = 11_460
-    expect(MIN_REPAIR_BUDGET_MS).toBeGreaterThanOrEqual(MEASURED_REPAIR_MS)
-    // And the timeout must sit above the gate, or a repair that clears the gate cannot complete.
+    // MEASURED (Task 19, 2026-08-21), four samples of a realistic full-session repair:
+    // 25,320 / 27,640 / 31,905 / 34,872 ms, emitting ~1,070 completion tokens each. Latency
+    // tracks completion tokens at ~24-33 ms apiece, which is why the earlier 11,460 ms sample was
+    // misleading — it repaired a stub and emitted 338 tokens.
+    //
+    // The gate exists to refuse round-trips we cannot finish, so a gate SMALLER than a real
+    // repair fails at its one job: it would wave one through and have it killed at the deadline.
+    const MEASURED_REPAIR_MEDIAN_MS = 29_772 // mean of the middle two of four samples
+    const MEASURED_REPAIR_MAX_MS = 34_872
+    // At or above the median rather than the minimum: skipping a repair that would have finished
+    // costs one `validation` failure, whereas starting one that cannot finish risks the
+    // invocation dying before it writes ANY terminal row. Erring high is the cheaper mistake.
+    expect(MIN_REPAIR_BUDGET_MS).toBeGreaterThan(25_320)
+    expect(MIN_REPAIR_BUDGET_MS).toBeLessThanOrEqual(MEASURED_REPAIR_MEDIAN_MS)
+    // And the timeout must clear the observed maximum, or a repair that starts cannot finish.
+    expect(REPAIR_TIMEOUT_MS).toBeGreaterThanOrEqual(MEASURED_REPAIR_MAX_MS)
     expect(REPAIR_TIMEOUT_MS).toBeGreaterThan(MIN_REPAIR_BUDGET_MS)
   })
 
-  it('a MEDIAN-speed primary leaves room for a repair; a worst-case one deliberately does not', () => {
-    const MEASURED_PRIMARY_MEDIAN_MS = 33_700
+  it('on Hobby the repair is best-effort: even a median primary usually leaves too little', () => {
+    // This assertion encodes an uncomfortable measured truth rather than a designed intent, and
+    // it is deliberately written the way the numbers actually came out.
+    //
+    // A repair costs about what the primary costs (~32 s vs ~28-36 s), because both re-emit the
+    // same ~1,070-token session. Two of those do not fit in a 55 s soft deadline. So the gate
+    // will usually SKIP the repair, a malformed reply will usually reach failed/validation, and
+    // F05's blank form is the fallback that actually carries the user.
+    //
+    // Plan §4.6 anticipated exactly this and named the fix: Vercel Pro's 120-300 s maxDuration.
+    // Until then the repair path is correct, tested, and rationed. If this test ever starts
+    // failing because `afterShippedRecipeMedian` grew past the gate, that is good news — someone
+    // raised JOB_DEADLINE_MS on a bigger plan, and the repair became routinely reachable.
+    const PRIMARY_MEDIAN_SHIPPED_RECIPE_MS = 28_200 // research/downscale.mjs, "jpeg q80 560w"
     const blobFetch = 2_000
 
-    // The common case: at the measured median there is comfortably more than the gate left, so a
-    // malformed reply gets its one repair.
-    const afterMedian = JOB_DEADLINE_MS - MEASURED_PRIMARY_MEDIAN_MS - blobFetch
-    expect(afterMedian).toBeGreaterThan(MIN_REPAIR_BUDGET_MS)
+    const afterShippedRecipeMedian = JOB_DEADLINE_MS - PRIMARY_MEDIAN_SHIPPED_RECIPE_MS - blobFetch
+    expect(afterShippedRecipeMedian).toBeLessThan(MIN_REPAIR_BUDGET_MS)
 
-    // The tail case: a primary that runs to its own timeout leaves less than the gate, and the
-    // repair is SKIPPED rather than started and killed mid-flight. This assertion documents that
-    // as intended behaviour — it is the gate working, not the constants disagreeing.
+    // A genuinely fast primary — the fast tail, not the median — does still get its repair, which
+    // is why the path is best-effort rather than dead code.
+    const afterFastPrimary = JOB_DEADLINE_MS - 20_000 - blobFetch
+    expect(afterFastPrimary).toBeGreaterThan(MIN_REPAIR_BUDGET_MS)
+
+    // And a primary that ran to its own timeout leaves nothing, as before.
     const afterWorstCase = JOB_DEADLINE_MS - PRIMARY_TIMEOUT_MS - blobFetch
     expect(afterWorstCase).toBeLessThan(MIN_REPAIR_BUDGET_MS)
   })

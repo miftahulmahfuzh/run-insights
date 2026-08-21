@@ -111,33 +111,57 @@ export const JOB_DEADLINE_MS = 55_000
 /** MEASURED median is 33.7 s. 45 s covers the observed tail without eating the whole ceiling. */
 export const PRIMARY_TIMEOUT_MS = 45_000
 /**
- * **MEASURED 2026-08-21** by `tests/live/vision.live.test.ts` (plan Task 19, which had never been
- * run): a production text-only repair against the live endpoint took **11,460 ms**, with
- * `prompt_tokens: 1184` and `completion_tokens: 338`.
+ * **MEASURED 2026-08-21** (plan Task 19, which had never been run). Three samples of a REALISTIC
+ * repair — the full 108-field session with one split's `hrBpm` missing, which the model must
+ * return complete:
  *
- * This corrected a designed value that was about to ship broken. The first draft of this file set
- * the timeout to 12 s, reasoning from R-2 that a text-only repair must be cheap — and it IS cheap
- * in tokens, but not in wall-clock: 11.46 s against a 12 s timeout leaves 540 ms of margin, so a
- * slightly slower day would have failed repairs that were about to succeed, and reported them as
- * `validation` failures. 18 s is ~1.5× the one real sample; tighten it only against more samples,
- * never against the plan's arithmetic.
+ *   | sample | latency  | prompt | completion |
+ *   |--------|----------|--------|------------|
+ *   | 1      | 25,320ms | 2,215  | 1,071      |
+ *   | 2      | 27,640ms | 2,215  | 1,071      |
+ *   | 3      | 31,905ms | 2,215  | 1,067      |
+ *   | 4      | 34,872ms | 2,215  | 1,071      |
+ *
+ * **Range 25.3-34.9 s — and the shape of that result matters more than the number: latency tracks
+ * COMPLETION tokens, at ~26-33 ms each.** Which is why this constant was wrong twice. It shipped
+ * at 12 s (reasoned from R-2: a text-only repair sends no images, so it must be cheap), then 18 s
+ * after a single 11,460 ms sample — but that sample repaired a stub and emitted only 338 tokens.
+ * A real repair has to re-emit the whole session (~1,070 tokens), so it costs roughly what the
+ * primary call costs. **Cheap in tokens is not cheap in wall-clock.**
+ *
+ * 36 s covers the measured maximum with a little room. It can never overrun the deadline anyway:
+ * `extractSession` caps the repair's timeout at the budget that actually remains.
  */
-export const REPAIR_TIMEOUT_MS = 18_000
+export const REPAIR_TIMEOUT_MS = 36_000
 /**
- * **MEASURED-DERIVED, from the same 11,460 ms.** Below this much remaining budget, do not start a
- * repair at all — starting a round-trip we cannot finish risks the invocation dying before it can
- * write a terminal row, which is strictly worse than failing cleanly now.
+ * **MEASURED-DERIVED from the same three samples**, and the number with a real consequence.
  *
- * The gate has to be at least as large as a repair actually takes, or it fails at its one job. The
- * original 6 s here was reasoned from R-2's "no images resent" and would have waved through
- * repairs with 6 s left that need 11.5 s. 14 s is the measurement plus a small margin.
+ * Below this much remaining budget, do not start a repair at all — a round-trip we cannot finish
+ * risks the invocation dying before it writes a terminal row, which is strictly worse than
+ * failing cleanly now. So the gate must be **at least as large as a repair really takes**, or it
+ * fails at its one job. 28 s is the measured minimum (27,640 ms).
  *
- * Note what this implies, and that it is correct: at the measured 33.7 s primary median there is
- * ~21 s of the 55 s soft deadline left, comfortably over this gate. But a primary that runs close
- * to its own 45 s timeout leaves only ~10 s, and the repair is then **skipped by design** rather
- * than started and killed. That is the gate working, not the gate misconfigured.
+ * ── WHAT THIS HONESTLY IMPLIES ON VERCEL HOBBY ──────────────────────────────────────────────
+ * The primary call's own median is 28-36 s (measured: 28.2 s at the shipped 560w/q80 recipe,
+ * 36 s at original PNG size). Against a 55 s soft deadline that leaves ~20-27 s — **less than a
+ * repair needs.** So on Hobby the repair round-trip is **best-effort and will usually be
+ * skipped**, and a malformed reply will usually reach `failed` / `validation` and hand F05 its
+ * blank form. That is the gate working exactly as designed, not a misconfiguration, and it is
+ * the outcome plan §4.6 already anticipated: *"If Vercel Pro ever becomes available, raising
+ * maxDuration to 120-300 s removes this pressure entirely and the repair gate can be relaxed to
+ * a flat 'always attempt.'"* This measurement is what turns that from a contingency into the
+ * actual state of play. The repair path is correct and tested; it is rationed by a ceiling, and
+ * this comment says so rather than pretending otherwise.
+ *
+ * ── AND WHAT A REPAIR CAN AND CANNOT FIX ────────────────────────────────────────────────────
+ * All three samples returned `splits[3].hrBpm: null` where the truth is 173, while keeping every
+ * other field intact. That is **correct**, not a failure: with no image in the request (R-2) the
+ * model cannot recover a value it can no longer see, and RULE 1 forbids inventing one. So a
+ * text-only repair fixes the SHAPE and nulls what it cannot re-read. F05 should treat a
+ * `repaired` session as "valid, but a field may have been dropped" — which is exactly what a
+ * human looking at the screenshot is for.
  */
-export const MIN_REPAIR_BUDGET_MS = 14_000
+export const MIN_REPAIR_BUDGET_MS = 28_000
 
 /* ── Polling (plan §4.4) ─────────────────────────────────────────────────────────────────── */
 

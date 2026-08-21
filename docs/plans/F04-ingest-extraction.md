@@ -1,6 +1,7 @@
 # F04 — Ingest & Vision Extraction
 
-**Status:** SHIPPED 2026-08-21 (see §13). Tasks 20/23 open — the canonical screenshots are gone.
+**Status:** SHIPPED 2026-08-21 (see §13). Every task closed; 108/108 verified live against the
+canonical fixture, which is now committed to `research/fixtures/screenshots/`.
 
 > **Feature:** 1–3 Apple Fitness screenshots → client compression → Vercel Blob → `glm-4.6v`
 > vision extraction → a validated, human-reviewable `ExtractedSession`.
@@ -1169,10 +1170,12 @@ F04 executed. **357 unit tests green** (up from 228), `typecheck` / `lint` / `fo
 `next build` clean, three CI guards green, and the assembled pipeline verified against the live
 Blob store, the live `glm-4.6v` endpoint and the live Neon database.
 
-Two of this plan's designed numbers turned out to be wrong and were corrected by measurement; one
-of its assumptions was already settled by the reconciliation; three tasks could not be closed
-because the canonical screenshots are no longer on disk. All of that is below rather than
-smoothed over.
+Two of this plan's designed numbers turned out to be wrong and were corrected by measurement —
+one of them twice, because the first measurement was itself misleading. One assumption was already
+settled by the reconciliation. And the three canonical screenshots, which had been lost from the
+image cache, were recovered mid-execution and are now **committed to the repo**, which closed the
+last three open tasks and turned one manual-QA gap into a re-runnable artefact. All of that is
+below rather than smoothed over.
 
 ### What shipped
 
@@ -1197,20 +1200,47 @@ smoothed over.
 | `scripts/check-client-secret-boundary.mjs` | Task 24, as three narrow rules |
 | `scripts/copy-image-compression-worker.mjs` | self-hosts the compression worker; `predev`/`prebuild` |
 | `scripts/f04-e2e-probe.mjs` | the assembled-pipeline probe (below). Not a test — it spends money |
-| `research/fixtures/golden-response.json` + `README.md` | the offline regression artefact, with its provenance stated |
+| `research/fixtures/golden-response.json` + `README.md` | a **real verbatim 108/108 capture** at the shipped recipe, and what it does and does not prove |
+| `research/fixtures/screenshots/` | the three canonical screenshots — the 739×1600 originals **and** the 560×1212 q80 JPEGs production actually sends |
+| `scripts/shipped-image-recipe.py` | regenerates the shipped-recipe JPEGs, asserting the 560 ± 5 short edge |
 | 8 new suites | `vision`, `extract`, `extractJson`, `extractedSession`, `extractionResult`, `resizeTarget`, `readExtraction`, `pollSchedule`, `format`, `goldenFixture` |
 
 ### Measured facts that only the live endpoint could establish
 
-Task 19 had never been run. It was run, and it changed two constants.
+Task 19 had never been run and Tasks 20/23 could not be, because the three canonical screenshots
+had been lost from the image cache. **They were supplied on 2026-08-21 and are now committed to
+`research/fixtures/screenshots/`**, so all four tasks closed — and two of them moved constants.
+
+**Accuracy — Tasks 20 and 23, closed.**
 
 | Claim | Result |
 |---|---|
-| **A production text-only repair's latency** | **11,460 ms** (in=1184, out=338). The plan's designed `REPAIR_TIMEOUT_MS` was **12,000 ms** — 540 ms of margin. **Raised to 18,000 ms.** |
-| **The gate that guards it** | `MIN_REPAIR_BUDGET_MS` was 6,000 ms, i.e. it would wave through a repair with 6 s left that needs 11.5 s — failing at its one job. **Raised to 14,000 ms.** |
-| **A text-only repair's token cost** | **1,135** prompt tokens, not the ~35 a bare text turn costs: the system prompt's nine rules plus the SHAPE block plus the malformed reply. A "text-only" repair costs about as much as one image. |
-| **Why that sharpens R-2's corollary** | 1,135 clears a 1-image floor but sits **below** the 3 × 500 = 1,500 floor a three-screenshot upload carries. Had the repair inherited the primary's image count, **every repair after a three-image upload would have died with a spurious `VisionTokenFloorError`.** `imageCount: 0` is the difference between the repair path working and never working. |
-| One real image, our exact body shape | HTTP 200, **1,411** prompt tokens — clears 1 × 500 by 2.8×, and falls short of 3 × 500, so a 3-image request that delivered one image trips exactly as designed |
+| The **production** prompt (RULES 1–7 verbatim, **plus** the additive 6a/8/9 and per-image labels) still scores 108/108 | **108/108**, at both original size and the shipped recipe. The additions did not regress it. |
+| Three consecutive runs, acceptance criterion 2 | **108, 108, 108** · median **38 s** |
+| The shipped **560w/q80** recipe still scores 108/108 at its compressed size | **108/108** at `in=3628`. This is the first time the shipped recipe was scored with the production prompt rather than the research one. |
+| Token cost, shipped recipe vs originals | **3,628** vs **5,494**. `research/downscale.mjs` recorded 3,277 / 5,143 for the same two variants; ours are ~350 higher in *both*, so the delta is the prompt's three extra rules, not the pixels. |
+| §3.1's long-edge arithmetic, **in actual pixels** | 739 × 1600 → long-edge target 1212 → output **560 × 1212, short edge exactly 560**, 55–70 KB per image. This is the pixel-level check acceptance criterion 7 asks for, and it had been recorded as a manual-QA gap. It is now a committed, re-runnable artefact. |
+
+**Latency and the repair budget — Task 19, closed, and it corrected this file twice.**
+
+| Claim | Result |
+|---|---|
+| A **realistic** full-session text-only repair | **25.3 / 27.6 / 31.9 / 34.9 s** across four samples, all emitting ~1,070 completion tokens |
+| What that latency tracks | **Completion tokens, at ~24–33 ms each.** Not prompt size. |
+| Why the first measurement misled | The first sample repaired a *truncated stub* and reported **11,460 ms** at out=338. A real repair has to re-emit the entire session, so it costs roughly what the primary call costs. **Cheap in tokens is not cheap in wall-clock.** |
+| `REPAIR_TIMEOUT_MS` | **12 s → 18 s → 36 s.** The 12 s was reasoned from R-2 (no images resent, so it must be cheap); 18 s came from the misleading stub sample; 36 s covers the measured maximum. |
+| `MIN_REPAIR_BUDGET_MS` | **6 s → 14 s → 28 s.** A gate smaller than a real repair fails at its one job — it waves through a round-trip that then dies at the deadline. |
+| **What this means on Vercel Hobby** | A repair costs about what the primary costs (~30 s vs ~28–38 s). Two of those do not fit a 55 s soft deadline, so **the repair round-trip is best-effort and will usually be SKIPPED**, and a malformed reply will usually reach `failed`/`validation` and hand F05 its blank form. That is the gate working, and it is exactly the outcome §4.6 anticipated when it named Vercel Pro's 120–300 s `maxDuration` as the fix. The measurement turns that contingency into the current state of play. |
+| **What a text-only repair can and cannot fix** | All four samples returned `splits[3].hrBpm: null` where the truth is 173, **keeping every other field intact**. That is RULE 1 working, not the repair failing: with no image in the request (R-2) the model cannot recover a value it can no longer see, and it is forbidden from inventing one. So a text-only repair fixes the **shape** and nulls what it cannot re-read — which is why `repaired` should make a reviewer look harder, and why the UI already says so. |
+
+**The token floor, against the real endpoint.**
+
+| Claim | Result |
+|---|---|
+| One real image, our exact body shape | HTTP 200, **1,411** prompt tokens — clears 1 × 500 by 2.8×, and falls short of 3 × 500, so a 3-image request that delivered one image trips as designed |
+| Three images at the shipped recipe | **3,628** — clears the 1,500 floor by 2.4× |
+| A **text-only** turn | **35** tokens minimal, **1,135** with the production prompt |
+| Why that sharpens R-2's corollary | 1,135 clears a 1-image floor but sits **below** the 3 × 500 = 1,500 floor a three-screenshot upload carries. Had the repair inherited the primary's image count, **every repair after a three-image upload — the common case — would have died with a spurious `VisionTokenFloorError`.** `imageCount: 0` is the difference between the repair path working and never working. |
 | The endpoint accepts the production body verbatim | `thinking: {type:'disabled'}` + OpenAI-shaped `image_url` parts → 200. No SDK, one `fetch`, as specified |
 
 ### The assembled pipeline, verified end to end
@@ -1301,37 +1331,41 @@ input it was never shown.
     renders the extracted values **read-only** so the pipeline is verifiable by a human today; it
     saves nothing, and the banner says so.
 
-### Gaps — what is NOT done, and why
-
-**The three canonical screenshots are gone.** `research/lib.mjs` reads them from
-`/home/miftah/.claude/image-cache/3a4e3940-…/`, which has been cleared, and nothing in `research/`
-preserved either the images or the raw text of the 108/108 runs — `results-repeat.json` kept only
-scores, timings and token counts. Consequences, stated rather than papered over:
+### Every plan task, and where it landed
 
 | Task | Status |
 |---|---|
-| **20** — re-validate the labelled prompt at 108/108 | **OPEN.** The additive rules 6a/8/9 are unverified against the fixture. They are additive to the proven block, which is the safest form of change, but "safest" is not "verified". |
-| **23** — tagged live suite, 108/108 across ≥3 runs | **OPEN.** Written and committed, gated on `RI_FIXTURE_DIR`, skips loudly with a message naming what is missing. Runnable the moment the images come back. |
-| **21** — the golden fixture | **Shipped as a RECONSTRUCTION, labelled as one.** `research/fixtures/README.md` says exactly what it is (the ground truth serialised as the model returns it, in a real envelope, with the measured `usage`), what it proves (the scorer, the extractor, the schema, the guard) and what it does not (that the vendor still returns 108/108 today). Replace it with a real capture when the images return; the test needs no change. |
-| **19** — measure repair latency | **CLOSED**, and it moved two constants. A text-only repair needs no screenshots, which is why this one was reachable. |
-| **6** — verify the field-ownership table | **CLOSED by R-4**, which resolved it from the screenshots before they were lost. |
+| **6** — verify the field-ownership table | **CLOSED by R-4**, which resolved it from the screenshots. It also forced `FIELD_OWNERSHIP` → `FIELD_SOURCES` (delta 3). |
+| **19** — measure repair latency | **CLOSED**, four samples, and it moved two constants twice. See above. |
+| **20** — re-validate the labelled prompt at 108/108 | **CLOSED. 108/108** with the production prompt, at both image sizes. |
+| **21** — commit the golden fixture | **CLOSED. A real verbatim capture**, `in=3628 out=1070`, taken from the shipped-recipe JPEGs and kept only because it scored 108/108. The earlier reconstruction is gone. |
+| **22** — wire `score.mjs` into CI | **CLOSED.** `tests/research/goldenFixture.test.ts`, every PR, no network. |
+| **23** — tagged live suite | **CLOSED. 108/108 × 3, median 38 s**, and it now runs with no env var: the fixtures are committed and it defaults to them. |
+| **25** — `/dev/extract` harness (optional) | **Not built.** `scripts/f04-e2e-probe.mjs` covers the same need — one command, full pipeline, real numbers — without shipping a dev-only route into the app. |
 
-**Acceptance criterion 7 is partially met.** The plan asks for a unit test that decodes the
-compressor's output and asserts `min(width, height) === 560 ± 5`. `browser-image-compression`
-needs a DOM, `Image`, `OffscreenCanvas` and a real JPEG encoder; this repo's Vitest runs in `node`
-with no jsdom and no `canvas` binding, so that decode is not reachable from the suite. What ships
-instead is `lib/photos/resizeTarget.test.ts`, which proves the arithmetic that IS the bug —
-including the fixture geometry, five real iPhone geometries, the landscape case, the no-upscale
-case, and an explicit `not.toBe(560)` assertion whose only job is to fail if someone "simplifies"
-the compressor back to passing the naive value. **The pixel-level assertion is a manual QA step**:
-upload a screenshot, confirm the tile reports ~55–60 KB, and check the stored `run_photos.width`
-is near 560. Criterion 8 (JPEG at ~q80, ~50–60 KB) is met the same way.
+**Acceptance criterion 7 is now met in pixels, not just in arithmetic.** The plan asks for a test
+that decodes the compressor's output and asserts `min(width, height) === 560 ± 5`.
+`browser-image-compression` needs a DOM, `Image`, `OffscreenCanvas` and a JPEG encoder, and this
+repo's Vitest runs in `node` — so that assertion is still not reachable from the unit suite, and
+`lib/photos/resizeTarget.test.ts` proves the arithmetic instead. But
+`scripts/shipped-image-recipe.py` now *executes* the same two decisions on the real fixtures and
+asserts the result: 739 × 1600 → **560 × 1212**, short edge exactly 560, 55–70 KB. Its output is
+committed under `research/fixtures/screenshots/shipped/`, the live suite sends it, and the script
+re-derives it on demand. The one residual difference is the encoder — Pillow's JPEG is not the
+browser's, which shows up as 183 KB where the measured table says 170 KB. Dimensions, which are
+what drive token cost and accuracy, are identical.
 
-**No route-handler integration test.** `app/api/extract/route.ts` imports `auth.ts`, which
+**Still no route-handler integration test.** `app/api/extract/route.ts` imports `auth.ts`, which
 constructs Auth.js with the Drizzle adapter at module scope; standing that up under Vitest costs
-more than it proves. What is tested instead: the request schema (12 cases, including five hostile
+more than it proves. What is tested instead: the request schema (12 cases, five of them hostile
 URLs), the DTO read and the self-heal against the fake driver, and the whole route path once, for
 real, by `scripts/f04-e2e-probe.mjs`.
+
+**One thing to watch on Hobby.** The repair path is correct, tested and rationed by the 60 s
+ceiling (see the latency table). If `status: 'validation'` failures ever become common in practice,
+the fix is not to shave the timeouts — it is `maxDuration`, and therefore Vercel Pro. Shaving
+`PRIMARY_TIMEOUT_MS` to buy repair room would abort legitimate slow primaries, which is a worse
+trade: the primary is the call that has the images.
 
 ### Notes for whoever picks up F05
 

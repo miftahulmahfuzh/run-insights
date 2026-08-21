@@ -76,8 +76,16 @@ describe('the committed golden response, through the production pipeline', () =>
     // file carries must be a value the guard accepts, or the fixture is describing a response the
     // pipeline would have refused to parse.
     expect(golden.usage.prompt_tokens).toBeGreaterThanOrEqual(TOKEN_FLOOR_PER_IMAGE * 3)
-    // …and it should be the measured value for the shipped 560w/q80 recipe, not a round guess.
-    expect(golden.usage.prompt_tokens).toBe(3277)
+
+    // MEASURED: this fixture is a real capture at the shipped 560w/q80 recipe and reports **3,628**
+    // prompt tokens. `research/downscale.mjs` recorded 3,277 for the same image variant; the ~350
+    // difference is the production prompt's RULES 6a/8/9, not the pixels.
+    //
+    // The band is wide because it guards a category, not a digit: roughly half this would mean the
+    // §3.1 long-edge trap reopened and the images shrank, and roughly 5,500 would mean someone
+    // recaptured from the 739x1600 originals instead of the shipped recipe.
+    expect(golden.usage.prompt_tokens).toBeGreaterThan(3_000)
+    expect(golden.usage.prompt_tokens).toBeLessThan(4_200)
   })
 
   it('the fixture is a complete response envelope, not just a JSON blob', () => {

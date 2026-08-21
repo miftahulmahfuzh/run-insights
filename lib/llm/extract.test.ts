@@ -229,7 +229,7 @@ describe('when a repair must NOT be attempted', () => {
       callRepair,
       elapsePerCall: 44_000, // the primary all but used the envelope up
     })
-    const outcome = await extractSession(d, IMAGES, ALL_KINDS, MIN_REPAIR_BUDGET_MS + 40_000)
+    const outcome = await extractSession(d, IMAGES, ALL_KINDS, MIN_REPAIR_BUDGET_MS + 20_000)
 
     expect(outcome.status).toBe('failed')
     expect(outcome.errorCode).toBe('validation')
@@ -238,17 +238,21 @@ describe('when a repair must NOT be attempted', () => {
 
   it('measures the gate against ELAPSED time, so a fast primary still gets its repair', async () => {
     // The plan subtracted the primary's 45 s TIMEOUT from the budget rather than the time it
-    // actually took, which would have skipped almost every repair that could have succeeded.
+    // actually took. With a 28 s gate (the measured repair minimum) that arithmetic would refuse
+    // every repair: 50 s budget - 45 s timeout = 5 s, well under the gate, even when the primary
+    // in fact took 8 s and left 42 s. Elapsed time is the only honest input here.
     const callRepair = vi.fn(async () => visionResult(GOOD_JSON))
     const d = deps({
       callPrimary: vi.fn(async () => visionResult(BAD_JSON)),
       callRepair,
       elapsePerCall: 8_000, // a quick primary
     })
-    const outcome = await extractSession(d, IMAGES, ALL_KINDS, 30_000)
+    const outcome = await extractSession(d, IMAGES, ALL_KINDS, 50_000)
 
     expect(outcome.status).toBe('repaired')
     expect(d.calls.repair).toBe(1)
+    // The counterfactual, stated: the plan's formula would have skipped this.
+    expect(50_000 - 45_000).toBeLessThan(MIN_REPAIR_BUDGET_MS)
   })
 })
 
