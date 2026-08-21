@@ -20,6 +20,15 @@ import { cn } from '@/lib/cn'
  *     0.67 km split occupies two thirds of the track however fast it was, so the eye reads "short
  *     effort" before it reads a number.
  *
+ * ── WHY THE NUMERIC COLUMNS CARRY THEIR OWN `pl-3` (F16) ───────────────────────────────────────
+ * The bar cell below is `w-full`, and under `table-auto` that hands the table's whole slack to it —
+ * every sibling cell then collapses to exactly its content width. So PACE, HR and CAD cannot borrow
+ * a gap from the layout the way `ZoneBar`'s table does; without a gutter of their own they render
+ * as `6'36"154154`, which is what issue #2 reported. The `pl-3` on each of the three headers and
+ * their three cells IS the separation, and removing it as redundant brings the bug straight back.
+ * The same starvation is why `0.67 km` needs `whitespace-nowrap`: the KM cell is only as wide as
+ * `11*`, so the longer label underneath would otherwise break after `0.67`.
+ *
  * **There is no TIME column, and adding one would be a regression.** km 11's raw 4:48 is the
  * shortest number in the table and would read as a closing sprint to anyone who skipped the
  * asterisk. Pace already answers "how fast" in comparable units. The elapsed time is stated once,
@@ -66,13 +75,13 @@ export function SplitsTable({
             <th scope="col" className="pb-2 font-semibold">
               <span className="sr-only">Pace, drawn</span>
             </th>
-            <th scope="col" className="pb-2 text-right font-semibold">
+            <th scope="col" className="pb-2 pl-3 text-right font-semibold">
               PACE
             </th>
-            <th scope="col" className="pb-2 text-right font-semibold">
+            <th scope="col" className="pb-2 pl-3 text-right font-semibold">
               HR
             </th>
-            <th scope="col" className="pb-2 text-right font-semibold">
+            <th scope="col" className="pb-2 pl-3 text-right font-semibold">
               CAD
             </th>
           </tr>
@@ -97,7 +106,7 @@ export function SplitsTable({
                   {point.km}
                   {point.partial && '*'}
                   {point.partial && (
-                    <span className="mt-0.5 block text-[10px] font-medium text-ink-3">
+                    <span className="mt-0.5 block text-[10px] font-medium whitespace-nowrap text-ink-3">
                       {formatDistanceM(point.distanceM)}
                     </span>
                   )}
@@ -105,7 +114,7 @@ export function SplitsTable({
 
                 {/* R-30: length is pace (longer = slower), colour is the split's dominant zone, and
                     the track itself is short for a partial kilometre. */}
-                <td className="w-full py-2 pr-3 pl-2 align-middle">
+                <td className="w-full py-2 pl-2 align-middle">
                   <span
                     aria-hidden="true"
                     className="block h-2 rounded-pill bg-rule-2"
@@ -118,7 +127,7 @@ export function SplitsTable({
                   </span>
                 </td>
 
-                <td className="py-2 text-right align-top font-medium text-ink-2">
+                <td className="py-2 pl-3 text-right align-top font-medium text-ink-2">
                   {formatPace(point.paceSec)}
                   {emphasis && (
                     <span className="mt-0.5 block text-[10px] font-semibold text-ink-3">
@@ -126,10 +135,10 @@ export function SplitsTable({
                     </span>
                   )}
                 </td>
-                <td className="py-2 text-right align-top font-medium text-ink-2">
+                <td className="py-2 pl-3 text-right align-top font-medium text-ink-2">
                   {point.hr ?? '—'}
                 </td>
-                <td className="py-2 pr-1 text-right align-top font-medium text-ink-2">
+                <td className="py-2 pr-1 pl-3 text-right align-top font-medium text-ink-2">
                   {point.cadence ?? '—'}
                 </td>
               </tr>
