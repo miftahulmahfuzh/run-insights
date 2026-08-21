@@ -10,18 +10,24 @@ that has no analogue there (check 10, weave texture) because the reference
 substrate is flat by contract and this one explicitly is not. Hard checks set the
 exit code; advisory ones only print.
 
-  EVERY BAND IN THIS FILE IS A GUESS. The tool this descends from re-derived its
-  bands from a thirteen-badge distribution and records the observed range beside
-  each one. This deck has ZERO approved images at the time this file is written,
-  so every number below is marked `(guess, 0 badges)` and is a gross-failure
-  catch only, sized to pass anything plausible.
+  EVERY BAND WAS A GUESS, AND ALL OF THEM HAVE NOW BEEN RE-DERIVED ONCE, from
+  the six approved shields (early_bird, self_reward, sandbagger, century_club,
+  new_ceiling, dawn_patrol) under style v2 — F10 §9 task 12, done at exactly the
+  six the rule names and not before. Each band below carries
+  `(observed, 6 badges, v2)` and the range it was drawn from.
 
-  DO NOT TIGHTEN A BAND BECAUSE ONE CANDIDATE MISSED IT. Re-derive all of them
-  ONCE, after at least six badges are approved (F10 §9 task 12), and replace
-  `(guess, 0 badges)` with `(observed, N badges, style vM)` and the range. The
-  deck this tool descends from set a band from one sample — its anchor — and
-  then rejected five perfectly good cards for landing one to three points
-  outside a floor with no evidence behind it.
+  Four bands had been firing on EVERY candidate — check 3's margin sd, 8b, 10,
+  and check 6 on two of six — because they were guessed for a substrate nobody
+  had seen yet. Real navy twill under a hard raking light is far more textured
+  than the guess allowed: margin sd ran 11.3-23.1 against a guessed ceiling of
+  16.0, and weave rms ran 10.1-11.1 against a guessed 6.0. A threshold that
+  fails on every good candidate is the threshold somebody comments out, which is
+  why the rule says re-derive at six rather than never.
+
+  DO NOT RE-DERIVE AGAIN FROM ONE NEW SAMPLE. A later session adding badge 23
+  should NOT move a band because that badge sat outside it; the whole point of
+  waiting for six was that a distribution, not a candidate, sets a threshold.
+  The next honest re-derivation is at all 22, if the spread by then warrants it.
 
 WHY THIS IS NOT A PORT. The reference's nine measurements are tuned to flat
 cream paper and two flat inks. A textured navy twill with five saturated threads
@@ -433,34 +439,40 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     # rectangle with no fabric grain rendered at all, which the variance FLOOR
     # is for and which no check in the reference tool could ever have wanted.
     #
-    # All four numbers in sRGB grey (0–255). #1B2A44 is 40.5.
-    # (guess, 0 badges): level 22–72, spread ≤18, sd 1.2–16.0, warmth ≤ −6.
-    # The spread band is loose because the style block asks for ONE HARD RAKING
-    # LIGHT from the upper left — a genuinely directional light makes the top
-    # and bottom strips differ by design, and the reference's ±4.0 was written
-    # for a substrate with no light on it at all.
+    # All four numbers in sRGB grey (0–255). #1B2A44 is 40.5 on flat cloth; the
+    # rendered twill sits darker because the raking light shades most of it.
+    #
+    # (observed, 6 badges, v2): level 22.1–31.6, spread 4.7–7.7, sd 11.3–23.1,
+    # warmth −35.0 to −40.0.
+    #
+    # THE SD CEILING IS THE ONE THAT MOVED, and it moved because it was wrong:
+    # guessed at 16.0 with no images in hand, it rejected all six approved
+    # badges. Real twill under this light is a coarse, high-contrast weave. The
+    # FLOOR is what earns its keep here — 4.0 still catches the flat-fill
+    # "sticker" control at 0.5 with a factor of eight to spare, and that failure
+    # is the one this check exists for.
     strips = edge_strips(px, w, h)
     means = [s[0] for s in strips.values()]
     spread = max(means) - min(means)
     bad = []
     for name, (m, sd, warm) in strips.items():
-        if not (22.0 <= m <= 72.0):
+        if not (16.0 <= m <= 52.0):
             bad.append(f"{name} grey {m:.1f}")
-        if sd < 1.2:
+        if sd < 4.0:
             bad.append(f"{name} sd {sd:.1f} — flat, no weave")
-        if sd > 16.0:
+        if sd > 30.0:
             bad.append(f"{name} sd {sd:.1f} — cluttered")
-        if warm > -6.0:
+        if warm > -15.0:
             bad.append(f"{name} warmth {warm:.1f} — not a cool navy")
-    if spread > 18.0:
+    if spread > 14.0:
         bad.append(f"spread {spread:.1f}")
     sds = [s[1] for s in strips.values()]
     rep.hard(
         "3 twill margin",
         not bad,
-        (f"grey {min(means):.1f}–{max(means):.1f} sRGB (want 22–72), spread "
-         f"{spread:.1f} (≤18.0), sd {min(sds):.1f}–{max(sds):.1f} (1.2–16.0), "
-         f"warmth {max(s[2] for s in strips.values()):.1f} (≤−6, i.e. cool)")
+        (f"grey {min(means):.1f}–{max(means):.1f} sRGB (want 16–52), spread "
+         f"{spread:.1f} (≤14.0), sd {min(sds):.1f}–{max(sds):.1f} (4.0–30.0), "
+         f"warmth {max(s[2] for s in strips.values()):.1f} (≤−15, i.e. cool)")
         + (f" — {'; '.join(bad)}" if bad else ""),
     )
 
@@ -478,7 +490,9 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     # sound; the token list is this deck's seven, and the "unauthorised
     # blue/violet" guard is DELETED rather than re-tuned (see the header).
     #
-    # (guess, 0 badges): ΔE76 ≤ 30 of a token, ≥ 65% of pixels.
+    # (observed, 6 badges, v2): 91.0–96.6% within ΔE76 30. The tolerance of 30
+    # held on first contact and is left alone; the percentage floor rises from a
+    # guessed 65 to 80, which still clears the worst approved badge by 11 points.
     # Both numbers are loosened from the reference's 20 / 88% and the reason is
     # physical rather than tolerant: satin-stitch sheen and a hard raking light
     # put many genuinely-correct pixels BETWEEN two named thread colours — a lit
@@ -499,9 +513,9 @@ def measure(path: Path, rep: Report, anchor_stats=None):
             if d <= 30.0:
                 near += 1
     near_pct = 100.0 * near / total
-    rep.hard("4 palette agreement", near_pct >= 65.0,
+    rep.hard("4 palette agreement", near_pct >= 80.0,
              f"{near_pct:.1f}% within ΔE76 30 of one of the 7 style-block "
-             f"colours (≥65.0)")
+             f"colours (≥80.0)")
 
     # 5 — visible in both themes (hard, floor only). REPLACED, not re-derived.
     #
@@ -529,7 +543,11 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     patch_lum = mean(patch_lums)
     c_light = contrast_l(patch_lum, rel_luminance(PAPER_LIGHT))
     c_dark = contrast_l(patch_lum, rel_luminance(PAPER_DARK))
-    # (guess, 0 badges): floor 1.50 against each --paper, no ceiling.
+    # (observed, 6 badges, v2): patch lum 16.4–22.5% rel; contrast 2.77–3.83
+    # against light --paper and 3.09–4.96 against dark. The 1.50 floor is left
+    # exactly where it was: it is an INVISIBILITY floor, not a style band, and
+    # every approved badge clears it with room to spare. Raising it toward the
+    # observed minimum would convert a safety check into a taste check.
     problems = []
     if c_light < 1.50:
         problems.append(f"vs light paper {c_light:.2f} < 1.50")
@@ -559,29 +577,38 @@ def measure(path: Path, rep: Report, anchor_stats=None):
             if lo_hue <= hh * 360 <= hi_hue and ss > 0.45 and vv > 0.35:
                 sig += 1
     sig_pct = 100.0 * sig / total
-    # (guess, 0 badges): 0.02–3.00%. The floor is deliberately tiny — the scene
+    # (observed, 6 badges, v2): 2.02–4.12%. The ceiling rises from a guessed
+    # 3.00 to 6.00. `dawn_patrol` is why: its scene makes the LIGHTHOUSE BEAM
+    # the signature, and a wedge of light is inherently a larger mark than a
+    # nose, a pin or a bubble — 4.12% is that scene working, not failing. The
+    # ceiling still catches a badge stitched entirely in orange.
+    # The floor is deliberately tiny — the scene
     # lines each name ONE SMALL MARK (a nose, a pin, a bubble, an ember), and
     # 0.15% of a 1024² image is ~1600 pixels, which is a mark far larger than any
     # of those. The reference set exactly that floor without measuring and
     # warned on seven of thirteen badges.
-    rep.soft("6 signature-thread share", 0.02 <= sig_pct <= 3.0,
+    rep.soft("6 signature-thread share", 0.02 <= sig_pct <= 6.0,
              f"{sig_pct:.2f}% in hue {lo_hue:.0f}–{hi_hue:.0f}° "
-             f"(want 0.02–3.00; 0.00 means no second pass at all)")
+             f"(want 0.02–6.00; 0.00 means no second pass at all)")
 
     # 7 — legibility at shelf size (advisory). Survives unchanged in mechanism:
     # the stdev of a 40 px grayscale thumbnail has nothing style-specific in it,
     # it measures "does this collapse into visual mush", and that question is
     # equally worth asking of a stitched patch.
     #
-    # (guess, 0 badges): ≥18.0, where the reference's re-derived floor is 16.0. A
+    # (observed, 6 badges, v2): 51.3–55.2, which is three times the guessed
+    # floor and confirms the guess's direction outright. Raised to 30.0 — still
+    # far below every approved badge, and far above the mush regime a floor
+    # exists to catch.
+    # Guessed at ≥18.0, where the reference's re-derived floor is 16.0. A
     # raised satin-stitch patch under a raking light carries more inherent local
     # contrast — every stitch row is a highlight beside a shadow — than a flat
     # line engraving does, so a genuinely mushy candidate here may clear 16
     # without being legible. Guessed slightly higher for that reason; re-derive.
     tiny = img.resize((40, 40), Image.LANCZOS).convert("L")
     tsd = stdev(list(tiny.tobytes()))
-    rep.soft("7 legibility at 40px", tsd >= 18.0,
-             f"stddev {tsd:.1f} sRGB (≥18.0) — dissolves at shelf size below this")
+    rep.soft("7 legibility at 40px", tsd >= 30.0,
+             f"stddev {tsd:.1f} sRGB (≥30.0) — dissolves at shelf size below this")
 
     # 8 — composition safety (bounding box hard, margin advisory). `grid` and
     # `box` were computed above, because the substrate sample depends on them.
@@ -600,13 +627,17 @@ def measure(path: Path, rep: Report, anchor_stats=None):
         cy = (y0 + y1) / 2.0
         c = (n - 1) / 2.0
         off = math.hypot(cx - c, cy - c) / n
-        # (guess, 0 badges): ≤4.00% off centre. Inherited from the reference's
+        # (observed, 6 badges, v2): 0.20–1.14% off centre. Tightened from a
+        # guessed 4.00 to 3.00 — the only band that got STRICTER, and it can
+        # afford to: the worst approved badge sits at a third of it, and the
+        # synthetic off-centre control is caught at 9.51% either way.
+        # Inherited from the reference's
         # 3.5% and widened a little because a bounding box on a chevron is a
         # coarser instrument than a harmonic fit on a circle. An off-centre patch
         # is visible the moment two badges sit in a list, which is the whole
         # reason this is hard rather than advisory.
-        rep.hard("8a patch centred", off <= 0.040,
-                 f"{off * 100:.2f}% off centre (≤4.00), box {box_w * 100:.1f}%×"
+        rep.hard("8a patch centred", off <= 0.030,
+                 f"{off * 100:.2f}% off centre (≤3.00), box {box_w * 100:.1f}%×"
                  f"{box_h * 100:.1f}% of frame")
         cen = foreground_centroid(grid)
         if cen:
@@ -620,7 +651,11 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     # reference wants the margin's stdev LOW because flat paper is correct there;
     # this deck wants it non-trivially present but bounded, because visible weave
     # is correct and visible clutter is not. A floor and a ceiling, not a ceiling
-    # alone. (guess, 0 badges): 1.2–14.0 sRGB.
+    # alone. (observed, 6 badges, v2): 15.4–42.4 sRGB — every approved badge was
+    # over the guessed 14.0 ceiling, for the same reason check 3's sd was. The
+    # spread here is wide because this band samples six percent of the frame and
+    # a tall patch loads it; 5.0–55.0 keeps the flat-fill floor meaningful (the
+    # control reads 0.9) without firing on real cloth.
     m = max(1, int(round(min(w, h) * 0.06)))
     marg = []
     for y in range(h):
@@ -629,8 +664,8 @@ def measure(path: Path, rep: Report, anchor_stats=None):
             if edge_row or x < m or x >= w - m:
                 marg.append(grey(px[x, y][:3]))
     msd = stdev(marg)
-    rep.soft("8b outer margin", 1.2 <= msd <= 14.0,
-             f"stddev {msd:.2f} sRGB (want 1.2–14.0 — weave present, clutter absent)")
+    rep.soft("8b outer margin", 5.0 <= msd <= 55.0,
+             f"stddev {msd:.2f} sRGB (want 5.0–55.0 — weave present, clutter absent)")
 
     # 9 — anchor agreement. The quantity that decides whether 22 objects are one
     # set. Badges here are NOT near-identical objects the way the reference's
@@ -654,7 +689,12 @@ def measure(path: Path, rep: Report, anchor_stats=None):
                      "no foreground found in the candidate or in the anchor")
         else:
             drift = abs(box_w - a_w) / a_w * 100
-            # (guess, 0 badges): ≤8.0% drift, double the reference's re-derived
+            # (observed, 6 badges, v2): 0.0–2.9% drift. Tightened from a
+            # guessed 8.0 to 6.0. The worry that four different silhouettes
+            # would spread this badly did not materialise — all six shields
+            # landed within 3% — but six shields are ONE shape, so the band
+            # keeps real headroom until the other three families are in.
+            # Guessed at ≤8.0%, double the reference's re-derived
             # ±4.0. That tool's badges share ONE circle radius by contract; these
             # share only "about 80 percent of the image width" across a shield, a
             # hexagon, a chevron and a rounded triangle. A chevron's bounding box
@@ -662,31 +702,35 @@ def measure(path: Path, rep: Report, anchor_stats=None):
             # spread is correct rather than drift. Re-derive at six — and if the
             # observed spread turns out to cluster by SHAPE rather than scatter,
             # the right fix is a per-shape expectation, not a wider band.
-            rep.hard("9a patch width vs anchor", drift <= 8.0,
+            rep.hard("9a patch width vs anchor", drift <= 6.0,
                      f"{box_w * 100:.1f}% vs anchor {a_w * 100:.1f}% "
-                     f"— {drift:.1f}% drift (≤8.0)")
+                     f"— {drift:.1f}% drift (≤6.0)")
 
-        # (guess, 0 badges): ≤8.0 sRGB grey points. "Are all 22 badges stitched
+        # (observed, 6 badges, v2): 0.0–3.6 points, AFTER the sampling fix in
+        # `substrate_stats` — before it, the same six read 0.0–9.6 and two
+        # failed. Tightened from a guessed 8.0 to 6.0.
+        # "Are all 22 badges stitched
         # on the same shade of the same fabric" is exactly what the anchor exists
         # to guarantee, and it is the one check here that needs no conceptual
         # change from the reference's 9b — only a different baseline and a
         # different unit.
         dg = abs(substrate_grey - a_grey)
-        rep.hard("9b twill tone vs anchor", dg <= 8.0,
+        rep.hard("9b twill tone vs anchor", dg <= 6.0,
                  f"{substrate_grey:.1f} vs anchor {a_grey:.1f} sRGB "
-                 f"— {dg:.1f} points (≤8.0)")
+                 f"— {dg:.1f} points (≤6.0)")
 
         dists = []
         for y in range(0, 256, 4):
             for x in range(0, 256, 4):
                 dists.append(math.dist(sp[x, y][:3], a_small[x, y][:3]))
-        # (guess, 0 badges): ≤60.0, up from the reference's 40.0. Five saturated
+        # (observed, 6 badges, v2): 43.7–60.0, with century_club landing on the
+        # guessed ceiling exactly. Raised to 75.0. Five saturated
         # threads on a shared substrate differ from each other far more than two
         # flat inks on shared paper do. Loose by design either way — the subjects
         # are SUPPOSED to differ, and this only catches a badge that shares
         # nothing with the deck at all.
-        rep.soft("9c mean colour distance", mean(dists) <= 60.0,
-                 f"{mean(dists):.1f} (≤60.0, loose by design — the subjects are "
+        rep.soft("9c mean colour distance", mean(dists) <= 75.0,
+                 f"{mean(dists):.1f} (≤75.0, loose by design — the subjects are "
                  f"supposed to differ)")
 
     # 10 — weave texture presence (advisory). NEW. No analogue in the reference
@@ -699,11 +743,15 @@ def measure(path: Path, rep: Report, anchor_stats=None):
     # neighbourhood mean and only stitch-scale variation survives.
     #
     # Three outcomes worth telling apart, which is why the band has both ends:
-    #   ~0     a flat digital navy fill — the sticker failure, the thing SKILL.md
-    #          calls this style's single most likely quiet drift
-    #   0.5–5  woven cloth under a raking light
-    #   >5     visual noise, JPEG mush or a genuinely busy margin
-    # (guess, 0 badges): 0.40–6.00.
+    #   ~0      a flat digital navy fill — the sticker failure, the thing
+    #           SKILL.md calls this style's single most likely quiet drift
+    #   10–11   woven cloth under a raking light (the whole approved deck)
+    #   >18     visual noise, JPEG mush or a genuinely busy margin
+    # (observed, 6 badges, v2): 10.14–11.10 — a remarkably tight cluster, and
+    # every approved badge was over the guessed 6.00 ceiling. The guess was
+    # simply calibrated to synthetic cloth. 4.00–18.00 brackets the observed
+    # cluster with headroom on both sides while still catching the flat digital
+    # fill this check exists for, which reads 0.01.
     hp = []
     step = 3
     for y in range(m + 2, h - m - 2, step):
@@ -715,8 +763,8 @@ def measure(path: Path, rep: Report, anchor_stats=None):
         for x in range(2, w - 2, step):
             hp.append(_highpass(px, x, y))
     weave = math.sqrt(mean([v * v for v in hp])) if hp else 0.0
-    rep.soft("10 weave texture", 0.40 <= weave <= 6.00,
-             f"high-pass rms {weave:.2f} sRGB (want 0.40–6.00; near 0 is a flat "
+    rep.soft("10 weave texture", 4.00 <= weave <= 18.00,
+             f"high-pass rms {weave:.2f} sRGB (want 4.00–18.00; near 0 is a flat "
              f"digital fill, not cloth)")
 
     return img, substrate_rgb, substrate_grey, box_w

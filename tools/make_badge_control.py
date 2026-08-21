@@ -77,8 +77,22 @@ def twill_ground(size, base, weave=True, seed=7):
             k = 1.0
             if weave:
                 # 4 px diagonal repeat — a twill line, not a plain weave.
-                k += 0.055 * math.sin((x + y) * math.pi / 4.0)
-                k += rnd.uniform(-0.035, 0.035)
+                #
+                # Amplitude raised after check 3 and check 10 were re-derived
+                # from the first six approved masters: real generated twill runs
+                # a margin sd of 11-23 and a weave rms of 10-11, and the original
+                # figures here were calibrated against the GUESSED bands rather
+                # than against cloth. A "good" control that warns on the shipped
+                # bands is a control that stops being a signal, so it is matched
+                # to the observed deck. The flat control is untouched — its whole
+                # job is to read ~0.
+                k += 0.16 * math.sin((x + y) * math.pi / 4.0)
+                # The per-pixel term, not the sine, is what check 10 actually
+                # measures: a 3x3 high-pass suppresses a 4 px repeat almost
+                # entirely and passes white noise nearly untouched. ±0.45 on a
+                # base grey of ~40 gives a residual rms near 10, which is where
+                # the six approved masters cluster.
+                k += rnd.uniform(-0.45, 0.45)
             # The raking light: brightest at the upper left, ~8% across the frame.
             k += 0.08 * (1.0 - (x + y) / (2.0 * size))
             px[x, y] = shade(base, k)
