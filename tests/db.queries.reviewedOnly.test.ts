@@ -107,6 +107,21 @@ describe('reviewed-only queries', () => {
     expect(fake.only().sql).toContain('"runs"."occurred_on" <= $')
   })
 
+  it('getReviewedRunsWithChildren filters reviewed_at on the run AND on both child reads', async () => {
+    // Three statements in one batch. The children carry no user_id and no reviewed_at of their
+    // own, so each proves BOTH through a correlated EXISTS back to `runs` — miss it on the splits
+    // read and an unreviewed run's kilometres feed the record recompute anyway.
+    fake.enqueue([], [], [])
+    await q.getReviewedRunsWithChildren('u1')
+    expect(fake.batches).toEqual([3])
+    for (let i = 0; i < 3; i++) {
+      expect(fake.sqlAt(i)).toContain('"reviewed_at" is not null')
+      expect(fake.sqlAt(i)).toContain('"runs"."user_id" = $')
+    }
+    expect(fake.sqlAt(1)).toContain('"run_splits"')
+    expect(fake.sqlAt(2)).toContain('"run_zones"')
+  })
+
   it('getPreviousReviewedRun filters on reviewed_at and takes the nearest earlier day', async () => {
     fake.enqueue([])
     await q.getPreviousReviewedRun('u1', '2026-08-20')
@@ -166,7 +181,9 @@ describe('the invariant is complete', () => {
     // without a reviewed_at assertion above, or one was renamed. Both need a human.
     const exportedRollups = Object.keys(q)
       .filter((name) =>
-        /^(list|get)Runs|^getMonthlyTotals$|^getAllTimeTotals$|^getObservedMaxHr/.test(name),
+        /^(list|get)Runs|^getReviewedRuns|^getMonthlyTotals$|^getAllTimeTotals$|^getObservedMaxHr/.test(
+          name,
+        ),
       )
       .sort()
     expect(exportedRollups).toEqual([
@@ -175,6 +192,7 @@ describe('the invariant is complete', () => {
       'getObservedMaxHr',
       'getObservedMaxHrExcludingRun',
       'getObservedMaxHrRun',
+      'getReviewedRunsWithChildren',
       'getRunsBetween',
       'getRunsInIsoWeek',
       'getRunsInMonth',

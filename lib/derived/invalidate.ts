@@ -1,6 +1,8 @@
 import 'server-only'
 
 import type { CorrectionEvent } from '@/lib/db/schema'
+import { dbRecordsGateway } from '@/lib/records/gateway'
+import { recomputeRecords, type RecomputeResult } from '@/lib/records/recompute'
 
 /**
  * **The invalidation contract.** Shipped by F05 as a real, exported, currently-no-op function —
@@ -34,18 +36,28 @@ export interface RunChangeEvent {
   phase: CorrectionEvent['phase']
 }
 
+export interface InvalidateDeps {
+  /**
+   * Injected so the contract test can assert this is called once, with the committing user, and
+   * that a failure inside it is swallowed — without a database. Production passes nothing.
+   */
+  recomputeRecordsFor?: (userId: string) => Promise<RecomputeResult>
+}
+
 /**
  * Called once per successful commit, inside `commitReviewAction`, immediately after the run
  * transaction returns.
  *
- * ── F06 (lib/metrics, lib/records) — NOT YET BUILT ──────────────────────────────────────────
- * Recompute every `lib/metrics/*` value for `runId`; they are pure functions over one run's own
- * rows, so this is cheap. Then **recompute `records` for `userId` wholesale** — never increment,
- * never patch one key. R-10 gives the mechanism (`replaceRecords`, a DELETE + INSERT in one
- * batch) and the reason: a per-key upsert cannot express *deletion*, and a correction that
- * disqualifies the only run holding `fastest_pace_10k` has to remove that record, not leave a
- * stale one pointing at a run that no longer qualifies. At ~17 runs a month a full recompute is
- * free.
+ * ── F06 (lib/metrics, lib/records) — LANDED ─────────────────────────────────────────────────
+ * `records` are recomputed for `userId` **wholesale** — never incremented, never one key patched.
+ * R-10 gives the mechanism (`replaceRecords`, a DELETE + INSERT in one batch) and the reason: a
+ * per-key upsert cannot express *deletion*, and a correction that disqualifies the only run
+ * holding `fastest_pace_10k` has to remove that record, not leave a stale one pointing at a run
+ * that no longer qualifies. At ~17 runs a month a full recompute is free.
+ *
+ * Nothing else from F06 is swept here, and that is not an omission: `lib/metrics/*` are pure
+ * functions computed on read, with no cache and no stored rows to invalidate. `records` is the
+ * feature's only persisted output.
  *
  * ── F07 (insights) — NOT YET BUILT ──────────────────────────────────────────────────────────
  * Delete `insights` rows for `(userId, 'session', runId)`, for `(userId, 'week',
@@ -71,9 +83,33 @@ export interface RunChangeEvent {
  * history survives a deleted run. Recomputation here must not resurrect a badge for a run that is
  * gone, nor delete the historical row for one that fired legitimately.
  */
-export async function onRunCommitted(event: RunChangeEvent): Promise<void> {
-  // F06 / F07 / F09 fill this in. Deliberately not a `throw new Error('not implemented')`: the
-  // commit path is live today and a throw here would make every save log an error it cannot act
-  // on. The reference to `event` keeps the parameter honest under noUnusedParameters.
-  void event
+export async function onRunCommitted(
+  event: RunChangeEvent,
+  deps: InvalidateDeps = {},
+): Promise<void> {
+  const recompute =
+    deps.recomputeRecordsFor ?? ((userId: string) => recomputeRecords(userId, dbRecordsGateway))
+
+  /* F06. Synchronous, in the same request as the commit (plan §7.3) — never queued. F09's badge
+   * evaluation will run after this and read the records it just wrote, so deferring would let
+   * `new_ceiling` and `long_way_home` fire against a stale shelf.
+   *
+   * The catch is the failure policy above, not defensive noise: the run transaction has already
+   * committed, a human confirmed those numbers, and losing their save because a derived shelf
+   * could not be rebuilt is the wrong trade in every direction. The next commit recomputes from
+   * scratch anyway — that is the whole point of "recompute, never increment". */
+  try {
+    await recompute(event.userId)
+  } catch (error) {
+    console.error('[invalidate] record recompute failed', {
+      runId: event.runId,
+      userId: event.userId,
+      phase: event.phase,
+      error,
+    })
+  }
+
+  // F07 (insights) and F09 (badges) fill in their own sections here. Deliberately not a
+  // `throw new Error('not implemented')`: the commit path is live and a throw would make every
+  // save log an error nobody can act on.
 }

@@ -14,6 +14,39 @@ metrics and `records`).
 
 ---
 
+## Amendments — what shipped, and where it differs from this plan
+
+> **This section is authoritative over the body below it.** F06 landed on 2026-08-21. Everything
+> in §§0–10 shipped as written except the eight items here, six of which are the reconciliation
+> overruling this plan and two of which are repo conventions this plan predates.
+
+| # | This plan said | What shipped | Why |
+|---|---|---|---|
+| 1 | `avgHrPctMax` on the canonical fixture is **92.5%** (173/187, Tanaka), and F02 needs a third resolver so a run's own `max_hr` is excluded from its own denominator | **91.5%** (173/189, `observed`), resolved by plain `resolveHrMax` | **R-3.** §3.4 found a real inconsistency and resolved it the wrong way round. The watch recorded 189 *in this run*, legible on the heart-rate screenshot; scoring against a formula estimate the same screenshot disproves is not conservatism. `VERY_HIGH_AVG_HR` still fires. |
+| 2 | `resolveHrMaxExcludingRun` is needed for session metrics | It exists (`getObservedMaxHrExcludingRun`) and is **F09's**, for `new_ceiling` — never for metrics | **R-3.3.** "Did this run beat the previous best" genuinely needs the previous best. A run's own percentage does not. |
+| 3 | `runs.end_hr_bpm` / `runs.hr_1min_post_bpm` are a Contract delta blocking `hrRecovery1MinBpm`; ship the test as `it.todo` | **Closed.** R-9 landed both columns in F03's schema before F06 started. `hrRecovery1MinBpm` and `SLOW_HR_RECOVERY` are live and tested end to end | The delta was accepted and implemented upstream. |
+| 4 | `RecordsGateway` exposes `upsert` + `deleteKeys` | `replace(userId, rows)` — one DELETE + INSERT in one `db.batch`, via F03's `replaceRecords` | **R-10.** A per-key upsert cannot express deletion, which is the one thing the recompute exists to be able to do. Two statements that can half-apply are two chances to leave the shelf inconsistent. |
+| 5 | `recomputeRecords` returns `RecordUpsert[]` | Returns `{ rows, changed, removed }` | Follows from #4: with a wholesale replace, "what moved" and "what disappeared" are different answers, and F09 needs both. |
+| 6 | §6.5's out-of-range worked case is **1.91** | **1.6** | Arithmetically forced by this plan's own coupled definition: the 28-day window *contains* the acute week, so spiking it to 40 km raises the chronic average to 25.0. The case's conclusion — a near-doubling clears 1.3 and fires — is unchanged. |
+| 7 | `__tests__/` and `__fixtures__/` under `lib/metrics` and `lib/records` | Flat `tests/metrics.*.test.ts` / `tests/records.*.test.ts`, fixtures in `tests/fixtures/` | Repo convention (F01's `vitest.config.ts`, and every suite F02–F05 wrote). Keeping fixtures out of `lib/` also keeps them out of the client bundle. |
+| 8 | `avgPaceByBucket['10k']` is **415.4 s/km** | **415** | `lib/metrics/pace.ts` returns whole seconds, as §8 specifies and as `runs.avg_pace_sec` stores. 415.4 is the pre-rounding arithmetic. |
+
+**Two additions this plan did not name:**
+
+- `getReviewedRunsWithChildren(userId)` in `lib/db/queries.ts` — F03's surface had no "every
+  reviewed run with its splits and zones" read, which is exactly what a wholesale recompute needs.
+  Three statements, one batch, `reviewed_at is not null` proved on all three (D16), asserted in
+  `tests/db.queries.reviewedOnly.test.ts`.
+- `lib/records/gateway.ts` — the real `RecordsGateway`. It is deliberately not re-exported from
+  `lib/records/index.ts`: it opens with `import 'server-only'`, and pulling it into every consumer
+  of `RECORD_CATALOG` would make the catalog unimportable from a client component.
+
+**Where F06 is called from:** `lib/derived/invalidate.ts`'s `onRunCommitted` — the seam F05 cut for
+exactly this. Records recompute synchronously in the commit request (§7.3), and a failure there is
+logged and swallowed, never allowed to cost a human their confirmed save.
+
+---
+
 ## 0. Why every number here is TypeScript, never the LLM
 
 `research/control.mjs` handed `glm-5.3` the canonical fixture's raw splits and the exact

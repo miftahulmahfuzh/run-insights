@@ -541,6 +541,78 @@ export async function getRunsBetween(
     .orderBy(asc(runs.occurredOn), asc(runs.startedAt))
 }
 
+/** One reviewed run and its children, as F06's record recompute reads them. */
+export interface ReviewedRunWithChildren extends Run {
+  splits: RunSplit[]
+  zones: RunZone[]
+}
+
+/**
+ * **Every reviewed run a user has, with its splits and zones — three statements, one `db.batch`,
+ * one snapshot.** F06's `recomputeRecords` is the only caller, and it needs the whole history:
+ * records are recomputed wholesale, never incremented (roadmap §4.5 / R-10), because a correction
+ * that drops a run below a qualifier can only be expressed by re-deriving the set from scratch.
+ *
+ * Reviewed-only (D16). A record set by an unconfirmed extraction is a record set by a number
+ * nobody vouched for.
+ *
+ * Three statements rather than one join: a join would multiply the run row by its eleven splits
+ * and five zones and hand back ~55 rows per run to be de-duplicated in TypeScript. At 17 runs a
+ * month the whole history is a few hundred rows across three flat result sets, and the batch
+ * makes them one consistent snapshot — a concurrent correction cannot land between the splits
+ * read and the zones read.
+ */
+export async function getReviewedRunsWithChildren(
+  userId: string,
+): Promise<ReviewedRunWithChildren[]> {
+  const reviewedRunOf = (child: typeof runSplits | typeof runZones) =>
+    exists(
+      db
+        .select({ ok: sql`1` })
+        .from(runs)
+        .where(and(eq(runs.id, child.runId), eq(runs.userId, userId), isNotNull(runs.reviewedAt))),
+    )
+
+  const [runRows, splitRows, zoneRows] = await db.batch([
+    db
+      .select()
+      .from(runs)
+      .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt)))
+      .orderBy(asc(runs.occurredOn), asc(runs.startedAt)),
+
+    db
+      .select()
+      .from(runSplits)
+      .where(reviewedRunOf(runSplits))
+      .orderBy(asc(runSplits.runId), asc(runSplits.km)),
+
+    db
+      .select()
+      .from(runZones)
+      .where(reviewedRunOf(runZones))
+      .orderBy(asc(runZones.runId), asc(runZones.zone)),
+  ])
+
+  const splitsByRun = new Map<string, RunSplit[]>()
+  for (const s of splitRows) {
+    const list = splitsByRun.get(s.runId)
+    if (list) list.push(s)
+    else splitsByRun.set(s.runId, [s])
+  }
+  const zonesByRun = new Map<string, RunZone[]>()
+  for (const z of zoneRows) {
+    const list = zonesByRun.get(z.runId)
+    if (list) list.push(z)
+    else zonesByRun.set(z.runId, [z])
+  }
+
+  return runRows.map((run) => ({
+    ...run,
+    splits: splitsByRun.get(run.id) ?? [],
+    zones: zonesByRun.get(run.id) ?? [],
+  }))
+}
+
 export interface MonthlyTotal extends RunAggregate {
   month: MonthKey
 }

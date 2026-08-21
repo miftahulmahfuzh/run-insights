@@ -4,7 +4,8 @@ Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade ana
 run, that week, and that month.
 
 **[runins.site](https://runins.site)** · v0.1.0 · shipped: **F01** foundation, **F03** data layer, **F02** auth &
-profile, **F04** ingest & vision extraction, **F05** review & correction · next: F06 metrics & records
+profile, **F04** ingest & vision extraction, **F05** review & correction, **F06** metrics & records ·
+next: F08 views, charts & trends
 
 ```
 1–3 screenshots  ──►  glm-4.6v extraction  ──►  REVIEW & CORRECT  ──►  runs
@@ -78,6 +79,36 @@ from the data rather than from the process that produced the error.
 
 The canonical fixture passes all four, and `tests/review.checks.test.ts` holds them to both
 directions: green on the real ground truth, red on the misread that actually happened.
+
+---
+
+## Every number is computed in TypeScript
+
+`research/control.mjs` handed `glm-5.3` the canonical fixture's raw splits **and the exact
+formulas**, and asked it to do six pieces of arithmetic. It got two wrong, and one of them was not
+a rounding slip:
+
+| Metric | LLM returned | Truth |
+|---|---|---|
+| aerobic decoupling % | **−14.1** | **+12.35** |
+| % time in Z4+Z5 | 88.3 | 90.60 |
+
+The decoupling sign is **backwards**. Shipped as-is, the narrative would have congratulated this
+runner on aerobic fitness that "held up" during the exact run where their heart rate pinned at 90%
+of max while their pace faded from 6'36" to 8'00". So `lib/metrics/*` computes every number, and
+the model's only permitted operation on one is to copy it into a sentence.
+
+The canonical fixture pins eleven values and fires exactly six flags — `HIGH_DECOUPLING`,
+`TOO_MUCH_HARD`, `POSITIVE_SPLIT`, `CADENCE_FADE`, `VERY_HIGH_AVG_HR`, `FAST_START` — no more, no
+fewer. Two of those assertions are for values the code must NOT produce: a cadence fade of −9 spm
+and a split drift of +35.2 s/km, which are what you get if the final **partial** kilometre is
+allowed into a statistic that aggregates split rows (D14). The wrong cadence number is exactly
+half the true −18 and looks entirely plausible on a chart, which is why the tests pin constants
+rather than signs.
+
+Personal records are recomputed wholesale on every commit, never incremented: a correction that
+drops a run below a qualifier has to be able to **remove** a record, and an upsert cannot express
+that (R-10).
 
 ---
 
