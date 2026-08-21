@@ -79,16 +79,6 @@ export function UploadPicker() {
   const filesRef = useRef(new Map<string, File>())
 
   /**
-   * Write to a tile, but only if it is still the generation that asked.
-   *
-   * Changing a kind restarts `process` on a tile whose previous `process` may still be in flight,
-   * and that older promise ends by writing `state: 'ready'` and a `blob` carrying the **stale**
-   * kind — clobbering the newer one with a lie about provenance. The generation is compared
-   * *inside* the updater, against the state React is about to reduce over, so it can never read a
-   * stale `gen` out of a closure. A superseded upload's result is dropped; its bytes sit
-   * unreferenced in Blob, which is already what happens to the blob a kind change abandons.
-   */
-  /**
    * One `process` start per (tile, generation) — belt and braces over the purity fix below.
    *
    * The duplicate uploads card #6 measured came from `onPick` launching `process` inside a
@@ -110,6 +100,16 @@ export function UploadPicker() {
    */
   const started = useRef(new Set<string>())
 
+  /**
+   * Write to a tile, but only if it is still the generation that asked.
+   *
+   * Changing a kind restarts `process` on a tile whose previous `process` may still be in flight,
+   * and that older promise ends by writing `state: 'ready'` and a `blob` carrying the **stale**
+   * kind — clobbering the newer one with a lie about provenance. The generation is compared
+   * *inside* the updater, against the state React is about to reduce over, so it can never read a
+   * stale `gen` out of a closure. A superseded upload's result is dropped; its bytes sit
+   * unreferenced in Blob, which is already what happens to the blob a kind change abandons.
+   */
   const patchIfCurrent = useCallback((id: string, gen: number, next: Partial<Tile>) => {
     setTiles((current) =>
       current.map((t) => (t.id === id && t.gen === gen ? { ...t, ...next } : t)),
