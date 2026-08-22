@@ -204,10 +204,26 @@ SHAPE_WIDTH = {
     "rounded triangle": Band(0.778, observed=22),
     "hexagon": Band(0.873, observed=22),
     "chevron": Band(0.844, observed=22),
-    # F25, records deck. Geometric estimate: a pentagon's widest chord fills its
-    # bounding box the way a hexagon's left and right points do, while its apex
-    # tapers the way a shield's shoulders do — so it should land between the two.
-    "pentagon": Band(0.855, observed=0),
+    # F25, records deck. Shipped as a geometric estimate of 0.855 — a pentagon's
+    # widest chord fills its bounding box the way a hexagon's points do while its
+    # apex tapers like a shield's shoulders, so it should land between the two —
+    # and re-derived here from all ten promoted records the same session, which
+    # is the point of the `observed` field. The guess was 4.3% low.
+    #
+    #   longest_distance 0.807   most_kcal        0.875   longest_duration 0.932
+    #   highest_cadence  0.864   fastest_km_split 0.885   fastest_pace_10k 0.964
+    #   best_paced_run   0.869   fastest_pace_5k  0.901   most_elevation   0.964
+    #   highest_max_hr   0.869
+    #
+    # THE PENTAGON FAMILY IS THE WIDEST-SPREAD IN EITHER DECK: 15.7 points,
+    # against hexagon 3.5, shield 2.3, chevron 5.1 and rounded triangle 8.6. That
+    # is a property of the SCENES rather than of the shape — this deck ranges from
+    # a kite filling only the upper half to a cable car spanning the full width,
+    # where the badge deck's scenes are more uniformly massed. The worst member
+    # (`longest_distance`, 9.7% from the mean) therefore sits just inside the ±10%
+    # tolerance, and the tolerance is NOT widened to give it room: it passes, and
+    # an eleventh record that misses is exactly what this check is for.
+    "pentagon": Band(0.893, observed=10),
 }
 # ±10%, which passes every promoted badge (worst: redline_republic, a genuinely
 # wide rounded triangle at 8.5% from its family mean) and still catches a gross
