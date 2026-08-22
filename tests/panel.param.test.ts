@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  decodePanelDates,
   decodePanelSelection,
+  encodePanelDates,
   encodePanelSelection,
+  PANEL_DATES_PARAM,
   PANEL_PARAM,
   panelKeyFor,
 } from '@/lib/panel/param'
@@ -83,5 +86,66 @@ describe('reading a selection from one surface', () => {
     expect(panelKeyFor(badge, 'badge')).toBe('tourist')
     expect(panelKeyFor(badge, 'record')).toBeNull()
     expect(panelKeyFor(null, 'badge')).toBeNull()
+  })
+})
+
+describe('the date-list parameter — F27 round 2', () => {
+  it('is a second, subordinate parameter and not a second surface', () => {
+    /*
+     * Round 1 read this module's "one parameter, not one per surface" note as forbidding a second
+     * parameter outright, kept the expander in `useState`, and shipped a back-swipe that returned to
+     * a collapsed list.
+     *
+     * That note is about two PARALLEL surfaces: `?badge=` beside `?record=` makes "both panels open"
+     * a representable state. `dates` is subordinate — it names no surface, opens nothing on its own,
+     * and cannot make a second dialog appear. The exclusivity the note protects is `panel`'s, and it
+     * is untouched.
+     */
+    expect(PANEL_DATES_PARAM).toBe('dates')
+    expect(PANEL_DATES_PARAM).not.toBe(PANEL_PARAM)
+  })
+
+  it('round trips an expanded list', () => {
+    expect(encodePanelDates(true)).toBe('1')
+    expect(decodePanelDates(encodePanelDates(true))).toBe(true)
+  })
+
+  it('drops the parameter entirely rather than writing a falsy value', () => {
+    // `?dates=0` on every collapsed panel would be noise in the address bar and a second spelling of
+    // "shut" for the decoder to know about.
+    expect(encodePanelDates(false)).toBeNull()
+    expect(decodePanelDates(null)).toBe(false)
+  })
+
+  it('treats `1` as the only truth, so a hand-typed URL fails closed', () => {
+    // Anything else is shut, which is the safe direction: the panel opens the way a tap would leave
+    // it rather than the way a typo asked for.
+    for (const raw of ['', '0', 'true', 'yes', 'on', '2', '01', ' 1']) {
+      expect(decodePanelDates(raw)).toBe(false)
+    }
+    expect(decodePanelDates(undefined)).toBe(false)
+  })
+
+  it('rides alongside a selection in one query string', () => {
+    const params = new URLSearchParams()
+    params.set(PANEL_PARAM, encodePanelSelection({ kind: 'badge', key: 'tourist' }))
+    const dates = encodePanelDates(true)
+    if (dates !== null) params.set(PANEL_DATES_PARAM, dates)
+    expect(params.toString()).toBe('panel=badge.tourist&dates=1')
+
+    const back = new URLSearchParams(params.toString())
+    expect(decodePanelSelection(back.get(PANEL_PARAM))).toEqual({ kind: 'badge', key: 'tourist' })
+    expect(decodePanelDates(back.get(PANEL_DATES_PARAM))).toBe(true)
+  })
+
+  it('does not disturb the selection codec — a dotted key is still one key', () => {
+    /* This is why the flag is its own parameter rather than a suffix on the value. A key may contain
+     * a dot and `decodePanelSelection` splits on the FIRST separator only, so `badge.a.b` is the key
+     * `a.b` — and a `badge.a.b.dates` grammar could not tell that from the key `a.b` expanded. */
+    expect(decodePanelSelection('badge.a.b')).toEqual({ kind: 'badge', key: 'a.b' })
+    expect(decodePanelSelection('badge.tourist.dates')).toEqual({
+      kind: 'badge',
+      key: 'tourist.dates',
+    })
   })
 })

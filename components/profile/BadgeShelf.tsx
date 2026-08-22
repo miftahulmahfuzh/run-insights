@@ -68,7 +68,7 @@ export function BadgeShelf({ shelf }: { shelf: Shelf }) {
      What the URL buys is the back gesture: opening a panel pushes a history entry, so a swipe from
      the phone's left edge closes the panel and stays on /me, and coming back from a run restores
      it. See `components/ui/usePanelParam.ts` for why that is `pushState` and not `router.push`. */
-  const { selection, open, close } = usePanelParam()
+  const { selection, expanded, open, setExpanded, close } = usePanelParam()
   const openKey = panelKeyFor(selection, 'badge')
   const selected = shelf.entries.find((entry) => entry.key === openKey) ?? null
 
@@ -97,8 +97,18 @@ export function BadgeShelf({ shelf }: { shelf: Shelf }) {
         ))}
       </ul>
 
-      {/* One dialog for twenty-two rows, driven by the selection — not one per row. */}
-      <BadgeDialog entry={selected} onClose={close} />
+      {/* One dialog for twenty-two rows, driven by the selection — not one per row.
+
+          Since F27 round 2 the panel's earn-date list is in the URL as well, for the same reason
+          the selection is: React state is invisible to the back gesture, so a runner who expanded
+          the dates, tapped one and swiped back came home to a collapsed list. It rides the same
+          history entry rather than pushing its own — see `usePanelParam`. */}
+      <BadgeDialog
+        entry={selected}
+        datesExpanded={expanded}
+        onToggleDates={() => setExpanded(!expanded)}
+        onClose={close}
+      />
     </div>
   )
 }
