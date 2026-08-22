@@ -57,3 +57,8 @@ assets/icon/_candidates/
 # Python bytecode from the tools/ scripts
 __pycache__/
 *.pyc
+
+# F19 capture harness scratch. The manifest names a throwaway demo user and the kept .webm files
+# are recording intermediates — what IS committed is docs/media/, the build product.
+scripts/capture/.manifest.json
+scripts/capture/*.webm
