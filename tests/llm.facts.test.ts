@@ -8,6 +8,7 @@ import {
   buildWeekFacts,
   summarisePreviousInsight,
   type FlagFact,
+  type RecentRunInput,
 } from '@/lib/llm/facts'
 import { computeSessionMetrics, evaluateSessionFlags, type Flag, type HrMax } from '@/lib/metrics'
 import { canonicalRecordRun, canonicalSession } from './fixtures/canonicalRun'
@@ -29,7 +30,9 @@ const ESTIMATED_HR_MAX: HrMax = { bpm: 187, source: 'estimated' }
 const NOW = new Date('2026-08-21T00:00:00Z')
 const PROFILE = { birthYear: 1996, heightCm: 169 }
 
-function canonicalFacts(overrides: { intent?: 'easy' | 'tempo' | null } = {}) {
+function canonicalFacts(
+  overrides: { intent?: 'easy' | 'tempo' | null; recentRuns?: RecentRunInput[] } = {},
+) {
   const metrics = computeSessionMetrics(canonicalSession, ESTIMATED_HR_MAX)
   const flags = evaluateSessionFlags(
     metrics,
@@ -53,10 +56,51 @@ function canonicalFacts(overrides: { intent?: 'easy' | 'tempo' | null } = {}) {
     flags,
     splits: canonicalSession.splits,
     profile: PROFILE,
+    recentRuns: overrides.recentRuns,
     promptVersion: 1,
     now: NOW,
   })
 }
+
+/**
+ * Three earlier runs, newest first, as `getReviewedRunsBefore` returns them. The canonical
+ * session is 2026-08-20, so the gaps below are 6, 13 and 191 days — the last one deliberately a
+ * layoff, because F28 chose a count with NO calendar bound and the row that a bound would have
+ * hidden is the one worth pinning.
+ */
+const RECENT: RecentRunInput[] = [
+  {
+    occurredOn: '2026-08-14',
+    distanceM: 8020,
+    durationSec: 3300,
+    avgPaceSec: 411,
+    avgHr: 168,
+    intent: 'easy',
+    zones: [
+      { zone: 2, durationSec: 1200 },
+      { zone: 3, durationSec: 1800 },
+      { zone: 4, durationSec: 300 },
+    ],
+  },
+  {
+    occurredOn: '2026-08-07',
+    distanceM: 10_050,
+    durationSec: 4100,
+    avgPaceSec: 408,
+    avgHr: null,
+    intent: null,
+    zones: [],
+  },
+  {
+    occurredOn: '2026-02-10',
+    distanceM: 5000,
+    durationSec: 1800,
+    avgPaceSec: 360,
+    avgHr: 175,
+    intent: 'race',
+    zones: [{ zone: 5, durationSec: 1800 }],
+  },
+]
 
 describe('buildSessionFacts — the canonical run', () => {
   const facts = canonicalFacts()
@@ -120,6 +164,77 @@ describe('buildSessionFacts — the canonical run', () => {
     const total = facts.computed.zoneBreakdown.reduce((sum, z) => sum + z.pct, 0)
     expect(total).toBeGreaterThan(99.5)
     expect(total).toBeLessThan(100.5)
+  })
+})
+
+/**
+ * F28 / card #36. The production failure this replaces: the narrator saw `runsPerWeek` and
+ * nothing else, and spent three of its four prose fields saying "once a week". These assertions
+ * are about the payload half of the fix — that the history exists, that the model can read the
+ * spacing off it without doing arithmetic, and that adding it misses the cache.
+ */
+describe('recentRuns — the history the narrator reads (F28)', () => {
+  const facts = canonicalFacts({ recentRuns: RECENT })
+
+  it('is empty, never null, when there is no earlier reviewed run', () => {
+    expect(canonicalFacts().recentRuns).toEqual([])
+  })
+
+  it('keeps the query order — newest first, so daysBefore ascends', () => {
+    expect(facts.recentRuns.map((r) => r.daysBefore)).toEqual([6, 13, 191])
+  })
+
+  it('precomputes the gap rather than leaving date arithmetic to the model', () => {
+    // HARD RULE #1 is "do NOT compute new numbers". A payload of bare dates would be asking the
+    // model to break it in order to say anything at all about frequency.
+    expect(facts.recentRuns[0]).toMatchObject({ date: 'Fri, 14 Aug 2026', daysBefore: 6 })
+    expect(facts.recentRuns[2]).toMatchObject({ date: 'Tue, 10 Feb 2026', daysBefore: 191 })
+  })
+
+  it('formats through lib/format.ts, exactly as the session block does', () => {
+    expect(facts.recentRuns[0]).toMatchObject({
+      distanceKm: 8.02,
+      duration: '55:00',
+      avgPace: `6'51"/km`,
+      avgHr: 168,
+      intent: 'easy',
+    })
+  })
+
+  it('reduces zone durations to one hard share, rounded like every other percentage', () => {
+    // 300 / 3300 = 9.0909…%, and the 300 s in zone 4 is the only hard time in that run.
+    expect(facts.recentRuns[0]!.percentTimeInZone4And5).toBe(9.1)
+    expect(facts.recentRuns[2]!.percentTimeInZone4And5).toBe(100)
+  })
+
+  it('reports no hard share at all when a run carries no zone rows', () => {
+    // null, never 0 — "no time above zone 3" and "this watch recorded no zones" must not read
+    // the same, which is R-9's rule one metric over.
+    expect(facts.recentRuns[1]!.percentTimeInZone4And5).toBeNull()
+  })
+
+  it('carries no splits for an earlier run — §1.1 admits one full child inclusion, and this run spends it', () => {
+    for (const recent of facts.recentRuns) {
+      expect(recent).not.toHaveProperty('splits')
+    }
+    expect(facts.splits).toHaveLength(11)
+  })
+
+  it('changes facts_hash, so every cached insight re-narrates with the history', () => {
+    expect(factsHash(canonicalFacts())).not.toBe(factsHash(facts))
+  })
+
+  it('changes facts_hash when the history itself moves', () => {
+    expect(factsHash(canonicalFacts({ recentRuns: RECENT.slice(0, 2) }))).not.toBe(factsHash(facts))
+    // Order is meaningful here for the same reason it is for splits: reversing it would tell the
+    // model the layoff was last week.
+    expect(factsHash(canonicalFacts({ recentRuns: [...RECENT].reverse() }))).not.toBe(
+      factsHash(facts),
+    )
+  })
+
+  it('still mentions no body weight with the history attached (D15 / R-28)', () => {
+    expect(JSON.stringify(facts).toLowerCase()).not.toContain('weight')
   })
 })
 

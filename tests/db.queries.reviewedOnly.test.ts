@@ -192,6 +192,81 @@ describe('reviewed-only queries', () => {
     expect(fake.queries).toHaveLength(1)
   })
 
+  it('getReviewedRunsBefore filters reviewed_at, EXCLUDES the run itself, and limits', async () => {
+    fake.enqueue([['r1', '2026-08-14', 8020, 3300, 411, 168, 'easy']], [])
+    const before = await q.getReviewedRunsBefore(
+      'u1',
+      { occurredOn: '2026-08-22', startedAt: '06:12:00' },
+      8,
+    )
+    expect(before).toEqual([
+      {
+        id: 'r1',
+        occurredOn: '2026-08-14',
+        distanceM: 8020,
+        durationSec: 3300,
+        avgPaceSec: 411,
+        avgHr: 168,
+        intent: 'easy',
+        zones: [],
+      },
+    ])
+
+    const first = fake.sqlAt(0)
+    expect(first).toContain('"reviewed_at" is not null')
+    // STRICTLY `<`, where getReviewedRunWindow is `<=`. The run being narrated must not appear in
+    // its own history — it would be in the payload twice and could be quoted as precedent for
+    // itself. A `<=` here would be silent: the array would just be one row longer.
+    expect(first).toMatch(/coalesce\([^)]*\) *\) < \(/)
+    expect(first).not.toContain(') <= (')
+    expect(first).toContain('limit $')
+  })
+
+  it('getReviewedRunsBefore reads zones, not splits, and scopes them through the owner', async () => {
+    fake.enqueue(
+      [
+        ['r1', '2026-08-14', 8020, 3300, 411, 168, 'easy'],
+        ['r2', '2026-08-07', 10_050, 4100, 408, 171, null],
+      ],
+      [
+        ['r1', 3, 1800],
+        ['r1', 4, 1500],
+        ['r2', 2, 4100],
+      ],
+    )
+    const before = await q.getReviewedRunsBefore(
+      'u1',
+      { occurredOn: '2026-08-22', startedAt: null },
+      8,
+    )
+    expect(before.map((r) => r.zones)).toEqual([
+      [
+        { zone: 3, durationSec: 1800 },
+        { zone: 4, durationSec: 1500 },
+      ],
+      [{ zone: 2, durationSec: 4100 }],
+    ])
+
+    const second = fake.sqlAt(1)
+    expect(second).toContain('"run_zones"."run_id" in')
+    expect(second).not.toContain('run_splits')
+    expect(second).toMatch(/"runs"\."user_id" = \$\d/)
+  })
+
+  it('getReviewedRunsBefore refuses an unbounded limit', async () => {
+    await expect(
+      q.getReviewedRunsBefore('u1', { occurredOn: '2026-08-22', startedAt: null }, 0),
+    ).rejects.toThrow(RangeError)
+  })
+
+  it('getReviewedRunsBefore issues no second statement when there is no earlier run', async () => {
+    fake.enqueue([])
+    expect(
+      await q.getReviewedRunsBefore('u1', { occurredOn: '2026-08-22', startedAt: null }, 8),
+    ).toEqual([])
+    expect(fake.queries).toHaveLength(1)
+  })
+
   it('countReviewedRunsStartedBefore filters reviewed_at and compares as a time', async () => {
     // A mapped select comes back positionally from the driver — see tests/support/fakeDb.ts.
     fake.enqueue([['3']])
@@ -276,6 +351,7 @@ describe('the invariant is complete', () => {
       'getObservedMaxHrExcludingRun',
       'getObservedMaxHrRun',
       'getReviewedRunWindow',
+      'getReviewedRunsBefore',
       'getReviewedRunsWithChildren',
       'getRunsBetween',
       'getRunsInIsoWeek',

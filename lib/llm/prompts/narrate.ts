@@ -11,13 +11,21 @@ import type { InsightScope } from '@/lib/db/schema'
  * That file's `SYSTEM` constant is the only prompt in this repo with a measured output attached
  * (`research/results-narrative.json`: 1,743 in / 546 out, a `verdict` a human agrees with, and
  * every number it quotes present in the facts it was handed). Rewriting it for elegance would
- * throw that evidence away. Three things were added and nothing was removed:
+ * throw that evidence away. Four things were added and nothing was removed:
  *
  *   1. the weight exclusion (D15 / R-28) — the research script's `profile` carried `weightKg`,
  *      and this feature deliberately does not;
  *   2. rules 6–7, the intent write-back loop (plan §4) — the reason `runs.intent` exists;
  *   3. the "observed HRmax may be stated plainly" clause, because R-11 froze a *source* into the
- *      payload and a prompt that calls every HRmax a formula would contradict it.
+ *      payload and a prompt that calls every HRmax a formula would contradict it;
+ *   4. READING THE HISTORY (F28, version 2), against a MEASURED failure in production. On the
+ *      22 Aug 2026 run the model spent three of its four prose fields on one scalar —
+ *      "on a once-a-week schedule", "with only one run per week", "at roughly one run per week"
+ *      — because `weeklyContext.runsPerWeek` was the ONLY history in the payload and nothing
+ *      told it that a 28-day average is not a schedule. `recentRuns` is the fix on the facts
+ *      side; the block is the fix on the prompt side, and neither alone is enough. The last
+ *      rule in it ("do not build more than one part of the report on the same piece of
+ *      context") is the literal defect, written down.
  *
  * ── PROMPT VERSIONS ARE PART OF THE CACHE KEY ─────────────────────────────────────────────────
  * `facts_hash` is a hash of the numbers. Edit a prompt and the numbers do not move, so the hash
@@ -30,11 +38,11 @@ import type { InsightScope } from '@/lib/db/schema'
  * test can catch — only review can.
  */
 
-export const SESSION_PROMPT_VERSION = 1
+export const SESSION_PROMPT_VERSION = 2
 export const WEEK_PROMPT_VERSION = 1
 export const MONTH_PROMPT_VERSION = 1
 
-export const SESSION_SYSTEM_PROMPT = `You are a running coach reading ONE workout from a recreational runner. You see only the numbers in the JSON below — nothing else is known about this runner.
+export const SESSION_SYSTEM_PROMPT = `You are a running coach reading ONE workout from a recreational runner, together with a short history of the runs before it. You see only the numbers in the JSON below — nothing else is known about this runner.
 
 HARD RULES
 - Every number you state must appear verbatim in the JSON you are given. Do NOT compute
@@ -54,6 +62,25 @@ HARD RULES
   run with no obvious reason, or a very fast start), "questionForRunner" should ask whether
   that was intentional. This is the single most useful thing you can learn that the numbers
   cannot tell you.
+
+READING THE HISTORY
+- "recentRuns" is the runs immediately BEFORE this one, newest first. Each carries its own
+  date and "daysBefore", the whole number of days between it and the run you are reading.
+  Use those dates and gaps when you talk about spacing or frequency — they are the actual
+  record of when this runner ran.
+- Judge this run AGAINST those runs, not against an imagined typical runner. Whether this
+  effort is a departure or more of the same is the most useful thing the history tells you,
+  and it changes the advice completely: a third consecutive hard run and the first hard run
+  in a month need opposite things.
+- An EMPTY "recentRuns" means there is no earlier reviewed run on record. It does NOT mean
+  the runner does not run. Say nothing about their frequency, history or base in that case.
+- "weeklyContext.runsPerWeek" is an AVERAGE over the trailing 28 days, not a schedule and
+  not a plan. Four runs in one week followed by three empty weeks reads as 1.0 there. Never
+  describe it as what the runner "does" or as a routine they are on. Mention it AT MOST
+  ONCE in the entire report, and prefer the dates in "recentRuns" whenever you can.
+- Do not build more than one part of the report on the same piece of context. If the
+  headline already leans on a fact about this runner's history, "whatHappened" and the
+  observations must stand on something else.
 
 Return a JSON object via the report tool:
 {

@@ -118,6 +118,30 @@ describe('narrateWith', () => {
     expect(userTurn).not.toContain('promptVersion')
   })
 
+  it('sends recentRuns to the model, and the session prompt tells it what they are (F28)', async () => {
+    const { client, calls } = fakeClient([message(VALID)])
+    const withHistory = {
+      session: { distanceKm: 10.67 },
+      recentRuns: [{ date: 'Fri, 14 Aug 2026', daysBefore: 6, distanceKm: 8.02 }],
+      promptVersion: 3,
+    } as unknown as SessionNarrateFacts
+
+    await narrateWith(client, 'session', withHistory, { model: 'glm-5.3' })
+
+    // `promptVersion` is stripped from the user turn; nothing else is, and the history must not
+    // become a second exception — a payload the model never sees fixes nothing.
+    const userTurn = calls[0]!.body.messages[0]!.content as string
+    expect(userTurn).toContain('recentRuns')
+    expect(userTurn).toContain('Fri, 14 Aug 2026')
+    expect(userTurn).toContain('daysBefore')
+
+    // Card #36: the facts half and the prompt half are one fix. An array the prompt never
+    // mentions is an array the model has no instruction to prefer over `runsPerWeek`.
+    const system = calls[0]!.body.system as string
+    expect(system).toContain('recentRuns')
+    expect(system).toContain('runsPerWeek')
+  })
+
   it('gives week and month a larger token ceiling than a session', async () => {
     for (const [scope, maxTokens] of [
       ['week', 1_600],
