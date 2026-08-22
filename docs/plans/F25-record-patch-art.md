@@ -373,17 +373,58 @@ export const RECORD_ART: Record<RecordKey, RecordArt> = { … }
 
 ---
 
-## 10. Acceptance
+## 10. Acceptance — as built
 
-- [ ] Ten masters at **exactly 1024×768**, ten manifest entries.
-- [ ] `npm run badges:check` clean for **both** decks — hashes and twill recomputed from the
-      masters, not trusted from the manifest.
-- [ ] `npm run typecheck` **fails** when a record key has no art. Proven once by deleting an entry,
-      then reverted.
-- [ ] Each patch legible at the 56 px shelf size and at panel size — the skill's judgement step,
-      not a metric.
-- [ ] The badge deck is untouched: 22 masters unchanged, STYLE BLOCK v2 byte-identical, every
-      undecorated `gen_badge_art.py` / `make_badge_assets.py` command behaving as before.
-- [ ] `python3 taskcore.py`-style selftests: `decks.py`, `gen_badge_art.py`, `check_badge_art.py`
-      and `make_badge_assets.py` all pass offline.
-- [ ] The §6 probe's measured number is written into this file, whichever way it went.
+- [x] **Ten masters at exactly 1024×768**, generated natively at 4:3. No `extend_badge_art.py`
+      pass, as the card asked.
+- [x] **Ten manifest entries** in `lib/records/record-art.ts`, a total `Record<RecordKey, RecordArt>`.
+- [x] **`npm run badges:check` clean for both decks** — `badges is complete: 22 patches, style v2`
+      and `records is complete: 10 patches, style v2`, with hashes and twill recomputed from the
+      masters rather than trusted from the manifest.
+- [x] **`npm run typecheck` fails when a record key has no art.** Proved by deleting
+      `best_paced_run` from `RECORD_ART`:
+      `error TS2741: Property 'best_paced_run' is missing … but required in type
+      'Record<RecordKey, RecordArt>'`. Reverted.
+- [x] **Each patch judged at 40 px and 220 px** on its theme strip before promotion — every one,
+      which is how the pizzas were caught while every number read green.
+- [x] **The badge deck is untouched.** 22 masters unchanged, STYLE BLOCK v2 byte-identical,
+      `make_badge_assets.py` with no flags regenerates `lib/badges/badge-art.ts` and
+      `public/badges/` with a **zero-byte diff**.
+- [x] **`python3 tools/decks.py --selftest`** green, including the assertion that `decks.json`
+      is in step with the Python.
+- [x] **The §6 probe's measured number is written down** — and so is the far more important
+      finding it was nearly confounded by (§4).
+
+### What this cost, and where it went
+
+**Twenty-six generations, ~$1.04**, against the card's estimate of ~$0.40 for ten. The overrun is
+almost entirely diagnosis, not art:
+
+| | generations |
+|---|---|
+| isolating the addendum failure (§4), including one badge-deck control | 13 |
+| the ten promoted patches | 13 |
+
+Nine of the thirteen art generations were first-time promotions. The four re-rolls were three for
+check 9b twill tone and one for check 8a centring — none for a wrong subject, once the addendum
+was gone.
+
+### The two standing notes
+
+Both live in the sidecars rather than in `style.md`, because §4 measured that the style block
+cannot be added to. They are the chevron precedent applied to a whole deck:
+
+- **The twill note.** The records deck ran consistently lighter than the anchor on check 9b, up to
+  9.8 against a 6.0 ceiling. Every generation carries a line asking for a deeper navy margin —
+  **and it needs tuning per patch**, because the strongest wording pushed `longest_distance` and
+  `fastest_km_split` *under* check 3's floor of 16 sRGB. Three keys use a middle wording.
+- **The centring note**, added after `most_kcal` failed 8a at 3.4% off centre.
+
+A future v3 that regenerates both decks should absorb both into the block, exactly as the chevron
+note says of itself.
+
+### Left for #25
+
+`RECORD_ART` is ready to consume: `src`, `small`, `sha256`, `twill`, `styleVersion` per key, plus
+`RECORD_ART_WIDTH` / `RECORD_ART_HEIGHT` / `RECORD_ART_SMALL_SIZE`. `/records/*` is served
+`immutable` for a year, which the content hashes license.
