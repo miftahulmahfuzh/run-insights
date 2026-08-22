@@ -24,6 +24,13 @@ import type { RecordRowView } from './RecordsTable'
  * arrives as a link (F24's `RunDateLink`), so the navigation the row used to be *is* the panel's
  * date rather than a capability the section lost.
  *
+ * ── EVERY PANEL HAS THE SAME FOUR LINES (ROUND 2) ───────────────────────────────────────────
+ * Eyebrow, title, value, date, and a fourth line about the value this one displaced. That last one
+ * is the only one with two branches and it always renders one of them, which is the round-2 fix:
+ * with nine records carrying "Beat … to get here" and the tenth carrying nothing, the tenth read as
+ * broken rather than as unbeaten. A uniform slot is what makes the data legible — see the branch
+ * itself for why the empty case says "recorded" and not "first".
+ *
  * ── THE COPY IS THE CATALOG'S, VERBATIM ─────────────────────────────────────────────────────
  * `RECORD_LABELS[key]` and `formatRecordValue` — the same two functions the row calls, not a
  * panel-sized rewording of them. `lib/records/labels.ts` prints the qualifier *inside* the label
@@ -106,14 +113,38 @@ function Body({ row, titleId }: { row: RecordRowView; titleId: string }) {
           same fact with no room to be one. "Beat" needs no direction check: beating a `max` key is
           further, beating a `min` key is faster, and the word is right for both.
 
-          Absent where the current holder is the first ever, which is `RecordsTable`'s own stated
-          convention for this field — there is nothing to compare against, so nothing is printed.
-          The panel does not announce the absence; see `docs/plans/F26-record-row-and-panel.md` §7
-          for the reading that lost and why. */}
-      {row.previousValue != null && (
+          ── ROUND 2: THE LINE IS ALWAYS HERE, BECAUSE ITS ABSENCE READ AS A BUG ──────────────────
+          Round 1 printed nothing when `previousValue` was null, on `RecordsTable`'s own convention
+          for the field and on the narrowest reading of the card. Checked against prod, that put nine
+          record panels with the line beside one without it, and the reporter's first reading of the
+          tenth was "what happened?" — a missing line in an otherwise uniform stack is a defect
+          report, not a silence. So both branches print, in the same slot, and the panel's shape no
+          longer depends on the data.
+
+          ── WHY NOT "THE FIRST ONE ON RECORD" ───────────────────────────────────────────────────
+          Because null does not mean first. `recomputeRecords` writes `previousValue` only on a pass
+          where the key CHANGED HANDS: a key whose first holder was never beaten keeps the null it
+          was born with, which is the honest case — but `records.run_id` is `ON DELETE CASCADE`, so
+          deleting the holding run takes the row and its history with it, and the next recompute sees
+          no `held` and writes null again for a key that demonstrably had a predecessor. A panel
+          claiming "the first one" would be stating something false in exactly that case.
+
+          "Recorded" is what carries the honesty, and it is the device this app already uses for it:
+          `EarnedDayList` says "2 earlier, dates not recorded" rather than inventing days to make two
+          numbers agree. Same shape of statement, same register. It is also the only wording that
+          does not contradict the runner's own screen — they can see they have other runs, so a line
+          reading "nothing to beat" would be answered by the shelf directly above it. This line is
+          about the RECORD's history, not about the run set.
+
+          Quieter than its sibling on purpose: `text-ink-3` where the "Beat …" branch is `text-ink-2`,
+          because the slot is uniform but the two lines do not carry the same amount. The same step
+          `EarnedDayList` puts between a real day and its own not-recorded line. */}
+      {row.previousValue != null ? (
         <p className="mt-3 text-[13px] font-medium text-ink-2">
           Beat {formatRecordValue(row.key, row.previousValue)} to get here.
         </p>
+      ) : (
+        <p className="mt-3 text-[13px] font-medium text-ink-3">No earlier value recorded.</p>
       )}
     </>
   )
