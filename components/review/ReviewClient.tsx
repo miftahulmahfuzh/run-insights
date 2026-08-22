@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Button, Card } from '@/components/ui'
 import { errorCopy } from '@/lib/schema/extractionResult'
 import { checkDraft, flaggedPaths as collectFlagged, isFlagged } from '@/lib/review/checks'
+import { commitStatusLine } from '@/lib/review/copy'
 import { diffCorrections, type ReviewDraft } from '@/lib/review/draft'
 import type { ReviewContext } from '@/lib/review/loadReview'
 import type { CommitReviewState } from '@/lib/review/schema'
@@ -209,16 +210,20 @@ export function ReviewClient({
        * The sticky bar. NEVER disabled for validation (plan §4): a greyed-out button with no
        * explanation is the least useful message an app can send. It always submits, and anything
        * wrong comes back attached to the field that caused it.
+       *
+       * Its status line is `aria-live="polite"` so the sentence reaches a screen reader without
+       * interrupting typing — the checks re-run on every keystroke, and `assertive` would talk over
+       * the field being corrected. The sentence itself is `commitStatusLine`, in `lib/review/copy`.
        */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-rule bg-paper/85 backdrop-blur-md">
         <div className="mx-auto w-full max-w-[470px] px-5 pt-3 pb-[calc(0.75rem+var(--safe-bottom))]">
           <p aria-live="polite" className="mb-2 text-center text-[11px] font-medium text-ink-3">
-            <CommitStatusLine
-              checks={checks}
-              editedCount={editedPaths.size}
-              mode={context.mode}
-              hasNumbers={draft.durationSec !== null}
-            />
+            {commitStatusLine({
+              failingCount: checks.filter((c) => !c.ok).length,
+              editedCount: editedPaths.size,
+              mode: context.mode,
+              hasNumbers: draft.durationSec !== null,
+            })}
           </p>
           <Button
             variant="primary"
@@ -239,43 +244,6 @@ export function ReviewClient({
       </div>
     </div>
   )
-}
-
-/**
- * The one line of state the reviewer needs before committing, announced politely so it reaches a
- * screen reader without interrupting typing.
- */
-function CommitStatusLine({
-  checks,
-  editedCount,
-  mode,
-  hasNumbers,
-}: {
-  checks: ReturnType<typeof checkDraft>
-  editedCount: number
-  mode: 'review' | 'edit'
-  hasNumbers: boolean
-}) {
-  const failing = checks.filter((c) => !c.ok).length
-  const edits = editedCount === 1 ? '1 correction' : `${editedCount} corrections`
-
-  if (!hasNumbers) return <>Fill in at least the distance and the duration.</>
-  if (failing > 0) {
-    return (
-      <>
-        {failing === 1 ? '1 check' : `${failing} checks`} still disagree
-        {editedCount > 0 && ` · ${edits}`} — save anyway if the screenshots say otherwise.
-      </>
-    )
-  }
-  if (editedCount === 0) {
-    return mode === 'edit' ? (
-      <>Nothing changed yet.</>
-    ) : (
-      <>Everything checks out. Nothing corrected.</>
-    )
-  }
-  return <>Everything checks out · {edits}.</>
 }
 
 /** D1, stated rather than assumed. Under R-1 there is not even a placeholder row to lose. */

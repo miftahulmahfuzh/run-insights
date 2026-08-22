@@ -2,10 +2,16 @@
  * F19 — drive the real app and photograph it.
  *
  *   node --env-file=.env.local scripts/capture/shoot.mjs [--commit] [--stills] [--gifs]
+ *                                                       [--only 03-review-banner,review]
  *                                                       [--origin http://localhost:3210]
  *
  * With no pass flags it runs all three. The dev server must already be up, and
  * `scripts/capture/seed-demo.mjs` must already have run.
+ *
+ * `--only` narrows a pass to named artifacts — see ARTIFACTS below. It is what makes a one-file
+ * re-shoot possible: F20 needed exactly `03-review-banner`, `04-review-split` and `review` after a
+ * copy fix changed one line of the sticky bar, and running the full passes to get them would have
+ * churned fifteen files and spent a real vision call on the hero.
  *
  * PASS 1 — COMMIT. Opens each seeded extraction at `/x/<id>` and clicks **Confirm & save**.
  * This is the pass that makes the data real: `commitReviewAction` validates the draft, writes the
@@ -64,6 +70,69 @@ const KEEP_VIDEO = process.argv.includes('--keep-video')
 const ALL_PASSES = ['commit', 'hero', 'warm', 'stills', 'gifs']
 const passes = ALL_PASSES.filter((p) => process.argv.includes(`--${p}`))
 const RUN = passes.length > 0 ? new Set(passes) : new Set(ALL_PASSES)
+
+/**
+ * Every artifact this file can produce, by the name it lands under in `docs/media/`.
+ *
+ * This list exists so `--only` can refuse a typo. A filter that silently matches nothing is the
+ * single most dangerous thing to add to this harness: every finding in F19's retrospective is a
+ * variant of "it wrote the files and reported success and the files were wrong", and a selective
+ * flag is a brand new way to manufacture exactly that.
+ */
+const ARTIFACTS = [
+  '01-runs',
+  '02-upload',
+  '03-review-banner',
+  '04-review-split',
+  '05-run-detail',
+  '06-insight',
+  '07-run-chart',
+  '08-run-splits',
+  '09-trends',
+  '10-trends-chart',
+  '11-badges',
+  '12-share',
+  'hero',
+  'review',
+  'trends',
+]
+
+const only = arg('only', null)
+const ONLY = only
+  ? new Set(
+      only
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean),
+    )
+  : null
+
+if (ONLY) {
+  const unknown = [...ONLY].filter((n) => !ARTIFACTS.includes(n))
+  if (unknown.length > 0) {
+    console.error(
+      `FAIL  --only names nothing this harness produces: ${unknown.join(', ')}\n` +
+        `      known artifacts: ${ARTIFACTS.join(', ')}`,
+    )
+    process.exit(2)
+  }
+}
+
+/** Is this artifact wanted? Everything is, unless `--only` says otherwise. */
+const wants = (name) => ONLY === null || ONLY.has(name)
+
+/**
+ * Is ANY of these wanted? Used to skip whole segments of the stills pass.
+ *
+ * Not merely a saving. The `05`-`08` segment reads run cards off `/` and THROWS
+ * `expected at least 2 runs on /` when the dataset has not been committed — so guarding the segment
+ * is what lets the review stills be taken against a seed-only database, with no commit pass, no
+ * hero and no warm.
+ */
+const wantsAny = (...names) => names.some(wants)
+
+/** What actually got written, so the run can be held to what was asked of it. */
+const produced = new Set()
 
 /**
  * The phone. `deviceScaleFactor: 2` because a 1x PNG of a 390 px screen looks soft the moment
@@ -143,8 +212,10 @@ async function waitForInsight(page, timeout = 90_000) {
 }
 
 async function shot(page, name, options = {}) {
+  if (!wants(name)) return
   const file = path.join(MEDIA, `${name}.png`)
   await page.screenshot({ path: file, ...options })
+  produced.add(name)
   log(`    ${path.relative(REPO, file)}`)
 }
 
@@ -280,117 +351,144 @@ async function shotOf(page, name, selector, { block = 'center' } = {}) {
 async function stills(context, browser) {
   const page = await context.newPage()
 
-  log('  / — the runs list')
-  await page.goto('/')
-  await settle(page)
-  await shot(page, '01-runs')
+  if (wants('01-runs')) {
+    log('  / — the runs list')
+    await page.goto('/')
+    await settle(page)
+    await shot(page, '01-runs')
+  }
 
-  log('  /upload — the picker')
-  await page.goto('/upload')
-  await settle(page)
-  await shot(page, '02-upload')
-
-  log('  /x — review: the banner, and the row it points at')
-  await page.goto(`/x/${manifest.flagged.extractionId}`)
-  await settle(page)
-  await shot(page, '03-review-banner')
-  /* The banner names the problem at the top of a screen whose splits table is ten scrolls down.
-   * Both halves are the feature — the claim and the row it localises to — so both are captured. */
-  await seek(page, () =>
-    [...document.querySelectorAll('td, th, div, span')].find(
-      (el) => el.childElementCount === 0 && el.textContent?.trim() === '7',
-    ),
-  )
-  await shot(page, '04-review-split')
-
-  await page.goto('/')
-  await settle(page)
-  /*
-   * Runs are chosen by DISTANCE, never by position in the list.
-   *
-   * The first version took `[0]` and `[1]` and assumed they were the 21 km long run and a typical
-   * 10 km. That held until the hero recording committed its own upload, which is dated a day later
-   * than anything the seed writes — so it became run [0], everything shifted by one, and the frames
-   * labelled "a typical 10 km" were silently taken on the 21 km run instead. Reading the distance
-   * off each card costs one evaluate and cannot drift.
-   */
-  const runs = await page.locator('a[href^="/r/"]').evaluateAll((els) =>
-    els
-      .map((el) => ({
-        href: el.getAttribute('href'),
-        km: Number(/([\d.]+)\s*km/.exec(el.textContent ?? '')?.[1] ?? NaN),
-      }))
-      .filter((r) => r.href && Number.isFinite(r.km)),
-  )
-  if (runs.length < 2) throw new Error(`expected at least 2 runs on /, found ${runs.length}`)
-  const longest = runs.reduce((a, b) => (b.km > a.km ? b : a))
-  /* The modal shape in this dataset, and the one the fixture measured. */
-  const typical = runs
-    .filter((r) => r.href !== longest.href)
-    .reduce((a, b) => (Math.abs(b.km - 10.5) < Math.abs(a.km - 10.5) ? b : a))
-  const runHrefs = [longest.href, typical.href]
-  log(`    longest ${longest.km} km · typical ${typical.km} km`)
+  if (wants('02-upload')) {
+    log('  /upload — the picker')
+    await page.goto('/upload')
+    await settle(page)
+    await shot(page, '02-upload')
+  }
 
   /*
-   * TWO run pages, not one, and the split is deliberate.
+   * THE REVIEW STILLS, and they are the cheapest two in the set.
    *
-   * The newest run is the 21.2 km long one: the richest insight in the set, a personal record and
-   * the widest zone spread, so it carries the header and the prose. But it has 22 split rows, and
-   * 22 x-axis ticks inside a 390 px chart overprint into an unreadable smear — a real rendering
-   * limit at long distances, not something to photograph as though it were the normal case.
-   *
-   * So the chart and the splits table come from the second run instead, a 10.9 km one with eleven
-   * rows. That is also the modal run in this dataset and the shape the fixture measured, so it is
-   * the honest thing to show a visitor rather than the flattering one.
+   * They read `manifest.flagged.extractionId` — the canonical fixture with its real misread
+   * injected — and the seed deliberately leaves that row UNCOMMITTED, which is the whole reason
+   * there is a review screen to photograph at all. So this segment needs a seed and a dev server
+   * and nothing else: no commit pass, no hero, no warm insights, no model call.
    */
-  log(`  ${runHrefs[0]} — run detail and its insight (the longest run)`)
-  await page.goto(runHrefs[0])
-  await settle(page, { charts: true })
-  await waitForInsight(page)
-  await shot(page, '05-run-detail')
-
-  log('    the insight card')
-  await seek(page, () => document.querySelector('[class*="min-h-[168px]"]'))
-  await shot(page, '06-insight')
-
-  log(`  ${runHrefs[1]} — the chart and the splits (a typical run)`)
-  await page.goto(runHrefs[1])
-  await settle(page, { charts: true })
-  await waitForInsight(page)
-
-  log('    the pace/HR chart — the one sanctioned dual axis')
-  await seek(page, () => document.querySelector('svg.recharts-surface'))
-  await shot(page, '07-run-chart')
+  if (wantsAny('03-review-banner', '04-review-split')) {
+    log('  /x — review: the banner, and the row it points at')
+    await page.goto(`/x/${manifest.flagged.extractionId}`)
+    await settle(page)
+    await shot(page, '03-review-banner')
+    /* The banner names the problem at the top of a screen whose splits table is ten scrolls down.
+     * Both halves are the feature — the claim and the row it localises to — so both are captured. */
+    await seek(page, () =>
+      [...document.querySelectorAll('td, th, div, span')].find(
+        (el) => el.childElementCount === 0 && el.textContent?.trim() === '7',
+      ),
+    )
+    await shot(page, '04-review-split')
+  }
 
   /*
-   * The SPLITS card, found by its own eyebrow rather than by `querySelector('table')`.
+   * EVERYTHING BELOW NEEDS A COMMITTED DATASET.
    *
-   * `table` matches the wrong one: `ChartFrame` renders every chart's table twin — the accessible
-   * text version of the same numbers, which is why F08 can ship a chart at all — and that table
-   * sits directly beneath the chart. Seeking it produced a frame byte-identical to the chart's.
+   * The block reads run cards off `/` and throws when there are fewer than two, so it is not
+   * skipped here as a saving — it is skipped so that `--only 03-review-banner,04-review-split` can
+   * run against a database that has only been seeded.
    */
-  log('    the splits card under it')
-  /* FIRST match, not last: the share panel further down has its own row labelled "Splits" (the
-   * screenshot kind), and `.pop()` scrolled past the table to the share controls. */
-  await seek(page, () =>
-    [...document.querySelectorAll('*')].find(
-      (el) => el.childElementCount === 0 && el.textContent?.trim() === 'Splits',
-    ),
-  )
-  await shot(page, '08-run-splits')
+  if (wantsAny('05-run-detail', '06-insight', '07-run-chart', '08-run-splits')) {
+    await page.goto('/')
+    await settle(page)
+    /*
+     * Runs are chosen by DISTANCE, never by position in the list.
+     *
+     * The first version took `[0]` and `[1]` and assumed they were the 21 km long run and a typical
+     * 10 km. That held until the hero recording committed its own upload, which is dated a day later
+     * than anything the seed writes — so it became run [0], everything shifted by one, and the frames
+     * labelled "a typical 10 km" were silently taken on the 21 km run instead. Reading the distance
+     * off each card costs one evaluate and cannot drift.
+     */
+    const runs = await page.locator('a[href^="/r/"]').evaluateAll((els) =>
+      els
+        .map((el) => ({
+          href: el.getAttribute('href'),
+          km: Number(/([\d.]+)\s*km/.exec(el.textContent ?? '')?.[1] ?? NaN),
+        }))
+        .filter((r) => r.href && Number.isFinite(r.km)),
+    )
+    if (runs.length < 2) throw new Error(`expected at least 2 runs on /, found ${runs.length}`)
+    const longest = runs.reduce((a, b) => (b.km > a.km ? b : a))
+    /* The modal shape in this dataset, and the one the fixture measured. */
+    const typical = runs
+      .filter((r) => r.href !== longest.href)
+      .reduce((a, b) => (Math.abs(b.km - 10.5) < Math.abs(a.km - 10.5) ? b : a))
+    const runHrefs = [longest.href, typical.href]
+    log(`    longest ${longest.km} km · typical ${typical.km} km`)
 
-  log('  /trends')
-  await page.goto('/trends')
-  await settle(page, { charts: true })
-  await shot(page, '09-trends')
-  await seek(page, () => document.querySelector('svg.recharts-surface'))
-  await shot(page, '10-trends-chart')
+    /*
+     * TWO run pages, not one, and the split is deliberate.
+     *
+     * The newest run is the 21.2 km long one: the richest insight in the set, a personal record and
+     * the widest zone spread, so it carries the header and the prose. But it has 22 split rows, and
+     * 22 x-axis ticks inside a 390 px chart overprint into an unreadable smear — a real rendering
+     * limit at long distances, not something to photograph as though it were the normal case.
+     *
+     * So the chart and the splits table come from the second run instead, a 10.9 km one with eleven
+     * rows. That is also the modal run in this dataset and the shape the fixture measured, so it is
+     * the honest thing to show a visitor rather than the flattering one.
+     */
+    log(`  ${runHrefs[0]} — run detail and its insight (the longest run)`)
+    await page.goto(runHrefs[0])
+    await settle(page, { charts: true })
+    await waitForInsight(page)
+    await shot(page, '05-run-detail')
 
-  log('  /me — the badge shelf')
-  await page.goto('/me')
-  await settle(page)
-  await seek(page, () => document.querySelector('img[src*="/badges/"]'))
-  await shot(page, '11-badges')
+    log('    the insight card')
+    await seek(page, () => document.querySelector('[class*="min-h-[168px]"]'))
+    await shot(page, '06-insight')
+
+    log(`  ${runHrefs[1]} — the chart and the splits (a typical run)`)
+    await page.goto(runHrefs[1])
+    await settle(page, { charts: true })
+    await waitForInsight(page)
+
+    log('    the pace/HR chart — the one sanctioned dual axis')
+    await seek(page, () => document.querySelector('svg.recharts-surface'))
+    await shot(page, '07-run-chart')
+
+    /*
+     * The SPLITS card, found by its own eyebrow rather than by `querySelector('table')`.
+     *
+     * `table` matches the wrong one: `ChartFrame` renders every chart's table twin — the accessible
+     * text version of the same numbers, which is why F08 can ship a chart at all — and that table
+     * sits directly beneath the chart. Seeking it produced a frame byte-identical to the chart's.
+     */
+    log('    the splits card under it')
+    /* FIRST match, not last: the share panel further down has its own row labelled "Splits" (the
+     * screenshot kind), and `.pop()` scrolled past the table to the share controls. */
+    await seek(page, () =>
+      [...document.querySelectorAll('*')].find(
+        (el) => el.childElementCount === 0 && el.textContent?.trim() === 'Splits',
+      ),
+    )
+    await shot(page, '08-run-splits')
+  }
+
+  if (wantsAny('09-trends', '10-trends-chart')) {
+    log('  /trends')
+    await page.goto('/trends')
+    await settle(page, { charts: true })
+    await shot(page, '09-trends')
+    await seek(page, () => document.querySelector('svg.recharts-surface'))
+    await shot(page, '10-trends-chart')
+  }
+
+  if (wants('11-badges')) {
+    log('  /me — the badge shelf')
+    await page.goto('/me')
+    await settle(page)
+    await seek(page, () => document.querySelector('img[src*="/badges/"]'))
+    await shot(page, '11-badges')
+  }
 
   await page.close()
 
@@ -402,18 +500,22 @@ async function stills(context, browser) {
    * is a visibly different screen: no tab bar, its own header, and only the photos the runner left
    * included.
    */
-  log('  /s/<token> — the public page, signed out')
-  const token = await createShareToken(context)
-  if (token) {
-    const anon = await newContext(browser, { withCookie: false })
-    const anonPage = await anon.newPage()
-    await anonPage.goto(`/s/${token}`)
-    await settle(anonPage, { charts: true })
-    await anonPage.screenshot({ path: path.join(MEDIA, '12-share.png') })
-    log('    docs/media/12-share.png')
-    await anon.close()
-  } else {
-    log('    SKIPPED — no share link could be created')
+  if (wants('12-share')) {
+    log('  /s/<token> — the public page, signed out')
+    /* `createShareToken` drives a real run page, so this too needs the committed dataset. */
+    const token = await createShareToken(context)
+    if (token) {
+      const anon = await newContext(browser, { withCookie: false })
+      const anonPage = await anon.newPage()
+      await anonPage.goto(`/s/${token}`)
+      await settle(anonPage, { charts: true })
+      await anonPage.screenshot({ path: path.join(MEDIA, '12-share.png') })
+      produced.add('12-share')
+      log('    docs/media/12-share.png')
+      await anon.close()
+    } else {
+      log('    SKIPPED — no share link could be created')
+    }
   }
 
   assertNoDuplicateStills()
@@ -447,6 +549,29 @@ function assertNoDuplicateStills() {
     seen.set(digest, file)
   }
   log(`    ${seen.size} stills, all distinct`)
+}
+
+/**
+ * `--only` must produce everything it named.
+ *
+ * Without this, `--only review --stills` — a plausible mistake, a GIF's name handed to the stills
+ * pass — writes nothing at all and prints `OK docs/media/ is up to date`. So does `--only 11-badges
+ * --gifs`, and so does any name that is spelled right but unreachable from the passes requested.
+ *
+ * That is the same failure `assertNoDuplicateStills` exists for, arriving by a different route: the
+ * harness reporting success for work it did not do. A selective flag is a new way to manufacture it,
+ * so it ships with the check rather than acquiring one after the first time it lies.
+ */
+function assertProducedWhatWasAsked() {
+  if (ONLY === null) return
+  const missing = [...ONLY].filter((name) => !produced.has(name))
+  if (missing.length > 0) {
+    throw new Error(
+      `--only asked for ${missing.join(', ')} and no pass produced ${missing.length === 1 ? 'it' : 'them'}. ` +
+        `Stills need --stills; hero needs --hero; review and trends need --gifs.`,
+    )
+  }
+  log(`    --only: ${produced.size} of ${ONLY.size} written — ${[...produced].sort().join(', ')}`)
 }
 
 /**
@@ -652,6 +777,9 @@ async function gifs(browser) {
 }
 
 async function record(browser, name, body, options = {}) {
+  /* Before the context, deliberately: a skipped GIF must cost zero seconds, not twelve of driving
+   * the page plus a two-pass encode that is then thrown away. */
+  if (!wants(name)) return
   log(`  recording ${name}`)
   const context = await newContext(browser, { recordVideo: true })
   const page = await context.newPage()
@@ -667,6 +795,9 @@ async function record(browser, name, body, options = {}) {
     log(`    kept ${path.relative(REPO, kept)} — re-encode without re-recording`)
   }
   await toGif(webm, out, options)
+  /* After the encode, not before: `toGif` fails loudly on a GIF it cannot bring inside budget, and
+   * `produced` has to mean written rather than attempted. */
+  produced.add(name)
 }
 
 /* ============================================================================
@@ -687,7 +818,14 @@ try {
     await commitAll(context)
     await context.close()
   }
-  if (RUN.has('hero')) {
+  /*
+   * `wants('hero')` and not just `RUN.has('hero')`, because of one footgun worth closing.
+   *
+   * `--only review` with no pass flags runs ALL FIVE passes — that is what "no pass flags means all
+   * of them" has always meant — and the hero pass costs a real vision call. Nobody typing a filter
+   * naming one GIF intends to spend money on a different one.
+   */
+  if (RUN.has('hero') && wants('hero')) {
     log('\n[1c] the hero recording — a real upload through the real pipeline')
     await hero(browser)
   }
@@ -707,6 +845,7 @@ try {
     log('\n[3] gifs')
     await gifs(browser)
   }
+  assertProducedWhatWasAsked()
   log('\nOK    docs/media/ is up to date')
 } catch (err) {
   console.error(`\nFAIL  ${err.message}`)
