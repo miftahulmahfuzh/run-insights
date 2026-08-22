@@ -435,7 +435,7 @@ assigned.*
 
 ```
 <!-- SCENES:records -->
-- longest_distance: A single kite flown so high that it is small, at the far end of one long taut line that runs from the bottom corner of the patch up to the kite near the top, the line unbroken the whole way. SHAPE: pentagon. SIGNATURE THREAD: the single bow tied on the kite's tail.
+- longest_distance: A single large diamond kite riding high and filling the upper half of the patch, tilted on the wind, with one long taut line running unbroken from the kite all the way down to the bottom corner of the patch and a tail of bows streaming off it. SHAPE: pentagon. SIGNATURE THREAD: the lowest bow on the kite's tail.
 - longest_duration: A single candle burned almost all the way down to its base, its flame still lit, standing in a deep wide pool of its own spilled wax. SHAPE: pentagon. SIGNATURE THREAD: the last unburnt fold of the wick, just below the flame.
 - fastest_pace_5k: A single swift in a hard flat dive, seen from the side, its wings swept fully back along its body so the whole bird reads as one narrow dart. SHAPE: pentagon. SIGNATURE THREAD: the swift's eye.
 - fastest_pace_10k: A single hare at full stretch in mid-bound, seen from the side, all four feet clear of the ground and its body stretched long from nose to hind foot. SHAPE: pentagon. SIGNATURE THREAD: the hare's leading forepaw.
