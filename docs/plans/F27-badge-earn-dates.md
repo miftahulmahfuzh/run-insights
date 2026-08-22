@@ -574,3 +574,62 @@ way pins nothing, and this round is a data change whose whole value is in those 
 Open `Self-Reward Achieved` on a phone and tap a date. Two things this suite cannot see: the
 navigation itself, and whether the backfill found your rows — which depends on your own history and
 is what the script's dry run is for.
+
+---
+
+# F27 round 4 — 2026-08-22
+
+**Card:** [#26](https://github.com/miftahulmahfuzh/run-insights/issues/26) · round 4
+**Base:** `9888f7c`
+
+Round 3's backfill was run against the real database at the user's request. It worked; running it is
+what found the bug in it.
+
+## What the run did
+
+| | |
+|---|---|
+| Dry run | 1 period award with no run: `self_reward @ 2026-08-22 (2026-W34)` → `N70HaPUZRfI1` |
+| Verified first | direct query: W34 holds exactly four reviewed runs — 17, 18, 20, 22 Aug — so the fourth is the 22 Aug run |
+| Applied | 1 filled, 0 ambiguous, 0 with no reviewed run |
+| After | 19 award rows, **0 without a run** |
+
+That is round 3's rule landing on the user's own account: the week badge now points at the run that
+took W34 to four, which is the example they wrote the report around.
+
+## The bug the run exposed
+
+The script printed the day as `Sat Aug 22 2026 00:00:00 GMT+0700 (Western Indonesia Time)`.
+
+Not merely ugly output. The driver returns a `date` column as a JS `Date` at **local** midnight, so
+the stored `2026-08-22` arrived as `2026-08-21T17:00:00.000Z`, and the script fed that `Date` straight
+back into `occurred_on = $1`. It resolved correctly only because the driver re-serialises the `Date`
+using the same local offset, so the two conversions cancelled — **on that host**. Run from a
+different timezone, the round trip can land on the adjacent day: either skipping a row that had an
+answer, or matching a run that did not earn the badge.
+
+The second is precisely what R3.3 says this script must never do. `DateISO` is a string type
+everywhere in `lib/` for this reason, and the script broke that rule the moment it let a day become a
+`Date`.
+
+## The fix, and which side each cast goes on
+
+- the SELECT casts the **column** — `earned_on::text` — because the point is to get a string out;
+- the lookup casts the **parameter** — `occurred_on = $1::date` — and not the column.
+  `occurred_on::text = $1` returns the same rows and leaves the predicate un-indexable, because a
+  function of a column is not the column.
+
+Verified read-only against the real row, replicating the fixed query shape: `earned_on` comes back
+`typeof "string"`, value `"2026-08-22"`, and the lookup resolves exactly `['N70HaPUZRfI1']`. The
+misleading output disappears with the same change, since there is no `Date` left to stringify.
+
+`explain` on that predicate picks a **seq scan** on this account — four rows, and the planner is
+right. So the claim in the script's comment is the accurate one: the filter stays
+`occurred_on = '2026-08-22'::date`, a bare column against a constant, which keeps the choice the
+planner's rather than removing the option.
+
+## Verified
+
+`format:check`, `lint`, `typecheck`, `npm test` (1293), plus the two guards that read `lib/db` and the
+client boundary. The script is not part of `npm test` by design — same line `blob-reap.mjs` draws —
+so the read-only probe above is what stands in for a unit test of its query shape.
