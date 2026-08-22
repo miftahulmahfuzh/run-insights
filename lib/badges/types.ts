@@ -94,6 +94,22 @@ export interface BadgeAward {
   count: number
 }
 
+/**
+ * One earning, as a day and the run that produced it — F27's list, the smallest shape the panel's
+ * date list needs.
+ *
+ * Not a whole `BadgeAward`. `dedupeKey`, `count` and `createdAt` are all about *how the ledger keeps
+ * the row*: the first two are the fold's own arithmetic and the third only ever matters as its
+ * same-day tie-break. None of the three is a fact about the earning that a reader of the panel could
+ * do anything with, and a list of full ledger rows crossing the RSC boundary for 22 badges would
+ * ship all three per earning to be ignored.
+ */
+export interface BadgeEarnedDay {
+  earnedOn: DateISO
+  /** The run to open, or null — a period badge's day, or a session badge whose run was deleted. */
+  runId: string | null
+}
+
 /** The per-key fold of a user's awards — what the shelf and the panel read. */
 export interface StoredBadge {
   key: string
@@ -105,4 +121,18 @@ export interface StoredBadge {
   /** The latest award's day — what "most recently" means on the shelf and in the panel. */
   earnedOn: DateISO
   count: number
+  /**
+   * Every award of this key, **latest first** — F27, so the panel can list the earn dates instead
+   * of summarising them. Never empty: the fold does not emit a key with no rows.
+   *
+   * **`earnedDays.length` is not `count`, and must not be used as it.** `count` sums the `count`
+   * column, and a row predating F13 carries the aggregate it had then — so a single row folding to
+   * 5 has one day to list and four earnings with no date on record. The panel is what says so out
+   * loud; see `components/profile/BadgeDialog.tsx`. Inventing days to make the two agree would put
+   * dates in front of the runner that nothing ever recorded.
+   *
+   * `runId` / `scopeKey` / `earnedOn` above are the head of this list and `firstEarnedOn` the tail's
+   * day — the same derived conveniences they always were, now visibly derived from something.
+   */
+  earnedDays: BadgeEarnedDay[]
 }

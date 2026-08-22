@@ -279,6 +279,10 @@ describe('badgesForRun', () => {
       firstEarnedOn: '2026-08-20',
       earnedOn: '2026-08-20',
       count: 1,
+      // F27's list, folded from this run's own rows. `badgesForRun` filters by run before folding,
+      // so a badge this run earned twice over its history still lists only this run's day here —
+      // which is correct for the run page and is why the panel reads `readBadges` instead.
+      earnedDays: [{ earnedOn: '2026-08-20', runId: RUN }],
     })
   })
 })
@@ -315,6 +319,13 @@ describe('readBadges', () => {
         firstEarnedOn: '2026-07-04',
         earnedOn: '2026-08-20',
         count: 2,
+        /* F27 — the whole reason the panel can list the dates. This is the gateway method `/me`
+           actually calls, and the rows arrive from the driver oldest-first (`order by key asc,
+           earned_on asc`), so the reversal happens in the fold and is visible here. */
+        earnedDays: [
+          { earnedOn: '2026-08-20', runId: 'run_b' },
+          { earnedOn: '2026-07-04', runId: 'run_a' },
+        ],
       },
     ])
   })
