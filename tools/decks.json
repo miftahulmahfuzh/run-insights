@@ -5,8 +5,6 @@
     "badges": {
       "name": "badges",
       "scenes_marker": "SCENES",
-      "addendum_marker": null,
-      "addendum_version": null,
       "catalog": "lib/badges/catalog.ts",
       "catalog_array": "BADGE_CATALOG",
       "key_pattern": "^\\s*badge\\(\\s*'([a-z0-9_]+)'",
@@ -24,8 +22,6 @@
     "records": {
       "name": "records",
       "scenes_marker": "SCENES:records",
-      "addendum_marker": "ADDENDUM:records",
-      "addendum_version": "1",
       "catalog": "lib/records/catalog.ts",
       "catalog_array": "RECORD_CATALOG",
       "key_pattern": "^\\s*key:\\s*'([a-z0-9_]+)'",
@@ -36,7 +32,7 @@
       "const_name": "RECORD_ART",
       "key_type": "RecordKey",
       "art_type": "RecordArt",
-      "subject_label": "SUBJECT FOR THIS PATCH",
+      "subject_label": "SUBJECT FOR THIS BADGE",
       "anchor": "assets/badges/_anchor.png",
       "noun": "record patch"
     }

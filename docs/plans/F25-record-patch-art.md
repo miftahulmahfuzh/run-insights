@@ -170,24 +170,38 @@ So bumping v2 → v3 fails `npm run badges:check` on all 22 existing badges unti
 regenerated. The block also names only four shapes — *"a shield, a hexagon, a chevron, or a rounded
 triangle"* — and says "22 badges" five times.
 
-**The resolution is a per-deck addendum, not a second style block.** `style.md` keeps STYLE BLOCK
-v2 byte-identical and gains a short region appended only for records generations:
+**The first resolution was a per-deck addendum**: keep STYLE BLOCK v2 byte-identical and append a
+short `<!-- ADDENDUM:records v1 -->` region read only for records generations, stamping a
+composite `v2+records1`. It was built, committed, and then **removed on evidence.**
 
-```
-<!-- ADDENDUM:records v1 -->
-…the fifth silhouette, named and described
-…"wherever the block above says 22 badges, read every patch in this set", across both decks
-<!-- /ADDENDUM:records -->
-```
+### MEASURED: appending anything to the style block destroys subject adherence
 
-Everything the two decks share stays **literally one text**, which is what makes "one bolt of
-cloth" a true statement rather than an asserted one. A second full style block would duplicate
-~40 lines and let the substrate, the threads and the technique silently drift — the exact three
-things that must not.
+Twelve generations of `most_elevation`. With an addendum present — at full length, reframed, and
+finally as a single sentence; at 4:3 and at 1:1; at two seeds; with three different scenes — the
+model returned a pepperoni pizza (×5), a watermelon slice, a traffic cone, a winged doughnut and a
+plain doughnut. **Never once the scene it was asked for.** With the addendum removed and nothing
+else changed, generation a10 returned the aerial cable car the scene describes, and a11 and a12
+confirmed it at both aspect ratios.
 
-The stamped version becomes composite: `badges` → `v2` (unchanged on disk), `records` →
-`v2+records1`. The version assertion in `check-badge-art.mjs` becomes per-deck, so each deck's
-sidecars are compared against that deck's own computed current version.
+**Every hard check passed on the pizzas** — geometry, twill, palette, signature-thread share, weave
+texture, centring, 9a patch width, all green while the picture was a slice of pizza. The metrics
+cannot see a subject, which is exactly why the skill's *look at it* step is mandatory.
+
+The control closed the diagnosis: regenerating `dawn_patrol` on the documented badge path returned
+a flawless lighthouse (correct shield, correct beam, 9a drift 0.2%), so the model, the pipeline and
+the style block were all fine. The addendum was the only substantial difference.
+
+**So the records deck adds nothing to the block.** Its fifth silhouette rides in `SHAPE: pentagon`
+in the scene line — the same mechanism the badge deck's four already use — and both decks are
+generated against the identical STYLE BLOCK v2 and honestly stamp `v2`. `style.md`'s findings
+section carries the full table; `tools/decks.py`'s header carries the operational rule:
+
+> Send STYLE BLOCK v2 verbatim, and put every per-patch instruction in the scene line or in
+> `--note`. Do not append anything to the block for any reason.
+
+The corollary is that there is no cheap middle path between "per-patch note" and "v3 bump plus
+regenerate everything". F25 spent twelve generations proving the middle path does not exist, which
+is worth more than the four lines it deleted.
 
 ---
 
@@ -209,8 +223,7 @@ command in the badge deck's existing docs keeps working exactly as written.
 | field | `badges` | `records` |
 |---|---|---|
 | scenes region | `<!-- SCENES -->` | `<!-- SCENES:records -->` |
-| addendum | *none* | `<!-- ADDENDUM:records v1 -->` |
-| style version stamped | `v2` | `v2+records1` |
+| style version stamped | `v2` | `v2` — the identical block |
 | catalog | `lib/badges/catalog.ts` | `lib/records/catalog.ts` |
 | key regex | `badge\('([a-z0-9_]+)'` | `key: '([a-z0-9_]+)'` |
 | catalog array | `BADGE_CATALOG` | `RECORD_CATALOG` |
@@ -239,7 +252,7 @@ scene region is checked against its own catalog, and the two cannot interfere.
 
 | tool | change |
 |---|---|
-| `gen_badge_art.py` | `--deck`; per-deck scenes/catalog/parity; addendum appended to the style block; composite version in the sidecar; `--aspect-ratio` (§6) |
+| `gen_badge_art.py` | `--deck`; per-deck scenes/catalog/parity; `--aspect-ratio` (§6) |
 | `check_badge_art.py` | `--deck` for the anchor path only. `shape_for` already scans all of `style.md`, so record scene lines resolve with no change |
 | `make_badge_assets.py` | `--deck`; the four module constants become a `decks.py` lookup |
 | `scripts/check-badge-art.mjs` | loops both decks from `decks.json`; per-deck style-version assertion |
@@ -266,10 +279,31 @@ python3 tools/check_badge_art.py assets/records/_candidates/most_elevation.a01.p
 
 9a's expectation on a 1024×768 frame is `0.855 × 768/1024 = 64.1%` of image width.
 
-| outcome | what happens | what is recorded |
-|---|---|---|
-| **PASS** — 9a within tolerance *and* the theme strip reads | the remaining nine go native 4:3. The card is satisfied as written. | the measured width, here |
-| **FAIL** | all ten go square → `extend_badge_art.py`, the proven path | the measured width and the failure mode, here, so this is never re-litigated from prose |
+### ANSWERED: native 4:3 works
+
+`most_elevation.a12` — `--deck records --aspect-ratio 4:3 --seed 1970`, no addendum:
+
+| check | value |
+|---|---|
+| 1 geometry | **1024×768 exactly**, ratio 1.3333 |
+| 8a centring | 2.15% off centre (≤3.00), box 66.4%×84.8% of frame |
+| 9a patch width | 66.4% vs the pentagon expectation of 64.1% — **3.6% drift** |
+
+**So the card's instruction stands: the ten masters are generated natively at 1024×768 and there
+is no `extend_badge_art.py` pass.** The comparison run at 1:1 (`a11`) measured 87.5% against an
+85.5% expectation — 2.3% — so both frames land, and 4:3 is chosen because it is the one the panel
+band actually wants.
+
+**The earlier 4:3 failures were the addendum, not the aspect ratio.** Every 4:3 attempt from a01
+to a07 ran with an addendum present and returned food; the moment it was removed, 4:3 produced the
+right subject first time. Had §4's finding not been isolated first, this probe would have reported
+the exact opposite conclusion and sent the whole deck down the widening path for no reason — which
+is the argument for changing one variable at a time, at $0.04 a variable.
+
+**Still open per badge: check 9b.** `a12`'s twill tone sits 9.8 sRGB from the anchor against a
+6.0 ceiling, and the skill asks for this to be reported past 8 points. It is a per-candidate
+quality matter rather than a design one — `a01` and `a02` measured 3.6 and 3.2 on the same
+settings — so it is resolved by the ordinary three-attempt loop, not by a change here.
 
 `--aspect-ratio` is added to `gen_badge_art.py` regardless, defaulting to `1:1`. The flag is cheap;
 the finding is what is expensive.
@@ -329,8 +363,8 @@ export const RECORD_ART: Record<RecordKey, RecordArt> = { … }
 
 1. **plumbing** — `tools/decks.py` + `decks.json`, `--deck` through the four tools, `--aspect-ratio`,
    the `Band` provenance and `pentagon` at `observed=0`, `next.config.ts`. All four `selftest`s pass.
-2. **style** — the `<!-- ADDENDUM:records v1 -->` region and the ten `<!-- SCENES:records -->` lines,
-   plus the extended collision audit.
+2. **style** — the ten `<!-- SCENES:records -->` lines, the extended collision audit, and the
+   addendum finding above.
 3. **masters** — `assets/records/<key>.png` ×10 and their `.txt` sidecars.
 4. **shipped art** — `public/records/**` and `lib/records/record-art.ts`. Its own commit, because
    regenerating `public/**` changes what ships, alongside `npm run badges:check` and

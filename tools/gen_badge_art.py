@@ -137,11 +137,10 @@ SCENE_LINE_RE = re.compile(r"^- ([a-z0-9_]+): (.+)$", re.M)
 def region(text, opening, closing=None):
     """The body between `<!-- opening -->` and `<!-- /closing -->`, or None.
 
-    `closing` defaults to `opening`. They differ for the addendum, whose opening
-    marker carries a version (`ADDENDUM:records v1`) and whose closing one does
-    not — the same asymmetry `<!-- STYLE BLOCK v2 -->` … `<!-- /STYLE BLOCK -->`
-    already uses, so a version bump is a one-line edit rather than a two-line
-    one that can be half-done.
+    `closing` defaults to `opening`, and the parameter is kept because
+    `<!-- STYLE BLOCK v2 -->` … `<!-- /STYLE BLOCK -->` already uses that
+    asymmetry: the version rides on the opening marker only, so bumping it is a
+    one-line edit rather than a two-line one that can be half-done.
 
     Same anchoring rule as STYLE_RE and for the same scar: style.md quotes its
     markers inline in the interface table, and an unanchored non-greedy match
@@ -157,17 +156,19 @@ def region(text, opening, closing=None):
 def load_style(deck):
     """(version, style_block, [(key, scene), ...]) from style.md, for one deck.
 
-    THE BLOCK IS SHARED AND THE SCENES ARE NOT. Both decks are one bolt of
+    THE BLOCK IS SHARED AND ONLY THE SCENES ARE NOT. Both decks are one bolt of
     cloth — same substrate, same merrowed border, same five threads, same
-    signature — so there is exactly one `<!-- STYLE BLOCK -->` and every deck
-    reads it. What differs is the scene list, and, for a deck the block was not
-    literally written for, a short ADDENDUM appended after it.
+    signature — so there is exactly one `<!-- STYLE BLOCK -->`, every deck is
+    sent it verbatim, and the ONLY per-deck text is the scene line.
 
-    The addendum is NOT a version bump. `scripts/check-badge-art.mjs` asserts
-    every promoted master's sidecar version equals the block's current version,
-    so bumping v2→v3 would fail `npm run badges:check` on all 22 badges until
-    every one of them was regenerated — for a change that adds a fifth
-    silhouette the badge deck does not use. See `decks.py` and F25 §4.
+    There was briefly a per-deck ADDENDUM appended after the block, so that the
+    records deck could describe its fifth silhouette without bumping the block
+    to v3 and invalidating 22 promoted badges. It is gone, on evidence: with an
+    addendum present this model ignored the scene entirely and returned generic
+    novelty-patch subjects nine times running; with it removed the scene came
+    through first try. `decks.py`'s header carries the full sequence. Anything
+    a deck needs to add now goes in its scene line, which is where the badge
+    deck's own four silhouettes already live.
     """
     if not CONTRACT.exists():
         die(f"no style contract at {rel(CONTRACT)}")
@@ -178,17 +179,6 @@ def load_style(deck):
         die(f"{CONTRACT.name} has no `<!-- STYLE BLOCK vN -->` … `<!-- /STYLE BLOCK -->` "
             "region with each marker alone on its own line")
     version, block = m.group(1), m.group(2).strip()
-
-    if deck.addendum_marker:
-        marker = f"{deck.addendum_marker} v{deck.addendum_version}"
-        body = region(text, marker, deck.addendum_marker)
-        if body is None:
-            die(f"deck {deck.name!r} wants `<!-- {marker} -->` … "
-                f"`<!-- /{deck.addendum_marker} -->` in {CONTRACT.name}, with each "
-                f"marker alone on its own line, and it is not there.\n"
-                f"  The addendum is how a deck adds to the shared style block "
-                f"without bumping it — see tools/decks.py.")
-        block = f"{block}\n\n{body.strip()}"
 
     body = region(text, deck.scenes_marker)
     if body is None:

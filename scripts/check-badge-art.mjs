@@ -110,13 +110,13 @@ function styleBlockVersion(text) {
 }
 
 /**
- * One deck's scene keys, and the version its masters should be stamped with.
+ * One deck's scene keys. The version is the shared block's, for every deck.
  *
- * The version is COMPOSITE for any deck carrying an addendum — `v2+records1` — and that is not
- * cosmetic. Bumping the shared block to v3 would fail the assertion below on all 22 promoted
- * badges until every one of them had been regenerated and re-judged, for a change that adds a
- * silhouette the badge deck never draws. So a deck that needs to add to the block appends a
- * region of its own instead, and stamps the pair. See `tools/decks.py`.
+ * There was briefly a per-deck addendum appended to the block, so the records deck could
+ * describe its fifth silhouette without a v3 bump that would have invalidated 22 promoted
+ * badges. It was removed on evidence — with any addendum present the image model ignored the
+ * scene entirely — so both decks really are generated against the identical STYLE BLOCK v2 and
+ * both honestly stamp `v2`. `tools/decks.py`'s header has the measurements.
  */
 function styleContract(deck, text, blockVersion) {
   const scenes = new RegExp(
@@ -128,21 +128,7 @@ function styleContract(deck, text, blockVersion) {
       `style.md has no \`<!-- ${deck.scenes_marker} -->\` region with markers on their own lines`,
     )
   }
-  let version = blockVersion
-  if (deck.addendum_marker) {
-    const opening = `${deck.addendum_marker} v${deck.addendum_version}`
-    const addendum = new RegExp(
-      `^<!-- ${opening} -->$\\n(.*?)^<!-- /${deck.addendum_marker} -->$`,
-      'ms',
-    ).exec(text)
-    if (!addendum) {
-      throw new Error(
-        `deck '${deck.name}' declares an addendum but style.md has no ` +
-          `\`<!-- ${opening} -->\` … \`<!-- /${deck.addendum_marker} -->\` region`,
-      )
-    }
-    version = `${blockVersion}+${deck.name}${deck.addendum_version}`
-  }
+  const version = blockVersion
   const keys = [...scenes[1].matchAll(/^- ([a-z0-9_]+): (.+)$/gm)].map((m) => m[1])
   return { version, keys }
 }

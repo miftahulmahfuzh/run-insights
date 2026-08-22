@@ -32,13 +32,26 @@ against the anchor, and the premise of both decks is that they are one bolt of
 cloth cut thirty-two times. Two anchors would let the cloth drift BETWEEN decks
 with nothing measuring it — the one drift that no per-deck check could see.
 
-WHY THE STYLE VERSION IS COMPOSITE. `scripts/check-badge-art.mjs` asserts that
-every promoted master's sidecar version equals style.md's current version, so
-bumping `STYLE BLOCK v2` to v3 fails `npm run badges:check` on all 22 badges
-until every one of them is regenerated. The records deck therefore does NOT edit
-the shared block. It appends an ADDENDUM region read only for its own
-generations, and stamps `v2+records1` — `<block version>+<deck><addendum
-version>`. The badge deck stamps a bare `v2`, unchanged on disk.
+BOTH DECKS STAMP `v2`, AND THERE IS NO PER-DECK ADDENDUM. There was one, for
+four commits, and it was removed on evidence — see F25 §4. `scripts/check-badge-art.mjs`
+asserts every promoted master's sidecar version equals style.md's current
+version, so bumping `STYLE BLOCK v2` to v3 would fail `npm run badges:check` on
+all 22 badges until every one was regenerated. The first design dodged that by
+appending a records-only ADDENDUM region to the block and stamping a composite
+`v2+records1`.
+
+MEASURED: ANY ADDENDUM AT ALL DESTROYS SUBJECT ADHERENCE ON THIS MODEL. Nine
+generations of one record patch with an addendum present returned a pizza, a
+pizza, a watermelon, a traffic cone, a pizza, a winged doughnut, a pizza, a
+doughnut and a pizza — never once the scene that was asked for, at either aspect
+ratio, at two seeds, with the addendum at full length and at one sentence. The
+tenth generation, identical but with the addendum REMOVED, returned the cable car
+the scene asked for, first time. The eleventh and twelfth confirmed it.
+
+So the records deck adds nothing to the block. Its fifth silhouette is carried by
+`SHAPE: pentagon` in the scene line, which is the mechanism the badge deck
+already uses for its four — and both decks are therefore generated against the
+identical STYLE BLOCK v2 and honestly stamp `v2`.
 
 WHY THERE IS A JSON SIDECAR. `scripts/check-badge-art.mjs` is JavaScript and
 cannot import this module. The alternative is a hand-copied second table in the
@@ -76,12 +89,6 @@ class Deck:
     name: str
     #: The `<!-- ... -->` marker pair in style.md holding this deck's scene lines.
     scenes_marker: str
-    #: A second marker pair appended to the shared style block for this deck
-    #: only, or None for the deck the block was written for.
-    addendum_marker: str | None
-    #: What `write_sidecar` stamps and `check-badge-art.mjs` asserts against.
-    #: `None` means "the style block's own version, bare".
-    addendum_version: str | None
     #: The TypeScript module holding the key list, and how to read it.
     catalog: str
     catalog_array: str
@@ -128,22 +135,20 @@ class Deck:
         return ROOT / self.anchor
 
     def style_version(self, block_version: str) -> str:
-        """`v2` for badges, `v2+records1` for records.
+        """The block's own version, for every deck.
 
-        Composite rather than a bump, because a bump would invalidate 22
-        promoted masters — see the header.
+        Kept as a method rather than inlined at the call sites: a future deck
+        that genuinely does need its own contract would change this one line,
+        and the header records why the obvious way of doing that (an addendum
+        appended to the block) is measured to be unusable on this model.
         """
-        if not self.addendum_version:
-            return block_version
-        return f"{block_version}+{self.name}{self.addendum_version}"
+        return block_version
 
 
 DECKS: dict[str, Deck] = {
     "badges": Deck(
         name="badges",
         scenes_marker="SCENES",
-        addendum_marker=None,
-        addendum_version=None,
         catalog="lib/badges/catalog.ts",
         catalog_array="BADGE_CATALOG",
         # F09 ships the catalog as a `readonly BadgeDefinition[]` built by a
@@ -164,8 +169,6 @@ DECKS: dict[str, Deck] = {
     "records": Deck(
         name="records",
         scenes_marker="SCENES:records",
-        addendum_marker="ADDENDUM:records",
-        addendum_version="1",
         catalog="lib/records/catalog.ts",
         catalog_array="RECORD_CATALOG",
         # F06 ships this one as plain object literals — `{ key: 'longest_distance',
@@ -180,7 +183,7 @@ DECKS: dict[str, Deck] = {
         const_name="RECORD_ART",
         key_type="RecordKey",
         art_type="RecordArt",
-        subject_label="SUBJECT FOR THIS PATCH",
+        subject_label="SUBJECT FOR THIS BADGE",
         anchor="assets/badges/_anchor.png",
         noun="record patch",
     ),
@@ -264,11 +267,13 @@ def selftest() -> int:
     anchors = {d.anchor for d in DECKS.values()}
     check("all decks share one anchor", len(anchors) == 1, f"got {anchors}")
 
-    check("badges stamps a bare block version",
-          DECKS["badges"].style_version("v2") == "v2")
-    check("records stamps a composite version",
-          DECKS["records"].style_version("v2") == "v2+records1",
-          f"got {DECKS['records'].style_version('v2')}")
+    # Every deck is generated against the identical style block, so every deck
+    # stamps the identical version. If this ever stops being true, the header's
+    # measurement about addenda is the first thing to re-read.
+    for deck in DECKS.values():
+        check(f"{deck.name} stamps the block's own version",
+              deck.style_version("v2") == "v2",
+              f"got {deck.style_version('v2')}")
 
     # The key pattern is per-deck because the two catalogs have different
     # shapes; a pattern with no capture group would return the whole match and
@@ -314,8 +319,6 @@ def main() -> int:
         mark = "  (default)" if name == DEFAULT_DECK else ""
         print(f"\n{name}{mark}")
         print(f"  scenes      <!-- {deck.scenes_marker} -->")
-        if deck.addendum_marker:
-            print(f"  addendum    <!-- {deck.addendum_marker} v{deck.addendum_version} -->")
         print(f"  catalog     {deck.catalog}  ({deck.catalog_array})")
         print(f"  masters     {deck.masters}")
         print(f"  public      {deck.public}  → {deck.url}")

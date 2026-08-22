@@ -9,12 +9,14 @@ drift from the prompt that is documented.
 `.txt` sidecar and in the generated manifest, so a mixed set is detectable rather than merely
 suspected.
 
-**Two decks read this file, and they share the style block.** F09's 22 badges and F25's 10
+**Two decks read this file, and they share the style block exactly.** F09's 22 badges and F25's 10
 personal-record patches are one bolt of cloth cut thirty-two times — same substrate, same merrowed
-border, same five threads, same signature thread — so there is exactly one style block and both
-decks are sent it verbatim. What is per-deck is the scene list and, for the records deck, a short
-**addendum** appended after the block. `tools/decks.py` is the table that maps a deck to its
-regions, its catalog, its masters and its manifest.
+border, same five threads, same signature thread — so there is exactly one style block, both decks
+are sent it verbatim, and both stamp `v2`. **The scene list is the only per-deck text in this
+file**, and that is a measured constraint rather than a tidy preference: see *"appending ANYTHING
+to the style block destroys subject adherence"* below, which cost twelve generations to establish.
+`tools/decks.py` is the table that maps a deck to its scene region, its catalog, its masters and
+its manifest.
 
 ## What the parser takes from this file
 
@@ -22,8 +24,7 @@ regions, its catalog, its masters and its manifest.
 |---|---|---|
 | The style block | `<!-- STYLE BLOCK vN -->` … `<!-- /STYLE BLOCK -->` | Sent verbatim with every badge. `N` becomes `styleVersion`. |
 | The badge scenes | `<!-- SCENES -->` … `<!-- /SCENES -->`, lines matching `- <key>: <scene>` | One line appended per badge as `SUBJECT FOR THIS BADGE:` |
-| The records addendum | `<!-- ADDENDUM:records v1 -->` … `<!-- /ADDENDUM:records -->` | Appended after the style block, `--deck records` only |
-| The record scenes | `<!-- SCENES:records -->` … `<!-- /SCENES:records -->` | One line appended per patch as `SUBJECT FOR THIS PATCH:` |
+| The record scenes | `<!-- SCENES:records -->` … `<!-- /SCENES:records -->` | The same, for `--deck records` |
 
 **A marker only counts when it is alone on its own line.**
 
@@ -38,19 +39,22 @@ scenes simply appended to `<!-- SCENES -->`; that would have made every *badge* 
 to start, reporting ten orphan keys, because that region is checked against `BADGE_CATALOG`. Two
 regions, two catalogs, no interference.
 
-### Why the records deck has an addendum instead of a v3
+### The block cannot be bumped, and cannot be added to either
 
-Because a version bump is not free. `scripts/check-badge-art.mjs` asserts that every promoted
-master's sidecar version equals the version of the block in this file, so editing `STYLE BLOCK v2`
-to v3 fails `npm run badges:check` on **all 22 existing badges** until every one of them has been
-regenerated and re-judged — a very expensive way to add a fifth silhouette the badge deck does not
-use.
+`scripts/check-badge-art.mjs` asserts that every promoted master's sidecar version equals the
+version of the block in this file, so editing `STYLE BLOCK v2` to v3 fails `npm run badges:check`
+on **all 22 existing badges** until every one of them has been regenerated and re-judged. That is
+the price of a real style change, and it is the correct price.
 
-So the shared block is never touched, and a deck that needs to add to it gets a region of its own,
-appended after it. The stamped version is composite: badges are `v2`, records are `v2+records1`.
-This is the same reasoning the chevron note below reaches — the difference is that the chevron's
-description had nowhere to live except a per-badge `--note`, whereas a records-only addendum can
-hold the pentagon's description permanently, because nothing in the badge deck reads it.
+F25 tried to buy a cheaper one — a small per-deck region appended after the block, so the records
+deck could name a fifth silhouette without a bump. **It does not work.** With anything appended,
+this model ignored the scene and returned generic novelty-patch subjects twelve times running;
+with it removed the scene came through immediately. The measurements are at the foot of this file.
+
+So there are exactly two options for anything a patch needs said, and no third:
+
+- **per patch** → the scene line, or a `--note` on the one generation (the chevron precedent);
+- **for the whole set** → a v3 bump, and regenerate every patch in both decks.
 
 ---
 
@@ -403,34 +407,14 @@ Ten personal-record patches, one per key in `RECORD_CATALOG` — `lib/records/ca
 `lib/records/labels.ts`. Same cloth, same border, same threads, same signature. Two things differ,
 and both are here rather than in the shared block.
 
-### The addendum, sent after the style block for `--deck records` only
+### The fifth silhouette rides in the scene line, and nothing else changes
 
-```
-<!-- ADDENDUM:records v1 -->
-THIS PATCH BELONGS TO A SECOND DECK CUT FROM THE SAME CLOTH. Everything above holds exactly — the
-same dark navy cotton twill, the same bone-white merrowed border at the same gauge and the same
-width, the same five thread colours, the same solid slate-sky-blue interior field, and the same
-single safety-orange signature thread. Wherever the text above says "all 22 badges", read "every
-patch in this set": there are thirty-two patches across the two decks, and they are one bolt of
-cloth cut thirty-two times.
+Every record scene line ends `SHAPE: pentagon`, exactly the way each badge scene line ends
+`SHAPE: shield` or `SHAPE: chevron`. That is the whole mechanism. **The records deck adds NOTHING
+to the style block**, is sent STYLE BLOCK v2 verbatim like the badge deck, and stamps `v2` like
+the badge deck — because that is literally what it was generated against.
 
-THE OUTER SILHOUETTE OF EVERY PATCH IN THIS DECK IS A PENTAGON, and it replaces the list of shapes
-named above. Build it exactly like this: a five-sided shape standing on a flat, level, horizontal
-bottom edge; two straight vertical sides rising from the ends of that bottom edge; and two more
-straight edges running up and inward from the tops of those sides to meet at a single point at the
-very top — one apex, pointing up, centred. The bone merrowed border follows all five edges the
-whole way round, and every corner where two edges meet is rounded rather than sharp. It is not a
-shield: a shield's lower edge curves down to a point at the BOTTOM, and this shape's bottom is
-flat and level. It is not a hexagon: a hexagon carries a point at the left and a point at the
-right, and this shape carries neither. It is not a circle, and it is not a rounded triangle.
-<!-- /ADDENDUM:records -->
-```
-
-**The pentagon is described, not merely named** — the same lesson the chevron note above records,
-applied before it costs an attempt rather than after. The difference is that this description can
-live in the contract permanently: the addendum is read only by `--deck records`, so writing it
-down costs the badge deck nothing, where folding the chevron's description into the shared block
-would have bumped it to v3 and invalidated eighteen promoted badges.
+This is not the design F25 started with, and the section below records what it cost to find out.
 
 **Why a fifth shape at all.** The two decks appear in the same app and must be tellable apart at
 the 56 px shelf size. Subject register alone does not do it — a viewer reads a silhouette before
@@ -457,7 +441,7 @@ assigned.*
 - fastest_pace_10k: A single hare at full stretch in mid-bound, seen from the side, all four feet clear of the ground and its body stretched long from nose to hind foot. SHAPE: pentagon. SIGNATURE THREAD: the hare's leading forepaw.
 - fastest_km_split: A single archer's bow at the instant of release, held upright, the arrow just clear of it and travelling, the bowstring still shivering in two or three loose curves. SHAPE: pentagon. SIGNATURE THREAD: the fletching at the back of the arrow.
 - most_kcal: A single leather-and-wood bellows seen from the side, squeezed hard shut, with one short puff of air leaving its nozzle. SHAPE: pentagon. SIGNATURE THREAD: the brass ferrule at the tip of the nozzle.
-- most_elevation: A single mountain peak, one hard straight snow line running across its upper third, and one narrow switchback path stitched up the near face in a continuous unbroken line. SHAPE: pentagon. SIGNATURE THREAD: the topmost turn of the switchback path.
+- most_elevation: A single aerial cable-car cabin, a boxy riveted metal car with a row of square windows along its side, hanging by its arm from one taut steel cable that runs the whole width of the patch on a steep upward diagonal, with open air and nothing at all beneath the car. SHAPE: pentagon. SIGNATURE THREAD: the hanger arm where the car meets the cable.
 - highest_cadence: A single spinning top at full speed, standing dead upright on its point, with one blurred ring of motion drawn around its widest part. SHAPE: pentagon. SIGNATURE THREAD: the steel tip the top is spinning on.
 - highest_max_hr: A single heavy hanging bell caught in mid-strike, seen from the side, its clapper swung hard over and touching the inside of the bell's lip. SHAPE: pentagon. SIGNATURE THREAD: the clapper.
 - best_paced_run: A single plumb bob hanging dead still and perfectly vertical on its line, the line running straight up to a small fixed hook above it. SHAPE: pentagon. SIGNATURE THREAD: the sharp point at the bottom of the bob.
@@ -467,6 +451,72 @@ assigned.*
 Shape distribution: **pentagon** × 10. Uniform, unlike the badge deck's four — the shape is what
 says "this is a record and not a badge", so varying it inside the deck would spend the very
 distinction it was added to make.
+
+### Measured: appending ANYTHING to the style block destroys subject adherence
+
+The most expensive finding in either deck, and the least expected. **Twelve generations of one
+record patch, `most_elevation`.**
+
+F25's first design gave the records deck a per-deck **addendum** — a short region appended after
+the shared style block, describing the pentagon — so that a fifth silhouette would not require
+bumping the block to v3 and invalidating all 22 promoted badges. Sound reasoning; the block really
+cannot be bumped (`check-badge-art.mjs` asserts every master's sidecar version against it). The
+addendum was the wrong way to avoid it.
+
+| # | aspect | seed | addendum | scene asked for | what came back |
+|---|---|---|---|---|---|
+| a01 | 4:3 | 1970 | full | one mountain peak | pepperoni pizza |
+| a02 | 4:3 | 1970 | full | same, `--note` naming rock/snow | pepperoni pizza, better |
+| a03 | 4:3 | 1970 | full | three jagged peaks | watermelon slice |
+| a04 | 4:3 | 1970 | full | aerial cable car | pepperoni pizza |
+| a05 | 4:3 | 4711 | full | aerial cable car | traffic cone |
+| a06 | 4:3 | 4711 | reframed | aerial cable car | winged doughnut |
+| a07 | 1:1 | 4711 | reframed | aerial cable car | pepperoni pizza |
+| — | 1:1 | 1970 | *(badge deck control)* | `dawn_patrol` lighthouse | **a perfect lighthouse** |
+| a08 | 1:1 | 1970 | one sentence | aerial cable car | doughnut |
+| a09 | 1:1 | 1970 | one sentence | aerial cable car | pepperoni pizza |
+| a10 | 1:1 | 1970 | **none** | aerial cable car | **an aerial cable car** |
+| a11 | 1:1 | 1970 | **none** | aerial cable car | **an aerial cable car** |
+| a12 | 4:3 | 1970 | **none** | aerial cable car | **an aerial cable car** |
+
+**Every hard check passed on the pizzas.** Geometry, twill tone, palette agreement, signature-thread
+share, weave texture, patch centring, and 9a patch width all read green while the picture was a
+slice of pizza. This is the sharpest demonstration anywhere in this project of why step 5 of the
+skill — *look at it* — is mandatory and not ceremonial. No number here can see a subject.
+
+**The diagnosis took four wrong turns, all of them plausible:**
+
+1. *The wedge.* An apex-up pentagon invites a wedge and a wedge is a pizza slice. So the scene
+   became three jagged peaks. Result: watermelon.
+2. *The correction wording.* `a02`'s note named materials physically as step 6 prescribes — *sunlit
+   rock in marigold gold, shadowed rock in cardinal red, a bone-white snow cap* — and every one of
+   those maps onto a pizza ingredient, so naming them harder made the pizza better. True, and not
+   the cause.
+3. *Landform versus made object.* The deck's subject palette is red, green, gold and bone, which is
+   a fruit bowl; the 22 badges escape it because their subjects are manufactured things with hard
+   mechanical outlines. So the scene became a riveted cable car. Result: pizza again.
+4. *The aspect ratio, the seed, the subject label.* All three were varied. `a05` (new seed) escaped
+   food but produced a traffic cone; `a07` (square) was pizza; relabelling `SUBJECT FOR THIS PATCH`
+   to `SUBJECT FOR THIS BADGE` changed nothing.
+
+**The control is what closed it.** Regenerating a known-good badge on the documented path returned
+a flawless lighthouse — correct shield, correct beam, 9a drift 0.2%. The pipeline, the model and
+the style block were all fine. The only substantial thing the records prompt added was the
+addendum, and removing it fixed the subject on the very next generation, at both aspect ratios.
+
+**Why it should not have mattered, and the rule that follows.** The addendum was four lines of
+plain prose appended after an 8,000-character block, and at its smallest it was a single sentence
+naming a shape. It still broke the scene completely. Whatever the mechanism — a contradiction with
+the block's own enumerated shape list, or simply that text between the block and the subject
+displaces the subject — the operational rule is blunt and worth more than the explanation:
+
+> **Send STYLE BLOCK v2 verbatim, and put every per-patch instruction in the scene line or in
+> `--note`. Do not append anything to the block for any reason.**
+
+That is the same conclusion the chevron note above reached from a different direction, and the two
+should be read together. It also means a genuinely new style contract has to be a **v3 bump with
+the whole deck regenerated** — there is no cheap middle path, and F25 spent twelve generations
+proving the middle path does not exist.
 
 ### The collision audit, extended to thirty-two patches
 

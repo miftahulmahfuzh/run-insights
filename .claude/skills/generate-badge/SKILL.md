@@ -15,7 +15,7 @@ command below without the flag means what it always meant.
 | keys | 22, `BADGE_CATALOG` in `lib/badges/catalog.ts` | 10, `RECORD_CATALOG` in `lib/records/catalog.ts` |
 | scenes | `<!-- SCENES -->` in `style.md` | `<!-- SCENES:records -->` |
 | silhouettes | shield / hexagon / chevron / rounded triangle | pentagon, all ten |
-| style version | `v2` | `v2+records1` — the shared block plus a records-only addendum |
+| style version | `v2` | `v2` — the identical block, sent verbatim to both |
 | masters → shipped | `assets/badges/` → `public/badges/` | `assets/records/` → `public/records/` |
 | manifest | `lib/badges/badge-art.ts` | `lib/records/record-art.ts` |
 
@@ -25,6 +25,12 @@ written down.** Adding a third deck is an entry there plus `python3 tools/decks.
 **Both decks share one anchor and one style block**, on purpose — they are one bolt of cloth cut
 thirty-two times. Check 9b measures tone drift against that single anchor, which is the only
 thing that can catch the two decks drifting apart from each other.
+
+**Never append anything to the style block for a deck.** A deck's silhouette and every other
+per-patch instruction ride in its `SHAPE:` scene line, exactly as the badge deck's four do. F25
+measured that appending even one sentence makes this model discard the scene and return a generic
+novelty patch — twelve generations of pizza, doughnuts and a traffic cone, every hard check green.
+`style.md`'s findings section has the table.
 
 One patch per invocation. **Never a batch loop in one call** — the three-attempt cap and the
 look-at-it step are per badge, and a loop makes both ceremonial. At ~$0.04 and 4–5 minutes per
