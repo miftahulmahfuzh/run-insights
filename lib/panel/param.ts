@@ -39,6 +39,46 @@
 /** The single query parameter that names the open panel. */
 export const PANEL_PARAM = 'panel'
 
+/**
+ * The open panel's disclosure state — F27 round 2, card #26.
+ *
+ * ── A SECOND PARAMETER, AND WHY THE RULE ABOVE DOES NOT FORBID IT ───────────────────────────
+ * F27 round 1 read the "one parameter, not one per surface" argument above as forbidding this, kept
+ * the badge panel's expander in `useState`, and shipped a back-swipe that returned to a collapsed
+ * list. The user asked for the expanded one, and re-reading the argument, it does not reach this
+ * parameter.
+ *
+ * What that argument is about is **two parallel surfaces**. `?badge=` beside `?record=` makes "both
+ * panels open" a representable state, and keeping them exclusive means every opener remembering to
+ * clear every other surface's parameter — a registry a later card can silently forget to join,
+ * whose failure is two stacked modals rather than a type error.
+ *
+ * `dates` has none of that shape. It is **subordinate** to whatever `panel` names rather than
+ * parallel to it: on its own it opens nothing, it cannot name a second surface, and there is one
+ * reader. Adding a kind is still one member on the union below. So the exclusivity this module
+ * protects is untouched, and the thing that made a second *selection* parameter dangerous — that it
+ * could be set independently and mean something — is exactly what this one cannot do.
+ *
+ * ── `1`, AND NOTHING ELSE IS TRUE ───────────────────────────────────────────────────────────
+ * A URL is user-typed input. `dates=1` is open; absent, empty, `0`, `true`, `yes` and anything else
+ * are shut. One spelling means one thing to parse and one thing to write, and a hand-typed
+ * `?dates=true` failing closed is the safe direction: the panel opens the way a tap would leave it.
+ */
+export const PANEL_DATES_PARAM = 'dates'
+
+/** The one value of `dates` that means "expanded". */
+const PANEL_DATES_OPEN = '1'
+
+/** Is the named panel's date list expanded? `dates=1` and nothing else. */
+export function decodePanelDates(raw: string | null | undefined): boolean {
+  return raw === PANEL_DATES_OPEN
+}
+
+/** The value to write for an expanded list, or null to drop the parameter entirely. */
+export function encodePanelDates(expanded: boolean): string | null {
+  return expanded ? PANEL_DATES_OPEN : null
+}
+
 /** Which surface's panel is open. `record` arrives with #25. */
 export type PanelKind = 'badge' | 'record'
 

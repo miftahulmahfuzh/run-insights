@@ -269,3 +269,152 @@ The two items no still frame can answer, both about the gesture:
    Whether collapsed is the right call is a feel judgement, and §6 is the argument to disagree with.
 2. Escape, the backdrop tap and the focus ring on the new control, on a real phone. No jsdom here,
    so `showModal()` never runs in this suite at all — the same limit `F24 §5` records.
+
+---
+
+# F27 round 2 — 2026-08-22
+
+**Card:** [#26](https://github.com/miftahulmahfuzh/run-insights/issues/26) · round 2
+**Base:** `656b87f` (`origin/main` with round 1 and F25's record deck both landed)
+
+Two reports from production, one hour after round 1 merged. One is a design failure behind correct
+code; the other reverses §6 on the user's say-so, and the costing in §6 turns out to have been wrong
+as well.
+
+---
+
+## R2.1 The report that was not a code defect
+
+> `Self-Reward Achieved` — "Earned once" — the date could not be clicked. `Groundhog Day` is also
+> "Earned once" and its date *can* be clicked. `Tourist` too. So what happened to Self-Reward?
+
+`catalog.ts:98` — `badge('self_reward', 'Self-Reward Achieved', 'week')`. It is **week-scoped**, so
+`badges.run_id` is null on every one of its rows: nothing earns it but four runs inside one ISO week,
+and there is no single run for the date to open. `groundhog_day` and `tourist` are `'session'`.
+Round 1's own acceptance list says "A period badge's dates are text, not links", and `RunDateLink`'s
+doc block has said the same since F24. The code did exactly what it was asked.
+
+**And the design was still wrong.** Three badges read "Earned once"; one date opened a run and the
+next silently did nothing; the only way to learn why was to read the catalog. A dead link that is
+pixel-identical to a live one is a bug whatever the schema says — and the person who wrote the
+specification is the one who filed it, which is about as strong as that evidence gets.
+
+### The fix: a period badge stops pretending to be a day
+
+| Scope | `runId` | `scopeKey` | The row reads |
+|---|---|---|---|
+| `week` | null | `2026-W34` | `Week of 17 Aug 2026` |
+| `month` | null | `2026-08` | `August 2026` |
+| `session`, run deleted (R-22) | null | null | `Thu, 28 May 2026` — a day, because it is one |
+| `session`, run alive | set | null | `Wed, 20 May 2026`, underlined, links to the run |
+| `lifetime` | null | null | a plain day — `types.ts`: "there is no period to name" |
+
+Nothing there invites a thumb it cannot satisfy, and nothing needs a footnote explaining itself.
+
+Three consequences, all carried out rather than discovered later:
+
+- **`BadgeEarnedDay` gains `scopeKey`.** It is the discriminator between the two reasons `runId` is
+  null, and without it a deleted-run day and a week are indistinguishable. `foldAwards` already had
+  it on every row.
+- **`RunDateLink` gains an optional `label`.** The primitive keeps the affordance — that is its
+  stated job, so two panels cannot disagree about what a tappable date looks like — and the caller
+  supplies the text. It is still a `lib/format.ts` string (`isoWeekLabel`, `formatMonthLabel`), so
+  R-23 is pointed at a different formatter rather than loosened. No new date arithmetic: both
+  formatters are `/trends`' own and predate this card.
+- **The shelf row is left alone**, deliberately. It prints `formatDay(earnedOn)` for every badge and
+  that date is **never** a link on any row, so there is no affordance there to lie. The confusion
+  this fixes is specific to a surface where some dates are tappable and some are not.
+
+### Rejected
+
+- **A footnote** — "this is a weekly badge, so there is no run to open" — under the list. It
+  explains a row instead of fixing it, costs a line on every period badge's panel, and still leaves
+  the row itself looking like a broken link until you read the small print.
+- **Adding `scope` to `ShelfEntry`** so the panel could switch on `'week' | 'month' | …`. `scopeKey`
+  already distinguishes every case that renders differently, and its format says which of week and
+  month it is. A second field carrying the same distinction is a second thing to keep in step.
+- **Importing `badgeScope` into the panel.** `BadgeDialog` is a client component and `catalog.ts` is
+  the 22-row table plus the threshold block — exactly what `lib/badges/types.ts`' own header says the
+  type-only split exists to keep out of the client bundle.
+
+## R2.2 The back-swipe returns to the expanded list
+
+> If I click a date it correctly redirects to the run detail page. But if I back-swipe, it goes back
+> to the *collapsed* state of the badge detail. Can we make it go back to the extended state? Better
+> UX.
+
+Yes — and §6 is the section this reverses. §6 was written to make exactly this cheap, and it named
+the price: the URL, because that is the only state the back gesture can see. What §6 got wrong was
+the price.
+
+**`lib/panel/param.ts`' "one parameter, not one per surface" argument does not reach this
+parameter.** That argument is about two *parallel* surfaces: `?badge=` beside `?record=` makes "both
+panels open" a representable state, and keeping them exclusive turns into a registry every opener
+must remember to join, whose failure mode is two stacked modals rather than a type error. `dates` is
+**subordinate** to whatever `panel` names — on its own it opens nothing, it cannot name a second
+surface, and one component reads it. The exclusivity that module protects is `panel`'s, and it is
+untouched. Round 1 over-applied a comment; that is the whole of the error.
+
+So: `?panel=badge.tourist&dates=1`.
+
+### `replaceState`, and never `pushState`
+
+The half that makes it work, and the half that is easy to get backwards. Expanding is **not
+navigation**. Pushed, the list would be a history entry of its own, and the back-swipe from
+`/r/<id>` would land on the panel and *collapse the list* instead of leaving `/me` — two backs to get
+out, which is the dead-entry bug `usePanelParam` exists to prevent, reintroduced one level down.
+Replaced, the entry the runner leaves for the run already carries `dates=1`, so coming back restores
+it exactly, and `pushedRef` still describes the only entry we own.
+
+Three edges, each closed in code rather than noted:
+
+- **`open()` clears the flag.** A tap on a badge shows that badge, not the last one's dates. So the
+  disclosure still defaults shut on a fresh open — the half of §6 nobody objected to.
+- **`close()`'s replace branch drops both parameters,** so a shut panel never leaves `?dates=1` on a
+  bare `/me`.
+- **`dates=1` with no `panel` expands nothing.** The hook ands the flag with `selection !== null`,
+  and `setExpanded` no-ops when nothing is open.
+
+`dates=1` is the only true value. Absent, empty, `0`, `true`, `yes` — all shut. A URL is user-typed
+input and failing closed is the safe direction: the panel opens the way a tap would leave it rather
+than the way a typo asked for.
+
+### Why not a suffix on the existing value
+
+Still ambiguous, which is the one thing §6 got right. `decodePanelSelection` splits on the **first**
+separator only and deliberately admits dotted keys, so `badge.tourist.dates` is the key
+`tourist.dates` — indistinguishable from the key `tourist` with its list open. That is asserted now
+rather than argued.
+
+## Files
+
+| File | Change |
+|---|---|
+| `lib/panel/param.ts` | `PANEL_DATES_PARAM`, `decodePanelDates`, `encodePanelDates` |
+| `components/ui/usePanelParam.ts` | `expanded` / `setExpanded`; `withPanel` writes both parameters |
+| `components/ui/RunDateLink.tsx` | optional `label` |
+| `components/profile/BadgeShelf.tsx` | threads the flag into the panel |
+| `components/profile/BadgeDialog.tsx` | disclosure by prop, not state; `periodLabel` |
+| `lib/badges/types.ts` | `BadgeEarnedDay.scopeKey` |
+| `lib/badges/facts.ts` | the fold carries it |
+| `tests/panel.param.test.ts` | the codec, and the ambiguity that rules the suffix out |
+| `tests/badges.render.test.ts` | the five scope cases, and `&dates=1` rendered cold |
+| four other suites | `scopeKey` on every `earnedDays` fixture |
+
+## Verified
+
+`npm test`: 84 files, **1275 tests** (1261 before, 14 new). Full CI gate below.
+
+Photographed again at 390×844, both schemes — `self_reward` earned six times, deliberately mixed:
+three weeks, one month, one deleted-run day and one live run. `Week of 17 Aug 2026`, `Week of 10 Aug
+2026`, `Week of 27 Jul 2026`, `June 2026`, `Thu, 28 May 2026` plain, and `Wed, 20 May 2026`
+underlined as the only tappable row. One link, five plain rows — measured, not counted by eye. The
+distinction the report was about is now visible without reading anything.
+
+### Still a human's job
+
+The gesture itself. No jsdom, so `pushState`/`replaceState`/`popstate` are unreachable from this
+suite — `tests/panel.param.test.ts` says so about F24's half already and it is equally true of this
+one. What a person has to confirm on a phone: expand → tap a date → back-swipe lands on `/me` with
+the panel open **and the list still expanded**, and one more back leaves `/me` rather than collapsing
+the list first.

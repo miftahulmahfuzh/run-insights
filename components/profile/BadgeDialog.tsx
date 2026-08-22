@@ -5,7 +5,10 @@ import * as React from 'react'
 import { DetailPanel, type PanelArt } from '@/components/ui/DetailPanel'
 import { RunDateLink } from '@/components/ui/RunDateLink'
 import { cn } from '@/lib/cn'
+import { isValidIsoWeekKey } from '@/lib/date/ranges'
+import { formatMonthLabel, isoWeekLabel } from '@/lib/format'
 import { BADGE_ART, BADGE_ART_HEIGHT, BADGE_ART_WIDTH } from '@/lib/badges/badge-art'
+import type { BadgeEarnedDay } from '@/lib/badges/types'
 import type { ShelfEntry } from '@/lib/badges/shelf'
 
 /**
@@ -44,10 +47,30 @@ import type { ShelfEntry } from '@/lib/badges/shelf'
  * days on record and then says, in words, how many earnings have no date — because the one thing
  * this panel must not do is invent four days that were never written down.
  */
-export function BadgeDialog({ entry, onClose }: { entry: ShelfEntry | null; onClose: () => void }) {
+export function BadgeDialog({
+  entry,
+  datesExpanded,
+  onToggleDates,
+  onClose,
+}: {
+  entry: ShelfEntry | null
+  /** Is the earn-date list open? Held in the URL by `usePanelParam`, not here — see `Body`. */
+  datesExpanded: boolean
+  onToggleDates: () => void
+  onClose: () => void
+}) {
   return (
     <DetailPanel open={entry !== null} art={entry && badgeArt(entry)} onClose={onClose}>
-      {(titleId) => entry && <Body entry={entry} titleId={titleId} />}
+      {(titleId) =>
+        entry && (
+          <Body
+            entry={entry}
+            titleId={titleId}
+            datesExpanded={datesExpanded}
+            onToggleDates={onToggleDates}
+          />
+        )
+      }
     </DetailPanel>
   )
 }
@@ -67,9 +90,18 @@ function badgeArt(entry: ShelfEntry): PanelArt {
   }
 }
 
-function Body({ entry, titleId }: { entry: ShelfEntry; titleId: string }) {
+function Body({
+  entry,
+  titleId,
+  datesExpanded,
+  onToggleDates,
+}: {
+  entry: ShelfEntry
+  titleId: string
+  datesExpanded: boolean
+  onToggleDates: () => void
+}) {
   const earned = entry.earned
-  const [open, setOpen] = React.useState(false)
   const listId = React.useId()
 
   return (
@@ -77,9 +109,9 @@ function Body({ entry, titleId }: { entry: ShelfEntry; titleId: string }) {
       {earned ? (
         <EarnedDatesTrigger
           count={earned.count}
-          open={open}
+          open={datesExpanded}
           listId={listId}
-          onToggle={() => setOpen((wasOpen) => !wasOpen)}
+          onToggle={onToggleDates}
         />
       ) : (
         <p className="text-[11px] font-semibold tracking-[0.02em] text-ink-3">Not yet earned</p>
@@ -103,7 +135,7 @@ function Body({ entry, titleId }: { entry: ShelfEntry; titleId: string }) {
           precisely the attribute's job, and the list is still AFTER the button in DOM order so Tab
           from the trigger lands on the first date. The three lines are not filler either: they are
           the badge's identity and its rule — the subject the dates are about. */}
-      {earned && open && (
+      {earned && datesExpanded && (
         <EarnedDayList id={listId} earnedDays={earned.earnedDays} count={earned.count} />
       )}
 
@@ -139,18 +171,21 @@ function Body({ entry, titleId }: { entry: ShelfEntry; titleId: string }) {
  * replaced `DetailPanel`'s `el.querySelector('button')` initial-focus call with a ref on Close —
  * its comment names this card, and this control is what it was anticipating.
  *
- * ── COLLAPSED IS THE STATE THE BACK GESTURE RETURNS TO, ON PURPOSE ───────────────────────────
- * The flag is `useState`, so tapping a date and swiping back re-mounts the panel with the list
- * shut.
- * That was decided rather than inherited. Keeping it open means putting it in the URL, because that
- * is the only state the back gesture can see (F24's whole argument), and there is no cheap way:
- * `lib/panel/param.ts` argues at length against a second parameter — "a registry a later card can
- * silently forget to join" — and a suffix on the existing value is ambiguous by construction, since
- * `decodePanelSelection` splits on the FIRST separator only and deliberately admits dotted keys. So
- * the price is a permanent widening of a codec two surfaces share, and the saving is one tap on a
- * control that sits on the panel's first line, directly under the thumb that just swiped back. A
- * re-entered panel re-establishing which badge it is before re-establishing a list is also simply
- * the better reading of the gesture. `docs/plans/F27-badge-earn-dates.md` §6 has the full costing.
+ * ── THE OPEN FLAG IS IN THE URL, NOT IN THIS COMPONENT (ROUND 2) ─────────────────────────────
+ * Round 1 held it in `useState` and argued for it: a route change to `/r/<id>` erases React state,
+ * so the back-swipe returned to a collapsed list, and the cost of the alternative was read as a
+ * permanent widening of the codec two panels share.
+ *
+ * **The user asked for the expanded list, and the costing was wrong anyway.**
+ * `lib/panel/param.ts`'s "one parameter, not one per surface" argument is about two *parallel*
+ * surfaces — `?badge=` beside `?record=` makes "both panels open" representable. `dates` is
+ * subordinate to whatever `panel` names: it opens nothing by itself and cannot name a second
+ * surface, so that argument never reached it. It rides the panel's own history entry via
+ * `replaceState`, which is what makes one back-swipe land on the open list rather than two land off
+ * `/me`. See `usePanelParam` for why replace and not push.
+ *
+ * What survives from round 1 is the other half, which nobody objected to: a **fresh** tap on a
+ * badge opens with the list shut. `usePanelParam.open` clears the flag for exactly that reason.
  */
 function EarnedDatesTrigger({
   count,
@@ -232,6 +267,7 @@ export function EarnedDayList({
           <RunDateLink
             day={day.earnedOn}
             runId={day.runId}
+            label={periodLabel(day)}
             className="text-[12px] font-semibold text-ink-2 tabular-nums"
           />
         </li>
@@ -247,6 +283,41 @@ export function EarnedDayList({
       )}
     </ul>
   )
+}
+
+/**
+ * A week or month badge's earning, named by its **period** rather than by a day — round 2's fix for
+ * the report that opened this round.
+ *
+ * ── WHAT WENT WRONG, AND WHY IT WAS NOT A CODE DEFECT ───────────────────────────────────────
+ * `self_reward` is `'week'`-scoped (`catalog.ts`), so `badges.run_id` is null on every one of its
+ * rows: nothing earned it but four runs inside one ISO week, and there is no single run for its date
+ * to open. `tourist` and `groundhog_day` are `'session'`, so theirs open. All three read
+ * "Earned once", and the code was doing exactly what F27 round 1 specified.
+ *
+ * The design was still wrong, because **the panel never said so.** One date opened a run, the next
+ * silently did nothing, and the only way to learn the difference was to read the catalog. A dead
+ * link that looks identical to a live one is a bug whatever the schema says.
+ *
+ * So a period badge's row stops pretending to be a day. `'2026-W34'` reads `Week of 17 Aug 2026`
+ * and `'2026-08'` reads `August 2026` — neither invites a thumb, and neither needs a footnote
+ * explaining why it did not respond to one.
+ *
+ * ── THE TWO NULLS ARE DIFFERENT, AND `scopeKey` IS WHAT TELLS THEM APART ─────────────────────
+ * A **session** badge whose run was deleted (R-22) also has a null `runId`, and for that one the
+ * plain day is right: the day happened, the run is gone, and calling it a period would be a lie.
+ * A **lifetime** badge carries both nulls — `types.ts`: "there is no period to name" — and its day
+ * is the day the tenth dawn run happened, so it is a day too. Returning `undefined` for both leaves
+ * `RunDateLink` on `formatDay`, which is where every date in this app belongs (R-23).
+ *
+ * Both formatters are `lib/format.ts`' own and predate this card: `isoWeekLabel` is `/trends`' week
+ * header and states there why it names the week by its Monday. No new date arithmetic here.
+ */
+function periodLabel(day: BadgeEarnedDay): string | undefined {
+  if (day.scopeKey === null) return undefined
+  return isValidIsoWeekKey(day.scopeKey)
+    ? isoWeekLabel(day.scopeKey)
+    : formatMonthLabel(day.scopeKey)
 }
 
 /**

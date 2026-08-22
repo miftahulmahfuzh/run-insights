@@ -268,8 +268,8 @@ describe('§7 — what counts as a re-earn, per scope', () => {
      * so a third row here would be the count inflation made visible: the runner would read the day
      * they re-reviewed a run as a day they earned the badge. Two earnings, two days, newest first. */
     expect(row.earnedDays).toEqual([
-      { earnedOn: '2026-08-27', runId: 'run_b' },
-      { earnedOn: '2026-08-20', runId: RUN },
+      { earnedOn: '2026-08-27', runId: 'run_b', scopeKey: null },
+      { earnedOn: '2026-08-20', runId: RUN, scopeKey: null },
     ])
   })
 
@@ -394,7 +394,7 @@ describe('§7 — what counts as a re-earn, per scope', () => {
       firstEarnedOn: '2026-01-01',
       earnedOn: '2026-01-01',
       count: 1,
-      earnedDays: [{ earnedOn: '2026-01-01', runId: 'old_run' }],
+      earnedDays: [{ earnedOn: '2026-01-01', runId: 'old_run', scopeKey: null }],
     })
   })
 })
