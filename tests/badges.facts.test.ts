@@ -157,8 +157,8 @@ describe('foldAwards — F13, where the count comes from', () => {
         // F27: two rows, two days, latest first — and the defect seen from the list's side. Three
         // days here would be the same inflation the count no longer has.
         earnedDays: [
-          { earnedOn: '2026-08-20', runId: 'run_b', scopeKey: null },
-          { earnedOn: '2026-07-04', runId: 'run_a', scopeKey: null },
+          { earnedOn: '2026-08-20', runId: 'run_b' },
+          { earnedOn: '2026-07-04', runId: 'run_a' },
         ],
       },
     ])
@@ -179,9 +179,9 @@ describe('foldAwards — F13, where the count comes from', () => {
      * the ends of ONE sort, so `earnedOn` being the head's day and `firstEarnedOn` the tail's is a
      * property of this list rather than two independent walks that happen to agree. */
     expect(fold!.earnedDays).toEqual([
-      { earnedOn: '2026-08-20', runId: 'r2', scopeKey: null },
-      { earnedOn: '2026-06-15', runId: 'r1', scopeKey: null },
-      { earnedOn: '2026-05-01', runId: 'r3', scopeKey: null },
+      { earnedOn: '2026-08-20', runId: 'r2' },
+      { earnedOn: '2026-06-15', runId: 'r1' },
+      { earnedOn: '2026-05-01', runId: 'r3' },
     ])
   })
 
@@ -223,9 +223,9 @@ describe('foldAwards — F13, where the count comes from', () => {
       }),
     ]
     expect(foldAwards(rows)[0]!.earnedDays).toEqual([
-      { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
-      { earnedOn: '2026-07-31', runId: null, scopeKey: '2026-07' },
-      { earnedOn: '2026-06-30', runId: null, scopeKey: '2026-06' },
+      { earnedOn: '2026-08-31', runId: null },
+      { earnedOn: '2026-07-31', runId: null },
+      { earnedOn: '2026-06-30', runId: null },
     ])
   })
 
@@ -257,8 +257,8 @@ describe('foldAwards — F13, where the count comes from', () => {
     const [fold] = foldAwards(rows)
     expect(fold!.count).toBe(6)
     expect(fold!.earnedDays).toEqual([
-      { earnedOn: '2026-08-24', runId: null, scopeKey: '2026-W34' },
-      { earnedOn: '2026-08-20', runId: null, scopeKey: '2026-W30' },
+      { earnedOn: '2026-08-24', runId: null },
+      { earnedOn: '2026-08-20', runId: null },
     ])
     expect(fold!.count).not.toBe(fold!.earnedDays.length)
   })
@@ -287,8 +287,8 @@ describe('foldAwards — F13, where the count comes from', () => {
      * TOP OF THE PANEL'S LIST would depend on that plan. Asserted from both input orders. */
     for (const input of [rows, [...rows].reverse()]) {
       expect(foldAwards(input)[0]!.earnedDays).toEqual([
-        { earnedOn: '2026-08-20', runId: 'evening', scopeKey: null },
-        { earnedOn: '2026-08-20', runId: 'morning', scopeKey: null },
+        { earnedOn: '2026-08-20', runId: 'evening' },
+        { earnedOn: '2026-08-20', runId: 'morning' },
       ])
     }
   })
@@ -306,9 +306,7 @@ describe('foldAwards — F13, where the count comes from', () => {
     // F27: one list per key and no bleed between them, even though `late_start`'s two rows arrive
     // with `century_club`'s row interleaved between them.
     expect(folded[0]!.earnedDays.map((d) => d.runId)).toEqual(['r2', 'r1'])
-    expect(folded[1]!.earnedDays).toEqual([
-      { earnedOn: '2026-08-20', runId: null, scopeKey: '2026-08' },
-    ])
+    expect(folded[1]!.earnedDays).toEqual([{ earnedOn: '2026-08-20', runId: null }])
   })
 
   it('carries the LATEST award’s scope key for a period badge', () => {
@@ -342,7 +340,7 @@ describe('foldAwards — F13, where the count comes from', () => {
         earnedOn: '2026-08-20',
         count: 1,
         // The day survives the deletion and the link does not: `RunDateLink` renders this as text.
-        earnedDays: [{ earnedOn: '2026-08-20', runId: null, scopeKey: null }],
+        earnedDays: [{ earnedOn: '2026-08-20', runId: null }],
       },
     ])
   })
@@ -357,8 +355,8 @@ describe('foldAwards — F13, where the count comes from', () => {
       award({ key: 'tourist', dedupeKey: 'deleted', runId: null, earnedOn: '2026-07-04' }),
     ]
     expect(foldAwards(rows)[0]!.earnedDays).toEqual([
-      { earnedOn: '2026-08-20', runId: 'kept', scopeKey: null },
-      { earnedOn: '2026-07-04', runId: null, scopeKey: null },
+      { earnedOn: '2026-08-20', runId: 'kept' },
+      { earnedOn: '2026-07-04', runId: null },
     ])
   })
 

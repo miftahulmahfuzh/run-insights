@@ -5,10 +5,7 @@ import * as React from 'react'
 import { DetailPanel, type PanelArt } from '@/components/ui/DetailPanel'
 import { RunDateLink } from '@/components/ui/RunDateLink'
 import { cn } from '@/lib/cn'
-import { isValidIsoWeekKey } from '@/lib/date/ranges'
-import { formatMonthLabel, isoWeekLabel } from '@/lib/format'
 import { BADGE_ART, BADGE_ART_HEIGHT, BADGE_ART_WIDTH } from '@/lib/badges/badge-art'
-import type { BadgeEarnedDay } from '@/lib/badges/types'
 import type { ShelfEntry } from '@/lib/badges/shelf'
 
 /**
@@ -39,6 +36,17 @@ import type { ShelfEntry } from '@/lib/badges/shelf'
  * Which means `firstEarnedOn` still has no reader in this file. The earliest day is the *last row*
  * of the list — a member of `earnedDays`, not a named field — and that is the point: the panel no
  * longer names the ends of a span, it shows the span.
+ *
+ * ── EVERY DATE IS A RUN'S DATE, INCLUDING A PERIOD BADGE'S (ROUND 3) ─────────────────────────
+ * Round 2 printed `Week of 17 Aug 2026` on a week badge's row, because a period award recorded no
+ * run and a bare date that did not respond to a tap read as broken. That treated the symptom. The
+ * cause was upstream: a count threshold is crossed BY a run, and the award was not naming it.
+ *
+ * `evaluate.ts` names it now — see the count-threshold rule there — so `self_reward`'s row is the
+ * date of the fourth run of that week and opens that run, exactly like a session badge's. There is
+ * nothing here that needs a period label, a scope discriminator or a second date format; the list
+ * is days, and a day links when its run is known. The remaining text branch is a run that was
+ * deleted, a sweep-awarded row, or a period row written before round 3.
  *
  * ── THE COUNT AND THE NUMBER OF DATES CAN DISAGREE, AND THE PANEL SAYS SO ────────────────────
  * `StoredBadge.count` sums the `count` column, because a row predating F13 carries the aggregate it
@@ -267,7 +275,6 @@ export function EarnedDayList({
           <RunDateLink
             day={day.earnedOn}
             runId={day.runId}
-            label={periodLabel(day)}
             className="text-[12px] font-semibold text-ink-2 tabular-nums"
           />
         </li>
@@ -283,41 +290,6 @@ export function EarnedDayList({
       )}
     </ul>
   )
-}
-
-/**
- * A week or month badge's earning, named by its **period** rather than by a day — round 2's fix for
- * the report that opened this round.
- *
- * ── WHAT WENT WRONG, AND WHY IT WAS NOT A CODE DEFECT ───────────────────────────────────────
- * `self_reward` is `'week'`-scoped (`catalog.ts`), so `badges.run_id` is null on every one of its
- * rows: nothing earned it but four runs inside one ISO week, and there is no single run for its date
- * to open. `tourist` and `groundhog_day` are `'session'`, so theirs open. All three read
- * "Earned once", and the code was doing exactly what F27 round 1 specified.
- *
- * The design was still wrong, because **the panel never said so.** One date opened a run, the next
- * silently did nothing, and the only way to learn the difference was to read the catalog. A dead
- * link that looks identical to a live one is a bug whatever the schema says.
- *
- * So a period badge's row stops pretending to be a day. `'2026-W34'` reads `Week of 17 Aug 2026`
- * and `'2026-08'` reads `August 2026` — neither invites a thumb, and neither needs a footnote
- * explaining why it did not respond to one.
- *
- * ── THE TWO NULLS ARE DIFFERENT, AND `scopeKey` IS WHAT TELLS THEM APART ─────────────────────
- * A **session** badge whose run was deleted (R-22) also has a null `runId`, and for that one the
- * plain day is right: the day happened, the run is gone, and calling it a period would be a lie.
- * A **lifetime** badge carries both nulls — `types.ts`: "there is no period to name" — and its day
- * is the day the tenth dawn run happened, so it is a day too. Returning `undefined` for both leaves
- * `RunDateLink` on `formatDay`, which is where every date in this app belongs (R-23).
- *
- * Both formatters are `lib/format.ts`' own and predate this card: `isoWeekLabel` is `/trends`' week
- * header and states there why it names the week by its Monday. No new date arithmetic here.
- */
-function periodLabel(day: BadgeEarnedDay): string | undefined {
-  if (day.scopeKey === null) return undefined
-  return isValidIsoWeekKey(day.scopeKey)
-    ? isoWeekLabel(day.scopeKey)
-    : formatMonthLabel(day.scopeKey)
 }
 
 /**

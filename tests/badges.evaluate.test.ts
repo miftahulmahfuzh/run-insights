@@ -268,8 +268,8 @@ describe('§7 — what counts as a re-earn, per scope', () => {
      * so a third row here would be the count inflation made visible: the runner would read the day
      * they re-reviewed a run as a day they earned the badge. Two earnings, two days, newest first. */
     expect(row.earnedDays).toEqual([
-      { earnedOn: '2026-08-27', runId: 'run_b', scopeKey: null },
-      { earnedOn: '2026-08-20', runId: RUN, scopeKey: null },
+      { earnedOn: '2026-08-27', runId: 'run_b' },
+      { earnedOn: '2026-08-20', runId: RUN },
     ])
   })
 
@@ -294,6 +294,50 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     expect(second.qualified).toContain('self_reward')
     expect(second.newlyEarned).not.toContain('self_reward')
     expect(gateway.fold('self_reward')!.count).toBe(1)
+
+    /*
+     * F27 ROUND 3 — AND THIS IS THE ASSERTION THE WHOLE ROUND RESTS ON.
+     *
+     * The row names the run that took the week to FOUR, not the fifth run that merely kept it
+     * there. Nothing in `evaluate.ts` chooses that: `dedupeKeyFor` returns the scope key for a week
+     * badge, so the fifth commit's insert collides with the row the fourth wrote and the database
+     * declines it — `runId` is decided by which commit got there first, which is the definition of
+     * "the run that reached N".
+     *
+     * `RUN` is the fourth. If this ever reads `run_fifth`, the badge has started naming whichever
+     * run happened to be reviewed most recently, which is what `earnedOn` did before F13 and the
+     * defect that ledger exists to prevent.
+     */
+    expect(gateway.fold('self_reward')!.runId).toBe(RUN)
+    expect(gateway.fold('self_reward')!.earnedDays).toEqual([{ earnedOn: DAY, runId: RUN }])
+  })
+
+  it('stamps every period badge with the run whose commit crossed its threshold (round 3)', async () => {
+    /*
+     * The rule, across all three period scopes at once. `BUSY_PERIOD` qualifies a week badge, a
+     * month badge, a streak badge and a lifetime badge in one commit, and every one of them records
+     * the committing run — because a threshold is crossed BY something, and here that something is
+     * this run.
+     *
+     * Before round 3 all four of these were `null`, on the argument that "no single run earned
+     * `century_club`". A month of running earned the distance; one commit earned the badge, and the
+     * user's report was that the panel then showed a date it refused to open.
+     */
+    const gateway = fakeGateway({ commit: commitFacts(SESSION, BUSY_PERIOD), period: BUSY_PERIOD })
+    await evaluateBadgesForCommit(USER, RUN, { recordsMovedToThisRun: [] }, gateway)
+
+    for (const key of ['self_reward', 'consistency_gremlin', 'century_club', 'dawn_patrol']) {
+      const fold = gateway.fold(key)
+      expect(fold, key).toBeDefined()
+      expect(fold!.runId, key).toBe(RUN)
+      // `scopeKey` is untouched by the change and is still what dedupes the award.
+      expect(fold!.earnedOn, key).toBe(DAY)
+    }
+    // The scope keys still say which period each one completed — the run is an addition, not a
+    // replacement.
+    expect(gateway.fold('self_reward')!.scopeKey).toBe('2026-W34')
+    expect(gateway.fold('century_club')!.scopeKey).toBe('2026-08')
+    expect(gateway.fold('dawn_patrol')!.scopeKey).toBeNull()
   })
 
   it('earns a week badge again in a new week', async () => {
@@ -394,7 +438,7 @@ describe('§7 — what counts as a re-earn, per scope', () => {
       firstEarnedOn: '2026-01-01',
       earnedOn: '2026-01-01',
       count: 1,
-      earnedDays: [{ earnedOn: '2026-01-01', runId: 'old_run', scopeKey: null }],
+      earnedDays: [{ earnedOn: '2026-01-01', runId: 'old_run' }],
     })
   })
 })
@@ -437,5 +481,24 @@ describe('sweepPeriodBadges — §8.2’s backstop', () => {
     const result = await sweepPeriodBadges(USER, '2026-08-21', gateway)
     expect(result).toEqual({ newlyEarned: [], qualified: [] })
     expect(gateway.earns).toEqual([])
+  })
+
+  it('records NO run, which is the one place round 3’s rule does not apply', async () => {
+    /*
+     * The commit path names the run that crossed the threshold. The sweep cannot and must not
+     * pretend to: it exists for the case where an aggregate moved WITHOUT a commit — a deletion, or
+     * a correction that walks a run across a period boundary — so no run completed anything, and
+     * `anchorDay` is a cron's idea of "today" rather than any run's day.
+     *
+     * A null here is the honest answer and the panel renders it as a plain date. Inventing a run
+     * would put a link in front of a runner that opens a run which did not earn the badge.
+     */
+    const gateway = fakeGateway({ period: BUSY_PERIOD })
+    await sweepPeriodBadges(USER, '2026-08-21', gateway)
+    for (const earn of gateway.earns) {
+      expect(earn.runId, earn.key).toBeNull()
+    }
+    expect(gateway.fold('self_reward')!.runId).toBeNull()
+    expect(gateway.fold('self_reward')!.earnedOn).toBe('2026-08-21')
   })
 })

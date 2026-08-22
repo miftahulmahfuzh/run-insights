@@ -1560,8 +1560,15 @@ export async function getBadgeAwards(userId: string): Promise<Badge[]> {
  * ledger holds one row per earn and grows without bound, so `badges_user_run_idx` is what answers
  * this instead of an array scan over the user's whole history.
  *
- * A period badge never appears here: `run_id` is null for week, month and lifetime scopes, which
- * is correct — no single run earned `century_club`.
+ * **A period badge DOES appear here, since F27 round 3, and that is the fix rather than a leak.**
+ * This comment used to say the opposite — "`run_id` is null for week, month and lifetime scopes,
+ * which is correct — no single run earned `century_club`". A month of running earned the distance;
+ * one commit earned the badge, and that commit is a run. So the run that took the month past 100 km
+ * now carries `century_club` in its own award list, which is what a runner opening that run expects
+ * to see. The rule and its reasoning live in `lib/badges/evaluate.ts`.
+ *
+ * Rows written before round 3 still carry null and are still unreachable from here, which is why
+ * `scripts/backfill-badge-run-ids.mjs` exists.
  */
 export async function getBadgeAwardsForRun(userId: string, runId: string): Promise<Badge[]> {
   return db
