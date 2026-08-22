@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BADGE_ART } from '@/lib/badges/badge-art'
 
 import { BadgeDialog } from '@/components/profile/BadgeDialog'
@@ -10,6 +10,19 @@ import { BADGE_META } from '@/lib/badges/meta'
 import { buildShelf } from '@/lib/badges/shelf'
 import type { PeriodFacts } from '@/lib/badges/evaluate'
 import type { StoredBadge } from '@/lib/badges/types'
+
+/**
+ * F24 put the shelf's open panel in the URL, so `BadgeShelf` now reads `useSearchParams()` and
+ * cannot render outside a router. The mock IS the router and nothing else — one hook, backed by a
+ * string this file sets — and every assertion below it is the one that was there before.
+ *
+ * `vi.hoisted` because `vi.mock` is hoisted above the file's own `const`s: a factory closing over
+ * an ordinary top-level binding reads it in its temporal dead zone.
+ */
+const router = vi.hoisted(() => ({ search: '' }))
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(router.search),
+}))
 
 /**
  * `/me`'s two new surfaces, rendered to static markup — the same technique and the same limits as
@@ -186,6 +199,54 @@ describe('BadgeDialog — no dates, and the count in words (F23)', () => {
     const html = panel('tourist')
     expect(html).toContain('pb-[calc(1rem+var(--safe-bottom))]')
     expect(html).not.toContain('pb-[calc(1.25rem+var(--safe-bottom))]')
+  })
+})
+
+describe('the open panel is a URL and not component state (F24)', () => {
+  /** The shelf as `/me?panel=…` would render it, server-side, on a cold load of that exact URL. */
+  function shelfAt(search: string) {
+    router.search = search
+    try {
+      return renderToStaticMarkup(createElement(BadgeShelf, { shelf: buildShelf(rows, FACTS) }))
+    } finally {
+      router.search = ''
+    }
+  }
+
+  it('opens the badge the parameter names', () => {
+    const html = shelfAt('panel=badge.tourist')
+    // The panel's own copy, and the 768px art that belongs to the panel alone.
+    expect(html).toContain('Earned 3 times')
+    expect(html).toContain(BADGE_ART.tourist.src)
+    // A cold load of the URL renders the panel open, which is what makes the back gesture and the
+    // return from /r/<id> restore it rather than merely re-mount the page.
+    expect(html).toContain('Close')
+  })
+
+  it('opens nothing for a key the catalog has never heard of', () => {
+    // A hand-typed URL is the one input that can name a badge that does not exist. The shelf
+    // resolves the key against the shelf it was handed, and a miss is a shut panel — not a crash,
+    // and not an empty dialog.
+    const html = shelfAt('panel=badge.nonsense')
+    expect(html).toContain('<dialog')
+    expect(html).not.toContain('Earned once')
+    expect(html).not.toContain('Not yet earned')
+    expect(html).not.toContain('Close')
+  })
+
+  it('ignores another surface’s selection — one parameter, one panel', () => {
+    // #25's record panel shares the parameter. The kind is what keeps the two from both opening,
+    // which is the whole reason there is one parameter rather than one per surface.
+    const html = shelfAt('panel=record.longest_distance')
+    expect(html).not.toContain('Close')
+    expect(html).not.toContain(BADGE_ART.tourist.src)
+  })
+
+  it('leaves the shelf itself untouched while a panel is open', () => {
+    const html = shelfAt('panel=badge.tourist')
+    // 22 rows, plus the panel's own Close: the shelf gained no control and lost none.
+    expect(html.match(/<button/g)).toHaveLength(23)
+    expect(html).toContain('2 earned')
   })
 })
 
