@@ -70,9 +70,12 @@ function keyframesIn(css: string): Keyframes[] {
   const re = /@keyframes\s+([A-Za-z_][\w-]*)/g
   let match: RegExpExecArray | null
   while ((match = re.exec(css)) !== null) {
+    // `?? ''` for `noUncheckedIndexedAccess`: group 1 is always present on a match, but the
+    // compiler cannot know that, and the repo's convention is a default rather than a `!`.
+    const name = match[1] ?? ''
     const block = blockAfter(css, match.index)
-    if (!block) continue
-    found.push({ name: match[1], body: block.body })
+    if (!name || !block) continue
+    found.push({ name, body: block.body })
     re.lastIndex = block.end
   }
   return found
@@ -169,7 +172,7 @@ for (const sheet of styleSheets) {
 function animationsIn(source: string) {
   const used = new Set<string>()
   for (const match of source.matchAll(/\[animation:([^\]]+)\]/g)) {
-    for (const token of match[1].split(/[_\s,]+/)) {
+    for (const token of (match[1] ?? '').split(/[_\s,]+/)) {
       if (declared.has(token)) used.add(token)
     }
   }

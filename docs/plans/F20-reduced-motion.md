@@ -173,6 +173,16 @@ reducedMotion=reduce          distinct opacities over 2.4s: 1   (1)
 
 Twenty-four values to one. The redefinition overrides, and the element holds still at full opacity.
 
+**And the block survives the build**, which is worth one grep because the guard reads the source
+and Tailwind is what ships. In `.next/static/chunks/*.css`:
+
+```
+@media (prefers-reduced-motion:reduce){@keyframes ri-pulse{0%,50%,to{opacity:1}}
+```
+
+The minifier rewrites `100%` as `to`, which still spans the range — the same equivalence `isStill`
+accepts. `ri-spin` occurs zero times in the bundle.
+
 What remains for a human is the judgement no assertion covers: the pending screen under an
 OS-level reduce-motion setting, confirming the elapsed counter still reads as "working" once the
 pulse is gone.
