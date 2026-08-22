@@ -120,13 +120,14 @@ function BadgeRow({ entry }: { entry: ShelfEntry }) {
         <span className="mt-0.5 block text-[12px] font-medium text-ink-2">{entry.condition}</span>
         <span className="mt-1 block text-[12px] font-medium text-ink-3">{entry.gloss}</span>
 
+        {/* The date alone — the pill on the patch is the only place the count appears. This line
+            used to append "· most recent of 3" on a re-earned badge, on the argument that the pill
+            gives the number but not which earning the date belongs to. True, and overruled in F23:
+            `earnedOn` is the latest earning by definition, so "latest" is the only reading the date
+            has, and eight words spent qualifying it are a row explaining its own schema. */}
         {entry.earned && (
           <span className="mt-1.5 block text-[11px] font-semibold text-accent">
             {formatDay(entry.earned.earnedOn)}
-            {/* `count` only appears once it means something. "×1" on twenty rows is noise — and on
-                a re-earned badge the pill on the patch has already said the number, so this says
-                what the pill cannot: which of the earnings the date belongs to. */}
-            {entry.earned.count > 1 && ' · most recent of ' + entry.earned.count}
           </span>
         )}
 

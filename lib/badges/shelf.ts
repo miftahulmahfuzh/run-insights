@@ -35,8 +35,13 @@ export interface ShelfEntry {
   gloss: string
   /**
    * null when the badge has never been earned. `earnedOn` is the LATEST earning and
-   * `firstEarnedOn` the first — equal at a count of one, and the panel says so rather than
-   * printing the same date twice.
+   * `firstEarnedOn` the first — equal at a count of one.
+   *
+   * `firstEarnedOn` has **no reader on screen** since F23 took the date line out of `BadgeDialog`;
+   * `earnedOn` is read by the shelf row and nothing else. The field is kept rather than removed
+   * because card #26 is what gives every earned date a home, and because the fold that computes it
+   * (`lib/badges/facts.ts`) and the ledger it folds are correct and tested. Do not read the absence
+   * of a caller as dead code.
    */
   earned: { firstEarnedOn: DateISO; earnedOn: DateISO; count: number } | null
   /**
