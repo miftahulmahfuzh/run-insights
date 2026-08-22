@@ -187,8 +187,42 @@ dialog::backdrop {
   }
 }
 
-@keyframes ri-spin {
-  to {
-    transform: rotate(360deg);
+/*
+ * F20 — the reduced-motion escape, for all ten `[animation:ri-pulse_…]` call sites at once.
+ *
+ * WHY REDEFINING THE KEYFRAME IS THE WHOLE FIX. Keyframes cascade by NAME, and a later
+ * `@keyframes ri-pulse` REPLACES the earlier one wholesale rather than merging with it — while one
+ * nested in a media query applies only for as long as that query matches. So this single block
+ * stops the pulse everywhere: the extraction skeleton, both `loading.tsx` files, `ChartFrame` and
+ * `Button`'s three dots, with no selector, no `!important`, and no edit to any component. The
+ * eleventh call site, whenever someone writes it, is covered before they think about it — which is
+ * the point, because ten sites that must each remember a `motion-reduce:` variant is exactly the
+ * omission card #17 reported.
+ *
+ * NOTHING IS SUBSTITUTED FOR THE PULSE, and the ~35 s extraction wait is the case that decides it.
+ * That screen's honest progress signal is already text — a live elapsed count in an
+ * `aria-live="polite"` span, next to the measured typical duration — and `ExtractingSkeleton`'s own
+ * docstring is explicit that the skeleton itself claims nothing. The pulse was decoration over a
+ * signal that does not need it. A distinct resting opacity was considered and rejected: `ChartFrame`
+ * and the `loading.tsx` skeletons sit on `bg-card` and `bg-paper-2`, where a dimmed block reads as
+ * a rendering fault rather than as a placeholder.
+ *
+ * The `transition-*` utilities in `Chip`, `KindSelector` and `Button` are deliberately untouched.
+ * The first two animate colour only, which is not motion; `Button`'s `active:scale-[0.985]` is a
+ * 1.5% press held as long as the finger is down — discrete tap feedback, not the sustained
+ * oscillation this setting exists to suppress. Recharts needs nothing either: every series in
+ * `components/charts/*Inner.tsx` already passes `isAnimationActive={false}`.
+ *
+ * `tests/motion.reducedMotion.test.ts` asserts that every animated keyframe has an escape here and
+ * that each one genuinely holds still. Both ends of the range are named on purpose — a keyframe
+ * declaring only `to` interpolates from the element's own value and still animates.
+ */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ri-pulse {
+    0%,
+    50%,
+    100% {
+      opacity: 1;
+    }
   }
 }
