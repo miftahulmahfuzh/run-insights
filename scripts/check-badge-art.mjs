@@ -15,6 +15,16 @@
  * reports which state it is in rather than pretending the deck is done or that it is broken.
  * §1 and §2 are checkable today and are checked today; §3 onward scale with what exists.
  *
+ * ── TWO DECKS, ONE SCRIPT ────────────────────────────────────────────────────────────────
+ * F09's 22 badges and F25's 10 personal-record patches are separate decks — separate catalogs,
+ * separate masters, separate manifests — and §2 to §4 below run once per deck, driven by
+ * `tools/decks.json`. §1 is global: there is one API key and one boundary.
+ *
+ * The ANCHOR is the deliberate exception. Both decks are one bolt of cloth and share
+ * `assets/badges/_anchor.png`, so it is checked ONCE, against every promoted master across
+ * every deck — a per-deck anchor check would demand a record master match a badge anchor and
+ * fail by construction.
+ *
  * ── WHAT A TYPE ALREADY COVERS, AND WHAT IT CANNOT ───────────────────────────────────────
  * `lib/badges/badge-art.ts` is a total `Record<BadgeKey, BadgeArt>`, so `npm run typecheck`
  * already refuses a badge key with no art — that is the stronger guarantee and it is not
@@ -33,11 +43,17 @@ import { join } from 'node:path'
 import { BOUNDARY_DIRS, checkOpenRouterBoundary } from './check-openrouter-boundary.mjs'
 
 const root = join(import.meta.dirname, '..')
-const MASTERS = join(root, 'assets', 'badges')
-const PUBLIC = join(root, 'public', 'badges')
-const MANIFEST = join(root, 'lib', 'badges', 'badge-art.ts')
-const CATALOG = join(root, 'lib', 'badges', 'catalog.ts')
 const STYLE = join(root, '.claude', 'skills', 'generate-badge', 'style.md')
+
+/**
+ * The deck table, read rather than restated.
+ *
+ * `tools/decks.py` owns it and serialises it here, because this file is JavaScript and cannot
+ * import the Python. The alternative — a second table hand-copied into this file — is exactly
+ * the drift the shared table exists to prevent, so `python3 tools/decks.py --selftest` fails
+ * if the JSON on disk has fallen behind its source. Regenerate with `--write`.
+ */
+const DECKS_JSON = join(root, 'tools', 'decks.json')
 
 let failures = 0
 
@@ -59,42 +75,85 @@ function section(title) {
   console.log(`\n${title}`)
 }
 
-/* ------------------------------- the two parsers ------------------------------ */
+/* --------------------------------- the deck table --------------------------------- */
+
+const { decks } = JSON.parse(readFileSync(DECKS_JSON, 'utf8'))
+const DECKS = Object.values(decks)
+
+/* ------------------------------- the three parsers ------------------------------ */
 
 /**
- * Badge keys out of `lib/badges/catalog.ts`, in catalog order.
+ * One deck's keys out of its own catalog module, in catalog order.
  *
  * Regex-parsed rather than imported, for the same reason `tools/gen_badge_art.py` parses it:
- * this is a plain `.mjs` script with no TypeScript loader, and the catalog is a hand-written
- * array literal whose shape is stable by contract (`badge('key', 'Title', 'scope')`). The
- * three files that read it — this one and the two Python tools — carry the same pair of
- * expressions, and all three fail loudly rather than silently returning zero keys.
+ * this is a plain `.mjs` script with no TypeScript loader, and the catalogs are hand-written
+ * array literals whose shapes are stable by contract. THE SHAPE DIFFERS PER DECK — F09's is
+ * `badge('key', 'Title', 'scope')` and F06's is `{ key: 'longest_distance', … }` — which is
+ * why the pattern arrives from `decks.json` beside the path it applies to rather than being
+ * written here. Every reader fails loudly rather than silently returning zero keys.
  */
-function catalogKeys() {
-  const text = readFileSync(CATALOG, 'utf8')
-  const array = /BADGE_CATALOG[^=]*=\s*\[(.*?)^\]/ms.exec(text)
-  if (!array) throw new Error(`could not find \`BADGE_CATALOG … = [ … ]\` in ${CATALOG}`)
-  const keys = [...array[1].matchAll(/^\s*badge\(\s*'([a-z0-9_]+)'/gm)].map((m) => m[1])
-  if (keys.length === 0) throw new Error(`BADGE_CATALOG parsed to zero keys`)
+function catalogKeys(deck) {
+  const path = join(root, deck.catalog)
+  const text = readFileSync(path, 'utf8')
+  const array = new RegExp(`${deck.catalog_array}[^=]*=\\s*\\[(.*?)^\\]`, 'ms').exec(text)
+  if (!array) throw new Error(`could not find \`${deck.catalog_array} … = [ … ]\` in ${path}`)
+  const keys = [...array[1].matchAll(new RegExp(deck.key_pattern, 'gm'))].map((m) => m[1])
+  if (keys.length === 0) throw new Error(`${deck.catalog_array} parsed to zero keys`)
   return keys
 }
 
-/** Scene keys inside `<!-- SCENES -->` in style.md, plus the style block's version. */
-function styleContract() {
-  const text = readFileSync(STYLE, 'utf8')
+/** The shared style block's version, once. Both decks are sent the same block. */
+function styleBlockVersion(text) {
   const version = /^<!-- STYLE BLOCK (v\d+) -->$/m.exec(text)
-  const scenes = /^<!-- SCENES -->$\n(.*?)^<!-- \/SCENES -->$/ms.exec(text)
   if (!version) throw new Error('style.md has no `<!-- STYLE BLOCK vN -->` marker on its own line')
-  if (!scenes) throw new Error('style.md has no `<!-- SCENES -->` region with markers on own lines')
-  const keys = [...scenes[1].matchAll(/^- ([a-z0-9_]+): (.+)$/gm)].map((m) => m[1])
-  return { version: version[1], keys }
+  return version[1]
 }
 
-/** One `key: { field: 'value', … }` entry per badge, out of the generated manifest. */
-function manifestEntries() {
-  const text = readFileSync(MANIFEST, 'utf8')
-  const body = /BADGE_ART: Record<BadgeKey, BadgeArt> = \{(.*)^\}/ms.exec(text)
-  if (!body) throw new Error('could not find `BADGE_ART: Record<BadgeKey, BadgeArt> = { … }`')
+/**
+ * One deck's scene keys, and the version its masters should be stamped with.
+ *
+ * The version is COMPOSITE for any deck carrying an addendum — `v2+records1` — and that is not
+ * cosmetic. Bumping the shared block to v3 would fail the assertion below on all 22 promoted
+ * badges until every one of them had been regenerated and re-judged, for a change that adds a
+ * silhouette the badge deck never draws. So a deck that needs to add to the block appends a
+ * region of its own instead, and stamps the pair. See `tools/decks.py`.
+ */
+function styleContract(deck, text, blockVersion) {
+  const scenes = new RegExp(
+    `^<!-- ${deck.scenes_marker} -->$\\n(.*?)^<!-- /${deck.scenes_marker} -->$`,
+    'ms',
+  ).exec(text)
+  if (!scenes) {
+    throw new Error(
+      `style.md has no \`<!-- ${deck.scenes_marker} -->\` region with markers on their own lines`,
+    )
+  }
+  let version = blockVersion
+  if (deck.addendum_marker) {
+    const opening = `${deck.addendum_marker} v${deck.addendum_version}`
+    const addendum = new RegExp(
+      `^<!-- ${opening} -->$\\n(.*?)^<!-- /${deck.addendum_marker} -->$`,
+      'ms',
+    ).exec(text)
+    if (!addendum) {
+      throw new Error(
+        `deck '${deck.name}' declares an addendum but style.md has no ` +
+          `\`<!-- ${opening} -->\` … \`<!-- /${deck.addendum_marker} -->\` region`,
+      )
+    }
+    version = `${blockVersion}+${deck.name}${deck.addendum_version}`
+  }
+  const keys = [...scenes[1].matchAll(/^- ([a-z0-9_]+): (.+)$/gm)].map((m) => m[1])
+  return { version, keys }
+}
+
+/** One `key: { field: 'value', … }` entry per patch, out of a deck's generated manifest. */
+function manifestEntries(deck) {
+  const path = join(root, deck.manifest)
+  const text = readFileSync(path, 'utf8')
+  const header = `${deck.const_name}: Record<${deck.key_type}, ${deck.art_type}> = \\{`
+  const body = new RegExp(`${header}(.*)^\\}`, 'ms').exec(text)
+  if (!body) throw new Error(`could not find \`${deck.const_name}: Record<…> = { … }\` in ${path}`)
   const entries = new Map()
   for (const m of body[1].matchAll(/^ {2}([a-z0-9_]+): \{(.*?)^ {2}\},$/gms)) {
     const fields = {}
@@ -116,170 +175,192 @@ section(`§1  OPENROUTER_API_KEY stays outside ${BOUNDARY_DIRS.join('/, ')}/`)
   )
 }
 
-/* ------------------------- §2 the contract and the catalog ------------------------- */
+/* ------------------------------- §2–§4, per deck ------------------------------- */
 
-section('§2  style.md ↔ BADGE_CATALOG parity')
-const keys = catalogKeys()
-const style = styleContract()
-{
-  const missing = keys.filter((k) => !style.keys.includes(k))
-  const orphan = style.keys.filter((k) => !keys.includes(k))
-  assert(
-    missing.length === 0,
-    `every one of the ${keys.length} catalog keys has a scene line`,
-    missing.length ? `no scene line for: ${missing.join(', ')}` : '',
-  )
-  assert(
-    orphan.length === 0,
-    'every scene line names a real catalog key',
-    orphan.length ? `scene line with no badge: ${orphan.join(', ')}` : '',
-  )
-  console.log(`  --   style block is ${style.version}; ${keys.length} keys both ways`)
+const styleText = readFileSync(STYLE, 'utf8')
+const blockVersion = styleBlockVersion(styleText)
+const summaries = []
+/** Every promoted master across every deck, for the one shared anchor check below. */
+const allPromoted = []
+
+for (const deck of DECKS) {
+  const MASTERS = join(root, deck.masters)
+  const PUBLIC = join(root, deck.public)
+  const MANIFEST = join(root, deck.manifest)
+
+  section(`§2  style.md ↔ ${deck.catalog_array} parity  [${deck.name}]`)
+  const keys = catalogKeys(deck)
+  const style = styleContract(deck, styleText, blockVersion)
+  {
+    const missing = keys.filter((k) => !style.keys.includes(k))
+    const orphan = style.keys.filter((k) => !keys.includes(k))
+    assert(
+      missing.length === 0,
+      `every one of the ${keys.length} catalog keys has a scene line`,
+      missing.length ? `no scene line for: ${missing.join(', ')}` : '',
+    )
+    assert(
+      orphan.length === 0,
+      'every scene line names a real catalog key',
+      orphan.length ? `scene line with no key: ${orphan.join(', ')}` : '',
+    )
+    console.log(
+      `  --   <!-- ${deck.scenes_marker} -->, style ${style.version}; ` +
+        `${keys.length} keys both ways`,
+    )
+  }
+
+  section(`§3  approved masters and their sidecars  [${deck.name}]`)
+  const promoted = keys.filter((k) => existsSync(join(MASTERS, `${k}.png`)))
+  allPromoted.push(...promoted.map((k) => join(MASTERS, `${k}.png`)))
+  console.log(`  --   ${promoted.length} of ${keys.length} promoted to ${deck.masters}/`)
+  {
+    const noSidecar = promoted.filter((k) => !existsSync(join(MASTERS, `${k}.txt`)))
+    assert(
+      noSidecar.length === 0,
+      'every promoted master carries its .txt sidecar',
+      noSidecar.length
+        ? `no sidecar for: ${noSidecar.join(', ')} — promotion copies BOTH files, always, ` +
+            `because make_badge_assets.py reads the style version out of the sidecar`
+        : '',
+    )
+
+    const versions = new Map()
+    for (const key of promoted) {
+      const sidecar = join(MASTERS, `${key}.txt`)
+      if (!existsSync(sidecar)) continue
+      const m = /^style version:\s*(v\d+(?:\+[a-z0-9]+)?)\s*$/m.exec(readFileSync(sidecar, 'utf8'))
+      if (m) versions.set(key, m[1])
+    }
+    const distinct = [...new Set(versions.values())]
+    assert(
+      distinct.length <= 1,
+      'the whole deck was generated against one style version',
+      distinct.length > 1
+        ? `MIXED: ${distinct.join(', ')} — a style-block change invalidates every patch ` +
+            `promoted under the old one (plan §7 task 4). This is a stop-and-decide, not a warning.`
+        : '',
+    )
+    if (distinct.length === 1) {
+      assert(
+        distinct[0] === style.version,
+        `the deck's style version matches style.md (${style.version})`,
+        `masters are ${distinct[0]}, style.md says this deck should be ${style.version} — ` +
+          `either the block was bumped without regenerating, or a regeneration was never promoted`,
+      )
+    }
+  }
+
+  section(`§4  ${deck.manifest} against ${deck.public}/  [${deck.name}]`)
+  if (!existsSync(MANIFEST)) {
+    if (promoted.length === keys.length && keys.length > 0) {
+      fail(
+        `the manifest exists once all ${keys.length} masters are promoted`,
+        'every master is promoted but no manifest was generated — run ' +
+          `\`python3 tools/make_badge_assets.py --deck ${deck.name}\`, in its own commit`,
+      )
+    } else {
+      console.log(
+        '  --   no manifest yet, and none is possible: it is a TOTAL Record and ' +
+          `${keys.length - promoted.length} masters are still missing`,
+      )
+    }
+  } else {
+    const entries = manifestEntries(deck)
+    const missing = keys.filter((k) => !entries.has(k))
+    const orphan = [...entries.keys()].filter((k) => !keys.includes(k))
+    assert(
+      missing.length === 0,
+      `the manifest names all ${keys.length} catalog keys`,
+      missing.length ? `absent from ${deck.const_name}: ${missing.join(', ')}` : '',
+    )
+    assert(
+      orphan.length === 0,
+      'the manifest names no key the catalog dropped',
+      orphan.length ? `art with no key: ${orphan.join(', ')} — regenerate the manifest` : '',
+    )
+
+    const expected = new Set()
+    const badHash = []
+    const absent = []
+    for (const [key, art] of entries) {
+      const master = join(MASTERS, `${key}.png`)
+      if (existsSync(master)) {
+        const sha = createHash('sha256').update(readFileSync(master)).digest('hex')
+        if (sha !== art.sha256) badHash.push(`${key}: master is ${sha.slice(0, 8)}…`)
+        else if (!art.src.includes(`.${sha.slice(0, 8)}.`))
+          badHash.push(`${key}: filename hash is not the sha256's first 8`)
+      } else {
+        badHash.push(`${key}: no master at ${deck.masters}/${key}.png to verify against`)
+      }
+      for (const url of [art.src, art.small]) {
+        const name = url.replace(`${deck.url}/`, '')
+        expected.add(name)
+        if (!existsSync(join(PUBLIC, name))) absent.push(name)
+      }
+    }
+    assert(
+      badHash.length === 0,
+      'every shipped filename carries its master\u2019s real SHA-256',
+      badHash.join('\n         '),
+    )
+    assert(
+      absent.length === 0,
+      `every file the manifest names exists under ${deck.public}/`,
+      absent.length ? `missing: ${absent.join(', ')}` : '',
+    )
+
+    const shipped = existsSync(PUBLIC)
+      ? readdirSync(PUBLIC).filter((n) => statSync(join(PUBLIC, n)).isFile())
+      : []
+    const orphaned = shipped.filter((n) => !expected.has(n))
+    assert(
+      orphaned.length === 0,
+      `${deck.public}/ holds no stale file from a superseded generation`,
+      orphaned.length
+        ? `orphans: ${orphaned.join(', ')} — ${deck.url}/* is served immutable, so a stale file ` +
+            `here is a file that never expires. Re-run tools/make_badge_assets.py --deck ` +
+            `${deck.name}, which sweeps them.`
+        : '',
+    )
+  }
+
+  summaries.push({ deck, promoted: promoted.length, total: keys.length, style: style.version })
 }
 
-/* ----------------------------- §3 the masters on disk ----------------------------- */
+/* --------------------------------- the shared anchor --------------------------------- */
 
-section('§3  approved masters and their sidecars')
-const promoted = keys.filter((k) => existsSync(join(MASTERS, `${k}.png`)))
-console.log(`  --   ${promoted.length} of ${keys.length} badges promoted to assets/badges/`)
+section('§5  the anchor, shared by every deck')
 {
-  const noSidecar = promoted.filter((k) => !existsSync(join(MASTERS, `${k}.txt`)))
+  const anchorPath = join(root, DECKS[0].anchor)
+  const sameAnchor = DECKS.every((d) => d.anchor === DECKS[0].anchor)
   assert(
-    noSidecar.length === 0,
-    'every promoted master carries its .txt sidecar',
-    noSidecar.length
-      ? `no sidecar for: ${noSidecar.join(', ')} — promotion copies BOTH files, always, ` +
-          `because make_badge_assets.py reads the style version out of the sidecar`
-      : '',
+    sameAnchor,
+    'every deck names the same anchor',
+    'decks.py grew a per-deck anchor — check 9b then stops measuring drift BETWEEN decks, ' +
+      'which is the one drift no per-deck check can see. Re-read decks.py\u2019s header.',
   )
-
-  const versions = new Map()
-  for (const key of promoted) {
-    const sidecar = join(MASTERS, `${key}.txt`)
-    if (!existsSync(sidecar)) continue
-    const m = /^style version:\s*(v\d+)\s*$/m.exec(readFileSync(sidecar, 'utf8'))
-    if (m) versions.set(key, m[1])
-  }
-  const distinct = [...new Set(versions.values())]
-  assert(
-    distinct.length <= 1,
-    'the whole deck was generated against one style version',
-    distinct.length > 1
-      ? `MIXED: ${distinct.join(', ')} — a style-block change invalidates every badge ` +
-          `promoted under the old one (plan §7 task 4). This is a stop-and-decide, not a warning.`
-      : '',
-  )
-  if (distinct.length === 1) {
-    assert(
-      distinct[0] === style.version,
-      `the deck's style version matches style.md (${style.version})`,
-      `masters are ${distinct[0]}, style.md is ${style.version} — either the block was bumped ` +
-        `without regenerating, or a regeneration was never promoted`,
-    )
-  }
-
-  // The anchor is one of the approved masters, byte for byte. Not "an image that looks like
-  // one": every badge after the first is generated with --reference against this file, so an
-  // anchor that is a stray candidate rather than a promoted master means the deck agrees
-  // with something nobody ever approved.
-  const anchor = join(MASTERS, '_anchor.png')
-  if (promoted.length === 0) {
+  if (allPromoted.length === 0) {
     console.log('  --   no masters yet; the anchor run has not happened (plan §9 task 9)')
-  } else if (!existsSync(anchor)) {
+  } else if (!existsSync(anchorPath)) {
     fail(
-      'assets/badges/_anchor.png exists',
-      'masters are promoted but no anchor is set. Every badge after the first must be ' +
-        'generated against it: `cp assets/badges/<first>.png assets/badges/_anchor.png`',
+      `${DECKS[0].anchor} exists`,
+      'masters are promoted but no anchor is set. Every patch after the first must be ' +
+        `graded against it: \`cp <first master> ${DECKS[0].anchor}\``,
     )
   } else {
-    const anchorSha = createHash('sha256').update(readFileSync(anchor)).digest('hex')
-    const match = promoted.find(
-      (k) =>
-        createHash('sha256')
-          .update(readFileSync(join(MASTERS, `${k}.png`)))
-          .digest('hex') === anchorSha,
+    const anchorSha = createHash('sha256').update(readFileSync(anchorPath)).digest('hex')
+    const match = allPromoted.find(
+      (m) => createHash('sha256').update(readFileSync(m)).digest('hex') === anchorSha,
     )
     assert(
       match !== undefined,
-      `_anchor.png is a byte-identical copy of an approved master${match ? ` (${match})` : ''}`,
+      `_anchor.png is a byte-identical copy of an approved master${
+        match ? ` (${match.split('/').slice(-2).join('/')})` : ''
+      }`,
       'the anchor matches no promoted master — it is a candidate, or a stale copy of one',
     )
   }
-}
-
-/* ------------------------- §4 the manifest against the disk ------------------------- */
-
-section('§4  lib/badges/badge-art.ts against public/badges/')
-if (!existsSync(MANIFEST)) {
-  if (promoted.length === keys.length && keys.length > 0) {
-    fail(
-      'the manifest exists once all 22 masters are promoted',
-      'every master is promoted but no manifest was generated — run ' +
-        '`python3 tools/make_badge_assets.py`, in its own commit',
-    )
-  } else {
-    console.log(
-      '  --   no manifest yet, and none is possible: it is a TOTAL Record and ' +
-        `${keys.length - promoted.length} masters are still missing`,
-    )
-  }
-} else {
-  const entries = manifestEntries()
-  const missing = keys.filter((k) => !entries.has(k))
-  const orphan = [...entries.keys()].filter((k) => !keys.includes(k))
-  assert(
-    missing.length === 0,
-    `the manifest names all ${keys.length} catalog keys`,
-    missing.length ? `absent from BADGE_ART: ${missing.join(', ')}` : '',
-  )
-  assert(
-    orphan.length === 0,
-    'the manifest names no key the catalog dropped',
-    orphan.length ? `art with no badge: ${orphan.join(', ')} — regenerate the manifest` : '',
-  )
-
-  const expected = new Set()
-  const badHash = []
-  const absent = []
-  for (const [key, art] of entries) {
-    const master = join(MASTERS, `${key}.png`)
-    if (existsSync(master)) {
-      const sha = createHash('sha256').update(readFileSync(master)).digest('hex')
-      if (sha !== art.sha256) badHash.push(`${key}: master is ${sha.slice(0, 8)}…`)
-      else if (!art.src.includes(`.${sha.slice(0, 8)}.`))
-        badHash.push(`${key}: filename hash is not the sha256's first 8`)
-    } else {
-      badHash.push(`${key}: no master at assets/badges/${key}.png to verify against`)
-    }
-    for (const url of [art.src, art.small]) {
-      const name = url.replace(/^\/badges\//, '')
-      expected.add(name)
-      if (!existsSync(join(PUBLIC, name))) absent.push(name)
-    }
-  }
-  assert(
-    badHash.length === 0,
-    'every shipped filename carries its master’s real SHA-256',
-    badHash.join('\n         '),
-  )
-  assert(
-    absent.length === 0,
-    'every file the manifest names exists under public/badges/',
-    absent.length ? `missing: ${absent.join(', ')}` : '',
-  )
-
-  const shipped = existsSync(PUBLIC)
-    ? readdirSync(PUBLIC).filter((n) => statSync(join(PUBLIC, n)).isFile())
-    : []
-  const orphaned = shipped.filter((n) => !expected.has(n))
-  assert(
-    orphaned.length === 0,
-    'public/badges/ holds no stale file from a superseded generation',
-    orphaned.length
-      ? `orphans: ${orphaned.join(', ')} — /badges/* is served immutable, so a stale file ` +
-          `here is a file that never expires. Re-run tools/make_badge_assets.py, which sweeps them.`
-      : '',
-  )
 }
 
 /* ----------------------------------- the verdict ----------------------------------- */
@@ -289,8 +370,10 @@ if (failures > 0) {
   console.error(`badges:check FAILED — ${failures} assertion(s)`)
   process.exit(1)
 }
-console.log(
-  promoted.length === keys.length && keys.length > 0
-    ? `badges:check OK — the deck is complete: ${keys.length} badges, style ${style.version}`
-    : `badges:check OK — ${promoted.length}/${keys.length} badges generated, style ${style.version}`,
-)
+for (const s of summaries) {
+  console.log(
+    s.promoted === s.total && s.total > 0
+      ? `badges:check OK — ${s.deck.name} is complete: ${s.total} patches, style ${s.style}`
+      : `badges:check OK — ${s.deck.name}: ${s.promoted}/${s.total} generated, style ${s.style}`,
+  )
+}

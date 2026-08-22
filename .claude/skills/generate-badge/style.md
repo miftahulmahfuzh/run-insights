@@ -1,26 +1,56 @@
-# The badge deck's style contract
+# The patch decks' style contract
 
 Read by `tools/gen_badge_art.py`, which parses this file — the fences, the
 `<!-- STYLE BLOCK vN -->` markers and the `- <key>: <scene>` line format are an **interface, not
 decoration**. One file a human edits and a script reads, so the prompt that was sent can never
 drift from the prompt that is documented.
 
-**Bump the version when you change the style block.** Every badge carries its version in its
+**Bump the version when you change the style block.** Every patch carries its version in its
 `.txt` sidecar and in the generated manifest, so a mixed set is detectable rather than merely
 suspected.
+
+**Two decks read this file, and they share the style block.** F09's 22 badges and F25's 10
+personal-record patches are one bolt of cloth cut thirty-two times — same substrate, same merrowed
+border, same five threads, same signature thread — so there is exactly one style block and both
+decks are sent it verbatim. What is per-deck is the scene list and, for the records deck, a short
+**addendum** appended after the block. `tools/decks.py` is the table that maps a deck to its
+regions, its catalog, its masters and its manifest.
 
 ## What the parser takes from this file
 
 | Region | Delimiters | Used for |
 |---|---|---|
 | The style block | `<!-- STYLE BLOCK vN -->` … `<!-- /STYLE BLOCK -->` | Sent verbatim with every badge. `N` becomes `styleVersion`. |
-| The scenes | `<!-- SCENES -->` … `<!-- /SCENES -->`, lines matching `- <key>: <scene>` | One line appended per badge as `SUBJECT FOR THIS BADGE:` |
+| The badge scenes | `<!-- SCENES -->` … `<!-- /SCENES -->`, lines matching `- <key>: <scene>` | One line appended per badge as `SUBJECT FOR THIS BADGE:` |
+| The records addendum | `<!-- ADDENDUM:records v1 -->` … `<!-- /ADDENDUM:records -->` | Appended after the style block, `--deck records` only |
+| The record scenes | `<!-- SCENES:records -->` … `<!-- /SCENES:records -->` | One line appended per patch as `SUBJECT FOR THIS PATCH:` |
 
 **A marker only counts when it is alone on its own line.**
 
-`gen_badge_art.py` refuses to start unless the set of keys inside `<!-- SCENES -->` is exactly the
-set of keys in `BADGE_CATALOG` in `lib/badges/catalog.ts`. A scene line with no badge, or a badge
-with no scene line, is a startup error rather than a surprise 22 images later.
+`gen_badge_art.py` refuses to start unless the set of keys inside a deck's scene region is exactly
+the set of keys in that deck's catalog — `<!-- SCENES -->` against `BADGE_CATALOG` in
+`lib/badges/catalog.ts`, `<!-- SCENES:records -->` against `RECORD_CATALOG` in
+`lib/records/catalog.ts`. A scene line with no key, or a key with no scene line, is a startup
+error rather than a surprise 22 images later.
+
+**The check is per deck, and that is not a detail.** F25 was first drafted with the ten record
+scenes simply appended to `<!-- SCENES -->`; that would have made every *badge* generation refuse
+to start, reporting ten orphan keys, because that region is checked against `BADGE_CATALOG`. Two
+regions, two catalogs, no interference.
+
+### Why the records deck has an addendum instead of a v3
+
+Because a version bump is not free. `scripts/check-badge-art.mjs` asserts that every promoted
+master's sidecar version equals the version of the block in this file, so editing `STYLE BLOCK v2`
+to v3 fails `npm run badges:check` on **all 22 existing badges** until every one of them has been
+regenerated and re-judged — a very expensive way to add a fifth silhouette the badge deck does not
+use.
+
+So the shared block is never touched, and a deck that needs to add to it gets a region of its own,
+appended after it. The stamped version is composite: badges are `v2`, records are `v2+records1`.
+This is the same reasoning the chevron note below reaches — the difference is that the chevron's
+description had nowhere to live except a per-badge `--note`, whereas a records-only addendum can
+hold the pentagon's description permanently, because nothing in the badge deck reads it.
 
 ---
 
@@ -364,6 +394,118 @@ were checked against the deck rather than added to the end of it.** R-33 grew §
 apart on silhouette — a metronome is a tall pyramid with a vertical arm, a spirit level is a long
 flat horizontal bar — which are close to opposite shapes at 40 px, and the deliberate absence of
 any numerals on either is what keeps both out of the clock/gauge family the scene rules forbid.
+
+---
+
+## The records deck (F25)
+
+Ten personal-record patches, one per key in `RECORD_CATALOG` — `lib/records/catalog.ts`, named in
+`lib/records/labels.ts`. Same cloth, same border, same threads, same signature. Two things differ,
+and both are here rather than in the shared block.
+
+### The addendum, sent after the style block for `--deck records` only
+
+```
+<!-- ADDENDUM:records v1 -->
+THIS PATCH BELONGS TO A SECOND DECK CUT FROM THE SAME CLOTH. Everything above holds exactly — the
+same dark navy cotton twill, the same bone-white merrowed border at the same gauge and the same
+width, the same five thread colours, the same solid slate-sky-blue interior field, and the same
+single safety-orange signature thread. Wherever the text above says "all 22 badges", read "every
+patch in this set": there are thirty-two patches across the two decks, and they are one bolt of
+cloth cut thirty-two times.
+
+THE OUTER SILHOUETTE OF EVERY PATCH IN THIS DECK IS A PENTAGON, and it replaces the list of shapes
+named above. Build it exactly like this: a five-sided shape standing on a flat, level, horizontal
+bottom edge; two straight vertical sides rising from the ends of that bottom edge; and two more
+straight edges running up and inward from the tops of those sides to meet at a single point at the
+very top — one apex, pointing up, centred. The bone merrowed border follows all five edges the
+whole way round, and every corner where two edges meet is rounded rather than sharp. It is not a
+shield: a shield's lower edge curves down to a point at the BOTTOM, and this shape's bottom is
+flat and level. It is not a hexagon: a hexagon carries a point at the left and a point at the
+right, and this shape carries neither. It is not a circle, and it is not a rounded triangle.
+<!-- /ADDENDUM:records -->
+```
+
+**The pentagon is described, not merely named** — the same lesson the chevron note above records,
+applied before it costs an attempt rather than after. The difference is that this description can
+live in the contract permanently: the addendum is read only by `--deck records`, so writing it
+down costs the badge deck nothing, where folding the chevron's description into the shared block
+would have bumped it to v3 and invalidated eighteen promoted badges.
+
+**Why a fifth shape at all.** The two decks appear in the same app and must be tellable apart at
+the 56 px shelf size. Subject register alone does not do it — a viewer reads a silhouette before
+they read a subject. A pentagon is the shape that pays for itself: it has a hexagon's generous
+interior, so both wide subjects (a bounding hare) and tall ones (a candle) fit; its flat base gives
+the standing subjects something to stand on; it is unmistakable against this deck's hexagon, which
+presents its points left and right where the pentagon presents one apex up; and it is never
+circle-adjacent, which an octagon would be — and "a plain circle in a square" is the one shape the
+block forbids outright.
+
+**Why not the obvious rounded diamond.** A diamond's usable interior is a narrow vertical spindle.
+It would suit a candle and a plumb bob and fight a bounding hare and a kite on a long line — and
+one shape has to carry all ten scenes. That is this file's own lesson, from the audit above: *a
+scene's composition has an implied aspect ratio, and it must agree with the outer shape it was
+assigned.*
+
+### The scenes
+
+```
+<!-- SCENES:records -->
+- longest_distance: A single kite flown so high that it is small, at the far end of one long taut line that runs from the bottom corner of the patch up to the kite near the top, the line unbroken the whole way. SHAPE: pentagon. SIGNATURE THREAD: the single bow tied on the kite's tail.
+- longest_duration: A single candle burned almost all the way down to its base, its flame still lit, standing in a deep wide pool of its own spilled wax. SHAPE: pentagon. SIGNATURE THREAD: the last unburnt fold of the wick, just below the flame.
+- fastest_pace_5k: A single swift in a hard flat dive, seen from the side, its wings swept fully back along its body so the whole bird reads as one narrow dart. SHAPE: pentagon. SIGNATURE THREAD: the swift's eye.
+- fastest_pace_10k: A single hare at full stretch in mid-bound, seen from the side, all four feet clear of the ground and its body stretched long from nose to hind foot. SHAPE: pentagon. SIGNATURE THREAD: the hare's leading forepaw.
+- fastest_km_split: A single archer's bow at the instant of release, held upright, the arrow just clear of it and travelling, the bowstring still shivering in two or three loose curves. SHAPE: pentagon. SIGNATURE THREAD: the fletching at the back of the arrow.
+- most_kcal: A single leather-and-wood bellows seen from the side, squeezed hard shut, with one short puff of air leaving its nozzle. SHAPE: pentagon. SIGNATURE THREAD: the brass ferrule at the tip of the nozzle.
+- most_elevation: A single mountain peak, one hard straight snow line running across its upper third, and one narrow switchback path stitched up the near face in a continuous unbroken line. SHAPE: pentagon. SIGNATURE THREAD: the topmost turn of the switchback path.
+- highest_cadence: A single spinning top at full speed, standing dead upright on its point, with one blurred ring of motion drawn around its widest part. SHAPE: pentagon. SIGNATURE THREAD: the steel tip the top is spinning on.
+- highest_max_hr: A single heavy hanging bell caught in mid-strike, seen from the side, its clapper swung hard over and touching the inside of the bell's lip. SHAPE: pentagon. SIGNATURE THREAD: the clapper.
+- best_paced_run: A single plumb bob hanging dead still and perfectly vertical on its line, the line running straight up to a small fixed hook above it. SHAPE: pentagon. SIGNATURE THREAD: the sharp point at the bottom of the bob.
+<!-- /SCENES:records -->
+```
+
+Shape distribution: **pentagon** × 10. Uniform, unlike the badge deck's four — the shape is what
+says "this is a record and not a badge", so varying it inside the deck would spend the very
+distinction it was added to make.
+
+### The collision audit, extended to thirty-two patches
+
+Done at design time, against the badge deck's audit above rather than only against these ten.
+
+kite-on-a-long-line / burnt-down candle / diving swift / bounding hare / bow at release / squeezed
+bellows / switchbacked peak / spinning top / struck bell / hanging plumb bob.
+
+Still true across both decks: **no shoes, no medals, no stopwatches**, and no clock, watch face,
+gauge, scale or numeral anywhere. That last rule is why `longest_duration` is a candle and not an
+hourglass, and why `highest_max_hr` is a bell and not a dial — "how long" and "how hard" are the
+two records that pull hardest toward a timepiece, which the badge deck's scene rules already
+forbid outright.
+
+Three adjacencies were found and are recorded rather than hoped away:
+
+**`longest_duration` is the deck's second flame, after `fast_start_fool`'s spent match.** They are
+kept apart on silhouette, the way `metronome` and `boring_excellence` are: a tall taper standing
+upright in a wide pool of wax against a matchstick lying flat on a diagonal with its flame already
+collapsed. One is vertical and lit, the other horizontal and going out.
+
+**`fastest_pace_5k` is the second bird, after `early_bird`'s rooster.** The rooster is perched
+still, in profile on a rail, neck stretched up into a sun disc; the swift is airborne with its
+wings swept back to a dart. A perched bird and a diving bird are different silhouettes at 40 px,
+which is the test that matters.
+
+**`best_paced_run` is the closest of the three, and it is a trueness instrument like
+`boring_excellence`'s spirit level.** Both say "steady" without a dial, which is exactly the pair
+`metronome`/`boring_excellence` was already watched for. They are separated on axis and on shape —
+a plumb bob is vertical in a pentagon, a spirit level is horizontal in a chevron, close to opposite
+readings at shelf size. Per this file's own lesson that *a prepared alternative can spend itself on
+the wrong problem*, the reserve is written down now rather than invented under pressure: **a
+carpenter's chalk line snapped taut between two pins, with one clean struck line on the ground
+below it.**
+
+**`fastest_pace_5k` / `fastest_pace_10k` is a deliberate escalation pair**, like
+`century_club`/`double_century`. They share a theme — pure speed over a qualifying distance — and
+must not share a picture. A swift and a hare are different animals in different media moving in
+different planes, which is a wider gap than that badge pair needed.
 
 ---
 

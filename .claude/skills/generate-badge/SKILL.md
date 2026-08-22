@@ -1,11 +1,32 @@
 ---
 name: generate-badge
-description: Generate and grade one embroidered badge-patch image for Run Insights' badge shelf via OpenRouter. Use when asked to generate, regenerate or iterate on badge art — e.g. "/generate-badge early_bird", "regenerate the sandbagger patch", "the gremlin badge is unreadable at 40px", "make a patch for the new badge key" — or whenever a key is added to BADGE_CATALOG and needs art. Handles the whole loop: prompt assembly from the locked style contract, generation against the deck anchor, measurement, and visual judgement at the sizes the app actually draws.
+description: Generate and grade one embroidered patch image for Run Insights via OpenRouter — the badge shelf's deck, or the personal-records deck. Use when asked to generate, regenerate or iterate on patch art — e.g. "/generate-badge early_bird", "regenerate the sandbagger patch", "the gremlin badge is unreadable at 40px", "make a patch for the new badge key", "generate the longest_distance record patch" — or whenever a key is added to BADGE_CATALOG or RECORD_CATALOG and needs art. Handles the whole loop: prompt assembly from the locked style contract, generation against the deck anchor, measurement, and visual judgement at the sizes the app actually draws.
 ---
 
 # Generate badge art
 
-One badge per invocation. **Never a batch loop in one call** — the three-attempt cap and the
+## Two decks
+
+This skill drives **two** decks, and `--deck` picks one. It defaults to `badges`, so every
+command below without the flag means what it always meant.
+
+| | `badges` (F09/F10) | `records` (F25) |
+|---|---|---|
+| keys | 22, `BADGE_CATALOG` in `lib/badges/catalog.ts` | 10, `RECORD_CATALOG` in `lib/records/catalog.ts` |
+| scenes | `<!-- SCENES -->` in `style.md` | `<!-- SCENES:records -->` |
+| silhouettes | shield / hexagon / chevron / rounded triangle | pentagon, all ten |
+| style version | `v2` | `v2+records1` — the shared block plus a records-only addendum |
+| masters → shipped | `assets/badges/` → `public/badges/` | `assets/records/` → `public/records/` |
+| manifest | `lib/badges/badge-art.ts` | `lib/records/record-art.ts` |
+
+`tools/decks.py` is the table all four tools read; **it is the only place a path or a marker is
+written down.** Adding a third deck is an entry there plus `python3 tools/decks.py --write`.
+
+**Both decks share one anchor and one style block**, on purpose — they are one bolt of cloth cut
+thirty-two times. Check 9b measures tone drift against that single anchor, which is the only
+thing that can catch the two decks drifting apart from each other.
+
+One patch per invocation. **Never a batch loop in one call** — the three-attempt cap and the
 look-at-it step are per badge, and a loop makes both ceremonial. At ~$0.04 and 4–5 minutes per
 generation, a batch loop is also real money and real wall-clock time spent before a human has
 looked at any of it.
@@ -19,11 +40,11 @@ plan only when you are about to change the style.
 ### 1. Resolve the key
 
 The user may give a key (`early_bird`), a title ("the Sandbagger badge"), or a description ("the
-gremlin one"). Resolve it to exactly one key in `BADGE_CATALOG` in `lib/badges/catalog.ts`. If it
-resolves to more than one or to none, ask — do not guess, because a wrong key spends money on the
-wrong picture.
+gremlin one"). Resolve it to exactly one key **and one deck** — the two catalogs share no key, so
+the key determines the deck. If it resolves to more than one or to none, ask — do not guess,
+because a wrong key spends money on the wrong picture.
 
-If the key is in `BADGE_CATALOG` but has no line inside `<!-- SCENES -->` in `style.md`, stop and
+If the key is in a catalog but has no line inside that deck's scene region in `style.md`, stop and
 say so. `gen_badge_art.py` will refuse to start anyway; you should say why before it does.
 
 ### 2. Find the anchor — and do NOT pass it as `--reference`
@@ -67,7 +88,8 @@ and say so in your report if unreferenced generations start drifting past 8 poin
 ### 3. Generate
 
 ```bash
-python3 tools/gen_badge_art.py <key> --seed 1970
+python3 tools/gen_badge_art.py <key> --seed 1970                    # badges
+python3 tools/gen_badge_art.py <key> --deck records --seed 1970     # records
 ```
 
 The tool warns when an anchor exists and `--reference` was not passed. **That warning is now
@@ -90,7 +112,11 @@ carrying an unused branch now.
 without reading the key, touching the network or writing a file; use it whenever you have edited
 `style.md` and want to see what would be sent.
 
-### 3b. Widen it to 4:3
+### 3b. Widen it to 4:3 — or, on the records deck, find out whether you have to
+
+**On `--deck records`, do step 3b′ below FIRST.** F25 asks whether a deck can be generated at 4:3
+natively and skip this pass entirely. That question is answered by one measured generation, not by
+argument, and until it is answered the widening path below is still the one that is known to work.
 
 **A square candidate is not a master.** The deck's masters are `1024×768`, because
 `BadgeDialog`'s art band is `aspect-[4/3]` and a square master left the dialog painting the
@@ -117,13 +143,49 @@ The tool writes `<key>.wNN.png` (cropped so the patch lands on its shape's deck-
 `<key>.wNN.raw.png` (the generation before that crop, so a different crop is free) and a sidecar
 that **inherits `style version:` from the source's sidecar** rather than re-reading `style.md`.
 
+### 3b′. The records deck: probe native 4:3 once, then commit to the answer
+
+`gen_badge_art.py --aspect-ratio 4:3` asks the model for a 1024×768 frame directly. Whether that
+produces a usable master is genuinely unknown, and the evidence points both ways:
+
+- **Against:** STYLE BLOCK v2 asks for the patch at "about 80 percent of the image **width**",
+  which on a 4:3 frame is 106% of the height. `extend_badge_art.py` also measured that prompted
+  patch size barely responds at all — "eighty percent" → 66.0%, "eighty-eight percent" → 68.0%.
+- **For:** check 9a already scales its expectation by the frame's own aspect (`SHAPE_WIDTH[shape]
+  * h / w`), so a correct 4:3 master passes today with nothing re-derived.
+
+So spend **one generation** on it rather than an argument:
+
+```bash
+python3 tools/gen_badge_art.py most_elevation --deck records --aspect-ratio 4:3 --seed 1970
+python3 tools/check_badge_art.py assets/records/_candidates/most_elevation.a01.png --deck records
+```
+
+9a's expectation at 1024×768 is `0.855 × 0.75 = 64.1%` of image width. Then **look at the theme
+strip**, as always — 9a passing is necessary and not sufficient.
+
+- **It works** → generate the remaining nine the same way. No widening pass at all.
+- **It does not** → every record goes square → `extend_badge_art.py`, exactly like a badge.
+
+Either way, **write the measured number into `docs/plans/F25-record-patch-art.md` §6.** The point
+of spending the generation is that the next session reads a measurement instead of re-deriving the
+argument from prose for a third time.
+
 ### 4. Measure
 
 Measure the **widened** candidate — that is the file that becomes the master:
 
 ```bash
 python3 tools/check_badge_art.py assets/badges/_candidates/<key>.wNN.png
+python3 tools/check_badge_art.py assets/records/_candidates/<key>.aNN.png --deck records
 ```
+
+**A band that says ESTIMATED is not a gate, and not a licence either.** Check 9a reports its
+band's provenance. The four badge shapes are `(observed, 22 badges)` and 9a is a hard check for
+them. The records deck's `pentagon` band is a geometric estimate from zero images, so 9a prints
+its drift and explicitly does not fail on it — the judgement is your eye on the theme strip. Once
+all ten records are promoted, the band is re-derived from them and becomes hard; until then, a
+pentagon drifting past ~10% is something to *look* at, not something to dismiss.
 
 Ten measurements, not the reference tool's nine — §5.2 of the design plan adds one with no
 analogue there, because "flat printed graphic" instead of "actually stitched" is this style's
@@ -243,6 +305,10 @@ Three things, because each is a decision and none is undone by re-running a scri
 
       cp assets/badges/_candidates/<key>.wNN.png assets/badges/<key>.png
       cp assets/badges/_candidates/<key>.wNN.txt assets/badges/<key>.txt
+
+  On the records deck the destination is `assets/records/`, and which pair to promote depends on
+  how step 3b′ went: the `.wNN` pair if the deck fell back to widening, the `.aNN` pair if native
+  4:3 worked.
 
   **The `.wNN` pair, not the `.aNN` pair.** The square generation is an intermediate; step 3b's
   widened output is the master. Promoting an `.aNN` file puts a 1024² image where a 1024×768 one

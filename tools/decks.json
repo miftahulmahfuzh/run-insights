@@ -1,0 +1,44 @@
+{
+  "_generated": "python3 tools/decks.py --write \u2014 do not edit by hand",
+  "default": "badges",
+  "decks": {
+    "badges": {
+      "name": "badges",
+      "scenes_marker": "SCENES",
+      "addendum_marker": null,
+      "addendum_version": null,
+      "catalog": "lib/badges/catalog.ts",
+      "catalog_array": "BADGE_CATALOG",
+      "key_pattern": "^\\s*badge\\(\\s*'([a-z0-9_]+)'",
+      "masters": "assets/badges",
+      "public": "public/badges",
+      "url": "/badges",
+      "manifest": "lib/badges/badge-art.ts",
+      "const_name": "BADGE_ART",
+      "key_type": "BadgeKey",
+      "art_type": "BadgeArt",
+      "subject_label": "SUBJECT FOR THIS BADGE",
+      "anchor": "assets/badges/_anchor.png",
+      "noun": "badge"
+    },
+    "records": {
+      "name": "records",
+      "scenes_marker": "SCENES:records",
+      "addendum_marker": "ADDENDUM:records",
+      "addendum_version": "1",
+      "catalog": "lib/records/catalog.ts",
+      "catalog_array": "RECORD_CATALOG",
+      "key_pattern": "^\\s*key:\\s*'([a-z0-9_]+)'",
+      "masters": "assets/records",
+      "public": "public/records",
+      "url": "/records",
+      "manifest": "lib/records/record-art.ts",
+      "const_name": "RECORD_ART",
+      "key_type": "RecordKey",
+      "art_type": "RecordArt",
+      "subject_label": "SUBJECT FOR THIS PATCH",
+      "anchor": "assets/badges/_anchor.png",
+      "noun": "record patch"
+    }
+  }
+}

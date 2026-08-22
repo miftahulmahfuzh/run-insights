@@ -41,9 +41,20 @@ const nextConfig: NextConfig = {
        * artwork until 2027. **Do not put slug-named art under this path** — the header would
        * pin it for a year, and the orphan sweep in `make_badge_assets.py` (plus §4 of
        * `badges:check`) is what keeps a superseded file from lingering there at all.
+       *
+       * F25 adds `/records/*` on the same terms and for the same reason: the ten
+       * personal-record patches are a second deck out of the same pipeline, content-hashed by
+       * the same tool and verified by the same script. The two entries are separate rather
+       * than one `/(badges|records)/:file*` matcher because `tools/decks.py` is the list of
+       * decks, and a regex here that quietly covered a third deck would be granting a
+       * one-year immutable cache to files nobody had checked were hashed.
        */
       {
         source: '/badges/:file*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/records/:file*',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {

@@ -22,11 +22,15 @@ deliberate simplifications, both argued in plan §5.1:
   default-model-per-provider logic) would be dead code from the first commit.
   If a second provider is ever needed, port the table back in at that time.
 
-  ONE DECK, NO `--kind`. The reference serves two decks (badge and level)
-  because daily-words has both a badge shelf and a level-panel system.
-  Run Insights has only the badge shelf; there is no `lib/badges/levels.ts`
-  equivalent in the roadmap and none is planned. `KINDS["badge"]`'s five fields
-  are the four module constants below.
+  ONE DECK, NO `--kind` — UNTIL F25. The reference serves two decks (badge and
+  level) because daily-words has both a badge shelf and a level-panel system.
+  Run Insights had only the badge shelf, so `KINDS["badge"]`'s five fields were
+  four module constants here. F25 added the ten personal-record patches, which
+  is the second deck that comment said to restore the abstraction for — so the
+  table is back, as `tools/decks.py`, shared with `check_badge_art.py`,
+  `make_badge_assets.py` and `scripts/check-badge-art.mjs` rather than copied
+  into each. `--deck` DEFAULTS TO `badges`, so every command in this file's
+  docstring, in the skill and in F10's plan still means what it said.
 
 Everything else carries over verbatim and should NOT be re-derived: the
 `.env.local`-before-environment key read and its printed-source-not-value line,
@@ -75,12 +79,14 @@ os.environ.setdefault("RES_OPTIONS", "no-aaaa")
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = ROOT / ".claude" / "skills" / "generate-badge"
 
-# What `--kind` used to select, inlined. One deck, so these are constants.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from decks import DECKS, add_deck_argument, deck_for  # noqa: E402
+
+# The one thing every deck shares, and the reason `decks.py` holds no copy of
+# it: the style block is ONE text, which is what makes "one bolt of cloth" a
+# statement rather than an aspiration. Only the scene lines and the per-deck
+# addendum are keyed by deck.
 CONTRACT = SKILL / "style.md"
-SOURCE = ROOT / "lib" / "badges" / "catalog.ts"
-MASTERS = ROOT / "assets" / "badges"
-SUBJECT = "SUBJECT FOR THIS BADGE"
-TABLE = "BADGE_CATALOG"
 
 BASE = "https://openrouter.ai/api/v1"
 KEY_VAR = "OPENROUTER_API_KEY"
@@ -91,8 +97,27 @@ MODEL = "qwen/qwen-image-3-pro"
 # check_badge_art.py rejects on check 1 *after* the money is spent.
 # `RESOLUTION` is an enum there ('1K' | '2K'), not a pixel count.
 RESOLUTION = "1K"
-ASPECT_RATIO = "1:1"
-MASTER_PX = 1024  # what '1K' means, and what check 1 asserts. Recorded, not sent.
+MASTER_PX = 1024  # what '1K' means on the long edge. Recorded, not sent.
+
+# `--aspect-ratio` DEFAULTS TO 1:1, and that default is load-bearing rather than
+# lazy. STYLE BLOCK v2 asks for the patch at "about 80 percent of the image
+# WIDTH", and all four observed `SHAPE_WIDTH` numbers in check_badge_art.py were
+# measured on square frames — so 1:1 is the frame the composition contract was
+# written against, and `extend_badge_art.py` widens an approved square master to
+# 4:3 afterwards rather than re-rolling it.
+#
+# The flag exists because F25 asks whether a deck can be generated at 4:3
+# natively and skip the widening pass. That is a QUESTION, not a fact: the same
+# header measured prompted patch size as barely responsive ("eighty percent" →
+# 66.0%, "eighty-eight percent" → 68.0%). So the flag makes the experiment
+# possible for the price of one generation, and the default keeps every existing
+# instruction correct while it is being answered.
+DEFAULT_ASPECT_RATIO = "1:1"
+ASPECT_PX = {
+    "1:1": (1024, 1024),
+    "4:3": (1024, 768),
+    "3:4": (768, 1024),
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -106,12 +131,44 @@ STYLE_RE = re.compile(
     r"^<!-- STYLE BLOCK (v\d+) -->$\n(.*?)^<!-- /STYLE BLOCK -->$",
     re.S | re.M,
 )
-SCENES_RE = re.compile(r"^<!-- SCENES -->$\n(.*?)^<!-- /SCENES -->$", re.S | re.M)
 SCENE_LINE_RE = re.compile(r"^- ([a-z0-9_]+): (.+)$", re.M)
 
 
-def load_style():
-    """(version, style_block, [(key, scene), ...]) from style.md."""
+def region(text, opening, closing=None):
+    """The body between `<!-- opening -->` and `<!-- /closing -->`, or None.
+
+    `closing` defaults to `opening`. They differ for the addendum, whose opening
+    marker carries a version (`ADDENDUM:records v1`) and whose closing one does
+    not — the same asymmetry `<!-- STYLE BLOCK v2 -->` … `<!-- /STYLE BLOCK -->`
+    already uses, so a version bump is a one-line edit rather than a two-line
+    one that can be half-done.
+
+    Same anchoring rule as STYLE_RE and for the same scar: style.md quotes its
+    markers inline in the interface table, and an unanchored non-greedy match
+    started at the table and returned zero scenes rather than an error.
+    """
+    m = re.search(
+        rf"^<!-- {re.escape(opening)} -->$\n(.*?)^<!-- /{re.escape(closing or opening)} -->$",
+        text, re.S | re.M,
+    )
+    return m.group(1) if m else None
+
+
+def load_style(deck):
+    """(version, style_block, [(key, scene), ...]) from style.md, for one deck.
+
+    THE BLOCK IS SHARED AND THE SCENES ARE NOT. Both decks are one bolt of
+    cloth — same substrate, same merrowed border, same five threads, same
+    signature — so there is exactly one `<!-- STYLE BLOCK -->` and every deck
+    reads it. What differs is the scene list, and, for a deck the block was not
+    literally written for, a short ADDENDUM appended after it.
+
+    The addendum is NOT a version bump. `scripts/check-badge-art.mjs` asserts
+    every promoted master's sidecar version equals the block's current version,
+    so bumping v2→v3 would fail `npm run badges:check` on all 22 badges until
+    every one of them was regenerated — for a change that adds a fifth
+    silhouette the badge deck does not use. See `decks.py` and F25 §4.
+    """
     if not CONTRACT.exists():
         die(f"no style contract at {rel(CONTRACT)}")
     text = CONTRACT.read_text(encoding="utf-8")
@@ -122,83 +179,111 @@ def load_style():
             "region with each marker alone on its own line")
     version, block = m.group(1), m.group(2).strip()
 
-    s = SCENES_RE.search(text)
-    if not s:
-        die(f"{CONTRACT.name} has no `<!-- SCENES -->` … `<!-- /SCENES -->` region with "
-            "each marker alone on its own line")
-    scenes = SCENE_LINE_RE.findall(s.group(1))
+    if deck.addendum_marker:
+        marker = f"{deck.addendum_marker} v{deck.addendum_version}"
+        body = region(text, marker, deck.addendum_marker)
+        if body is None:
+            die(f"deck {deck.name!r} wants `<!-- {marker} -->` … "
+                f"`<!-- /{deck.addendum_marker} -->` in {CONTRACT.name}, with each "
+                f"marker alone on its own line, and it is not there.\n"
+                f"  The addendum is how a deck adds to the shared style block "
+                f"without bumping it — see tools/decks.py.")
+        block = f"{block}\n\n{body.strip()}"
+
+    body = region(text, deck.scenes_marker)
+    if body is None:
+        die(f"{CONTRACT.name} has no `<!-- {deck.scenes_marker} -->` … "
+            f"`<!-- /{deck.scenes_marker} -->` region with each marker alone on "
+            f"its own line")
+    scenes = SCENE_LINE_RE.findall(body)
     if not scenes:
-        die(f"{CONTRACT.name}'s SCENES region holds no `- <key>: <scene>` lines")
+        die(f"{CONTRACT.name}'s {deck.scenes_marker} region holds no "
+            f"`- <key>: <scene>` lines")
 
-    return version, block, scenes
-
-
-# F09 shipped `lib/badges/catalog.ts` as a `readonly BadgeDefinition[]` built by a
-# `badge(key, title, scope)` helper rather than as the object-literal array the
-# reference tool's regex expected — plan §5.1 flagged exactly this as an
-# assumption to check when F09 landed, and it is the two-line change it promised
-# rather than a redesign. The array literal is still the thing being read; only
-# the shape of one entry differs, so `KEY_RE` matches `badge('key', …)` instead
-# of `key: "…"`. Single quotes because that is what Prettier writes here.
-CATALOG_RE = re.compile(r"BADGE_CATALOG[^=]*=\s*\[(.*?)^\]", re.S | re.M)
-KEY_RE = re.compile(r"^\s*badge\(\s*'([a-z0-9_]+)'", re.M)
+    return deck.style_version(version), block, scenes
 
 
-def load_catalog_keys():
-    """Badge keys in BADGE_CATALOG order, read out of lib/badges/catalog.ts.
+# The two patterns this used to hold inline now live in `tools/decks.py`, beside
+# the catalog path each one applies to. F09's badge catalog is a
+# `readonly BadgeDefinition[]` built by a `badge(key, title, scope)` helper and
+# F06's record catalog is plain object literals with a `key:` field, so the
+# entry shape genuinely differs per deck — a single module-level KEY_RE could
+# only ever have read one of them.
+def load_catalog_keys(deck):
+    """This deck's keys, in catalog order, read out of its own catalog module.
 
-    Read rather than hardcoded. §4.6 is 22 keys today and R-33 already moved it
-    from 20 once; a hardcoded count is a line that needs editing in a fourth
-    file every time the catalog moves, and the whole point of the parity guard
-    below is that the catalog is the single source of truth.
+    Read rather than hardcoded. §4.6 is 22 badge keys today and R-33 already
+    moved it from 20 once; a hardcoded count is a line that needs editing in a
+    fourth file every time a catalog moves, and the whole point of the parity
+    guard below is that the catalog is the single source of truth.
+
+    THE ENTRY SHAPE IS PER DECK. F09 ships `BADGE_CATALOG` as a
+    `readonly BadgeDefinition[]` built by a `badge(key, title, scope)` helper;
+    F06 ships `RECORD_CATALOG` as plain object literals with a `key:` field.
+    One shared regex could not have read both, which is why the pattern lives
+    in `decks.py` beside the path it applies to rather than here.
     """
-    if not SOURCE.exists():
-        die(f"no badge catalog at {rel(SOURCE)}")
-    m = CATALOG_RE.search(SOURCE.read_text(encoding="utf-8"))
+    source = deck.catalog_path()
+    if not source.exists():
+        die(f"no {deck.noun} catalog at {rel(source)}")
+    m = re.search(rf"{deck.catalog_array}[^=]*=\s*\[(.*?)^\]",
+                  source.read_text(encoding="utf-8"), re.S | re.M)
     if not m:
-        die(f"could not find `{TABLE} … = [ … ]` in {rel(SOURCE)}.\n"
-            f"  If F09's catalog was refactored, CATALOG_RE/KEY_RE at the top of\n"
-            f"  this file are the two lines to fix — they only care about the\n"
-            f"  array literal's shape, not about anything else in that module.")
-    keys = KEY_RE.findall(m.group(1))
+        die(f"could not find `{deck.catalog_array} … = [ … ]` in {rel(source)}.\n"
+            f"  If that catalog was refactored, `catalog_array` and `key_pattern`\n"
+            f"  for deck {deck.name!r} in tools/decks.py are the two lines to fix —\n"
+            f"  they only care about the array literal's shape, not about anything\n"
+            f"  else in that module.")
+    keys = re.findall(deck.key_pattern, m.group(1), re.M)
     if not keys:
-        die(f"{TABLE} in {rel(SOURCE)} parsed to zero keys — see CATALOG_RE/KEY_RE")
+        die(f"{deck.catalog_array} in {rel(source)} parsed to zero keys — see "
+            f"`key_pattern` for deck {deck.name!r} in tools/decks.py")
     return keys
 
 
-def assert_parity(scene_keys, source_keys):
-    """Refuse to start on any disagreement between style.md and the catalog.
+def assert_parity(deck, scene_keys, source_keys):
+    """Refuse to start on any disagreement between style.md and this deck's catalog.
 
     One of three drift mechanisms, and the only one that fires BEFORE money is
     spent. The other two are `npm run typecheck` (a key with no art, because
-    `lib/badges/badge-art.ts` is a total Record) and `npm run badges:check` (art
-    with no key).
+    each manifest is a total Record) and `npm run badges:check` (art with no key).
+
+    PER DECK, WHICH IS THE WHOLE POINT. This assertion is exactly why F25's ten
+    record scenes could not simply be appended to `<!-- SCENES -->` as first
+    drafted: that region is checked against BADGE_CATALOG, so ten record keys
+    inside it would have made every BADGE generation refuse to start, reporting
+    ten orphans. Each deck's scene region is checked against its own catalog and
+    the two cannot interfere.
     """
+    source = rel(deck.catalog_path())
     missing = [k for k in source_keys if k not in scene_keys]
     orphan = [k for k in scene_keys if k not in source_keys]
     if missing or orphan:
-        lines = [f"{CONTRACT.name} and {TABLE} disagree:"]
+        lines = [f"{CONTRACT.name} and {deck.catalog_array} disagree "
+                 f"(deck {deck.name!r}):"]
         if missing:
-            lines.append(f"  in {rel(SOURCE)}, no scene line: {', '.join(missing)}")
-            lines.append(f"  → add `- <key>: <scene>` inside <!-- SCENES --> in {CONTRACT.name}")
+            lines.append(f"  in {source}, no scene line: {', '.join(missing)}")
+            lines.append(f"  → add `- <key>: <scene>` inside "
+                         f"<!-- {deck.scenes_marker} --> in {CONTRACT.name}")
         if orphan:
-            lines.append(f"  scene line, not in {rel(SOURCE)}: {', '.join(orphan)}")
-            lines.append("  → the key was renamed or removed, or the scene is a draft "
-                         "that belongs outside <!-- SCENES -->")
+            lines.append(f"  scene line, not in {source}: {', '.join(orphan)}")
+            lines.append(f"  → the key was renamed or removed, or the scene is a "
+                         f"draft that belongs outside <!-- {deck.scenes_marker} -->")
         die("\n".join(lines))
     if scene_keys != source_keys:
         # Not fatal. Order is a readability property of a generated diff, not a
         # correctness one, and failing a paid run over it would be absurd.
-        warn(f"{CONTRACT.name}'s scene order differs from {TABLE}'s; the two files "
-             f"read more easily in the same order")
+        warn(f"{CONTRACT.name}'s {deck.scenes_marker} order differs from "
+             f"{deck.catalog_array}'s; the two files read more easily in the "
+             f"same order")
 
 
 # --------------------------------------------------------------------------- #
 # Prompt assembly
 # --------------------------------------------------------------------------- #
 
-def build_prompt(style_block, scene, note=None):
-    parts = [style_block, "", f"{SUBJECT}: {scene}"]
+def build_prompt(deck, style_block, scene, note=None):
+    parts = [style_block, "", f"{deck.subject_label}: {scene}"]
     if note:
         # After the scene line, so a correction is read as a refinement of this
         # image rather than as an amendment to the deck's style.
@@ -248,7 +333,7 @@ def read_api_key():
 # The request
 # --------------------------------------------------------------------------- #
 
-def post_generation(key, model, prompt, reference: Path | None, seed=None):
+def post_generation(key, model, prompt, reference: Path | None, aspect, seed=None):
     """OpenRouter's single image endpoint, with or without the anchor.
 
     **There is no `/images/edits` here.** It 404s on this provider — not
@@ -265,7 +350,7 @@ def post_generation(key, model, prompt, reference: Path | None, seed=None):
         "model": model,
         "prompt": prompt,
         "resolution": RESOLUTION,
-        "aspect_ratio": ASPECT_RATIO,
+        "aspect_ratio": aspect,
         "n": 1,
     }
     if seed is not None:
@@ -330,7 +415,8 @@ def next_attempt_path(candidates, key):
     return candidates / f"{key}.a{(max(used) + 1) if used else 1:02d}.png"
 
 
-def write_sidecar(png_path, key, model, version, reference, prompt, seed=None):
+def write_sidecar(png_path, deck, key, model, version, reference, prompt,
+                  aspect, seed=None):
     """The exact prompt beside the exact image.
 
     This is what lets a candidate you like six weeks from now be explained, and
@@ -342,12 +428,14 @@ def write_sidecar(png_path, key, model, version, reference, prompt, seed=None):
     sidecar.write_text(
         "\n".join([
             f"badge:          {key}",
+            f"deck:           {deck.name}",
             "provider:       openrouter",
             f"model:          {model}",
             f"seed:           {seed if seed is not None else '(none)'}",
             f"style version:  {version}",
             f"reference:      {rel(reference) if reference else '(none — anchor run)'}",
-            f"resolution:     {RESOLUTION} {ASPECT_RATIO}  (expect {MASTER_PX}²)",
+            f"resolution:     {RESOLUTION} {aspect}  "
+            f"(expect {ASPECT_PX[aspect][0]}×{ASPECT_PX[aspect][1]})",
             f"image sha256:   {hashlib.sha256(png_path.read_bytes()).hexdigest()}",
             "",
             "--- prompt as sent ---",
@@ -385,7 +473,8 @@ def main():
                "file a human edits and this script reads, so the prompt that was "
                "sent can never drift from the prompt that is documented.",
     )
-    parser.add_argument("key", nargs="?", help=f"a badge key from {TABLE}")
+    parser.add_argument("key", nargs="?", help="a key from the deck's catalog")
+    add_deck_argument(parser)
     parser.add_argument("--all", action="store_true",
                         help="every key in the deck; only legal with --dry-run")
     parser.add_argument("--dry-run", action="store_true",
@@ -397,15 +486,20 @@ def main():
                         help=f"image model (default {MODEL}, pinned by the roadmap header)")
     parser.add_argument("--seed", type=int,
                         help="reproducibility; qwen-image-3-pro honours it")
+    parser.add_argument("--aspect-ratio", default=DEFAULT_ASPECT_RATIO,
+                        choices=sorted(ASPECT_PX),
+                        help=f"frame shape (default {DEFAULT_ASPECT_RATIO}; see "
+                             f"the constant's comment before changing it)")
     args = parser.parse_args()
 
-    candidates = MASTERS / "_candidates"
+    deck = deck_for(args.deck)
+    candidates = deck.candidates_dir()
 
-    version, style_block, scenes = load_style()
+    version, style_block, scenes = load_style(deck)
     scene_by_key = dict(scenes)
     scene_keys = [k for k, _ in scenes]
-    source_keys = load_catalog_keys()
-    assert_parity(scene_keys, source_keys)
+    source_keys = load_catalog_keys(deck)
+    assert_parity(deck, scene_keys, source_keys)
 
     if args.all:
         if not args.dry_run:
@@ -415,28 +509,29 @@ def main():
         targets = source_keys
     elif args.key:
         if args.key not in scene_by_key:
-            die(f"unknown badge key {args.key!r}. Known keys:\n  "
-                + "\n  ".join(source_keys))
+            die(f"unknown {deck.noun} key {args.key!r} in deck {deck.name!r}. "
+                f"Known keys:\n  " + "\n  ".join(source_keys))
         targets = [args.key]
     else:
-        die("name a badge key, or pass --dry-run --all")
+        die(f"name a {deck.noun} key, or pass --dry-run --all")
 
     if args.reference and not args.reference.exists():
         die(f"no reference image at {rel(args.reference)}")
 
     if args.dry_run:
         for key in targets:
-            prompt = build_prompt(style_block, scene_by_key[key], args.note)
-            print(f"\n{'=' * 76}\n{key}  (style {version}, openrouter {args.model}, "
+            prompt = build_prompt(deck, style_block, scene_by_key[key], args.note)
+            print(f"\n{'=' * 76}\n{key}  (deck {deck.name}, style {version}, "
+                  f"openrouter {args.model}, {args.aspect_ratio}, "
                   f"{len(prompt)} chars)\n{'=' * 76}\n{prompt}")
         print(f"\n{'-' * 76}\ndry run: {len(targets)} prompt(s) assembled, "
-              f"{len(source_keys)} keys in {TABLE}. "
+              f"{len(source_keys)} keys in {deck.catalog_array}. "
               f"No key was read, nothing was sent, nothing was written.")
         return
 
     key_name = targets[0]
     if not args.reference:
-        anchor = MASTERS / "_anchor.png"
+        anchor = deck.anchor_path()
         if anchor.exists():
             warn(f"{rel(anchor)} exists but --reference was not passed. "
                  f"Badges 2-N should be generated against the anchor, never "
@@ -445,20 +540,21 @@ def main():
             print("no --reference and no anchor on disk: this is an ANCHOR RUN.")
 
     api_key = read_api_key()
-    prompt = build_prompt(style_block, scene_by_key[key_name], args.note)
-    print(f"badge {key_name}, style {version}, openrouter {args.model}, "
-          f"{len(prompt)} chars of prompt")
+    prompt = build_prompt(deck, style_block, scene_by_key[key_name], args.note)
+    print(f"{deck.noun} {key_name}, style {version}, openrouter {args.model}, "
+          f"{args.aspect_ratio}, {len(prompt)} chars of prompt")
 
-    png = post_generation(api_key, args.model, prompt, args.reference, args.seed)
+    png = post_generation(api_key, args.model, prompt, args.reference,
+                          args.aspect_ratio, args.seed)
 
     out = next_attempt_path(candidates, key_name)
     out.write_bytes(png)
-    sidecar = write_sidecar(out, key_name, args.model, version, args.reference,
-                            prompt, args.seed)
+    sidecar = write_sidecar(out, deck, key_name, args.model, version,
+                            args.reference, prompt, args.aspect_ratio, args.seed)
 
     print(f"\nwrote {rel(out)}  ({len(png) / 1024:.0f} kB)")
     print(f"      {rel(sidecar)}")
-    print(f"\nnext: python3 tools/check_badge_art.py {rel(out)}")
+    print(f"\nnext: python3 tools/check_badge_art.py {rel(out)} --deck {deck.name}")
 
 
 if __name__ == "__main__":
