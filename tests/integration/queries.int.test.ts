@@ -534,8 +534,8 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
              null runId on each because no single run earned a month badge. This is the assertion
              the unit tests cannot make — that the DB's own ordering is the one being re-sorted. */
           earnedDays: [
-            { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
-            { earnedOn: '2026-07-31', runId: null, scopeKey: '2026-07' },
+            { earnedOn: '2026-08-31', runId: null },
+            { earnedOn: '2026-07-31', runId: null },
           ],
         },
       ])

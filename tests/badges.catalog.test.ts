@@ -214,3 +214,49 @@ describe('the copy — all 22, in register', () => {
     expect(BADGE_META.dawn_patrol.condition).toContain('06:00')
   })
 })
+
+describe('period scope ⟺ min-count threshold — the invariant F27 round 3 rests on', () => {
+  /*
+   * `evaluate.ts` stamps EVERY earn with the committing run, period ones included, on one argument:
+   * a period badge is a count threshold, and a threshold is crossed by a run. That argument is
+   * blanket rather than per-badge, and this is what licenses it.
+   *
+   * R-44's `progress` spec is defined as an accumulating quantity with a target — precisely a
+   * min-count. So if the set of badges carrying one is exactly the set of non-session badges, then
+   * "period" and "has a threshold a run can cross" are the same set, and one `runId` is honest for
+   * all of them.
+   *
+   * When this test fails, it is telling the author of a new badge to make a decision rather than
+   * inherit one. Two ways it can fail, and what each means:
+   *
+   *   - a **period badge with no `progress`** — something week/month/lifetime-scoped that is not a
+   *     count. There may be no run that "completed" it, and `evaluate.ts`'s blanket `runId` would
+   *     then name a run that merely happened to be committed at the time. Decide explicitly.
+   *   - a **session badge WITH `progress`** — R-44 forbids it for its own reasons ("you're 12% of
+   *     the way to spending 40% of a run in zone 5"), and it would also make this test's shorthand
+   *     stop meaning what it says.
+   */
+  it('gives a progress spec to every non-session badge and to no session badge', () => {
+    const period = BADGE_CATALOG.filter((d) => d.scope !== 'session').map((d) => d.key)
+    const withProgress = BADGE_CATALOG.filter((d) => d.progress).map((d) => d.key)
+
+    expect([...withProgress].sort()).toEqual([...period].sort())
+    // Named, so the failure message says which five rather than only how many.
+    expect([...period].sort()).toEqual([
+      'century_club',
+      'consistency_gremlin',
+      'dawn_patrol',
+      'double_century',
+      'self_reward',
+    ])
+  })
+
+  it('gives every one of them a positive target — a threshold a run can cross', () => {
+    // A target of 0 or below is satisfied before the account has any runs, so no commit "reaches"
+    // it and `evaluate.ts` would be naming an arbitrary run.
+    for (const definition of BADGE_CATALOG.filter((d) => d.scope !== 'session')) {
+      expect(definition.progress).toBeDefined()
+      expect(definition.progress!.target).toBeGreaterThan(0)
+    }
+  })
+})

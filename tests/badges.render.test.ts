@@ -53,7 +53,7 @@ const rows: StoredBadge[] = [
     firstEarnedOn: '2026-08-20',
     earnedOn: '2026-08-20',
     count: 1,
-    earnedDays: [{ earnedOn: '2026-08-20', runId: 'run_canonical', scopeKey: null }],
+    earnedDays: [{ earnedOn: '2026-08-20', runId: 'run_canonical' }],
   },
   {
     /* Three earnings, and deliberately a MIX: two runs that still exist and one whose run was
@@ -66,9 +66,9 @@ const rows: StoredBadge[] = [
     earnedOn: '2026-08-20',
     count: 3,
     earnedDays: [
-      { earnedOn: '2026-08-20', runId: 'run_canonical', scopeKey: null },
-      { earnedOn: '2026-07-19', runId: null, scopeKey: null },
-      { earnedOn: '2026-07-04', runId: 'run_july', scopeKey: null },
+      { earnedOn: '2026-08-20', runId: 'run_canonical' },
+      { earnedOn: '2026-07-19', runId: null },
+      { earnedOn: '2026-07-04', runId: 'run_july' },
     ],
   },
 ]
@@ -256,16 +256,9 @@ describe('BadgeDialog — the count is a disclosure control (F27)', () => {
 describe('EarnedDayList — what the expander opens (F27)', () => {
   /* Rendered directly, because nothing in this suite can tap the control that renders it. That is
    * the whole reason it is exported; see its own doc block and F21's `commitStatusLine`. */
-  function list(
-    days: { earnedOn: string; runId: string | null; scopeKey?: string | null }[],
-    count = days.length,
-  ) {
+  function list(days: { earnedOn: string; runId: string | null }[], count = days.length) {
     return renderToStaticMarkup(
-      createElement(EarnedDayList, {
-        id: 'earn-list',
-        earnedDays: days.map((d) => ({ scopeKey: null, ...d })),
-        count,
-      }),
+      createElement(EarnedDayList, { id: 'earn-list', earnedDays: days, count }),
     )
   }
 
@@ -299,17 +292,18 @@ describe('EarnedDayList — what the expander opens (F27)', () => {
     expect(html).not.toContain('href="/r/null"')
   })
 
-  it('links nothing at all for a period badge — every day is text', () => {
-    // `century_club` is month-scoped: no single run earned it, so no day has a run to open.
+  it('links nothing when no day has a run, and still prints every day', () => {
+    /* Two awards that lost their runs — deleted, swept, or written before round 3. Not "a period
+     * badge": since round 3 a period award names the run that crossed its threshold, so a null here
+     * is history rather than a rule. See the round-3 describe below. */
     const html = list([
-      { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
-      { earnedOn: '2026-07-31', runId: null, scopeKey: '2026-07' },
+      { earnedOn: '2026-08-31', runId: null },
+      { earnedOn: '2026-07-31', runId: null },
     ])
     expect(html).not.toContain('<a')
     expect(html).not.toContain('underline')
-    // Round 2: a month badge's rows read as MONTHS. See the period-label describe below.
-    expect(html).toContain('August 2026')
-    expect(html).toContain('July 2026')
+    expect(html).toContain('Mon, 31 Aug 2026')
+    expect(html).toContain('Fri, 31 Jul 2026')
   })
 
   it('expands a badge earned once to its single date', () => {
@@ -326,21 +320,21 @@ describe('EarnedDayList — what the expander opens (F27)', () => {
      * day twice to make the numbers agree. */
     const html = list(
       [
-        { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
-        { earnedOn: '2026-05-31', runId: null, scopeKey: '2026-05' },
+        { earnedOn: '2026-08-31', runId: null },
+        { earnedOn: '2026-05-31', runId: null },
       ],
       4,
     )
     expect(html).toContain('2 earlier, dates not recorded')
-    // Three rows: the two real periods, and one line that is not a date.
+    // Three rows: the two real days, and one line that is not a date.
     expect(html.match(/<li/g)).toHaveLength(3)
-    // Not a link, and not a repeated period.
-    expect(html.match(/August 2026/g)).toHaveLength(1)
+    // Not a link, and not a repeated day.
+    expect(html.match(/Mon, 31 Aug 2026/g)).toHaveLength(1)
     expect(html).not.toContain('<a')
   })
 
   it('conjugates the shortfall line at one', () => {
-    const html = list([{ earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' }], 2)
+    const html = list([{ earnedOn: '2026-08-31', runId: null }], 2)
     expect(html).toContain('1 earlier, date not recorded')
     expect(html).not.toContain('1 earlier, dates not recorded')
   })
@@ -353,76 +347,65 @@ describe('EarnedDayList — what the expander opens (F27)', () => {
   })
 })
 
-describe('a period badge names its period, not a day (F27 round 2)', () => {
+describe('a period badge links the run that completed its count (F27 round 3)', () => {
   /*
-   * THE REPORT, AS AN ASSERTION.
+   * THE REPORT, AS AN ASSERTION — and the second time this case has been rewritten, which is worth
+   * saying out loud because the two rounds disagree.
    *
-   * `self_reward` and `tourist` both read "Earned once"; `tourist`'s date opened its run and
-   * `self_reward`'s silently did nothing. The code was correct — `catalog.ts` line 98 scopes
-   * `self_reward` to `'week'`, so `badges.run_id` is null on every row of it, because nothing earned
-   * it but four runs inside one ISO week. The DESIGN was wrong: a dead date that looks exactly like
-   * a live one, with no way to learn the difference short of reading the catalog.
+   * Round 2 read "self_reward's date does not open a run" as a labelling problem and printed
+   * `Week of 17 Aug 2026`, so the dead date at least looked like the period it was. Round 3 fixed
+   * the cause instead: a count threshold is crossed BY a run, `evaluate.ts` now records that run on
+   * period earns too, and the date is the fourth run of the week and opens it.
    *
-   * So the discriminator is `scopeKey`, and these four cases are the whole of it.
+   * So there is nothing here about weeks or months any more. Every row is a day; it links when its
+   * run is known. What remains below is the regression net around that: the two reasons a day can
+   * still have no run, and the fact that neither of them is a period badge writing a fresh award.
    */
-  function list(days: { earnedOn: string; runId: string | null; scopeKey: string | null }[]) {
+  function list(days: { earnedOn: string; runId: string | null }[]) {
     return renderToStaticMarkup(
       createElement(EarnedDayList, { id: 'l', earnedDays: days, count: days.length }),
     )
   }
 
-  it('reads a week badge as its week — the exact shape of the report', () => {
-    // '2026-W34' starts Monday 17 August. `isoWeekLabel` names the week by the Monday that owns it,
-    // which is why this is not "17 Aug" by coincidence — see its own note in lib/format.ts.
-    const html = list([{ earnedOn: '2026-08-20', runId: null, scopeKey: '2026-W34' }])
-    expect(html).toContain('Week of 17 Aug 2026')
-    // The bare day is gone: printing it was the whole bug, because it looked like a run link.
-    expect(html).not.toContain('Thu, 20 Aug 2026')
+  it('links a week badge’s day exactly like a session badge’s', () => {
+    /* `self_reward` earned by the fourth run of W34, which happened on 22 August. The row is that
+     * run's date and it opens that run — the user's own worked example. */
+    const html = list([{ earnedOn: '2026-08-22', runId: 'run_fourth_of_week' }])
+    expect(html).toContain('href="/r/run_fourth_of_week"')
+    expect(html).toContain('Sat, 22 Aug 2026')
+    // Round 2's label is gone, and nothing prints a period any more.
+    expect(html).not.toContain('Week of')
+    expect(html).toContain('underline')
+  })
+
+  it('lists two weeks as two clickable run dates', () => {
+    // The rest of the worked example: 4 runs to 22 Aug, then 25/27/29/30 the next week. Two awards,
+    // two scope keys, two completing runs — and the panel is two links, newest first.
+    const html = list([
+      { earnedOn: '2026-08-30', runId: 'run_fourth_of_w35' },
+      { earnedOn: '2026-08-22', runId: 'run_fourth_of_w34' },
+    ])
+    expect(html.match(/<a/g)).toHaveLength(2)
+    expect(html.indexOf('Sun, 30 Aug 2026')).toBeLessThan(html.indexOf('Sat, 22 Aug 2026'))
+  })
+
+  it('still renders a deleted run’s day as plain text', () => {
+    // R-22 nulls the column and keeps the award. The day happened; the run is gone.
+    const html = list([{ earnedOn: '2026-08-20', runId: null }])
+    expect(html).toContain('Thu, 20 Aug 2026')
     expect(html).not.toContain('<a')
     expect(html).not.toContain('underline')
   })
 
-  it('reads a month badge as its month', () => {
-    const html = list([{ earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' }])
-    expect(html).toContain('August 2026')
-    expect(html).not.toContain('Mon, 31 Aug 2026')
-    expect(html).not.toContain('<a')
-  })
-
-  it('still reads a DELETED session run as a plain day, because that is what it is', () => {
-    /* The case a careless fix would break. R-22 nulls `run_id` when a run is deleted and keeps the
-     * award; `scopeKey` stays null because no period earned it. The day happened and calling it a
-     * period would be a lie — so it is a day, and it is not a link. */
-    const html = list([{ earnedOn: '2026-08-20', runId: null, scopeKey: null }])
-    expect(html).toContain('Thu, 20 Aug 2026')
+  it('renders a sweep-awarded or pre-round-3 row as plain text, and not as a period', () => {
+    /* The two paths that still write a null on a period award: the nightly sweep, which fires when
+     * an aggregate drifted with no commit, and every period row written before round 3. Both are a
+     * day with no run rather than a period — round 2's label would have made the sweep's cron
+     * anchor day read as a week it never was. */
+    const html = list([{ earnedOn: '2026-08-31', runId: null }])
+    expect(html).toContain('Mon, 31 Aug 2026')
+    expect(html).not.toContain('August 2026')
     expect(html).not.toContain('Week of')
-    expect(html).not.toContain('<a')
-  })
-
-  it('leaves a lifetime badge as a plain day too — there is no period to name', () => {
-    // `types.ts` on the scope table: lifetime carries both nulls. `dawn_patrol`'s date is the day
-    // the tenth dawn run happened, which is a real day and not a window.
-    const html = list([{ earnedOn: '2026-08-20', runId: null, scopeKey: null }])
-    expect(html).toContain('Thu, 20 Aug 2026')
-    expect(html).not.toContain('2026-W')
-  })
-
-  it('leaves a session badge with a live run exactly as it was', () => {
-    // The regression net around the change: `tourist` and `groundhog_day` still link their days.
-    const html = list([{ earnedOn: '2026-08-20', runId: 'run_canonical', scopeKey: null }])
-    expect(html).toContain('href="/r/run_canonical"')
-    expect(html).toContain('Thu, 20 Aug 2026')
-    expect(html).not.toContain('Week of')
-  })
-
-  it('never prints a raw scope key at a runner', () => {
-    // '2026-W34' and '2026-08' are storage, not copy. R-23 routes both through lib/format.ts.
-    const html = list([
-      { earnedOn: '2026-08-20', runId: null, scopeKey: '2026-W34' },
-      { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
-    ])
-    expect(html).not.toContain('2026-W34')
-    expect(html).not.toContain('>2026-08<')
   })
 })
 

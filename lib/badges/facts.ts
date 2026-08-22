@@ -129,11 +129,7 @@ export function foldAwards(rows: readonly BadgeAward[]): StoredBadge[] {
       earnedOn: latest.earnedOn,
       /* The column summed, never `sorted.length`. A pre-F13 row carries an aggregate. */
       count: awards.reduce((total, row) => total + row.count, 0),
-      earnedDays: sorted.map((row) => ({
-        earnedOn: row.earnedOn,
-        runId: row.runId,
-        scopeKey: row.scopeKey,
-      })),
+      earnedDays: sorted.map((row) => ({ earnedOn: row.earnedOn, runId: row.runId })),
     }
   })
 }

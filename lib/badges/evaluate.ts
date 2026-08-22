@@ -109,20 +109,56 @@ export async function evaluateBadgesForCommit(
   }
 
   const day = facts.session.run.occurredOn
+  /*
+   * ── THE COUNT-THRESHOLD RULE (F27 round 3) ────────────────────────────────────────────────
+   * **A badge whose condition is "at least N of something" is earned by the thing that reached N,
+   * and the award records that thing.** For a period badge that thing is a run: the one whose
+   * commit took the aggregate across the threshold. So `runId` is this run on EVERY earn below,
+   * period ones included, and not just on the session ones.
+   *
+   * This is not a new principle in the codebase — it is one that was already written down and then
+   * dropped at the last step. `rules.ts`, `windowEdgeFires`: "the badge fires on the run that
+   * *completes* the pattern and stays quiet while the pattern merely continues." Every period rule
+   * is that same edge (`runsThisWeek >= 4`, `monthDistanceM >= 100_000`, …) and the aggregate can
+   * only cross its threshold at a commit — which is why the sweep below is a backstop and not the
+   * mechanism, and why this function's own doc block says a backfilled Tuesday reviewed today still
+   * fires `self_reward` if that commit is the one that takes the week to four.
+   *
+   * `earnedOn` has always been this run's day, which is what made the old `runId: null` visibly
+   * wrong: the row already named the day the count completed and then refused to name the run that
+   * completed it. A runner reading "Self-Reward Achieved · Sat, 22 Aug 2026" is reading a fact about
+   * the 22 August run, and tapping it should open that run.
+   *
+   * The old reasoning was "no single run earned `century_club`" — a month of running did. True of
+   * the *distance* and false of the *earning*: the badge came into existence at one identifiable
+   * commit, and every other row in this table names the commit that created it.
+   *
+   * **`dedupeKeyFor` is deliberately unchanged, and that is what makes this correct.** A period
+   * badge still dedupes on its scope key, so the FIRST qualifying commit writes the row and every
+   * later one in the same period collides with it — the run recorded is the 4th run of the week,
+   * never the 5th. `tests/badges.evaluate.test.ts` asserts exactly that.
+   *
+   * ── WHEN A FUTURE PERIOD BADGE IS NOT A COUNT THRESHOLD ────────────────────────────────────
+   * Then it must decide this for itself rather than inherit the answer here. The invariant that
+   * makes one blanket `runId` honest today is that **every non-session badge carries a `progress`
+   * spec** — R-44's "accumulating quantities", each with a target — and `tests/badges.catalog.test.ts`
+   * fails if that stops being true. A period badge with no threshold to cross would trip it, which
+   * is the point: the test is the place the next author is told to think.
+   */
   const earns: BadgeEarn[] = [
     ...toEarns(evaluateSessionBadges(session), { runId, scopeKey: null, earnedOn: day }),
     ...toEarns(evaluateWeekBadges(facts.week), {
-      runId: null,
+      runId,
       scopeKey: facts.week.weekKey,
       earnedOn: day,
     }),
     ...toEarns(evaluateMonthBadges(facts.month), {
-      runId: null,
+      runId,
       scopeKey: facts.month.monthKey,
       earnedOn: day,
     }),
     ...toEarns(evaluateLifetimeBadges(facts.lifetime), {
-      runId: null,
+      runId,
       scopeKey: null,
       earnedOn: day,
     }),
@@ -144,6 +180,13 @@ export async function evaluateBadgesForCommit(
  *
  * Session badges are deliberately NOT swept. There is no aggregate to drift: a run's own shape is
  * fixed at commit, and re-evaluating it nightly could only ever re-award what is already recorded.
+ *
+ * ── AND THIS IS THE ONE PATH THAT KEEPS `runId: null` (F27 round 3) ────────────────────────
+ * The commit path stamps every period earn with the run that took the aggregate over its threshold.
+ * The sweep cannot, and must not pretend to: it exists for the case where an aggregate moved
+ * *without* a commit — a deletion, or a correction that walks a run across a period boundary — so
+ * there is no run that completed anything and `anchorDay` is a cron's idea of "today" rather than
+ * any run's day. A null here is the honest answer, and the panel renders it as a plain date.
  */
 export async function sweepPeriodBadges(
   userId: string,
