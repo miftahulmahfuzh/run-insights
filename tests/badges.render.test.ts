@@ -73,13 +73,13 @@ describe('BadgeShelf', () => {
     expect(html).toContain('The legs paid the bill.')
   })
 
-  it('dates an earned badge and only mentions the count once it means something', () => {
+  it('dates an earned badge and leaves the count to the pill', () => {
     expect(html).toContain('Thu, 20 Aug 2026')
-    // `tourist` was earned three times, `late_start` once. The row names which earning the date
-    // belongs to; the pill on the patch carries the number itself.
-    expect(html).toContain('most recent of 3')
+    // F23: the row used to append "\u00b7 most recent of 3" to name which earning the date belonged
+    // to. `earnedOn` is the latest by definition, so the qualifier was the row explaining its own
+    // schema. The pill on the patch is now the only place the count appears.
+    expect(html).not.toContain('most recent of')
     expect(html).toContain('\u00d73')
-    expect(html).not.toContain('most recent of 1')
     expect(html).not.toContain('\u00d71')
   })
 
@@ -136,7 +136,7 @@ describe('BadgeShelf', () => {
   })
 })
 
-describe('BadgeDialog — the dates line (F13)', () => {
+describe('BadgeDialog — no dates, and the count in words (F23)', () => {
   /** The panel's markup with one entry open. The effect that calls `showModal()` never runs under
    *  `renderToStaticMarkup`, but the subtree is what `entry &&` renders, which is what we assert. */
   function panel(key: 'late_start' | 'tourist') {
@@ -145,27 +145,47 @@ describe('BadgeDialog — the dates line (F13)', () => {
     return renderToStaticMarkup(createElement(BadgeDialog, { entry, onClose: () => {} }))
   }
 
-  it('prints the span on a badge earned more than once — count, first, latest', () => {
-    // `tourist`: three earnings between 4 Jul and 20 Aug. Before F13 the first date did not exist
-    // in the schema and the line could only say "Most recently".
+  it('names the count and prints no date at all on a re-earned badge', () => {
+    // `tourist`: three earnings between 4 Jul and 20 Aug. This used to assert the span itself —
+    // `\u00d73 \u00b7 first Sat, 4 Jul 2026 \u00b7 latest Thu, 20 Aug 2026`. F23 removed the line, so the
+    // same facts are asserted from the other side. F13's ledger still holds both dates; this panel
+    // is just no longer where they are read. Card #26 gives them a home.
     const html = panel('tourist')
-    expect(html).toContain('\u00d73')
-    expect(html).toContain('first')
-    expect(html).toContain('Sat, 4 Jul 2026')
-    expect(html).toContain('latest')
-    expect(html).toContain('Thu, 20 Aug 2026')
-    // The wording the old one-row schema forced, now that there is a real first to name.
-    expect(html).not.toContain('Most recently')
+    expect(html).toContain('Earned 3 times')
+
+    // The load-bearing pair: NEITHER date reaches the panel. These do not depend on wording, so
+    // they survive a future rewording of whatever replaces the line.
+    expect(html).not.toContain('Sat, 4 Jul 2026')
+    expect(html).not.toContain('Thu, 20 Aug 2026')
+
+    // The separator forms rather than the bare words: 'first' is a substring of two badges'
+    // condition copy — `negative_split` ("faster than the first") and `hot_start` ("The first
+    // kilometre") — neither of which this fixture renders today. The old version of this test
+    // asserted bare `not.toContain('first')` and passed on that luck.
+    expect(html).not.toContain(' \u00b7 first ')
+    expect(html).not.toContain('\u00b7 latest')
+    // The count is spelled out now, never multiplied. The `\u00d7N` pill belongs to the shelf patch.
+    expect(html).not.toContain('\u00d73')
   })
 
-  it('says "Earned <day>" once and no more on a badge earned exactly once', () => {
-    // A count of one has one date, and printing it twice either side of "first … latest" would be
-    // a scoreboard flourish over a single fact.
+  it('says only the count on a badge earned exactly once — the date goes too', () => {
+    // The branch a careless reading of the card would keep. The `count === 1` arm rendered
+    // `Earned <date>`, and it does not survive either: one date on the one-earn case would be the
+    // only date left in the surface, an inconsistency louder than the line it replaced.
     const html = panel('late_start')
-    expect(html).toContain('Earned Thu, 20 Aug 2026')
-    expect(html).not.toContain('first')
-    expect(html).not.toContain('latest')
     expect(html).toContain('Earned once') // the count, spelled out, is unchanged
+    expect(html).not.toContain('Earned Thu')
+    expect(html).not.toContain('Thu, 20 Aug 2026')
+  })
+
+  it('pads the footer to match the gap above the count line', () => {
+    // The body opens `pt-4`, so 1rem is the gap above "Earned N times" and 1rem is the gap that
+    // belongs below Close. This asserts the token changed; it does NOT prove the two gaps *look*
+    // equal. That is §13's read-it-at-414px check, on an iPhone XS Max specifically — a green
+    // assertion here is not a verified layout.
+    const html = panel('tourist')
+    expect(html).toContain('pb-[calc(1rem+var(--safe-bottom))]')
+    expect(html).not.toContain('pb-[calc(1.25rem+var(--safe-bottom))]')
   })
 })
 

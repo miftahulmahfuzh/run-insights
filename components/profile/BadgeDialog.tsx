@@ -5,7 +5,6 @@ import Image from 'next/image'
 
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { formatDay } from '@/lib/format'
 import { BADGE_ART, BADGE_ART_HEIGHT, BADGE_ART_WIDTH } from '@/lib/badges/badge-art'
 import type { ShelfEntry } from '@/lib/badges/shelf'
 
@@ -54,12 +53,17 @@ import type { ShelfEntry } from '@/lib/badges/shelf'
  * background colour so a slow decode shows cloth rather than card; `BadgeShelf` still needs it for
  * real, because its tile is square and its 56px mark is a square crop.
  *
- * ── WHAT THE PANEL SAYS THAT THE ROW DOES NOT ───────────────────────────────────────────────
+ * ── WHAT THE PANEL SAYS THAT THE ROW DOES NOT — AND WHAT IT NO LONGER SAYS AT ALL ───────────
  * The row is a reference table: title, condition, gloss, date. The panel adds the two things a
  * table has no room for — the art at a size where the embroidery is legible, and the **count**
  * spelled out in words rather than compressed into a trailing "· earned 3 times". Everything else
  * is the same strings, deliberately: a panel that reworded the condition would be R-42's second
  * source of truth for a threshold, one layer further from the catalog.
+ *
+ * F23 made that subtractive as well as additive: the panel now adds those two things and **drops
+ * the date entirely**, at every count. The count in words is the whole of what it says about
+ * earning. The row keeps the date, so between the two surfaces each number is still said exactly
+ * once — which is the same rule that took "· most recent of 3" off the row.
  */
 export function BadgeDialog({ entry, onClose }: { entry: ShelfEntry | null; onClose: () => void }) {
   const ref = React.useRef<HTMLDialogElement>(null)
@@ -181,25 +185,14 @@ function Panel({
         <p className="mt-2 text-[13px] font-medium text-ink-2">{entry.condition}</p>
         <p className="mt-1.5 text-[13px] font-medium text-ink-3">{entry.gloss}</p>
 
-        {/* `earned_on` is the day the badge is *about*, never the instant its row was written: a
-            backfilled run's badge is dated to the run.
-
-            Both ends of the span, because F13's ledger holds every award as its own row and the
-            first one is now a fact rather than an inference. A badge earned twelve times says when
-            it started and when it last happened; the 10 in between are a log, not a record, and
-            the panel deliberately does not list them. */}
-        {earned && (
-          <p className="mt-3 text-[12px] font-semibold text-ink-2 tabular-nums">
-            {earned.count === 1 ? (
-              <>Earned {formatDay(earned.earnedOn)}</>
-            ) : (
-              <>
-                ×{earned.count} · first {formatDay(earned.firstEarnedOn)} · latest{' '}
-                {formatDay(earned.earnedOn)}
-              </>
-            )}
-          </p>
-        )}
+        {/* NO DATE HERE, AT EITHER COUNT (F23). This is where `×3 · first … · latest …` used to
+            print, on the argument that F13's ledger made the first earning a fact rather than an
+            inference and both ends of the span were therefore worth naming. The ledger is
+            untouched and that is still true — this panel is simply no longer where it is read.
+            The single-earn branch printed `Earned <date>` and went with it: one date on the
+            one-earn case would be the only date left in the surface, an inconsistency louder than
+            the line it replaced. Card #26 is what gives every earned date a home.
+            `earned.firstEarnedOn` consequently has no reader on screen; it is kept for #26. */}
 
         {/* R-44: an invitation, not a nag — and only on the five badges where the number is real. */}
         {entry.progress && (
@@ -209,7 +202,13 @@ function Panel({
         )}
       </div>
 
-      <div className="shrink-0 px-5 pt-4 pb-[calc(1.25rem+var(--safe-bottom))]">
+      {/* The bottom pad is 1rem because the body opens `pt-4`, and the gap under Close is meant to
+          read as the gap above "Earned N times" — F23's ask, and its arithmetic. `--safe-bottom`
+          adds the home-indicator inset on top, so the literal is what changes and not the whole
+          value. `pt-3` rather than the body's `pt-4` is the compactness half: this footer diverges
+          from `Sheet`'s deliberately, which pins a Save control above a keyboard and earns its
+          1.25rem with a `border-t`. Nothing here is edited and there is no rule above the button. */}
+      <div className="shrink-0 px-5 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
         <Button variant="secondary" size="md" fullWidth onClick={onClose}>
           Close
         </Button>
