@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 
-import { hrDomain, paceDomain, type PaceHrPoint } from '@/lib/charts'
+import { hrDomain, kmAxisTicks, paceDomain, type PaceHrPoint } from '@/lib/charts'
 import { formatBpm, formatPace } from '@/lib/format'
 
 /**
@@ -39,6 +39,7 @@ export function PaceHrChartInner({ points }: { points: readonly PaceHrPoint[] })
   const paceScale = paceDomain(data)
   const hrScale = hrDomain(data)
   const hasHr = hrScale !== null
+  const ticks = kmAxisTicks(data)
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -60,6 +61,14 @@ export function PaceHrChartInner({ points }: { points: readonly PaceHrPoint[] })
             const point = data.find((p) => p.km === km)
             return point?.partial ? `${km}*` : String(km)
           }}
+          /* F22 / card #18 — WHICH kilometres get labelled, decided upstream in `lib/charts`.
+             22 labels in ~226 px of plot rendered as `101112…2021 22*`; the ladder there thins them
+             to eleven while keeping the last row, which is the one carrying the `*`. */
+          ticks={ticks}
+          /* `interval={0}` is LOAD-BEARING, and no longer means "draw all 22". Beside an explicit
+             `ticks` array it means "draw exactly these, and do not second-guess them". Remove it
+             and Recharts re-runs its own collision skip on top of our list — and the tick likeliest
+             to go is the crowded final one, deleting the partial marker silently. */
           interval={0}
           minTickGap={0}
         />

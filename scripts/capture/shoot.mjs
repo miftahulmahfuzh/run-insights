@@ -428,13 +428,19 @@ async function stills(context, browser) {
      * TWO run pages, not one, and the split is deliberate.
      *
      * The newest run is the 21.2 km long one: the richest insight in the set, a personal record and
-     * the widest zone spread, so it carries the header and the prose. But it has 22 split rows, and
-     * 22 x-axis ticks inside a 390 px chart overprint into an unreadable smear — a real rendering
-     * limit at long distances, not something to photograph as though it were the normal case.
+     * the widest zone spread, so it carries the header and the prose.
      *
-     * So the chart and the splits table come from the second run instead, a 10.9 km one with eleven
-     * rows. That is also the modal run in this dataset and the shape the fixture measured, so it is
-     * the honest thing to show a visitor rather than the flattering one.
+     * The chart and the splits table come from the second run instead, a 10.9 km one with eleven
+     * rows — the modal run in this dataset and the shape the fixture measured, so it is the honest
+     * thing to show a visitor rather than the flattering one.
+     *
+     * That used to be a workaround as well as an editorial choice: 22 x-axis ticks inside a 390 px
+     * chart overprinted into an unreadable smear. F22 fixed it in the app (card #18 —
+     * `kmAxisTicks` thins the LABELS on a stride ladder, capped at the eleven that were already
+     * legible), so the long run photographs fine now and only the editorial reason is left.
+     *
+     * F22's cap is eleven rather than something tidier PRECISELY so this frame did not have to be
+     * re-shot: an eleven-row axis is unchanged, and `docs/media/07-run-chart.png` stays valid.
      */
     log(`  ${runHrefs[0]} — run detail and its insight (the longest run)`)
     await page.goto(runHrefs[0])
