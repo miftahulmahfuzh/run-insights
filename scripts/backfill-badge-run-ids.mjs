@@ -32,6 +32,32 @@
  *
  * Session awards are never touched: their `run_id` was always set, and a null one means R-22 fired
  * because the run was deleted — there is nothing to restore.
+ *
+ * ── EVERY DAY IS `::text`, AND NEVER A `Date` ─────────────────────────────────────────────────
+ * Both queries below cast their `date` column to text, and the comparison is string against string.
+ * That is not tidiness. The first real run of this script printed a day as
+ * `Sat Aug 22 2026 00:00:00 GMT+0700 (Western Indonesia Time)` and still found the right run — by
+ * coincidence.
+ *
+ * The driver returns a `date` column as a JS `Date` at LOCAL midnight, so the stored `2026-08-22`
+ * arrived as `2026-08-21T17:00:00.000Z` on a GMT+0700 host. Feeding that `Date` back into
+ * `occurred_on = $1` then depends on the driver re-serialising it with the same local offset, so the
+ * two conversions cancel and the answer is right *on that host*. From a different timezone the round
+ * trip can land on the adjacent day — which would either skip a row that had an answer, or match a
+ * run that did not earn the badge.
+ *
+ * The second of those is the exact outcome the section above refuses to risk, so the `Date` is not
+ * allowed to exist. `DateISO` is a string type everywhere in `lib/` for this reason
+ * (`lib/date/ranges.ts`), and a script is not exempt from the rule the app is built on.
+ *
+ * Note which side each cast is on. The SELECT casts the **column** (`earned_on::text`), because the
+ * point there is to get a string out. The lookup casts the **parameter** (`$1::date`), not the
+ * column: `occurred_on::text = $1` returns the same rows and leaves the predicate un-indexable,
+ * because a function of a column is not the column. Cast this way the filter stays
+ * `occurred_on = '2026-08-22'::date` — a bare column against a constant, which
+ * `runs_user_occurred_idx` can serve once a table is big enough to be worth it. (Verified on the
+ * author's own data, where `explain` picks a seq scan instead — four rows, and the planner is right.
+ * The property being protected is that the choice remains the planner's.)
  */
 import { createRequire } from 'node:module'
 
@@ -61,7 +87,7 @@ const PERIOD_KEYS = [
 ]
 
 const rows = await sql`
-  select user_id, key, dedupe_key, earned_on
+  select user_id, key, dedupe_key, earned_on::text as earned_on
   from badges
   where run_id is null and key = any(${PERIOD_KEYS})
   order by user_id, key, earned_on
@@ -79,7 +105,9 @@ for (const row of rows) {
    * and offering it would link a badge to numbers no human vouched for (D16). */
   const candidates = await sql`
     select id from runs
-    where user_id = ${row.user_id} and occurred_on = ${row.earned_on} and reviewed_at is not null
+    where user_id = ${row.user_id}
+      and occurred_on = ${row.earned_on}::date
+      and reviewed_at is not null
     order by started_at nulls last, id
   `
 
