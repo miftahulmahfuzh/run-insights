@@ -17,7 +17,14 @@ export type {
   ZoneShare,
 } from './types'
 
-export { fastestSlowestFullKm, hrDomain, paceDomain, toPaceHrPoints } from './paceHr'
+export {
+  fastestSlowestFullKm,
+  hrDomain,
+  kmAxisTicks,
+  MAX_AXIS_LABELS,
+  paceDomain,
+  toPaceHrPoints,
+} from './paceHr'
 export { aggregateZones, toZoneShares, zoneOfHr, zoneTotalSec } from './zones'
 export { monthWeekBucketRanges, weeksInMonth } from './weeksInMonth'
 export { lastIsoWeeks, type TrendWeek } from './window'

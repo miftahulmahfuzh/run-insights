@@ -76,3 +76,77 @@ export function fastestSlowestFullKm(points: readonly PaceHrPoint[]): {
   }
   return { fastestKm: fastest.km, slowestKm: slowest.km }
 }
+
+/**
+ * The most tick labels §3.1's x-axis can carry, measured rather than chosen.
+ *
+ * At an iPhone-class 390 px viewport the plot area is ~226 px: `main` is `max-w-[470px] p-5` (350),
+ * `ChartFrame`'s card is `p-5` (310), then the pace axis takes 46, the HR axis 30 and `margin.right`
+ * 8. At Recharts' 12 px tick font a two-digit label is ~14 px, so with a readable gap that band
+ * holds eight to eleven labels.
+ *
+ * **Eleven, not eight, and the difference is a screenshot.** Card #18 measured both ends: an
+ * eleven-row run renders clean and a 22-row one renders as `101112…2021 22*`. Eleven is therefore a
+ * density observed to work, and capping there means a short run's axis is left *exactly* as it was —
+ * which is what keeps F19's committed `docs/media/07-run-chart.png`, a photograph of an eleven-row
+ * run, pixel-valid. A tidier cap of six would have been more airy and would have re-shot the README.
+ *
+ * Sized for the NARROWEST viewport and never measured per render: at a full 470 px column the plot
+ * is ~306 px and would hold about fifteen. That is the same mobile-first call `ChartFrame`'s fixed
+ * heights and these axes' fixed widths already make.
+ */
+export const MAX_AXIS_LABELS = 11
+
+/**
+ * Candidate strides, in `1, 2, 5 × 10ⁿ` form — the classic nice-number ladder.
+ *
+ * Round strides only, because a reader scanning a kilometre axis expects stops at 2s, 5s and 10s.
+ * A stride picked purely to satisfy the label budget produces labels at km 1, 4, 7, 13, which is
+ * legible and still reads as noise.
+ */
+const STRIDES = [1, 2, 5, 10, 20, 50] as const
+
+/**
+ * Which kilometres §3.1's x-axis actually labels — the fix for card #18.
+ *
+ * **Labels thin; data does not.** Every split keeps its dot, its tooltip and its keyboard stop, and
+ * the splits table directly below still prints every row. That is F08's table-twin rule earning its
+ * keep: thinning labels on this particular chart costs no access at all, because this chart's twin
+ * is a table that was already going to print all 22 numbers.
+ *
+ * Two rules, and both are load-bearing:
+ *
+ *  1. **The stride counts ROWS, not kilometres.** `km` runs `1..n` through F04/F05 today, so the two
+ *     look identical on real data — but the crowding check below compares distances between ticks,
+ *     and comparing a km gap against a row stride is meaningless the moment those diverge. Index
+ *     space is the only space in which both halves of this function are talking about the same unit.
+ *
+ *  2. **The last row is force-appended, because it carries the `*`.** D14's partial marker is a
+ *     non-colour third channel painted on the final tick by the axis's `tickFormatter`; a stride
+ *     that happened to skip that row would delete the marker silently. Its neighbour is popped when
+ *     it sits less than a stride away, since two adjacent labels are the smear this fixes.
+ *
+ * On the reported 21.2 km run: stride 2 gives 1,3,…,21, then km 22 displaces km 21 → eleven labels,
+ * ending `19` and `22*`.
+ */
+export function kmAxisTicks(points: readonly PaceHrPoint[], maxLabels = MAX_AXIS_LABELS): number[] {
+  if (points.length === 0) return []
+
+  const stride =
+    STRIDES.find((s) => Math.ceil(points.length / s) <= maxLabels) ??
+    /* Past 550 splits the ladder runs out. Cannot arise through F04/F05 — the same "cannot happen
+       is not the same as produces a plausible wrong number" reasoning as the partial remainder
+       above — so the budget is honoured with an unround stride rather than silently exceeded. */
+    Math.ceil(points.length / maxLabels)
+
+  const lastIndex = points.length - 1
+  const indices: number[] = []
+  for (let i = 0; i < points.length; i += stride) indices.push(i)
+
+  if (indices[indices.length - 1] !== lastIndex) {
+    if (lastIndex - indices[indices.length - 1]! < stride) indices.pop()
+    indices.push(lastIndex)
+  }
+
+  return indices.map((i) => points[i]!.km)
+}
