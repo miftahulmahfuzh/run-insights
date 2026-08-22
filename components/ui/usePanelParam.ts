@@ -4,8 +4,11 @@ import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import {
+  decodePanelDates,
   decodePanelSelection,
+  encodePanelDates,
   encodePanelSelection,
+  PANEL_DATES_PARAM,
   PANEL_PARAM,
   type PanelSelection,
 } from '@/lib/panel/param'
@@ -52,12 +55,33 @@ import {
  * but we hold no entry, so Close replaces rather than pops and the next back-swipe goes to whatever
  * preceded the panel instead of to the run. One wasted back press, against a `back()` that would
  * have taken the runner somewhere they explicitly left.
+ *
+ * ── THE DATE LIST: `replaceState`, DELIBERATELY NOT A SECOND ENTRY ──────────────────────────
+ * F27 round 2. The badge panel's earn-date list is now in the URL too (`?…&dates=1`) so that
+ * tapping a date, reading the run and swiping back returns to the list still open — which is what
+ * round 1 got wrong by holding it in `useState`, where a route change erased it.
+ *
+ * `setExpanded` **replaces** rather than pushes, and that is the whole of why this works.
+ * Push would make the list a history entry of its own, so the back-swipe from `/r/<id>` would land
+ * on the panel and *collapse the list* instead of leaving `/me` — two backs to get out, which is
+ * precisely the dead-entry bug this hook exists to prevent, reintroduced one level down. Replacing
+ * means the entry the runner leaves for the run already carries `dates=1`, so coming back restores
+ * it exactly, and `pushedRef` still describes the only entry we own.
+ *
+ * `open` clears it. Opening a different badge must not inherit the last one's expanded list: the
+ * disclosure still defaults shut on a fresh tap, which was the half of round 1's decision nobody
+ * objected to. `close`'s replace branch drops both parameters, so a closed panel never leaves a
+ * stray `?dates=1` on `/me`.
  */
 export interface PanelParam {
   /** What the URL currently says is open, or null. */
   selection: PanelSelection | null
-  /** Open a panel: one new history entry. */
+  /** Is the open panel's date list expanded? Meaningless, and false, with no panel open. */
+  expanded: boolean
+  /** Open a panel: one new history entry, with the date list shut. */
   open: (selection: PanelSelection) => void
+  /** Expand or collapse the open panel's date list, in place — no new history entry. */
+  setExpanded: (expanded: boolean) => void
   /** Close whatever is open, undoing our entry if we are the ones who pushed it. */
   close: () => void
 }
@@ -66,6 +90,10 @@ export function usePanelParam(): PanelParam {
   const searchParams = useSearchParams()
   const raw = searchParams.get(PANEL_PARAM)
   const selection = React.useMemo(() => decodePanelSelection(raw), [raw])
+  /* `&& selection !== null`: `?dates=1` on its own names no panel, so it expands nothing. Without
+     the guard the flag would survive a close that only dropped `panel`, and the next open would
+     read it. */
+  const expanded = decodePanelDates(searchParams.get(PANEL_DATES_PARAM)) && selection !== null
 
   const pushedRef = React.useRef(false)
   React.useEffect(() => {
@@ -73,12 +101,15 @@ export function usePanelParam(): PanelParam {
   }, [selection])
 
   /* A `URLSearchParams` copy, not a hand-built string: `/me` carries no other parameters today,
-     and a future one must survive a panel opening on top of it. */
+     and a future one must survive a panel opening on top of it. Both of ours are written through
+     this one function, so neither can be set without the other being considered. */
   const withPanel = React.useCallback(
-    (value: string | null) => {
+    (value: string | null, dates: string | null) => {
       const params = new URLSearchParams(searchParams.toString())
       if (value === null) params.delete(PANEL_PARAM)
       else params.set(PANEL_PARAM, value)
+      if (dates === null) params.delete(PANEL_DATES_PARAM)
+      else params.set(PANEL_DATES_PARAM, dates)
       const query = params.toString()
       return query ? `?${query}` : window.location.pathname
     },
@@ -87,10 +118,24 @@ export function usePanelParam(): PanelParam {
 
   const open = React.useCallback(
     (next: PanelSelection) => {
-      window.history.pushState(null, '', withPanel(encodePanelSelection(next)))
+      /* The date list starts shut on every fresh open, even if the panel we are replacing had it
+         open — a tap on a badge shows the badge, not the last badge's dates. */
+      window.history.pushState(null, '', withPanel(encodePanelSelection(next), null))
       pushedRef.current = true
     },
     [withPanel],
+  )
+
+  const setExpanded = React.useCallback(
+    (next: boolean) => {
+      /* No-op with nothing open: there is no panel for the flag to belong to, and writing it would
+         put `?dates=1` on a bare `/me`. */
+      if (raw === null) return
+      /* REPLACE, never push. See the block above — a pushed entry here costs the runner a second
+         back-swipe to leave `/me` and collapses the list they came back to see. */
+      window.history.replaceState(null, '', withPanel(raw, encodePanelDates(next)))
+    },
+    [raw, withPanel],
   )
 
   const close = React.useCallback(() => {
@@ -99,8 +144,8 @@ export function usePanelParam(): PanelParam {
       window.history.back()
       return
     }
-    window.history.replaceState(null, '', withPanel(null))
+    window.history.replaceState(null, '', withPanel(null, null))
   }, [withPanel])
 
-  return { selection, open, close }
+  return { selection, expanded, open, setExpanded, close }
 }

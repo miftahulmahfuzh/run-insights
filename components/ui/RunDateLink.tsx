@@ -17,8 +17,15 @@ import { formatDay } from '@/lib/format'
  * ── THE PRIMITIVE OWNS THE AFFORDANCE, THE CALLER OWNS THE TYPE ─────────────────────────────
  * `className` sets size, weight and colour, which differ between a badge panel and a record panel;
  * the underline and its offset are fixed here so the two panels cannot end up disagreeing about
- * what a tappable date looks like. `formatDay` either way — R-23, every date in the app goes
+ * what a tappable date looks like. `formatDay` by default — R-23, every date in the app goes
  * through `lib/format.ts`, so `/me` and the share page cannot render the same day two ways.
+ *
+ * `label` is the one thing a caller may override, and it exists for a case where the day is not
+ * what the row is *about*: a week or month badge's earning is a period, and F27 round 2 has it read
+ * `Week of 17 Aug 2026` rather than a bare day that looks like a link and is not. The override is
+ * still a `lib/format.ts` string — `isoWeekLabel`, `formatMonthLabel` — so R-23 is not being
+ * loosened, only pointed at a different formatter. The affordance stays here either way, which is
+ * the whole reason this is a prop and not a second component.
  *
  * `-my-1 py-1` on the link only: it grows the touch target vertically past the 11–12px type these
  * panels set dates in, without moving the line it sits on. The text branch needs no target and
@@ -27,24 +34,27 @@ import { formatDay } from '@/lib/format'
 export function RunDateLink({
   day,
   runId,
+  label,
   className,
 }: {
   /** A `DateISO` day, as stored — never a wall-clock instant. */
   day: string
   /** The run to open, or null when this day has none. */
   runId: string | null
+  /** Overrides `formatDay(day)`. For a period rather than a day — see the note above. */
+  label?: string
   className?: string
 }) {
-  const label = formatDay(day)
+  const text = label ?? formatDay(day)
 
-  if (runId === null) return <span className={className}>{label}</span>
+  if (runId === null) return <span className={className}>{text}</span>
 
   return (
     <Link
       href={`/r/${runId}`}
       className={cn('-my-1 inline-block py-1 underline underline-offset-2', className)}
     >
-      {label}
+      {text}
     </Link>
   )
 }

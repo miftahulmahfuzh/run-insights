@@ -108,6 +108,23 @@ export interface BadgeEarnedDay {
   earnedOn: DateISO
   /** The run to open, or null — a period badge's day, or a session badge whose run was deleted. */
   runId: string | null
+  /**
+   * The period this earning was *about*, per the scope table above — F27 round 2.
+   *
+   * It is the discriminator between the two reasons `runId` is null, and the panel needs it to be
+   * honest about which one it is looking at. A **week or month** badge never had a run: nothing
+   * earned `self_reward` except four runs inside one ISO week, so its date is a period's date and
+   * the panel labels it as one. A **session** badge with a null `runId` is a run that was deleted
+   * (R-22) — the day is still a real day, and it renders as one.
+   *
+   * Null for both a session award and a lifetime one, which need no distinguishing: neither has a
+   * period to name, and both render as a plain day.
+   *
+   * The report that made this necessary: `self_reward` and `tourist` both read "Earned once", one
+   * date opened a run and the other silently did nothing, and the only way to tell why was to read
+   * `catalog.ts`.
+   */
+  scopeKey: string | null
 }
 
 /** The per-key fold of a user's awards — what the shelf and the panel read. */

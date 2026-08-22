@@ -51,7 +51,7 @@ const rows: StoredBadge[] = [
     firstEarnedOn: '2026-08-20',
     earnedOn: '2026-08-20',
     count: 1,
-    earnedDays: [{ earnedOn: '2026-08-20', runId: 'run_canonical' }],
+    earnedDays: [{ earnedOn: '2026-08-20', runId: 'run_canonical', scopeKey: null }],
   },
   {
     /* Three earnings, and deliberately a MIX: two runs that still exist and one whose run was
@@ -64,9 +64,9 @@ const rows: StoredBadge[] = [
     earnedOn: '2026-08-20',
     count: 3,
     earnedDays: [
-      { earnedOn: '2026-08-20', runId: 'run_canonical' },
-      { earnedOn: '2026-07-19', runId: null },
-      { earnedOn: '2026-07-04', runId: 'run_july' },
+      { earnedOn: '2026-08-20', runId: 'run_canonical', scopeKey: null },
+      { earnedOn: '2026-07-19', runId: null, scopeKey: null },
+      { earnedOn: '2026-07-04', runId: 'run_july', scopeKey: null },
     ],
   },
 ]
@@ -162,13 +162,21 @@ describe('BadgeDialog — the count is a disclosure control (F27)', () => {
   /** The panel's markup with one entry open. The effect that calls `showModal()` never runs under
    *  `renderToStaticMarkup`, but the subtree is what `open &&` renders, which is what we assert.
    *
-   *  This is always the COLLAPSED half. `EarnedDates` holds `open` in `useState` and there is no
-   *  jsdom here to tap it, which is exactly why the list is a separate exported component — see the
-   *  `EarnedDayList` describe below, and F21's precedent for pulling unreachable JSX out. */
-  function panel(key: 'late_start' | 'tourist') {
+   *  Round 2 made the disclosure a PROP rather than `useState` — it lives in the URL now — so both
+   *  halves are reachable from here and the second argument picks one. `EarnedDayList` stays
+   *  exported all the same: its own describe below drives the cases that have nothing to do with
+   *  the panel around them, and a tap still cannot be simulated without jsdom. */
+  function panel(key: 'late_start' | 'tourist', datesExpanded = false) {
     const shelf = buildShelf(rows, FACTS)
     const entry = shelf.entries.find((e) => e.key === key)!
-    return renderToStaticMarkup(createElement(BadgeDialog, { entry, onClose: () => {} }))
+    return renderToStaticMarkup(
+      createElement(BadgeDialog, {
+        entry,
+        datesExpanded,
+        onToggleDates: () => {},
+        onClose: () => {},
+      }),
+    )
   }
 
   it('makes "Earned N times" a real disclosure control, shut by default', () => {
@@ -215,7 +223,16 @@ describe('BadgeDialog — the count is a disclosure control (F27)', () => {
   it('leaves a locked badge with no control to expand', () => {
     const shelf = buildShelf(rows, FACTS)
     const entry = shelf.entries.find((e) => e.key === 'half_ish')!
-    const html = renderToStaticMarkup(createElement(BadgeDialog, { entry, onClose: () => {} }))
+    const html = renderToStaticMarkup(
+      createElement(BadgeDialog, {
+        entry,
+        /* Expanded in the URL and locked on the shelf: the flag has nothing to open, and a locked
+           badge must not sprout a list because someone typed `&dates=1`. */
+        datesExpanded: true,
+        onToggleDates: () => {},
+        onClose: () => {},
+      }),
+    )
     expect(html).toContain('Not yet earned')
     expect(html).not.toContain('aria-expanded')
     // One button in the panel — the footer's Close. A locked badge has nothing to disclose.
@@ -237,14 +254,23 @@ describe('BadgeDialog — the count is a disclosure control (F27)', () => {
 describe('EarnedDayList — what the expander opens (F27)', () => {
   /* Rendered directly, because nothing in this suite can tap the control that renders it. That is
    * the whole reason it is exported; see its own doc block and F21's `commitStatusLine`. */
-  function list(days: { earnedOn: string; runId: string | null }[], count = days.length) {
+  function list(
+    days: { earnedOn: string; runId: string | null; scopeKey?: string | null }[],
+    count = days.length,
+  ) {
     return renderToStaticMarkup(
-      createElement(EarnedDayList, { id: 'earn-list', earnedDays: days, count }),
+      createElement(EarnedDayList, {
+        id: 'earn-list',
+        earnedDays: days.map((d) => ({ scopeKey: null, ...d })),
+        count,
+      }),
     )
   }
 
   const TOURIST = [
     { earnedOn: '2026-08-20', runId: 'run_canonical' },
+    /* A session badge whose run was deleted (R-22): `scopeKey` stays null, so this is a DAY with no
+       run and not a period. Round 2's `periodLabel` has to keep those apart. */
     { earnedOn: '2026-07-19', runId: null },
     { earnedOn: '2026-07-04', runId: 'run_july' },
   ]
@@ -274,13 +300,14 @@ describe('EarnedDayList — what the expander opens (F27)', () => {
   it('links nothing at all for a period badge — every day is text', () => {
     // `century_club` is month-scoped: no single run earned it, so no day has a run to open.
     const html = list([
-      { earnedOn: '2026-08-31', runId: null },
-      { earnedOn: '2026-07-31', runId: null },
+      { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
+      { earnedOn: '2026-07-31', runId: null, scopeKey: '2026-07' },
     ])
     expect(html).not.toContain('<a')
     expect(html).not.toContain('underline')
-    expect(html).toContain('Mon, 31 Aug 2026')
-    expect(html).toContain('Fri, 31 Jul 2026')
+    // Round 2: a month badge's rows read as MONTHS. See the period-label describe below.
+    expect(html).toContain('August 2026')
+    expect(html).toContain('July 2026')
   })
 
   it('expands a badge earned once to its single date', () => {
@@ -297,21 +324,21 @@ describe('EarnedDayList — what the expander opens (F27)', () => {
      * day twice to make the numbers agree. */
     const html = list(
       [
-        { earnedOn: '2026-08-31', runId: null },
-        { earnedOn: '2026-05-31', runId: null },
+        { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
+        { earnedOn: '2026-05-31', runId: null, scopeKey: '2026-05' },
       ],
       4,
     )
     expect(html).toContain('2 earlier, dates not recorded')
-    // Three rows: the two real days, and one line that is not a date.
+    // Three rows: the two real periods, and one line that is not a date.
     expect(html.match(/<li/g)).toHaveLength(3)
-    // Not a link, and not a repeated day.
-    expect(html.match(/Mon, 31 Aug 2026/g)).toHaveLength(1)
+    // Not a link, and not a repeated period.
+    expect(html.match(/August 2026/g)).toHaveLength(1)
     expect(html).not.toContain('<a')
   })
 
   it('conjugates the shortfall line at one', () => {
-    const html = list([{ earnedOn: '2026-08-31', runId: null }], 2)
+    const html = list([{ earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' }], 2)
     expect(html).toContain('1 earlier, date not recorded')
     expect(html).not.toContain('1 earlier, dates not recorded')
   })
@@ -321,6 +348,79 @@ describe('EarnedDayList — what the expander opens (F27)', () => {
     const html = list(TOURIST)
     expect(html).not.toContain('not recorded')
     expect(html.match(/<li/g)).toHaveLength(3)
+  })
+})
+
+describe('a period badge names its period, not a day (F27 round 2)', () => {
+  /*
+   * THE REPORT, AS AN ASSERTION.
+   *
+   * `self_reward` and `tourist` both read "Earned once"; `tourist`'s date opened its run and
+   * `self_reward`'s silently did nothing. The code was correct — `catalog.ts` line 98 scopes
+   * `self_reward` to `'week'`, so `badges.run_id` is null on every row of it, because nothing earned
+   * it but four runs inside one ISO week. The DESIGN was wrong: a dead date that looks exactly like
+   * a live one, with no way to learn the difference short of reading the catalog.
+   *
+   * So the discriminator is `scopeKey`, and these four cases are the whole of it.
+   */
+  function list(days: { earnedOn: string; runId: string | null; scopeKey: string | null }[]) {
+    return renderToStaticMarkup(
+      createElement(EarnedDayList, { id: 'l', earnedDays: days, count: days.length }),
+    )
+  }
+
+  it('reads a week badge as its week — the exact shape of the report', () => {
+    // '2026-W34' starts Monday 17 August. `isoWeekLabel` names the week by the Monday that owns it,
+    // which is why this is not "17 Aug" by coincidence — see its own note in lib/format.ts.
+    const html = list([{ earnedOn: '2026-08-20', runId: null, scopeKey: '2026-W34' }])
+    expect(html).toContain('Week of 17 Aug 2026')
+    // The bare day is gone: printing it was the whole bug, because it looked like a run link.
+    expect(html).not.toContain('Thu, 20 Aug 2026')
+    expect(html).not.toContain('<a')
+    expect(html).not.toContain('underline')
+  })
+
+  it('reads a month badge as its month', () => {
+    const html = list([{ earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' }])
+    expect(html).toContain('August 2026')
+    expect(html).not.toContain('Mon, 31 Aug 2026')
+    expect(html).not.toContain('<a')
+  })
+
+  it('still reads a DELETED session run as a plain day, because that is what it is', () => {
+    /* The case a careless fix would break. R-22 nulls `run_id` when a run is deleted and keeps the
+     * award; `scopeKey` stays null because no period earned it. The day happened and calling it a
+     * period would be a lie — so it is a day, and it is not a link. */
+    const html = list([{ earnedOn: '2026-08-20', runId: null, scopeKey: null }])
+    expect(html).toContain('Thu, 20 Aug 2026')
+    expect(html).not.toContain('Week of')
+    expect(html).not.toContain('<a')
+  })
+
+  it('leaves a lifetime badge as a plain day too — there is no period to name', () => {
+    // `types.ts` on the scope table: lifetime carries both nulls. `dawn_patrol`'s date is the day
+    // the tenth dawn run happened, which is a real day and not a window.
+    const html = list([{ earnedOn: '2026-08-20', runId: null, scopeKey: null }])
+    expect(html).toContain('Thu, 20 Aug 2026')
+    expect(html).not.toContain('2026-W')
+  })
+
+  it('leaves a session badge with a live run exactly as it was', () => {
+    // The regression net around the change: `tourist` and `groundhog_day` still link their days.
+    const html = list([{ earnedOn: '2026-08-20', runId: 'run_canonical', scopeKey: null }])
+    expect(html).toContain('href="/r/run_canonical"')
+    expect(html).toContain('Thu, 20 Aug 2026')
+    expect(html).not.toContain('Week of')
+  })
+
+  it('never prints a raw scope key at a runner', () => {
+    // '2026-W34' and '2026-08' are storage, not copy. R-23 routes both through lib/format.ts.
+    const html = list([
+      { earnedOn: '2026-08-20', runId: null, scopeKey: '2026-W34' },
+      { earnedOn: '2026-08-31', runId: null, scopeKey: '2026-08' },
+    ])
+    expect(html).not.toContain('2026-W34')
+    expect(html).not.toContain('>2026-08<')
   })
 })
 
@@ -362,6 +462,33 @@ describe('the open panel is a URL and not component state (F24)', () => {
     const html = shelfAt('panel=record.longest_distance')
     expect(html).not.toContain('Close')
     expect(html).not.toContain(BADGE_ART.tourist.src)
+  })
+
+  it('opens the date list from the URL, which is what the back-swipe restores (round 2)', () => {
+    /*
+     * THE SECOND REPORT, AS AN ASSERTION. Round 1 held the disclosure in `useState`, so tapping a
+     * date, reading the run and swiping back came home to a collapsed list. It is a query parameter
+     * now, so the entry the runner leaves for `/r/<id>` carries it and going back restores it.
+     *
+     * This renders `/me?panel=badge.tourist&dates=1` cold, server-side — which is exactly the state
+     * a back-navigation produces.
+     */
+    const html = shelfAt('panel=badge.tourist&dates=1')
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('href="/r/run_canonical"')
+    expect(html).toContain('href="/r/run_july"')
+    // The same URL without the flag is the collapsed panel — the default a fresh tap produces.
+    const shut = shelfAt('panel=badge.tourist')
+    expect(shut).toContain('aria-expanded="false"')
+    expect(shut).not.toContain('href="/r/run_july"')
+  })
+
+  it('expands nothing when `dates` names no panel, or is not the one true value', () => {
+    // A URL is user-typed input. `dates=1` alone opens no panel at all, and any other spelling of
+    // "true" fails closed — the panel opens the way a tap would leave it.
+    expect(shelfAt('dates=1')).not.toContain('aria-expanded')
+    expect(shelfAt('panel=badge.tourist&dates=true')).toContain('aria-expanded="false"')
+    expect(shelfAt('panel=badge.tourist&dates=0')).toContain('aria-expanded="false"')
   })
 
   it('leaves the shelf itself untouched while a panel is open', () => {
