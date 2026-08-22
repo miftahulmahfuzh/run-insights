@@ -74,6 +74,7 @@ import colorsys
 import math
 import re
 import sys
+from collections import namedtuple
 from pathlib import Path
 from typing import NoReturn
 
@@ -83,7 +84,16 @@ except ImportError:  # pragma: no cover
     sys.exit("error: this tool needs Pillow (`python3 -c 'import PIL'` must work)")
 
 ROOT = Path(__file__).resolve().parent.parent
-ANCHOR = ROOT / "assets" / "badges" / "_anchor.png"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from decks import add_deck_argument, deck_for  # noqa: E402
+
+# Both decks share one anchor, deliberately — check 9b measures twill-tone drift
+# against it, and the premise of the two decks is that they are one bolt of
+# cloth. `--deck` is still threaded through rather than hardcoded here, so that
+# the day a deck does need its own anchor, `decks.py` is the one place it says
+# so. See that file's header.
+ANCHOR = deck_for(None).anchor_path()
 
 # 4:3, NOT square, and the ratio is the load-bearing half.
 #
@@ -167,11 +177,53 @@ SIGNATURE_HUE = (15.0, 35.0)
 # mean of 84.4, so the guess was high by 0.6 points — the one number in this file
 # a pure geometric argument got essentially right, recorded because the other
 # three guesses were not close.
+# A BAND CARRIES ITS PROVENANCE, AND 9a READS IT.
+#
+# The four shapes above are `(observed, 22 badges, v2)` — a real distribution
+# behind every number. F25's `pentagon` is not: it is one deck old and its band
+# is pure geometry, the way `chevron`'s 0.850 was before its family arrived (and
+# that guess came in 0.6 points high, the only one of the four a geometric
+# argument got essentially right).
+#
+# A guessed band must not set the exit code. This file's own header says why —
+# "A threshold that fails on every good candidate is the threshold somebody
+# comments out" — and a hard gate on a guess covering an ENTIRE new deck is that
+# failure at its worst, because there is no good candidate to disprove it with
+# yet. So `observed == 0` makes 9a advisory and says loudly that it is; every
+# already-observed shape stays hard, and the badge deck's gate does not weaken
+# by a single point.
+#
+# THE GUESS IS NOT MEANT TO SURVIVE. F25's last step re-derives `pentagon` from
+# all ten promoted records and sets `observed=10`, at which point 9a goes hard
+# for records too. That is this file's own rule — a distribution, not a
+# candidate, sets a threshold — applied to a new deck instead of deferred.
+Band = namedtuple("Band", "width observed")
+
 SHAPE_WIDTH = {
-    "shield": 0.810,
-    "rounded triangle": 0.778,
-    "hexagon": 0.873,
-    "chevron": 0.844,
+    "shield": Band(0.810, observed=22),
+    "rounded triangle": Band(0.778, observed=22),
+    "hexagon": Band(0.873, observed=22),
+    "chevron": Band(0.844, observed=22),
+    # F25, records deck. Shipped as a geometric estimate of 0.855 — a pentagon's
+    # widest chord fills its bounding box the way a hexagon's points do while its
+    # apex tapers like a shield's shoulders, so it should land between the two —
+    # and re-derived here from all ten promoted records the same session, which
+    # is the point of the `observed` field. The guess was 4.3% low.
+    #
+    #   longest_distance 0.807   most_kcal        0.875   longest_duration 0.932
+    #   highest_cadence  0.864   fastest_km_split 0.885   fastest_pace_10k 0.964
+    #   best_paced_run   0.869   fastest_pace_5k  0.901   most_elevation   0.964
+    #   highest_max_hr   0.869
+    #
+    # THE PENTAGON FAMILY IS THE WIDEST-SPREAD IN EITHER DECK: 15.7 points,
+    # against hexagon 3.5, shield 2.3, chevron 5.1 and rounded triangle 8.6. That
+    # is a property of the SCENES rather than of the shape — this deck ranges from
+    # a kite filling only the upper half to a cable car spanning the full width,
+    # where the badge deck's scenes are more uniformly massed. The worst member
+    # (`longest_distance`, 9.7% from the mean) therefore sits just inside the ±10%
+    # tolerance, and the tolerance is NOT widened to give it room: it passes, and
+    # an eleventh record that misses is exactly what this check is for.
+    "pentagon": Band(0.893, observed=10),
 }
 # ±10%, which passes every promoted badge (worst: redline_republic, a genuinely
 # wide rounded triangle at 8.5% from its family mean) and still catches a gross
@@ -790,12 +842,24 @@ def measure(path: Path, rep: Report, anchor_stats=None):
             # On a square master h/w is 1 and this is the old check unchanged,
             # which is why the conversion is a factor here rather than a second
             # table nobody would keep in step.
-            expected = SHAPE_WIDTH[shape] * h / w
+            band = SHAPE_WIDTH[shape]
+            expected = band.width * h / w
             drift = abs(box_w - expected) / expected * 100
-            rep.hard("9a patch width vs shape", drift <= SHAPE_WIDTH_TOLERANCE,
-                     f"{box_w * 100:.1f}% vs {shape} expectation "
-                     f"{expected * 100:.1f}% — {drift:.1f}% "
-                     f"(≤{SHAPE_WIDTH_TOLERANCE:.1f})")
+            detail = (f"{box_w * 100:.1f}% vs {shape} expectation "
+                      f"{expected * 100:.1f}% — {drift:.1f}% "
+                      f"(≤{SHAPE_WIDTH_TOLERANCE:.1f})")
+            if band.observed:
+                rep.hard("9a patch width vs shape",
+                         drift <= SHAPE_WIDTH_TOLERANCE, detail)
+            else:
+                # Advisory, and loud about why. See the SHAPE_WIDTH comment: the
+                # band is a geometric estimate with no images behind it, so it
+                # can report drift but must not be the thing that rejects the
+                # first candidate that could have corrected it.
+                rep.note("9a patch width vs shape (ESTIMATED BAND, not a gate)",
+                         f"{detail} — `{shape}` is a guess from 0 images. "
+                         f"Judge this one by eye, and re-derive the band once "
+                         f"the deck is promoted.")
         elif a_w is not None:
             # No shape on file for this key — fall back to the anchor, and say
             # so, because the two comparisons mean different things.
@@ -1061,12 +1125,13 @@ def main():
         description="Measure a badge candidate and write the three crops to look at."
     )
     parser.add_argument("image", type=Path)
+    add_deck_argument(parser)
     parser.add_argument("--no-crops", action="store_true",
                         help="measure only; skip the three PNGs")
     parser.add_argument("--no-anchor", action="store_true",
                         help="skip check 9; for a synthetic control, which is not "
                              "a deck member")
-    parser.add_argument("--anchor", type=Path, default=ANCHOR,
+    parser.add_argument("--anchor", type=Path, default=None,
                         help="the deck anchor check 9 compares against")
     args = parser.parse_args()
 
@@ -1076,7 +1141,8 @@ def main():
     print(f"\n{args.image}")
     print("-" * 76)
     rep = Report()
-    stats = None if args.no_anchor else anchor_statistics(args.anchor)
+    anchor = args.anchor or deck_for(args.deck).anchor_path()
+    stats = None if args.no_anchor else anchor_statistics(anchor)
     img, _, _, box_w = measure(args.image, rep, stats)
 
     if not args.no_crops:

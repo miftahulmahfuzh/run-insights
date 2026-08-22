@@ -8,10 +8,10 @@
 Design record: docs/plans/F10-badge-art-skill.md §5.4, and D12 (offline
 generation, committed, no runtime image calls).
 
-  assets/badges/<key>.png                1024×768 PNG, lossless, never edited in place
-    → public/badges/<key>.<hash8>.webp     768×576  — the panel, the master's own 4:3
-    → public/badges/<key>.<hash8>.sm.webp  192²     — the shelf mark, a CENTRE SQUARE CROP
-    → lib/badges/badge-art.ts              the manifest, a TOTAL Record
+  assets/<deck>/<key>.png                1024×768 PNG, lossless, never edited in place
+    → public/<deck>/<key>.<hash8>.webp     768×576  — the panel, the master's own 4:3
+    → public/<deck>/<key>.<hash8>.sm.webp  192²     — the shelf mark, a CENTRE SQUARE CROP
+    → the deck's manifest module            a TOTAL Record
 
 THE MASTERS ARE 4:3, AND THE TWO DERIVATIVES TAKE DIFFERENT ROUTES OUT OF THEM.
 
@@ -34,11 +34,16 @@ by that same 3/4, so the mark's patch fraction comes out at `SHAPE_WIDTH` — th
 number the square masters had. The shelf is bit-for-bit the same composition it
 always was, which is why this change touched no shelf code.
 
-ONE DECK. The tool this descends from carries a `DECKS` table because
-daily-words ships badge medals AND level panels; Run Insights has only the badge
-shelf, so the table is four module constants. If a second deck ever appears,
-restore the abstraction then — the same argument gen_badge_art.py uses for
-dropping `--provider`.
+TWO DECKS NOW, AND THE TABLE IS BACK. This paragraph used to read: "Run Insights
+has only the badge shelf, so the table is four module constants. If a second deck
+ever appears, restore the abstraction then." F25 is that second deck — ten
+personal-record patches — so it was restored, as `tools/decks.py`. It is ONE
+table rather than one per tool: `gen_badge_art.py`, `check_badge_art.py`, this
+file and `scripts/check-badge-art.mjs` all need the same answer to "where do this
+deck's masters live", and four private copies of that answer are four chances to
+disagree with nothing checking in between. `--deck` defaults to `badges`, so
+every command written down in F10's plan and in the skill still means what it
+said.
 
 THE SKILL NEVER RUNS THIS. Regenerating public/** changes what ships. Because
 filenames are content-hashed the change is *safe* — new bytes, new hash, new
@@ -74,11 +79,9 @@ except ImportError:  # pragma: no cover
     sys.exit("error: this tool needs Pillow (`python3 -c 'import PIL'` must work)")
 
 ROOT = Path(__file__).resolve().parent.parent
-MASTERS = ROOT / "assets" / "badges"
-PUBLIC = ROOT / "public" / "badges"
-URL = "/badges"
-MANIFEST = ROOT / "lib" / "badges" / "badge-art.ts"
-SOURCE = ROOT / "lib" / "badges" / "catalog.ts"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from decks import add_deck_argument, deck_for  # noqa: E402
 
 MASTER_W, MASTER_H = 1024, 768
 # The panel derivative keeps the master's 4:3 exactly. 768 wide, not 768 tall:
@@ -123,28 +126,33 @@ METHOD = 6
 #
 # `--lossless` remains one flag away if a future style block makes the stitch finer.
 
-# Same shape as gen_badge_art.py's pair, and for the same reason: the catalog is
-# the single source of truth for the key set. Kept as its own copy rather than
-# imported, because these two scripts share no module and the regex is two lines.
-CATALOG_RE = re.compile(r"BADGE_CATALOG[^=]*=\s*\[(.*?)^\]", re.S | re.M)
-KEY_RE = re.compile(r"^\s*badge\(\s*'([a-z0-9_]+)'", re.M)
-STYLE_VER_RE = re.compile(r"^style version:\s*(v\d+)\s*$", re.M)
+# The catalog is the single source of truth for the key set, and the shape of one
+# entry differs per deck — `badge('key', …)` in F09's, `key: '…'` in F06's — so
+# the pattern travels with the path in `decks.py` rather than living here.
+#
+# `v\d+` alone no longer matches every version. The records deck stamps a
+# composite `v2+records1`, because bumping the shared style block would have
+# failed `npm run badges:check` on all 22 promoted badges for a change that adds
+# a silhouette the badge deck does not use. See decks.py's header.
+STYLE_VER_RE = re.compile(r"^style version:\s*(v\d+(?:\+[a-z0-9]+)?)\s*$", re.M)
 
 
-def badge_keys():
-    """Every key in BADGE_CATALOG, in catalog order — which IS shelf order."""
-    if not SOURCE.exists():
-        sys.exit(f"error: no badge catalog at {SOURCE}")
-    m = CATALOG_RE.search(SOURCE.read_text(encoding="utf-8"))
+def deck_keys(deck):
+    """Every key in this deck's catalog, in catalog order — which IS shelf order."""
+    source = deck.catalog_path()
+    if not source.exists():
+        sys.exit(f"error: no {deck.noun} catalog at {source}")
+    m = re.search(rf"{deck.catalog_array}[^=]*=\s*\[(.*?)^\]",
+                  source.read_text(encoding="utf-8"), re.S | re.M)
     if not m:
-        sys.exit(f"error: could not find `BADGE_CATALOG … = [ … ]` in {SOURCE}")
-    keys = KEY_RE.findall(m.group(1))
+        sys.exit(f"error: could not find `{deck.catalog_array} … = [ … ]` in {source}")
+    keys = re.findall(deck.key_pattern, m.group(1), re.M)
     if not keys:
-        sys.exit(f"error: BADGE_CATALOG in {SOURCE} parsed to zero keys")
+        sys.exit(f"error: {deck.catalog_array} in {source} parsed to zero keys")
     return keys
 
 
-def style_version_for(key):
+def style_version_for(deck, key):
     """The style version this master was generated against — from its sidecar.
 
     NOT from style.md's current version. Reading the current version here would
@@ -155,7 +163,7 @@ def style_version_for(key):
     beside every candidate, and the promotion step copies BOTH files. A master
     with no sidecar is recorded "unknown" and warned about rather than guessed at.
     """
-    sidecar = MASTERS / f"{key}.txt"
+    sidecar = deck.masters_dir() / f"{key}.txt"
     if not sidecar.exists():
         return None
     m = STYLE_VER_RE.search(sidecar.read_text(encoding="utf-8"))
@@ -193,7 +201,16 @@ def twill_hex(img):
     return "#%02x%02x%02x" % (round(sum(rs) / n), round(sum(gs) / n), round(sum(bs) / n))
 
 
-def emit_manifest(entries, style_versions):
+def emit_manifest(deck, entries, style_versions):
+    """The deck's manifest module, as text.
+
+    DECK-AWARE PROSE, NOT A TEMPLATE WITH THE NOUNS SWAPPED. The `twill` and
+    `small` fields do different jobs in the two decks — the badge shelf paints a
+    square tile behind a square mark, the record panel does not have a shelf at
+    all yet — so each deck's docblock says what is true for it. Regenerating the
+    badge deck with this function produces the file that was already on disk,
+    byte for byte; that is the property to preserve when editing here.
+    """
     versions = sorted({v for v in style_versions.values() if v})
     ver_note = (
         f"generated against style {versions[0]}"
@@ -202,69 +219,105 @@ def emit_manifest(entries, style_versions):
         if versions
         else "style version unknown"
     )
+    cmd = "python3 tools/make_badge_assets.py"
+    if deck.name != "badges":
+        cmd += f" --deck {deck.name}"
+
+    if deck.name == "badges":
+        small_doc = [
+            f"  /** {SMALL}×{SMALL} WebP for the shelf mark, drawn at 56 css px. A CENTRE",
+            "   *  SQUARE CROP of the master, not a squash of it: the shelf tile is square,",
+            "   *  and the crop restores exactly the patch fraction the square masters had. */",
+        ]
+        twill_doc = [
+            "  /**",
+            "   * The patch's own twill, `#rrggbb`, as the mean of the master's outer 5% frame.",
+            "   * A tile can paint its own background with this so the square art sits inside a",
+            "   * rounded field with no seam and no crop. Sampled from the master, never chosen;",
+            "   * `npm run badges:check` recomputes it exactly as it recomputes `sha256`.",
+            "   *",
+            "   * `BadgeShelf` still needs this: its tile is square and `small` is square, so",
+            "   * the rounded field around a 56px mark is still painted rather than drawn.",
+            "   * `BadgeDialog` no longer does — `src` is the band's own 4:3 and fills it — but",
+            "   * it keeps painting the band behind the image anyway, so a slow decode shows",
+            "   * cloth rather than card.",
+            "   */",
+        ]
+    else:
+        small_doc = [
+            f"  /** {SMALL}×{SMALL} WebP, a CENTRE SQUARE CROP of the master rather than a squash",
+            "   *  of it — a squashed pentagon is a different silhouette, and the silhouette is",
+            "   *  what tells a record patch from a badge at shelf size.",
+            "   *",
+            "   *  GENERATED EVEN IF NOTHING DRAWS IT YET. F25 ships this whether or not F26's",
+            "   *  one-line record row shows a thumbnail, because it is free at generation time",
+            "   *  and expensive afterwards: adding it later means regenerating every master's",
+            "   *  derivatives, which changes every content hash and every shipped filename. */",
+        ]
+        twill_doc = [
+            "  /**",
+            "   * The patch's own twill, `#rrggbb`, as the mean of the master's outer 5% frame.",
+            "   * Sampled from the master, never chosen; `npm run badges:check` recomputes it",
+            "   * exactly as it recomputes `sha256`.",
+            "   *",
+            "   * Use it to paint the field behind the art, so a slow decode shows cloth rather",
+            "   * than card, and so a square consumer of `small` gets a seamless surround. Both",
+            "   * decks are one bolt of cloth, but these values are per patch and are NOT",
+            "   * interchangeable with the badge deck's — the raking light makes each master's",
+            "   * own frame its own colour.",
+            "   */",
+        ]
+
     lines = [
         "/**",
         " * GENERATED FILE — do not edit by hand.",
         " *",
-        " *   python3 tools/make_badge_assets.py",
+        f" *   {cmd}",
         " *",
-        " * Source art is `assets/badges/<key>.png`; these are its derivatives.",
+        f" * Source art is `{deck.masters}/<key>.png`; these are its derivatives.",
         f" * Every entry here is {ver_note}.",
         " *",
-        " * This is a TOTAL `Record<BadgeKey, BadgeArt>` on purpose. A key added to",
-        " * BADGE_CATALOG with no art fails `npm run typecheck` immediately, in the same",
+        f" * This is a TOTAL `Record<{deck.key_type}, {deck.art_type}>` on purpose. A key added to",
+        f" * {deck.catalog_array} with no art fails `npm run typecheck` immediately, in the same",
         " * session, before anything ships — a far stronger guarantee than a check script",
         " * nobody runs, and it costs one keyword. The fix for that failure is to generate",
         " * the art, not to reach for `Partial<>`.",
         " *",
         " * Filenames carry the first 8 hex of the master's SHA-256. Regenerating an image",
         " * changes its bytes, its hash and its filename, so every cache misses correctly",
-        " * and `next.config.ts` may serve /badges/* as `immutable`.",
+        f" * and `next.config.ts` may serve {deck.url}/* as `immutable`.",
         " *",
         " * Plain data. No `import 'server-only'` — the shelf is a plain component and this",
         " * holds no secret.",
         " */",
-        "import type { BadgeKey } from './types'",
+        f"import type {{ {deck.key_type} }} from './types'",
         "",
-        "export interface BadgeArt {",
+        f"export interface {deck.art_type} {{",
         f"  /** {PANEL_W}×{PANEL_H} WebP for a badge panel — the master's own 4:3. */",
         "  src: string",
-        f"  /** {SMALL}×{SMALL} WebP for the shelf mark, drawn at 56 css px. A CENTRE",
-        "   *  SQUARE CROP of the master, not a squash of it: the shelf tile is square,",
-        "   *  and the crop restores exactly the patch fraction the square masters had. */",
+        *small_doc,
         "  small: string",
-        "  /** SHA-256 of `assets/badges/<key>.png`, the approved master. */",
+        f"  /** SHA-256 of `{deck.masters}/<key>.png`, the approved master. */",
         "  sha256: string",
-        "  /**",
-        "   * The patch's own twill, `#rrggbb`, as the mean of the master's outer 5% frame.",
-        "   * A tile can paint its own background with this so the square art sits inside a",
-        "   * rounded field with no seam and no crop. Sampled from the master, never chosen;",
-        "   * `npm run badges:check` recomputes it exactly as it recomputes `sha256`.",
-        "   *",
-        "   * `BadgeShelf` still needs this: its tile is square and `small` is square, so",
-        "   * the rounded field around a 56px mark is still painted rather than drawn.",
-        "   * `BadgeDialog` no longer does — `src` is the band's own 4:3 and fills it — but",
-        "   * it keeps painting the band behind the image anyway, so a slow decode shows",
-        "   * cloth rather than card.",
-        "   */",
+        *twill_doc,
         "  twill: string",
         "  /** The style.md version this image was generated against. */",
         "  styleVersion: string",
         "}",
         "",
         "/** Intrinsic pixel sizes, so a consumer never has to restate them. */",
-        f"export const BADGE_ART_WIDTH = {PANEL_W}",
-        f"export const BADGE_ART_HEIGHT = {PANEL_H}",
-        f"export const BADGE_ART_SMALL_SIZE = {SMALL}",
+        f"export const {deck.const_name}_WIDTH = {PANEL_W}",
+        f"export const {deck.const_name}_HEIGHT = {PANEL_H}",
+        f"export const {deck.const_name}_SMALL_SIZE = {SMALL}",
         "",
-        "export const BADGE_ART: Record<BadgeKey, BadgeArt> = {",
+        f"export const {deck.const_name}: Record<{deck.key_type}, {deck.art_type}> = {{",
     ]
     for key, sha, twill in entries:
         h8 = sha[:8]
         lines += [
             f"  {key}: {{",
-            f"    src: '{URL}/{key}.{h8}.webp',",
-            f"    small: '{URL}/{key}.{h8}.sm.webp',",
+            f"    src: '{deck.url}/{key}.{h8}.webp',",
+            f"    small: '{deck.url}/{key}.{h8}.sm.webp',",
             f"    sha256: '{sha}',",
             f"    twill: '{twill}',",
             f"    styleVersion: '{style_versions.get(key) or 'unknown'}',",
@@ -276,27 +329,33 @@ def emit_manifest(entries, style_versions):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Promote approved badge masters and regenerate the manifest."
+        description="Promote approved masters and regenerate a deck's manifest."
     )
+    add_deck_argument(parser)
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would change; write nothing")
     parser.add_argument("--lossless", action="store_true",
                         help="lossless WebP, if the merrowed border rings at 220 px")
     args = parser.parse_args()
 
-    keys = badge_keys()
+    deck = deck_for(args.deck)
+    MASTERS = deck.masters_dir()
+    PUBLIC = deck.public_dir()
+    MANIFEST = deck.manifest_path()
+
+    keys = deck_keys(deck)
     missing = [k for k in keys if not (MASTERS / f"{k}.png").exists()]
     if missing:
         print(f"error: {len(missing)} of {len(keys)} masters are missing from "
-              f"assets/badges/:", file=sys.stderr)
+              f"{deck.masters}/:", file=sys.stderr)
         for k in missing:
             print(f"  {k}.png", file=sys.stderr)
         print(f"\nNothing was written. The manifest is a TOTAL Record and a partial\n"
               f"one would not compile — refusing is what keeps the build green while\n"
               f"the deck is still being generated. Generate and promote the rest:\n"
-              f"  python3 tools/gen_badge_art.py <key> --reference assets/badges/_anchor.png\n"
-              f"  cp assets/badges/_candidates/<key>.aNN.png assets/badges/<key>.png\n"
-              f"  cp assets/badges/_candidates/<key>.aNN.txt assets/badges/<key>.txt",
+              f"  python3 tools/gen_badge_art.py <key> --deck {deck.name}\n"
+              f"  cp {deck.masters}/_candidates/<key>.aNN.png {deck.masters}/<key>.png\n"
+              f"  cp {deck.masters}/_candidates/<key>.aNN.txt {deck.masters}/<key>.txt",
               file=sys.stderr)
         sys.exit(1)
 
@@ -309,9 +368,9 @@ def main():
         master = MASTERS / f"{key}.png"
         sha = hashlib.sha256(master.read_bytes()).hexdigest()
         h8 = sha[:8]
-        versions[key] = style_version_for(key)
+        versions[key] = style_version_for(deck, key)
         if versions[key] is None:
-            print(f"warning: {key} has no assets/badges/{key}.txt sidecar; its style "
+            print(f"warning: {key} has no {deck.masters}/{key}.txt sidecar; its style "
                   f"version will be recorded as \"unknown\". Copy the candidate's .txt "
                   f"when you promote.", file=sys.stderr)
 
@@ -363,7 +422,7 @@ def main():
                 print(f"warning: unrecognised file left alone: {path.relative_to(ROOT)}",
                       file=sys.stderr)
 
-    text = emit_manifest(entries, versions)
+    text = emit_manifest(deck, entries, versions)
     if args.dry_run:
         print(f"\nwould write {MANIFEST.relative_to(ROOT)} "
               f"({len(entries)} entries, {len(text.splitlines())} lines)")

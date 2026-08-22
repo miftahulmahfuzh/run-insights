@@ -43,6 +43,7 @@ next-env.d.ts
 
 # badge-art generation scratch (F10) — only the chosen patches are committed
 assets/badges/_candidates/
+assets/records/_candidates/
 
 # app-icon generation scratch — same rule. What IS committed is the chosen silhouette and the two
 # composed masters beside it, so `tools/make_icon_assets.py` can rebuild every shipped PNG from
