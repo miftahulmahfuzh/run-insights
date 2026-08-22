@@ -33,6 +33,7 @@ const FIXTURE_ROWS: StoredBadge[] = [
   firstEarnedOn: '2026-08-20',
   earnedOn: '2026-08-20',
   count: 1,
+  earnedDays: [{ earnedOn: '2026-08-20', runId: 'run_canonical' }],
 }))
 
 describe('buildShelf', () => {
@@ -53,13 +54,22 @@ describe('buildShelf', () => {
       firstEarnedOn: '2026-08-20',
       earnedOn: '2026-08-20',
       count: 1,
+      // F27: the days themselves reach the entry, so the panel lists them rather than summarising
+      // a span. A single earning is a one-element list whose day is both extremes.
+      earnedDays: [{ earnedOn: '2026-08-20', runId: 'run_canonical' }],
     })
     expect(earned.progress).toBeNull()
   })
 
-  it('carries the FIRST earning through, so the panel can print a span (F13)', () => {
-    // The two dates come off the ledger's extremes and the shelf passes both along untouched —
-    // before F13 the first was not recorded anywhere and could only have been invented.
+  it('carries every earning through, not just the two ends of the span (F13, F27)', () => {
+    // The extremes come off the ledger and the shelf passes them along untouched — before F13 the
+    // first was not recorded anywhere and could only have been invented. F27 passes the whole list
+    // along too, in the order the fold sorted it, so the panel can show the span rather than name
+    // its ends. The shelf copies the reference; it does not re-sort, re-derive or truncate.
+    const days = [
+      { earnedOn: '2026-08-20', runId: 'run_latest' },
+      { earnedOn: '2026-07-04', runId: 'run_first' },
+    ]
     const span = buildShelf(
       [
         {
@@ -68,7 +78,10 @@ describe('buildShelf', () => {
           scopeKey: null,
           firstEarnedOn: '2026-07-04',
           earnedOn: '2026-08-20',
+          // A pre-F13 aggregate: twelve earnings, two of which have a day on record. The shelf is
+          // not where that gap is reconciled — `BadgeDialog` is the one surface that reports it.
           count: 12,
+          earnedDays: days,
         },
       ],
       FACTS,
@@ -77,6 +90,7 @@ describe('buildShelf', () => {
       firstEarnedOn: '2026-07-04',
       earnedOn: '2026-08-20',
       count: 12,
+      earnedDays: days,
     })
   })
 
@@ -110,6 +124,11 @@ describe('buildShelf', () => {
           firstEarnedOn: '2025-11-01',
           earnedOn: '2026-01-01',
           count: 3,
+          earnedDays: [
+            { earnedOn: '2026-01-01', runId: null },
+            { earnedOn: '2025-12-01', runId: null },
+            { earnedOn: '2025-11-01', runId: null },
+          ],
         },
       ],
       FACTS,
@@ -160,6 +179,8 @@ describe('R-44 — the locked progress line', () => {
           firstEarnedOn: '2026-08-25',
           earnedOn: '2026-08-25',
           count: 1,
+          // A month badge: no run earned it, so its one day has no run to open.
+          earnedDays: [{ earnedOn: '2026-08-25', runId: null }],
         },
       ],
       FACTS,

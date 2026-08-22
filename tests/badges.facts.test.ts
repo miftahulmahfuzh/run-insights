@@ -154,6 +154,12 @@ describe('foldAwards — F13, where the count comes from', () => {
         firstEarnedOn: '2026-07-04',
         earnedOn: '2026-08-20',
         count: 2,
+        // F27: two rows, two days, latest first — and the defect seen from the list's side. Three
+        // days here would be the same inflation the count no longer has.
+        earnedDays: [
+          { earnedOn: '2026-08-20', runId: 'run_b' },
+          { earnedOn: '2026-07-04', runId: 'run_a' },
+        ],
       },
     ])
   })
@@ -168,6 +174,59 @@ describe('foldAwards — F13, where the count comes from', () => {
     expect(fold!.firstEarnedOn).toBe('2026-05-01')
     expect(fold!.earnedOn).toBe('2026-08-20')
     expect(fold!.runId).toBe('r2') // the row holding the latest day, whatever order it arrived in
+
+    /* F27 — and this is the same claim, now stated where it is actually decided. The extremes are
+     * the ends of ONE sort, so `earnedOn` being the head's day and `firstEarnedOn` the tail's is a
+     * property of this list rather than two independent walks that happen to agree. */
+    expect(fold!.earnedDays).toEqual([
+      { earnedOn: '2026-08-20', runId: 'r2' },
+      { earnedOn: '2026-06-15', runId: 'r1' },
+      { earnedOn: '2026-05-01', runId: 'r3' },
+    ])
+  })
+
+  it('lists every earning newest-first, which is the order the panel reads down', () => {
+    // The card's own requirement: "latest first — the panel reads newest-down". Input order is
+    // deliberately neither ascending nor descending, so a fold that merely preserved arrival order
+    // would fail this rather than pass it by luck.
+    const rows = [
+      award({ key: 'dawn_patrol', dedupeKey: 'c', runId: 'c', earnedOn: '2026-03-02' }),
+      award({ key: 'dawn_patrol', dedupeKey: 'a', runId: 'a', earnedOn: '2026-05-11' }),
+      award({ key: 'dawn_patrol', dedupeKey: 'd', runId: 'd', earnedOn: '2026-01-30' }),
+      award({ key: 'dawn_patrol', dedupeKey: 'b', runId: 'b', earnedOn: '2026-04-01' }),
+    ]
+    expect(foldAwards(rows)[0]!.earnedDays.map((d) => d.runId)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('lists a period badge’s days with no run to open — every one of them', () => {
+    /* `century_club` is month-scoped: `run_id` is null on every row because no single run earned
+     * it. So the list's null branch is not an edge case being tolerated, it is the whole of this
+     * badge's list, and `RunDateLink` renders all three as text. */
+    const rows = [
+      award({
+        key: 'century_club',
+        dedupeKey: '2026-06',
+        scopeKey: '2026-06',
+        earnedOn: '2026-06-30',
+      }),
+      award({
+        key: 'century_club',
+        dedupeKey: '2026-08',
+        scopeKey: '2026-08',
+        earnedOn: '2026-08-31',
+      }),
+      award({
+        key: 'century_club',
+        dedupeKey: '2026-07',
+        scopeKey: '2026-07',
+        earnedOn: '2026-07-31',
+      }),
+    ]
+    expect(foldAwards(rows)[0]!.earnedDays).toEqual([
+      { earnedOn: '2026-08-31', runId: null },
+      { earnedOn: '2026-07-31', runId: null },
+      { earnedOn: '2026-06-30', runId: null },
+    ])
   })
 
   it('SUMS the count column rather than counting rows — pre-F13 history survives', () => {
@@ -178,6 +237,30 @@ describe('foldAwards — F13, where the count comes from', () => {
       award({ key: 'self_reward', dedupeKey: '2026-W34', scopeKey: '2026-W34' }),
     ]
     expect(foldAwards(rows)[0]!.count).toBe(6)
+  })
+
+  it('does NOT make earnedDays.length the count — a pre-F13 row has one day for five earnings', () => {
+    /* The one place F27 could quietly lie. The row above carries an aggregate of 5 and exactly one
+     * `earned_on`, so the list is SHORT of the count by four and the fold must not paper over it in
+     * either direction: not by counting rows (which deletes four earnings off the shelf), and not
+     * by repeating the day four times (which puts dates in front of the runner that nothing ever
+     * recorded). `BadgeDialog` is the single surface that reports the gap, in words. */
+    const rows = [
+      award({ key: 'self_reward', dedupeKey: '2026-W30', scopeKey: '2026-W30', count: 5 }),
+      award({
+        key: 'self_reward',
+        dedupeKey: '2026-W34',
+        scopeKey: '2026-W34',
+        earnedOn: '2026-08-24',
+      }),
+    ]
+    const [fold] = foldAwards(rows)
+    expect(fold!.count).toBe(6)
+    expect(fold!.earnedDays).toEqual([
+      { earnedOn: '2026-08-24', runId: null },
+      { earnedOn: '2026-08-20', runId: null },
+    ])
+    expect(fold!.count).not.toBe(fold!.earnedDays.length)
   })
 
   it('breaks a same-day tie on created_at, so the fold is deterministic', () => {
@@ -197,6 +280,17 @@ describe('foldAwards — F13, where the count comes from', () => {
     ]
     expect(foldAwards(rows)[0]!.runId).toBe('evening')
     expect(foldAwards([...rows].reverse())[0]!.runId).toBe('evening')
+
+    /* F27 — and this is why the tie-break is load-bearing rather than decorative. `getBadgeAwards`
+     * orders by `key asc, earned_on asc` and says nothing about `created_at`, so two awards sharing
+     * a day arrive from Postgres in whatever order the plan produced. Without the second key the
+     * TOP OF THE PANEL'S LIST would depend on that plan. Asserted from both input orders. */
+    for (const input of [rows, [...rows].reverse()]) {
+      expect(foldAwards(input)[0]!.earnedDays).toEqual([
+        { earnedOn: '2026-08-20', runId: 'evening' },
+        { earnedOn: '2026-08-20', runId: 'morning' },
+      ])
+    }
   })
 
   it('folds one entry per key and leaves a key with no rows absent', () => {
@@ -209,6 +303,10 @@ describe('foldAwards — F13, where the count comes from', () => {
     // Absence is what `buildShelf` reads as "locked", so a zero row would light up 22 tiles.
     expect(folded.map((f) => f.key)).toEqual(['late_start', 'century_club'])
     expect(foldAwards([])).toEqual([])
+    // F27: one list per key and no bleed between them, even though `late_start`'s two rows arrive
+    // with `century_club`'s row interleaved between them.
+    expect(folded[0]!.earnedDays.map((d) => d.runId)).toEqual(['r2', 'r1'])
+    expect(folded[1]!.earnedDays).toEqual([{ earnedOn: '2026-08-20', runId: null }])
   })
 
   it('carries the LATEST award’s scope key for a period badge', () => {
@@ -241,7 +339,24 @@ describe('foldAwards — F13, where the count comes from', () => {
         firstEarnedOn: '2026-08-20',
         earnedOn: '2026-08-20',
         count: 1,
+        // The day survives the deletion and the link does not: `RunDateLink` renders this as text.
+        earnedDays: [{ earnedOn: '2026-08-20', runId: null }],
       },
+    ])
+  })
+
+  it('keeps a session badge’s surviving runs linkable while a deleted one goes to text', () => {
+    /* A single badge's list can legitimately be a mix, which is what `RunDateLink`'s own comment
+     * says and what this fold has to produce for it to be true. R-22: `badges.run_id` is
+     * ON DELETE SET NULL, so deleting the July run nulls that ONE row's runId and leaves the rest
+     * of the ledger alone. */
+    const rows = [
+      award({ key: 'tourist', dedupeKey: 'kept', runId: 'kept', earnedOn: '2026-08-20' }),
+      award({ key: 'tourist', dedupeKey: 'deleted', runId: null, earnedOn: '2026-07-04' }),
+    ]
+    expect(foldAwards(rows)[0]!.earnedDays).toEqual([
+      { earnedOn: '2026-08-20', runId: 'kept' },
+      { earnedOn: '2026-07-04', runId: null },
     ])
   })
 

@@ -86,43 +86,69 @@ export function toWindowRun(
  *   - **catalog order is not applied here.** `buildShelf` iterates the catalog and `badgesForRun`
  *     sorts by `catalogIndex`; imposing it a third time would be a third place to get it wrong.
  *     Keys come out in the order they were first seen.
+ *
+ * ── F27: COLLECT THEN DERIVE, RATHER THAN ACCUMULATE ────────────────────────────────────────
+ * Every rule above still holds and not one of their tests changed. What changed is the mechanism.
+ * This used to walk the rows once, carrying a running fold and a running `latest`, and patch four
+ * fields whenever a later row arrived — which worked precisely because the four answers it wanted
+ * were all readable from one end of an ordering it never materialised.
+ *
+ * #26 needs that ordering materialised: the panel lists every earn date, newest down. So the rows
+ * are collected per key, sorted ONCE by `byLatestFirst`, and the four conveniences are read off the
+ * ends — head for `runId` / `scopeKey` / `earnedOn`, tail's day for `firstEarnedOn`. Fewer moving
+ * parts, and the ordering claim now has one definition instead of being implied by a comparison
+ * inside a loop.
+ *
+ * `count` is emphatically NOT `earnedDays.length`. It stays `Σ row.count` for the first rule's own
+ * reason, and the gap between the two on a pre-F13 row is a real thing the panel has to report
+ * rather than paper over — see `StoredBadge.earnedDays` and `BadgeDialog`.
  */
 export function foldAwards(rows: readonly BadgeAward[]): StoredBadge[] {
-  const byKey = new Map<string, { fold: StoredBadge; latest: BadgeAward }>()
-
+  /* A Map keyed by badge key, so insertion order is first-seen order and the "catalog order is not
+   * applied here" rule survives the rewrite for free. */
+  const byKey = new Map<string, BadgeAward[]>()
   for (const row of rows) {
-    const entry = byKey.get(row.key)
-    if (!entry) {
-      byKey.set(row.key, {
-        latest: row,
-        fold: {
-          key: row.key,
-          runId: row.runId,
-          scopeKey: row.scopeKey,
-          firstEarnedOn: row.earnedOn,
-          earnedOn: row.earnedOn,
-          count: row.count,
-        },
-      })
-      continue
-    }
-    entry.fold.count += row.count
-    if (row.earnedOn < entry.fold.firstEarnedOn) entry.fold.firstEarnedOn = row.earnedOn
-    if (isLater(row, entry.latest)) {
-      entry.latest = row
-      entry.fold.earnedOn = row.earnedOn
-      entry.fold.runId = row.runId
-      entry.fold.scopeKey = row.scopeKey
-    }
+    const bucket = byKey.get(row.key)
+    if (bucket) bucket.push(row)
+    else byKey.set(row.key, [row])
   }
 
-  return [...byKey.values()].map((entry) => entry.fold)
+  return [...byKey.entries()].map(([key, awards]) => {
+    /* A copy of the bucket, not the caller's array — `rows` is `readonly` and the buckets are ours,
+     * but sorting in place still makes the order of one key's awards a side effect of folding. */
+    const sorted = [...awards].sort(byLatestFirst)
+    /* Non-null: a key only exists in the map because a row put it there, so both ends are rows. */
+    const latest = sorted[0]!
+    const earliest = sorted[sorted.length - 1]!
+
+    return {
+      key,
+      runId: latest.runId,
+      scopeKey: latest.scopeKey,
+      firstEarnedOn: earliest.earnedOn,
+      earnedOn: latest.earnedOn,
+      /* The column summed, never `sorted.length`. A pre-F13 row carries an aggregate. */
+      count: awards.reduce((total, row) => total + row.count, 0),
+      earnedDays: sorted.map((row) => ({ earnedOn: row.earnedOn, runId: row.runId })),
+    }
+  })
 }
 
-/** `earned_on` first — the day the badge is about — then `created_at` to break a same-day tie. */
-function isLater(row: BadgeAward, incumbent: BadgeAward): boolean {
-  if (row.earnedOn !== incumbent.earnedOn) return row.earnedOn > incumbent.earnedOn
-  return row.createdAt.getTime() > incumbent.createdAt.getTime()
+/**
+ * Latest first: `earned_on` — the day the badge is about — then `created_at` to break a same-day tie.
+ *
+ * The tie-break is load-bearing and not decorative. `getBadgeAwards` orders by
+ * `key asc, earned_on asc` and says nothing about `created_at`, so two awards sharing a day arrive
+ * from Postgres in an order Postgres is free to change. Without the second key the head of this sort
+ * — and therefore `runId`, `scopeKey` and the top of the panel's date list — would depend on the
+ * plan. `badges.facts.test.ts` asserts that from both directions by reversing its input.
+ *
+ * `Date.getTime()` rather than comparing `Date` objects: `>` on two Dates coerces, `-` is what
+ * `Array.sort` wants, and doing the conversion here keeps the comparator total.
+ */
+function byLatestFirst(a: BadgeAward, b: BadgeAward): number {
+  if (a.earnedOn !== b.earnedOn) return a.earnedOn < b.earnedOn ? 1 : -1
+  return b.createdAt.getTime() - a.createdAt.getTime()
 }
 
 /** Reviewed runs per ISO week. The key is `insights.scope_key`'s week format, so it joins cleanly. */

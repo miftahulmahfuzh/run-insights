@@ -3,7 +3,7 @@ import { BADGE_CATALOG } from './catalog'
 import type { PeriodFacts } from './evaluate'
 import { BADGE_META } from './meta'
 import { readProgress, type ProgressReading } from './progress'
-import type { BadgeKey, StoredBadge } from './types'
+import type { BadgeEarnedDay, BadgeKey, StoredBadge } from './types'
 
 /**
  * The `/me` shelf as data: all 22 rows, in catalog order, each one either earned or locked.
@@ -37,13 +37,25 @@ export interface ShelfEntry {
    * null when the badge has never been earned. `earnedOn` is the LATEST earning and
    * `firstEarnedOn` the first — equal at a count of one.
    *
-   * `firstEarnedOn` has **no reader on screen** since F23 took the date line out of `BadgeDialog`;
-   * `earnedOn` is read by the shelf row and nothing else. The field is kept rather than removed
-   * because card #26 is what gives every earned date a home, and because the fold that computes it
-   * (`lib/badges/facts.ts`) and the ledger it folds are correct and tested. Do not read the absence
-   * of a caller as dead code.
+   * `earnedDays` is F27's addition and carries **every** earning, latest first, so the panel can
+   * list the dates rather than summarise them. The other three are unchanged in meaning and in
+   * value: the fold derives them from the ends of that same list.
+   *
+   * `firstEarnedOn` still has **no reader on screen**, and F27 did not give it one. F23 took the
+   * date line out of `BadgeDialog` and the panel now shows the earliest day as the last row of the
+   * list — a member of `earnedDays`, not a named field — so the field stays what it was after F23:
+   * a correct, tested fold with no on-screen caller. Do not read the absence of a caller as dead
+   * code; `earnedOn` is read by the shelf row.
+   *
+   * **`earnedDays.length` is not `count`.** See `StoredBadge.earnedDays` for the pre-F13 row that
+   * makes the two disagree, and `BadgeDialog` for what the panel says when they do.
    */
-  earned: { firstEarnedOn: DateISO; earnedOn: DateISO; count: number } | null
+  earned: {
+    firstEarnedOn: DateISO
+    earnedOn: DateISO
+    count: number
+    earnedDays: BadgeEarnedDay[]
+  } | null
   /**
    * R-44's locked-tile line: present only for a **locked** badge that genuinely accumulates. An
    * earned badge needs no progress, and 17 of the 22 have no honest number to show.
@@ -72,7 +84,12 @@ export function buildShelf(stored: readonly StoredBadge[], facts: PeriodFacts): 
       condition: meta.condition,
       gloss: meta.gloss,
       earned: row
-        ? { firstEarnedOn: row.firstEarnedOn, earnedOn: row.earnedOn, count: row.count }
+        ? {
+            firstEarnedOn: row.firstEarnedOn,
+            earnedOn: row.earnedOn,
+            count: row.count,
+            earnedDays: row.earnedDays,
+          }
         : null,
       progress: !row && definition.progress ? readProgress(definition.progress, facts) : null,
     }

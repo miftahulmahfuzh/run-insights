@@ -60,6 +60,7 @@ export type {
   BadgeAward,
   BadgeDefinition,
   BadgeEarn,
+  BadgeEarnedDay,
   BadgeKey,
   BadgeProgressMetric,
   BadgeProgressSpec,
