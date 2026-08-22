@@ -61,7 +61,7 @@ export function PaceHrChartInner({ points }: { points: readonly PaceHrPoint[] })
             const point = data.find((p) => p.km === km)
             return point?.partial ? `${km}*` : String(km)
           }}
-          /* F20 / card #18 — WHICH kilometres get labelled, decided upstream in `lib/charts`.
+          /* F22 / card #18 — WHICH kilometres get labelled, decided upstream in `lib/charts`.
              22 labels in ~226 px of plot rendered as `101112…2021 22*`; the ladder there thins them
              to eleven while keeping the last row, which is the one carrying the `*`. */
           ticks={ticks}

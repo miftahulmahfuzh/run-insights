@@ -86,7 +86,7 @@ describe('fastest and slowest split exclude the partial row', () => {
 })
 
 /**
- * F20 — the x-axis label ladder. Card #18: 22 tick labels inside ~226 px of plot rendered as
+ * F22 — the x-axis label ladder. Card #18: 22 tick labels inside ~226 px of plot rendered as
  * `101112131415161718192021 22*`, an unreadable smear, because `interval={0}` and `minTickGap={0}`
  * told Recharts explicitly never to skip one.
  *

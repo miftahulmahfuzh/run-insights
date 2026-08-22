@@ -36,7 +36,7 @@ run, that week, and that month.
   <img src="docs/media/04-review-split.png" alt="The splits table with a check chip, eleven rows, and the final partial kilometre marked.">
   <p><strong>3 · …and it checks itself</strong><br>
   Four quantities that must agree by arithmetic. Here one doesn't, and the banner says which block
-  to look at — <code>1 check still disagree</code>.</p>
+  to look at — <code>1 check still disagrees</code>.</p>
 </td>
 </tr>
 <tr>

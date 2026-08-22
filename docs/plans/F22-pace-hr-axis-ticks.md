@@ -1,6 +1,11 @@
-# F20 — the pace/HR chart's x-axis stops overprinting
+# F22 — the pace/HR chart's x-axis stops overprinting
 
 **Card:** [#18](https://github.com/miftahulmahfuzh/run-insights/issues/18) · round 1 · 2026-08-22
+
+Numbered **F22**, not F20. This plan was written as F20 and renumbered while landing: two other
+sessions merged first and took F20 (reduced motion) and F21 (review-copy pluralisation). `F<N+1>`
+read off `ls docs/plans/` is not race-safe, which `0ea0acf` had already recorded — the same
+collision, one card earlier.
 
 ## 1. The bug, measured
 
