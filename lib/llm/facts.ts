@@ -1,3 +1,4 @@
+import { daysBetween } from '@/lib/date/ranges'
 import type { RunIntent } from '@/lib/db/schema'
 import { formatDay, formatDuration, formatPace } from '@/lib/format'
 import { ageFromBirthYear } from '@/lib/metrics/age'
@@ -124,9 +125,44 @@ export interface WeeklyContextFacts {
   monthlyVolumeKm: number
 }
 
+/**
+ * One earlier run, as the narrator sees it (F28).
+ *
+ * ── WHY `daysBefore` IS A NUMBER AND NOT LEFT TO THE MODEL ────────────────────────────────────
+ * HARD RULE #1 of the session prompt is "do NOT compute new numbers". Shipping two dates and
+ * expecting the gap between them to be worked out would be asking the model to break the one
+ * rule that keeps every other figure in the narrative honest — and date arithmetic is not
+ * obviously easier than the decoupling it got backwards by a sign (see the header above). So the
+ * gap is precomputed here, in whole days, the same way every percentage is.
+ *
+ * ── WHY NO SPLITS ─────────────────────────────────────────────────────────────────────────────
+ * §1.1 admits exactly one full child inclusion per payload and this run's own splits already
+ * spend it. Eight earlier runs at eleven splits each would be 88 rows of pace-and-HR for the
+ * model to average by hand, which is the precise thing this boundary exists to prevent. What
+ * survives is the one aggregate that decides the advice: how hard the run was.
+ */
+export interface RecentRunFact {
+  date: string
+  /** Whole days from this run to the session being narrated. Always >= 0. */
+  daysBefore: number
+  distanceKm: number
+  duration: string
+  avgPace: string
+  avgHr: number | null
+  percentTimeInZone4And5: number | null
+  intent: RunIntent | null
+}
+
 export interface SessionNarrateFacts {
   profile: ProfileFacts
   weeklyContext: WeeklyContextFacts | null
+  /**
+   * The runs immediately before this one, **newest first** — so index 0 is the previous run and
+   * `daysBefore` ascends down the array. `[]` (never `null`, unlike `weeklyContext`) when there
+   * is no earlier reviewed run; the prompt says what an empty array means so it cannot be read
+   * as a runner who does not run.
+   */
+  recentRuns: RecentRunFact[]
   session: SessionFacts
   computed: ComputedFacts
   splits: SplitFact[]
@@ -149,6 +185,21 @@ export interface SessionRunFacts {
   intent: RunIntent | null
 }
 
+/**
+ * One earlier run as it arrives from the database, before this file turns it into prose-ready
+ * strings. `zones` carries the raw durations rather than a percentage: computing the share is
+ * this layer's job, so the rounding happens at the same boundary as every other number here.
+ */
+export interface RecentRunInput {
+  occurredOn: string
+  distanceM: number
+  durationSec: number
+  avgPaceSec: number
+  avgHr: number | null
+  intent: RunIntent | null
+  zones: readonly { zone: number; durationSec: number }[]
+}
+
 export interface BuildSessionFactsInput {
   run: SessionRunFacts
   /** F06's output. Every number below is copied from it; none is recomputed here. */
@@ -157,6 +208,8 @@ export interface BuildSessionFactsInput {
   splits: readonly SplitRow[]
   profile: NarrativeProfile | null
   weeklyContext?: WeeklyContextFacts | null
+  /** Newest first, and NOT containing `run` itself — see `getReviewedRunsBefore`. */
+  recentRuns?: readonly RecentRunInput[]
   promptVersion: number
   /** Injected so a test can pin the age derived from `birthYear`. */
   now?: Date
@@ -193,6 +246,35 @@ function profileFacts(
   }
 }
 
+/**
+ * The hard share of one earlier run, from its zone durations. The same
+ * `Σ zone>=4 / Σ all zones` that `computeSessionMetrics` derives for the run being narrated —
+ * restated here rather than reached for, because pulling in F06 would mean fetching eleven
+ * splits per run to satisfy a `SessionInput` that only five zone rows are needed for.
+ *
+ * `null` when the run has no zone data at all, never 0: "no time above zone 3" and "this watch
+ * did not record zones" must not render the same, which is R-9's rule one metric over.
+ */
+function hardSharePct(zones: readonly { zone: number; durationSec: number }[]): number | null {
+  const total = zones.reduce((a, z) => a + z.durationSec, 0)
+  if (total === 0) return null
+  const hard = zones.filter((z) => z.zone >= 4).reduce((a, z) => a + z.durationSec, 0)
+  return (hard / total) * 100
+}
+
+function recentRunFacts(runs: readonly RecentRunInput[], occurredOn: string): RecentRunFact[] {
+  return runs.map((r) => ({
+    date: formatDay(r.occurredOn),
+    daysBefore: daysBetween(r.occurredOn, occurredOn),
+    distanceKm: Math.round(r.distanceM) / 1000,
+    duration: formatDuration(r.durationSec),
+    avgPace: formatPace(r.avgPaceSec, true),
+    avgHr: r.avgHr,
+    percentTimeInZone4And5: round1(hardSharePct(r.zones)),
+    intent: r.intent,
+  }))
+}
+
 export function buildSessionFacts(input: BuildSessionFactsInput): SessionNarrateFacts {
   const { run, metrics, splits, flags } = input
   const now = input.now ?? new Date()
@@ -206,6 +288,7 @@ export function buildSessionFacts(input: BuildSessionFactsInput): SessionNarrate
   return {
     profile: profileFacts(input.profile, metrics.hrMaxUsed, now),
     weeklyContext: input.weeklyContext ?? null,
+    recentRuns: recentRunFacts(input.recentRuns ?? [], run.occurredOn),
     session: {
       date: formatDay(run.occurredOn),
       distanceKm: Math.round(run.distanceM) / 1000,

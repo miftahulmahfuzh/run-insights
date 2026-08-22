@@ -14,6 +14,7 @@ import {
 import {
   getLatestInsight,
   getProfile,
+  getReviewedRunsBefore,
   getReviewedRunsWithChildren,
   getRunDetail,
   getRunsBetween,
@@ -30,6 +31,7 @@ import {
   type MonthNarrateFacts,
   type NarrativeProfile,
   type PreviousInsightSummary,
+  type RecentRunInput,
   type SessionNarrateFacts,
   type WeekNarrateFacts,
 } from '@/lib/llm/facts'
@@ -227,6 +229,15 @@ export async function loadSessionFacts(
   const metrics = computeSessionMetrics(input, hrMax)
   const flags = evaluateSessionFlags(metrics, input.splits.find((s) => !s.partial) ?? null)
 
+  /*
+   * Both history reads together, and both AFTER the `reviewedAt` guard above — a draft run
+   * returns `null` without ever asking the database about its neighbours.
+   */
+  const [weeklyContext, recentRuns] = await Promise.all([
+    loadWeeklyContext(userId, run.occurredOn),
+    loadRecentRuns(userId, run),
+  ])
+
   return buildSessionFacts({
     run: {
       occurredOn: run.occurredOn,
@@ -244,9 +255,50 @@ export async function loadSessionFacts(
     flags,
     splits: input.splits,
     profile: narrativeProfileOf(profile),
-    weeklyContext: await loadWeeklyContext(userId, run.occurredOn),
+    weeklyContext,
+    recentRuns,
     promptVersion: promptVersionFor('session'),
   })
+}
+
+/**
+ * How many earlier runs the narrator gets. **A count, with no calendar bound** (F28).
+ *
+ * A bound was the obvious second knob and it is deliberately absent: it would return an EMPTY
+ * list precisely in the case that needs history most — the first run back after a layoff — which
+ * is the exact blindness this exists to fix. A row reading "Sat, 14 Feb 2026 · 189 days before"
+ * tells the model everything a bound would have decided on its behalf, because `daysBefore` ships
+ * with every row.
+ *
+ * Eight is ~2 months of history for a once-a-week runner and ~8 days for a daily one — enough to
+ * read a pattern at either end. It is also the token budget: eight short rows is ~250-400 input
+ * tokens against a 1,743-token baseline.
+ */
+const RECENT_RUN_COUNT = 8
+
+/**
+ * The runs immediately before this one, newest first — the history the narrator reads instead of
+ * inferring a routine from `runsPerWeek` alone.
+ *
+ * The columns are already exactly what `RecentRunInput` wants, but the two types are kept
+ * separate rather than one shared alias: `lib/llm/facts.ts` declares what a model may see, and a
+ * database row type is not that declaration. This mapping is where the two are checked against
+ * each other, which is the same reason `narrativeProfileOf` above copies field by field.
+ */
+async function loadRecentRuns(
+  userId: string,
+  run: { occurredOn: DateISO; startedAt: string | null },
+): Promise<RecentRunInput[]> {
+  const rows = await getReviewedRunsBefore(userId, run, RECENT_RUN_COUNT)
+  return rows.map((r) => ({
+    occurredOn: r.occurredOn,
+    distanceM: r.distanceM,
+    durationSec: r.durationSec,
+    avgPaceSec: r.avgPaceSec,
+    avgHr: r.avgHr,
+    intent: r.intent,
+    zones: r.zones,
+  }))
 }
 
 /**

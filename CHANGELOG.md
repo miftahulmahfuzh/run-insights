@@ -4,9 +4,23 @@ All notable changes to Run Insights are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Feature codes (`F01`–`F27`) refer to the plan files in [`docs/plans/`](docs/plans/). Ruling codes
+Feature codes (`F01`–`F28`) refer to the plan files in [`docs/plans/`](docs/plans/). Ruling codes
 (`R-nn`) refer to [`RECONCILIATION_v0.1.0.md`](RECONCILIATION_v0.1.0.md), which supersedes any
 individual plan file.
+
+## [Unreleased]
+
+### Changed
+
+- **The session narrative now reads the runner's recent history (F28).** It used to see three
+  aggregate scalars over the trailing 28 days and no other run at all, and the 22 Aug 2026
+  narrative spent three of its four prose fields on one of them — "on a once-a-week schedule",
+  "with only one run per week", "at roughly one run per week". The payload now carries the last
+  eight reviewed runs before this one, each with its date, the gap in days, and how hard it was,
+  so the model can tell a third consecutive hard effort from the first in a month. The session
+  prompt gained the rules that go with it: `runsPerWeek` is an average over a window and not a
+  schedule, cite it at most once, and no two parts of the report may lean on the same piece of
+  context. Every existing session insight re-narrates once, by design.
 
 ## [v0.1.0] - 2026-08-22
 
