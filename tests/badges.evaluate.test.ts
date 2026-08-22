@@ -263,6 +263,14 @@ describe('§7 — what counts as a re-earn, per scope', () => {
     // B is still the latest earner: a re-review of A does not drag the date backwards either.
     expect(row.earnedOn).toBe('2026-08-27')
     expect(row.runId).toBe('run_b')
+
+    /* F27 — the same defect from the side the panel now shows. The panel lists one row per earning,
+     * so a third row here would be the count inflation made visible: the runner would read the day
+     * they re-reviewed a run as a day they earned the badge. Two earnings, two days, newest first. */
+    expect(row.earnedDays).toEqual([
+      { earnedOn: '2026-08-27', runId: 'run_b' },
+      { earnedOn: '2026-08-20', runId: RUN },
+    ])
   })
 
   it('earns a week badge once per ISO week, not once per qualifying run', async () => {
@@ -386,6 +394,7 @@ describe('§7 — what counts as a re-earn, per scope', () => {
       firstEarnedOn: '2026-01-01',
       earnedOn: '2026-01-01',
       count: 1,
+      earnedDays: [{ earnedOn: '2026-01-01', runId: 'old_run' }],
     })
   })
 })

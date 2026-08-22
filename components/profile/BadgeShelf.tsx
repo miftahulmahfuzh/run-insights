@@ -1,8 +1,9 @@
 'use client'
 
-import * as React from 'react'
 import Image from 'next/image'
+import { usePanelParam } from '@/components/ui/usePanelParam'
 import { cn } from '@/lib/cn'
+import { panelKeyFor } from '@/lib/panel/param'
 import { formatDay } from '@/lib/format'
 import { BADGE_ART, BADGE_ART_SMALL_SIZE } from '@/lib/badges/badge-art'
 import type { BadgeKey } from '@/lib/badges/types'
@@ -58,10 +59,17 @@ import { BadgeDialog } from './BadgeDialog'
  * API at request time, and `BADGE_ART` is a plain data module.
  */
 export function BadgeShelf({ shelf }: { shelf: Shelf }) {
-  /* The KEY, not the entry. `shelf` is replaced wholesale on every navigation to /me, and a held
-     entry object would keep a panel open against data the page no longer shows. A key resolves
-     against whatever the current shelf is, or resolves to nothing and closes. */
-  const [openKey, setOpenKey] = React.useState<BadgeKey | null>(null)
+  /* The KEY, not the entry, and since F24 the key lives in the URL rather than in `useState`.
+     `shelf` is replaced wholesale on every navigation to /me, and a held entry object would keep a
+     panel open against data the page no longer shows. A key resolves against whatever the current
+     shelf is, or resolves to nothing and closes — which is also what makes `?panel=badge.nonsense`
+     harmless, since a hand-typed URL is the one input that can name a badge that does not exist.
+
+     What the URL buys is the back gesture: opening a panel pushes a history entry, so a swipe from
+     the phone's left edge closes the panel and stays on /me, and coming back from a run restores
+     it. See `components/ui/usePanelParam.ts` for why that is `pushState` and not `router.push`. */
+  const { selection, open, close } = usePanelParam()
+  const openKey = panelKeyFor(selection, 'badge')
   const selected = shelf.entries.find((entry) => entry.key === openKey) ?? null
 
   return (
@@ -76,7 +84,7 @@ export function BadgeShelf({ shelf }: { shelf: Shelf }) {
           <li key={entry.key}>
             <button
               type="button"
-              onClick={() => setOpenKey(entry.key)}
+              onClick={() => open({ kind: 'badge', key: entry.key })}
               /* The row's own text is already a full description, so the label adds only the two
                  things the visual row encodes rather than states: whether the patch is earned, and
                  that the row opens something. */
@@ -90,7 +98,7 @@ export function BadgeShelf({ shelf }: { shelf: Shelf }) {
       </ul>
 
       {/* One dialog for twenty-two rows, driven by the selection — not one per row. */}
-      <BadgeDialog entry={selected} onClose={() => setOpenKey(null)} />
+      <BadgeDialog entry={selected} onClose={close} />
     </div>
   )
 }

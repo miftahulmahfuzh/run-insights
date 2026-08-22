@@ -158,8 +158,9 @@
 }
 
 /*
- * The badge panel's scrim (F12). `components/profile/BadgeDialog.tsx` is a native `<dialog>`
- * opened with `showModal()`, and this is the one part of it a Tailwind utility cannot express:
+ * The detail panel's scrim (F12; the component moved to `components/ui/DetailPanel.tsx` in F24, and
+ * the selector is element-wide, so the record panel inherits it). It is a native `<dialog>` opened
+ * with `showModal()`, and this is the one part of it a Tailwind utility cannot express:
  * `::backdrop` inherits from nothing in engines predating the 2024 spec change, so a
  * `backdrop:bg-ink/40` utility would compile to `background-color: var(--ink)` against an element
  * that cannot see `--ink`, and the scrim would silently be transparent. Literal rgba, both schemes,

@@ -1,9 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 
-import { Button } from '@/components/ui'
+import { DetailPanel, type PanelArt } from '@/components/ui/DetailPanel'
+import { RunDateLink } from '@/components/ui/RunDateLink'
 import { cn } from '@/lib/cn'
 import { BADGE_ART, BADGE_ART_HEIGHT, BADGE_ART_WIDTH } from '@/lib/badges/badge-art'
 import type { ShelfEntry } from '@/lib/badges/shelf'
@@ -11,209 +11,266 @@ import type { ShelfEntry } from '@/lib/badges/shelf'
 /**
  * One badge, big — the panel a tap on a shelf row opens.
  *
- * ── WHY A NATIVE `<dialog>` AND NOT `Sheet` ─────────────────────────────────────────────────
- * `Sheet` calls itself "the app's one modal surface" and it stays that, for what it was written
- * for: a correction is a *detour* from a table the reviewer must not lose their place in, so it
- * rises from the bottom, pins a Save footer and keeps every field above the keyboard. None of that
- * describes this. Nothing here is edited, there is no keyboard, and the thing the panel exists to
- * show is a **picture** — which wants to be flush to three edges of the panel, and `Sheet`'s body
- * is padded `px-5 py-4` by contract because every one of its callers is a form.
+ * ── THIS FILE IS A BODY, NOT A DIALOG (F24) ─────────────────────────────────────────────────
+ * The dialog element, the art band, the scrolling body and the footer moved wholesale to
+ * `components/ui/DetailPanel.tsx`, comments included, so that #25's personal-record panel is a
+ * different body in the same chrome rather than a second copy of it. Everything this file used to
+ * argue about `<dialog>` versus `Sheet`, the `::backdrop` in `app/globals.css`, the focus call
+ * after `showModal()` and the backdrop-click test now lives there and is unchanged. What is left
+ * here is what is specific to a badge: which art to hang in the band, and what the panel says.
  *
- * So this is a `<dialog>` opened with `showModal()`, and the choice buys more than layout. The UA
- * supplies, with no application code: the focus trap, initial focus, `aria-modal`, Escape-to-cancel,
- * focus restoration on close, and the backdrop — all four of which `Sheet` hand-rolls in an effect.
- * **Do not add `role="dialog" aria-modal="true"` here**; a redundant explicit role on a `<dialog>`
- * is a known screen-reader hazard, which is exactly why `Sheet`'s own div needs them and this does
- * not.
- *
- * The backdrop is styled in `app/globals.css` rather than with a `backdrop:` utility. `::backdrop`
- * inherits from nothing in engines predating the 2024 spec change, so `backdrop:bg-ink/40` would
- * compile to `background-color: var(--ink)` against an element that cannot see `--ink` and the
- * scrim would silently vanish. A literal rgba in both schemes is the only form that holds.
- *
- * ── THE PICTURE IS A BAND, AND THE ART IS NOW THAT BAND'S OWN SHAPE ──────────────────────────
- * The masters are a rectangle of navy twill with the patch sewn onto it, full bleed. Dropped into
- * a padded white panel the cloth would stop at the image's edge and read as a sticker on a sheet
- * of paper, so the picture is a band flush to three edges of the panel rather than a tile inside
- * it. That much has not changed.
- *
- * What changed is that the art fits. F10 shipped 1024² masters into this 4:3 band, so the square
- * art was drawn `h-full w-auto` and the ~12.5% of band either side was painted with `art.twill`,
- * the mean of that master's outer frame. A mean cannot match a photograph of cloth in two ways at
- * once: the raking light the patches are lit by comes from the upper LEFT, so every master's left
- * edge is measurably lighter than its right — up to 12.4 of 255 apart on `two_a_days` — and one
- * flat colour lands between the two, visibly wrong at BOTH seams rather than at neither. The
- * twill's diagonal weave grain has no flat-fill equivalent either, so the join read as
- * texture-stops-here even on the badges whose value happened to match.
- *
- * `tools/extend_badge_art.py` widened all 22 masters to the band's own 4:3 by extending each
- * badge's own cloth, so the band now paints nothing and there is no seam to match. `object-cover`
- * on identical aspect ratios crops nothing — it is here to swallow sub-pixel rounding rather than
- * to fill a rectangle, and **the patch is still never cut**. `art.twill` stays as the band's
- * background colour so a slow decode shows cloth rather than card; `BadgeShelf` still needs it for
- * real, because its tile is square and its 56px mark is a square crop.
- *
- * ── WHAT THE PANEL SAYS THAT THE ROW DOES NOT — AND WHAT IT NO LONGER SAYS AT ALL ───────────
+ * ── WHAT THE PANEL SAYS THAT THE ROW DOES NOT ───────────────────────────────────────────────
  * The row is a reference table: title, condition, gloss, date. The panel adds the two things a
  * table has no room for — the art at a size where the embroidery is legible, and the **count**
  * spelled out in words rather than compressed into a trailing "· earned 3 times". Everything else
  * is the same strings, deliberately: a panel that reworded the condition would be R-42's second
  * source of truth for a threshold, one layer further from the catalog.
  *
- * F23 made that subtractive as well as additive: the panel now adds those two things and **drops
- * the date entirely**, at every count. The count in words is the whole of what it says about
- * earning. The row keeps the date, so between the two surfaces each number is still said exactly
- * once — which is the same rule that took "· most recent of 3" off the row.
+ * ── F27: THE COUNT IS NOW A DISCLOSURE CONTROL, AND THE DATES LIVE UNDER IT ──────────────────
+ * F23 emptied this panel of dates and this file's comment then argued for that absence: `×3 · first
+ * … · latest …` was a *summary of a span the panel could not show*, and two dates spent on it were
+ * two numbers said twice. That reasoning is not reversed here — it is completed. The fix for a bad
+ * summary is not a better summary; it is the thing itself. "Earned 3 times" is the expander, and
+ * expanded it lists all three days, newest first, each one a link to the run that earned it.
+ *
+ * Which means `firstEarnedOn` still has no reader in this file. The earliest day is the *last row*
+ * of the list — a member of `earnedDays`, not a named field — and that is the point: the panel no
+ * longer names the ends of a span, it shows the span.
+ *
+ * ── THE COUNT AND THE NUMBER OF DATES CAN DISAGREE, AND THE PANEL SAYS SO ────────────────────
+ * `StoredBadge.count` sums the `count` column, because a row predating F13 carries the aggregate it
+ * had then rather than one earn (`lib/db/schema.ts`), and discarding it would take history off the
+ * user's shelf. So a single pre-F13 row folding to 5 has **one** day to list. The list shows the
+ * days on record and then says, in words, how many earnings have no date — because the one thing
+ * this panel must not do is invent four days that were never written down.
  */
 export function BadgeDialog({ entry, onClose }: { entry: ShelfEntry | null; onClose: () => void }) {
-  const ref = React.useRef<HTMLDialogElement>(null)
-  const titleId = React.useId()
-  const open = entry !== null
-
-  /*
-   * `showModal()` and `close()` are imperative and this component is declarative, so exactly one
-   * effect reconciles them. Both `el.open` guards are load-bearing: `showModal()` on an
-   * already-open dialog throws `InvalidStateError`, and React 19 Strict Mode double-invokes effects
-   * in development.
-   */
-  React.useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    if (open && !el.open) {
-      el.showModal()
-      /*
-       * The Close button, chosen explicitly, and AFTER `showModal()`.
-       *
-       * `showModal()` picks the dialog's own focus delegate — the first focusable *area*, which is
-       * not the first tab stop. The body below is a scroll container under a short viewport, and
-       * Chromium makes a scroll container a focusable area on its own, so it would win and the
-       * panel would open announcing "scrollable region" with a focus ring drawn across it.
-       * `tabIndex={-1}` makes that worse rather than better — an explicit tabindex is still a
-       * focusable area.
-       *
-       * This is NOT React's `autoFocus` prop, and the ordering is the whole difference. `autoFocus`
-       * fires on MOUNT, one commit before this effect, so the dialog would record a child of its
-       * own as the element to restore focus to and drop focus to `<body>` on close — losing the
-       * shelf row the user tapped. Here `showModal()` has already recorded that row.
-       */
-      el.querySelector('button')?.focus()
-    }
-    if (!open && el.open) el.close()
-  }, [open])
-
   return (
-    <dialog
-      ref={ref}
-      aria-labelledby={titleId}
-      /* Escape fires `cancel` and closes the element itself. Telling React about it is what keeps
-         DOM state and component state from diverging — without this the dialog is shut but `entry`
-         is still set, and the next tap on the same row appears to do nothing. */
-      onCancel={onClose}
-      /* A click on the backdrop targets the <dialog> itself, because the panel is its child. This
-         is the robust form; comparing pointer coordinates against a bounding box breaks when a text
-         selection is dragged out of the panel and released over the backdrop. */
-      onClick={(event) => {
-        if (event.target === ref.current) onClose()
-      }}
-      className={cn(
-        'm-auto max-h-[92dvh] w-[calc(100vw-2rem)] max-w-[360px] overflow-hidden p-0',
-        'rounded-card bg-card text-ink shadow-sheet',
-      )}
-    >
-      {/* Nothing is rendered while closed. A `<dialog>` with `display: none` still has its subtree
-          in the document, and 22 conditions' worth of prose behind a shut panel is prose a screen
-          reader can reach in the reading order of every other page element. */}
-      {entry && <Panel entry={entry} titleId={titleId} onClose={onClose} />}
-    </dialog>
+    <DetailPanel open={entry !== null} art={entry && badgeArt(entry)} onClose={onClose}>
+      {(titleId) => entry && <Body entry={entry} titleId={titleId} />}
+    </DetailPanel>
   )
 }
 
-function Panel({
-  entry,
-  titleId,
-  onClose,
-}: {
-  entry: ShelfEntry
-  titleId: string
-  onClose: () => void
-}) {
+/**
+ * `art.twill` is still handed over even though the 4:3 art fills the band exactly: it is the colour
+ * behind a slow decode, so the panel shows cloth rather than card while the WebP arrives.
+ */
+function badgeArt(entry: ShelfEntry): PanelArt {
   const art = BADGE_ART[entry.key]
+  return {
+    src: art.src,
+    twill: art.twill,
+    width: BADGE_ART_WIDTH,
+    height: BADGE_ART_HEIGHT,
+    dimmed: entry.earned === null,
+  }
+}
+
+function Body({ entry, titleId }: { entry: ShelfEntry; titleId: string }) {
   const earned = entry.earned
+  const [open, setOpen] = React.useState(false)
+  const listId = React.useId()
 
   return (
-    <div className="flex max-h-[92dvh] flex-col">
-      {/* Flush to the panel's top and both sides — the `overflow-hidden` on the dialog is what
-          rounds the band's two upper corners against the card radius. */}
-      <div
-        className="flex aspect-[4/3] w-full shrink-0 items-center justify-center overflow-hidden"
-        style={{ backgroundColor: art.twill }}
-      >
-        <Image
-          /* Empty alt: the title, condition, gloss and count all render as real text below. A
-             screen reader naming the picture too would read every badge twice — the same call
-             `BadgeShelf` makes for its 56px patch. */
-          src={art.src}
-          alt=""
-          width={BADGE_ART_WIDTH}
-          height={BADGE_ART_HEIGHT}
-          /* The art and the band are both 4:3, so this fills the band exactly. See the note above
-             on why `object-cover` here is not a crop. */
-          className={cn('h-full w-full object-cover', !earned && 'opacity-50 grayscale')}
-          /* Already a 768×576 WebP, content-hashed and served `immutable` by next.config.ts.
-             Re-encoding it through the optimizer would bill a transformation for an asset that was
-             encoded for exactly this box. */
-          unoptimized
+    <>
+      {earned ? (
+        <EarnedDatesTrigger
+          count={earned.count}
+          open={open}
+          listId={listId}
+          onToggle={() => setOpen((wasOpen) => !wasOpen)}
         />
-      </div>
+      ) : (
+        <p className="text-[11px] font-semibold tracking-[0.02em] text-ink-3">Not yet earned</p>
+      )}
 
-      {/* The half that gives when the panel cannot fit the viewport. The band and the footer keep
-          their size; this scrolls. Clip nothing. */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4">
-        <p
-          className={cn(
-            'text-[11px] font-semibold tracking-[0.02em]',
-            earned ? 'text-accent' : 'text-ink-3',
-          )}
-        >
-          {earned ? earnedLabel(earned.count) : 'Not yet earned'}
+      <h2 id={titleId} className="mt-1 text-[19px] font-semibold text-ink">
+        {entry.title}
+      </h2>
+
+      <p className="mt-2 text-[13px] font-medium text-ink-2">{entry.condition}</p>
+      <p className="mt-1.5 text-[13px] font-medium text-ink-3">{entry.gloss}</p>
+
+      {/* THE LIST GOES LAST, AND THE TRIGGER STAYS FIRST. Not adjacency for its own sake — measured.
+          Rendered directly under its own button, a twelve-earning list fills the whole scroll
+          container and pushes the `<h2>` off the bottom of it: the panel's accessible name, and the
+          only thing on screen that says WHICH badge these dates belong to, scrolls out of view the
+          instant a runner asks for them. Below the gloss, expanding pushes nothing away — the dates
+          simply extend the panel downward, which is what the scroll container is for.
+
+          `aria-controls` is what carries the association across the three lines in between, which is
+          precisely the attribute's job, and the list is still AFTER the button in DOM order so Tab
+          from the trigger lands on the first date. The three lines are not filler either: they are
+          the badge's identity and its rule — the subject the dates are about. */}
+      {earned && open && (
+        <EarnedDayList id={listId} earnedDays={earned.earnedDays} count={earned.count} />
+      )}
+
+      {/* R-44: an invitation, not a nag — and only on the five badges where the number is real.
+          Never on the same panel as the list above: `readProgress` runs for LOCKED badges only. */}
+      {entry.progress && (
+        <p className="mt-3 text-[12px] font-semibold text-ink-3 tabular-nums">
+          {entry.progress.sentence}
         </p>
+      )}
+    </>
+  )
+}
 
-        <h2 id={titleId} className="mt-1 text-[19px] font-semibold text-ink">
-          {entry.title}
-        </h2>
+/**
+ * "Earned N times", and every one of those N days under it — F27, card #26.
+ *
+ * ── A `<button>`, NOT `<details>`/`<summary>` ───────────────────────────────────────────────
+ * `<summary>` would supply `aria-expanded` for free and then charge it back: its marker has to be
+ * suppressed per engine, it is not a `<button>` so the app's `active:opacity-70` press treatment
+ * does not apply, and its open state is DOM state this component would then be reconciling against
+ * React state — the same imperative/declarative seam `DetailPanel` needs a whole effect for. A
+ * native `<button>` is a tab stop and fires on Enter and Space with no handler, which is the whole
+ * of the keyboard requirement, and it is the idiom `BadgeShelf` already established one level up:
+ * its 22 rows are `<button>`s wrapping their own markup rather than a kit primitive, because a
+ * control with exactly one caller keeps its markup local.
+ *
+ * `aria-expanded` is the state and `aria-controls` names what it opens. The open flag and the id
+ * both live in `Body` rather than here, because the list this opens renders three lines further
+ * down — see `Body` for the measurement that put it there. Focus is not moved on expand and does
+ * not need to be: the list is still *after* this button in DOM order, inside a `<dialog>` whose
+ * focus trap is the UA's, so the next Tab reaches the first date. That ordering is also why F24
+ * replaced `DetailPanel`'s `el.querySelector('button')` initial-focus call with a ref on Close —
+ * its comment names this card, and this control is what it was anticipating.
+ *
+ * ── COLLAPSED IS THE STATE THE BACK GESTURE RETURNS TO, ON PURPOSE ───────────────────────────
+ * The flag is `useState`, so tapping a date and swiping back re-mounts the panel with the list
+ * shut.
+ * That was decided rather than inherited. Keeping it open means putting it in the URL, because that
+ * is the only state the back gesture can see (F24's whole argument), and there is no cheap way:
+ * `lib/panel/param.ts` argues at length against a second parameter — "a registry a later card can
+ * silently forget to join" — and a suffix on the existing value is ambiguous by construction, since
+ * `decodePanelSelection` splits on the FIRST separator only and deliberately admits dotted keys. So
+ * the price is a permanent widening of a codec two surfaces share, and the saving is one tap on a
+ * control that sits on the panel's first line, directly under the thumb that just swiped back. A
+ * re-entered panel re-establishing which badge it is before re-establishing a list is also simply
+ * the better reading of the gesture. `docs/plans/F27-badge-earn-dates.md` §6 has the full costing.
+ */
+function EarnedDatesTrigger({
+  count,
+  open,
+  listId,
+  onToggle,
+}: {
+  count: number
+  open: boolean
+  /** The list this opens. It renders further down the body — see `Body` for why. */
+  listId: string
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={listId}
+      className={cn(
+        'flex w-full items-center gap-1 text-[11px] font-semibold tracking-[0.02em] text-accent',
+        /* `-my-1 py-1` grows the touch target past the 11px type without moving the line it sits
+           on — padding out, margin back, net zero. The same trick `RunDateLink` uses on its link
+           branch, and it is what keeps F23's arithmetic intact: the gap above this line is still
+           the body's own `pt-4`, which is what the footer's `pb-[calc(1rem+…)]` was set to match.
+           Measured at 390 px: the button's box starts 12 px below the band and its text 16 px, so
+           the first line sits exactly where F23 left it. Full width rather than `inline-flex` so
+           the whole line is the target on a phone. */
+        '-my-1 py-1 active:opacity-70',
+      )}
+    >
+      {earnedLabel(count)}
+      <Chevron open={open} />
+    </button>
+  )
+}
 
-        <p className="mt-2 text-[13px] font-medium text-ink-2">{entry.condition}</p>
-        <p className="mt-1.5 text-[13px] font-medium text-ink-3">{entry.gloss}</p>
+/**
+ * The dates themselves — **exported, and stateless, so a test can reach it.**
+ *
+ * This repo has no jsdom and no testing library (`vitest.config.ts` runs node-env only), so a tap on
+ * the expander above cannot be simulated and `renderToStaticMarkup` only ever renders the collapsed
+ * half. F21 hit exactly this and set the precedent: `commitStatusLine` was JSX private to
+ * `ReviewClient.tsx` and shipped a grammar bug into two screenshots and a README GIF because nothing
+ * could render it. The fix was to move it somewhere reachable.
+ *
+ * So the split here is not decoration. `EarnedDates` owns the one thing that needs state — is it
+ * open — and this owns everything that can be got wrong: the order, the two link branches, and the
+ * count that does not match the list. `tests/badges.render.test.ts` renders it directly.
+ */
+export function EarnedDayList({
+  id,
+  earnedDays,
+  count,
+}: {
+  id: string
+  earnedDays: NonNullable<ShelfEntry['earned']>['earnedDays']
+  /** The fold's count, which can exceed `earnedDays.length` — see the file header. */
+  count: number
+}) {
+  /* Earnings with no day on record: a pre-F13 row's aggregate. Never negative — every value this
+     application writes to the column is 1, so `count` is at worst equal to the number of days. */
+  const undated = count - earnedDays.length
 
-        {/* NO DATE HERE, AT EITHER COUNT (F23). This is where `×3 · first … · latest …` used to
-            print, on the argument that F13's ledger made the first earning a fact rather than an
-            inference and both ends of the span were therefore worth naming. The ledger is
-            untouched and that is still true — this panel is simply no longer where it is read.
-            The single-earn branch printed `Earned <date>` and went with it: one date on the
-            one-earn case would be the only date left in the surface, an inconsistency louder than
-            the line it replaced. Card #26 is what gives every earned date a home.
-            `earned.firstEarnedOn` consequently has no reader on screen; it is kept for #26. */}
+  return (
+    /* A `<ul>` because it is a list of days: a stack of `<p>`s reads to a screen reader as prose
+       with no count, and the count is the thing the runner tapped to see. The `id` is on the list
+       rather than on a wrapper so `aria-controls` points at the thing that appears. */
+    <ul id={id} className="mt-2 flex flex-col gap-1.5">
+      {earnedDays.map((day, index) => (
+        /* The index, and it is the honest key rather than the lazy one. `earnedOn` is not unique on
+           its own — one key can be earned by two runs on one day — and neither is the
+           `(earnedOn, runId)` pair, because `badges.run_id` is ON DELETE SET NULL (R-22), so two
+           same-day awards whose runs were both deleted collide on `(day, null)`. Nothing exposed
+           here would make a stable id: `dedupeKey` would be one, and `BadgeEarnedDay` deliberately
+           does not carry it. The index is safe for the usual reason it is not — this list is
+           derived data, sorted once, with no insert, no removal and no reorder between renders. */
+        <li key={index}>
+          <RunDateLink
+            day={day.earnedOn}
+            runId={day.runId}
+            className="text-[12px] font-semibold text-ink-2 tabular-nums"
+          />
+        </li>
+      ))}
 
-        {/* R-44: an invitation, not a nag — and only on the five badges where the number is real. */}
-        {entry.progress && (
-          <p className="mt-3 text-[12px] font-semibold text-ink-3 tabular-nums">
-            {entry.progress.sentence}
-          </p>
-        )}
-      </div>
+      {/* NOT a date, and not tappable. See the file header: these earnings happened, and the app of
+          the day recorded an aggregate rather than a ledger. That is a fact about the record, and
+          the panel states it as one rather than fabricating days to make the two numbers agree. */}
+      {undated > 0 && (
+        <li className="text-[12px] font-medium text-ink-3 tabular-nums">
+          {undated} earlier, {undated === 1 ? 'date' : 'dates'} not recorded
+        </li>
+      )}
+    </ul>
+  )
+}
 
-      {/* The bottom pad is 1rem because the body opens `pt-4`, and the gap under Close is meant to
-          read as the gap above "Earned N times" — F23's ask, and its arithmetic. `--safe-bottom`
-          adds the home-indicator inset on top, so the literal is what changes and not the whole
-          value. `pt-3` rather than the body's `pt-4` is the compactness half: this footer diverges
-          from `Sheet`'s deliberately, which pins a Save control above a keyboard and earns its
-          1.25rem with a `border-t`. Nothing here is edited and there is no rule above the button. */}
-      <div className="shrink-0 px-5 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
-        <Button variant="secondary" size="md" fullWidth onClick={onClose}>
-          Close
-        </Button>
-      </div>
-    </div>
+/**
+ * The expander's only painted glyph: a chevron that points down when shut and up when open.
+ *
+ * Inline SVG rather than a text `▾`, which renders at a different weight and baseline in every font
+ * fallback chain, and `aria-hidden` because `aria-expanded` on the button already says the state —
+ * a screen reader that announced both would announce it twice. `currentColor` so it takes the
+ * accent from the button and needs no palette entry of its own in either scheme.
+ */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 12 12"
+      className={cn('h-3 w-3 shrink-0', open && 'rotate-180')}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 4.5 6 8l3-3.5" />
+    </svg>
   )
 }
 
@@ -223,6 +280,11 @@ function Panel({
  * "Earned once" rather than "Earned ×1": a count of one is the ordinary case and a multiplier on it
  * reads as a scoreboard entry. Above one the multiplier is the honest form, because the number is
  * the point — and it is the one fact the shelf row cannot give the space to say plainly.
+ *
+ * F27 made both branches expanders, including "Earned once". That is the card's own ask and it is
+ * the consistency F23 was protecting when it deleted the single-earn `Earned <date>` line: one date
+ * printed inline while every other count hid its dates behind a control would be the same
+ * inconsistency from the other side.
  */
 function earnedLabel(count: number): string {
   return count === 1 ? 'Earned once' : `Earned ${count} times`

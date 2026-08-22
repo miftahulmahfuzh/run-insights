@@ -20,8 +20,15 @@ export interface ButtonBaseProps {
   leadingIcon?: React.ReactNode
 }
 
+/**
+ * `React.ComponentProps<'button'>` and not `ButtonHTMLAttributes`, which is the same set minus
+ * `ref`. Under React 19 a ref is an ordinary prop and `...rest` already forwards it, so the
+ * attribute list was the only thing refusing one — and `DetailPanel` needs to focus its Close
+ * button explicitly after `showModal()` rather than find it by position. `ButtonLinkProps` below
+ * has always taken `ComponentProps`; this is the same shape, not a new one.
+ */
 export interface ButtonProps
-  extends ButtonBaseProps, Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'color'> {
+  extends ButtonBaseProps, Omit<React.ComponentProps<'button'>, 'color'> {
   /** Disables the button, keeps its exact width, swaps the label for pulsing dots. */
   loading?: boolean
 }

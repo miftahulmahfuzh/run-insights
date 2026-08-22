@@ -529,6 +529,14 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
           firstEarnedOn: '2026-07-31',
           earnedOn: '2026-08-31',
           count: 2,
+          /* F27, against real Postgres rather than a fake: the two rows come back
+             `order by key asc, earned_on asc` and the fold reverses them to newest-first, with a
+             null runId on each because no single run earned a month badge. This is the assertion
+             the unit tests cannot make — that the DB's own ordering is the one being re-sorted. */
+          earnedDays: [
+            { earnedOn: '2026-08-31', runId: null },
+            { earnedOn: '2026-07-31', runId: null },
+          ],
         },
       ])
     })
