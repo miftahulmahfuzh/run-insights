@@ -418,3 +418,159 @@ suite — `tests/panel.param.test.ts` says so about F24's half already and it is
 one. What a person has to confirm on a phone: expand → tap a date → back-swipe lands on `/me` with
 the panel open **and the list still expanded**, and one more back leaves `/me` rather than collapsing
 the list first.
+
+---
+
+# F27 round 3 — 2026-08-22
+
+**Card:** [#26](https://github.com/miftahulmahfuzh/run-insights/issues/26) · round 3
+**Base:** `cd818ae` (`origin/main` with rounds 1–2 and #25's record panel landed)
+
+Round 2's period label was the wrong fix, and the user said so:
+
+> Self-Reward Achieved should still be able to be clicked. We show the date of the 4th run in that
+> week. Imagine that after the 4th run (22 Aug) I got that badge — then on this run (22 Aug) I got
+> the Self-Reward badge, which means Self-Reward should show the 22 Aug run. If next week I run on
+> 25 27 29 30 Aug, then we need to add an additional date: 30 Aug.
+>
+> The logic for this case (and any other similar cases in the future, document it): **if the badge is
+> based on the min count of something, then we show the date of the day we got the full count.**
+
+---
+
+## R3.1 The rule
+
+> **A badge whose condition is "at least N of something" is earned by the thing that reached N, and
+> the award records that thing.** For a period badge that thing is a run: the one whose commit took
+> the aggregate across the threshold. So `run_id` is that run, and `earned_on` is that run's day.
+
+**This principle was already in the codebase and was dropped at the last step.** `rules.ts`,
+`windowEdgeFires`:
+
+> "the badge fires on the run that *completes* the pattern and stays quiet while the pattern merely
+> continues."
+
+That is the user's rule, written for session badges. Round 3 carries it into the period earn's
+`run_id`, which is the one place it was not applied.
+
+And the data already half-agreed. `evaluate.ts` has always stamped period earns with
+`earnedOn: facts.session.run.occurredOn` — **the committing run's own day**. The row already named
+the day the count completed and then refused to name the run that completed it, which is precisely
+the shape of the report: a date that is a run's date and does not open.
+
+The old reasoning was "no single run earned `century_club`". True of the *distance* and false of the
+*earning*: a month of running produced the kilometres, but the badge came into existence at one
+identifiable commit, and every other row in `badges` names the commit that created it.
+
+### The worked example, checked against the code
+
+| | Row |
+|---|---|
+| 4 runs in W34, the 4th on 22 Aug | `run_id = <22 Aug run>`, `scope_key = '2026-W34'`, `earned_on = '2026-08-22'` |
+| 25 / 27 / 29 / 30 Aug | a **second** row: `run_id = <30 Aug run>`, `scope_key = '2026-W35'`, `earned_on = '2026-08-30'` |
+
+Two rows, two clickable dates, newest first — which is what the panel already does with a list of
+two.
+
+### `dedupeKeyFor` is unchanged, and that is what makes it correct
+
+A period badge still dedupes on its scope key, so the **first** qualifying commit writes the row and
+every later commit in the same period collides with it. The run recorded is therefore the 4th run of
+the week and never the 5th — not because `evaluate.ts` chooses, but because the primary key does.
+`tests/badges.evaluate.test.ts` asserts it from both sides: the 5th commit qualifies, writes nothing,
+and leaves `runId` naming the 4th.
+
+### The invariant that makes it blanket rather than per-badge
+
+The user asked for "any other similar cases in the future". Measured against the catalog: the five
+badges carrying a `progress` spec — `self_reward`, `consistency_gremlin`, `century_club`,
+`double_century`, `dawn_patrol` — are **exactly** the five non-session badges, and every one is a
+`>= threshold` rule (`rules.ts` lines 228–265). R-44 defines a `progress` spec as an accumulating
+quantity with a target, which is a min-count. So:
+
+> **period scope ⟺ has a `progress` spec ⟺ is a min-count threshold**
+
+`tests/badges.catalog.test.ts` now asserts that equivalence, plus a positive target on each. That
+test is where the next author is told to think: a period badge with **no** `progress` would trip it,
+and its blanket `runId` would then be naming whichever run happened to be committed at the time
+rather than one that completed anything.
+
+### The one path that keeps a null
+
+`sweepPeriodBadges`. It exists for the case where an aggregate moved *without* a commit — a deletion,
+or a correction that walks a run across a period boundary — so there is no run that completed
+anything, and its `anchorDay` is a cron's idea of "today" rather than any run's day. A null is the
+honest answer and the panel renders it as a plain date. Asserted.
+
+## R3.2 Round 2's fix reverts, in full
+
+`periodLabel`, `BadgeEarnedDay.scopeKey` and `RunDateLink`'s `label` prop are all gone. Round 2
+treated the symptom — a date that looked tappable and was not — by relabelling the row
+`Week of 17 Aug 2026`. With the cause fixed there is nothing to relabel: the date **is** the
+completing run's date and it opens that run, exactly like a session badge's.
+
+Reverting rather than keeping it is deliberate. `label` had one caller and `scopeKey` had one reader;
+left in place they are a second way to render a date and a second field to keep in step, both waiting
+for someone to reach for them. `RecordDialog` uses `RunDateLink` and never wanted either.
+
+The text branch is still the ordinary case for three real situations, so `RunDateLink` keeps both
+halves: a session badge whose run was deleted (R-22), a sweep-awarded period row, and every period
+row written before round 3.
+
+## R3.3 Existing rows: a script, not a migration, and not run
+
+A code change cannot reach rows already written, and the user's own `self_reward` rows carry
+`run_id = NULL`. So `scripts/backfill-badge-run-ids.mjs` (`npm run badges:backfill-runs`), following
+`blob-reap.mjs`' idiom: **dry run by default, `--apply` to write.**
+
+It is exact rather than heuristic where it acts at all. `earned_on` has always been the committing
+run's `occurred_on`, so the run that fired an award is a reviewed run of that user on that day. If
+that day holds exactly one, the answer is certain. If it holds two, which of them was the commit that
+crossed the threshold depends on the order they were *reviewed* — and that order is recorded nowhere
+the badge row can see, so **those rows are skipped and counted**, not guessed.
+
+> A date that does not open is a small disappointment. A date that opens the **wrong** run is the app
+> lying about the runner's own history, and §1.2's position is that a badge is a fact about the past.
+
+Session awards are never touched: a null there means R-22 fired because the run was deleted, and
+there is nothing to restore.
+
+**It has not been run against the user's database.** That is theirs to do.
+
+## R3.4 One behaviour change worth naming
+
+`getBadgeAwardsForRun` will now return period badges for the run that completed them — its comment
+said the opposite ("A period badge never appears here"), and that comment is rewritten. This is the
+user's own mental model: on the 22 August run, you got Self-Reward. It has **no UI consequence
+today**, because `badgesForRun` still has no on-screen caller; it is F11's inline "what did this run
+get" read, and when that surface arrives it will now be right.
+
+## Files
+
+| File | Change |
+|---|---|
+| `lib/badges/evaluate.ts` | the count-threshold rule, and every period earn stamped with the run |
+| `lib/badges/types.ts` | the scope table corrected; `BadgeEarnedDay.scopeKey` removed |
+| `lib/badges/facts.ts` | the fold stops carrying it |
+| `components/profile/BadgeDialog.tsx` | `periodLabel` removed |
+| `components/ui/RunDateLink.tsx` | the `label` prop reverted |
+| `lib/db/queries.ts` | the `getBadgeAwardsForRun` comment, which said the opposite |
+| `scripts/backfill-badge-run-ids.mjs`, `package.json` | the backfill, dry-run by default |
+| `tests/badges.catalog.test.ts` | period ⟺ progress ⟺ threshold |
+| `tests/badges.evaluate.test.ts` | the rule, the first-commit-wins guarantee, the sweep's null |
+| `tests/badges.render.test.ts` | the round-3 panel behaviour, replacing round 2's period describe |
+| four other suites | `scopeKey` stripped from the day fixtures |
+
+## Verified
+
+`npm test`: 84 files, **1293 tests**. Full CI gate below.
+
+The two new `evaluate` assertions were checked against the **old** behaviour before being kept — the
+period stamps reverted to `null` by hand, both tests red, then restored. A test that passes either
+way pins nothing, and this round is a data change whose whole value is in those two.
+
+### Still a human's job
+
+Open `Self-Reward Achieved` on a phone and tap a date. Two things this suite cannot see: the
+navigation itself, and whether the backfill found your rows — which depends on your own history and
+is what the script's dry run is for.

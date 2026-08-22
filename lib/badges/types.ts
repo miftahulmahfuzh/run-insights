@@ -42,7 +42,16 @@ export type BadgeKey =
  *   `session`   one run's own shape. `run_id` set, `scope_key` null.
  *   `week`      an ISO week's worth of runs. `scope_key` is '2026-W34'.
  *   `month`     a calendar month's worth. `scope_key` is '2026-08'.
- *   `lifetime`  the whole account. Both null — there is no period to name.
+ *   `lifetime`  the whole account. `scope_key` null — there is no period to name.
+ *
+ * **`run_id` is set on all four since F27 round 3**, and the table above used to say otherwise. A
+ * period badge is a count threshold, a threshold is crossed by a run, and the award records that
+ * run — see the rule in `evaluate.ts`. `scope_key` is what still separates the four: it says which
+ * period the run completed, and `dedupe_key` is built from it so a fifth run in the same week
+ * collides with the row the fourth wrote.
+ *
+ * The two paths that still write a null `run_id` are the nightly sweep (no commit, so no completing
+ * run) and every period row written before round 3.
  */
 export type BadgeScope = 'session' | 'week' | 'month' | 'lifetime'
 
@@ -106,25 +115,25 @@ export interface BadgeAward {
  */
 export interface BadgeEarnedDay {
   earnedOn: DateISO
-  /** The run to open, or null — a period badge's day, or a session badge whose run was deleted. */
-  runId: string | null
   /**
-   * The period this earning was *about*, per the scope table above — F27 round 2.
+   * The run to open, or null.
    *
-   * It is the discriminator between the two reasons `runId` is null, and the panel needs it to be
-   * honest about which one it is looking at. A **week or month** badge never had a run: nothing
-   * earned `self_reward` except four runs inside one ISO week, so its date is a period's date and
-   * the panel labels it as one. A **session** badge with a null `runId` is a run that was deleted
-   * (R-22) — the day is still a real day, and it renders as one.
+   * Set on **every** award the app writes since F27 round 3, period ones included: a period badge
+   * records the run whose commit took its aggregate across the threshold, because that is the run
+   * that earned it. See the count-threshold rule in `evaluate.ts`.
    *
-   * Null for both a session award and a lifetime one, which need no distinguishing: neither has a
-   * period to name, and both render as a plain day.
+   * Still nullable, and both reasons are real rather than theoretical:
+   *   - a session badge whose run was **deleted** — R-22 sets the column null and keeps the award;
+   *   - a period badge awarded by the **nightly sweep**, which fires when an aggregate drifted with
+   *     no commit, so no run completed it;
+   *   - and rows written before round 3, which carried null on every period award by design.
    *
-   * The report that made this necessary: `self_reward` and `tourist` both read "Earned once", one
-   * date opened a run and the other silently did nothing, and the only way to tell why was to read
-   * `catalog.ts`.
+   * Round 2 briefly carried `scopeKey` here to tell a period award apart from a deleted run's, so
+   * the panel could print `Week of 17 Aug 2026` instead of a date that looked tappable and was not.
+   * Round 3 removed the need: the date IS the completing run's date and it opens that run, so there
+   * is nothing to relabel and one less field to keep in step.
    */
-  scopeKey: string | null
+  runId: string | null
 }
 
 /** The per-key fold of a user's awards — what the shelf and the panel read. */
