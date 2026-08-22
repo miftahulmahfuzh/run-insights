@@ -1,7 +1,17 @@
-# F20 — `1 check still disagrees`, and a harness that can re-take one photograph
+# F21 — `1 check still disagrees`, and a harness that can re-take one photograph
 
 **Card:** [#16](https://github.com/miftahulmahfuzh/run-insights/issues/16) · round 1
 **Base:** `origin/main` at `109eb51`
+
+> **Was F20 until the label collided.** This card and card 17 (`prefers-reduced-motion`) were
+> worked in parallel worktrees, both branched off `109eb51`, and both read `F19` as the highest
+> plan and minted `F20`. Card 17 landed first as [#19](https://github.com/miftahulmahfuzh/run-insights/pull/19),
+> so `docs/plans/F20-reduced-motion.md` has the number and this file renumbered to F21 rather than
+> renaming a plan already on `main`. The commits below still carry a `fix(f20):` prefix; they were
+> written before the race resolved and are left alone, because rewriting them would hide the one
+> thing worth knowing — that `F<N+1>` is not race-safe when two sessions branch off the same
+> commit. The next such pair should check `origin/main` for the label immediately before
+> committing, not at plan time.
 
 ---
 

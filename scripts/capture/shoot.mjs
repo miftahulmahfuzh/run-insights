@@ -9,7 +9,7 @@
  * `scripts/capture/seed-demo.mjs` must already have run.
  *
  * `--only` narrows a pass to named artifacts — see ARTIFACTS below. It is what makes a one-file
- * re-shoot possible: F20 needed exactly `03-review-banner`, `04-review-split` and `review` after a
+ * re-shoot possible: F21 needed exactly `03-review-banner`, `04-review-split` and `review` after a
  * copy fix changed one line of the sticky bar, and running the full passes to get them would have
  * churned fifteen files and spent a real vision call on the hero.
  *
