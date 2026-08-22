@@ -639,14 +639,38 @@ describe('RecordDialog — what the row gave up (F26)', () => {
     expect(html).not.toContain('· was')
   })
 
-  it('says nothing at all about a first-ever record’s predecessor', () => {
-    /* The narrow reading, F26 §7: the card says "`previousValue` where it exists", and
-       `RecordsTable`'s own convention for this field is to print nothing where it does not. The
-       panel does not announce the absence. */
+  it('keeps the slot and says so when there is no earlier value — round 2', () => {
+    /* Round 1 printed nothing here, on F26 §7's narrow reading. Reversed by the reporter: nine
+       panels with the line and one without read as a broken tenth, not as an unbeaten one, and
+       "I thought it was a bug" is the whole argument for a uniform slot. */
     const html = panel('longest_distance')
     expect(html).toContain('10.67 km')
+    expect(html).toContain('No earlier value recorded.')
     expect(html).not.toContain('Beat')
+  })
+
+  it('never claims the record was the first one, because null does not mean first', () => {
+    /* `recomputeRecords` writes `previousValue` only on a pass where the key changed hands, and
+       `records.run_id` is ON DELETE CASCADE — so deleting the holding run drops the row and its
+       history, and the next recompute writes null for a key that demonstrably had a predecessor.
+       "First" would be false in exactly that case; "recorded" is true in both, and is the device
+       `EarnedDayList` already uses for "the app has no record of this". */
+    const html = panel('longest_distance')
     expect(html).not.toContain('first')
+    expect(html).not.toContain('First')
+    // Not "nothing to beat" either: the runner can see their other runs on the same screen, so a
+    // line about the run SET would be contradicted by the shelf above it. This is about the record.
+    expect(html).not.toContain('to beat')
+  })
+
+  it('puts both branches in the same slot, one quieter than the other', () => {
+    /* Uniform position and size, one colour step apart: the slot does not move, and the line that
+       carries less says less loudly. The same step `EarnedDayList` puts between a real day and its
+       own not-recorded line. */
+    const withPrev = panel('fastest_pace_10k')
+    const without = panel('longest_distance')
+    expect(withPrev).toContain('mt-3 text-[13px] font-medium text-ink-2')
+    expect(without).toContain('mt-3 text-[13px] font-medium text-ink-3')
   })
 
   it('hangs the records deck’s own art at the records deck’s own size', () => {

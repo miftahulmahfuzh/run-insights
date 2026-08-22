@@ -39,8 +39,9 @@ export interface RecordRowView {
  * `previousValue` is still the interesting half — F06 keeps the value the key was worth before the
  * current holder took it specifically so a shelf can say "beat 7'30\" to get here". The one-row
  * constraint is what pushed it off the row; the panel is where it now lives, and where it finally
- * has room to be that sentence instead of `· was 7'30"/km`. Where the current holder is the first
- * ever there is nothing to compare against and nothing is printed, in the panel exactly as here.
+ * has room to be that sentence instead of `· was 7'30"/km`. Where it is null the panel says so in
+ * the same slot rather than dropping the line (round 2) — the row prints neither branch either way,
+ * because the row prints nothing but the label and the value.
  *
  * ── THE NAVIGATION DID NOT DISAPPEAR, IT MOVED ONTO THE DATE ────────────────────────────────
  * The row's `<Link href={/r/${runId}}>` is gone, which is what lets the row be a `<button>` — and a

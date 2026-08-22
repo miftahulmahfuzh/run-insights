@@ -185,6 +185,10 @@ where it exists", the repo already has a stated convention for this exact field 
 is, print nothing where it is not), and inventing copy for the absence widens the panel past what was
 asked. If it should say something, that is one comment and one reopen.
 
+**It should. See round 2 below** — the comment arrived, and the reason it arrived is the reason this
+reading was wrong: nine panels carrying the line and one without it does not read as "this record is
+unbeaten", it reads as "this panel is broken".
+
 ## 8. Files
 
 | File | |
@@ -211,3 +215,108 @@ test them: there is no jsdom in this repo and no `history` to drive. What the su
 the half that would break them — that the row is a button wired to `open({kind:'record', …})`, and
 that a cold load of `?panel=record.<key>` renders the panel — and the gesture itself is §13's
 read-it-on-a-phone check, as it was for #23.
+
+---
+
+# F26 round 2 — the "Beat …" line stops disappearing (2026-08-22)
+
+**Card:** [#25](https://github.com/miftahulmahfuzh/run-insights/issues/25) · round 2
+**Base:** `cd818ae` (round 1's own merge)
+
+> Prod report: "I like that on Longest distance we show *Beat 10.67 km to get here*. But on Longest
+> duration I do not see that line. What happened? I checked every single Personal record item and
+> only Longest duration shows this behavior." And, on being told why: **"I still think we need to say
+> something instead of not saying anything. I thought it was a bug."**
+
+This reverses §7 of round 1, which is the section that predicted it: *"If it should say something,
+that is one comment and one reopen."* One comment, one reopen.
+
+## 1. It was not a bug, and the data says so
+
+Read from prod before writing a line of code:
+
+| key | value | previousValue | holder |
+|---|---|---|---|
+| longest_distance | 10850 | 10670 | 17 Aug |
+| fastest_pace_5k / 10k | 412 | 435 | 17 Aug |
+| most_kcal | 693 | 653 | 17 Aug |
+| highest_cadence | 152 | 145 | 17 Aug |
+| highest_max_hr | 195 | 192 | 17 Aug |
+| fastest_km_split | 386 | 395 | 17 Aug |
+| best_paced_run | 1110 | 1235 | 17 Aug |
+| most_elevation | 18 | 15 | 18 Aug |
+| **longest_duration** | **4716** | **NULL** | **20 Aug** |
+
+Four reviewed runs, and **they were reviewed in a different order than they occurred.** The 20 Aug
+run (10670 m / 4716 s) was reviewed first and set all ten keys with no predecessor to record. The
+17 Aug run (10850 m / 4473 s) then took nine of them, each recording what it displaced — which is why
+eight rows above name a value belonging to a run three days *later* than the record they sit on.
+`longest_duration` is the exception: 4473 s does not beat 4716 s, so the key never changed hands, and
+`recomputeRecords` deliberately preserves the null a key was born with rather than overwriting it on
+an unrelated pass.
+
+So the panel was telling the truth. What it got wrong is that **the truth was indistinguishable from
+a defect**: nine panels with a fourth line and a tenth without one reads as a tenth that failed to
+render. The reporter's own words are the acceptance criterion — "I thought it was a bug."
+
+## 2. The fix: a uniform slot, both branches populated
+
+`RecordDialog`'s fourth line becomes a ternary rather than a conditional. Every record panel is now
+eyebrow / title / value / date / displaced-value, and only the last one has two forms.
+
+## 3. The copy, and the two wordings that lost
+
+**Shipped: "No earlier value recorded."**
+
+**"The first one on record." — rejected, and this is the load-bearing rejection.** Null does not mean
+first. `recomputeRecords` writes `previousValue` only on a pass where the key **changed hands**, and
+`records.run_id` is `ON DELETE CASCADE`: deleting the holding run drops the record row and its
+history with it, so the next recompute finds no `held` and writes null for a key that demonstrably
+had a predecessor. A panel claiming "the first one" would then be stating something false, on a
+screen whose entire job is to be the source of truth for a number. "Recorded" is what carries the
+honesty, and it is not a new device — `EarnedDayList` says "2 earlier, **dates not recorded**" rather
+than inventing days to make two numbers agree. Same shape, same register, same reason.
+
+**"Nothing on record to beat." — rejected too, for a different reason.** It is a statement about the
+*run set*, and the run set is visible on the same screen: this runner has four runs, three of them
+with a duration, so a line saying there is nothing to beat is contradicted by the shelf directly
+above it. `previousValue` is a fact about the **record's** history, not about which runs exist, and
+the copy has to keep that distinction or it will read as wrong to the one person who can check.
+
+**Quieter than its sibling on purpose.** `text-ink-3` against the "Beat …" branch's `text-ink-2` —
+the slot is uniform, but the two lines do not carry the same amount. The same colour step
+`EarnedDayList` puts between a real day and its own not-recorded line.
+
+## 4. Deliberately NOT done: redefining `previousValue` as the runner-up
+
+The wider fix is to stop storing a snapshot and derive "the second-best qualifying run" at recompute
+time. Then `longest_duration` would read "Beat 1h 17m to get here" (the 22 Aug run, 4664 s) and the
+line would essentially never be empty.
+
+Not done, and flagged to the user rather than decided quietly, because it is a different product
+question wearing a bug's clothes:
+
+- It **changes eight lines that are currently correct.** Longest distance would stop saying
+  "Beat 10.67 km" (what the record was worth when this run took it) and start saying
+  "Beat 10.65 km" (the second-best run today). Both are defensible; they are not the same claim.
+- It redefines a stored column and F06's "recompute, never increment" contract, and `RecomputeResult.changed`
+  is consumed by F09's `new_ceiling` and `long_way_home`. The blast radius is the records *and*
+  badges pipeline, not a component.
+- The snapshot semantics have a real virtue the runner-up semantics lose: "you beat 7'30" to get
+  here" is a fact about *this runner's history*, and a runner-up is a fact about a leaderboard.
+
+Nothing here is blocked on that decision — the uniform slot is right under either semantics.
+
+## 5. Files
+
+| File | |
+|---|---|
+| `components/profile/RecordDialog.tsx` | the fourth line becomes a ternary; the header and the branch carry the reasoning above. |
+| `components/profile/RecordsTable.tsx` | one doc-block sentence, which asserted round 1's absence. |
+| `tests/badges.render.test.ts` | the round-1 test that asserted the absence is replaced by three: the slot is filled, "first" is never claimed, and the two branches differ by exactly one colour step. |
+
+## 6. What the tests still cannot prove
+
+That the two branches read as the *same line* at 414 px rather than as two different kinds of
+statement. §13's check, as ever. What the suite does prove is the half that was actually broken:
+that the slot is occupied for every record, whatever the data says.
