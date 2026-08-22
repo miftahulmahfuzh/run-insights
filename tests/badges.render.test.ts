@@ -5,11 +5,13 @@ import { BADGE_ART } from '@/lib/badges/badge-art'
 
 import { BadgeDialog, EarnedDayList } from '@/components/profile/BadgeDialog'
 import { BadgeShelf } from '@/components/profile/BadgeShelf'
-import { RecordsTable } from '@/components/profile/RecordsTable'
+import { RecordDialog } from '@/components/profile/RecordDialog'
+import { RecordsTable, type RecordRowView } from '@/components/profile/RecordsTable'
 import { BADGE_META } from '@/lib/badges/meta'
 import { buildShelf } from '@/lib/badges/shelf'
 import type { PeriodFacts } from '@/lib/badges/evaluate'
 import type { StoredBadge } from '@/lib/badges/types'
+import { RECORD_ART, RECORD_ART_HEIGHT, RECORD_ART_WIDTH } from '@/lib/records/record-art'
 
 /**
  * F24 put the shelf's open panel in the URL, so `BadgeShelf` now reads `useSearchParams()` and
@@ -502,52 +504,232 @@ describe('the open panel is a URL and not component state (F24)', () => {
   })
 })
 
-describe('RecordsTable', () => {
-  it('renders the fixture’s records with their labels, values and dates', () => {
-    const html = renderToStaticMarkup(
-      createElement(RecordsTable, {
-        rows: [
-          {
-            key: 'longest_distance',
-            runId: 'run_canonical',
-            value: 10_670,
-            achievedOn: '2026-08-20',
-            previousValue: null,
-          },
-          {
-            key: 'fastest_pace_10k',
-            runId: 'run_canonical',
-            value: 442,
-            achievedOn: '2026-08-20',
-            previousValue: 455,
-          },
-          {
-            key: 'best_paced_run',
-            runId: 'run_canonical',
-            value: 1235,
-            achievedOn: '2026-08-20',
-            previousValue: null,
-          },
-        ],
-      }),
-    )
+/**
+ * F26's fixture: three of the ten keys, chosen to cover every branch the row and the panel have.
+ *
+ * `longest_distance` is a `max` key with **no** predecessor — the first-ever holder, which is the
+ * branch that prints no "Beat …" sentence. `fastest_pace_10k` is a `min` key WITH one, and its label
+ * is the one that must never lose its qualifier. `best_paced_run` is the basis-point key, the only
+ * one needing arithmetic on the way out (§4.5).
+ */
+const RECORD_ROWS: RecordRowView[] = [
+  {
+    key: 'longest_distance',
+    runId: 'run_canonical',
+    value: 10_670,
+    achievedOn: '2026-08-20',
+    previousValue: null,
+  },
+  {
+    key: 'fastest_pace_10k',
+    runId: 'run_july',
+    value: 442,
+    achievedOn: '2026-07-04',
+    previousValue: 455,
+  },
+  {
+    key: 'best_paced_run',
+    runId: 'run_canonical',
+    value: 1235,
+    achievedOn: '2026-08-20',
+    previousValue: null,
+  },
+]
 
+describe('RecordsTable — one line per record (F26)', () => {
+  const html = renderToStaticMarkup(createElement(RecordsTable, { rows: RECORD_ROWS }))
+
+  it('prints the label and the value, and nothing else', () => {
     // Every unit through lib/format.ts (R-23): a period decimal separator, `7'22"/km`, and basis
     // points rendered as the percentage they encode.
     expect(html).toContain('10.67 km')
     expect(html).toContain('7&#x27;22&quot;/km')
     expect(html).toContain('12.3%')
-    expect(html).toContain('Thu, 20 Aug 2026')
-    // `previousValue` is the interesting half of the row where it exists.
-    expect(html).toContain('was 7&#x27;35&quot;/km')
     // The label carries the qualifier, so a caller cannot render "your 10k PB".
     expect(html).toContain('Fastest pace, 10 km+')
-    expect(html).toContain('/r/run_canonical')
+  })
+
+  it('drops the second line entirely — the date and the "was" both', () => {
+    /* The card's own words: "we need to remove the `<date> · was 10.67 km` text that takes the
+       second row". Neither fact is deleted from the app, both moved into the panel, and this is the
+       assertion that says the ROW gave them up. */
+    expect(html).not.toContain('Thu, 20 Aug 2026')
+    expect(html).not.toContain('was 7&#x27;35&quot;/km')
+    expect(html).not.toContain(' · was ')
+    expect(html).not.toContain('·')
+  })
+
+  it('is a button per row and no link at all', () => {
+    /* The row used to BE the navigation to `/r/<runId>`. It cannot be both a link and a control that
+       opens a panel, so the link moved onto the panel's date — which is what makes the whole row one
+       tap target with one accessible name, as the card requires. Three rows, three buttons: the
+       panel is one dialog driven by the selection, so a shut table ships no fourth. */
+    expect(html.match(/<button/g)).toHaveLength(3)
+    expect(html).not.toContain('<a')
+    expect(html).not.toContain('href="/r/run_canonical"')
+  })
+
+  it('names the row and the value in the label, because a label replaces the content', () => {
+    /* The opposite call from `BadgeShelf`, whose label adds only what its visual row encodes rather
+       than states. A record row states everything it has, so both halves are repeated or the
+       accessible name loses them. */
+    expect(html).toContain('aria-label="Longest distance — 10.67 km. Show the record."')
+    expect(html).toContain(
+      'aria-label="Fastest pace, 10 km+ — 7&#x27;22&quot;/km. Show the record."',
+    )
+  })
+
+  it('holds no <p> inside the row, because a <button> takes phrasing content only', () => {
+    // The same constraint `BadgeShelf` obeys with `<span className="block">`s. A one-line row needs
+    // no block child at all, so it does not even carry the shelf's wrapper <div>.
+    expect(html).not.toContain('<p')
+  })
+
+  it('renders no panel content while the table is shut', () => {
+    // The <dialog> is in the markup; its subtree is not — DetailPanel's `open &&`.
+    expect(html).toContain('<dialog')
+    expect(html).not.toContain('Personal record<')
+    expect(html).not.toContain('Close')
+    // The 768px art belongs to the panel alone, and the 192px derivative is drawn by nothing at all
+    // (F26 §3: no patch on the row).
+    expect(html).not.toContain(RECORD_ART.longest_distance.src)
+    expect(html).not.toContain(RECORD_ART.longest_distance.small)
   })
 
   it('says so plainly when there is nothing yet, rather than printing zeros', () => {
-    const html = renderToStaticMarkup(createElement(RecordsTable, { rows: [] }))
-    expect(html).toContain('No records yet')
-    expect(html).not.toContain('0.00 km')
+    const empty = renderToStaticMarkup(createElement(RecordsTable, { rows: [] }))
+    expect(empty).toContain('No records yet')
+    expect(empty).not.toContain('0.00 km')
+    // No rows, no panel, no dialog element either.
+    expect(empty).not.toContain('<dialog')
+  })
+})
+
+describe('RecordDialog — what the row gave up (F26)', () => {
+  /** The panel's markup for one row, rendered directly. */
+  function panel(key: 'longest_distance' | 'fastest_pace_10k') {
+    const row = RECORD_ROWS.find((r) => r.key === key)!
+    return renderToStaticMarkup(createElement(RecordDialog, { row, onClose: () => {} }))
+  }
+
+  it('names the record, its value and its date — the row’s two lines, uncompressed', () => {
+    const html = panel('fastest_pace_10k')
+    expect(html).toContain('Personal record')
+    expect(html).toContain('Fastest pace, 10 km+')
+    expect(html).toContain('7&#x27;22&quot;/km')
+    expect(html).toContain('Sat, 4 Jul 2026')
+  })
+
+  it('links the date to the run that holds the record — the record half of (1b)', () => {
+    /* `records.run_id` is NOT NULL / ON DELETE CASCADE, so a record is always held by a run that
+       still exists and `RunDateLink`'s text branch is unreachable from this panel. That asymmetry
+       with badges (ON DELETE SET NULL, R-22) is why the underline is unconditional here. */
+    const html = panel('fastest_pace_10k')
+    expect(html).toContain('href="/r/run_july"')
+    expect(html).toContain('underline')
+    expect(html).not.toContain('href="/r/null"')
+  })
+
+  it('turns `previousValue` into the sentence F06 kept it for', () => {
+    /* `RecordsTable` has said since F06 that this field exists "specifically so a shelf can say
+       'beat 7'30" to get here'". The compressed `· was 7'35"/km` the card deleted was that fact with
+       no room to be a sentence; this is the room. */
+    const html = panel('fastest_pace_10k')
+    expect(html).toContain('Beat 7&#x27;35&quot;/km to get here.')
+    expect(html).not.toContain('· was')
+  })
+
+  it('says nothing at all about a first-ever record’s predecessor', () => {
+    /* The narrow reading, F26 §7: the card says "`previousValue` where it exists", and
+       `RecordsTable`'s own convention for this field is to print nothing where it does not. The
+       panel does not announce the absence. */
+    const html = panel('longest_distance')
+    expect(html).toContain('10.67 km')
+    expect(html).not.toContain('Beat')
+    expect(html).not.toContain('first')
+  })
+
+  it('hangs the records deck’s own art at the records deck’s own size', () => {
+    /* NOT the badge deck's constants. The two decks are generated from different master sizes, which
+       is exactly why `PanelArt` carries its own intrinsic pixels — see `DetailPanel`. */
+    const art = RECORD_ART.longest_distance
+    const html = panel('longest_distance')
+    expect(html).toContain(art.src)
+    // Content-hashed, which is what licenses the `immutable` header in next.config.ts.
+    expect(art.src).toMatch(/^\/records\/[a-z0-9_]+\.[0-9a-f]{8}\.webp$/)
+    expect(html).toContain(`background-color:${art.twill}`)
+    expect(html).toContain(`width="${RECORD_ART_WIDTH}"`)
+    expect(html).toContain(`height="${RECORD_ART_HEIGHT}"`)
+    /* A record is always held by a real run, so `PanelArt.dimmed` never applies. `grayscale` is the
+       whole assertion: the treatment is `opacity-50 grayscale` and `opacity-50` alone is not
+       diagnostic — `Button`'s own `disabled:opacity-50` puts that string in every panel's footer. */
+    expect(html).not.toContain('grayscale')
+  })
+
+  it('has one control, and it is Close — nothing here discloses', () => {
+    /* F27 made even "Earned once" an expander, for consistency with the counts that have a list
+       behind them. A record has one holder and one date: no list, and no sibling to be consistent
+       with. So the first line is text, not a button. */
+    const html = panel('longest_distance')
+    expect(html.match(/<button/g)).toHaveLength(1)
+    expect(html).toContain('Close')
+    expect(html).not.toContain('aria-expanded')
+  })
+
+  it('renders nothing when no row is selected', () => {
+    const html = renderToStaticMarkup(createElement(RecordDialog, { row: null, onClose: () => {} }))
+    expect(html).toContain('<dialog')
+    expect(html).not.toContain('Personal record')
+    expect(html).not.toContain('Close')
+  })
+})
+
+describe('the record panel is a URL too (F26 + F24)', () => {
+  /** The table as `/me?panel=…` would render it, server-side, on a cold load of that exact URL. */
+  function tableAt(search: string) {
+    router.search = search
+    try {
+      return renderToStaticMarkup(createElement(RecordsTable, { rows: RECORD_ROWS }))
+    } finally {
+      router.search = ''
+    }
+  }
+
+  it('opens the record the parameter names', () => {
+    const html = tableAt('panel=record.fastest_pace_10k')
+    expect(html).toContain('Personal record')
+    expect(html).toContain('Beat 7&#x27;35&quot;/km to get here.')
+    expect(html).toContain(RECORD_ART.fastest_pace_10k.src)
+    // A cold load renders the panel open, which is what makes the back gesture and the return from
+    // /r/<id> restore it rather than merely re-mount the page.
+    expect(html).toContain('Close')
+  })
+
+  it('opens nothing for a key no record holds', () => {
+    /* Two ways to miss, one behaviour: a hand-typed key the catalog never had, and a real key this
+       runner has not qualified for — `records` only contains keys something qualified for, so a
+       shared URL can name a record the recipient does not hold. Both resolve to null and shut the
+       panel rather than crashing it, which is why the table holds the KEY and not the row. */
+    for (const search of ['panel=record.nonsense', 'panel=record.most_elevation']) {
+      const html = tableAt(search)
+      expect(html).toContain('<dialog')
+      expect(html).not.toContain('Close')
+    }
+  })
+
+  it('ignores the badge shelf’s selection — one parameter, one panel', () => {
+    // The two surfaces share `?panel=`, and the `kind` is what keeps them from both opening. Neither
+    // surface has to know the other exists; see lib/panel/param.ts.
+    const html = tableAt('panel=badge.tourist')
+    expect(html).not.toContain('Close')
+    expect(html).not.toContain(RECORD_ART.longest_distance.src)
+  })
+
+  it('leaves the rows themselves untouched while the panel is open', () => {
+    // Three row buttons plus the panel's Close, and the extra one is INSIDE the panel: the table
+    // gained no control of its own.
+    const html = tableAt('panel=record.longest_distance')
+    expect(html.match(/<button/g)).toHaveLength(4)
+    expect(html).toContain('Longest distance')
   })
 })
