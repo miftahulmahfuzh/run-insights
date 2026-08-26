@@ -83,8 +83,13 @@ export function normalizeClockTime(value: string | null | undefined): string | n
   const match = CLOCK_TRANSCRIPTION_RE.exec(value)
   if (!match) return null
 
+  // Groups 1 and 2 are non-optional in the pattern, but `noUncheckedIndexedAccess` types them as
+  // possibly-undefined and a cast here would be the one place this function tells a lie.
   const hourDigits = match[1]
-  const minute = Number(match[2])
+  const minuteDigits = match[2]
+  if (hourDigits === undefined || minuteDigits === undefined) return null
+
+  const minute = Number(minuteDigits)
   if (minute > 59) return null
 
   let hour = Number(hourDigits)
@@ -109,11 +114,7 @@ export function normalizeClockTime(value: string | null | undefined): string | n
  * on-screen shape. Applied here rather than at a call site so the primary parse, the repair
  * round-trip and `hydrateDraftFromExtraction` cannot disagree about it.
  */
-const transcribedClockTime = z
-  .string()
-  .nullable()
-  .default(null)
-  .transform(normalizeClockTime)
+const transcribedClockTime = z.string().nullable().default(null).transform(normalizeClockTime)
 
 /**
  * One row of the splits table.
