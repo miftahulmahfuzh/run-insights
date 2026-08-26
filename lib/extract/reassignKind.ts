@@ -7,9 +7,11 @@ import { MAX_IMAGES, SCREEN_KINDS, type ScreenKind } from './constants'
  * F04's picker kept the kinds distinct by *disabling* every kind another tile already held. The
  * arithmetic runs out: `MAX_IMAGES === SCREEN_KINDS.length === 3`, so on a full three-screen
  * upload every kind is claimed, every non-selected button is disabled, and the control freezes
- * solid at exactly the moment a mislabel is most likely — the defaults come from pick order
- * (`DEFAULT_KIND_BY_INDEX`, the Fitness app's order), which is not the order the OS photo picker
- * hands files over in. A heart-rate screen arrives labelled Summary and there is no way back.
+ * solid at exactly the moment a mislabel is most likely — the defaults came from pick order
+ * (`DEFAULT_KIND_BY_INDEX`, which was then the Fitness app's order), which is not the order the OS
+ * photo picker hands files over in. A heart-rate screen arrived labelled Summary and there was no
+ * way back. F29 later pointed that default at the device's actual order, so the mislabel is now
+ * rare rather than routine — the swap below is still what makes it fixable when it happens.
  * See docs/plans/F16-upload-kind-swap.md §1; the invariant test below pins the equality that
  * makes the subtraction approach unsalvageable.
  *

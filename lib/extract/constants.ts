@@ -28,11 +28,26 @@ export const SCREEN_KIND_LABEL: Record<ScreenKind, string> = {
 }
 
 /**
- * Default kind by pick order — 1st Summary, 2nd Splits, 3rd Heart Rate. That is the order the
- * screens appear in the iOS Fitness app itself, so it is right most of the time; the picker
- * always lets the runner override it before submitting (plan §5.3).
+ * Default kind by pick order — 1st Heart rate, 2nd Splits, 3rd Summary. That is the order the
+ * runner's device hands the files over in, which is the only order that matters here: the picker
+ * always lets the runner override it before submitting (plan §5.3), but a default that is never
+ * right means three manual re-picks on every single upload.
+ *
+ * **Deliberately its own literal, not `SCREEN_KINDS`.** It was an alias until F29, justified as
+ * "the order the screens appear in the iOS Fitness app itself" — the same false premise F16 had
+ * already recorded (`lib/extract/reassignKind.ts` §1): the app's own screen order is not the order
+ * the OS photo picker hands files over in. Re-aliasing this to `SCREEN_KINDS` to tidy it up would
+ * restore the defect. See docs/plans/F29-default-kind-order.md.
+ *
+ * `satisfies` rather than a `readonly ScreenKind[]` annotation, so the elements are checked against
+ * `ScreenKind` while the tuple stays literal — a widened annotation would let a mistyped
+ * permutation past the invariant test that pins this against `SCREEN_KINDS`.
  */
-export const DEFAULT_KIND_BY_INDEX: readonly ScreenKind[] = SCREEN_KINDS
+export const DEFAULT_KIND_BY_INDEX = [
+  'heartrate',
+  'splits',
+  'summary',
+] as const satisfies readonly ScreenKind[]
 
 export const MAX_IMAGES = 3
 export const MIN_IMAGES = 1

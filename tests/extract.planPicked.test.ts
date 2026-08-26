@@ -86,15 +86,24 @@ describe('planPicked — room arithmetic', () => {
 })
 
 describe('planPicked — kind defaults', () => {
-  /** 1st Summary, 2nd Splits, 3rd Heart rate: the order the screens appear in the Fitness app. */
+  /**
+   * 1st Heart rate, 2nd Splits, 3rd Summary: the order the runner's device hands the files over in
+   * (F29). Spelled out as a literal rather than as `[...DEFAULT_KIND_BY_INDEX]`, deliberately — an
+   * expectation read out of the module under test is true of *any* permutation, which is exactly
+   * how the wrong order (the Fitness app's, `SCREEN_KINDS`) survived a green suite until card #38.
+   */
   it('follows pick order on an empty page', () => {
     const plan = planPicked([], [file('a.jpg'), file('b.jpg'), file('c.jpg')])
-    expect(plan.accepted.map((a) => a.kind)).toEqual([...DEFAULT_KIND_BY_INDEX])
+    expect(plan.accepted.map((a) => a.kind)).toEqual(['heartrate', 'splits', 'summary'])
+  })
+
+  it('is the device order, not the Fitness app order', () => {
+    expect([...DEFAULT_KIND_BY_INDEX]).toEqual(['heartrate', 'splits', 'summary'])
   })
 
   it('continues the order from however many tiles are already up', () => {
-    const plan = planPicked(holders('summary'), [file('b.jpg'), file('c.jpg')])
-    expect(plan.accepted.map((a) => a.kind)).toEqual(['splits', 'heartrate'])
+    const plan = planPicked(holders('heartrate'), [file('b.jpg'), file('c.jpg')])
+    expect(plan.accepted.map((a) => a.kind)).toEqual(['splits', 'summary'])
   })
 
   /**
@@ -104,15 +113,27 @@ describe('planPicked — kind defaults', () => {
    * `ExtractRequestSchema` refuses such a request server-side anyway.
    */
   it('skips a kind an existing tile already claims', () => {
+    // One tile up, so the pick sits at index 1, which prefers 'splits' — the very kind the runner
+    // moved that tile to. The free kind it falls through to is the first one in DEFAULT order, so
+    // this is also the assertion that pins the fallback to the device order rather than to
+    // SCREEN_KINDS: reading the canonical list here would hand back 'summary' (F29 §4.2).
     const plan = planPicked(holders('splits'), [file('b.jpg')])
-    expect(plan.accepted.map((a) => a.kind)).toEqual(['summary'])
+    expect(plan.accepted.map((a) => a.kind)).toEqual(['heartrate'])
   })
 
-  it('skips a kind an earlier pick in the same batch just claimed', () => {
+  /**
+   * The skip has to survive the batch advancing, not just fire on its first file. Renamed from
+   * "an earlier pick in the same batch just claimed" in F29: with `MAX_IMAGES === 3` kinds and 3
+   * slots a pick can never collide with an *earlier pick* — the indices are distinct and the
+   * default order is a permutation, so only an existing tile can hold the preferred kind. The old
+   * title described a case the arithmetic makes unreachable; what it actually proved, and still
+   * proves, is that `usedKinds` is consulted on every file rather than only on the first.
+   */
+  it('keeps skipping as the batch advances', () => {
     // One tile up, so the batch starts at index 1: 'splits' is free and taken as-is, then index 2
-    // wants 'heartrate' — held by the existing tile — and falls through to the only kind left.
-    const plan = planPicked(holders('heartrate'), [file('a.jpg'), file('b.jpg')])
-    expect(plan.accepted.map((a) => a.kind)).toEqual(['splits', 'summary'])
+    // wants 'summary' — held by the existing tile — and falls through to the only kind left.
+    const plan = planPicked(holders('summary'), [file('a.jpg'), file('b.jpg')])
+    expect(plan.accepted.map((a) => a.kind)).toEqual(['splits', 'heartrate'])
   })
 
   /**
@@ -146,6 +167,19 @@ describe('planPicked — kind defaults', () => {
    */
   it('has exactly as many kinds as slots', () => {
     expect(MAX_IMAGES).toBe(SCREEN_KINDS.length)
+  })
+
+  /**
+   * And since F29 the default order is its own literal rather than an alias of `SCREEN_KINDS`, the
+   * length equality above is no longer enough on its own: the fallback search scans
+   * `DEFAULT_KIND_BY_INDEX`, so it is total only if that array is a *permutation* of the canonical
+   * kinds, not merely three entries long. A mistyped or duplicated kind fails here rather than as a
+   * pick silently reusing a kind another tile holds.
+   */
+  it('defaults through a permutation of every kind, exactly once each', () => {
+    expect(DEFAULT_KIND_BY_INDEX).toHaveLength(MAX_IMAGES)
+    expect(new Set(DEFAULT_KIND_BY_INDEX).size).toBe(DEFAULT_KIND_BY_INDEX.length)
+    expect([...DEFAULT_KIND_BY_INDEX].sort()).toEqual([...SCREEN_KINDS].sort())
   })
 })
 
