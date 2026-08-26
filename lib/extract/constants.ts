@@ -43,7 +43,11 @@ export const SCREEN_KIND_LABEL: Record<ScreenKind, string> = {
  * `ScreenKind` while the tuple stays literal — a widened annotation would let a mistyped
  * permutation past the invariant test that pins this against `SCREEN_KINDS`.
  */
-export const DEFAULT_KIND_BY_INDEX = ['heartrate', 'splits', 'summary'] as const satisfies readonly ScreenKind[]
+export const DEFAULT_KIND_BY_INDEX = [
+  'heartrate',
+  'splits',
+  'summary',
+] as const satisfies readonly ScreenKind[]
 
 export const MAX_IMAGES = 3
 export const MIN_IMAGES = 1
