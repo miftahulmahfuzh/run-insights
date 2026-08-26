@@ -1,4 +1,4 @@
-import { DEFAULT_KIND_BY_INDEX, MAX_IMAGES, SCREEN_KINDS, type ScreenKind } from './constants'
+import { DEFAULT_KIND_BY_INDEX, MAX_IMAGES, type ScreenKind } from './constants'
 import { rejectionReason } from './rejectionReason'
 
 /**
@@ -77,13 +77,20 @@ export function planPicked(existing: readonly KindHolder[], picked: readonly Fil
       continue
     }
 
-    // Default by pick order (1st Summary, 2nd Splits, 3rd Heart Rate — the order the screens
-    // appear in the Fitness app), skipping any kind a tile already claims so two tiles never
-    // start out fighting over one screen. `MAX_IMAGES === SCREEN_KINDS.length` is what guarantees
-    // the search below always finds one; the test asserts that equality directly.
-    const preferred = DEFAULT_KIND_BY_INDEX[existing.length + accepted.length] ?? SCREEN_KINDS[0]
+    // Default by pick order (1st Heart rate, 2nd Splits, 3rd Summary — the order the device hands
+    // the files over in, F29), skipping any kind a tile already claims so two tiles never start
+    // out fighting over one screen.
+    //
+    // The fallback search reads `DEFAULT_KIND_BY_INDEX` and not `SCREEN_KINDS`, which was the same
+    // array until F29 and is not any more: scanning the canonical list would make a pick that
+    // cannot have its preferred kind fall back to the *Fitness app's* order, the one F29 removed.
+    // Two facts make the search total — `MAX_IMAGES === DEFAULT_KIND_BY_INDEX.length`, and the
+    // array being a permutation of `SCREEN_KINDS` rather than merely the right length. The test
+    // asserts both directly.
+    const preferred =
+      DEFAULT_KIND_BY_INDEX[existing.length + accepted.length] ?? DEFAULT_KIND_BY_INDEX[0]
     const kind = usedKinds.has(preferred)
-      ? (SCREEN_KINDS.find((k) => !usedKinds.has(k)) ?? preferred)
+      ? (DEFAULT_KIND_BY_INDEX.find((k) => !usedKinds.has(k)) ?? preferred)
       : preferred
     usedKinds.add(kind)
 

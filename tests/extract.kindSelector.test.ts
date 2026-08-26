@@ -6,9 +6,9 @@ import { readRepoCode } from './support/importGraph'
  * **The dimming must not creep back, and the race fix must not be undone.** Card #3 / F16.
  *
  * The upload page showed three screenshots and a Summary / Splits / Heart rate toggle under each.
- * A heart-rate screenshot arrived labelled Summary — the defaults come from pick order, which is
- * the Fitness app's order, not the order the OS photo picker hands files over in — and it could
- * not be corrected. `KindSelector` rendered every kind another tile held as `disabled` at 35%
+ * A heart-rate screenshot arrived labelled Summary — the defaults came from pick order, which was
+ * then the Fitness app's order, not the order the OS photo picker hands files over in (F29 has
+ * since pointed the default at the device's own order) — and it could not be corrected. `KindSelector` rendered every kind another tile held as `disabled` at 35%
  * opacity, and since there are exactly as many kinds as slots, a full three-screen upload meant
  * every non-selected button in every tile was dead.
  *
