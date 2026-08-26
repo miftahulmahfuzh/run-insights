@@ -7,6 +7,7 @@ import {
   emptyExtractedSession,
   fieldIsReachable,
   makeExtractedSessionSchema,
+  normalizeClockTime,
   RawExtractedSession,
   sectionForField,
   type ScreenKind,
@@ -203,5 +204,100 @@ describe('emptyExtractedSession', () => {
       partial: false,
     })
     expect(emptyExtractedSession().splits).toEqual([])
+  })
+})
+
+/**
+ * F30 — the two most-corrected fields in the application.
+ *
+ * The card that opened this said `startTime`/`endTime` were "always null". Measured across 19
+ * production extractions they were null **zero** times and non-`HH:MM` **34 of 38 times**; the
+ * blank the runner saw came from a native `<input type="time">` refusing to display Apple's
+ * on-screen shape. Every string in the first table below is one the reader really returned.
+ */
+describe('F30: clock-time normalisation', () => {
+  const PRODUCTION_SHAPES: ReadonlyArray<readonly [string, string | null, string]> = [
+    // ── Real reader output, with the correction a human actually typed ──────────────────────
+    ['5.25AM', '05:25', 'dot separator, meridiem jammed against the minutes'],
+    ['6.08AM', '06:08', 'dot separator, no space before AM'],
+    ['6.09 AM', '06:09', 'dot separator, spaced AM'],
+    ['5.57 AM', '05:57', 'dot separator, spaced AM'],
+    ['6.00AM', '06:00', 'on the hour'],
+    ['5:10PM', '17:10', 'colon separator, PM — the shift that matters'],
+    ['6:27PM', '18:27', 'colon separator, PM'],
+    ['07:07', '07:07', 'already the requested shape; passes through untouched'],
+    // ── Meridiem dropped by the reader: unrecoverable, so refused rather than guessed ───────
+    ['5:37', null, 'bare one-digit hour — could be 05:37 or 17:37'],
+    ['5:32', null, 'the measured trap: this run was 5.32 PM, i.e. 17:32'],
+    ['6.09', null, 'bare, dot separator'],
+    ['5:18', null, 'bare'],
+
+    // ── Meridiem edge cases the 12-hour clock gets wrong if you add 12 blindly ──────────────
+    ['12.15 AM', '00:15', 'midnight hour is 00, not 12'],
+    ['12.30 PM', '12:30', 'noon hour stays 12, it does not become 24'],
+    ['12:00AM', '00:00', 'midnight exactly'],
+
+    // ── Tolerances worth having, since the reader is not consistent run to run ──────────────
+    ['  7:45 pm  ', '19:45', 'surrounding whitespace and lower case'],
+    ['5.32 P.M.', '17:32', 'dotted meridiem'],
+    ['17:32', '17:32', 'a two-digit 24-hour value is the contract, not a guess'],
+    ['23:59', '23:59', 'end of day'],
+    ['00:00', '00:00', 'start of day'],
+
+    // ── Refusals ───────────────────────────────────────────────────────────────────────────
+    ['', null, 'empty string'],
+    ['24:00', null, 'no such hour'],
+    ['12:60', null, 'no such minute'],
+    ['13:15 PM', null, 'a 13 with a meridiem is incoherent, not a 25th hour'],
+    ['0:30 PM', null, 'there is no 0 on a 12-hour clock'],
+    ['5:3', null, 'one minute digit — a truncated read, not a time'],
+    ['Thu, 20 Aug', null, 'a date label landing in the wrong field'],
+    ['7', null, 'an hour with no minutes'],
+  ]
+
+  it.each(PRODUCTION_SHAPES)('normalises %j to %j (%s)', (input, expected) => {
+    expect(normalizeClockTime(input)).toBe(expected)
+  })
+
+  it('passes null and undefined through as null', () => {
+    expect(normalizeClockTime(null)).toBe(null)
+    expect(normalizeClockTime(undefined)).toBe(null)
+  })
+
+  it('never returns a shape the review form would blank out', () => {
+    // `clockTime` in lib/review/schema.ts, and the native <input type="time">, accept exactly
+    // this. Anything else renders as an empty control, which is the whole bug.
+    const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+    for (const [input] of PRODUCTION_SHAPES) {
+      const out = normalizeClockTime(input)
+      if (out !== null) expect(out).toMatch(HHMM)
+    }
+  })
+
+  it('applies the transform through the schema, on both fields, on every screen set', () => {
+    const parsed = schemaFor('summary').safeParse({
+      ...emptyExtractedSession(),
+      startTime: '5.32 PM',
+      endTime: '6.46 PM',
+    })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.startTime).toBe('17:32')
+    expect(parsed.data.endTime).toBe('18:46')
+  })
+
+  it('still defaults a missing key to null rather than throwing', () => {
+    const parsed = schemaFor('summary').safeParse({})
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.startTime).toBe(null)
+    expect(parsed.data.endTime).toBe(null)
+  })
+
+  it('leaves the fixture’s already-correct times exactly as they are', () => {
+    // The 108/108 fixture is the one thing this change must not move.
+    const parsed = schemaFor('summary', 'splits', 'heartrate').parse(TRUTH)
+    expect(parsed.startTime).toBe('07:07')
+    expect(parsed.endTime).toBe('08:26')
   })
 })

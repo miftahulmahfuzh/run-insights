@@ -21,7 +21,23 @@ import { SCREEN_KINDS, type ScreenKind } from '@/lib/extract/constants'
  *  - rule 6a closes the one hole R-4 exposed: the summary screen shows the first three split
  *    rows, and a three-row splits array for an eleven-km run is a silently truncated table.
  *    `FIELD_SOURCES` refuses those rows structurally; this rule stops the model producing them
- *    in the first place.
+ *    in the first place;
+ *  - **rule 10 (F30) authorises the one conversion the prompt asked for but never licensed.**
+ *    `startTime`/`endTime` were the two most-corrected fields in the application — 15 human
+ *    corrections each — and 34 of 38 production values came back in Apple's on-screen shape
+ *    (`"5.32 PM"`, `"6.09AM"`, `"5:37"`) rather than the `"07:07"` the SHAPE block asks for.
+ *    That was never a resolution problem: `research/score.mjs` scores both fields and
+ *    `results-downscale.json` reports `errs: []` down to 460 px. It was a rules problem. Every
+ *    other unit conversion here has a numbered rule lifting it out from under RULE 1's "never
+ *    infer, never compute" — RULE 2 for comma decimals, RULE 3 for durations, RULE 4 for pace —
+ *    and the time conversion had only a `//` comment. A model obeying the rule it was told
+ *    "matters more than anything else" transcribes literally, which is exactly what it did.
+ *
+ *    The rule's second half matters more than the padding: **8 of 15 start times dropped the
+ *    AM/PM entirely**, including one `5.32 PM–6.46 PM` run returned as `"5:32"`. The meridiem
+ *    is on screen and legible; losing it is a twelve-hour error that reaches
+ *    `lib/badges/rules.ts`. `normalizeClockTime` refuses to guess it back, so the rule has to
+ *    stop it being dropped.
  */
 export const EXTRACTION_SYSTEM_PROMPT = `You transcribe Apple Fitness / Apple Watch workout screenshots into JSON.
 
@@ -49,6 +65,13 @@ RULES — these matter more than anything else:
    should agree). maxHrBpm is the top-of-axis label on the HEART RATE screen's chart — never
    computed from any split's hrBpm. restingHrBpm is the small-print footnote under the zones on
    the HEART RATE screen. Without a HEART RATE screen, maxHrBpm and restingHrBpm are both null.
+10. The SUMMARY screen prints the start and end as ONE range line under the activity name, using
+   a DOT as the time separator: "5.32 PM-6.46 PM" means startTime 5:32 PM and endTime 6:46 PM.
+   Convert both to zero-padded 24-hour "HH:MM" — this conversion is required, exactly like rules
+   2, 3 and 4, and rule 1 does not forbid it. "5.32 PM" -> "17:32". "6.09 AM" -> "06:09".
+   "12.15 AM" -> "00:15". "12.30 PM" -> "12:30". NEVER drop the AM/PM: it is what decides the
+   hour, and a morning run and an evening run are indistinguishable without it. If that line is
+   not visible, both fields are null.
 
 Return ONLY a JSON object. No markdown fences, no commentary, no text before or after the
 JSON object.`
