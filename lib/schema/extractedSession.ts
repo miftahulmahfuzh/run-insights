@@ -29,6 +29,94 @@ const bpm = z.number().int().min(40).max(230).nullable()
 const nonNegInt = z.number().int().nonnegative().nullable()
 
 /**
+ * Apple's own rendering of the start/end range, as the reader actually transcribes it.
+ *
+ * The SUMMARY screen draws one line — `5.32 PM–6.46 PM` — using a **dot** as the time separator,
+ * which is the same locale convention that makes RULE 2 necessary for `10,67KM`. The model
+ * transcribes that literally and returns strings like `"5.32 PM"`, `"6.09AM"`, `"5:10PM"` or a
+ * bare `"5:37"`, none of which are the `HH:MM` the review form can display. Hence a tolerant
+ * matcher: 1–2 hour digits, `.` or `:`, two minute digits, an optional meridiem that may or may
+ * not be spaced and may or may not carry dots (`5.32 P.M.`).
+ */
+const CLOCK_TRANSCRIPTION_RE = /^\s*(\d{1,2})\s*[.:]\s*(\d{2})\s*(?:([ap])\s*\.?\s*m\s*\.?)?\s*$/i
+
+/**
+ * Coerce whatever the reader transcribed into the zero-padded 24-hour `HH:MM` that
+ * `lib/review/schema.ts`'s `clockTime` requires — or `null` when it genuinely cannot be known.
+ *
+ * **This exists because the value was never missing, only misshapen.** F30 measured 19 production
+ * extractions: `startTime`/`endTime` came back `null` **zero** times and non-`HH:MM` **34 times
+ * out of 38**, and they are the two most-corrected fields in the application — 15 human
+ * corrections each, every one preserving the digits and changing only the format. The reader is
+ * accurate; nothing downstream was willing to accept its output. `ClockInput` is a native
+ * `<input type="time">`, and a browser silently blanks any value that is not valid `HH:MM`, so a
+ * perfectly-read `"5.32 PM"` rendered as an empty box and was reported as "always null".
+ *
+ * ── WHY A BARE ONE-DIGIT HOUR RETURNS null RATHER THAN ZERO-PADDING ─────────────────────────
+ * Of 15 production start times, **8 carried no meridiem at all**. Seven were morning runs, where
+ * padding to `05:37` would have been right. The eighth was `"5:32"`, corrected by hand to
+ * `"17:32"` — and its screenshot reads `5.32 PM–6.46 PM` in plain legible type at the shipped
+ * 560 px. The `PM` was on screen and the reader dropped it. So a bare hour is not "24-hour with a
+ * missing pad", it is **a transcription with information already lost**, and production says
+ * assuming AM is wrong 1 time in 8.
+ *
+ * Padding anyway would fill 14 of those 15 fields, which is the tempting trade and still the
+ * wrong one: today an ambiguous time already renders blank and the human types the right value,
+ * so padding would replace *a blank that gets corrected* with *a plausible value that gets
+ * accepted*. That is a regression, not a fix — a review screen catches an empty field and is
+ * blind to a filled one that looks right. It matters beyond display: `lib/badges/rules.ts` reads
+ * `runs.started_at` for the time-of-day rules, so a twelve-hour error mints a wrong badge rather
+ * than merely showing an odd time. Same reasoning as RULE 1, and as `ExtractedSplit` refusing to
+ * default a missing `hrBpm`.
+ *
+ * A **two-digit** hour is a different case and is accepted as-is. `"07:07"` is precisely the shape
+ * `EXTRACTION_SHAPE` asks for, so reading it as 24-hour is the contract rather than a guess — and
+ * Apple never draws a leading zero on this line, so a padded hour can only have come from the
+ * model following the instruction.
+ *
+ * Nothing is destroyed in the `null` branch: the reader's raw text is kept verbatim in
+ * `extractions.raw_response.vendor`.
+ */
+export function normalizeClockTime(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+
+  const match = CLOCK_TRANSCRIPTION_RE.exec(value)
+  if (!match) return null
+
+  // Groups 1 and 2 are non-optional in the pattern, but `noUncheckedIndexedAccess` types them as
+  // possibly-undefined and a cast here would be the one place this function tells a lie.
+  const hourDigits = match[1]
+  const minuteDigits = match[2]
+  if (hourDigits === undefined || minuteDigits === undefined) return null
+
+  const minute = Number(minuteDigits)
+  if (minute > 59) return null
+
+  let hour = Number(hourDigits)
+  const meridiem = match[3]?.toLowerCase()
+
+  if (meridiem) {
+    // 12-hour clock: 12 AM is 00, 12 PM is 12, everything else shifts by 12 in the afternoon.
+    if (hour < 1 || hour > 12) return null
+    if (meridiem === 'a') hour = hour === 12 ? 0 : hour
+    else hour = hour === 12 ? 12 : hour + 12
+  } else {
+    if (hour > 23) return null
+    // Ambiguous: one digit, no meridiem, and an hour that could be either half of the day.
+    if (hourDigits.length === 1 && hour >= 1 && hour <= 11) return null
+  }
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+/**
+ * `startTime` / `endTime` as they leave the schema: always `HH:MM` or `null`, never Apple's
+ * on-screen shape. Applied here rather than at a call site so the primary parse, the repair
+ * round-trip and `hydrateDraftFromExtraction` cannot disagree about it.
+ */
+const transcribedClockTime = z.string().nullable().default(null).transform(normalizeClockTime)
+
+/**
  * One row of the splits table.
  *
  * Every field is REQUIRED (nullable where Apple can legitimately leave the cell empty) and none
@@ -73,8 +161,8 @@ export const RawExtractedSession = z.object({
   activityType: z.string().nullable().default(null),
   goal: z.string().nullable().default(null),
   dateLabel: z.string().nullable().default(null),
-  startTime: z.string().nullable().default(null),
-  endTime: z.string().nullable().default(null),
+  startTime: transcribedClockTime,
+  endTime: transcribedClockTime,
   location: z.string().nullable().default(null),
   durationSec: z.number().int().positive().nullable().default(null),
   distanceKm: z.number().positive().nullable().default(null),
