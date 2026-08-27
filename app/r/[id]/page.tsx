@@ -59,6 +59,23 @@ import { shareUrl } from '@/lib/share/origin'
  * whatever its review state. The reviewed-data invariant (D16) governs rollups, records and badges —
  * "show me this row" is a different question, and `ProvenanceMark` is what answers it honestly.
  */
+/**
+ * **For the Server Action, not for this render.** The page itself is two indexed reads and is
+ * done in milliseconds. `InsightTrigger` then calls `ensureRunInsight` from a client effect, and
+ * a Server Action's timeout is the *page segment's* — Next's `maxDuration` reference: "If using
+ * Server Actions, set the `maxDuration` at the page level to change the default timeout of all
+ * Server Actions used on the page."
+ *
+ * `BUDGET.session.overall` in `lib/llm/narrate.ts` is 45 s, and the measured call is ~17 s. Both
+ * are above the platform default, so without this the action is killed mid-call and the runner
+ * gets R-17's "unavailable" for a model that was answering correctly (F31).
+ *
+ * A LITERAL `60` for the reason `app/api/extract/route.ts` spells out at length: segment config
+ * exports are statically analysed at build time and an imported constant is not a value the
+ * analyser can see.
+ */
+export const maxDuration = 60
+
 export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
   const userId = await requireUserId()
   const { id } = await params

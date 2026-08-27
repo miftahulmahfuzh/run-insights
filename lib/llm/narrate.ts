@@ -132,10 +132,31 @@ function baseBody(
   messages: Anthropic.MessageParam[],
 ): Anthropic.MessageCreateParamsNonStreaming {
   /*
-   * The allowed request surface is `model · max_tokens · system · messages · tools · tool_choice`
-   * and nothing else — no `thinking`, no `strict: true`, no `cache_control`, no `temperature`.
-   * This endpoint is Anthropic-*compatible*, not Anthropic, and every field beyond that set is a
-   * field z.ai may accept, ignore, or 400 on depending on the day.
+   * The allowed request surface is `model · max_tokens · system · messages · tools ·
+   * tool_choice · thinking` and nothing else — no `strict: true`, no `cache_control`, no
+   * `temperature`. This endpoint is Anthropic-*compatible*, not Anthropic, and every field
+   * beyond that set is a field z.ai may accept, ignore, or 400 on depending on the day.
+   *
+   * **`thinking` used to be on the forbidden side of that line, and the omission took the
+   * feature down.** On 2026-08-26 `glm-5.3` began emitting an extended `thinking` block by
+   * default; it eats the entire `max_tokens` ceiling before any `tool_use` block is produced,
+   * so `findReportBlock` finds nothing and every scope returns `unavailable`. The whole
+   * `insights` table stopped growing for 31 hours and nothing recorded why, because a failure
+   * here persists nothing.
+   *
+   * MEASURED against real prod facts, 2026-08-27, both a 27 Aug and a 25 Aug run:
+   *
+   *     thinking on,  1200 tokens →  18-38 s, stop_reason `max_tokens`, content ["thinking"]
+   *     thinking on,  4000 tokens →  65-73 s, stop_reason `max_tokens`, content ["thinking"]
+   *     thinking DISABLED         →     17 s, stop_reason `tool_use`,   content ["tool_use"]
+   *
+   * Raising the ceiling is not the fix — 4000 tokens buys 4000 tokens of thinking and still no
+   * answer. The 633 output tokens the working variant returns sit right where the 1200 ceiling
+   * was sized to sit, so the ceiling was never wrong either.
+   *
+   * `lib/llm/vision.ts` has sent this same field to the sibling z.ai endpoint since F04, marked
+   * "MEASURED … Never remove". F07 never got the treatment. Now both clients agree, and
+   * `tests/llm.narrate.test.ts` guards it the way `vision.test.ts` guards the other one.
    */
   return {
     model,
@@ -144,6 +165,7 @@ function baseBody(
     messages,
     tools: [REPORT_TOOL],
     tool_choice: { type: 'tool', name: REPORT_TOOL.name },
+    thinking: { type: 'disabled' },
   }
 }
 
@@ -340,9 +362,15 @@ function payloadToStore(
  * narrative a runner has already read never changes under them.
  *
  * ── ON FAILURE, NOTHING IS PERSISTED ──────────────────────────────────────────────────────────
- * No row, no marker, no negative cache. The next natural view of the page — or tonight's cron —
- * retries for free, because nothing recorded that the last attempt failed. That is the correct
- * trade for a feature whose failure state is "the numbers render without prose".
+ * No row, no marker, no negative cache. The next natural view of the page retries for free,
+ * because nothing recorded that the last attempt failed. That is the correct trade for a feature
+ * whose failure state is "the numbers render without prose".
+ *
+ * **A page view is the only retry a SESSION insight gets.** `/api/cron/rollup` iterates `week`
+ * and `month` and nothing else, so tonight's cron will not backfill a run whose narrative
+ * failed — this comment claimed otherwise until F31 and the claim was simply wrong. Week and
+ * month do get the cron as a second chance. Giving sessions one is a feature with its own
+ * budget and ordering questions inside that 60 s function, not a comment fix.
  *
  * ── DO NOT AWAIT THIS FROM A PAGE'S OWN RENDER PATH ───────────────────────────────────────────
  * On a miss this takes 10–35 s. §7.2: the run detail page ships its metrics immediately and the

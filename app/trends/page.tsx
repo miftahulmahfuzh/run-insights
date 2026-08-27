@@ -68,6 +68,18 @@ import { computeAcwr, computeMonthMetrics, computeWeekMetrics, type ZoneRow } fr
  * Reviewed-only throughout (D16): the query itself filters `reviewed_at IS NOT NULL`, so no rollup,
  * chart or delta on this screen can be computed from a number no human has confirmed.
  */
+/**
+ * The week/month counterpart of the export on `app/r/[id]/page.tsx` — see there for the full
+ * reasoning. `InsightTrigger` fires `ensureWeekInsight` / `ensureMonthInsight` from a client
+ * effect, and a Server Action inherits its page segment's timeout, so the 50 s
+ * `BUDGET.week.overall` needs this to survive (F31).
+ *
+ * Period scope usually hits the cache — `/api/cron/rollup` warms it nightly — but a cache MISS is
+ * exactly the case that needs the budget, and it is the case a runner hits by opening `/trends`
+ * on a week the cron has not reached yet.
+ */
+export const maxDuration = 60
+
 export default async function TrendsPage({ searchParams }: PageProps<'/trends'>) {
   const userId = await requireUserId()
   const { scope: rawScope, key: rawKey } = await searchParams

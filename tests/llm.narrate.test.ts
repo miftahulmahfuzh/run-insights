@@ -102,11 +102,45 @@ describe('narrateWith', () => {
       'messages',
       'model',
       'system',
+      'thinking',
       'tool_choice',
       'tools',
     ])
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'report' })
     expect(body.max_tokens).toBe(1_200)
+  })
+
+  it('always sends thinking: disabled — the field whose absence took F07 down', async () => {
+    const { client, calls } = fakeClient([message(VALID)])
+    await narrateWith(client, 'session', FACTS, { model: 'glm-5.3' })
+
+    /*
+     * MEASURED 2026-08-27 against real prod facts: with thinking ON, `glm-5.3` spends the whole
+     * ceiling on a `thinking` block and returns `stop_reason: max_tokens` with no `tool_use` at
+     * all — at 1200 tokens AND at 4000. Every scope returned `unavailable` for 31 hours and the
+     * `insights` table stopped growing. With it disabled the same call answers in 17 s.
+     *
+     * So this is not a latency optimisation like its counterpart in `vision.test.ts` — it is the
+     * difference between this feature working and this feature being silently dead. If this
+     * assertion ever fails, the narrative is about to stop generating in production.
+     */
+    expect(calls[0]!.body.thinking).toEqual({ type: 'disabled' })
+  })
+
+  it('sends thinking: disabled at every scope, not just a session', async () => {
+    for (const scope of ['session', 'week', 'month'] as const) {
+      const { client, calls } = fakeClient([message(VALID)])
+      await narrateWith(client, scope, FACTS, { model: 'glm-5.3' })
+      expect(calls[0]!.body.thinking).toEqual({ type: 'disabled' })
+    }
+  })
+
+  it('sends thinking: disabled on the REPAIR call too — it is the one with less budget', async () => {
+    const { client, calls } = fakeClient([message(MISSING_TITLES), message(VALID)])
+    await narrateWith(client, 'session', FACTS, { model: 'glm-5.3' })
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.body.thinking).toEqual({ type: 'disabled' })
   })
 
   it('never sends promptVersion — it is a cache key, not a fact about the run', async () => {
