@@ -4,9 +4,14 @@ import type { RecordDefinition, RecordKey } from './types'
  * Roadmap §4.5, as data. **This list is the contract** — F08 renders exactly these keys and F09's
  * `long_way_home` badge fires off `longest_distance` moving.
  *
- * Every key names a **minimum qualifying distance**, because "fastest pace" over 400 m is not a
- * record, it is a sprint to the corner. A run that fails a qualifier is excluded from that key
- * alone and still competes for every other one.
+ * Where a key measures a **rate**, it names a **minimum qualifying distance**, because "fastest
+ * pace" over 400 m is not a record, it is a sprint to the corner. A run that fails a qualifier is
+ * excluded from that key alone and still competes for every other one. Keys that measure a
+ * magnitude or a moment — the six originals, and F32's `earliest_start` — have no floor: there is
+ * nothing about a short run that makes its distance, its energy or its start time less true.
+ *
+ * **Append-only.** This order is the order the shelf reads in (`RECORD_KEYS`), so a new key goes
+ * at the bottom and the existing rows do not move under a returning runner.
  */
 export const RECORD_CATALOG: readonly RecordDefinition[] = [
   {
@@ -96,6 +101,30 @@ export const RECORD_CATALOG: readonly RecordDefinition[] = [
     direction: 'min',
     qualifies: (c) => c.distanceM >= 5000 && c.decouplingBp != null,
     valueOf: (c) => c.decouplingBp,
+  },
+
+  /**
+   * F32, card #44 — the eleventh key, and the only one that measures **when** rather than what.
+   * Seconds past midnight, smallest wins: the earliest the runner has ever set off.
+   *
+   * **A plain minimum, so a 00:15 start beats a 04:30 one.** Midnight is where this app's day
+   * begins and nowhere else: `runs.started_at` is a Postgres `time` carrying no date, and
+   * `lib/badges/rules.ts` orders it by lexical string compare from `'00:00:00'` on purpose. A
+   * window like `early_bird`'s 05:00–05:30 would read more kindly on a very odd run, and would be
+   * a threshold nobody asked for — R-42's objection, one layer up. F32 §1b holds the argument and
+   * names the one line to change if that call is ever revisited.
+   *
+   * **No distance qualifier, deliberately.** §4.5 floors exactly the four keys that measure a
+   * *rate*; a start time is not a rate, and the three badges that already read this column
+   * (`early_bird`, `late_start`, `dawn_patrol`) all ignore distance for the same reason. Getting
+   * up at 04:10 is the same act of will whether what follows is 2 km or 12.
+   */
+  {
+    key: 'earliest_start',
+    unit: 'clock',
+    direction: 'min',
+    qualifies: (c) => c.startedAtSec != null,
+    valueOf: (c) => c.startedAtSec,
   },
 ]
 

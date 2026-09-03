@@ -5,6 +5,7 @@ import {
   formatBpm,
   formatCadence,
   formatClock,
+  formatClockSec,
   formatDay,
   formatDayCompact,
   formatDayShort,
@@ -145,6 +146,35 @@ describe('formatClock', () => {
   it('narrows the time column back to what the screenshot printed', () => {
     expect(formatClock('07:07:00')).toBe('07:07')
     expect(formatClock(null)).toBe(MISSING)
+  })
+})
+
+describe('formatClockSec — the same clock, reached from the integer side (F32)', () => {
+  it('prints the record value as a wall clock', () => {
+    // The canonical run starts at 07:07, which `earliest_start` stores as 25620.
+    expect(formatClockSec(25_620)).toBe('07:07')
+    expect(formatClockSec(0)).toBe('00:00')
+    expect(formatClockSec(86_399)).toBe('23:59')
+  })
+
+  it('is NOT formatDuration — the same integer means two different things', () => {
+    // The whole reason `clock` is its own unit. 25620 seconds of running is 7:07:00; a run that
+    // started at 25620 seconds past midnight began at 07:07. One number, two sentences.
+    expect(formatDuration(25_620)).toBe('7:07:00')
+    expect(formatClockSec(25_620)).toBe('07:07')
+  })
+
+  it('drops the seconds rather than rounding up into the next minute', () => {
+    expect(formatClockSec(25_679)).toBe('07:07')
+  })
+
+  it('refuses a value that is not a time of day, instead of wrapping it', () => {
+    // 86400 is midnight tomorrow, which this column cannot mean. Printing '00:00' would hide a
+    // bug upstream behind a plausible answer, which is the one thing MISSING exists to prevent.
+    expect(formatClockSec(86_400)).toBe(MISSING)
+    expect(formatClockSec(-1)).toBe(MISSING)
+    expect(formatClockSec(null)).toBe(MISSING)
+    expect(formatClockSec(Number.NaN)).toBe(MISSING)
   })
 })
 

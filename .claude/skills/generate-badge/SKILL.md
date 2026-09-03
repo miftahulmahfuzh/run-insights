@@ -23,7 +23,7 @@ command below without the flag means what it always meant.
 written down.** Adding a third deck is an entry there plus `python3 tools/decks.py --write`.
 
 **Both decks share one anchor and one style block**, on purpose — they are one bolt of cloth cut
-thirty-two times. Check 9b measures tone drift against that single anchor, which is the only
+thirty-three times. Check 9b measures tone drift against that single anchor, which is the only
 thing that can catch the two decks drifting apart from each other.
 
 **Never append anything to the style block for a deck.** A deck's silhouette and every other

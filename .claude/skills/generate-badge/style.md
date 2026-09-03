@@ -10,7 +10,7 @@ drift from the prompt that is documented.
 suspected.
 
 **Two decks read this file, and they share the style block exactly.** F09's 22 badges and F25's 10
-personal-record patches are one bolt of cloth cut thirty-two times — same substrate, same merrowed
+personal-record patches are one bolt of cloth cut thirty-three times — same substrate, same merrowed
 border, same five threads, same signature thread — so there is exactly one style block, both decks
 are sent it verbatim, and both stamp `v2`. **The scene list is the only per-deck text in this
 file**, and that is a measured constraint rather than a tidy preference: see *"appending ANYTHING
@@ -445,10 +445,11 @@ assigned.*
 - highest_cadence: A single spinning top at full speed, standing dead upright on its point, with one blurred ring of motion drawn around its widest part. SHAPE: pentagon. SIGNATURE THREAD: the steel tip the top is spinning on.
 - highest_max_hr: A single heavy hanging bell caught in mid-strike, seen from the side, its clapper swung hard over and touching the inside of the bell's lip. SHAPE: pentagon. SIGNATURE THREAD: the clapper.
 - best_paced_run: A single plumb bob hanging dead still and perfectly vertical on its line, the line running straight up to a small fixed hook above it. SHAPE: pentagon. SIGNATURE THREAD: the sharp point at the bottom of the bob.
+- earliest_start: A single stovetop moka coffee pot standing alone, seen from the side, its faceted octagonal body stepping in sharply at the waist, its one curved handle and its short spout in clear profile, its lid closed and its body left entirely bare of any mark or medallion. SHAPE: pentagon. SIGNATURE THREAD: the small round knob on top of the lid.
 <!-- /SCENES:records -->
 ```
 
-Shape distribution: **pentagon** × 10. Uniform, unlike the badge deck's four — the shape is what
+Shape distribution: **pentagon** × 11. Uniform, unlike the badge deck's four — the shape is what
 says "this is a record and not a badge", so varying it inside the deck would spend the very
 distinction it was added to make.
 
@@ -518,12 +519,51 @@ should be read together. It also means a genuinely new style contract has to be 
 the whole deck regenerated** — there is no cheap middle path, and F25 spent twelve generations
 proving the middle path does not exist.
 
-### The collision audit, extended to thirty-two patches
+### Measured: 9b's twill tone answers to a LIGHTING sentence, not a colour one
+
+F25 left check 9b — twill tone against the anchor — as "a per-candidate quality matter, resolved by
+the ordinary three-attempt loop", with no known lever. F32 found the lever while generating
+`earliest_start`, across five generations of one scene. Every one of the ten shipped record masters
+sits inside the 6.0 ceiling, so this is not a threshold to widen; it is a sentence to write.
+
+| att | seed | what the `--note` said about the cloth | 9b | 8a / 9a |
+|---|---|---|---|---|
+| a01 | 1970 | nothing | 8.0 FAIL | 2.6% / 0.3% |
+| a02 | 1970 | "deep dark navy, near #1B2A44 … out to every edge" | 9.8 FAIL | 1.4% / 0.8% |
+| a03 | 1971 | "lies in deep shadow, dark and unlit … the raking light falling on the patch alone" | **1.5 PASS** | 8.2% / 25.4% — both FAIL |
+| a04 | 1971 | "deep and evenly dark right across the whole frame" + margin and size | 12.6 FAIL | 0.6% / 0.8% |
+| a05 | 1971 | "lies in deep shadow, unlit and evenly dark … corner to corner" + margin and size | **3.0 PASS** | 1.2% / 1.4% |
+
+**Naming the colour does nothing; naming the shadow does everything.** a02 quoted the hex the style
+block already carries and drifted *further* than the note-free a01. a04 asked for "evenly dark" —
+a brightness word — and produced the worst tone of the five. The two that passed are the two that
+said the cloth **lies in deep shadow, unlit**, which is an instruction about the light rather than
+about the pigment, and this model renders light.
+
+**And the same sentence will wreck the composition if it is allowed to be exclusive.** a03 added
+"with the raking light falling on the patch alone" and got a spotlight: the cloth gradiented dark on
+one side, the patch swelled to 84% of the frame and slid 8.2% off centre. The fix is to keep the
+shadow and drop the exclusivity — say the cloth is unlit *and even*, *corner to corner*, and restate
+the margin and the two-thirds width that the style block asks for on a square frame. That is a05,
+and it passed all ten hard checks.
+
+So the working recipe for a records-deck patch whose first roll drifts on 9b, in one note:
+
+> The navy cloth lies in deep shadow, unlit and evenly dark right across the whole frame, corner to
+> corner, and a generous margin of that same cloth surrounds the patch on every side, the patch
+> sitting square in the middle of the frame and taking up about two thirds of its width.
+
+**The band is not re-derived from eleven.** `SHAPE_WIDTH["pentagon"]` stays at `Band(0.893,
+observed=10)`: a05 measured 1.4% from it, so the distribution has nothing to say that it did not
+already say, and moving a threshold on the strength of one new member is what `check_badge_art.py`'s
+own header forbids.
+
+### The collision audit, extended to thirty-three patches
 
 Done at design time, against the badge deck's audit above rather than only against these ten.
 
 kite-on-a-long-line / burnt-down candle / diving swift / bounding hare / bow at release / squeezed
-bellows / switchbacked peak / spinning top / struck bell / hanging plumb bob.
+bellows / switchbacked peak / spinning top / struck bell / hanging plumb bob / moka coffee pot.
 
 Still true across both decks: **no shoes, no medals, no stopwatches**, and no clock, watch face,
 gauge, scale or numeral anywhere. That last rule is why `longest_duration` is a candle and not an
@@ -542,6 +582,21 @@ collapsed. One is vertical and lit, the other horizontal and going out.
 still, in profile on a rail, neck stretched up into a sun disc; the swift is airborne with its
 wings swept back to a dart. A perched bird and a diving bird are different silhouettes at 40 px,
 which is the test that matters.
+
+**`earliest_start` is a vessel, after `most_kcal`'s bellows, and it is the deck's fourth adjacency.**
+F32 added it, and the two are kept apart the way the deck's two flames are: the bellows is a wide
+horizontal wedge lying along its own handles with a puff leaving its nozzle, the moka pot a tall
+stacked tower standing dead upright with nothing leaving it. **The pot emits nothing on purpose** —
+one curl of steam would have made two "vessel with something coming out of it" patches, which is the
+category the audit watches rather than the object.
+
+The three objects F32 rejected are recorded here because each is the obvious answer and each is
+wrong for a reason that will recur. **A clock or an alarm clock**: the literal picture of "earliest
+time" is the one this deck cannot draw, by the no-dial rule three paragraphs up — it is the same
+reason `longest_duration` is a candle. **A rooster, an owl or a sunrise**: `early_bird` is already a
+rooster crowing into a sun disc, and a second dawn bird is the same patch. **A milk bottle on a
+doorstep**: the right idiom, but a bottle pulls a printed dairy label, and lettering is the single
+likeliest reason this style burns an attempt.
 
 **`best_paced_run` is the closest of the three, and it is a trueness instrument like
 `boring_excellence`'s spirit level.** Both say "steady" without a dial, which is exactly the pair

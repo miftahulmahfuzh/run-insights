@@ -84,5 +84,30 @@ export function toRecordCandidate(run: RecordRunRow): RecordCandidate {
     // an integer for every key (D5).
     decouplingBp:
       metrics.decouplingPct == null ? null : Math.round(Math.abs(metrics.decouplingPct) * 100),
+    // Seconds past midnight, so `earliest_start` compares as the integer `records.value` already
+    // is. The parse happens HERE and not in `catalog.ts`, next to the other two derived fields, so
+    // the catalog stays a table of comparisons over numbers with no string handling in it.
+    startedAtSec: clockToSeconds(run.startedAt),
   }
+}
+
+/**
+ * `'07:07:00'` or `'07:07'` → `25620`. Anything else — including `''` and a half-written time — is
+ * treated as no start time, which excludes the run from `earliest_start` and from nothing else.
+ *
+ * A deliberate second, private tolerance rather than an import of `lib/badges/rules.ts`'s
+ * `startTimeOf`: the two decks share a database column and nothing else, and `lib/records`
+ * depending on `lib/badges` to read one field would couple them for good. The shared floor both
+ * may import is `lib/format.ts`, and the display half of this pair (`formatClockSec`) does live
+ * there, under R-23.
+ */
+function clockToSeconds(value: string | null): number | null {
+  if (!value) return null
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value)
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  const sec = Number(m[3] ?? '0')
+  if (h > 23 || min > 59 || sec > 59) return null
+  return h * 3600 + min * 60 + sec
 }

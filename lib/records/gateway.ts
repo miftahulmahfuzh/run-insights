@@ -38,6 +38,7 @@ export const dbRecordsGateway: RecordsGateway = {
       })),
       recovery: { endHrBpm: run.endHrBpm, hrAt1MinBpm: run.hr1MinPostBpm },
       avgPaceSec: run.avgPaceSec,
+      startedAt: run.startedAt,
       activeKcal: run.activeKcal,
       elevationM: run.elevationM,
       avgCadence: run.avgCadence,

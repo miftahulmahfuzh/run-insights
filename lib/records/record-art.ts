@@ -127,4 +127,11 @@ export const RECORD_ART: Record<RecordKey, RecordArt> = {
     twill: '#111b35',
     styleVersion: 'v2',
   },
+  earliest_start: {
+    src: '/records/earliest_start.4615dddd.webp',
+    small: '/records/earliest_start.4615dddd.sm.webp',
+    sha256: '4615dddda7fa925bd0c76bbd9e17e8dea737603719e76507b6b7bea956505f39',
+    twill: '#0f182a',
+    styleVersion: 'v2',
+  },
 }

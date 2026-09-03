@@ -6,7 +6,7 @@ import { runA, runB, runC } from './fixtures/recordCandidates'
 
 /**
  * The catalog is roadmap §4.5 encoded as data, so these tests read the roadmap's table back out of
- * the code: ten keys, each with a unit, a direction, and a qualifier that excludes something.
+ * the code: eleven keys, each with a unit, a direction, and a qualifier that excludes something.
  */
 
 const A = toRecordCandidate(runA)
@@ -14,7 +14,7 @@ const B = toRecordCandidate(runB)
 const C = toRecordCandidate(runC)
 
 describe('the catalog is the §4.5 table', () => {
-  it('has exactly the ten keys, in roadmap order', () => {
+  it('has exactly the eleven keys, in roadmap order', () => {
     expect(RECORD_KEYS).toEqual([
       'longest_distance',
       'longest_duration',
@@ -26,6 +26,7 @@ describe('the catalog is the §4.5 table', () => {
       'highest_cadence',
       'highest_max_hr',
       'best_paced_run',
+      'earliest_start',
     ])
   })
 
@@ -42,6 +43,7 @@ describe('the catalog is the §4.5 table', () => {
       highest_cadence: 'spm/max',
       highest_max_hr: 'bpm/max',
       best_paced_run: 'bp/min',
+      earliest_start: 'clock/min',
     })
   })
 
@@ -51,6 +53,15 @@ describe('the catalog is the §4.5 table', () => {
     expect(A.decouplingBp).toBe(1235)
     expect(Number.isInteger(A.decouplingBp)).toBe(true)
     expect(recordDefinition('best_paced_run')!.unit).toBe('bp')
+  })
+
+  it('stores earliest_start as seconds past midnight, so that value is an integer too', () => {
+    // A's start is '07:07:00' — 7*3600 + 7*60. The catalog compares integers and never a clock
+    // string, which is what lets `records.value` stay one column of one type for all eleven keys.
+    expect(A.startedAtSec).toBe(25620)
+    expect(Number.isInteger(A.startedAtSec)).toBe(true)
+    expect(recordDefinition('earliest_start')!.unit).toBe('clock')
+    expect(recordDefinition('earliest_start')!.direction).toBe('min')
   })
 
   it('narrows a key read back out of the database', () => {
@@ -102,6 +113,21 @@ describe('qualifiers exclude, one key at a time', () => {
     ] as const) {
       expect(qualifies(key, C)).toBe(true)
     }
+  })
+
+  it('earliest_start has no distance floor either — a 2 km run is excluded only by its NULL time', () => {
+    // The two halves of the same statement. C is short AND has no start time; give it one and it
+    // qualifies at 2 km, which is the whole argument for leaving this key unfloored: getting up at
+    // 04:10 is the same act of will whatever distance follows it.
+    expect(qualifies('earliest_start', C)).toBe(false)
+    expect(qualifies('earliest_start', { ...C, startedAtSec: 15_000 })).toBe(true)
+  })
+
+  it('midnight is a real start time, not a missing one', () => {
+    // 0 is falsy and this qualifier must not be written as `!!c.startedAtSec`. A run begun at
+    // 00:00:00 is the earliest start there can be, and dropping it would be the silent kind of bug.
+    expect(qualifies('earliest_start', { ...A, startedAtSec: 0 })).toBe(true)
+    expect(recordDefinition('earliest_start')!.valueOf({ ...A, startedAtSec: 0 })).toBe(0)
   })
 
   it('run B (6 km) clears the 5 km floor but not the 10 km one', () => {

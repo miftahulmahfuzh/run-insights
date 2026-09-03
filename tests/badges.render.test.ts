@@ -488,7 +488,7 @@ describe('the open panel is a URL and not component state (F24)', () => {
 })
 
 /**
- * F26's fixture: three of the ten keys, chosen to cover every branch the row and the panel have.
+ * F26's fixture: three of the eleven keys, chosen to cover every branch the row and the panel have.
  *
  * `longest_distance` is a `max` key with **no** predecessor — the first-ever holder, which is the
  * branch that prints no "Beat …" sentence. `fastest_pace_10k` is a `min` key WITH one, and its label

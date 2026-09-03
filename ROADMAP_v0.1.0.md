@@ -326,9 +326,17 @@ because "fastest pace" over 400 m is not a record.
 | `highest_cadence` | `avg_cadence` | spm | `distance_m >= 5000` | max |
 | `highest_max_hr` | `max_hr` | bpm | — | max |
 | `best_paced_run` | `abs(decoupling_pct)` | basis points | `distance_m >= 5000` | min |
+| `earliest_start` | `started_at` | seconds past midnight | `started_at is not null` | min |
 
-`best_paced_run` is stored in **basis points** (`1234` = 12.34%) so `records.value` stays an
-integer for every key.
+`best_paced_run` is stored in **basis points** (`1234` = 12.34%) and `earliest_start` in **seconds
+past midnight** (`25620` = 07:07) so `records.value` stays an integer for every key.
+
+**`earliest_start` (F32) is a plain minimum, and midnight is where the day starts.** A run begun at
+00:15 takes it from one begun at 04:30. `runs.started_at` is a `time` carrying no date and the
+badge rules already order it lexically from `'00:00:00'`; a "sane morning" window like
+`early_bird`'s would be the only place in the app that moved the start of the day. It is the one
+key with no distance qualifier *and* no magnitude — a floor belongs to the four keys that measure a
+rate, and a start time is not a rate.
 
 **Records are recomputed, never incremented.** A correction in review can invalidate a record;
 the only safe implementation is a full recompute over the user's runs. At 17 runs a month this

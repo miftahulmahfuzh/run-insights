@@ -1,6 +1,7 @@
 import {
   formatBpm,
   formatCadence,
+  formatClockSec,
   formatDistanceM,
   formatDuration,
   formatKcal,
@@ -11,7 +12,7 @@ import { recordDefinition } from './catalog'
 import type { RecordKey } from './types'
 
 /**
- * How the ten record keys are *named* and *rendered*. F06 owns what a record IS; F09 owns the shelf
+ * How the eleven record keys are *named* and *rendered*. F06 owns what a record IS; F09 owns the shelf
  * that shows it, and this is the shelf's half — kept next to the catalog rather than inside a
  * component, so `/me` and F11's share page cannot disagree about what `fastest_pace_10k` is called.
  *
@@ -32,6 +33,10 @@ export const RECORD_LABELS: Record<RecordKey, string> = {
   highest_cadence: 'Highest cadence, 5 km+',
   highest_max_hr: 'Highest max heart rate',
   best_paced_run: 'Steadiest run, 5 km+',
+  /* No qualifier to carry, so none is printed: `earliest_start` has no distance floor (F32 §1c).
+     "Earliest start" and not "Earliest run" — the record is the moment the runner set off, and the
+     run itself may have been the shortest one they ever did. */
+  earliest_start: 'Earliest start',
 }
 
 /**
@@ -39,9 +44,13 @@ export const RECORD_LABELS: Record<RecordKey, string> = {
  * `lib/format.ts` (R-23), so the shelf spells `10.67 km` exactly the way the run detail page does.
  *
  * `best_paced_run` is the one key needing arithmetic on the way out: it is stored in **basis
- * points** so that `records.value` can stay an integer for all ten keys (§4.5), and `formatPercent`
- * takes a 0–100 percentage by convention — hence the ÷100. `1235` renders as `12.3%`, the absolute
- * decoupling of the steadiest qualifying run.
+ * points** so that `records.value` can stay an integer for all eleven keys (§4.5), and
+ * `formatPercent` takes a 0–100 percentage by convention — hence the ÷100. `1235` renders as
+ * `12.3%`, the absolute decoupling of the steadiest qualifying run.
+ *
+ * `earliest_start` is the second key stored as something other than what it prints, for the same
+ * integer reason: `25620` seconds past midnight renders as `07:07`. `formatClockSec` does that and
+ * `formatDuration` must never be reached for it — the identical number as a duration is `7:07:00`.
  */
 export function formatRecordValue(key: RecordKey, value: number): string {
   switch (recordDefinition(key)?.unit) {
@@ -59,6 +68,8 @@ export function formatRecordValue(key: RecordKey, value: number): string {
       return formatBpm(value)
     case 'bp':
       return formatPercent(value / 100, 1)
+    case 'clock':
+      return formatClockSec(value)
     default:
       return String(value)
   }
