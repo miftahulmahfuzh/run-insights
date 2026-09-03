@@ -183,6 +183,79 @@ lands first and the tree is briefly red on the manifest alone.
   Adding a 23rd badge key would be a second feature the card did not ask for.
 - **No `gloss` on records.** Giving the records deck a one-line joke the way `BADGE_META` has one
   is a change to all eleven panels, not to this key.
-- **No backfill script.** `recomputeRecords` is a full re-derive over the whole history on every
-  review commit, so the first review after this ships sets the new key from every existing run at
-  once. Nothing needs migrating.
+- ~~**No backfill script.**~~ **Wrong — see round 2 below.** `recomputeRecords` is a full re-derive
+  on every review commit, so the key does arrive by itself; what round 1 missed is that "by itself"
+  means *not until the runner next reviews a run*, and until then the shelf is missing a record with
+  nothing on screen to explain why.
+
+
+---
+
+## Round 2 — 2026-09-03: the key shipped and the shelf did not show it
+
+**Reported:** *"i checked prod. i don't see any 'earliest run' in personal records prod? do we need
+to run some migration first?"*
+
+**No migration.** `records` is `(user_id, key, run_id, value, achieved_on, previous_value)` with the
+key as a plain `text` column and `primaryKey(user_id, key)` — a new catalog key needs no DDL, and
+there was none to run. Prod was on the merge commit (`33837924`, deployed 01:58Z) with CI green, so
+the code was live.
+
+**Measured on prod at 02:05Z:**
+
+| | |
+|---|---|
+| `records` rows | **10**, every one `updated_at 2026-09-03T01:37:00Z` |
+| the deploy | 01:58Z — **twenty-one minutes later** |
+| `runs` | 22 reviewed, **all 22 carrying a `started_at`**, earliest `05:05:00` |
+
+So the record that belonged on the shelf was sitting in `runs` the whole time, and the derived table
+was simply older than the catalog.
+
+### The gap, stated plainly
+
+`records` has exactly one writer: `recomputeRecords`, from `onRunCommitted`, from `commitReview`.
+This file's §5 treated that as sufficient — "the first review after this ships sets the new key" —
+and it is true and it is not enough. **A derived table's writer being correct says nothing about
+when it next runs.** Adding a key to the catalog changes what `records` *should* contain without
+touching anything that would make it contain that, so every user sits on a stale set until their
+next commit — a window with no upper bound, and no signal on screen distinguishing "no record yet"
+from "this key has never been computed for you".
+
+That is a general property of this design, not a fact about `earliest_start`, and it will recur on
+the twelfth key. It is also the one thing round 1 could have shipped in ten minutes and did not.
+
+### What round 2 ships
+
+`scripts/backfill-record-keys.mjs`, plus `npm run records:backfill`. Its full argument is in its own
+header; the three decisions worth repeating here:
+
+- **Insert-only, never replace.** The app's writer is a wholesale `DELETE` + `INSERT` (R-10) because
+  only a full re-derive can express "this key no longer qualifies". A backfill that copied that
+  would be a second implementation of the most careful write path in the app, running outside a
+  transaction from a laptop. This one computes a winner **only for keys the user has no row for**,
+  writes `on conflict do nothing`, and never deletes or updates — so it cannot corrupt a value it
+  did not compute, which is what makes it safe to run when you are not sure it is needed.
+- **It imports the real `RECORD_CATALOG`.** Every import in `catalog.ts` is `import type`, so under
+  `--experimental-strip-types` node loads it with no runtime dependency and no `@/` alias to
+  resolve. `qualifies`, `valueOf` and `direction` are therefore the app's own, not a copy. The one
+  duplicated rule is `compute.ts`'s four-line `beats`, cited at the site, because `compute.ts` pulls
+  `@/lib/metrics/session` at runtime and cannot be imported the same way.
+- **The two metrics-derived keys exclude themselves.** Candidates are built with
+  `fastestFullKmPaceSec: null` and `decouplingBp: null`, so `fastest_km_split` and `best_paced_run`
+  fail their own `!= null` qualifiers and are reported rather than guessed at. No allow-list, no key
+  named anywhere in the script — a future key whose input it cannot honestly supply is skipped by
+  the same mechanism.
+
+### The symptom resolved itself before the fix landed, and the fix is still right
+
+Between the diagnosis and the first dry run, a 23rd run was reviewed (02:13:11Z), which fired
+`onRunCommitted` and wrote all eleven keys — `earliest_start = 18300`, i.e. **05:05 on 2026-09-03**.
+Exactly the mechanism §5 described, arriving exactly as late as this round says is the problem.
+
+The dry run over that repaired state is the script's own validation, and a better one than a fixture
+would have been: **11 held, 0 to insert.** Run independently, from the same catalog, it agrees with
+`recomputeRecords` key for key — including the two it declines to compute, which were already held.
+
+No `--apply` was needed on this account and none was run. The script ships for the next key, and for
+any account that has not committed a run since the deploy.
