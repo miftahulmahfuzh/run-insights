@@ -76,6 +76,10 @@ export const canonicalRunFacts = {
 export const canonicalRecordRun: RecordRunRow = {
   ...canonicalSession,
   avgPaceSec: 442,
+  /* From `canonicalRunFacts` rather than re-typed, so the run the badge rules see and the run the
+     record catalog sees cannot disagree about when it started — `earliest_start` and `early_bird`
+     read the same column. `'07:07:00'` is 25620 seconds past midnight. */
+  startedAt: canonicalRunFacts.startedAt,
   activeKcal: 646,
   elevationM: 15,
   avgCadence: 144,

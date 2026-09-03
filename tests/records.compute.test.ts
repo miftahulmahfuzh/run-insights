@@ -40,8 +40,12 @@ describe('computeRecords — §7.4’s A / B / C table', () => {
     expect(winner('fastest_pace_5k')!.achievedOn).toBe('2026-07-11')
   })
 
-  it('resolves all ten keys from these three runs', () => {
-    expect([...byKey.keys()]).toHaveLength(10)
+  it('B also takes earliest_start — 05:12 against A’s 07:07, and C has no start time at all', () => {
+    expect(winner('earliest_start')).toMatchObject({ runId: runB.runId, value: 18_720 })
+  })
+
+  it('resolves all eleven keys from these three runs', () => {
+    expect([...byKey.keys()]).toHaveLength(11)
   })
 })
 
@@ -56,6 +60,25 @@ describe('absence is meaningful', () => {
     expect(keys).not.toContain('best_paced_run')
     expect(keys).toContain('longest_distance')
     expect(out.every((r) => r.value > 0)).toBe(true)
+  })
+
+  it('a run with no start time is excluded from earliest_start and from nothing else', () => {
+    const keys = computeRecords([toRecordCandidate(runC)]).map((r) => r.key)
+    expect(keys).not.toContain('earliest_start')
+    expect(keys).toContain('longest_distance')
+  })
+
+  it('a midnight start wins outright, because the day begins at 00:00 and nowhere else', () => {
+    // The design call, as a test: `earliest_start` is a plain minimum over seconds past midnight,
+    // so a run begun at 00:15 beats one begun at 05:12. F32 §1b — the rejected alternative was a
+    // sane-morning window like `early_bird`'s, and changing this test is how that decision is
+    // reversed if it is ever reversed.
+    const smallHours = { ...toRecordCandidate(runA), runId: 'run_midnight', startedAtSec: 900 }
+    const out = computeRecords([toRecordCandidate(runB), smallHours])
+    expect(out.find((r) => r.key === 'earliest_start')).toMatchObject({
+      runId: 'run_midnight',
+      value: 900,
+    })
   })
 
   it('no runs at all produces an empty set', () => {

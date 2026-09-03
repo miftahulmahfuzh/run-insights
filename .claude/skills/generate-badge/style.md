@@ -10,7 +10,7 @@ drift from the prompt that is documented.
 suspected.
 
 **Two decks read this file, and they share the style block exactly.** F09's 22 badges and F25's 10
-personal-record patches are one bolt of cloth cut thirty-two times — same substrate, same merrowed
+personal-record patches are one bolt of cloth cut thirty-three times — same substrate, same merrowed
 border, same five threads, same signature thread — so there is exactly one style block, both decks
 are sent it verbatim, and both stamp `v2`. **The scene list is the only per-deck text in this
 file**, and that is a measured constraint rather than a tidy preference: see *"appending ANYTHING
@@ -445,10 +445,11 @@ assigned.*
 - highest_cadence: A single spinning top at full speed, standing dead upright on its point, with one blurred ring of motion drawn around its widest part. SHAPE: pentagon. SIGNATURE THREAD: the steel tip the top is spinning on.
 - highest_max_hr: A single heavy hanging bell caught in mid-strike, seen from the side, its clapper swung hard over and touching the inside of the bell's lip. SHAPE: pentagon. SIGNATURE THREAD: the clapper.
 - best_paced_run: A single plumb bob hanging dead still and perfectly vertical on its line, the line running straight up to a small fixed hook above it. SHAPE: pentagon. SIGNATURE THREAD: the sharp point at the bottom of the bob.
+- earliest_start: A single stovetop moka coffee pot standing alone, seen from the side, its faceted octagonal body stepping in sharply at the waist, its one curved handle and its short spout in clear profile, its lid closed and its body left entirely bare of any mark or medallion. SHAPE: pentagon. SIGNATURE THREAD: the small round knob on top of the lid.
 <!-- /SCENES:records -->
 ```
 
-Shape distribution: **pentagon** × 10. Uniform, unlike the badge deck's four — the shape is what
+Shape distribution: **pentagon** × 11. Uniform, unlike the badge deck's four — the shape is what
 says "this is a record and not a badge", so varying it inside the deck would spend the very
 distinction it was added to make.
 
@@ -518,12 +519,12 @@ should be read together. It also means a genuinely new style contract has to be 
 the whole deck regenerated** — there is no cheap middle path, and F25 spent twelve generations
 proving the middle path does not exist.
 
-### The collision audit, extended to thirty-two patches
+### The collision audit, extended to thirty-three patches
 
 Done at design time, against the badge deck's audit above rather than only against these ten.
 
 kite-on-a-long-line / burnt-down candle / diving swift / bounding hare / bow at release / squeezed
-bellows / switchbacked peak / spinning top / struck bell / hanging plumb bob.
+bellows / switchbacked peak / spinning top / struck bell / hanging plumb bob / moka coffee pot.
 
 Still true across both decks: **no shoes, no medals, no stopwatches**, and no clock, watch face,
 gauge, scale or numeral anywhere. That last rule is why `longest_duration` is a candle and not an
@@ -542,6 +543,21 @@ collapsed. One is vertical and lit, the other horizontal and going out.
 still, in profile on a rail, neck stretched up into a sun disc; the swift is airborne with its
 wings swept back to a dart. A perched bird and a diving bird are different silhouettes at 40 px,
 which is the test that matters.
+
+**`earliest_start` is a vessel, after `most_kcal`'s bellows, and it is the deck's fourth adjacency.**
+F32 added it, and the two are kept apart the way the deck's two flames are: the bellows is a wide
+horizontal wedge lying along its own handles with a puff leaving its nozzle, the moka pot a tall
+stacked tower standing dead upright with nothing leaving it. **The pot emits nothing on purpose** —
+one curl of steam would have made two "vessel with something coming out of it" patches, which is the
+category the audit watches rather than the object.
+
+The three objects F32 rejected are recorded here because each is the obvious answer and each is
+wrong for a reason that will recur. **A clock or an alarm clock**: the literal picture of "earliest
+time" is the one this deck cannot draw, by the no-dial rule three paragraphs up — it is the same
+reason `longest_duration` is a candle. **A rooster, an owl or a sunrise**: `early_bird` is already a
+rooster crowing into a sun disc, and a second dawn bird is the same patch. **A milk bottle on a
+doorstep**: the right idiom, but a bottle pulls a printed dairy label, and lettering is the single
+likeliest reason this style burns an attempt.
 
 **`best_paced_run` is the closest of the three, and it is a trueness instrument like
 `boring_excellence`'s spirit level.** Both say "steady" without a dial, which is exactly the pair

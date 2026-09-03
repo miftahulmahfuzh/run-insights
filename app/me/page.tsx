@@ -26,7 +26,7 @@ import { isRecordKey, RECORD_KEYS } from '@/lib/records/catalog'
  * `/me` — roadmap §4.8: "profile: totals, records, badge shelf".
  *
  * F02 shipped the profile form and the HRmax provenance panel; **F09 fills in the three slots above
- * them** — lifetime totals, the ten personal records, and the 22-badge shelf. It touches neither
+ * them** — lifetime totals, the eleven personal records, and the 22-badge shelf. It touches neither
  * the form nor the panel.
  *
  * The HRmax panel is here rather than only on a run detail page for one reason: a runner who sees

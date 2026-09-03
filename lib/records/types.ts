@@ -2,7 +2,7 @@ import type { DateISO } from '@/lib/date/ranges'
 import type { SessionInput } from '@/lib/metrics/types'
 
 /**
- * The personal-record catalog's types (F06 plan §7.1). Roadmap §4.5 is the authority on the ten
+ * The personal-record catalog's types (F06 plan §7.1). Roadmap §4.5 is the authority on the eleven
  * keys, their units, their qualifiers and their directions; `catalog.ts` is that table encoded as
  * data so a reader can diff the two by eye.
  */
@@ -18,11 +18,20 @@ export type RecordKey =
   | 'highest_cadence'
   | 'highest_max_hr'
   | 'best_paced_run'
+  | 'earliest_start'
 
 export type RecordDirection = 'max' | 'min'
 
-/** `'bp'` is basis points — see `best_paced_run` in `catalog.ts` for why that unit exists. */
-export type RecordUnit = 'm' | 's' | 's_per_km' | 'kcal' | 'spm' | 'bpm' | 'bp'
+/**
+ * `'bp'` is basis points — see `best_paced_run` in `catalog.ts` for why that unit exists.
+ *
+ * `'clock'` is a **time of day**, held as seconds past midnight, and it is the same trick for the
+ * same reason: `records.value` is `int NOT NULL` for all eleven keys (§4.3), so `earliest_start`
+ * stores `25620` rather than `'07:07:00'`. It is emphatically NOT `'s'` — `'s'` is a duration and
+ * formats as `1:12:30`, where this formats as a wall clock. Two units over the same primitive,
+ * because the two sentences they print are not interchangeable.
+ */
+export type RecordUnit = 'm' | 's' | 's_per_km' | 'kcal' | 'spm' | 'bpm' | 'bp' | 'clock'
 
 /**
  * Everything `computeRecords` needs about one run, and nothing else. Built by `recompute.ts` from
@@ -44,6 +53,8 @@ export interface RecordCandidate {
   fastestFullKmPaceSec: number | null
   /** `round(abs(decouplingPct) * 100)`. null when decoupling could not be computed. */
   decouplingBp: number | null
+  /** `runs.started_at` as seconds past midnight, 0..86399. null when the screenshot had no time. */
+  startedAtSec: number | null
 }
 
 export interface RecordDefinition {
@@ -78,6 +89,8 @@ export interface StoredRecord extends RecordResult {
 export interface RecordRunRow extends SessionInput {
   /** `runs.avg_pace_sec` — read, never re-derived. */
   avgPaceSec: number
+  /** `runs.started_at`, Postgres `time`: `'HH:MM:SS'`, or null when the screenshot had no time. */
+  startedAt: string | null
   activeKcal: number | null
   elevationM: number | null
   avgCadence: number | null

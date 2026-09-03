@@ -29,7 +29,7 @@ must not make the first deck's instructions wrong.
 ONE ANCHOR, SHARED. `records` deliberately points at `assets/badges/_anchor.png`
 rather than growing an anchor of its own. Check 9b measures twill-tone drift
 against the anchor, and the premise of both decks is that they are one bolt of
-cloth cut thirty-two times. Two anchors would let the cloth drift BETWEEN decks
+cloth cut thirty-three times. Two anchors would let the cloth drift BETWEEN decks
 with nothing measuring it — the one drift that no per-deck check could see.
 
 BOTH DECKS STAMP `v2`, AND THERE IS NO PER-DECK ADDENDUM. There was one, for

@@ -21,7 +21,7 @@ export interface RecordRowView {
 }
 
 /**
- * The ten personal records, in `RECORD_CATALOG` order — one line each, and a tap opens the panel.
+ * The eleven personal records, in `RECORD_CATALOG` order — one line each, and a tap opens the panel.
  *
  * ── A KEY WITH NO HOLDER IS ABSENT, NOT ZERO ────────────────────────────────────────────────
  * `records` only ever contains keys something qualified for (F06's `replaceRecords`), so a runner
@@ -110,7 +110,7 @@ export function RecordsTable({ rows }: { rows: readonly RecordRowView[] }) {
         ))}
       </ul>
 
-      {/* One dialog for ten rows, driven by the selection — not one per row. */}
+      {/* One dialog for every row, driven by the selection — not one dialog per row. */}
       <RecordDialog row={selected} onClose={close} />
     </div>
   )

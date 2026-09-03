@@ -3,12 +3,13 @@ import type { SplitRow } from '@/lib/metrics/types'
 import { canonicalRecordRun } from './canonicalRun'
 
 /**
- * Three runs, hand-built so every one of the ten record keys has a verifiable winner and every
+ * Three runs, hand-built so every one of the eleven record keys has a verifiable winner and every
  * qualifier has something it excludes (F06 plan §7.4).
  *
- *   A — the canonical run. Long, hard, badly paced. Wins on magnitude.
- *   B — synthetic, EARLIER, six perfectly uniform kilometres. Wins on quality.
- *   C — 2 km. Well-formed but too short for four of the ten keys, which is its entire job.
+ *   A — the canonical run. Long, hard, badly paced. Wins on magnitude. Starts at 07:07.
+ *   B — synthetic, EARLIER, six perfectly uniform kilometres. Wins on quality, and on the clock.
+ *   C — 2 km. Well-formed but too short for four of the eleven keys, which is its entire job, and
+ *       it carries NO start time — the one thing that excludes a run from `earliest_start`.
  */
 
 /** `n` identical full kilometres — the textbook "perfectly even effort" run. */
@@ -40,6 +41,9 @@ export const runB: RecordRunRow = {
   zones: [{ zone: 2, durationSec: 1800, minBpm: 141, maxBpm: 151 }],
   recovery: { endHrBpm: 150, hrAt1MinBpm: 120 },
   avgPaceSec: 300,
+  /* 05:12 = 18720 s, earlier than A's 07:07, so B holds `earliest_start` as well as the quality
+     keys. Its date is also earlier, which keeps the tie-break tests reading the same way. */
+  startedAt: '05:12:00',
   activeKcal: 380,
   elevationM: 5,
   avgCadence: 170,
@@ -57,6 +61,9 @@ export const runC: RecordRunRow = {
   zones: [{ zone: 3, durationSec: 560, minBpm: 152, maxBpm: 163 }],
   recovery: null,
   avgPaceSec: 280,
+  /* No start time at all — the screenshot did not print one. C therefore competes for every key
+     with no distance floor EXCEPT `earliest_start`, which is what a null input qualifier means. */
+  startedAt: null,
   activeKcal: 150,
   elevationM: 2,
   avgCadence: 180,

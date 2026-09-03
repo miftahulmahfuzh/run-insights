@@ -125,6 +125,26 @@ export function formatClock(value: string | null | undefined): string {
   return m ? `${m[1]}:${m[2]}` : value
 }
 
+/**
+ * `25620` → `'07:07'`. The same clock, reached from the other side — F06's `earliest_start` holds a
+ * time of day as seconds past midnight, because `records.value` is an integer for every key.
+ *
+ * Deliberately NOT `formatDuration`, which would print the identical number as `7:07:00` and mean
+ * "seven hours of running". Same primitive, two different sentences, so two functions — the same
+ * split `formatDistanceM` and `formatDistanceAxis` already make.
+ *
+ * Out-of-range input returns MISSING rather than a wrapped clock: `86400` is not `'00:00'`, it is a
+ * bug upstream, and printing midnight would hide it.
+ */
+export function formatClockSec(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return MISSING
+  if (value < 0 || value >= 86_400) return MISSING
+  const total = Math.floor(value)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 /* ============================================================================
  * F08's additions — plan §5. Everything above was seeded by F04; everything below
  * exists because a chart axis, a week divider or a delta tile needs it.

@@ -45,8 +45,8 @@ describe('first-ever computation', () => {
     const gateway = fakeGateway([runA, runB, runC])
     const result = await recomputeRecords('u1', gateway)
 
-    expect(result.rows).toHaveLength(10)
-    expect(result.changed).toHaveLength(10)
+    expect(result.rows).toHaveLength(11)
+    expect(result.changed).toHaveLength(11)
     expect(result.removed).toEqual([])
     expect(result.rows.every((r) => r.previousValue === null)).toBe(true)
     expect(gateway.replaceCalls).toHaveLength(1)
@@ -153,7 +153,7 @@ describe('idempotence', () => {
     expect(gateway.replaceCalls).toHaveLength(1)
     expect(second.changed).toEqual([])
     expect(second.removed).toEqual([])
-    expect(second.rows).toHaveLength(10)
+    expect(second.rows).toHaveLength(11)
   })
 
   it('returns the same set whatever order the runs arrive in', async () => {
