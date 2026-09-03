@@ -27,6 +27,7 @@
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
     "blob:reap": "node --env-file=.env.local scripts/blob-reap.mjs",
     "badges:backfill-runs": "node --env-file=.env.local scripts/backfill-badge-run-ids.mjs",
+    "records:backfill": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-record-keys.mjs",
     "capture:seed": "node --env-file=.env.local scripts/capture/seed-demo.mjs",
     "capture:purge": "node --env-file=.env.local scripts/capture/seed-demo.mjs --purge",
     "capture:status": "node --env-file=.env.local scripts/capture/seed-demo.mjs --status",
