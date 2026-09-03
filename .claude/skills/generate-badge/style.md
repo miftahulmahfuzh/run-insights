@@ -519,6 +519,45 @@ should be read together. It also means a genuinely new style contract has to be 
 the whole deck regenerated** — there is no cheap middle path, and F25 spent twelve generations
 proving the middle path does not exist.
 
+### Measured: 9b's twill tone answers to a LIGHTING sentence, not a colour one
+
+F25 left check 9b — twill tone against the anchor — as "a per-candidate quality matter, resolved by
+the ordinary three-attempt loop", with no known lever. F32 found the lever while generating
+`earliest_start`, across five generations of one scene. Every one of the ten shipped record masters
+sits inside the 6.0 ceiling, so this is not a threshold to widen; it is a sentence to write.
+
+| att | seed | what the `--note` said about the cloth | 9b | 8a / 9a |
+|---|---|---|---|---|
+| a01 | 1970 | nothing | 8.0 FAIL | 2.6% / 0.3% |
+| a02 | 1970 | "deep dark navy, near #1B2A44 … out to every edge" | 9.8 FAIL | 1.4% / 0.8% |
+| a03 | 1971 | "lies in deep shadow, dark and unlit … the raking light falling on the patch alone" | **1.5 PASS** | 8.2% / 25.4% — both FAIL |
+| a04 | 1971 | "deep and evenly dark right across the whole frame" + margin and size | 12.6 FAIL | 0.6% / 0.8% |
+| a05 | 1971 | "lies in deep shadow, unlit and evenly dark … corner to corner" + margin and size | **3.0 PASS** | 1.2% / 1.4% |
+
+**Naming the colour does nothing; naming the shadow does everything.** a02 quoted the hex the style
+block already carries and drifted *further* than the note-free a01. a04 asked for "evenly dark" —
+a brightness word — and produced the worst tone of the five. The two that passed are the two that
+said the cloth **lies in deep shadow, unlit**, which is an instruction about the light rather than
+about the pigment, and this model renders light.
+
+**And the same sentence will wreck the composition if it is allowed to be exclusive.** a03 added
+"with the raking light falling on the patch alone" and got a spotlight: the cloth gradiented dark on
+one side, the patch swelled to 84% of the frame and slid 8.2% off centre. The fix is to keep the
+shadow and drop the exclusivity — say the cloth is unlit *and even*, *corner to corner*, and restate
+the margin and the two-thirds width that the style block asks for on a square frame. That is a05,
+and it passed all ten hard checks.
+
+So the working recipe for a records-deck patch whose first roll drifts on 9b, in one note:
+
+> The navy cloth lies in deep shadow, unlit and evenly dark right across the whole frame, corner to
+> corner, and a generous margin of that same cloth surrounds the patch on every side, the patch
+> sitting square in the middle of the frame and taking up about two thirds of its width.
+
+**The band is not re-derived from eleven.** `SHAPE_WIDTH["pentagon"]` stays at `Band(0.893,
+observed=10)`: a05 measured 1.4% from it, so the distribution has nothing to say that it did not
+already say, and moving a threshold on the strength of one new member is what `check_badge_art.py`'s
+own header forbids.
+
 ### The collision audit, extended to thirty-three patches
 
 Done at design time, against the badge deck's audit above rather than only against these ten.

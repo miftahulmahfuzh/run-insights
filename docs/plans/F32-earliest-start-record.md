@@ -127,6 +127,26 @@ Scene line, appended inside `<!-- SCENES:records -->` in `.claude/skills/generat
 "Bare of any mark or medallion" follows the `warmup_who` / `sweat_equity` precedent — the two scenes
 that name a bare surface to keep the model from stitching a badge onto it.
 
+### As generated — five attempts, and a lever nobody had found
+
+| att | seed | note | verdict |
+|---|---|---|---|
+| a01 | 1970 | none | REJECT — 9b twill 8.0 (≤6.0). Subject right first time; body drawn as red/yellow/green vertical stripes, which reads as a lantern at 40 px |
+| a02 | 1970 | one solid body colour; cloth "deep dark navy, near #1B2A44" | REJECT — 9b **9.8**. Subject and composition both excellent |
+| a03 | 1971 | cloth "lies in deep shadow … raking light on the patch alone" | REJECT — 9b **1.5 PASS**, but a spotlight: patch 84% wide, 8.2% off centre |
+| a04 | 1971 | cloth "deep and evenly dark" + margin and width | REJECT — 9b **12.6**, composition perfect |
+| a05 | 1971 | a03's shadow sentence, non-exclusive, + a04's margin and width | **PROMOTED** — all ten hard checks pass. 9b 3.0, 9a 1.4%, 8a 1.2% |
+
+Over the cap of three the skill sets, deliberately and with the reason written down: the cap exists
+to stop a session re-rolling one prompt, and these were five different single-variable
+generations that isolated a lever F25 had left open. Each attempt is ~$0.04. The finding — **9b
+answers to a sentence about the light, not about the colour** — is written into `style.md` beside
+F25's addendum finding, with the table above, so the next patch that drifts costs one generation
+instead of five.
+
+`SHAPE_WIDTH["pentagon"]` is left at `Band(0.893, observed=10)`. a05 sits 1.4% from it; re-deriving
+a threshold from one new member is what that file's header forbids.
+
 **The style block is not touched.** Bumping v2 would fail `npm run badges:check` on all 33 masters
 until every one was regenerated (style.md §"The block cannot be bumped"), and F25 measured that
 *appending* anything to it makes this model discard the scene entirely. The pentagon rides in the
