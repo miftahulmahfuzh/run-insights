@@ -60,7 +60,7 @@ function canonicalFacts() {
     metrics,
     flags: evaluateSessionFlags(metrics, canonicalSession.splits.find((s) => !s.partial) ?? null),
     splits: canonicalSession.splits,
-    profile: { birthYear: 1996, heightCm: 169 },
+    profile: { birthYear: 1996, heightCm: 169, weightKg: 55, sex: 'male' },
     promptVersion: 1,
   })
 }

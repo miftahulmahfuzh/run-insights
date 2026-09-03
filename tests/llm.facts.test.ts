@@ -26,12 +26,17 @@ import { canonicalRecordRun, canonicalSession } from './fixtures/canonicalRun'
 
 /** The fixture's own denominator: Tanaka on a 30-year-old is 208 − 0.7 × 30 = 187. */
 const ESTIMATED_HR_MAX: HrMax = { bpm: 187, source: 'estimated' }
-/** birthYear for an age of 30 as of the frozen `now` below. */
+/** birthYear for an age of 30 as of the frozen `now` below. RU-1 added the last two fields. */
 const NOW = new Date('2026-08-21T00:00:00Z')
-const PROFILE = { birthYear: 1996, heightCm: 169 }
+const PROFILE = { birthYear: 1996, heightCm: 169, weightKg: 55, sex: 'male' as const }
 
 function canonicalFacts(
-  overrides: { intent?: 'easy' | 'tempo' | null; recentRuns?: RecentRunInput[] } = {},
+  overrides: {
+    intent?: 'easy' | 'tempo' | null
+    recentRuns?: RecentRunInput[]
+    /** RULING C5: the one override that exists to prove `facts_hash` moved with the payload. */
+    profile?: typeof PROFILE
+  } = {},
 ) {
   const metrics = computeSessionMetrics(canonicalSession, ESTIMATED_HR_MAX)
   const flags = evaluateSessionFlags(
@@ -55,7 +60,7 @@ function canonicalFacts(
     metrics,
     flags,
     splits: canonicalSession.splits,
-    profile: PROFILE,
+    profile: overrides.profile ?? PROFILE,
     recentRuns: overrides.recentRuns,
     promptVersion: 1,
     now: NOW,
@@ -137,9 +142,36 @@ describe('buildSessionFacts — the canonical run', () => {
     expect(facts.profile.heightCm).toBe(169)
   })
 
-  it('NEVER mentions body weight, under any spelling (D15 / R-28)', () => {
-    expect(serialised.toLowerCase()).not.toContain('weight')
-    expect(serialised).not.toContain('55')
+  it('carries exactly five profile keys — the payload shape, pinned', () => {
+    // RULING C5 widened BOTH the input type (`NarrativeProfile`) and the output (`ProfileFacts`),
+    // so the payload now carries weight and sex and `facts_hash` moved with them. Five keys, not
+    // three. This is the assertion to change if the payload's shape is ever revisited — and the
+    // one that fails if somebody narrows the type back without reading the ruling.
+    expect(Object.keys(facts.profile).sort()).toEqual([
+      'age',
+      'heightCm',
+      'hrMax',
+      'sex',
+      'weightKg',
+    ])
+  })
+
+  it('CARRIES body weight and sex — D15/R-28 repealed, RU-1 and RULING C5', () => {
+    // This test asserted the opposite until v0.2.0, and the inversion is the point of the repeal:
+    // "exposing user details like weight to ai analysis will 100% make the analysis much more
+    // accurate". Both values are in the serialised payload, labelled self-reported by the prompt.
+    expect(facts.profile.weightKg).toBe(55)
+    expect(facts.profile.sex).toBe('male')
+    expect(serialised).toContain('weightKg')
+  })
+
+  it('a different weight is a different facts_hash, which is why every insight regenerates', () => {
+    // RULING C5's accepted consequence, pinned. `ProfileFacts` is inside the hashed object, so
+    // adding the field moved every existing key. If this ever passes with the two hashes equal,
+    // weight is in the type but not in the payload — the exact half-repeal C5 overruled.
+    const a = canonicalFacts()
+    const b = canonicalFacts({ profile: { ...PROFILE, weightKg: 61 } })
+    expect(factsHash(a)).not.toBe(factsHash(b))
   })
 
   it('includes all eleven splits, with the partial one flagged (D14)', () => {
@@ -233,8 +265,8 @@ describe('recentRuns — the history the narrator reads (F28)', () => {
     )
   })
 
-  it('still mentions no body weight with the history attached (D15 / R-28)', () => {
-    expect(JSON.stringify(facts).toLowerCase()).not.toContain('weight')
+  it('still carries weight and sex with the history attached', () => {
+    expect(JSON.stringify(facts).toLowerCase()).toContain('weightkg')
   })
 })
 
@@ -359,8 +391,10 @@ describe('buildWeekFacts', () => {
     expect(facts.trendSincePrevious?.paceDeltaSecPerKmAtMatchedDistance).toBe(-15)
   })
 
-  it('never carries body weight, whatever the caller passes', () => {
-    expect(JSON.stringify(buildWeekFacts(base)).toLowerCase()).not.toContain('weight')
+  it('carries weight and sex into the WEEK payload too — one builder, three scopes', () => {
+    const facts = buildWeekFacts(base)
+    expect(facts.profile.weightKg).toBe(55)
+    expect(facts.profile.sex).toBe('male')
   })
 })
 

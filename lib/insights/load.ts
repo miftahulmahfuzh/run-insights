@@ -20,7 +20,7 @@ import {
   getRunsBetween,
 } from '@/lib/db/queries'
 import type { Run, RunSplit, RunZone } from '@/lib/db/schema'
-import type { InsightScope } from '@/lib/db/schema'
+import type { InsightScope, Sex } from '@/lib/db/schema'
 import {
   aggregatePeriodFlags,
   buildMonthFacts,
@@ -180,12 +180,22 @@ function narrativeProfileOf(
   profile: {
     birthYear: number | null
     heightCm: number | null
+    weightKg: number | null
+    sex: Sex | null
   } | null,
 ): NarrativeProfile | null {
-  // Field-by-field, never a spread of the row. `profiles.weight_kg` exists on that object and
-  // D15/R-28 says it never reaches a model — the two lines below are what makes that structural
-  // instead of a promise. See `scripts/check-llm-payload-boundary.mjs`.
-  return profile == null ? null : { birthYear: profile.birthYear, heightCm: profile.heightCm }
+  // Still field-by-field, never a spread of the row — see `NarrativeProfile`'s own note. What
+  // changed under RU-1 is WHICH fields, not whether they are enumerated: `weightKg` and `sex` are
+  // now carried, `restingHr` / `maxHr` / `onboardedAt` / `updatedAt` still are not, and the
+  // enumeration is what keeps that a decision rather than an accident.
+  return profile == null
+    ? null
+    : {
+        birthYear: profile.birthYear,
+        heightCm: profile.heightCm,
+        weightKg: profile.weightKg,
+        sex: profile.sex,
+      }
 }
 
 /**

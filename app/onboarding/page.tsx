@@ -35,6 +35,7 @@ export default async function OnboardingPage() {
             age: profile?.birthYear != null ? ageFromBirthYear(profile.birthYear) : null,
             heightCm: profile?.heightCm ?? null,
             weightKg: profile?.weightKg ?? null,
+            sex: profile?.sex ?? null,
             restingHr: profile?.restingHr ?? null,
             maxHr: profile?.maxHr ?? null,
           }}

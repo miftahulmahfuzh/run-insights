@@ -346,13 +346,23 @@ F07 dropped `weightKg` from the payload that `research/narrate.mjs` included. D1
 weight-based coaching claims; F07 made that structural instead of instructional — the model
 cannot comment on what it never receives. **D15 is amended to say so.**
 
+> **REPEALED, 2026-09-03, by NINA_CHATBOT_PLAN.md RU-1.** F33 puts a nutritionist and a
+> physiologist in the app, and the questions she exists to answer cannot be answered without a
+> body mass. `lib/llm/facts.ts`'s `NarrativeProfile` now carries `weightKg` and `sex`;
+> `scripts/check-llm-payload-boundary.mjs`'s weight rule is deleted and its header records why;
+> `profiles.weight_kg`'s schema comment records it too. The user's reason, verbatim: *"i am the
+> only one that uses this app. so i dont care about any privacy whatsoever. this is my personal
+> toy. just let me do whatever i want with it"*. **The rest of R-28's neighbourhood stands** —
+> R-1, R-5, R-7, R-8, R-9, R-11, R-12 and R-22 are untouched, and R-22's non-cascade
+> `badges.run_id` and plain `dedupe_key` in particular are not to be reopened.
+
 ---
 
 ## Amended decisions
 
 | # | Change |
 |---|---|
-| **D15** | now reads: *No weight-based coaching claims, ever — enforced structurally: `weight_kg` is never included in any LLM payload.* (R-28) |
+| **D15** | ~~now reads: *No weight-based coaching claims, ever — enforced structurally: `weight_kg` is never included in any LLM payload.*~~ (R-28) — **REPEALED by F33/RU-1; see R-28's Repealed block.** |
 | **D16** | **new.** *The reviewed-data invariant: every rollup, list, chart, record input and badge input filters `runs.reviewed_at IS NOT NULL`.* (R-13) |
 | **D17** | **new.** *Repair round-trips are text-only. An image is never sent twice.* (R-2) |
 

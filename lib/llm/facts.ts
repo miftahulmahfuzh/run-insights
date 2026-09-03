@@ -1,5 +1,5 @@
 import { daysBetween } from '@/lib/date/ranges'
-import type { RunIntent } from '@/lib/db/schema'
+import type { RunIntent, Sex } from '@/lib/db/schema'
 import { formatDay, formatDuration, formatPace } from '@/lib/format'
 import { ageFromBirthYear } from '@/lib/metrics/age'
 import type { Flag } from '@/lib/metrics/flags'
@@ -16,11 +16,17 @@ import type { DistanceBucket } from '@/lib/metrics/week'
  *
  * ── WHAT NEVER ENTERS A PAYLOAD, AND WHY EACH ONE IS A SEPARATE DECISION ──────────────────────
  *
- *  · **`weightKg`** — D15 / R-28. `research/narrate.mjs`'s `profile` object carried it; this
- *    feature drops it, and `NarrativeProfile` below is a two-field type rather than F03's
- *    `Profile` so that passing it is a compile error rather than a code-review catch.
- *    `scripts/check-llm-payload-boundary.mjs` greps for the name across `lib/llm/` in CI, because
- *    a type only protects the path that goes through the type.
+ *  · **`weightKg` — WAS FORBIDDEN, NOW CARRIED. D15/R-28 IS REPEALED (RU-1, F33).** This bullet
+ *    used to read: "`research/narrate.mjs`'s `profile` object carried it; this feature drops it,
+ *    and `NarrativeProfile` below is a two-field type rather than F03's `Profile` so that passing
+ *    it is a compile error rather than a code-review catch." That was true and is now history.
+ *    F33 gives the runner a chatbot who is a nutritionist and a physiologist, and the questions
+ *    she is there to answer cannot be answered without a body mass. The user's reason, verbatim:
+ *    "i am the only one that uses this app. so i dont care about any privacy whatsoever."
+ *    `scripts/check-llm-payload-boundary.mjs` no longer greps for the name; its header records
+ *    why. **The type below is now a FOUR-field type, and it is still not F03's `Profile`** — a
+ *    spread of the row would still pull in `restingHr`, `maxHr`, `onboardedAt` and `updatedAt`,
+ *    none of which a narrator has any use for, and `hrMax` already arrives resolved and labelled.
  *
  *  · **`runs.note`** — a runner's own words can contain numbers ("did 15k today") that disagree
  *    with the reviewed record. Mixing verified and unverified numeric claims in one prompt is
@@ -47,17 +53,47 @@ import type { DistanceBucket } from '@/lib/metrics/week'
  * ==========================================================================*/
 
 /**
- * The profile, minus everything a coach must not see. Two fields, both self-reported, both
+ * The profile, minus everything a narrator has no use for. Four fields, all self-reported, all
  * labelled as such in every prompt (§1.2) — they come from a form, not a sensor.
+ *
+ * Still deliberately NOT F03's `Profile`: a spread of the row would carry `restingHr`, `maxHr`,
+ * `onboardedAt` and `updatedAt` into a payload, and `hrMax` already arrives separately, resolved
+ * and labelled `measured` or `estimated`. Naming the fields is what keeps that true.
+ *
+ * `weightKg` and `sex` are here under RU-1 — see the header's first bullet for the repeal.
+ * BOTH ARE REQUIRED, not optional: an optional field is one a new call site can forget, and the
+ * whole point of this type is that a caller has to decide about every field it carries.
  */
 export interface NarrativeProfile {
   birthYear: number | null
   heightCm: number | null
+  weightKg: number | null
+  sex: Sex | null
 }
 
+/**
+ * What actually reaches the model, and therefore what `factsHash` hashes.
+ *
+ * **`weightKg` and `sex` are here under RULING C5, and this is the field pair that moved every
+ * cache key in the database.** D15/R-28 is repealed (RU-1) *because* the analysis is better with
+ * them — "exposing user details like weight to ai analysis will 100% make the analysis much more
+ * accurate" — and a payload that stops at height delivers none of that. `age` is still DERIVED
+ * from `birthYear` rather than carried, for the reason it always was: a birth year in a payload is
+ * a birth year in a cache key that changes meaning every January.
+ *
+ * Both are `| null` and both are REQUIRED KEYS: `profileFacts()` emits them on every call, so a
+ * runner who has never filled in the form hashes as `{ weightKg: null, sex: null }` rather than as
+ * an object missing two keys. That matters more here than anywhere else in the file — an *absent*
+ * key and a `null` key canonicalise differently, so an optional field would mean two hashes for
+ * one runner.
+ */
 export interface ProfileFacts {
   age: number | null
   heightCm: number | null
+  /** Self-reported, and every prompt says so. RULING C5. */
+  weightKg: number | null
+  /** Self-reported, four-member domain (`lib/db/schema.ts`'s `Sex`). RULING C5. */
+  sex: Sex | null
   /**
    * Carries its `source` into the prompt, and every prompt has a rule about it: an `estimated`
    * HRmax is a Tanaka formula and must be called a formula whenever a percentage leans on it.
@@ -242,6 +278,10 @@ function profileFacts(
   return {
     age: profile?.birthYear == null ? null : ageFromBirthYear(profile.birthYear, now),
     heightCm: profile?.heightCm ?? null,
+    // RULING C5. `?? null` rather than `?.` alone, so the key is always present and a runner with
+    // no profile hashes as two explicit nulls instead of two absent keys.
+    weightKg: profile?.weightKg ?? null,
+    sex: profile?.sex ?? null,
     hrMax: hrMax == null ? null : { bpm: hrMax.bpm, source: hrMax.source },
   }
 }
