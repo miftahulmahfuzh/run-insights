@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
@@ -13,6 +14,7 @@ import {
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
+import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
 import {
   applyMessageDeletion,
@@ -24,6 +26,7 @@ import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
+import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
@@ -193,6 +196,24 @@ export function ChatScreen({
    */
   const [photo, setPhoto] = useState<NinaExistingPhoto | null>(pendingPhoto)
 
+  /**
+   * R10. Which bubble's photographs the full-screen overlay is showing, and which of them is on
+   * screen. `null` is closed.
+   *
+   * ── A MESSAGE ID AND AN INDEX, NOT A SNAPSHOT OF THE PHOTO LIST ──────────────────────────────
+   * Because `messages` changes underneath an open overlay, in two ways that both really happen: a
+   * service-worker push calls `router.refresh()` and the server hands down a new list, and R8's
+   * delete takes a bubble and its photo rows with it. A snapshot would keep showing a photo whose
+   * row is gone; a derived list plus `viewerIndex` closes or clamps, which is the only shape that
+   * does not end in `PhotoViewer`'s `photos[index]!` throwing.
+   */
+  const [viewer, setViewer] = useState<{ messageId: string; index: number } | null>(null)
+
+  const handleOpenImage = useCallback((messageId: string, index: number) => {
+    setNotice(null)
+    setViewer({ messageId, index })
+  }, [])
+
   /* R14's mark on this history entry, decoded from `?at=`. Passed down; the arithmetic is in
    * `lib/nina/scroll.ts` and the DOM half is in `MessageList`. */
   const { mark } = useChatScrollMark()
@@ -313,6 +334,34 @@ export function ChatScreen({
     setSeenInitial(initial)
     setMessages((current) => mergeServerMessages(current, initial) as ChatMessage[])
   }
+
+  /*
+   * R10's overlay, derived rather than stored — see `viewer` above.
+   *
+   * `useMemo` on the message identity, not on `messages`: this component re-renders on every state
+   * change the screen makes (typing, keyboard, reveal, flash), and the overlay's list only depends
+   * on the one row it is showing.
+   */
+  const viewerMessage =
+    viewer === null
+      ? null
+      : (messages.find((candidate) => candidate.id === viewer.messageId) ?? null)
+  const viewerPhotos = useMemo(() => chatViewerPhotos(viewerMessage), [viewerMessage])
+  const shownIndex = viewer === null ? null : viewerIndex(viewer.index, viewerPhotos.length)
+  /*
+   * The message went away under the open overlay — deleted, or gone from a refreshed window. Close
+   * it DURING RENDER rather than in an effect, for the reason the `seenInitial` block above gives
+   * at length: `react-hooks/set-state-in-effect` rejects the effect form, correctly, and React
+   * discards this render and restarts with the new state before committing, so nothing is painted
+   * twice. It terminates immediately: `viewer === null` makes the condition false.
+   */
+  if (viewer !== null && shownIndex === null) setViewer(null)
+  /*
+   * R10's attach. `null` when the id never reached the client, which is exactly the optimistic row
+   * — and `ChatPhotoActions` renders no attach control for it rather than one that cannot work.
+   */
+  const viewerAttachId =
+    shownIndex === null ? null : attachableIdAt(viewerMessage?.imageIds, shownIndex)
 
   /*
    * The iOS keyboard. Safari does not resize the layout viewport when it opens, so a fixed
@@ -706,6 +755,7 @@ export function ChatScreen({
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}
           onRequestActions={handleRequestActions}
+          onOpenImage={handleOpenImage}
         />
       )}
 
@@ -766,6 +816,69 @@ export function ChatScreen({
         onSubmitEdit={handleEditMessage}
         onConfirmDelete={handleDeleteMessage}
       />
+
+      {/*
+        R10. `z-60` on the overlay clears R8's sheet at `z-50`, the composer's `z-40` and phase 2's
+        floating chrome at `z-30`, so nothing has to move for it. Rendered last for the same reason
+        the sheet above is: a full-screen overlay is the last thing in the tree, and the composer's
+        `fixed` geometry and its `id="nina-composer"` measurement stay untouched by it.
+      */}
+      {viewer !== null && shownIndex !== null && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          index={shownIndex}
+          onIndex={(next) => setViewer({ messageId: viewer.messageId, index: next })}
+          onClose={() => setViewer(null)}
+          /* `'foto'`, as the album passes — "upload screenshot" is not a thing. */
+          subject="foto"
+          actions={
+            <ChatPhotoActions
+              url={viewerPhotos[shownIndex]!.url}
+              label={viewerPhotos[shownIndex]!.label}
+              onAttach={
+                viewerAttachId === null
+                  ? null
+                  : () => {
+                      /*
+                       * ── THE WHOLE OF "ATTACH THIS IMAGE TO HIS NEW CHAT" ─────────────────────
+                       * Arming the state this component ALREADY holds, not a navigation. `photo`
+                       * is the same slot `?photo=avatar:<id>` seeds from the admin surface,
+                       * `Composer` already renders `PhotoAttachmentChip` from it, and `handleSend`
+                       * already forwards it as `attachExisting: { kind, id }` — where
+                       * `resolveAttachment` proves ownership against `user_id` and copies the
+                       * image's private prose across server-side. No re-upload, no second blob,
+                       * no new action.
+                       *
+                       * A `router.push('/nina?photo=…')` would have cost a full server round trip,
+                       * remounted this component under the runner, and — the real objection — put
+                       * a SECOND writer on a URL whose one writer is deliberately one: the
+                       * `useLayoutEffect` above is one effect deleting both parameters because
+                       * "two independent `replaceState` calls in the same commit would race".
+                       * This phase adds no URL writer at all.
+                       *
+                       * `kind: 'image'` is the TABLE (`NinaPhotoKind`), not the photo's own kind
+                       * column. A chat photo is always `'image'` here, including one of her
+                       * selfies whose column reads `'generated'` — passing the column value would
+                       * resolve against `nina_avatars` and find nothing.
+                       *
+                       * Closing the overlay is part of the action: the chip it arms sits above the
+                       * composer, BEHIND this overlay, so leaving it open would hide the entire
+                       * effect of the tap. It replaces any photo already pinned, because there is
+                       * one `photo` slot by design.
+                       */
+                      setPhoto({
+                        kind: 'image',
+                        id: viewerAttachId,
+                        url: viewerPhotos[shownIndex]!.url,
+                      })
+                      setNotice(null)
+                      setViewer(null)
+                    }
+              }
+            />
+          }
+        />
+      )}
     </>
   )
 }

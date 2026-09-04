@@ -64,6 +64,46 @@ export interface ChatMessage {
    */
   imageUrls?: readonly string[]
   /**
+   * Phase 9 (R10). The image row's id, parallel to `imageUrls`.
+   *
+   * ── WHY AN ID HAS TO REACH THE CLIENT AT ALL ─────────────────────────────────────────────────
+   * Because "attach this image to his new chat" is `sendNinaMessage`'s `attachExisting: { kind,
+   * id }`, and the whole point of that field is that the photo is NOT re-uploaded: what crosses is
+   * an id, and `resolveAttachment` proves ownership against `user_id` before a row is written.
+   * Without the id the alternative is a re-upload, which would duplicate the blob and throw away
+   * the private prose `glm-4.6v` has already been paid for.
+   *
+   * ── WHY THREE PARALLEL ARRAYS AND NOT ONE `{ id, url, kind }[]` ──────────────────────────────
+   * The honest shape is an array of objects, and it was rejected on one hard constraint: replacing
+   * `imageUrls` is a BREAKING change to `app/nina/page.tsx`'s mapping, and that file belongs to
+   * phases 3, 5 and 8 as well. A phase whose tree does not compile until another phase lands is
+   * not a phase. Both fields here are additive and optional, so the tree builds with the mapping
+   * untouched and the feature degrades in a named way until it widens.
+   * `ChatImages`'s own `kinds?: readonly string[]` is the precedent for a parallel array at exactly
+   * this boundary, and it was chosen deliberately by F33 phase 13.
+   *
+   * Absent on `ChatScreen`'s optimistic row, because the rows it describes do not exist yet: the
+   * id is minted server-side by `insertNinaMessageImages`. Tap-to-view and download work on such a
+   * photo; the attach control does not render until a load brings the ids.
+   */
+  imageIds?: readonly string[]
+  /**
+   * Phase 9 (R10). The image row's `kind` — `'upload'` or `'generated'` — parallel to `imageUrls`.
+   * Fed straight into `ChatImages`'s existing `kinds` prop and into `chatViewerPhotos`, both of
+   * which read it through `photoSideOf` to decide whose photograph it is.
+   *
+   * NOT derivable from `message.role`, which is the whole reason it is here: a runner who
+   * re-attaches one of Nina's selfies writes a `kind: 'generated'` row onto a `role: 'user'`
+   * message (`lib/nina/actions.ts:183-189`), and reading the role would announce her photograph as
+   * his. R10's attach control makes that case common rather than theoretical.
+   *
+   * This is the KIND COLUMN, not `NinaPhotoKind`. `attachExisting` takes `'avatar' | 'image'`,
+   * which names a TABLE; a chat photo is always `'image'` there, whatever this column says.
+   *
+   * The private prose is still NOT here and must never be (invariant 5).
+   */
+  imageKinds?: readonly string[]
+  /**
    * Phase 8 (R13). The run this message attached, display-ready, or null/absent for the ordinary
    * message.
    *

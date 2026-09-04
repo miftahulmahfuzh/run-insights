@@ -279,11 +279,20 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
     userId,
     rows.map((row) => row.id),
   )
-  const urlsByMessage = new Map<string, string[]>()
+  const photosByMessage = new Map<string, { urls: string[]; ids: string[]; kinds: string[] }>()
   for (const image of images) {
-    const list = urlsByMessage.get(image.messageId)
-    if (list == null) urlsByMessage.set(image.messageId, [image.blobUrl])
-    else list.push(image.blobUrl)
+    const group = photosByMessage.get(image.messageId)
+    if (group == null) {
+      photosByMessage.set(image.messageId, {
+        urls: [image.blobUrl],
+        ids: [image.id],
+        kinds: [image.kind],
+      })
+    } else {
+      group.urls.push(image.blobUrl)
+      group.ids.push(image.id)
+      group.kinds.push(image.kind)
+    }
   }
 
   /*
@@ -327,7 +336,15 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * row for a target the runner cannot scroll to anyway.
      */
     replyToId: row.replyToId,
-    imageUrls: urlsByMessage.get(row.id),
+    imageUrls: photosByMessage.get(row.id)?.urls,
+    /* F35 R10. `id` so the overlay's attach control can reuse `attachExisting: { kind: 'image',
+     * id }` rather than re-uploading a blob we already own; `kind` so `photoSideOf` can tell his
+     * photograph from hers, which `row.role` cannot for a re-attached selfie.
+     *
+     * The private prose is STILL dropped on the floor here and must stay dropped (invariant 5) —
+     * `imageColumns` selects it, and this mapping is the boundary that stops it. */
+    imageIds: photosByMessage.get(row.id)?.ids,
+    imageKinds: photosByMessage.get(row.id)?.kinds,
     /* R13. Resolved for EVERY row regardless of who wrote it, so phase 10's `run_committed`
      * proactive message — which writes the same column — gets its card for free. */
     attachment: row.runId == null ? null : (attachments.get(row.runId) ?? null),

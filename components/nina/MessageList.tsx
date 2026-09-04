@@ -53,6 +53,7 @@ export function MessageList({
   onReply,
   onJumpToQuote,
   onRequestActions,
+  onOpenImage,
 }: {
   messages: readonly ChatMessage[]
   /** True while a turn is in flight, and between bubbles of a staggered reveal. */
@@ -79,6 +80,19 @@ export function MessageList({
    * not decide what a bubble's actions are.
    */
   onRequestActions?: (message: ChatMessage) => void
+  /**
+   * Phase 9 (R10). A tap on a photograph inside a bubble.
+   *
+   * The MESSAGE ID as well as the index, because `ChatImages`'s `onOpen` is bubble-local: its
+   * index counts photos in that one bubble, which is also what the overlay pages across (this
+   * phase's plan, D-3). `ChatScreen` holds the viewer state, because it is the component that also
+   * holds the `photo` state the attach control arms.
+   *
+   * Optional, and passed to `ChatImages` only when present — `ChatImages`'s contract is that an
+   * absent `onOpen` means the grid is NOT interactive, and an unconditional inline arrow here
+   * would quietly turn every photo in every future consumer into a button.
+   */
+  onOpenImage?: (messageId: string, index: number) => void
 }) {
   const readerNearBottom = useRef(true)
   const mounted = useRef(false)
@@ -266,7 +280,15 @@ export function MessageList({
                   message.attachment != null ? (
                     <div className="space-y-2">
                       {message.imageUrls != null && message.imageUrls.length > 0 ? (
-                        <ChatImages urls={message.imageUrls} />
+                        <ChatImages
+                          urls={message.imageUrls}
+                          kinds={message.imageKinds}
+                          onOpen={
+                            onOpenImage == null
+                              ? undefined
+                              : (index) => onOpenImage(message.id, index)
+                          }
+                        />
                       ) : null}
                       {message.attachment != null ? (
                         <RunAttachmentCard attachment={message.attachment} />
