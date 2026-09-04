@@ -6,6 +6,7 @@ import { authEnv } from '@/lib/env'
 import { isValidId } from '@/lib/id'
 import { after } from 'next/server'
 
+import { titleNinaSessionIfNeeded } from './autotitle'
 import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
@@ -712,28 +713,22 @@ export async function sendNinaMessage(input: {
   })
 
   /*
-   * ── PHASE 4's SEAM: THE SESSION TITLER FIRES HERE (F35 R3) ──────────────────────────────────
-   * Phase 4 owns `lib/nina/title.ts` and the `after()` hook that calls it, and this is the line it
-   * is expected to add — one statement, right here, and no other edit to this function:
+   * STEP 7 — the session's name (R3). `after()` and not `await`, for the same two reasons STEP 6
+   * gives: this is another model call on top of a turn that already cost 13-45 s, and invariant 2
+   * is enforced by `scripts/check-llm-payload-boundary.mjs` either way. `after()` throws E468
+   * outside a request scope, which is why the CALL is here and `titleNinaSessionIfNeeded` never
+   * calls it itself.
    *
-   *     after(() => titleNinaSessionIfNeeded(userId, sessionId))
+   * **This exit and no other.** R3's trigger is "the first interaction (user then nina)", and this
+   * is the only path on which both rows exist — the `result.payload == null` return above it is a
+   * turn where she said nothing, so there is no exchange to name yet.
    *
-   * Four properties of this spot, so phase 4 does not have to rediscover them:
-   *
-   *  1. **`sessionId` is in scope**, resolved by STEP 0e and unchanged since.
-   *  2. **This is the only exit worth firing on.** R3's trigger is "the first interaction (user then
-   *     nina)", and this is the path where both rows exist. The `result.payload == null` return
-   *     above it is a turn where she said nothing, so there is no exchange to title yet.
-   *  3. **`after()` and not `await`.** A titler is a model call; awaiting it would add seconds to a
-   *     turn that already cost 13-45 s, and invariant 2 is enforced by grep either way. `after()`
-   *     throws E468 outside a request scope, which is why the CALL belongs in this `'use server'`
-   *     module and never inside `title.ts` — the lesson `scheduleDistillation` above records.
-   *  4. **`after()` can run more than once and two tabs can race**, so the idempotence is the
-   *     titler's ("has this session already got a title from the model?"), not this line's.
-   *
-   * Phase 3 deliberately writes the comment and not the call: `lib/nina/title.ts` does not exist
-   * yet, and a phase that leaves a broken import behind is a phase that did not build.
+   * `after()` can run more than once and two tabs can race, so the idempotence is the titler's and
+   * not this line's: `setNinaSessionTitleIfUntitled`'s `WHERE … AND title IS NULL` is the durable
+   * marker, on `hasProactiveMessageForRun`'s reasoning. `titleNinaSessionIfNeeded` never throws and
+   * makes no call at all for a session that already has a name.
    */
+  after(() => titleNinaSessionIfNeeded(userId, sessionId))
 
   return { ok: true, userMessageId: runnerMessageId, bubbles, unavailable: false }
 }

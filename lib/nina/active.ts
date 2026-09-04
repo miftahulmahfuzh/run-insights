@@ -147,29 +147,23 @@ export function chooseActiveSession(
 }
 
 /**
- * A manual rename (R3's second half), sanitised — or `null` for "that is not a title".
+ * How long a session title may be, and the rule for what he is allowed to call one.
  *
- * Trim, collapse every run of whitespace to one space, strip the control characters a paste can
- * carry, then clamp to `NINA_SESSION_TITLE_MAX_CHARS`. Empty after all that is `null`, and the
- * action refuses rather than writing it: a session with a blank name is a blank row in the sidebar,
- * which is worse than the placeholder it replaced. Clearing a title is not a feature anybody asked
- * for — he can rename it to something else.
+ * **The rule lives in `lib/nina/title.ts` (phase 4) and is re-exported here so that this module's
+ * published surface is unchanged.** `lib/nina/sessionActions.ts` and `tests/nina.active.test.ts`
+ * keep importing `sanitizeNinaSessionTitle` from `@/lib/nina/active` and get the same name, the
+ * same signature and one implementation. The CAP is imported from `@/lib/nina/sessions` (phase 1),
+ * above — one declaration for the whole set.
  *
- * **This function is phase 4's seam.** Phase 4 owns "the manual-rename validation rule" and may
- * replace this body with the rule in `lib/nina/title.ts`; the name and signature are what
- * `sessionActions.ts` calls, so a swap is one file and no call site. What phase 4 must NOT do is
- * add a second sanitiser beside this one.
+ * The move exists because `title.ts` holds BOTH title rules — his manual rename and the model's
+ * 3-4 word answer — and they share a text cleaner and the same character cap. `title.ts` is pure
+ * (a type from `@anthropic-ai/sdk` and one constant from `sessions.ts`); the model call lives in
+ * `lib/nina/autotitle.ts`, so nothing `server-only` is reachable from this file and it stays
+ * importable from a client component — which matters, because phase 6's `searchHitHref` imports
+ * `SESSION_PARAM` from here into a `'use client'` module.
+ *
+ * Phase 4 also fixed a real hole in the rule while it was there: the old class `[\x00-\x1F\x7F]`
+ * did not cover `U+200B` and friends, so a title made only of zero-width characters passed the
+ * empty check and rendered as a blank sidebar row.
  */
-export function sanitizeNinaSessionTitle(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null
-  /* The control-character sweep is first and it is not defensive: a pasted title can carry NULs,
-   * newlines and tabs, and the column is a single-line label. Replacing them with a space before
-   * the whitespace collapse is what turns a three-line paste into one sentence rather than into
-   * one word. */
-  const collapsed = raw
-    .replace(/[\x00-\x1f\x7f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (collapsed.length === 0) return null
-  return collapsed.slice(0, NINA_SESSION_TITLE_MAX_CHARS)
-}
+export { sanitizeNinaSessionTitle } from './title'

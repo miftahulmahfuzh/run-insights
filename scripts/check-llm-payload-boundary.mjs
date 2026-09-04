@@ -19,14 +19,16 @@
 // finding out that a decision was taken, and nobody deletes the weight from a payload thinking
 // they are fixing a leak.
 //
-// ── RULE 2 STANDS, AND NOW COVERS FOUR ENTRY POINTS. THIS TABLE IS COMPLETE ──────────────────
+// ── RULE 2 STANDS, AND NOW COVERS SEVEN ENTRY POINTS. THIS TABLE IS COMPLETE ──────────────────
 // A MODEL CALL IS NEVER AWAITED FROM A PAGE RENDER (plan §7.2, and F33 plan invariant 4).
 //
-// All four entries ship in ONE commit, from the phase that owns this file, and NO OTHER PHASE
-// EDITS IT. Three of the four symbols do not exist yet — phases 3, 5 and 6 create them — and the
-// table is written for them anyway, because the alternative was three phases each appending to
-// one guard: three merge conflicts, and a window in each of them where the new expensive call
-// was unguarded precisely while it was new.
+// All seven entries ship from the phase that owns this file, and NO OTHER PHASE EDITS IT. The
+// last two arrived together in F35 phase 4 and one of the two symbols did not exist yet — phase 6
+// creates it — and the entry is written for it anyway, because the alternative was two phases each
+// appending to one guard: two merge conflicts, and a window in each of them where the new
+// expensive call was unguarded precisely while it was new. An entry naming a symbol that does not
+// exist costs nothing (nothing calls it, so nothing is checked); a call with no entry costs the
+// whole point of the file.
 //   · `getOrCreateInsight` — a cache miss is a 10-35 s call. The run detail page's numbers are
 //     stored and already correct, so blocking the render on prose trades a complete screen for a
 //     blank one. A `page.tsx` that awaits it looks fine in dev against a warm cache and hangs in
@@ -38,9 +40,23 @@
 //   · `distillNinaMemory` — a SECOND model call on top of the turn that triggered it, so a turn
 //     that awaited it would double its own latency for a write the runner never sees. It runs
 //     from `lib/nina/actions.ts` inside `after()`.
+//   · `resolveNinaPromises` — the promise sweep asks `generateNinaAvatar` for a photograph, so it
+//     is a model call behind two indexed reads. It runs from the nightly cron route and nowhere
+//     else. This bullet was missing while the table entry was not, which is the kind of drift a
+//     table with a prose header invites; the count above is now the length of the array below.
 //   · `describeNinaImage` — a `glm-4.6v` describe pass, 5-15 s. `components/nina/Composer.tsx`
 //     fires it on pick, from a client event handler, so the description is already in hand by
 //     the time he hits send. A render that awaited it would block the chat on a thumbnail.
+//   · `titleNinaSessionIfNeeded` — F35 R3's titler. A THIRD model call in the same invocation as
+//     a turn and its distillation, so its own ceiling is 600 tokens and its timeout 12 s rather
+//     than the turn's 2400/22 s — sized to fit beside `distillNinaMemory` under one 60 s
+//     function, not to be fast. It runs from `lib/nina/actions.ts` inside `after()`. A render
+//     that awaited it would make the runner wait for a label he cannot see yet.
+//   · `rankNinaSearchHits` — F35 R6's semantic search pass over SQL-narrowed candidates. A search
+//     BOX is the one surface where a 10-16 s await is most tempting and most wrong: the text
+//     results are already correct and already on screen, so awaiting the model would replace a
+//     complete list with a spinner. It runs from `lib/nina/searchActions.ts`, a Server Action
+//     fired from the sidebar's field.
 //
 // Fix the code, never silence the check.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -124,6 +140,34 @@ const GUARDED_CALLS = [
       'A glm-4.6v describe pass is a 5-15 s vision call (F33 phase 6). The composer fires it ' +
       'from a client event handler on pick, so the description is already in hand when he hits ' +
       'send; no page render may await it.',
+  },
+  {
+    symbol: 'titleNinaSessionIfNeeded',
+    sanctioned: [
+      // Its own module, because a guard that fails on the definition site is a guard that forces
+      // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
+      join('lib', 'nina', 'autotitle.ts'),
+      join('lib', 'nina', 'actions.ts'),
+    ],
+    advice:
+      'The session titler is a third model call in an invocation that already made two (F35 R3). ' +
+      "It runs from lib/nina/actions.ts inside after(), on sendNinaMessage's success path only, " +
+      'and never on a render path. The pure rules it needs are in lib/nina/title.ts, which is ' +
+      'client-safe and imports no model client — import from there, not from here.',
+  },
+  {
+    symbol: 'rankNinaSearchHits',
+    sanctioned: [
+      // Phase 6 split lib/nina/semantic.ts out of lib/nina/search.ts precisely so this list can
+      // sanction the definition site while the pure ranking rules stay importable everywhere.
+      join('lib', 'nina', 'semantic.ts'),
+      join('lib', 'nina', 'searchActions.ts'),
+    ],
+    advice:
+      'Semantic search is a glm-5.3 pass over SQL-narrowed candidates (F35 R6). Call it from ' +
+      'lib/nina/searchActions.ts, a Server Action fired from the sidebar field. The text results ' +
+      'are already correct without it, so a render that awaited it would trade a complete list ' +
+      'for a spinner — fall back to the text ranking instead.',
   },
 ]
 
