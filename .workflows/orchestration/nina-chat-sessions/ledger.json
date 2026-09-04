@@ -105,22 +105,22 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#83",
-      "commit": null,
+      "commit": "7f63c56",
       "depends_on": [
         4,
         5
       ],
       "difficulty": "NORMAL",
       "n": 6,
-      "note": null,
+      "note": "R6 search + persisted semantic toggle; R2 create control landed (NewChatButton fills newChatSlot). All gates green.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-6.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T21:09:56+00:00",
       "satisfies": [
         "R6"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A010",
       "title": "Search all chats, with the persisted semantic-search toggle"
     },
     {
@@ -185,7 +185,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T21:08:05+00:00",
+  "updated": "2026-09-04T21:09:56+00:00",
   "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }
