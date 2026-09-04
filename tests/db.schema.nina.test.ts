@@ -91,6 +91,7 @@ describe('nina_messages', () => {
         'id',
         'seq',
         'user_id',
+        'session_id',
         'role',
         'text',
         'source',
@@ -122,11 +123,13 @@ describe('nina_messages', () => {
     expect(fkFor(schema.ninaMessages, 'turn_id')).toBeUndefined()
   })
 
-  it('has the four indexes the reads need', () => {
+  it('has the six indexes the reads need — four F33 and two F35', () => {
     expect(indexNames(schema.ninaMessages)).toEqual([
       'nina_messages_reply_to_idx',
+      'nina_messages_session_seq_idx',
       'nina_messages_user_run_idx',
       'nina_messages_user_seq_idx',
+      'nina_messages_user_session_runner_idx',
       'nina_messages_user_unread_idx',
     ])
   })
@@ -283,6 +286,58 @@ describe('nina_folders', () => {
 
   it('cascades from users, so deleting an account takes its folder declarations with it', () => {
     expect(fkFor(schema.ninaFolders, 'user_id')?.onDelete).toBe('cascade')
+  })
+})
+
+describe('nina_chat_sessions — F35 R2', () => {
+  it('is a table with exactly the six columns the feature was planned against', () => {
+    expect(cfg(schema.ninaChatSessions).name).toBe('nina_chat_sessions')
+    expect(names(schema.ninaChatSessions)).toEqual(
+      ['id', 'user_id', 'title', 'title_source', 'pinned_at', 'created_at'].sort(),
+    )
+    expect(columns(schema.ninaChatSessions).get('id')?.primary).toBe(true)
+  })
+
+  it('cascades from users, so deleting an account takes its sessions with it', () => {
+    expect(fkFor(schema.ninaChatSessions, 'user_id')?.onDelete).toBe('cascade')
+  })
+
+  it('title and title_source are nullable, and NULL/NULL is "nobody has named this yet"', () => {
+    // The only state phase 4's titler may write into, and the state `sessionTitleFor` renders as
+    // "Chat baru". `setNinaSessionTitleIfUntitled`'s `isNull` predicate is its idempotence.
+    expect(sqlType(schema.ninaChatSessions, 'title')).toBe('text')
+    expect(columns(schema.ninaChatSessions).get('title')?.notNull).toBe(false)
+    expect(columns(schema.ninaChatSessions).get('title_source')?.notNull).toBe(false)
+  })
+
+  it('pinned_at is a nullable timestamp, not an is_pinned boolean (R4)', () => {
+    expect(sqlType(schema.ninaChatSessions, 'pinned_at')).toBe('timestamp with time zone')
+    expect(columns(schema.ninaChatSessions).get('pinned_at')?.notNull).toBe(false)
+  })
+
+  it('carries no last_user_message_at — R5 derives it, because a watermark is a cache with four writers', () => {
+    expect(names(schema.ninaChatSessions)).not.toContain('last_user_message_at')
+    // And no archive flag: R11 is a hard delete, or an archived session still answers
+    // getNinaMessageWindow and removing it means nothing.
+    expect(names(schema.ninaChatSessions)).not.toContain('archived_at')
+  })
+
+  it('has one index, (user_id, created_at desc) — the whole of the only read', () => {
+    expect(indexNames(schema.ninaChatSessions)).toEqual(['nina_chat_sessions_user_created_idx'])
+  })
+})
+
+describe('nina_messages.session_id — F35 R2 and R11', () => {
+  it('is NOT NULL, so a message with no session is unrepresentable', () => {
+    expect(sqlType(schema.ninaMessages, 'session_id')).toBe('text')
+    expect(columns(schema.ninaMessages).get('session_id')?.notNull).toBe(true)
+  })
+
+  it('CASCADES, which is what makes removing a session take its messages (R11)', () => {
+    // …and through nina_message_images.message_id's own cascade, their image rows. The blobs and
+    // the memory ledger's source_message_id pointers are deliberately left — see the schema header.
+    expect(fkFor(schema.ninaMessages, 'session_id')?.onDelete).toBe('cascade')
+    expect(fkFor(schema.ninaMessageImages, 'message_id')?.onDelete).toBe('cascade')
   })
 })
 

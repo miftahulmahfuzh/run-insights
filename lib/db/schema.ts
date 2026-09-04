@@ -687,6 +687,90 @@ export type NinaMessageSource =
   'chat' | 'run_committed' | 'missed_usual_day' | 'pattern_crossed' | 'silence' | 'avatar_changed'
 
 /**
+ * Who named a session. NULL is the fourth member and the important one: the column is nullable
+ * and travels with `title`, and NULL/NULL means *nobody has named this yet* — the first state of
+ * every session, the only state F35 phase 4's titler is allowed to write into, and the state
+ * `sessionTitleFor` renders as "Chat baru".
+ *
+ * `'backfill'` is migration 0004's own mark on the one session per user that holds everything
+ * written before sessions existed. It is not `'manual'` — nobody typed it — but the titler must
+ * treat it exactly as if somebody had: a 3-4 word title over years of mixed conversation would be
+ * a lie about what the session contains.
+ */
+export type NinaSessionTitleSource = 'auto' | 'manual' | 'backfill'
+
+/**
+ * **The conversation's partition (F35 R2).** One row per topic he decided to start.
+ *
+ * ── WHY A TABLE, AND WHY IT IS NOT A UI FEATURE ──────────────────────────────────────────────
+ * "A new session so I can focus on a new topic" is a claim about **what she is given to read**,
+ * not about what the screen shows: `getNinaMessageWindow` hands the newest 40 rows of
+ * `nina_messages` straight to `glm-5.3` on every turn, so the conversation IS the prompt. Without
+ * a partition column a new session would look new and behave exactly like the old one. That is why
+ * this table exists in the data layer and why `nina_messages.session_id` is `NOT NULL` — see D1 in
+ * the phase plan, and see `nina_messages`'s own note below.
+ *
+ * ── NO `last_user_message_at`, AND THE REASON IS `nina_folders`'S REASON ─────────────────────
+ * R5 sorts sessions by the most recent message **from him**. A stored watermark here would be
+ * "a cache with two writers" in `nina_folders`'s exact words, except that this one has four: his
+ * turn writes it, her two proactive writers must remember NOT to write it, and F35 phase 7's
+ * message DELETE moves it BACKWARDS from a file that does not own this table. So it is computed at
+ * read time — `max(sent_at) … where role = 'runner' group by session_id`, one statement batched
+ * with the session rows so the two are one snapshot.
+ *
+ * That is the opposite call from `nina_messages_user_unread_idx` one table down, and deliberately
+ * so: the unread count is paid on every render of every tabbed screen, while this list is read on
+ * `/nina` alone and its row count is bounded by how many topics a person starts. What the unread
+ * index's argument does buy is the right to spend an INDEX on the aggregate rather than a column,
+ * which `nina_messages_user_session_runner_idx` is.
+ *
+ * ── `pinned_at`, NOT `is_pinned` ────────────────────────────────────────────────────────────
+ * R4 pins a session to the top. NULL is unpinned, so the column needs no default and the state is
+ * unrepresentable-by-accident. A timestamp rather than a boolean costs nothing and answers "when",
+ * which keeps one decision reversible without a migration: pinning currently PARTITIONS the list
+ * and does not sort it (an actively-used pinned session must not drift downward every time he pins
+ * something else), and if that is ever revisited the pin time is already stored.
+ *
+ * ── NO `archived_at` ────────────────────────────────────────────────────────────────────────
+ * R11 removes a session, and `nina_messages.session_id` cascades. An archive flag was rejected in
+ * the plan set's scope section for one concrete reason: an archived session that still answered
+ * `getNinaMessageWindow` would defeat the point of removing it. What the delete deliberately does
+ * NOT clean up is written down at the FK, not here.
+ *
+ * ── NO `updated_at` ─────────────────────────────────────────────────────────────────────────
+ * Nothing reads it. `created_at` earns its place twice — as the sort key of a session that has no
+ * message yet, and as the instant migration 0004 stamps from `min(sent_at)` so the legacy session
+ * sorts as the old thing it is.
+ */
+export const ninaChatSessions = pgTable(
+  'nina_chat_sessions',
+  {
+    /** nanoid(12) — lib/id.ts newId(). It appears in the URL as `/nina?s=<id>`, so it is not an integer. */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The 3-4 word title (R3), his manual rename, or 0004's placeholder. NULL = not named yet. */
+    title: text('title'),
+    /** Travels with `title`; both NULL or both set. See the type's own note. */
+    titleSource: text('title_source').$type<NinaSessionTitleSource>(),
+    /** R4. NULL = unpinned. See the header for why this is an instant. */
+    pinnedAt: timestamp('pinned_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /**
+     * The one read: "every session of his". `created_at desc` makes it the deterministic base
+     * order that `orderNinaSessions` then re-sorts, so the pure rule receives a stable input and
+     * its unit test is not asserting the planner's mood. The `nina_avatars_user_created_idx`
+     * shape. No index on `pinned_at`: the pin is read off rows this index already returned, and a
+     * second index over a table with tens of rows would be a declaration with no reader.
+     */
+    index('nina_chat_sessions_user_created_idx').on(t.userId, t.createdAt.desc()),
+  ],
+)
+
+/**
  * **The conversation.** One row per bubble, which is RU-5 made structural: Nina returns 1–4 short
  * messages per turn and each one is a real row, so each is independently quotable (phase 7),
  * independently unread (phase 10) and independently attachable to an image (phase 6). A `jsonb`
@@ -727,6 +811,29 @@ export const ninaMessages = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * **The session this bubble belongs to (F35 R2).** `NOT NULL`: there is no unfiled bucket and
+     * no code path that has to ask whether a message has a session. The alternative — nullable,
+     * with NULL meaning "written before sessions existed" — would have made the failure quiet: a
+     * writer that forgot a session would still succeed and the row would simply stop appearing on
+     * his screen. Migration 0004 pays for `NOT NULL` once, in the right order: add the column
+     * nullable, file every existing row into one session per user, then `SET NOT NULL`.
+     *
+     * **Cascade, and it is a requirement rather than a detail (R11).** Removing a session must take
+     * its messages, and through `nina_message_images.message_id`'s cascade their image rows —
+     * Postgres chains both from one DELETE. What it deliberately does NOT take: the Blob objects
+     * behind those image rows (the rows go, the bytes stay, exactly as for a deleted message), and
+     * the `source_message_id` pointers in `nina_memory_slots` / `nina_memory_facts`, which carry no
+     * foreign key at all and so leave dangling provenance rather than cascading a fact away. That
+     * is the memory ledger staying global on purpose: a distilled fact can be true after the
+     * sentence that produced it is gone.
+     *
+     * Sessions SLICE `seq`; they do not replace it. `seq` remains the total order of the whole
+     * conversation and no per-session sequence exists.
+     */
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => ninaChatSessions.id, { onDelete: 'cascade' }),
     /** 'runner' is him, 'nina' is her. Not 'user'/'assistant' — she is not an assistant. */
     role: text('role').$type<NinaRole>().notNull(),
     /** Her words or his, verbatim. Never a template, never a rendered number. */
@@ -780,6 +887,37 @@ export const ninaMessages = pgTable(
     index('nina_messages_reply_to_idx').on(t.replyToId),
     /** Phase 8's "did he already share this run" and the run-detail back-link. */
     index('nina_messages_user_run_idx').on(t.userId, t.runId),
+    /**
+     * **The session slice AND the foreign key's own index — two jobs, one index (F35 R2).**
+     *
+     * The slice is `WHERE user_id = $1 AND session_id = $2 ORDER BY seq DESC LIMIT n`: a backward
+     * index scan with `user_id` as a heap filter, which is what makes one session's newest 40
+     * messages as cheap as the whole conversation's newest 40 used to be.
+     *
+     * `session_id` leads rather than `user_id` because of the second job: Postgres does not index
+     * the REFERENCING side of a foreign key, and the referencing lookup has no user in it. Without
+     * a `session_id`-leading index, every `removeNinaSession` would sequentially scan the entire
+     * conversation to find the children it has to cascade. `nina_messages_user_seq_idx` still
+     * answers every user-wide read, so nothing is duplicated here.
+     */
+    index('nina_messages_session_seq_idx').on(t.sessionId, t.seq),
+    /**
+     * **R5's sort key, computed instead of stored — and this index is what makes that affordable.**
+     *
+     * The session list runs `max(sent_at) … where user_id = $1 and role = 'runner' group by
+     * session_id`. Partial, on `nina_messages_user_unread_idx`'s precedent: it holds only HIS half
+     * of the conversation, so hers is not in the index at all. `sent_at` is a payload column and
+     * not a sort key — it rides along so the aggregate is index-only, because without it every
+     * runner message in the conversation is a heap fetch on a read that happens on every `/nina`
+     * render, which is the exact cost the unread index exists to avoid.
+     *
+     * `role = 'runner'` is in the predicate because R5 asks specifically for the most recent USER
+     * message. Her replies, and every proactive message she writes, must not move a session up the
+     * list.
+     */
+    index('nina_messages_user_session_runner_idx')
+      .on(t.userId, t.sessionId, t.sentAt)
+      .where(sql`${t.role} = 'runner'`),
   ],
 )
 
@@ -1338,6 +1476,11 @@ export const sharesRelations = relations(shares, ({ one }) => ({
 export const ninaMessagesRelations = relations(ninaMessages, ({ one, many }) => ({
   user: one(users, { fields: [ninaMessages.userId], references: [users.id] }),
   run: one(runs, { fields: [ninaMessages.runId], references: [runs.id] }),
+  /** The conversation this bubble is part of (F35 R2). */
+  session: one(ninaChatSessions, {
+    fields: [ninaMessages.sessionId],
+    references: [ninaChatSessions.id],
+  }),
   /** The quoted message (R12). Named so `replyTo` reads as the noun it is. */
   replyTo: one(ninaMessages, {
     relationName: 'ninaMessageReplyTo',
@@ -1347,6 +1490,11 @@ export const ninaMessagesRelations = relations(ninaMessages, ({ one, many }) => 
   /** The messages quoting THIS one. The other side of the self-relation. */
   replies: many(ninaMessages, { relationName: 'ninaMessageReplyTo' }),
   images: many(ninaMessageImages),
+}))
+
+export const ninaChatSessionsRelations = relations(ninaChatSessions, ({ one, many }) => ({
+  user: one(users, { fields: [ninaChatSessions.userId], references: [users.id] }),
+  messages: many(ninaMessages),
 }))
 
 export const ninaMessageImagesRelations = relations(ninaMessageImages, ({ one }) => ({
@@ -1456,6 +1604,8 @@ export type NinaAvatar = typeof ninaAvatars.$inferSelect
 export type NewNinaAvatar = typeof ninaAvatars.$inferInsert
 export type NinaFolder = typeof ninaFolders.$inferSelect
 export type NewNinaFolder = typeof ninaFolders.$inferInsert
+export type NinaChatSession = typeof ninaChatSessions.$inferSelect
+export type NewNinaChatSession = typeof ninaChatSessions.$inferInsert
 /**
  * `PushSubscriptionRow`, not `PushSubscription` — the latter is a DOM lib global that phase 11's
  * client code uses by that exact name, and shadowing it in a module that also talks to the
