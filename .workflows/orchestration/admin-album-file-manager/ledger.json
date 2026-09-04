@@ -10,48 +10,48 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "live in impl-admin-album-file-manager-p1; verify cannot see an uncommitted live phase",
       "package": "lib/db`, `lib/nina`, `lib/admin`, `drizzle`, `app/admin",
       "plan": ".workflows/plan/admin-album-file-manager/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T09:47:21+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "running",
+      "task_id": "P1-DB-A000",
       "title": "Folder metadata on `nina_avatars`, and the folder-aware data layer"
     },
     {
       "card": "#67",
-      "commit": null,
+      "commit": "d3a0cbcb052c7a0c8affeae31c789164012d8f3f",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "filetree.ts (zero-import, 47 contract symbols) + 72-test suite; 2140 tests green",
       "package": "lib/admin`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T09:43:38+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A000",
       "title": "The pure file-tree library: image filter, path grammar, tree build, upload diff"
     },
     {
       "card": "#68",
-      "commit": null,
+      "commit": "f379950",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "?photo=avatar:<id> deep link end to end; getNinaMessageImage added in queries.ts \u00a76; lib/nina/actions.ts untouched",
       "package": "lib/nina`, `app/nina`, `components/nina`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T09:43:41+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": null,
       "title": "The chat side of \"share link to Nina\": the `?photo=` idiom, composer chip, `attachExisting"
     },
@@ -139,6 +139,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-file-manager",
-  "updated": "2026-09-04T09:34:11+00:00",
+  "updated": "2026-09-04T09:47:21+00:00",
+  "verified_at": "2026-09-04T09:47:06+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
 }
