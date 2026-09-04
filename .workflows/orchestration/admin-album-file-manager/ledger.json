@@ -44,15 +44,15 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": "?photo=avatar:<id> deep link end to end; getNinaMessageImage added in queries.ts \u00a76; lib/nina/actions.ts untouched",
+      "note": "TaskID minted after phase 3 reported; taken from the plan index",
       "package": "lib/nina`, `app/nina`, `components/nina`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-3.md",
-      "reported_at": "2026-09-04T09:43:41+00:00",
+      "reported_at": "2026-09-04T11:05:02+00:00",
       "satisfies": [
         "R2"
       ],
       "status": "done",
-      "task_id": null,
+      "task_id": "P1-RI-A001",
       "title": "The chat side of \"share link to Nina\": the `?photo=` idiom, composer chip, `attachExisting"
     },
     {
@@ -124,22 +124,22 @@
       ],
       "difficulty": "EASY",
       "n": 7,
-      "note": "commit c48bb60 already an ancestor of origin/feature; session busy in completion-handler, has not self-reported yet \u2014 do NOT re-spawn",
+      "note": "c48bb60 + repair 9933ac6 \u2014 review together; c48bb60 alone does not typecheck",
       "package": "lib/admin`, `components/admin`, `app/admin`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-7.md",
-      "reported_at": "2026-09-04T11:00:43+00:00",
+      "reported_at": "2026-09-04T11:04:38+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A005",
       "title": "\"Share link to Nina\" in the explorer, opening the chat in a new tab"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-file-manager",
-  "updated": "2026-09-04T11:00:43+00:00",
+  "updated": "2026-09-04T11:05:02+00:00",
   "verified_at": "2026-09-04T11:00:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
 }
