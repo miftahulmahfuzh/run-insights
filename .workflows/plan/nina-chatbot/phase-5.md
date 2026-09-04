@@ -2610,9 +2610,12 @@ a `'admin'` ledger row is unreachable from every code path here (asserted by
 overwritten. What the editor must do to hold up its end: **write `source: 'admin'` on every row it
 creates or edits.** `upsertNinaMemorySlot` defaults to `'distilled'`, so an editor that omits the
 field writes a row the distiller is then free to replace — which is the exact failure R24 exists to
-prevent. Your "edit a stale fact" is `updateNinaMemoryFact`, and this phase never calls it;
-consider showing `confidence` and `source_message_id`, because a distilled row at confidence 40 is
-usually the one worth correcting.
+prevent. Your "edit a stale fact" is `updateNinaMemoryFact`, and this phase never calls it —
+**but RULING G5 restricts it to `source: 'admin'` rows, and phase 16 §2 is right about why:
+rewriting a distilled row's `text` forges what its `source_message_id` claims the message said.
+The route for a distilled row is therefore Retract (append-then-delete), never an in-place edit.**
+Consider showing `confidence` and `source_message_id`, because a distilled row at confidence 40 is
+usually the one worth retracting.
 
 **Phase 6 — image descriptions are not distilled by this phase.** `glm-4.6v`'s text arrives as
 `NinaTurnInput.imageDescriptions` and a photo of a swollen knee is a `body` fact worth keeping.

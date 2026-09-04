@@ -1,7 +1,10 @@
 'use server'
 
 import { requireUserId } from '@/lib/auth/requireUserId'
+import { after } from 'next/server'
 
+import type { NinaContext } from './context'
+import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { loadNinaContext } from './load'
 import { insertNinaMessages } from './queries'
@@ -169,6 +172,19 @@ export async function sendNinaMessage(input: { body: string }): Promise<SendNina
   })
 
   if (result.payload == null) {
+    /*
+     * She could not answer, but HE still spoke, and R4 is "every single thing". His message is
+     * persisted with an id, so distilling it is both possible and the honest reading of the
+     * requirement — a turn where she failed is not a turn where he said nothing.
+     */
+    scheduleDistillation({
+      userId,
+      runnerText: text,
+      sourceMessageId: runnerMessageId,
+      ninaBubbles: [],
+      memoryWrites: [],
+      context,
+    })
     return { ok: true, userMessageId: runnerMessageId, bubbles: [], unavailable: true }
   }
 
@@ -225,34 +241,61 @@ export async function sendNinaMessage(input: { body: string }): Promise<SendNina
   }
 
   /*
-   * STEP 6 — the memory writes she rode along with the reply (ruling b). LAST, and in its own
-   * `try`: a fact that failed to save must never cost a reply that succeeded. Phase 5 replaces
-   * the INTERPRETATION here — vocabulary, contradictions, the nickname, distillation from the
-   * whole turn — and inherits these same two gateway methods, so there is one write path.
+   * STEP 6 — the distillation (phase 5, R4). `after()` and not `await`: the turn already cost
+   * 13-45 s and this is another 10-20 s model call, so awaiting it would leave him watching an
+   * idle screen after the bubbles have landed. `after` runs for the route's max duration and runs
+   * even when the response is already out.
+   *
+   * `after()` throws E468 outside a request scope, which is exactly why the CALL is here in the
+   * `'use server'` module and `runTurnDistillation` itself never calls it — the same lesson phase
+   * 10 learned when it moved its hook out of `lib/review/commit.ts`.
+   *
+   * Phase 3's own `send.memoryWrites` are no longer applied here: they are an input to the one
+   * plan the distillation builds, so there is one interpretation, one plan and one apply.
+   * `runTurnDistillation` never throws, so there is no `try` around this and nothing to swallow.
    */
-  await applyMemoryWrites(userId, result.payload.memoryWrites, runnerMessageId)
+  scheduleDistillation({
+    userId,
+    runnerText: text,
+    sourceMessageId: runnerMessageId,
+    ninaBubbles: bubbles.map((bubble) => bubble.body),
+    memoryWrites: result.payload.memoryWrites ?? [],
+    context,
+  })
 
   return { ok: true, userMessageId: runnerMessageId, bubbles, unavailable: false }
 }
 
-async function applyMemoryWrites(
-  userId: string,
-  writes: readonly NinaMemoryWrite[] | undefined,
-  sourceMessageId: string,
-): Promise<void> {
-  if (writes == null || writes.length === 0) return
-  for (const write of writes) {
-    try {
-      if (write.kind === 'slot' && write.slotKey != null) {
-        await dbNinaToolGateway.saveMemorySlot(userId, { key: write.slotKey, value: write.text })
-      } else {
-        /* A `slot` write with no `slotKey` degrades to a ledger append rather than being dropped.
-         * The fact is real either way; only where it belongs is unclear, and phase 5's
-         * distillation is the thing that can promote it later. */
-        await dbNinaToolGateway.appendMemoryFact(userId, { text: write.text, sourceMessageId })
-      }
-    } catch (cause) {
-      console.warn('[nina] memory write failed', { kind: write.kind, error: String(cause) })
-    }
-  }
+/**
+ * The `after()` wrapper, so the two exit paths schedule one identical pass.
+ *
+ * **`messageCount` comes from the context window and not from a `COUNT(*)`.** The window is
+ * `CONTEXT_MESSAGE_WINDOW = 40` messages and it is loaded AFTER his message was persisted, so it
+ * is an exact count everywhere below 40 — and `FIRST_CONVERSATION_MESSAGE_LIMIT` is 12, so the one
+ * decision that reads it is always in the exact range. That is a whole query saved for free, and
+ * saying so here is cheaper than someone later "fixing" it.
+ */
+function scheduleDistillation(input: {
+  userId: string
+  runnerText: string
+  sourceMessageId: string
+  ninaBubbles: readonly string[]
+  memoryWrites: readonly NinaMemoryWrite[]
+  context: NinaContext
+}): void {
+  after(async () => {
+    await runTurnDistillation({
+      userId: input.userId,
+      runnerText: input.runnerText,
+      sourceMessageId: input.sourceMessageId,
+      ninaBubbles: input.ninaBubbles,
+      memoryWrites: input.memoryWrites,
+      slots: input.context.memory.slots.map((slot) => ({ key: slot.key, value: slot.value })),
+      identity: {
+        fullName: input.context.runner.fullName,
+        nickname: input.context.runner.nickname,
+        messageCount: input.context.conversation.window.length,
+      },
+    })
+  })
 }

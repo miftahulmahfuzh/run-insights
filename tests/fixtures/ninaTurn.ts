@@ -1,3 +1,4 @@
+import type { NinaSlotValue } from '@/lib/db/schema'
 import { buildNinaContext, type NinaContext } from '@/lib/nina/context'
 import { indexRunsByDate } from '@/lib/nina/dates'
 import { SEND_TOOL } from '@/lib/nina/prompts'
@@ -48,12 +49,18 @@ export function runHistoryFixture(runs = detailedRunsFixture()): NinaRunHistory 
 }
 
 export interface FakeToolGateway extends NinaToolGateway {
-  slots: Array<{ key: string; value: string }>
+  /**
+   * `value` is `NinaSlotValue` and not `string` because phase 5 widened
+   * `NinaToolGateway.saveMemorySlot` to carry `pending_promises`' structured value. The recorder
+   * has to be at least as wide as the row it records; every assertion against it still compares a
+   * plain string, because that is what phase 3's `save_memory` writes.
+   */
+  slots: Array<{ key: string; value: NinaSlotValue }>
   facts: Array<{ text: string; sourceMessageId: string | null }>
 }
 
 export function fakeToolGateway(history: NinaRunHistory = runHistoryFixture()): FakeToolGateway {
-  const slots: Array<{ key: string; value: string }> = []
+  const slots: Array<{ key: string; value: NinaSlotValue }> = []
   const facts: Array<{ text: string; sourceMessageId: string | null }> = []
   return {
     slots,

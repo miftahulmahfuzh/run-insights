@@ -22,6 +22,7 @@
  * `save_memory` never fires, it leaves `NINA_CORE_TOOL_SET` in one line.
  */
 import type { DateISO } from '@/lib/date/ranges'
+import type { NinaFactCategory, NinaMemorySource, NinaSlotValue } from '@/lib/db/schema'
 import {
   formatBpm,
   formatCadence,
@@ -91,12 +92,36 @@ export interface NinaToolGateway {
    * Ruling (b): the ONE write path for a standing fact. `save_memory` and
    * `send.memoryWrites` both land here, so there is no second implementation of "upsert a slot".
    * Phase 5 owns the vocabulary; this method owns the row.
+   *
+   * **Widened by phase 5, additively.** `value` takes `NinaSlotValue` because `pending_promises`
+   * (R19) is a structured slot and `string` is a member of that union, so this file's own callers
+   * are unaffected. `source` exists for phase 5's admin-row rule — a merge that preserved an
+   * admin-written value writes the row back as `'admin'` rather than relabelling it.
    */
-  saveMemorySlot(userId: string, row: { key: string; value: string }): Promise<void>
-  /** The append-only ledger (RU-6). `sourceMessageId` is the runner message this turn answers. */
+  saveMemorySlot(
+    userId: string,
+    row: {
+      key: string
+      value: NinaSlotValue
+      source?: NinaMemorySource
+      sourceMessageId?: string | null
+    },
+  ): Promise<void>
+  /**
+   * The append-only ledger (RU-6). `sourceMessageId` is the runner message this turn answers.
+   *
+   * **Widened by phase 5, additively.** `category` and `confidence` are phase 1's own columns and
+   * phase 5's distiller supplies both; omitted, they take the row's defaults (`'other'` and 100),
+   * which is exactly what `save_memory` wants.
+   */
   appendMemoryFact(
     userId: string,
-    row: { text: string; sourceMessageId: string | null },
+    row: {
+      text: string
+      sourceMessageId: string | null
+      category?: NinaFactCategory
+      confidence?: number
+    },
   ): Promise<void>
 }
 

@@ -17,10 +17,12 @@ import type {
   NagState,
 } from './context'
 import { indexRunsByDate } from './dates'
+import type { NinaMemoryGateway } from './distill'
 import type { NinaSourceGateway } from './load'
 import {
   appendNinaMemoryFacts,
   getNinaIdentity,
+  getNinaMemorySlot,
   getNinaMemorySlots,
   getNinaMessageWindow,
   insertNinaTurn,
@@ -29,7 +31,12 @@ import {
 } from './queries'
 import type { NinaDetailedRunInput, NinaRunHistory, NinaToolGateway } from './tools'
 import type { NinaTurnRow, NinaTurnSource, NinaTurnStore } from './turn'
-import type { NinaRole, NinaTurnStatus } from '@/lib/db/schema'
+import {
+  NINA_SLOT_PENDING_PROMISES,
+  type NinaPendingPromisesSlot,
+  type NinaRole,
+  type NinaTurnStatus,
+} from '@/lib/db/schema'
 
 /**
  * The three real gateways. `lib/records/gateway.ts` is the model, down to the rule in its header:
@@ -204,7 +211,14 @@ function toDetailedRun(
   }
 }
 
-export const dbNinaToolGateway: NinaToolGateway = {
+/**
+ * **One implementation object, two interface views — and the intersection is what checks it.**
+ * Phase 3's `NinaToolGateway` is what the tool dispatch sees; phase 5's `NinaMemoryGateway` adds
+ * the two reads its planner needs and sees the same two writers. Annotating the object with both
+ * means a later edit that breaks either view fails here, at the definition, rather than in a
+ * runtime cast at a call site — and it is why there is still exactly one way to upsert a slot.
+ */
+export const dbNinaToolGateway: NinaToolGateway & NinaMemoryGateway = {
   async loadRunHistory(userId): Promise<NinaRunHistory> {
     /*
      * `resolveHrMax` is resolved ONCE and reused across the loop, which is exactly what that
@@ -227,8 +241,14 @@ export const dbNinaToolGateway: NinaToolGateway = {
   async saveMemorySlot(userId, row) {
     /* `NinaSlotUpsert.value` is `NinaSlotValue`, whose common case is a bare JSON string — see
      * `ninaMemorySlots`' header for why one `jsonb` column holds both a phrase and phase 13's
-     * promise list. `source` defaults to `'distilled'`, which is what this write is. */
-    await upsertNinaMemorySlot(userId, { key: row.key, value: row.value })
+     * promise list. `source` defaults to `'distilled'` when the caller omits it, which is what
+     * `save_memory` is; phase 5 passes `'admin'` back for a merge that preserved a human's row. */
+    await upsertNinaMemorySlot(userId, {
+      key: row.key,
+      value: row.value,
+      source: row.source,
+      sourceMessageId: row.sourceMessageId,
+    })
   },
 
   async appendMemoryFact(userId, row) {
@@ -238,16 +258,46 @@ export const dbNinaToolGateway: NinaToolGateway = {
      * one fact at a time and a caller-side array-of-one is noise. Wrapping it here costs one pair
      * of brackets; making phase 5 think about batching does not.
      *
-     * **`category: 'other'` is this phase's honest answer, not a placeholder.** `NinaFactInsert`
-     * requires one and phase 5 owns the vocabulary — the same division ruling (b) already makes
-     * for `slotKey`: phase 3's sink writes what it is handed and phase 5 introduces the
-     * classification. Guessing `'training'` from a sentence this file never reads would be the
-     * arithmetic a gateway is not allowed to do, and refusing an uncategorised fact before the
-     * vocabulary exists would refuse every fact. Phase 5's distiller is what promotes it.
+     * **`category: 'other'` is the DEFAULT and not the answer.** `NinaFactInsert` requires a
+     * category and phase 5 owns the vocabulary — the same division ruling (b) already makes for
+     * `slotKey`. Phase 5's distiller classifies every fact it plans and passes one in; the
+     * `save_memory` tool does not and takes `'other'`. Guessing `'training'` from a sentence this
+     * file never reads would be the arithmetic a gateway is not allowed to do.
      */
     await appendNinaMemoryFacts(userId, [
-      { category: 'other', text: row.text, sourceMessageId: row.sourceMessageId },
+      {
+        category: row.category ?? 'other',
+        text: row.text,
+        confidence: row.confidence,
+        sourceMessageId: row.sourceMessageId,
+      },
     ])
+  },
+
+  /**
+   * Phase 5's admin-row rule (its ruling (c)) is unimplementable without knowing who wrote each
+   * slot. `getNinaMemorySlots` already selects `source`; this only reshapes it into the lookup the
+   * planner wants.
+   */
+  async readSlotSources(userId) {
+    const rows = await getNinaMemorySlots(userId)
+    return new Map(rows.map((row) => [row.key, row.source]))
+  },
+
+  /**
+   * `pending_promises`, parsed, for phase 5's merge. The shape check is deliberate and belongs
+   * here: `value` is `jsonb`, phase 16's editor hand-writes it, and a malformed value must degrade
+   * to "no promises" rather than throw inside a distillation pass. This is a boundary, not
+   * arithmetic.
+   */
+  async readPendingPromises(userId) {
+    const row = await getNinaMemorySlot(userId, NINA_SLOT_PENDING_PROMISES)
+    if (row === null) return null
+    const value = row.value
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+    const promises = (value as { promises?: unknown }).promises
+    if (!Array.isArray(promises)) return null
+    return { promises } as NinaPendingPromisesSlot
   },
 }
 
