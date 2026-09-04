@@ -267,6 +267,50 @@ The hidden bar is marked **`inert`, not `aria-hidden` and not `hidden`**. A bar 
 screen is still in the tab order; `hidden` would remove it from layout and take the transition with
 it.
 
+## Nina's chat sessions — F35
+
+Three phases of the chat-sessions set landed features that live in `lib/nina` and
+`components/nina` rather than in the shell above. There is no `components/nina/.workflows/`
+readme yet, so they are recorded here.
+
+**Session titling (F35 R3).** A new session names itself. `lib/nina/title.ts` is pure and holds
+both title rules — the model's 3-4 word answer (`sanitizeNinaModelTitle`, which refuses prose,
+empty answers and anything with no letter in it, because a bad title is worse than none when the
+title *is* the session list) and his manual rename (`sanitizeNinaSessionTitle`, which cleans and
+clamps but imposes no word rule, because R3's "3-4 words" constrains the model and not the
+runner). It stays free of `server-only` on purpose, so a client component can read it.
+`lib/nina/autotitle.ts` holds the one `glm-5.3` call behind `import 'server-only'`, fired from
+`sendNinaMessage`'s success path inside `after()` and never awaited in a render. Idempotence is a
+row, not a variable: `setNinaSessionTitleIfUntitled`'s `WHERE … AND title IS NULL` means a
+double-invoked `after()` or two racing tabs still produce exactly one title. A manual title is
+never overwritten — `title_source` makes that check one primary-key read — and nothing is
+persisted on failure, so the next turn retries for free.
+
+**The sidebar (F35 R6/R7/R4/R11).** `NinaSidebar.tsx` / `SessionList.tsx` / `SessionRow.tsx` are
+the full-screen chat list behind `/nina`'s floating `>`. The panel is an overlay, not a route: its
+open state is `?sidebar=1` in the URL, pushed with `window.history.pushState`, so the platform
+back gesture closes it and the conversation behind it is never unmounted. `NinaSidebarProvider`
+exists for exactly one ref — the trigger pushes the history entry and the panel closes it, from
+two different subtrees, so a single shared `pushedRef` is what stops every open/close leaving a
+dead back-swipe. It is always mounted with `inert={!open}`, because `transitionend` never fires
+under `motion-reduce:transition-none` and unmount-on-exit would strand the panel open under Reduce
+Motion. Nina's circle lives here now — `/nina` has no header row at all (R7). Every rule the panel
+obeys is a pure function in `lib/nina/sidebar.ts` with a suite; the ordering is phase 1's and no
+component re-sorts it.
+
+**Editing and deleting messages (F35 R8).** Any bubble, either side of the conversation, can be
+rewritten or removed: swipe it left, or tab to its second `sr-only`-until-focused button. This is a
+data-layer feature with a UI on top — `getNinaMessageWindow` reads `nina_messages.text` verbatim
+into every later prompt, so an edited row is what was said and a deleted row is a thing that never
+happened. The rules live in the pure `lib/nina/edit.ts` (his cap 4000, hers 700 — pinned to
+`lib/nina/schema.ts` by test rather than imported, so zod stays out of the chat bundle; an empty
+edit on a text-only message is refused and names delete instead; the left-swipe gate reuses
+reply's distance and dominance and adds a 24 px right-edge guard for iOS Safari's
+forward-navigation zone). The writes are `lib/nina/messageActions.ts`, owner-scoped and refusing
+rather than degrading on a foreign id; the delete reads the image rows *before* the cascade takes
+them so the orphaned blob pathnames are logged and findable — `reap-orphaned-blobs` does not cover
+`nina/` yet, which is its own card.
+
 ## Root modules — the auth edge
 
 Four `.ts` files sit directly in the root. Three of them are Auth.js, split across two instances on
