@@ -4,6 +4,7 @@ import { NINA_FOLDER_ROOT, validateFolderPath } from '@/lib/admin/filetree'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { NINA_ADMIN_PAGE_SIZE, NINA_AVATAR_FALLBACK_SRC } from '@/lib/nina/album'
 import { listNinaAvatarFolders, listNinaAvatarsInFolder } from '@/lib/nina/queries'
+import { shareOrigin } from '@/lib/share/origin'
 
 /**
  * `/admin/nina` — F33 R23's album, now the file manager this round's R1 asked for: *"can we make it
@@ -133,6 +134,21 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
         </p>
       ) : null}
 
+      {/*
+       * `shareOrigin()` is resolved HERE, on the server, and handed down as a string — phase 7 /
+       * R2. `lib/share/origin.ts` opens with `import 'server-only'`, so no client component can
+       * call it, and invariant 9 (roadmap §4.1) forbids exporting it as a build-time public
+       * environment variable. That is not a limitation being worked around; it is the mechanism.
+       * In production this is `AUTH_URL` — `https://runins.site`, the origin the user named in the
+       * requirement — and on a preview deployment it is the project's stable production hostname
+       * rather than the per-deployment one, so a link minted on a preview still opens the real
+       * chat instead of a hostname that dies at the next push.
+       *
+       * The leading `*` on every line is the same load-bearing detail `SelectionPane`'s seam
+       * comment records: `ci:client-secret-guard`'s Rule 3 exempts only lines a comment scanner
+       * recognises, and a JSX comment with bare prose continuation lines fails the guard while
+       * explaining why it is being obeyed.
+       */}
       <FileExplorer
         userId={userId}
         folders={folderList}
@@ -143,6 +159,7 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
           pageSize: NINA_ADMIN_PAGE_SIZE,
           total: listed.total,
         }}
+        shareOrigin={shareOrigin()}
       />
     </div>
   )

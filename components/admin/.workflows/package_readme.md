@@ -40,6 +40,8 @@ package has no test files and why that is correct rather than a gap: the judgeme
 - Derive a 256 px thumbnail in the browser, because nothing on the server re-encodes these blobs.
 - Run a bounded, resumable upload queue that registers rows in chunks as files land.
 - Own the framing studio and the sanity circles, at the sizes the chat actually draws.
+- Hand a photo to her chat as a **pointer, in a new tab**, getting the order inside one click right:
+  fire the describe, then open the tab, await neither before the other.
 - Render `/admin/memory`'s ledger and slot editor.
 - Never render `description`. Invariant 5 — it is her prompt's private input, and this package shows
   only *whether* it exists.
@@ -57,6 +59,7 @@ package has no test files and why that is correct rather than a gap: the judgeme
 | `explorer/PhotoGrid.tsx` | `'use client'` | One folder's page of square tiles, plus the pager. |
 | `explorer/SelectionPane.tsx` | `'use client'` | The details rail: framing, facts, and the action list. |
 | `explorer/UploadQueue.tsx` | `'use client'` | One honest line about what the upload is doing. |
+| `ShareToNinaItem.tsx` | `'use client'` | "Share link to Nina". Opens the chat in a new tab; fires the describe and never awaits it. |
 | `CropStudio.tsx` | `'use client'` | Drag / wheel / slider / arrow keys. Contains one subtraction. |
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
 | `AdminNav.tsx` | **no directive** | The `/admin` nav. No active-link highlighting, on purpose. |
@@ -254,11 +257,11 @@ consecutive pages *during* an upload, and nothing is ever skipped.
 `draft`/`stored`/`dirty` triple, the same `run()` transition helper, the same "Save framing" /
 "Reset framing" pair through one action, the same two sanity circles at 44 px and 28 px. `CropStudio`
 survived the move from a 460 px column into a 320 px rail without a line changing because it measures
-its own frame with a `ResizeObserver`. What is new is one button — "Set as her profile picture" — the
-primary action at the top of the list. There is **no optimistic copy of the album**: every action
-calls `revalidatePath('/admin/nina')` and the page is `force-dynamic`, so there is nothing here to
-keep in sync. `description` is shown as *"Can talk about this photo"* / *"Cannot talk about this
-photo yet"* and never as prose.
+its own frame with a `ResizeObserver`. What is new is two entries in the action list — "Set as her
+profile picture", the primary action at the top, and `ShareToNinaItem` directly under it. There is
+**no optimistic copy of the album**: every action calls `revalidatePath('/admin/nina')` and the page
+is `force-dynamic`, so there is nothing here to keep in sync. `description` is shown as *"Can talk
+about this photo"* / *"Cannot talk about this photo yet"* and never as prose.
 
 **`UploadQueue`** — the sentence this component exists for is *"Nothing new. All 313 files are
 already here."* "Upload only the new files" has a failure mode the requirement does not mention and
@@ -268,6 +271,48 @@ every failure plus a bounded window of what is moving, and then an honest count 
 drawing. `REFUSAL_TEXT` is an exhaustive `Record` over `UploadRefusal` rather than a `switch` with a
 default, so adding a refusal reason in `lib/admin/filetree.ts` is a build error here until it has a
 sentence.
+
+### "Share link to Nina" — an ordering problem, not a UI problem
+
+`ShareToNinaItem` renders one button. Everything difficult about it is **what happens in which order
+inside a single click**, and all three rules exist because the obvious implementation is wrong.
+
+- **The tab opens before anything is awaited.** `window.open` is granted on transient user
+  activation, which Chrome expires roughly 5 s after the click. The describe behind this button is
+  the `glm-4.6v` pre-pass — 8–11 s — so awaiting it first turns *"automatically open … in a new
+  browser tab"* into a blocked-popup icon. The describe is **initiated** first and never awaited:
+  `startTransition` runs its callback synchronously up to the first `await`, so the request is on
+  the wire before `window.open` executes, and `window.open` is still inside the gesture.
+- **The race that remains is honest.** `resolveAttachment` copies the description at *send* time,
+  not at page load, so the describe has the new tab's whole load plus however long the operator
+  takes to type — comfortably more than 11 s. If it loses, or z.ai is down, the send still works and
+  she has nothing to say about the picture, which is what already happens for any un-described
+  photo. Failures are `console.error`'d and never surfaced: the tab he asked for is already open,
+  and the explorer's existing "Describe it" button is the retry.
+- **`'noopener'` is not optional, and it is what makes it a tab.** Without it the new tab holds a
+  live `window.opener` handle back onto `/admin/nina`, the app's only privileged screen, for no
+  gain. Per the spec's `window.open` steps `noopener` is stripped from the feature string *before*
+  the "is a popup requested" check, so the remaining feature map is empty and the result is a tab
+  rather than a popup window. `window.open` with `'noopener'` returns `null` by specification, so
+  the return value is not read and there is no popup-blocked branch — a blocked popup shows the
+  browser's own indicator, which is better than anything this component could render.
+
+Two props carry the judgements this component is not allowed to make. `described` is a **required
+boolean, never the prose** — one bit is all the decision needs, and taking the bit keeps
+`description` out of the component entirely (invariant 5); required, so a grid row that forgets to
+carry it is a compile error rather than a silent vendor call on every share. `shareOrigin` is a
+**required string from the server** for the reason under Gotchas below.
+
+It calls `ensureNinaAvatarDescriptionAction` and not `describeNinaAvatarAction`: the latter
+re-describes unconditionally (it is the album's retry button), while `ensure…` returns after one
+indexed single-row read for any photo that already has a description. So the common case costs a
+read, the `described` guard skips even that, and only a never-promoted never-shared photo pays the
+8–11 s. It sends **nothing** — `attachNinaPhotoToChat` would send immediately and await the whole
+13–16 s turn, which is the wrong order for R2's *"user can input additional text question / comment
+(optional)"*. This component arms the composer; phase 3 owns everything that happens in the new tab.
+
+The URL itself is not built here. `ninaPhotoShareUrl` lives in `lib/admin/shareToNina.ts` — a pure
+function, and therefore testable, per the boundary rule this package is organised around.
 
 ## The framing studio
 
@@ -427,7 +472,10 @@ deliberately writes no ledger row.
   may import it.
 - `@/lib/admin/ninaAlbumActions` — every write: `registerNinaAvatarsAction`,
   `listNinaAlbumManifestAction`, `setCurrentNinaAvatarAction`, `saveNinaAvatarCropAction`,
-  `describeNinaAvatarAction`, `deleteNinaAvatarAction`.
+  `describeNinaAvatarAction`, `ensureNinaAvatarDescriptionAction`, `deleteNinaAvatarAction`.
+- `@/lib/admin/shareToNina` — `ninaPhotoShareUrl(origin, avatarId)`, the only writer of the
+  `/nina?photo=avatar:<id>` link. **A near-zero-import module** (it pulls only `lib/nina/attach`'s
+  `formatNinaPhotoParam` and `PHOTO_PARAM`), which is why a `'use client'` file may import it.
 - `@/lib/admin/avatars` — `adminAvatarPathname`, `adminAvatarThumbPathname`, `extForContentType`,
   `ADMIN_AVATAR_MAX_UPLOAD_BYTES`, `ADMIN_AVATAR_MIN_EDGE_PX`.
 - `@/lib/admin/schema` — `AvatarBatchRecord`, **as a type only**, so no validator crosses into the
@@ -445,7 +493,10 @@ deliberately writes no ledger row.
 - `@/lib/admin/users` — `AdminUserRow`, **as a type only**.
 - `@/lib/db/schema` — `NinaPendingPromise`, **as a type only**, so no drizzle table module reaches
   the browser bundle.
-- `@/components/ui` — `Button`, `ButtonLink`, `EmptyState`, `Card`, `Field`, `CONTROL_CLASS`.
+- `@/components/ui` — `Button`, `ButtonLink`, `EmptyState`, `Card`, `Field`, `CONTROL_CLASS`, and
+  `buttonClasses`, which is exported precisely so a non-`<button>` element — or, in
+  `ShareToNinaItem`'s case, a plain `<button>` that must keep `onClick` directly on itself — can
+  borrow the look without rendering `Button`.
 - `@/lib/cn` — `cn()`.
 
 **No runtime import in this directory reaches `zod`, `server-only`, or the database.** The two
@@ -454,13 +505,19 @@ deliberately writes no ledger row.
 because `schema.ts` would pull a validator into the `/admin` browser bundle for the sake of an
 integer — a module-level `z.object(...)` is a side effect no bundler tree-shakes.
 
+`lib/share/origin.ts` is the same shape of rule and the reason `shareOrigin` is a prop: it opens
+with `import 'server-only'`, so nothing in this directory can call it and the answer has to arrive
+from a Server Component. The share URL's *grammar* is importable because `lib/admin/shareToNina.ts`
+was written to be — the origin is what cannot cross.
+
 ## Reverse Dependencies
 
 ### Primary consumers
 
 - `app/admin/nina/page.tsx` — `FileExplorer`, plus `ExplorerFolder` and `ExplorerPhoto` as types. It
   gates with `requireAdmin()`, reads one folder and one page, maps `NinaAvatarRow` down to
-  `ExplorerPhoto`, and hands the result over. `announcedAt`, `pathname`, `sourceKey` and
+  `ExplorerPhoto`, and hands the result over. It also calls `shareOrigin()` — the only place that
+  can — and passes the string down as a prop. `announcedAt`, `pathname`, `sourceKey` and
   `thumbPathname` deliberately never cross the serialization boundary.
 - `app/admin/memory/page.tsx` — `MemoryLedger`, `MemorySlots`, `UserPicker`.
 
@@ -472,7 +529,9 @@ integer — a module-level `z.object(...)` is a side effect no bundler tree-shak
 
 - `FileExplorer.tsx` re-exports `ExplorerFolder`, `ExplorerPageInfo` and `ExplorerPhoto` from
   `explorer/model.ts`, so a consumer needs one import path.
-- `SelectionPane.tsx` is the only consumer of `CropStudio` and — on this screen — of `CircleFrame`.
+- `SelectionPane.tsx` is the only consumer of `CropStudio`, of `ShareToNinaItem` and — on this
+  screen — of `CircleFrame`. `shareOrigin` is a pure pass-through in `FileExplorer`: it is read
+  nowhere between `page.tsx` and `ShareToNinaItem`.
 
 ### Test consumers
 
@@ -480,16 +539,29 @@ None, and by design. vitest is `environment: 'node'` with no jsdom, so nothing i
 reachable from a test; everything it *decides* was moved to `lib/` to be tested there. A new pure
 judgement belongs in `lib/admin/filetree.ts` or `lib/nina/crop.ts`, not here.
 
+`ShareToNinaItem` is the worked example. The component itself is untested and untestable — it is
+`window.open`, `useTransition` and a click — but the one thing about it that can be *wrong on
+paper*, the link's grammar, was put in `lib/admin/shareToNina.ts` and is covered by
+`tests/admin.shareToNina.test.ts`, which round-trips the URL back through phase 3's
+`parseNinaPhotoParam` rather than asserting literal bytes. That split is the rule, not a compromise.
+
 ## Data flow
 
 ```
 app/admin/nina/page.tsx  (Server Component, force-dynamic, requireAdmin() on line 1)
   │  validateFolderPath(?folder)  ·  readPage(?page)  ·  two parallel reads
+  │  shareOrigin()   ← server-only, resolved HERE, handed down as a string
   ▼
 FileExplorer  ─── FolderTree ──────────► <Link href="?folder=…">  (server re-read)
       │      ─── PhotoGrid ───────────► <Link href="?page=…">     (server re-read)
       │      └── SelectionPane ───────► setCurrent / saveCrop / describe / delete
-      │                                        └─► revalidatePath('/admin/nina')
+      │                    │                   └─► revalidatePath('/admin/nina')
+      │                    └── ShareToNinaItem  (one click, in this order)
+      │                            1. ensureNinaAvatarDescriptionAction  ← FIRED, never awaited
+      │                            2. window.open(ninaPhotoShareUrl(origin, id), '_blank',
+      │                                           'noopener')            ← inside the activation
+      │                          the new tab: /nina?photo=avatar:<id>, phase 3 parses and arms
+      │                          the composer; nothing is sent from here
       │
       │  drop ──► entriesFromDrop()   ← SYNCHRONOUS, before any await
       │  pick ──► filesFromPicker()
@@ -572,11 +644,14 @@ be moved to `lib/` is the minimum-edge check in `uploadOne`, because only a deco
   folders={folderList}   // ExplorerFolder[] — { folder, count }, one per non-empty folder
   photos={photos}        // ExplorerPhoto[]  — this folder, this page only
   page={{ folder, page, pageSize: NINA_ADMIN_PAGE_SIZE, total: listed.total }}
+  shareOrigin={shareOrigin()}   // from lib/share/origin.ts — server-only, so it must be a prop
 />
 ```
 
 `userId` is threaded from the session because blob pathnames interpolate it (invariant 3). It is
-never read from a request.
+never read from a request. `shareOrigin` is threaded for the mirror-image reason: the module that
+knows the answer cannot be imported by a Client Component, so the server resolves it once and hands
+down the string.
 
 ### Gotchas
 
@@ -585,6 +660,19 @@ never read from a request.
   synchronously.
 - **Do not `preventDefault()` the `wheel` event through an `onWheel` prop.** React's root listener is
   passive; the call warns and does nothing.
+- **Do not `await` anything before `window.open` in `ShareToNinaItem`.** Same class of bug as the
+  `async` drop handler and just as silent: user activation expires, the browser blocks the tab, and
+  the requirement's *"automatically open"* becomes a popup icon. Fire the describe, then open.
+- **Do not replace `window.open` with `<Link>` or `router.push`.** Both navigate *this* tab, which
+  replaces the file manager the operator is mid-audit in. *"In a new browser tab"* is in the
+  requirement.
+- **Do not compute the share origin from `window.location.origin`.** It is the tempting inline fix
+  and it is wrong: on a Vercel preview deployment it is a per-deployment hostname that dies at the
+  next push, so the shared link would point at a URL that will not exist tomorrow. And a build-time
+  public environment variable is forbidden outright (invariant 9). The prop is the only way.
+- **Do not build the share URL with a template literal.** `/admin` writes the string and `/nina`
+  parses it; a second place that knows the grammar is a place that can disagree about it.
+  `ninaPhotoShareUrl` is the only writer, `formatNinaPhotoParam` the only formatter.
 - **Do not call `readEntries()` once.** It returns at most 100 entries and ends with an empty array.
 - **Do not add a decision to a `setState` updater.** Strict mode double-invokes it, and on this path
   that means two blobs for one file — F17 measured it.
@@ -617,14 +705,18 @@ Two components were retired when this screen landed, and neither should come bac
 was moved verbatim into `SelectionPane`) and `UploadAvatar.tsx` (superseded by the folder-aware
 queue, which also retired the singular `registerNinaAvatarAction` in `lib/admin`).
 
-Two seams are marked in the source for phases that follow, both deliberately narrow:
+Two seams were marked in the source for phases that follow. One is now closed:
 
-- **Phase 6, folder maintenance** — `FolderTree.tsx` carries the note. A "New folder" button belongs
-  under its `<nav>` (it needs `current` as the parent), and rename / move / delete belong on `Row`,
-  which is already the single place a folder is drawn.
-- **Phase 7, "Share link to Nina"** — one more entry in `SelectionPane`'s action list. It needs
-  `shareOrigin()` threaded `page.tsx -> FileExplorer -> SelectionPane`, because
-  `lib/share/origin.ts` is `server-only` and invariant 9 forbids a `NEXT_PUBLIC_` for it.
+- **Phase 6, folder maintenance** — still open. `FolderTree.tsx` carries the note. A "New folder"
+  button belongs under its `<nav>` (it needs `current` as the parent), and rename / move / delete
+  belong on `Row`, which is already the single place a folder is drawn.
+- **Phase 7, "Share link to Nina"** — **closed**, and it cost exactly what the seam predicted: one
+  entry in `SelectionPane`'s action list (`ShareToNinaItem`), one prop threaded
+  `page.tsx -> FileExplorer -> SelectionPane -> ShareToNinaItem`, and nothing about selection
+  restructured. `SelectionPane.tsx` still carries the `SEAM — PHASE 7` comment block immediately
+  above the item it now renders; the paragraph explaining the leading-`*` comment style is still
+  load-bearing and must stay, but the seam's own "phase 7 will need to…" prose now describes work
+  that is done and reads as stale next to the `<ShareToNinaItem …>` three lines below it.
 
 Known, accepted limitations: folder sort is lexicographic rather than natural; a tile can repeat
 across two consecutive pages while an upload is in flight (nothing is ever skipped); empty
@@ -645,3 +737,10 @@ grid, the drag-and-drop folder walk, the `webkitdirectory` picker, client-side t
 the four-lane upload queue with chunked registration, the selection pane and "Set as profile
 picture" — re-hosted `CropStudio` and `CircleFrame` unchanged, and deleted `AlbumManager.tsx` and
 `UploadAvatar.tsx`.
+
+2026-09-04 — updated following task **P1-RI-A005** (`admin-album-file-manager` phase 7 of 7,
+requirement R2, "Share link to Nina"). It closed phase 5's `SEAM — PHASE 7`: added
+`ShareToNinaItem.tsx`, threaded a `shareOrigin` string prop from `app/admin/nina/page.tsx` through
+`FileExplorer` and `SelectionPane`, and left the URL grammar itself in the new pure
+`lib/admin/shareToNina.ts` (`ninaPhotoShareUrl`) so it could be tested in Node. Nothing else in the
+package changed shape.

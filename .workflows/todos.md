@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-04
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 4
+- Completed: 5
 
 ---
 
@@ -32,17 +32,6 @@
   - **Depends on**: `P1-RI-A003`
   - **Plan**: `.workflows/plan/P1-RI-A004.md`
   - **Card**: `miftahulmahfuzh/run-insights#71`
-
-- [ ] **P1-RI-A005** Phase 7: "Share link to Nina" in the explorer, opening the chat in a new tab
-  - **Difficulty**: EASY
-  - **Type**: Feature
-  - **Context**: Owns `lib/admin/shareToNina.ts` (the one place an avatar id becomes a chat URL, built through phase 3's formatter), `components/admin/ShareToNinaItem.tsx`, the one item at phase 5's marked seam in `components/admin/explorer/SelectionPane.tsx`, the `shareOrigin` prop threaded from `app/admin/nina/page.tsx` through `FileExplorer`, and `tests/admin.shareToNina.test.ts`. The click opens `<origin>/nina?photo=avatar:<id>` in a new tab with `'noopener'`, before awaiting anything, and fires (never awaits) `ensureNinaAvatarDescriptionAction` when the photo has no description. Exit: one new tab at the production origin with `window.opener === null`; the chat there shows the photo chipped in the composer; sending with or without text produces a reply; no image bytes are re-uploaded; an un-described photo gets described without the tab waiting for it; `npm test` and `npm run typecheck` green.
-  - **Status**: open
-  - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 7 of 7)
-  - **Satisfies**: R2 — "Share link to Nina" on a photo in that explorer: opens the runins.site chat in a new browser tab with the photo attached as a pointer rather than a re-upload, takes an optional question, and Nina answers it
-  - **Depends on**: `P1-RI-A001`, `P1-RI-A003`
-  - **Plan**: `.workflows/plan/P1-RI-A005.md`
-  - **Card**: `miftahulmahfuzh/run-insights#72`
 
 ### [P2] Medium
 
@@ -131,6 +120,26 @@
   - **Drift**: Removing the singular `registerNinaAvatarAction` orphaned two imports in `lib/admin/ninaAlbumActions.ts` (`avatarRegisterSchema`, `insertNinaAvatarAsCurrent`) and one docstring on `AdminActionResult.id` naming the deleted function. Imports removed; the docstring now names the describe actions, which are what still set `id` (`:306`). `avatarRegisterSchema` itself stays in `lib/admin/schema.ts` as the plan requires — `tests/admin.avatars.test.ts` covers it.
   - **Drift**: The Step 7 SEAM comment quotes the string `NEXT_PUBLIC_`, and written as a JSX `{/* */}` block with bare continuation lines it failed `ci:client-secret-guard` Rule 3 — the guard's `isComment` only recognises `//`, `/*` and `*`-prefixed lines. Reformatted the comment with leading `*` per the convention every other mention in the repo already follows, with a note in it explaining why the prefix is load-bearing. **The guard script was NOT modified.**
   - **Drift**: Prettier reformatted three of the new files (`model.ts`, `PhotoGrid.tsx`, `useFolderUpload.ts`) — whitespace only.
+
+### [P1] P1-RI-A005
+- [x] **P1-RI-A005** Phase 7: "Share link to Nina" in the explorer, opening the chat in a new tab
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `lib/admin/shareToNina.ts` (the one place an avatar id becomes a chat URL, built through phase 3's formatter), `components/admin/ShareToNinaItem.tsx`, the one item at phase 5's marked seam in `components/admin/explorer/SelectionPane.tsx`, the `shareOrigin` prop threaded from `app/admin/nina/page.tsx` through `FileExplorer`, and `tests/admin.shareToNina.test.ts`. The click opens `<origin>/nina?photo=avatar:<id>` in a new tab with `'noopener'`, before awaiting anything, and fires (never awaits) `ensureNinaAvatarDescriptionAction` when the photo has no description. Exit: one new tab at the production origin with `window.opener === null`; the chat there shows the photo chipped in the composer; sending with or without text produces a reply; no image bytes are re-uploaded; an un-described photo gets described without the tab waiting for it; `npm test` and `npm run typecheck` green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 7 of 7)
+  - **Satisfies**: R2 — "Share link to Nina" on a photo in that explorer: opens the runins.site chat in a new browser tab with the photo attached as a pointer rather than a re-upload, takes an optional question, and Nina answers it
+  - **Depends on**: `P1-RI-A001`, `P1-RI-A003`
+  - **Plan**: `.workflows/plan/P1-RI-A005.md`
+  - **Card**: `miftahulmahfuzh/run-insights#72`
+  - **Completed**: 2026-09-04 17:51
+  - **Method**: /do
+  - **Files**: lib/admin/shareToNina.ts, components/admin/ShareToNinaItem.tsx, components/admin/FileExplorer.tsx, components/admin/explorer/SelectionPane.tsx, app/admin/nina/page.tsx, tests/admin.shareToNina.test.ts
+  - **Verification**: `npm run typecheck` clean; `npm test` 121 files / 2167 tests green (new `tests/admin.shareToNina.test.ts` 6/6, round-tripping through phase 3's `parseNinaPhotoParam`); `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run format:check` clean; `npm run build` succeeded with `/admin/nina` still ƒ dynamic; all six `ci:*` guards PASS.
+  - **Outstanding**: The manual browser round trip (one new tab, `window.opener === null`, the photo chipped in the composer, unchanged Blob object count) is **not** verified — migration `0003` is applied to no live database, so `/admin/nina` cannot render anywhere yet. `npm run db:migrate` is the user's call and was deliberately not run.
+  - **Drift**: No structural drift — every interface phase 7 required was present exactly as specified (`PHOTO_PARAM` / `formatNinaPhotoParam` / `parseNinaPhotoParam` in `lib/nina/attach.ts`; phase 5's `SEAM — PHASE 7` comment in `components/admin/explorer/SelectionPane.tsx`; `ensureNinaAvatarDescriptionAction` in `lib/admin/ninaAlbumActions.ts`).
+  - **Drift**: Took the plan's own offered choice in its Step 3 *Styling* paragraph: `ShareToNinaItem`'s button wears `buttonClasses({ variant: 'secondary', size: 'md', fullWidth: true })` from `components/ui/Button.tsx` rather than the draft's ad-hoc `w-full text-left`. It stays a plain `<button>` so `window.open` runs inside the click's user activation.
+  - **Drift**: The plan's docstrings quoted the literal `NEXT_PUBLIC_` prefix while explaining why the share origin cannot use one, which trips `ci:client-secret-guard`. Rephrased to *"a build-time public environment variable"* in all three places, and the JSX comment in `app/admin/nina/page.tsx` follows the repo's leading-`*` convention. The guard script was NOT modified.
 
 ---
 

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 
 import { CircleFrame } from '@/components/admin/CircleFrame'
 import { CropStudio } from '@/components/admin/CropStudio'
+import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
 import { Button } from '@/components/ui'
 import {
   deleteNinaAvatarAction,
@@ -48,10 +49,13 @@ import type { ExplorerPhoto } from './model'
 
 export function SelectionPane({
   photo,
+  shareOrigin,
   onClose,
   onRemoved,
 }: {
   photo: ExplorerPhoto
+  /** `shareOrigin()`'s output, threaded from the page. Never `window.location`. Phase 7 / R2. */
+  shareOrigin: string
   onClose: () => void
   /** Selection has to be dropped by the owner — the row is gone. */
   onRemoved: () => void
@@ -221,6 +225,12 @@ export function SelectionPane({
         >
           {photo.isCurrent ? 'Her profile picture' : 'Set as her profile picture'}
         </Button>
+
+        <ShareToNinaItem
+          photoId={photo.id}
+          described={photo.description != null}
+          shareOrigin={shareOrigin}
+        />
 
         {photo.description == null && (
           <Button
