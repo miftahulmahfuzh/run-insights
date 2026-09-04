@@ -12,6 +12,7 @@ import { computeSessionMetrics, evaluateSessionFlags, type ZoneRow } from '@/lib
 import { resolveHrMax } from '@/lib/metrics/hrMax'
 import {
   buildNinaContext,
+  type AvatarInput,
   type FiredPattern,
   type MemoryFactInput,
   type MemorySlotInput,
@@ -24,6 +25,7 @@ import {
   type StoredRecordInput,
 } from './context'
 import { NINA_PROMPT_VERSION } from './prompts'
+import { getCurrentNinaAvatar } from './queries'
 
 /**
  * **The fetching half.** `lib/nina/context.ts` decides what a fact IS and does no I/O; this file
@@ -138,13 +140,27 @@ export async function loadNinaContext(
     gateway.readNags(userId),
   ])
 
-  const [profileRow, allRuns, recordRows, badgeRows, hrMax] = await Promise.all([
+  const [profileRow, allRuns, recordRows, badgeRows, hrMax, avatarRow] = await Promise.all([
     getProfile(userId),
     getReviewedRunsWithChildren(userId),
     getRecords(userId),
     getBadgeAwards(userId),
     resolveHrMax(userId),
+    /* R25. A single-row lookup on the partial unique index `nina_avatars_user_current_unq`, so it
+     * costs about what reading a column off `profiles` costs. Null is a real answer, not a
+     * failure: phase 13's D-2 says there is no seed row, so "no row" means the committed
+     * constant. */
+    getCurrentNinaAvatar(userId),
   ])
+
+  const avatar: AvatarInput | null =
+    avatarRow == null
+      ? null
+      : {
+          description: avatarRow.description,
+          createdAt: avatarRow.createdAt,
+          source: avatarRow.source,
+        }
 
   const profile: NinaProfile | null =
     profileRow == null
@@ -240,6 +256,7 @@ export async function loadNinaContext(
     recentRuns,
     records,
     badges: foldAwards(awards),
+    avatar,
     slots,
     facts,
     messages: window.messages,

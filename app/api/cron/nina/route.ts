@@ -2,6 +2,7 @@ import { addDays, todayInJakarta } from '@/lib/date/ranges'
 import { listActiveUserIds } from '@/lib/db/queries'
 import { cronEnv } from '@/lib/env'
 import { evaluateAndEmitForUser } from '@/lib/nina/proactive'
+import { resolveNinaPromises } from '@/lib/nina/promises'
 
 /**
  * `GET /api/cron/nina` — the evening proactivity pass. Triggers 2–5 of RU-15/RU-17; trigger 1
@@ -100,6 +101,36 @@ export async function GET(request: Request): Promise<Response> {
       skipped = userIds.length - index
       console.warn('[cron nina] out of budget', { skipped, remaining })
       break
+    }
+
+    /*
+     * F33 phase 13, R19 — the promise sweep, BEFORE the triggers and deliberately so.
+     *
+     * A promise that settles here dispatches a generation whose `nina_avatars` row lands with
+     * `announced_at` NULL, and phase 10's `avatar_changed` trigger is exactly "a current avatar
+     * nobody has mentioned". Running the sweep first means a photograph that arrived since the
+     * last tick is announced on THIS tick rather than the next one.
+     *
+     * It never posts a message itself (phase 13's D-3: there is exactly one announcer, and it is
+     * the trigger below). It is idempotent, so the five-minute cadence costs one indexed slot read
+     * on the common tick and nothing else — a promise with a job already dispatched is not
+     * re-fired inside the same Jakarta day.
+     *
+     * Its own try, inside the user's: a sweep that throws must not cost this user the four
+     * triggers, and the `catch` below would otherwise swallow them together.
+     */
+    try {
+      const sweep = await resolveNinaPromises(userId)
+      if (sweep.wrote) {
+        console.log('[cron nina] promise sweep', {
+          userId,
+          fired: sweep.fired,
+          settled: sweep.settled,
+          expired: sweep.expired,
+        })
+      }
+    } catch (cause) {
+      console.warn('[cron nina] promise sweep failed', { userId, error: String(cause) })
     }
 
     /* Every user in its own try. A user whose context fails to load — a bad memory row, a null

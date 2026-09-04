@@ -7,7 +7,9 @@
  * real: it is what `nina_turns` records, so a change in her behaviour can be traced to the commit
  * that caused it. An edit with no bump is a bug no test can catch; only review can.
  */
-export const NINA_PROMPT_VERSION = 1
+/* 2 — F33 phase 13 appended the `avatar` paragraph to `CONTEXT_GUIDE` (R25). No tool schema
+ * moved; `SET_AVATAR_TOOL` was already declared here and is only now dispatched. */
+export const NINA_PROMPT_VERSION = 2
 
 export {
   LANGUAGE_RULE,

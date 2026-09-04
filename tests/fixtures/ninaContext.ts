@@ -163,6 +163,11 @@ export function ninaFixtureInput(
       { key: 'retired_key', value: 1, previousValue: null, achievedOn: '2026-08-01', runId: 'r' },
     ],
     badges: HELD_BADGES,
+    /* F33 phase 13, R25. `null` is the SEED case and the default worth defaulting to: it is what
+     * a runner who has never had her change her photo sees, and `buildNinaContext` turns it into
+     * `isSeed: true` rather than three nulls a case has to interpret. A case that wants a real
+     * photograph overrides it. */
+    avatar: null,
     slots: [
       {
         key: 'usual_running_days',

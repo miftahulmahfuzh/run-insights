@@ -10,12 +10,20 @@ import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { NINA_MAX_CHAT_IMAGES, isNinaChatRequestPathname } from './images'
-import { NINA_CHAT_TOOL_SET } from './imagetools'
+import { NINA_FULL_TOOL_SET } from './avatartools'
+import { NINA_GALLERY_LIMIT } from './album'
 import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from './imageTicket'
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
-import { getNinaMessagesByIds, insertNinaMessageImages, insertNinaMessages } from './queries'
+import {
+  getNinaMessagesByIds,
+  insertNinaMessageImages,
+  insertNinaMessages,
+  listNinaAvatars,
+  listNinaMessageImages,
+} from './queries'
 import type { NinaMessageRow } from './queries'
+import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
 import { productionDeps, runNinaTurn } from './turn'
@@ -104,6 +112,68 @@ const REFUSED: SendNinaMessageResult = {
 }
 
 /**
+ * A blob **the server already owns**, attached to a new message — F33 R26.
+ *
+ * Deliberately an id and a kind rather than a URL: a URL from a client is a claim, and an id
+ * resolved against `user_id` is a fact. `'avatar'` reads `nina_avatars`, `'image'` reads
+ * `nina_message_images`, and either miss is a refusal rather than a silently text-only send.
+ *
+ * ── WHY THERE IS NO TICKET HERE, AND THAT IS NOT A GAP ────────────────────────────────────────
+ * Phase 6's signed ticket exists so the CLIENT cannot claim a blob it did not upload. These two
+ * reads are owner-scoped, so they prove strictly more than a ticket can — and an album photo's
+ * pathname (`nina/<userId>/avatar-<id>.jpg`) would fail `isNinaChatRequestPathname` anyway, which
+ * is correct: it is not a chat upload.
+ */
+export interface NinaAttachExisting {
+  kind: 'avatar' | 'image'
+  id: string
+}
+
+/**
+ * Resolved once, BEFORE the runner's row is written, so a bad id costs nothing.
+ *
+ * ── WHY NO VISION CALL ────────────────────────────────────────────────────────────────────────
+ * We already know what is in the picture. `nina_avatars.description` and
+ * `nina_message_images.description` are exactly what phase 6's `glm-4.6v` pass would have
+ * produced, and already paid for — so the description is copied onto the new row and reaches her
+ * through `imageDescriptions`, as text (invariant 5).
+ */
+async function resolveAttachment(
+  userId: string,
+  attach: NinaAttachExisting,
+): Promise<{
+  blobUrl: string
+  pathname: string
+  kind: NinaImageKind
+  description: string | null
+} | null> {
+  if (attach.kind === 'avatar') {
+    const rows = await listNinaAvatars(userId)
+    const row = rows.find((candidate) => candidate.id === attach.id)
+    if (row == null) return null
+    /* Her own photograph, so `kind: 'generated'` — the gallery's his/hers discriminator has to
+     * keep telling the truth about a photo that has now appeared twice. */
+    return {
+      blobUrl: row.blobUrl,
+      pathname: row.pathname,
+      kind: 'generated',
+      description: row.description,
+    }
+  }
+
+  const rows = await listNinaMessageImages(userId, { limit: NINA_GALLERY_LIMIT })
+  const row = rows.find((candidate) => candidate.id === attach.id)
+  if (row == null) return null
+  /* A re-attached chat photo keeps whoever's it was. */
+  return {
+    blobUrl: row.blobUrl,
+    pathname: row.pathname,
+    kind: row.kind,
+    description: row.description,
+  }
+}
+
+/**
  * ── THE ARGUMENT OBJECT IS THE SHAPE FOUR LATER PHASES CONVERGE ON ────────────────────────────
  * One object, agreed up front, each later phase adding exactly one optional field in its own
  * commit — phases 6 (`imageTickets`), 7 (`replyToMessageId`), 8 (`runId`) and 13
@@ -155,11 +225,28 @@ export async function sendNinaMessage(input: {
    * refusal rule below.
    */
   runId?: string | null
+  /**
+   * Phase 13 (R26). A blob the server already owns, attached to a new message — the album's
+   * "Kirim ke chat". **This is the ONE field this phase adds**, and the LAST clause RULING B1's
+   * refusal rule gains: the rule is now complete and nobody rewrites it again.
+   *
+   * Shape-checked only here; ownership is `resolveAttachment`'s, below, and it is a refusal rather
+   * than a degradation — an id that is not his means the whole send was about a photo he cannot
+   * see, so there is no honest message left to write.
+   */
+  attachExisting?: NinaAttachExisting | null
 }): Promise<SendNinaMessageResult> {
   const userId = await requireUserId()
 
   const text = typeof input?.body === 'string' ? input.body.trim() : ''
   const tickets = Array.isArray(input?.imageTickets) ? input.imageTickets : []
+  /* Shape only. `resolveAttachment` proves ownership, and it runs before the runner's row. */
+  const attach =
+    input?.attachExisting != null &&
+    (input.attachExisting.kind === 'avatar' || input.attachExisting.kind === 'image') &&
+    isValidId(input.attachExisting.id)
+      ? { kind: input.attachExisting.kind, id: input.attachExisting.id }
+      : null
   /* Shape only, here. Ownership and existence are STEP 0c's, below, and they have to be: the
    * column is a foreign key. */
   const requestedRunId =
@@ -185,7 +272,9 @@ export async function sendNinaMessage(input: {
    * disjunct (`attachExisting != null`) in its own commit; nobody rewrites this condition, they
    * extend it. The final form is printed above.
    */
-  if (text.length === 0 && tickets.length === 0 && requestedRunId === null) return REFUSED
+  if (text.length === 0 && tickets.length === 0 && requestedRunId === null && attach === null) {
+    return REFUSED
+  }
   if (text.length > MAX_RUNNER_MESSAGE_CHARS) return REFUSED
   if (tickets.length > NINA_MAX_CHAT_IMAGES) return REFUSED
 
@@ -209,7 +298,9 @@ export async function sendNinaMessage(input: {
   }
   /* Every ticket was forged or stale AND he typed nothing AND no run is pinned: there is no
    * message here at all. */
-  if (text.length === 0 && images.length === 0 && requestedRunId === null) return REFUSED
+  if (text.length === 0 && images.length === 0 && requestedRunId === null && attach === null) {
+    return REFUSED
+  }
 
   /*
    * STEP 1 — his message, first. See the header.
@@ -275,9 +366,24 @@ export async function sendNinaMessage(input: {
       console.warn('[nina] could not resolve the attached run', { error: String(cause) })
     }
   }
+  /*
+   * STEP 0d — the attached blob (R26). Resolved BEFORE the runner's row is written, so an id that
+   * is not his costs one indexed read and nothing else.
+   *
+   * A miss REFUSES rather than degrading to a text-only send, which is the opposite of how the
+   * ticket path and the run path handle a miss — and deliberately. There, the attachment was extra
+   * and his sentence is still worth sending. Here he tapped "Kirim ke chat" on a specific
+   * photograph: sending his question with the photo silently dropped would have her answering
+   * about a picture that is not in the conversation.
+   */
+  const attached = attach === null ? null : await resolveAttachment(userId, attach)
+  if (attach !== null && attached === null) return REFUSED
+
   /* The run was the whole message and it is not his: there is nothing here to send. Same shape as
    * the forged-ticket check above, and the same reason. */
-  if (text.length === 0 && images.length === 0 && runId === null) return REFUSED
+  if (text.length === 0 && images.length === 0 && runId === null && attached === null) {
+    return REFUSED
+  }
 
   let runnerMessageId: string
   try {
@@ -321,6 +427,32 @@ export async function sendNinaMessage(input: {
       )
     } catch (cause) {
       console.warn('[nina] could not persist chat images', { error: String(cause) })
+    }
+  }
+
+  /*
+   * R26's row. Same table, same shape, same reasons as the block above — it is an ordinary chat
+   * photo that happens to point at a blob we already had, which is the whole design: no new
+   * attachment kind, no new renderer, no second send path.
+   *
+   * `sortOrder: images.length` puts it after anything he picked in the same message. Today the
+   * album sends exactly one photo and no tickets, so that is 0; spelling it as the count rather
+   * than as 0 keeps the two blocks composable if a later card ever lets him do both.
+   */
+  if (attached !== null) {
+    try {
+      await insertNinaMessageImages(userId, [
+        {
+          messageId: runnerMessageId,
+          kind: attached.kind,
+          blobUrl: attached.blobUrl,
+          pathname: attached.pathname,
+          description: attached.description,
+          sortOrder: images.length,
+        },
+      ])
+    } catch (cause) {
+      console.warn('[nina] could not persist the attached photo', { error: String(cause) })
     }
   }
 
@@ -371,9 +503,10 @@ export async function sendNinaMessage(input: {
   /*
    * `toolSet` is overridden here, and this line is the ONLY integration point for every tool phases
    * 12 and 13 add. Phase 3 built `extendToolSet` so that adding `generate_image` needed no edit to
-   * `tools.ts` or `turn.ts`; `NINA_CHAT_TOOL_SET` is that composition, and phase 13 extends the same
-   * value rather than adding a second override here. Two independent overrides would silently drop
-   * one of the two tools.
+   * `tools.ts` or `turn.ts`; `NINA_CHAT_TOOL_SET` was that composition, and `NINA_FULL_TOOL_SET`
+   * (phase 13) is `NINA_CHAT_TOOL_SET` plus `set_avatar` — layered, so this line moved one word and
+   * neither `imagetools.ts` nor `tools.ts` was touched. Two independent overrides here would
+   * silently drop one of the two tools, which is exactly what the layering prevents.
    *
    * `productionDeps()` is spread rather than re-spelled so client, model, gateway and store stay
    * defined in exactly one place — the reason RULING C6 had phase 3 export it at creation.
@@ -385,7 +518,13 @@ export async function sendNinaMessage(input: {
       history,
       sourceMessageId: runnerMessageId,
       runnerText: text.length > 0 ? text : null,
-      imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+      /* R26's description rides the same array, which is why the attach path needs no vision call
+       * and no second prompt slot: `glm-4.6v` already described this blob once, for whoever put it
+       * in the conversation first. Still TEXT, so invariant 5 is untouched. */
+      imageDescriptions: [
+        ...images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+        ...(attached === null ? [] : [attached.description ?? NINA_DESCRIPTION_UNAVAILABLE]),
+      ],
       quoted,
       /*
        * The facts half of R13. `turn.ts` resolves this id against the history it has ALREADY loaded
@@ -395,7 +534,7 @@ export async function sendNinaMessage(input: {
        */
       attachedRunId: runId,
     },
-    { ...productionDeps(), toolSet: NINA_CHAT_TOOL_SET },
+    { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET },
   )
 
   if (result.payload == null) {

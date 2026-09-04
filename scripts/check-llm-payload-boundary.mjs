@@ -107,6 +107,17 @@ const GUARDED_CALLS = [
       'awaited before the reply is returned to the composer.',
   },
   {
+    symbol: 'resolveNinaPromises',
+    sanctioned: [
+      join('lib', 'nina', 'promises.ts'),
+      join('app', 'api', 'cron', 'nina', 'route.ts'),
+    ],
+    advice:
+      'The promise sweep asks generateNinaAvatar for a photograph (F33 phase 13, R19), so it is ' +
+      'a model call behind two indexed reads. It runs from the cron route and nowhere else — ' +
+      'never from app/nina/about/page.tsx, which renders the album and evaluates no promise.',
+  },
+  {
     symbol: 'describeNinaImage',
     sanctioned: [join('lib', 'nina', 'actions.ts'), join('components', 'nina', 'Composer.tsx')],
     advice:

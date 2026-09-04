@@ -439,6 +439,48 @@ export interface BadgeFacts {
 }
 
 /* ============================================================================
+ * Her own photograph — F33 phase 13, R25
+ * ==========================================================================*/
+
+/**
+ * Her current profile photograph, as a fact about herself — R25.
+ *
+ * ── WHY THE DESCRIPTION AND NOT THE IMAGE ─────────────────────────────────────────────────────
+ * Invariant 5: `glm-5.3` is never sent an image; the endpoint answers 200 and silently drops it.
+ * RU-12 is the pattern — `glm-4.6v` writes a dense private description and `glm-5.3` reacts to
+ * that text. Her own avatar follows the same route: whoever created the row wrote what it shows,
+ * and she reads the words.
+ *
+ * ── WHY THERE IS NO `story` FIELD ─────────────────────────────────────────────────────────────
+ * A stored story is quoted back verbatim next week and next month, and a friend who repeats a
+ * sentence word for word is the most reliable tell that she is not one. She improvises from this
+ * description plus the conversation, so the second telling differs from the first — which is what
+ * a person remembering actually sounds like.
+ *
+ * ── RU-18: SHE DOES NOT REMARK ON HER OWN FACE ────────────────────────────────────────────────
+ * The anchor is dropped, so consecutive generated photographs are different-looking women. That is
+ * accepted and deliberate. `CONTEXT_GUIDE` instructs her not to comment on it, and this type
+ * carries no field she could comment from: there is nothing here about a previous face.
+ */
+export interface AvatarFacts {
+  /** What the photograph shows, in prose. Null when nobody has described it. */
+  description: string | null
+  /** Jakarta day it became her photograph. Null for the committed seed. */
+  changedOn: string | null
+  /** `'generated' | 'admin' | 'operator' | 'seed'`, or null for the committed seed. */
+  source: string | null
+  /** True when this is `public/nina/avatar-001.png` and not an album row (phase 13's D-2). */
+  isSeed: boolean
+}
+
+/** What `loadNinaContext` hands `buildNinaContext`. */
+export interface AvatarInput {
+  description: string | null
+  createdAt: Date
+  source: string
+}
+
+/* ============================================================================
  * Patterns — phase 9's shape, defined here because this layer formats them
  * ==========================================================================*/
 
@@ -521,6 +563,8 @@ export interface NinaContext {
   /** All eleven keys, catalog order. */
   records: RecordFact[]
   badges: BadgeFacts
+  /** Her own profile photograph — R25. Never null: the seed is a value, not an absence. */
+  avatar: AvatarFacts
   /** Phase 9's codes that fired, with their nag level. `[]` when nothing fired. */
   patterns: PatternFact[]
   /** Bumped by hand whenever the system text or any tool schema changes. Logged, never sent. */
@@ -539,6 +583,8 @@ export interface BuildNinaContextInput {
   records: readonly StoredRecordInput[]
   /** `foldAwards`' output — one entry per held key. */
   badges: readonly StoredBadge[]
+  /** The current `nina_avatars` row, or null for the committed seed (phase 13's D-2). */
+  avatar: AvatarInput | null
   slots: readonly MemorySlotInput[]
   /** Newest first. */
   facts: readonly MemoryFactInput[]
@@ -814,6 +860,18 @@ function patternFacts(input: BuildNinaContextInput, today: DateISO): PatternFact
 export function buildNinaContext(input: BuildNinaContextInput): NinaContext {
   const today = jakartaDayOf(input.now)
 
+  /* R25. `null` is not an absence to render around — it is the committed seed, and `isSeed` says
+   * so in a field rather than leaving her to infer it from three nulls. */
+  const avatar: AvatarFacts =
+    input.avatar == null
+      ? { description: null, changedOn: null, source: null, isSeed: true }
+      : {
+          description: input.avatar.description,
+          changedOn: jakartaDayOf(input.avatar.createdAt),
+          source: input.avatar.source,
+          isSeed: false,
+        }
+
   return {
     now: nowFacts(input.now, today),
     runner: runnerFacts(input),
@@ -822,6 +880,7 @@ export function buildNinaContext(input: BuildNinaContextInput): NinaContext {
     recentRuns: input.recentRuns.map((run) => buildNinaRunFact(run, today)),
     records: recordFacts(input, today),
     badges: badgeFacts(input, today),
+    avatar,
     patterns: patternFacts(input, today),
     promptVersion: input.promptVersion,
   }

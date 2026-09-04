@@ -28,6 +28,17 @@ process.env.CRON_SECRET = 'cron-secret-for-tests'
 
 vi.mock('@/lib/db/queries', () => ({ listActiveUserIds: vi.fn() }))
 vi.mock('@/lib/nina/proactive', () => ({ evaluateAndEmitForUser: vi.fn() }))
+/*
+ * F33 phase 13. The route now sweeps promises before the triggers, and the real sweep reads
+ * `nina_memory_slots` and can call `generateNinaAvatar` — both of which this suite exists to stay
+ * away from (§4.9). Same reason `evaluateAndEmitForUser` is mocked above, and the mock is a
+ * resolved no-op because none of the three properties asserted here is about the sweep.
+ */
+vi.mock('@/lib/nina/promises', () => ({
+  resolveNinaPromises: vi
+    .fn()
+    .mockResolvedValue({ verdicts: [], fired: 0, settled: 0, expired: 0, wrote: false }),
+}))
 
 const listUsers = vi.mocked(listActiveUserIds)
 const evaluate = vi.mocked(evaluateAndEmitForUser)

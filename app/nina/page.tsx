@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { after } from 'next/server'
 
 import { ChatScreen } from '@/components/nina/ChatScreen'
@@ -8,9 +9,11 @@ import { requireUserId } from '@/lib/auth/requireUserId'
 import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
 import { listRunAttachments } from '@/lib/db/queries'
 import { isValidId } from '@/lib/id'
+import { ninaAvatarView } from '@/lib/nina/album'
 import { ATTACH_PARAM, indexAttachments, type RunAttachment } from '@/lib/nina/attach'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import {
+  getCurrentNinaAvatar,
   getNinaMessageImagesForMessages,
   listNinaMessages,
   markNinaMessagesRead,
@@ -32,8 +35,8 @@ import {
  * a conversation's identity is a face. So this screen builds its own row: her avatar at 44px, her
  * name at the same `text-[26px] font-bold tracking-[-0.02em]` every other screen title uses, and
  * one quiet line under it. The type is identical; only the avatar is new, which is the smallest
- * possible departure. Phase 13 turns the avatar into a link to `/nina/about`; nothing else here
- * moves.
+ * possible departure. **Phase 13 kept that promise**: the avatar is now a `<Link>` to
+ * `/nina/about` and its source is the album's current row, and nothing else in the header moved.
  *
  * ── WHY THERE ARE NO PER-MESSAGE TIMESTAMPS ───────────────────────────────────────────────────
  * Day dividers only. Three reasons, in order of weight. `lib/format.ts` has no time-of-day
@@ -99,10 +102,22 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * Invariant 4 holds: two indexed reads and, on the rare stale path, a handful of UPDATEs. No
    * model call is awaited in a render path — the generation itself is on a GitHub runner.
    */
-  const [rows] = await Promise.all([
+  const [rows, , avatarRow] = await Promise.all([
     listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT }),
     listOpenNinaImageJobs(userId),
+    /*
+     * F33 phase 13 (R17). A THIRD indexed read, not a model call: `getCurrentNinaAvatar` is a
+     * single-row lookup on the partial unique index `nina_avatars_user_current_unq`, so it costs
+     * about what reading a column off `profiles` costs and invariant 4 is untouched.
+     *
+     * `null` is a real answer and not a failure — phase 13's D-2 rules that there is no seed row,
+     * so "no row" means the committed `public/nina/avatar-001.png`. `ninaAvatarView` is the one
+     * function that knows it, and the detail page calls the same one, so the header and the hero
+     * cannot disagree about which face is hers.
+     */
+    getCurrentNinaAvatar(userId),
   ])
+  const avatar = ninaAvatarView(avatarRow)
 
   /*
    * The photos, in one query rather than a join. `getNinaMessageImagesForMessages` reads
@@ -183,7 +198,17 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   return (
     <AppShell bottomGap="chat">
       <header className="mb-5 flex items-center gap-3">
-        <NinaAvatar size="md" />
+        {/*
+          R17's first tap level: her face is a door. `size-11` is already 44 px — the iOS
+          tap-target floor — which phase 4 chose "for when phase 13 makes it a link", so no
+          geometry changes here.
+
+          A `<Link>` and not a `<button>`: it is a navigation, so it gets the platform's own
+          long-press, middle-click and back behaviour for free, and Next prefetches the route.
+        */}
+        <Link href="/nina/about" aria-label="Buka detail Nina" className="rounded-pill">
+          <NinaAvatar size="md" src={avatar.src} natural={avatar.natural} crop={avatar.crop} />
+        </Link>
         <div className="min-w-0">
           <h1 className="text-[26px] leading-none font-bold tracking-[-0.02em] text-ink">Nina</h1>
           <p className="mt-1 truncate text-[11px] font-medium text-ink-3">
