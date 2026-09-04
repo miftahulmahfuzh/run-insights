@@ -22,14 +22,6 @@
 
 ### [P1] High
 
-### [P2] Medium
-
-### [P3] Low
-
-### [P4] Backlog
-
-### 🚫 Blocked
-
 - [ ] **P1-RI-A007** Phase 3: Session-scoped chat surface and session lifecycle actions
   - **Difficulty**: HARD
   - **Type**: Feature
@@ -40,6 +32,14 @@
   - **Depends on**: `P1-DB-A001`, `P1-RI-A006`
   - **Plan**: `.workflows/plan/P1-RI-A007.md`
   - **Card**: `miftahulmahfuzh/run-insights#80`
+
+### [P2] Medium
+
+### [P3] Low
+
+### [P4] Backlog
+
+### 🚫 Blocked
 
 - [ ] **P1-RI-A008** Phase 4: Automatic session titling, and the rename path
   - **Difficulty**: NORMAL
