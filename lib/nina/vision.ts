@@ -244,6 +244,12 @@ export async function describeNinaImagesWithFetch(
 }
 
 /**
+ * What a `data:` URI built by `toDataUri` may claim to be. The three `/admin/nina` accepts plus
+ * nothing else — `image/jpeg` is both the chat path's only type and the fallback here.
+ */
+const DESCRIBABLE_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+
+/**
  * Fetch the blob back out and re-encode it as a base64 data URI.
  *
  * A data URI, not the hosted Blob URL, even though the bytes are already on a public CDN — the
@@ -259,9 +265,24 @@ async function toDataUri(ref: NinaImageRef, signal: AbortSignal): Promise<NinaDe
   if (bytes.byteLength === 0) {
     throw new NinaVisionTransportError(`blob ${ref.pathname} was empty`)
   }
-  // The compressor always emits JPEG and the upload route allows only image/jpeg, so the media
-  // type is known rather than sniffed.
-  return { dataUri: `data:${NINA_CHAT_CONTENT_TYPE};base64,${bytes.toString('base64')}` }
+  /*
+   * The media type is READ BACK from the blob's own `content-type`, not assumed.
+   *
+   * For a chat photo it is always `image/jpeg` — the compressor emits JPEG and `/api/upload`
+   * allows nothing else — so this changes nothing on that path. F33 phase 15 is why it is not
+   * hardcoded any more: an admin avatar is deliberately not re-encoded, so `/admin/nina` stores
+   * PNG and WebP too, and labelling PNG bytes `image/jpeg` in a data URI is a lie told to a
+   * vendor whose failure mode is "200 OK with invented content".
+   *
+   * Allow-listed rather than passed through, because the header is whatever the store was told at
+   * PUT time, and it ends up inside a `data:` URI we hand to a model.
+   */
+  const served = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase()
+  const mediaType =
+    served != null && (DESCRIBABLE_MEDIA_TYPES as readonly string[]).includes(served)
+      ? served
+      : NINA_CHAT_CONTENT_TYPE
+  return { dataUri: `data:${mediaType};base64,${bytes.toString('base64')}` }
 }
 
 /**

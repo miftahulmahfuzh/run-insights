@@ -1,23 +1,48 @@
 # Phase 15: Admin — the desktop shell and her album
 
-> ## ⚠ RECONCILIATION — binding rulings not yet folded into the body of this plan
+> ## ✅ RECONCILIATION — applied, 2026-09-04, by the session that built this phase
 >
 > `.workflows/plan/nina-chatbot/RECONCILIATION_RULINGS.md` is **normative** and outranks anything
-> below it. Two rulings change this plan structurally:
+> below it. Every ruling binding on this phase has now landed in code; this records how, so a
+> reader of the steps below knows where the shipped tree deviates from the prose.
 >
-> - **E6 — `lib/nina/crop.ts` MOVES TO PHASE 13.** This plan's Steps 1–2 become **no-ops**: do not
->   create the file, `import` it from `@/lib/nina/crop` instead. Phase 13 lands first and cannot
->   import a file this phase creates — that was the plan set's one true ordering conflict, and this
->   is its resolution. Everything else about the crop control (the clamp, the circular preview, the
->   shared `ninaCropStyle` mapping) is unchanged and still yours.
-> - **A5 — delete `CircleFrame`'s `NINA_AVATAR_FALLBACK_SRC` declaration** and import it from
->   `@/lib/nina/album` (phase 13). Two spellings of `/nina/avatar-001.png` is one too many.
-> - **RU-18 — the admin upload's inability to re-anchor no longer matters.** Generation sends no
->   reference image, so the on-screen note explaining the divergence from the CLI should say the
->   anchor is inert for now, not that the page is the weaker tool.
-> - **A6 — `NINA_BLOB_PREFIX` has one definition**; import it rather than re-declaring `'nina/'`.
-> - **D3 — the `proxy.ts` matcher ruling** covers `/nina` and `/admin` together; see the sheet.
-
+> - **E6 — `lib/nina/crop.ts` MOVED TO PHASE 13.** Steps 1–2 below are **NO-OPS**: the module and
+>   its suite already exist, shipped by phase 13, and this phase `import`s them from
+>   `@/lib/nina/crop`. Both rows are struck from the Files table. Everything else about the crop
+>   control (the clamp, the circular preview, the shared `ninaCropStyle` mapping) was still this
+>   phase's and is built. **Rollback coupling:** reverting phase 13 must not revert
+>   `crop.ts`/`crop.test.ts`, or `/admin/nina` loses its arithmetic.
+> - **A5 — `CircleFrame` declares no `NINA_AVATAR_FALLBACK_SRC`.** It and `app/admin/nina/page.tsx`
+>   import it from `@/lib/nina/album` (phase 13). Handoff 3 is resolved.
+> - **A6 — `lib/admin/avatars.ts` declares no `ADMIN_AVATAR_PREFIX`.** It imports
+>   `NINA_BLOB_PREFIX` from `@/lib/nina/images` (phase 6). The same ruling makes phase 6 a **hard**
+>   dependency, so Step 7's `await import()` behind a local `VisionModule` interface is gone:
+>   `describeNinaImages` is a plain static import.
+> - **RU-18 — the anchor is inert, not merely unreachable from here.** Generation sends no
+>   reference image, so `UploadAvatar`'s on-screen note says the anchor is a seed for the deferred
+>   consistent-face feature that nothing reads at runtime — not that this page is the weaker tool.
+> - **D3 — `proxy.ts` gains nothing** and is untouched, for `/nina` and `/admin` alike. Recorded,
+>   not changed. Handoff 6 is answered.
+> - **D4 — the blob reaper is one follow-up card**, not this phase's work. Handoff 5 is a pointer.
+>
+> **Three deviations from the code blocks below, each argued where it lands:**
+>
+> 1. **`app/api/admin/nina/upload/route.ts` gates before `handleUpload`**, with `requireAdminApi()`
+>    + `forbiddenJson()`, rather than inside `onBeforeGenerateToken` with `getAdminIdentity()`. The
+>    plan's own exit criterion 1 asks for a **404** from this route for a signed-in non-admin, and
+>    a throw inside the SDK callback can only ever be a 400. This also gives `requireAdminApi()`
+>    and `forbiddenJson()` — both declared in the Interface Contract — their caller. The pathname
+>    check stays in the callback, where the pathname is.
+> 2. **`CropStudio` mirrors its three latest values into refs from an effect, not during render.**
+>    `react-hooks/refs` (`npm run lint`) rejects a render-time ref write. An effect with no
+>    dependency array runs on every commit, and a wheel event can only arrive after one, so the
+>    mirror is never stale by the time the hand-registered listener reads it.
+> 3. **`lib/nina/vision.ts`'s `toDataUri` reads the blob's own `content-type`** instead of
+>    hardcoding `image/jpeg`. Phase 6 could hardcode it because the chat path only ever stores
+>    JPEG; an admin avatar is deliberately not re-encoded, so `/admin/nina` stores PNG and WebP
+>    too, and labelling PNG bytes `image/jpeg` in a `data:` URI is a lie told to a vendor whose
+>    failure mode is "200 OK with invented content". Allow-listed to the same three types; the
+>    chat path is byte-for-byte unchanged.
 
 **Plan set:** `NINA_CHATBOT_PLAN.md`
 **Analysis:** `20260903-140308-N1NA_code_analyzer.md`
@@ -134,8 +159,9 @@ The reconciler reads this section to detect cross-phase conflicts. Be exact and 
 
 **Renames:** nothing.
 
-**Creates — `lib/nina/crop.ts`** (new file; **pure, zero imports**, client- and
-server-importable — the `lib/extract/constants.ts` / `lib/photos/gallery.ts` rule):
+**Requires — `lib/nina/crop.ts`** (**phase 13's**, ruling E6 — imported here, not created; pure,
+zero imports, client- and server-importable — the `lib/extract/constants.ts` /
+`lib/photos/gallery.ts` rule):
 `NINA_CROP_MIN_SCALE = 1`, `NINA_CROP_MAX_SCALE = 4`, `NINA_CROP_SCALE_DECIMALS = 3`,
 `NINA_CROP_OFFSET_UNITS_PER_FRAME = 1000`, `NINA_CROP_MAX_ABS_OFFSET = 5_000`,
 `NINA_CROP_KEY_STEP = 10`, `NINA_CROP_WHEEL_DIVISOR = 400`,
@@ -148,8 +174,8 @@ types `NinaCrop`, `NinaCropInput`, `NinaNaturalSize`, `NinaCropStyle`, `NinaCrop
 must render her circular avatar through it rather than through their own arithmetic; the exact edit
 is written out in §Handoffs.
 
-**Creates — `lib/nina/crop.test.ts`:** pure-unit coverage (co-located `lib/**/*.test.ts`, which
-`vitest.config.ts:37` includes).
+**Requires — `lib/nina/crop.test.ts`:** phase 13's, ruling E6. Pure-unit coverage (co-located
+`lib/**/*.test.ts`, which `vitest.config.ts:37` includes).
 
 **Creates — `lib/admin/requireAdmin.ts`** (`server-only`):
 `requireAdmin()`, `requireAdminApi()`, `getAdminIdentity()`, `AdminForbiddenError`,
@@ -171,7 +197,7 @@ is written out in §Handoffs.
 
 **Creates — `lib/admin/avatars.ts`** (pure, zero imports — the picker, the Route Handler, the
 Server Action and the test all read it):
-`ADMIN_AVATAR_PREFIX = 'nina/'`, `ADMIN_AVATAR_EXTS`, `ADMIN_AVATAR_CONTENT_TYPES`,
+`ADMIN_AVATAR_EXTS`, `ADMIN_AVATAR_CONTENT_TYPES`,
 `ADMIN_AVATAR_MAX_UPLOAD_BYTES = 8 * 1024 * 1024`, `ADMIN_AVATAR_MIN_EDGE_PX = 256`,
 `ADMIN_AVATAR_MAX_EDGE_PX = 12_000`, `ADMIN_AVATAR_ID_RE`, `ADMIN_AVATAR_TOKEN_TTL_MS`,
 `ADMIN_AVATAR_CACHE_MAX_AGE`; functions `adminAvatarPathname(userId, id, ext)`,
@@ -301,8 +327,8 @@ files:
 
 | File | Action | What changes |
 |---|---|---|
-| `lib/nina/crop.ts` | create | the whole crop transform: resolve, fit, clamp, pan, zoom, and the one CSS mapping |
-| `lib/nina/crop.test.ts` | create | ~30 pure cases, including the two that would have shipped a silent bug |
+| ~~`lib/nina/crop.ts`~~ | **no-op (E6)** | shipped by phase 13; imported here, not created |
+| ~~`lib/nina/crop.test.ts`~~ | **no-op (E6)** | shipped by phase 13 |
 | `lib/nina/queries.ts` | modify | **append two functions** at the end of the avatar section (after `setNinaAvatarDescription`, `phase-1.md` Step 6 §avatars): `setCurrentNinaAvatar`, `deleteNinaAvatar` |
 | `lib/admin/requireAdmin.ts` | create | the gate: `requireAdmin`, `requireAdminApi`, `getAdminIdentity`, `AdminForbiddenError`, `forbiddenJson` |
 | `lib/admin/avatars.ts` | create | pathname shape, extensions, size caps — pure, shared by picker + route + action + test |
@@ -330,7 +356,11 @@ cannot borrow phase 6's chat-image path (different auth, different caps, differe
 
 ### Step 1: `lib/nina/crop.ts` — the whole transform, pure
 
-**File:** `lib/nina/crop.ts` (new)
+> **NO-OP — ruling E6.** Phase 13 lands first and needs `ninaCropStyle` for the chat header, so it
+> owns this file. Do not create it; `import` from `@/lib/nina/crop`. The code below is kept as the
+> record of what this phase argued for and what phase 13 was asked to carry, not as work to do.
+
+**File:** `lib/nina/crop.ts` (~~new~~ — phase 13's)
 
 **Change:** implement phase 1's stored convention as pure functions. This module is the answer to
 risk 2, and every number the studio produces or consumes passes through it.
@@ -654,7 +684,9 @@ knows what `crop_scale` means.
 
 ### Step 2: `lib/nina/crop.test.ts` — the arithmetic, proved without a browser
 
-**File:** `lib/nina/crop.test.ts` (new; `vitest.config.ts:37` includes `lib/**/*.test.ts`)
+> **NO-OP — ruling E6.** Shipped with the module by phase 13.
+
+**File:** `lib/nina/crop.test.ts` (~~new~~ — phase 13's; `vitest.config.ts:37` includes `lib/**/*.test.ts`)
 
 **Change:** the suite that makes Step 1 trustworthy. Every number below was computed by hand from
 the real anchor's dimensions (1792x2400, `phase-1.md:212`), so a failure here is a real
@@ -1196,8 +1228,9 @@ this phase free of a dependency on phase 6's client module.
  * split in `lib/extract/constants.ts:101-107`, and only the request half is enforceable.
  */
 
-/** RU-7. Same value as phase 6 s `NINA_BLOB_PREFIX`; if both survive, import theirs. */
-export const ADMIN_AVATAR_PREFIX = 'nina/'
+// AS BUILT (ruling A6): no `ADMIN_AVATAR_PREFIX` is declared. The file opens with
+//   import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
+// and every use below reads that constant instead.
 
 export const ADMIN_AVATAR_EXTS = ['jpg', 'png', 'webp'] as const
 export type AdminAvatarExt = (typeof ADMIN_AVATAR_EXTS)[number]
@@ -1230,7 +1263,7 @@ export const ADMIN_AVATAR_CACHE_MAX_AGE = 60 * 60 * 24 * 365
 
 /** `nina/<userId>/avatar-<id>.<ext>` — what the client asks for. */
 export function adminAvatarPathname(userId: string, id: string, ext: AdminAvatarExt): string {
-  return `${ADMIN_AVATAR_PREFIX}${userId}/avatar-${id}.${ext}`
+  return `${NINA_BLOB_PREFIX}${userId}/avatar-${id}.${ext}`
 }
 
 /** The extension for a content type, or `null` if we do not accept it. */
@@ -1255,7 +1288,7 @@ export function extForContentType(contentType: string): AdminAvatarExt | null {
 export function isAdminAvatarRequestPathname(pathname: string, userId: string): boolean {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId)) return false
   const pattern = new RegExp(
-    `^${ADMIN_AVATAR_PREFIX}${userId}/avatar-[A-Za-z0-9_-]{12}\\.(${ADMIN_AVATAR_EXTS.join('|')})$`,
+    `^${NINA_BLOB_PREFIX}${userId}/avatar-[A-Za-z0-9_-]{12}\\.(${ADMIN_AVATAR_EXTS.join('|')})$`,
   )
   return pattern.test(pathname)
 }
@@ -1483,12 +1516,11 @@ share of R25.
    `description = null`, the album card shows "No description yet", and `describeNinaAvatarAction`
    is the retry button. **Every upload lands with a description on the happy path, and the unhappy
    path is visible and one click from repair** — which is how the exit criterion is met honestly.
-2. **`lib/nina/vision.ts` is reached through a dynamic import behind a local interface.** Phase 6
-   owns that module and is not in this phase's `depends_on`. A static import would make this phase
-   fail to typecheck if it landed first. The interface is three lines, the dynamic import is one,
-   and if the module is absent the action returns `{ ok: false, error: … }` and the page still
-   works. (In the shipped ordering phase 6 lands ninth and this is dead insurance — but a phase
-   that cannot build alone is not shippable, and RU-11 says every phase is shippable.)
+2. **`lib/nina/vision.ts` is a plain static import.** ~~A dynamic import behind a local
+   interface~~ — ruling A6 added **6** to this phase's `depends_on`, which makes
+   `describeNinaImages` a hard dependency, so the `VisionModule` interface, `loadVision()` and the
+   "her eyes are not wired up in this build yet" branch are all deleted. The insurance they bought
+   (a phase that builds alone if phase 6 has not landed) is bought instead by the dependency edge.
 
 **Code:**
 
@@ -2009,9 +2041,9 @@ import { ninaCropStyle, resolveCrop, type NinaCropInput } from '@/lib/nina/crop'
  * inherits this argument too (see §Handoffs).
  */
 
-/** Phase 1's committed first avatar, and what an empty album renders. Phase 4 exports the same
- *  literal as `NINA_AVATAR_SRC`; §Handoffs asks the reconciler to collapse the two. */
-export const NINA_AVATAR_FALLBACK_SRC = '/nina/avatar-001.png'
+// AS BUILT (ruling A5): this file declares NOTHING. `NINA_AVATAR_FALLBACK_SRC` lives in
+// `lib/nina/album.ts` (phase 13) and `app/admin/nina/page.tsx` imports it from there. Handoff 3
+// is resolved.
 
 export function CircleFrame({
   src,
@@ -3028,11 +3060,10 @@ depends on no schema, so it can be lifted into phase 1 (or phase 13) verbatim. T
 fix for the ordering problem in note 1. If it moves, Step 1 and Step 2 of this phase become
 no-ops and everything else here is unchanged.
 
-**3. `public/nina/avatar-001.png` is spelled in two places.** Phase 4 exports `NINA_AVATAR_SRC`
-from `components/nina/NinaAvatar.tsx`; this phase exports `NINA_AVATAR_FALLBACK_SRC` from
-`components/admin/CircleFrame.tsx` rather than importing across a phase boundary it does not own.
-One of the two should win — probably a constant in `lib/nina/crop.ts`'s neighbourhood or in phase
-6's `lib/nina/images.ts`. Trivial, and worth doing before a third copy appears.
+**3. ~~`public/nina/avatar-001.png` is spelled in two places.~~ RESOLVED — ruling A5.** The
+constant lives once, as `NINA_AVATAR_FALLBACK_SRC` in `lib/nina/album.ts` (phase 13);
+`components/nina/NinaAvatar.tsx` re-exports it as `NINA_AVATAR_SRC` so phase 4's importers still
+compile, and this phase imports it rather than declaring a third copy.
 
 **4. Phase 12: move the generation anchor into Blob, so both writers can re-anchor.** RU-16 says
 the profpic path always re-anchors, and this page **cannot** — `assets/nina/_anchor.png` is a
@@ -3043,16 +3074,20 @@ blob (`nina/<userId>/_anchor.<ext>`) with the committed PNG as the fallback, and
 this page can then re-anchor with one write. **Not done here** because changing what phase 12 reads
 from is phase 12's decision, and R20 is its requirement, not R23.
 
-**5. `scripts/blob-reap.mjs` still only knows `shots/`.** This phase deletes an avatar's blob
-inline when the row goes, so it does not *create* orphans on the happy path — but a failed `del`
-leaves one, and phase 6 and phase 12 write under `nina/` too. Phase 14 already filed this; it is
-restated because this phase adds a third writer under that prefix.
+**5. `scripts/blob-reap.mjs` still only knows `shots/`. → ruling D4's ONE follow-up card.** This
+phase deletes an avatar's blob inline when the row goes, so it does not *create* orphans on the
+happy path — but a failed `del` leaves one. D4 collapsed the four phases' identical handoffs into a
+single card (teach the reaper a `nina/` prefix with reference sites `nina_message_images.pathname`
+and `nina_avatars.pathname`, and update `.claude/skills/reap-orphaned-blobs/SKILL.md`); this line
+is the pointer at it, not a second filing.
 
-**6. `proxy.ts`'s matcher: one ruling covers `/nina` and `/admin` together.** Neither is in the
-positive matcher. For `/admin` that is argued above (the gate already redirects, and `?next=` is
-read by nothing). The reconciler should decide once for both rather than letting two phases each
-decide differently; if the answer is "add them", the line is
-`matcher: [..., '/nina', '/admin/:path*']` and `tests/auth.proxy.matcher.test.ts` gains two cases.
+**6. ~~`proxy.ts`'s matcher~~ ANSWERED — ruling D3: it gains nothing, for `/nina` and `/admin`
+alike.** The file's own header says authorization lives in `requireUserId()` plus the `userId`
+filter in every query; the matcher is a UX redirect list, not the security boundary. `/admin/**` is
+gated by `requireAdmin()`, `?next=` is read by nothing on `/`, and listing `/admin/:path*` there
+would imply the proxy is the admin boundary — precisely the misreading that header exists to
+prevent. Phase 4 owns the one-sentence comment edit; this phase records the ruling and changes
+nothing. *Revisit if* a `?next=` handler is ever built on `/`.
 
 **7. Phase 16 inherits three things and should touch nothing else here:** `requireAdmin()` /
 `requireAdminApi()` from `lib/admin/requireAdmin.ts`, `app/admin/layout.tsx` (no edit — the layout

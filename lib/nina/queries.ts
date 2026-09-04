@@ -1047,3 +1047,81 @@ export async function setNinaAvatarDescription(
     .returning({ id: ninaAvatars.id })
   return updated.length > 0
 }
+
+/**
+ * One album row by id, ownership-scoped. Phase 15's `/admin/nina` uses it to validate an id
+ * arriving from a form before it changes anything, and to read `width`/`height` back for the crop
+ * clamp. Returns `null` for "not yours" and for "does not exist" alike — the caller has no
+ * legitimate use for the difference.
+ */
+export async function getNinaAvatar(userId: string, id: string): Promise<NinaAvatarRow | null> {
+  const rows = await db
+    .select(avatarColumns)
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * Make an existing album photo the current one. R23's "admin can also set which photo will be set
+ * as her profpic".
+ *
+ * ── THE PRE-CHECK IS WHAT MAKES ZERO CURRENT AVATARS UNREACHABLE ─────────────────────────────
+ * The statement order is forced by `nina_avatars_user_current_unq` (partial unique on `(user_id)
+ * where is_current`): un-current first, then set the new one, exactly as
+ * `insertNinaAvatarAsCurrent` does. But an UPDATE that matches no row does not fail — so if the id
+ * were bogus, the batch would un-current the album and set nothing, leaving her with NO current
+ * avatar and the page with nothing to show. Reading the row first and refusing turns that into a
+ * `false` return. (One user, one writer, so the window between the read and the batch is
+ * theoretical; the alternative is a `WHERE EXISTS` that this driver expresses far less legibly.)
+ *
+ * ── `announced_at` IS RE-ARMED ON PURPOSE ────────────────────────────────────────────────────
+ * RU-17: a hand-changed avatar makes her speak. What the user perceives is "her face changed", and
+ * the cause is irrelevant to that, so promoting an old album photo re-arms the announcement the
+ * same way a fresh upload does. Phase 10 owns the trigger (`is_current AND announced_at IS NULL`);
+ * this function writes no message and composes no line.
+ */
+export async function setCurrentNinaAvatar(userId: string, id: string): Promise<boolean> {
+  const existing = await getNinaAvatar(userId, id)
+  if (existing == null) return false
+  if (existing.isCurrent) return true // idempotent: no un-currenting, no re-announcement
+
+  await db.batch([
+    db
+      .update(ninaAvatars)
+      .set({ isCurrent: false })
+      .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.isCurrent, true))),
+
+    db
+      .update(ninaAvatars)
+      .set({ isCurrent: true, announcedAt: null })
+      .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id))),
+  ])
+  return true
+}
+
+/**
+ * Remove a photo from the album, and hand its blob back so the caller can delete the object.
+ *
+ * ── THE CURRENT PHOTO CANNOT BE DELETED, AND THAT IS THE WHOLE GUARD ────────────────────────
+ * `eq(ninaAvatars.isCurrent, false)` in the WHERE clause is what makes "zero current avatars"
+ * unreachable rather than repaired. Promotion-on-delete was rejected: "delete her face and
+ * something else silently becomes it" is worse than a refusal that names the fix, and picking the
+ * successor is precisely the choice `/admin/nina` exists to give the operator.
+ *
+ * `null` means "not yours, already gone, or current" — the caller turns that into one message,
+ * because a page that distinguishes them is a page that tells a stranger which ids exist.
+ */
+export async function deleteNinaAvatar(
+  userId: string,
+  id: string,
+): Promise<{ blobUrl: string; pathname: string } | null> {
+  const removed = await db
+    .delete(ninaAvatars)
+    .where(
+      and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id), eq(ninaAvatars.isCurrent, false)),
+    )
+    .returning({ blobUrl: ninaAvatars.blobUrl, pathname: ninaAvatars.pathname })
+  return removed[0] ?? null
+}
