@@ -47,24 +47,24 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b3fe468e1ddf9470450f7707941c60dec864350a",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "buildNinaSystemPrompt(tuning) on both entry points; NINA_PROMPT_VERSION 2->3 (single bump for the set); 4 repeals in prompts/system.ts incl NUMBERS_RULE's third body prohibition gated on BODY_REPEALED_BY; no tool schema moved. Byte gate is an EMPTY diff vs HEAD, not the plan's bestie sentence (phase 2 already landed it) - verified identical for NINA_SYSTEM_PROMPT and PROACTIVE_INSTRUCTIONS. bodyClause's repealed branch ends ', and ' not '. ' so 'never' stays lower-case mid-sentence. Bookkeeping files left to the coordinator.",
       "package": "lib/nina`, `lib/nina/prompts`, `tests",
       "plan": ".workflows/plan/nina-character-tuning/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T22:11:10+00:00",
       "satisfies": [
         "R3",
         "R4",
         "R6"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A002",
       "title": "buildNinaSystemPrompt`, and the turn that reads it"
     },
     {
@@ -135,6 +135,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T22:06:32+00:00",
+  "updated": "2026-09-04T22:11:10+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }
