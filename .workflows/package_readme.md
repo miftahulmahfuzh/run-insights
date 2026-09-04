@@ -311,6 +311,30 @@ rather than degrading on a foreign id; the delete reads the image rows *before* 
 them so the orphaned blob pathnames are logged and findable — `reap-orphaned-blobs` does not cover
 `nina/` yet, which is its own card.
 
+**Chat search (F35 R6).** The sidebar's field searches every message and session title the runner
+owns across all sessions. Rules live in `lib/nina/search.ts` — pure, no `server-only`,
+unit-tested — because the field, the action and the ranker all import them. Matching is
+`ILIKE '%term%'` AND-chained per term over `nina_messages.text` and `nina_chat_sessions.title`,
+deliberately not `to_tsvector`: the corpus is mixed Indonesian and English and one `regconfig`
+mis-stems half of it. The `AI` switch persists in `localStorage` under `ri:nina:semantic-search`
+(the first client-side persistence here, read through `useSyncExternalStore` so hydration cannot
+mismatch) and adds a `glm-5.3` ranking pass over candidates narrowed by SQL and padded with a
+recency window — the padding is what lets a query sharing no words with a message still find it.
+The model is never awaited in a render path (`rankNinaSearchHits`, payload-guarded); when it is
+unavailable the results fall back to the text ranking and the field says so, because an empty list
+would be a false claim about the runner's own history. A hit is a real `<Link>` to
+`/nina?s=<session>&at=<message>~0` — phase 3's parameter and `lib/nina/scroll.ts`'s mark, no third
+grammar. `Chat baru` above the list creates a session and opens it (R2).
+
+**Tapping a photo (F35 R10).** A photograph in the chat is a tap target. It opens the app's one
+full-screen overlay (`components/ui/PhotoViewer`), paging across that bubble's photos only — the
+conversation-wide gallery stays at `/nina/about`. Two controls float over it: a download whose
+strategy is *chosen rather than assumed*, because `<a download>` is inert on a cross-origin Blob
+URL (`lib/photos/save.ts` decides; a phone gets the platform share sheet and therefore Photos, a
+mouse gets a fetched object URL), and an attach that pins the same blob to the next message
+through `sendNinaMessage`'s owner-scoped `attachExisting` — one id crosses the wire, no byte is
+re-uploaded, and the description `glm-4.6v` was paid for is copied server-side.
+
 ## Root modules — the auth edge
 
 Four `.ts` files sit directly in the root. Three of them are Auth.js, split across two instances on

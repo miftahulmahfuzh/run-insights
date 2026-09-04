@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-chat-sessions`
 **Branch:** `feature/nina-chat-sessions` (base: `origin/main` @ `0a924ba`)
 **Phases:** 9
-**Status:** in progress — 6 of 9 phases complete (phases 1, 2, 3, 4, 5, 7); a phase is complete when its row in the Phases table is ticked ✅, which is the authoritative per-phase record because the phases land in parallel; the set is reviewed and merged as a whole
+**Status:** complete — 9 of 9 phases landed on `feature/nina-chat-sessions`; awaiting the repo owner's merge; a phase is complete when its row in the Phases table is ticked ✅, which is the authoritative per-phase record because the phases land in parallel; the set is reviewed and merged as a whole
 **Card:** `miftahulmahfuzh/run-insights#77` (parent; phases are its sub-issues #78-#86)
 **Coordinator:** —
 
@@ -163,10 +163,10 @@ are this set's.
 | 3 ✅ | Session-scoped chat surface and session lifecycle actions | R2, R11 | `app/nina`, `lib/nina`, `components/nina` | 14 | 1, 2 | HARD | `.workflows/plan/nina-chat-sessions/phase-3.md` | — | P1-RI-A007 | miftahulmahfuzh/run-insights#80 |
 | 4 ✅ | Automatic session titling, and the rename path | R3 | `lib/nina`, `scripts` | 7 | 3 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-4.md` | — | P1-RI-A008 | miftahulmahfuzh/run-insights#81 |
 | 5 ✅ | The hidden full-screen sidebar: session list, pin, rename, remove, Nina's circle | R6, R7, R4, R11 | `components/nina`, `app/nina`, `lib/nina` | 7 | 3 | HARD | `.workflows/plan/nina-chat-sessions/phase-5.md` | — | P1-RI-A009 | miftahulmahfuzh/run-insights#82 |
-| 6 | Search all chats, with the persisted semantic-search toggle | R6 | `lib/nina`, `components/nina` | 7 | 4, 5 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-6.md` | — | P1-RI-A010 | miftahulmahfuzh/run-insights#83 |
+| 6 ✅ | Search all chats, with the persisted semantic-search toggle | R6 | `lib/nina`, `components/nina` | 7 | 4, 5 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-6.md` | — | P1-RI-A010 | miftahulmahfuzh/run-insights#83 |
 | 7 ✅ | Editing and deleting messages, his and hers | R8 | `lib/nina`, `components/nina` | 8 | 3 | HARD | `.workflows/plan/nina-chat-sessions/phase-7.md` | — | P1-RI-A011 | miftahulmahfuzh/run-insights#84 |
-| 8 | The unread dot clears itself on the newest session | R9 | `components/nina`, `app/nina`, `lib/nina` | 5 | 5 | EASY | `.workflows/plan/nina-chat-sessions/phase-8.md` | — | P1-RI-A012 | miftahulmahfuzh/run-insights#85 |
-| 9 | Tap an image: full screen, download, attach to a new message | R10 | `components/nina`, `components/ui`, `lib/photos`, `app/nina` | 12 | 7, 8 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-9.md` | — | P1-RI-A013 | miftahulmahfuzh/run-insights#86 |
+| 8 ✅ | The unread dot clears itself on the newest session | R9 | `components/nina`, `app/nina`, `lib/nina` | 5 | 5 | EASY | `.workflows/plan/nina-chat-sessions/phase-8.md` | — | P1-RI-A012 | miftahulmahfuzh/run-insights#85 |
+| 9 ✅ | Tap an image: full screen, download, attach to a new message | R10 | `components/nina`, `components/ui`, `lib/photos`, `app/nina` | 12 | 7, 8 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-9.md` | — | P1-RI-A013 | miftahulmahfuzh/run-insights#86 |
 
 Waves the `Depends on` column implies: **W1** = 1 ‖ 2 · **W2** = 3 · **W3** = 4 ‖ 5 ‖ 7 ·
 **W4** = 6 ‖ 8 · **W5** = 9.

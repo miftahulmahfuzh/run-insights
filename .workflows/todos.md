@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-05
-**Total Active Tasks**: 3
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
-- Completed: 11
+- Blocked: 0
+- Completed: 13
 
 ---
 
@@ -22,17 +22,14 @@
 
 ### [P1] High
 
-- [ ] **P1-RI-A010** Phase 6: Search all chats, with the persisted semantic-search toggle
+- [ ] **P1-RI-A014** The `nina/` blob reaper must count references, not rows
   - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns **four modules and two components** where the draft named one file: a pure `lib/nina/search.ts` (query normalisation, LIKE escaping, the term split, the debounce rule, snippet extraction, text ranking, semantic candidate assembly, the ranking parse and the href, with tests, its one import `SESSION_PARAM` from phase 3's `lib/nina/active.ts` so `?s=` has one spelling in the set); a `server-only` `lib/nina/semantic.ts` exporting **`rankNinaSearchHits`** in its own module precisely so phase 4's guard can sanction the definition site; a `'use server'` `lib/nina/searchActions.ts` exporting exactly `searchNinaChats` plus the private candidate-narrowing SQL, deliberately **not** in phase 1's `queries.ts`; `components/nina/useSemanticPref.ts` and `NinaSearchField.tsx` with the toggle's persistence key; and one in-file edit to phase 5's `NinaSidebar.tsx` rendering `<NinaSearchField>` at the named `searchSlot` seam, taking its `onNavigate` close callback from phase 5's `useNinaSidebar()`. It does not edit `app/nina/page.tsx` and does not touch the guard script, which phase 4 already registered. `localStorage` would be the codebase's **first** use — `grep -rn "localStorage"` over `lib`, `components` and `app` returns nothing today, and neither does `cookies()` — so the choice needs an argument and a hydration-safe read. Exit criteria: typing in the sidebar's field lists matching sessions and messages across all sessions; the toggle survives a reload; with the toggle on, a query that shares no words with a message still finds it; with the model unavailable, results degrade to text matching rather than erroring; no model call in a render path.
+  - **Type**: Chore
+  - **Context**: `reap-orphaned-blobs` does not cover the `nina/` prefix at all, and F35 made that gap sharper in two independent ways. Phase 7's delete reads a message's image rows *before* the cascade takes them and logs the orphaned blob pathnames precisely because nothing reaps them. Phase 9's attach then made one blob legitimately reachable from **two** messages — `attachExisting` pins an existing photo to a new message without re-uploading a byte — so a reaper that deletes a blob when *a* row disappears would delete the photo another message still shows. The fix is therefore a reference count over `nina_message_images`, not a row-existence check, and it must be written that way from the start rather than retrofitted.
   - **Status**: open
-  - **Plan Set**: `NINA_CHAT_SESSIONS_PLAN.md` (phase 6 of 9)
-  - **Satisfies**: R6 — A hidden full-screen sidebar behind a floating `>` button, with search-all-chats and a persisted semantic-search toggle
-  - **Depends on**: `P1-RI-A008`, `P1-RI-A009`
-  - **Plan**: `.workflows/plan/P1-RI-A010.md`
-  - **Card**: `miftahulmahfuzh/run-insights#83`
-  - **Scope addition (coordinator, 2026-09-05)**: **R2's create control is assigned to this phase.** Phase 3 shipped `createNinaChatSession` in `lib/nina/sessionActions.ts` with zero call sites, and phase 5 left `newChatSlot` in `NinaSidebar.tsx` as a documented seam defaulting to `null`. As the set stood at the end of wave 2, a runner could not start a new chat — R2's first clause was unsatisfiable. This phase already rewrites `NinaSidebar.tsx` (writer order 5 -> 6) and already needs `useNinaSidebar()` for the search field's close callback, so it is the only remaining phase that can fill that slot without a new wave or a second writer. Fill `newChatSlot` with a control that calls `createNinaChatSession` and navigates to the returned session. Satisfies gains R2.
+  - **Satisfies**: — (follow-up raised by F35 phases 7 and 9)
+  - **Source**: `NINA_CHAT_SESSIONS_PLAN.md` — phase 7's handoffs and phase 9's H5
+
 
 - [ ] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
@@ -52,17 +49,6 @@
 ### [P4] Backlog
 
 ### 🚫 Blocked
-
-- [ ] **P1-RI-A013** Phase 9: Tap an image: full screen, download, attach to a new message
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `components/nina/ChatImages.tsx` (pass `onOpen` at last — the prop has existed since phase 6 of F33 and its docstring says wiring it "should be its own card"), `components/nina/MessageList.tsx` and `ChatScreen.tsx` (viewer state and the `onOpen` thread), and `components/ui/PhotoViewer.tsx` (a download control and an attach control, both **optional props** so the four existing callers are byte-identical in behaviour). Reconciliation also assigned it the two-hunk image-id/kind mapping in `app/nina/page.tsx` that its own H1 identified as required and **nobody owned**: the `urlsByMessage` loop becomes a `photosByMessage` loop carrying ids and kinds and `imageIds` / `imageKinds` join the `initial` mapping, with no query change because `getNinaMessageImagesForMessages` already selects both columns, and `description` still dropped on the floor at that boundary (invariant 5). The new `Depends on: 7, 8` edge is what serialises that file to 3 -> 5 -> 8 -> 9 and keeps R10 whole in one phase. The download is the part of R10 most likely to quietly not work, since `<a download>` on a cross-origin Blob URL does not save on iOS Safari; attach reuses `sendNinaMessage`'s existing owner-scoped `attachExisting: { kind, id }` and the already-supported `/nina?photo=image:<id>` deep link rather than re-uploading. Exit criteria: tapping any chat image opens the full-screen viewer with pinch-zoom and paging intact; the download control saves the file on a real iPhone, or the plan states precisely what it does instead and why; the attach control arms the composer with that photo and a send persists a row pointing at the same blob with no re-upload; the four existing `PhotoViewer` call sites are unchanged in behaviour.
-  - **Status**: blocked
-  - **Plan Set**: `NINA_CHAT_SESSIONS_PLAN.md` (phase 9 of 9)
-  - **Satisfies**: R10 — Tap a chat image for full screen, with a download icon and an attach-to-new-chat icon
-  - **Depends on**: `P1-RI-A011`, `P1-RI-A012`
-  - **Plan**: `.workflows/plan/P1-RI-A013.md`
-  - **Card**: `miftahulmahfuzh/run-insights#86`
 
 ---
 
@@ -292,5 +278,52 @@
   - **Verification**: `npm run typecheck`, `npm run lint` (0 errors; the 2 warnings are pre-existing in `scripts/capture/shoot.mjs`), `npm run format:check`, `npm test` 130 files / 2396 tests passed, and all seven guards: llm-payload, data-layer, client-secret, f08, f11, openrouter, badges:check. No guard's table changed.
   - **Drift**: `tests/db.schema.nina.test.ts` is this plan's Step 9 but no phase's Owns/Does-not-touch list claims it. Appended a new `describe` at EOF with no existing line edited. Four of the plan's five assertions had already been written by phase 1, so only the two with no home were added — `reply_to_id`'s self-FK target, and that `nina_turns` stores no prose for an edited message to contradict.
   - **Note**: the delete reads the image rows *before* the cascade takes them, so orphaned blob pathnames are logged and findable. `reap-orphaned-blobs` does not cover `nina/` yet — that remains its own card.
+
+### [P1] P1-RI-A010
+- [x] **P1-RI-A010** Phase 6: Search all chats, with the persisted semantic-search toggle
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns **four modules and two components** where the draft named one file: a pure `lib/nina/search.ts` (query normalisation, LIKE escaping, the term split, the debounce rule, snippet extraction, text ranking, semantic candidate assembly, the ranking parse and the href, with tests, its one import `SESSION_PARAM` from phase 3's `lib/nina/active.ts` so `?s=` has one spelling in the set); a `server-only` `lib/nina/semantic.ts` exporting **`rankNinaSearchHits`** in its own module precisely so phase 4's guard can sanction the definition site; a `'use server'` `lib/nina/searchActions.ts` exporting exactly `searchNinaChats` plus the private candidate-narrowing SQL, deliberately **not** in phase 1's `queries.ts`; `components/nina/useSemanticPref.ts` and `NinaSearchField.tsx` with the toggle's persistence key; and one in-file edit to phase 5's `NinaSidebar.tsx` rendering `<NinaSearchField>` at the named `searchSlot` seam, taking its `onNavigate` close callback from phase 5's `useNinaSidebar()`. It does not edit `app/nina/page.tsx` and does not touch the guard script, which phase 4 already registered. `localStorage` would be the codebase's **first** use — `grep -rn "localStorage"` over `lib`, `components` and `app` returns nothing today, and neither does `cookies()` — so the choice needs an argument and a hydration-safe read. Exit criteria: typing in the sidebar's field lists matching sessions and messages across all sessions; the toggle survives a reload; with the toggle on, a query that shares no words with a message still finds it; with the model unavailable, results degrade to text matching rather than erroring; no model call in a render path.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHAT_SESSIONS_PLAN.md` (phase 6 of 9)
+  - **Satisfies**: R6 — A hidden full-screen sidebar behind a floating `>` button, with search-all-chats and a persisted semantic-search toggle
+  - **Depends on**: `P1-RI-A008`, `P1-RI-A009`
+  - **Plan**: `.workflows/plan/P1-RI-A010.md`
+  - **Card**: `miftahulmahfuzh/run-insights#83`
+  - **Scope addition (coordinator, 2026-09-05)**: **R2's create control is assigned to this phase.** Phase 3 shipped `createNinaChatSession` in `lib/nina/sessionActions.ts` with zero call sites, and phase 5 left `newChatSlot` in `NinaSidebar.tsx` as a documented seam defaulting to `null`. As the set stood at the end of wave 2, a runner could not start a new chat — R2's first clause was unsatisfiable. This phase already rewrites `NinaSidebar.tsx` (writer order 5 -> 6) and already needs `useNinaSidebar()` for the search field's close callback, so it is the only remaining phase that can fill that slot without a new wave or a second writer. Fill `newChatSlot` with a control that calls `createNinaChatSession` and navigates to the returned session. Satisfies gains R2.
+  - **Completed**: 2026-09-05
+  - **Method**: /implement (swarm phase 6 of 9)
+  - **Commit**: `7f63c56` on `feature/nina-chat-sessions`
+  - **Satisfies (amended)**: R6 — search all chats with the persisted semantic-search toggle; **and R2's create control**, the coordinator's scope addition.
+  - **Files**: lib/nina/search.ts (new), lib/nina/search.test.ts (new, 69 tests), lib/nina/semantic.ts (new), lib/nina/searchActions.ts (new), components/nina/useSemanticPref.ts (new), components/nina/NinaSearchField.tsx (new), components/nina/NewChatButton.tsx (new), components/nina/NinaSidebar.tsx
+  - **Result**: The sidebar's field searches every message and session title the runner owns, across all sessions. Matching is `ILIKE '%term%'` AND-chained per term, deliberately not `to_tsvector` — the corpus is mixed Indonesian and English and one `regconfig` mis-stems half of it. The `AI` switch persists in `localStorage` under `ri:nina:semantic-search`, read through `useSyncExternalStore` so hydration cannot mismatch, and adds a `glm-5.3` ranking pass over SQL-narrowed candidates padded with a recency window — the padding is what lets a query sharing no words with a message still find it. **R2's create control landed here**: `NewChatButton` fills phase 5's `newChatSlot`, calls `createNinaChatSession` in a `useTransition` and `router.replace()`s to the server's returned destination — `replace` not `push`, so the panel closes through the same URL entry that opened it and the back gesture still returns to the session he came from. Two taps yield one empty session, because the action returns the newest session unchanged when it holds no messages.
+  - **Verification**: typecheck; lint 0 errors; format:check clean; `npm test` 2474/2474 in 132 files; `npm run build`; `ci:llm-payload-guard` (7 symbols, `rankNinaSearchHits` confined to `semantic.ts` + `searchActions.ts`), `ci:data-layer-guard`, `ci:client-secret-guard`. Did not edit `scripts/check-llm-payload-boundary.mjs` — phase 4's entry was exact.
+  - **Drift**: the plan's `search.ts` block omitted its one import (`SESSION_PARAM` from `./active`) although the Interface Contract names it and `searchHitHref` uses it. Added; no literal `'s'` anywhere.
+  - **Drift**: the plan set `response` and `pending` synchronously at the top of an effect, which is a `react-hooks/set-state-in-effect` **error** under this config. Restructured to derive both during render from one `{query, semantic, response}` tag, with the effect setting state only from its async callback. `requestRef` was kept deliberately — the tag alone cannot catch a slow answer to an earlier query landing after a fast one and putting a settled field back into "searching". No disable comment.
+  - **Drift**: `search.test.ts`'s TITLE case asserted a shape the action cannot produce — a session candidate's `text` *is* its title (`narrowSearchCandidates` sets both from `row.title`) and the fixture let an overridden `sessionTitle` drift from it. Fixed the fixture, not the rule.
+  - **Handoffs**: a GIN index if `ILIKE` outgrows the corpus; searchable photos (needs a caption column distinct from `glm-4.6v`'s private prose — invariant 5); deep-links past `CHAT_HISTORY_LIMIT` (needs per-session paging); `lib/nina/semantic.test.ts` (`rankNinaSearchHitsWith` already takes an injected client for it). The plan's handoff #4 ("a shared constant for `?s=`") is closed — reconciliation gave phase 3 `SESSION_PARAM` and this phase imports it.
+
+### [P1] P1-RI-A013
+- [x] **P1-RI-A013** Phase 9: Tap an image: full screen, download, attach to a new message
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/nina/ChatImages.tsx` (pass `onOpen` at last — the prop has existed since phase 6 of F33 and its docstring says wiring it "should be its own card"), `components/nina/MessageList.tsx` and `ChatScreen.tsx` (viewer state and the `onOpen` thread), and `components/ui/PhotoViewer.tsx` (a download control and an attach control, both **optional props** so the four existing callers are byte-identical in behaviour). Reconciliation also assigned it the two-hunk image-id/kind mapping in `app/nina/page.tsx` that its own H1 identified as required and **nobody owned**: the `urlsByMessage` loop becomes a `photosByMessage` loop carrying ids and kinds and `imageIds` / `imageKinds` join the `initial` mapping, with no query change because `getNinaMessageImagesForMessages` already selects both columns, and `description` still dropped on the floor at that boundary (invariant 5). The new `Depends on: 7, 8` edge is what serialises that file to 3 -> 5 -> 8 -> 9 and keeps R10 whole in one phase. The download is the part of R10 most likely to quietly not work, since `<a download>` on a cross-origin Blob URL does not save on iOS Safari; attach reuses `sendNinaMessage`'s existing owner-scoped `attachExisting: { kind, id }` and the already-supported `/nina?photo=image:<id>` deep link rather than re-uploading. Exit criteria: tapping any chat image opens the full-screen viewer with pinch-zoom and paging intact; the download control saves the file on a real iPhone, or the plan states precisely what it does instead and why; the attach control arms the composer with that photo and a send persists a row pointing at the same blob with no re-upload; the four existing `PhotoViewer` call sites are unchanged in behaviour.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHAT_SESSIONS_PLAN.md` (phase 9 of 9)
+  - **Satisfies**: R10 — Tap a chat image for full screen, with a download icon and an attach-to-new-chat icon
+  - **Depends on**: `P1-RI-A011`, `P1-RI-A012`
+  - **Plan**: `.workflows/plan/P1-RI-A013.md`
+  - **Card**: `miftahulmahfuzh/run-insights#86`
+  - **Completed**: 2026-09-05
+  - **Method**: /implement (swarm phase 9 of 9)
+  - **Commit**: `d2a46d3` on `feature/nina-chat-sessions`
+  - **Files**: lib/photos/save.ts (new), lib/photos/save.test.ts (new), lib/nina/chatphotos.ts (new), lib/nina/chatphotos.test.ts (new), components/nina/ChatPhotoActions.tsx (new), tests/nina.chatPhoto.test.ts (new), components/ui/PhotoViewer.tsx, components/nina/ChatImages.tsx, components/nina/types.ts, components/nina/MessageList.tsx, components/nina/ChatScreen.tsx, app/nina/page.tsx
+  - **Result**: Tapping any photo in the conversation opens `PhotoViewer` with pinch-zoom, circular bubble-local paging and the dot row intact. `ChatImages`'s `onOpen` — unwired since F33 phase 6 with a docstring promising "its own card" — finally has a caller. Two controls float bottom-right through one new optional `actions` slot. The overlay is derived from the message rather than snapshotted, so a delete or refresh under it clamps or closes rather than throwing, and labels come from `photoSideOf` so a re-attached selfie stays hers. Attach reuses phase 3's seam exactly: `setPhoto({ kind: 'image', id })` arms the state `Composer` already renders and `handleSend` already forwards as `attachExisting` — no widened signature, no new action, no re-upload, and one id crosses the wire rather than a byte.
+  - **The download was measured, not assumed**: `<a download>` is honoured only same-origin and every chat photo is on the Blob host, so the naive version navigates and saves nothing. Proven in a two-origin Chromium harness — the naive cross-origin anchor fired **no download event at all**, while the shipped ladder saved bytes byte-identical to the source under the exact name `saveFilenameFor` produces. The ladder is `chooseSaveStrategy` → share sheet on a coarse pointer (iOS's first action for an image is Save Image, which reaches Photos), else fetch → object URL → synthetic anchor, with the fetch warmed on `pointerdown` per `ShareButton`'s recorded lesson and `AbortError` treated as silence. Harness deleted, nothing of it committed.
+  - **Verification**: typecheck 0 errors; lint 0 errors; format:check clean; `npm test` 2513/2513 in 135 files; `npm run build`; all six `ci:*` guards.
+  - **Not verified**: the `'share'` branch itself — headless Chromium has no `canShare({files})`, so what is proven is the anchor branch and the filename rule; the share branch rests on unit-tested pure rules plus `ShareButton`'s precedent. The plan's manual checklist items 1-9 need a real iPhone.
+  - **Drift**: a real plan defect — it specified `chatViewerPhotos({ urls, kinds })` but called it `chatViewerPhotos(viewerMessage)`; those cannot both be true and it failed typecheck (TS2345). The parameter now takes `ChatMessage`'s own `imageUrls`/`imageKinds` spelling, the half needing no adapter.
+  - **Drift**: `chooseSaveStrategy` never returns `'open'` — the plan's prose described a three-branch ladder its own code and tests do not have. Code and tests kept as written; `'open'` re-documented as the runtime fallback rather than a returned strategy.
+  - **Drift**: `<PhotoViewer>` renders after phase 7's `<MessageActionsSheet>` rather than immediately after `<Composer>`; the plan said "last child of the fragment", which with phase 7 landed is now after the sheet. `z-60` over `z-50` means stacking was never in question.
 
 ## Archive
