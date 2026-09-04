@@ -1,0 +1,854 @@
+# Phase 7: "Share link to Nina" in the explorer, opening the chat in a new tab
+
+**Plan set:** `ADMIN_ALBUM_FILE_MANAGER_PLAN.md`
+**Analysis:** `20260904-131215-A3F7_code_analyzer.md`
+**Satisfies:** R2 — *"i also need the feature to click a photo and an option 'share link to nina'
+can be clicked -> clicking it automatically open runins.site chat in a new browser tab and put
+this file as an attachment (to optimize it, we dont actually reupload the photo into the chat, but
+just some kind of pointer to the existing file). user can input additional text question / comment
+(optional), and nina will respond to it accordingly."*
+**Depends on:** Phase 3 (the chat half and the URL grammar), Phase 5 (the explorer and its
+per-photo action menu)
+**Difficulty:** EASY
+**Package:** `components/admin` (with one line in `app/admin/nina`, one new pure module in
+`lib/admin`, and one test)
+
+---
+
+## Goal
+
+After this phase, a photo selected in `/admin/nina`'s explorer offers **Share link to Nina**, and
+one click opens `https://runins.site/nina?photo=avatar:<id>` in a new browser tab with the photo
+already chipped in the composer — where the optional question gets typed, in the tab where her
+answer will appear. Nothing is sent from `/admin`, no image bytes move, and a photo that has no
+`description` yet gets one requested on the way out, non-fatally, so *"nina will respond to it
+accordingly"* has text to work from.
+
+This phase is four small things — one menu item, one `window.open`, one prop, one non-fatal
+describe — and the whole plan below exists because the obvious alternative to each of the four is
+wrong. Each has its own **WHY NOT** heading in the code.
+
+---
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing.
+
+**Renames:** nothing.
+
+**Creates:**
+
+- `lib/admin/shareToNina.ts` — new file. Exports `ninaPhotoShareUrl(origin: string, avatarId:
+  string): string`. Pure, browser-safe, node-testable, imports only from `@/lib/nina/attach`.
+- `components/admin/ShareToNinaItem.tsx` — new file, `'use client'`. Exports
+  `ShareToNinaItem`, a single `<button>` that phase 5's per-photo action menu renders as one item.
+- `tests/admin.shareToNina.test.ts` — new file. Round-trips the built URL through phase 3's parser.
+
+**Signature changes:**
+
+- `FileExplorer` (phase 5's, `components/admin/FileExplorer.tsx`) gains one required prop:
+  `shareOrigin: string`. It is threaded, unread, to `SelectionPane`.
+- `SelectionPane` (phase 5's, `components/admin/explorer/SelectionPane.tsx`) gains the same one
+  required prop, and renders one item at phase 5's marked seam. **Those two props are the only
+  changes this phase makes to phase 5's components**, and neither touches the selection model.
+- **Nothing is needed from phase 5's view model.** `ExplorerPhoto` already carries
+  `description: string | null`, so `described={photo.description != null}` at the call site is the
+  whole of it — the draft's alternative (`described: boolean` computed in the page's row → prop
+  map) is unnecessary and the mapping phase 5 wrote stays untouched. This phase reads only the
+  *bit*, never the prose (invariant 5).
+
+**Requires (from earlier phases):**
+
+1. **Phase 3 — `lib/nina/attach.ts`.** The names below are what phase 3 **actually writes**, and
+   this phase has been rewritten onto them:
+
+   ```ts
+   /** The query parameter that arms the composer with a photo we already own. Value: 'photo'. */
+   export const PHOTO_PARAM = 'photo'
+   export type NinaPhotoKind = 'avatar' | 'image'
+   export interface NinaPhotoPointer {
+     kind: NinaPhotoKind
+     id: string
+   }
+   /** `{ kind: 'avatar', id: 'V1StGXR8mN4q' }` -> `'avatar:V1StGXR8mN4q'`. */
+   export function formatNinaPhotoParam(pointer: NinaPhotoPointer): string
+   /** The inverse. Takes `unknown`, because a `searchParams` value can be a `string[]`. */
+   export function parseNinaPhotoParam(raw: unknown): NinaPhotoPointer | null
+   ```
+
+   > **RECONCILED (round 1).** The draft assumed `NINA_PHOTO_PARAM`, `NinaPhotoPointerKind`,
+   > `formatNinaPhotoPointer` and `parseNinaPhotoParam`'s sibling `parseNinaPhotoPointer`.
+   > `lib/nina/attach.ts` is phase 3's file, so phase 3's spellings win, and the cost is exactly
+   > what this phase predicted: **three lines** — the `import` and the one call in
+   > `lib/admin/shareToNina.ts`, and the `import` in `tests/admin.shareToNina.test.ts`. That was
+   > the point of building the URL through phase 3's formatter rather than a template literal, and
+   > of putting the build in one four-line function. Both paid off.
+   >
+   > `parseNinaPhotoParam` takes `unknown` rather than `string | null | undefined`, which is wider
+   > than assumed and so accepts `url.searchParams.get(...)` without a cast.
+
+   Also assumed: `lib/nina/attach.ts` stays **client-safe** (no `server-only`, no `lib/db`). It is
+   already imported by `components/nina/ChatScreen.tsx:10`, which is `'use client'`, so this holds
+   today and phase 3 must not break it.
+
+2. **Phase 5 — the per-photo action list is in `components/admin/explorer/SelectionPane.tsx`**, not
+   in `FileExplorer.tsx`. Phase 5 marked the exact spot with a `SEAM — PHASE 7` comment above the
+   action stack, directly under *"Set as her profile picture"*, and its note says what this phase
+   needs: the selected photo's id is `photo.id`, in scope, and *"phase 7 should be adding one
+   button and one prop, not restructuring the selection model."* Phase 5's own items ("Set as her
+   profile picture", "Describe it", "Remove") and phase 6's per-**folder** items in `FolderTree`
+   are untouched; the two item lists are in different files and cannot collide.
+
+   `shareOrigin` therefore threads `app/admin/nina/page.tsx` → `FileExplorer` → `SelectionPane`,
+   which is two of phase 5's files rather than one — phase 5's page docstring and its handoff both
+   name that route. That is why this phase's Files table has six rows and not five.
+
+3. **Phase 5 — `app/admin/nina/page.tsx`** renders `<FileExplorer …/>` and is still a Server
+   Component (`requireAdmin()` on line 1, `export const dynamic = 'force-dynamic'`). That is what
+   makes it legal to call `shareOrigin()` there.
+
+4. **Phase 4 — `ensureNinaAvatarDescriptionAction`**, not `describeNinaAvatarAction`:
+
+   ```ts
+   /** Describes the photo ONLY IF it has no description yet. One indexed read on the fast path. */
+   export async function ensureNinaAvatarDescriptionAction(
+     rawId: string,
+   ): Promise<AdminActionResult>
+   ```
+
+   > **RECONCILED (round 1).** The draft called `describeNinaAvatarAction`, which phase 4 keeps
+   > exactly as it is — the unconditional re-describe behind the album's "Describe it" button.
+   > Phase 4 wrote `ensureNinaAvatarDescriptionAction` **specifically for this call site** (its
+   > handoff says so) and it is the right one: it returns after one single-row read for any photo
+   > that is already her face or was already shared, and delegates to `describeNinaAvatarAction`
+   > only when the description is genuinely missing. Same signature, same non-fatal contract, same
+   > `AdminActionResult`. This phase keeps its own `described` guard as well — two cheap guards, and
+   > the prop's real job is to make a missing bit a compile error rather than a silent vendor call.
+
+   Phase 4 also gives `setCurrentNinaAvatarAction` an `after()`-scheduled describe. That is phase
+   4's business and does not affect this call site; it does mean a photo that has ever been her
+   face takes the fast path here.
+
+5. **`resolveAttachment`'s album read — RESOLVED, and the hazard is closed.** This phase raised it
+   as the one cross-phase failure a green CI cannot see, correctly: `lib/nina/actions.ts:151`
+   resolved an `attachExisting` of kind `'avatar'` by
+   `listNinaAvatars(userId).find(candidate => candidate.id === attach.id)`, and **if** phase 1 had
+   given `listNinaAvatars` a `LIMIT` or a required page-size argument, a share link for any photo
+   outside the first page would resolve to `null` — which invariant 10 turns into a refusal, not a
+   degradation. At *"hundreds of profile pics"* that would have been the normal case.
+
+   Two things settle it:
+   - **Verified against phase 1's plan: `listNinaAvatars` is not capped, paginated, or given a
+     required options argument.** Phase 1 adds `listNinaAvatarsInFolder` *beside* it and lists
+     `listNinaAvatars` under "behaviour unchanged"; its Handoffs now carry an explicit *"do not cap
+     `listNinaAvatars`"* line naming this phase's Requires #5 as the reason, so a later editor
+     cannot break R2 by tidying that function.
+   - **The fix is made anyway, in phase 4** (its Step 6). `resolveAttachment`'s avatar branch now
+     calls `getNinaAvatar(userId, attach.id)` and its image branch calls phase 3's
+     `getNinaMessageImage(userId, attach.id)` — both single-row, owner-scoped index lookups,
+     strictly better than a list-and-find regardless of any cap. Assigned to phase 4 because phase
+     3's scope forbids opening `lib/nina/actions.ts` and this phase's forbids all of `lib/nina/**`,
+     while phase 4 already owns the same kind of cleanup on the same requirement's hot path. Phase
+     4's `Depends on` gained phase 3 for `getNinaMessageImage`; the plan index's concurrency is
+     unchanged, since it already ran `{1, 2, 3}` together and then 4.
+
+   Manual check 12 below stays in the list — it is still the cheapest way to see the whole path
+   work end to end, and it now verifies a fix rather than watching for a break.
+
+**Leaves alone (owned by others):**
+
+- `lib/nina/**` — phase 3 owns the chat half. In particular this phase writes **nothing** in
+  `lib/nina/actions.ts` (the `attachExisting` field and `resolveAttachment` already exist and are
+  correct) and **does not call** `attachNinaPhotoToChat` (`lib/nina/albumActions.ts:43`). See
+  *WHY NOT `attachNinaPhotoToChat`* below.
+- `components/nina/**`, `app/nina/**` — phase 3.
+- `lib/admin/ninaAlbumActions.ts` — phase 4 and phase 6. This phase **calls** its existing
+  `ensureNinaAvatarDescriptionAction` and adds no action of its own. **The pointer is a URL; a URL
+  needs no Server Action.**
+- `lib/db/schema.ts`, `drizzle/**` — phase 1. No column, no migration, no query.
+- `lib/admin/avatars.ts` (phase 1), `lib/admin/schema.ts` (phase 4), `lib/admin/filetree.ts`
+  (phase 2). The new `lib/admin/shareToNina.ts` is a new file and collides with none of them.
+- `lib/share/origin.ts` — read, not edited. `shareOrigin()` already does exactly what R2 needs.
+
+---
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/admin/shareToNina.ts` | create | the one place an avatar id becomes a chat URL — pure, 4 lines of code and a docstring |
+| `components/admin/ShareToNinaItem.tsx` | create | the menu item: non-fatal ensure-describe, then `window.open(…, '_blank', 'noopener')` |
+| `components/admin/FileExplorer.tsx` | modify | one `shareOrigin: string` prop, declared and forwarded to `SelectionPane`. Nothing else |
+| `components/admin/explorer/SelectionPane.tsx` | modify | accept `shareOrigin`; render one `<ShareToNinaItem …/>` at phase 5's `SEAM — PHASE 7`, under "Set as her profile picture" |
+| `app/admin/nina/page.tsx` | modify | `import { shareOrigin } from '@/lib/share/origin'`; `shareOrigin={shareOrigin()}` on `<FileExplorer>` |
+| `tests/admin.shareToNina.test.ts` | create | the URL grammar, and the round-trip against phase 3's parser |
+
+**Six files, not five.** The draft assumed the per-photo menu lived in `FileExplorer.tsx`; phase 5
+put it in `components/admin/explorer/SelectionPane.tsx`, so the prop is declared in one file and
+consumed in the other. Both edits are still a handful of lines and neither touches phase 5's
+selection model.
+
+---
+
+## Implementation Steps
+
+### Step 1: The pure URL builder
+
+**File:** `lib/admin/shareToNina.ts` (new file)
+
+**Change:** One function. It is a separate module rather than three lines inside the component for
+the reason invariant 6 states: *"UI behaviour worth testing is a pure function in `lib/`"* — and
+this particular behaviour is the contract seam between phase 7 and phase 3, which is precisely the
+thing worth a test. It also cannot live in the component: `ShareToNinaItem` imports
+`lib/admin/ninaAlbumActions.ts`, which reaches `@vercel/blob` and `lib/db`, so a vitest suite
+(`environment: 'node'`, no browser, no `DATABASE_URL`) could not import it.
+
+**Code:**
+
+```ts
+import { formatNinaPhotoParam, PHOTO_PARAM } from '@/lib/nina/attach'
+
+/**
+ * An album photo, as a link into her chat. R2's *"just some kind of pointer to the existing file"*,
+ * spelled as a URL.
+ *
+ * ── WHY A URL IS THE WHOLE POINTER ────────────────────────────────────────────────────────────
+ * R2's optimisation is *"we dont actually reupload the photo into the chat, but just some kind of
+ * pointer to the existing file"*, and this is that pointer in its entirety: a kind and a
+ * twelve-character id in a query string. No bytes move, no blob is copied, no Server Action runs,
+ * and `nina_avatars` is not read on this side at all. `sendNinaMessage`'s `resolveAttachment`
+ * (`lib/nina/actions.ts:141`) turns the id back into a row when the message is actually sent —
+ * owner-scoped, so *"a URL from a client is a claim, and an id resolved against `user_id` is a
+ * fact"* keeps holding. Nothing in this file could weaken it if it tried; there is no URL of a
+ * blob anywhere in it.
+ *
+ * ── WHY THE FORMATTER IS IMPORTED AND NOT INLINED ─────────────────────────────────────────────
+ * `/admin` writes this string and `/nina` parses it, and they are in different phases and
+ * different halves of the app. A template literal here — `?photo=avatar:${id}` — would be a second
+ * place that knows the grammar, and therefore a place that can disagree about it. Phase 3 owns
+ * `formatNinaPhotoParam` and `PHOTO_PARAM`; this module is the only writer of the link, so
+ * there is exactly one spelling on each side and one import between them. (The reconciler's
+ * round-1 rename of those two names cost this file exactly two lines, which was the point.)
+ *
+ * ── WHY `new URL` AND NOT STRING CONCATENATION ────────────────────────────────────────────────
+ * `URLSearchParams` percent-encodes the pointer's `:` to `%3A`, which is correct and invisible:
+ * `searchParams` on the receiving page decodes it, so phase 3's parser is handed `avatar:<id>`
+ * exactly as it was formatted. The test asserts that round trip rather than the literal bytes, so
+ * a future encoding change cannot quietly break the link. `new URL` also throws on an origin that
+ * is not an origin, which is the right failure: a malformed link that opens a broken tab is worse
+ * than a stack trace in the one place that can only be reached by an admin.
+ *
+ * @param origin an absolute origin with no trailing slash — `shareOrigin()`'s output, never
+ *   `window.location.origin`. See `ShareToNinaItem`'s header for why that distinction matters.
+ * @param avatarId a `nina_avatars.id`.
+ */
+export function ninaPhotoShareUrl(origin: string, avatarId: string): string {
+  const url = new URL('/nina', origin)
+  url.searchParams.set(PHOTO_PARAM, formatNinaPhotoParam({ kind: 'avatar', id: avatarId }))
+  return url.toString()
+}
+```
+
+**Impact:** New export, no consumers until step 2. `npm run typecheck` fails until phase 3's
+`lib/nina/attach.ts` exports `PHOTO_PARAM` and `formatNinaPhotoParam` — which is the correct build
+order, since `depends_on: [3, 5]`.
+
+---
+
+### Step 2: The menu item
+
+**File:** `components/admin/ShareToNinaItem.tsx` (new file)
+
+**Change:** One client component: one button, one non-fatal describe, one `window.open`. It is its
+own file rather than an inline handler inside `FileExplorer.tsx` for a coordination reason worth
+stating: phases 5, 6 and 7 all edit that file, and a self-contained component reduces this phase's
+footprint there to one import line and one JSX line.
+
+**Code:**
+
+```tsx
+'use client'
+
+import { useTransition } from 'react'
+
+import { ensureNinaAvatarDescriptionAction } from '@/lib/admin/ninaAlbumActions'
+import { ninaPhotoShareUrl } from '@/lib/admin/shareToNina'
+import { cn } from '@/lib/cn'
+
+/**
+ * "Share link to Nina" — R2, one item in the explorer's per-photo menu.
+ *
+ * The user's words are the spec: *"clicking it automatically open runins.site chat in a new
+ * browser tab and put this file as an attachment … user can input additional text question /
+ * comment (optional), and nina will respond to it accordingly."* Four sentences of behaviour, and
+ * every one of them has an obvious wrong implementation, so each gets a heading.
+ *
+ * ── WHY `window.open` AND NOT `<Link>` OR `router.push` ───────────────────────────────────────
+ * *"in a new browser tab"* is in the requirement, and a `<Link>`/`router.push` is a client-side
+ * navigation **inside this tab** — it would replace the file manager with the chat, which is the
+ * opposite of what a share affordance in an admin tool should do (he is mid-audit of three hundred
+ * photos; the album must still be there when he comes back). `'noopener'` is not optional either:
+ * a `target=_blank` navigation without it leaves the new tab holding a live `window.opener` handle
+ * back onto `/admin/nina` — a cross-tab reference into the app's only privileged screen, for no
+ * gain, since nothing here needs to talk to the tab afterwards. Per the HTML spec's `window.open`
+ * steps, `noopener` is stripped from the feature string *before* the "is a popup requested" check
+ * runs, so the remaining feature map is empty and the result is a **tab**, not a popup window —
+ * which is exactly what was asked for. `noreferrer` is deliberately not added: the target is our
+ * own origin, so the `Referer` leaks nothing to anyone.
+ *
+ * `window.open` with `'noopener'` returns `null` by specification, so the return value is **not**
+ * read and there is no popup-blocked branch to write. There is nothing useful such a branch could
+ * do anyway; a blocked popup shows the browser's own indicator, which is a better affordance than
+ * anything this component could render. What matters is not getting blocked in the first place —
+ * see the next heading.
+ *
+ * ── WHY THE DESCRIBE IS FIRED AND NOT AWAITED ─────────────────────────────────────────────────
+ * Phase 4 took the `glm-4.6v` pre-pass off the upload path, because *"i will put hundreds of
+ * profile pics in there"* against a ~8-11 s round trip is not an upload, it is an afternoon. So a
+ * freshly uploaded photo has `description = null`, and `lib/nina/actions.ts:135-140` is explicit
+ * that the description is the only way she can say anything true about a photograph — she is never
+ * sent the image itself (invariant 5). This is the moment it is needed, so this is where it is
+ * requested.
+ *
+ * It is *initiated* before the tab opens and **never awaited before it**. Awaiting would be the
+ * bug: browsers grant `window.open` on transient user activation, which Chrome expires ~5 s after
+ * the click, and an 8-11 s vendor call sitting in between would turn *"automatically open … in a
+ * new browser tab"* into a blocked-popup icon. So both start in the same click: the action's fetch
+ * goes out, then the tab opens, both inside the gesture.
+ *
+ * That leaves a race with the send, and it is an honest one: `resolveAttachment` copies the
+ * description at **send** time, not at page load, so the describe has the whole of the new tab's
+ * load plus however long he takes to type a question — comfortably more than 11 s in practice — to
+ * land first. If it loses, or if z.ai is down, the send still works and she simply has nothing to
+ * say about the picture, which is the same thing that happens today for any un-described photo.
+ * Non-fatal, exactly as the register path's pre-pass was non-fatal, and for the same reason: a
+ * vendor outage must not block the thing the human asked for.
+ *
+ * ── WHY `ensureNinaAvatarDescriptionAction` AND NOT `describeNinaAvatarAction` ────────────────
+ * Phase 4 wrote `ensure…` for this call site specifically, and the difference is a vendor call:
+ * `describeNinaAvatarAction` re-describes unconditionally (it is the album's "Describe it" retry
+ * button), while `ensure…` returns after ONE indexed single-row read for any photo that already
+ * has a description — which is every photo that has ever been her face (phase 4 schedules a
+ * describe on `setCurrentNinaAvatarAction`) or was ever shared. So the common case costs a read,
+ * the `described` guard below skips even that, and only a never-promoted never-shared photo pays
+ * the ~8-11 s. Two guards for the same thing is deliberate: `described` is a REQUIRED prop so a
+ * missing bit is a compile error, and `ensure…` is authoritative at the moment the work would
+ * actually run.
+ *
+ * ── WHY NOTHING IS SENT FROM HERE ─────────────────────────────────────────────────────────────
+ * `attachNinaPhotoToChat` (`lib/nina/albumActions.ts:43`) already attaches an owned photo to the
+ * chat, and calling it would be wrong here. It **sends immediately** and awaits the entire 13-16 s
+ * turn, which is right for the mobile `/nina/about` flow it was built for — there the caption is
+ * typed before the attach and the screen then navigates to the chat. R2 asks for the other order:
+ * *"user can input additional text question / comment (optional)"*, in the chat, in the tab that
+ * just opened, where he can see her answer arrive. So this component **arms** the composer and
+ * sends nothing; phase 3 owns everything that happens in the new tab, including the empty-question
+ * case (a photo with no words is already a valid send —
+ * `lib/nina/actions.ts:277`'s refusal rule has `attachExisting != null` as its fourth disjunct).
+ *
+ * ── WHY THE ORIGIN IS A PROP ──────────────────────────────────────────────────────────────────
+ * `lib/share/origin.ts` opens with `import 'server-only'`, so this file cannot call `shareOrigin()`
+ * and must be handed the answer. It must not compute one either. `window.location.origin` is the
+ * tempting inline fix and it is wrong for the reason that module's header spends fifteen lines on:
+ * on a Vercel preview deployment it is a per-deployment hostname that dies at the next push, so
+ * the "share" would open a chat on a URL that will not exist tomorrow. And a `NEXT_PUBLIC_ORIGIN`
+ * is forbidden outright — invariant 9, roadmap §4.1, and `scripts/check-client-secret-boundary.mjs`
+ * RULE 3 fails the build on the prefix appearing anywhere under `app/`, `lib/` or `components/`.
+ * A prop from a Server Component is the one remaining way, and it is also the correct one: the
+ * origin is resolved once, server-side, in the single place that knows the rule.
+ *
+ * ── WHY `described` IS A BOOLEAN AND NOT THE DESCRIPTION ──────────────────────────────────────
+ * One bit is all this decision needs ("has she got anything to say about this photo?"), and taking
+ * the bit instead of the prose keeps `description` — `glm-4.6v`'s private input to her prompt,
+ * invariant 5 — out of this component entirely. It is a **required** prop on purpose: if phase 5's
+ * grid row does not carry the bit, that is a compile error rather than a silent extra vendor call
+ * on every share.
+ */
+export function ShareToNinaItem({
+  photoId,
+  described,
+  shareOrigin,
+  className,
+  onOpened,
+}: {
+  /** `nina_avatars.id` of the selected photo. */
+  photoId: string
+  /** `photo.description != null`. False means fire the describe on the way out. */
+  described: boolean
+  /** `shareOrigin()`'s output, threaded from `app/admin/nina/page.tsx`. Never `window.location`. */
+  shareOrigin: string
+  /** So the host menu can style this item exactly like its own. */
+  className?: string
+  /** Called after the tab is opened, so the host menu can close itself. */
+  onOpened?: () => void
+}) {
+  const [describing, startTransition] = useTransition()
+
+  function share() {
+    /*
+     * Initiated first, awaited never — see the header. `startTransition` runs its callback
+     * synchronously up to the first `await`, so the action's request is on the wire before the
+     * next statement executes, and the next statement is still inside the click's user
+     * activation. The `revalidatePath('/admin/nina')` inside the action is what makes the
+     * explorer's own row show the description afterwards, without anything here refetching.
+     */
+    if (!described) {
+      startTransition(async () => {
+        const outcome = await ensureNinaAvatarDescriptionAction(photoId)
+        // Logged, never surfaced: the tab he asked for is already open and a toast about a vendor
+        // timeout on a screen he has just navigated away from is noise. The explorer's existing
+        // "Describe it" button is the retry.
+        if (!outcome.ok) console.error('[f34] share-to-Nina describe failed', outcome.error)
+      })
+    }
+
+    window.open(ninaPhotoShareUrl(shareOrigin, photoId), '_blank', 'noopener')
+    onOpened?.()
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={share}
+      className={cn('w-full text-left', className)}
+      aria-busy={describing || undefined}
+    >
+      Share link to Nina
+    </button>
+  )
+}
+```
+
+**Impact:** A new client component with no caller yet. The `console.error` tag is **`[f34]`**: the
+reconciler settled the plan set's tag, and phases 4 and 6 both use it for the work introduced here
+(`[f33]` stays on the log lines F33 wrote and this set does not touch). One string, one grep.
+
+---
+
+### Step 3: One item in phase 5's per-photo action list, and one prop to reach it
+
+**Files:** `components/admin/FileExplorer.tsx` (declare and forward the prop) and
+`components/admin/explorer/SelectionPane.tsx` (accept it, render the item).
+
+**Change:** Four edits, all mechanical, and nothing else in either file is touched. **Do not
+restructure phase 5's selection model, and do not touch phase 6's per-folder menu items in
+`FolderTree.tsx`.**
+
+**Reconciled:** the draft targeted a per-photo menu inside `FileExplorer.tsx`. Phase 5 put the
+per-photo action list in `components/admin/explorer/SelectionPane.tsx` and left this exact comment
+above it:
+
+```tsx
+  /*
+    THE ACTION LIST. One vertical stack, primary first.
+
+    SEAM — PHASE 7. "Share link to Nina" is one more entry in this list, directly under
+    "Set as her profile picture". It needs `shareOrigin()` as a prop, because
+    `lib/share/origin.ts:1` is `server-only` and invariant 9 forbids a `NEXT_PUBLIC_` for it:
+    thread it `app/admin/nina/page.tsx` -> `FileExplorer` -> `SelectionPane`. Nothing about
+    selection needs restructuring — the selected photo's id is `photo.id`, right here.
+  */
+```
+
+So the seam is exactly where this phase wanted it; it is one file further down than assumed, and
+the prop is threaded through one more component. That is the whole difference.
+
+**(1) `FileExplorer.tsx` — the prop.** Add one required field to the props type and accept it in
+the signature (phase 5 declares its props inline, so it goes inline):
+
+```tsx
+  /**
+   * Phase 7 / R2. Where a "Share link to Nina" link points — `shareOrigin()`'s answer, resolved in
+   * `app/admin/nina/page.tsx` because `lib/share/origin.ts` is `server-only` and invariant 9
+   * forbids a `NEXT_PUBLIC_` for it. Threaded through, UNREAD, to `SelectionPane`; nothing in the
+   * explorer itself may substitute `window.location.origin` for it.
+   */
+  shareOrigin: string
+```
+
+**(2) `FileExplorer.tsx` — forward it.** One attribute on the `<SelectionPane …/>` element phase 5
+already renders. Its other props are not reordered, renamed or removed:
+
+```tsx
+        {detailOpen && selected != null && (
+          <SelectionPane
+            photo={selected}
+            shareOrigin={shareOrigin}
+            onClose={() => setDetailOpen(false)}
+            onRemoved={() => setSelectedId(null)}
+          />
+        )}
+```
+
+`shareOrigin` is destructured in `FileExplorer`'s signature and used only here — which is fine and
+is not an unused binding, since it is passed on.
+
+**(3) `SelectionPane.tsx` — accept it and import the item.** Beside phase 5's other
+`@/components/admin/*` imports:
+
+```tsx
+import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
+```
+
+and one required field on its props:
+
+```tsx
+  /** `shareOrigin()`'s output, threaded from the page. Never `window.location`. Phase 7 / R2. */
+  shareOrigin: string
+```
+
+**(4) `SelectionPane.tsx` — render the item at the seam**, in the action stack, directly after the
+"Set as her profile picture" `<Button>` and before the conditional "Describe it":
+
+```tsx
+        <ShareToNinaItem
+          photoId={photo.id}
+          described={photo.description != null}
+          shareOrigin={shareOrigin}
+        />
+```
+
+**`described` needs nothing new from phase 5.** Its `ExplorerPhoto` view model already carries
+`description: string | null` (and its own docstring says *"Read by nothing in `components/` —
+invariant 5. Shown as present/absent, never rendered"*, which is precisely how this uses it: the
+bit, never the prose). The draft offered a `described: boolean` computed in the page's row → prop
+map as an alternative; it is not needed, and `photo.description != null` at the call site keeps the
+mapping phase 5 wrote untouched.
+
+**Styling.** `ShareToNinaItem`'s `className` and `onOpened` are both optional. Phase 5's action
+stack is `<Button fullWidth>` elements rather than a dropdown, so there is no menu to close
+(`onOpened` is omitted) and the item should be given phase 5's own secondary-button treatment so it
+sits with its neighbours. The simplest honest version is to pass the same class string phase 5's
+`Button variant="secondary" fullWidth` produces, or — better — for the implementer to render
+`ShareToNinaItem`'s `<button>` through the `Button` component's own class contract. Either way the
+component stays a plain `<button>` so that `window.open` runs inside the click's user activation
+with nothing between them.
+
+**Impact:** `FileExplorer` and `SelectionPane` each gain one required prop, so every call site must
+pass it — there is exactly one of each, and step 4 supplies the outer one. Making them required
+rather than optional is the point: a forgotten origin is a build error, not a link to `localhost`.
+
+---
+
+### Step 4: The origin, resolved once, server-side
+
+**File:** `app/admin/nina/page.tsx` — the import block (today lines 1-4) and the `<FileExplorer>`
+element (today `<AlbumManager photos={photos} userId={userId} />` at line 60; after phase 5 it is
+whatever phase 5 renders in that position)
+
+**Change:** One import and one attribute. Quoted as the file will look **after phase 5**, which
+rewrites the reads and the props around it; the two lines below are all this phase adds.
+
+**Code — the import, added in the existing alphabetically-ordered `@/lib` group:**
+
+```tsx
+import { shareOrigin } from '@/lib/share/origin'
+```
+
+**Code — the comment and the one attribute, inserted immediately above and inside phase 5's
+`<FileExplorer …/>` element. Phase 5's own attributes are not reordered, renamed or removed:**
+
+```tsx
+      {/*
+        `shareOrigin()` is resolved HERE, on the server, and handed down as a string — phase 7 /
+        R2. `lib/share/origin.ts` opens with `import 'server-only'`, so no client component can
+        call it, and invariant 9 (roadmap §4.1) forbids exporting it as a `NEXT_PUBLIC_`. That is
+        not a limitation being worked around; it is the mechanism. In production this is
+        `AUTH_URL` — `https://runins.site`, the origin the user named in the requirement — and on
+        a preview deployment it is the project's stable production hostname rather than the
+        per-deployment one, so a link minted on a preview still opens the real chat instead of a
+        hostname that dies at the next push.
+      */}
+```
+
+```tsx
+        shareOrigin={shareOrigin()}
+```
+
+Concretely, phase 5's element is:
+
+```tsx
+      <FileExplorer
+        userId={userId}
+        folders={folderList}
+        photos={photos}
+        page={{
+          folder,
+          page,
+          pageSize: NINA_ADMIN_PAGE_SIZE,
+          total: listed.total,
+        }}
+      />
+```
+
+and this phase adds one attribute to it:
+
+```tsx
+      <FileExplorer
+        userId={userId}
+        folders={folderList}
+        photos={photos}
+        page={{
+          folder,
+          page,
+          pageSize: NINA_ADMIN_PAGE_SIZE,
+          total: listed.total,
+        }}
+        shareOrigin={shareOrigin()}
+      />
+```
+
+Phase 5's own attributes are not reordered, renamed or removed. The only rule this phase imposes on
+that element is that `shareOrigin={shareOrigin()}` is present and that the value comes from the
+imported function, never from a literal and never from `headers()`. (Phase 5's page docstring
+already carries a `SEAM — PHASE 7` note saying exactly this, with the invariant-9 reason.)
+
+**Impact:** `/admin/nina` now reads `AUTH_URL` (through `authEnv()`) during render. It is a
+process-env read behind a Zod schema, no I/O, no model call — invariant 4 untouched. The page stays
+a Server Component and stays `force-dynamic`; `requireAdmin()` stays on line 1 of the handler
+(invariant 2). Note for CI: `AUTH_URL` is deliberately unset in `.github/workflows/ci.yml`, and
+`shareOrigin()` falls through to the localhost rung, which is exactly what `tests/share.config.test.ts`
+already asserts — so `npm run build` collecting this page in CI is fine.
+
+---
+
+### Step 5: The test that keeps the two ends spelling it the same way
+
+**File:** `tests/admin.shareToNina.test.ts` (new file)
+
+**Change:** Four cases. The valuable one is the round trip: it imports **phase 7's writer and phase
+3's reader** and asserts that what one produces the other understands. That is the single failure
+mode of R2 that no type can catch — both sides compile perfectly while disagreeing about the
+grammar — and it becomes a CI failure instead of an admin clicking a link that arms nothing.
+
+**Code:**
+
+```ts
+import { describe, expect, it } from 'vitest'
+
+import { ninaPhotoShareUrl } from '@/lib/admin/shareToNina'
+import { PHOTO_PARAM, parseNinaPhotoParam } from '@/lib/nina/attach'
+
+/**
+ * R2's link, both ends of it. `/admin/nina` writes this URL and `/nina` reads it, in two different
+ * phases of the same plan set, and the one bug neither TypeScript nor a browser can catch is the
+ * two of them agreeing to compile while disagreeing about the grammar. So the assertion is a round
+ * trip through phase 3's own parser rather than a string comparison against a literal — an
+ * encoding change is then allowed to happen, and a grammar change is not.
+ *
+ * `environment: 'node'` (invariant 6), which is why the URL build is a pure `lib/` function and
+ * not three lines inside `ShareToNinaItem`: that component imports the album's Server Actions, and
+ * they reach `@vercel/blob` and `lib/db`.
+ */
+describe('ninaPhotoShareUrl', () => {
+  const ORIGIN = 'https://runins.site'
+  const ID = 'V1StGXR8mN4q'
+
+  it('points at the chat on the origin it was given', () => {
+    const url = new URL(ninaPhotoShareUrl(ORIGIN, ID))
+    expect(url.origin).toBe(ORIGIN)
+    expect(url.pathname).toBe('/nina')
+  })
+
+  it('round-trips through the parser the chat page uses', () => {
+    const url = new URL(ninaPhotoShareUrl(ORIGIN, ID))
+    expect(parseNinaPhotoParam(url.searchParams.get(PHOTO_PARAM))).toEqual({
+      kind: 'avatar',
+      id: ID,
+    })
+  })
+
+  it('survives the whole nanoid alphabet, `_` and `-` included', () => {
+    // TWELVE characters: `parseNinaPhotoParam` goes through `isValidId`, which checks the length
+    // as well as the alphabet, so an 11-character id would fail the round trip for the wrong reason.
+    const awkward = 'a_B-9zZ0_-xQ'
+    const url = new URL(ninaPhotoShareUrl(ORIGIN, awkward))
+    expect(parseNinaPhotoParam(url.searchParams.get(PHOTO_PARAM))).toEqual({
+      kind: 'avatar',
+      id: awkward,
+    })
+  })
+
+  it('carries nothing but the pointer — no blob URL, no description, no session', () => {
+    const url = new URL(ninaPhotoShareUrl(ORIGIN, ID))
+    expect([...url.searchParams.keys()]).toEqual([PHOTO_PARAM])
+  })
+
+  // The development rung of `shareOrigin()`, so a link clicked on a laptop opens the laptop's chat
+  // rather than production's.
+  it('works on a localhost origin', () => {
+    const url = new URL(ninaPhotoShareUrl('http://localhost:3000', ID))
+    expect(url.origin).toBe('http://localhost:3000')
+    expect(url.pathname).toBe('/nina')
+  })
+
+  // `new URL` throwing is the intended behaviour: a malformed origin must not become a link that
+  // silently opens a broken tab.
+  it('refuses an origin that is not an origin', () => {
+    expect(() => ninaPhotoShareUrl('', ID)).toThrow(TypeError)
+    expect(() => ninaPhotoShareUrl('runins.site', ID)).toThrow(TypeError)
+  })
+})
+```
+
+**Impact:** One new suite, ~6 assertions, no fixtures, no database, no network.
+
+---
+
+## Verification
+
+**Build:** `npm run build`
+**Typecheck:** `npm run typecheck`
+**Tests:** `npm test` (the new suite is `tests/admin.shareToNina.test.ts`)
+**Lint / format:** `npm run lint` && `npm run format:check`
+**Guards this phase is on the boundary of, both of which must pass:**
+
+```
+npm run ci:client-secret-guard   # RULE 3: no NEXT_PUBLIC_ anywhere. The origin is a prop.
+npm run ci:f08-guard             # no component hand-rolling a formatter. This one formats nothing.
+```
+
+**Manual check — this is the one that matters, and it is mostly about what does NOT happen:**
+
+1. `npm run dev`, sign in as an `ADMIN_EMAILS` address, open `/admin/nina`.
+2. Note the Blob store's object count under the album's prefix first. **`npm run blob:reap` is the
+   wrong tool** — it only scans `shots/` and has never known the `nina/` prefix (ruling D4's open
+   card, restated in the index's Rollback section). Count it directly:
+
+   ```
+   node --env-file=.env.local -e "
+   const { list } = require('@vercel/blob')
+   ;(async () => {
+     let cursor, n = 0
+     do {
+       const page = await list({ prefix: 'nina/', limit: 1000, cursor })
+       n += page.blobs.length
+       cursor = page.cursor
+     } while (cursor)
+     console.log('nina/ objects:', n)
+   })()
+   "
+   ```
+
+   **Write the number down.** (Or read it off the Vercel Blob dashboard, which shows the same
+   thing.)
+3. Select a photo in the explorer, open its action menu, click **Share link to Nina**.
+4. Exactly **one** new tab opens. Not two, and not a popup window — a tab. `/admin/nina` is still
+   there, in the tab behind it, with its folder and selection intact.
+5. In the new tab, the URL is `<origin>/nina?photo=avatar%3A<id>` and the composer shows the photo
+   chipped (phase 3's chip). In dev the origin is `http://localhost:3000`; in production it is
+   `https://runins.site`, which is the requirement's literal wording and the thing to confirm on
+   the deployed site rather than locally.
+6. From the new tab's devtools console, `window.opener` is `null`. This is the `'noopener'`
+   assertion and it is one line.
+7. Send **with** text ("where is she here?") — she answers, and her answer is about the photograph.
+8. Repeat on a second photo and send **with an empty box** — still a valid send (the refusal rule's
+   fourth disjunct), and the photo appears in the bubble.
+9. Re-check the Blob object count with the command from step 2. **It is the same number.** That is
+   R2's *"we dont actually reupload the photo into the chat"*, and it is the only step in this list
+   that proves it. (Cross-check in the database if you want the positive half too: the send wrote
+   one `nina_message_images` row whose `blob_url` is byte-identical to the `nina_avatars` row's.)
+10. Share a photo whose description is still `null` (any fresh upload after phase 4). Watch the
+    server log: one `glm-4.6v` call fires, the tab opens immediately and does not wait for it, and
+    within ~10 s the `/admin/nina` tab's row shows the description. Then send from the chat tab and
+    confirm her reply is about the picture. **Then share the same photo again and confirm NO second
+    vendor call fires** — that is `ensureNinaAvatarDescriptionAction`'s fast path, and it is the
+    reason this phase calls `ensure…` rather than `describeNinaAvatarAction`.
+11. Break the describe deliberately (`LLM_VISION_BASE_URL=https://127.0.0.1:1`), share an
+    un-described photo. The tab **still opens instantly**, the console logs
+    `[f34] share-to-Nina describe failed`, the send still works, and her answer simply does not
+    describe the photo. Non-fatal means non-fatal.
+12. **Share the OLDEST photo in the album — one in a deep folder, well past the first page of the
+    explorer's grid — and send.** This is the observable form of **Requires** #5. It now verifies a
+    fix rather than watching for a break: phase 4 moved `resolveAttachment` onto
+    `getNinaAvatar`/`getNinaMessageImage`, so the send resolves by primary key regardless of where
+    the photo sits in the album, and phase 1 leaves `listNinaAvatars` uncapped besides. Keep the
+    step — it is still the one failure in this phase that a green CI cannot see, and it is one
+    click.
+
+**Exit criteria:** Clicking "Share link to Nina" on a selected photo opens exactly one new browser
+tab at `shareOrigin()`'s origin with that photo chipped in the composer; sending with or without a
+question produces a reply; the Blob store's object count is unchanged by the whole round trip; an
+un-described photo gets described without the tab waiting for it and without a describe failure
+blocking anything; and `npm run typecheck`, `npm test`, `npm run lint`, `npm run format:check` are
+green.
+
+---
+
+## Handoffs
+
+Work found and deliberately left, with the phase that owns it:
+
+- **`/nina/about`'s mobile album keeps `attachNinaPhotoToChat` and its same-tab `router.push`.**
+  Two entry points to the same capability now exist and they behave differently on purpose (mobile:
+  type the caption, then send and navigate; desktop admin: open the chat armed and type there).
+  Unifying them is not in this plan set at all — the index's Scope section rules it out explicitly.
+  If a later reader wants one path, the mobile one is the one to change, not this one.
+
+- **R2's chat-side behaviour is entirely phase 3's** — reading the param, the composer chip, the
+  `canSend` disjunct, `window.history.replaceState` so a refresh does not re-arm, and the refusal
+  on a forged or foreign id (invariant 10). This phase asserts phase 3's parser in a test and
+  otherwise does not reach into it.
+- **A freshly uploaded photo has `description = null` and every consumer tolerates it.** Verified
+  across the set, because phase 4 removing the upload pre-pass is what makes it the normal state:
+  phase 3's resolve path reads only `blobUrl` and `resolveAttachment` copies `null` happily; phase
+  5's `SelectionPane` renders the *bit* (*"Cannot talk about this photo yet"*) and never the prose;
+  and this phase's `described={photo.description != null}` is exactly that bit, which is why it is
+  a required prop — a missing one is a compile error rather than a silent extra vendor call on
+  every share.
+
+- **`?photo=image:<id>` is unused by this phase.** Phase 3's pointer grammar carries a `'image'`
+  kind because `resolveAttachment` already supports re-attaching a chat photo, and this phase only
+  ever formats `'avatar'`. A "share this chat photo again" affordance would be a new caller of
+  `ninaPhotoShareUrl` with a second kind parameter; nobody has asked for it, so it is not built.
+
+- **No "copy link" affordance.** The requirement says *open* the chat, so the item opens it. A
+  clipboard copy would be a second item and a second thing to explain; if it is ever wanted,
+  `ninaPhotoShareUrl` is already the whole implementation and it is already tested.
+
+- **Bulk share.** *"hundreds of profile pics"* makes "share these six to Nina" an obvious next
+  wish, and it is not R2. R2 is singular — *"click a photo and an option 'share link to nina'"* —
+  and a multi-select share would need a different URL grammar (a list, not a pointer) and would
+  open six tabs, which no popup blocker allows. Out of scope, and noted so nobody adds it here by
+  accident.
+
+- **Phase 6's per-folder menu.** Same seam, different item list. Phase 6 adds create / rename /
+  move / delete to the **folder** menu; this phase adds one item to the **photo** menu. Neither
+  touches the other's list.
+
+- **The describe race is not made deterministic.** Making it deterministic would mean either
+  awaiting (blocked popup) or teaching the chat side to wait for a description before sending
+  (phase 3's file, and a spinner on a send the user did not ask to be slow). The current answer —
+  fire early, non-fatal, and let human typing latency win the race — is the right trade for a
+  vendor call whose output is prompt seasoning, not correctness. If it ever proves flaky in
+  practice, the fix belongs on the chat side: phase 3's composer could disable Send for a photo
+  whose description is still pending. Recorded, not built.
+
+---
+
+## Rollback
+
+This phase is one commit and reverts alone, in either direction, with nothing else in the set
+depending on it:
+
+```
+git revert <phase-7-commit>
+```
+
+That deletes `lib/admin/shareToNina.ts`, `components/admin/ShareToNinaItem.tsx` and
+`tests/admin.shareToNina.test.ts`, drops the `shareOrigin` prop from `FileExplorer` and from
+`SelectionPane` (one declaration and one forward each), removes the `<ShareToNinaItem …/>` element
+from `SelectionPane`'s action stack, and removes the one import and one attribute from
+`app/admin/nina/page.tsx`. Nothing else references any of it. There is **no migration, no schema change, no data written and no blob touched**, so there
+is nothing to back out beyond the code — the only state this phase can ever have created is
+`nina_avatars.description` on photos that were shared, which is the same column the album's
+"Describe it" button has always filled and is correct to keep.
+
+Reverting this phase leaves phase 3's `/nina?photo=…` deep link fully working and independently
+shippable; it just loses the `/admin` affordance that mints the link. Reverting phase 3 instead
+(or before this one) leaves this phase minting a URL nothing consumes — a tab that opens the chat
+with an unrecognised query parameter, which phase 3's parser ignores by design (a miss arms
+nothing and is not an error page), so even that failure mode is a working chat rather than a broken
+page. Revert order 7-then-3 is preferred; the reverse is survivable.
