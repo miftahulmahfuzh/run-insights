@@ -28,13 +28,17 @@ in `lib/`, because vitest runs `environment: 'node'` with no jsdom. What is left
 cannot be proved in Node — `DataTransferItem`, `FileSystemDirectoryReader`, `OffscreenCanvas`,
 `ResizeObserver`, `PointerEvent`, `FileList` — plus the JSX that arranges it. That is why this
 package has no test files and why that is correct rather than a gap: the judgements its screens make
-(is this an image, is this path legal, do we already have it, where does this crop land) all live in
-`lib/admin/filetree.ts` and `lib/nina/crop.ts` and are unit-tested there.
+(is this an image, is this path legal, do we already have it, may this folder move there, where does
+this crop land) all live in `lib/admin/filetree.ts`, `lib/admin/folderOps.ts` and `lib/nina/crop.ts`
+and are unit-tested there.
 
 **Key Responsibilities:**
 
 - Be `/admin/nina`'s file manager: folder tree, breadcrumb, folder-scoped paginated grid,
   drag-and-drop of nested folders, a directory picker, and a details rail.
+- Maintain the tree it draws: create, rename, move and delete a folder from the row that names it,
+  and move or remove the selected photos — the affordances only, with every refusal left on the
+  server where the rule lives.
 - Turn a gesture into a list of files with paths, using the two non-standard browser APIs that can
   do it, and produce the *same* shape from a drop as from a picker.
 - Derive a 256 px thumbnail in the browser, because nothing on the server re-encodes these blobs.
@@ -59,6 +63,8 @@ package has no test files and why that is correct rather than a gap: the judgeme
 | `explorer/PhotoGrid.tsx` | `'use client'` | One folder's page of square tiles, plus the pager. |
 | `explorer/SelectionPane.tsx` | `'use client'` | The details rail: framing, facts, and the action list. |
 | `explorer/UploadQueue.tsx` | `'use client'` | One honest line about what the upload is doing. |
+| `FolderMenu.tsx` | `'use client'` | One folder's four verbs: New subfolder / Rename / Move to… / Delete. A `mode` union, four `absolute` panels. Decides nothing. |
+| `PhotoMoveBar.tsx` | `'use client'` | Move or remove the current selection. Reads phase 5's `selectedId`, never writes it. `null` when nothing is selected. |
 | `ShareToNinaItem.tsx` | `'use client'` | "Share link to Nina". Opens the chat in a new tab; fires the describe and never awaits it. |
 | `CropStudio.tsx` | `'use client'` | Drag / wheel / slider / arrow keys. Contains one subtraction. |
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
@@ -81,6 +87,14 @@ inconsistency:
 - **The selected photo is `useState`**, for the reason `components/ui/usePanelParam.ts` gives about
   `/me`'s panel: putting it in the URL would re-run a Server Component that just did two database
   reads, on every click, for a state change that never leaves the client.
+- **`pendingFolders` is `useState`, and it is not storage.** A folder the operator just created is
+  *durable* — `createNinaAlbumFolderAction` declares it in `nina_folders` and
+  `listNinaAvatarFolders` UNIONs the declarations with the folders the photograph rows imply, so a
+  reload shows an empty folder. This state covers only the window between the action resolving and
+  this component receiving a `folders` prop that includes it, during which the tree would otherwise
+  navigate into a folder it cannot draw. The merge into `allFolders` is therefore a **filter, not a
+  union**: once the server's list names a folder the pending copy is dropped, so it cannot survive a
+  later rename of that folder.
 
 The consequence worth knowing: `selectedId` can name a photo that is no longer on this page (a
 folder change, a page change, a delete). `photos.find(...) ?? null` is the entire handling — the pane
@@ -89,6 +103,11 @@ closes itself — and no effect is needed.
 The URL grammar has one home, `hrefForFolder` in `FileExplorer.tsx`, so the tree, the breadcrumb and
 the pager cannot spell it differently. The root folder is the **absence** of `?folder=` and page 1 is
 the **absence** of `?page=`, so canonical `/admin/nina` and navigated-back-to root are the same URL.
+
+There are two ways out of that grammar, not one. `hrefFor` *builds* a URL, which is all a `<Link>`
+needs; `navigateToFolder` *goes* to one, which is what a folder operation needs, because it only
+learns where the explorer should be looking once the server has answered. Both go through
+`hrefForFolder`, so the second way out is a `router.push` and not a second spelling.
 
 ### The two gestures produce one shape
 
@@ -245,6 +264,14 @@ effect copying props into state and no bug where the tree forgets where you are.
 `totalCount` at every depth, right-aligned and `tabular-nums`: a collapsed folder reading "0" while
 holding two hundred photos two levels down is the specific thing that makes a tree pane useless.
 
+Three props are **required** and carry phase 6 through the recursion exactly as `hrefFor` already
+was: `allFolders` (a flat `string[]` — the "Move to…" universe, deliberately not the
+`{ folder, count }` rows `buildTree` reads), `onNavigate`, and `onFolderCreated`. `Row` also now
+takes `path` and `totalCount` alongside what it prints: `label` is `'Album'` where `path` is `''`,
+so the operations must be given the path; and the delete panel counts the **subtree** it is about to
+remove, which is what `totalCount` is and what `ownCount` is not. They are the same number in `Row`
+today and are passed separately so that stays true by construction.
+
 **`PhotoGrid`** — the tile is a square `object-cover` crop with the filename under it, not a
 `CircleFrame`. A file manager asks *"which file is this"* before *"what does she look like in it"*,
 so `CircleFrame` moves to the selection pane where framing is actually being decided.
@@ -271,6 +298,107 @@ every failure plus a bounded window of what is moving, and then an honest count 
 drawing. `REFUSAL_TEXT` is an exhaustive `Record` over `UploadRefusal` rather than a `switch` with a
 default, so adding a refusal reason in `lib/admin/filetree.ts` is a build error here until it has a
 sentence.
+
+### Folder maintenance — four verbs at the node, two at the selection
+
+Phase 6 is R1's second half, *"easier to maintain"*, and it is two components rather than a screen:
+`FolderMenu` on every tree row and `PhotoMoveBar` above the grid. Between them they hold six `run()`
+calls, one `useTransition` each and not one rule.
+
+**Every refusal belongs to the server.** Neither component pre-validates a name, pre-computes a
+collision or greys out an illegal target. `lib/admin/folderOps.ts` — pure, and unit-tested in
+`tests/admin.folderOps.test.ts` — decides all of it, and its sentences are what render in the error
+line. One place a rule lives means no control that permits what the action refuses, or, worse,
+forbids what it would have allowed. The only thing computed on the client is which destinations to
+*offer*, and offering a bad one costs a refusal the operator can read.
+
+That is also why **neither component imports `folderOps.ts`**. The path helpers `FolderMenu` needs —
+`folderName`, `folderParent`, `isInFolderTree` — come from `lib/admin/filetree.ts`, which is
+zero-import by design; `folderOps.ts` carries the operations' Zod schemas, and a module-level
+`z.object(...)` is a side effect no bundler tree-shakes. Same rule as `NINA_ADMIN_BATCH_MAX`,
+enforced at a new seam.
+
+**`FolderMenu` — a `mode` union and four inline panels, no `<dialog>`.** `MemoryLedger`'s `FactRow`
+is the precedent, taken verbatim: a `Mode` union
+(`'idle' | 'menu' | 'create' | 'rename' | 'move' | 'delete'`), one panel per mode, one `run()` that
+owns `pending`, the error line and the mode reset, and a Cancel that only sets `mode` back. A tree
+row is the operator's *place* in a hundreds-deep album, and a modal is precisely the thing that
+loses it.
+
+The trigger is a `…` rendered inline in `FolderTree`'s `Row` — a 200 px flex line already holding a
+chevron, a `<Link>` and a count — so **every panel is an `absolute` overlay** beneath it: `z-20`,
+280 px wide, `shadow-sheet`. A panel laid out as a fourth flex *item* would squeeze the other three
+and then wrap a text field into ~60 px. The overlay is a layout necessity of the seam phase 5 left,
+not a second opinion about where the affordance goes.
+
+Four verbs, and the root gets exactly one: **New subfolder** appears on every menu including the
+album root's own `Row` — which is where a top-level folder is created — while Rename, Move to… and
+Delete… are hidden when `folder === ''`. New subfolder living *inside* the per-folder menu is why
+there is no "New folder" button under the `<nav>`, which is what phase 5's seam had sketched: the
+parent is then the folder whose menu was opened rather than whichever folder the rail happens to have
+selected, which is one fewer thing to check before clicking.
+
+**"Move to…" is a named target list, and internal drag-to-move is deliberately not built.** Dragging
+a folder onto another folder is the gesture a file manager suggests, and it would have to share
+`dragover`/`drop` with phase 5's handler — the one that reads a folder dragged out of *Windows
+Explorer* through `DataTransferItem.webkitGetAsEntry()`. One handler disambiguating an OS folder from
+an in-page selection fails silently in both directions: a drop that should move 40 rows re-uploads 40
+files, or a folder from the desktop is read as a move and uploads nothing. A `<select>` of paths
+cannot be misread. Internal drag-to-move is a follow-up card, not a shortcut.
+
+**`PhotoMoveBar` reads phase 5's selection and never writes it.** `selectedId` arrives as a prop,
+`onDone` goes back out, and `if (count === 0) return null` — so the grid's layout does not shift on
+an empty selection. Multi-select is **not built**: the bar takes today's single `selectedId` and
+passes `[selectedId]`. The actions are already plural — `ids`, bounded by
+`ADMIN_FOLDER_OP_MAX_IDS = 500` — so the day the grid grows a set, nothing on the server moves and
+the copy already reads "N photos selected". Phase 5's selection model is the thing this phase
+promised not to restructure, and a second writer of it is how the F17 double-upload happened.
+
+**Moving photos is the sanctioned way to merge two folders.** A folder rename onto an occupied path
+is refused outright, because a folder-column merge has no inverse — afterwards the rows are
+indistinguishable. Moving the photos reaches the same end state reversibly: chosen per photo, in
+front of the grid, with the ids still in hand. And a move of either kind is **one UPDATE of the
+`folder` column** — no blob is copied, so moving four hundred photographs between folders moves zero
+bytes. The `<select>`'s hint says exactly that, because a file manager that copies gigabytes on a
+rename is the operator's reasonable fear.
+
+**Her current photo is a refusal, not a greyed button.** It cannot be removed, and the server says so
+before a row is touched: `currentPhotoRefusal` names the photo and both fixes. `keepCurrent` is the
+operator's explicit second answer, and a delete taken that way leaves the folder holding exactly that
+one photo and says so in `note`. The two components surface it differently, and the difference is
+the interesting part:
+
+- `PhotoMoveBar` takes `currentId` and uses it **for the warning only**. It can be honest there: if
+  the current photo is on this page at all, it is in the grid the operator is looking at.
+- `FolderMenu` takes **no `holdsCurrent` prop**, because nothing phase 5 passes could compute one.
+  The grid is one page of one folder, so `photos.find((p) => p.isCurrent)` is `null` for almost every
+  folder even when the flag should be true — and a `false` there would offer a delete the server
+  refuses *and* hide the button that answers the refusal. Making it true would have meant a new
+  current-photo read on `app/admin/nina/page.tsx` and a `currentFolder` prop threaded through two of
+  phase 5's components, to duplicate a decision the server already makes. So the affordance is driven
+  by the server's own answer: a refusal arriving while the delete panel is open sets `keepOffer`, and
+  "Delete the rest, keep her photo" appears at the one moment it is the fix. One boolean instead of a
+  read, a prop chain and a client-side guess.
+
+`keepOffer` is read off `mode === 'delete'` and never off the message text, so no string matching
+sits between a server sentence and a button.
+
+**Deletes go rows first, blobs afterwards, and both panels say so** — *"a file left behind is
+recoverable, a missing file under a live row is a broken picture in her album"*. The reap is best
+effort in chunks of 100 and a failed chunk is logged rather than surfaced, which is the honest
+description of what the operator is agreeing to.
+
+One field on `AdminActionResult` is what keeps the explorer from stranding itself. `folder` is where
+to look once the operation has landed — the folder just created, its new path after a rename or a
+move, or a deleted folder's parent — because `?folder=` may name a folder that stopped existing the
+instant the delete succeeded, so the action that changed the tree is the thing that knows where to
+go. Every `onOk` in `FolderMenu` reads it, and a create additionally calls `onFolderCreated` so the
+next drop lands in the folder that was just named. `note` carries the true-but-not-a-failure
+sentence; `count` reports rows actually touched rather than rows asked for.
+
+**Nothing here has been exercised against real rows.** Migration `0003` is applied to no live
+database, so every folder operation is covered by typecheck, lint, build and
+`tests/admin.folderOps.test.ts` and by nothing else.
 
 ### "Share link to Nina" — an ordering problem, not a UI problem
 

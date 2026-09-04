@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-04
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 
 ---
 
@@ -21,17 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-RI-A004** Phase 6: Folder maintenance: create, rename, move, delete
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns the create / rename / move / delete folder actions plus the photo move and remove in `lib/admin/ninaAlbumActions.ts` (each `requireAdmin()`-gated and Zod-validated against phase 4's `folderPathSchema`), the pure refusal decisions in `lib/admin/folderOps.ts` + `tests/admin.folderOps.test.ts`, `components/admin/FolderMenu.tsx` and `PhotoMoveBar.tsx`, and three insertions at phase 5's two marked seams. The current photo cannot be removed; a recursive delete removes rows first and blobs best-effort in chunks of 100; a move is an UPDATE of the folder column and copies no blob; undeclare a subtree only when it is actually empty. Exit: rename, move and recursive delete are reflected in the tree without a manual reload; a folder holding the current photo refuses deletion with a message naming the photo and the reason, and the second answer leaves it holding exactly that one photo; no folder operation changes the Blob object count except a delete; `npm test` and `npm run typecheck` green.
-  - **Status**: open
-  - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 6 of 7)
-  - **Satisfies**: R1 — `/admin/nina` becomes a file manager: nested folders, folder upload by picker and by drag-and-drop from Windows Explorer, uploading only what is new, image files only, and an explorer view where clicking a photo lets you set it as her profile picture
-  - **Depends on**: `P1-RI-A003`
-  - **Plan**: `.workflows/plan/P1-RI-A004.md`
-  - **Card**: `miftahulmahfuzh/run-insights#71`
 
 ### [P2] Medium
 
@@ -120,6 +109,31 @@
   - **Drift**: Removing the singular `registerNinaAvatarAction` orphaned two imports in `lib/admin/ninaAlbumActions.ts` (`avatarRegisterSchema`, `insertNinaAvatarAsCurrent`) and one docstring on `AdminActionResult.id` naming the deleted function. Imports removed; the docstring now names the describe actions, which are what still set `id` (`:306`). `avatarRegisterSchema` itself stays in `lib/admin/schema.ts` as the plan requires — `tests/admin.avatars.test.ts` covers it.
   - **Drift**: The Step 7 SEAM comment quotes the string `NEXT_PUBLIC_`, and written as a JSX `{/* */}` block with bare continuation lines it failed `ci:client-secret-guard` Rule 3 — the guard's `isComment` only recognises `//`, `/*` and `*`-prefixed lines. Reformatted the comment with leading `*` per the convention every other mention in the repo already follows, with a note in it explaining why the prefix is load-bearing. **The guard script was NOT modified.**
   - **Drift**: Prettier reformatted three of the new files (`model.ts`, `PhotoGrid.tsx`, `useFolderUpload.ts`) — whitespace only.
+
+### [P1] P1-RI-A004
+- [x] **P1-RI-A004** Phase 6: Folder maintenance: create, rename, move, delete
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the create / rename / move / delete folder actions plus the photo move and remove in `lib/admin/ninaAlbumActions.ts` (each `requireAdmin()`-gated and Zod-validated against phase 4's `folderPathSchema`), the pure refusal decisions in `lib/admin/folderOps.ts` + `tests/admin.folderOps.test.ts`, `components/admin/FolderMenu.tsx` and `PhotoMoveBar.tsx`, and three insertions at phase 5's two marked seams. The current photo cannot be removed; a recursive delete removes rows first and blobs best-effort in chunks of 100; a move is an UPDATE of the folder column and copies no blob; undeclare a subtree only when it is actually empty. Exit: rename, move and recursive delete are reflected in the tree without a manual reload; a folder holding the current photo refuses deletion with a message naming the photo and the reason, and the second answer leaves it holding exactly that one photo; no folder operation changes the Blob object count except a delete; `npm test` and `npm run typecheck` green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 6 of 7)
+  - **Satisfies**: R1 — `/admin/nina` becomes a file manager: nested folders, folder upload by picker and by drag-and-drop from Windows Explorer, uploading only what is new, image files only, and an explorer view where clicking a photo lets you set it as her profile picture
+  - **Depends on**: `P1-RI-A003`
+  - **Plan**: `.workflows/plan/P1-RI-A004.md`
+  - **Card**: `miftahulmahfuzh/run-insights#71`
+  - **Completed**: 2026-09-04 18:05
+  - **Method**: /do
+  - **Files**: lib/admin/folderOps.ts (new), tests/admin.folderOps.test.ts (new), lib/admin/ninaAlbumActions.ts, components/admin/FolderMenu.tsx (new), components/admin/PhotoMoveBar.tsx (new), components/admin/explorer/FolderTree.tsx, components/admin/FileExplorer.tsx
+  - **Verification**: `npm run typecheck`, `npm run lint` (0 errors; 2 pre-existing warnings in `scripts/capture/shoot.mjs`), `npm run format:check`, `npm run build`, `npm test` (122 files / 2192 tests) and all six `ci:*-guard` scripts — all green.
+  - **Outstanding**: Migration `0003` is applied to no live database, so `nina_folders` and the five new `nina_avatars` columns exist nowhere live. **No folder operation has been exercised against real rows** — the plan's nine-step manual check at `/admin/nina` could not be run. Everything verified above is static analysis plus the pure unit suite. Applying the migration is the coordinator's decision to carry to the user; phases 1, 4, 5 and 7 all reported the same way.
+  - **Repair**: Phase 7 committed `components/admin/FileExplorer.tsx` as a partial stage (`c48bb60`) that reverse-applied phase 6's hunks, so the pushed tip lost this phase's `PhotoMoveBar` render, `allFolders`/`onNavigate`/`onFolderCreated` wiring and `pendingFolders` state — and did not typecheck, because `FolderTree` requires those three props. Restored from the working copy, which held the correct merged state; `shareOrigin` (phase 7) untouched. `npm run typecheck` exits 0 on the restored tree.
+  - **Drift**: The plan's Step 4 `createNinaAlbumFolderAction` carried a stale docstring from before the owner added `nina_folders` — it claimed the action *"writes nothing"* and that *"there is no nina_folders table"*, directly beside a body calling `declareNinaFolders`. Rewritten to describe what the code does, per the plan's own instruction not to leave contradicting prose standing, and matching the repair phase 1 made to its twin.
+  - **Drift**: The plan's `moveNinaAlbumFolderAction` did not call `renameNinaFolderSubtree` while its `renameNinaAlbumFolderAction` did — but phase 1 documents rename and move as literally the same statement. Without it, moving a declared-empty folder would move zero rows and leave the declaration at the old path, so the folder would appear not to have moved. Added the call with the rename action's rows-first ordering: the plan's stated intent (*"declarations follow the photographs"*) applied to the second caller of one statement.
+  - **Drift**: `FolderMenu`'s docstring pointed at `lib/admin/folderPath.ts` for its path helpers — a file reconciliation deleted (Conflict 1). Corrected to `lib/admin/filetree.ts`.
+  - **Drift**: The plan placed `<FolderMenu>` inside `FolderTree`'s `Row`, a 200px flex line, where its inline panels would lay out as a fourth flex item — squeezing the chevron/link/count and wrapping a text field into ~60px. The trigger stays inline; the panels are `absolute` overlays beneath it (`z-20`, 280px, `shadow-sheet`). Layout necessity of phase 5's seam, not a relocation of the affordance.
+  - **Drift**: Phase 5's `SEAM — PHASE 6` comment proposed a separate *"New folder"* button under the `<nav>` in addition to a per-row menu. Implemented as the per-folder menu only, with `New subfolder` as its first item and the root's own `Row` carrying that single item — so the parent is the folder whose menu was opened rather than whichever folder the rail happens to have selected. The seam comment is rewritten in place to record that.
+  - **Scope**: Multi-select is **not** built — `PhotoMoveBar` reads phase 5's single `selectedId` and passes `[selectedId]`. The actions are already plural (`ids`, bounded by `ADMIN_FOLDER_OP_MAX_IDS = 500`), so multi-select later is a client-only change. This is the reconciled decision, not an omission.
+  - **Scope**: Internal drag-to-move is deliberately a named target list instead. Phase 5 owns `dragover`/`drop` for the Windows Explorer folder walk, and one handler disambiguating an OS folder from an in-page selection fails silently in both directions. Follow-up card.
 
 ### [P1] P1-RI-A005
 - [x] **P1-RI-A005** Phase 7: "Share link to Nina" in the explorer, opening the chat in a new tab
