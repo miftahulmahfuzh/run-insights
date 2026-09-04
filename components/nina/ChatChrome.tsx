@@ -13,6 +13,7 @@ import {
   nextBarState,
   type NinaBarState,
 } from '@/lib/nina/chrome'
+import { NinaSidebarTrigger } from './NinaSidebar'
 
 /**
  * `/nina`'s chrome: no tab bar, and one floating control that pulls it back up (R1).
@@ -207,15 +208,21 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
           }}
         >
           {/*
-            PHASE 5's SEAM — R6's floating `>` button, "at the bottom left corner".
-            It goes in this cell. Whatever phase 5 puts here must carry `pointer-events-auto`
-            (the lane is `pointer-events-none`) and must not change the lane's `grid-cols-3`, which
-            is what keeps the toggle centred on the screen rather than centred in the space the `>`
-            leaves over. If phase 5 needs the `>` to stay reachable while the composer has focus,
-            that is a change to `isControlVisible` in `lib/nina/chrome.ts` — one rule, one test —
-            and not a second visibility condition here.
+            R6's floating `>`: the sidebar's door, in the cell phase 2 left for it. Phase 5 owns
+            the button; phase 2 owns where it sits — the lane's `bottom` is computed from
+            `TAB_BAR_HEIGHT_PX`, `TAB_BAR_FAB_OVERHANG_PX`, the composer's measured height and
+            `--safe-bottom`, and a third spelling of that sum in another file is how a control ends
+            up over the composer on one device and under the keyboard on another.
+
+            `pointer-events-auto` because the lane is `pointer-events-none`; `justify-self-start`
+            because it is this cell's occupant now, and the lane's `grid-cols-3` is untouched so the
+            `^`/`v` toggle stays centred on the SCREEN rather than in the space the `>` leaves over.
+
+            It needs NO props: its state is `?sidebar=1` in the URL, so it shares nothing with the
+            panel and `ChatScreen` never learns a sidebar exists. Outside a `NinaSidebarProvider` it
+            renders null, so a `ChatChrome` on a screen with no sidebar simply has no `>`.
           */}
-          <div className="justify-self-start" />
+          <NinaSidebarTrigger className="pointer-events-auto justify-self-start" />
 
           <button
             type="button"
