@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
+import { FolderMenu } from '@/components/admin/FolderMenu'
 import { buildTree, folderAncestors, type FolderNode } from '@/lib/admin/filetree'
 import { cn } from '@/lib/cn'
 
@@ -45,12 +46,29 @@ export function FolderTree({
   folders,
   current,
   hrefFor,
+  allFolders,
+  onNavigate,
+  onFolderCreated,
 }: {
   folders: readonly ExplorerFolder[]
   /** `''` is the album root. */
   current: string
   /** Built by `FileExplorer` so the URL grammar has one home. */
   hrefFor: (folder: string) => string
+  /**
+   * PHASE 6. Every folder path the album knows about — the server's list merged with the ones
+   * created in this session. `FolderMenu`'s "Move to…" universe and its collision hint, which is
+   * why it is a flat `string[]` and not the `{ folder, count }` rows `buildTree` reads.
+   */
+  allFolders: readonly string[]
+  /**
+   * PHASE 6. `hrefFor` builds a URL; this navigates to one. A folder operation lands on the server
+   * and *then* decides where the explorer should be looking, so the menu cannot express that as a
+   * `<Link>` written before the click.
+   */
+  onNavigate: (folder: string) => void
+  /** PHASE 6. A folder the server just declared, so it joins the tree before the next read. */
+  onFolderCreated: (folder: string) => void
 }) {
   /*
    * `buildTree` returns ONE root node, not an array — phase 2's shape, reconciled from the draft's
@@ -80,6 +98,11 @@ export function FolderTree({
         active={current === ''}
         chevron={root.children.length > 0 ? 'open' : 'none'}
         onToggle={undefined}
+        path=""
+        totalCount={root.totalCount}
+        allFolders={allFolders}
+        onNavigate={onNavigate}
+        onFolderCreated={onFolderCreated}
       />
 
       <ul className="mt-0.5">
@@ -93,15 +116,20 @@ export function FolderTree({
             override={override}
             setOverride={setOverride}
             hrefFor={hrefFor}
+            allFolders={allFolders}
+            onNavigate={onNavigate}
+            onFolderCreated={onFolderCreated}
           />
         ))}
       </ul>
 
-      {/* SEAM — PHASE 6. The folder-maintenance affordances belong here and in `Row` below:
-          a "New folder" button under this nav (it needs `current` as its parent), and a
-          right-click or kebab on `Row` for rename / move / delete. `Row` is already the single
-          place a folder is drawn, so phase 6 adds one control to one component. The move TARGET
-          is `FileExplorer`'s `destination`, which is this rail's `current`. */}
+      {/* SEAM — PHASE 6, TAKEN. The folder-maintenance affordances landed in `Row` below rather
+          than as a separate "New folder" button under this nav: `FolderMenu` carries all four
+          verbs, and putting **New subfolder** inside the per-folder menu means the parent is the
+          folder whose menu was opened rather than whichever folder the rail happens to have
+          selected — one fewer thing for the operator to check before clicking. The root's own Row
+          renders the menu too, with only that one item, which is where a top-level folder is
+          created. */}
     </nav>
   )
 }
@@ -114,6 +142,9 @@ function Branch({
   override,
   setOverride,
   hrefFor,
+  allFolders,
+  onNavigate,
+  onFolderCreated,
 }: {
   node: FolderNode
   depth: number
@@ -122,6 +153,10 @@ function Branch({
   override: Record<string, boolean>
   setOverride: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
   hrefFor: (folder: string) => string
+  /* PHASE 6, forwarded through the recursion exactly as `hrefFor` already is. */
+  allFolders: readonly string[]
+  onNavigate: (folder: string) => void
+  onFolderCreated: (folder: string) => void
 }) {
   const hasChildren = node.children.length > 0
   const open = override[node.path] ?? onPath.has(node.path)
@@ -140,6 +175,11 @@ function Branch({
             ? () => setOverride((previous) => ({ ...previous, [node.path]: !open }))
             : undefined
         }
+        path={node.path}
+        totalCount={node.totalCount}
+        allFolders={allFolders}
+        onNavigate={onNavigate}
+        onFolderCreated={onFolderCreated}
       />
       {hasChildren && open && (
         <ul>
@@ -153,6 +193,9 @@ function Branch({
               override={override}
               setOverride={setOverride}
               hrefFor={hrefFor}
+              allFolders={allFolders}
+              onNavigate={onNavigate}
+              onFolderCreated={onFolderCreated}
             />
           ))}
         </ul>
@@ -170,6 +213,11 @@ function Row({
   active,
   chevron,
   onToggle,
+  path,
+  totalCount,
+  allFolders,
+  onNavigate,
+  onFolderCreated,
 }: {
   href: string
   label: string
@@ -178,6 +226,17 @@ function Row({
   active: boolean
   chevron: 'open' | 'closed' | 'none'
   onToggle?: () => void
+  /* PHASE 6. `path` is what the operations name; `label` is only what this row prints, and for the
+   * root the two differ (`'Album'` against `''`). `totalCount` and NOT `count`'s source: the delete
+   * panel's "this will remove N photos" has to count the subtree it is about to remove, which is
+   * exactly what `totalCount` is and exactly what `ownCount` is not. They are the same number here
+   * today; they are passed separately so that stays true by construction if the column ever
+   * changes. */
+  path: string
+  totalCount: number
+  allFolders: readonly string[]
+  onNavigate: (folder: string) => void
+  onFolderCreated: (folder: string) => void
 }) {
   return (
     <div
@@ -220,6 +279,16 @@ function Row({
       </Link>
 
       <span className="shrink-0 text-[11px] font-semibold text-ink-3 tabular-nums">{count}</span>
+
+      {/* PHASE 6. The per-folder menu — New subfolder / Rename / Move to… / Delete. Its trigger is
+          the `…` on this line; its panels overlay the rail (see `FolderMenu`'s header). */}
+      <FolderMenu
+        folder={path}
+        folders={allFolders}
+        photoCount={totalCount}
+        onNavigate={onNavigate}
+        onFolderCreated={onFolderCreated}
+      />
     </div>
   )
 }

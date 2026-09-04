@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { PhotoMoveBar } from '@/components/admin/PhotoMoveBar'
 import { Button } from '@/components/ui'
 import { folderBreadcrumbs } from '@/lib/admin/filetree'
 import { cn } from '@/lib/cn'
@@ -109,6 +110,42 @@ export function FileExplorer({
 
   const hrefFor = useCallback((next: string) => hrefForFolder(next, 1), [])
   const hrefForPage = useCallback((next: number) => hrefForFolder(folder, next), [folder])
+
+  /**
+   * PHASE 6. Folders the operator created in this session, held until a server read names them.
+   *
+   * They are **durable** — `createNinaAlbumFolderAction` declares them in `nina_folders` and
+   * `listNinaAvatarFolders` UNIONs the declarations with the folders the photograph rows imply, so
+   * a reload shows an empty folder. This state is not the folder's storage; it is the window
+   * between the action resolving and this component receiving a `folders` prop that includes it,
+   * during which the tree would otherwise navigate into a folder it cannot draw.
+   *
+   * The merge below is a filter and not a union: once `folders` from the server names a folder, the
+   * pending copy is redundant and must not survive a rename of it.
+   */
+  const [pendingFolders, setPendingFolders] = useState<readonly string[]>([])
+
+  const addPendingFolder = useCallback((next: string) => {
+    setPendingFolders((previous) => (previous.includes(next) ? previous : [...previous, next]))
+  }, [])
+
+  /* A flat `string[]`, because `FolderMenu` and `PhotoMoveBar` want destinations without counts.
+   * `folders` is `ExplorerFolder[]` (`{ folder, count }`), so this is derived from it rather than
+   * spread — and `folders` itself is untouched and still feeds `FolderTree`'s `buildTree`. */
+  const allFolders = useMemo(() => {
+    const known = new Set(folders.map((entry) => entry.folder))
+    return [
+      ...folders.map((entry) => entry.folder),
+      ...pendingFolders.filter((entry) => !known.has(entry)),
+    ].sort()
+  }, [folders, pendingFolders])
+
+  /* `hrefFor` builds a URL; a folder operation decides where to go only once the server has
+   * answered, so it needs a navigator rather than a link. */
+  const navigateToFolder = useCallback(
+    (next: string) => router.push(hrefFor(next)),
+    [router, hrefFor],
+  )
 
   function select(id: string) {
     setSelectedId(id)
@@ -234,7 +271,14 @@ export function FileExplorer({
             : 'grid-cols-[200px_minmax(0,1fr)]',
         )}
       >
-        <FolderTree folders={folders} current={folder} hrefFor={hrefFor} />
+        <FolderTree
+          folders={folders}
+          current={folder}
+          hrefFor={hrefFor}
+          allFolders={allFolders}
+          onNavigate={navigateToFolder}
+          onFolderCreated={addPendingFolder}
+        />
 
         <div
           className="min-w-0"
@@ -256,6 +300,16 @@ export function FileExplorer({
                 Drop into {trail.map((crumb) => crumb.name).join(' / ')}
               </p>
             )}
+
+            {/* PHASE 6. Move / remove for the selection. Returns `null` when nothing is
+                selected, so the grid's layout does not shift on an empty selection. */}
+            <PhotoMoveBar
+              selectedId={selected?.id ?? null}
+              folders={allFolders}
+              folder={folder}
+              currentId={photos.find((photo) => photo.isCurrent)?.id ?? null}
+              onDone={() => setSelectedId(null)}
+            />
 
             <PhotoGrid
               photos={photos}
