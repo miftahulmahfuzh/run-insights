@@ -7,7 +7,12 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
-import { ATTACH_PARAM, type RunAttachment } from '@/lib/nina/attach'
+import {
+  ATTACH_PARAM,
+  PHOTO_PARAM,
+  type NinaExistingPhoto,
+  type RunAttachment,
+} from '@/lib/nina/attach'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
@@ -80,6 +85,7 @@ export function ChatScreen({
   todayISO,
   userId,
   pending,
+  pendingPhoto,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -97,6 +103,20 @@ export function ChatScreen({
    * below.
    */
   pending: RunAttachment | null
+  /**
+   * F34 R2. The album photo `/admin/nina` handed over on `?photo=avatar:<id>`, resolved
+   * OWNER-SCOPED on the server to `{ kind, id, url }`, or null. It becomes composer state
+   * immediately, exactly as `pending` does, and it is cleared off the URL by the same effect.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit: `app/nina/page.tsx` is the one caller,
+   * and `tsc` should be the thing that notices if it stops passing it — an optional prop that
+   * silently defaults to `null` would turn a broken deep link into a composer that just never arms
+   * and never says why.
+   *
+   * The `url` is all the client gets. `description` stays on the server, where the send copies it
+   * onto the new row (invariant 5).
+   */
+  pendingPhoto: NinaExistingPhoto | null
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   const [typing, setTyping] = useState(false)
@@ -109,24 +129,37 @@ export function ChatScreen({
   const [flashId, setFlashId] = useState<string | null>(null)
   /** Phase 8 (R13). The run the next message will carry. Seeded from the server's `?attach=`. */
   const [attachment, setAttachment] = useState<RunAttachment | null>(pending)
+  /**
+   * F34 R2. The already-owned photo the next message will carry. Seeded from the server's
+   * `?photo=`, and held BESIDE `attachment` rather than in a union with it: a run and a photo can
+   * legitimately be pinned to the same message, and `sendNinaMessage` takes both fields in one
+   * call.
+   */
+  const [photo, setPhoto] = useState<NinaExistingPhoto | null>(pendingPhoto)
 
   /* R14's mark on this history entry, decoded from `?at=`. Passed down; the arithmetic is in
    * `lib/nina/scroll.ts` and the DOM half is in `MessageList`. */
   const { mark } = useChatScrollMark()
 
   /*
-   * **`?attach=` is consumed, not left lying on the entry.** It has done its job the moment it is
-   * in state, and leaving it would re-arm the composer on the way back: send the message, tap its
-   * card, come back with the back-swipe, and the POP would re-render this page from a URL still
-   * asking for the same run — pinning a run the runner already sent. `replaceState` on a
-   * `URLSearchParams` copy so R14's `at` (which may be written onto this same entry later, or may
-   * already be on it) survives untouched. The F24 idiom, and the reason it is `replace`: this
-   * entry is where we already are.
+   * **`?attach=` AND `?photo=` are consumed, not left lying on the entry.** They have done their
+   * job the moment they are in state, and leaving them would re-arm the composer on the way back:
+   * send the message, tap its card, come back with the back-swipe, and the POP would re-render this
+   * page from a URL still asking for the same run — pinning a run the runner already sent. `?photo=`
+   * has the sharper version of the same problem, because the tab it opened in stays open: a reload
+   * of that tab would re-arm the same album photo and invite a second send of it.
+   *
+   * ONE effect deleting both, not two: `replaceState` on a `URLSearchParams` copy so R14's `at`
+   * (which may be written onto this same entry later, or may already be on it) survives untouched,
+   * and two independent `replaceState` calls in the same commit would race to decide which of them
+   * wrote the surviving URL. The F24 idiom, and the reason it is `replace`: this entry is where we
+   * already are.
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (!params.has(ATTACH_PARAM)) return
+    if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM)) return
     params.delete(ATTACH_PARAM)
+    params.delete(PHOTO_PARAM)
     const query = params.toString()
     window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
   }, [])
@@ -322,15 +355,26 @@ export function ChatScreen({
     async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
       /* R13's floor, and the client half of RULING B1's ONE refusal rule: a message with no words,
-       * no photo and no run is a mis-tap. `canSend` already refuses it; this is the guard that
-       * means the action can trust its own input. */
-      if (draft.body.length === 0 && draft.images.length === 0 && attachment === null) return
+       * no photo, no run and no pinned album photo is a mis-tap. `canSend` already refuses it; this
+       * is the guard that means the action can trust its own input. The four disjuncts here are the
+       * same four `sendNinaMessage` checks at `lib/nina/actions.ts:277`, in the same order, and
+       * they must stay that way — a fifth on one side only is an enabled Send button that silently
+       * refuses. */
+      if (
+        draft.body.length === 0 &&
+        draft.images.length === 0 &&
+        attachment === null &&
+        photo === null
+      ) {
+        return
+      }
 
       const body = draft.body
       const imageUrls = draft.images.map((image) => image.url)
       /* Read once, then unpinned below — the same shape `draftQuote` uses, and for the same
        * reason: the optimistic row has to carry what the action will persist. */
       const sending = attachment
+      const sendingPhoto = photo
       const localId = `local-${crypto.randomUUID()}`
       const dayISO = todayInJakarta()
       /* Read once and cleared immediately: the strip must disappear the moment the message is in
@@ -343,7 +387,17 @@ export function ChatScreen({
        * would put the same run on screen twice and invite a second send of it.
        */
       setAttachment(null)
+      /* The same argument, and it is stronger here: the photo is in the album either way, so a
+       * chip left armed after a failed send is an invitation to attach it twice. */
+      setPhoto(null)
       setNotice(null)
+      /*
+       * The already-owned photo goes AFTER anything he picked, because that is where the server
+       * puts it: `lib/nina/actions.ts:451` inserts its row at `sortOrder: images.length`. One
+       * array, so the optimistic bubble and every later server render of the same message agree
+       * about the order inside it.
+       */
+      const optimisticUrls = sendingPhoto === null ? imageUrls : [...imageUrls, sendingPhoto.url]
       setMessages((current) => [
         ...current,
         {
@@ -353,10 +407,11 @@ export function ChatScreen({
           dayISO,
           state: 'sending',
           replyToId: replyToMessageId,
-          /* Already on the CDN — the describe pre-pass uploaded it before send was possible — so
-           * the optimistic row shows the same URL the server row will carry. No object URL to
+          /* Already on the CDN — the describe pre-pass uploaded the picked ones before send was
+           * possible, and the pinned one has been in Blob since it was uploaded to the album — so
+           * the optimistic row shows the same URLs the server row will carry. No object URL to
            * revoke, and no flicker when the real row lands. */
-          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          imageUrls: optimisticUrls.length > 0 ? optimisticUrls : undefined,
           /* R13. The card renders from client state on this row and from `nina_messages.run_id` on
            * every later load; both go through the same `RunAttachment`, so there is no lag and no
            * second shape. */
@@ -373,6 +428,16 @@ export function ChatScreen({
           imageTickets: draft.images.map((image) => image.ticket),
           replyToMessageId,
           runId: sending?.runId ?? null,
+          /*
+           * F34 R2, and the whole of "we dont actually reupload the photo into the chat, but just
+           * some kind of pointer to the existing file". An id and a kind, never a URL: the field
+           * has existed since F33 phase 13 and `resolveAttachment` proves ownership against
+           * `user_id` before a row is written, which is strictly more than a signed ticket could
+           * prove. The `url` this component holds is for the chip and for the optimistic bubble;
+           * it is not sent, and a tampered one buys nothing.
+           */
+          attachExisting:
+            sendingPhoto === null ? null : { kind: sendingPhoto.kind, id: sendingPhoto.id },
         })
       } catch {
         result = null
@@ -442,7 +507,7 @@ export function ChatScreen({
       setTyping(false)
       setBusy(false)
     },
-    [busy, draftQuote, attachment],
+    [busy, draftQuote, attachment, photo],
   )
 
   return (
@@ -483,6 +548,8 @@ export function ChatScreen({
         onCancelReply={() => setDraftQuote(null)}
         attachment={attachment}
         onClearAttachment={() => setAttachment(null)}
+        photo={photo}
+        onClearPhoto={() => setPhoto(null)}
       />
     </>
   )

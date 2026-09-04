@@ -26,8 +26,9 @@ import {
  * `lib/photos/gallery.ts` was carved out of `PhotoViewer.tsx` for this reason.
  *
  * ── CONTROLLED, NOT STATEFUL ────────────────────────────────────────────────────────────────
- * The crop lives in `AlbumManager`, because "Save framing" and "Reset framing" and the dirty
- * marker are all its business and a component that owned the value would have to tell it anyway.
+ * The crop lives in `components/admin/explorer/SelectionPane.tsx`, because "Save framing" and
+ * "Reset framing" and the dirty marker are all its business and a component that owned the value
+ * would have to tell it anyway.
  *
  * ── WHY THE WHEEL LISTENER IS REGISTERED BY HAND ────────────────────────────────────────────
  * React attaches `wheel` at the root as a PASSIVE listener, so `event.preventDefault()` inside an

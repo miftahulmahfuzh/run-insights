@@ -61,10 +61,32 @@ const SECRETS = [
 /** Raw-read exemptions. Each is deliberate and commented at its call site. */
 const RAW_READ_ALLOWED = new Set(['lib/env.ts', 'lib/db/index.ts'])
 
-/** grep -rlE, returning [] on "no matches" instead of throwing. */
+/**
+ * The extensions that can actually reach a bundle. Everything all three rules below reason
+ * about is an *executable line* -- Rule 1 needs a `'use client'` directive, Rule 2 is about a
+ * `process.env` read, Rule 3 about a value being inlined at build time -- and none of those
+ * exist in a `.md`, `.css`, `.png` or `.gitkeep`.
+ *
+ * MEASURED, and it failed the branch rather than an edge case: prose in
+ * `lib/db/.workflows/package_readme.md:51` quoting "`process.env.DATABASE_URL` is read
+ * directly, not through `lib/env.ts`" -- a sentence *documenting* the boundary -- tripped
+ * Rule 2 and turned `ci:client-secret-guard` red. `isComment` below already encodes the
+ * principle for source files ("Comments are not code"), but a markdown bullet is not a `//`
+ * comment, so it could not be recognised there.
+ *
+ * The narrow alternative was to reword that one sentence. It was rejected as a fix that does
+ * not hold: every package readme lives under `lib/`, `app/` or `components/`, every
+ * readme-updater run writes more of them, and a guard that any future doc can turn red is a
+ * guard that will be disabled the third time it cries wolf. Filtering by extension is the
+ * change that makes the rules match the reasoning already written above them.
+ */
+const SOURCE_GLOBS = ['*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs', '*.cjs']
+
+/** grep -rlE over source files only, returning [] on "no matches" instead of throwing. */
 function grepFiles(pattern, dirs) {
   try {
-    return execFileSync('grep', ['-rlE', pattern, ...dirs], { encoding: 'utf8' })
+    const includes = SOURCE_GLOBS.map((glob) => `--include=${glob}`)
+    return execFileSync('grep', ['-rlE', ...includes, pattern, ...dirs], { encoding: 'utf8' })
       .split('\n')
       .filter(Boolean)
   } catch (err) {

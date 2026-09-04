@@ -12,10 +12,11 @@ import {
   planNinaPicked,
   type NinaPickRejectionReason,
 } from '@/lib/nina/images'
-import type { RunAttachment } from '@/lib/nina/attach'
+import type { NinaExistingPhoto, RunAttachment } from '@/lib/nina/attach'
 import type { QuoteView } from '@/lib/nina/reply'
 import { compressForNina } from '@/lib/photos/compressForNina'
 import { AttachmentChip } from './AttachmentChip'
+import { PhotoAttachmentChip } from './PhotoAttachmentChip'
 import { QuoteStub } from './QuoteStub'
 
 /**
@@ -135,6 +136,8 @@ export function Composer({
   onCancelReply,
   attachment = null,
   onClearAttachment,
+  photo = null,
+  onClearPhoto,
 }: {
   /**
    * Receives the trimmed body and whatever photos are ready. Must be referentially stable — see
@@ -173,6 +176,26 @@ export function Composer({
   attachment?: RunAttachment | null
   /** Unpin it. `ChatScreen` owns the state; this only reports the tap. */
   onClearAttachment?: () => void
+  /**
+   * F34 R2. The album photo pinned to the next message, or null — a blob the server already owns,
+   * arrived on `?photo=avatar:<id>` and resolved owner-scoped by `app/nina/page.tsx`.
+   *
+   * **This is the FOURTH and LAST disjunct of the refusal rule printed above**, and the rule is
+   * now complete on both sides: `attachExisting != null` was already the server's fourth clause
+   * (`lib/nina/actions.ts:277`) and had no client counterpart until this phase, because the only
+   * caller so far — `/nina/about`'s "Kirim ke chat" — never went through this composer. It does
+   * now, so `canSend` gains the matching clause in the same commit. Nobody rewrites that
+   * condition, they extend it; there is nothing left to extend it with.
+   *
+   * Held separately from `attachment` rather than in a union with it: a run and a photo can be
+   * pinned to the same message, and `sendNinaMessage` takes both fields in one call.
+   *
+   * Like `attachment`, it is NOT passed back through `onSend` — `ChatScreen` owns the state and
+   * reads it there, so this component's callback keeps the one shape it has had since phase 6.
+   */
+  photo?: NinaExistingPhoto | null
+  /** Unpin it. `ChatScreen` owns the state; this only reports the tap. */
+  onClearPhoto?: () => void
 }) {
   const [value, setValue] = useState('')
   const [tiles, setTiles] = useState<Tile[]>([])
@@ -194,11 +217,14 @@ export function Composer({
 
   const ready = tiles.filter((t) => t.state === 'ready' && t.ticket !== null)
   const inFlight = tiles.some((t) => t.state !== 'ready' && t.state !== 'error')
-  /* `|| attachment !== null` is phase 8's clause. Phase 6's image clause was already in the
-   * disjunction when it landed; nobody rewrites this condition, they extend it. Mirrors the server
-   * rule in `sendNinaMessage` exactly. */
+  /* `|| attachment !== null` is phase 8's clause and `|| photo !== null` is F34 R2's — the fourth
+   * and final one. Phase 6's image clause was already in the disjunction when it landed; nobody
+   * rewrites this condition, they extend it. Mirrors the server rule in `sendNinaMessage`
+   * (`lib/nina/actions.ts:277`) exactly, clause for clause: text, tickets, run, existing blob. */
   const canSend =
-    (value.trim().length > 0 || ready.length > 0 || attachment !== null) && !inFlight && !busy
+    (value.trim().length > 0 || ready.length > 0 || attachment !== null || photo !== null) &&
+    !inFlight &&
+    !busy
 
   /** `patchIfCurrent`'s spirit: a tile the runner removed must not be written to by its own
    *  in-flight promise. */
@@ -358,6 +384,14 @@ export function Composer({
           <AttachmentChip attachment={attachment} onClear={onClearAttachment} />
         )}
 
+        {/* F34 R2. Between the run chip and the picked tiles, because that is the order the message
+            carries: the run, then the photo already in the album, then anything picked here — the
+            same order `lib/nina/actions.ts` writes the image rows in (`sortOrder: images.length`
+            puts the pinned one after the picked ones, and this strip is above the tile row). */}
+        {photo !== null && onClearPhoto !== undefined && (
+          <PhotoAttachmentChip photo={photo} onClear={onClearPhoto} />
+        )}
+
         {tiles.length > 0 && (
           <ul className="mb-2 flex gap-2">
             {tiles.map((tile) => (
@@ -453,8 +487,12 @@ export function Composer({
             }}
             enterKeyHint="send"
             /* The placeholder carries the hint; the accessible NAME stays "Message Nina" so the
-               field is not renamed under the runner mid-message. */
-            placeholder={attachment === null ? 'Message Nina' : 'Add a note, or just send it'}
+               field is not renamed under the runner mid-message. With something pinned it becomes
+               the requirement's own words — "user can input additional text question / comment
+               (optional)" — so the box says out loud that typing is not required. */
+            placeholder={
+              attachment === null && photo === null ? 'Message Nina' : 'Add a note, or just send it'
+            }
             aria-label="Message Nina"
             className={cn(
               'max-h-[132px] min-h-11 w-full resize-none rounded-field bg-card px-4 py-2.5',
