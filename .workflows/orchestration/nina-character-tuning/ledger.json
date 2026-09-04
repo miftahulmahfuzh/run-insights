@@ -25,24 +25,24 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "fc7c99e5e82671dfee1fb83405346198b1009d13",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "persona.ts re-cut as a function of NinaTuning; 6 repeals landed with reasons in place. Byte-identity gate: old vs new NINA_SYSTEM_PROMPT differs by exactly the one accepted bestie sentence. 2234/2234 tests, typecheck+format clean. ONE DRIFT: plan's ANGER_CEILING_BY_BAND.off=0 contradicted invariant 2 (off is anger's identity band, default 0); user chose invariant 2, so off ceils at 4 and no band means 'never angry' - cost recorded in code and docs.",
       "package": "lib/nina`, `docs",
       "plan": ".workflows/plan/nina-character-tuning/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T21:56:04+00:00",
       "satisfies": [
         "R2",
         "R3",
         "R4",
         "R6"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A001",
       "title": "The canon, re-cut as a function \u2014 and the repeal"
     },
     {
@@ -63,7 +63,7 @@
         "R4",
         "R6"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "buildNinaSystemPrompt`, and the turn that reads it"
     },
@@ -83,7 +83,7 @@
       "satisfies": [
         "R5"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The camera, and a promise she keeps in the chat"
     },
@@ -135,6 +135,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T15:38:44+00:00",
+  "updated": "2026-09-04T21:57:53+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }
