@@ -256,7 +256,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   after(() => markNinaMessagesRead(userId))
 
   return (
-    <AppShell bottomGap="chat">
+    <AppShell screen="chat">
       <header className="mb-5 flex items-center gap-3">
         {/*
           R17's first tap level: her face is a door. `size-11` is already 44 px — the iOS

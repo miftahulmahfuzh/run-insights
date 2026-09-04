@@ -50,7 +50,19 @@ import { cn } from '@/lib/cn'
  */
 export const TAB_BAR_HEIGHT_PX = 58
 
-/** How far the FAB overhangs the bar's top edge, matching `-top-5` below. Same coupling. */
+/**
+ * How far the FAB overhangs the bar's top edge, matching `-top-5` below. Same coupling.
+ *
+ * **It is also why `hidden` cannot be `translate-y-full`** (R1). Measuring up from the viewport
+ * bottom: the nav's border box is 1 px of `border-t` plus the 58 px grid plus its own
+ * `--safe-bottom` padding, so `100%` is `59px + safe`. The FAB is `absolute -top-5` inside the
+ * `relative` grid container, which starts at `safe`, so the FAB's top is at `safe + 78` and its
+ * `size-14` box spans `safe+22` to `safe+78`. Clearing it needs `safe + 78`, and `100%` is 19 px
+ * short of that — on a device with no home-indicator inset, 20 px of coral circle would sit on
+ * screen with the bar supposedly hidden. So the transform is `100%` plus this constant, written
+ * as an inline style so the number is read from here rather than spelled a fourth time in a
+ * Tailwind arbitrary value.
+ */
 export const TAB_BAR_FAB_OVERHANG_PX = 20
 
 const TABS = [
@@ -71,7 +83,25 @@ const TABS = [
  * `app/(app)/loading.tsx` keep compiling untouched — a loading fallback has no session to count
  * against anyway.
  */
-export function TabBar({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
+/**
+ * `hidden` is R1's whole of this file: `/nina` is a full-screen conversation with no tab bar, and
+ * one floating control in `components/nina/ChatChrome.tsx` slides this one back up.
+ *
+ * Optional with a `false` default, for the same reason `ninaBadge` is optional: `app/(app)/loading.tsx`
+ * and `app/trends/loading.tsx` render a bare `<AppShell>`, and `/`, `/upload`, `/trends` and `/me`
+ * keep their bar unconditionally. The four of them are byte-identical in behaviour after this
+ * change — a `transition-[translate]` on an element whose translate never changes does nothing.
+ *
+ * **`inert`, not `aria-hidden` and not `hidden`.** A bar translated off screen is still in the tab
+ * order and still reachable by a screen reader, which would put five navigation links behind the
+ * conversation. The `hidden` attribute would remove it from layout and take the transition with it.
+ * `inert` removes it from focus and from the accessibility tree while leaving it painted and
+ * animatable, which is exactly the state it is in. React 19.2 takes it as a boolean.
+ */
+export function TabBar({
+  ninaBadge,
+  hidden = false,
+}: { ninaBadge?: React.ReactNode; hidden?: boolean } = {}) {
   const pathname = usePathname()
 
   // `/` matches only itself; every other tab owns its subtree, so `/r/abc` highlights Runs — a
@@ -82,9 +112,36 @@ export function TabBar({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
 
   return (
     <nav
+      /* `ChatChrome`'s toggle points `aria-controls` at this, so the control announces what it
+         discloses rather than announcing an arrow. Unconditional, and inert on the four screens
+         that have no toggle. */
+      id="main-tab-bar"
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-rule bg-card/95 backdrop-blur-sm"
-      style={{ paddingBottom: 'var(--safe-bottom)' }}
+      inert={hidden}
+      className={cn(
+        'fixed inset-x-0 bottom-0 z-30 border-t border-rule bg-card/95 backdrop-blur-sm',
+        /*
+         * INVARIANT 8. A `transition-*`, never a keyframe — the app has exactly one keyframe
+         * (`ri-pulse`) with one global reduced-motion escape, and `tests/motion.reducedMotion.test.ts`
+         * guards that. `transition-[translate]` and not `transition-transform` because Tailwind v4
+         * compiles `translate` and `scale` to separate CSS longhands (see this file's header), so
+         * `translate` is the property that actually changes here and naming it removes the question.
+         *
+         * `motion-reduce:transition-none` while `Chip`, `KindSelector` and `Button` correctly have
+         * no escape: `app/globals.css` draws that line — colour is not motion, and a 1.5 % press
+         * held under a finger is discrete tap feedback. A 58 px bar travelling its own height
+         * across the bottom of the screen is on the other side of it. With the escape the bar is
+         * simply where it is going, in one frame; the destination never changes, only the journey.
+         */
+        'transition-[translate] duration-200 ease-out motion-reduce:transition-none',
+      )}
+      style={{
+        paddingBottom: 'var(--safe-bottom)',
+        /* Both ends written explicitly. `translate`'s initial value is `none`, and interpolating a
+           length against `none` is a spec corner this does not need to rely on. See
+           `TAB_BAR_FAB_OVERHANG_PX` for why `100%` alone leaves the FAB on screen. */
+        translate: hidden ? `0 calc(100% + ${TAB_BAR_FAB_OVERHANG_PX}px)` : '0 0',
+      }}
     >
       <div className="relative mx-auto grid h-[58px] w-full max-w-[470px] grid-cols-5 items-center">
         <Tab {...TABS[0]} active={isActive(TABS[0].href)} />
