@@ -1,15 +1,20 @@
 'use server'
 
 import { requireUserId } from '@/lib/auth/requireUserId'
+import { authEnv } from '@/lib/env'
 import { after } from 'next/server'
 
 import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
+import { NINA_MAX_CHAT_IMAGES, isNinaChatRequestPathname } from './images'
+import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from './imageTicket'
 import { loadNinaContext } from './load'
-import { insertNinaMessages } from './queries'
+import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
+import { insertNinaMessageImages, insertNinaMessages } from './queries'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
 import { runNinaTurn } from './turn'
+import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
 /**
  * **The one entry point phase 4 calls, from exactly one place: `ChatScreen.handleSend`.**
@@ -108,25 +113,61 @@ const REFUSED: SendNinaMessageResult = {
  *       input.attachExisting != null                // phase 13
  *     if (input.body.trim() === '' && !hasAttachment) return refuse('empty')
  *
- * **At THIS phase's landing only `body` exists**, so that is all this signature carries and the
- * rule degenerates to `text.length === 0`. `hasAttachment` has no terms yet and is therefore not
- * written yet — a `false` constant with three commented-out clauses is worse than nothing. Phase
- * 7's field takes no clause: answering a message is not a substitute for saying something.
+ * **At THIS phase's landing `body` and `imageTickets` exist**, so that is all this signature
+ * carries and the rule is the first two disjuncts. `runId` arrives with phase 8 and
+ * `attachExisting` with phase 13; `hasAttachment` is not written as a named constant until there
+ * are three terms to name. Phase 7's field takes no clause: answering a message is not a
+ * substitute for saying something.
  */
-export async function sendNinaMessage(input: { body: string }): Promise<SendNinaMessageResult> {
+export async function sendNinaMessage(input: {
+  body: string
+  /** Phase 6. Signed by `describeNinaImage`; at most `NINA_MAX_CHAT_IMAGES` of them. */
+  imageTickets?: readonly string[]
+}): Promise<SendNinaMessageResult> {
   const userId = await requireUserId()
 
   const text = typeof input?.body === 'string' ? input.body.trim() : ''
+  const tickets = Array.isArray(input?.imageTickets) ? input.imageTickets : []
+
   /*
-   * Both refusals are silent by design. An empty send is a stray Enter key, and an oversized one
-   * is a paste of a whole article — neither is worth a persisted row or a 45 s model call, and
-   * neither is an error the runner needs explained. The framework's own 1 MB action-body cap sits
-   * behind this as the backstop.
+   * ── R10: AN IMAGE ALONE IS A VALID SEND ─────────────────────────────────────────────────────
+   * This was `text.length === 0` and is now the conjunction. A photo with no caption is the most
+   * natural message in this whole feature — he finishes a run, takes one selfie, sends it. The
+   * oversized-paste refusal is unchanged, and a ticket count over the cap is refused rather than
+   * truncated: a client sending five is a client with a bug, not a runner with five photos.
    *
-   * The rule is MONOTONE: every later phase adds a disjunct, none edits one, and the tree is green
-   * at each boundary (RU-11).
+   * Refusals stay silent by design. An empty send is a stray Enter key and an oversized one is a
+   * paste of a whole article — neither is worth a persisted row or a 45 s model call. The
+   * framework's own 1 MB action-body cap sits behind this as the backstop.
+   *
+   * RULING B1's rule is MONOTONE and this is its second clause. Phases 8 and 13 each add one more
+   * disjunct (`runId != null`, `attachExisting != null`) in their own commits; nobody rewrites
+   * this condition, they extend it. The final form is printed above.
    */
-  if (text.length === 0 || text.length > MAX_RUNNER_MESSAGE_CHARS) return REFUSED
+  if (text.length === 0 && tickets.length === 0) return REFUSED
+  if (text.length > MAX_RUNNER_MESSAGE_CHARS) return REFUSED
+  if (tickets.length > NINA_MAX_CHAT_IMAGES) return REFUSED
+
+  /*
+   * STEP 0 — verify the tickets BEFORE writing anything. A forged or expired ticket is dropped,
+   * not fatal: the message he typed is still worth sending. Deduplicated by pathname, because two
+   * identical tickets would otherwise insert the same photo twice into one bubble.
+   */
+  const secret = authEnv().AUTH_SECRET
+  const seen = new Set<string>()
+  const images: NinaImageClaims[] = []
+  for (const ticket of tickets) {
+    const verdict = verifyNinaImageTicket(ticket, { userId }, secret)
+    if (!verdict.ok) {
+      console.warn('[nina] refused an image ticket', { reason: verdict.reason })
+      continue
+    }
+    if (seen.has(verdict.claims.pathname)) continue
+    seen.add(verdict.claims.pathname)
+    images.push(verdict.claims)
+  }
+  /* Every ticket was forged or stale AND he typed nothing: there is no message here at all. */
+  if (text.length === 0 && images.length === 0) return REFUSED
 
   /*
    * STEP 1 — his message, first. See the header.
@@ -136,6 +177,10 @@ export async function sendNinaMessage(input: { body: string }): Promise<SendNina
    * rather than a within-turn index this file would have to maintain. The DTO field is **`body`**,
    * not `text` — that is `queries.ts`'s spelling for every message-writing and message-reading
    * function it has, because they all go through one shared `messageColumns` projection.
+   *
+   * `body` may legitimately be the empty string from this phase on: an image-only message has no
+   * words, the column is NOT NULL, so `''` is the honest value and phase 4's bubble renders just
+   * the photo.
    */
   let runnerMessageId: string
   try {
@@ -145,6 +190,39 @@ export async function sendNinaMessage(input: { body: string }): Promise<SendNina
   } catch (cause) {
     console.warn('[nina] could not persist the runner message', { error: String(cause) })
     return REFUSED
+  }
+
+  /*
+   * STEP 1b — the image rows, BEFORE the context load, and the ordering is deliberate twice over.
+   * First: a turn that fails must not leave a message row whose photo was never recorded, which
+   * would render as an empty bubble forever. Second, and the same reason his message is inserted
+   * before the context is loaded: `loadNinaContext` reads the conversation window out of
+   * `nina_messages` + `nina_message_images`, so a description not yet written is a description
+   * she cannot see — on this turn or on any later one that scrolls back to it.
+   *
+   * A failure here is warned and swallowed. The message and the reply are worth more than the
+   * gallery row, and `imageDescriptions` below is built from the verified claims rather than from
+   * the INSERT's return value, so the turn is unaffected either way.
+   */
+  if (images.length > 0) {
+    try {
+      await insertNinaMessageImages(
+        userId,
+        images.map((image, index) => ({
+          messageId: runnerMessageId,
+          kind: 'upload' as const,
+          blobUrl: image.blobUrl,
+          pathname: image.pathname,
+          width: image.width || null,
+          height: image.height || null,
+          bytes: image.bytes || null,
+          description: image.description,
+          sortOrder: index,
+        })),
+      )
+    } catch (cause) {
+      console.warn('[nina] could not persist chat images', { error: String(cause) })
+    }
   }
 
   /*
@@ -162,13 +240,23 @@ export async function sendNinaMessage(input: { body: string }): Promise<SendNina
     dbNinaToolGateway.loadRunHistory(userId),
   ])
 
-  /* STEP 3 — the turn. 13–45 s. Never throws for a model problem. */
+  /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
+   *
+   * INVARIANT 5 IS ENFORCED BY THIS ARGUMENT AND NOWHERE ELSE. `imageDescriptions` is TEXT.
+   * There is no code path in this file that puts an image part into `runNinaTurn`, and there must
+   * never be one: `glm-5.3` answers 200 and silently drops an image block, so sending one is not
+   * an error, it is a lie.
+   *
+   * `runnerText: null` for an image-only message, so `userTurnText` omits the "HE JUST SAID"
+   * block entirely rather than emitting an empty one.
+   */
   const result = await runNinaTurn({
     userId,
     context,
     history,
     sourceMessageId: runnerMessageId,
-    runnerText: text,
+    runnerText: text.length > 0 ? text : null,
+    imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
   })
 
   if (result.payload == null) {
@@ -264,6 +352,136 @@ export async function sendNinaMessage(input: { body: string }): Promise<SendNina
   })
 
   return { ok: true, userMessageId: runnerMessageId, bubbles, unavailable: false }
+}
+
+export type NinaDescribeFailureReason =
+  /** The floor tripped. The endpoint dropped the image and may have invented a description. */
+  | 'dropped'
+  /** Network, timeout, non-JSON, empty completion, or a blob that would not fetch. */
+  | 'transport'
+  /** The pathname did not belong to this user, or was not a chat pathname at all. */
+  | 'rejected'
+
+export interface NinaDescribeImageInput {
+  /** From the browser's `upload()` result. */
+  blobUrl: string
+  /** The STORED pathname, after Vercel's random suffix. */
+  pathname: string
+  width: number
+  height: number
+  bytes: number
+}
+
+export interface NinaDescribeImageResult {
+  ok: boolean
+  /**
+   * Opaque and signed. The composer holds it and hands it back to `sendNinaMessage`. On failure
+   * it is **still issued** — carrying `description: null` — so that an image whose description
+   * failed can still be SENT, with Nina told honestly that she could not see it.
+   */
+  ticket: string | null
+  reason: NinaDescribeFailureReason | null
+}
+
+/**
+ * **The describe pre-pass, in its own invocation. RU-12 and invariant 5.**
+ *
+ * ── WHY THIS IS NOT PART OF `sendNinaMessage` ────────────────────────────────────────────────
+ * Arithmetic, not taste. `NINA_TURN_BUDGET.overall` is 45 s and phase 3 forbids raising it past
+ * 50 s because the remaining 10 s of the 60 s segment is page overhead plus up to four inserts. A
+ * describe call costs ~8-11 s for one image (F04 measured ~26-33 ms per completion token plus
+ * ~2-3 s fixed). 45 + 11 = 56 s, and three images would be ~67 s. It does not fit, and no timeout
+ * tuning makes it fit. So it runs here, alone, while the runner is still typing his caption — and
+ * `sendNinaMessage` adds zero model calls. Do not move it.
+ *
+ * ── AND THE COMPOSER CANNOT PARALLELISE THESE, WHICH IS FINE ─────────────────────────────────
+ * Corrected against Next 16.3.1's own guide, which the phase-6 plan predated:
+ * *"Next.js dispatches Server Actions one at a time per client… do not rely on `Promise.all` to
+ * parallelize Server Actions from the client."* So three picked photos compress and PUT in
+ * parallel (that half goes through `/api/upload`, a Route Handler, which is not serialised) and
+ * then describe **one after another** — ~24-33 s for three, not the ~11 s the plan's latency
+ * section claimed.
+ *
+ * Nothing load-bearing moves. Each call still gets its own invocation and its own 25 s budget, so
+ * serialisation cannot cause a timeout; the wait is client-side, behind a visible per-tile
+ * spinner, while he types; and the send path still carries zero model calls. The single-photo
+ * case — which is what R10 is actually about — is unaffected. Batching all three into one call is
+ * the obvious repair and is deliberately NOT taken: it would weaken the per-image token floor at
+ * exactly the count the multiplication exists to guard, and it needs a paragraph splitter with no
+ * fixture behind it. `describeNinaImagesWithFetch` already accepts an array if that trade ever
+ * changes.
+ *
+ * ── AND WHY A FAILURE STILL RETURNS A TICKET ─────────────────────────────────────────────────
+ * R10 is "he sends a photo and she responds to what is in it". When the eyes fail, the honest
+ * outcome is not a blocked send — it is her asking what the picture is, which is what a person
+ * does when an image will not load. `NINA_DESCRIPTION_UNAVAILABLE` is that instruction, and the
+ * `description: null` ticket is how it gets there. What must never happen is Nina describing a
+ * photo she did not receive; that is what the token floor is for, one layer down.
+ */
+export async function describeNinaImage(
+  input: NinaDescribeImageInput,
+): Promise<NinaDescribeImageResult> {
+  const userId = await requireUserId()
+  const secret = authEnv().AUTH_SECRET
+
+  const blobUrl = typeof input?.blobUrl === 'string' ? input.blobUrl : ''
+  const pathname = typeof input?.pathname === 'string' ? input.pathname : ''
+
+  /*
+   * The pathname arrives from the client, so it is re-checked here even though the upload route
+   * already checked it: this action's own INSERT-shaped claims (pathname, blobUrl) are about to be
+   * signed, and signing something unvalidated is how a signature becomes a laundering service.
+   * The stored pathname carries Vercel's random suffix, so the id segment is longer than the
+   * requested one — which `NINA_CHAT_ID_RE`'s 12..24 bound already admits.
+   */
+  if (!isNinaChatRequestPathname(pathname, userId) || !blobUrl.startsWith('https://')) {
+    return { ok: false, ticket: null, reason: 'rejected' }
+  }
+
+  const claims = {
+    userId,
+    pathname,
+    blobUrl,
+    width: Number.isFinite(input.width) ? Math.round(input.width) : 0,
+    height: Number.isFinite(input.height) ? Math.round(input.height) : 0,
+    bytes: Number.isFinite(input.bytes) ? Math.round(input.bytes) : 0,
+  }
+
+  try {
+    const result = await describeNinaImages([{ blobUrl, pathname }])
+    console.log('[nina] described an image', {
+      pathname,
+      promptTokens: result.promptTokens,
+      completionTokens: result.completionTokens,
+      floor: result.floor,
+      chars: result.description.length,
+    })
+    return {
+      ok: true,
+      ticket: signNinaImageTicket({ ...claims, description: result.description }, secret),
+      reason: null,
+    }
+  } catch (cause) {
+    /*
+     * The floor tripping is logged LOUDLY and separately from a transport failure. It is the one
+     * class that means "the vendor lied to us", and the day it starts happening the log line has
+     * to say which one it was — F04's whole §1.1 lesson in one `if`.
+     */
+    const dropped = cause instanceof NinaVisionTokenFloorError
+    if (dropped) {
+      console.error('[nina] TOKEN FLOOR TRIPPED on a chat image', {
+        pathname,
+        message: cause.message,
+      })
+    } else {
+      console.warn('[nina] could not describe a chat image', { pathname, error: String(cause) })
+    }
+    return {
+      ok: false,
+      ticket: signNinaImageTicket({ ...claims, description: null }, secret),
+      reason: dropped ? 'dropped' : 'transport',
+    }
+  }
 }
 
 /**

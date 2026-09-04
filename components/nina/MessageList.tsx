@@ -9,6 +9,7 @@ import {
   isNearBottom,
   type ScrollCause,
 } from '@/lib/nina/chatview'
+import { ChatImages } from './ChatImages'
 import { MessageBubble } from './MessageBubble'
 import { TypingIndicator } from './TypingIndicator'
 import type { ChatMessage } from './types'
@@ -126,7 +127,21 @@ export function MessageList({
               is a step this codebase had not needed before a conversation existed. */}
           <ul className="mt-3 space-y-2">
             {day.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              /*
+               * The `above` slot's images-only branch (RULING E2). Phase 8 widens THIS expression
+               * into the two-branch stack — `<div className="space-y-2">` wrapping `ChatImages`
+               * and `RunAttachmentCard` — rather than writing a shape of its own; phase 7's quote
+               * gets its own `quote` prop on `MessageBubble` and is never nested in here.
+               */
+              <MessageBubble
+                key={message.id}
+                message={message}
+                above={
+                  message.imageUrls != null && message.imageUrls.length > 0 ? (
+                    <ChatImages urls={message.imageUrls} />
+                  ) : undefined
+                }
+              />
             ))}
           </ul>
         </section>

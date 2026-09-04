@@ -11,6 +11,11 @@ import {
   SHOT_REQUEST_PATHNAME_RE,
   UPLOAD_TOKEN_TTL_MS,
 } from '@/lib/extract/constants'
+import {
+  NINA_CHAT_ALLOWED_CONTENT_TYPES,
+  NINA_CHAT_MAX_UPLOAD_BYTES,
+  isNinaChatRequestPathname,
+} from '@/lib/nina/images'
 
 /**
  * `POST /api/upload` — the Vercel Blob client-upload handshake (roadmap §4.8).
@@ -30,6 +35,12 @@ import {
  * created by `POST /api/extract`, after the bytes have landed. So ownership here is simply "this
  * authenticated user", and `kind` is the only client-chosen value that has to survive into the
  * signed token.
+ *
+ * F33 PHASE 6 ADDED A SECOND BRANCH. `nina/<userId>/chat/<id>.jpg` mints a chat-photo token with
+ * its own size ceiling. It is discriminated by the PATHNAME rather than by a widened
+ * `clientPayload`, so this file and `UploadPicker.tsx` keep the shapes they had, and its check is
+ * strictly stronger than the shots branch's: `isNinaChatRequestPathname` binds the path to the
+ * authenticated user, not merely to an alphabet.
  */
 
 export const runtime = 'nodejs'
@@ -62,6 +73,30 @@ export async function POST(request: Request): Promise<Response> {
         // throw into a 400 the fetch caller can actually read.
         const userId = await getUserId()
         if (!userId) throw new Error('Not authenticated')
+
+        /*
+         * ── TWO BRANCHES, DISCRIMINATED BY THE PATHNAME ─────────────────────────────────────
+         * The pathname is the value the token authorises a write to, so it is the honest
+         * discriminator — and using it means `ClientPayload` and `UploadPicker.tsx` need no
+         * change at all to admit a second kind of upload (F33 phase 6).
+         *
+         * A chat photo is not a run screenshot and does not share its limits: 768 px/q75
+         * photographs land near 120-200 KB and a dense frame can reach 400, so the ceiling is
+         * 900 KB rather than 600. See `lib/nina/images.ts`.
+         */
+        if (isNinaChatRequestPathname(pathname, userId)) {
+          return {
+            allowedContentTypes: [...NINA_CHAT_ALLOWED_CONTENT_TYPES],
+            maximumSizeInBytes: NINA_CHAT_MAX_UPLOAD_BYTES,
+            addRandomSuffix: true,
+            allowOverwrite: false,
+            cacheControlMaxAge: BLOB_CACHE_MAX_AGE,
+            validUntil: Date.now() + UPLOAD_TOKEN_TTL_MS,
+            // No client JSON is parsed on this branch: there is nothing a chat photo needs to
+            // declare. The owner is in the pathname and re-derived from the session anyway.
+            tokenPayload: JSON.stringify({ userId, target: 'nina-chat' }),
+          }
+        }
 
         // The client picks its own pathname, so constrain it hard: our prefix, our alphabet, our
         // extension. This is the path-traversal defence and the "don't write beside anything

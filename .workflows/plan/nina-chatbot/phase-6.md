@@ -2943,3 +2943,48 @@ See the reaper handoff.
 **One thing that survives a revert and should be kept:** the `[nina] TOKEN FLOOR TRIPPED` log line
 and the text-aware floor are the only record in the repo that a flat 500-token floor does not
 survive a long prompt. If this phase is ever reverted and rewritten, **re-read Step 3 first.**
+
+---
+
+## Correction, recorded at implementation (2026-09-04)
+
+**One statement in the Latency verdict is wrong, and it is corrected here rather than silently.**
+
+> *"Three images cost one describe latency, not three, because each tile compresses, uploads and
+> describes independently and in parallel."*
+
+The first two thirds are true; the third is not. `describeNinaImage` is a **Server Action**, and
+Next 16.3.1's own guide is explicit
+(`node_modules/next/dist/docs/01-app/02-guides/server-actions.md`, *Sequential dispatch on the
+client*):
+
+> *"Next.js dispatches Server Actions one at a time per client… do not rely on `Promise.all` to
+> parallelize Server Actions from the client."*
+
+So the compress-and-PUT half **is** parallel — it goes through `/api/upload`, a Route Handler,
+which is not serialised — and the describe half is not. Three photos cost **~24-33 s** of
+client-side wait, not ~11 s.
+
+**Nothing the phase's design rests on moves, and the shape is unchanged:**
+
+- Each describe still runs in its **own invocation** with its own 25 s budget, so serialisation
+  cannot cause a timeout. The `NINA_DESCRIBE_TIMEOUT_MS` arithmetic is per-call and still correct.
+- The wait is **client-side and visible**, behind the per-tile spinner, while the runner types —
+  which is what the "one case where the runner waits" paragraph already describes. It is longer
+  than that paragraph says, in the three-photo case only.
+- `sendNinaMessage` still makes **zero** model calls. The verdict's real conclusion — that the
+  describe must not live on the send path — is untouched and its arithmetic is unaffected.
+- The **one-photo case is completely unaffected**, and that is R10's actual story: he finishes a
+  run, takes one selfie, sends it.
+
+**Two repairs were considered and both rejected:**
+
+| repair | why not |
+|---|---|
+| Move the describe to a Route Handler (`/api/nina/describe`) — Route Handlers are not serialised | It would edit phase 1's `GUARDED_CALLS` table (which sanctions `describeNinaImage` in `lib/nina/actions.ts` and `components/nina/Composer.tsx` only), claim `app/api/nina/*` from phase 12, and reopen D7's route-handler list. Three cross-phase contracts spent on a wall-clock number the runner spends typing anyway |
+| Batch all three into one call — `describeNinaImagesWithFetch` already takes an array and `NINA_DESCRIBE_REQUEST_TEXT_MANY` exists | It weakens the guard at exactly the count the multiplication exists to protect: a 3-image batch with one image delivered is the case Step 3 names, and batching makes it real rather than hypothetical. It also needs a paragraph splitter over the model's output, with no fixture behind it. ~20-22 s batched against ~24-33 s serialised is not worth either |
+
+The correction is written into `describeNinaImage`'s docstring and `Composer`'s header, which is
+where the next reader will actually meet it. **If per-request pricing ever beats per-token, the
+batching note in Handoffs is still the right door — it just no longer has a latency argument
+against it.**

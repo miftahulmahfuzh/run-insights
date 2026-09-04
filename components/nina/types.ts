@@ -28,4 +28,20 @@ export interface ChatMessage {
   /** The Asia/Jakarta calendar day (D6) this message belongs to, from `jakartaDayOf`. */
   dayISO: string
   state: ChatMessageState
+  /**
+   * Phase 6. Public Blob URLs, in `sort_order`, at most `NINA_MAX_CHAT_IMAGES`.
+   *
+   * PLURAL, where phase 4's handoff note said `imageUrl`: one message carries up to three photos.
+   * RULING E2b upheld the plural and deleted phase 7's competing singular `imageUrl?`, so this
+   * field has one author. Optional, so phase 7 (`replyToId`) and phase 8 (`attachment`) widen the
+   * same interface without collision.
+   *
+   * Phase 7 reads it exactly once, and not directly: `MessageList` computes
+   * `hasImage: (m.imageUrls?.length ?? 0) > 0` for `quoteMediaOf`, so a quote whose target is an
+   * image-only message can say "Photo" without `lib/nina/reply.ts` ever knowing what a URL is.
+   *
+   * The `description` column is NOT here and must never be — it is written in an observational
+   * voice that is not Nina's, and rendering it would break the illusion this feature exists for.
+   */
+  imageUrls?: readonly string[]
 }

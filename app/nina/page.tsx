@@ -4,13 +4,14 @@ import type { ChatMessage } from '@/components/nina/types'
 import { AppShell } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
-import { listNinaMessages } from '@/lib/nina/queries'
+import { getNinaMessageImagesForMessages, listNinaMessages } from '@/lib/nina/queries'
 
 /**
  * `/nina` — F33's conversational surface, and the fifth tab (R9).
  *
  * ── ONE READ, NO MODEL CALL ───────────────────────────────────────────────────────────────────
- * This page awaits `requireUserId()` and one indexed query, and nothing else. A turn is a 13-16 s
+ * This page awaits `requireUserId()` and two indexed queries — the conversation and, since phase
+ * 6, the photos hanging off it — and nothing else. A turn is a 13-16 s
  * `glm-5.3` call (fifteen measured, 10.2-16.4 s), so awaiting one here would trade a complete
  * screen for a blank one — invariant 4, the same boundary that keeps `getOrCreateInsight` out of
  * `/r/[id]`'s render path and is enforced by the same CI grep. The conversation is stored rows;
@@ -73,12 +74,32 @@ export default async function NinaPage() {
   const userId = await requireUserId()
   const rows = await listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT })
 
+  /*
+   * The photos, in one query rather than a join. `getNinaMessageImagesForMessages` reads
+   * `nina_message_images_message_idx` and comes back ordered by `(message_id, sort_order)`, so
+   * grouping is a single pass and the order inside a bubble is the order he picked them in.
+   *
+   * `description` is deliberately dropped on the floor here. It is `glm-4.6v`'s private text; the
+   * only consumer is Nina's prompt, and nothing in `components/` may read it.
+   */
+  const images = await getNinaMessageImagesForMessages(
+    userId,
+    rows.map((row) => row.id),
+  )
+  const urlsByMessage = new Map<string, string[]>()
+  for (const image of images) {
+    const list = urlsByMessage.get(image.messageId)
+    if (list == null) urlsByMessage.set(image.messageId, [image.blobUrl])
+    else list.push(image.blobUrl)
+  }
+
   const initial: ChatMessage[] = rows.map((row) => ({
     id: row.id,
     role: row.role === 'nina' ? 'nina' : 'user',
     body: row.body,
     dayISO: jakartaDayOf(row.createdAt),
     state: 'sent',
+    imageUrls: urlsByMessage.get(row.id),
   }))
 
   return (
@@ -93,7 +114,7 @@ export default async function NinaPage() {
         </div>
       </header>
 
-      <ChatScreen initial={initial} todayISO={todayInJakarta()} />
+      <ChatScreen initial={initial} todayISO={todayInJakarta()} userId={userId} />
     </AppShell>
   )
 }

@@ -8,7 +8,7 @@ import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
 import { planReveal } from '@/lib/nina/reveal'
-import { Composer } from './Composer'
+import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageList } from './MessageList'
 import type { ChatMessage } from './types'
 
@@ -62,11 +62,18 @@ const COMPOSER_CLEARANCE_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX
 export function ChatScreen({
   initial,
   todayISO,
+  userId,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
   /** From the server, so "Today" cannot differ between render and hydration. */
   todayISO: string
+  /**
+   * Phase 6. Passed straight through to `Composer`, which needs it to build
+   * `nina/<userId>/chat/<id>.jpg`. Not a secret and not a capability: `/api/upload` re-derives the
+   * owner from the session and refuses any pathname that does not match it.
+   */
+  userId: string
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   const [typing, setTyping] = useState(false)
@@ -121,22 +128,37 @@ export function ChatScreen({
     })
 
   const handleSend = useCallback(
-    async (body: string) => {
+    async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
 
+      const body = draft.body
+      const imageUrls = draft.images.map((image) => image.url)
       const localId = `local-${crypto.randomUUID()}`
       const dayISO = todayInJakarta()
       setNotice(null)
       setMessages((current) => [
         ...current,
-        { id: localId, role: 'user', body, dayISO, state: 'sending' },
+        {
+          id: localId,
+          role: 'user',
+          body,
+          dayISO,
+          state: 'sending',
+          /* Already on the CDN — the describe pre-pass uploaded it before send was possible — so
+           * the optimistic row shows the same URL the server row will carry. No object URL to
+           * revoke, and no flicker when the real row lands. */
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        },
       ])
       setBusy(true)
       setTyping(true)
 
       let result: Awaited<ReturnType<typeof sendNinaMessage>> | null = null
       try {
-        result = await sendNinaMessage({ body })
+        result = await sendNinaMessage({
+          body,
+          imageTickets: draft.images.map((image) => image.ticket),
+        })
       } catch {
         result = null
       }
@@ -228,6 +250,7 @@ export function ChatScreen({
         onSend={handleSend}
         busy={busy}
         bottomCss={composerBottomCss(overlap, COMPOSER_CLEARANCE_PX)}
+        userId={userId}
       />
     </>
   )
