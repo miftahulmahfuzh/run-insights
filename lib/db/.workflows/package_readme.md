@@ -1,7 +1,7 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-04
+**Last Updated**: 2026-09-05
 
 ## Overview
 
@@ -82,7 +82,8 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `badges` | `badges` | Append-only badge award ledger | PK `(user_id, key, dedupe_key)`, `badges_user_run_idx` |
 | `shares` | `shares` | Public share-page credential for a run | PK `token`, `shares_run_id_active_unq` (partial) |
 | `ninaTurns` | `nina_turns` | Audit/job row for every Nina model call | `nina_turns_user_created_idx` |
-| `ninaMessages` | `nina_messages` | One bubble of the runner↔Nina conversation | `nina_messages_user_seq_idx`, `nina_messages_user_unread_idx` (partial), `nina_messages_reply_to_idx`, `nina_messages_user_run_idx` |
+| `ninaChatSessions` | `nina_chat_sessions` | The conversation's partition — one row per topic he started | `nina_chat_sessions_user_created_idx` |
+| `ninaMessages` | `nina_messages` | One bubble of the runner↔Nina conversation | `nina_messages_user_seq_idx`, `nina_messages_user_unread_idx` (partial), `nina_messages_reply_to_idx`, `nina_messages_user_run_idx`, `nina_messages_session_seq_idx`, `nina_messages_user_session_runner_idx` (partial) |
 | `ninaMessageImages` | `nina_message_images` | One image attached to a message | `nina_message_images_message_idx`, `nina_message_images_user_created_idx` |
 | `ninaMemorySlots` | `nina_memory_slots` | Upserted "current fact" memory slot | PK `(user_id, key)` |
 | `ninaMemoryFacts` | `nina_memory_facts` | Append-only "what he has told me" ledger | `nina_memory_facts_user_created_idx` |
@@ -108,7 +109,10 @@ declared here; the filter is enforced in `queries.ts` and asserted by
 nanoid(16) for `shares.token`. `users.id` uses `crypto.randomUUID()` because that is the adapter's
 convention. `nina_messages.seq` is the one ordering column that is not an id: a `bigserial`,
 because `defaultNow()` inside a single batch returns the same instant for every insert in it, so a
-timestamp cannot express emission order.
+timestamp cannot express emission order. One id in the database is not minted by `lib/id.ts` at
+all: migration `0004` derives the backfilled session's id as `substr(md5(user_id),1,12)`, twelve
+characters chosen to satisfy `ID_RE` so `isValidId` accepts it in a `?s=` parameter, and
+deterministic so a later statement can recompute it without a join.
 
 **Timestamps** are `timestamp(col, { withTimezone: true, mode: 'date' })`, usually
 `.notNull().defaultNow()`, with `.$onUpdate(() => new Date())` where mutable. Calendar days are
@@ -120,7 +124,8 @@ omit `withTimezone`, consistent with keeping that block verbatim.
 TypeScript change and not a migration. The unions are exported alongside the tables:
 `AdapterAccountType`, `Sex`, `ExtractionStatus`, `PhotoKind`, `RunIntent`, `RunSource`,
 `InsightScope`, `NinaTurnKind`, `NinaTurnStatus`, `NinaRole`, `NinaMessageSource`, `NinaImageKind`,
-`NinaMemorySource`, `NinaPromiseMetric`, `NinaFactCategory`, `NinaAvatarSource`. `badges.key`,
+`NinaMemorySource`, `NinaPromiseMetric`, `NinaFactCategory`, `NinaAvatarSource`,
+`NinaSessionTitleSource`. `badges.key`,
 `records.key` and `nina_turns.trigger`/`error_code` are left as plain `text` pointing at an
 external catalog, for the same "adding a member is not a migration" reason taken one step further.
 
@@ -129,7 +134,9 @@ external catalog, for the same "adding a member is not a migration" reason taken
 delete the history that it happened"), and `nina_messages.reply_to_id` / `run_id` are `set null` so
 a deleted parent degrades a quote bubble or run card instead of deleting conversation.
 `nina_messages.turn_id` carries **no** FK at all, because an audit pointer must not be able to block
-a delete.
+a delete. One cascade is not a default but a stated requirement: `nina_messages.session_id` →
+`nina_chat_sessions.id`, which chains through `nina_message_images.message_id` so removing a session
+takes its messages and their image rows in one `DELETE`.
 
 **Unique indexes are how invariants are enforced.** `shares_run_id_active_unq` (partial, `where
 revoked_at is null`) is the stated precedent, and later tables cite it by name: the alternative to a
@@ -269,9 +276,11 @@ import of it anywhere. 54 are source files, 14 are tests.
 ### Primary consumers
 
 - **`lib/nina/queries.ts`** — the heaviest consumer in the repo, and architecturally the most
-  important: it imports `db` itself plus nine tables and nine union types, and it is the **only**
-  production file that imports `ninaAvatars` or `ninaFolders`. It is the choke point for all
-  avatar and folder access; every other avatar-touching file
+  important: it imports `db` itself plus ten tables and ten union types, and it is the **only**
+  production file that imports `ninaAvatars`, `ninaFolders` or `ninaChatSessions`. It is the choke
+  point for all avatar, folder and session access — the session statements are its §4a, and the pure
+  ordering rules they feed are `lib/nina/sessions.ts`, which imports nothing from this package at
+  all. Every other avatar-touching file
   (`lib/admin/ninaAlbumActions.ts`, `app/admin/page.tsx`, `lib/nina/album.ts`, `avatargen.ts`,
   `avatartools.ts`, `proactive.ts`, `imagegen.ts`) calls its exported functions rather than
   reaching for a table.
@@ -322,7 +331,8 @@ it names `'./lib/db/schema.ts'` as a config string. **A schema change is therefo
 reflected in a script**, and a script writing a `nina_*` table is writing raw SQL that no type
 checks.
 
-`NinaAvatar`, `NewNinaAvatar`, `NinaFolder` and `NewNinaFolder` currently have **no importers** —
+`NinaAvatar`, `NewNinaAvatar`, `NinaFolder`, `NewNinaFolder`, `NinaChatSession` and
+`NewNinaChatSession` currently have **no importers** —
 callers pass around the shapes `lib/nina/queries.ts` returns instead. (The string `NinaAvatar` also
 names an unrelated React component, `components/nina/NinaAvatar.tsx`; that is a coincidence, not an
 import of the row type.)
@@ -365,7 +375,17 @@ or calls `process.exit`, and no error is swallowed.
   reason.
 - **Partial indexes keep the cost proportional to the hot subset**:
   `nina_messages_user_unread_idx` covers only unread Nina messages, which is a small slice of a
-  table read on every page.
+  table read on every page, and `nina_messages_user_session_runner_idx` holds only *his* half of the
+  conversation. The latter also carries `sent_at` as a payload column purely so the session list's
+  `max(sent_at)` aggregate is index-only rather than a heap fetch per runner message.
+- **A derived sort key can be cheaper than a stored one.** The session list sorts by the most recent
+  message from him, and that watermark is computed at read time instead of being kept in a column,
+  because the column would have had four writers spread across three files. Spending an index on the
+  aggregate buys the same read cost with no cache to keep honest.
+- **One index, two jobs.** `nina_messages_session_seq_idx` leads with `session_id` rather than
+  `user_id` because Postgres does not index the *referencing* side of a foreign key: the same index
+  answers "this session's newest bubbles" and gives the cascading delete something better than a
+  sequential scan of the whole conversation.
 - **`insights` is a cache keyed by a fact hash**, so regenerating a narrative is skipped when the
   underlying facts have not changed.
 - Records are recomputed wholesale rather than incremented (roadmap §4.5 / R-10), which trades a
@@ -427,6 +447,13 @@ pooled one. Its `schema` path is fixed at `./lib/db/schema.ts`; the file must no
 `db:push` script in this repo, by design: schema state is the migration history, not the current
 contents of a database.
 
+Generated is the norm but not the rule. `0004_nina_chat_sessions.sql` is the first migration here
+that was generated and then **hand-edited**, because generation cannot express a backfill: drizzle
+emits `ADD COLUMN … NOT NULL`, which simply fails on a populated table. The pattern, if a second one
+is ever needed: add the column nullable, backfill it, then `SET NOT NULL`, and add the FK after the
+rows are valid — all inside the file drizzle produced, so the snapshot it wrote still describes the
+end state and `db:check` stays clean.
+
 ### Gotchas
 
 - **`db.transaction()` throws.** Build a statement array and use `db.batch`.
@@ -446,6 +473,16 @@ contents of a database.
   those rows would hide every folder created by dropping one.
 - **A thumbnail is two columns.** Recording `thumb_url` without `thumb_pathname` is how an album
   accumulates blob orphans that only a store listing can find.
+- **`NOT NULL` cannot be added to a populated table in one statement.** A new required column is
+  three statements and a backfill between them, in the migration file itself. See `0004`.
+- **Removing a session is a hard delete, and the cascade stops at the database.** Messages and their
+  `nina_message_images` rows go; the Vercel Blob objects behind those rows stay, and the
+  `source_message_id` pointers in `nina_memory_slots` / `nina_memory_facts` are left dangling on
+  purpose — her long-term memory is global, and a distilled fact outlives the sentence that produced
+  it.
+- **A session's `title` and `title_source` travel together.** Both NULL means nobody has named it
+  yet, which is the only state an automatic titler may write into; `'backfill'` is not `'manual'`
+  but must be treated as if it were.
 - **Auth.js tables are verbatim.** Singular names and camelCase columns are the adapter's
   convention, which is why `drizzle()` is built *without* `casing: 'snake_case'` and every app
   table spells its snake_case names out explicitly.
@@ -457,6 +494,75 @@ contents of a database.
 Initial creation, prompted by task **P1-DB-A000** — phase 1 of 7 in
 `ADMIN_ALBUM_FILE_MANAGER_PLAN.md`, the plan set that turns `/admin/nina` into a file manager
 (F34 R1).
+
+### Recent changes — P1-DB-A001 (2026-09-05)
+
+Phase 1 of 9 in `NINA_CHAT_SESSIONS_PLAN.md`, the plan set that gives the Nina conversation
+sessions. Within this package the task touched `schema.ts` and `drizzle/` only; the session
+statements and the pure ordering rules it enables live in `lib/nina/queries.ts` (§4a) and
+`lib/nina/sessions.ts`. Nothing on screen changed and no call site anywhere in the repo moved.
+
+**New table `nina_chat_sessions`** — `id`, `user_id`, `title`, `title_source`, `pinned_at`,
+`created_at`, cascading FK to `user`, and one index
+`nina_chat_sessions_user_created_idx` on `(user_id, created_at desc)`, the
+`nina_avatars_user_created_idx` shape. The point of the table is that it is *not* a UI feature: the
+message window is what Nina is given to read on every turn, so without a partition column a new
+session would look new and behave identically to the old one.
+
+Three absences are decisions, and each is asserted by `tests/db.schema.nina.test.ts`:
+
+- **No `last_user_message_at`.** Sessions sort by the most recent message *from him*, and a stored
+  watermark would be `nina_folders`'s "cache with two writers" with four instead — his turn writes
+  it, two proactive writers must remember not to, and a later phase's message delete would move it
+  backwards from a file that does not own this table. The sort key is derived at read time and
+  `nina_messages_user_session_runner_idx` pays for that.
+- **No `archived_at`.** Removing a session is a hard delete, because an archived session that still
+  answered the message-window read would defeat the point of removing it.
+- **No `updated_at`.** Nothing reads it. `created_at` earns its place twice — the sort key of a
+  session with no message yet, and the instant `0004` stamps from `min(sent_at)`.
+
+`pinned_at` is an instant rather than an `is_pinned` boolean: NULL is unpinned so the column needs
+no default, and storing *when* keeps one decision reversible without a migration — a pin currently
+partitions the list rather than sorting it.
+
+**New union `NinaSessionTitleSource`** = `'auto' | 'manual' | 'backfill'`, nullable and travelling
+with `title`. NULL/NULL is the fourth and most important member: nobody has named this session yet.
+
+**`nina_messages` gained `session_id`** — `text NOT NULL`, FK to `nina_chat_sessions.id`
+**`ON DELETE CASCADE`**. `NOT NULL` rather than nullable-means-legacy so that a writer which forgets
+a session fails loudly instead of writing a row that quietly stops appearing on his screen. Sessions
+*slice* `seq`; they do not replace it, and there is no per-session sequence.
+
+**Two new indexes on `nina_messages`**, taking it from four to six:
+
+- `nina_messages_session_seq_idx` on `(session_id, seq)` — both the per-session slice and the
+  foreign key's own index, `session_id` leading because Postgres does not index the referencing side
+  of an FK and the cascade's lookup has no user in it. `nina_messages_user_seq_idx` still answers
+  every user-wide read, so nothing is duplicated.
+- `nina_messages_user_session_runner_idx` on `(user_id, session_id, sent_at)` **`where role =
+  'runner'`** — the derived sort key, partial on `nina_messages_user_unread_idx`'s precedent and
+  index-only because `sent_at` rides along as a payload column.
+
+Also `ninaChatSessionsRelations`, a `session` relation on `ninaMessagesRelations`, and the row types
+`NinaChatSession` / `NewNinaChatSession`.
+
+**Migration `drizzle/0004_nina_chat_sessions.sql`** plus its meta snapshot and journal entry
+(`idx: 4`). It is the first migration in this repo that is **not purely generated** — see the
+Migrations note above for the pattern. It files every existing row into one session per user
+(`id = substr(md5(user_id),1,12)`, `created_at = min(sent_at)`, title `'Semua chat sebelumnya'`,
+`title_source = 'backfill'`) and carries **no `ON CONFLICT DO NOTHING`**, deliberately: on an
+md5-prefix collision `DO NOTHING` would file the second user's messages into the first user's
+session, where removing it would cascade away a stranger's conversation. A unique violation aborts
+the migration instead, and a failed migration is recoverable where a merged conversation is not.
+
+> **Verified, but NOT applied to production.** Applying `0004` is still an open deploy action
+> (`npm run db:migrate`). It was run against a throwaway Postgres 16 holding a populated
+> conversation, not merely generated: zero rows left with a NULL `session_id`, one session for every
+> user who has messages and none for the user who has none, no message filed into another user's
+> session, and deleting a session cascaded its messages and their `nina_message_images` rows with
+> zero orphans. What the cascade leaves behind on purpose: the Blob objects behind the removed image
+> rows, and the unenforced `source_message_id` pointers in `nina_memory_slots` /
+> `nina_memory_facts`.
 
 ### Recent changes — P1-DB-A000 (2026-09-04)
 

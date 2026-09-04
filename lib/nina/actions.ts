@@ -6,6 +6,7 @@ import { authEnv } from '@/lib/env'
 import { isValidId } from '@/lib/id'
 import { after } from 'next/server'
 
+import { titleNinaSessionIfNeeded } from './autotitle'
 import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
@@ -18,10 +19,12 @@ import {
   getNinaAvatar,
   getNinaMessageImage,
   getNinaMessagesByIds,
+  getNinaSession,
   insertNinaMessageImages,
   insertNinaMessages,
 } from './queries'
 import type { NinaMessageRow } from './queries'
+import { resolveNinaWriteSession } from './sessionResolve'
 import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
@@ -251,6 +254,30 @@ export async function sendNinaMessage(input: {
    * see, so there is no honest message left to write.
    */
   attachExisting?: NinaAttachExisting | null
+  /**
+   * **F35 phase 3 (R2). Which conversation this message joins.**
+   *
+   * A REQUIRED field of a NULLABLE type, which is the whole design in one line. Required, because
+   * `nina_messages.session_id` is `NOT NULL` and there are exactly three writers of that table:
+   * making every caller decide is how `tsc` proves none of them was missed. Nullable, because "he
+   * has no sessions at all" is a real state a client can legitimately be in — reachable by a runner
+   * who has never messaged, and by R11's runner who just removed his last session — and in that
+   * state the screen has no id to send. A render must not write, so the page cannot create one for
+   * him; this action can, and does.
+   *
+   *   a well-formed id he owns      -> the message lands there
+   *   a forged, foreign or deleted id -> REFUSED (see below)
+   *   null                          -> `resolveNinaWriteSession`: his most recent session, created
+   *                                    if he has none
+   *
+   * **The miss is a refusal, not a degradation, and it is the `resolveAttachment` split.**
+   * `app/nina/page.tsx` degrades a bad `?s=` silently to his newest chat, because *"a bad LINK is
+   * something anyone can type"*. Here the id is about to become a `NOT NULL` foreign key on a
+   * persisted row: an unowned id would fail the INSERT and lose the sentence he typed, and writing
+   * his message into a conversation he did not name would be worse than refusing. Same reasoning,
+   * opposite answer, one layer apart — exactly as the header describes for `?photo=`.
+   */
+  sessionId: string | null
 }): Promise<SendNinaMessageResult> {
   const userId = await requireUserId()
 
@@ -401,11 +428,44 @@ export async function sendNinaMessage(input: {
     return REFUSED
   }
 
+  /*
+   * STEP 0e — THE SESSION (F35 R2). Resolved AFTER every refusal above and BEFORE the runner's row,
+   * and both halves of that sentence are load-bearing.
+   *
+   * After the refusals, because the `null` branch may CREATE a session and a stray Enter key must
+   * not leave an empty conversation behind. Before the row, because `nina_messages.session_id` is a
+   * `NOT NULL` foreign key — the same reason STEP 0c reads the run and STEP 0d reads the blob
+   * rather than letting the INSERT discover the problem.
+   *
+   * `getNinaSession` is owner-scoped, so "not his" and "does not exist" come back as the same
+   * `null`, which is what the refusal needs and is `queries.ts`'s standing rule.
+   */
+  let sessionId: string
+  if (input?.sessionId == null) {
+    /* He has no sessions — a runner who has never messaged, or R11's runner who removed his last
+     * one. Same policy the cron uses (assumption A3), so the message lands somewhere findable and
+     * the two paths cannot disagree about where. */
+    try {
+      sessionId = await resolveNinaWriteSession(userId)
+    } catch (cause) {
+      console.warn('[nina] could not resolve a session for the send', { error: String(cause) })
+      return REFUSED
+    }
+  } else {
+    const requestedSessionId = isValidId(input.sessionId) ? input.sessionId : null
+    const owned =
+      requestedSessionId === null ? null : await getNinaSession(userId, requestedSessionId)
+    if (owned === null) return REFUSED
+    sessionId = owned.id
+  }
+
   let runnerMessageId: string
   try {
-    const [row] = await insertNinaMessages(userId, [
-      { role: 'runner', body: text, replyToId: quotedRow?.id ?? null, runId },
-    ])
+    const [row] = await insertNinaMessages(
+      userId,
+      [{ role: 'runner', body: text, replyToId: quotedRow?.id ?? null, runId }],
+      sessionId,
+    )
     if (row == null) throw new Error('insertNinaMessages returned no row')
     runnerMessageId = row.id
   } catch (cause) {
@@ -483,7 +543,10 @@ export async function sendNinaMessage(input: {
    * stop being fine at the same moment.
    */
   const [context, history] = await Promise.all([
-    loadNinaContext(userId, dbNinaSourceGateway),
+    /* The session is the second argument now (F35 phase 3). She reads the window of THIS
+     * conversation and the memory ledger of the whole relationship — assumptions A1 and A2, in one
+     * call. */
+    loadNinaContext(userId, sessionId, dbNinaSourceGateway),
     dbNinaToolGateway.loadRunHistory(userId),
   ])
 
@@ -612,6 +675,10 @@ export async function sendNinaMessage(input: {
         body,
         replyToId: index === 0 ? replyToId : null,
       })),
+      /* The same session his message went into. She is answering in the conversation she was asked
+       * in; there is no case in which a reply belongs anywhere else. One session for the whole
+       * batch, which is why it is a parameter and not a field. */
+      sessionId,
     )
     for (const row of rows) bubbles.push({ id: row.id, body: row.body, replyToId: row.replyToId })
   } catch (cause) {
@@ -644,6 +711,24 @@ export async function sendNinaMessage(input: {
     memoryWrites: result.payload.memoryWrites ?? [],
     context,
   })
+
+  /*
+   * STEP 7 — the session's name (R3). `after()` and not `await`, for the same two reasons STEP 6
+   * gives: this is another model call on top of a turn that already cost 13-45 s, and invariant 2
+   * is enforced by `scripts/check-llm-payload-boundary.mjs` either way. `after()` throws E468
+   * outside a request scope, which is why the CALL is here and `titleNinaSessionIfNeeded` never
+   * calls it itself.
+   *
+   * **This exit and no other.** R3's trigger is "the first interaction (user then nina)", and this
+   * is the only path on which both rows exist — the `result.payload == null` return above it is a
+   * turn where she said nothing, so there is no exchange to name yet.
+   *
+   * `after()` can run more than once and two tabs can race, so the idempotence is the titler's and
+   * not this line's: `setNinaSessionTitleIfUntitled`'s `WHERE … AND title IS NULL` is the durable
+   * marker, on `hasProactiveMessageForRun`'s reasoning. `titleNinaSessionIfNeeded` never throws and
+   * makes no call at all for a session that already has a name.
+   */
+  after(() => titleNinaSessionIfNeeded(userId, sessionId))
 
   return { ok: true, userMessageId: runnerMessageId, bubbles, unavailable: false }
 }
@@ -781,11 +866,17 @@ export async function describeNinaImage(
 /**
  * The `after()` wrapper, so the two exit paths schedule one identical pass.
  *
- * **`messageCount` comes from the context window and not from a `COUNT(*)`.** The window is
- * `CONTEXT_MESSAGE_WINDOW = 40` messages and it is loaded AFTER his message was persisted, so it
- * is an exact count everywhere below 40 — and `FIRST_CONVERSATION_MESSAGE_LIMIT` is 12, so the one
- * decision that reads it is always in the exact range. That is a whole query saved for free, and
- * saying so here is cheaper than someone later "fixing" it.
+ * **`messageCount` is an exact count and still costs no query (F35 phase 3).** It used to be
+ * `context.conversation.window.length` — the 40-message window, "exact everywhere below 40", which
+ * was fine while there was one conversation. Session-scoping the window (assumption A1) broke that:
+ * the length resets in every new session, so `nameSlotValue`'s `FIRST_CONVERSATION_MESSAGE_LIMIT`
+ * check would latch on again and she would re-offer him a nickname every time he changed topic.
+ *
+ * `window.length + olderMessageCount` is the repair and it is free, because phase 3 deliberately
+ * left `olderCount` user-wide (see `getNinaMessageWindow`): the sum is every message he has ever
+ * exchanged with her, across every session, computed from two numbers already in hand. That is
+ * strictly better than what this comment used to promise, and it makes "the first conversation" a
+ * property of the relationship rather than of a session — which is what the phrase means.
  */
 function scheduleDistillation(input: {
   userId: string
@@ -806,7 +897,8 @@ function scheduleDistillation(input: {
       identity: {
         fullName: input.context.runner.fullName,
         nickname: input.context.runner.nickname,
-        messageCount: input.context.conversation.window.length,
+        messageCount:
+          input.context.conversation.window.length + input.context.conversation.olderMessageCount,
       },
     })
   })

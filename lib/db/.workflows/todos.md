@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-04 16:46:00
+**Last Updated**: 2026-09-05
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,11 +12,13 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 1
+- Completed: 2
 
 ---
 
 ## Active Tasks
+
+### [P1] High
 
 _None._
 
@@ -25,6 +27,23 @@ _None._
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-DB-A001** Phase 1: Session data layer: schema, migration, backfill, scoped queries
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema.ts` (the new `ninaChatSessions` table, `nina_messages.session_id` and the indexes both need); `drizzle/0004_*.sql` plus `drizzle/meta/`; `lib/nina/queries.ts` §4, where every message read and write gains a session parameter alongside session CRUD and the list query; and a new pure `lib/nina/sessions.ts` for the ordering and title-fallback rules with tests — including `NINA_SESSION_TITLE_MAX_CHARS = 60`, the set's one and only title cap, the `sessionTitleFor` fallback phase 5 renders rather than `session.title`, and `pinnedAt: Date | null` as an instant rather than a boolean. `session_id` is `NOT NULL` (D1) with `ON DELETE CASCADE` (R11), the sort key is derived at read time with no stored column (D3), and pins partition rather than sort (D4). Signatures widen with a defaulted or optional session parameter so the tree still compiles and existing callers keep working; phase 3 then makes them required. The backfill is the risk and is not optional: every existing row must end up in exactly one session per user, in `seq` order, under a deterministic placeholder title rather than an LLM call from a migration. Exit criteria: `npm run db:check` passes; the migration applies to a copy of production and `SELECT count(*) FROM nina_messages WHERE session_id IS NULL` is 0; `listNinaSessions` returns pinned-first then most-recent-user-message-descending, asserted by a unit test on the pure ordering rule; deleting a session row leaves no orphaned `nina_messages` and no orphaned `nina_message_images` (R11); the existing suite is green with no caller changed.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHAT_SESSIONS_PLAN.md` (phase 1 of 9)
+  - **Satisfies**: R2, R4, R5, R11 — R2: Chat sessions: create a new one, or return to a previous conversation through a session-history list; R4: Pin sessions to the top; R5: Sort sessions by the most recent **user** message, newest first; R11: Remove a session
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-DB-A001.md`
+  - **Card**: `miftahulmahfuzh/run-insights#78`
+  - **Completed**: 2026-09-05 03:26
+  - **Method**: /implement (swarm phase 1 of 9)
+  - **Commit**: `7a89066`
+  - **Files**: lib/db/schema.ts, lib/nina/queries.ts, lib/nina/sessions.ts, lib/nina/sessions.test.ts, tests/db.schema.nina.test.ts, drizzle/0004_nina_chat_sessions.sql, drizzle/meta/0004_snapshot.json, drizzle/meta/_journal.json
+  - **Notes**: Migration `0004` generated then hand-edited where generation cannot help — drizzle emits `ADD COLUMN ... NOT NULL`, which fails on a populated table, so the file adds the column nullable, backfills one session per user (`substr(md5(user_id),1,12)`, `created_at = min(sent_at)`, title `'Semua chat sebelumnya'`, `title_source = 'backfill'`), then `SET NOT NULL`. No `ON CONFLICT DO NOTHING` on that insert, deliberately: on an md5-prefix collision it would file the second user's messages into the first user's session. **Verified against a throwaway Postgres 16** (0000-0003 applied, three users — one with no messages — interleaved roles, image rows, a memory fact, a cross-session quote): 0 NULL `session_id`, one session per user with messages, no cross-user filing, cascade left 0 orphaned `nina_messages`/`nina_message_images`, the cross-session quote survived with `reply_to_id` NULL, the `nina_memory_facts` row survived with a deliberately dangling `source_message_id`, `Index Only Scan` on `nina_messages_user_session_runner_idx` and `Index Scan Backward` on `nina_messages_session_seq_idx`, and a session-less INSERT is rejected. **Not applied to production — that is a deploy action** and remains open. `lib/nina/queries.ts` is shared with phases 3 and 7 (§4c is a named seam for phase 7's `updateNinaMessage`/`deleteNinaMessage`); three plan-verbatim lines were reflowed by Prettier (cosmetic).
+
 
 - [x] **P1-DB-A000** Phase 1: Folder metadata on `nina_avatars`, and the folder-aware data layer
   - **Difficulty**: NORMAL

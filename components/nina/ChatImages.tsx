@@ -30,10 +30,21 @@ import { NINA_SIDE_LABEL, photoSideOf } from '@/lib/nina/album'
  * identical to what phase 6 shipped**, `<li>` for `<li>` — so a bubble in the message list renders
  * exactly as it did, and the interactive branch exists only for a caller that asked for it.
  *
- * `MessageList` is deliberately NOT that caller. Opening a viewer from inside a bubble is a third
- * gesture on a surface phases 6, 7 and 8 all own slots in (image, reply quote, run card), and R17
- * asked for the detail page rather than a lightbox in the thread. Wiring it is two lines plus
- * viewer state in `ChatScreen`, and it should be its own card.
+ * ── F35 PHASE 9 (R10) IS THAT CARD, AND IT LANDED ─────────────────────────────────────────────
+ * `MessageList` now passes both props. What changed is only the caller: this file is unchanged
+ * below the header, because phase 13 built the branch and phase 9 needed no more of it than that.
+ *
+ * `onOpen` opens `components/ui/PhotoViewer` through viewer state in `ChatScreen`, which pages
+ * across THIS BUBBLE'S photos only — `NINA_MAX_CHAT_IMAGES` is 3 plus at most one re-attached
+ * photo, so the dot row is 1-4 dots. The conversation-wide gallery is `/nina/about`'s Media
+ * section and stays there.
+ *
+ * `kinds` now arrives too, from `ChatMessage.imageKinds`, so the `aria-label` below finally tells
+ * the truth about one of her selfies instead of defaulting every photo to his.
+ *
+ * `alt=""` is unchanged and stays unchanged. There is still no honest alt text — the only text
+ * that exists is `glm-4.6v`'s, which is private (invariant 5) — and the viewer does not caption
+ * the photo either.
  */
 export function ChatImages({
   urls,

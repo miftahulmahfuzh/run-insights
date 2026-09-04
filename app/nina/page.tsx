@@ -1,8 +1,8 @@
-import Link from 'next/link'
 import { after } from 'next/server'
 
 import { ChatScreen } from '@/components/nina/ChatScreen'
-import { NinaAvatar } from '@/components/nina/NinaAvatar'
+import { NinaSidebar, NinaSidebarProvider } from '@/components/nina/NinaSidebar'
+import { NinaUnreadSync } from '@/components/nina/NinaUnreadSync'
 import type { ChatMessage } from '@/components/nina/types'
 import { AppShell } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
@@ -18,15 +18,21 @@ import {
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
+import { SESSION_PARAM, chooseActiveSession, parseNinaSessionParam } from '@/lib/nina/active'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
+import { sessionTitleFor } from '@/lib/nina/sessions'
+import { NINA_CHAT_HREF, sessionDayLabel, type SidebarSession } from '@/lib/nina/sidebar'
 import {
   getCurrentNinaAvatar,
   getNinaAvatar,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
   listNinaMessages,
+  listNinaSessions,
   markNinaMessagesRead,
+  type NinaMessageRow,
 } from '@/lib/nina/queries'
+import { hasUnreadFromNina } from '@/lib/nina/unread'
 
 /**
  * `/nina` — F33's conversational surface, and the fifth tab (R9).
@@ -39,13 +45,23 @@ import {
  * `/r/[id]`'s render path and is enforced by the same CI grep. The conversation is stored rows;
  * the model is reached only from `ChatScreen`'s send handler, after this has painted.
  *
- * ── WHY THE HEADER IS NOT `ScreenHeader` ──────────────────────────────────────────────────────
- * `ScreenHeader`'s contract is "a name on the left, at most one plain-text link on the right", and
- * a conversation's identity is a face. So this screen builds its own row: her avatar at 44px, her
- * name at the same `text-[26px] font-bold tracking-[-0.02em]` every other screen title uses, and
- * one quiet line under it. The type is identical; only the avatar is new, which is the smallest
- * possible departure. **Phase 13 kept that promise**: the avatar is now a `<Link>` to
- * `/nina/about` and its source is the album's current row, and nothing else in the header moved.
+ * ── WHY THERE IS NO HEADER AT ALL (R7) ────────────────────────────────────────────────────────
+ * Until phase 5 this screen built its own header row — her face at 44px, her name at the same
+ * `text-[26px] font-bold tracking-[-0.02em]` every other screen title uses, one quiet line under
+ * it — because `ScreenHeader`'s contract is "a name on the left, at most one plain-text link on
+ * the right" and a conversation's identity is a face, not a title and a link.
+ *
+ * **That argument was right and it is why the row is now gone.** What changed is where an identity
+ * belongs. On a phone the conversation IS the screen (R1 took the tab bar off it for the same
+ * reason), and 96px of reading surface spent restating which of five tabs you are on is the most
+ * expensive caption in the app. R7 moves the identity to where it is a DESTINATION instead of a
+ * label: `components/nina/NinaSidebar.tsx`, at the top of the list of her conversations, where the
+ * circle is also still the door to `/nina/about` that phase 13 made it. Same avatar, same 44px,
+ * same `<Link>`, same `ninaAvatarView` source — the markup moved and nothing about it changed.
+ *
+ * So `/nina` still declines `ScreenHeader`, now for a stronger reason than before: it has no
+ * header. `getCurrentNinaAvatar` is still read here, because the sidebar is rendered from this
+ * Server Component and a client component cannot await her face.
  *
  * ── WHY THERE ARE NO PER-MESSAGE TIMESTAMPS ───────────────────────────────────────────────────
  * Day dividers only. Three reasons, in order of weight. `lib/format.ts` has no time-of-day
@@ -113,11 +129,42 @@ export const maxDuration = 60
 
 export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const userId = await requireUserId()
-  const { [ATTACH_PARAM]: attachParam, [PHOTO_PARAM]: photoParam } = await searchParams
+  const {
+    [ATTACH_PARAM]: attachParam,
+    [PHOTO_PARAM]: photoParam,
+    [SESSION_PARAM]: sessionParam,
+  } = await searchParams
   /* Parsed BEFORE the reads, because which table to read is what the grammar decides. Pure, so it
    * costs nothing and cannot fail; `null` means "no photo on this link" and every branch below
    * short-circuits on it. */
   const photoPointer = parseNinaPhotoParam(photoParam)
+
+  /*
+   * ── F35 R2's ROUTING DECISION, AND WHY IT IS ITS OWN READ ────────────────────────────────────
+   * `?s=<id>` names the open conversation (assumption A4), and `listNinaMessages` cannot run until
+   * it is known — so this one indexed read sits on the critical path ahead of the `Promise.all`
+   * below rather than inside it. That extra round trip is the price of A4 and it is worth paying:
+   * `listNinaMessages` is owner-scoped, so passing a forged `?s=` straight through would come back
+   * `[]` and paint an EMPTY conversation with a dead id still in the address bar. One index scan on
+   * `(user_id, …)` buys the difference between that and "your newest chat". Invariant 4 is
+   * untouched — still no model call, still nothing unindexed.
+   *
+   * A MISS DEGRADES SILENTLY, exactly as `?attach=` and `?photo=` do: a forged id, another runner's
+   * id and an id he deleted on his other phone all resolve to his most recently active session.
+   * `chooseActiveSession` carries the argument, including why it ignores `pinnedAt`.
+   *
+   * `null` IS A REAL ANSWER — he has no sessions at all. Reachable two ways: a runner who has never
+   * messaged, and R11's runner who just removed his last one. The screen renders `ChatScreen`'s
+   * existing empty state, and a send from it carries `sessionId: null`, which the ACTION
+   * resolves-or-creates. Creating one here would be a database write in a render path, which the
+   * `after()` below exists to avoid.
+   *
+   * Phase 5 renders this same list in the sidebar, ordered by phase 1's pinned-first rule; this page
+   * reads it only to answer "which one". Two questions, one query.
+   */
+  const sessions = await listNinaSessions(userId)
+  const activeSessionId = chooseActiveSession(sessions, parseNinaSessionParam(sessionParam))
+
   /*
    * Two reads, concurrently — and the second one is here for its SIDE EFFECT.
    * `listOpenNinaImageJobs` sweeps stale image jobs first (phase 12), so ARRIVING ON THIS PAGE IS
@@ -135,7 +182,15 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * model call is awaited in a render path — the generation itself is on a GitHub runner.
    */
   const [rows, , avatarRow, photoRow] = await Promise.all([
-    listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT }),
+    /*
+     * F35 R2. ONE session's messages. `Promise.resolve` on the empty branch rather than a
+     * conditional `await` after the block, on the `?photo=` branch's precedent below: keeping it
+     * inside the `Promise.all` means the empty case costs nothing and the ordinary case still
+     * overlaps the other three reads.
+     */
+    activeSessionId === null
+      ? Promise.resolve<NinaMessageRow[]>([])
+      : listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT, sessionId: activeSessionId }),
     listOpenNinaImageJobs(userId),
     /*
      * F33 phase 13 (R17). A THIRD indexed read, not a model call: `getCurrentNinaAvatar` is a
@@ -165,6 +220,39 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   ])
   const avatar = ninaAvatarView(avatarRow)
 
+  /* One reading of the clock for this render, shared by the conversation's day dividers and the
+   * sidebar's row labels. Hoisted out of `<ChatScreen>`'s prop so the same instant answers both —
+   * two calls could straddle midnight in Jakarta and name the same day two ways. */
+  const todayISO = todayInJakarta()
+
+  /*
+   * The sidebar's rows — F35 R6/R4/R11, phase 5.
+   *
+   * **Every cross-phase dependency in this phase is concentrated here, on purpose.** The three
+   * client components below take a plain view model and import nothing from phase 1: the ordering
+   * came out of `listNinaSessions`, the title fallback is `sessionTitleFor`, the day string is
+   * `lib/format.ts` on the server (invariant 4), and `?s=`'s spelling comes from phase 3's
+   * `SESSION_PARAM` rather than a literal. So a rename anywhere upstream is fixed in this block and
+   * nowhere else.
+   *
+   * `map` and not `sort`: R4 (pinned first) and R5 (most recent runner message descending) were
+   * decided by `orderNinaSessions`, and `planSessionList` asserts in its own suite that nothing
+   * downstream re-orders them.
+   */
+  const sidebarSessions: SidebarSession[] = sessions.map((row) => ({
+    id: row.id,
+    title: sessionTitleFor(row),
+    href: `${NINA_CHAT_HREF}?${SESSION_PARAM}=${row.id}`,
+    /* Phase 1 stores `pinnedAt: Date | null` (its D4 — an instant, so pins can be ordered among
+     * themselves). The sidebar only ever asks "is it pinned", so the boolean is derived here, once,
+     * on the server. */
+    pinned: row.pinnedAt !== null,
+    dayLabel: sessionDayLabel(
+      row.lastUserMessageAt == null ? null : jakartaDayOf(row.lastUserMessageAt),
+      todayISO,
+    ),
+  }))
+
   /*
    * The one place a row becomes a URL, which is what makes the thumbnail a one-line change later:
    * phase 1's column is `nina_avatars.thumb_url`, surfaced as `NinaAvatarRow.thumbUrl`, so
@@ -191,11 +279,20 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
     userId,
     rows.map((row) => row.id),
   )
-  const urlsByMessage = new Map<string, string[]>()
+  const photosByMessage = new Map<string, { urls: string[]; ids: string[]; kinds: string[] }>()
   for (const image of images) {
-    const list = urlsByMessage.get(image.messageId)
-    if (list == null) urlsByMessage.set(image.messageId, [image.blobUrl])
-    else list.push(image.blobUrl)
+    const group = photosByMessage.get(image.messageId)
+    if (group == null) {
+      photosByMessage.set(image.messageId, {
+        urls: [image.blobUrl],
+        ids: [image.id],
+        kinds: [image.kind],
+      })
+    } else {
+      group.urls.push(image.blobUrl)
+      group.ids.push(image.id)
+      group.kinds.push(image.kind)
+    }
   }
 
   /*
@@ -239,51 +336,111 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * row for a target the runner cannot scroll to anyway.
      */
     replyToId: row.replyToId,
-    imageUrls: urlsByMessage.get(row.id),
+    imageUrls: photosByMessage.get(row.id)?.urls,
+    /* F35 R10. `id` so the overlay's attach control can reuse `attachExisting: { kind: 'image',
+     * id }` rather than re-uploading a blob we already own; `kind` so `photoSideOf` can tell his
+     * photograph from hers, which `row.role` cannot for a re-attached selfie.
+     *
+     * The private prose is STILL dropped on the floor here and must stay dropped (invariant 5) —
+     * `imageColumns` selects it, and this mapping is the boundary that stops it. */
+    imageIds: photosByMessage.get(row.id)?.ids,
+    imageKinds: photosByMessage.get(row.id)?.kinds,
     /* R13. Resolved for EVERY row regardless of who wrote it, so phase 10's `run_committed`
      * proactive message — which writes the same column — gets its card for free. */
     attachment: row.runId == null ? null : (attachments.get(row.runId) ?? null),
   }))
 
   /*
-   * F33 phase 10 — the unread dot's other half. In `after()` and not inline, for two reasons: a
-   * render must not have a side effect (Next may render a segment more than once, and PPR renders
-   * it before a request even exists), and marking read BEFORE the response is sent would clear the
-   * dot for a page load that failed on the way to the browser. `after` needs no request API here —
-   * `userId` was resolved at the top of this component and is closed over — and
-   * `markNinaMessagesRead` is one indexed UPDATE, so invariant 4 still holds.
+   * F33 phase 10 — the unread dot's other half, now session-scoped (R2) and no longer stale (R9).
+   *
+   * IN `after()` AND NOT INLINE, for the two reasons phase 10 gave and this phase does not
+   * re-litigate: a render must not have a side effect (Next may render a segment more than once,
+   * and PPR renders it before a request even exists), and marking read BEFORE the response is sent
+   * would clear the dot for a page load that failed on the way to the browser. `after` needs no
+   * request API here — `userId` and the session were resolved at the top of this component and are
+   * closed over — and `markNinaMessagesRead` is one indexed UPDATE, so invariant 4 still holds.
+   *
+   * SESSION-SCOPED, because opening this conversation says nothing about another one. Marking
+   * every session read on any visit would clear a dot raised by messages he has not seen, which is
+   * the one direction of error that loses information. The dot's own COUNT stays global
+   * (`countUnreadNinaMessages`, unchanged, still reading the partial index
+   * `nina_messages_user_unread_idx`): "there is something of hers you have not read" is true
+   * wherever it sits. Assumption A3 then makes R9 fall out — proactive messages land in the most
+   * recent session, which is the one this page opens by default (A4), so opening the chat is what
+   * clears them. The `null` guard is phase 3's rule kept: a runner with no session at all (never
+   * messaged, or just removed his last one) is a real state, and a render path must not create one.
+   *
+   * `hadUnread` IS WHAT MAKES THE DOT GO AWAY WITHOUT A NAVIGATION. This render is delivering rows
+   * that `after()` is about to mark read, so the badge in this very payload is already wrong.
+   * `NinaUnreadSync` reads the flag and asks for exactly one fresh render — see its docstring for
+   * why a `revalidatePath` from here cannot work in Next 16.3.1, and `lib/nina/unread.ts` for why
+   * the sequence terminates. It costs nothing when there was nothing unread, which is most visits:
+   * `read_at` is already on every row (`messageColumns`), so the flag is a pass over an array, not
+   * a query.
    */
-  after(() => markNinaMessagesRead(userId))
+  const hadUnread = hasUnreadFromNina(rows)
+  if (activeSessionId !== null) {
+    after(() => markNinaMessagesRead(userId, { sessionId: activeSessionId }))
+  }
 
   return (
-    <AppShell bottomGap="chat">
-      <header className="mb-5 flex items-center gap-3">
+    <AppShell screen="chat">
+      {/* R9. Renders nothing. It exists so the tab bar's dot agrees with what he just read: this
+          payload was built before `after()` marked the session read, so on a visit that cleared
+          something the screen asks for one fresh render. See `components/nina/NinaUnreadSync.tsx`.
+          Deliberately OUTSIDE `ChatScreen`, which owns the conversation and is phases 3/7/9's file;
+          this is chrome bookkeeping and has no business inside the message list. */}
+      <NinaUnreadSync hadUnread={hadUnread} />
+
+      {/*
+        R7: no header row. The face, the name and the quiet line all moved into `NinaSidebar`; see
+        the block at the top of this file for why that is the same argument and not a reversal.
+
+        `NinaSidebarProvider` wraps BOTH consumers, and that is its whole reason for existing: the
+        `>` trigger lives inside phase 2's `ChatChrome` (rendered by `ChatScreen`) and the panel is
+        the sibling below, so the one piece of state they must agree about — whether this session
+        pushed the history entry the back gesture will pop — has to live above both.
+
+        The panel is LAST in the tree. It is `fixed inset-0`, so paint order does not depend on it,
+        but the linear reading order does: the conversation is this screen's content and a list of
+        other conversations is not.
+      */}
+      <NinaSidebarProvider>
         {/*
-          R17's first tap level: her face is a door. `size-11` is already 44 px — the iOS
-          tap-target floor — which phase 4 chose "for when phase 13 makes it a link", so no
-          geometry changes here.
+        ── `key` IS LOAD-BEARING (F35 PHASE 3, D8). DO NOT REMOVE IT. ───────────────────────────
+        `ChatScreen` holds the conversation in `useState` and reconciles a changed `initial` prop
+        DURING RENDER through `mergeServerMessages`, which is "server order + local content" and
+        deliberately keeps optimistic rows the server has not seen yet. Navigating from `?s=A` to
+        `?s=B` is the same route with different search params, so without a key React reconciles the
+        SAME component instance and merges session B's server rows into session A's local state:
+        leftover bubbles from the previous chat, plus a draft quote and an armed attachment pointing
+        at messages in a conversation he has left.
 
-          A `<Link>` and not a `<button>`: it is a navigation, so it gets the platform's own
-          long-press, middle-click and back behaviour for free, and Next prefetches the route.
+        A different conversation is a different screen, so remounting and discarding every piece of
+        local state is not a workaround — it is the correct semantics. `'none'` covers the
+        no-sessions case so the key is never `undefined`.
+      */}
+        <ChatScreen
+          key={activeSessionId ?? 'none'}
+          initial={initial}
+          todayISO={todayISO}
+          userId={userId}
+          sessionId={activeSessionId}
+          pending={pending}
+          pendingPhoto={pendingPhoto}
+        />
+
+        {/*
+          `avatar` is destructured field by field rather than spread, so `ninaAvatarView`'s
+          `description` — `glm-4.6v`'s private prose, invariant 5 — cannot travel into a client
+          component by accident. The same care `pendingPhoto` takes above.
         */}
-        <Link href="/nina/about" aria-label="Buka detail Nina" className="rounded-pill">
-          <NinaAvatar size="md" src={avatar.src} natural={avatar.natural} crop={avatar.crop} />
-        </Link>
-        <div className="min-w-0">
-          <h1 className="text-[26px] leading-none font-bold tracking-[-0.02em] text-ink">Nina</h1>
-          <p className="mt-1 truncate text-[11px] font-medium text-ink-3">
-            Reads every run. Says what she thinks.
-          </p>
-        </div>
-      </header>
-
-      <ChatScreen
-        initial={initial}
-        todayISO={todayInJakarta()}
-        userId={userId}
-        pending={pending}
-        pendingPhoto={pendingPhoto}
-      />
+        <NinaSidebar
+          avatar={{ src: avatar.src, natural: avatar.natural, crop: avatar.crop }}
+          sessions={sidebarSessions}
+          activeSessionId={activeSessionId}
+        />
+      </NinaSidebarProvider>
     </AppShell>
   )
 }

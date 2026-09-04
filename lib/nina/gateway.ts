@@ -122,7 +122,7 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
     }))
   },
 
-  async readMessageWindow(userId, limit) {
+  async readMessageWindow(userId, limit, sessionId) {
     /*
      * ── ONE CALL. This is the DTO boundary, and this map is the whole of it. ──────────────────
      *
@@ -135,13 +135,23 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
      * the whole history in memory to answer a question about its size and would report 0 for a
      * 500-message history the moment the window happened to be short.
      *
+     * **F35 PHASE 3 (R2, ASSUMPTION A1): `sessionId` IS THE POINT OF THAT PHASE.** This line is the
+     * one that makes a new session a new topic rather than a new tab on the same conversation.
+     * `readMessageWindow` -> `getNinaMessageWindow` is the path from rows to the prompt, and if only
+     * `listNinaMessages` had been scoped, the screen would show a fresh chat while Nina went on
+     * reading the last forty messages of the old one.
+     *
+     * `olderCount` comes back user-wide by design — see `getNinaMessageWindow`'s header. It is
+     * "history you cannot see", which is what `prompts/system.ts` says it is, and what keeps her
+     * from re-introducing herself in every new session.
+     *
      * **The three-spelling translation happens here and ONLY here** (RULING A1): the columns are
      * `text` / `sent_at`, `queries.ts`'s DTO is `body` / `createdAt` uniformly in every function
      * because they all select through one shared `messageColumns`, and phase 2's `MessageInput` is
      * `text` / `sentAt`. Two lines below are that boundary. Neither side is to be "fixed" to match
      * the other.
      */
-    const { messages: rows, olderCount } = await getNinaMessageWindow(userId, limit)
+    const { messages: rows, olderCount } = await getNinaMessageWindow(userId, limit, sessionId)
     const messages: MessageInput[] = rows.map((row) => ({
       id: row.id,
       role: row.role,

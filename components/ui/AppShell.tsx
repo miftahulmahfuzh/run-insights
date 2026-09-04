@@ -1,12 +1,13 @@
 import type * as React from 'react'
 
+import { ChatChrome } from '@/components/nina/ChatChrome'
 import { NinaUnreadBadgeSlot } from '@/components/nina/NinaUnreadBadge'
 import { cn } from '@/lib/cn'
 import { TabBar } from './TabBar'
 
 /**
  * The frame every tabbed screen sits in: a 470px column, 20px gutters, and enough bottom padding to
- * clear the fixed tab bar plus the home-indicator inset.
+ * clear whatever fixed chrome that screen has.
  *
  * **Which screens get the bar, and why it is a prop rather than a layout file.** Roadmap §4.8 names
  * `/`, `/upload`, `/trends` and `/me` as the four tabs, and **F33 adds `/nina` as the fifth**;
@@ -23,51 +24,78 @@ import { TabBar } from './TabBar'
  */
 
 /**
- * How much room the frame leaves at the bottom for fixed chrome.
+ * Which chrome a screen gets, and therefore how much room the frame leaves at the bottom for it.
  *
- * `'chat'` exists for `/nina`, the app's first screen with **two** fixed bars stacked: the tab bar,
- * and the message composer above it.
+ * **One prop for both, because they cannot be allowed to disagree.** A screen whose padding clears
+ * a bar it does not render ends in a strip of empty paper; a screen that renders a bar its padding
+ * does not clear ends in a sliced bubble. Two props would make both states expressible.
+ *
+ *   - `'tabs'` — the four tabs. The bar, and nothing above it.
+ *   - `'chat'` — `/nina` (R1). **No bar at all**, a fixed composer, and one floating control that
+ *     pulls the bar up on request (`components/nina/ChatChrome.tsx`). The user's reason is the
+ *     requirement: "make the chat full screen. so hide the bottom bar completely (because phone
+ *     screen size is small)".
+ *
+ * Renamed from `bottomGap` / `AppShellBottomGap` in this phase, because the value now selects the
+ * chrome as well as the gap and the old name described half of what it does.
  */
-export type AppShellBottomGap = 'tabs' | 'chat'
+export type AppShellScreen = 'tabs' | 'chat'
 
-const BOTTOM_GAP: Record<AppShellBottomGap, string> = {
+const BOTTOM_GAP: Record<AppShellScreen, string> = {
   // 58px bar + the FAB's overhang + breathing room, then the safe-area inset on top.
   tabs: 'pb-[calc(6rem+var(--safe-bottom))]',
   /*
-   * 78px of chrome below the composer (the 58px bar plus the FAB's 20px overhang, which the
-   * composer must clear or it would slice the top off the coral circle), the composer's own 68px
-   * (a 44px control in a py-3 bar), and 16px so the newest bubble is not flush against it. The
-   * three numbers are `TAB_BAR_HEIGHT_PX`, `TAB_BAR_FAB_OVERHANG_PX` and `Composer`'s own
-   * geometry; Tailwind cannot read a constant, so a change to any of them changes this literal.
+   * R1. NO BAR: the composer's own 68px (a 44px control in a py-3 bar), the 8px gap above it, the
+   * floating control's 44px tap target, and 12px so the newest bubble is not flush against it.
+   * 68 + 8 + 44 + 12 = 132, rounded up to the nearest half-rem — the same rounding that made the
+   * pre-R1 literal `10.5rem` (168px) out of 78 + 68 + 16 = 162.
+   *
+   * Those numbers are `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX` and `COMPOSER_RESTING_PX` in
+   * `lib/nina/chrome.ts`, plus `Composer`'s own geometry; Tailwind cannot read a constant, so a
+   * change to any of them changes this literal. `TAB_BAR_HEIGHT_PX` and `TAB_BAR_FAB_OVERHANG_PX`
+   * are deliberately NOT in this sum any more — the bar is not below the composer on this screen.
+   *
+   * FIXED, not dynamic. This padding is the document's height: making it follow the reveal would
+   * move the scroll position every time the bar toggles, and `MessageList`'s auto-scroll would
+   * chase it. So while the bar is showing, the composer rises 78px and the last bubble sits behind
+   * it for those five seconds — which is the right trade, because a runner who pulls up the bar is
+   * on his way to another tab, not re-reading the last line.
    */
-  chat: 'pb-[calc(10.5rem+var(--safe-bottom))]',
+  chat: 'pb-[calc(8.5rem+var(--safe-bottom))]',
 }
 
 export function AppShell({
   children,
   className,
-  bottomGap = 'tabs',
+  screen = 'tabs',
 }: {
   children: React.ReactNode
   className?: string
-  bottomGap?: AppShellBottomGap
+  screen?: AppShellScreen
 }) {
   return (
     <>
       <main
-        className={cn(
-          'mx-auto min-h-dvh w-full max-w-[470px] p-5',
-          BOTTOM_GAP[bottomGap],
-          className,
-        )}
+        className={cn('mx-auto min-h-dvh w-full max-w-[470px] p-5', BOTTOM_GAP[screen], className)}
       >
         {children}
       </main>
       {/* F33 phase 10. `AppShell` has no `'use client'`, so it can construct the server-rendered
           element that `TabBar` — which does — then renders as a child. That is what puts the
           unread count on the tab without a client fetch, a poll, or a prop threaded through every
-          page. Its own `<Suspense fallback={null}>` lives inside the slot. */}
-      <TabBar ninaBadge={<NinaUnreadBadgeSlot />} />
+          page. Its own `<Suspense fallback={null}>` lives inside the slot.
+
+          R1 adds one hop for the conversation screen and keeps the same seam: `ChatChrome` is the
+          client component that owns the reveal state, and it renders `TabBar` with the badge it
+          was handed. The state cannot live here (this file must stay a Server Component — five
+          pages import it, and `tests/share.bundle.test.ts` exists because this import graph leaked
+          a session read once already) and it cannot live in `TabBar` either, because a hidden bar
+          is translated off screen and a control inside it would be unreachable. */}
+      {screen === 'chat' ? (
+        <ChatChrome ninaBadge={<NinaUnreadBadgeSlot />} />
+      ) : (
+        <TabBar ninaBadge={<NinaUnreadBadgeSlot />} />
+      )}
     </>
   )
 }

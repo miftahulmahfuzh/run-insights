@@ -1,9 +1,22 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  max,
+  sql,
+  type SQL,
+} from 'drizzle-orm'
 import type { PgColumn } from 'drizzle-orm/pg-core'
 
 import { db } from '@/lib/db'
 import {
   ninaAvatars,
+  ninaChatSessions,
   ninaFolders,
   ninaMemoryFacts,
   ninaMemorySlots,
@@ -18,6 +31,7 @@ import {
   type NinaMemorySource,
   type NinaMessageSource,
   type NinaRole,
+  type NinaSessionTitleSource,
   type NinaSlotValue,
   type NinaTurnKind,
   type NinaTurnStatus,
@@ -28,6 +42,11 @@ import {
   NINA_ADMIN_MANIFEST_MAX,
   NINA_ADMIN_PAGE_SIZE,
 } from '@/lib/nina/album'
+import {
+  NINA_SESSION_TITLE_MAX_CHARS,
+  mostRecentNinaSession,
+  orderNinaSessions,
+} from '@/lib/nina/sessions'
 
 /**
  * Every Nina read and write, in one module — `lib/db/queries.ts` for `lib/nina/`.
@@ -100,6 +119,13 @@ export interface NinaIdentity {
 export interface NinaMessageRow {
   id: string
   seq: number
+  /**
+   * Which conversation this message is in (F35 R2). Added by phase 3, which needs to read a session
+   * OFF a message rather than only filter by one: `lib/nina/sessionResolve.ts` resolves R22's
+   * apology into the chat where he asked for the photo, and `NinaImageJobArgs.replyToId` is the only
+   * handle it has. `NOT NULL` in the column, so `string` and never nullable here.
+   */
+  sessionId: string
   role: NinaRole
   body: string
   createdAt: Date
@@ -118,6 +144,33 @@ export interface NinaMessageInsert {
   turnId?: string | null
   replyToId?: string | null
   runId?: string | null
+}
+
+/**
+ * One session, as the sidebar and the resolver want it. `userId` is absent on purpose: it is the
+ * scope, not a field — nothing downstream needs it and a row that carries it invites a caller to
+ * trust it instead of `requireUserId()`.
+ *
+ * `title` may be NULL, and `sessionTitleFor` in `lib/nina/sessions.ts` is the only sanctioned way to
+ * turn that into something a screen can show.
+ */
+export interface NinaSessionRow {
+  id: string
+  title: string | null
+  titleSource: NinaSessionTitleSource | null
+  pinnedAt: Date | null
+  createdAt: Date
+}
+
+/**
+ * A session plus R5's sort key, which is derived and therefore not on the row: `max(sent_at)` over
+ * `role = 'runner'` inside it. NULL means he has never written in this session — a session he just
+ * created, or one where only her proactive messages live.
+ *
+ * See `nina_chat_sessions`'s header for why this is not a stored column.
+ */
+export interface NinaSessionListRow extends NinaSessionRow {
+  lastUserMessageAt: Date | null
 }
 
 export interface NinaImageRow {
@@ -390,9 +443,18 @@ export type NinaFolderRenameResult =
  * silently when a column is added, and two of these rows go to a model.
  * ==========================================================================*/
 
+const sessionColumns = {
+  id: ninaChatSessions.id,
+  title: ninaChatSessions.title,
+  titleSource: ninaChatSessions.titleSource,
+  pinnedAt: ninaChatSessions.pinnedAt,
+  createdAt: ninaChatSessions.createdAt,
+}
+
 const messageColumns = {
   id: ninaMessages.id,
   seq: ninaMessages.seq,
+  sessionId: ninaMessages.sessionId,
   role: ninaMessages.role,
   body: ninaMessages.text,
   createdAt: ninaMessages.sentAt,
@@ -470,6 +532,315 @@ export async function getNinaIdentity(userId: string): Promise<NinaIdentity> {
  * §4 The conversation
  * ==========================================================================*/
 
+/* ---------------------------------------------------------------------------
+ * §4a Sessions — the conversation's partition (F35 R2, R4, R5, R11)
+ *
+ * Nine statements: create, read one, list with R5's derived sort key, resolve "the current one",
+ * two title writes, the pin, a message count for the delete confirmation, and the delete itself.
+ * Every one is `userId`-scoped in its WHERE, per this module's rule 1 — a session id arriving from
+ * a URL is a claim, and only a row that came back from an owner-scoped read is a fact.
+ * -------------------------------------------------------------------------*/
+
+/**
+ * A new, empty, untitled session (R2's "focus on a new topic").
+ *
+ * No title argument: a new session is always untitled, and `title IS NULL` is exactly what makes
+ * phase 4's titler idempotent. Migration 0004's legacy session is the only titled row anything ever
+ * inserts, and the migration writes it in SQL.
+ *
+ * The throw is not a failure path — `INSERT … RETURNING` always yields its row — it is how the
+ * `T | undefined` from array indexing becomes the `T` the caller was promised. `actions.ts` does the
+ * same thing for the same reason.
+ */
+export async function createNinaSession(userId: string): Promise<NinaSessionRow> {
+  const [row] = await db
+    .insert(ninaChatSessions)
+    .values({ id: newId(), userId })
+    .returning(sessionColumns)
+
+  if (row == null) throw new Error('createNinaSession inserted no row')
+  return row
+}
+
+/**
+ * One session of his, or `null`. This is what turns `?s=<id>` from a claim into a fact, and phase 3
+ * calls it before it reads a single message.
+ *
+ * `null` means "not yours, or gone" — deliberately one outcome, per this module's header. A screen
+ * that distinguished them would tell a stranger which session ids exist.
+ */
+export async function getNinaSession(userId: string, id: string): Promise<NinaSessionRow | null> {
+  const rows = await db
+    .select(sessionColumns)
+    .from(ninaChatSessions)
+    .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
+    .limit(1)
+
+  return rows[0] ?? null
+}
+
+/**
+ * The rows behind both public readers, in the base order the index already returns.
+ *
+ * **One batch, two statements, one snapshot** — the `getNinaIdentity` idiom. The second statement is
+ * R5's sort key, derived rather than stored (see `nina_chat_sessions`'s header): `max(sent_at)`
+ * grouped by session over `role = 'runner'`, which reads
+ * `nina_messages_user_session_runner_idx` index-only. Batched with the first so a session row can
+ * never be paired with an activity instant from a different moment.
+ *
+ * `max(ninaMessages.sentAt)` and not a hand-written `sql` aggregate: drizzle's `max()` applies the
+ * COLUMN's own driver mapping, so this comes back as a real `Date` rather than as whatever the wire
+ * format happened to be.
+ *
+ * Not exported. The order is a decision, and `lib/nina/sessions.ts` owns decisions — so the two
+ * exported readers below differ only in which comparator they hand these rows to, which is the whole
+ * point: "the list" and "the current session" are different questions with different answers.
+ */
+async function readNinaSessionsWithActivity(userId: string): Promise<NinaSessionListRow[]> {
+  const [sessionRows, activityRows] = await db.batch([
+    db
+      .select(sessionColumns)
+      .from(ninaChatSessions)
+      .where(eq(ninaChatSessions.userId, userId))
+      .orderBy(desc(ninaChatSessions.createdAt)),
+
+    db
+      .select({
+        sessionId: ninaMessages.sessionId,
+        lastUserMessageAt: max(ninaMessages.sentAt),
+      })
+      .from(ninaMessages)
+      .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.role, 'runner')))
+      .groupBy(ninaMessages.sessionId),
+  ])
+
+  const lastUserAt = new Map(activityRows.map((row) => [row.sessionId, row.lastUserMessageAt]))
+
+  return sessionRows.map((row) => ({
+    ...row,
+    lastUserMessageAt: lastUserAt.get(row.id) ?? null,
+  }))
+}
+
+/**
+ * **R2's session history, in R4-then-R5 order: pinned first, then most recent user message first.**
+ *
+ * The ordering is `orderNinaSessions`'s and not this statement's, because
+ * `vitest.config.ts` has no jsdom and no database — a rule in an `ORDER BY` is a rule no test can
+ * assert (invariant 7). That is affordable because R2 asks for "a list of all past sessions", so
+ * there is no `LIMIT` to be correct about; if a later phase paginates, the comparator moves into SQL
+ * and its test moves with it.
+ */
+export async function listNinaSessions(userId: string): Promise<NinaSessionListRow[]> {
+  return orderNinaSessions(await readNinaSessionsWithActivity(userId))
+}
+
+/**
+ * **The id of his current session, creating one if he has none.**
+ *
+ * `mostRecentNinaSession` and NOT `listNinaSessions(...)[0]`: the display list puts pinned sessions
+ * on top, so a session he pinned in March would otherwise become the destination of every proactive
+ * message (assumption A3) and the default screen (assumption A4). "Most recent" means most recent by
+ * activity, pins irrelevant, and `lib/nina/sessions.ts` keeps the two orders as two functions so this
+ * cannot be got wrong quietly.
+ *
+ * **It creates, so it is a write, and two tabs can race it.** There is no transaction to take —
+ * `db.transaction()` throws on neon-http — and no unique constraint can express "one session per
+ * user" in a feature whose whole point is many. The loser of a race therefore gets a second empty
+ * session, which is visible in the list and removable (R11). That is the honest cost; a lock we
+ * cannot take and a constraint we must not add are the alternatives.
+ */
+export async function ensureNinaSession(userId: string): Promise<string> {
+  const existing = mostRecentNinaSession(await readNinaSessionsWithActivity(userId))
+  if (existing != null) return existing.id
+  return (await createNinaSession(userId)).id
+}
+
+/**
+ * R3's second half: he renames a session himself.
+ *
+ * Trim, cap at `NINA_SESSION_TITLE_MAX_CHARS`, refuse empty. `false` is "not yours, gone, or the title
+ * was blank" — one outcome, as everywhere else in this module. `title_source = 'manual'` is what
+ * tells phase 4's titler to keep its hands off, and it is set in the same statement as the title so
+ * the two can never disagree.
+ *
+ * The cap here and phase 4's rule are ONE number, not a wide guard around a narrow rule: both are
+ * `NINA_SESSION_TITLE_MAX_CHARS`, declared once in `lib/nina/sessions.ts` and imported by
+ * `lib/nina/title.ts`. Phase 4 still owns the *semantic* rule — what "3-4 words" means when a model
+ * returns seven — but not a second number.
+ */
+export async function renameNinaSession(
+  userId: string,
+  id: string,
+  title: string,
+): Promise<boolean> {
+  const cleaned = title.trim().slice(0, NINA_SESSION_TITLE_MAX_CHARS)
+  if (cleaned.length === 0) return false
+
+  const updated = await db
+    .update(ninaChatSessions)
+    .set({ title: cleaned, titleSource: 'manual' })
+    .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
+    .returning({ id: ninaChatSessions.id })
+
+  return updated.length > 0
+}
+
+/**
+ * **Phase 4's titler write, and its idempotence is the `isNull` in the WHERE.**
+ *
+ * Written here because `lib/nina/queries.ts` is phase 1's file, not because phase 1 needs it. Phase 4
+ * owns the prompt, the parse and the `after()` hook; this is the one statement it needs and cannot
+ * write for itself.
+ *
+ * `title IS NULL` in the predicate rather than a read-then-write is what makes the whole thing safe
+ * under the two conditions phase 4 has to survive: `after()` can run more than once, and two tabs can
+ * finish the same first exchange at the same time. One conditional UPDATE, one row count, no race —
+ * and it is also why a manually renamed session and 0004's `'backfill'` session are untouchable
+ * without a second check: both have a non-NULL title.
+ *
+ * `false` means "already titled, not yours, or gone", which is precisely the set of cases in which
+ * phase 4 should do nothing.
+ */
+export async function setNinaSessionTitleIfUntitled(
+  userId: string,
+  id: string,
+  title: string,
+): Promise<boolean> {
+  const cleaned = title.trim().slice(0, NINA_SESSION_TITLE_MAX_CHARS)
+  if (cleaned.length === 0) return false
+
+  const updated = await db
+    .update(ninaChatSessions)
+    .set({ title: cleaned, titleSource: 'auto' })
+    .where(
+      and(
+        eq(ninaChatSessions.userId, userId),
+        eq(ninaChatSessions.id, id),
+        isNull(ninaChatSessions.title),
+      ),
+    )
+    .returning({ id: ninaChatSessions.id })
+
+  return updated.length > 0
+}
+
+/**
+ * R4. `pinned_at` is stamped or cleared; `now` is a parameter so a test can pin a date instead of
+ * mocking global time — the `markNinaMessagesRead` precedent.
+ *
+ * Re-pinning an already-pinned session moves `pinned_at` forward, which changes nothing about the
+ * order (pinning partitions the list, it does not sort it — see `compareNinaSessions`). It is left
+ * that way rather than made a no-op because "when did I pin this" staying true costs nothing.
+ */
+export async function setNinaSessionPinned(
+  userId: string,
+  id: string,
+  pinned: boolean,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const updated = await db
+    .update(ninaChatSessions)
+    .set({ pinnedAt: pinned ? now : null })
+    .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
+    .returning({ id: ninaChatSessions.id })
+
+  return updated.length > 0
+}
+
+/**
+ * How many messages a session holds — **for phase 5's delete confirmation, which is the only thing
+ * standing between a mis-tap and a lost conversation.**
+ *
+ * There is no confirm dialog anywhere in this codebase today and no undo for R11 (the archive flag
+ * was ruled out), so the confirmation has to be able to say what it destroys. A confirm that cannot
+ * name the cost is not a confirm.
+ *
+ * Every role, not just his: the count is "what disappears", and her replies disappear too. That is
+ * why it is a separate statement rather than a column on `listNinaSessions`'s aggregate, which is
+ * deliberately `role = 'runner'` only.
+ */
+export async function countNinaSessionMessages(userId: string, sessionId: string): Promise<number> {
+  const rows = await db
+    .select({ n: sql<number>`count(*)`.mapWith(Number) })
+    .from(ninaMessages)
+    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.sessionId, sessionId)))
+
+  return rows[0]?.n ?? 0
+}
+
+/**
+ * **R11. One DELETE, and the foreign keys do the rest.**
+ *
+ * `nina_chat_sessions` -> `nina_messages.session_id` (cascade) -> `nina_message_images.message_id`
+ * (cascade, and it predates this feature). Postgres chains both, so this statement removes the
+ * conversation and its photo ROWS.
+ *
+ * **What it deliberately leaves behind, stated rather than assumed:**
+ *   - the Blob objects those image rows pointed at. The rows go, the bytes stay — the same call
+ *     `deleteNinaMessage` makes, and the `reap-orphaned-blobs` skill does not cover the `nina/`
+ *     prefix yet. This function does NOT pre-read the image rows to hand their pathnames back: a
+ *     return value nothing consumes is a promise this set has not made.
+ *   - every `source_message_id` in `nina_memory_slots` / `nina_memory_facts` that pointed into the
+ *     session. Neither column has a foreign key, so nothing cascades and the ledger keeps its facts.
+ *     That is the memory staying global on purpose (assumption A2): a distilled fact can be true
+ *     after the sentence that produced it is gone, and deleting a conversation must not quietly
+ *     delete what she knows about him.
+ *   - `nina_turns`. It is the audit trail; a removed conversation does not un-spend its tokens.
+ *
+ * A surviving message in ANOTHER session that quoted one of these has its `reply_to_id` set to NULL
+ * by the self-FK, and `resolveQuote` already degrades that to plain text. No new behaviour.
+ *
+ * `false` is "not yours, or already gone" — the caller turns that into one message.
+ */
+export async function removeNinaSession(userId: string, id: string): Promise<boolean> {
+  const removed = await db
+    .delete(ninaChatSessions)
+    .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
+    .returning({ id: ninaChatSessions.id })
+
+  return removed.length > 0
+}
+
+/* ---------------------------------------------------------------------------
+ * §4b The messages
+ *
+ * **The session is REQUIRED on the three functions that carry the partition** — `listNinaMessages`,
+ * `getNinaMessageWindow` and `insertNinaMessages`. Phase 1 shipped it optional so that the tree
+ * compiled with no caller touched; F35 phase 3 removed the option, and that removal is not tidying,
+ * it is the proof. `nina_messages.session_id` is `NOT NULL`, there are exactly three writers of
+ * this table (`lib/nina/actions.ts`, `lib/nina/proactive.ts`, `lib/nina/imagejobs.ts`), and two of
+ * them run with no runner present and no session in view. A defaulted parameter would let one of
+ * them keep compiling while writing into the wrong conversation, which is invisible until Nina
+ * answers a question from another topic. Required means `tsc` names every writer that has not
+ * decided — and all three now resolve through `lib/nina/sessionResolve.ts`, where assumption A3's
+ * policy lives once.
+ *
+ * `countUnreadNinaMessages` and `markNinaMessagesRead` keep theirs optional for good: "how many of
+ * hers are unread across every session" is the tab bar's question and "in this session" is the
+ * screen's, and both are real.
+ * -------------------------------------------------------------------------*/
+
+/**
+ * `user_id = $1`, plus `session_id = $2` when there is one. The `folderSubtree` idiom — a predicate
+ * spelled once so several statements cannot drift apart.
+ *
+ * The session is optional HERE and required at three of the four call sites, which is not a
+ * contradiction: `countUnreadNinaMessages` and `markNinaMessagesRead` genuinely ask their question
+ * both ways (see §4b's header), and `getNinaMessageWindow` no longer uses this helper at all
+ * because its two statements deliberately disagree about scope (F35 phase 3, D4).
+ *
+ * **This is also the ownership proof for every READ that takes a session id** (invariant 3). The
+ * session predicate is ANDed onto the user predicate, never substituted for it, so a forged or
+ * foreign `?s=` returns zero rows instead of somebody else's conversation. The one case a predicate
+ * cannot cover is an INSERT, which is why `insertNinaMessages` checks by hand.
+ */
+function messageScope(userId: string, sessionId?: string): SQL | undefined {
+  return sessionId == null
+    ? eq(ninaMessages.userId, userId)
+    : and(eq(ninaMessages.userId, userId), eq(ninaMessages.sessionId, sessionId))
+}
+
 /**
  * The last `limit` messages, returned **OLDEST FIRST** — display order, which is what phase 4's
  * `app/nina/page.tsx` renders straight down the page.
@@ -478,15 +849,26 @@ export async function getNinaIdentity(userId: string): Promise<NinaIdentity> {
  * because "the newest n" is an index-backed descending scan of n rows while "the oldest n of the
  * tail" is not expressible without knowing where the tail starts. Reversing `n <= 200` items is
  * free; reading the whole conversation to reverse it would not be.
+ *
+ * ── `sessionId` IS REQUIRED (F35 PHASE 3, R2) ─────────────────────────────────────────────────
+ * `opts.sessionId` slices that scan to one session, reading `nina_messages_session_seq_idx`. Phase
+ * 1 shipped it optional to keep the tree green; this is the parameter phase 3 made required.
+ * **`seq` is still the order** (invariant 6) — the session is a WHERE clause, not a re-sort, and no
+ * per-session sequence exists.
+ *
+ * The caller is expected to have proved the session is his (`chooseActiveSession` over
+ * `listNinaSessions`), but the `user_id` predicate stays anyway: invariant 3 says every statement in
+ * this file scopes on the owner, and a foreign session id here comes back as `[]` rather than as
+ * somebody else's conversation.
  */
 export async function listNinaMessages(
   userId: string,
-  opts: { limit: number },
+  opts: { limit: number; sessionId: string },
 ): Promise<NinaMessageRow[]> {
   const rows = await db
     .select(messageColumns)
     .from(ninaMessages)
-    .where(eq(ninaMessages.userId, userId))
+    .where(messageScope(userId, opts.sessionId))
     .orderBy(desc(ninaMessages.seq))
     .limit(opts.limit)
 
@@ -494,9 +876,26 @@ export async function listNinaMessages(
 }
 
 /**
- * Phase 2's `readMessageWindow`: the last `limit` messages oldest-first, plus how many exist
- * before them, so the system prompt can say "there are 312 earlier messages" instead of implying
- * the conversation began forty messages ago.
+ * `readMessageWindow`'s query: the last `limit` messages **of one session**, oldest-first, plus how
+ * many of his messages exist that this window does not show.
+ *
+ * ── THE WINDOW IS SESSION-SCOPED. THE COUNT IS NOT. (F35 PHASE 3, D4) ────────────────────────
+ * The asymmetry is deliberate and it is the whole of assumption A1's safety margin, so it must not
+ * be "fixed" into symmetry.
+ *
+ * The WINDOW carries the session predicate because that is what R2 means: "focus on a new topic" is
+ * a claim about what Nina is GIVEN TO READ, not only about what the screen shows. This window is
+ * handed to `glm-5.3` on every turn, so without the predicate a new session would look new and
+ * behave exactly like the old one.
+ *
+ * The COUNT stays `WHERE user_id = $1` because of what the prompt does with it.
+ * `lib/nina/prompts/system.ts` reads: *"An EMPTY window means you have never spoken to him —
+ * introduce yourself and ask his name. `olderMessageCount` above 0 means there is more history you
+ * cannot see."* Scope the count to the session as well and every new session presents to her as a
+ * brand-new runner: empty window, zero older, so she introduces herself and asks his name again.
+ * Left user-wide, `olderCount` reads as "how much of his history you are not being shown" — which
+ * is exactly true, covers both "earlier in this chat" and "in his other chats", and keeps the
+ * introduce-yourself branch for the one person it is for. No prompt string had to change.
  *
  * `olderCount` is a SQL `count(*)` minus the window's length — never `allMessages.length - limit`,
  * which would mean materialising the whole conversation to compute one integer. One batch, so the
@@ -505,15 +904,17 @@ export async function listNinaMessages(
 export async function getNinaMessageWindow(
   userId: string,
   limit: number,
+  sessionId: string,
 ): Promise<{ messages: NinaMessageRow[]; olderCount: number }> {
   const [rows, countRows] = await db.batch([
     db
       .select(messageColumns)
       .from(ninaMessages)
-      .where(eq(ninaMessages.userId, userId))
+      .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.sessionId, sessionId)))
       .orderBy(desc(ninaMessages.seq))
       .limit(limit),
 
+    /* USER-WIDE ON PURPOSE. See the header — this is not a missed predicate. */
     db
       .select({ total: sql<number>`count(*)`.mapWith(Number) })
       .from(ninaMessages)
@@ -532,12 +933,36 @@ export async function getNinaMessageWindow(
  *
  * Returns the inserted rows in the same order, ids and `seq` included, because phase 3 needs the
  * ids to hand back to the client and phase 6 needs them to attach images.
+ *
+ * ── THE SESSION IS REQUIRED, AND NOWHERE NULLABLE BELOW THIS LINE (F35 PHASE 3, R2) ─────────
+ * `nina_messages.session_id` is `NOT NULL`, so unlike the reads above this one cannot simply omit a
+ * predicate. Phase 1 shipped the parameter optional and resolved an omission through
+ * `ensureNinaSession`; phase 3 removed both the option and the fallback, because a defaulted
+ * session is exactly the bug that would be invisible — a writer keeps compiling while filing its
+ * turn into the wrong conversation. All three writers now resolve through
+ * `lib/nina/sessionResolve.ts` before they call this, which is where assumption A3's policy lives.
+ *
+ * `sendNinaMessage`'s INPUT is `string | null`, because "he has no sessions yet" is a real state a
+ * client can be in; by the time a row reaches this function that has been resolved to an id.
+ *
+ * ── AND IT IS THE SECOND PLACE IN THIS FILE THAT VALIDATES AN FK BY HAND ────────────────────
+ * `insertNinaMessageImages` was the first, for the same reason: the foreign key proves the session
+ * EXISTS, and a session id that exists but is someone else's is exactly what invariant 3 is about. A
+ * write that trusted it would file his message into a stranger's conversation, where a cascade could
+ * later delete it. So an unowned session returns `[]`, the convention that function set — and
+ * `actions.ts`'s existing `throw new Error('insertNinaMessages returned no row')` turns that into a
+ * visible send failure rather than a silent one.
  */
 export async function insertNinaMessages(
   userId: string,
   rows: readonly NinaMessageInsert[],
+  sessionId: string,
 ): Promise<NinaMessageRow[]> {
   if (rows.length === 0) return []
+
+  const owned = await getNinaSession(userId, sessionId)
+  if (owned == null) return []
+  const target = owned.id
 
   const inserted = await db
     .insert(ninaMessages)
@@ -545,6 +970,9 @@ export async function insertNinaMessages(
       rows.map((row) => ({
         id: newId(),
         userId,
+        /* `target` is the required third parameter, proved owned above — so there is no `??` here,
+         * no default, and no per-row session: a writer that has not resolved one does not compile. */
+        sessionId: target,
         role: row.role,
         text: row.body,
         source: row.source ?? 'chat',
@@ -577,14 +1005,23 @@ export async function getNinaMessagesByIds(
 /**
  * Phase 10's unread dot. Reads `nina_messages_user_unread_idx` exactly — the partial index exists
  * for this one query, which runs on every render of the tab bar.
+ *
+ * **`opts.sessionId` is permanent, not a migration step (F35 R9).** Unscoped is the tab bar's
+ * question — "is there anything of hers I have not read, anywhere" — and scoped is the screen's,
+ * and F35 phase 8 is the phase that decides which one clears the dot. Scoped, the partial index is
+ * still the index that answers it: `session_id` is a heap filter over a set that holds only unread
+ * messages of hers, which is a handful of rows by construction.
  */
-export async function countUnreadNinaMessages(userId: string): Promise<number> {
+export async function countUnreadNinaMessages(
+  userId: string,
+  opts: { sessionId?: string } = {},
+): Promise<number> {
   const rows = await db
     .select({ n: sql<number>`count(*)`.mapWith(Number) })
     .from(ninaMessages)
     .where(
       and(
-        eq(ninaMessages.userId, userId),
+        messageScope(userId, opts.sessionId),
         eq(ninaMessages.role, 'nina'),
         isNull(ninaMessages.readAt),
       ),
@@ -593,26 +1030,134 @@ export async function countUnreadNinaMessages(userId: string): Promise<number> {
 }
 
 /**
- * Opening the chat marks everything of hers read. `now` is a parameter so a test pins a date
+ * Opening the chat marks everything of hers read. `opts.now` is a parameter so a test pins a date
  * instead of mocking global time — `lib/profile/schema.ts`'s `toProfileWrite` precedent.
  * Returns how many rows changed, so phase 10 can skip a `revalidatePath` when nothing did.
+ *
+ * **`now` moved from a positional parameter into an options bag (F35 R9), and that is the only shape
+ * change in this file.** `sessionId` behind an optional `now` would have forced phase 8 to write
+ * `markNinaMessagesRead(userId, undefined, sessionId)`. No caller or test in the repo ever passed
+ * `now`, so nothing breaks; `app/nina/page.tsx`'s `markNinaMessagesRead(userId)` is unchanged.
+ *
+ * `opts.sessionId` scopes the mark to one conversation, which is what makes "has he opened the most
+ * recent chat" answerable at all — phase 8 decides whether an unread message sitting in an OLDER
+ * session should still raise the dot, and it needs both shapes to be able to choose.
  */
 export async function markNinaMessagesRead(
   userId: string,
-  now: Date = new Date(),
+  opts: { sessionId?: string; now?: Date } = {},
 ): Promise<number> {
   const updated = await db
     .update(ninaMessages)
-    .set({ readAt: now })
+    .set({ readAt: opts.now ?? new Date() })
     .where(
       and(
-        eq(ninaMessages.userId, userId),
+        messageScope(userId, opts.sessionId),
         eq(ninaMessages.role, 'nina'),
         isNull(ninaMessages.readAt),
       ),
     )
     .returning({ id: ninaMessages.id })
   return updated.length
+}
+
+/* ---------------------------------------------------------------------------
+ * §4c Message mutation — F35 PHASE 7's, and written here at phase 1's invitation.
+ *
+ * `updateNinaMessage(userId, id, body)` and `deleteNinaMessage(userId, id)` belong in THIS section,
+ * between `markNinaMessagesRead` above and the `§5 Images` banner below. Phase 7 writes them,
+ * because it owns the rule about what may be edited and what an empty edit means, and a statement
+ * with no rule behind it would be a statement nobody could review. That rule is
+ * `lib/nina/edit.ts`; these two statements are its only writers.
+ *
+ * Two facts they inherit from this phase rather than deciding for themselves: `nina_message_images`
+ * cascades from `message_id` so a deleted message takes its photo ROWS (never its blobs), and
+ * `reply_to_id` is `ON DELETE SET NULL` so a quote pointing at a deleted message degrades to plain
+ * text — which `resolveQuote` already handles.
+ * -------------------------------------------------------------------------*/
+
+/**
+ * R8's edit, as one statement. **`user_id` is in the WHERE, so a foreign id updates nothing and
+ * comes back as `null`** — which is the refusal `lib/nina/messageActions.ts` reports, not a
+ * degradation. Invariant 3's rule: a message id from a client is a claim; a row that came back
+ * from an owner-scoped write is a fact.
+ *
+ * ── WHAT IT DELIBERATELY DOES NOT TOUCH ───────────────────────────────────────────────────────
+ *   · `seq` — invariant 6. Sessions slice the total order and an edit does not move a message in
+ *     it. Rewriting a bubble is not re-sending it.
+ *   · `sent_at` — the message was sent when it was sent. Bumping it would reorder the day dividers
+ *     `groupIntoDays` draws and would tell Nina, through `ConversationTurn.daysAgo`, that a
+ *     three-week-old message is new.
+ *   · `read_at` — an edit to one of her messages is not a new unread message.
+ *   · `turn_id` — and this one is a decision rather than an omission. `nina_turns` holds NO
+ *     message text (see the table: model, tokens, latency, cost, status, and an `args` blob that is
+ *     NULL for every non-image kind), so there is nothing for the new text to contradict. What the
+ *     turn row asserts is that a model call happened and what it cost, which stays true. Nulling
+ *     the pointer would falsify the cost ledger, which is the one question that table exists to
+ *     answer. (In practice the column is NULL on every chat and proactive row anyway — no caller
+ *     of `insertNinaMessages` has ever passed a `turnId` except `lib/nina/imagejobs.ts`, which
+ *     stores an image-job id there.)
+ *
+ * No session parameter, and that is deliberate: `id` is the primary key and `user_id` is the
+ * ownership proof, so a session argument would be redundant and would create a way to pass a
+ * mismatched pair. Phase 1's message READS are session-scoped because a window is a slice; a
+ * mutation addressed by primary key is not.
+ *
+ * The DTO spelling is `body` and the column is `text` (RULING A1). The `.set({ text: body })`
+ * below is the only place in this function where those two meet, exactly as `insertNinaMessages`
+ * does it.
+ */
+export async function updateNinaMessage(
+  userId: string,
+  id: string,
+  body: string,
+): Promise<NinaMessageRow | null> {
+  const updated = await db
+    .update(ninaMessages)
+    .set({ text: body })
+    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.id, id)))
+    .returning(messageColumns)
+
+  return updated[0] ?? null
+}
+
+/**
+ * R8's delete. One statement, owner-scoped, returning the row as it was so the caller can report
+ * exactly which id is gone.
+ *
+ * ── THREE THINGS THE DATABASE DOES ON ITS OWN, AND THIS PHASE'S POSITION ON EACH ──────────────
+ *   1. **`reply_to_id` is nulled** on every message that quoted this one — the self-FK's
+ *      `ON DELETE SET NULL`. `resolveQuote` already documents a null pointer as "render it as a
+ *      plain message", so a quote degrades instead of throwing. That is the designed outcome and
+ *      it is an exit test of this phase, not an assumption.
+ *   2. **`nina_message_images` rows CASCADE away** ("an image with no message is nothing"). The
+ *      Blob bytes are NOT deleted and nothing in this tree reaps them — assumption A5, accepted
+ *      deliberately and out of scope here. `reap-orphaned-blobs` is the skill that does this for
+ *      `shots/` and does not cover `nina/` yet; extending it is its own card.
+ *      `lib/nina/messageActions.ts` logs the orphaned pathnames on the way out so they are at
+ *      least findable.
+ *   3. **`nina_memory_slots.source_message_id` and `nina_memory_facts.source_message_id` are left
+ *      DANGLING**, because neither is a foreign key and nothing cascades. A5 keeps the fact, and
+ *      the code agrees: the only readers collapse the column to a boolean (the admin memory ledger
+ *      renders "from a message" / "no message behind it") and the fact-permission rule uses it to
+ *      keep in-place editing of a distilled fact barred — which is still the right answer once the
+ *      evidence is gone. A distilled fact may be true after the sentence that produced it is gone;
+ *      cascading it away would let one deleted message quietly rewrite her long-term memory.
+ *
+ * `nina_turns` is untouched for the reason `updateNinaMessage` gives: deleting a message must not
+ * retroactively make her cheaper. `turn_id` has no FK precisely so "an audit pointer must not be
+ * able to block a delete", and the inverse holds too.
+ */
+export async function deleteNinaMessage(
+  userId: string,
+  id: string,
+): Promise<NinaMessageRow | null> {
+  const deleted = await db
+    .delete(ninaMessages)
+    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.id, id)))
+    .returning(messageColumns)
+
+  return deleted[0] ?? null
 }
 
 /* ============================================================================

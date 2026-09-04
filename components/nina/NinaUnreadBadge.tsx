@@ -18,11 +18,28 @@ import { countUnreadNinaMessages } from '@/lib/nina/queries'
  * own answer, and it keeps the count out of the client bundle entirely.
  *
  * ── WHEN IT UPDATES ─────────────────────────────────────────────────────────────────────────────
- * On every server render of a tabbed screen, which in practice means every navigation. Open
- * `/nina`, the page marks everything read in `after()`, navigate anywhere, the dot is gone. It is
- * deliberately NOT live: making it live needs a signal, and the only honest one in this plan set is
- * phase 11's service worker `postMessage`-ing its clients. A dot that is at most one navigation
- * stale is a fair trade for zero polling.
+ * On every server render of a tabbed screen, which in practice means every navigation — **plus one
+ * render on the chat screen itself, which is R9.** This docstring used to say the dot was
+ * "deliberately NOT live" and that being "at most one navigation stale is a fair trade for zero
+ * polling". The trade was real and the user filed it as a bug: he opens `/nina`, reads everything,
+ * and the dot is still painted, because `app/nina/page.tsx` marks the session read in `after()` —
+ * after this payload was rendered — and nothing re-rendered the bar carrying it.
+ *
+ * The trade is now paid off without a poll. `components/nina/NinaUnreadSync.tsx` fires exactly one
+ * `router.refresh()` when, and only when, the render it arrived in delivered unread messages of
+ * hers; the refreshed render counts after the UPDATE, so the dot goes. There is still no timer, no
+ * interval and no route handler, and a visit with nothing to clear still costs nothing at all.
+ * `lib/nina/unread.ts` holds the rule and the argument for why the sequence terminates.
+ *
+ * ── WHY THE COUNT IS STILL GLOBAL UNDER SESSIONS ────────────────────────────────────────────────
+ * `countUnreadNinaMessages` is called here with no session: `role = 'nina' AND read_at IS NULL`
+ * across every session is the dot's meaning — "there is something of hers you have not read" — and
+ * it is also what keeps this query on the partial index `nina_messages_user_unread_idx`, which the
+ * schema notes exists for this one query and which runs on every render of every tabbed screen.
+ * MARK-read is the half that is session-scoped: opening one conversation says nothing about
+ * another, so a message left unread in an older session correctly keeps the dot until he opens that
+ * session. Assumption A3 (proactive messages land in the most recent session) is what makes the
+ * common case clear itself on the first visit.
  *
  * ── WHY `getUserId` AND NOT `requireUserId` ─────────────────────────────────────────────────────
  * This renders inside `AppShell`, which `/`'s signed-out state also renders, and which the two

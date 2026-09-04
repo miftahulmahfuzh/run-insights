@@ -91,6 +91,7 @@ describe('nina_messages', () => {
         'id',
         'seq',
         'user_id',
+        'session_id',
         'role',
         'text',
         'source',
@@ -122,11 +123,13 @@ describe('nina_messages', () => {
     expect(fkFor(schema.ninaMessages, 'turn_id')).toBeUndefined()
   })
 
-  it('has the four indexes the reads need', () => {
+  it('has the six indexes the reads need — four F33 and two F35', () => {
     expect(indexNames(schema.ninaMessages)).toEqual([
       'nina_messages_reply_to_idx',
+      'nina_messages_session_seq_idx',
       'nina_messages_user_run_idx',
       'nina_messages_user_seq_idx',
+      'nina_messages_user_session_runner_idx',
       'nina_messages_user_unread_idx',
     ])
   })
@@ -286,6 +289,58 @@ describe('nina_folders', () => {
   })
 })
 
+describe('nina_chat_sessions — F35 R2', () => {
+  it('is a table with exactly the six columns the feature was planned against', () => {
+    expect(cfg(schema.ninaChatSessions).name).toBe('nina_chat_sessions')
+    expect(names(schema.ninaChatSessions)).toEqual(
+      ['id', 'user_id', 'title', 'title_source', 'pinned_at', 'created_at'].sort(),
+    )
+    expect(columns(schema.ninaChatSessions).get('id')?.primary).toBe(true)
+  })
+
+  it('cascades from users, so deleting an account takes its sessions with it', () => {
+    expect(fkFor(schema.ninaChatSessions, 'user_id')?.onDelete).toBe('cascade')
+  })
+
+  it('title and title_source are nullable, and NULL/NULL is "nobody has named this yet"', () => {
+    // The only state phase 4's titler may write into, and the state `sessionTitleFor` renders as
+    // "Chat baru". `setNinaSessionTitleIfUntitled`'s `isNull` predicate is its idempotence.
+    expect(sqlType(schema.ninaChatSessions, 'title')).toBe('text')
+    expect(columns(schema.ninaChatSessions).get('title')?.notNull).toBe(false)
+    expect(columns(schema.ninaChatSessions).get('title_source')?.notNull).toBe(false)
+  })
+
+  it('pinned_at is a nullable timestamp, not an is_pinned boolean (R4)', () => {
+    expect(sqlType(schema.ninaChatSessions, 'pinned_at')).toBe('timestamp with time zone')
+    expect(columns(schema.ninaChatSessions).get('pinned_at')?.notNull).toBe(false)
+  })
+
+  it('carries no last_user_message_at — R5 derives it, because a watermark is a cache with four writers', () => {
+    expect(names(schema.ninaChatSessions)).not.toContain('last_user_message_at')
+    // And no archive flag: R11 is a hard delete, or an archived session still answers
+    // getNinaMessageWindow and removing it means nothing.
+    expect(names(schema.ninaChatSessions)).not.toContain('archived_at')
+  })
+
+  it('has one index, (user_id, created_at desc) — the whole of the only read', () => {
+    expect(indexNames(schema.ninaChatSessions)).toEqual(['nina_chat_sessions_user_created_idx'])
+  })
+})
+
+describe('nina_messages.session_id — F35 R2 and R11', () => {
+  it('is NOT NULL, so a message with no session is unrepresentable', () => {
+    expect(sqlType(schema.ninaMessages, 'session_id')).toBe('text')
+    expect(columns(schema.ninaMessages).get('session_id')?.notNull).toBe(true)
+  })
+
+  it('CASCADES, which is what makes removing a session take its messages (R11)', () => {
+    // …and through nina_message_images.message_id's own cascade, their image rows. The blobs and
+    // the memory ledger's source_message_id pointers are deliberately left — see the schema header.
+    expect(fkFor(schema.ninaMessages, 'session_id')?.onDelete).toBe('cascade')
+    expect(fkFor(schema.ninaMessageImages, 'message_id')?.onDelete).toBe('cascade')
+  })
+})
+
 describe('nina_nags and nina_turns', () => {
   it('nags are keyed (user_id, code) and remember the DAY, not the instant', () => {
     expect(cfg(schema.ninaNags).primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
@@ -334,5 +389,36 @@ describe('push_subscriptions', () => {
       (i) => i.config.name === 'push_subscriptions_endpoint_unq',
     )
     expect(unq?.config.unique).toBe(true)
+  })
+})
+
+/**
+ * R8's three collateral facts, pinned. F35 phase 7 (edit and delete a message) adds no column, so
+ * its correctness rests entirely on what these foreign keys already do — asserted here rather than
+ * assumed in a plan.
+ *
+ * Three of the five facts phase 7 depends on were already pinned above and are NOT repeated:
+ * `reply_to_id`'s `SET NULL` and `turn_id`'s missing FK are in `nina_messages`, the
+ * `nina_message_images.message_id` cascade is in `nina_message_images`, and both memory tables'
+ * FK-less `source_message_id` is in the memory block. What is added here is the pair that had no
+ * home: that `reply_to_id` points at THIS table (a self-FK — the reason a delete degrades a quote
+ * rather than orphaning it), and that `nina_turns` stores no prose for an edited message to
+ * contradict.
+ */
+describe('deleting or editing a nina message: what the database does on its own (F35 R8)', () => {
+  it('reply_to_id is a SELF-FK, so a deleted message degrades its own quotes to plain text', () => {
+    const fk = fkFor(schema.ninaMessages, 'reply_to_id')
+    expect(fk).toBeDefined()
+    expect(fk?.reference().foreignTable).toBe(schema.ninaMessages)
+    expect(fk?.onDelete).toBe('set null')
+  })
+
+  it('nina_turns carries no message text, so an edit contradicts nothing stored', () => {
+    // The turn row asserts that a model call happened and what it cost — never what was said. That
+    // is why `updateNinaMessage` leaves `turn_id` alone: there is no second copy to disagree with.
+    const turnColumns = names(schema.ninaTurns)
+    for (const forbidden of ['text', 'request', 'response', 'prompt', 'body', 'bubbles']) {
+      expect(turnColumns).not.toContain(forbidden)
+    }
   })
 })

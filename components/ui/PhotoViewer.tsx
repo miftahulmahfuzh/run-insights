@@ -16,11 +16,17 @@ import { decideSwipe, stepIndex, type SwipeGesture } from '@/lib/photos/gallery'
  * widening its prop type to `ViewerPhoto` collapses them into a single implementation, which is
  * also the only way the swipe stays identical on all three surfaces instead of drifting.
  *
- * Three callers: `ScreenshotStrip` and `SheetSource` (the correction screen) and
- * `PhotoInclusionList` (the run-detail sharing control). The **public** shared page is not one of
- * them and must not become one — `app/(public)/s/[token]/page.tsx` is a Server Component with
+ * Four callers: `ScreenshotStrip` and `SheetSource` (the correction screen), `PhotoInclusionList`
+ * (the run-detail sharing control) and, since F33 phase 13, `NinaAboutScreen` (the album and the
+ * chat gallery). F35 R10 adds no fifth import — the chat's own overlay is opened by `ChatScreen`,
+ * which is a caller of this component and not a copy of it. The **public** shared page is not one
+ * of them and must not become one — `app/(public)/s/[token]/page.tsx` is a Server Component with
  * plain links and no lightbox on purpose, so a viewer gets the platform's own image viewer with
  * real pinch-zoom, real save and real back.
+ *
+ * `label`, `subject` and `actions` are all optional and all reduce to the expression that was
+ * already here when they are absent. That is the promise this file keeps to the review surfaces,
+ * and `tests/ui.photoViewer.test.ts` plus `tests/nina.chatPhoto.test.ts` are what enforce it.
  *
  * ── THE ZOOM IS THE BROWSER'S, NOT OURS ────────────────────────────────────────────────────────
  * `touch-action: pinch-zoom` on the scroll container below gives native two-finger zoom and
@@ -58,6 +64,7 @@ export function PhotoViewer({
   onIndex,
   onClose,
   subject = 'screenshot',
+  actions,
 }: {
   photos: readonly ViewerPhoto[]
   index: number
@@ -68,6 +75,23 @@ export function PhotoViewer({
    * `'foto'` for F33's album and gallery — "avatar screenshot" is not a thing.
    */
   subject?: string
+  /**
+   * F35 R10. Controls to float at the bottom right, over the image and clear of the dot row —
+   * a download and an attach, on the chat surface. **Absent renders NOTHING**, which is what keeps
+   * `ScreenshotStrip`, `SheetSource` and `PhotoInclusionList` byte-identical.
+   *
+   * ── WHY A SLOT AND NOT `onDownload` / `onAttach` ─────────────────────────────────────────────
+   * Because a download that works is not one callback. It needs a `pointerdown` warm to survive
+   * Safari's transient-activation window, an in-flight boolean, and a two-state notice for the
+   * paths where the platform cannot save — five props, three of them about a fetch this file has
+   * no business knowing exists. `components/nina/ChatPhotoActions.tsx` owns all of it, and this
+   * component stays what its header says it is: a shared overlay that three review surfaces must
+   * not grow an F33 button on (`NinaAboutScreen.tsx:255-259`).
+   *
+   * The **public** shared page must still never become a caller, slot or no slot: a viewer there
+   * gets the platform's own image viewer, with real pinch-zoom, real save and real back.
+   */
+  actions?: React.ReactNode
 }) {
   const photo = photos[index]!
   /**
@@ -215,6 +239,28 @@ export function PhotoViewer({
             transform quota, for no gain. */}
         <img src={photo.url} alt="" className="mx-auto block h-auto w-full max-w-[900px]" />
       </div>
+
+      {/*
+        R10's controls. Absolutely positioned so they cost the image no height and the dot row no
+        geometry: an absent `actions` renders nothing at all, and the pager block below keeps the
+        exact classes it shipped with. The dialog above is `position: fixed`, which is already a
+        containing block for an absolute child, so nothing needed a `relative` added to it.
+
+        `3.25rem + var(--safe-bottom)` clears the pager band exactly, and the arithmetic is
+        deliberate: `pt-3` (12 px) + the 6 px dot + the band's own 16 px is 34 px, plus 18 px of
+        air is 52 px, which is 3.25rem. **Tailwind cannot read a constant**, so changing the pager's
+        padding below means changing this literal — the same coupling `AppShell` states out loud for
+        `TAB_BAR_HEIGHT_PX`. With a single photo there is no pager and the cluster simply floats
+        52 px above the safe area, which is where one photo's controls belong anyway.
+
+        `items-end` so a notice from `ChatPhotoActions` grows leftwards from the buttons rather than
+        pushing them off the right edge.
+      */}
+      {actions != null && (
+        <div className="absolute right-3 bottom-[calc(3.25rem+var(--safe-bottom))] flex flex-col items-end gap-2">
+          {actions}
+        </div>
+      )}
 
       {photos.length > 1 && (
         <div className="flex justify-center gap-2 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]">

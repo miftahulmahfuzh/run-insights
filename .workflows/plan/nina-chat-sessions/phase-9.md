@@ -1,0 +1,1733 @@
+# Phase 9: Tap an image: full screen, download, attach to a new message
+
+**Plan set:** `NINA_CHAT_SESSIONS_PLAN.md`
+**Analysis:** `20260904-223303-S3K9_code_analyzer.md`
+**Satisfies:** R10 — tap any chat photo for full screen, save it, or pin it to the next message
+**Depends on:** Phase 7 (it edits `MessageList.tsx` and `ChatScreen.tsx` before this phase does)
+and **Phase 8** (**added in reconciliation** — this phase now owns the two-hunk change to
+`app/nina/page.tsx` that H1 described, and phase 8 is the last other writer of that file; the set's
+own rule is that where two phases want one file, the later one declares the edge)
+**Difficulty:** NORMAL
+**Package:** `components/nina`
+
+---
+
+## Goal
+
+Every photograph in the conversation becomes a tap target that opens the app's one full-screen
+overlay, with native pinch-zoom, circular paging and the dot row it already has. Inside that overlay
+sit two controls at the bottom right: one that actually saves the file on the platform the runner
+holds, and one that pins the same blob to his next message with no re-upload and no second copy in
+Blob storage. `ChatImages`'s two-year-old `onOpen` prop finally has a caller, and the docstring that
+says wiring it "should be its own card" stops being a promise.
+
+## What was already true before this phase, verified in the worktree
+
+This phase is mostly wiring, and the plan's first job is to establish that rather than rebuild it.
+Each claim below was checked against the code, not the analysis:
+
+| Claim | Verified at |
+|---|---|
+| `ChatImages` already accepts `onOpen?: (index: number) => void` and `kinds?: readonly string[]`, both optional, and renders identical markup when `onOpen` is absent | `components/nina/ChatImages.tsx:38-52`, `:66-79` |
+| `MessageList` deliberately does not pass either | `components/nina/MessageList.tsx:262` — `<ChatImages urls={message.imageUrls} />` |
+| `PhotoViewer` is the app's one overlay: native pinch-zoom via `touch-pinch-zoom`, `decideSwipe`/`stepIndex` paging, arrow keys, Escape, body scroll lock, dot row | `components/ui/PhotoViewer.tsx:210`, `:97-115`, `:159-177`, `:219-236` |
+| It takes `readonly ViewerPhoto[]` (`{ url, kind, label? }`) plus an optional `subject` | `components/ui/PhotoViewer.tsx:41-71` |
+| `sendNinaMessage`'s `attachExisting: { kind: 'avatar' \| 'image'; id }` exists and is shape-checked | `lib/nina/actions.ts:126-129`, `:253`, `:259-265` |
+| **The `kind: 'image'` branch IS wired end to end.** `resolveAttachment` reads `getNinaMessageImage(userId, id)` — one PK lookup with `user_id` in the WHERE — and returns `{ blobUrl, pathname, kind: row.kind, description }`, which `insertNinaMessageImages` writes as a new row at `sortOrder: images.length`. A re-attached selfie therefore keeps `kind: 'generated'` and the paid-for `description` | `lib/nina/actions.ts:174-189`, `:458-473`; `lib/nina/queries.ts:721-731` |
+| `ChatScreen` already holds `photo` state seeded from the server's `pendingPhoto`, clears it on send, and passes `{ kind, id }` to `attachExisting` | `components/nina/ChatScreen.tsx:114`, `:392`, `:439-441` |
+| `Composer` already renders the armed chip from that state | `components/nina/ChatScreen.tsx:551-552`; `components/nina/PhotoAttachmentChip.tsx` |
+| ONE `useLayoutEffect` deletes both `?attach=` and `?photo=`, because "two independent `replaceState` calls in the same commit would race" | `components/nina/ChatScreen.tsx:134-141` |
+| `NinaAboutScreen` is the fourth `PhotoViewer` caller and already passes `label`/`subject="foto"` | `components/nina/NinaAboutScreen.tsx:248-254` |
+
+**So the only genuinely new code is: two pure rule modules, one small action component, and four
+surgical edits.** Nothing in the data layer, nothing in a Server Action, no migration.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing.
+
+**Renames:** nothing.
+
+**Creates:**
+
+- `lib/photos/save.ts` — `chooseSaveStrategy`, `saveFilenameFor`, `type SaveStrategy` (new file)
+- `lib/photos/save.test.ts` (new file)
+- `lib/nina/chatphotos.ts` — `chatViewerPhotos`, `viewerIndex`, `attachableIdAt`,
+  `interface ChatViewerPhoto` (new file)
+- `lib/nina/chatphotos.test.ts` (new file)
+- `components/nina/ChatPhotoActions.tsx` — `ChatPhotoActions` (new file)
+- `tests/nina.chatPhoto.test.ts` (new file)
+- `components/ui/PhotoViewer.tsx`: **one new optional prop** `actions?: React.ReactNode`
+- `components/nina/MessageList.tsx`: **one new optional prop**
+  `onOpenImage?: (messageId: string, index: number) => void`
+- `components/nina/types.ts`: **two new optional fields** on `ChatMessage` —
+  `imageIds?: readonly string[]`, `imageKinds?: readonly string[]`
+- `app/nina/page.tsx`: **the image-id/kind mapping** — **ASSIGNED TO THIS PHASE IN RECONCILIATION.**
+  Formerly handoff H1, owned by nobody. Two hunks, no restructuring: the `urlsByMessage` loop
+  becomes a `photosByMessage` loop carrying ids and kinds, and the `initial` mapping gains
+  `imageIds` / `imageKinds`. The exact diff is in **Handoffs → H1**, which is now this phase's own
+  step rather than a request to someone else. It needs no query change: 
+  `getNinaMessageImagesForMessages` already selects `id` and `kind`.
+
+**Signature changes:** none. Every new prop and field is optional, so no existing caller changes and
+`tsc` requires nothing of any other phase.
+
+**Requires (from earlier phases):**
+
+- Phase 7 has already landed its edits to `components/nina/MessageList.tsx` and
+  `components/nina/ChatScreen.tsx`. This phase edits both **after** it and composes with its
+  handlers: every change below is an *addition* — one prop to a type, one prop to a destructuring,
+  two attributes on one JSX element, and one block appended to a return — never a replacement of a
+  block phase 7 wrote. See **Assumptions**.
+- **Phase 8 has already landed its edits to `app/nina/page.tsx`** (added in reconciliation). That
+  file is written by phases 3, then 5, then 8, then this phase — strictly serialised, one writer at
+  a time, which is what lets this phase make H1's two hunks itself instead of asking a concurrent
+  peer to make them. The two hunks are in the `images` / `initial` mapping region and touch none of
+  the lines phases 3, 5 or 8 edit (`?s=` resolution and the reads; the `<header>` deletion and the
+  sidebar mounts; the `after()` block and the `<NinaUnreadSync>` mount respectively), so quoting
+  them post-phase-8 changes their line numbers and nothing else. `<AppShell screen="chat">` is
+  phase 2's spelling and this phase does not touch that line either.
+
+**Leaves alone (owned by others):**
+
+- `lib/db/schema.ts`, `drizzle/` (Phase 1)
+- `lib/nina/queries.ts` (Phase 1)
+- ~~`app/nina/page.tsx` (Phases 3, 5, 8)~~ — **NO LONGER LEFT ALONE. Reconciliation assigned H1's
+  two hunks to this phase**, and added the `Depends on: 8` edge that makes them safe to make. This
+  phase is the file's fourth and last writer (3 -> 5 -> 8 -> 9) and edits only the image mapping
+  region. See **Handoffs**, item H1, which carries the exact diff and is now a step.
+- `lib/nina/actions.ts`, `gateway.ts`, `load.ts`, `proactive.ts`, `imagejobs.ts`,
+  `sessionActions.ts` (Phase 3)
+- `scripts/check-llm-payload-boundary.mjs` (Phase 4 only, per invariant 2)
+- `components/nina/NinaSidebar.tsx` and the sidebar rows (Phase 5)
+- `lib/nina/search.ts` (Phase 6)
+- `components/nina/MessageBubble.tsx`, `lib/nina/messageActions.ts`, `lib/nina/edit.ts` (Phase 7)
+- `components/nina/NinaUnreadBadge.tsx`, `lib/nina/unread.ts` (Phase 8)
+- `components/nina/NinaAboutScreen.tsx`, `components/review/ScreenshotStrip.tsx`,
+  `components/share/PhotoInclusionList.tsx` — the four existing `PhotoViewer` call sites. Untouched,
+  and `tests/nina.chatPhoto.test.ts` asserts it mechanically.
+- `lib/nina/live.ts`'s `mergeServerMessages` — see **Handoffs**, item H3.
+- `components/nina/Composer.tsx` — the chip and the send path already do what R10 needs.
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/photos/save.ts` | create | the two pure save rules: which strategy this platform can honour, and what the file is called |
+| `lib/photos/save.test.ts` | create | seven cases over `saveFilenameFor`, four over `chooseSaveStrategy` |
+| `lib/nina/chatphotos.ts` | create | the bubble's `ViewerPhoto[]`, the label rule, index clamping, and "is this photo attachable" |
+| `lib/nina/chatphotos.test.ts` | create | the label rule (including the re-attached selfie), the clamp, the missing-id case |
+| `components/nina/ChatPhotoActions.tsx` | create | the two controls, the transient-activation warm, the fetch ladder, the notice |
+| `components/ui/PhotoViewer.tsx` | modify | one optional `actions` prop (`:55-71`), one absolutely-positioned cluster (after `:217`), docstring |
+| `components/nina/ChatImages.tsx` | modify | docstring only (`:33-36`) — the "it should be its own card" paragraph is now wrong |
+| `components/nina/types.ts` | modify | two optional fields after `imageUrls` (`:65`) |
+| `components/nina/MessageList.tsx` | modify | one optional prop (`:74`, `:53`), two attributes on `<ChatImages>` (`:262`) |
+| `components/nina/ChatScreen.tsx` | modify | viewer state + derivation + the `<PhotoViewer>` render; one prop on `<MessageList>` |
+| `app/nina/page.tsx` | modify | **reconciled in from H1** — the `urlsByMessage` loop becomes `photosByMessage` (urls + ids + kinds), and the `initial` mapping gains `imageIds` / `imageKinds`. Two hunks, quoted post-phase-8, no query change, `description` still dropped on the floor (invariant 5) |
+| `tests/nina.chatPhoto.test.ts` | create | the structural claims: the wiring exists, the four callers are unchanged, no second URL writer |
+
+---
+
+## Decisions, with the reasoning the phase owes
+
+### D-1 — The download. What it actually does, on iOS and on a desktop.
+
+**The trap, stated first.** `<a download href={blobUrl}>` **does not save** here. The `download`
+attribute is honoured only for same-origin URLs; every chat photo is
+`https://<store>.public.blob.vercel-storage.com/nina/<userId>/chat/<id>-<suffix>.jpg`, which is
+cross-origin, so the attribute is ignored and the browser *navigates* instead — the image opens and
+nothing is saved. On iOS that reads as a broken button. A control that looks like a download and
+isn't one is worse than no control, so this phase does not ship one.
+
+**What it does instead — a three-branch ladder, decided before any `await`.**
+
+```
+chooseSaveStrategy({ canShareFiles, coarsePointer })
+  coarse pointer + canShare({files})  -> 'share'     the platform sheet
+  coarse pointer, no canShare         -> 'open'      the platform's own long-press save
+  fine pointer                        -> 'download'  fetch -> blob: -> <a download>
+```
+
+- **`'share'` (an iPhone, and any modern Android).** Fetch the blob once, wrap it in a `File`, and
+  call `navigator.share({ files: [file] })`. iOS presents its own sheet whose first action for an
+  image is **Save Image**, and that lands the photo in Photos — which is where a runner wants a
+  photograph, not in Files/Downloads. This is the branch R10 is really about.
+- **`'open'` (a touch device whose browser cannot share files — an older iOS, an in-app webview).**
+  `window.open(url, '_blank', 'noopener,noreferrer')` **synchronously inside the click**, plus a
+  notice saying to long-press to save. On iOS a long-press on a full-size image offers "Add to
+  Photos", which is a real save and needs no fetch, no CORS and no download permission at all.
+  Synchronous because a `window.open` after an `await` is popup-blocked.
+- **`'download'` (a mouse).** Fetch → `URL.createObjectURL(file)` → a synthetic `<a download>`
+  click. The object URL is same-origin, so `download` is honoured and the file lands in Downloads
+  with a real name. Revoked on a 10 s timer rather than in the same tick, because Safari has been
+  observed to cancel a download whose object URL was revoked synchronously after the click.
+
+**Why the gate is `coarsePointer` and not a UA sniff.** `canShare({ files })` is also true on
+Windows Chrome/Edge and macOS Safari, and the Windows share sheet has no save action at all — a
+desktop runner would get an app picker where he asked for a file. `matchMedia('(pointer: coarse)')`
+is a real capability signal, not a browser name, and it separates exactly the two populations whose
+correct answer differs. The rule is pure and has four asserted cases in `lib/photos/save.test.ts`.
+
+**Transient activation, which this codebase has already lost this fight once.**
+`components/share/ShareButton.tsx:11-26` records it: *"`navigator.share()` may only be called while
+the browser still considers a user gesture active. Safari's window is short and it does not survive
+an `await` on a network round trip."* The fetch of a ~150 KB photo is exactly such an await. So the
+fix here is that file's fix, verbatim: **start the fetch on `pointerdown`.** By the time `click`
+fires — one finger-lift later, 60–150 ms — the `File` is usually already in hand and
+`navigator.share()` is reached with nothing to await. When it is not, the await runs and Safari may
+refuse with `NotAllowedError`, which falls through to the `'download'` branch, which has no
+activation requirement. Nobody ever gets nothing.
+
+**`AbortError` is not an error.** Dismissing the share sheet rejects with `AbortError`; that is a
+person changing their mind and it must produce silence — no notice, no fallback download he did not
+ask for. `ShareButton.tsx:28-31` states the rule; this file obeys it.
+
+**CORS, and why a failure is survivable rather than fatal.** The `'share'` and `'download'` branches
+need `fetch` to reach the Blob host. There is no page-level CSP in this app — the only
+`Content-Security-Policy` header is scoped to `/_next/static/service-worker/:path*`
+(`next.config.ts:70-76`), so nothing blocks the request from our side, and Vercel Blob's public URLs
+serve permissive CORS. That is an assumption about a third party, so it is not load-bearing: if the
+fetch throws or returns a non-`ok` response for **any** reason — offline, CORS, a 404 on a reaped
+blob — the handler falls to the `'open'` behaviour and says so. The button never fails silently.
+
+**No success notice on the `'download'` and `'share'` branches.** The browser's own download chrome
+and the platform's own sheet are the feedback. Printing "Saved" after an anchor click would be a
+claim we cannot verify, and on a standalone-PWA iOS Safari (where downloads are genuinely flaky) it
+would be a lie of exactly the kind this decision exists to avoid. The only notice is on the paths
+where we know something needs saying.
+
+**The one honest limitation, recorded rather than hidden.** In an iOS PWA installed to the home
+screen, `canShare({ files })` is true, so the `'share'` branch runs and the sheet works — the flaky
+download path is not reached. If a future iOS removes file sharing from standalone mode, the runner
+lands on `'open'`, which still works. There is no configuration in which the control does nothing.
+
+### D-2 — The attach control: arm `ChatScreen`'s state; do not navigate.
+
+Two candidates, and the second loses clearly.
+
+**Chosen: `setPhoto({ kind: 'image', id, url })` directly from the viewer.** `ChatScreen` already
+owns that state (`:114`), `Composer` already renders `PhotoAttachmentChip` from it (`:551`), and
+`handleSend` already forwards it as `attachExisting: { kind, id }` (`:439-441`). The attach control
+is therefore three lines and a close, and **the entire ownership proof already exists**:
+`resolveAttachment` reads the row scoped to `user_id` before anything is written, which its own
+docstring notes is "strictly more than a signed ticket could prove". No re-upload, no second blob,
+and the `description` `glm-4.6v` was already paid for is copied onto the new row server-side.
+
+**Rejected: `router.push('/nina?photo=image:' + id)`.** It costs a full server round trip that
+re-renders the whole conversation and remounts `ChatScreen` under the runner; it would drop or have
+to carry phase 3's `?s=<id>`; and it puts a second writer on a URL whose one writer is deliberately
+one. `ChatScreen.tsx:127-132` is explicit that the `?attach=`/`?photo=` cleanup is **one** effect
+because "two independent `replaceState` calls in the same commit would race to decide which of them
+wrote the surviving URL". **This phase adds no URL writer of any kind.** `?photo=image:<id>` keeps
+the job it has — the cross-tab entry point from `/admin/nina` — and gains no second caller.
+
+**The `kind` is the table, not the photo.** `NinaPhotoKind` is `'avatar' | 'image'` and names
+*which table the id addresses* (`lib/nina/attach.ts:85`). A chat photo always lives in
+`nina_message_images`, so the pointer is always `{ kind: 'image', id }` — **even for one of Nina's
+selfies**, whose `nina_message_images.kind` column reads `'generated'`. The two `kind`s are
+different things with the same name and passing the column value here would silently resolve against
+`nina_avatars` and find nothing. This is the single easiest mistake to make in the phase.
+
+**Attaching closes the viewer**, because the chip it arms lives above the composer, behind the
+overlay; leaving the overlay open would hide the whole effect of the tap. And it *replaces* any
+photo already pinned — there is one `photo` slot, by design (`ChatScreen.tsx:108-113`).
+
+### D-3 — The viewer pages across the tapped bubble only, not the conversation.
+
+Four reasons, in order of weight.
+
+1. `ChatImages`'s `onOpen(index)` is already bubble-local: the index is into *that* bubble's `urls`.
+   A conversation-wide list would need a second index space and a lookup, for nothing.
+2. **The dot row.** `stepIndex` wraps circularly and `PhotoViewer` renders one dot per photo.
+   `NINA_MAX_CHAT_IMAGES` is 3 (`lib/nina/images.ts:26`), plus at most one re-attached photo at
+   `sortOrder: images.length`, so a bubble is 1–4 dots — exactly the range the review strip already
+   renders. `CHAT_HISTORY_LIMIT` is 200 messages (`app/nina/page.tsx:92`), so conversation-wide
+   would be a row of dozens of 6 px dots and a circular wrap that means nothing.
+3. **The conversation-wide gallery already exists**, at `/nina/about`'s Media section, built from
+   `galleryPhotos` and ordered newest-first (`lib/nina/album.ts:277-289`). A second one inside the
+   thread, ordered by thread position, would be two galleries disagreeing about order.
+4. R10 says "click any image in the chat. clicking it will show the image full screen" — singular.
+   Nothing asks to browse from there.
+
+### D-4 — The label, and invariant 5.
+
+Each photo gets `label: NINA_SIDE_LABEL[photoSideOf(kind)]` → **"Foto kamu"** or **"Foto Nina"**, and
+the viewer gets `subject="foto"`. This is exactly what `ChatImages` already does for its
+`aria-label` (`:73`) and exactly what the album passes (`NinaAboutScreen.tsx:253`), so the three
+surfaces cannot disagree. Without it `PhotoViewer` falls back to
+`SCREEN_KIND_LABEL[kind] ?? kind` and the dot row announces "generated foto", which is the failure
+its own docstring warns about (`PhotoViewer.tsx:44-52`).
+
+`photoSideOf` is used rather than `message.role`, and that distinction is the point: a runner
+re-attaching one of her selfies produces a `kind: 'generated'` row on a `role: 'user'` message —
+which R10 will produce *more* of — and `role` would call it his. `photoSideOf`'s own docstring is
+about keeping that truthful.
+
+**Invariant 5 holds without an exception.** `nina_message_images.description` is `glm-4.6v`'s
+private prose. It is not read into `ChatMessage`, not passed to `PhotoViewer`, not used as a caption
+and not used as `alt`. `ChatImages` keeps `alt=""` with its recorded reason, `PhotoViewer` already
+renders `alt=""` (`:216`), and `ChatPhotoActions` renders no image at all. The accessible name of
+every new control comes from `NINA_SIDE_LABEL`.
+
+An accepted wart, named rather than fixed: `PhotoViewer` composes `aria-label={`${nameOf(photo)}
+${subject}`}`, so the dialog announces "Foto kamu foto". The shipped album already produces exactly
+that string. Changing the composition would change the accessible name on three review surfaces this
+phase promises not to touch, so it stays.
+
+### D-5 — `PhotoViewer` gets ONE optional slot, not two callbacks.
+
+The prop is `actions?: React.ReactNode`, rendered in an absolutely-positioned bottom-right cluster.
+Three reasons this beats `onDownload?` / `onAttach?`:
+
+1. The download needs a `pointerdown` warm, an in-flight boolean and a two-state notice (D-1). Two
+   callbacks would become five props, and three of them would be about a fetch that
+   `components/ui` has no business knowing exists.
+2. `components/ui/PhotoViewer.tsx` is shared with three review surfaces. `NinaAboutScreen.tsx:255-259`
+   already rules that they "must not grow an F33 button". A slot keeps every Nina-specific decision
+   — the strategy ladder, the copy, the Indonesian labels — inside `components/nina`.
+3. An absent `actions` renders **nothing**, so the four existing callers are byte-identical rather
+   than merely equivalent, and `tests/nina.chatPhoto.test.ts` asserts that mechanically by pinning
+   the pager row's exact class string.
+
+This is a deliberate, reasoned departure from the index's wording ("a download control and an attach
+control, both optional props"): one optional prop delivers both controls. Flagged here so the
+reconciler sees a decision rather than an omission.
+
+**Why not a sibling `fixed … z-70` strip, as the album does?** Because the album's strip is
+full-width and covers the dot pager, which is fine when the pager is the only other thing down
+there and wrong when R10 asks for two small icons at the bottom right. Putting the geometry in the
+component that owns the overlay's layout also stops it being a second copy of the album's recipe.
+
+**The overlay's z-order still wins.** `PhotoViewer` is `z-60`; the composer is `z-40`
+(`Composer.tsx:42`) and phase 2's floating chrome is `z-30`. The cluster is a child of the `z-60`
+dialog, so it needs no stacking context of its own.
+
+---
+
+## Implementation Steps
+
+### Step 1: The pure save rules
+
+**File:** `lib/photos/save.ts` (new)
+**Change:** The two decisions the download has to get right, as pure functions — the same carve-out
+`lib/photos/gallery.ts` made out of `PhotoViewer.tsx`, for the same stated reason: `vitest.config.ts`
+runs `environment: 'node'`, so a rule that lives in a component cannot be tested (invariant 7).
+**Code:**
+
+```ts
+/**
+ * The two decisions "save this photograph" has to get right, as pure functions.
+ *
+ * Split out of `components/nina/ChatPhotoActions.tsx` for the reason `lib/photos/gallery.ts` gives
+ * verbatim: **this is the whole of the behaviour**, and a pure function is the only version of it
+ * this repo's runner can prove. `vitest.config.ts` runs `environment: 'node'` — there is no jsdom,
+ * no `navigator`, no `File` picker and no download bar — so the impure half (the fetch, the share
+ * sheet, the synthetic anchor click) stays in the component and everything that can be decided
+ * without a browser is decided here.
+ *
+ * ── WHY THERE IS A DECISION AT ALL ────────────────────────────────────────────────────────────
+ * Because `<a download href={crossOriginUrl}>` is not a download. The attribute is honoured only
+ * for same-origin URLs, and every photo in this app lives on
+ * `https://<store>.public.blob.vercel-storage.com/…`, so the attribute is ignored and the browser
+ * navigates instead — the image opens and nothing is saved. A control that looks like a download
+ * and is not one is worse than no control, which is why the strategy is chosen rather than assumed.
+ */
+
+export type SaveStrategy =
+  /**
+   * `navigator.share({ files: [file] })`. The platform's own sheet, whose first action for an image
+   * on iOS is **Save Image** — which lands the photo in Photos, where a photograph belongs, rather
+   * than in Files/Downloads.
+   */
+  | 'share'
+  /**
+   * Open the URL and let the platform save it. On iOS a long-press on a full-size image offers
+   * "Add to Photos", which is a real save that needs no fetch, no CORS and no download permission.
+   * The fallback for a touch device whose browser cannot share files.
+   */
+  | 'open'
+  /**
+   * Fetch the bytes, wrap them in a `blob:` object URL — which IS same-origin — and click a
+   * synthetic `<a download>`. The only branch on which the `download` attribute works.
+   */
+  | 'download'
+
+/**
+ * ── WHY THE GATE IS A POINTER TYPE AND NOT A BROWSER NAME ─────────────────────────────────────
+ * `canShare({ files })` is true on Windows Chrome/Edge and macOS Safari as well as on phones, and
+ * the Windows share sheet has **no save action at all** — a desktop runner would be handed an app
+ * picker where he asked for a file. `(pointer: coarse)` is a capability signal rather than a user
+ * agent string, and it separates precisely the two populations whose correct answer differs:
+ * a phone wants the sheet (and therefore Photos), a mouse wants a file on disk.
+ *
+ * The `'open'` branch exists so that a touch device without file sharing — an older iOS, an in-app
+ * webview — still gets a route to a saved photo instead of an anchor the platform ignores.
+ */
+export function chooseSaveStrategy(env: {
+  /** `navigator.canShare({ files: [...] })`, probed with a stand-in file. */
+  canShareFiles: boolean
+  /** `window.matchMedia('(pointer: coarse)').matches`. */
+  coarsePointer: boolean
+}): SaveStrategy {
+  if (env.coarsePointer) return env.canShareFiles ? 'share' : 'download'
+  return 'download'
+}
+
+/** Anything that is not safe in a filename on every platform the runner might save onto. */
+const UNSAFE_FILENAME_CHARS = /[^A-Za-z0-9_-]+/g
+
+/** Extensions worth preserving. Anything else is served as, and saved as, a JPEG. */
+const KNOWN_EXTENSIONS = new Map<string, string>([
+  ['jpg', 'jpg'],
+  ['jpeg', 'jpg'],
+  ['png', 'png'],
+  ['webp', 'webp'],
+  ['gif', 'gif'],
+  ['avif', 'avif'],
+])
+
+/** Long enough to stay unique, short enough that a Downloads list is still readable. */
+const MAX_STEM_CHARS = 40
+
+/**
+ * What the saved file is called: `<prefix>-<the blob's own last path segment>.<ext>`.
+ *
+ * ── WHY THE BLOB'S SEGMENT AND NOT SOMETHING FRIENDLIER ───────────────────────────────────────
+ * A chat photo's pathname is `nina/<userId>/chat/<id>.jpg` and Vercel appends its own random
+ * suffix, so the last segment is already unique per photo (`lib/nina/images.ts:63-68`). Two saves
+ * of two different photos therefore cannot collide, which a date or a caption could not promise.
+ * Only the LAST segment is used, so the user id in the path never reaches the filename.
+ *
+ * A caption is not an option for a stronger reason: the only description that exists for a chat
+ * photo is `nina_message_images.description`, which is `glm-4.6v`'s private prose and may not leave
+ * the server (invariant 5).
+ *
+ * Never throws. A malformed URL, an empty path or an unknown extension all degrade to
+ * `<prefix>.jpg` — a save is not the moment to surface a parse error.
+ */
+export function saveFilenameFor(url: string, prefix: string): string {
+  let segment = ''
+  try {
+    segment =
+      new URL(url).pathname
+        .split('/')
+        .filter((part) => part.length > 0)
+        .pop() ?? ''
+  } catch {
+    segment = ''
+  }
+
+  const dot = segment.lastIndexOf('.')
+  const rawStem = dot > 0 ? segment.slice(0, dot) : segment
+  const rawExtension = dot > 0 ? segment.slice(dot + 1).toLowerCase() : ''
+  const extension = KNOWN_EXTENSIONS.get(rawExtension) ?? 'jpg'
+
+  const clean = (value: string) =>
+    value.replace(UNSAFE_FILENAME_CHARS, '-').replace(/^-+/, '').replace(/-+$/, '')
+
+  const stem = clean(rawStem).slice(0, MAX_STEM_CHARS).replace(/-+$/, '')
+  const safePrefix = clean(prefix) || 'foto'
+
+  return stem.length === 0 ? `${safePrefix}.${extension}` : `${safePrefix}-${stem}.${extension}`
+}
+```
+
+**Impact:** New module, no importers yet. Nothing else in the tree changes.
+
+### Step 2: The pure save rules' tests
+
+**File:** `lib/photos/save.test.ts` (new)
+**Change:** Co-located beside the module, matching `lib/photos/gallery.test.ts` and
+`lib/photos/resizeTarget.test.ts`.
+**Code:**
+
+```ts
+import { describe, expect, it } from 'vitest'
+
+import { chooseSaveStrategy, saveFilenameFor } from './save'
+
+/**
+ * R10's download, as the two rules it reduces to. No DOM is involved and that is the point:
+ * `vitest.config.ts` runs `environment: 'node'`, so `navigator.canShare`, `File` and a download
+ * bar are all out of reach — but every rule the component obeys is here, because the component
+ * holds none of its own. It probes the platform and asks these two functions.
+ */
+
+const CHAT_PHOTO =
+  'https://store.public.blob.vercel-storage.com/nina/u-1/chat/aBcD1234wXyZ-Qw9.jpg'
+
+describe('chooseSaveStrategy', () => {
+  it('hands a phone the share sheet, because that is the branch that reaches Photos', () => {
+    expect(chooseSaveStrategy({ canShareFiles: true, coarsePointer: true })).toBe('share')
+  })
+
+  it('hands a mouse a file, even when the platform could share', () => {
+    // Windows Chrome and macOS Safari both report canShare({files}), and the Windows sheet has no
+    // save action at all — an app picker is not what someone who clicked a download icon asked for.
+    expect(chooseSaveStrategy({ canShareFiles: true, coarsePointer: false })).toBe('download')
+  })
+
+  it('falls back to the anchor on a touch device that cannot share files', () => {
+    expect(chooseSaveStrategy({ canShareFiles: false, coarsePointer: true })).toBe('download')
+  })
+
+  it('is the anchor by default', () => {
+    expect(chooseSaveStrategy({ canShareFiles: false, coarsePointer: false })).toBe('download')
+  })
+})
+
+describe('saveFilenameFor', () => {
+  it('keeps the blob segment, which is what makes two saves not collide', () => {
+    expect(saveFilenameFor(CHAT_PHOTO, 'nina')).toBe('nina-aBcD1234wXyZ-Qw9.jpg')
+  })
+
+  it('never carries the user id out of the pathname', () => {
+    expect(saveFilenameFor(CHAT_PHOTO, 'nina')).not.toContain('u-1')
+  })
+
+  it('drops a query string rather than putting it in the name', () => {
+    expect(saveFilenameFor(`${CHAT_PHOTO}?download=1`, 'nina')).toBe('nina-aBcD1234wXyZ-Qw9.jpg')
+  })
+
+  it('normalises .jpeg to .jpg and preserves the extensions worth preserving', () => {
+    expect(saveFilenameFor('https://x.example/a/b.jpeg', 'nina')).toBe('nina-b.jpg')
+    expect(saveFilenameFor('https://x.example/a/b.png', 'nina')).toBe('nina-b.png')
+    expect(saveFilenameFor('https://x.example/a/b.webp', 'nina')).toBe('nina-b.webp')
+  })
+
+  it('treats an unknown extension as a JPEG, because the compressor only emits one', () => {
+    expect(saveFilenameFor('https://x.example/a/b.bin', 'nina')).toBe('nina-b.jpg')
+  })
+
+  it('degrades instead of throwing on a URL that is not one', () => {
+    expect(saveFilenameFor('not a url', 'nina')).toBe('nina.jpg')
+    expect(saveFilenameFor('https://x.example/', 'nina')).toBe('nina.jpg')
+    expect(saveFilenameFor('', 'nina')).toBe('nina.jpg')
+  })
+
+  it('truncates a long stem and leaves no trailing separator behind', () => {
+    const long = `https://x.example/${'a'.repeat(80)}.jpg`
+    const name = saveFilenameFor(long, 'nina')
+    expect(name).toBe(`nina-${'a'.repeat(40)}.jpg`)
+    expect(name).not.toContain('-.')
+  })
+
+  it('sanitises the prefix too, and never returns a bare extension', () => {
+    expect(saveFilenameFor(CHAT_PHOTO, '../..')).toBe('foto-aBcD1234wXyZ-Qw9.jpg')
+  })
+})
+```
+
+**Impact:** `npm test` gains 12 cases. Nothing else changes.
+
+### Step 3: The chat's own viewer rules
+
+**File:** `lib/nina/chatphotos.ts` (new)
+**Change:** The three decisions the chat viewer makes, as pure functions: what a bubble's photos
+look like to `PhotoViewer` (including the label rule of D-4), what index to show when the list moved
+under the overlay, and whether a photo can be attached at all.
+**Code:**
+
+```ts
+import { NINA_SIDE_LABEL, photoSideOf } from './album'
+
+/**
+ * R10's three rules, as pure functions — `lib/photos/gallery.ts`'s carve-out applied to the chat
+ * side of the same overlay. The component that uses them holds no rules of its own.
+ *
+ * ── WHY THE RETURN TYPE IS STRUCTURAL AND NOT `ViewerPhoto` ───────────────────────────────────
+ * `RunAttachmentInput`'s reasoning in `lib/nina/attach.ts:14-18`, applied the other way round:
+ * a pure module under `lib/` states what it produces rather than importing a type out of
+ * `components/`, and `PhotoViewer`'s `readonly ViewerPhoto[]` accepts this structurally with no
+ * adapter. A prop rename over there is then a compile error at the one call site that bridges them.
+ *
+ * ── INVARIANT 5 ───────────────────────────────────────────────────────────────────────────────
+ * There is no caption field here and there must never be one. `nina_message_images.description` is
+ * `glm-4.6v`'s private prose, `app/nina/page.tsx` deliberately drops it, and Nina's prompt is its
+ * only consumer. The photo's accessible name comes from `NINA_SIDE_LABEL`, which is a phrase about
+ * *whose* photograph it is and says nothing about what is in it.
+ */
+export interface ChatViewerPhoto {
+  url: string
+  /** `nina_message_images.kind` — `'upload'` or `'generated'`. Carried for `photoSideOf`. */
+  kind: string
+  /** `'Foto kamu'` or `'Foto Nina'`. See `chatViewerPhotos`. */
+  label: string
+}
+
+/**
+ * One bubble's photographs, in `sort_order`, ready for `PhotoViewer`.
+ *
+ * ── WHY THE LABEL COMES FROM `photoSideOf` AND NOT FROM THE MESSAGE'S ROLE ────────────────────
+ * `message.role` is a near-proxy and wrong in exactly the case R10 creates more of. A runner who
+ * re-attaches one of Nina's selfies writes a row whose `kind` is still `'generated'`
+ * (`lib/nina/actions.ts:183-189`) onto a message whose `role` is `'user'` — so `role` would put her
+ * photograph under his name. `photoSideOf`'s own docstring exists to keep that honest, and this is
+ * the surface that makes it visible: without a `label`, `PhotoViewer` falls back to
+ * `SCREEN_KIND_LABEL[kind] ?? kind` and the dot row announces "generated foto".
+ *
+ * A missing `kinds` entry degrades to `'upload'` — `ChatImages`'s existing default, chosen for its
+ * own recorded reason: the app's uploads are his, and defaulting an unknown kind to "hers" would
+ * put a stranger's photo under her name.
+ */
+export function chatViewerPhotos(
+  source:
+    | { urls?: readonly string[] | null; kinds?: readonly string[] | null }
+    | null
+    | undefined,
+): ChatViewerPhoto[] {
+  const urls = source?.urls
+  if (urls == null || urls.length === 0) return []
+  const kinds = source?.kinds
+  return urls.map((url, index) => {
+    const kind = kinds?.[index] ?? 'upload'
+    return { url, kind, label: NINA_SIDE_LABEL[photoSideOf(kind)] }
+  })
+}
+
+/**
+ * Which photo the overlay should show, given the index it was opened at and how many photos there
+ * now are. `null` means there is nothing to show and the viewer must close.
+ *
+ * ── WHY THIS EXISTS AT ALL ────────────────────────────────────────────────────────────────────
+ * The overlay holds a message id and an index, and derives the list from `messages` on every render
+ * — so the list CAN change underneath it. Two ways, both real: `router.refresh()` on a service
+ * worker push re-renders the server list (`ChatScreen.tsx:183-224`), and phase 8's message delete
+ * takes a bubble and its photo rows with it. `PhotoViewer` does `photos[index]!` and would then
+ * call `nameOf(undefined)`, which throws.
+ *
+ * Clamping rather than closing when the list merely SHRANK is the friendlier answer: the photo he
+ * was looking at is gone, and landing on its neighbour beats an overlay that blinks shut. When the
+ * whole message is gone there is no neighbour, and closing is the only honest option.
+ */
+export function viewerIndex(index: number, count: number): number | null {
+  if (!Number.isFinite(count) || count <= 0) return null
+  if (!Number.isFinite(index)) return 0
+  return Math.min(Math.max(Math.trunc(index), 0), count - 1)
+}
+
+/**
+ * The `nina_message_images.id` at this position, or `null` when there is none — which is the whole
+ * of "can this photo be attached", and therefore of whether the attach control renders.
+ *
+ * `null` is a real and common answer, not a bug: `ChatScreen`'s optimistic row carries no ids
+ * because the rows it describes have not been written yet (see this phase's plan, H3). Tap-to-view
+ * and download work on such a photo; attach does not, until the next full load.
+ */
+export function attachableIdAt(
+  ids: readonly string[] | null | undefined,
+  index: number,
+): string | null {
+  const id = ids?.[index]
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+```
+
+**Impact:** New module. Imports only `lib/nina/album.ts`, which `ChatImages` already imports, so it
+is client-safe and drags nothing server-only into the bundle.
+
+### Step 4: The chat viewer rules' tests
+
+**File:** `lib/nina/chatphotos.test.ts` (new)
+**Change:** Co-located, matching `lib/nina/images.test.ts`.
+**Code:**
+
+```ts
+import { describe, expect, it } from 'vitest'
+
+import { attachableIdAt, chatViewerPhotos, viewerIndex } from './chatphotos'
+
+describe('chatViewerPhotos', () => {
+  it('names his photograph and hers, so the dot row never says "generated"', () => {
+    const photos = chatViewerPhotos({
+      urls: ['https://x.example/a.jpg', 'https://x.example/b.jpg'],
+      kinds: ['upload', 'generated'],
+    })
+    expect(photos).toEqual([
+      { url: 'https://x.example/a.jpg', kind: 'upload', label: 'Foto kamu' },
+      { url: 'https://x.example/b.jpg', kind: 'generated', label: 'Foto Nina' },
+    ])
+  })
+
+  it('keeps a RE-ATTACHED selfie hers, which the message role could not', () => {
+    // The case R10 creates more of: a `kind: 'generated'` row on a message the runner wrote.
+    // Reading the role here would put her photograph under his name.
+    const [photo] = chatViewerPhotos({ urls: ['https://x.example/s.jpg'], kinds: ['generated'] })
+    expect(photo?.label).toBe('Foto Nina')
+  })
+
+  it('defaults a missing or unknown kind to his, ChatImages-style', () => {
+    expect(chatViewerPhotos({ urls: ['https://x.example/a.jpg'] })[0]?.label).toBe('Foto kamu')
+    expect(
+      chatViewerPhotos({ urls: ['https://x.example/a.jpg'], kinds: ['who-knows'] })[0]?.label,
+    ).toBe('Foto kamu')
+  })
+
+  it('carries no caption field at all (invariant 5)', () => {
+    const [photo] = chatViewerPhotos({ urls: ['https://x.example/a.jpg'], kinds: ['upload'] })
+    expect(Object.keys(photo ?? {}).sort()).toEqual(['kind', 'label', 'url'])
+  })
+
+  it('is empty for a message with no photos, and for no message at all', () => {
+    expect(chatViewerPhotos(null)).toEqual([])
+    expect(chatViewerPhotos(undefined)).toEqual([])
+    expect(chatViewerPhotos({})).toEqual([])
+    expect(chatViewerPhotos({ urls: [] })).toEqual([])
+  })
+})
+
+describe('viewerIndex', () => {
+  it('passes an index that is still in range straight through', () => {
+    expect(viewerIndex(2, 4)).toBe(2)
+  })
+
+  it('clamps rather than closing when the list merely shrank', () => {
+    // A refresh, or a neighbouring photo removed. Landing on the last remaining photo beats an
+    // overlay that blinks shut, and it beats PhotoViewer's `photos[index]!` throwing.
+    expect(viewerIndex(3, 2)).toBe(1)
+  })
+
+  it('closes when there is nothing left to show', () => {
+    expect(viewerIndex(0, 0)).toBeNull()
+    expect(viewerIndex(2, -1)).toBeNull()
+    expect(viewerIndex(0, Number.NaN)).toBeNull()
+  })
+
+  it('is defensive about a nonsense index', () => {
+    expect(viewerIndex(-4, 3)).toBe(0)
+    expect(viewerIndex(Number.NaN, 3)).toBe(0)
+    expect(viewerIndex(1.7, 3)).toBe(1)
+  })
+})
+
+describe('attachableIdAt', () => {
+  it('finds the id at the shown position', () => {
+    expect(attachableIdAt(['a1', 'b2', 'c3'], 1)).toBe('b2')
+  })
+
+  it('is null when the ids never arrived, which is the optimistic row', () => {
+    expect(attachableIdAt(undefined, 0)).toBeNull()
+    expect(attachableIdAt(null, 0)).toBeNull()
+    expect(attachableIdAt([], 0)).toBeNull()
+    expect(attachableIdAt(['a1'], 3)).toBeNull()
+    expect(attachableIdAt([''], 0)).toBeNull()
+  })
+})
+```
+
+**Impact:** `npm test` gains 13 cases.
+
+### Step 5: `PhotoViewer` gets one optional slot
+
+**File:** `components/ui/PhotoViewer.tsx` — signature at `:55-71`, render after `:217`, docstring at
+`:19-23`
+**Change:** One optional `actions` prop and one absolutely-positioned cluster that renders it.
+Nothing else in the file moves; in particular the pager block's classes at `:220` are untouched,
+which is what makes the four existing callers byte-identical rather than merely similar.
+
+**Code — replace the component's signature block (`:55-71`) with:**
+
+```tsx
+export function PhotoViewer({
+  photos,
+  index,
+  onIndex,
+  onClose,
+  subject = 'screenshot',
+  actions,
+}: {
+  photos: readonly ViewerPhoto[]
+  index: number
+  onIndex: (index: number) => void
+  onClose: () => void
+  /**
+   * The noun in the dialog's accessible name. `'screenshot'` for the three review surfaces,
+   * `'foto'` for F33's album and gallery — "avatar screenshot" is not a thing.
+   */
+  subject?: string
+  /**
+   * F35 R10. Controls to float at the bottom right, over the image and clear of the dot row —
+   * a download and an attach, on the chat surface. **Absent renders NOTHING**, which is what keeps
+   * `ScreenshotStrip`, `SheetSource` and `PhotoInclusionList` byte-identical.
+   *
+   * ── WHY A SLOT AND NOT `onDownload` / `onAttach` ─────────────────────────────────────────────
+   * Because a download that works is not one callback. It needs a `pointerdown` warm to survive
+   * Safari's transient-activation window, an in-flight boolean, and a two-state notice for the
+   * paths where the platform cannot save — five props, three of them about a fetch this file has
+   * no business knowing exists. `components/nina/ChatPhotoActions.tsx` owns all of it, and this
+   * component stays what its header says it is: a shared overlay that three review surfaces must
+   * not grow an F33 button on (`NinaAboutScreen.tsx:255-259`).
+   *
+   * The **public** shared page must still never become a caller, slot or no slot: a viewer there
+   * gets the platform's own image viewer, with real pinch-zoom, real save and real back.
+   */
+  actions?: React.ReactNode
+}) {
+```
+
+**Code — insert this block immediately after the pan container's closing `</div>` (`:217`) and
+before the `{photos.length > 1 && (` pager block (`:219`):**
+
+```tsx
+      {/*
+        R10's controls. Absolutely positioned so they cost the image no height and the dot row no
+        geometry: an absent `actions` renders nothing at all, and the pager block below keeps the
+        exact classes it shipped with. The dialog above is `position: fixed`, which is already a
+        containing block for an absolute child, so nothing needed a `relative` added to it.
+
+        `3.25rem + var(--safe-bottom)` clears the pager band exactly, and the arithmetic is
+        deliberate: `pt-3` (12 px) + the 6 px dot + the band's own 16 px is 34 px, plus 18 px of
+        air is 52 px, which is 3.25rem. **Tailwind cannot read a constant**, so changing the pager's
+        padding below means changing this literal — the same coupling `AppShell` states out loud for
+        `TAB_BAR_HEIGHT_PX`. With a single photo there is no pager and the cluster simply floats
+        52 px above the safe area, which is where one photo's controls belong anyway.
+
+        `items-end` so a notice from `ChatPhotoActions` grows leftwards from the buttons rather than
+        pushing them off the right edge.
+      */}
+      {actions != null && (
+        <div className="absolute right-3 bottom-[calc(3.25rem+var(--safe-bottom))] flex flex-col items-end gap-2">
+          {actions}
+        </div>
+      )}
+```
+
+**Code — replace the "Three callers" paragraph of the file header (`:19-23`) with:**
+
+```
+ * Four callers: `ScreenshotStrip` and `SheetSource` (the correction screen), `PhotoInclusionList`
+ * (the run-detail sharing control) and, since F33 phase 13, `NinaAboutScreen` (the album and the
+ * chat gallery). F35 R10 adds no fifth import — the chat's own overlay is opened by `ChatScreen`,
+ * which is a caller of this component and not a copy of it. The **public** shared page is not one
+ * of them and must not become one — `app/(public)/s/[token]/page.tsx` is a Server Component with
+ * plain links and no lightbox on purpose, so a viewer gets the platform's own image viewer with
+ * real pinch-zoom, real save and real back.
+ *
+ * `label`, `subject` and `actions` are all optional and all reduce to the expression that was
+ * already here when they are absent. That is the promise this file keeps to the review surfaces,
+ * and `tests/ui.photoViewer.test.ts` plus `tests/nina.chatPhoto.test.ts` are what enforce it.
+```
+
+**Impact:** `ScreenshotStrip` (×2), `SheetSource`, `PhotoInclusionList` and `NinaAboutScreen` render
+byte-identically — none passes `actions`, so the new block's condition is false and the DOM is
+unchanged. `tests/ui.photoViewer.test.ts`'s five structural claims all still hold: no
+`preventDefault` is added, `touch-pinch-zoom` stays, `stepIndex(index, delta, photos.length)` stays,
+the arrow-key lines stay, and the public page still contains no `PhotoViewer`.
+
+### Step 6: The two controls
+
+**File:** `components/nina/ChatPhotoActions.tsx` (new)
+**Change:** The download and the attach, with the whole of D-1's ladder. This is a new file
+specifically so that `ChatScreen` — which phase 7 has just edited — gains as few lines as possible.
+**Code:**
+
+```tsx
+'use client'
+
+import { useCallback, useRef, useState } from 'react'
+
+import { chooseSaveStrategy, saveFilenameFor } from '@/lib/photos/save'
+
+/**
+ * R10's two controls, floated at the bottom right of `PhotoViewer` through its `actions` slot.
+ *
+ * ── THE ONE HARD PROBLEM IN THIS FILE: `<a download>` IS NOT A DOWNLOAD ───────────────────────
+ * The `download` attribute is honoured only for same-origin URLs, and every photo here lives on
+ * `https://<store>.public.blob.vercel-storage.com/…`. Cross-origin, the attribute is ignored and
+ * the browser NAVIGATES — the image opens and nothing is saved. On iOS that reads as a broken
+ * button, and a control that looks like a download and is not one is worse than no control. So the
+ * strategy is chosen (`chooseSaveStrategy`) rather than assumed, and there are three of them:
+ *
+ *   'share'    a phone. Fetch the bytes, wrap them in a `File`, and hand them to
+ *              `navigator.share({ files })`. iOS's sheet offers **Save Image**, which lands the
+ *              photo in Photos — where a photograph belongs, and where the runner will look for it.
+ *   'download' a mouse. Fetch, `URL.createObjectURL`, click a synthetic `<a download>`. The object
+ *              URL IS same-origin, so this is the one branch on which the attribute works.
+ *   (fallback) the bytes never arrived, or the sheet refused. Open the URL and say so: a long-press
+ *              on a full-size image on iOS offers "Add to Photos", which is a real save needing no
+ *              fetch, no CORS and no download permission.
+ *
+ * ── TRANSIENT ACTIVATION, WHICH THIS REPO HAS ALREADY LOST ONCE ───────────────────────────────
+ * `components/share/ShareButton.tsx:11-26`: *"`navigator.share()` may only be called while the
+ * browser still considers a user gesture active. Safari's window is short and it does not survive
+ * an `await` on a network round trip."* Fetching a ~150 KB photo is exactly such an await. **So the
+ * fetch starts on `pointerdown`**, that file's fix verbatim: by the time `click` fires — one
+ * finger-lift later, 60-150 ms — the `File` is usually already in hand and `share()` is reached
+ * with nothing to await. When it is not, the await runs, Safari may refuse with `NotAllowedError`,
+ * and that falls through to the anchor, which has no activation requirement at all. Nobody ever
+ * gets nothing.
+ *
+ * The warm is safe to fire on a pointer event because it is idempotent and free of side effects:
+ * it is a GET of a public blob the runner is already looking at. `ShareButton`'s argument, and a
+ * weaker requirement than its own (that one warms a Server Action).
+ *
+ * ── `AbortError` IS NOT AN ERROR ──────────────────────────────────────────────────────────────
+ * Dismissing the share sheet rejects with `AbortError`. That is a person changing their mind and it
+ * must produce **silence** — no notice, and no fallback download they did not ask for. Every other
+ * rejection falls through.
+ *
+ * ── NO SUCCESS NOTICE ─────────────────────────────────────────────────────────────────────────
+ * The browser's own download chrome and the platform's own sheet are the feedback. Printing
+ * "Saved" after an anchor click would be a claim this component cannot verify, and in a
+ * standalone-PWA Safari it could be a lie — which is the exact failure mode the strategy ladder
+ * exists to avoid. The only copy on screen is for the paths where something genuinely needs saying.
+ *
+ * ── INVARIANT 5 ───────────────────────────────────────────────────────────────────────────────
+ * This component renders no image and reads no description. Both accessible names come from the
+ * `label` prop, which is `NINA_SIDE_LABEL` — a phrase about whose photograph it is, saying nothing
+ * about what is in it. `nina_message_images.description` is `glm-4.6v`'s private prose and never
+ * crosses into `components/`.
+ */
+
+type SaveNotice =
+  /** The URL was handed to the platform; the runner has to do the last step himself. */
+  | 'opened'
+  /** Nothing worked — offline, a blocked popup, a reaped blob. Say so, and say what to try. */
+  | 'unavailable'
+
+const SAVE_NOTICE_TEXT: Record<SaveNotice, string> = {
+  opened: 'Fotonya kebuka di tab baru — tekan lama buat simpan ke galeri.',
+  unavailable: 'Belum bisa diunduh. Coba lagi kalau koneksinya sudah stabil.',
+}
+
+/**
+ * Can this platform share FILES, as opposed to only a URL?
+ *
+ * `canShare` inspects the SHAPE of the data and not its bytes, so a one-byte stand-in answers the
+ * question exactly as the real photograph would. Asking before the fetch is what lets the
+ * no-share branch reach `window.open` synchronously inside the tap, where a popup blocker cannot
+ * touch it.
+ */
+function canShareFiles(): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.canShare !== 'function') return false
+  try {
+    return navigator.canShare({
+      files: [new File([new Uint8Array(1)], 'probe.jpg', { type: 'image/jpeg' })],
+    })
+  } catch {
+    return false
+  }
+}
+
+export function ChatPhotoActions({
+  url,
+  label,
+  onAttach,
+}: {
+  /** The public Blob URL of the photo currently on screen. */
+  url: string
+  /** `'Foto kamu'` or `'Foto Nina'`, from `chatViewerPhotos`. Both accessible names read off it. */
+  label: string
+  /**
+   * Pin this photo to the next message. **`null` means the control does not render** — which is a
+   * real state and not a bug: `nina_message_images.id` reaches the client through
+   * `ChatMessage.imageIds`, and an optimistic row for a message sent seconds ago has none, because
+   * the rows it describes have not been written yet. Viewing and downloading still work on it.
+   */
+  onAttach: (() => void) | null
+}) {
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<SaveNotice | null>(null)
+
+  /**
+   * The warmed fetch, keyed by the URL it was started for. A ref and not state: starting it must
+   * not re-render, and paging to the next photo must invalidate it — comparing the key is cheaper
+   * and less error-prone than an effect that nulls it out.
+   */
+  const warmed = useRef<{ url: string; file: Promise<File | null> } | null>(null)
+
+  const fetchFile = useCallback(async (): Promise<File | null> => {
+    try {
+      /* `credentials: 'omit'` because a public blob needs none and sending them would turn a
+       * simple request into a preflighted one for no gain. */
+      const response = await fetch(url, { mode: 'cors', credentials: 'omit' })
+      if (!response.ok) return null
+      const blob = await response.blob()
+      return new File([blob], saveFilenameFor(url, 'nina'), {
+        type: blob.type || 'image/jpeg',
+      })
+    } catch {
+      /* Offline, a reaped blob, or a CORS answer we did not expect. All three mean the same thing
+       * to the caller — there are no bytes — and all three fall to the same fallback. */
+      return null
+    }
+  }, [url])
+
+  const warm = useCallback(() => {
+    if (warmed.current?.url === url) return
+    warmed.current = { url, file: fetchFile() }
+  }, [url, fetchFile])
+
+  /** The last rung, and the only one that ever prints anything. Never a dead end. */
+  const openInstead = useCallback(() => {
+    const opened = window.open(url, '_blank', 'noopener,noreferrer')
+    setNotice(opened === null ? 'unavailable' : 'opened')
+  }, [url])
+
+  async function save() {
+    setNotice(null)
+
+    /* Decided BEFORE any await, so the no-share branch's `window.open` is still inside the tap. */
+    const strategy = chooseSaveStrategy({
+      canShareFiles: canShareFiles(),
+      coarsePointer:
+        typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
+    })
+
+    setBusy(true)
+    try {
+      const pending = warmed.current?.url === url ? warmed.current.file : fetchFile()
+      warmed.current = null
+      const file = await pending
+
+      if (file === null) {
+        openInstead()
+        return
+      }
+
+      if (strategy === 'share' && typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ files: [file] })
+          return
+        } catch (error) {
+          // The sheet was dismissed. Say nothing, do nothing.
+          if (error instanceof Error && error.name === 'AbortError') return
+          // Anything else — a closed activation window, an in-app browser with a broken
+          // implementation, a revoked permission — falls through to the anchor below, which has no
+          // activation requirement at all.
+        }
+      }
+
+      const objectUrl = URL.createObjectURL(file)
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = file.name
+      anchor.rel = 'noopener'
+      document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      /* Revoked on a timer and not in this tick: Safari has been observed to cancel a download
+       * whose object URL was revoked synchronously after the click. Ten seconds is far longer than
+       * a 150 KB save needs and costs one blob's worth of memory until it fires. */
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const noun = label.toLowerCase()
+
+  return (
+    <>
+      {notice !== null && (
+        <p
+          role="status"
+          className="max-w-[15rem] rounded-field bg-ink/85 px-2.5 py-1.5 text-right text-[12px] font-medium text-card/90"
+        >
+          {SAVE_NOTICE_TEXT[notice]}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onPointerDown={warm}
+          onFocus={warm}
+          onClick={save}
+          disabled={busy}
+          aria-busy={busy}
+          aria-label={`Unduh ${noun}`}
+          className="grid size-11 place-items-center rounded-pill bg-ink/70 text-card active:scale-[0.97] disabled:opacity-50"
+        >
+          {/* The send arrow's geometry, inverted, plus the tray it lands on. `Composer`'s icon
+              idiom: one viewBox="0 0 24 24", one path, currentColor, strokeWidth 2.4. */}
+          <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+            <path
+              d="M12 4v11M7.5 10.5l4.5 4.5 4.5-4.5M5 19.5h14"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+
+        {onAttach !== null && (
+          <button
+            type="button"
+            onClick={onAttach}
+            aria-label={`Lampirkan ${noun} ke chat`}
+            className="grid size-11 place-items-center rounded-pill bg-ink/70 text-card active:scale-[0.97]"
+          >
+            {/* A paperclip, and deliberately NOT `Composer`'s photo glyph: that one means "pick a
+                photo from the phone", and this means "pin the photo already on screen". */}
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+              <path
+                d="M13.5 3.5l-8 8a4 4 0 105.7 5.7l8-8a2.5 2.5 0 10-3.5-3.5l-8 8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
+```
+
+**Impact:** New file. `size-11` is 44 px, the iOS tap-target floor, matching every other icon button
+in this codebase. `bg-ink/70` is needed because these float over a photograph rather than over
+`bg-ink/95` — a bare `text-card` glyph on a white sky is invisible. No new keyframe (invariant 8):
+`active:scale-[0.97]` is the existing transform idiom, used by `PhotoAttachmentChip:50`.
+
+**One thing for the implementer to eyeball:** the paperclip's two arc sweep flags. Render it at
+20 px and, if the hooks curl the wrong way, flip `1 0` to `0 1` in either arc. The bounds are
+correct (`x ∈ [5.5, 19.2]`, `y ∈ [3.5, 17.2]` on a 24 grid); only the curl direction is a judgement
+a static plan cannot make.
+
+### Step 7: `ChatMessage` learns the two fields the viewer needs
+
+**File:** `components/nina/types.ts` — insert immediately after the `imageUrls` field (`:65`)
+**Change:** Two optional fields, parallel to `imageUrls`.
+**Code:**
+
+```ts
+  /**
+   * Phase 9 (R10). `nina_message_images.id`, parallel to `imageUrls`.
+   *
+   * ── WHY AN ID HAS TO REACH THE CLIENT AT ALL ─────────────────────────────────────────────────
+   * Because "attach this image to his new chat" is `sendNinaMessage`'s `attachExisting: { kind,
+   * id }`, and the whole point of that field is that the photo is NOT re-uploaded: what crosses is
+   * an id, and `resolveAttachment` proves ownership against `user_id` before a row is written.
+   * Without the id the alternative is a re-upload, which would duplicate the blob and throw away
+   * the `description` `glm-4.6v` has already been paid for.
+   *
+   * ── WHY THREE PARALLEL ARRAYS AND NOT ONE `{ id, url, kind }[]` ──────────────────────────────
+   * The honest shape is an array of objects, and it was rejected on one hard constraint: replacing
+   * `imageUrls` is a BREAKING change to `app/nina/page.tsx`'s mapping, and that file belongs to
+   * phases 3, 5 and 8. A phase whose tree does not compile until another phase lands is not a
+   * phase. Both fields here are additive and optional, so the tree builds with the mapping
+   * untouched and the feature degrades in a named way until it widens (this phase's plan, H1).
+   * `ChatImages`'s own `kinds?: readonly string[]` is the precedent for a parallel array at exactly
+   * this boundary, and it was chosen deliberately by F33 phase 13.
+   *
+   * Absent on `ChatScreen`'s optimistic row, because the rows it describes do not exist yet: the
+   * id is minted server-side by `insertNinaMessageImages`. Tap-to-view and download work on such a
+   * photo; the attach control does not render until a load brings the ids.
+   */
+  imageIds?: readonly string[]
+  /**
+   * Phase 9 (R10). `nina_message_images.kind` — `'upload'` or `'generated'` — parallel to
+   * `imageUrls`. Fed straight into `ChatImages`'s existing `kinds` prop and into
+   * `chatViewerPhotos`, both of which read it through `photoSideOf` to decide whose photograph it
+   * is.
+   *
+   * NOT derivable from `message.role`, which is the whole reason it is here: a runner who
+   * re-attaches one of Nina's selfies writes a `kind: 'generated'` row onto a `role: 'user'`
+   * message (`lib/nina/actions.ts:183-189`), and reading the role would announce her photograph as
+   * his. R10's attach control makes that case common rather than theoretical.
+   *
+   * This is the KIND COLUMN, not `NinaPhotoKind`. `attachExisting` takes `'avatar' | 'image'`,
+   * which names a TABLE; a chat photo is always `'image'` there, whatever this column says.
+   *
+   * `description` is still NOT here and must never be (invariant 5).
+   */
+  imageKinds?: readonly string[]
+```
+
+**Impact:** Purely additive to an interface. No existing construction site of `ChatMessage` changes,
+so `app/nina/page.tsx` and `ChatScreen`'s optimistic row both still typecheck untouched.
+
+### Step 8: `MessageList` passes `onOpen` and `kinds`
+
+**File:** `components/nina/MessageList.tsx` — prop type at `:74`, destructuring at `:53`, JSX at
+`:261-263`
+**Change:** One optional prop and two attributes. **Apply on top of phase 7's edits to this file,
+not instead of them** — phase 7 added `onEdit`/`onDelete`-shaped props in the same two places, and
+these three edits are additive to whatever it wrote.
+
+**Code — add to the destructuring list, after `onJumpToQuote,`:**
+
+```ts
+  onOpenImage,
+```
+
+**Code — add to the prop type, after the `onJumpToQuote` entry:**
+
+```ts
+  /**
+   * Phase 9 (R10). A tap on a photograph inside a bubble.
+   *
+   * The MESSAGE ID as well as the index, because `ChatImages`'s `onOpen` is bubble-local: its
+   * index counts photos in that one bubble, which is also what the overlay pages across (this
+   * phase's plan, D-3). `ChatScreen` holds the viewer state, because it is the component that also
+   * holds the `photo` state the attach control arms.
+   *
+   * Optional, and passed to `ChatImages` only when present — `ChatImages`'s contract is that an
+   * absent `onOpen` means the grid is NOT interactive, and an unconditional inline arrow here
+   * would quietly turn every photo in every future consumer into a button.
+   */
+  onOpenImage?: (messageId: string, index: number) => void
+```
+
+**Code — replace the `<ChatImages …/>` line inside the `above` slot (`:261-263`) with:**
+
+```tsx
+                      {message.imageUrls != null && message.imageUrls.length > 0 ? (
+                        <ChatImages
+                          urls={message.imageUrls}
+                          kinds={message.imageKinds}
+                          onOpen={
+                            onOpenImage == null
+                              ? undefined
+                              : (index) => onOpenImage(message.id, index)
+                          }
+                        />
+                      ) : null}
+```
+
+**Impact:** `ChatImages`'s interactive branch fires for the first time, so each photo becomes a
+`<button>` with an `aria-label`. `message.imageKinds` also corrects that label: a `'generated'`
+photo now reads "Buka foto nina" instead of "Buka foto kamu". Nothing about `candidates`,
+`hasImage`, `resolveQuote`, `groupIntoDays` or the scroll effects changes — `hasImage` still reads
+`imageUrls`, which is untouched.
+
+### Step 9: `ChatScreen` holds the viewer, and the attach arms the state it already has
+
+**File:** `components/nina/ChatScreen.tsx` — imports at `:3-23`, state after `:114`, derivation
+after `:224`, render at `:513-555`
+**Change:** Four additive insertions. **`handleSend` is not touched**, which is deliberate: it is
+where phase 7 and this phase would otherwise collide, and nothing R10 asks for needs it.
+
+**Code — the React import at `:3`, gaining `useMemo`:**
+
+```ts
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+```
+
+**Code — two new imports, in the existing groups:**
+
+```ts
+import { PhotoViewer } from '@/components/ui/PhotoViewer'
+import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
+import { ChatPhotoActions } from './ChatPhotoActions'
+```
+
+**Code — insert immediately after the `photo` state declaration (`:114`):**
+
+```tsx
+  /**
+   * R10. Which bubble's photographs the full-screen overlay is showing, and which of them is on
+   * screen. `null` is closed.
+   *
+   * ── A MESSAGE ID AND AN INDEX, NOT A SNAPSHOT OF THE PHOTO LIST ──────────────────────────────
+   * Because `messages` changes underneath an open overlay, in two ways that both really happen: a
+   * service-worker push calls `router.refresh()` and the server hands down a new list (see the
+   * block below), and phase 7's delete takes a bubble and its photo rows with it. A snapshot would
+   * keep showing a photo whose row is gone; a derived list plus `viewerIndex` closes or clamps,
+   * which is the only shape that does not end in `PhotoViewer`'s `photos[index]!` throwing.
+   */
+  const [viewer, setViewer] = useState<{ messageId: string; index: number } | null>(null)
+
+  const handleOpenImage = useCallback((messageId: string, index: number) => {
+    setNotice(null)
+    setViewer({ messageId, index })
+  }, [])
+```
+
+**Code — insert immediately after the `seenInitial` during-render block (`:224`):**
+
+```tsx
+  /*
+   * R10's overlay, derived rather than stored — see `viewer` above.
+   *
+   * `useMemo` on the message identity, not on `messages`: this component re-renders on every state
+   * change the screen makes (typing, keyboard, reveal, flash), and the overlay's list only depends
+   * on the one row it is showing.
+   */
+  const viewerMessage =
+    viewer === null
+      ? null
+      : (messages.find((candidate) => candidate.id === viewer.messageId) ?? null)
+  const viewerPhotos = useMemo(() => chatViewerPhotos(viewerMessage), [viewerMessage])
+  const shownIndex = viewer === null ? null : viewerIndex(viewer.index, viewerPhotos.length)
+  /*
+   * The message went away under the open overlay — deleted, or gone from a refreshed window. Close
+   * it DURING RENDER rather than in an effect, for the reason the `seenInitial` block above gives
+   * at length: `react-hooks/set-state-in-effect` rejects the effect form, correctly, and React
+   * discards this render and restarts with the new state before committing, so nothing is painted
+   * twice. It terminates immediately: `viewer === null` makes the condition false.
+   */
+  if (viewer !== null && shownIndex === null) setViewer(null)
+  /*
+   * R10's attach. `null` when the id never reached the client, which is exactly the optimistic row
+   * — and `ChatPhotoActions` renders no attach control for it rather than one that cannot work.
+   */
+  const viewerAttachId =
+    shownIndex === null ? null : attachableIdAt(viewerMessage?.imageIds, shownIndex)
+```
+
+**Code — insert immediately after `<Composer … />` (`:553`), as the last child of the fragment:**
+
+```tsx
+      {/*
+        R10. `z-60` on the overlay clears the composer's `z-40` and phase 2's floating chrome at
+        `z-30`, so nothing has to move for it.
+      */}
+      {viewer !== null && shownIndex !== null && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          index={shownIndex}
+          onIndex={(next) => setViewer({ messageId: viewer.messageId, index: next })}
+          onClose={() => setViewer(null)}
+          /* `'foto'`, as the album passes — "upload screenshot" is not a thing. */
+          subject="foto"
+          actions={
+            <ChatPhotoActions
+              url={viewerPhotos[shownIndex]!.url}
+              label={viewerPhotos[shownIndex]!.label}
+              onAttach={
+                viewerAttachId === null
+                  ? null
+                  : () => {
+                      /*
+                       * ── THE WHOLE OF "ATTACH THIS IMAGE TO HIS NEW CHAT" ─────────────────────
+                       * Arming the state this component ALREADY holds, not a navigation. `photo`
+                       * is the same slot `?photo=avatar:<id>` seeds from `/admin/nina`, `Composer`
+                       * already renders `PhotoAttachmentChip` from it, and `handleSend` already
+                       * forwards it as `attachExisting: { kind, id }` — where `resolveAttachment`
+                       * proves ownership against `user_id` and copies the description across
+                       * server-side. No re-upload, no second blob, no new action.
+                       *
+                       * A `router.push('/nina?photo=image:' + id)` would have cost a full server
+                       * round trip, remounted this component under the runner, and — the real
+                       * objection — put a SECOND writer on a URL whose one writer is deliberately
+                       * one: the `useLayoutEffect` above is one effect deleting both parameters
+                       * because "two independent `replaceState` calls in the same commit would
+                       * race". This phase adds no URL writer at all.
+                       *
+                       * `kind: 'image'` is the TABLE (`NinaPhotoKind`), not the photo's
+                       * `nina_message_images.kind` column. A chat photo is always `'image'` here,
+                       * including one of her selfies whose column reads `'generated'` — passing
+                       * the column value would resolve against `nina_avatars` and find nothing.
+                       *
+                       * Closing the overlay is part of the action: the chip it arms sits above the
+                       * composer, BEHIND this overlay, so leaving it open would hide the entire
+                       * effect of the tap. It replaces any photo already pinned, because there is
+                       * one `photo` slot by design.
+                       */
+                      setPhoto({
+                        kind: 'image',
+                        id: viewerAttachId,
+                        url: viewerPhotos[shownIndex]!.url,
+                      })
+                      setNotice(null)
+                      setViewer(null)
+                    }
+              }
+            />
+          }
+        />
+      )}
+```
+
+**Code — add one prop to `<MessageList …>` (`:521-530`), after `onJumpToQuote`:**
+
+```tsx
+          onOpenImage={handleOpenImage}
+```
+
+**Impact:** `handleSend`, the reveal loop, the keyboard effect, the service-worker listener, the
+`?attach=`/`?photo=` cleanup and the quote handlers are all untouched. The overlay renders above
+everything the screen has. Phase 7's edits to this file sit in `handleSend`'s neighbourhood and in
+its own handlers; every insertion above is at a different point in the file.
+
+### Step 10: `ChatImages`'s docstring stops promising a card that has landed
+
+**File:** `components/nina/ChatImages.tsx` — the last paragraph of the header (`:33-36`)
+**Change:** Docstring only. The file's own text currently says `MessageList` is deliberately not the
+caller and that wiring it "should be its own card"; both sentences are now false, and a stale
+docstring in the one file this phase is named after is worse than no docstring.
+**Code — replace `:33-36` with:**
+
+```
+ * ── F35 PHASE 9 (R10) IS THAT CARD, AND IT LANDED ─────────────────────────────────────────────
+ * `MessageList` now passes both props. What changed is only the caller: this file is unchanged
+ * below the header, because phase 13 built the branch and phase 9 needed no more of it than that.
+ *
+ * `onOpen` opens `components/ui/PhotoViewer` through viewer state in `ChatScreen`, which pages
+ * across THIS BUBBLE'S photos only — `NINA_MAX_CHAT_IMAGES` is 3 plus at most one re-attached
+ * photo, so the dot row is 1-4 dots. The conversation-wide gallery is `/nina/about`'s Media
+ * section and stays there.
+ *
+ * `kinds` now arrives too, from `ChatMessage.imageKinds`, so the `aria-label` below finally tells
+ * the truth about one of her selfies instead of defaulting every photo to his.
+ *
+ * `alt=""` is unchanged and stays unchanged. There is still no honest alt text — the only
+ * description that exists is `glm-4.6v`'s, which is private (invariant 5) — and the viewer does
+ * not caption the photo either.
+```
+
+**Impact:** No code change; `tests/nina.chatPhoto.test.ts` reads this file with `readRepoCode`,
+which strips comments, so the docstring cannot make an assertion pass or fail.
+
+### Step 11: The structural assertions
+
+**File:** `tests/nina.chatPhoto.test.ts` (new)
+**Change:** The claims no unit test can reach, in the style and with the helper of
+`tests/ui.photoViewer.test.ts` and `tests/ui.sheetFocus.test.ts`: this repo has no component tests
+by design, and a text scan proves a rule for every consumer rather than for the one interaction a
+DOM test happened to simulate.
+**Code:**
+
+```ts
+import { describe, expect, it } from 'vitest'
+
+import { readRepoCode, repoFileExists } from './support/importGraph'
+
+/**
+ * R10's structural claims. The arithmetic and the rules are proven in `lib/nina/chatphotos.test.ts`
+ * and `lib/photos/save.test.ts`, where they are pure functions. What is left over is a set of
+ * claims about SHAPE — that the wiring exists, that the four pre-existing `PhotoViewer` callers did
+ * not change, that no second URL writer appeared, and that the private description still does not
+ * cross into a component — and those are properties of the source, not of any one rendered
+ * scenario.
+ *
+ * Comments are stripped by `readRepoCode`, which is load-bearing here: every file below explains at
+ * length why it does what it does, and quotes the very strings these assertions forbid.
+ */
+
+const VIEWER = 'components/ui/PhotoViewer.tsx'
+const IMAGES = 'components/nina/ChatImages.tsx'
+const LIST = 'components/nina/MessageList.tsx'
+const SCREEN = 'components/nina/ChatScreen.tsx'
+const ACTIONS = 'components/nina/ChatPhotoActions.tsx'
+const ABOUT = 'components/nina/NinaAboutScreen.tsx'
+const STRIP = 'components/review/ScreenshotStrip.tsx'
+const INCLUSION = 'components/share/PhotoInclusionList.tsx'
+const PUBLIC_PAGE = 'app/(public)/s/[token]/page.tsx'
+
+describe('a chat photo is a tap target that opens the one overlay', () => {
+  it('passes ChatImages both of the props it has accepted since F33 phase 13', () => {
+    const source = readRepoCode(LIST)
+    expect(source).toContain('kinds={message.imageKinds}')
+    expect(source).toContain('onOpenImage(message.id, index)')
+  })
+
+  it('keeps the grid non-interactive for any caller that does not ask', () => {
+    // ChatImages' contract is that an absent `onOpen` is identical markup. An unconditional inline
+    // arrow in MessageList would take that away from every future consumer.
+    expect(readRepoCode(LIST)).toContain('onOpenImage == null')
+  })
+
+  it('opens the shared overlay rather than a second one', () => {
+    expect(repoFileExists(ACTIONS)).toBe(true)
+    const source = readRepoCode(SCREEN)
+    expect(source).toContain("from '@/components/ui/PhotoViewer'")
+    expect(source).toContain('<PhotoViewer')
+    expect(source).not.toContain('function PhotoViewer')
+  })
+
+  it('derives the overlay from the message rather than snapshotting its photos', () => {
+    // A snapshot would keep showing a photo whose row a delete or a refresh has removed, and
+    // PhotoViewer's `photos[index]!` would then call nameOf(undefined).
+    const source = readRepoCode(SCREEN)
+    expect(source).toContain('chatViewerPhotos(viewerMessage)')
+    expect(source).toContain('viewerIndex(viewer.index, viewerPhotos.length)')
+  })
+})
+
+describe('the download is a decision, not an <a download>', () => {
+  const source = readRepoCode(ACTIONS)
+
+  it('asks chooseSaveStrategy rather than assuming a platform', () => {
+    expect(source).toContain('chooseSaveStrategy(')
+  })
+
+  it('never puts the cross-origin blob URL on a download attribute', () => {
+    // The whole trap: `download` is honoured only same-origin, so on a blob URL the browser
+    // navigates and nothing is saved. The attribute may only ever carry an object URL.
+    expect(source).toContain('anchor.href = objectUrl')
+    expect(source).not.toMatch(/anchor\.href\s*=\s*url/)
+    expect(source).not.toMatch(/download=\{/)
+  })
+
+  it('warms the fetch on pointerdown, so share() survives Safari activation', () => {
+    expect(source).toContain('onPointerDown={warm}')
+  })
+
+  it('treats a dismissed share sheet as silence', () => {
+    expect(source).toContain("error.name === 'AbortError'")
+  })
+})
+
+describe('attaching reuses the machinery instead of re-uploading', () => {
+  const source = readRepoCode(SCREEN)
+
+  it('arms the existing photo state with a pointer, not a URL', () => {
+    expect(source).toMatch(/setPhoto\(\{\s*kind: 'image',/)
+  })
+
+  it('adds no second writer of the query string', () => {
+    // ChatScreen's one useLayoutEffect deletes ?attach= and ?photo= together, because two
+    // independent replaceState calls in one commit would race. R10 must not add a third caller.
+    expect(source.match(/replaceState/g)?.length).toBe(1)
+    expect(source).not.toContain('router.push')
+    expect(source).not.toContain('photo=image:')
+  })
+})
+
+describe('the four pre-existing PhotoViewer callers are byte-identical', () => {
+  it('none of them passes the new actions slot', () => {
+    for (const file of [STRIP, INCLUSION, ABOUT]) {
+      expect(readRepoCode(file)).not.toContain('actions=')
+    }
+  })
+
+  it('leaves the dot pager row exactly as it shipped', () => {
+    // The mechanical form of the promise. R10's controls are an absolutely-positioned sibling, so
+    // the pager's own classes — and therefore every existing caller's geometry — do not move.
+    expect(readRepoCode(VIEWER)).toContain(
+      'flex justify-center gap-2 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]',
+    )
+  })
+
+  it('still renders nothing at all when actions is absent', () => {
+    expect(readRepoCode(VIEWER)).toContain('{actions != null && (')
+  })
+
+  it('still keeps the public shared page out of the client overlay', () => {
+    expect(readRepoCode(PUBLIC_PAGE)).not.toContain('PhotoViewer')
+  })
+})
+
+describe("glm-4.6v's description still does not reach a component (invariant 5)", () => {
+  it('is not read by anything on the chat photo path', () => {
+    for (const file of [IMAGES, LIST, ACTIONS, VIEWER]) {
+      expect(readRepoCode(file)).not.toContain('description')
+    }
+  })
+
+  it('leaves the photo with no alt text, in the grid and in the overlay', () => {
+    expect(readRepoCode(IMAGES)).toContain('alt=""')
+    expect(readRepoCode(VIEWER)).toContain('alt=""')
+  })
+})
+```
+
+**Impact:** `npm test` gains 17 structural cases. Note the last block's forbidden string: none of
+those four files may contain the identifier `description` in code, which is true today and must stay
+true.
+
+---
+
+## Verification
+
+**Install first.** The worktree has no `node_modules`:
+
+```
+cd /home/miftah/.worktrees/run-insights/nina-chat-sessions && npm ci
+```
+
+**Build:**
+
+```
+npm run typecheck && npm run lint && npm run format:check
+```
+
+**Tests:**
+
+```
+npm test
+npm run ci:f08-guard && npm run ci:client-secret-guard && npm run ci:data-layer-guard
+npm run ci:llm-payload-guard && npm run ci:f11-guard && npm run ci:openrouter-guard
+```
+
+Every guard must still pass, and this phase adds no reason for any of them to care: no unit is
+spelled, no secret is named, no model is called, no query is written, and
+`scripts/check-llm-payload-boundary.mjs` is not edited (invariant 2 — phase 4 owns it).
+
+`npm test` must include the three new files and must keep `tests/ui.photoViewer.test.ts` green,
+including its `strip.match(/<PhotoViewer/g)?.length === 2` count and its "no `preventDefault`"
+assertion.
+
+**Manual check, on a real iPhone — this is the part R10 turns on:**
+
+1. `/nina`, scroll to a message with a photo, tap it. The overlay opens full screen. Two-finger
+   pinch zooms (the browser's, not ours); a horizontal swipe pages; the dots track; `✕` closes.
+2. A bubble with two or three photos: paging wraps circularly in both directions, and the dots count
+   the bubble's photos and nothing else.
+3. The header reads **Foto kamu** for his upload and **Foto Nina** for one of her selfies. It never
+   reads "generated" or "upload".
+4. Tap the download icon. The iOS share sheet appears; **Save Image** puts the file in Photos.
+   Dismissing the sheet leaves no message on screen.
+5. Turn on Airplane Mode and tap it again. The photo opens in a new tab with the "tekan lama buat
+   simpan" line, or — if the tab was blocked — the "Belum bisa diunduh" line. It is never silent.
+6. On a desktop browser, the same icon saves a file called `nina-<something>.jpg` into Downloads.
+7. Tap the paperclip. The overlay closes, the chip appears above the composer with that photo. Type
+   a line and send. The new bubble carries the same photo; `nina_message_images` has a second row
+   pointing at **the same `blob_url`** (no re-upload), and the Blob store has no new object.
+8. Tap a photo on a message you sent seconds ago, in the same session. Viewing and download work;
+   the paperclip is absent. Reload; the paperclip is there. (H3.)
+9. `/r/[id]`'s review strip, the correction sheet's evidence panel, the sharing control's rows and
+   `/nina/about`'s album all open their overlays exactly as before — no floating icons, dots in the
+   same place.
+
+**Exit criteria:**
+
+- Tapping any photo in the conversation opens `PhotoViewer` with pinch-zoom, circular paging and the
+  dot row intact.
+- The download control saves the file on a real iPhone through the share sheet, and on a desktop
+  through a `blob:` anchor; on every path where it cannot, it says what to do instead and is never
+  silent. **`<a download>` is never pointed at a cross-origin URL.**
+- The attach control arms the composer with that photo, and a send persists a row pointing at the
+  same blob with no re-upload and no re-described image.
+- The four existing `PhotoViewer` call sites are unchanged in behaviour, asserted mechanically.
+- `nina_message_images.description` reaches no component.
+- No second writer of `/nina`'s query string exists.
+
+---
+
+## Assumptions
+
+- **A9-1 — Phase 7 has landed.** Its edits to `MessageList.tsx` (props threaded to `MessageBubble`)
+  and `ChatScreen.tsx` (edit/delete handlers) exist before Steps 8 and 9 are applied. Every change
+  in those two steps is an *addition* at a named point — a prop added to a destructuring list, an
+  entry added to a prop type, two attributes added to one JSX element, a block appended to a return
+  — so it composes with whatever phase 7 wrote rather than replacing it. **The line numbers cited
+  are today's and will have shifted;** locate by the quoted surrounding code, not by number.
+- **A9-2 — Phase 7's delete removes the message from `ChatScreen`'s `messages`.** If it does, the
+  during-render close in Step 9 handles a photo deleted under an open overlay. If instead it only
+  marks a row and keeps it on screen, the overlay simply stays open on a photo that is still
+  rendered, which is also correct. Either way nothing throws, because the list is derived.
+- **A9-3 — Phase 3 has scoped the screen to one session,** so `messages` holds one session's rows
+  and the message the overlay names is in that list. This phase never looks a message up by
+  anything but identity within `messages`, so a narrower window is not a problem.
+- **A9-4 — Phase 2's floating chrome is at `z-30`** and the composer at `z-40`, as
+  `Composer.tsx:42` records. `PhotoViewer`'s `z-60` therefore covers both with no change needed.
+  If phase 2 shipped its controls above `z-60`, the overlay would sit under them and phase 2's
+  z-index is the thing to lower.
+- **A9-5 — Vercel Blob's public URLs serve permissive CORS.** Not load-bearing: a failed fetch for
+  any reason falls to the open-and-say-so branch (D-1).
+
+## Handoffs
+
+### H1 — `app/nina/page.tsx`'s mapping must carry the image ids and kinds. **REQUIRED for the attach control — and RECONCILED INTO THIS PHASE as a step, not a handoff.**
+
+**This section is no longer a request to another phase. It is this phase's own two-hunk edit.**
+
+As written, this plan declined the edit for a real reason: `app/nina/page.tsx` belongs to phases 3, 5
+and 8, and phase 8 was **concurrent** with this phase in the draft DAG (both in wave 4), so editing
+it here would have raced a peer's git index — the failure the index's own "why some edges are file
+edges" note describes, and the one that has already destroyed committed work on this repo once.
+
+**Reconciliation fixed the ordering rather than the ownership.** This phase now declares
+`Depends on: 7, 8`, exactly as the set's stated convention says ("where two phases want the same
+file, the later one declares the edge"). That serialises `app/nina/page.tsx` to 3 -> 5 -> 8 -> 9, so
+this phase can make the change itself, and R10 stays whole in one phase instead of being split
+across 8 and 9. The cost is one extra wave; the alternative was either a two-line change nobody owns
+or an `R10` credited to a phase that cannot test it.
+
+**Why it had to be assigned to somebody.** Without it, `attachableIdAt` returns `null` and the attach
+control does not render at all — deliberately degrading rather than offering a button that cannot
+work. Everything else would still work (tapping opens the viewer; paging, pinch-zoom and download
+are fine; the labels fall back to "Foto kamu"), but "attach this image to his new chat" is half of
+R10, so degrading silently is not an acceptable resting state for the set.
+
+**The exact diff. Two hunks, no restructuring.** Replace the `urlsByMessage` loop
+(`app/nina/page.tsx:194-199`) with:
+
+```ts
+  const photosByMessage = new Map<string, { urls: string[]; ids: string[]; kinds: string[] }>()
+  for (const image of images) {
+    const group = photosByMessage.get(image.messageId)
+    if (group == null) {
+      photosByMessage.set(image.messageId, {
+        urls: [image.blobUrl],
+        ids: [image.id],
+        kinds: [image.kind],
+      })
+    } else {
+      group.urls.push(image.blobUrl)
+      group.ids.push(image.id)
+      group.kinds.push(image.kind)
+    }
+  }
+```
+
+and replace the `imageUrls` line of the `initial` mapping (`app/nina/page.tsx:242`) with:
+
+```ts
+    imageUrls: photosByMessage.get(row.id)?.urls,
+    /* F35 R10. `id` so the overlay's attach control can reuse `attachExisting: { kind: 'image',
+     * id }` rather than re-uploading a blob we already own; `kind` so `photoSideOf` can tell his
+     * photograph from hers, which `row.role` cannot for a re-attached selfie.
+     *
+     * `description` is STILL dropped on the floor here and must stay dropped (invariant 5) —
+     * `imageColumns` selects it, and this mapping is the boundary that stops it. */
+    imageIds: photosByMessage.get(row.id)?.ids,
+    imageKinds: photosByMessage.get(row.id)?.kinds,
+```
+
+No query changes: `getNinaMessageImagesForMessages` already selects `id` and `kind`
+(`lib/nina/queries.ts:406-419`, `:742-757`), so this reads two fields off rows it already has and
+costs nothing.
+
+**Owner: this phase.** (The draft offered phase 8 or a reconciler commit as candidates and asked for
+an explicit assignment — *"a two-line change nobody owns is a two-line change nobody makes"*. That
+was the right instinct and it is why this is now a step with an ordering edge behind it.)
+
+### H2 — `sendNinaMessage` could return the new image ids, and does not.
+
+Then `ChatScreen`'s optimistic row could carry `imageIds` and the paperclip would appear on a photo
+the instant it is sent. It would mean widening `SendNinaMessageResult` in `lib/nina/actions.ts`,
+which is phase 3's file. Not worth a cross-phase edge for a control that appears one load later; see
+H3 for what the runner actually experiences. Worth its own card if it ever grates.
+
+### H3 — `mergeServerMessages` keeps the local row, so a just-sent message has no ids until a full load.
+
+`lib/nina/live.ts:39` is `localById.get(row.id) ?? row` — local content wins on an id match, which
+is correct and load-bearing for a bubble mid-reveal. The consequence for R10 is narrow and named:
+for a message sent in this session, tap-to-view and download work immediately, the labels fall back
+to "Foto kamu", and the attach control is absent until a navigation or reload brings the server
+row. Not fixed here, because `live.ts` is not this phase's file and its rule is right for the reason
+its docstring gives.
+
+### H4 — `NinaAboutScreen`'s own attach strip could move into the new `actions` slot.
+
+It currently renders a full-width `fixed … z-70` bar over the overlay that covers the dot pager
+(`NinaAboutScreen.tsx:255-279`). With the slot now existing, that is one component's worth of
+duplicated geometry that could go away. **Deliberately not done**: `NinaAboutScreen` is not in this
+phase's scope, its bar carries a text input that a bottom-right cluster cannot hold, and changing a
+shipped surface to tidy a recipe is the drive-by this phase declines.
+
+### H5 — R10 makes re-attached photos common, which makes reaping harder.
+
+Two rows now point at one blob. Nothing in this phase writes a blob, so nothing new is orphaned —
+but the set's own scope note ("Reaping the blobs orphaned by a deleted message… the
+`reap-orphaned-blobs` skill does not cover `nina/` yet") gains a second reason to be true: a reaper
+for `nina/` must count *references*, not rows, or deleting one of two messages sharing a blob would
+delete a photo the other still shows. Recorded, not solved.
+
+## Rollback
+
+One commit, UI-only, no migration and no data change.
+
+```
+git revert <phase 9 commit>
+```
+
+Three of the five new files (`lib/photos/save.ts`, `lib/nina/chatphotos.ts`,
+`components/nina/ChatPhotoActions.tsx`) have no importer outside this phase, so they simply
+disappear. The five edits are additive: reverting them restores `PhotoViewer` to five props,
+`MessageList` to its phase-7 prop list, `ChatMessage` to its phase-8 field set, and `<ChatImages>`
+to `urls`-only — after which every photo in the conversation is again a plain `<img>`, which is
+exactly what shipped. Nothing else in the set depends on any symbol this phase creates.
+
+If **H1 has already landed** when this is reverted, `app/nina/page.tsx` will be mapping
+`imageIds`/`imageKinds` onto a `ChatMessage` that no longer declares them, which `tsc` will reject.
+Revert H1's hunk in the same commit, or revert this phase before H1.

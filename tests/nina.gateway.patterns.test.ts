@@ -4,7 +4,7 @@ import { getAllTimeTotals, getReviewedRunWindow } from '@/lib/db/queries'
 import { resolveHrMax } from '@/lib/metrics'
 import { dbNinaSourceGateway } from '@/lib/nina/gateway'
 import { PATTERN_RUN_FETCH_LIMIT } from '@/lib/nina/patterns'
-import { getNinaMemorySlots, getNinaNags } from '@/lib/nina/queries'
+import { getNinaMemorySlots, getNinaMessageWindow, getNinaNags } from '@/lib/nina/queries'
 
 /**
  * **RULING G6's exit test, and it is a phase-boundary assertion rather than a unit test.**
@@ -173,5 +173,64 @@ describe('readNags — the phase 9 stub is gone', () => {
 
   it('returns [] for a runner she has never nagged', async () => {
     await expect(dbNinaSourceGateway.readNags('user_1')).resolves.toEqual([])
+  })
+})
+
+/**
+ * **Phase 3's exit test, and it is a phase-boundary assertion exactly as `readFiredPatterns`'s
+ * above is.**
+ *
+ * F35 R2's own words are that a new session exists so he can "focus on a new topic", and assumption
+ * A1 reads that as a claim about what Nina is GIVEN TO READ. The path that decides it is
+ * `loadNinaContext` -> `readMessageWindow` -> `getNinaMessageWindow`, and the failure mode is
+ * silent in the same way the phase-9 stub was: every type checks, every other test passes, and she
+ * simply goes on reading the last forty messages of a conversation the screen no longer shows. So
+ * the property under test is "the session id survives the gateway", not the mapping — which is one
+ * line and obvious, and which would still be one line and obvious with the id dropped.
+ *
+ * The companion property is the asymmetry (phase 3's D4): the window is scoped, `olderCount` is
+ * passed through untouched from a user-wide count, and a test that "tidied" the count into the
+ * session would take out the guard that stops her introducing herself in every new session.
+ */
+describe('readMessageWindow — the session reaches the query (F35 phase 3, R2/A1)', () => {
+  const messageWindow = vi.mocked(getNinaMessageWindow)
+
+  it('passes the session id through to getNinaMessageWindow', async () => {
+    messageWindow.mockResolvedValue({ messages: [], olderCount: 0 })
+
+    await dbNinaSourceGateway.readMessageWindow('user_1', 40, 'sessionAAAAA')
+
+    expect(messageWindow).toHaveBeenCalledWith('user_1', 40, 'sessionAAAAA')
+  })
+
+  it('returns olderCount untouched, so the user-wide count survives the boundary', async () => {
+    messageWindow.mockResolvedValue({
+      messages: [
+        {
+          id: 'msgAAAAAAAAA',
+          seq: 9,
+          sessionId: 'sessionAAAAA',
+          role: 'runner',
+          body: 'pagi',
+          createdAt: new Date('2026-09-04T00:00:00Z'),
+          source: 'chat',
+          turnId: null,
+          replyToId: null,
+          runId: null,
+          readAt: null,
+        },
+      ],
+      /* Messages of his that this window does not show — including everything in his OTHER
+       * sessions. Non-zero with a one-message window is the normal case after a new session is
+       * opened, and it is what keeps `prompts/system.ts`'s "you have never spoken to him" branch
+       * from firing on a runner she has known for months. */
+      olderCount: 312,
+    })
+
+    const result = await dbNinaSourceGateway.readMessageWindow('user_1', 40, 'sessionAAAAA')
+
+    expect(result.olderCount).toBe(312)
+    expect(result.messages).toHaveLength(1)
+    expect(result.messages[0]?.text).toBe('pagi')
   })
 })

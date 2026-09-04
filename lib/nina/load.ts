@@ -86,12 +86,26 @@ export interface NinaSourceGateway {
   /** The append-only ledger, **newest first**, at most `limit` rows. */
   readMemoryFacts(userId: string, limit: number): Promise<MemoryFactInput[]>
   /**
-   * The last `limit` messages **oldest first**, plus how many exist before them.
-   * `olderCount` is a COUNT in SQL, not `all.length - limit` in TypeScript.
+   * The last `limit` messages **of one session** (F35 R2, assumption A1), oldest first, plus how
+   * many of his messages exist that this window does not show.
+   *
+   * ── `sessionId` IS WHY R2 IS NOT JUST A UI CHANGE ─────────────────────────────────────────
+   * "Focus on a new topic" is a claim about what she is given to read. Scope only the screen and a
+   * new session looks new and behaves exactly like the old one.
+   *
+   * ── `olderCount` IS NOT SESSION-SCOPED, AND THAT IS ON PURPOSE ────────────────────────────
+   * It counts every message of his that this window does not carry — earlier in this session and
+   * everything in his other sessions alike. `prompts/system.ts` turns it into "there is more
+   * history you cannot see", which is exactly what that number now means; scoping it to the
+   * session too would make every new session present as a runner she has never met.
+   * `lib/nina/queries.ts`'s `getNinaMessageWindow` carries the full argument.
+   *
+   * Still a COUNT in SQL, not `all.length - limit` in TypeScript.
    */
   readMessageWindow(
     userId: string,
     limit: number,
+    sessionId: string,
   ): Promise<{ messages: MessageInput[]; olderCount: number }>
   /** Phase 9's computed longitudinal codes. `[]` when none fired. */
   readFiredPatterns(userId: string): Promise<FiredPattern[]>
@@ -128,6 +142,18 @@ function toSex(value: string | null): Sex | null {
  */
 export async function loadNinaContext(
   userId: string,
+  /**
+   * **Which conversation she is in (F35 R2, phase 3).** Positional and second, because every caller
+   * knows it before it knows anything else: `sendNinaMessage` has just written his message into it,
+   * and `proactive.ts` resolved it in order to write into it. Required rather than optional so
+   * `tsc` names any future caller that has not decided — the same reason the queries below it are
+   * required.
+   *
+   * It reaches exactly one of the six gateway reads. The memory ledger stays GLOBAL (assumption
+   * A2): `nina_memory_slots` and `nina_memory_facts` are the long-term memory, and partitioning
+   * them would make her forget his nickname the moment he opened a new topic.
+   */
+  sessionId: string,
   gateway: NinaSourceGateway,
   now: Date = new Date(),
 ): Promise<NinaContext> {
@@ -135,7 +161,7 @@ export async function loadNinaContext(
     gateway.readIdentity(userId),
     gateway.readMemorySlots(userId),
     gateway.readMemoryFacts(userId, MEMORY_FACT_LIMIT),
-    gateway.readMessageWindow(userId, CONTEXT_MESSAGE_WINDOW),
+    gateway.readMessageWindow(userId, CONTEXT_MESSAGE_WINDOW, sessionId),
     gateway.readFiredPatterns(userId),
     gateway.readNags(userId),
   ])

@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
@@ -13,11 +14,21 @@ import {
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
+import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+import {
+  applyMessageDeletion,
+  applyMessageEdit,
+  canActOnMessage,
+  type EditTarget,
+} from '@/lib/nina/edit'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
+import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
+import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
+import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
 import type { ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
@@ -58,7 +69,13 @@ import { useChatScrollMark } from './useChatScroll'
  * who should speak.
  */
 
-type Notice = 'send-failed' | 'no-reply' | 'quote-missing'
+type Notice =
+  | 'send-failed'
+  | 'no-reply'
+  | 'quote-missing'
+  | 'edit-failed'
+  | 'delete-failed'
+  | 'edit-unavailable'
 
 const NOTICE_TEXT: Record<Notice, string> = {
   'send-failed': 'That didn’t send. Check your connection and try it again.',
@@ -68,6 +85,14 @@ const NOTICE_TEXT: Record<Notice, string> = {
    * loaded; it is simply not among the rows on screen — deleted since, or further back than this
    * screen goes. Saying so beats a tap that does nothing. */
   'quote-missing': 'That message isn’t on this screen any more, so there’s nowhere to jump to.',
+  /* R8. Both of these mean the WRITE did not happen, so the bubble on screen is still the truth.
+   * They are told apart because a failed edit leaves something to try again and a failed delete
+   * leaves the message where it was — different next actions, different sentences. */
+  'edit-failed': 'That edit didn’t save. The message is unchanged — try it again.',
+  'delete-failed': 'That message could not be deleted. It is still here, and still in her context.',
+  /* The one refusal that is not a failure: an optimistic row has no database row behind it yet. */
+  'edit-unavailable':
+    'Give that one a moment to send — there is nothing to edit until Nina has it.',
 }
 
 /** The chrome the composer sits above: the bar, plus the FAB's overhang past the bar's top edge. */
@@ -84,6 +109,7 @@ export function ChatScreen({
   initial,
   todayISO,
   userId,
+  sessionId,
   pending,
   pendingPhoto,
 }: {
@@ -97,6 +123,30 @@ export function ChatScreen({
    * owner from the session and refuses any pathname that does not match it.
    */
   userId: string
+  /**
+   * **F35 R2. The conversation this screen is reading, and the one a send writes into.**
+   *
+   * Resolved on the server from `?s=` against an owner-scoped list, so by the time it is here it is
+   * a session he owns — see `chooseActiveSession`. It is passed straight through to
+   * `sendNinaMessage` and read by nothing else in this component; the screen does not need to know a
+   * session's title, its pin state or its position in the list, and phase 5's sidebar is where all
+   * three live.
+   *
+   * `null` means he has NO sessions at all — a runner who has never messaged, or R11's runner who
+   * just removed his last one. The send carries the `null` through, and the ACTION resolves it (or
+   * creates a session), because a render must not write. Nothing on this screen branches on it:
+   * `messages` is `[]` in that state, so the existing `EmptyState` already renders.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit and the same reasoning `pendingPhoto`
+   * carries: `app/nina/page.tsx` is the one caller and `tsc` should be the thing that notices if it
+   * stops passing it. An optional prop defaulting to `null` would turn a broken route into a chat
+   * that quietly wrote every message into whichever session happened to be newest.
+   *
+   * **`app/nina/page.tsx` also keys this component on it** (`key={activeSessionId ?? 'none'}`), so a
+   * session switch remounts rather than merging the previous conversation's local state into this
+   * one. That key is not decoration — see the comment at the call site.
+   */
+  sessionId: string | null
   /**
    * Phase 8 (R13). The run `/r/[id]`'s icon just handed over, resolved and formatted on the server
    * from `?attach=<runId>`, or null. It becomes composer state immediately — see the cleanup
@@ -127,6 +177,15 @@ export function ChatScreen({
   const [draftQuote, setDraftQuote] = useState<QuoteView | null>(null)
   /** Phase 7. The message a jump just landed on. Held for `QUOTE_FLASH_MS`, then cleared. */
   const [flashId, setFlashId] = useState<string | null>(null)
+  /**
+   * R8. The message whose action sheet is open, or null.
+   *
+   * The `ChatMessage` itself and not an id, so the sheet can render the text being acted on and
+   * disclose the photo count without a second lookup — and so that a row that vanishes from
+   * `messages` under it (a push-driven refresh, a delete in another tab) does not leave the sheet
+   * pointing at nothing it can describe.
+   */
+  const [acting, setActing] = useState<ChatMessage | null>(null)
   /** Phase 8 (R13). The run the next message will carry. Seeded from the server's `?attach=`. */
   const [attachment, setAttachment] = useState<RunAttachment | null>(pending)
   /**
@@ -136,6 +195,24 @@ export function ChatScreen({
    * call.
    */
   const [photo, setPhoto] = useState<NinaExistingPhoto | null>(pendingPhoto)
+
+  /**
+   * R10. Which bubble's photographs the full-screen overlay is showing, and which of them is on
+   * screen. `null` is closed.
+   *
+   * ── A MESSAGE ID AND AN INDEX, NOT A SNAPSHOT OF THE PHOTO LIST ──────────────────────────────
+   * Because `messages` changes underneath an open overlay, in two ways that both really happen: a
+   * service-worker push calls `router.refresh()` and the server hands down a new list, and R8's
+   * delete takes a bubble and its photo rows with it. A snapshot would keep showing a photo whose
+   * row is gone; a derived list plus `viewerIndex` closes or clamps, which is the only shape that
+   * does not end in `PhotoViewer`'s `photos[index]!` throwing.
+   */
+  const [viewer, setViewer] = useState<{ messageId: string; index: number } | null>(null)
+
+  const handleOpenImage = useCallback((messageId: string, index: number) => {
+    setNotice(null)
+    setViewer({ messageId, index })
+  }, [])
 
   /* R14's mark on this history entry, decoded from `?at=`. Passed down; the arithmetic is in
    * `lib/nina/scroll.ts` and the DOM half is in `MessageList`. */
@@ -154,6 +231,17 @@ export function ChatScreen({
    * and two independent `replaceState` calls in the same commit would race to decide which of them
    * wrote the surviving URL. The F24 idiom, and the reason it is `replace`: this entry is where we
    * already are.
+   *
+   * ── AND SINCE F35 PHASE 3, `?s=` SURVIVES IT FOR EXACTLY THE SAME REASON ────────────────────
+   * The session parameter (R2, assumption A4) names the open conversation and MUST outlive this
+   * effect: deleting it would drop him back to his newest chat one frame after the page painted. It
+   * survives because this effect copies the query and deletes two keys BY NAME rather than
+   * rebuilding it — the property `useChatScroll.ts`'s header already anticipated when it wrote that
+   * its own copy exists "so a future parameter on `/nina` survives". `?s=` is that parameter. **So
+   * do not "simplify" the two `delete` calls into a freshly built `URLSearchParams`**, and do not
+   * add a third `replaceState` to this component: phase 3 deliberately writes `?s=` by NAVIGATION
+   * only — a `<Link>` or a `router.push` from a user gesture — so there is never a second writer of
+   * this URL in the same commit as this effect, which is the race the paragraph above is about.
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -246,6 +334,34 @@ export function ChatScreen({
     setSeenInitial(initial)
     setMessages((current) => mergeServerMessages(current, initial) as ChatMessage[])
   }
+
+  /*
+   * R10's overlay, derived rather than stored — see `viewer` above.
+   *
+   * `useMemo` on the message identity, not on `messages`: this component re-renders on every state
+   * change the screen makes (typing, keyboard, reveal, flash), and the overlay's list only depends
+   * on the one row it is showing.
+   */
+  const viewerMessage =
+    viewer === null
+      ? null
+      : (messages.find((candidate) => candidate.id === viewer.messageId) ?? null)
+  const viewerPhotos = useMemo(() => chatViewerPhotos(viewerMessage), [viewerMessage])
+  const shownIndex = viewer === null ? null : viewerIndex(viewer.index, viewerPhotos.length)
+  /*
+   * The message went away under the open overlay — deleted, or gone from a refreshed window. Close
+   * it DURING RENDER rather than in an effect, for the reason the `seenInitial` block above gives
+   * at length: `react-hooks/set-state-in-effect` rejects the effect form, correctly, and React
+   * discards this render and restarts with the new state before committing, so nothing is painted
+   * twice. It terminates immediately: `viewer === null` makes the condition false.
+   */
+  if (viewer !== null && shownIndex === null) setViewer(null)
+  /*
+   * R10's attach. `null` when the id never reached the client, which is exactly the optimistic row
+   * — and `ChatPhotoActions` renders no attach control for it rather than one that cannot work.
+   */
+  const viewerAttachId =
+    shownIndex === null ? null : attachableIdAt(viewerMessage?.imageIds, shownIndex)
 
   /*
    * The iOS keyboard. Safari does not resize the layout viewport when it opens, so a fixed
@@ -351,6 +467,106 @@ export function ChatScreen({
     }, QUOTE_FLASH_MS)
   }, [])
 
+  /**
+   * R8, arming. The gesture (or the focus-revealed button) picked a message; decide whether it can
+   * be acted on at all, and open the sheet if it can.
+   *
+   * `canActOnMessage` is the gate and it is in `lib/`, because "which messages are editable" is a
+   * rule with two real exclusions — an optimistic row whose id is client-minted, and a row whose
+   * send threw — and both of them are states this screen produces and no other screen does. A
+   * refusal here is a NOTICE rather than silence: the runner performed a deliberate gesture and a
+   * gesture that does nothing reads as a broken screen.
+   */
+  const handleRequestActions = useCallback((message: ChatMessage) => {
+    const target: EditTarget = {
+      id: message.id,
+      mine: message.role === 'user',
+      body: message.body,
+      hasImage: (message.imageUrls?.length ?? 0) > 0,
+      hasRun: message.attachment != null,
+      confirmed: message.state === 'sent',
+    }
+    if (!canActOnMessage(target)) {
+      setNotice('edit-unavailable')
+      return
+    }
+    setNotice(null)
+    setActing(message)
+  }, [])
+
+  /**
+   * R8, editing. Returns true when the row was written, which is the sheet's cue to close.
+   *
+   * ── THE LIST IS PATCHED FROM THE RETURN VALUE, AND NOT BY A REFRESH ───────────────────────────
+   * This component's header explains why it does not `router.refresh()` after a send. An edit has a
+   * second, sharper reason: `mergeServerMessages` is "server order, LOCAL content", so for any id
+   * this component already holds, the local copy WINS over the server's. A refresh literally cannot
+   * deliver an edited body — it would re-render the page and then be discarded. So the action
+   * returns the canonical text and it is mapped onto local state here, exactly as this file already
+   * adopts `result.userMessageId` after a send. Two mechanisms, not three.
+   *
+   * `applyMessageEdit` returns the same array reference when nothing changed, so the `'unchanged'`
+   * case costs no render.
+   */
+  const handleEditMessage = useCallback(async (id: string, body: string): Promise<boolean> => {
+    let result: Awaited<ReturnType<typeof editNinaMessage>> | null = null
+    try {
+      result = await editNinaMessage({ messageId: id, body })
+    } catch {
+      result = null
+    }
+    if (!alive.current) return false
+
+    if (result === null || !result.ok || result.body === null) {
+      setNotice('edit-failed')
+      return false
+    }
+
+    const written = result.body
+    setNotice(null)
+    setMessages((current) => applyMessageEdit(current, id, written) as ChatMessage[])
+    return true
+  }, [])
+
+  /**
+   * R8, deleting. Returns true when the row is gone.
+   *
+   * `applyMessageDeletion` does both halves in one pass: it drops the row AND nulls every
+   * `replyToId` that pointed at it — which is the client-side expression of the database's
+   * `ON DELETE SET NULL` on `nina_messages.reply_to_id`. Without the second half the screen would
+   * still look right (`resolveQuote` resolves against the rows on screen, and the target is gone),
+   * but the local rows would carry a pointer the database no longer has, and `mergeServerMessages`
+   * keeps local content — so that stale pointer would survive every later refresh.
+   *
+   * A quote whose target was deleted therefore renders as a plain message rather than throwing,
+   * which `resolveQuote` documents as the designed outcome and which is this phase's exit test.
+   */
+  const handleDeleteMessage = useCallback(async (id: string): Promise<boolean> => {
+    let result: Awaited<ReturnType<typeof removeNinaMessage>> | null = null
+    try {
+      result = await removeNinaMessage({ messageId: id })
+    } catch {
+      result = null
+    }
+    if (!alive.current) return false
+
+    if (result === null || !result.ok || result.deletedId === null) {
+      setNotice('delete-failed')
+      return false
+    }
+
+    const deletedId = result.deletedId
+    setNotice(null)
+    setMessages((current) => applyMessageDeletion(current, deletedId) as ChatMessage[])
+    /* If the deleted message was the one a reply was armed against, the draft strip in the
+     * composer now points at something that does not exist. Unpin it rather than let a send write
+     * a `reply_to_id` the database would immediately null. */
+    setDraftQuote((current) => (current?.targetId === deletedId ? null : current))
+    /* Same argument for the landing tint: nothing left to flash. */
+    setFlashId((current) => (current === deletedId ? null : current))
+    return true
+  }, [])
+
   const handleSend = useCallback(
     async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
@@ -438,6 +654,17 @@ export function ChatScreen({
            */
           attachExisting:
             sendingPhoto === null ? null : { kind: sendingPhoto.kind, id: sendingPhoto.id },
+          /*
+           * F35 R2. The conversation this message joins. Read from the prop rather than from the
+           * URL, because the server already proved this session is his — re-reading `?s=` here
+           * would re-introduce an untrusted claim the page has already resolved.
+           *
+           * `null` is passed through deliberately: it means he has no sessions, and the action
+           * resolves-or-creates. Refusing on the client instead would leave the composer enabled
+           * with nowhere to send, which is the "enabled Send button that silently refuses" the
+           * refusal-parity comment above warns about.
+           */
+          sessionId,
         })
       } catch {
         result = null
@@ -507,7 +734,7 @@ export function ChatScreen({
       setTyping(false)
       setBusy(false)
     },
-    [busy, draftQuote, attachment, photo],
+    [busy, draftQuote, attachment, photo, sessionId],
   )
 
   return (
@@ -527,6 +754,8 @@ export function ChatScreen({
           flashId={flashId}
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}
+          onRequestActions={handleRequestActions}
+          onOpenImage={handleOpenImage}
         />
       )}
 
@@ -551,6 +780,105 @@ export function ChatScreen({
         photo={photo}
         onClearPhoto={() => setPhoto(null)}
       />
+
+      {/*
+        R8's surface. Rendered LAST, after the composer, so nothing about the composer's `fixed`
+        geometry or its `id="nina-composer"` measurement changes — `Sheet` is `z-50` and the
+        composer `z-40`, which is the stacking this app already uses for "a sheet covers the
+        second fixed bar".
+
+        `key` is the target's id, and that is load-bearing rather than a lint appeasement: the
+        sheet holds its own textarea draft (the `Sheet` focus-loss lesson), so picking a DIFFERENT
+        message must reset that draft. Remounting on the id is how. It is the deliberate inverse of
+        `Composer`'s "never given a `key` that changes", where a reset would have been the bug.
+
+        `photoCount` comes off the row this component already holds, so the confirmation can
+        disclose that the photos go with the message (`nina_message_images` cascades) without a
+        query. The URLs are not passed — the sheet shows no thumbnails, and phase 9 owns anything
+        that renders a chat photo.
+      */}
+      <MessageActionsSheet
+        key={acting?.id ?? 'none'}
+        target={
+          acting === null
+            ? null
+            : {
+                id: acting.id,
+                mine: acting.role === 'user',
+                body: acting.body,
+                hasImage: (acting.imageUrls?.length ?? 0) > 0,
+                hasRun: acting.attachment != null,
+                confirmed: acting.state === 'sent',
+              }
+        }
+        photoCount={acting?.imageUrls?.length ?? 0}
+        onClose={() => setActing(null)}
+        onSubmitEdit={handleEditMessage}
+        onConfirmDelete={handleDeleteMessage}
+      />
+
+      {/*
+        R10. `z-60` on the overlay clears R8's sheet at `z-50`, the composer's `z-40` and phase 2's
+        floating chrome at `z-30`, so nothing has to move for it. Rendered last for the same reason
+        the sheet above is: a full-screen overlay is the last thing in the tree, and the composer's
+        `fixed` geometry and its `id="nina-composer"` measurement stay untouched by it.
+      */}
+      {viewer !== null && shownIndex !== null && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          index={shownIndex}
+          onIndex={(next) => setViewer({ messageId: viewer.messageId, index: next })}
+          onClose={() => setViewer(null)}
+          /* `'foto'`, as the album passes — "upload screenshot" is not a thing. */
+          subject="foto"
+          actions={
+            <ChatPhotoActions
+              url={viewerPhotos[shownIndex]!.url}
+              label={viewerPhotos[shownIndex]!.label}
+              onAttach={
+                viewerAttachId === null
+                  ? null
+                  : () => {
+                      /*
+                       * ── THE WHOLE OF "ATTACH THIS IMAGE TO HIS NEW CHAT" ─────────────────────
+                       * Arming the state this component ALREADY holds, not a navigation. `photo`
+                       * is the same slot `?photo=avatar:<id>` seeds from the admin surface,
+                       * `Composer` already renders `PhotoAttachmentChip` from it, and `handleSend`
+                       * already forwards it as `attachExisting: { kind, id }` — where
+                       * `resolveAttachment` proves ownership against `user_id` and copies the
+                       * image's private prose across server-side. No re-upload, no second blob,
+                       * no new action.
+                       *
+                       * A `router.push('/nina?photo=…')` would have cost a full server round trip,
+                       * remounted this component under the runner, and — the real objection — put
+                       * a SECOND writer on a URL whose one writer is deliberately one: the
+                       * `useLayoutEffect` above is one effect deleting both parameters because
+                       * "two independent `replaceState` calls in the same commit would race".
+                       * This phase adds no URL writer at all.
+                       *
+                       * `kind: 'image'` is the TABLE (`NinaPhotoKind`), not the photo's own kind
+                       * column. A chat photo is always `'image'` here, including one of her
+                       * selfies whose column reads `'generated'` — passing the column value would
+                       * resolve against `nina_avatars` and find nothing.
+                       *
+                       * Closing the overlay is part of the action: the chip it arms sits above the
+                       * composer, BEHIND this overlay, so leaving it open would hide the entire
+                       * effect of the tap. It replaces any photo already pinned, because there is
+                       * one `photo` slot by design.
+                       */
+                      setPhoto({
+                        kind: 'image',
+                        id: viewerAttachId,
+                        url: viewerPhotos[shownIndex]!.url,
+                      })
+                      setNotice(null)
+                      setViewer(null)
+                    }
+              }
+            />
+          }
+        />
+      )}
     </>
   )
 }

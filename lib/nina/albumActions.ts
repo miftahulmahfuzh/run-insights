@@ -45,6 +45,15 @@ export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<Nin
   const result = await sendNinaMessage({
     body,
     attachExisting: { kind: input.kind, id: input.id },
+    /*
+     * F35 phase 3 (R2). `null`, and it is the right answer rather than a placeholder: he is on
+     * `/nina/about` with the album open, there is no session in view, and "no session in view"
+     * resolves to his most recent conversation (assumption A3). The caller then navigates to
+     * `/nina`, which resolves the SAME session — so the photo he just sent is on the screen he
+     * lands on. Naming a session here would mean the album knowing about a parameter that belongs
+     * to the chat.
+     */
+    sessionId: null,
   })
   return {
     ok: result.ok,
