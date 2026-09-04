@@ -28,6 +28,7 @@
     "blob:reap": "node --env-file=.env.local scripts/blob-reap.mjs",
     "badges:backfill-runs": "node --env-file=.env.local scripts/backfill-badge-run-ids.mjs",
     "records:backfill": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-record-keys.mjs",
+    "nina:profpic": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/nina-profpic.mjs",
     "capture:seed": "node --env-file=.env.local scripts/capture/seed-demo.mjs",
     "capture:purge": "node --env-file=.env.local scripts/capture/seed-demo.mjs --purge",
     "capture:status": "node --env-file=.env.local scripts/capture/seed-demo.mjs --status",
@@ -79,6 +80,7 @@
     "playwright": "^1.62.1",
     "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "0.8.1",
+    "sharp": "0.35.3",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "vitest": "4.1.2"
