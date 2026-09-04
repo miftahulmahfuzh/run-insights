@@ -1,0 +1,144 @@
+{
+  "branch": "feature/admin-album-file-manager",
+  "coordinator": "orch-admin-album-file-manager",
+  "coordinator_session_id": "d431ffc3-6841-4b09-993f-d8b9879863b0",
+  "created": "2026-09-04T09:33:05+00:00",
+  "phases": [
+    {
+      "card": "#66",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/db`, `lib/nina`, `lib/admin`, `drizzle`, `app/admin",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Folder metadata on `nina_avatars`, and the folder-aware data layer"
+    },
+    {
+      "card": "#67",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/admin`, `tests",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The pure file-tree library: image filter, path grammar, tree build, upload diff"
+    },
+    {
+      "card": "#68",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina`, `app/nina`, `components/nina`, `tests",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The chat side of \"share link to Nina\": the `?photo=` idiom, composer chip, `attachExisting"
+    },
+    {
+      "card": "#69",
+      "commit": null,
+      "depends_on": [
+        1,
+        2,
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": null,
+      "package": "lib/admin`, `app/api/admin`, `lib/nina`, `tests",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Folder-aware upload: batch register, thumbnails, and the describe pre-pass off the hot path"
+    },
+    {
+      "card": "#70",
+      "commit": null,
+      "depends_on": [
+        4
+      ],
+      "difficulty": "HARD",
+      "n": 5,
+      "note": null,
+      "package": "components/admin`, `app/admin`, `lib/admin",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-5.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The file explorer: tree, breadcrumb, paginated grid, drop zone, upload queue, set-as-profile"
+    },
+    {
+      "card": "#71",
+      "commit": null,
+      "depends_on": [
+        5
+      ],
+      "difficulty": "NORMAL",
+      "n": 6,
+      "note": null,
+      "package": "lib/admin`, `components/admin`, `tests",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-6.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Folder maintenance: create, rename, move, delete"
+    },
+    {
+      "card": "#72",
+      "commit": null,
+      "depends_on": [
+        3,
+        5
+      ],
+      "difficulty": "EASY",
+      "n": 7,
+      "note": null,
+      "package": "lib/admin`, `components/admin`, `app/admin`, `tests",
+      "plan": ".workflows/plan/admin-album-file-manager/phase-7.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "\"Share link to Nina\" in the explorer, opening the chat in a new tab"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "admin-album-file-manager",
+  "updated": "2026-09-04T09:33:05+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
+}
