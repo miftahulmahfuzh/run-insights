@@ -206,6 +206,40 @@ irritated but never shouts. At the bottom of the scale "untouched" and "turned a
 the same number, and only one of them can win. Documented in a comment above the table in
 `persona.ts` and in `docs/nina/persona.md`.
 
+## The prompt is a function of the tuning
+
+Nina's system prompt is a pure function of a per-user tuning. `buildNinaSystemPrompt(tuning)` in
+`prompts/system.ts` composes `persona.ts`'s `nina*` block functions into ten sections and drops any
+section whose blocks are all empty, header and all — which is why `NINA_TUNING_DEFAULTS` renders
+exactly the prompt that shipped before the tuning existed. `NINA_SYSTEM_PROMPT`, `OUTPUT_RULE`,
+`NUMBERS_RULE`, `CONTEXT_GUIDE` and `PROACTIVE_INSTRUCTIONS` survive under their own names as the
+default render of their builders, so every existing importer is unaffected. The tuning travels on
+`NinaTurnInput.tuning` (required) and never in `NinaContext`: a dial in the context JSON is a number
+she could quote back, which collides with `NUMBERS_RULE`. It is read live on every turn with no
+cache — in `actions.ts`'s three-way `Promise.all` for chat, and at both `loadNinaContext` sites in
+`proactive.ts` for the cron — so a slider on `/admin/nina` is immediate. The assembled string is
+built ONCE per turn in `runNinaTurnWith` and passed to every model call including the repair, so one
+turn is always one character. `nina_turns.tuning_revision` records which settings produced each
+turn; `prompt_version` identifies the assembler, the revision identifies what it assembled, and only
+the pair answers "what was she set to when she said that".
+
+## The camera is a function of the tuning
+
+**R5.** `buildNinaImagePrompt` takes an optional `NinaTuning`; absent or at `NINA_TUNING_DEFAULTS` it
+renders the prompt that shipped, byte for byte, and `tests/nina.imagerecipe.test.ts` asserts both
+ends of that. A non-empty `wardrobe` replaces the canon outfit through `persona.ts`'s
+`ninaAppearance`, and `steamy` / `flirty` at band `high` add a `POSE AND PRESENCE:` block — `steamy`
+to the selfie only, because the avatar is a head-and-shoulders crop. `selfiegen.ts` is the
+chat-selfie entry point, the mirror of `avatargen.ts`; both read the tuning themselves, which is why
+`avatartools.ts` and the admin album are dressed with no edits. A kept promise now pays out through
+whichever camera the operator's `steamy` dial names: at band `high` she SENDS the photograph
+(`purpose: 'selfie'`, a `nina_messages` + `nina_message_images` pair) instead of quietly changing her
+profile picture. The choice is derived at fire time (`promiseRewardFor`) and recorded on the promise
+entry, so a dial that moves mid-flight cannot make the evaluator watch the wrong table, and the
+selfie settle test is an exact `nina_messages.turn_id` match rather than a same-day count —
+`generate_image` is a tool he can ask for six times a day, and a photo he asked for must never settle
+a promise he did not keep. A promise with no `reward` field is today's avatar promise, unchanged.
+
 ## Module map
 
 ### Chat turn pipeline
