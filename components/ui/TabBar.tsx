@@ -60,7 +60,18 @@ const TABS = [
   { href: '/me', label: 'Me', icon: MeIcon },
 ] as const
 
-export function TabBar() {
+/**
+ * `ninaBadge` is a **`ReactNode` prop, not a number**, and that is the load-bearing choice. This
+ * component is `'use client'` and cannot await an unread count; it can, however, render a Server
+ * Component it was handed as a prop. `AppShell` constructs `<NinaUnreadBadgeSlot />` on the server
+ * and passes it down, so the count never crosses into the client bundle and no route handler has
+ * to be invented to fetch it.
+ *
+ * Optional, with a `= {}` default on the parameter, so `app/trends/loading.tsx` and
+ * `app/(app)/loading.tsx` keep compiling untouched — a loading fallback has no session to count
+ * against anyway.
+ */
+export function TabBar({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
   const pathname = usePathname()
 
   // `/` matches only itself; every other tab owns its subtree, so `/r/abc` highlights Runs — a
@@ -77,7 +88,8 @@ export function TabBar() {
     >
       <div className="relative mx-auto grid h-[58px] w-full max-w-[470px] grid-cols-5 items-center">
         <Tab {...TABS[0]} active={isActive(TABS[0].href)} />
-        <Tab {...TABS[1]} active={isActive(TABS[1].href)} />
+        {/* F33 phase 10: the unread dot, rendered on the server and handed down as a node. */}
+        <Tab {...TABS[1]} active={isActive(TABS[1].href)} badge={ninaBadge} />
 
         {/* The FAB owns the middle cell of five and overflows upward out of the bar. */}
         <div className="flex justify-center">
@@ -105,16 +117,28 @@ export function TabBar() {
   )
 }
 
+/**
+ * One tab. `badge` is an optional node pinned to the icon's top-right — currently only Nina's
+ * unread dot uses it.
+ *
+ * The wrapper around the icon is `relative` and sized to the icon rather than to the whole link, so
+ * the dot lands on the glyph and not in the corner of a 58px-tall tap target. The label stays
+ * outside it, which is why the dot does not shift when a label is one character longer. The
+ * `<span>` is `size-5 grid place-items-center` — exactly the box the icon already occupied — so no
+ * tab moves by a pixel on a bar with no badge.
+ */
 function Tab({
   href,
   label,
   icon: Icon,
   active,
+  badge,
 }: {
   href: string
   label: string
   icon: (props: { className: string }) => React.ReactNode
   active: boolean
+  badge?: React.ReactNode
 }) {
   return (
     <Link
@@ -125,7 +149,10 @@ function Tab({
         active ? 'text-ink' : 'text-ink-3',
       )}
     >
-      <Icon className="size-5" />
+      <span className="relative grid size-5 place-items-center">
+        <Icon className="size-5" />
+        {badge}
+      </span>
       {label}
     </Link>
   )

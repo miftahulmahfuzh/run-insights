@@ -28,6 +28,22 @@ import { loadExtractionReview } from '@/lib/review/loadReview'
  * screen with an empty draft, not a second surface, and it stays keyed to this extraction so
  * `runs.extraction_id` records that the pipeline broke here.
  */
+/**
+ * A Server Action's timeout is the **page segment's**, not the action's — Next's `maxDuration`
+ * reference: "If using Server Actions, set the `maxDuration` at the page level to change the
+ * default timeout of all Server Actions used on that page." `app/r/[id]/page.tsx` records the same
+ * finding for `ensureRunInsight`, and `app/nina/page.tsx` for `sendNinaMessage`.
+ *
+ * `commitReviewAction` posts from this screen and, since F33 phase 10, schedules Nina's reaction to
+ * the new run in `after()`. `after` runs for the platform's configured max duration of the route,
+ * so without this line her ~15 s model call is cut off by the default limit and the reaction is
+ * lost silently — the redirect having already succeeded, there is nothing to surface the failure.
+ *
+ * A LITERAL, not an imported constant: segment config exports are statically analysed at build
+ * time and an identifier is not a value the analyser can see.
+ */
+export const maxDuration = 60
+
 export default async function ExtractionPage({ params }: PageProps<'/x/[extractionId]'>) {
   const userId = await requireUserId()
   const { extractionId } = await params

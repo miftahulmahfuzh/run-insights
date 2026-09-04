@@ -495,6 +495,31 @@ export async function markNinaMessagesRead(
  * ==========================================================================*/
 
 /**
+ * **Phase 10, trigger 1's idempotence marker**, asked as a question rather than as a count: has a
+ * `run_committed` message ever been written *for this run*?
+ *
+ * A `LIMIT 1` existence check, because the answer is boolean and the row may be one of four —
+ * RU-5's multi-bubble turn writes one row per bubble and they all carry the same `source` and the
+ * same `run_id`. Two tabs committing the same extraction, or a retried `after()`, must not produce
+ * two reactions to one run, and this is the durable thing that says so: a serverless invocation
+ * has no memory of the previous one, so the marker has to be a row.
+ */
+export async function hasProactiveMessageForRun(userId: string, runId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: ninaMessages.id })
+    .from(ninaMessages)
+    .where(
+      and(
+        eq(ninaMessages.userId, userId),
+        eq(ninaMessages.runId, runId),
+        eq(ninaMessages.source, 'run_committed'),
+      ),
+    )
+    .limit(1)
+  return rows.length > 0
+}
+
+/**
  * Phase 6 writes uploads, phase 12 writes generations. `messageId` is checked against the
  * caller's own messages first: the FK only proves the message EXISTS, and an attacker-supplied
  * message id that exists is exactly what invariant 7 is about. One extra statement, and it is

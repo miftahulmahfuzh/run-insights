@@ -1,6 +1,11 @@
 import 'server-only'
 
-import { getReviewedRunsWithChildren } from '@/lib/db/queries'
+import { todayInJakarta } from '@/lib/date/ranges'
+import {
+  getAllTimeTotals,
+  getReviewedRunsWithChildren,
+  getReviewedRunWindow,
+} from '@/lib/db/queries'
 import {
   computeSessionMetrics,
   evaluateSessionFlags,
@@ -19,12 +24,15 @@ import type {
 import { indexRunsByDate } from './dates'
 import type { NinaMemoryGateway } from './distill'
 import type { NinaSourceGateway } from './load'
+import { parseRunningDays, type NinaSlotKey } from './memory'
+import { evaluatePatterns, PATTERN_RUN_FETCH_LIMIT } from './patterns'
 import {
   appendNinaMemoryFacts,
   getNinaIdentity,
   getNinaMemorySlot,
   getNinaMemorySlots,
   getNinaMessageWindow,
+  getNinaNags,
   insertNinaTurn,
   listNinaMemoryFacts,
   upsertNinaMemorySlot,
@@ -43,16 +51,27 @@ import {
  * every decision about what a fact IS lives in `context.ts`, `dates.ts` and `tools.ts`, none of
  * which import this file.
  *
- * ── WHY PHASES 9 AND 6 ARE STUBBED HERE AND NOT ELSEWHERE ─────────────────────────────────────
- * `readFiredPatterns` and `readNags` return `[]` until phase 9 lands, and `imageDescriptions` is
- * `[]` until phase 6 does. Both are the interface's own documented empty case — phase 2 wrote
- * "`[]` when none fired" — so a green tree at this boundary (RU-11) costs one comment each rather
- * than a fake. When phase 9 lands it replaces two method bodies in this file and nothing else.
+ * ── THE PHASE 9 STUBS ARE GONE (PHASE 10, RULING G6) ──────────────────────────────────────────
+ * `readFiredPatterns` and `readNags` returned `[]` while phase 9 was unlanded — the interface's
+ * own documented empty case, which bought a green tree at that boundary (RU-11) for one comment
+ * each. Phase 9 then shipped `evaluatePatterns` as a PURE function over resolved inputs, so the
+ * resolving had to land somewhere, and ruling G6 put it here: phase 10 is the phase that needs the
+ * codes to actually fire, because `pattern_crossed` is one of its five triggers. Both bodies are
+ * below, and `tests/nina.gateway.patterns.test.ts` is the exit test that they no longer stub.
+ * `imageDescriptions` is still `[]` here — phase 6 populates it from `nina_message_images`.
  */
 
 /* ============================================================================
  * Phase 2's NinaSourceGateway
  * ==========================================================================*/
+
+/**
+ * Phase 5's key for the days he usually runs. Typed as `NinaSlotKey` rather than left a bare
+ * string so a typo fails the build against phase 5's vocabulary instead of silently reading a slot
+ * that does not exist and disabling a pattern rule for good. Phase 10 spells the same key in
+ * `proactive.ts` and checks it the same way — the authority is `NINA_SLOT_KEYS`, in both places.
+ */
+const RUNNING_DAYS_SLOT: NinaSlotKey = 'running_days'
 
 /*
  * **There is no `toRole`, and its absence is a decision.** This file's draft carried a
@@ -137,14 +156,76 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
     return { messages, olderCount }
   },
 
-  /** Phase 9. `[]` is the interface's documented "nothing fired". */
-  async readFiredPatterns(): Promise<FiredPattern[]> {
-    return []
+  /**
+   * **Phase 10 (RULING G6) — the stub is gone.** Phase 9 shipped `evaluatePatterns` as a pure
+   * function over resolved inputs; this is the only place that resolves them, so it is the only
+   * place the five longitudinal codes actually fire. Until this body existed, `context.patterns`
+   * was permanently `[]` and phase 10's `pattern_crossed` trigger was unreachable code.
+   *
+   * Four reads, all indexed, all `userId`-scoped, none of them a recomputation of anything:
+   *
+   *   runs             `getReviewedRunWindow` at `PATTERN_RUN_FETCH_LIMIT` — phase 9 exports that
+   *                    number precisely so the caller does not guess it, and its row shape is a
+   *                    structural superset of `PatternRun`, so there is no mapping step
+   *   hrMaxBpm         `resolveHrMax` — the app's ONE definition of HRmax. Null disables the
+   *                    heart-rate code rather than reassuring about it
+   *   usualRunningDays phase 5's `running_days` slot through phase 5's parser, in ISO 1-7, which
+   *                    is the view `PatternInput` asks for (phase 10 takes the 0-6 view)
+   *   firstRunOn       `getAllTimeTotals` — `computeAcwr`'s insufficient-history guard cannot see
+   *                    the first run from a 40-run window
+   *
+   * `upTo` is today at `23:59:59` rather than the newest run: `getReviewedRunWindow` compares
+   * `(occurred_on, coalesce(started_at, '00:00'))` with `<=`, so an inclusive end-of-day bound is
+   * what "every reviewed run up to now" spells. `asOf` is `todayInJakarta()` for the same reason
+   * every other date decision in this app is: it is the only sanctioned answer to what day it is.
+   *
+   * A runner with no reviewed history gets `[]` from `evaluatePatterns` itself — a first-week
+   * runner has no habits to judge — so there is no empty-case branch here.
+   */
+  async readFiredPatterns(userId): Promise<FiredPattern[]> {
+    const asOf = todayInJakarta()
+
+    const [runs, hrMax, totals, slots] = await Promise.all([
+      getReviewedRunWindow(
+        userId,
+        { occurredOn: asOf, startedAt: '23:59:59' },
+        PATTERN_RUN_FETCH_LIMIT,
+      ),
+      resolveHrMax(userId),
+      getAllTimeTotals(userId),
+      /* `getNinaMemorySlots`, not `getNinaMemorySlot`: the plural is the one that RENDERS the
+       * stored JSON value to the display text phase 5's parser reads back. The singular returns
+       * the parsed structure and its renderer is private to `queries.ts`. Same PK-prefix scan. */
+      getNinaMemorySlots(userId),
+    ])
+
+    return evaluatePatterns({
+      runs,
+      asOf,
+      hrMaxBpm: hrMax?.bpm ?? null,
+      /* The slot stores DISPLAY text (RU-6). Phase 5 owns the vocabulary and the parser; an
+       * unreadable or absent value yields `[]`, which disables `MISSED_USUAL_DAY` rather than
+       * guessing a schedule he never told her about. */
+      usualRunningDays: parseRunningDays(
+        slots.find((slot) => slot.key === RUNNING_DAYS_SLOT)?.value,
+      ),
+      firstRunOn: totals.firstRunOn,
+    })
   },
 
-  /** Phase 9. `[]` is the interface's documented "she has never nagged". */
-  async readNags(): Promise<NagState[]> {
-    return []
+  /**
+   * **Phase 10 (RULING G6).** Phase 1's rows, in phase 2's shape. `level` is the STORED count of
+   * times she has raised the code; the decay that turns it into a current rung is
+   * `decayedNagLevel`'s, applied by `buildNinaContext` — never here, and never written back (see
+   * `lib/nina/nags.ts`, which says why re-projecting a projection decays twice from one anchor).
+   */
+  async readNags(userId): Promise<NagState[]> {
+    const rows = await getNinaNags(userId)
+    return rows.map((row) => ({
+      code: row.code,
+      level: row.level,
+      lastMentionedOn: row.lastMentionedOn,
+    }))
   },
 }
 

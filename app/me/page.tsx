@@ -2,15 +2,8 @@ import { AccountMenu } from '@/components/auth/AccountMenu'
 import { BadgeShelf } from '@/components/profile/BadgeShelf'
 import { ProfileForm } from '@/components/profile/ProfileForm'
 import { RecordsTable, type RecordRowView } from '@/components/profile/RecordsTable'
-import {
-  AppShell,
-  ButtonLink,
-  Card,
-  EmptyState,
-  Eyebrow,
-  ScreenHeader,
-  Stat,
-} from '@/components/ui'
+import { ButtonLink, Card, EmptyState, Eyebrow, Stat } from '@/components/ui'
+import { AppShell, ScreenHeader } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { buildShelf } from '@/lib/badges/shelf'
 import { dbBadgeGateway } from '@/lib/badges/gateway'

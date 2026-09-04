@@ -1,3 +1,5 @@
+import { after } from 'next/server'
+
 import { ChatScreen } from '@/components/nina/ChatScreen'
 import { NinaAvatar } from '@/components/nina/NinaAvatar'
 import type { ChatMessage } from '@/components/nina/types'
@@ -7,7 +9,11 @@ import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
 import { listRunAttachments } from '@/lib/db/queries'
 import { isValidId } from '@/lib/id'
 import { ATTACH_PARAM, indexAttachments, type RunAttachment } from '@/lib/nina/attach'
-import { getNinaMessageImagesForMessages, listNinaMessages } from '@/lib/nina/queries'
+import {
+  getNinaMessageImagesForMessages,
+  listNinaMessages,
+  markNinaMessagesRead,
+} from '@/lib/nina/queries'
 
 /**
  * `/nina` — F33's conversational surface, and the fifth tab (R9).
@@ -143,6 +149,16 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * proactive message — which writes the same column — gets its card for free. */
     attachment: row.runId == null ? null : (attachments.get(row.runId) ?? null),
   }))
+
+  /*
+   * F33 phase 10 — the unread dot's other half. In `after()` and not inline, for two reasons: a
+   * render must not have a side effect (Next may render a segment more than once, and PPR renders
+   * it before a request even exists), and marking read BEFORE the response is sent would clear the
+   * dot for a page load that failed on the way to the browser. `after` needs no request API here —
+   * `userId` was resolved at the top of this component and is closed over — and
+   * `markNinaMessagesRead` is one indexed UPDATE, so invariant 4 still holds.
+   */
+  after(() => markNinaMessagesRead(userId))
 
   return (
     <AppShell bottomGap="chat">

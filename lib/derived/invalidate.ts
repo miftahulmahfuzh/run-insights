@@ -58,12 +58,22 @@ export interface InvalidateDeps {
 }
 
 /**
- * What the commit path learns from invalidation. Only badges produce anything a screen could show —
- * records and insights are read back from their own tables — so this is one field, and it exists so
- * that "you earned Fashionably Late" never needs a second round trip to discover.
+ * What the commit path learns from invalidation.
+ *
+ * `newlyEarned` is F09 §1.1 step 6: the badge keys this commit actually wrote, so that "you earned
+ * Fashionably Late" never needs a second round trip to discover. `recordsMovedToThisRun` is F06's
+ * equivalent — the record keys whose holder became THIS run, `changed` rather than `rows` for the
+ * reason spelled out at the computation below.
+ *
+ * Insights are absent from this type on purpose: they are read back from their own table, so there
+ * is nothing here a caller could not query. Records and badges are different — **F33 phase 10 needs
+ * "what did this run earn" in order to react to it**, and this is the one moment that answer exists
+ * for free. After the redirect it costs a query for badges and is unrecoverable for records,
+ * because `changed` is only true at this instant.
  */
 export interface InvalidateOutcome {
   newlyEarned: BadgeAwardResult['newlyEarned']
+  recordsMovedToThisRun: readonly RecordKey[]
 }
 
 /**
@@ -215,7 +225,7 @@ export async function onRunCommitted(
 
   try {
     const { newlyEarned } = await evaluateBadges(event.userId, event.runId, recordsMovedToThisRun)
-    return { newlyEarned }
+    return { newlyEarned, recordsMovedToThisRun }
   } catch (error) {
     console.error('[invalidate] badge evaluation failed', {
       runId: event.runId,
@@ -223,6 +233,8 @@ export async function onRunCommitted(
       phase: event.phase,
       error,
     })
-    return { newlyEarned: [] }
+    /* The records still moved even though the badges did not save — reporting them is correct, and
+     * it is what lets Nina congratulate a record whose badge write failed. */
+    return { newlyEarned: [], recordsMovedToThisRun }
   }
 }

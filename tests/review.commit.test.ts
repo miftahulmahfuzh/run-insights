@@ -94,7 +94,13 @@ describe('the golden path — TRUTH committed unmodified', () => {
     const invalidate = vi.fn()
     const outcome = await commitReview(USER, payload(baselineDraft()), { now, invalidate })
 
-    expect(outcome).toEqual({ ok: true, runId: 'run123456789', newlyEarned: [] })
+    expect(outcome).toEqual({
+      ok: true,
+      runId: 'run123456789',
+      newlyEarned: [],
+      recordsMoved: [],
+      isNewRun: true,
+    })
     expect(queries.commitExtractedRun).toHaveBeenCalledTimes(1)
     const [userId, input, options] = queries.commitExtractedRun.mock.calls[0]!
     expect(userId).toBe(USER)
@@ -407,7 +413,15 @@ describe('failure modes', () => {
     queries.getRunIdForExtraction.mockResolvedValue('alreadyrun12')
     const outcome = await commitReview(USER, payload(baselineDraft()), { now })
 
-    expect(outcome).toEqual({ ok: true, runId: 'alreadyrun12', newlyEarned: [] })
+    expect(outcome).toEqual({
+      ok: true,
+      runId: 'alreadyrun12',
+      newlyEarned: [],
+      recordsMoved: [],
+      /* The already-committed short-circuit did not CREATE anything, so F33's trigger must
+       * not fire on it — two tabs on one /x/[id] is not two runs coming home. */
+      isNewRun: false,
+    })
     expect(queries.commitExtractedRun).not.toHaveBeenCalled()
     expect(queries.recordCorrections).not.toHaveBeenCalled()
   })
@@ -420,7 +434,13 @@ describe('failure modes', () => {
     draft.location = 'Serpong'
 
     const outcome = await commitReview(USER, payload(draft), { now })
-    expect(outcome).toEqual({ ok: true, runId: 'run123456789', newlyEarned: [] })
+    expect(outcome).toEqual({
+      ok: true,
+      runId: 'run123456789',
+      newlyEarned: [],
+      recordsMoved: [],
+      isNewRun: true,
+    })
     error.mockRestore()
   })
 
@@ -430,7 +450,13 @@ describe('failure modes', () => {
 
     const outcome = await commitReview(USER, payload(baselineDraft()), { now, invalidate })
 
-    expect(outcome).toEqual({ ok: true, runId: 'run123456789', newlyEarned: [] })
+    expect(outcome).toEqual({
+      ok: true,
+      runId: 'run123456789',
+      newlyEarned: [],
+      recordsMoved: [],
+      isNewRun: true,
+    })
     expect(queries.commitExtractedRun).toHaveBeenCalledTimes(1)
     expect(error).toHaveBeenCalled()
     error.mockRestore()

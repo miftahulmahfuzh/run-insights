@@ -1,5 +1,6 @@
 import type * as React from 'react'
 
+import { NinaUnreadBadgeSlot } from '@/components/nina/NinaUnreadBadge'
 import { cn } from '@/lib/cn'
 import { TabBar } from './TabBar'
 
@@ -62,7 +63,11 @@ export function AppShell({
       >
         {children}
       </main>
-      <TabBar />
+      {/* F33 phase 10. `AppShell` has no `'use client'`, so it can construct the server-rendered
+          element that `TabBar` — which does — then renders as a child. That is what puts the
+          unread count on the tab without a client fetch, a poll, or a prop threaded through every
+          page. Its own `<Suspense fallback={null}>` lives inside the slot. */}
+      <TabBar ninaBadge={<NinaUnreadBadgeSlot />} />
     </>
   )
 }

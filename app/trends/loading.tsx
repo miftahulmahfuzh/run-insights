@@ -1,4 +1,5 @@
-import { AppShell, Card, ScreenHeader } from '@/components/ui'
+import { Card } from '@/components/ui'
+import { AppShell, ScreenHeader } from '@/components/ui/AppShell'
 
 /**
  * `/trends`'s loading boundary.

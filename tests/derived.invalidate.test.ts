@@ -50,13 +50,12 @@ const NOOP_DEPS = {
 describe('onRunCommitted', () => {
   it('resolves rather than throwing, for every phase', async () => {
     const deps = NOOP_DEPS
-    await expect(onRunCommitted(EVENT, deps)).resolves.toEqual({ newlyEarned: [] })
-    await expect(onRunCommitted({ ...EVENT, phase: 'post-review-edit' }, deps)).resolves.toEqual({
-      newlyEarned: [],
-    })
-    await expect(onRunCommitted({ ...EVENT, phase: 'manual' }, deps)).resolves.toEqual({
-      newlyEarned: [],
-    })
+    const nothing = { newlyEarned: [], recordsMovedToThisRun: [] }
+    await expect(onRunCommitted(EVENT, deps)).resolves.toEqual(nothing)
+    await expect(onRunCommitted({ ...EVENT, phase: 'post-review-edit' }, deps)).resolves.toEqual(
+      nothing,
+    )
+    await expect(onRunCommitted({ ...EVENT, phase: 'manual' }, deps)).resolves.toEqual(nothing)
   })
 
   it('accepts a moved date, which is the case F07 and F09 have to sweep twice', async () => {
@@ -65,7 +64,7 @@ describe('onRunCommitted', () => {
         { ...EVENT, occurredOn: '2026-08-18', previousOccurredOn: '2026-08-20' },
         NOOP_DEPS,
       ),
-    ).resolves.toEqual({ newlyEarned: [] })
+    ).resolves.toEqual({ newlyEarned: [], recordsMovedToThisRun: [] })
   })
 })
 
@@ -98,7 +97,7 @@ describe('the F06 section — records are recomputed on every commit', () => {
           ...NOOP_DEPS,
           recomputeRecordsFor: () => Promise.reject(new Error('neon is down')),
         }),
-      ).resolves.toEqual({ newlyEarned: [] })
+      ).resolves.toEqual({ newlyEarned: [], recordsMovedToThisRun: [] })
       expect(error).toHaveBeenCalledOnce()
     } finally {
       error.mockRestore()
@@ -154,7 +153,7 @@ describe('the F07 section — stale insights are swept', () => {
           ...NOOP_DEPS,
           sweepInsights: () => Promise.reject(new Error('neon is down')),
         }),
-      ).resolves.toEqual({ newlyEarned: [] })
+      ).resolves.toEqual({ newlyEarned: [], recordsMovedToThisRun: [] })
       // One log per scope, and the loop kept going — a failed session sweep must not skip the
       // week and month, which are the two a reader is most likely to open next.
       expect(error).toHaveBeenCalledTimes(3)
@@ -201,6 +200,46 @@ describe('the F09 section — badges are evaluated after records, never before',
     expect(evaluateBadgesFor).toHaveBeenCalledWith('user_1', 'run123456789', ['longest_distance'])
   })
 
+  it('reports the same moved keys back to the commit path — F33 phase 10 reacts to them', async () => {
+    // The list badges are evaluated against is also the list Nina names, and it is reported rather
+    // than recomputed: `changed` is only true at this instant, so after the redirect the answer is
+    // unrecoverable. One computation, two consumers.
+    const outcome = await onRunCommitted(EVENT, {
+      ...NOOP_DEPS,
+      recomputeRecordsFor: () =>
+        Promise.resolve({
+          rows: [],
+          changed: [
+            held('longest_distance', 'run123456789'),
+            held('highest_max_hr', 'someone_elses_run'),
+          ],
+          removed: [],
+        }),
+    })
+    expect(outcome.recordsMovedToThisRun).toEqual(['longest_distance'])
+  })
+
+  it('still reports the moved records when the badge evaluation failed', async () => {
+    // The records DID move even though the badge write did not save. Reporting them is what lets
+    // Nina congratulate a record whose badge row is missing, which is the honest thing to do.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const outcome = await onRunCommitted(EVENT, {
+        ...NOOP_DEPS,
+        recomputeRecordsFor: () =>
+          Promise.resolve({
+            rows: [],
+            changed: [held('longest_distance', 'run123456789')],
+            removed: [],
+          }),
+        evaluateBadgesFor: () => Promise.reject(new Error('neon is down')),
+      })
+      expect(outcome).toEqual({ newlyEarned: [], recordsMovedToThisRun: ['longest_distance'] })
+    } finally {
+      error.mockRestore()
+    }
+  })
+
   it('runs on a post-review correction too — a correction can newly EARN a badge', async () => {
     // §1.2: a `redline_republic` percentage corrected upward past 40% is a real earn, because the
     // data is still human-reviewed, just reviewed twice. What it can never do is remove a row.
@@ -221,7 +260,7 @@ describe('the F09 section — badges are evaluated after records, never before',
           qualified: ['late_start', 'tourist'],
         }),
     })
-    expect(outcome).toEqual({ newlyEarned: ['late_start', 'tourist'] })
+    expect(outcome).toEqual({ newlyEarned: ['late_start', 'tourist'], recordsMovedToThisRun: [] })
   })
 
   it('evaluates badges AFTER the record recompute, not concurrently with it', async () => {
@@ -250,7 +289,7 @@ describe('the F09 section — badges are evaluated after records, never before',
           ...NOOP_DEPS,
           evaluateBadgesFor: () => Promise.reject(new Error('neon is down')),
         }),
-      ).resolves.toEqual({ newlyEarned: [] })
+      ).resolves.toEqual({ newlyEarned: [], recordsMovedToThisRun: [] })
       expect(error).toHaveBeenCalledOnce()
     } finally {
       error.mockRestore()

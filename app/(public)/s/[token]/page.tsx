@@ -2,7 +2,18 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { PaceHrChart } from '@/components/charts/PaceHrChart'
-import { Card, Eyebrow, SplitsTable, Stat, ZoneBar } from '@/components/ui'
+/*
+ * **The five components by file, not through `@/components/ui`** — and that is an F11 boundary,
+ * not a style preference. The barrel re-exports `AppShell`, which renders `TabBar`, which since
+ * F33 phase 10 renders Nina's unread badge, which reads the session. This page never renders any
+ * of that, but `tests/share.bundle.test.ts` walks IMPORTS rather than renders — correctly, because
+ * "the bundler will tree-shake it" is not a guarantee to hang a public route's isolation on. Going
+ * straight to the files makes the static graph say what the page actually does. Do not collapse
+ * these back into the barrel.
+ */
+import { Card, Eyebrow, Stat } from '@/components/ui/Card'
+import { SplitsTable } from '@/components/ui/SplitsTable'
+import { ZoneBar } from '@/components/ui/ZoneBar'
 import { fastestSlowestFullKm, toPaceHrPoints, toZoneShares } from '@/lib/charts'
 import {
   formatBpm,
