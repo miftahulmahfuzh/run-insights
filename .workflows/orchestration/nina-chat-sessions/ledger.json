@@ -20,7 +20,7 @@
         "R5",
         "R11"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Session data layer: schema, migration, backfill, scoped queries"
     },
@@ -37,7 +37,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Full-screen chat chrome: hide the bar, floating `^` / `v`, 5 s auto-hide"
     },
@@ -185,6 +185,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T20:08:33+00:00",
+  "updated": "2026-09-04T20:09:41+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }
