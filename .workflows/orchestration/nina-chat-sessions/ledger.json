@@ -163,29 +163,29 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#86",
-      "commit": null,
+      "commit": "d2a46d3",
       "depends_on": [
         7,
         8
       ],
       "difficulty": "NORMAL",
       "n": 9,
-      "note": null,
+      "note": "R10 landed: ChatImages onOpen finally wired to PhotoViewer via ChatScreen viewer state; download is a measured strategy ladder (share sheet on coarse pointer, fetch->objectURL->anchor otherwise) not a cross-origin <a download>; attach reuses attachExisting with no re-upload. PhotoViewer gains one optional actions slot so its four existing callers are byte-identical. 12 files, 39 new tests, 2513/2513, build + 6 guards green.",
       "package": "components/nina`, `components/ui`, `lib/photos`, `app/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-9.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T21:17:10+00:00",
       "satisfies": [
         "R10"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A013",
       "title": "Tap an image: full screen, download, attach to a new message"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T21:09:56+00:00",
+  "updated": "2026-09-04T21:17:10+00:00",
   "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }

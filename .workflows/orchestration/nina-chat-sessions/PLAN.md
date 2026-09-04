@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-chat-sessions`
 **Branch:** `feature/nina-chat-sessions` (base: `origin/main` @ `0a924ba`)
 **Phases:** 9
-**Status:** in progress — 8 of 9 phases complete (all but 9); phase 9 running, last of the set
+**Status:** complete — 9 of 9 phases landed on `feature/nina-chat-sessions`; awaiting the repo owner's merge. Phase bodies pruned; recover any of them from git history (last present at 3ea058f~1).
 **Card:** `miftahulmahfuzh/run-insights#77` (parent; phases are its sub-issues #78-#86)
 **Coordinator:** —
 
@@ -166,7 +166,7 @@ are this set's.
 | 6 ✅ | Search all chats, with the persisted semantic-search toggle | R6 | `lib/nina`, `components/nina` | 7 | 4, 5 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-6.md` | — | P1-RI-A010 | miftahulmahfuzh/run-insights#83 |
 | 7 ✅ | Editing and deleting messages, his and hers | R8 | `lib/nina`, `components/nina` | 8 | 3 | HARD | `.workflows/plan/nina-chat-sessions/phase-7.md` | — | P1-RI-A011 | miftahulmahfuzh/run-insights#84 |
 | 8 ✅ | The unread dot clears itself on the newest session | R9 | `components/nina`, `app/nina`, `lib/nina` | 5 | 5 | EASY | `.workflows/plan/nina-chat-sessions/phase-8.md` | — | P1-RI-A012 | miftahulmahfuzh/run-insights#85 |
-| 9 | Tap an image: full screen, download, attach to a new message | R10 | `components/nina`, `components/ui`, `lib/photos`, `app/nina` | 12 | 7, 8 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-9.md` | — | P1-RI-A013 | miftahulmahfuzh/run-insights#86 |
+| 9 ✅ | Tap an image: full screen, download, attach to a new message | R10 | `components/nina`, `components/ui`, `lib/photos`, `app/nina` | 12 | 7, 8 | NORMAL | `.workflows/plan/nina-chat-sessions/phase-9.md` | — | P1-RI-A013 | miftahulmahfuzh/run-insights#86 |
 
 Waves the `Depends on` column implies: **W1** = 1 ‖ 2 · **W2** = 3 · **W3** = 4 ‖ 5 ‖ 7 ·
 **W4** = 6 ‖ 8 · **W5** = 9.
