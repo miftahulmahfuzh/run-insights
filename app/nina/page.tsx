@@ -2,6 +2,7 @@ import { after } from 'next/server'
 
 import { ChatScreen } from '@/components/nina/ChatScreen'
 import { NinaSidebar, NinaSidebarProvider } from '@/components/nina/NinaSidebar'
+import { NinaUnreadSync } from '@/components/nina/NinaUnreadSync'
 import type { ChatMessage } from '@/components/nina/types'
 import { AppShell } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
@@ -31,6 +32,7 @@ import {
   markNinaMessagesRead,
   type NinaMessageRow,
 } from '@/lib/nina/queries'
+import { hasUnreadFromNina } from '@/lib/nina/unread'
 
 /**
  * `/nina` — F33's conversational surface, and the fifth tab (R9).
@@ -332,17 +334,47 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   }))
 
   /*
-   * F33 phase 10 — the unread dot's other half. In `after()` and not inline, for two reasons: a
-   * render must not have a side effect (Next may render a segment more than once, and PPR renders
-   * it before a request even exists), and marking read BEFORE the response is sent would clear the
-   * dot for a page load that failed on the way to the browser. `after` needs no request API here —
-   * `userId` was resolved at the top of this component and is closed over — and
-   * `markNinaMessagesRead` is one indexed UPDATE, so invariant 4 still holds.
+   * F33 phase 10 — the unread dot's other half, now session-scoped (R2) and no longer stale (R9).
+   *
+   * IN `after()` AND NOT INLINE, for the two reasons phase 10 gave and this phase does not
+   * re-litigate: a render must not have a side effect (Next may render a segment more than once,
+   * and PPR renders it before a request even exists), and marking read BEFORE the response is sent
+   * would clear the dot for a page load that failed on the way to the browser. `after` needs no
+   * request API here — `userId` and the session were resolved at the top of this component and are
+   * closed over — and `markNinaMessagesRead` is one indexed UPDATE, so invariant 4 still holds.
+   *
+   * SESSION-SCOPED, because opening this conversation says nothing about another one. Marking
+   * every session read on any visit would clear a dot raised by messages he has not seen, which is
+   * the one direction of error that loses information. The dot's own COUNT stays global
+   * (`countUnreadNinaMessages`, unchanged, still reading the partial index
+   * `nina_messages_user_unread_idx`): "there is something of hers you have not read" is true
+   * wherever it sits. Assumption A3 then makes R9 fall out — proactive messages land in the most
+   * recent session, which is the one this page opens by default (A4), so opening the chat is what
+   * clears them. The `null` guard is phase 3's rule kept: a runner with no session at all (never
+   * messaged, or just removed his last one) is a real state, and a render path must not create one.
+   *
+   * `hadUnread` IS WHAT MAKES THE DOT GO AWAY WITHOUT A NAVIGATION. This render is delivering rows
+   * that `after()` is about to mark read, so the badge in this very payload is already wrong.
+   * `NinaUnreadSync` reads the flag and asks for exactly one fresh render — see its docstring for
+   * why a `revalidatePath` from here cannot work in Next 16.3.1, and `lib/nina/unread.ts` for why
+   * the sequence terminates. It costs nothing when there was nothing unread, which is most visits:
+   * `read_at` is already on every row (`messageColumns`), so the flag is a pass over an array, not
+   * a query.
    */
-  after(() => markNinaMessagesRead(userId))
+  const hadUnread = hasUnreadFromNina(rows)
+  if (activeSessionId !== null) {
+    after(() => markNinaMessagesRead(userId, { sessionId: activeSessionId }))
+  }
 
   return (
     <AppShell screen="chat">
+      {/* R9. Renders nothing. It exists so the tab bar's dot agrees with what he just read: this
+          payload was built before `after()` marked the session read, so on a visit that cleared
+          something the screen asks for one fresh render. See `components/nina/NinaUnreadSync.tsx`.
+          Deliberately OUTSIDE `ChatScreen`, which owns the conversation and is phases 3/7/9's file;
+          this is chrome bookkeeping and has no business inside the message list. */}
+      <NinaUnreadSync hadUnread={hadUnread} />
+
       {/*
         R7: no header row. The face, the name and the quiet line all moved into `NinaSidebar`; see
         the block at the top of this file for why that is the same argument and not a reversal.
