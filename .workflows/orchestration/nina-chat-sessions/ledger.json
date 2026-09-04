@@ -6,22 +6,22 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#78",
-      "commit": null,
+      "commit": "7a89066c508a69b814e93f100894b5f6b868243b",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "Session data layer + migration 0004 verified on a throwaway PG16 with populated data: 0 NULL session_id, cascade leaves 0 orphans, both new indexes serve their queries. Production untouched.",
       "package": "lib/db`, `lib/nina`, `drizzle",
       "plan": ".workflows/plan/nina-chat-sessions/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T20:26:17+00:00",
       "satisfies": [
         "R2",
         "R4",
         "R5",
         "R11"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A001",
       "title": "Session data layer: schema, migration, backfill, scoped queries"
     },
     {
@@ -30,14 +30,14 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "live in tmux @113 as impl-nina-chat-sessions-p2; verify --apply had downgraded this to pending (no git/todos evidence yet) \u2014 restored by coordinator, do NOT re-spawn",
       "package": "components/ui`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T20:27:24+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": null,
       "title": "Full-screen chat chrome: hide the bar, floating `^` / `v`, 5 s auto-hide"
     },
@@ -185,6 +185,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T20:09:41+00:00",
+  "updated": "2026-09-04T20:27:24+00:00",
+  "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }
