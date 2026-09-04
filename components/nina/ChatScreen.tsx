@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
@@ -8,6 +9,7 @@ import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
 import { ATTACH_PARAM, type RunAttachment } from '@/lib/nina/attach'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
 import { Composer, type ComposerDraftImage } from './Composer'
@@ -148,6 +150,69 @@ export function ChatScreen({
       if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
     }
   }, [])
+
+  const router = useRouter()
+
+  /*
+   * ── LIVE ARRIVAL, HALF ONE: hear the service worker ────────────────────────────────────────
+   * F33 phase 11. `lib/service-worker.js`'s `push` handler posts `{ type: 'nina:new' }` to every
+   * open window. `router.refresh()` re-renders `app/nina/page.tsx` on the server, which re-reads
+   * `listNinaMessages` and hands this component a NEW `initial` — and, because the page's
+   * `after(() => markNinaMessagesRead(userId))` runs again, clears the unread dot at the same time.
+   *
+   * `navigator.serviceWorker.addEventListener('message', …)` listens on the CONTAINER, so it works
+   * whether or not this page is controlled by the worker and whether or not a registration exists
+   * yet — which is why this component registers nothing. Registration is
+   * `components/push/PushSetupCard.tsx`'s job and happens on `/me`.
+   *
+   * **Not polling.** Phase 10 rejected it and this is the alternative it named. Nothing here runs
+   * on a timer; without a push there is no refresh, and a runner with no subscription sees a cron
+   * message on the next load exactly as before. That limitation is the trade, not a gap: the
+   * alternative is every open tab hitting the server forever for a message that arrives a few
+   * times a day.
+   */
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: unknown } | null
+      if (data !== null && typeof data === 'object' && data.type === SW_MESSAGE_TYPE) {
+        router.refresh()
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+  }, [router])
+
+  /*
+   * ── LIVE ARRIVAL, HALF TWO: notice that `initial` changed ──────────────────────────────────
+   * Without this, half one is useless: `useState(() => [...initial])` runs its initialiser exactly
+   * once, so a new `initial` prop from `router.refresh()` would be ignored forever.
+   *
+   * `mergeServerMessages` is server order + local content, so a bubble mid-reveal keeps its local
+   * state and an optimistic row the server has not seen yet is not dropped. It returns the same
+   * array reference when nothing changed, so React bails out and a refresh that brought nothing
+   * new costs no render.
+   *
+   * ── WHY THIS IS NOT A `useEffect` ──────────────────────────────────────────────────────────
+   * It was, and `react-hooks/set-state-in-effect` rejected it — correctly. Adjusting state when a
+   * prop changes is React's own documented during-render pattern ("You Might Not Need an Effect"):
+   * React discards the in-progress render and restarts with the new state BEFORE committing, so
+   * the DOM is painted once. An effect would commit the stale list first and cascade a second
+   * render on top of it, which is exactly the flicker a chat screen must not have.
+   *
+   * `seenInitial` holds the prop identity we have already merged. `router.refresh()` always hands
+   * down a fresh array, so the guard fires once per refresh and `mergeServerMessages`'s identity
+   * bail-out is what makes a refresh that brought nothing new free.
+   *
+   * The docstring above says this component deliberately does not refresh after a send, and that
+   * is still true — this is not on the send path. It runs when the SERVER hands down a different
+   * list, which after this phase happens for exactly one reason: Nina spoke first.
+   */
+  const [seenInitial, setSeenInitial] = useState(initial)
+  if (seenInitial !== initial) {
+    setSeenInitial(initial)
+    setMessages((current) => mergeServerMessages(current, initial) as ChatMessage[])
+  }
 
   /*
    * The iOS keyboard. Safari does not resize the layout viewport when it opens, so a fixed

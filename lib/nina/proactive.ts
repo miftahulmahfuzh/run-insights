@@ -2,6 +2,7 @@ import 'server-only'
 
 import { badgeDefinition } from '@/lib/badges/catalog'
 import { daysBetween, todayInJakarta, type DateISO } from '@/lib/date/ranges'
+import { pushNotifier } from '@/lib/push/send'
 import { isRecordKey } from '@/lib/records/catalog'
 import { RECORD_LABELS } from '@/lib/records/labels'
 
@@ -475,14 +476,14 @@ export function triggerBlock(detail: ProactiveDetail): string {
  * The impure half — loading, running the turn, persisting, marking
  * ═════════════════════════════════════════════════════════════════════════════════════════════ */
 
-/** What phase 11 will implement. Called AFTER the rows are committed, never instead of writing. */
+/** Implemented by `lib/push/send.ts`. Called AFTER the rows are committed, never instead of writing. */
 export type ProactiveNotifier = (
   userId: string,
   messages: ReadonlyArray<{ id: string; body: string }>,
   kind: ProactiveTriggerKind,
 ) => Promise<void>
 
-/** PHASE 11: change this default to the real sender. It is the only line that needs to move. */
+/** The hermetic default a test passes explicitly. Phase 11 moved the *fallback* to `pushNotifier`. */
 export const NOOP_NOTIFIER: ProactiveNotifier = async () => {}
 
 export interface ProactiveDeps {
@@ -592,7 +593,12 @@ export async function emitProactiveMessage(
   deps: ProactiveDeps = {},
 ): Promise<EmitResult> {
   const now = deps.now ?? (() => new Date())
-  const notify = deps.notify ?? NOOP_NOTIFIER
+  /* PHASE 11 LANDED. Was `NOOP_NOTIFIER`; the seam is now wired to the real Web Push sender.
+   * `NOOP_NOTIFIER` is still exported and is still what a test passes explicitly, which is why it
+   * is not deleted. `pushNotifier` never throws: with no VAPID in the environment `sendNinaPush`
+   * catches `pushEnv()` and returns `skipped` before touching the database, so a suite with
+   * neither keys nor a network keeps passing against the real sender. */
+  const notify = deps.notify ?? pushNotifier
   const runTurn = deps.runTurn ?? runNinaTurn
 
   const proactive = `${PROACTIVE_INSTRUCTIONS[detail.kind]}\n\n${triggerBlock(detail)}`
