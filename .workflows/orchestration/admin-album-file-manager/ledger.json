@@ -98,40 +98,40 @@
     },
     {
       "card": "#71",
-      "commit": null,
+      "commit": "846441e",
       "depends_on": [
         5
       ],
       "difficulty": "NORMAL",
       "n": 6,
-      "note": null,
+      "note": "Folder maintenance: 6 requireAdmin actions, pure folderOps refusals (25 tests), FolderMenu + PhotoMoveBar at phase 5's seams. All gates + 6 guards green; unverified against a live DB (0003 applied nowhere).",
       "package": "lib/admin`, `components/admin`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-6.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T10:59:22+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A004",
       "title": "Folder maintenance: create, rename, move, delete"
     },
     {
       "card": "#72",
-      "commit": null,
+      "commit": "c48bb60",
       "depends_on": [
         3,
         5
       ],
       "difficulty": "EASY",
       "n": 7,
-      "note": null,
+      "note": "commit c48bb60 already an ancestor of origin/feature; session busy in completion-handler, has not self-reported yet \u2014 do NOT re-spawn",
       "package": "lib/admin`, `components/admin`, `app/admin`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-7.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T11:00:43+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": null,
       "title": "\"Share link to Nina\" in the explorer, opening the chat in a new tab"
     }
@@ -139,7 +139,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-file-manager",
-  "updated": "2026-09-04T10:44:00+00:00",
-  "verified_at": "2026-09-04T09:47:06+00:00",
+  "updated": "2026-09-04T11:00:43+00:00",
+  "verified_at": "2026-09-04T11:00:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
 }
