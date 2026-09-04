@@ -26,19 +26,19 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#79",
-      "commit": null,
+      "commit": "44ee18a4db24850e53e34176a7131ec0690f8c3c",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": "live in tmux @113 as impl-nina-chat-sessions-p2; verify --apply had downgraded this to pending (no git/todos evidence yet) \u2014 restored by coordinator, do NOT re-spawn",
+      "note": "Full-screen chat chrome landed. New pure lib/nina/chrome.ts (state machine, 5s rule, control offset) + suite; new ChatChrome.tsx owns the reveal; TabBar gained hidden/inert/translate; AppShell bottomGap->screen and chat gap 10.5rem->8.5rem; chatview.ts exports NINA_BAR_VISIBLE_VAR and gates the composer clearance behind it. Verified at pushed state: typecheck 0 errors, 125/125 files, 2247/2247 tests, format:check clean, all six ci:*-guards PASS. One drift: the plan's step-6 effect cleanup was a concise arrow over removeProperty (returns string) and failed EffectCallback's void; changed to a block body.",
       "package": "components/ui`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-2.md",
-      "reported_at": "2026-09-04T20:27:24+00:00",
+      "reported_at": "2026-09-04T20:33:11+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A006",
       "title": "Full-screen chat chrome: hide the bar, floating `^` / `v`, 5 s auto-hide"
     },
     {
@@ -58,7 +58,7 @@
         "R2",
         "R11"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Session-scoped chat surface and session lifecycle actions"
     },
@@ -185,7 +185,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T20:27:24+00:00",
+  "updated": "2026-09-04T20:34:49+00:00",
   "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }
