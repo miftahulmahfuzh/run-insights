@@ -11,16 +11,15 @@ import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { NINA_MAX_CHAT_IMAGES, isNinaChatRequestPathname } from './images'
 import { NINA_FULL_TOOL_SET } from './avatartools'
-import { NINA_GALLERY_LIMIT } from './album'
 import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from './imageTicket'
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
+  getNinaAvatar,
+  getNinaMessageImage,
   getNinaMessagesByIds,
   insertNinaMessageImages,
   insertNinaMessages,
-  listNinaAvatars,
-  listNinaMessageImages,
 } from './queries'
 import type { NinaMessageRow } from './queries'
 import type { NinaImageKind } from '@/lib/db/schema'
@@ -148,8 +147,19 @@ async function resolveAttachment(
   description: string | null
 } | null> {
   if (attach.kind === 'avatar') {
-    const rows = await listNinaAvatars(userId)
-    const row = rows.find((candidate) => candidate.id === attach.id)
+    /*
+     * ONE ROW, BY PRIMARY KEY, SCOPED TO `user_id` (F34). This was
+     * `listNinaAvatars(userId).find((candidate) => candidate.id === attach.id)`, which was correct
+     * and was cheap when the album held the handful of faces F33 R23 described. F34 R1's stated
+     * requirement is *"i will put hundreds of profile pics in there"*, and this runs on every send
+     * that carries a shared photo — so it read the whole album, every column and every
+     * `description`, to answer a question about one id.
+     *
+     * `getNinaAvatar` proves strictly the same thing: `user_id` is in its WHERE, so "not his" and
+     * "does not exist" come back as the same `null`, which is what the refusal below needs. The
+     * ownership property is not being relaxed; the read is.
+     */
+    const row = await getNinaAvatar(userId, attach.id)
     if (row == null) return null
     /* Her own photograph, so `kind: 'generated'` — the gallery's his/hers discriminator has to
      * keep telling the truth about a photo that has now appeared twice. */
@@ -161,8 +171,14 @@ async function resolveAttachment(
     }
   }
 
-  const rows = await listNinaMessageImages(userId, { limit: NINA_GALLERY_LIMIT })
-  const row = rows.find((candidate) => candidate.id === attach.id)
+  /*
+   * The same substitution on the conversation-photo branch. `listNinaMessageImages(userId, {
+   * limit: NINA_GALLERY_LIMIT }).find(...)` read up to 200 rows to answer one id;
+   * `getNinaMessageImage` is phase 3's mirror of `getNinaAvatar` and is why this phase depends on
+   * phase 3. Bounded before, so this is a smaller win than the avatar branch — done in the same
+   * commit because leaving one of two identical mistakes in place is how it grows back.
+   */
+  const row = await getNinaMessageImage(userId, attach.id)
   if (row == null) return null
   /* A re-attached chat photo keeps whoever's it was. */
   return {
