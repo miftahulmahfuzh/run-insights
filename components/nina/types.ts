@@ -29,6 +29,23 @@ export interface ChatMessage {
   dayISO: string
   state: ChatMessageState
   /**
+   * Phase 7 (R12). `nina_messages.reply_to_id` — the message this one answers, or null.
+   *
+   * A raw id and not a resolved quote, on purpose: whether it renders as a quote depends on
+   * whether the target is among the rows on screen, which is `MessageList`'s question and not this
+   * type's. The same row renders with a quote when its target is in the window and without one
+   * when it is not, so the quote cannot be a property of the message.
+   *
+   * Null covers three cases that all render as a plain message — the target was deleted (phase 1's
+   * `ON DELETE SET NULL`, decision D-5), the target is older than the 200 rows the page renders,
+   * or this is an optimistic row whose send has not been confirmed. `resolveQuote` returns null
+   * for all three rather than throwing, and that degradation IS this phase's exit criterion.
+   *
+   * REQUIRED, per RULING E2b: `app/nina/page.tsx` and `ChatScreen`'s optimistic row both set it,
+   * and `tsc` says so if either forgets.
+   */
+  replyToId: string | null
+  /**
    * Phase 6. Public Blob URLs, in `sort_order`, at most `NINA_MAX_CHAT_IMAGES`.
    *
    * PLURAL, where phase 4's handoff note said `imageUrl`: one message carries up to three photos.
@@ -44,4 +61,11 @@ export interface ChatMessage {
    * voice that is not Nina's, and rendering it would break the illusion this feature exists for.
    */
   imageUrls?: readonly string[]
+  /*
+   * NOT DECLARED HERE (RULING E2b): the run field is phase 8's `attachment?: RunAttachment | null`,
+   * a display-ready object rather than an id. Phase 7 READS both media fields — once each, in
+   * `MessageList`, collapsed to `hasImage` / `hasRun` booleans for `quoteMediaOf` — and declares
+   * neither. That is what keeps `lib/nina/reply.ts` free of any later phase's type, and therefore
+   * free of any later phase's edit.
+   */
 }

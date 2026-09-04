@@ -99,6 +99,14 @@ export default async function NinaPage() {
     body: row.body,
     dayISO: jakartaDayOf(row.createdAt),
     state: 'sent',
+    /*
+     * R12. `NinaMessageRow` has carried this since phase 1; it is the POINTER and not a resolved
+     * quote, because whether it renders as one depends on whether the target is among these rows —
+     * `MessageList`'s question. A target further back than `CHAT_HISTORY_LIMIT` renders as a plain
+     * message, which is the documented degradation: the alternative is a second query per quoted
+     * row for a target the runner cannot scroll to anyway.
+     */
+    replyToId: row.replyToId,
     imageUrls: urlsByMessage.get(row.id),
   }))
 

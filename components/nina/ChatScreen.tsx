@@ -7,6 +7,7 @@ import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabB
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageList } from './MessageList'
@@ -48,16 +49,27 @@ import type { ChatMessage } from './types'
  * who should speak.
  */
 
-type Notice = 'send-failed' | 'no-reply'
+type Notice = 'send-failed' | 'no-reply' | 'quote-missing'
 
 const NOTICE_TEXT: Record<Notice, string> = {
   'send-failed': 'That didn’t send. Check your connection and try it again.',
   'no-reply':
     'Nina went quiet on that one. Your message is saved — send another and she will pick it up.',
+  /* R12's honest end of the degradation. The quote rendered, so the target existed when the page
+   * loaded; it is simply not among the rows on screen — deleted since, or further back than this
+   * screen goes. Saying so beats a tap that does nothing. */
+  'quote-missing': 'That message isn’t on this screen any more, so there’s nowhere to jump to.',
 }
 
 /** The chrome the composer sits above: the bar, plus the FAB's overhang past the bar's top edge. */
 const COMPOSER_CLEARANCE_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX
+
+/**
+ * Fallback for `obstructedBottomPx` if `#nina-composer` cannot be measured — the clearance plus
+ * one composer row. Only reachable if the composer has not mounted, which it always has by the
+ * time a quote is tappable.
+ */
+const COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 68
 
 export function ChatScreen({
   initial,
@@ -80,17 +92,28 @@ export function ChatScreen({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [overlap, setOverlap] = useState(0)
+  /** Phase 7 (R12). The message being replied to, or null for an ordinary send. */
+  const [draftQuote, setDraftQuote] = useState<QuoteView | null>(null)
+  /** Phase 7. The message a jump just landed on. Held for `QUOTE_FLASH_MS`, then cleared. */
+  const [flashId, setFlashId] = useState<string | null>(null)
 
   // Every timed step checks this before touching state. StrictMode double-invokes effects in
   // development and a runner can navigate away mid-reveal; both would otherwise set state on an
   // unmounted tree. `InsightTrigger` uses the same guard for the same reason.
   const alive = useRef(true)
   const timer = useRef<number | null>(null)
+  /*
+   * Separate from `timer` on purpose. `timer` is the reveal's `setTimeout` handle; sharing it
+   * would mean a quote tap mid-reveal cancels the reveal's `sleep` and strands the remaining
+   * bubbles behind a typing indicator that never resolves.
+   */
+  const flashTimer = useRef<number | null>(null)
   useEffect(() => {
     alive.current = true
     return () => {
       alive.current = false
       if (timer.current !== null) window.clearTimeout(timer.current)
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
     }
   }, [])
 
@@ -127,6 +150,77 @@ export function ChatScreen({
       timer.current = window.setTimeout(resolve, ms)
     })
 
+  /**
+   * Arm a reply (R12). `buildQuote` rather than `resolveQuote`, because the target is the message
+   * in hand — there is nothing to look up.
+   */
+  const handleReply = useCallback((message: ChatMessage) => {
+    setNotice(null)
+    setDraftQuote(
+      buildQuote({
+        id: message.id,
+        mine: message.role === 'user',
+        text: message.body,
+        /* The same two booleans `MessageList` computes, for the same reason (RULING E2b), and
+         * spelled the same way so the strip in the composer and the stub in the bubble cannot
+         * disagree about whether the target was a photo. */
+        hasImage: (message.imageUrls?.length ?? 0) > 0,
+        hasRun: false, // phase 8: `message.attachment != null`
+      }),
+    )
+  }, [])
+
+  /**
+   * R12's second half: tapping a quote scrolls to the message it names, and says which one it
+   * landed on.
+   *
+   * The DOM read is deliberate and is the only DOM read on this screen besides the keyboard's.
+   * `getElementById` on phase 4's `nina-msg-${id}` anchor is the one honest source for where a
+   * message actually is: React knows the order of the rows, not their pixel heights, which depend
+   * on wrapping, on a quote stub, and on an image. A missing element is the degradation path, not
+   * an error — the row was on screen when the page rendered and is not now.
+   *
+   * `getBoundingClientRect().top` on the composer, rather than a constant, because the obstruction
+   * is the composer's height (which the reply strip, a tile row and a multi-line draft all change)
+   * plus its offset (clearance, or the keyboard).
+   */
+  const handleJumpToQuote = useCallback((targetId: string) => {
+    const element = document.getElementById(`nina-msg-${targetId}`)
+    if (element === null) {
+      setNotice('quote-missing')
+      return
+    }
+
+    const composer = document.getElementById('nina-composer')
+    const obstructedBottomPx =
+      composer === null
+        ? COMPOSER_FALLBACK_PX
+        : Math.max(0, window.innerHeight - composer.getBoundingClientRect().top)
+
+    const rect = element.getBoundingClientRect()
+    const plan = planQuoteScroll({
+      targetTop: rect.top + window.scrollY,
+      targetHeight: rect.height,
+      scrollTop: window.scrollY,
+      scrollHeight: document.documentElement.scrollHeight,
+      clientHeight: window.innerHeight,
+      /* This screen's header scrolls away with the document; nothing is fixed at the top. */
+      obstructedTopPx: 0,
+      obstructedBottomPx,
+      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    })
+    if (plan.kind === 'scroll') window.scrollTo({ top: plan.top, behavior: plan.behavior })
+
+    /* The tint runs whether or not the page moved: `kind: 'none'` means the target was already on
+     * screen, which is exactly the case where a scroll alone would identify nothing. */
+    setNotice(null)
+    setFlashId(targetId)
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
+    flashTimer.current = window.setTimeout(() => {
+      if (alive.current) setFlashId(null)
+    }, QUOTE_FLASH_MS)
+  }, [])
+
   const handleSend = useCallback(
     async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
@@ -135,6 +229,10 @@ export function ChatScreen({
       const imageUrls = draft.images.map((image) => image.url)
       const localId = `local-${crypto.randomUUID()}`
       const dayISO = todayInJakarta()
+      /* Read once and cleared immediately: the strip must disappear the moment the message is in
+       * the log, and the optimistic row has to carry the same pointer the action will persist. */
+      const replyToMessageId = draftQuote?.targetId ?? null
+      setDraftQuote(null)
       setNotice(null)
       setMessages((current) => [
         ...current,
@@ -144,6 +242,7 @@ export function ChatScreen({
           body,
           dayISO,
           state: 'sending',
+          replyToId: replyToMessageId,
           /* Already on the CDN — the describe pre-pass uploaded it before send was possible — so
            * the optimistic row shows the same URL the server row will carry. No object URL to
            * revoke, and no flicker when the real row lands. */
@@ -158,6 +257,7 @@ export function ChatScreen({
         result = await sendNinaMessage({
           body,
           imageTickets: draft.images.map((image) => image.ticket),
+          replyToMessageId,
         })
       } catch {
         result = null
@@ -211,6 +311,15 @@ export function ChatScreen({
             body: bubble.body,
             dayISO: todayInJakarta(),
             state: 'sent',
+            /*
+             * HER OWN QUOTE, ON THE OPTIMISTIC REVEAL. She may have replied to a specific message,
+             * and phase 3 puts her `reply_to_id` on the FIRST bubble only ("a four-bubble reply is
+             * one answer to one message"). A hard `null` here would mean the quote only appeared on
+             * the next server render of `/nina` — R12's UI lagging the database by a page load, for
+             * two lines. RULING B1 assigned those two lines to phase 7, which already edits
+             * `lib/nina/actions.ts` where `SentBubble` is declared.
+             */
+            replyToId: bubble.replyToId,
           },
         ])
       }
@@ -218,7 +327,7 @@ export function ChatScreen({
       setTyping(false)
       setBusy(false)
     },
-    [busy],
+    [busy, draftQuote],
   )
 
   return (
@@ -234,6 +343,9 @@ export function ChatScreen({
           typing={typing}
           todayISO={todayISO}
           keyboardOverlapPx={overlap}
+          flashId={flashId}
+          onReply={handleReply}
+          onJumpToQuote={handleJumpToQuote}
         />
       )}
 
@@ -251,6 +363,8 @@ export function ChatScreen({
         busy={busy}
         bottomCss={composerBottomCss(overlap, COMPOSER_CLEARANCE_PX)}
         userId={userId}
+        reply={draftQuote}
+        onCancelReply={() => setDraftQuote(null)}
       />
     </>
   )

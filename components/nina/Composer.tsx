@@ -1,7 +1,7 @@
 'use client'
 
 import { upload } from '@vercel/blob/client'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/cn'
 import { newId } from '@/lib/id'
@@ -12,7 +12,9 @@ import {
   planNinaPicked,
   type NinaPickRejectionReason,
 } from '@/lib/nina/images'
+import type { QuoteView } from '@/lib/nina/reply'
 import { compressForNina } from '@/lib/photos/compressForNina'
+import { QuoteStub } from './QuoteStub'
 
 /**
  * The message composer: a fixed bar above the tab bar, an auto-growing textarea, one send button —
@@ -74,6 +76,20 @@ import { compressForNina } from '@/lib/photos/compressForNina'
  * Strict Mode double-invoked it, and one picked file minted two upload tokens and left a blob
  * orphaned in the store for good. Decide purely, hand `setTiles` a value, run the effects after.
  *
+ * ── THE REPLY STRIP LIVES IN HERE, NOT ABOVE IT (PHASE 7) ────────────────────────────────────
+ * R12's draft quote has to be inside this same `fixed` container as the textarea, or it scrolls
+ * away from the thing it describes and the keyboard covers it. That is two props on this component
+ * rather than a sibling element in `ChatScreen`, and the alternative — a second fixed element
+ * tracking `composerBottomCss` independently — would be two sources of truth for one bar's
+ * position.
+ *
+ * The wrapper also gains `id="nina-composer"`, which `ChatScreen` measures. `planQuoteScroll`
+ * needs `obstructedBottomPx`, and that number is not a constant: it is this bar's own height
+ * (which grows with the reply strip, with a tile row and with a multi-line draft) plus its `bottom`
+ * offset (the tab bar and FAB clearance, or the keyboard). One `getBoundingClientRect().top` on
+ * this element answers all of it exactly, and every alternative re-derives what the browser
+ * already knows.
+ *
  * ── `userId` IS A PROP AND IT IS NOT A CAPABILITY ────────────────────────────────────────────
  * The client needs it to build `nina/<userId>/chat/<id>.jpg`. `/api/upload` re-derives the owner
  * from the session and refuses any pathname that does not match it, so a tampered value buys a
@@ -113,6 +129,8 @@ export function Composer({
   busy,
   bottomCss,
   userId,
+  reply = null,
+  onCancelReply,
 }: {
   /**
    * Receives the trimmed body and whatever photos are ready. Must be referentially stable — see
@@ -129,6 +147,10 @@ export function Composer({
   bottomCss: string
   /** Needed to build `nina/<userId>/chat/<id>.jpg`. Not a capability — see the header. */
   userId: string
+  /** Phase 7 (R12). The message this draft answers. Null is the ordinary composer. */
+  reply?: QuoteView | null
+  /** Drop the reply and keep the draft text. Required whenever `reply` can be non-null. */
+  onCancelReply?: () => void
 }) {
   const [value, setValue] = useState('')
   const [tiles, setTiles] = useState<Tile[]>([])
@@ -137,6 +159,16 @@ export function Composer({
   const fileRef = useRef<HTMLInputElement | null>(null)
   /** Ids removed while their promise was still in flight. Their results are dropped. */
   const dropped = useRef(new Set<string>())
+
+  /*
+   * Arming a reply focuses the box, which is the whole point of the gesture: swipe, type, send.
+   * Keyed on the target id and not on the object, so re-resolving the same quote during an
+   * unrelated re-render does not steal focus back from wherever it has gone.
+   */
+  const replyTargetId = reply?.targetId ?? null
+  useEffect(() => {
+    if (replyTargetId !== null) ref.current?.focus()
+  }, [replyTargetId])
 
   const ready = tiles.filter((t) => t.state === 'ready' && t.ticket !== null)
   const inFlight = tiles.some((t) => t.state !== 'ready' && t.state !== 'error')
@@ -264,10 +296,36 @@ export function Composer({
 
   return (
     <div
+      id="nina-composer"
       className="fixed inset-x-0 z-40 border-t border-rule bg-paper/90 backdrop-blur-md"
       style={{ bottom: bottomCss }}
     >
       <div className="mx-auto max-w-[470px] px-5 py-3">
+        {reply != null && (
+          <div className="mb-2 flex items-start gap-2">
+            {/* `mine={false}`: the ground here is `--paper`, the same side of the range as Nina's
+                `--card` bubble, so the paper-side branch is the correct one for the rule and the
+                text. `onJump` is omitted because the target is not necessarily on screen and he is
+                mid-sentence. */}
+            <QuoteStub quote={reply} mine={false} className="min-w-0 flex-1" />
+            <button
+              type="button"
+              onClick={onCancelReply}
+              aria-label="Cancel reply"
+              className="grid size-11 shrink-0 place-items-center rounded-pill text-ink-3 active:scale-[0.97]"
+            >
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+                <path
+                  d="M6 6l12 12M18 6L6 18"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {tiles.length > 0 && (
           <ul className="mb-2 flex gap-2">
             {tiles.map((tile) => (

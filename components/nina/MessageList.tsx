@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { formatDayCompact } from '@/lib/format'
 import {
@@ -9,6 +9,7 @@ import {
   isNearBottom,
   type ScrollCause,
 } from '@/lib/nina/chatview'
+import { resolveQuote, type QuoteCandidate } from '@/lib/nina/reply'
 import { ChatImages } from './ChatImages'
 import { MessageBubble } from './MessageBubble'
 import { TypingIndicator } from './TypingIndicator'
@@ -44,6 +45,9 @@ export function MessageList({
   typing,
   todayISO,
   keyboardOverlapPx,
+  flashId = null,
+  onReply,
+  onJumpToQuote,
 }: {
   messages: readonly ChatMessage[]
   /** True while a turn is in flight, and between bubbles of a staggered reveal. */
@@ -52,6 +56,12 @@ export function MessageList({
   todayISO: string
   /** Changes when the software keyboard opens or closes; a reason to re-check the scroll. */
   keyboardOverlapPx: number
+  /** Phase 7. The message a quote tap just landed on; it holds a tint for `QUOTE_FLASH_MS`. */
+  flashId?: string | null
+  /** Phase 7. A swipe, or the focus-revealed button, arming a reply to this message. */
+  onReply?: (message: ChatMessage) => void
+  /** Phase 7. A tap on a quote stub: scroll to the message it names. */
+  onJumpToQuote?: (targetId: string) => void
 }) {
   const readerNearBottom = useRef(true)
   const mounted = useRef(false)
@@ -116,6 +126,37 @@ export function MessageList({
     readerNearBottom.current = true
   }, [messages, typing, keyboardOverlapPx])
 
+  /*
+   * The candidate set every quote resolves against: the rows on this screen and nothing else. A
+   * `reply_to_id` pointing outside it — deleted, or older than `CHAT_HISTORY_LIMIT` — resolves to
+   * null and the message renders as plain text, which is the documented degradation and the reason
+   * `resolveQuote` returns null instead of throwing.
+   *
+   * Memoised on `messages` because it is O(n) and this component re-renders on every state change
+   * the screen makes (typing, keyboard, reveal), not only when a row arrives.
+   *
+   * `hasImage` / `hasRun` are computed HERE and nowhere else (RULING E2b). This is the one module
+   * that already imports `ChatMessage`, so it is the one module that may know the field names:
+   * phase 6's `imageUrls` is plural and phase 8's `attachment` is an object, and
+   * `lib/nina/reply.ts` knows about neither. `hasRun` is the LITERAL `false` at phase 7's landing,
+   * because `ChatMessage.attachment` does not exist yet and `tsc` would say so. Phase 8's one-line
+   * edit here is `hasRun: message.attachment != null` — it flips one boolean and the run branch of
+   * `quoteMediaOf`, already shipped and already tested, starts firing. That is the entire cost of
+   * shipping a reachable-but-dead branch now, and it is why no later phase touches
+   * `lib/nina/reply.ts`.
+   */
+  const candidates = useMemo<QuoteCandidate[]>(
+    () =>
+      messages.map((message) => ({
+        id: message.id,
+        mine: message.role === 'user',
+        text: message.body,
+        hasImage: (message.imageUrls?.length ?? 0) > 0,
+        hasRun: false, // phase 8: `message.attachment != null`
+      })),
+    [messages],
+  )
+
   return (
     <div className="space-y-5">
       {groupIntoDays(messages).map((day) => (
@@ -136,11 +177,15 @@ export function MessageList({
               <MessageBubble
                 key={message.id}
                 message={message}
+                quote={resolveQuote(message.replyToId, candidates)}
                 above={
                   message.imageUrls != null && message.imageUrls.length > 0 ? (
                     <ChatImages urls={message.imageUrls} />
                   ) : undefined
                 }
+                flash={message.id === flashId}
+                onReply={onReply}
+                onJumpToQuote={onJumpToQuote}
               />
             ))}
           </ul>

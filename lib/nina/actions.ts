@@ -11,7 +11,9 @@ import { NINA_MAX_CHAT_IMAGES, isNinaChatRequestPathname } from './images'
 import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from './imageTicket'
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
-import { insertNinaMessageImages, insertNinaMessages } from './queries'
+import { getNinaMessagesByIds, insertNinaMessageImages, insertNinaMessages } from './queries'
+import type { NinaMessageRow } from './queries'
+import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
 import { runNinaTurn } from './turn'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
@@ -67,8 +69,16 @@ export interface SentBubble {
    * match the other.
    */
   body: string
-  /* Phase 7 adds `replyToId: string | null` here — it already edits this file, and it needs her
-   * own quote to render on the optimistic reveal rather than only on the next server render. */
+  /**
+   * Phase 7 (R12). The `nina_messages.id` THIS bubble answers, or null.
+   *
+   * The one place this return type widened rather than an input, and RULING B1 put it in phase 7
+   * because that phase already edits this file. Without it, Nina's own quote would render only on
+   * the next server render of `/nina` and not on the optimistic reveal — R12's UI lagging the
+   * database by a page load, for two lines. Non-null on the FIRST bubble only, because a
+   * four-bubble reply is one answer to one message (see STEP 5).
+   */
+  replyToId: string | null
 }
 
 export interface SendNinaMessageResult {
@@ -113,8 +123,8 @@ const REFUSED: SendNinaMessageResult = {
  *       input.attachExisting != null                // phase 13
  *     if (input.body.trim() === '' && !hasAttachment) return refuse('empty')
  *
- * **At THIS phase's landing `body` and `imageTickets` exist**, so that is all this signature
- * carries and the rule is the first two disjuncts. `runId` arrives with phase 8 and
+ * **At THIS phase's landing `body`, `imageTickets` and `replyToMessageId` exist**, so that is all
+ * this signature carries and the rule is the first two disjuncts. `runId` arrives with phase 8 and
  * `attachExisting` with phase 13; `hasAttachment` is not written as a named constant until there
  * are three terms to name. Phase 7's field takes no clause: answering a message is not a
  * substitute for saying something.
@@ -123,6 +133,17 @@ export async function sendNinaMessage(input: {
   body: string
   /** Phase 6. Signed by `describeNinaImage`; at most `NINA_MAX_CHAT_IMAGES` of them. */
   imageTickets?: readonly string[]
+  /**
+   * Phase 7 (R12). The `nina_messages.id` he swiped, from `ChatScreen`. **Untrusted**: this is a
+   * POST endpoint like any other action, so the id is checked against rows THIS user owns before
+   * it becomes a foreign key — the same rule STEP 4 applies to the id the model produces, by the
+   * same reasoning the Server Actions guide gives.
+   *
+   * It adds NO clause to the refusal rule above. Replying to something without typing anything and
+   * without attaching anything is a gesture, not a send, and the refusal it earns is the plain
+   * empty-body one.
+   */
+  replyToMessageId?: string | null
 }): Promise<SendNinaMessageResult> {
   const userId = await requireUserId()
 
@@ -182,9 +203,37 @@ export async function sendNinaMessage(input: {
    * words, the column is NOT NULL, so `''` is the honest value and phase 4's bubble renders just
    * the photo.
    */
+  /*
+   * STEP 0b — the reply target (R12). One scoped query, and it answers both questions at once:
+   * whether the id is real and his, and what the quoted message actually SAYS. The second half is
+   * the point — the context window is 40 messages, so a reply to something older is an id with no
+   * text behind it in the context JSON, and the model would be told a reply exists while being
+   * unable to read it.
+   *
+   * A malformed, foreign or vanished id degrades to "no reply" and the message still sends. There
+   * is nothing to explain to the runner: the quote he tapped is gone, and losing his sentence over
+   * it would be the worse outcome by a wide margin.
+   */
+  const requestedReplyId =
+    typeof input?.replyToMessageId === 'string' && input.replyToMessageId.trim().length > 0
+      ? input.replyToMessageId.trim()
+      : null
+
+  let quotedRow: NinaMessageRow | null = null
+  if (requestedReplyId !== null) {
+    try {
+      const found = await getNinaMessagesByIds(userId, [requestedReplyId])
+      quotedRow = found[0] ?? null
+    } catch (cause) {
+      console.warn('[nina] could not resolve the reply target', { error: String(cause) })
+    }
+  }
+
   let runnerMessageId: string
   try {
-    const [row] = await insertNinaMessages(userId, [{ role: 'runner', body: text }])
+    const [row] = await insertNinaMessages(userId, [
+      { role: 'runner', body: text, replyToId: quotedRow?.id ?? null },
+    ])
     if (row == null) throw new Error('insertNinaMessages returned no row')
     runnerMessageId = row.id
   } catch (cause) {
@@ -250,6 +299,25 @@ export async function sendNinaMessage(input: {
    * `runnerText: null` for an image-only message, so `userTurnText` omits the "HE JUST SAID"
    * block entirely rather than emitting an empty one.
    */
+  /*
+   * `sentAtLabel` comes from the context window when the quoted message is in it, and is null when
+   * it is not. That is invariant 3 rather than laziness: `'Tue 2 Sep 07:14'` is spelled by phase
+   * 2's `conversationFacts`, and formatting a second one here would make this the app's second
+   * authority on how an instant is written. A quote with no timestamp reads fine —
+   * `quoteContextBlock` simply omits the clause.
+   */
+  const target = quotedRow
+  const quoted: QuotedMessageInput | null =
+    target === null
+      ? null
+      : {
+          id: target.id,
+          mine: target.role === 'runner',
+          text: target.body,
+          sentAtLabel:
+            context.conversation.window.find((turn) => turn.id === target.id)?.sentAtLabel ?? null,
+        }
+
   const result = await runNinaTurn({
     userId,
     context,
@@ -257,6 +325,7 @@ export async function sendNinaMessage(input: {
     sourceMessageId: runnerMessageId,
     runnerText: text.length > 0 ? text : null,
     imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+    quoted,
   })
 
   if (result.payload == null) {
@@ -319,7 +388,7 @@ export async function sendNinaMessage(input: {
         replyToId: index === 0 ? replyToId : null,
       })),
     )
-    for (const row of rows) bubbles.push({ id: row.id, body: row.body })
+    for (const row of rows) bubbles.push({ id: row.id, body: row.body, replyToId: row.replyToId })
   } catch (cause) {
     console.warn('[nina] could not persist her reply', { error: String(cause) })
     /* His message IS stored; the batch either landed whole or not at all. `ok: false` tells phase

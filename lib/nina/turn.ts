@@ -6,6 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import type { NinaContext } from './context'
 import { dbNinaToolGateway, dbNinaTurnStore } from './gateway'
 import { NINA_REPAIR_PREAMBLE, NINA_SYSTEM_PROMPT, SEND_TOOL } from './prompts'
+import { quoteContextBlock, type QuotedMessageInput } from './reply'
 import { NinaSendPayloadSchema, describeNinaIssues, type NinaSendPayload } from './schema'
 import {
   NINA_CORE_TOOL_SET,
@@ -246,6 +247,16 @@ export interface NinaTurnInput {
    * is not an error, it is a lie. This field is the entire image path into this file.
    */
   imageDescriptions?: readonly string[]
+  /**
+   * R12 (phase 7). The message he is replying to, resolved and ownership-checked by
+   * `lib/nina/actions.ts`. Null on an ordinary turn and on every proactive turn.
+   *
+   * It is passed EXPLICITLY rather than left to be joined out of `context.conversation.window[]`
+   * by the model, for two reasons: the window is 40 messages, so a reply to anything older is an
+   * id with no text behind it; and even when the text is there, nothing in the JSON says that
+   * THIS turn is a reply rather than a turn that happens to contain an id.
+   */
+  quoted?: QuotedMessageInput | null
   /** Phase 10's `PROACTIVE_INSTRUCTIONS[kind]`, appended to the user turn. */
   proactive?: string | null
 }
@@ -292,6 +303,15 @@ function userTurnText(input: NinaTurnInput): string {
         ' — react to the picture, never to this description as a description:',
       input.imageDescriptions.map((description) => `- ${description}`).join('\n'),
     )
+  }
+
+  /*
+   * R12. Immediately BEFORE `'HE JUST SAID:'` and after the image descriptions: he read the quoted
+   * message first, tapped reply, then typed — so she reads it in that order too. Putting it after
+   * his text would ask her to re-interpret a sentence she has already answered.
+   */
+  if (input.quoted != null) {
+    parts.push(quoteContextBlock(input.quoted))
   }
 
   if (input.runnerText != null && input.runnerText.length > 0) {
