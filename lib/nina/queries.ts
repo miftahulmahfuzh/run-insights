@@ -1062,18 +1062,103 @@ export async function markNinaMessagesRead(
 }
 
 /* ---------------------------------------------------------------------------
- * §4c Message mutation — F35 PHASE 7's, and deliberately not written here.
+ * §4c Message mutation — F35 PHASE 7's, and written here at phase 1's invitation.
  *
  * `updateNinaMessage(userId, id, body)` and `deleteNinaMessage(userId, id)` belong in THIS section,
  * between `markNinaMessagesRead` above and the `§5 Images` banner below. Phase 7 writes them,
  * because it owns the rule about what may be edited and what an empty edit means, and a statement
- * with no rule behind it would be a statement nobody could review.
+ * with no rule behind it would be a statement nobody could review. That rule is
+ * `lib/nina/edit.ts`; these two statements are its only writers.
  *
  * Two facts they inherit from this phase rather than deciding for themselves: `nina_message_images`
  * cascades from `message_id` so a deleted message takes its photo ROWS (never its blobs), and
  * `reply_to_id` is `ON DELETE SET NULL` so a quote pointing at a deleted message degrades to plain
  * text — which `resolveQuote` already handles.
  * -------------------------------------------------------------------------*/
+
+/**
+ * R8's edit, as one statement. **`user_id` is in the WHERE, so a foreign id updates nothing and
+ * comes back as `null`** — which is the refusal `lib/nina/messageActions.ts` reports, not a
+ * degradation. Invariant 3's rule: a message id from a client is a claim; a row that came back
+ * from an owner-scoped write is a fact.
+ *
+ * ── WHAT IT DELIBERATELY DOES NOT TOUCH ───────────────────────────────────────────────────────
+ *   · `seq` — invariant 6. Sessions slice the total order and an edit does not move a message in
+ *     it. Rewriting a bubble is not re-sending it.
+ *   · `sent_at` — the message was sent when it was sent. Bumping it would reorder the day dividers
+ *     `groupIntoDays` draws and would tell Nina, through `ConversationTurn.daysAgo`, that a
+ *     three-week-old message is new.
+ *   · `read_at` — an edit to one of her messages is not a new unread message.
+ *   · `turn_id` — and this one is a decision rather than an omission. `nina_turns` holds NO
+ *     message text (see the table: model, tokens, latency, cost, status, and an `args` blob that is
+ *     NULL for every non-image kind), so there is nothing for the new text to contradict. What the
+ *     turn row asserts is that a model call happened and what it cost, which stays true. Nulling
+ *     the pointer would falsify the cost ledger, which is the one question that table exists to
+ *     answer. (In practice the column is NULL on every chat and proactive row anyway — no caller
+ *     of `insertNinaMessages` has ever passed a `turnId` except `lib/nina/imagejobs.ts`, which
+ *     stores an image-job id there.)
+ *
+ * No session parameter, and that is deliberate: `id` is the primary key and `user_id` is the
+ * ownership proof, so a session argument would be redundant and would create a way to pass a
+ * mismatched pair. Phase 1's message READS are session-scoped because a window is a slice; a
+ * mutation addressed by primary key is not.
+ *
+ * The DTO spelling is `body` and the column is `text` (RULING A1). The `.set({ text: body })`
+ * below is the only place in this function where those two meet, exactly as `insertNinaMessages`
+ * does it.
+ */
+export async function updateNinaMessage(
+  userId: string,
+  id: string,
+  body: string,
+): Promise<NinaMessageRow | null> {
+  const updated = await db
+    .update(ninaMessages)
+    .set({ text: body })
+    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.id, id)))
+    .returning(messageColumns)
+
+  return updated[0] ?? null
+}
+
+/**
+ * R8's delete. One statement, owner-scoped, returning the row as it was so the caller can report
+ * exactly which id is gone.
+ *
+ * ── THREE THINGS THE DATABASE DOES ON ITS OWN, AND THIS PHASE'S POSITION ON EACH ──────────────
+ *   1. **`reply_to_id` is nulled** on every message that quoted this one — the self-FK's
+ *      `ON DELETE SET NULL`. `resolveQuote` already documents a null pointer as "render it as a
+ *      plain message", so a quote degrades instead of throwing. That is the designed outcome and
+ *      it is an exit test of this phase, not an assumption.
+ *   2. **`nina_message_images` rows CASCADE away** ("an image with no message is nothing"). The
+ *      Blob bytes are NOT deleted and nothing in this tree reaps them — assumption A5, accepted
+ *      deliberately and out of scope here. `reap-orphaned-blobs` is the skill that does this for
+ *      `shots/` and does not cover `nina/` yet; extending it is its own card.
+ *      `lib/nina/messageActions.ts` logs the orphaned pathnames on the way out so they are at
+ *      least findable.
+ *   3. **`nina_memory_slots.source_message_id` and `nina_memory_facts.source_message_id` are left
+ *      DANGLING**, because neither is a foreign key and nothing cascades. A5 keeps the fact, and
+ *      the code agrees: the only readers collapse the column to a boolean (the admin memory ledger
+ *      renders "from a message" / "no message behind it") and the fact-permission rule uses it to
+ *      keep in-place editing of a distilled fact barred — which is still the right answer once the
+ *      evidence is gone. A distilled fact may be true after the sentence that produced it is gone;
+ *      cascading it away would let one deleted message quietly rewrite her long-term memory.
+ *
+ * `nina_turns` is untouched for the reason `updateNinaMessage` gives: deleting a message must not
+ * retroactively make her cheaper. `turn_id` has no FK precisely so "an audit pointer must not be
+ * able to block a delete", and the inverse holds too.
+ */
+export async function deleteNinaMessage(
+  userId: string,
+  id: string,
+): Promise<NinaMessageRow | null> {
+  const deleted = await db
+    .delete(ninaMessages)
+    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.id, id)))
+    .returning(messageColumns)
+
+  return deleted[0] ?? null
+}
 
 /* ============================================================================
  * §5 Images

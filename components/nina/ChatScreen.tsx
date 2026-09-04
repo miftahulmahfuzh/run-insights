@@ -14,10 +14,18 @@ import {
   type RunAttachment,
 } from '@/lib/nina/attach'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+import {
+  applyMessageDeletion,
+  applyMessageEdit,
+  canActOnMessage,
+  type EditTarget,
+} from '@/lib/nina/edit'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
+import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
 import { Composer, type ComposerDraftImage } from './Composer'
+import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
 import type { ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
@@ -58,7 +66,13 @@ import { useChatScrollMark } from './useChatScroll'
  * who should speak.
  */
 
-type Notice = 'send-failed' | 'no-reply' | 'quote-missing'
+type Notice =
+  | 'send-failed'
+  | 'no-reply'
+  | 'quote-missing'
+  | 'edit-failed'
+  | 'delete-failed'
+  | 'edit-unavailable'
 
 const NOTICE_TEXT: Record<Notice, string> = {
   'send-failed': 'That didn’t send. Check your connection and try it again.',
@@ -68,6 +82,14 @@ const NOTICE_TEXT: Record<Notice, string> = {
    * loaded; it is simply not among the rows on screen — deleted since, or further back than this
    * screen goes. Saying so beats a tap that does nothing. */
   'quote-missing': 'That message isn’t on this screen any more, so there’s nowhere to jump to.',
+  /* R8. Both of these mean the WRITE did not happen, so the bubble on screen is still the truth.
+   * They are told apart because a failed edit leaves something to try again and a failed delete
+   * leaves the message where it was — different next actions, different sentences. */
+  'edit-failed': 'That edit didn’t save. The message is unchanged — try it again.',
+  'delete-failed': 'That message could not be deleted. It is still here, and still in her context.',
+  /* The one refusal that is not a failure: an optimistic row has no database row behind it yet. */
+  'edit-unavailable':
+    'Give that one a moment to send — there is nothing to edit until Nina has it.',
 }
 
 /** The chrome the composer sits above: the bar, plus the FAB's overhang past the bar's top edge. */
@@ -152,6 +174,15 @@ export function ChatScreen({
   const [draftQuote, setDraftQuote] = useState<QuoteView | null>(null)
   /** Phase 7. The message a jump just landed on. Held for `QUOTE_FLASH_MS`, then cleared. */
   const [flashId, setFlashId] = useState<string | null>(null)
+  /**
+   * R8. The message whose action sheet is open, or null.
+   *
+   * The `ChatMessage` itself and not an id, so the sheet can render the text being acted on and
+   * disclose the photo count without a second lookup — and so that a row that vanishes from
+   * `messages` under it (a push-driven refresh, a delete in another tab) does not leave the sheet
+   * pointing at nothing it can describe.
+   */
+  const [acting, setActing] = useState<ChatMessage | null>(null)
   /** Phase 8 (R13). The run the next message will carry. Seeded from the server's `?attach=`. */
   const [attachment, setAttachment] = useState<RunAttachment | null>(pending)
   /**
@@ -387,6 +418,106 @@ export function ChatScreen({
     }, QUOTE_FLASH_MS)
   }, [])
 
+  /**
+   * R8, arming. The gesture (or the focus-revealed button) picked a message; decide whether it can
+   * be acted on at all, and open the sheet if it can.
+   *
+   * `canActOnMessage` is the gate and it is in `lib/`, because "which messages are editable" is a
+   * rule with two real exclusions — an optimistic row whose id is client-minted, and a row whose
+   * send threw — and both of them are states this screen produces and no other screen does. A
+   * refusal here is a NOTICE rather than silence: the runner performed a deliberate gesture and a
+   * gesture that does nothing reads as a broken screen.
+   */
+  const handleRequestActions = useCallback((message: ChatMessage) => {
+    const target: EditTarget = {
+      id: message.id,
+      mine: message.role === 'user',
+      body: message.body,
+      hasImage: (message.imageUrls?.length ?? 0) > 0,
+      hasRun: message.attachment != null,
+      confirmed: message.state === 'sent',
+    }
+    if (!canActOnMessage(target)) {
+      setNotice('edit-unavailable')
+      return
+    }
+    setNotice(null)
+    setActing(message)
+  }, [])
+
+  /**
+   * R8, editing. Returns true when the row was written, which is the sheet's cue to close.
+   *
+   * ── THE LIST IS PATCHED FROM THE RETURN VALUE, AND NOT BY A REFRESH ───────────────────────────
+   * This component's header explains why it does not `router.refresh()` after a send. An edit has a
+   * second, sharper reason: `mergeServerMessages` is "server order, LOCAL content", so for any id
+   * this component already holds, the local copy WINS over the server's. A refresh literally cannot
+   * deliver an edited body — it would re-render the page and then be discarded. So the action
+   * returns the canonical text and it is mapped onto local state here, exactly as this file already
+   * adopts `result.userMessageId` after a send. Two mechanisms, not three.
+   *
+   * `applyMessageEdit` returns the same array reference when nothing changed, so the `'unchanged'`
+   * case costs no render.
+   */
+  const handleEditMessage = useCallback(async (id: string, body: string): Promise<boolean> => {
+    let result: Awaited<ReturnType<typeof editNinaMessage>> | null = null
+    try {
+      result = await editNinaMessage({ messageId: id, body })
+    } catch {
+      result = null
+    }
+    if (!alive.current) return false
+
+    if (result === null || !result.ok || result.body === null) {
+      setNotice('edit-failed')
+      return false
+    }
+
+    const written = result.body
+    setNotice(null)
+    setMessages((current) => applyMessageEdit(current, id, written) as ChatMessage[])
+    return true
+  }, [])
+
+  /**
+   * R8, deleting. Returns true when the row is gone.
+   *
+   * `applyMessageDeletion` does both halves in one pass: it drops the row AND nulls every
+   * `replyToId` that pointed at it — which is the client-side expression of the database's
+   * `ON DELETE SET NULL` on `nina_messages.reply_to_id`. Without the second half the screen would
+   * still look right (`resolveQuote` resolves against the rows on screen, and the target is gone),
+   * but the local rows would carry a pointer the database no longer has, and `mergeServerMessages`
+   * keeps local content — so that stale pointer would survive every later refresh.
+   *
+   * A quote whose target was deleted therefore renders as a plain message rather than throwing,
+   * which `resolveQuote` documents as the designed outcome and which is this phase's exit test.
+   */
+  const handleDeleteMessage = useCallback(async (id: string): Promise<boolean> => {
+    let result: Awaited<ReturnType<typeof removeNinaMessage>> | null = null
+    try {
+      result = await removeNinaMessage({ messageId: id })
+    } catch {
+      result = null
+    }
+    if (!alive.current) return false
+
+    if (result === null || !result.ok || result.deletedId === null) {
+      setNotice('delete-failed')
+      return false
+    }
+
+    const deletedId = result.deletedId
+    setNotice(null)
+    setMessages((current) => applyMessageDeletion(current, deletedId) as ChatMessage[])
+    /* If the deleted message was the one a reply was armed against, the draft strip in the
+     * composer now points at something that does not exist. Unpin it rather than let a send write
+     * a `reply_to_id` the database would immediately null. */
+    setDraftQuote((current) => (current?.targetId === deletedId ? null : current))
+    /* Same argument for the landing tint: nothing left to flash. */
+    setFlashId((current) => (current === deletedId ? null : current))
+    return true
+  }, [])
+
   const handleSend = useCallback(
     async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
@@ -574,6 +705,7 @@ export function ChatScreen({
           flashId={flashId}
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}
+          onRequestActions={handleRequestActions}
         />
       )}
 
@@ -597,6 +729,42 @@ export function ChatScreen({
         onClearAttachment={() => setAttachment(null)}
         photo={photo}
         onClearPhoto={() => setPhoto(null)}
+      />
+
+      {/*
+        R8's surface. Rendered LAST, after the composer, so nothing about the composer's `fixed`
+        geometry or its `id="nina-composer"` measurement changes — `Sheet` is `z-50` and the
+        composer `z-40`, which is the stacking this app already uses for "a sheet covers the
+        second fixed bar".
+
+        `key` is the target's id, and that is load-bearing rather than a lint appeasement: the
+        sheet holds its own textarea draft (the `Sheet` focus-loss lesson), so picking a DIFFERENT
+        message must reset that draft. Remounting on the id is how. It is the deliberate inverse of
+        `Composer`'s "never given a `key` that changes", where a reset would have been the bug.
+
+        `photoCount` comes off the row this component already holds, so the confirmation can
+        disclose that the photos go with the message (`nina_message_images` cascades) without a
+        query. The URLs are not passed — the sheet shows no thumbnails, and phase 9 owns anything
+        that renders a chat photo.
+      */}
+      <MessageActionsSheet
+        key={acting?.id ?? 'none'}
+        target={
+          acting === null
+            ? null
+            : {
+                id: acting.id,
+                mine: acting.role === 'user',
+                body: acting.body,
+                hasImage: (acting.imageUrls?.length ?? 0) > 0,
+                hasRun: acting.attachment != null,
+                confirmed: acting.state === 'sent',
+              }
+        }
+        photoCount={acting?.imageUrls?.length ?? 0}
+        onClose={() => setActing(null)}
+        onSubmitEdit={handleEditMessage}
+        onConfirmDelete={handleDeleteMessage}
       />
     </>
   )

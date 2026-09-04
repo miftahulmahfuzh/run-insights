@@ -52,6 +52,7 @@ export function MessageList({
   flashId = null,
   onReply,
   onJumpToQuote,
+  onRequestActions,
 }: {
   messages: readonly ChatMessage[]
   /** True while a turn is in flight, and between bubbles of a staggered reveal. */
@@ -72,6 +73,12 @@ export function MessageList({
   onReply?: (message: ChatMessage) => void
   /** Phase 7. A tap on a quote stub: scroll to the message it names. */
   onJumpToQuote?: (targetId: string) => void
+  /**
+   * R8. A LEFT swipe, or the second focus-revealed button, asking to edit or delete this message.
+   * Threaded straight through, exactly as `onReply` is: this component composes bubbles and does
+   * not decide what a bubble's actions are.
+   */
+  onRequestActions?: (message: ChatMessage) => void
 }) {
   const readerNearBottom = useRef(true)
   const mounted = useRef(false)
@@ -270,6 +277,7 @@ export function MessageList({
                 flash={message.id === flashId}
                 onReply={onReply}
                 onJumpToQuote={onJumpToQuote}
+                onRequestActions={onRequestActions}
               />
             ))}
           </ul>

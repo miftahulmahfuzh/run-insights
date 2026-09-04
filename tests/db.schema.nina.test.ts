@@ -391,3 +391,34 @@ describe('push_subscriptions', () => {
     expect(unq?.config.unique).toBe(true)
   })
 })
+
+/**
+ * R8's three collateral facts, pinned. F35 phase 7 (edit and delete a message) adds no column, so
+ * its correctness rests entirely on what these foreign keys already do — asserted here rather than
+ * assumed in a plan.
+ *
+ * Three of the five facts phase 7 depends on were already pinned above and are NOT repeated:
+ * `reply_to_id`'s `SET NULL` and `turn_id`'s missing FK are in `nina_messages`, the
+ * `nina_message_images.message_id` cascade is in `nina_message_images`, and both memory tables'
+ * FK-less `source_message_id` is in the memory block. What is added here is the pair that had no
+ * home: that `reply_to_id` points at THIS table (a self-FK — the reason a delete degrades a quote
+ * rather than orphaning it), and that `nina_turns` stores no prose for an edited message to
+ * contradict.
+ */
+describe('deleting or editing a nina message: what the database does on its own (F35 R8)', () => {
+  it('reply_to_id is a SELF-FK, so a deleted message degrades its own quotes to plain text', () => {
+    const fk = fkFor(schema.ninaMessages, 'reply_to_id')
+    expect(fk).toBeDefined()
+    expect(fk?.reference().foreignTable).toBe(schema.ninaMessages)
+    expect(fk?.onDelete).toBe('set null')
+  })
+
+  it('nina_turns carries no message text, so an edit contradicts nothing stored', () => {
+    // The turn row asserts that a model call happened and what it cost — never what was said. That
+    // is why `updateNinaMessage` leaves `turn_id` alone: there is no second copy to disagree with.
+    const turnColumns = names(schema.ninaTurns)
+    for (const forbidden of ['text', 'request', 'response', 'prompt', 'body', 'bubbles']) {
+      expect(turnColumns).not.toContain(forbidden)
+    }
+  })
+})

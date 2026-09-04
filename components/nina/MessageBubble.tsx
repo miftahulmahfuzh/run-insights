@@ -4,6 +4,7 @@ import { useRef } from 'react'
 import type * as React from 'react'
 
 import { cn } from '@/lib/cn'
+import { decideMessageActionSwipe } from '@/lib/nina/edit'
 import { decideReplySwipe, type QuoteView } from '@/lib/nina/reply'
 import { QuoteStub } from './QuoteStub'
 import type { ChatMessage } from './types'
@@ -45,6 +46,31 @@ import type { ChatMessage } from './types'
  * `Button` are "deliberately untouched" by the reduced-motion escape because they "animate colour
  * only, which is not motion". `QUOTE_FLASH_MS` is 1600 — long enough to survive a smooth scroll
  * (~500 ms) plus the eye finding the line, short enough to be gone before it becomes decoration.
+ *
+ * ── R8: THE FOURTH GESTURE (PHASE 7 OF THE SESSIONS SET) ──────────────────────────────────────
+ * Swipe a bubble to the LEFT to edit or delete it — either side of the conversation. The decision
+ * is `decideMessageActionSwipe`, in `lib/nina/edit.ts`, for the same reason the reply gate lives in
+ * `lib/nina/reply.ts`: there is no jsdom, so a gate that must not eat the chat log's scroll is a
+ * rule and rules get asserted.
+ *
+ * It had to be a fourth thing. Swipe-right is reply and is not re-litigated; the two alternatives
+ * this file rejected above — long-press and tap — are still rejected for the reasons written there,
+ * and copying what she said is still a real capability. So leftward is what is left, and it comes
+ * with one obligation the reply gesture did not have: `lib/nina/reply.ts` records that "a leftward
+ * drag from near the screen edge is how iOS Safari does forward navigation", and his bubbles reach
+ * the content's right edge. `MESSAGE_ACTION_EDGE_GUARD_PX` answers that, and it is a unit test.
+ *
+ * The distance and the dominance are reply's own constants, imported by `edit.ts` rather than
+ * re-chosen: two gestures on one element that are unequally hard to perform read as one of them
+ * being broken.
+ *
+ * A gesture is invisible to a keyboard and to VoiceOver, so this bubble now carries a SECOND
+ * `sr-only`-until-focused button — two tab stops per message instead of one. The trade is the same
+ * one the reply button already made and won: two invisible stops cost nothing visually, and 200
+ * permanently visible action buttons would be 200 pieces of furniture in a reading surface.
+ *
+ * Where the actions actually render is `components/nina/MessageActionsSheet.tsx`, above the
+ * document rather than inside it, so nothing here changes the page's scroll height mid-decision.
  *
  * ── WHY THESE TWO FILLS AND NOT A COLOURED ONE ────────────────────────────────────────────────
  * Hers is `bg-card` + `shadow-card` at `rounded-card`, which is the app's *only* surface — "White
@@ -95,6 +121,7 @@ export function MessageBubble({
   flash = false,
   onReply,
   onJumpToQuote,
+  onRequestActions,
 }: {
   message: ChatMessage
   /**
@@ -129,6 +156,16 @@ export function MessageBubble({
   onReply?: (message: ChatMessage) => void
   /** Tap on the quote stub: scroll to `targetId`. */
   onJumpToQuote?: (targetId: string) => void
+  /**
+   * R8. Open the edit/delete surface for this message — from a LEFT swipe, or from the second
+   * focus-revealed button below. Omitted makes the bubble read-only in that respect, exactly as an
+   * omitted `onReply` does, and the two are independent: a surface may offer one without the other.
+   *
+   * It hands over the whole `ChatMessage` rather than an id, because `ChatScreen` needs its role,
+   * its body, its `state` and its `imageUrls` to build the `EditTarget` and to disclose the photo
+   * count — all of which it would otherwise have to look up in the list it just handed down.
+   */
+  onRequestActions?: (message: ChatMessage) => void
 }) {
   const mine = message.role === 'user'
 
@@ -137,6 +174,12 @@ export function MessageBubble({
    * during the drag and not the count at `touchend`, because a pinch that starts with one finger
    * down must still lose — the same reason `PhotoViewer` tracks it that way. A ref and not state:
    * a drag in progress must not re-render 200 bubbles.
+   *
+   * ONE `touchend`, TWO decisions (R8). Reply is consulted first and returns; the action menu is
+   * consulted only for a drag reply rejected. They cannot both fire, because reply requires
+   * `dx > 0` and the menu requires `dx < 0` — but the ordering is written out anyway rather than
+   * left to the sign, so that invariant 9 ("the reply swipe is not re-litigated") is visible in
+   * the control flow and not merely true.
    */
   const start = useRef<{ x: number; y: number; touches: number } | null>(null)
 
@@ -155,17 +198,36 @@ export function MessageBubble({
   function onTouchEnd(event: React.TouchEvent<HTMLLIElement>) {
     const from = start.current
     start.current = null
-    if (from === null || onReply === undefined) return
+    if (from === null) return
+    if (onReply === undefined && onRequestActions === undefined) return
     const touch = event.changedTouches[0]
     if (touch === undefined) return
 
-    const decision = decideReplySwipe({
-      dx: touch.clientX - from.x,
-      dy: touch.clientY - from.y,
+    const dx = touch.clientX - from.x
+    const dy = touch.clientY - from.y
+    const zoomScale = window.visualViewport?.scale ?? 1
+
+    if (onReply !== undefined) {
+      const reply = decideReplySwipe({ dx, dy, touches: from.touches, zoomScale })
+      if (reply === 'reply') {
+        onReply(message)
+        return
+      }
+    }
+
+    if (onRequestActions === undefined) return
+    const actions = decideMessageActionSwipe({
+      dx,
+      dy,
       touches: from.touches,
-      zoomScale: window.visualViewport?.scale ?? 1,
+      zoomScale,
+      /* Where the drag BEGAN. The edge guard is about the start, not the end — a drag that
+       * finishes in the middle of the screen but began under Safari's forward-navigation zone is
+       * the case it exists for. */
+      startX: from.x,
+      viewportWidth: window.innerWidth,
     })
-    if (decision === 'reply') onReply(message)
+    if (actions === 'actions') onRequestActions(message)
   }
 
   return (
@@ -210,8 +272,10 @@ export function MessageBubble({
         {message.body}
 
         {/*
-          The non-gesture path. Invisible until focused, so a keyboard and VoiceOver can do what a
-          thumb does with a swipe.
+          The non-gesture paths. Invisible until focused, so a keyboard and VoiceOver can do what a
+          thumb does with a swipe. Two stops per message now (R8) — see the header for why that is
+          still the right trade, and note that the reply stop comes FIRST because the reply gesture
+          came first and muscle memory in a screen reader is muscle memory too.
         */}
         {onReply !== undefined && (
           <button
@@ -225,6 +289,21 @@ export function MessageBubble({
             )}
           >
             Reply to this message
+          </button>
+        )}
+
+        {onRequestActions !== undefined && (
+          <button
+            type="button"
+            onClick={() => onRequestActions(message)}
+            className={cn(
+              'sr-only focus:not-sr-only focus:relative focus:mt-2 focus:inline-block',
+              'focus:rounded-chip focus:px-2 focus:py-1 focus:text-[12px] focus:font-semibold',
+              mine ? 'focus:bg-card/20 focus:text-card' : 'focus:bg-paper-2 focus:text-accent',
+              'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none',
+            )}
+          >
+            Edit or delete this message
           </button>
         )}
       </div>
