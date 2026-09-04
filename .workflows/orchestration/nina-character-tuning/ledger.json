@@ -89,24 +89,24 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "1ea6824993b87dc16c793ca13cc70dea9b66b091",
       "depends_on": [
         1,
         3
       ],
       "difficulty": "NORMAL",
       "n": 5,
-      "note": null,
+      "note": "Panel landed: 11 traits + 5-way relationship + 4 dials + wardrobe/notes, one save, server-rendered prompt preview. All copy read from NINA_TRAIT_SPECS/NINA_DIAL_SPECS/NINA_ADDRESS, no second table. 5 plan defects fixed: WARDROBE/NOTES_MAX imported from lib/nina/tuning (Contract cut the admin copies); TuningDraft/TuningCopy declared (Step 1 block omitted them); NinaTuningWrite imported not re-declared; loudestDials ranking case rewritten for non-uniform defaults (it moved anger to 0, which IS anger's default); 3 structural guards narrowed to code-only because Steps 1/5/6 require docstrings naming 'server-only'/'runNinaTurn' that Step 9 then forbade. readme-updater deliberately skipped - phase 6 owns both package_readmes.",
       "package": "components/admin`, `lib/admin`, `app/admin",
       "plan": ".workflows/plan/nina-character-tuning/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T22:29:13+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CA-A000",
       "title": "The panel on `/admin/nina"
     },
     {
@@ -127,7 +127,7 @@
       "satisfies": [
         "R6"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The sweep, and the record"
     }
@@ -135,6 +135,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T22:11:10+00:00",
+  "updated": "2026-09-04T22:31:51+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }

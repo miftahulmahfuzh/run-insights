@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-character-tuning`
 **Branch:** `feature/nina-character-tuning` (base: `origin/main` @ `e5a4d4e`)
 **Phases:** 6
-**Status:** phase 4/6 complete — a phase is complete when its row in the Phases table is ticked ✅; the set is reviewed and merged as a whole
+**Status:** phase 5/6 complete — a phase is complete when its row in the Phases table is ticked ✅; the set is reviewed and merged as a whole
 **Coordinator:** —
 
 ---
@@ -186,7 +186,7 @@ identified.
 | 2 ✅ | The canon, re-cut as a function — and the repeal | R2, R3, R4, R6 | `lib/nina`, `docs` | 2 | 1 | HARD | `.workflows/plan/nina-character-tuning/phase-2.md` | `P1-NIN-A001` | — |
 | 3 ✅ | `buildNinaSystemPrompt`, and the turn that reads it | R3, R4, R6 | `lib/nina`, `lib/nina/prompts`, `tests` | 11 | 1, 2 | HARD | `.workflows/plan/nina-character-tuning/phase-3.md` | `P1-NIN-A002` | — |
 | 4 ✅ | The camera, and a promise she keeps in the chat | R5 | `lib/nina`, `lib/db` | 10 | 1, 2 | HARD | `.workflows/plan/nina-character-tuning/phase-4.md` | `P1-NIN-A003` | — |
-| 5 | The panel on `/admin/nina` | R1, R2, R3 | `components/admin`, `lib/admin`, `app/admin` | 8 | 1, 3 | NORMAL | `.workflows/plan/nina-character-tuning/phase-5.md` | `P2-CA-A000` | — |
+| 5 ✅ | The panel on `/admin/nina` | R1, R2, R3 | `components/admin`, `lib/admin`, `app/admin` | 8 | 1, 3 | NORMAL | `.workflows/plan/nina-character-tuning/phase-5.md` | `P2-CA-A000` | — |
 | 6 | The sweep, and the record | R6 | `docs`, `tests`, `lib/nina/prompts` | 9 | 2, 3, 4, 5 | EASY | `.workflows/plan/nina-character-tuning/phase-6.md` | `P2-RI-A006` | — |
 
 **File counts are the reconciled ones** — the draft's 7/3/7/7/8/6 were estimates made before the
