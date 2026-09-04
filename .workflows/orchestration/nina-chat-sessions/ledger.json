@@ -1,0 +1,190 @@
+{
+  "branch": "feature/nina-chat-sessions",
+  "coordinator": "orch-nina-chat-sessions",
+  "coordinator_session_id": "212e6e67-6631-4821-a8da-988c481b2bb7",
+  "created": "2026-09-04T20:08:33+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#78",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "lib/db`, `lib/nina`, `drizzle",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2",
+        "R4",
+        "R5",
+        "R11"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Session data layer: schema, migration, backfill, scoped queries"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#79",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "components/ui`, `components/nina`, `lib/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Full-screen chat chrome: hide the bar, floating `^` / `v`, 5 s auto-hide"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#80",
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": null,
+      "package": "app/nina`, `lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2",
+        "R11"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Session-scoped chat surface and session lifecycle actions"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#81",
+      "commit": null,
+      "depends_on": [
+        3
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "lib/nina`, `scripts",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Automatic session titling, and the rename path"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#82",
+      "commit": null,
+      "depends_on": [
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 5,
+      "note": null,
+      "package": "components/nina`, `app/nina`, `lib/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-5.md",
+      "reported_at": null,
+      "satisfies": [
+        "R6",
+        "R7",
+        "R4",
+        "R11"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The hidden full-screen sidebar: session list, pin, rename, remove, Nina's circle"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#83",
+      "commit": null,
+      "depends_on": [
+        4,
+        5
+      ],
+      "difficulty": "NORMAL",
+      "n": 6,
+      "note": null,
+      "package": "lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-6.md",
+      "reported_at": null,
+      "satisfies": [
+        "R6"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Search all chats, with the persisted semantic-search toggle"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#84",
+      "commit": null,
+      "depends_on": [
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 7,
+      "note": null,
+      "package": "lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-7.md",
+      "reported_at": null,
+      "satisfies": [
+        "R8"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Editing and deleting messages, his and hers"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#85",
+      "commit": null,
+      "depends_on": [
+        5
+      ],
+      "difficulty": "EASY",
+      "n": 8,
+      "note": null,
+      "package": "components/nina`, `app/nina`, `lib/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-8.md",
+      "reported_at": null,
+      "satisfies": [
+        "R9"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The unread dot clears itself on the newest session"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#86",
+      "commit": null,
+      "depends_on": [
+        7,
+        8
+      ],
+      "difficulty": "NORMAL",
+      "n": 9,
+      "note": null,
+      "package": "components/nina`, `components/ui`, `lib/photos`, `app/nina",
+      "plan": ".workflows/plan/nina-chat-sessions/phase-9.md",
+      "reported_at": null,
+      "satisfies": [
+        "R10"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Tap an image: full screen, download, attach to a new message"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-chat-sessions",
+  "updated": "2026-09-04T20:08:33+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
+}
