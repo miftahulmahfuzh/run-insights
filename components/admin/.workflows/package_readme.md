@@ -595,12 +595,20 @@ deliberately writes no ledger row.
 ### Internal
 
 - `@/lib/admin/filetree` — the folder-path grammar and the upload diff: `planFolderUpload`,
-  `buildTree`, `folderAncestors`, `folderBreadcrumbs`, and the `LocalFileLike` / `UploadRefusal` /
-  `FolderNode` / `PlannedUpload` types. **A zero-import module**, which is why a `'use client'` file
-  may import it.
+  `buildTree`, `folderAncestors`, `folderBreadcrumbs`, `folderName`, `folderParent`,
+  `isInFolderTree`, and the `LocalFileLike` / `UploadRefusal` / `FolderNode` / `PlannedUpload`
+  types. **A zero-import module**, which is why a `'use client'` file may import it.
 - `@/lib/admin/ninaAlbumActions` — every write: `registerNinaAvatarsAction`,
   `listNinaAlbumManifestAction`, `setCurrentNinaAvatarAction`, `saveNinaAvatarCropAction`,
-  `describeNinaAvatarAction`, `ensureNinaAvatarDescriptionAction`, `deleteNinaAvatarAction`.
+  `describeNinaAvatarAction`, `ensureNinaAvatarDescriptionAction`, `deleteNinaAvatarAction`, and
+  phase 6's six: `createNinaAlbumFolderAction`, `renameNinaAlbumFolderAction`,
+  `moveNinaAlbumFolderAction`, `deleteNinaAlbumFolderAction`, `moveNinaAvatarsAction`,
+  `removeNinaAvatarsAction`. `AdminActionResult` comes from here too, as a type.
+- `@/lib/admin/folderOps` — **not imported, deliberately.** It holds every folder-operation refusal
+  and the Zod schemas behind them, so the components here call the actions and render the sentences
+  rather than re-deciding anything. The path helpers that *look* like they live there live in
+  `filetree.ts` instead, which is what makes them importable from a client component. (There is no
+  `lib/admin/folderPath.ts`; reconciliation deleted it.)
 - `@/lib/admin/shareToNina` — `ninaPhotoShareUrl(origin, avatarId)`, the only writer of the
   `/nina?photo=avatar:<id>` link. **A near-zero-import module** (it pulls only `lib/nina/attach`'s
   `formatNinaPhotoParam` and `PHOTO_PARAM`), which is why a `'use client'` file may import it.
@@ -631,7 +639,9 @@ deliberately writes no ledger row.
 `@/lib/db/schema` and `@/lib/admin/users` imports are `import type`, so they erase at compile time.
 `NINA_ADMIN_BATCH_MAX` comes from `lib/nina/album.ts` rather than `lib/admin/schema.ts` specifically
 because `schema.ts` would pull a validator into the `/admin` browser bundle for the sake of an
-integer — a module-level `z.object(...)` is a side effect no bundler tree-shakes.
+integer — a module-level `z.object(...)` is a side effect no bundler tree-shakes. `folderOps.ts` is
+the same trap one phase later: `FolderMenu` wants three path helpers and would have found them next
+to that module's schemas, so it takes them from `filetree.ts` instead.
 
 `lib/share/origin.ts` is the same shape of rule and the reason `shareOrigin` is a prop: it opens
 with `import 'server-only'`, so nothing in this directory can call it and the answer has to arrive
@@ -660,6 +670,12 @@ was written to be — the origin is what cannot cross.
 - `SelectionPane.tsx` is the only consumer of `CropStudio`, of `ShareToNinaItem` and — on this
   screen — of `CircleFrame`. `shareOrigin` is a pure pass-through in `FileExplorer`: it is read
   nowhere between `page.tsx` and `ShareToNinaItem`.
+- `explorer/FolderTree.tsx` is the only consumer of `FolderMenu`, mounted once per `Row` — the
+  album root's row included. It is the one place a folder is drawn, which is why one control
+  reaches every folder.
+- `FileExplorer.tsx` is the only consumer of `PhotoMoveBar`, rendered above `PhotoGrid` in the same
+  column. `allFolders` and `navigateToFolder` are derived in `FileExplorer` and used by both
+  phase-6 components, so `FolderTree` forwards them through its recursion without reading them.
 
 ### Test consumers
 
@@ -673,6 +689,12 @@ paper*, the link's grammar, was put in `lib/admin/shareToNina.ts` and is covered
 `tests/admin.shareToNina.test.ts`, which round-trips the URL back through phase 3's
 `parseNinaPhotoParam` rather than asserting literal bytes. That split is the rule, not a compromise.
 
+Phase 6 is the same worked example at a larger size. `FolderMenu` and `PhotoMoveBar` have no tests
+and cannot have any; everything they could get *wrong on paper* — a name that sanitises away, a
+depth over the bound, a collision, a folder moved inside its own tree, the depth check run against
+the deepest descendant rather than the destination, and the current-photo refusal — is in
+`lib/admin/folderOps.ts` and covered by `tests/admin.folderOps.test.ts`.
+
 ## Data flow
 
 ```
@@ -681,6 +703,12 @@ app/admin/nina/page.tsx  (Server Component, force-dynamic, requireAdmin() on lin
   │  shareOrigin()   ← server-only, resolved HERE, handed down as a string
   ▼
 FileExplorer  ─── FolderTree ──────────► <Link href="?folder=…">  (server re-read)
+      │             └── Row/FolderMenu ► create / rename / move / delete folder
+      │                    │              └─► AdminActionResult.folder ──► navigateToFolder()
+      │                    │                  (a create also ──► addPendingFolder() ──► allFolders)
+      │      ─── PhotoMoveBar ────────► moveNinaAvatarsAction([selectedId], folder)
+      │                    │            removeNinaAvatarsAction([selectedId], keepCurrent)
+      │                    │              └─► onDone() clears phase 5's selection
       │      ─── PhotoGrid ───────────► <Link href="?page=…">     (server re-read)
       │      └── SelectionPane ───────► setCurrent / saveCrop / describe / delete
       │                    │                   └─► revalidatePath('/admin/nina')
@@ -719,9 +747,15 @@ Two refs, not state, guard the lifecycle:
   promise belonging to a dismissed or superseded gesture cannot write into the live queue.
 
 Everything else in the package is ordinary React: a `useTransition` per interactive pane
-(`SelectionPane`, and one per row/editor in `MemoryLedger` and `MemorySlots`), and `CropStudio`'s
-pointer capture keyed by `pointerId`. No component here spawns work that outlives it, and nothing
-polls.
+(`SelectionPane`, `PhotoMoveBar`, one per `FolderMenu` — so one per tree row — and one per
+row/editor in `MemoryLedger` and `MemorySlots`), and `CropStudio`'s pointer capture keyed by
+`pointerId`. No component here spawns work that outlives it, and nothing polls.
+
+The folder operations need no gesture counter of their own. Each is a single awaited action inside
+one component's transition, its result is consumed by the `onOk` of the call that made it, and the
+only cross-component write is `navigateToFolder`, which is a `router.push` — so there is nothing for
+a superseded promise to patch. Server Actions also dispatch one at a time per client, which means
+two menus cannot land two folder writes concurrently even when the operator opens two.
 
 ## Error handling
 
@@ -735,6 +769,16 @@ human can act on:
   and non-fatal: a truncated manifest makes the diff over-report, so files are re-PUT and their
   inserts are discarded by `ON CONFLICT DO NOTHING`. Slower, never wrong.
 - **Per action**, in `SelectionPane`'s `error` state, rendered in a `role="alert"` paragraph.
+- **Per folder operation**, in `FolderMenu`'s and `PhotoMoveBar`'s `error` state, also
+  `role="alert"` — and the string is the server's own sentence from `lib/admin/folderOps.ts`,
+  never a client paraphrase and never matched on. `FolderMenu` renders it as one more `absolute`
+  280 px overlay so it cannot reflow the rail it is sitting in. The `note` beside it is the
+  counterpart on success: `ok` is `true`, the operation did what was asked, and the operator still
+  needs to be told what a `keepCurrent` delete left behind.
+- **The one refusal with a second answer** is the current photo's. It arrives as an ordinary error
+  and is then *converted into an affordance*: `FolderMenu` sets `keepOffer` when a refusal lands
+  with the delete panel open, `PhotoMoveBar` warns from `currentId` before the click, and either
+  way the follow-up is a button the operator presses rather than a state the client guessed.
 - **Per memory action**, through `AdminMemoryResult`: `error` renders on the `Field` (which wires
   `aria-invalid` and `aria-describedby` through Field context) or as a red paragraph, and `note`
   renders in accent on success — the one sentence about what *else* the action wrote.
@@ -757,7 +801,12 @@ be moved to `lib/` is the minimum-edge check in `uploadOne`, because only a deco
 - **No vision call is on any path in this package.** The `glm-4.6v` describe (~8–11 s) was moved off
   the upload path entirely; it is scheduled by the promote action on `after()`. Three hundred awaited
   describes would have been 40 minutes to 1.4 hours of wall clock.
-- `buildTree` and the on-path set in `FolderTree` are `useMemo`'d on `folders` and `current`.
+- **A folder operation moves no bytes.** A rename or a move is one UPDATE of the `folder` column, so
+  reorganising four hundred photographs costs one statement and zero blob traffic. That is the whole
+  reason the album stores a path in a column rather than in the blob pathname.
+- `buildTree` and the on-path set in `FolderTree` are `useMemo`'d on `folders` and `current`;
+  `allFolders` is `useMemo`'d in `FileExplorer` and each menu's `moveTargets` on top of it. The
+  target lists are small and the memos are about identity for the `<select>`, not about cost.
 - `UploadQueue` renders a summary plus at most `IN_FLIGHT_ROWS` moving rows; a three-hundred-row live
   list is a rendering cost paid for information nobody reads.
 
@@ -814,6 +863,26 @@ down the string.
   `lib/admin/filetree.ts` and import it.
 - **`selectedId` is allowed to dangle.** Do not add an effect to reconcile it; the `find(...) ?? null`
   is the design.
+- **Do not validate a folder name, a collision or a move target in this directory.** Every one of
+  those rules is in `lib/admin/folderOps.ts` and every one of them is a sentence the operator reads.
+  A client-side copy is a second rule that can disagree with the first, and the direction it usually
+  disagrees in is forbidding what the server would have allowed — which is unfalsifiable from the UI.
+- **Do not import `lib/admin/folderOps.ts` here.** It carries the Zod schemas. `folderName`,
+  `folderParent` and `isInFolderTree` are in `lib/admin/filetree.ts`, which is zero-import.
+- **Do not add an in-page drag protocol to the tree or the grid.** Those elements are phase 5's
+  `dragover`/`drop` for the Windows Explorer folder walk, and one handler cannot tell an OS folder
+  from an in-page selection without failing silently in both directions. The `<select>` is the
+  gesture; internal drag-to-move is a follow-up card.
+- **Do not disable a delete or a remove because her current photo might be in it.** The client cannot
+  know — the grid is one page of one folder — and the server's refusal is better than a greyed
+  button anyway: it names the photo and both fixes. Take `keepOffer`'s route and add the second
+  button, not a `holdsCurrent` prop.
+- **Do not treat `pendingFolders` as where a new folder lives.** It is a one-render bridge;
+  `nina_folders` is the storage, and the merge is a filter so a server-known folder drops out of it.
+- **Do not lay a `FolderMenu` panel out inside `Row`.** It is a 200 px flex line. The panels are
+  `absolute`, 280 px, `z-20`; a fourth flex item wraps the text field into ~60 px.
+- **Do not branch on the text of a refusal.** `keepOffer` comes off `mode === 'delete'` for exactly
+  this reason: the server owns the wording and must stay free to change it.
 - **The thumbnail upload's third argument is `'jpg'`.** The Route Handler cross-checks the pathname's
   extension against the declared content type and a mismatch is a 400.
 - **Never give `CircleFrame` a non-square `sizeClass`.** It is not validated, it will not throw, and
@@ -833,11 +902,15 @@ Two components were retired when this screen landed, and neither should come bac
 was moved verbatim into `SelectionPane`) and `UploadAvatar.tsx` (superseded by the folder-aware
 queue, which also retired the singular `registerNinaAvatarAction` in `lib/admin`).
 
-Two seams were marked in the source for phases that follow. One is now closed:
+Two seams were marked in the source for phases that follow. Both are now closed:
 
-- **Phase 6, folder maintenance** — still open. `FolderTree.tsx` carries the note. A "New folder"
-  button belongs under its `<nav>` (it needs `current` as the parent), and rename / move / delete
-  belong on `Row`, which is already the single place a folder is drawn.
+- **Phase 6, folder maintenance** — **closed**, and it took the seam's second half rather than its
+  first. `FolderTree.tsx`'s note is now `SEAM — PHASE 6, TAKEN` and records why: the sketched "New
+  folder" button under the `<nav>` was dropped in favour of putting all four verbs in `FolderMenu`
+  on `Row`, because a per-folder menu makes the create's parent the folder whose menu was opened
+  instead of whatever the rail has selected. `Row` being "already the single place a folder is
+  drawn" is what the seam got exactly right: one component gained one control and every folder,
+  root included, got a menu.
 - **Phase 7, "Share link to Nina"** — **closed**, and it cost exactly what the seam predicted: one
   entry in `SelectionPane`'s action list (`ShareToNinaItem`), one prop threaded
   `page.tsx -> FileExplorer -> SelectionPane -> ShareToNinaItem`, and nothing about selection
@@ -850,6 +923,14 @@ Known, accepted limitations: folder sort is lexicographic rather than natural; a
 across two consecutive pages while an upload is in flight (nothing is ever skipped); empty
 directories in a dropped tree are invisible to the browser and so cannot survive an upload; and
 pinch-to-zoom is not implemented in `CropStudio`.
+
+Phase 6 adds three more, all deliberate. **Multi-select is not built** — `PhotoMoveBar` acts on
+phase 5's single `selectedId` and wraps it in an array, so "N photos selected" reads "1" today; the
+actions are plural already, which makes multi-select a client-only change when it comes. **Internal
+drag-to-move is not built**, for the reason above, and is a follow-up card rather than an oversight.
+And **no folder operation has been run against real rows**: migration `0003` is applied to no live
+database, so the guarantees in this section are the ones typecheck, build and
+`tests/admin.folderOps.test.ts` can give, and nothing here should be read as runtime-verified.
 
 One note on the JSX comment style in `SelectionPane.tsx`: the leading `*` on every continuation line
 is load-bearing. `ci:client-secret-guard`'s Rule 3 forbids a particular string anywhere in `app/`,
@@ -865,6 +946,18 @@ grid, the drag-and-drop folder walk, the `webkitdirectory` picker, client-side t
 the four-lane upload queue with chunked registration, the selection pane and "Set as profile
 picture" — re-hosted `CropStudio` and `CircleFrame` unchanged, and deleted `AlbumManager.tsx` and
 `UploadAvatar.tsx`.
+
+2026-09-04 — updated following task **P1-RI-A004** (`admin-album-file-manager` phase 6 of 7,
+requirement R1's second half, folder maintenance). It closed phase 5's `SEAM — PHASE 6`: added
+`FolderMenu.tsx` (New subfolder / Rename / Move to… / Delete, as a `mode` union with `absolute`
+overlay panels, mounted once per `FolderTree` `Row` including the root's) and `PhotoMoveBar.tsx`
+(move / remove for the current selection, `null` when nothing is selected), gave `FolderTree` the
+required `allFolders` / `onNavigate` / `onFolderCreated` props and threaded them through its
+recursion, and gave `FileExplorer` `pendingFolders`, the derived flat `allFolders` and
+`navigateToFolder`. Every rule and every refusal went to the new pure `lib/admin/folderOps.ts`
+(tested in `tests/admin.folderOps.test.ts`) and the six Server Actions in
+`lib/admin/ninaAlbumActions.ts`; neither new component imports `zod` or decides anything. Phase 5's
+selection model was not restructured.
 
 2026-09-04 — updated following task **P1-RI-A005** (`admin-album-file-manager` phase 7 of 7,
 requirement R2, "Share link to Nina"). It closed phase 5's `SEAM — PHASE 7`: added
