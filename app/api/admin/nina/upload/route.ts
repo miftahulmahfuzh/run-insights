@@ -150,7 +150,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       },
 
-      /** Production-only observability. NOT a writer — `registerNinaAvatarAction` is. */
+      /** Production-only observability. NOT a writer — `registerNinaAvatarsAction` is. */
       onUploadCompleted: async ({ blob }) => {
         console.log('[f33] admin avatar blob landed', { pathname: blob.pathname })
       },
