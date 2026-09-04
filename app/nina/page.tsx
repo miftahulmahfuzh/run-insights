@@ -18,6 +18,7 @@ import {
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
+import { SESSION_PARAM, chooseActiveSession, parseNinaSessionParam } from '@/lib/nina/active'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import {
   getCurrentNinaAvatar,
@@ -25,7 +26,9 @@ import {
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
   listNinaMessages,
+  listNinaSessions,
   markNinaMessagesRead,
+  type NinaMessageRow,
 } from '@/lib/nina/queries'
 
 /**
@@ -113,11 +116,42 @@ export const maxDuration = 60
 
 export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const userId = await requireUserId()
-  const { [ATTACH_PARAM]: attachParam, [PHOTO_PARAM]: photoParam } = await searchParams
+  const {
+    [ATTACH_PARAM]: attachParam,
+    [PHOTO_PARAM]: photoParam,
+    [SESSION_PARAM]: sessionParam,
+  } = await searchParams
   /* Parsed BEFORE the reads, because which table to read is what the grammar decides. Pure, so it
    * costs nothing and cannot fail; `null` means "no photo on this link" and every branch below
    * short-circuits on it. */
   const photoPointer = parseNinaPhotoParam(photoParam)
+
+  /*
+   * ── F35 R2's ROUTING DECISION, AND WHY IT IS ITS OWN READ ────────────────────────────────────
+   * `?s=<id>` names the open conversation (assumption A4), and `listNinaMessages` cannot run until
+   * it is known — so this one indexed read sits on the critical path ahead of the `Promise.all`
+   * below rather than inside it. That extra round trip is the price of A4 and it is worth paying:
+   * `listNinaMessages` is owner-scoped, so passing a forged `?s=` straight through would come back
+   * `[]` and paint an EMPTY conversation with a dead id still in the address bar. One index scan on
+   * `(user_id, …)` buys the difference between that and "your newest chat". Invariant 4 is
+   * untouched — still no model call, still nothing unindexed.
+   *
+   * A MISS DEGRADES SILENTLY, exactly as `?attach=` and `?photo=` do: a forged id, another runner's
+   * id and an id he deleted on his other phone all resolve to his most recently active session.
+   * `chooseActiveSession` carries the argument, including why it ignores `pinnedAt`.
+   *
+   * `null` IS A REAL ANSWER — he has no sessions at all. Reachable two ways: a runner who has never
+   * messaged, and R11's runner who just removed his last one. The screen renders `ChatScreen`'s
+   * existing empty state, and a send from it carries `sessionId: null`, which the ACTION
+   * resolves-or-creates. Creating one here would be a database write in a render path, which the
+   * `after()` below exists to avoid.
+   *
+   * Phase 5 renders this same list in the sidebar, ordered by phase 1's pinned-first rule; this page
+   * reads it only to answer "which one". Two questions, one query.
+   */
+  const sessions = await listNinaSessions(userId)
+  const activeSessionId = chooseActiveSession(sessions, parseNinaSessionParam(sessionParam))
+
   /*
    * Two reads, concurrently — and the second one is here for its SIDE EFFECT.
    * `listOpenNinaImageJobs` sweeps stale image jobs first (phase 12), so ARRIVING ON THIS PAGE IS
@@ -135,7 +169,15 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * model call is awaited in a render path — the generation itself is on a GitHub runner.
    */
   const [rows, , avatarRow, photoRow] = await Promise.all([
-    listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT }),
+    /*
+     * F35 R2. ONE session's messages. `Promise.resolve` on the empty branch rather than a
+     * conditional `await` after the block, on the `?photo=` branch's precedent below: keeping it
+     * inside the `Promise.all` means the empty case costs nothing and the ordinary case still
+     * overlaps the other three reads.
+     */
+    activeSessionId === null
+      ? Promise.resolve<NinaMessageRow[]>([])
+      : listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT, sessionId: activeSessionId }),
     listOpenNinaImageJobs(userId),
     /*
      * F33 phase 13 (R17). A THIRD indexed read, not a model call: `getCurrentNinaAvatar` is a
@@ -265,6 +307,11 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
 
           A `<Link>` and not a `<button>`: it is a navigation, so it gets the platform's own
           long-press, middle-click and back behaviour for free, and Next prefetches the route.
+
+          **F35 PHASE 5 DELETES THIS WHOLE HEADER (R7)** and moves the avatar and her name into the
+          sidebar. Phase 3 leaves it exactly as it found it: two phases editing one file is the
+          hazard that plan set declared its file edges for, and a header removed here would collide
+          with the phase that owns the surface it moves to.
         */}
         <Link href="/nina/about" aria-label="Buka detail Nina" className="rounded-pill">
           <NinaAvatar size="md" src={avatar.src} natural={avatar.natural} crop={avatar.crop} />
@@ -277,10 +324,26 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
         </div>
       </header>
 
+      {/*
+        ── `key` IS LOAD-BEARING (F35 PHASE 3, D8). DO NOT REMOVE IT. ───────────────────────────
+        `ChatScreen` holds the conversation in `useState` and reconciles a changed `initial` prop
+        DURING RENDER through `mergeServerMessages`, which is "server order + local content" and
+        deliberately keeps optimistic rows the server has not seen yet. Navigating from `?s=A` to
+        `?s=B` is the same route with different search params, so without a key React reconciles the
+        SAME component instance and merges session B's server rows into session A's local state:
+        leftover bubbles from the previous chat, plus a draft quote and an armed attachment pointing
+        at messages in a conversation he has left.
+
+        A different conversation is a different screen, so remounting and discarding every piece of
+        local state is not a workaround — it is the correct semantics. `'none'` covers the
+        no-sessions case so the key is never `undefined`.
+      */}
       <ChatScreen
+        key={activeSessionId ?? 'none'}
         initial={initial}
         todayISO={todayInJakarta()}
         userId={userId}
+        sessionId={activeSessionId}
         pending={pending}
         pendingPhoto={pendingPhoto}
       />

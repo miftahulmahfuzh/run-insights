@@ -119,6 +119,13 @@ export interface NinaIdentity {
 export interface NinaMessageRow {
   id: string
   seq: number
+  /**
+   * Which conversation this message is in (F35 R2). Added by phase 3, which needs to read a session
+   * OFF a message rather than only filter by one: `lib/nina/sessionResolve.ts` resolves R22's
+   * apology into the chat where he asked for the photo, and `NinaImageJobArgs.replyToId` is the only
+   * handle it has. `NOT NULL` in the column, so `string` and never nullable here.
+   */
+  sessionId: string
   role: NinaRole
   body: string
   createdAt: Date
@@ -447,6 +454,7 @@ const sessionColumns = {
 const messageColumns = {
   id: ninaMessages.id,
   seq: ninaMessages.seq,
+  sessionId: ninaMessages.sessionId,
   role: ninaMessages.role,
   body: ninaMessages.text,
   createdAt: ninaMessages.sentAt,
@@ -797,21 +805,30 @@ export async function removeNinaSession(userId: string, id: string): Promise<boo
 /* ---------------------------------------------------------------------------
  * §4b The messages
  *
- * Every read and write below takes an OPTIONAL session, and omitting it means exactly what the code
- * did before sessions existed: the reads drop the `session_id` predicate and see the whole
- * conversation, and the one write resolves his current session because the column is NOT NULL.
+ * **The session is REQUIRED on the three functions that carry the partition** — `listNinaMessages`,
+ * `getNinaMessageWindow` and `insertNinaMessages`. Phase 1 shipped it optional so that the tree
+ * compiled with no caller touched; F35 phase 3 removed the option, and that removal is not tidying,
+ * it is the proof. `nina_messages.session_id` is `NOT NULL`, there are exactly three writers of
+ * this table (`lib/nina/actions.ts`, `lib/nina/proactive.ts`, `lib/nina/imagejobs.ts`), and two of
+ * them run with no runner present and no session in view. A defaulted parameter would let one of
+ * them keep compiling while writing into the wrong conversation, which is invisible until Nina
+ * answers a question from another topic. Required means `tsc` names every writer that has not
+ * decided — and all three now resolve through `lib/nina/sessionResolve.ts`, where assumption A3's
+ * policy lives once.
  *
- * That is deliberate and temporary. F35 phase 3 re-points `app/nina/page.tsx`, `actions.ts`,
- * `gateway.ts`, `proactive.ts` and `imagejobs.ts` and then makes `listNinaMessages`,
- * `getNinaMessageWindow` and `insertNinaMessages` require the parameter — which is how `tsc` proves
- * that no writer of `nina_messages` was missed. `countUnreadNinaMessages` and
- * `markNinaMessagesRead` keep theirs optional for good: "how many of hers are unread across every
- * session" is the tab bar's question and "in this session" is the screen's, and both are real.
+ * `countUnreadNinaMessages` and `markNinaMessagesRead` keep theirs optional for good: "how many of
+ * hers are unread across every session" is the tab bar's question and "in this session" is the
+ * screen's, and both are real.
  * -------------------------------------------------------------------------*/
 
 /**
  * `user_id = $1`, plus `session_id = $2` when there is one. The `folderSubtree` idiom — a predicate
- * spelled once so six statements cannot drift apart.
+ * spelled once so several statements cannot drift apart.
+ *
+ * The session is optional HERE and required at three of the four call sites, which is not a
+ * contradiction: `countUnreadNinaMessages` and `markNinaMessagesRead` genuinely ask their question
+ * both ways (see §4b's header), and `getNinaMessageWindow` no longer uses this helper at all
+ * because its two statements deliberately disagree about scope (F35 phase 3, D4).
  *
  * **This is also the ownership proof for every READ that takes a session id** (invariant 3). The
  * session predicate is ANDed onto the user predicate, never substituted for it, so a forged or
@@ -833,14 +850,20 @@ function messageScope(userId: string, sessionId?: string): SQL | undefined {
  * tail" is not expressible without knowing where the tail starts. Reversing `n <= 200` items is
  * free; reading the whole conversation to reverse it would not be.
  *
- * `opts.sessionId` slices that scan to one session (F35 R2), reading
- * `nina_messages_session_seq_idx`. **`seq` is still the order** — sessions slice the total order and
- * no phase introduces a per-session sequence. Omitted, this is byte-for-byte the pre-F35 query;
- * phase 3 makes it required.
+ * ── `sessionId` IS REQUIRED (F35 PHASE 3, R2) ─────────────────────────────────────────────────
+ * `opts.sessionId` slices that scan to one session, reading `nina_messages_session_seq_idx`. Phase
+ * 1 shipped it optional to keep the tree green; this is the parameter phase 3 made required.
+ * **`seq` is still the order** (invariant 6) — the session is a WHERE clause, not a re-sort, and no
+ * per-session sequence exists.
+ *
+ * The caller is expected to have proved the session is his (`chooseActiveSession` over
+ * `listNinaSessions`), but the `user_id` predicate stays anyway: invariant 3 says every statement in
+ * this file scopes on the owner, and a foreign session id here comes back as `[]` rather than as
+ * somebody else's conversation.
  */
 export async function listNinaMessages(
   userId: string,
-  opts: { limit: number; sessionId?: string },
+  opts: { limit: number; sessionId: string },
 ): Promise<NinaMessageRow[]> {
   const rows = await db
     .select(messageColumns)
@@ -853,41 +876,49 @@ export async function listNinaMessages(
 }
 
 /**
- * Phase 2's `readMessageWindow`: the last `limit` messages oldest-first, plus how many exist
- * before them, so the system prompt can say "there are 312 earlier messages" instead of implying
- * the conversation began forty messages ago.
+ * `readMessageWindow`'s query: the last `limit` messages **of one session**, oldest-first, plus how
+ * many of his messages exist that this window does not show.
+ *
+ * ── THE WINDOW IS SESSION-SCOPED. THE COUNT IS NOT. (F35 PHASE 3, D4) ────────────────────────
+ * The asymmetry is deliberate and it is the whole of assumption A1's safety margin, so it must not
+ * be "fixed" into symmetry.
+ *
+ * The WINDOW carries the session predicate because that is what R2 means: "focus on a new topic" is
+ * a claim about what Nina is GIVEN TO READ, not only about what the screen shows. This window is
+ * handed to `glm-5.3` on every turn, so without the predicate a new session would look new and
+ * behave exactly like the old one.
+ *
+ * The COUNT stays `WHERE user_id = $1` because of what the prompt does with it.
+ * `lib/nina/prompts/system.ts` reads: *"An EMPTY window means you have never spoken to him —
+ * introduce yourself and ask his name. `olderMessageCount` above 0 means there is more history you
+ * cannot see."* Scope the count to the session as well and every new session presents to her as a
+ * brand-new runner: empty window, zero older, so she introduces herself and asks his name again.
+ * Left user-wide, `olderCount` reads as "how much of his history you are not being shown" — which
+ * is exactly true, covers both "earlier in this chat" and "in his other chats", and keeps the
+ * introduce-yourself branch for the one person it is for. No prompt string had to change.
  *
  * `olderCount` is a SQL `count(*)` minus the window's length — never `allMessages.length - limit`,
  * which would mean materialising the whole conversation to compute one integer. One batch, so the
  * count and the window are the same snapshot and the number can never disagree with the rows.
- *
- * **`sessionId` is the requirement, not a refinement (F35 R2, assumption A1).** "A new session so I
- * can focus on a new topic" is a claim about what SHE READS: this window is handed to `glm-5.3` on
- * every turn, so without the predicate a new session would look new and behave exactly like the old
- * one. Both statements are scoped together, so `olderCount` counts the same session it windows —
- * "there are 312 earlier messages" must mean 312 earlier messages *in this conversation*.
- * Omitted, this is the pre-F35 query; phase 3 makes it required and updates
- * `tests/nina.gateway.patterns.test.ts`'s mock.
  */
 export async function getNinaMessageWindow(
   userId: string,
   limit: number,
-  sessionId?: string,
+  sessionId: string,
 ): Promise<{ messages: NinaMessageRow[]; olderCount: number }> {
-  const scope = messageScope(userId, sessionId)
-
   const [rows, countRows] = await db.batch([
     db
       .select(messageColumns)
       .from(ninaMessages)
-      .where(scope)
+      .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.sessionId, sessionId)))
       .orderBy(desc(ninaMessages.seq))
       .limit(limit),
 
+    /* USER-WIDE ON PURPOSE. See the header — this is not a missed predicate. */
     db
       .select({ total: sql<number>`count(*)`.mapWith(Number) })
       .from(ninaMessages)
-      .where(scope),
+      .where(eq(ninaMessages.userId, userId)),
   ])
 
   const total = countRows[0]?.total ?? 0
@@ -903,13 +934,16 @@ export async function getNinaMessageWindow(
  * Returns the inserted rows in the same order, ids and `seq` included, because phase 3 needs the
  * ids to hand back to the client and phase 6 needs them to attach images.
  *
- * ── THE SESSION IS RESOLVED, NOT DEFAULTED (F35 R2) ─────────────────────────────────────────
+ * ── THE SESSION IS REQUIRED, AND NOWHERE NULLABLE BELOW THIS LINE (F35 PHASE 3, R2) ─────────
  * `nina_messages.session_id` is `NOT NULL`, so unlike the reads above this one cannot simply omit a
- * predicate. An omitted `sessionId` therefore resolves through `ensureNinaSession` — his most recent
- * session by activity, created if he has none — which is what keeps the three untouched writers
- * (`actions.ts`, `proactive.ts`, `imagejobs.ts`) not merely compiling but CORRECT until phase 3
- * passes a session explicitly. It is also assumption A3's behaviour for free: a proactive message
- * written with no session in view lands in the conversation he is actually having.
+ * predicate. Phase 1 shipped the parameter optional and resolved an omission through
+ * `ensureNinaSession`; phase 3 removed both the option and the fallback, because a defaulted
+ * session is exactly the bug that would be invisible — a writer keeps compiling while filing its
+ * turn into the wrong conversation. All three writers now resolve through
+ * `lib/nina/sessionResolve.ts` before they call this, which is where assumption A3's policy lives.
+ *
+ * `sendNinaMessage`'s INPUT is `string | null`, because "he has no sessions yet" is a real state a
+ * client can be in; by the time a row reaches this function that has been resolved to an id.
  *
  * ── AND IT IS THE SECOND PLACE IN THIS FILE THAT VALIDATES AN FK BY HAND ────────────────────
  * `insertNinaMessageImages` was the first, for the same reason: the foreign key proves the session
@@ -922,18 +956,13 @@ export async function getNinaMessageWindow(
 export async function insertNinaMessages(
   userId: string,
   rows: readonly NinaMessageInsert[],
-  sessionId?: string,
+  sessionId: string,
 ): Promise<NinaMessageRow[]> {
   if (rows.length === 0) return []
 
-  let target: string
-  if (sessionId == null) {
-    target = await ensureNinaSession(userId)
-  } else {
-    const owned = await getNinaSession(userId, sessionId)
-    if (owned == null) return []
-    target = owned.id
-  }
+  const owned = await getNinaSession(userId, sessionId)
+  if (owned == null) return []
+  const target = owned.id
 
   const inserted = await db
     .insert(ninaMessages)
@@ -941,6 +970,8 @@ export async function insertNinaMessages(
       rows.map((row) => ({
         id: newId(),
         userId,
+        /* `target` is the required third parameter, proved owned above — so there is no `??` here,
+         * no default, and no per-row session: a writer that has not resolved one does not compile. */
         sessionId: target,
         role: row.role,
         text: row.body,

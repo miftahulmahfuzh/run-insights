@@ -84,6 +84,7 @@ export function ChatScreen({
   initial,
   todayISO,
   userId,
+  sessionId,
   pending,
   pendingPhoto,
 }: {
@@ -97,6 +98,30 @@ export function ChatScreen({
    * owner from the session and refuses any pathname that does not match it.
    */
   userId: string
+  /**
+   * **F35 R2. The conversation this screen is reading, and the one a send writes into.**
+   *
+   * Resolved on the server from `?s=` against an owner-scoped list, so by the time it is here it is
+   * a session he owns — see `chooseActiveSession`. It is passed straight through to
+   * `sendNinaMessage` and read by nothing else in this component; the screen does not need to know a
+   * session's title, its pin state or its position in the list, and phase 5's sidebar is where all
+   * three live.
+   *
+   * `null` means he has NO sessions at all — a runner who has never messaged, or R11's runner who
+   * just removed his last one. The send carries the `null` through, and the ACTION resolves it (or
+   * creates a session), because a render must not write. Nothing on this screen branches on it:
+   * `messages` is `[]` in that state, so the existing `EmptyState` already renders.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit and the same reasoning `pendingPhoto`
+   * carries: `app/nina/page.tsx` is the one caller and `tsc` should be the thing that notices if it
+   * stops passing it. An optional prop defaulting to `null` would turn a broken route into a chat
+   * that quietly wrote every message into whichever session happened to be newest.
+   *
+   * **`app/nina/page.tsx` also keys this component on it** (`key={activeSessionId ?? 'none'}`), so a
+   * session switch remounts rather than merging the previous conversation's local state into this
+   * one. That key is not decoration — see the comment at the call site.
+   */
+  sessionId: string | null
   /**
    * Phase 8 (R13). The run `/r/[id]`'s icon just handed over, resolved and formatted on the server
    * from `?attach=<runId>`, or null. It becomes composer state immediately — see the cleanup
@@ -154,6 +179,17 @@ export function ChatScreen({
    * and two independent `replaceState` calls in the same commit would race to decide which of them
    * wrote the surviving URL. The F24 idiom, and the reason it is `replace`: this entry is where we
    * already are.
+   *
+   * ── AND SINCE F35 PHASE 3, `?s=` SURVIVES IT FOR EXACTLY THE SAME REASON ────────────────────
+   * The session parameter (R2, assumption A4) names the open conversation and MUST outlive this
+   * effect: deleting it would drop him back to his newest chat one frame after the page painted. It
+   * survives because this effect copies the query and deletes two keys BY NAME rather than
+   * rebuilding it — the property `useChatScroll.ts`'s header already anticipated when it wrote that
+   * its own copy exists "so a future parameter on `/nina` survives". `?s=` is that parameter. **So
+   * do not "simplify" the two `delete` calls into a freshly built `URLSearchParams`**, and do not
+   * add a third `replaceState` to this component: phase 3 deliberately writes `?s=` by NAVIGATION
+   * only — a `<Link>` or a `router.push` from a user gesture — so there is never a second writer of
+   * this URL in the same commit as this effect, which is the race the paragraph above is about.
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -438,6 +474,17 @@ export function ChatScreen({
            */
           attachExisting:
             sendingPhoto === null ? null : { kind: sendingPhoto.kind, id: sendingPhoto.id },
+          /*
+           * F35 R2. The conversation this message joins. Read from the prop rather than from the
+           * URL, because the server already proved this session is his — re-reading `?s=` here
+           * would re-introduce an untrusted claim the page has already resolved.
+           *
+           * `null` is passed through deliberately: it means he has no sessions, and the action
+           * resolves-or-creates. Refusing on the client instead would leave the composer enabled
+           * with nowhere to send, which is the "enabled Send button that silently refuses" the
+           * refusal-parity comment above warns about.
+           */
+          sessionId,
         })
       } catch {
         result = null
@@ -507,7 +554,7 @@ export function ChatScreen({
       setTyping(false)
       setBusy(false)
     },
-    [busy, draftQuote, attachment, photo],
+    [busy, draftQuote, attachment, photo, sessionId],
   )
 
   return (

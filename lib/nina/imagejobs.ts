@@ -17,6 +17,7 @@ import {
   type NinaImagePurpose,
 } from './imagerecipe'
 import { countNinaTurnsSince, insertNinaMessages, insertNinaTurn } from './queries'
+import { resolveNinaSessionForMessage } from './sessionResolve'
 
 /**
  * **The image job's life on `nina_turns`, from the app's side.** RU-2's "queued and capped" is these
@@ -176,6 +177,23 @@ export async function failNinaImageJob(input: {
  *
  * There is no error code in it, no status, no provider, no "please try again", and no button. The
  * runner is told, by his friend, that there is no photo. That is the entire feature.
+ *
+ * ── WHICH CONVERSATION IT LANDS IN (F35 PHASE 3, R2) ─────────────────────────────────────────
+ * The one he asked in. `replyToId` is already *"the runner message that asked, so the photo or the
+ * apology quotes it"* (`NinaImageJobArgs`), and that row carries a `session_id` — so
+ * `resolveNinaSessionForMessage` reads the answer off the message rather than guessing at it. This
+ * is strictly better than assumption A3's "the most recent session", which for a job opened twenty
+ * minutes ago may no longer be the same chat: an apology arriving in a conversation he was not
+ * having is worse than no apology, because it is Nina appearing to answer something he never said.
+ *
+ * A3 is still the fallback and covers the two honest misses — an avatar job, which has no runner
+ * message at all (`failNinaImageJob` skips the apology for those, but the sweep's `args` may be
+ * null), and a message deleted since the job opened, which phase 7 makes reachable.
+ *
+ * The resolution is one indexed read on a path that is already writing a row, and it runs at most
+ * six times a day (the generation cap), so its cost is not worth optimising away by threading a
+ * session through `NinaImageJobArgs` — which would also mean a schema-shaped decision about rows
+ * already in flight, and `jsonb` args written before this phase carry no session at all.
  */
 export async function postNinaApologyMessage(input: {
   userId: string
@@ -183,15 +201,21 @@ export async function postNinaApologyMessage(input: {
   kind: NinaImageFailure
   replyToId: string | null
 }): Promise<void> {
-  await insertNinaMessages(input.userId, [
-    {
-      role: 'nina',
-      body: ninaImageApology(input.kind, input.jobId),
-      source: 'chat',
-      turnId: input.jobId,
-      replyToId: input.replyToId,
-    },
-  ])
+  const sessionId = await resolveNinaSessionForMessage(input.userId, input.replyToId)
+
+  await insertNinaMessages(
+    input.userId,
+    [
+      {
+        role: 'nina',
+        body: ninaImageApology(input.kind, input.jobId),
+        source: 'chat',
+        turnId: input.jobId,
+        replyToId: input.replyToId,
+      },
+    ],
+    sessionId,
+  )
 }
 
 /**

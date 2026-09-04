@@ -20,6 +20,7 @@ import {
   markNinaAvatarAnnounced,
   upsertNinaNag,
 } from './queries'
+import { resolveNinaWriteSession } from './sessionResolve'
 import { runNinaTurn } from './turn'
 
 export type { ProactiveTriggerKind }
@@ -587,6 +588,17 @@ export async function loadProactiveFacts(
  */
 export async function emitProactiveMessage(
   userId: string,
+  /**
+   * **Which conversation she speaks into (assumption A3, F35 phase 3).**
+   *
+   * Resolved by the CALLER rather than here, because the caller also has to load the context — and
+   * the context's window must be the window of this same session, or she measures silence in one
+   * conversation while writing into another. One resolution, two uses, no way for them to disagree.
+   *
+   * A3's reasoning, restated: a proactive message is conversation, so it belongs in a conversation.
+   * A session per evening nag would bury the list this feature exists to organise.
+   */
+  sessionId: string,
   detail: ProactiveDetail,
   facts: ProactiveFacts,
   context: NinaContext,
@@ -637,6 +649,8 @@ export async function emitProactiveMessage(
         source: detail.kind,
         runId: detail.kind === 'run_committed' ? detail.runId : null,
       })),
+      /* F35 phase 3. The session the caller resolved and loaded her context from. */
+      sessionId,
     )
     bubbles = rows.map((row) => ({ id: row.id, body: row.body }))
     messageIds = rows.map((row) => row.id)
@@ -709,16 +723,25 @@ export async function emitRunCommitted(
   const at = now()
 
   /* Idempotence for trigger 1 is the message row itself: two tabs committing the same extraction,
-   * or a retried `after()`, must not produce two reactions to one run. */
+   * or a retried `after()`, must not produce two reactions to one run. BEFORE the session
+   * resolution below, because that resolution may CREATE a row and a duplicate trigger must cost
+   * nothing. */
   if (await hasProactiveMessageForRun(input.userId, input.runId)) {
     return NOT_EMITTED('already reacted to this run')
   }
 
-  const context = await loadNinaContext(input.userId, dbNinaSourceGateway, at)
+  /* F35 phase 3, assumption A3. His most recent conversation, created if R11 left him with none —
+   * the cron has to survive a runner who deleted every chat, because a proactive message he never
+   * receives is invisible forever. Resolved BEFORE the context load so the window she reads is the
+   * window of the conversation she is about to write into. */
+  const sessionId = await resolveNinaWriteSession(input.userId)
+
+  const context = await loadNinaContext(input.userId, sessionId, dbNinaSourceGateway, at)
   const facts = await loadProactiveFacts(input.userId, context, at)
 
   return emitProactiveMessage(
     input.userId,
+    sessionId,
     {
       kind: 'run_committed',
       runId: input.runId,
@@ -744,13 +767,27 @@ export async function evaluateAndEmitForUser(
   const now = deps.now ?? (() => new Date())
   const at = now()
 
-  const context = await loadNinaContext(userId, dbNinaSourceGateway, at)
+  /*
+   * F35 phase 3, assumption A3. Same resolution as `emitRunCommitted`, and it happens BEFORE
+   * `decideProactive` deliberately: `daysSinceRunnerSpoke` comes out of the context window, which
+   * is now per-session, so the decision has to be made about the same conversation the message will
+   * land in. Resolving after the decision would let her decide "he has been silent for eleven days"
+   * from one chat and then say it in another.
+   *
+   * The one accepted consequence, stated: a runner who removes every session gets a freshly created
+   * empty one, whose window is empty, so `daysSinceRunnerSpoke` is `null` and `evaluateSilence`
+   * does not fire (it already treats `null` as "do not fire"). She has no conversation to have been
+   * silent in, and the nag resumes the moment he speaks.
+   */
+  const sessionId = await resolveNinaWriteSession(userId)
+
+  const context = await loadNinaContext(userId, sessionId, dbNinaSourceGateway, at)
   const facts = await loadProactiveFacts(userId, context, at)
 
   const decision = decideProactive(facts)
   if (!decision.fire) return NOT_EMITTED(decision.reason)
 
-  return emitProactiveMessage(userId, decision.detail, facts, context, deps)
+  return emitProactiveMessage(userId, sessionId, decision.detail, facts, context, deps)
 }
 
 /** Re-exported so a caller can log a decision's reasoning without importing phase 9 as well. */
