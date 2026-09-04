@@ -443,6 +443,34 @@ describe('runNinaTurnWith — the request envelope', () => {
     expect(serialised).toContain('nasi goreng')
   })
 
+  it('puts the attached run’s precomputed facts in the user turn and asks for no lookup', async () => {
+    const history = runHistoryFixture()
+    const attached = history.runs[0]
+    expect(attached).toBeDefined()
+
+    const client = scriptedClient([sendMessage(GOOD)])
+    await runNinaTurnWith(
+      fakeTurnDeps(client),
+      input({ history, runnerText: null, attachedRunId: attached!.runId }),
+    )
+
+    const userTurn = client.calls[0]!.messages[0]!.content as string
+    expect(userTurn).toContain('HE ATTACHED THIS RUN TO HIS MESSAGE')
+    expect(userTurn).toContain('do not call lookup_runs')
+    expect(userTurn).toContain('HE SENT IT WITH NO MESSAGE')
+    // The facts are buildNinaRunFact's, not a re-spelling: the run's own id is in the block.
+    expect(userTurn).toContain(attached!.runId)
+    // And an empty runnerText produces no dangling heading.
+    expect(userTurn).not.toContain('HE JUST SAID:')
+  })
+
+  it('leaves the turn alone when the attached id is not in the reviewed history', async () => {
+    const client = scriptedClient([sendMessage(GOOD)])
+    await runNinaTurnWith(fakeTurnDeps(client), input({ attachedRunId: 'not-a-run' }))
+    const userTurn = client.calls[0]!.messages[0]!.content as string
+    expect(userTurn).not.toContain('HE ATTACHED THIS RUN')
+  })
+
   it('does not send promptVersion, and still logs it', async () => {
     const client = scriptedClient([sendMessage(GOOD)])
     const result = await runNinaTurnWith(fakeTurnDeps(client), input())

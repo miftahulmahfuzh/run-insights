@@ -1864,3 +1864,51 @@ export async function getRunByShareToken(token: string): Promise<SharedRun | nul
     insightPayload: insightRows[0]?.payload ?? null,
   }
 }
+
+/**
+ * The card summary for runs attached to Nina messages (F33 R13). One statement, `inArray`, scoped
+ * to the owner like every read in this file except `getRunByShareToken`.
+ *
+ * **Draft-visible, and `reviewedAt` is returned rather than filtered.** `/r/[id]` renders a run
+ * whatever its review state, so an unreviewed run can be on screen when the attach button is; the
+ * *caller* decides what to do about that, and both callers do the same thing — refuse to attach an
+ * unreviewed run, because Nina's facts come from the reviewed history (D16) and a run she cannot
+ * see is a card she cannot talk about. Returning the column instead of filtering on it keeps that
+ * decision in one place and makes the refusal explicit rather than an empty result.
+ *
+ * Not `getRunDetail` in a loop: a conversation can hold dozens of attachments and `getRunDetail`
+ * is four statements *per run*, for children a card has no use for.
+ *
+ * No `orderBy`: the caller indexes the rows by id and looks them up per message.
+ */
+export interface RunAttachmentRow {
+  id: string
+  occurredOn: string
+  location: string | null
+  activityType: string
+  distanceM: number
+  durationSec: number
+  avgPaceSec: number
+  reviewedAt: Date | null
+}
+
+export async function listRunAttachments(
+  userId: string,
+  runIds: readonly string[],
+): Promise<RunAttachmentRow[]> {
+  if (runIds.length === 0) return []
+
+  return db
+    .select({
+      id: runs.id,
+      occurredOn: runs.occurredOn,
+      location: runs.location,
+      activityType: runs.activityType,
+      distanceM: runs.distanceM,
+      durationSec: runs.durationSec,
+      avgPaceSec: runs.avgPaceSec,
+      reviewedAt: runs.reviewedAt,
+    })
+    .from(runs)
+    .where(and(eq(runs.userId, userId), inArray(runs.id, [...runIds])))
+}

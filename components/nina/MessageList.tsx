@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 
 import { formatDayCompact } from '@/lib/format'
 import {
@@ -10,10 +10,13 @@ import {
   type ScrollCause,
 } from '@/lib/nina/chatview'
 import { resolveQuote, type QuoteCandidate } from '@/lib/nina/reply'
+import { resolveRestoreTop, type ChatScrollMark } from '@/lib/nina/scroll'
 import { ChatImages } from './ChatImages'
 import { MessageBubble } from './MessageBubble'
+import { RunAttachmentCard } from './RunAttachmentCard'
 import { TypingIndicator } from './TypingIndicator'
 import type { ChatMessage } from './types'
+import { readAnchorRows } from './useChatScroll'
 
 /**
  * The conversation, grouped by day, newest at the bottom.
@@ -45,6 +48,7 @@ export function MessageList({
   typing,
   todayISO,
   keyboardOverlapPx,
+  restoreMark,
   flashId = null,
   onReply,
   onJumpToQuote,
@@ -56,6 +60,12 @@ export function MessageList({
   todayISO: string
   /** Changes when the software keyboard opens or closes; a reason to re-check the scroll. */
   keyboardOverlapPx: number
+  /**
+   * Phase 8 (R14). The position this history entry was left at, or null. **When it is honoured,
+   * the mount's jump-to-newest is skipped** — that jump is `decideAutoScroll`'s correct answer for
+   * arriving at a conversation and the wrong answer for coming back to one.
+   */
+  restoreMark: ChatScrollMark | null
   /** Phase 7. The message a quote tap just landed on; it holds a tint for `QUOTE_FLASH_MS`. */
   flashId?: string | null
   /** Phase 7. A swipe, or the focus-revealed button, arming a reply to this message. */
@@ -88,6 +98,52 @@ export function MessageList({
     }
   }, [])
 
+  /**
+   * R14's restore. Did we honour the mark? `null` = not decided yet, `true` = we scrolled,
+   * `false` = there was no mark or its anchor is gone. Read by the effect below, which must not
+   * jump to the newest message on a mount we already positioned.
+   *
+   * A LAYOUT effect, unlike everything else on this screen: it runs before the browser paints, so
+   * the runner never sees the bottom of the conversation flash past on the way to where they were.
+   * The `requestAnimationFrame` re-application is not belt-and-braces — a web font settling or
+   * phase 6's images finishing decode moves the anchor after layout, and re-deriving the same pure
+   * number from the anchor's new position is the entire reason the mark stores a message and an
+   * offset instead of a pixel.
+   */
+  const restoredRef = useRef<boolean | null>(null)
+
+  useLayoutEffect(() => {
+    if (restoreMark === null) {
+      restoredRef.current = false
+      return
+    }
+
+    const apply = (): boolean => {
+      const anchor = readAnchorRows().find((row) => row.messageId === restoreMark.messageId)
+      const top = resolveRestoreTop({
+        mark: restoreMark,
+        anchorTop: anchor?.top ?? null,
+        geometry: {
+          scrollHeight: document.documentElement.scrollHeight,
+          clientHeight: window.innerHeight,
+        },
+      })
+      if (top === null) return false
+      window.scrollTo({ top, behavior: 'instant' })
+      return true
+    }
+
+    restoredRef.current = apply()
+    if (restoredRef.current !== true) return
+
+    const frame = window.requestAnimationFrame(() => {
+      apply()
+    })
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [restoreMark])
+
   useEffect(() => {
     const grew = messages.length > lastCount.current
     const startedTyping = typing && !lastTyping.current
@@ -109,6 +165,22 @@ export function MessageList({
     lastTyping.current = typing
     lastOverlap.current = keyboardOverlapPx
     if (cause === null) return
+
+    /*
+     * R14. The layout effect above already put this screen where the runner left it, so the
+     * mount's jump to the newest message must not run. Only 'mount' is suppressed: a bubble
+     * arriving after the restore, or the keyboard opening, is a live event and still moves the
+     * page under phase 4's rules. `isNearBottom` is re-sampled because the restore moved us
+     * without firing a scroll event the sampler could see.
+     */
+    if (cause === 'mount' && restoredRef.current === true) {
+      readerNearBottom.current = isNearBottom({
+        scrollTop: window.scrollY,
+        scrollHeight: document.documentElement.scrollHeight,
+        clientHeight: window.innerHeight,
+      })
+      return
+    }
 
     const decision = decideAutoScroll({
       cause,
@@ -152,7 +224,7 @@ export function MessageList({
         mine: message.role === 'user',
         text: message.body,
         hasImage: (message.imageUrls?.length ?? 0) > 0,
-        hasRun: false, // phase 8: `message.attachment != null`
+        hasRun: message.attachment != null, // phase 8, wired here — see the block above
       })),
     [messages],
   )
@@ -169,18 +241,30 @@ export function MessageList({
           <ul className="mt-3 space-y-2">
             {day.messages.map((message) => (
               /*
-               * The `above` slot's images-only branch (RULING E2). Phase 8 widens THIS expression
-               * into the two-branch stack — `<div className="space-y-2">` wrapping `ChatImages`
-               * and `RunAttachmentCard` — rather than writing a shape of its own; phase 7's quote
-               * gets its own `quote` prop on `MessageBubble` and is never nested in here.
+               * The `above` slot's two-branch stack (RULING E2), widened here by phase 8 from
+               * phase 6's images-only branch. Phase 7's quote gets its own `quote` prop on
+               * `MessageBubble` and is never nested in here, so the render order inside the bubble
+               * is quote stub -> images -> run card -> text.
+               *
+               * Each inset block owns its own `mb-2` — the gap to the message text below the slot,
+               * which is what lets a single-block `above` render with no wrapper margin — while
+               * the wrapper's `space-y-2` is the gap BETWEEN the blocks when there are two.
                */
               <MessageBubble
                 key={message.id}
                 message={message}
                 quote={resolveQuote(message.replyToId, candidates)}
                 above={
-                  message.imageUrls != null && message.imageUrls.length > 0 ? (
-                    <ChatImages urls={message.imageUrls} />
+                  (message.imageUrls != null && message.imageUrls.length > 0) ||
+                  message.attachment != null ? (
+                    <div className="space-y-2">
+                      {message.imageUrls != null && message.imageUrls.length > 0 ? (
+                        <ChatImages urls={message.imageUrls} />
+                      ) : null}
+                      {message.attachment != null ? (
+                        <RunAttachmentCard attachment={message.attachment} />
+                      ) : null}
+                    </div>
                   ) : undefined
                 }
                 flash={message.id === flashId}

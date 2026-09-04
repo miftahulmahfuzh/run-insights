@@ -12,8 +12,10 @@ import {
   planNinaPicked,
   type NinaPickRejectionReason,
 } from '@/lib/nina/images'
+import type { RunAttachment } from '@/lib/nina/attach'
 import type { QuoteView } from '@/lib/nina/reply'
 import { compressForNina } from '@/lib/photos/compressForNina'
+import { AttachmentChip } from './AttachmentChip'
 import { QuoteStub } from './QuoteStub'
 
 /**
@@ -131,6 +133,8 @@ export function Composer({
   userId,
   reply = null,
   onCancelReply,
+  attachment = null,
+  onClearAttachment,
 }: {
   /**
    * Receives the trimmed body and whatever photos are ready. Must be referentially stable — see
@@ -151,6 +155,24 @@ export function Composer({
   reply?: QuoteView | null
   /** Drop the reply and keep the draft text. Required whenever `reply` can be non-null. */
   onCancelReply?: () => void
+  /**
+   * Phase 8 (R13). The run pinned to the next message, or null. **Its presence is what makes an
+   * empty message sendable**: "then user can ask something, or not include any text at all, then
+   * nina will respond accordingly."
+   *
+   * This is the client half of RULING B1's ONE refusal rule, and it must stay the same predicate
+   * as the server's: `body.trim() === '' && !hasAttachment`, where `hasAttachment` is
+   * `imageTickets.length > 0` (phase 6) `|| runId != null` (this phase) `|| attachExisting != null`
+   * (phase 13). Adding a clause on one side only produces an enabled Send button that silently
+   * refuses — the exact bug the single-rule ruling exists to prevent. `reply` is deliberately not
+   * a clause on either side: a quote with no words is not a message.
+   *
+   * The attachment itself is NOT passed back through `onSend`. `ChatScreen` owns the state and
+   * reads it from there, so the composer's callback keeps the one shape it had.
+   */
+  attachment?: RunAttachment | null
+  /** Unpin it. `ChatScreen` owns the state; this only reports the tap. */
+  onClearAttachment?: () => void
 }) {
   const [value, setValue] = useState('')
   const [tiles, setTiles] = useState<Tile[]>([])
@@ -172,7 +194,11 @@ export function Composer({
 
   const ready = tiles.filter((t) => t.state === 'ready' && t.ticket !== null)
   const inFlight = tiles.some((t) => t.state !== 'ready' && t.state !== 'error')
-  const canSend = (value.trim().length > 0 || ready.length > 0) && !inFlight && !busy
+  /* `|| attachment !== null` is phase 8's clause. Phase 6's image clause was already in the
+   * disjunction when it landed; nobody rewrites this condition, they extend it. Mirrors the server
+   * rule in `sendNinaMessage` exactly. */
+  const canSend =
+    (value.trim().length > 0 || ready.length > 0 || attachment !== null) && !inFlight && !busy
 
   /** `patchIfCurrent`'s spirit: a tile the runner removed must not be written to by its own
    *  in-flight promise. */
@@ -326,6 +352,12 @@ export function Composer({
           </div>
         )}
 
+        {/* Phase 8 (R13). Below the reply strip and above the tiles, which is the order the bubble
+            itself renders in: what he is answering, then what he is handing over. */}
+        {attachment !== null && onClearAttachment !== undefined && (
+          <AttachmentChip attachment={attachment} onClear={onClearAttachment} />
+        )}
+
         {tiles.length > 0 && (
           <ul className="mb-2 flex gap-2">
             {tiles.map((tile) => (
@@ -420,7 +452,9 @@ export function Composer({
               submit()
             }}
             enterKeyHint="send"
-            placeholder="Message Nina"
+            /* The placeholder carries the hint; the accessible NAME stays "Message Nina" so the
+               field is not renamed under the runner mid-message. */
+            placeholder={attachment === null ? 'Message Nina' : 'Add a note, or just send it'}
             aria-label="Message Nina"
             className={cn(
               'max-h-[132px] min-h-11 w-full resize-none rounded-field bg-card px-4 py-2.5',

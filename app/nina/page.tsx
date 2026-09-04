@@ -4,6 +4,9 @@ import type { ChatMessage } from '@/components/nina/types'
 import { AppShell } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
+import { listRunAttachments } from '@/lib/db/queries'
+import { isValidId } from '@/lib/id'
+import { ATTACH_PARAM, indexAttachments, type RunAttachment } from '@/lib/nina/attach'
 import { getNinaMessageImagesForMessages, listNinaMessages } from '@/lib/nina/queries'
 
 /**
@@ -70,8 +73,9 @@ const CHAT_HISTORY_LIMIT = 200
  */
 export const maxDuration = 60
 
-export default async function NinaPage() {
+export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const userId = await requireUserId()
+  const { [ATTACH_PARAM]: attachParam } = await searchParams
   const rows = await listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT })
 
   /*
@@ -93,6 +97,33 @@ export default async function NinaPage() {
     else list.push(image.blobUrl)
   }
 
+  /*
+   * F33 R13/R14. Two things need run rows: the cards inside bubbles that already have a `run_id`,
+   * and the run `/r/[id]` just handed over on `?attach=`. Both are the same shape, so they are ONE
+   * query — `listRunAttachments` takes the union of the ids and the two lookups below read out of
+   * the same Map. Never `getRunDetail` per message: that is four statements a card has no use for.
+   */
+  const requested = typeof attachParam === 'string' && isValidId(attachParam) ? attachParam : null
+  const attachedIds = new Set<string>()
+  for (const row of rows) if (row.runId != null) attachedIds.add(row.runId)
+  if (requested !== null) attachedIds.add(requested)
+
+  const runRows = await listRunAttachments(userId, [...attachedIds])
+  const attachments = indexAttachments(runRows)
+
+  /*
+   * The pending run must be REVIEWED, for the reason `/r/[id]`'s icon is only rendered for a
+   * reviewed run: Nina's facts come from the reviewed history (D16), so pinning a draft would
+   * promise an answer she cannot give. Unreachable through the UI and enforced anyway, because a
+   * URL is not a UI. `listRunAttachments` is owner-scoped, so someone else's run id resolves to
+   * nothing here and the composer simply opens empty.
+   */
+  const pendingRow = requested === null ? null : runRows.find((row) => row.id === requested)
+  const pending: RunAttachment | null =
+    pendingRow != null && pendingRow.reviewedAt != null
+      ? (attachments.get(pendingRow.id) ?? null)
+      : null
+
   const initial: ChatMessage[] = rows.map((row) => ({
     id: row.id,
     role: row.role === 'nina' ? 'nina' : 'user',
@@ -108,6 +139,9 @@ export default async function NinaPage() {
      */
     replyToId: row.replyToId,
     imageUrls: urlsByMessage.get(row.id),
+    /* R13. Resolved for EVERY row regardless of who wrote it, so phase 10's `run_committed`
+     * proactive message — which writes the same column — gets its card for free. */
+    attachment: row.runId == null ? null : (attachments.get(row.runId) ?? null),
   }))
 
   return (
@@ -122,7 +156,7 @@ export default async function NinaPage() {
         </div>
       </header>
 
-      <ChatScreen initial={initial} todayISO={todayInJakarta()} userId={userId} />
+      <ChatScreen initial={initial} todayISO={todayInJakarta()} userId={userId} pending={pending} />
     </AppShell>
   )
 }

@@ -1,17 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
+import { ATTACH_PARAM, type RunAttachment } from '@/lib/nina/attach'
 import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageList } from './MessageList'
 import type { ChatMessage } from './types'
+import { useChatScrollMark } from './useChatScroll'
 
 /**
  * The interactive half of `/nina`: one turn, from the runner pressing send to Nina's last bubble.
@@ -75,6 +77,7 @@ export function ChatScreen({
   initial,
   todayISO,
   userId,
+  pending,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -86,6 +89,12 @@ export function ChatScreen({
    * owner from the session and refuses any pathname that does not match it.
    */
   userId: string
+  /**
+   * Phase 8 (R13). The run `/r/[id]`'s icon just handed over, resolved and formatted on the server
+   * from `?attach=<runId>`, or null. It becomes composer state immediately — see the cleanup
+   * below.
+   */
+  pending: RunAttachment | null
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   const [typing, setTyping] = useState(false)
@@ -96,6 +105,29 @@ export function ChatScreen({
   const [draftQuote, setDraftQuote] = useState<QuoteView | null>(null)
   /** Phase 7. The message a jump just landed on. Held for `QUOTE_FLASH_MS`, then cleared. */
   const [flashId, setFlashId] = useState<string | null>(null)
+  /** Phase 8 (R13). The run the next message will carry. Seeded from the server's `?attach=`. */
+  const [attachment, setAttachment] = useState<RunAttachment | null>(pending)
+
+  /* R14's mark on this history entry, decoded from `?at=`. Passed down; the arithmetic is in
+   * `lib/nina/scroll.ts` and the DOM half is in `MessageList`. */
+  const { mark } = useChatScrollMark()
+
+  /*
+   * **`?attach=` is consumed, not left lying on the entry.** It has done its job the moment it is
+   * in state, and leaving it would re-arm the composer on the way back: send the message, tap its
+   * card, come back with the back-swipe, and the POP would re-render this page from a URL still
+   * asking for the same run — pinning a run the runner already sent. `replaceState` on a
+   * `URLSearchParams` copy so R14's `at` (which may be written onto this same entry later, or may
+   * already be on it) survives untouched. The F24 idiom, and the reason it is `replace`: this
+   * entry is where we already are.
+   */
+  useLayoutEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has(ATTACH_PARAM)) return
+    params.delete(ATTACH_PARAM)
+    const query = params.toString()
+    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+  }, [])
 
   // Every timed step checks this before touching state. StrictMode double-invokes effects in
   // development and a runner can navigate away mid-reveal; both would otherwise set state on an
@@ -165,7 +197,7 @@ export function ChatScreen({
          * spelled the same way so the strip in the composer and the stub in the bubble cannot
          * disagree about whether the target was a photo. */
         hasImage: (message.imageUrls?.length ?? 0) > 0,
-        hasRun: false, // phase 8: `message.attachment != null`
+        hasRun: message.attachment != null, // phase 8, wired here
       }),
     )
   }, [])
@@ -224,15 +256,28 @@ export function ChatScreen({
   const handleSend = useCallback(
     async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
+      /* R13's floor, and the client half of RULING B1's ONE refusal rule: a message with no words,
+       * no photo and no run is a mis-tap. `canSend` already refuses it; this is the guard that
+       * means the action can trust its own input. */
+      if (draft.body.length === 0 && draft.images.length === 0 && attachment === null) return
 
       const body = draft.body
       const imageUrls = draft.images.map((image) => image.url)
+      /* Read once, then unpinned below — the same shape `draftQuote` uses, and for the same
+       * reason: the optimistic row has to carry what the action will persist. */
+      const sending = attachment
       const localId = `local-${crypto.randomUUID()}`
       const dayISO = todayInJakarta()
       /* Read once and cleared immediately: the strip must disappear the moment the message is in
        * the log, and the optimistic row has to carry the same pointer the action will persist. */
       const replyToMessageId = draftQuote?.targetId ?? null
       setDraftQuote(null)
+      /*
+       * Unpinned the moment it joins the conversation, even though the send may still fail. The
+       * failed bubble keeps its card — that is where the run is now — and showing the chip as well
+       * would put the same run on screen twice and invite a second send of it.
+       */
+      setAttachment(null)
       setNotice(null)
       setMessages((current) => [
         ...current,
@@ -247,6 +292,10 @@ export function ChatScreen({
            * the optimistic row shows the same URL the server row will carry. No object URL to
            * revoke, and no flicker when the real row lands. */
           imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          /* R13. The card renders from client state on this row and from `nina_messages.run_id` on
+           * every later load; both go through the same `RunAttachment`, so there is no lag and no
+           * second shape. */
+          attachment: sending,
         },
       ])
       setBusy(true)
@@ -258,6 +307,7 @@ export function ChatScreen({
           body,
           imageTickets: draft.images.map((image) => image.ticket),
           replyToMessageId,
+          runId: sending?.runId ?? null,
         })
       } catch {
         result = null
@@ -327,7 +377,7 @@ export function ChatScreen({
       setTyping(false)
       setBusy(false)
     },
-    [busy, draftQuote],
+    [busy, draftQuote, attachment],
   )
 
   return (
@@ -343,6 +393,7 @@ export function ChatScreen({
           typing={typing}
           todayISO={todayISO}
           keyboardOverlapPx={overlap}
+          restoreMark={mark}
           flashId={flashId}
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}
@@ -365,6 +416,8 @@ export function ChatScreen({
         userId={userId}
         reply={draftQuote}
         onCancelReply={() => setDraftQuote(null)}
+        attachment={attachment}
+        onClearAttachment={() => setAttachment(null)}
       />
     </>
   )

@@ -33,6 +33,7 @@ import {
 import { isValidId } from '@/lib/id'
 import { computeSessionMetrics, evaluateSessionFlags, resolveHrMax } from '@/lib/metrics'
 import type { ZoneRow } from '@/lib/metrics'
+import { ATTACH_PARAM } from '@/lib/nina/attach'
 import { shareUrl } from '@/lib/share/origin'
 
 /**
@@ -156,6 +157,54 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
               `navigator.share()` synchronously inside the tap — no mint round trip, no Safari
               transient-activation problem. See ShareButton's own note on why that matters. */}
           <ShareButton runId={run.id} url={shareLink} />
+          {/*
+            F33 R13 — "share a run to nina". The one icon in this app's chrome, and the argument
+            for it: there is no honest word for this tap. It does not ask her anything yet; it
+            hands her the run and leaves the question to the composer. `AppShell`'s "a plain-text
+            link, never an icon button" rule governs `ScreenHeader`'s SCREEN TITLE row, where the
+            action is a navigation to another named screen and the name disambiguates it. This page
+            hand-rolls its own header and this group is a share-affordance row, which is a
+            different row and a different question — and the icon is not unlabelled: its accessible
+            name is a full sentence.
+
+            A plain `<Link>`, so this stays a server component: the chat page reads `?attach=` and
+            does the loading. No action, no state, no `'use client'` — and therefore nothing new
+            for `ci:f11-guard` (which polices what the PUBLIC route may name) or `ci:f08-guard`
+            (which polices hand-rolled units; there is not a number in here) to object to.
+
+            ONLY FOR A REVIEWED RUN. `InsightTrigger` below takes the same gate for the same
+            reason: Nina's facts come from the reviewed history (D16), so an unreviewed run is one
+            she cannot see. Offering the icon anyway would hand her a card she has no facts for,
+            which is the one thing R-17's honesty rule forbids. A draft run's route to Nina is the
+            review flow, which is one tap away under "Correct".
+
+            `self-center` because the row is `items-baseline` and an icon has no baseline worth
+            aligning; `-m-1 p-1` grows the touch target past the 20px glyph without moving the row.
+          */}
+          {run.reviewedAt != null && (
+            <Link
+              href={`/nina?${ATTACH_PARAM}=${run.id}`}
+              aria-label="Attach this run to a message for Nina"
+              title="Attach this run to a message for Nina"
+              className="-m-1 inline-flex self-center p-1 text-accent"
+            >
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+                <path
+                  d="M21 3 3 10.4l7.2 2.6 2.6 7.2L21 3Z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="m10.2 13 3.4-3.4"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </Link>
+          )}
         </div>
       </header>
 

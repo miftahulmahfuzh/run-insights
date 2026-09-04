@@ -3,7 +3,7 @@ import 'server-only'
 import { narrativeClient, narrativeModel } from '@/lib/llm/client'
 import type Anthropic from '@anthropic-ai/sdk'
 
-import type { NinaContext } from './context'
+import { buildNinaRunFact, type NinaContext, type NinaRunFact } from './context'
 import { dbNinaToolGateway, dbNinaTurnStore } from './gateway'
 import { NINA_REPAIR_PREAMBLE, NINA_SYSTEM_PROMPT, SEND_TOOL } from './prompts'
 import { quoteContextBlock, type QuotedMessageInput } from './reply'
@@ -257,6 +257,20 @@ export interface NinaTurnInput {
    * THIS turn is a reply rather than a turn that happens to contain an id.
    */
   quoted?: QuotedMessageInput | null
+  /**
+   * **F33 R13 (phase 8).** The run the runner attached to this message, by id. Resolved against
+   * `history` and rendered into the user turn as a `NinaRunFact` — *precomputed facts, invariant
+   * 2*, from `buildNinaRunFact`, the same function `lookup_runs` uses. An id that is not in the
+   * reviewed history (a draft, a deleted run, someone else's) is silently absent: she is never told
+   * about a run she has no facts for, because that is how she ends up inventing one.
+   *
+   * **Not to be confused with phase 10's `NinaTurnOptions.runId`** (RULING B2). That one is
+   * WRITTEN to `nina_messages.run_id` on every row the turn persists; this one is READ, resolved
+   * through `buildNinaRunFact` and rendered into the prompt. For a chat attachment they happen to
+   * carry the same id; for a `run_committed` proactive message they need not. Neither is a rename
+   * of the other and neither may be collapsed into it.
+   */
+  attachedRunId?: string | null
   /** Phase 10's `PROACTIVE_INSTRUCTIONS[kind]`, appended to the user turn. */
   proactive?: string | null
 }
@@ -281,6 +295,20 @@ function visibleContext(context: NinaContext): Omit<NinaContext, 'promptVersion'
    * `Record<string, unknown>` and `delete`s the key, which loses the type; this keeps it. */
   void promptVersion
   return visible
+}
+
+/**
+ * The attached run's facts, or null (R13). **One `find` over an array the turn already holds** —
+ * the whole reviewed history is loaded once per turn by `loadRunHistory`, so an attachment costs
+ * zero additional round trips, and `buildNinaRunFact` is called with the same `(run, today)`
+ * arguments `lookup_runs` calls it with. Two routes to the same facts, one implementation of them.
+ */
+function attachedRunFact(input: NinaTurnInput): NinaRunFact | null {
+  const runId = input.attachedRunId
+  if (runId == null) return null
+  const run = input.history.runs.find((candidate) => candidate.runId === runId)
+  if (run == null) return null
+  return buildNinaRunFact(run, input.context.now.todayISO)
 }
 
 /**
@@ -312,6 +340,26 @@ function userTurnText(input: NinaTurnInput): string {
    */
   if (input.quoted != null) {
     parts.push(quoteContextBlock(input.quoted))
+  }
+
+  /*
+   * R13. The attached run goes in ABOVE what he said, because it is the subject of what he said —
+   * and when he said nothing at all, it IS the entire message. The facts are the same precomputed
+   * `NinaRunFact` shape `lookup_runs` answers with, so she needs no new instruction about how to
+   * read them; the only new instruction is what an attachment MEANS, which the second sentence
+   * gives her. No `lookup_runs` call is needed for this run, and saying so saves a tool round.
+   */
+  const attached = attachedRunFact(input)
+  if (attached != null) {
+    parts.push(
+      'HE ATTACHED THIS RUN TO HIS MESSAGE. These are its facts — you already have them, so do ' +
+        'not call lookup_runs for this date:',
+      JSON.stringify(attached, null, 2),
+      input.runnerText == null || input.runnerText.length === 0
+        ? 'HE SENT IT WITH NO MESSAGE. That is him showing you the run and waiting for your take. ' +
+            'Give it — react to this specific run, not to running in general.'
+        : 'His message below is about this run unless he plainly says otherwise.',
+    )
   }
 
   if (input.runnerText != null && input.runnerText.length > 0) {

@@ -9,6 +9,8 @@
  * converts an instant into a day.
  */
 
+import type { RunAttachment } from '@/lib/nina/attach'
+
 export type ChatRole = 'user' | 'nina'
 
 export type ChatMessageState =
@@ -61,11 +63,19 @@ export interface ChatMessage {
    * voice that is not Nina's, and rendering it would break the illusion this feature exists for.
    */
   imageUrls?: readonly string[]
-  /*
-   * NOT DECLARED HERE (RULING E2b): the run field is phase 8's `attachment?: RunAttachment | null`,
-   * a display-ready object rather than an id. Phase 7 READS both media fields — once each, in
-   * `MessageList`, collapsed to `hasImage` / `hasRun` booleans for `quoteMediaOf` — and declares
-   * neither. That is what keeps `lib/nina/reply.ts` free of any later phase's type, and therefore
-   * free of any later phase's edit.
+  /**
+   * Phase 8 (R13). The run this message attached, display-ready, or null/absent for the ordinary
+   * message.
+   *
+   * `attachment.runId` **is** `nina_messages.run_id` — this field replaces the bare `runId` phase
+   * 4's handoff note anticipated, because the card needs the run's numbers and those must be
+   * formatted by `lib/format.ts` on the server (invariant 3), never in the bubble.
+   *
+   * RULING E2b makes this phase the SOLE declarer: phase 7's speculative `runId?: string | null`
+   * was deleted from its plan, so there is nothing here to reconcile. Phase 7 READS it once, in
+   * `MessageList`, collapsed to a `hasRun` boolean for `quoteMediaOf` — which is what keeps
+   * `lib/nina/reply.ts` free of any later phase's type, and therefore free of any later phase's
+   * edit.
    */
+  attachment?: RunAttachment | null
 }

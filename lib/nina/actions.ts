@@ -1,7 +1,9 @@
 'use server'
 
 import { requireUserId } from '@/lib/auth/requireUserId'
+import { listRunAttachments } from '@/lib/db/queries'
 import { authEnv } from '@/lib/env'
+import { isValidId } from '@/lib/id'
 import { after } from 'next/server'
 
 import type { NinaContext } from './context'
@@ -123,11 +125,10 @@ const REFUSED: SendNinaMessageResult = {
  *       input.attachExisting != null                // phase 13
  *     if (input.body.trim() === '' && !hasAttachment) return refuse('empty')
  *
- * **At THIS phase's landing `body`, `imageTickets` and `replyToMessageId` exist**, so that is all
- * this signature carries and the rule is the first two disjuncts. `runId` arrives with phase 8 and
- * `attachExisting` with phase 13; `hasAttachment` is not written as a named constant until there
- * are three terms to name. Phase 7's field takes no clause: answering a message is not a
- * substitute for saying something.
+ * **At THIS phase's landing `body`, `imageTickets`, `replyToMessageId` and `runId` exist**, so that
+ * is what this signature carries and the rule carries the `imageTickets` and `runId` disjuncts.
+ * `attachExisting` arrives with phase 13. Phase 7's field takes no clause: answering a message is
+ * not a substitute for saying something.
  */
 export async function sendNinaMessage(input: {
   body: string
@@ -144,11 +145,24 @@ export async function sendNinaMessage(input: {
    * empty-body one.
    */
   replyToMessageId?: string | null
+  /**
+   * Phase 8 (R13). The run `/r/[id]`'s icon attached to this message, or null/absent. It is
+   * written to `nina_messages.run_id` and it is what makes an EMPTY `body` a legitimate send:
+   * "user can ask something, or not include any text at all, then nina will respond accordingly."
+   *
+   * **This is the ONE field this phase adds** (RULING B1), and the ONE clause it adds to the
+   * refusal rule below.
+   */
+  runId?: string | null
 }): Promise<SendNinaMessageResult> {
   const userId = await requireUserId()
 
   const text = typeof input?.body === 'string' ? input.body.trim() : ''
   const tickets = Array.isArray(input?.imageTickets) ? input.imageTickets : []
+  /* Shape only, here. Ownership and existence are STEP 0c's, below, and they have to be: the
+   * column is a foreign key. */
+  const requestedRunId =
+    typeof input?.runId === 'string' && isValidId(input.runId) ? input.runId : null
 
   /*
    * ── R10: AN IMAGE ALONE IS A VALID SEND ─────────────────────────────────────────────────────
@@ -161,11 +175,16 @@ export async function sendNinaMessage(input: {
    * paste of a whole article — neither is worth a persisted row or a 45 s model call. The
    * framework's own 1 MB action-body cap sits behind this as the backstop.
    *
-   * RULING B1's rule is MONOTONE and this is its second clause. Phases 8 and 13 each add one more
-   * disjunct (`runId != null`, `attachExisting != null`) in their own commits; nobody rewrites
-   * this condition, they extend it. The final form is printed above.
+   * ── R13: A RUN ALONE IS A VALID SEND ────────────────────────────────────────────────────────
+   * **An empty body with a run attached is NOT empty.** Handing her a run without a question is a
+   * message, and R13 says so in as many words; the client's Send button is enabled on exactly this
+   * condition, so the server must agree or that button is a lie.
+   *
+   * RULING B1's rule is MONOTONE and `runId != null` is its third clause. Phase 13 adds one more
+   * disjunct (`attachExisting != null`) in its own commit; nobody rewrites this condition, they
+   * extend it. The final form is printed above.
    */
-  if (text.length === 0 && tickets.length === 0) return REFUSED
+  if (text.length === 0 && tickets.length === 0 && requestedRunId === null) return REFUSED
   if (text.length > MAX_RUNNER_MESSAGE_CHARS) return REFUSED
   if (tickets.length > NINA_MAX_CHAT_IMAGES) return REFUSED
 
@@ -187,8 +206,9 @@ export async function sendNinaMessage(input: {
     seen.add(verdict.claims.pathname)
     images.push(verdict.claims)
   }
-  /* Every ticket was forged or stale AND he typed nothing: there is no message here at all. */
-  if (text.length === 0 && images.length === 0) return REFUSED
+  /* Every ticket was forged or stale AND he typed nothing AND no run is pinned: there is no
+   * message here at all. */
+  if (text.length === 0 && images.length === 0 && requestedRunId === null) return REFUSED
 
   /*
    * STEP 1 — his message, first. See the header.
@@ -229,10 +249,39 @@ export async function sendNinaMessage(input: {
     }
   }
 
+  /*
+   * STEP 0c — the attached run (R13). **`nina_messages.run_id` IS A FOREIGN KEY** (phase 1:
+   * `references(() => runs.id, { onDelete: 'set null' })`), which is what makes this read
+   * mandatory rather than an optimisation. An id that is not a run of this user's would not
+   * degrade quietly into the column — it would fail the INSERT, and the `catch` below would answer
+   * `REFUSED` and lose the sentence he typed. This is an untrusted POST endpoint like any other
+   * action, so the id gets the same treatment `replyToMessageId` gets one block up, for the same
+   * reason and by the same shape.
+   *
+   * `listRunAttachments` is the phase's own query, owner-scoped and indexed, so a foreign or
+   * vanished id simply comes back empty and the message sends without a card. It is NOT filtered
+   * on `reviewed_at` here: `/r/[id]`'s icon and `/nina`'s pending resolution already refuse a draft
+   * on the way in, and a run reviewed AFTER it was attached is one she can see by the time she is
+   * asked about it. The facts half is `runNinaTurn`'s, resolved against the history it has already
+   * loaded — no second query and no second facts path.
+   */
+  let runId: string | null = null
+  if (requestedRunId !== null) {
+    try {
+      const found = await listRunAttachments(userId, [requestedRunId])
+      runId = found[0]?.id ?? null
+    } catch (cause) {
+      console.warn('[nina] could not resolve the attached run', { error: String(cause) })
+    }
+  }
+  /* The run was the whole message and it is not his: there is nothing here to send. Same shape as
+   * the forged-ticket check above, and the same reason. */
+  if (text.length === 0 && images.length === 0 && runId === null) return REFUSED
+
   let runnerMessageId: string
   try {
     const [row] = await insertNinaMessages(userId, [
-      { role: 'runner', body: text, replyToId: quotedRow?.id ?? null },
+      { role: 'runner', body: text, replyToId: quotedRow?.id ?? null, runId },
     ])
     if (row == null) throw new Error('insertNinaMessages returned no row')
     runnerMessageId = row.id
@@ -326,6 +375,13 @@ export async function sendNinaMessage(input: {
     runnerText: text.length > 0 ? text : null,
     imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
     quoted,
+    /*
+     * The facts half of R13. `turn.ts` resolves this id against the history it has ALREADY loaded
+     * and calls `buildNinaRunFact` — the same function `lookup_runs` calls, with the same
+     * arguments. There is no second facts path and no extra query; an id that is not in the
+     * reviewed history resolves to nothing and the turn proceeds without it (invariant 2, D16).
+     */
+    attachedRunId: runId,
   })
 
   if (result.payload == null) {
