@@ -10,6 +10,7 @@ import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { NINA_MAX_CHAT_IMAGES, isNinaChatRequestPathname } from './images'
+import { NINA_CHAT_TOOL_SET } from './imagetools'
 import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from './imageTicket'
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
@@ -17,7 +18,7 @@ import { getNinaMessagesByIds, insertNinaMessageImages, insertNinaMessages } fro
 import type { NinaMessageRow } from './queries'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
-import { runNinaTurn } from './turn'
+import { productionDeps, runNinaTurn } from './turn'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
 /**
@@ -367,22 +368,35 @@ export async function sendNinaMessage(input: {
             context.conversation.window.find((turn) => turn.id === target.id)?.sentAtLabel ?? null,
         }
 
-  const result = await runNinaTurn({
-    userId,
-    context,
-    history,
-    sourceMessageId: runnerMessageId,
-    runnerText: text.length > 0 ? text : null,
-    imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
-    quoted,
-    /*
-     * The facts half of R13. `turn.ts` resolves this id against the history it has ALREADY loaded
-     * and calls `buildNinaRunFact` — the same function `lookup_runs` calls, with the same
-     * arguments. There is no second facts path and no extra query; an id that is not in the
-     * reviewed history resolves to nothing and the turn proceeds without it (invariant 2, D16).
-     */
-    attachedRunId: runId,
-  })
+  /*
+   * `toolSet` is overridden here, and this line is the ONLY integration point for every tool phases
+   * 12 and 13 add. Phase 3 built `extendToolSet` so that adding `generate_image` needed no edit to
+   * `tools.ts` or `turn.ts`; `NINA_CHAT_TOOL_SET` is that composition, and phase 13 extends the same
+   * value rather than adding a second override here. Two independent overrides would silently drop
+   * one of the two tools.
+   *
+   * `productionDeps()` is spread rather than re-spelled so client, model, gateway and store stay
+   * defined in exactly one place — the reason RULING C6 had phase 3 export it at creation.
+   */
+  const result = await runNinaTurn(
+    {
+      userId,
+      context,
+      history,
+      sourceMessageId: runnerMessageId,
+      runnerText: text.length > 0 ? text : null,
+      imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+      quoted,
+      /*
+       * The facts half of R13. `turn.ts` resolves this id against the history it has ALREADY loaded
+       * and calls `buildNinaRunFact` — the same function `lookup_runs` calls, with the same
+       * arguments. There is no second facts path and no extra query; an id that is not in the
+       * reviewed history resolves to nothing and the turn proceeds without it (invariant 2, D16).
+       */
+      attachedRunId: runId,
+    },
+    { ...productionDeps(), toolSet: NINA_CHAT_TOOL_SET },
+  )
 
   if (result.payload == null) {
     /*

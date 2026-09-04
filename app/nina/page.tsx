@@ -9,6 +9,7 @@ import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
 import { listRunAttachments } from '@/lib/db/queries'
 import { isValidId } from '@/lib/id'
 import { ATTACH_PARAM, indexAttachments, type RunAttachment } from '@/lib/nina/attach'
+import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import {
   getNinaMessageImagesForMessages,
   listNinaMessages,
@@ -82,7 +83,26 @@ export const maxDuration = 60
 export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const userId = await requireUserId()
   const { [ATTACH_PARAM]: attachParam } = await searchParams
-  const rows = await listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT })
+  /*
+   * Two reads, concurrently — and the second one is here for its SIDE EFFECT.
+   * `listOpenNinaImageJobs` sweeps stale image jobs first (phase 12), so ARRIVING ON THIS PAGE IS
+   * ITSELF R22's LAST GUARANTEE: a job that GitHub never ran gets its apology written by the act of
+   * the runner coming to look for the photo. That is the one mechanism in the phase that still
+   * works when Actions is disabled, the PAT is revoked, or the workflow's `schedule:` has been
+   * switched off for repository inactivity — none of which the app can detect.
+   *
+   * The returned rows are deliberately unused here; phase 15 is what renders "generating...". A
+   * swept apology is written concurrently with this read, so it appears on the NEXT navigation
+   * rather than this one — which is the same one-load lag this screen already accepts for a photo
+   * that lands while the tab is open (there is no live-refresh, by design).
+   *
+   * Invariant 4 holds: two indexed reads and, on the rare stale path, a handful of UPDATEs. No
+   * model call is awaited in a render path — the generation itself is on a GitHub runner.
+   */
+  const [rows] = await Promise.all([
+    listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT }),
+    listOpenNinaImageJobs(userId),
+  ])
 
   /*
    * The photos, in one query rather than a join. `getNinaMessageImagesForMessages` reads

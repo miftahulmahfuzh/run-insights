@@ -1,0 +1,93 @@
+# Nina's camera. RU-19: the shipping generation is 78.2 s measured and Vercel Hobby caps a function
+# at 60 s in sin1, so this work cannot happen in the app. RU-20: it happens here.
+#
+# TWO TRIGGERS, ON PURPOSE:
+#   workflow_dispatch — the doorbell, rung by lib/nina/imagedispatch.ts inside the chat turn.
+#                       The normal path; the photograph lands ~2 minutes after she says "bentar".
+#   schedule          — the backstop. It finds a job whose dispatch was lost and generates it
+#                       anyway. This is the third Vercel cron Hobby would not give us (two crons,
+#                       and phase 10 spent the second on /api/cron/nina), and it is the reason a
+#                       queue that calls back into a Vercel function was not chosen: the callback
+#                       would hit the same 60 s ceiling being escaped here.
+#
+# The schedule is best-effort by GitHub's own documentation: it is delayed under load and it is
+# DISABLED ENTIRELY after 60 days with no repository activity. So it is a good retry engine and a
+# bad deadline, which is why lib/nina/imagejobs.ts keeps an independent 20-minute give-up sweep that
+# runs on every /nina page load. Do not delete that sweep on the grounds that this exists.
+name: nina-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        # The ONLY input, and deliberately opaque. THIS REPOSITORY IS PUBLIC, so dispatch inputs are
+        # world-readable in the run log and the Actions UI. The scene prose, the prompt and the user
+        # id therefore live in nina_turns.args and never travel as an input; a nanoid names a row
+        # that nobody without DATABASE_URL can read.
+        description: 'nina_turns.id of the job to run (blank = sweep)'
+        required: false
+        default: ''
+  schedule:
+    # Every ten minutes. GitHub's minimum is 5 and it promises no punctuality, so this is a
+    # cost/coverage trade rather than a deadline. At */10 the backstop is 144 runs a day at ~40 s
+    # each ~ 96 min/day ~ 2,900 min/month. THIS REPOSITORY IS PUBLIC, so Actions minutes are
+    # unmetered and that number is free. If it is ever made private, GitHub Free's 2,000 minutes
+    # would be exceeded and the one-line fix is */30 (~960 min/month), leaning harder on
+    # workflow_dispatch for latency and on the on-read sweep for the R22 guarantee.
+    - cron: '*/10 * * * *'
+
+# One camera at a time. A dispatch and a scheduled run firing within seconds of each other would
+# both claim safely — the conditional UPDATE in claimJob is the real lock — but queueing the second
+# rather than racing it keeps the logs readable and the bill predictable. cancel-in-progress is
+# FALSE: cancelling a run that is 60 seconds into a paid generation throws the money away.
+concurrency:
+  group: nina-image
+  cancel-in-progress: false
+
+permissions:
+  # The worker reads Neon and Blob with its own secrets and touches nothing in the repository. It
+  # does not need a token at all, so it gets none.
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    # NINA_WORKER_TIMEOUT_MINUTES in lib/nina/imagerecipe.ts. It must exceed
+    # NINA_WORKER_CALL_TIMEOUT_MS (240 s) plus setup, and NINA_IMAGE_RECLAIM_MS (7 min) must exceed
+    # it, so a job killed here cannot be mistaken for one still running.
+    # tests/nina.imagerecipe.test.ts asserts that chain.
+    timeout-minutes: 6
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # --omit=dev is not only faster, it SIDESTEPS the EBADPLATFORM trap ci.yml documents at
+      # length: the lockfile records node_modules/vitest/node_modules/@esbuild/aix-ppc64 without
+      # optional:true, and older npm treats it as required. With dev dependencies omitted, vitest is
+      # not installed and the entry is never reached — so no `npm i -g npm@12.0.1` pin is needed
+      # here. If that ever stops being true, copy ci.yml's pin step rather than dropping --omit=dev:
+      # the worker needs only @neondatabase/serverless and @vercel/blob, both runtime dependencies.
+      # --ignore-scripts because nothing this script needs is built by a lifecycle hook.
+      - name: Install runtime dependencies only
+        run: npm ci --omit=dev --ignore-scripts
+
+      # --experimental-strip-types is how scripts/backfill-record-keys.mjs already imports
+      # lib/records/catalog.ts (package.json's records:backfill). It is what lets this worker share
+      # lib/nina/imagefail.ts and lib/nina/imagerecipe.ts with the app instead of paraphrasing
+      # R22's copy and the OpenRouter payload in a second implementation.
+      #
+      # `inputs` is unset for a `schedule` event, so this interpolates to the empty string and
+      # parseArgv reads that as "sweep" — which is exactly why parseArgv refuses an empty --job
+      # value rather than treating it as an id. One expression serves both triggers.
+      - name: Generate
+        run: >-
+          node --experimental-strip-types --no-warnings
+          scripts/nina-image-worker.ts --job "${{ inputs.job_id }}"
