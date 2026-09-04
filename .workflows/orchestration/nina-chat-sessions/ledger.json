@@ -83,24 +83,24 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#82",
-      "commit": null,
+      "commit": "f61388320ace373353416b40d355cf40875b3508",
       "depends_on": [
         3
       ],
       "difficulty": "HARD",
       "n": 5,
-      "note": null,
+      "note": "Sidebar overlay on ?sidebar=1: header deleted, Nina's circle moved in, pin/rename/remove wired to phase 3's actions. 7 files, 21 new tests, build+2394 tests+4 guards green.",
       "package": "components/nina`, `app/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T20:57:23+00:00",
       "satisfies": [
         "R6",
         "R7",
         "R4",
         "R11"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A009",
       "title": "The hidden full-screen sidebar: session list, pin, rename, remove, Nina's circle"
     },
     {
@@ -119,27 +119,27 @@
       "satisfies": [
         "R6"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Search all chats, with the persisted semantic-search toggle"
     },
     {
       "card": "miftahulmahfuzh/run-insights#84",
-      "commit": null,
+      "commit": "75a9c3414fd7a7adbf634062361a46fd3a960fb1",
       "depends_on": [
         3
       ],
       "difficulty": "HARD",
       "n": 7,
-      "note": null,
+      "note": "R8 edit/delete, his and hers: pure edit.ts + 44 tests, two owner-scoped mutations at phase 1's \u00a74c seam, two Server Actions, a Sheet-based action surface, left-swipe gate. No migration, no model call.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-7.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T20:58:07+00:00",
       "satisfies": [
         "R8"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A011",
       "title": "Editing and deleting messages, his and hers"
     },
     {
@@ -157,7 +157,7 @@
       "satisfies": [
         "R9"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The unread dot clears itself on the newest session"
     },
@@ -185,7 +185,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T20:55:05+00:00",
+  "updated": "2026-09-04T21:01:52+00:00",
   "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }
