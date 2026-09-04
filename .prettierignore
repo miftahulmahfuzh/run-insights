@@ -9,6 +9,12 @@ research
 # (same reason research/ is excluded). Reformatting them fights the next pull.
 docs
 
+# Swarm ledgers are written by skills/swarm/swarm.py, not by hand, and it rewrites them on
+# every phase report. Prettier's formatting would be undone by the next `swarm.py report`,
+# so format:check would fail on machine state nobody edited (same reason research/ and docs/
+# are excluded). The plan index and analysis beside them are already covered by *.md.
+.workflows/orchestration
+
 # browser-image-compression's UMD bundle, copied out of node_modules on predev/prebuild (F04).
 # Third-party minified output, gitignored, regenerated every build.
 public/vendor
