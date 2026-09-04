@@ -10,10 +10,19 @@ import { jakartaDayOf, todayInJakarta } from '@/lib/date/ranges'
 import { listRunAttachments } from '@/lib/db/queries'
 import { isValidId } from '@/lib/id'
 import { ninaAvatarView } from '@/lib/nina/album'
-import { ATTACH_PARAM, indexAttachments, type RunAttachment } from '@/lib/nina/attach'
+import {
+  ATTACH_PARAM,
+  PHOTO_PARAM,
+  indexAttachments,
+  parseNinaPhotoParam,
+  type NinaExistingPhoto,
+  type RunAttachment,
+} from '@/lib/nina/attach'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import {
   getCurrentNinaAvatar,
+  getNinaAvatar,
+  getNinaMessageImage,
   getNinaMessageImagesForMessages,
   listNinaMessages,
   markNinaMessagesRead,
@@ -54,6 +63,25 @@ import {
  * knows a column name, which is what lets phase 1 spell `role` as a `pgEnum`, a `text` with a
  * check, or a `varchar` without touching a component. `row.role === 'nina' ? 'nina' : 'user'`
  * narrows structurally on purpose.
+ *
+ * ── `?photo=` IS A FOURTH READ, AND IT IS FREE WHEN THE PARAMETER IS ABSENT ───────────────────
+ * F34 R2. `/nina?photo=avatar:<id>` is the link `/admin/nina`'s file explorer opens in a new tab,
+ * and the whole optimisation the requirement asks for is that the photo is NOT re-uploaded: what
+ * crosses is an id, and what this page does with it is one owner-scoped single-row read
+ * (`getNinaAvatar` / `getNinaMessageImage`, both primary-key lookups) whose only output is a blob
+ * URL. It joins the `Promise.all` below as a fourth element, and when the parameter is absent that
+ * element is `Promise.resolve(null)` — so a runner who just opened the chat pays nothing at all.
+ * Invariant 4 is untouched: still no model call, still nothing unindexed.
+ *
+ * A MISS IS NOT AN ERROR PAGE. A forged, foreign or since-deleted id resolves to `null` and the
+ * composer simply opens empty — the same degradation `?attach=` takes when a run is not the
+ * runner's. The hard refusal lives one layer down in `resolveAttachment`, where the id is about to
+ * become a persisted row (invariant 10), and it is right that the two differ: a bad *link* is
+ * something anyone can type, a bad *send* is a message about a photo he cannot see.
+ *
+ * `description` is NOT read out of either row. It is `glm-4.6v`'s private text, Nina's prompt is
+ * its only consumer, and `resolveAttachment` copies it server-side at send time without it ever
+ * touching a component (invariant 5).
  */
 
 /**
@@ -85,7 +113,11 @@ export const maxDuration = 60
 
 export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const userId = await requireUserId()
-  const { [ATTACH_PARAM]: attachParam } = await searchParams
+  const { [ATTACH_PARAM]: attachParam, [PHOTO_PARAM]: photoParam } = await searchParams
+  /* Parsed BEFORE the reads, because which table to read is what the grammar decides. Pure, so it
+   * costs nothing and cannot fail; `null` means "no photo on this link" and every branch below
+   * short-circuits on it. */
+  const photoPointer = parseNinaPhotoParam(photoParam)
   /*
    * Two reads, concurrently — and the second one is here for its SIDE EFFECT.
    * `listOpenNinaImageJobs` sweeps stale image jobs first (phase 12), so ARRIVING ON THIS PAGE IS
@@ -102,7 +134,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * Invariant 4 holds: two indexed reads and, on the rare stale path, a handful of UPDATEs. No
    * model call is awaited in a render path — the generation itself is on a GitHub runner.
    */
-  const [rows, , avatarRow] = await Promise.all([
+  const [rows, , avatarRow, photoRow] = await Promise.all([
     listNinaMessages(userId, { limit: CHAT_HISTORY_LIMIT }),
     listOpenNinaImageJobs(userId),
     /*
@@ -116,8 +148,36 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * cannot disagree about which face is hers.
      */
     getCurrentNinaAvatar(userId),
+    /*
+     * F34 R2. A FOURTH indexed read, and only when the link asked for one — see the header. Both
+     * branches are single-row primary-key lookups scoped to `user_id`, so "not his" and "gone" come
+     * back as the same `null` and neither leaks which ids exist.
+     *
+     * `Promise.resolve(null)` rather than a conditional `await` after the block: keeping it inside
+     * the `Promise.all` means the read overlaps the other three instead of adding a round trip to
+     * the critical path of a link that was clicked from another tab.
+     */
+    photoPointer === null
+      ? Promise.resolve(null)
+      : photoPointer.kind === 'avatar'
+        ? getNinaAvatar(userId, photoPointer.id)
+        : getNinaMessageImage(userId, photoPointer.id),
   ])
   const avatar = ninaAvatarView(avatarRow)
+
+  /*
+   * The one place a row becomes a URL, which is what makes the thumbnail a one-line change later:
+   * phase 1's column is `nina_avatars.thumb_url`, surfaced as `NinaAvatarRow.thumbUrl`, so
+   * preferring it is `photoRow.thumbUrl ?? photoRow.blobUrl` HERE and nowhere else — on the
+   * `'avatar'` branch only, since `NinaImageRow` has no thumbnail. **Not written in this phase**,
+   * because `depends_on` is empty and the column does not exist on `main`. It reads `blobUrl` and
+   * `kind`/`id` and NOTHING ELSE off the row — in particular not `description` (invariant 5) and
+   * not `pathname`, which is Blob's own suffixed spelling and no business of a client's.
+   */
+  const pendingPhoto: NinaExistingPhoto | null =
+    photoPointer === null || photoRow == null
+      ? null
+      : { kind: photoPointer.kind, id: photoPointer.id, url: photoRow.blobUrl }
 
   /*
    * The photos, in one query rather than a join. `getNinaMessageImagesForMessages` reads
@@ -217,7 +277,13 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
         </div>
       </header>
 
-      <ChatScreen initial={initial} todayISO={todayInJakarta()} userId={userId} pending={pending} />
+      <ChatScreen
+        initial={initial}
+        todayISO={todayInJakarta()}
+        userId={userId}
+        pending={pending}
+        pendingPhoto={pendingPhoto}
+      />
     </AppShell>
   )
 }

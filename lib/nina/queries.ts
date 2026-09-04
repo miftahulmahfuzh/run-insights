@@ -580,6 +580,32 @@ export async function listNinaMessageImages(
 }
 
 /**
+ * One conversation photo by id, ownership-scoped. The mirror of `getNinaAvatar` in §9, and it
+ * exists for the same reason: `app/nina/page.tsx` has to turn ONE id from a URL into ONE blob URL
+ * during a render, and `listNinaMessageImages(...).find(...)` reads up to `NINA_GALLERY_LIMIT`
+ * rows to answer it.
+ *
+ * `null` for "not yours" and for "does not exist" alike — this module's stated rule, and here it is
+ * also the security property: a page that distinguishes them is a page that tells a stranger which
+ * ids exist.
+ *
+ * The projection is `imageColumns`, so the row carries `description`. **The caller reads `blobUrl`
+ * and nothing else** (invariant 5); the description is `glm-4.6v`'s private text and its only
+ * consumer is Nina's prompt.
+ */
+export async function getNinaMessageImage(
+  userId: string,
+  id: string,
+): Promise<NinaImageRow | null> {
+  const rows = await db
+    .select(imageColumns)
+    .from(ninaMessageImages)
+    .where(and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
  * Hydrating a rendered message list: the images belonging to these messages, in one query rather
  * than one per bubble. Ordered by `(message_id, sort_order)` so a caller can group by the first
  * column without re-sorting.
