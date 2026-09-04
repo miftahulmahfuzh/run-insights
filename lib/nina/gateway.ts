@@ -417,6 +417,10 @@ export const dbNinaTurnStore: NinaTurnStore = {
       trigger: null,
       model: row.model,
       promptVersion: row.promptVersion,
+      /* The nina-character-tuning set. `prompt_version` identifies the ASSEMBLER and this
+       * identifies the SETTINGS it assembled, which is the pair needed to answer "what was she set
+       * to when she said that". Nullable, because rows written before that set have no answer. */
+      tuningRevision: row.tuningRevision,
       inputTokens: row.inputTokens,
       outputTokens: row.outputTokens,
       /* Comma-joined names, `''` when none — ruling (b)'s evidence, and the reason phase 1's

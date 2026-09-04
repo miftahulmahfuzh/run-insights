@@ -2,6 +2,7 @@ import type { NinaSlotValue } from '@/lib/db/schema'
 import { buildNinaContext, type NinaContext } from '@/lib/nina/context'
 import { indexRunsByDate } from '@/lib/nina/dates'
 import { SEND_TOOL } from '@/lib/nina/prompts'
+import { NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
 import {
   NINA_CORE_TOOL_SET,
   type NinaDetailedRunInput,
@@ -46,6 +47,21 @@ export function runHistoryFixture(runs = detailedRunsFixture()): NinaRunHistory 
     splitsByRunId: new Map(runs.map((run) => [run.runId, run.splits])),
     zonesByRunId: new Map(runs.map((run) => [run.runId, run.metrics.zonePct])),
   }
+}
+
+/**
+ * The default tuning, spreadably overridable. **The default and not a random setting**, because
+ * the compatibility contract makes the defaults the thing every other test is implicitly
+ * asserting against: a fixture that shipped a tuned Nina would make every unrelated turn test a
+ * test of the tuning.
+ *
+ * Overriding a single trait needs the nested spread, which is deliberate — `traits` is a full
+ * record and a partial one would be a tuning with holes in it:
+ *
+ *     ninaTuningFixture({ traits: { ...NINA_TUNING_DEFAULTS.traits, concerned: 100 } })
+ */
+export function ninaTuningFixture(overrides: Partial<NinaTuning> = {}): NinaTuning {
+  return { ...NINA_TUNING_DEFAULTS, ...overrides }
 }
 
 export interface FakeToolGateway extends NinaToolGateway {

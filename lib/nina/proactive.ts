@@ -11,16 +11,18 @@ import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { loadNinaContext } from './load'
 import { parseRunningDaysAsJsWeekday, type NinaSlotKey } from './memory'
 import { decideNag, type NagDecision } from './nags'
-import { PROACTIVE_INSTRUCTIONS, type ProactiveTriggerKind } from './prompts'
+import { buildProactiveInstruction, type ProactiveTriggerKind } from './prompts'
 import {
   getNinaNags,
   getUnannouncedCurrentNinaAvatar,
   hasProactiveMessageForRun,
   insertNinaMessages,
   markNinaAvatarAnnounced,
+  readNinaTuning,
   upsertNinaNag,
 } from './queries'
 import { runNinaTurn } from './turn'
+import type { NinaTuning } from './tuning'
 
 export type { ProactiveTriggerKind }
 
@@ -590,6 +592,16 @@ export async function emitProactiveMessage(
   detail: ProactiveDetail,
   facts: ProactiveFacts,
   context: NinaContext,
+  /**
+   * **Passed in, not read here.** Both callers already open a connection for `loadNinaContext`, so
+   * reading it there costs nothing extra and keeps this function a function of its arguments plus
+   * `deps.runTurn` — which is what makes it drivable from a test with no database and no model.
+   *
+   * A proactive turn is the reason this parameter exists at all. A tuning threaded through the chat
+   * action alone would leave every message she OPENS in the default character, and the opening is
+   * exactly what the `concerned` dial is about.
+   */
+  tuning: NinaTuning,
   deps: ProactiveDeps = {},
 ): Promise<EmitResult> {
   const now = deps.now ?? (() => new Date())
@@ -601,7 +613,10 @@ export async function emitProactiveMessage(
   const notify = deps.notify ?? pushNotifier
   const runTurn = deps.runTurn ?? runNinaTurn
 
-  const proactive = `${PROACTIVE_INSTRUCTIONS[detail.kind]}\n\n${triggerBlock(detail)}`
+  /* `buildProactiveInstruction` is `PROACTIVE_INSTRUCTIONS[kind]` verbatim plus a tuning suffix,
+   * and it appends nothing at the default tuning. The trigger BLOCK below it is this module's — the
+   * split stated in the header holds: that file owns the copy, this one owns when and which. */
+  const proactive = `${buildProactiveInstruction(detail.kind, tuning)}\n\n${triggerBlock(detail)}`
 
   /* The tools need the reviewed history, exactly as a chat turn does — she may look a run up
    * while reacting to another one. One query, the same one `sendNinaMessage` makes. */
@@ -610,6 +625,7 @@ export async function emitProactiveMessage(
   const result = await runTurn({
     userId,
     context,
+    tuning,
     history,
     /* No runner message precedes a proactive turn. `runnerText: null` makes the user turn omit
      * the "HE JUST SAID" block rather than emit an empty one, and `sourceMessageId: null` means a
@@ -714,7 +730,13 @@ export async function emitRunCommitted(
     return NOT_EMITTED('already reacted to this run')
   }
 
-  const context = await loadNinaContext(input.userId, dbNinaSourceGateway, at)
+  /* Site 1 of 2. The tuning read joins the context read rather than following it: both are one
+   * round trip on a connection this pass is opening anyway, and `loadProactiveFacts` below needs
+   * the context, so it cannot join them. */
+  const [context, tuning] = await Promise.all([
+    loadNinaContext(input.userId, dbNinaSourceGateway, at),
+    readNinaTuning(input.userId),
+  ])
   const facts = await loadProactiveFacts(input.userId, context, at)
 
   return emitProactiveMessage(
@@ -728,6 +750,7 @@ export async function emitRunCommitted(
     },
     facts,
     context,
+    tuning,
     deps,
   )
 }
@@ -744,13 +767,18 @@ export async function evaluateAndEmitForUser(
   const now = deps.now ?? (() => new Date())
   const at = now()
 
-  const context = await loadNinaContext(userId, dbNinaSourceGateway, at)
+  /* Site 2 of 2. Both sites read it, because BOTH are turns she opens, and the whole argument for
+   * the `concerned` dial is about the turns she opens. */
+  const [context, tuning] = await Promise.all([
+    loadNinaContext(userId, dbNinaSourceGateway, at),
+    readNinaTuning(userId),
+  ])
   const facts = await loadProactiveFacts(userId, context, at)
 
   const decision = decideProactive(facts)
   if (!decision.fire) return NOT_EMITTED(decision.reason)
 
-  return emitProactiveMessage(userId, decision.detail, facts, context, deps)
+  return emitProactiveMessage(userId, decision.detail, facts, context, tuning, deps)
 }
 
 /** Re-exported so a caller can log a decision's reasoning without importing phase 9 as well. */

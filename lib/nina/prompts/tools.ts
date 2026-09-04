@@ -20,6 +20,43 @@ import type Anthropic from '@anthropic-ai/sdk'
  * ── A SCHEMA EDIT IS A PROMPT EDIT ───────────────────────────────────────────────────────────
  * "The prompt" means the system text AND these schemas. Bump `NINA_PROMPT_VERSION` by hand in the
  * same commit as any edit below.
+ *
+ * ── THE TWO TUNING DIALS THAT WERE PROPOSED FOR THIS FILE, AND WHY THEY ARE NOT HERE ─────────
+ * The nina-character-tuning set (phase 3) proposed exactly two edits below: the verbosity dial on
+ * `SEND_TOOL.input_schema.properties.bubbles.description`, and the photo-eagerness dial on
+ * `GENERATE_IMAGE_TOOL.description`. **Both were declined. Neither description changed.** Four
+ * reasons, in the order they decided it:
+ *
+ * 1. THE MEASUREMENT ABOVE IS THE WHOLE ARGUMENT. One extra clause on one description took the
+ *    same schema from 5/6 to 2/4 valid on the first attempt. A description that varies with a
+ *    slider is not one extra clause; it is a family of clauses, none of which can be measured
+ *    before it ships, on an app with one user and no eval harness. The cost of getting it wrong is
+ *    a dropped reply in her voice — the most expensive failure this feature has.
+ * 2. THE VERBOSITY DIAL CANNOT MOVE WHAT THIS DESCRIPTION SAYS. `bubbles`' description states the
+ *    CAP — `1-4` — and the cap is `minItems`/`maxItems` here plus `lib/nina/schema.ts`'s Zod.
+ *    No slider may widen it. What the dial actually varies is the PREFERENCE, and the preference
+ *    already lives in `OUTPUT_RULE` ("One bubble is the right answer more often than four"), where
+ *    it has worked since F33 phase 2. The dial went where the sentence it changes already was.
+ * 3. `GENERATE_IMAGE_TOOL`'s description states the OCCASIONS to call it — "when he asks, or when
+ *    you promised one". Eagerness is a third occasion, which is precisely the "one extra clause"
+ *    shape reason 1 measured. `prompts/system.ts`'s `── THE CAMERA ──` block carries it instead,
+ *    and only when the dial is off its default.
+ * 4. A DESCRIPTION THAT READS A TUNING MAKES `NINA_TOOLS` A BUILDER. It is a
+ *    `readonly Anthropic.Tool[]` constant, and three module-level tool sets are derived from it at
+ *    load — `NINA_CORE_TOOL_SET` (`lib/nina/tools.ts`), `NINA_CHAT_TOOL_SET`
+ *    (`lib/nina/imagetools.ts`), `NINA_FULL_TOOL_SET` (`lib/nina/avatartools.ts`) — plus
+ *    `NinaTurnDeps.toolSet` and the walk in `tests/nina.prompts.test.ts`. Per-turn tool sets are a
+ *    five-file refactor across three owners, to carry two sentences that have a better home.
+ *
+ * THE COUNTER-ARGUMENT, STATED SO IT IS NOT LOST: the measurement above also says a hard rule in
+ * the SYSTEM prompt scored 1/4 — *"the prompt is the wrong lever"*. It is, for FORMAT: for getting
+ * a schema-valid tool call out of this endpoint, the descriptions are the lever and nothing else
+ * is. Both dials here are CONTENT — how many bubbles she prefers, how readily she reaches for the
+ * camera — and content is what the system prompt has always carried. The measurement does not
+ * reach them.
+ *
+ * `NINA_PROMPT_VERSION` still went 2 -> 3 in that set, because `prompts/system.ts` changed shape.
+ * Nothing in THIS file did.
  */
 
 /**

@@ -20,6 +20,7 @@ import {
   getNinaMessagesByIds,
   insertNinaMessageImages,
   insertNinaMessages,
+  readNinaTuning,
 } from './queries'
 import type { NinaMessageRow } from './queries'
 import type { NinaImageKind } from '@/lib/db/schema'
@@ -482,9 +483,20 @@ export async function sendNinaMessage(input: {
    * and `recomputeRecords`, in one card, because all three re-read the same history and all three
    * stop being fine at the same moment.
    */
-  const [context, history] = await Promise.all([
+  const [context, history, tuning] = await Promise.all([
     loadNinaContext(userId, dbNinaSourceGateway),
     dbNinaToolGateway.loadRunHistory(userId),
+    /*
+     * THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
+     * `/admin/nina` immediate. `memoryActions.ts` under `lib/admin/` already records the same
+     * property for the memory slots: `revalidatePath` re-renders the admin page and is not how the
+     * edit reaches Nina; a committed row is in her next prompt with no invalidation step at all.
+     *
+     * Third in an existing `Promise.all` on purpose. It is one indexed single-row read against a
+     * connection this turn is opening anyway, so it costs no extra wall clock against the two reads
+     * beside it — and the 45 s budget has no room for a fourth sequential round trip.
+     */
+    readNinaTuning(userId),
   ])
 
   /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
@@ -531,6 +543,9 @@ export async function sendNinaMessage(input: {
     {
       userId,
       context,
+      /* On the INPUT, never on the context. A dial inside the context JSON is a number she can
+       * quote back at him and it collides with `NUMBERS_RULE`. */
+      tuning,
       history,
       sourceMessageId: runnerMessageId,
       runnerText: text.length > 0 ? text : null,
