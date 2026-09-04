@@ -12,11 +12,8 @@ import {
   type NinaToolSet,
 } from '@/lib/nina/tools'
 
-import { fireNinaImageDispatch } from './imagedispatch'
 import { NINA_IMAGE_CAPPED_NOTE } from './imagefail'
-import { buildNinaImagePrompt, sidecarText } from './imagegen'
-import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
-import { SEED_MAX } from './imagerecipe'
+import { generateNinaSelfie } from './selfiegen'
 
 /**
  * **`generate_image`, dispatched.** Phase 2 wrote the schema, phase 3 wrote the dispatch table, and
@@ -65,52 +62,41 @@ export const handleGenerateImage: NinaToolHandler = async (
   }
 
   /*
-   * THE CAP. Checked before the row is opened and therefore before a cent is spent. It counts failed
-   * generations too (`countNinaTurnsSince` does), because every attempt cost either money or a
-   * runner minute.
+   * THE CAP AND THE DISPATCH, both inside `generateNinaSelfie`. This handler used to inline the
+   * whole sequence — quota, seed, prompt, job row, doorbell — and phase 4 needed the same sequence
+   * from the promise sweep. Two copies of it would have been two places for the tuning to be
+   * forgotten, so it moved into `selfiegen.ts` and this is now the only thing left that is
+   * genuinely about the TOOL: validate the arguments, and decide what she is told.
    *
    * **The refusal is HERS.** We hand the model `NINA_IMAGE_CAPPED_NOTE` — an instruction to say she
    * is out of photos, in her own words, with no number and no mention of a system — and she writes
-   * the bubble in the same turn. That is what "refuses the n+1th politely and in character" means: a
-   * canned refusal string would be us talking, and the one thing this feature cannot afford is Nina
-   * sounding like an API.
+   * the bubble in the same turn. A canned refusal string would be us talking, and the one thing
+   * this feature cannot afford is Nina sounding like an API.
    *
    * `isError: false` on purpose. This is not a malformed call; it is a true answer to a legitimate
    * request, and phase 3's ruling (g) reserves `isError` for "you asked for something I cannot
    * answer".
+   *
+   * `capped` is the only `ok: false` `generateNinaSelfie` can return — every other failure happens
+   * minutes later, in the worker, and arrives as her apology. So mapping any refusal to the capped
+   * note is exhaustive rather than lossy today, and if that ever stops being true the fix is a
+   * switch on `result.kind` here.
    */
-  if ((await ninaImageQuotaLeft(ctx.userId)) <= 0) {
-    return { answer: { taken: false, instruction: NINA_IMAGE_CAPPED_NOTE }, isError: false }
-  }
-
-  const scene = parsed.data.scene
-  const mood = parsed.data.mood ?? null
-  const seed = Math.floor(Math.random() * SEED_MAX)
-  const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood })
-
-  const jobId = await openNinaImageJob(ctx.userId, {
-    purpose: 'selfie',
-    scene,
-    mood,
-    prompt,
-    seed,
+  const result = await generateNinaSelfie({
+    userId: ctx.userId,
+    scene: parsed.data.scene,
+    mood: parsed.data.mood ?? null,
     /*
      * The photograph quotes the message that asked for it (phase 7's `reply_to_id`), which is what
      * makes the answer legible when it lands two minutes after four other bubbles. Null on a
      * proactive turn, where nobody asked.
      */
     replyToId: ctx.sourceMessageId,
-    source: 'chat',
-    attempts: 0,
-    sidecar: sidecarText({ prompt, seed, purpose: 'selfie' }),
   })
 
-  fireNinaImageDispatch({
-    userId: ctx.userId,
-    jobId,
-    purpose: 'selfie',
-    replyToId: ctx.sourceMessageId,
-  })
+  if (!result.ok) {
+    return { answer: { taken: false, instruction: NINA_IMAGE_CAPPED_NOTE }, isError: false }
+  }
 
   /*
    * What she is told. Deliberately spare: she must say she is taking the photo NOW, in one short

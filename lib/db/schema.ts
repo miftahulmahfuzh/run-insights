@@ -870,6 +870,21 @@ export type NinaMemorySource = 'distilled' | 'admin'
  */
 export type NinaPromiseMetric = 'distance_km_total' | 'run_count' | 'record' | 'badge' | 'free'
 
+/**
+ * **What she pays out when he keeps his end.** R5 of the character-tuning set.
+ *
+ * · `'avatar'` — she changes her profile picture. The reward as F33 phase 13 shipped it: the worker
+ *                writes `nina_avatars` with `announced_at: NULL`, and phase 10's `avatar_changed`
+ *                trigger has her mention it on the next cron tick. **No chat message.**
+ * · `'selfie'` — she sends him the photograph. `purpose: 'selfie'`, so the worker writes a
+ *                `nina_messages` row plus a `nina_message_images` row and it arrives in the
+ *                conversation like any other picture: quotable, gallery-able, unread-able.
+ *
+ * The field below is OPTIONAL and absent means `'avatar'`, so every promise written before this
+ * phase behaves exactly as it always did.
+ */
+export type NinaPromiseReward = 'avatar' | 'selfie'
+
 export type NinaPendingPromise = {
   /** nanoid(12), so she can refer to one promise across turns. */
   id: string
@@ -918,6 +933,21 @@ export type NinaPendingPromise = {
   /** Jakarta `'YYYY-MM-DD'`. See the note above. */
   firedOn?: string | null
   attempts?: number
+  /**
+   * ── AND THE FOURTH FIELD IS R5, BY THE SAME ARGUMENT ─────────────────────────────────────────
+   * Which camera pays this promise out. **Written by the `fire` verdict, not by the distiller**, so
+   * it is decided once and then read: `lib/nina/promises.ts` derives it from the operator's
+   * `steamy` dial at dispatch time and `resolvePromiseSlot` records it beside `jobId` and
+   * `firedOn`. Re-deriving it at settle time instead would mean a dial moved between the dispatch
+   * and the landing had the sweep watching the wrong table for a photograph that did arrive.
+   *
+   * `nina_memory_slots.value` is `jsonb`, so this costs **no migration** — the same argument the
+   * three fields above make for themselves. And it is **optional**, so `mergePendingPromises`, its
+   * tests and `tests/nina.memory.test.ts`'s `satisfies NinaPendingPromise` literals compile
+   * untouched: a promise written before this phase simply has none, which reads correctly as
+   * "the avatar reward", which is what it was.
+   */
+  reward?: NinaPromiseReward
 }
 
 /** The `pending_promises` slot's value, in full. Phase 13 parses exactly this. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { buildNinaImagePrompt, sidecarText } from '@/lib/nina/imagegen'
 import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
+import { NINA_TUNING_DEFAULTS, type NinaTrait, type NinaTuning } from '@/lib/nina/tuning'
 import {
   buildImageRequestBody,
   jakartaDayStart,
@@ -89,6 +90,115 @@ describe('the prompt', () => {
     expect(text).toContain('seed:       42')
     expect(text).toContain('reference:  none (RU-18)')
     expect(text).toContain('--- prompt as sent ---')
+  })
+
+  /** One field moved off the defaults, everything else exactly as it ships. */
+  function tuned(over: Partial<NinaTuning>): NinaTuning {
+    return { ...NINA_TUNING_DEFAULTS, ...over }
+  }
+
+  /** One TRAIT moved. The traits are nested under `traits` — phase 1's landed shape. */
+  function withTrait(key: NinaTrait, value: number): NinaTuning {
+    return tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, [key]: value } })
+  }
+
+  it('PLAN INVARIANT 2: the default tuning renders the prompt that shipped, byte for byte', () => {
+    /*
+     * The compatibility contract of the whole set, asserted at the one place a photograph is
+     * decided. Two things are checked at once: the tuning is genuinely OPTIONAL (the left-hand
+     * side names none), and `NINA_TUNING_DEFAULTS` is genuinely the today-equivalent setting (the
+     * right-hand side names it). If a default `steamy` or `flirty` ever reaches band `high`, or
+     * the default wardrobe stops being `''`, this is the test that says so.
+     */
+    const shipped = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
+    const defaulted = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      tuning: NINA_TUNING_DEFAULTS,
+    })
+    expect(defaulted).toBe(shipped)
+    expect(defaulted).not.toContain('POSE AND PRESENCE')
+
+    const shippedAvatar = buildNinaImagePrompt({ purpose: 'avatar', scene: 'x' })
+    expect(
+      buildNinaImagePrompt({ purpose: 'avatar', scene: 'x', tuning: NINA_TUNING_DEFAULTS }),
+    ).toBe(shippedAvatar)
+  })
+
+  it('R5: the WARDROBE reaches the photograph, and the canon outfit does not', () => {
+    /*
+     * The user's own example — "her sexy photo in a short pants". The outfit was hardcoded in
+     * `NINA_APPEARANCE` and every generated photograph wore it whatever the operator set. Phase 2's
+     * `ninaAppearance` is the seam; this asserts the seam is actually wired to the camera.
+     */
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      tuning: tuned({ wardrobe: 'a black crop top and very short white running shorts' }),
+    })
+    expect(prompt).toContain('very short white running shorts')
+    expect(prompt).not.toContain('heather-grey racerback tank')
+    /* Still HER, though: the wardrobe replaces the outfit, never the person. */
+    expect(prompt).toContain('high ponytail')
+  })
+
+  it('R5: a high steamy dial adds a POSE AND PRESENCE block, before the scene', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      mood: 'smug',
+      tuning: withTrait('steamy', 100),
+    })
+    expect(prompt).toContain('POSE AND PRESENCE:')
+    /* Standing property of the subject before the scene; per-photograph note after it. */
+    expect(prompt.indexOf('POSE AND PRESENCE:')).toBeLessThan(prompt.indexOf('SCENE:'))
+    expect(prompt.indexOf('SCENE:')).toBeLessThan(prompt.indexOf('EXPRESSION AND ENERGY:'))
+  })
+
+  it('a high flirty dial reaches BOTH cameras; a high steamy dial reaches only the selfie', () => {
+    /*
+     * `NINA_AVATAR_STYLE` asks for head and shoulders in a 28-44 px circle. A pose instruction
+     * about her hips under that crop is a prompt arguing with itself, which is the class of
+     * contradiction `imagegen.ts`'s header says degrades a generation for free.
+     */
+    const steamyAvatar = buildNinaImagePrompt({
+      purpose: 'avatar',
+      scene: 'x',
+      tuning: withTrait('steamy', 100),
+    })
+    expect(steamyAvatar).not.toContain('POSE AND PRESENCE')
+
+    const flirtyAvatar = buildNinaImagePrompt({
+      purpose: 'avatar',
+      scene: 'x',
+      tuning: withTrait('flirty', 100),
+    })
+    expect(flirtyAvatar).toContain('POSE AND PRESENCE:')
+    expect(flirtyAvatar).toContain('straight down the lens')
+  })
+
+  it('a dial just below the threshold adds nothing at all', () => {
+    const quiet = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      /* 59 is the top of band `mid`; 60 is the first score in `high`. One vocabulary. */
+      tuning: tuned({ traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 59, flirty: 59 } }),
+    })
+    expect(quiet).toBe(buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' }))
+  })
+
+  it('still never claims a reference image is authoritative, at any dial', () => {
+    /* RU-18. The new clauses must not reintroduce the word — an instruction to defer to an image
+     * that is not in the payload degrades the prompt. */
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      tuning: tuned({
+        traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100 },
+        wardrobe: 'a red bikini',
+      }),
+    })
+    expect(prompt.toLowerCase()).not.toContain('reference')
   })
 })
 

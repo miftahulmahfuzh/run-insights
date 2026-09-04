@@ -7,17 +7,29 @@ import {
   type NinaMemorySource,
   type NinaPendingPromise,
   type NinaPendingPromisesSlot,
+  type NinaPromiseReward,
 } from '@/lib/db/schema'
 import { generateNinaAvatar } from './avatargen'
 import {
   evaluatePromises,
+  promiseJobId,
+  promiseReward,
+  promiseRewardFor,
   resolvePromiseSlot,
   type PromiseDecision,
   type PromiseEarnedMarker,
   type PromiseFacts,
   type PromiseVerdict,
 } from './promise'
-import { getCurrentNinaAvatar, getNinaMemorySlot, upsertNinaMemorySlot } from './queries'
+import {
+  getCurrentNinaAvatar,
+  getNinaMemorySlot,
+  listNinaSelfieJobIdsSince,
+  readNinaTuning,
+  upsertNinaMemorySlot,
+} from './queries'
+import { generateNinaSelfie } from './selfiegen'
+import type { NinaTuning } from './tuning'
 
 /**
  * The promise sweep — F33 R19, the impure half.
@@ -36,10 +48,19 @@ import { getCurrentNinaAvatar, getNinaMemorySlot, upsertNinaMemorySlot } from '.
  * distillation and the sweep race for the same slot.
  *
  * ── WHY IT NEVER POSTS A MESSAGE ──────────────────────────────────────────────────────────────
- * D-3. `insertNinaAvatarAsCurrent` (called inside `generateNinaAvatar`) leaves `announced_at`
- * NULL, and that NULL is phase 10's `avatar_changed` trigger. One announcer, reached identically
- * by the promise path, the admin path and phase 14's CLI. So this module writes to exactly one
- * place: the `pending_promises` slot.
+ * D-3, and R5 did not weaken it. This module writes to exactly one place: the `pending_promises`
+ * slot. Everything a runner ever SEES is written by `scripts/nina-image-worker.ts`, minutes later,
+ * in another process:
+ *
+ *   · an `'avatar'` reward — `insertNinaAvatarAsCurrent` leaves `announced_at` NULL, and that NULL
+ *     is phase 10's `avatar_changed` trigger, so she mentions the new photograph on the next tick;
+ *   · a `'selfie'` reward — the worker's `finishSelfie` writes the `nina_messages` +
+ *     `nina_message_images` pair, with `ninaImageCaption` for the bubble, and the photograph is in
+ *     the conversation.
+ *
+ * So this file dispatches a job and records that it dispatched one. It does not post, it does not
+ * announce, and it does not write either image table. One announcer per reward, reached identically
+ * by the promise path, the chat path, the admin path and phase 14's CLI.
  *
  * ── WHY `source` IS READ BACK OUT AND WRITTEN BACK IN ─────────────────────────────────────────
  * Phase 5's handoff, verbatim: *"carry the row's existing `source` through, exactly as this
@@ -69,17 +90,40 @@ export interface NinaPromiseDeps {
   ) => Promise<ReadonlyArray<{ occurredOn: string; distanceM: number }>>
   readRecordMarkers: (userId: string) => Promise<PromiseEarnedMarker[]>
   readBadgeMarkers: (userId: string) => Promise<PromiseEarnedMarker[]>
-  /** The current avatar, for the landing test. Null when there is none (D-2). */
+  /** The current avatar, for the `'avatar'` landing test. Null when there is none (D-2). */
   readCurrentAvatar: (userId: string) => Promise<{ source: string; createdAt: Date } | null>
   /**
-   * The generator port. **Only `ok` and `jobId` are read**, deliberately: phase 12 is being
-   * rewritten around GitHub Actions (RU-20) and this is the narrowest surface that survives it.
-   * If its result gains or loses an `avatar` field, nothing here changes.
+   * The generator port for an `'avatar'` reward. **Only `ok` and `jobId` are read**, deliberately:
+   * phase 12 was rewritten around GitHub Actions (RU-20) and this is the narrowest surface that
+   * survived it. If its result gains or loses an `avatar` field, nothing here changes.
    */
   generateAvatar: (input: {
     userId: string
     scene: string
   }) => Promise<{ ok: boolean; jobId?: string | null }>
+  /**
+   * The generator port for a `'selfie'` reward — R5. Same narrow `{ ok, jobId }` surface as
+   * `generateAvatar`, and one extra argument: the message she made the promise in, so the
+   * photograph quotes it when it lands.
+   */
+  generateSelfie: (input: {
+    userId: string
+    scene: string
+    replyToId: string | null
+  }) => Promise<{ ok: boolean; jobId?: string | null }>
+  /**
+   * The operator's character tuning, for `promiseRewardFor`. **Called at most once per sweep, and
+   * only by a sweep that actually fires something** — see `rewardOnce` below. A cron tick over a
+   * slot where every promise is waiting performs no extra read.
+   */
+  readTuning: (userId: string) => Promise<NinaTuning>
+  /**
+   * The `'selfie'` landing test's raw material: the job ids (`nina_messages.turn_id`) of every
+   * generated photograph that has reached the conversation since `since`. One indexed read on
+   * `nina_message_images_user_created_idx`, and only performed when some pending promise both has a
+   * job on record and a selfie reward.
+   */
+  readSelfieJobIdsSince: (userId: string, since: Date) => Promise<readonly string[]>
   now: () => Date
 }
 
@@ -121,6 +165,15 @@ export function productionPromiseDeps(): NinaPromiseDeps {
        * `jobId` are read, which is the narrow surface the port exists for. */
       return { ok: result.ok, jobId: result.jobId }
     },
+    /* R5. `NinaSelfieResult` mirrors `NinaAvatarResult`, so the same two fields are all that is
+     * read here — and `generateNinaSelfie` never throws, exactly as `generateNinaAvatar` never
+     * does. `source: 'chat'` is set inside it, because a selfie always posts a message. */
+    generateSelfie: async ({ userId, scene, replyToId }) => {
+      const result = await generateNinaSelfie({ userId, scene, replyToId })
+      return { ok: result.ok, jobId: result.jobId }
+    },
+    readTuning: (userId) => readNinaTuning(userId),
+    readSelfieJobIdsSince: (userId, since) => listNinaSelfieJobIdsSince(userId, since),
     now: () => new Date(),
   }
 }
@@ -133,6 +186,29 @@ function parseSlot(value: unknown): NinaPendingPromisesSlot {
   return {
     promises: promises.filter((p): p is NinaPendingPromise => p != null && typeof p === 'object'),
   }
+}
+
+/**
+ * Midnight in Jakarta on a `'YYYY-MM-DD'`, as an instant, for a `created_at >= ?` comparison.
+ *
+ * The only `Date` arithmetic in the promise mechanism, and it is here rather than in `promise.ts`
+ * because that file's header states there is no `Date` anywhere in its logic — a `Date` there would
+ * put the server's UTC midnight between him and credit for an evening run. `imagerecipe.ts`'s
+ * `jakartaDayStart` does the same conversion from the other direction (an instant, not a day
+ * string) and cannot be reused for this.
+ */
+function jakartaMidnight(dayISO: DateISO): Date {
+  return new Date(`${dayISO}T00:00:00+07:00`)
+}
+
+/**
+ * `firedOn` off a slot entry, tolerantly. `promise.ts` keeps its own private copy of this reader
+ * and deliberately does not export it — that file is the state machine and this is one field of a
+ * `jsonb` row. Three lines duplicated is cheaper here than widening that module's surface.
+ */
+function firedOnOfEntry(promise: NinaPendingPromise): DateISO | null {
+  const raw = (promise as { firedOn?: string | null }).firedOn
+  return typeof raw === 'string' && raw.length > 0 ? raw : null
 }
 
 /**
@@ -201,16 +277,39 @@ export async function resolveNinaPromises(
   const now = deps.now()
   const todayISO = todayInJakarta(now)
 
-  const [facts, avatar] = await Promise.all([
+  /*
+   * THE SELFIE LANDING TEST'S WINDOW — and the reason it is usually not read at all.
+   *
+   * Only a promise that is still pending, already has a job on record, and pays out as a selfie can
+   * be settled by a photograph in the chat. If no promise in the slot is all three, this stays null
+   * and the read below is skipped entirely, so the common cron tick costs exactly what it costs
+   * today. When it is not null it is the EARLIEST day any of those jobs was fired, which bounds the
+   * scan: `PROMISE_MAX_ATTEMPTS` with a one-day cooldown puts a stuck promise out of its misery in
+   * four days, and the open-ended TTL caps the worst case at 60 — 6 photographs a day against
+   * `NINA_IMAGE_DAILY_CAP`, so a few hundred rows on an indexed range at the very worst.
+   */
+  let selfieSinceISO: DateISO | null = null
+  for (const promise of slot.promises) {
+    if (promise.status !== 'pending') continue
+    if (promiseReward(promise) !== 'selfie') continue
+    if (promiseJobId(promise) == null) continue
+    const day = firedOnOfEntry(promise) ?? promise.promisedOn
+    if (selfieSinceISO == null || day < selfieSinceISO) selfieSinceISO = day
+  }
+
+  const [facts, avatar, selfieJobIds] = await Promise.all([
     loadPromiseFacts(userId, slot.promises, todayISO, deps),
     deps.readCurrentAvatar(userId),
+    selfieSinceISO == null
+      ? Promise.resolve<readonly string[]>([])
+      : deps.readSelfieJobIdsSince(userId, jakartaMidnight(selfieSinceISO)),
   ])
 
   /*
-   * THE LANDING TEST. A generated avatar created on or after the day the job was fired means the
-   * photograph arrived — which under RU-20 happened in a GitHub Actions runner, minutes later, in
-   * a process that knew nothing about promises. Its one tolerance (a different generated avatar
-   * landing the same day) is argued in the plan and costs a mis-attribution of a true event.
+   * THE 'avatar' LANDING TEST. A generated avatar created on or after the day the job was fired
+   * means the photograph arrived — which under RU-20 happened in a GitHub Actions runner, minutes
+   * later, in a process that knew nothing about promises. Its one tolerance (a different generated
+   * avatar landing the same day) is argued in the plan and costs a mis-attribution of a true event.
    *
    * `source !== 'generated'` is what keeps an ADMIN upload (phase 15) or an OPERATOR push (phase
    * 14) from settling a promise she never took a photograph for.
@@ -220,15 +319,37 @@ export async function resolveNinaPromises(
     return jakartaDayOf(avatar.createdAt) >= dayISO
   }
 
+  /*
+   * THE 'selfie' LANDING TEST, and it needs no tolerance at all. The worker writes the job id into
+   * `nina_messages.turn_id` when it posts the photograph, so this is an exact match on the job this
+   * promise dispatched. A selfie HE asked for in chat has a different job id and settles nothing —
+   * which a count of photographs since a day could not have promised, and which matters here in a
+   * way it does not for avatars: `generate_image` is a tool she calls up to six times a day.
+   */
+  const landedSelfieJobs = new Set(selfieJobIds)
+  const selfieLandedForJob = (jobId: string): boolean => landedSelfieJobs.has(jobId)
+
   const verdicts = evaluatePromises(slot.promises, {
     todayISO,
     facts,
     avatarLandedOnOrAfter,
+    selfieLandedForJob,
   })
 
   const byId = new Map(slot.promises.map((promise) => [promise.id, promise]))
   const decisions: PromiseDecision[] = []
   let fired = 0
+
+  /*
+   * The tuning, read at most once and only if something fires. `resolveNinaPromises` runs every
+   * five minutes per user and almost every run fires nothing, so an unconditional read here would
+   * be a primary-key lookup per user per tick for a value nobody uses.
+   */
+  let tuning: NinaTuning | null = null
+  const rewardOnce = async (): Promise<NinaPromiseReward> => {
+    tuning ??= await deps.readTuning(userId)
+    return promiseRewardFor(tuning.traits.steamy)
+  }
 
   const deadline = now.getTime() + NINA_PROMISE_SWEEP_BUDGET_MS
 
@@ -253,25 +374,45 @@ export async function resolveNinaPromises(
 
     /*
      * The scene is HER promise in her own words plus his condition — the two display-ready strings
-     * phase 5 already distilled. It becomes `nina_avatars.description` verbatim (phase 12's
-     * `NinaAvatarRequest.scene` says so), which is precisely what R25 then reads back out of the
-     * row to invent a story about. No prompt engineering happens here: phase 12 owns
-     * `buildNinaImagePrompt` and phase 2 owns `NINA_APPEARANCE`.
+     * phase 5 already distilled. It becomes `nina_avatars.description` or
+     * `nina_message_images.description` verbatim, which is precisely what R25 then reads back out
+     * of the row to invent a story about. No prompt engineering happens here: `imagegen.ts` owns
+     * `buildNinaImagePrompt` and `persona.ts` owns her appearance.
      */
     const scene = `${promise.text} (${promise.condition})`
 
-    /* `generateNinaAvatar` never throws — phase 12's stated guarantee. The catch is belt and
-     * braces: an unexpected throw must degrade to "refused", never to a half-written slot. */
+    /*
+     * WHICH CAMERA. R5: at a high `steamy` the payoff is a photograph she SENDS him, which is the
+     * whole psychological point of the feature — a profile-picture change he has to go and look for
+     * is not the reward the user described. The choice is recorded on the entry by
+     * `resolvePromiseSlot` so the settle test reads it back rather than re-deriving it from a dial
+     * that may have moved in the meantime.
+     */
+    const reward = await rewardOnce()
+
+    /* Neither generator ever throws — both state that guarantee. The catch is belt and braces: an
+     * unexpected throw must degrade to "refused", never to a half-written slot. */
     let outcome: { ok: boolean; jobId?: string | null }
     try {
-      outcome = await deps.generateAvatar({ userId, scene })
+      outcome =
+        reward === 'selfie'
+          ? await deps.generateSelfie({
+              userId,
+              scene,
+              /* The photograph quotes the message she made the promise in — the most legible thing
+               * it could possibly quote. The worker writes this through an ownership subselect, so
+               * a message he has since deleted degrades to a plain photograph rather than losing
+               * it. */
+              replyToId: promise.sourceMessageId,
+            })
+          : await deps.generateAvatar({ userId, scene })
     } catch (error) {
-      console.warn('[nina] promise generation threw', { promiseId: promise.id, error })
+      console.warn('[nina] promise generation threw', { promiseId: promise.id, reward, error })
       outcome = { ok: false, jobId: null }
     }
 
     if (outcome.ok) fired += 1
-    decisions.push({ verdict, jobId: outcome.ok ? (outcome.jobId ?? null) : null })
+    decisions.push({ verdict, reward, jobId: outcome.ok ? (outcome.jobId ?? null) : null })
   }
 
   const resolution = resolvePromiseSlot(slot, decisions, todayISO)
