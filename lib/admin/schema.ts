@@ -25,6 +25,16 @@ import {
   ADMIN_AVATAR_MIN_EDGE_PX,
 } from './avatars'
 
+import {
+  NINA_DIALS,
+  NINA_NOTES_MAX,
+  NINA_RELATIONSHIPS,
+  NINA_SCORE_MAX,
+  NINA_SCORE_MIN,
+  NINA_TRAITS,
+  NINA_WARDROBE_MAX,
+} from '@/lib/nina/tuning'
+
 /**
  * Everything `/admin/nina` accepts from a browser, validated at the boundary. F33 R23.
  *
@@ -370,3 +380,75 @@ export const albumManifestSchema = z.object({
   folder: folderPathSchema,
 })
 export type AlbumManifestRequest = z.infer<typeof albumManifestSchema>
+
+/* ============================================================================
+ * nina-character-tuning phase 5 — ONE whole-tuning write.
+ * Appended; nothing above this line changed.
+ * ==========================================================================*/
+
+/**
+ * What `/admin/nina`'s character panel may write. R1, R2 and R3 arrive as **one object**, and that
+ * is plan invariant 11 rather than a preference.
+ *
+ * ── ONE SAVE, NOT SIXTEEN ───────────────────────────────────────────────────────────────────
+ * Next dispatches Server Actions ONE AT A TIME PER CLIENT — the same fact
+ * `avatarBatchRegisterSchema` above is built around, and the tax
+ * `components/nina/Composer.tsx` already pays knowingly for three chat photos. Sixteen dials as
+ * sixteen sequential actions is not a design, it is a stall. The whole tuning is ~1 KB of JSON
+ * against a 1 MB action body cap (`next.config.ts` sets no `serverActions.bodySizeLimit`), so there
+ * is nothing to batch and nothing to chunk: it is one write of one row.
+ *
+ * ── TWO LAYERS OF BOUNDS, THE SAME DIVISION AS `cropWriteSchema` ────────────────────────────
+ * This schema enforces the SHAPE — an integer inside phase 1's own advertised range, a
+ * relationship that exists, strings under a length that cannot crowd out the canon they sit
+ * beside. Phase 1's clamp (`coerceNinaTuning`, called inside `writeNinaTuning`) is what GUARANTEES
+ * the range, because it is on every path into the row and this schema is only on the path from a
+ * browser. Neither alone is sufficient: a schema cannot be the invariant for a value the cron path
+ * could also write, and a clamp cannot reject `anger: "banana"`.
+ *
+ * ── STRICT, AND THEREFORE REFUSE-DON'T-REPAIR ───────────────────────────────────────────────
+ * `z.strictObject` on both dial groups, so an unknown or misspelled dial key FAILS rather than
+ * being silently stripped. `lib/nina/schema.ts` argues the opposite for MODEL output — an extra
+ * key the model invents is noise, and stripping it is the kind thing to do — and the difference is
+ * the sender: a model improvises, a browser we wrote does not. A stripped `flirtyy` would save
+ * fifteen dials and report success, and the operator would watch one slider silently refuse to
+ * take. That is the invisible failure `folderPathSchema`'s `path === value` rule above exists to
+ * prevent, in a different shape.
+ *
+ * Every bound is IMPORTED. `lib/admin/avatars.ts`'s rule holds here too: *"a constant that is
+ * agreed rather than shared is a constant that will one day disagree."*
+ */
+const dialValueSchema = z.number().int().min(NINA_SCORE_MIN).max(NINA_SCORE_MAX)
+
+/**
+ * One `dialValueSchema` per key phase 1 declares, built from the array rather than spelled out.
+ * Spelling eleven trait keys here would put phase 1's vocabulary in a second place, and the first
+ * dial phase 1 adds would then pass typecheck and fail validation.
+ */
+function dialShape<K extends string>(keys: readonly K[]): Record<K, typeof dialValueSchema> {
+  const shape = {} as Record<K, typeof dialValueSchema>
+  for (const key of keys) shape[key] = dialValueSchema
+  return shape
+}
+
+export const ninaTuningWriteSchema = z.object({
+  userId: userIdSchema,
+  traits: z.strictObject(dialShape(NINA_TRAITS)),
+  dials: z.strictObject(dialShape(NINA_DIALS)),
+  relationship: z.enum(NINA_RELATIONSHIPS),
+  /** Goes into an IMAGE prompt, not into her voice. Empty is valid and means "the anchor outfit". */
+  wardrobe: z.string().trim().max(NINA_WARDROBE_MAX),
+  /** Handed to her verbatim in the system prompt. Empty is valid and is the default. */
+  notes: z.string().trim().max(NINA_NOTES_MAX),
+})
+export type NinaTuningWriteInput = z.infer<typeof ninaTuningWriteSchema>
+
+/**
+ * The reset takes no tuning at all — deliberately. The defaults it writes are phase 1's module
+ * constant, so accepting them from the client would be accepting a client's opinion of what
+ * "default" means, and invariant 2 is the one thing in this set that must not be negotiable.
+ */
+export const ninaTuningResetSchema = z.object({
+  userId: userIdSchema,
+})
+export type NinaTuningResetInput = z.infer<typeof ninaTuningResetSchema>
