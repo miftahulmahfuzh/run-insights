@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/admin-album-file-manager`
 **Branch:** `feature/admin-album-file-manager` (base: `origin/main` @ `21a69ef`)
 **Phases:** 7
-**Status:** in flight — 2/7 phases complete (1, 2); a phase is complete when its row in the Phases table is ticked ✅
+**Status:** in flight — 5/7 phases complete (1, 2, 3, 4, 5); a phase is complete when its row in the Phases table is ticked ✅
 **Reconciled:** 2026-09-04, round 1 (see the Reconciliation Log)
 **Coordinator:** —
 
@@ -126,11 +126,11 @@ Every phase must hold all of these. They are the repo's, not this plan's inventi
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Folder metadata on `nina_avatars`, and the folder-aware data layer | R1 | `lib/db`, `lib/nina`, `lib/admin`, `drizzle`, `app/admin` | 9 | — | NORMAL | `lib/db/.workflows/plan/P1-DB-A000.md` | `P1-DB-A000` | `#66` |
 | 2 ✅ | The pure file-tree library: image filter, path grammar, tree build, upload diff | R1 | `lib/admin`, `tests` | 2 | — | NORMAL | `.workflows/plan/admin-album-file-manager/phase-2.md` | `P1-RI-A000` | `#67` |
-| 3 | The chat side of "share link to Nina": the `?photo=` idiom, composer chip, `attachExisting` | R2 | `lib/nina`, `app/nina`, `components/nina`, `tests` | 7 | — | NORMAL | `.workflows/plan/admin-album-file-manager/phase-3.md` | — | `#68` |
-| 4 | Folder-aware upload: batch register, thumbnails, and the describe pre-pass off the hot path | R1, R2 | `lib/admin`, `app/api/admin`, `lib/nina`, `tests` | 5 | 1, 2, 3 | HARD | `.workflows/plan/admin-album-file-manager/phase-4.md` | — | `#69` |
-| 5 | The file explorer: tree, breadcrumb, paginated grid, drop zone, upload queue, set-as-profile | R1 | `components/admin`, `app/admin`, `lib/admin` | 14 | 4 | HARD | `.workflows/plan/admin-album-file-manager/phase-5.md` | — | `#70` |
-| 6 | Folder maintenance: create, rename, move, delete | R1 | `lib/admin`, `components/admin`, `tests` | 7 | 5 | NORMAL | `.workflows/plan/admin-album-file-manager/phase-6.md` | — | `#71` |
-| 7 | "Share link to Nina" in the explorer, opening the chat in a new tab | R2 | `lib/admin`, `components/admin`, `app/admin`, `tests` | 6 | 3, 5 | EASY | `.workflows/plan/admin-album-file-manager/phase-7.md` | — | `#72` |
+| 3 ✅ | The chat side of "share link to Nina": the `?photo=` idiom, composer chip, `attachExisting` | R2 | `lib/nina`, `app/nina`, `components/nina`, `tests` | 7 | — | NORMAL | `.workflows/plan/admin-album-file-manager/phase-3.md` | `P1-RI-A001` | `#68` |
+| 4 ✅ | Folder-aware upload: batch register, thumbnails, and the describe pre-pass off the hot path | R1, R2 | `lib/admin`, `app/api/admin`, `lib/nina`, `tests` | 5 | 1, 2, 3 | HARD | `.workflows/plan/admin-album-file-manager/phase-4.md` | `P1-RI-A002` | `#69` |
+| 5 ✅ | The file explorer: tree, breadcrumb, paginated grid, drop zone, upload queue, set-as-profile | R1 | `components/admin`, `app/admin`, `lib/admin` | 14 | 4 | HARD | `.workflows/plan/admin-album-file-manager/phase-5.md` | `P1-RI-A003` | `#70` |
+| 6 | Folder maintenance: create, rename, move, delete | R1 | `lib/admin`, `components/admin`, `tests` | 7 | 5 | NORMAL | `.workflows/plan/admin-album-file-manager/phase-6.md` | `P1-RI-A004` | `#71` |
+| 7 | "Share link to Nina" in the explorer, opening the chat in a new tab | R2 | `lib/admin`, `components/admin`, `app/admin`, `tests` | 6 | 3, 5 | EASY | `.workflows/plan/admin-album-file-manager/phase-7.md` | `P1-RI-A005` | `#72` |
 
 **Board:** parent card **#65**, with these seven as its sub-issues in phase order
 (#66…#72). One parent rather than one per requirement because phase 4 serves both R1 and

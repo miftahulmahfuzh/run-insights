@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-04
-**Total Active Tasks**: 3
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 2
-- Completed: 3
+- Blocked: 0
+- Completed: 4
 
 ---
 
@@ -22,30 +22,11 @@
 
 ### [P1] High
 
-- [ ] **P1-RI-A003** Phase 5: The file explorer: tree, breadcrumb, paginated grid, drop zone, upload queue, set-as-profile
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns `app/admin/nina/page.tsx` (folder-scoped paginated `searchParams` reads, still a Server Component, `force-dynamic`, `requireAdmin()` on line 1) and `components/admin/FileExplorer.tsx` with its five children under `components/admin/explorer/`: the `webkitdirectory` picker, the Explorer drag-and-drop walk (`webkitGetAsEntry()` captured synchronously, `readEntries` looped until empty), the manifest diff through phase 2's `planFolderUpload`, client-side thumbnail derivation, a four-parallel bounded upload queue chunk-registering as files land, selection, the framing studio, and "Set as profile picture". Retires `AlbumManager.tsx`, `UploadAvatar.tsx` and the singular `registerNinaAvatarAction` in one commit. Exit: picker and drag-drop produce the same tree; a directory of more than 100 files uploads all of them; a re-drop uploads nothing and says so with a count; the grid issues only thumbnail requests; one click sets her profile picture; the retired files no longer exist; test, typecheck, lint and format:check green.
-  - **Status**: open
-  - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 5 of 7)
-  - **Satisfies**: R1 — `/admin/nina` becomes a file manager: nested folders, folder upload by picker and by drag-and-drop from Windows Explorer, uploading only what is new, image files only, and an explorer view where clicking a photo lets you set it as her profile picture
-  - **Depends on**: `P1-RI-A002`
-  - **Plan**: `.workflows/plan/P1-RI-A003.md`
-  - **Card**: `miftahulmahfuzh/run-insights#70`
-
-### [P2] Medium
-
-### [P3] Low
-
-### [P4] Backlog
-
-### 🚫 Blocked
-
 - [ ] **P1-RI-A004** Phase 6: Folder maintenance: create, rename, move, delete
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns the create / rename / move / delete folder actions plus the photo move and remove in `lib/admin/ninaAlbumActions.ts` (each `requireAdmin()`-gated and Zod-validated against phase 4's `folderPathSchema`), the pure refusal decisions in `lib/admin/folderOps.ts` + `tests/admin.folderOps.test.ts`, `components/admin/FolderMenu.tsx` and `PhotoMoveBar.tsx`, and three insertions at phase 5's two marked seams. The current photo cannot be removed; a recursive delete removes rows first and blobs best-effort in chunks of 100; a move is an UPDATE of the folder column and copies no blob; undeclare a subtree only when it is actually empty. Exit: rename, move and recursive delete are reflected in the tree without a manual reload; a folder holding the current photo refuses deletion with a message naming the photo and the reason, and the second answer leaves it holding exactly that one photo; no folder operation changes the Blob object count except a delete; `npm test` and `npm run typecheck` green.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 6 of 7)
   - **Satisfies**: R1 — `/admin/nina` becomes a file manager: nested folders, folder upload by picker and by drag-and-drop from Windows Explorer, uploading only what is new, image files only, and an explorer view where clicking a photo lets you set it as her profile picture
   - **Depends on**: `P1-RI-A003`
@@ -56,12 +37,20 @@
   - **Difficulty**: EASY
   - **Type**: Feature
   - **Context**: Owns `lib/admin/shareToNina.ts` (the one place an avatar id becomes a chat URL, built through phase 3's formatter), `components/admin/ShareToNinaItem.tsx`, the one item at phase 5's marked seam in `components/admin/explorer/SelectionPane.tsx`, the `shareOrigin` prop threaded from `app/admin/nina/page.tsx` through `FileExplorer`, and `tests/admin.shareToNina.test.ts`. The click opens `<origin>/nina?photo=avatar:<id>` in a new tab with `'noopener'`, before awaiting anything, and fires (never awaits) `ensureNinaAvatarDescriptionAction` when the photo has no description. Exit: one new tab at the production origin with `window.opener === null`; the chat there shows the photo chipped in the composer; sending with or without text produces a reply; no image bytes are re-uploaded; an un-described photo gets described without the tab waiting for it; `npm test` and `npm run typecheck` green.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 7 of 7)
   - **Satisfies**: R2 — "Share link to Nina" on a photo in that explorer: opens the runins.site chat in a new browser tab with the photo attached as a pointer rather than a re-upload, takes an optional question, and Nina answers it
   - **Depends on**: `P1-RI-A001`, `P1-RI-A003`
   - **Plan**: `.workflows/plan/P1-RI-A005.md`
   - **Card**: `miftahulmahfuzh/run-insights#72`
+
+### [P2] Medium
+
+### [P3] Low
+
+### [P4] Backlog
+
+### 🚫 Blocked
 
 ---
 
@@ -119,6 +108,29 @@
   - **Drift**: Step 6's import edit resolved by grep as the plan instructs. `resolveAttachment` was the last caller of BOTH `listNinaAvatars` and `listNinaMessageImages` in `lib/nina/actions.ts`, and their removal also orphaned `NINA_GALLERY_LIMIT`; all three imports removed, `getNinaAvatar` and `getNinaMessageImage` added to the existing `./queries` import.
   - **Drift**: **Pre-existing CI break, not caused by this phase and not fixed here.** `npm run ci:client-secret-guard` fails on the branch and fails identically at HEAD (`76e0c2a`, phase 1's commit) — verified by stashing this phase's work and re-running. The offender is `lib/db/.workflows/package_readme.md:51`, prose written by phase 1's readme-updater that quotes `process.env.DATABASE_URL`; the guard greps `-rlE` across `lib/` and does not exclude markdown, so a documentation file trips RULE 2. Left alone deliberately: `lib/db/**` is phase 1's package, and phase 4's plan states in as many words that the guard file is not edited. **Needs an owner** — either the readme prose is reworded or the guard learns to skip non-source files.
   - **Drift**: `registerNinaAvatarAction`'s pre-edit body had `revalidatePath('/admin/nina')` before the describe pre-pass where the plan's quoted "before" shape implied it came after. Immaterial — the plan replaces the whole function and its replacement has one `revalidatePath` at the end, which is what landed.
+
+### [P1] P1-RI-A003
+- [x] **P1-RI-A003** Phase 5: The file explorer: tree, breadcrumb, paginated grid, drop zone, upload queue, set-as-profile
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `app/admin/nina/page.tsx` (folder-scoped paginated `searchParams` reads, still a Server Component, `force-dynamic`, `requireAdmin()` on line 1) and `components/admin/FileExplorer.tsx` with its five children under `components/admin/explorer/`: the `webkitdirectory` picker, the Explorer drag-and-drop walk (`webkitGetAsEntry()` captured synchronously, `readEntries` looped until empty), the manifest diff through phase 2's `planFolderUpload`, client-side thumbnail derivation, a four-parallel bounded upload queue chunk-registering as files land, selection, the framing studio, and "Set as profile picture". Retires `AlbumManager.tsx`, `UploadAvatar.tsx` and the singular `registerNinaAvatarAction` in one commit. Exit: picker and drag-drop produce the same tree; a directory of more than 100 files uploads all of them; a re-drop uploads nothing and says so with a count; the grid issues only thumbnail requests; one click sets her profile picture; the retired files no longer exist; test, typecheck, lint and format:check green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_ALBUM_FILE_MANAGER_PLAN.md` (phase 5 of 7)
+  - **Satisfies**: R1 — `/admin/nina` becomes a file manager: nested folders, folder upload by picker and by drag-and-drop from Windows Explorer, uploading only what is new, image files only, and an explorer view where clicking a photo lets you set it as her profile picture
+  - **Depends on**: `P1-RI-A002`
+  - **Plan**: `.workflows/plan/P1-RI-A003.md`
+  - **Card**: `miftahulmahfuzh/run-insights#70`
+  - **Completed**: 2026-09-04 17:30
+  - **Method**: /do
+  - **Files**: app/admin/nina/page.tsx, components/admin/FileExplorer.tsx, components/admin/explorer/model.ts, components/admin/explorer/thumbnail.ts, components/admin/explorer/dropWalk.ts, components/admin/explorer/useFolderUpload.ts, components/admin/explorer/FolderTree.tsx, components/admin/explorer/PhotoGrid.tsx, components/admin/explorer/SelectionPane.tsx, components/admin/explorer/UploadQueue.tsx, components/admin/CropStudio.tsx, lib/admin/ninaAlbumActions.ts, components/admin/AlbumManager.tsx (deleted), components/admin/UploadAvatar.tsx (deleted)
+  - **Verification**: `npm run typecheck` clean (next typegen resolves `PageProps<'/admin/nina'>`); `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, unrelated); `npm run format:check` clean; `npm test` 120 files / 2161 tests green with no new suite — correct for this phase, since what remains here is browser API and React and vitest runs `environment: 'node'`; `npm run build` emits `/admin/nina` as a dynamic route; all six `ci:*` guards PASS. Retirement greps: `AlbumManager.tsx` and `UploadAvatar.tsx` no longer exist, and no importer and no caller of `registerNinaAvatarAction` remains in `app/`, `components/`, `lib/` or `tests/`.
+  - **Not verified (deliberately)**: the plan's nine manual browser checks — picker vs drag-drop tree parity, the >100-file `readEntries` batching check, the re-drop "nothing new" count, thumbnail-only network requests, set-as-profile, and the framing studio. `drizzle/0003` is generated but applied to no database, so `nina_folders` and the five new `nina_avatars` columns exist nowhere live and `/admin/nina` cannot render against them. Applying the migration is a deploy action the plan-set coordinator carries to the user; phases 1 and 4 both reported the same way. **These checks remain outstanding until the migration is applied.**
+  - **Drift**: The plan's citations had drifted because phase 4 landed first — `registerNinaAvatarAction` at `:111` not `:87`, `setCurrentNinaAvatarAction` at `:156` not `:135`. Followed the plan's intent; no structural drift.
+  - **Drift**: `EXPLORER_REGISTER_CHUNK` is exported, as the Interface Contract's Creates list names it, rather than the private `const REGISTER_CHUNK` the Step 4 code block wrote. Same value (`NINA_ADMIN_BATCH_MAX`). This harmonises the contract with the code block; it is not a second constant and not a fallback.
+  - **Drift**: Dropped an unused `cn` import the plan's `UploadQueue.tsx` block wrote but never used — lint rejects it. `UploadQueue`'s `REFUSAL_TEXT` docstring said *"Ten entries, not four"*, but `UploadRefusal` has nine members and the plan's own code block had nine; reworded to *"Nine"*. The exhaustive `Record` typechecks.
+  - **Drift**: Removing the singular `registerNinaAvatarAction` orphaned two imports in `lib/admin/ninaAlbumActions.ts` (`avatarRegisterSchema`, `insertNinaAvatarAsCurrent`) and one docstring on `AdminActionResult.id` naming the deleted function. Imports removed; the docstring now names the describe actions, which are what still set `id` (`:306`). `avatarRegisterSchema` itself stays in `lib/admin/schema.ts` as the plan requires — `tests/admin.avatars.test.ts` covers it.
+  - **Drift**: The Step 7 SEAM comment quotes the string `NEXT_PUBLIC_`, and written as a JSX `{/* */}` block with bare continuation lines it failed `ci:client-secret-guard` Rule 3 — the guard's `isComment` only recognises `//`, `/*` and `*`-prefixed lines. Reformatted the comment with leading `*` per the convention every other mention in the repo already follows, with a note in it explaining why the prefix is load-bearing. **The guard script was NOT modified.**
+  - **Drift**: Prettier reformatted three of the new files (`model.ts`, `PhotoGrid.tsx`, `useFolderUpload.ts`) — whitespace only.
 
 ---
 

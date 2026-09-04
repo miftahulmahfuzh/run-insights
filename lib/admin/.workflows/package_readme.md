@@ -185,7 +185,8 @@ create one.
 ```ts
 export const avatarIdSchema
 export const cropWriteSchema            // type CropWrite
-export const avatarRegisterSchema       // type AvatarRegister — the singular upload
+export const avatarRegisterSchema       // type AvatarRegister — no live caller since phase 5;
+                                        // kept as the field-shape reference the batch record mirrors
 export const userIdSchema
 export const slotKeySchema
 export const slotEditSchema             // type SlotEdit
@@ -314,7 +315,6 @@ export interface AdminManifestResult extends AdminActionResult {
 }
 
 export async function describeNinaAvatarAction(rawId: string): Promise<AdminActionResult>
-export async function registerNinaAvatarAction(input: unknown): Promise<AdminActionResult>
 export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminActionResult>
 export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminActionResult>
 export async function deleteNinaAvatarAction(rawId: string): Promise<AdminActionResult>
@@ -344,9 +344,8 @@ one at a time per client, so those latencies do not overlap; they add.
 `description` has exactly one reader — her prompt — so it is now produced at exactly the two
 moments it is needed:
 
-- **It becomes her face**: `setCurrentNinaAvatarAction`, plus the two paths that make a row current
-  without going through it (`registerNinaAvatarAction` with `makeCurrent`, and the batch's
-  empty-album promotion).
+- **It becomes her face**: `setCurrentNinaAvatarAction`, plus the one remaining path that makes a
+  row current without going through it (the batch's empty-album promotion).
 - **It is handed to her**: the share-to-Nina path, via `ensureNinaAvatarDescriptionAction`.
 
 Plus on demand, forever, via `describeNinaAvatarAction` — the button that was always there.
@@ -370,23 +369,16 @@ for a caller that needs the prose in its own return value; it delegates to `desc
 rather than repeating its body, because two spellings of one vendor call is how one of them ends up
 not writing the row.
 
-#### `registerNinaAvatarAction` — the singular path
+#### `registerNinaAvatarsAction` — the only register path
 
-Still the only writer on the one-file-at-a-time path (`onUploadCompleted` is inert). It lands rows
-at the album ROOT: it says nothing about `folder`, `filename` or `source_key`, and the
-`folder text NOT NULL DEFAULT ''` column is what makes that a legal row. A row it writes has no
-`source_key`, so it is invisible to the manifest diff.
+Registers a whole chunk of a folder upload in ONE action call. As of phase 5 it is the album's
+*only* writer of new rows: `registerNinaAvatarAction` (singular) was deleted along with its last
+caller, `components/admin/UploadAvatar.tsx`, so there is no longer a path that lands a row without a
+`folder` and a `source_key`, and nothing new can be invisible to the manifest diff.
 
-`makeCurrent: false` still goes through `insertNinaAvatarAsCurrent` and then hands the crown back —
-two statements instead of one, on an operation a human performs a handful of times a year, in
-exchange for not writing a second insert path that could disagree about the partial unique index.
-
-#### `registerNinaAvatarsAction` — the batch path
-
-Registers a whole chunk of a folder upload in ONE action call. The split it embodies: **parallel
-bytes, batched bookkeeping.** The blob PUTs go through the Route Handler and genuinely run in
-parallel under the client's bounded-concurrency queue; Server Actions do not, so the bookkeeping
-batches at `NINA_ADMIN_BATCH_MAX`.
+The split it embodies: **parallel bytes, batched bookkeeping.** The blob PUTs go through the Route
+Handler and genuinely run in parallel under the client's bounded-concurrency queue; Server Actions
+do not, so the bookkeeping batches at `NINA_ADMIN_BATCH_MAX`.
 
 It uses `insertNinaAvatars`, not `insertNinaAvatarAsCurrent`, because the latter un-currents and
 re-currents on every insert (the partial unique index makes the statement order load-bearing).
@@ -582,10 +574,16 @@ handed to her, and then through `after()`.
 
 ### Primary consumers
 
-- `components/admin/AlbumManager.tsx` — `deleteNinaAvatarAction`, `describeNinaAvatarAction`,
-  `saveNinaAvatarCropAction`, `setCurrentNinaAvatarAction`.
-- `components/admin/UploadAvatar.tsx` — the `avatars.ts` constants and `registerNinaAvatarAction`.
-- `components/admin/explorer/**` — `filetree.ts` and the `avatars.ts` bounds (the client half).
+- `components/admin/explorer/SelectionPane.tsx` — `deleteNinaAvatarAction`,
+  `describeNinaAvatarAction`, `saveNinaAvatarCropAction`, `setCurrentNinaAvatarAction`, plus
+  `folderBreadcrumbs`. Inherited these from `AlbumManager.tsx`, which phase 5 deleted.
+- `components/admin/explorer/useFolderUpload.ts` — the only caller of `registerNinaAvatarsAction`
+  and `listNinaAlbumManifestAction`; also `planFolderUpload`, `AvatarBatchRecord`, and the
+  `avatars.ts` pathname helpers and bounds. Replaced `UploadAvatar.tsx` as the upload path.
+- `components/admin/FileExplorer.tsx`, `explorer/FolderTree.tsx`, `explorer/UploadQueue.tsx`,
+  `explorer/dropWalk.ts`, `explorer/model.ts` — `filetree.ts` (`buildTree`, `folderAncestors`,
+  `folderBreadcrumbs`, `LocalFileLike`, `UploadRefusal`) and the `avatars.ts` bounds — the client
+  half, all type-or-pure imports.
 - `app/api/admin/nina/upload/route.ts` — the whole `avatars.ts` surface plus `requireAdminApi`,
   `forbiddenJson`, `AdminIdentity`.
 - `app/admin/memory/page.tsx` — `memoryModel`, `memoryStore`, `memoryVocab`, `users`, `requireAdmin`.
@@ -680,22 +678,35 @@ export default async function Page() {
   thumbnail exists; its stored pathname is not derivable.
 - **`declareNinaFolders` goes before the insert**, and once per batch. Reversing the order leaves
   photographs in a folder nothing declared.
-- **`registerNinaAvatarAction` (singular) writes no `source_key`**, so its rows are invisible to the
-  manifest diff. That is documented behaviour, not a bug — it is the F33 path, kept until the screen
-  that calls it is replaced.
+- **Do not reintroduce a singular register action.** `registerNinaAvatarAction` existed to land one
+  file at a time and wrote no `folder` and no `source_key`, which made its rows invisible to the
+  manifest diff; phase 5 deleted it with its last caller. `registerNinaAvatarsAction` handles a
+  batch of one perfectly well, and a second insert path is how two of them end up disagreeing about
+  the partial unique index.
 
 ## Notes
 
-`registerNinaAvatarAction` and `registerNinaAvatarsAction` coexist deliberately for one more phase:
-`components/admin/UploadAvatar.tsx` is still the singular action's caller, and that component
-belongs to the phase that replaces the whole screen. A dangling export, or two upload paths that
-can disagree, would both be worse than one action with one caller for one more phase.
+The singular/batch register coexistence is over. Phase 5 replaced the whole `/admin/nina` screen
+with `components/admin/FileExplorer.tsx`, which deleted `UploadAvatar.tsx` — the singular action's
+only caller — and so `registerNinaAvatarAction` went with it in the same commit rather than
+lingering as a dangling export. Removing it also orphaned two imports here
+(`avatarRegisterSchema`, `insertNinaAvatarAsCurrent`), both since dropped;
+`avatarRegisterSchema` itself remains in `schema.ts`, still covered by `tests/admin.avatars.test.ts`.
+There is now exactly one path that lands a new album row, and it is folder-aware.
 
 Known, filed limitations: lexicographic rather than natural folder sort; `truncated` over-reports at
 exactly the manifest cap; empty directories in a dropped tree are invisible to the browser and so
 never survive an upload (only *"New subfolder"* can create one).
 
 ## Documentation Created
+
+2026-09-04 — updated for task **P1-RI-A003** (`admin-album-file-manager` phase 5, the file-manager
+screen). That task owns `components/admin`, not this package; the single change here was the
+deletion of `registerNinaAvatarAction` (singular) along with its last caller,
+`components/admin/UploadAvatar.tsx`. Refreshed: the `ninaAlbumActions.ts` signature list, the
+describe-pre-pass trigger list, the register-path section, the `avatarRegisterSchema` annotation,
+the reverse-dependency list (now the `explorer/**` consumers), the pitfall that described the
+singular action's `source_key` behaviour, and the note that had the two register paths coexisting.
 
 2026-09-04 — initial creation via `/update-readme`, following task **P1-RI-A002**
 (`admin-album-file-manager` phase 4, the folder-aware upload boundary). That task added the

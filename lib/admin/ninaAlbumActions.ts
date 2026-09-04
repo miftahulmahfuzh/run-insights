@@ -9,7 +9,6 @@ import {
   albumManifestSchema,
   avatarBatchRegisterSchema,
   avatarIdSchema,
-  avatarRegisterSchema,
   cropWriteSchema,
   type AvatarBatchRecord,
 } from '@/lib/admin/schema'
@@ -20,7 +19,6 @@ import {
   deleteNinaAvatar,
   getCurrentNinaAvatar,
   getNinaAvatar,
-  insertNinaAvatarAsCurrent,
   insertNinaAvatars,
   listNinaAvatarManifest,
   setCurrentNinaAvatar,
@@ -53,7 +51,7 @@ import { describeNinaImages } from '@/lib/nina/vision'
 export interface AdminActionResult {
   ok: boolean
   error?: string
-  /** Set by `registerNinaAvatarAction` so the client can select the new row immediately. */
+  /** Set by the describe actions, so a caller can tie the prose back to its row. */
   id?: string
   /** Set by the describe actions, so the card can show the prose without a refetch. */
   description?: string
@@ -85,60 +83,6 @@ export async function describeNinaAvatarAction(rawId: string): Promise<AdminActi
     console.error('[f33] admin describe failed', cause)
     return { ok: false, error: 'The description call failed. Try again.' }
   }
-}
-
-/**
- * Register a blob the browser has just PUT, one file at a time. **The only writer of
- * `nina_avatars` on this path** — `onUploadCompleted` is inert, exactly as F04's is.
- *
- * `insertNinaAvatarAsCurrent` is phase 1's, and it un-currents before inserting because
- * `nina_avatars_user_current_unq` makes the order load-bearing. `makeCurrent: false` still goes
- * through it — see the branch below for why that is a deliberate small cost rather than a second
- * insert path.
- *
- * ── THIS IS NO LONGER THE ONLY REGISTER, AND IT IS NO LONGER THE FAST ONE ───────────────────
- * `registerNinaAvatarsAction` (plural, below) is what a folder upload calls. This one survives
- * unchanged in signature because `components/admin/UploadAvatar.tsx` is still its caller and that
- * file belongs to the phase that replaces the whole screen — a dangling export, or two upload
- * paths that can disagree, would both be worse than one action with one caller for one more phase.
- *
- * It lands rows at the album ROOT: it says nothing about `folder`, `filename` or `source_key`, and
- * phase 1's `folder text NOT NULL DEFAULT ''` is what makes that a legal row rather than a
- * migration this function has to know about. A row it writes has no `source_key`, so it is
- * invisible to the manifest diff — phase 1's documented consequence at `listNinaAvatarManifest`,
- * not a new one.
- */
-export async function registerNinaAvatarAction(input: unknown): Promise<AdminActionResult> {
-  const { userId } = await requireAdmin()
-  const parsed = avatarRegisterSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'That upload did not describe itself properly.' }
-  const { blobUrl, pathname, width, height, bytes, makeCurrent } = parsed.data
-
-  // `insertNinaAvatarAsCurrent` is the only always-current insert phase 1 exposes, and it always
-  // makes the new row current. For "park it in the album" we insert it as current and then hand the
-  // crown straight back to whoever had it — two statements instead of one, on an operation a human
-  // performs a handful of times a year, in exchange for not writing a second insert path that could
-  // disagree with phase 1's about the partial unique index.
-  const previousCurrentId = makeCurrent ? null : ((await getCurrentNinaAvatar(userId))?.id ?? null)
-  const row = await insertNinaAvatarAsCurrent(userId, {
-    blobUrl,
-    pathname,
-    source: 'admin',
-    width,
-    height,
-    bytes,
-  })
-  if (previousCurrentId != null) await setCurrentNinaAvatar(userId, previousCurrentId)
-
-  /*
-   * `previousCurrentId == null` is exactly "this row ended up being her face" — either because
-   * `makeCurrent` was true, or because the album was empty and there was no crown to hand back.
-   * That is the one condition that earns a description. See `scheduleDescribe`.
-   */
-  if (previousCurrentId == null) scheduleDescribe(userId, row.id)
-
-  revalidatePath('/admin/nina')
-  return { ok: true, id: row.id }
 }
 
 /**
