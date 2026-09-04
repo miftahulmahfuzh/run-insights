@@ -174,13 +174,20 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
 })
 
 describe('nina_avatars', () => {
-  it('carries exactly the fifteen columns phases 12-15 were written against', () => {
+  it('carries exactly the twenty columns phases 12-15 and F34 were written against', () => {
     expect(names(schema.ninaAvatars)).toEqual(
       [
         'id',
         'user_id',
         'blob_url',
         'pathname',
+        // F34 R1: the album is a file manager, so a photo knows its folder, its name on the
+        // laptop, the dedupe key it was registered under, and where its grid thumbnail lives.
+        'folder',
+        'filename',
+        'source_key',
+        'thumb_url',
+        'thumb_pathname',
         'width',
         'height',
         'bytes',
@@ -194,6 +201,42 @@ describe('nina_avatars', () => {
         'created_at',
       ].sort(),
     )
+  })
+
+  it('folder is NOT NULL DEFAULT — which is what puts every pre-F34 row at the root (F34 R1)', () => {
+    // The whole migration story, asserted: a constant default rather than a backfill script.
+    // `419167d` is the precedent for the other case, where a value had to be derived per row.
+    expect(sqlType(schema.ninaAvatars, 'folder')).toBe('text')
+    expect(columns(schema.ninaAvatars).get('folder')?.notNull).toBe(true)
+    expect(columns(schema.ninaAvatars).get('folder')?.hasDefault).toBe(true)
+  })
+
+  it('the other four F34 columns are nullable, which is what made the unique index safe to add', () => {
+    // Postgres unique indexes treat NULLs as DISTINCT, so every pre-F34 row carries NULL
+    // `source_key` and coexists with every other. `NULLS NOT DISTINCT` would have made the
+    // migration fail on the second existing row.
+    for (const column of ['filename', 'source_key', 'thumb_url', 'thumb_pathname']) {
+      expect(columns(schema.ninaAvatars).get(column)?.notNull, column).toBe(false)
+      expect(columns(schema.ninaAvatars).get(column)?.hasDefault, column).toBe(false)
+    }
+  })
+
+  it('has the folder page index and the dedupe-key unique index beside the two it already had', () => {
+    expect(indexNames(schema.ninaAvatars)).toEqual([
+      'nina_avatars_user_created_idx',
+      'nina_avatars_user_current_unq',
+      'nina_avatars_user_folder_created_idx',
+      'nina_avatars_user_source_key_unq',
+    ])
+    // Two indexes, two reads: the folder index does NOT subsume the created index, because
+    // "the whole album, newest first" puts no equality on `folder` and would have to sort.
+    const unq = cfg(schema.ninaAvatars).indexes.find(
+      (i) => i.config.name === 'nina_avatars_user_source_key_unq',
+    )
+    expect(unq?.config.unique).toBe(true)
+    // NOT partial, unlike `nina_avatars_user_current_unq`: NULLs being DISTINCT is what exempts
+    // the pre-F34 rows, so no WHERE clause is needed to do it.
+    expect(unq?.config.where).toBeUndefined()
   })
 
   it('has a PARTIAL unique index on (user_id) where is_current, so two current avatars cannot exist', () => {
@@ -217,6 +260,29 @@ describe('nina_avatars', () => {
     expect(sqlType(schema.ninaAvatars, 'crop_scale')).toBe('numeric(5, 3)')
     expect(sqlType(schema.ninaAvatars, 'crop_x')).toBe('integer')
     expect(sqlType(schema.ninaAvatars, 'crop_y')).toBe('integer')
+  })
+})
+
+describe('nina_folders', () => {
+  it('is keyed (user_id, folder), so a double declaration is impossible', () => {
+    // The `nina_nags` idiom: there is no second fact about a folder to hang a surrogate id on,
+    // and the constraint is what lets `declareNinaFolders` be an ON CONFLICT DO NOTHING upsert
+    // instead of a read-then-insert that is correct until two tabs race.
+    expect(cfg(schema.ninaFolders).primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
+      'user_id',
+      'folder',
+    ])
+  })
+
+  it('holds one fact and nothing else — no blob_url, no count, no is_current', () => {
+    // A stored count would be a cache with two writers, which is the exact failure this table's
+    // own header is otherwise about. The tree pane's count comes from nina_avatars at read time.
+    expect(names(schema.ninaFolders)).toEqual(['user_id', 'folder', 'created_at'].sort())
+    expect(columns(schema.ninaFolders).get('folder')?.notNull).toBe(true)
+  })
+
+  it('cascades from users, so deleting an account takes its folder declarations with it', () => {
+    expect(fkFor(schema.ninaFolders, 'user_id')?.onDelete).toBe('cascade')
   })
 })
 

@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   ADMIN_AVATAR_MAX_UPLOAD_BYTES,
   adminAvatarPathname,
+  adminAvatarThumbPathname,
   extForContentType,
   isAdminAvatarRequestPathname,
+  isAdminAvatarThumbRequestPathname,
 } from '@/lib/admin/avatars'
 import { avatarRegisterSchema, cropWriteSchema } from '@/lib/admin/schema'
 
@@ -116,5 +118,38 @@ describe('avatarRegisterSchema', () => {
     expect(
       avatarRegisterSchema.safeParse({ ...base, bytes: ADMIN_AVATAR_MAX_UPLOAD_BYTES + 1 }).success,
     ).toBe(false)
+  })
+})
+
+describe('adminAvatarThumbPathname / isAdminAvatarThumbRequestPathname', () => {
+  it('is the avatar shape with a thumb- segment and the same id', () => {
+    const pathname = adminAvatarThumbPathname(USER, ID, 'webp')
+    expect(pathname).toBe(`nina/${USER}/thumb-${ID}.webp`)
+    expect(isAdminAvatarThumbRequestPathname(pathname, USER)).toBe(true)
+  })
+
+  it('keeps the two shapes apart in both directions', () => {
+    // Two predicates, not one widened regex: the Route Handler applies a different size cap to
+    // each, so it has to know WHICH shape it was handed.
+    expect(isAdminAvatarThumbRequestPathname(adminAvatarPathname(USER, ID, 'jpg'), USER)).toBe(
+      false,
+    )
+    expect(isAdminAvatarRequestPathname(adminAvatarThumbPathname(USER, ID, 'webp'), USER)).toBe(
+      false,
+    )
+  })
+
+  it('refuses another user folder, traversal and a bad id, exactly as the avatar half does', () => {
+    expect(isAdminAvatarThumbRequestPathname(`nina/someoneelse/thumb-${ID}.webp`, USER)).toBe(false)
+    expect(isAdminAvatarThumbRequestPathname(`nina/${USER}/../thumb-${ID}.webp`, USER)).toBe(false)
+    expect(isAdminAvatarThumbRequestPathname(`nina/${USER}/thumb-short.webp`, USER)).toBe(false)
+    expect(isAdminAvatarThumbRequestPathname(`nina/${USER}/thumb-${ID}.gif`, USER)).toBe(false)
+    expect(
+      isAdminAvatarThumbRequestPathname(adminAvatarThumbPathname(USER, ID, 'jpg'), 'other'),
+    ).toBe(false)
+  })
+
+  it('refuses a user id that is not id-shaped rather than interpolating it into a regex', () => {
+    expect(isAdminAvatarThumbRequestPathname(`nina/a.*/thumb-${ID}.webp`, 'a.*')).toBe(false)
   })
 })

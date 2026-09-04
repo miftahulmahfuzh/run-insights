@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { getAdminUser } from '@/lib/admin/users'
-import { getCurrentNinaAvatar, listNinaAvatars } from '@/lib/nina/queries'
+import { countNinaAvatars, getCurrentNinaAvatar } from '@/lib/nina/queries'
 
 /**
  * `/admin` — the hub. It exists because `/admin` would otherwise 404 for an admin, which reads as
@@ -16,8 +16,14 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminHomePage() {
   const { userId, email } = await requireAdmin()
-  const [album, current, me] = await Promise.all([
-    listNinaAvatars(userId),
+  const [albumCount, current, me] = await Promise.all([
+    /*
+     * A COUNT, not the album. This page renders `albumCount` and nothing else about the rows, and
+     * F34 R1 makes the album *"hundreds of profile pics"* — so `listNinaAvatars(userId)` here was
+     * fetching every column of every row, including the `description` prose, to print one integer
+     * on a `force-dynamic` page the operator opens constantly.
+     */
+    countNinaAvatars(userId),
     getCurrentNinaAvatar(userId),
     getAdminUser(userId),
   ])
@@ -35,9 +41,9 @@ export default async function AdminHomePage() {
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Nina&rsquo;s album</h2>
           <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
-            {album.length === 0
+            {albumCount === 0
               ? 'Empty — she is still using the committed photo.'
-              : `${album.length} photo${album.length === 1 ? '' : 's'}, ${
+              : `${albumCount} photo${albumCount === 1 ? '' : 's'}, ${
                   current ? 'one current' : 'none current'
                 }.`}
           </p>

@@ -40,11 +40,73 @@ export const NINA_AVATAR_FALLBACK_SRC = '/nina/avatar-001.png'
 export const NINA_GALLERY_LIMIT = 200
 
 /**
- * How many album photos render at once. Six generations a day (phase 12's cap) is ten days of
- * flat-out use, and `listNinaAvatars` is unpaginated by design, so this is a render cap and not a
- * query cap: the rows are already in hand.
+ * How many album photos `/nina/about`'s mobile grid renders at once.
+ *
+ * **A RENDER CAP OVER AN UNPAGINATED READ, and after F34 that is a narrower claim than it used to
+ * be.** `listNinaAvatars` still reads the whole album in one statement and still has three
+ * callers, so for `albumPhotos` below the rows are already in hand and this is a `slice`. What
+ * changed is that it is no longer the album's ONLY read: `/admin/nina` is a file manager over
+ * hundreds of photos (F34 R1) and pages a folder at a time through
+ * `listNinaAvatarsInFolder`, whose bound is `NINA_ADMIN_PAGE_SIZE` below and is a real `LIMIT`.
+ *
+ * So: 60 is what a phone scrolls, and it is not a statement about how large the album may get.
+ * Six generations a day (phase 12's cap) is ten days of flat-out use; a dropped folder is ten days
+ * of it in one gesture, which is exactly why the admin screen does not share this number.
  */
 export const NINA_ALBUM_MAX = 60
+
+/**
+ * One page of `/admin/nina`'s content pane — F34 R1's *"hundreds of profile pics"*.
+ *
+ * The admin layout is the app's only deliberately-desktop shell (`app/admin/layout.tsx`,
+ * `max-w-[1400px]`), so the grid draws roughly seven thumbnails across; 120 is about seventeen
+ * rows, which is two scrolls of content and two or three pages for the album the requirement
+ * describes. That is the shape being bought: a numbered pager over an `OFFSET`, not
+ * virtualisation for a dataset a human assembled by hand.
+ *
+ * The number is small because of what a page COSTS, and that cost is the whole argument for
+ * `nina_avatars.thumb_url` existing: 120 derived thumbnails is a few megabytes, and 120 untouched
+ * originals — which is what a grid of `blob_url` would fetch — is closer to half a gigabyte.
+ *
+ * It is both the default and the CEILING in `listNinaAvatarsInFolder`: a caller may ask for fewer
+ * and cannot ask for more, so a hand-edited `?limit=` in a URL cannot turn one page into the
+ * unpaginated read this constant exists to avoid.
+ */
+export const NINA_ADMIN_PAGE_SIZE = 120
+
+/**
+ * The hard ceiling on one folder-subtree manifest — the `source_key` set the client-side diff
+ * compares a walked folder against.
+ *
+ * A key is ~120 bytes, so 2000 of them is ~240 KB crossing a Server Action boundary in one
+ * response. That is the real bound; the album is expected to be smaller.
+ *
+ * **What happens when it truncates is the reason it is allowed to truncate at all.** A short
+ * manifest makes the diff over-report: a file that IS already uploaded looks new, gets uploaded
+ * again, and its insert hits `nina_avatars_user_source_key_unq` and is discarded by
+ * `ON CONFLICT DO NOTHING`. The user pays for bytes they did not need to send; the album does not
+ * gain a duplicate row. A cap whose failure mode is "slower" rather than "wrong" is a cap that can
+ * be a constant instead of a paging protocol — and it is only true because the dedupe key is a
+ * constraint. Without the unique index this number would have to be unbounded.
+ */
+export const NINA_ADMIN_MANIFEST_MAX = 2000
+
+/**
+ * The largest batch one register call may carry, and therefore the largest single `INSERT` the
+ * data layer will run.
+ *
+ * Each row binds eleven parameters, so 50 rows is ~550 of Postgres's 65535-parameter limit — the
+ * bound is not the protocol, it is the blast radius. A 300-file drop becomes six calls instead of
+ * one, which is also what gives the upload queue its progress granularity: one failed request
+ * loses 50 files' worth of registration and the other five batches are already committed, where a
+ * single 300-row statement loses all of it.
+ *
+ * `lib/admin/schema.ts` (phase 4) bounds the batch with this number in Zod, at the boundary where
+ * a browser's claim is checked. `insertNinaAvatars` re-checks it and throws, which should be
+ * unreachable — the `assertPathSegment` posture in `lib/nina/images.ts`: the cheap loud defence at
+ * the one place that would otherwise do the damage.
+ */
+export const NINA_ADMIN_BATCH_MAX = 50
 
 /**
  * How long a question typed into the album's zoomed-photo box may be — R26.
