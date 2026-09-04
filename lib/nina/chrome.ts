@@ -59,15 +59,51 @@ export const CHROME_AUTOHIDE_MS = 5_000
 /**
  * The floating control's tap target.
  *
- * 44 px is the iOS floor, and this repo says so twice already: `app/nina/page.tsx` calls
- * `size-11` "already 44 px — the iOS tap-target floor", and every round control in `Composer` is
- * `size-11` with a `size-4` or `size-5` glyph inside it. R1 asks for a "small" button; a small
- * glyph in the app's standard target is what small means here, and 36 px would be below the floor.
+ * **32 px, which is deliberately BELOW the 44 px iOS floor, at the repo owner's explicit request:
+ * "much smaller (take much smaller space in the chat UI)".** That is a real trade and worth
+ * naming rather than burying. The floor exists because a 44 px target is what a thumb hits
+ * reliably; every round control in `Composer` is `size-11` for that reason, and this file used to
+ * say 36 px "would be below the floor".
+ *
+ * Two things make 32 px defensible *here* specifically, and neither generalises to `Composer`:
+ * both controls are pure chrome whose failure mode is a missed tap rather than a wrong action —
+ * nothing is sent, deleted or navigated by either one — and they sit in an otherwise empty lane
+ * above the composer, so the nearest rival target is tens of pixels away and a near-miss lands on
+ * nothing at all. A missed `^` is pressed again; a missed Send is a message.
+ *
+ * If a thumb turns out to miss these in practice, the fix is to raise this to 40 and re-derive
+ * `BOTTOM_GAP.chat` in `components/ui/AppShell.tsx`, which is the one other place the number
+ * lives.
  */
-export const CHROME_CONTROL_PX = 44
+export const CHROME_CONTROL_PX = 32
 
 /** Between the control's box and the composer's top edge. Enough to read as floating, not as chrome. */
 export const CHROME_CONTROL_GAP_PX = 8
+
+/**
+ * The two floating controls' shared skin — `>` (the sidebar's door, in
+ * `components/nina/NinaSidebar.tsx`) and `^`/`v` (the bar's toggle, in
+ * `components/nina/ChatChrome.tsx`).
+ *
+ * ONE constant because they are one visual pair sitting 6 px apart, and two class strings in two
+ * files is how a pair stops matching. They were `size-11 bg-card/95 shadow-card ring-rule` in two
+ * places before this, which is exactly the divergence risk this removes.
+ *
+ * FROSTED GLASS, as asked for: a translucent fill (`bg-card/40`) over a real backdrop blur, rather
+ * than the near-opaque `bg-card/95` these had — at 95% the blur was decorative, since almost
+ * nothing showed through it. `backdrop-saturate-150` is what keeps the conversation's colour from
+ * going grey behind the glass, which is the difference between frosted and merely dim. The hairline
+ * `ring-rule/50` is what gives the disc an edge once the fill stops providing one; without it a
+ * translucent circle on a pale bubble has no silhouette at all.
+ *
+ * Lives in `lib/nina/` with the other chrome rules even though it is a class string, because both
+ * consumers are components and `lib/` never imports `components/` — the same direction
+ * `controlBottomCss` already takes its `barClearancePx` argument for.
+ */
+export const NINA_CHROME_CONTROL_CLASS =
+  'grid size-8 place-items-center rounded-pill bg-card/40 text-ink-2 ' +
+  'shadow-sm ring-1 ring-rule/50 backdrop-blur-md backdrop-saturate-150 ' +
+  'transition-[opacity,transform] active:scale-[0.97]'
 
 /**
  * The composer with nothing armed: `py-3` (24) + `min-h-11` (44).

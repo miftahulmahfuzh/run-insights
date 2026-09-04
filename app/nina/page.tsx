@@ -1,7 +1,7 @@
 import { after } from 'next/server'
 
 import { ChatScreen } from '@/components/nina/ChatScreen'
-import { NinaSidebar, NinaSidebarProvider } from '@/components/nina/NinaSidebar'
+import { NinaSidebar } from '@/components/nina/NinaSidebar'
 import { NinaUnreadSync } from '@/components/nina/NinaUnreadSync'
 import type { ChatMessage } from '@/components/nina/types'
 import { AppShell } from '@/components/ui/AppShell'
@@ -396,16 +396,21 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
         R7: no header row. The face, the name and the quiet line all moved into `NinaSidebar`; see
         the block at the top of this file for why that is the same argument and not a reversal.
 
-        `NinaSidebarProvider` wraps BOTH consumers, and that is its whole reason for existing: the
-        `>` trigger lives inside phase 2's `ChatChrome` (rendered by `ChatScreen`) and the panel is
-        the sibling below, so the one piece of state they must agree about — whether this session
-        pushed the history entry the back gesture will pop — has to live above both.
+        `NinaSidebarProvider` IS NOT HERE, and that is the fix for a bug this page shipped with.
+        It lives in `components/ui/AppShell.tsx`, wrapping the whole shell when `screen === 'chat'`.
+        The reason: the `>` trigger lives inside phase 2's `ChatChrome`, which is rendered by
+        `AppShell` as a sibling of `<main>` — NOT by `ChatScreen`, as this comment used to claim.
+        A provider here wraps only `{children}`, so the trigger was a consumer mounted outside its
+        own provider, `useNinaSidebar()` returned `null`, and it rendered nothing: the chat list
+        was reachable only by typing `?sidebar=1` by hand. Do not re-add a provider here — two of
+        them would give the trigger and the panel one `pushedRef` each, which is the same bug with
+        a subtler symptom. See the block in `AppShell` for the full account.
 
         The panel is LAST in the tree. It is `fixed inset-0`, so paint order does not depend on it,
         but the linear reading order does: the conversation is this screen's content and a list of
         other conversations is not.
       */}
-      <NinaSidebarProvider>
+      <>
         {/*
         ── `key` IS LOAD-BEARING (F35 PHASE 3, D8). DO NOT REMOVE IT. ───────────────────────────
         `ChatScreen` holds the conversation in `useState` and reconciles a changed `initial` prop
@@ -440,7 +445,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
           sessions={sidebarSessions}
           activeSessionId={activeSessionId}
         />
-      </NinaSidebarProvider>
+      </>
     </AppShell>
   )
 }
