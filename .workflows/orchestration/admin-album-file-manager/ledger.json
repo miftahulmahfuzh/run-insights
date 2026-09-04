@@ -57,7 +57,7 @@
     },
     {
       "card": "#69",
-      "commit": null,
+      "commit": "aceb1a9ac553652b9cdb91caffb900ecfbcb7203",
       "depends_on": [
         1,
         2,
@@ -65,16 +65,16 @@
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "Folder-aware upload server half: batch register, manifest, thumbnail tokens, describe off the hot path, resolveAttachment by PK. All gates green except a pre-existing ci:client-secret-guard break at HEAD.",
       "package": "lib/admin`, `app/api/admin`, `lib/nina`, `tests",
       "plan": ".workflows/plan/admin-album-file-manager/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T10:13:40+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A002",
       "title": "Folder-aware upload: batch register, thumbnails, and the describe pre-pass off the hot path"
     },
     {
@@ -139,7 +139,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-file-manager",
-  "updated": "2026-09-04T09:54:47+00:00",
+  "updated": "2026-09-04T10:13:40+00:00",
   "verified_at": "2026-09-04T09:47:06+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
 }
