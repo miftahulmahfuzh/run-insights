@@ -69,22 +69,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "cd88907b09463df22f3b5ec4a08a7f276fd91cf6",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "R5 landed: tuning-aware image prompt (optional, defaults byte-identical), new selfiegen.ts, reward on NinaPendingPromise (type-only, no migration), exact job-id selfie settle via queries \u00a711. Ladder: \u00a712->\u00a711 per Interface Contract/Handoff 6; bookkeeping files left to coordinator.",
       "package": "lib/nina`, `lib/db",
       "plan": ".workflows/plan/nina-character-tuning/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T22:06:32+00:00",
       "satisfies": [
         "R5"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A003",
       "title": "The camera, and a promise she keeps in the chat"
     },
     {
@@ -135,6 +135,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T21:57:53+00:00",
+  "updated": "2026-09-04T22:06:32+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }
