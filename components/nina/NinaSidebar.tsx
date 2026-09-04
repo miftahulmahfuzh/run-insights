@@ -14,6 +14,8 @@ import {
   type SidebarSession,
 } from '@/lib/nina/sidebar'
 import { NinaAvatar } from './NinaAvatar'
+import { NewChatButton } from './NewChatButton'
+import { NinaSearchField } from './NinaSearchField'
 import { SessionList } from './SessionList'
 
 /**
@@ -218,9 +220,10 @@ export function NinaSidebar({
    * top of the sidebar we can search all chat as well. add a toggle at the right side of the
    * search field". Phase 5 renders nothing here and sketches no input, because a field with no
    * action behind it is a control that lies. Phase 6 owns `lib/nina/search.ts`, the search action,
-   * the toggle and its persistence key, and fills this slot — either by passing it from a caller or
-   * by rendering its own field at the slot below and taking the close callback its `onNavigate`
-   * needs from `useNinaSidebar()`, which is exported for precisely that consumer.
+   * the toggle and its persistence key, and **filled this slot the second way**:
+   * `NinaSearchField` is rendered as the slot's default below, taking its close callback from
+   * `closeRef` rather than through a prop chain from `app/nina/page.tsx` — the page being another
+   * phase's file in the wave this landed in. Passing a `searchSlot` still replaces the default.
    */
   searchSlot?: React.ReactNode
   /**
@@ -231,6 +234,10 @@ export function NinaSidebar({
    * it, and it left `app/nina/page.tsx`'s header untouched, so there was none to relocate here
    * either. Until something fills this slot the panel lists chats and cannot start one — correct
    * for phase 5 in isolation, and it must not survive the set.
+   *
+   * **It did not.** Phase 6 fills it with `NewChatButton` as the slot's default below, as a
+   * recorded scope addition: it was the last phase to own this file, and R2's first clause was
+   * unsatisfiable on the branch until it did. Passing a `newChatSlot` still replaces the default.
    */
   newChatSlot?: React.ReactNode
 }) {
@@ -346,8 +353,19 @@ export function NinaSidebar({
           </button>
         </header>
 
-        {searchSlot !== null && <div className="mb-4">{searchSlot}</div>}
-        {newChatSlot !== null && <div className="mb-4">{newChatSlot}</div>}
+        {/*
+          PHASE 6 fills both of phase 5's seams from INSIDE this file rather than from
+          `app/nina/page.tsx`, and that is deliberate: the page is phase 8's this wave, and phase 5
+          exported `useNinaSidebar()` precisely so a field placed here can take its close callback
+          without a prop chain through it. A caller may still override either slot; passing one
+          replaces the default rather than adding to it.
+        */}
+        <div className="mb-4">
+          {searchSlot ?? <NinaSearchField onNavigate={() => closeRef.current()} />}
+        </div>
+        <div className="mb-4">
+          {newChatSlot ?? <NewChatButton onNavigate={() => closeRef.current()} />}
+        </div>
 
         <SessionList
           list={list}
