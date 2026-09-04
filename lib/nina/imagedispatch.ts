@@ -59,11 +59,46 @@ export function githubDispatchUrl(): string {
  *
  * GitHub answers **204 No Content** on success and gives back no run id at all. That is fine: the
  * correlation key is the job id, and the worker's first act is to claim that row.
+ *
+ * ── `ninaEnv()` IS GUARDED, AND `leaveForBackstop` IS WHY IT IS NOT JUST `{ ok: false }` ──────
+ * `ninaEnv()` used to be the first line of the body, outside every guard, which made the "never
+ * throws" promise above FALSE in the only environment that mattered. It is a zod group
+ * (`lib/env.ts`'s `ninaSchema`) and it `fail()`s — throws — when ANY member is absent. Measured on
+ * production, 2026-09-04: `vercel env ls production` carried neither `GITHUB_DISPATCH_TOKEN` nor
+ * `OPENROUTER_API_KEY`, so every call threw before reaching the POST, and three image jobs sat
+ * `pending`/`dispatched` in `nina_turns` with `cost_micro_usd` null.
+ *
+ * **But a config failure is NOT a refused dispatch, and collapsing the two would have cost the
+ * photograph.** The distinction is measured, in `scripts/nina-image-worker.ts`'s `claimJob`: its
+ * sweep claims `error_code = 'dispatched'` rows once `created_at < now - NINA_IMAGE_DISPATCH_GRACE_MS`.
+ * So a job whose doorbell never rang is still delivered by the every-ten-minutes backstop, a few minutes late.
+ * That is the whole reason RU-20 chose a workflow with a `schedule:` beside its `workflow_dispatch`.
+ *
+ *   - **GitHub refused us** (401/403/404/422) or the transport died → fail the job NOW. GitHub has
+ *     spoken; the backstop would only re-learn the same refusal on every run for twenty minutes.
+ *     This is the case the design means by "the ONE failure we learn about within a second".
+ *   - **Our own configuration is incomplete** → the doorbell is broken but the house is fine.
+ *     Return `leaveForBackstop: true`, log loudly, and leave the row `dispatched` so the sweep
+ *     picks it up. Apologising here would delete a working fallback to report a problem that is
+ *     ours, not the runner's.
+ *
+ * The first draft of this fix moved `ninaEnv()` inside the `try` and let a missing variable become
+ * an ordinary `{ ok: false }`. It passed its tests and was wrong: `failNinaImageJob` closes the
+ * row, and a closed row is one `claimJob` will never see again. Do not re-collapse these two.
+ *
+ * Note the other half of the lesson: the group makes `OPENROUTER_API_KEY` load-bearing for a code
+ * path that never reads it. That coupling is deliberate (one contract per feature, `lib/env.ts`'s
+ * own rule) and is left alone.
  */
 export async function dispatchNinaImageJob(
   jobId: string,
-): Promise<{ ok: true } | { ok: false; detail: string }> {
-  const { GITHUB_DISPATCH_TOKEN } = ninaEnv()
+): Promise<{ ok: true } | { ok: false; detail: string; leaveForBackstop?: true }> {
+  let GITHUB_DISPATCH_TOKEN: string
+  try {
+    ;({ GITHUB_DISPATCH_TOKEN } = ninaEnv())
+  } catch (cause) {
+    return { ok: false, detail: `dispatch config: ${String(cause)}`, leaveForBackstop: true }
+  }
 
   let res: Response
   try {
@@ -138,6 +173,24 @@ export function fireNinaImageDispatch(input: {
       const result = await dispatchNinaImageJob(jobId)
       if (result.ok) {
         console.info('[nina] image job dispatched', { jobId, purpose })
+        return
+      }
+
+      /*
+       * **Our misconfiguration, not GitHub's refusal.** The row stays `pending`/`dispatched`, which
+       * `scripts/nina-image-worker.ts`'s `claimJob` re-claims after `NINA_IMAGE_DISPATCH_GRACE_MS`,
+       * so the every-ten-minutes backstop still delivers the photograph a few minutes late. Failing the job
+       * here would close the row and put it permanently out of the sweep's reach — trading a late
+       * photograph for an apology, to report a fault the runner did not cause. Loud on `error` so
+       * the deploy that is missing a variable is visible in the log rather than inferred from a
+       * latency complaint.
+       */
+      if (result.leaveForBackstop) {
+        console.error('[nina] image dispatch not configured; leaving job for the backstop', {
+          jobId,
+          purpose,
+          detail: result.detail,
+        })
         return
       }
 

@@ -69,13 +69,34 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # --omit=dev is not only faster, it SIDESTEPS the EBADPLATFORM trap ci.yml documents at
-      # length: the lockfile records node_modules/vitest/node_modules/@esbuild/aix-ppc64 without
-      # optional:true, and older npm treats it as required. With dev dependencies omitted, vitest is
-      # not installed and the entry is never reached — so no `npm i -g npm@12.0.1` pin is needed
-      # here. If that ever stops being true, copy ci.yml's pin step rather than dropping --omit=dev:
-      # the worker needs only @neondatabase/serverless and @vercel/blob, both runtime dependencies.
-      # --ignore-scripts because nothing this script needs is built by a lifecycle hook.
+      # THE PIN IS REQUIRED HERE TOO, and the comment this replaced was wrong on measured
+      # evidence. It reasoned that --omit=dev SIDESTEPS the EBADPLATFORM trap ci.yml pins npm for,
+      # because vitest is never installed and its @esbuild/aix-ppc64 entry is never reached — and
+      # concluded "no `npm i -g npm@12.0.1` pin is needed here". Run 33867716507, the first and
+      # only run this workflow ever got (2026-09-04, from the schedule), died in 14 s on a
+      # DIFFERENT npm failure that --omit=dev does not touch:
+      #
+      #   npm error code EUSAGE
+      #   npm error `npm ci` can only install packages when your package.json and
+      #   npm error package-lock.json ... are in sync.
+      #   npm error Missing: esbuild@0.28.2 from lock file
+      #   npm error Missing: @esbuild/aix-ppc64@0.28.2 from lock file          (and 24 more)
+      #
+      # Not EBADPLATFORM — a sync check. The runner's npm disagrees with the npm that wrote the
+      # lockfile about whether esbuild's platform packages belong in it, and --omit=dev cannot help
+      # because the check runs BEFORE the omission is applied. So the fix is the one the old
+      # comment itself named as the fallback: copy ci.yml's pin step rather than dropping
+      # --omit=dev. Both are kept.
+      #
+      # DO NOT "solve" this with `npm install` (discards the lockfile's determinism) or
+      # --no-optional (removes the esbuild binary) — ci.yml's line 42-44 rejects both by name.
+      - name: Pin npm to the version that wrote package-lock.json
+        run: npm i -g npm@12.0.1
+
+      # --omit=dev because the worker needs only @neondatabase/serverless and @vercel/blob, both
+      # runtime dependencies, and skipping vitest is a real speedup on a workflow that runs 144
+      # times a day. --ignore-scripts because nothing this script needs is built by a lifecycle
+      # hook.
       - name: Install runtime dependencies only
         run: npm ci --omit=dev --ignore-scripts
 
