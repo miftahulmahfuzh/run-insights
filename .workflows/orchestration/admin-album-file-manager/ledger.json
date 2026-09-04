@@ -6,18 +6,18 @@
   "phases": [
     {
       "card": "#66",
-      "commit": null,
+      "commit": "76e0c2a87907e17f9c892184681325ddd242a947",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": "live in impl-admin-album-file-manager-p1; verify cannot see an uncommitted live phase",
+      "note": "five columns + two indexes on nina_avatars, the nina_folders table, migration 0003, twelve statements in queries.ts \u00a79b; /admin hub off the full-album read. Migration generated but NOT applied \u2014 UNION probe owed at deploy.",
       "package": "lib/db`, `lib/nina`, `lib/admin`, `drizzle`, `app/admin",
       "plan": ".workflows/plan/admin-album-file-manager/phase-1.md",
-      "reported_at": "2026-09-04T09:47:21+00:00",
+      "reported_at": "2026-09-04T09:54:47+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "running",
+      "status": "done",
       "task_id": "P1-DB-A000",
       "title": "Folder metadata on `nina_avatars`, and the folder-aware data layer"
     },
@@ -139,7 +139,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-file-manager",
-  "updated": "2026-09-04T09:47:21+00:00",
+  "updated": "2026-09-04T09:54:47+00:00",
   "verified_at": "2026-09-04T09:47:06+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
 }
