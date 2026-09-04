@@ -144,21 +144,21 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#85",
-      "commit": null,
+      "commit": "d710ded",
       "depends_on": [
         5
       ],
       "difficulty": "EASY",
       "n": 8,
-      "note": null,
+      "note": "R9: session-scoped mark-read + one-shot router.refresh(); no poll, no new query, count stays global",
       "package": "components/nina`, `app/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-chat-sessions/phase-8.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T21:06:18+00:00",
       "satisfies": [
         "R9"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A012",
       "title": "The unread dot clears itself on the newest session"
     },
     {
@@ -177,7 +177,7 @@
       "satisfies": [
         "R10"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Tap an image: full screen, download, attach to a new message"
     }
@@ -185,7 +185,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T21:01:52+00:00",
+  "updated": "2026-09-04T21:08:05+00:00",
   "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }
