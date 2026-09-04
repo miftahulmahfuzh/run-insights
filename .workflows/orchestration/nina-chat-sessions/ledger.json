@@ -64,21 +64,21 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#81",
-      "commit": null,
+      "commit": "9e999c1505a0c3e273fa64c40df605500544141d",
       "depends_on": [
         3
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "Titler live: pure title.ts + server-only autotitle.ts, seam filled in actions.ts, guard at 7 symbols incl. rankNinaSearchHits for phase 6.",
       "package": "lib/nina`, `scripts",
       "plan": ".workflows/plan/nina-chat-sessions/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T20:55:05+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A008",
       "title": "Automatic session titling, and the rename path"
     },
     {
@@ -185,7 +185,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-sessions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-sessions",
-  "updated": "2026-09-04T20:48:54+00:00",
+  "updated": "2026-09-04T20:55:05+00:00",
   "verified_at": "2026-09-04T20:27:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-sessions"
 }

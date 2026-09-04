@@ -2045,3 +2045,34 @@ backs it out cleanly and leaves phases 1, 2, 3 and 5 working:
 **Nothing to revert in the database.** This phase ships no migration and writes one existing,
 nullable column. A title written by a reverted titler is indistinguishable from one he typed, and
 is his to rename.
+
+---
+
+## Post-implementation corrections (recorded by orch-nina-chat-sessions, 2026-09-05)
+
+Phase 4 landed as `9e999c1`. These are defects **in this plan document** that the implementing
+session found and fixed in code. The reconciled text above is left intact deliberately — a plan
+whose body is rewritten is a plan whose reconciliation no longer holds — so the corrections live
+here instead. Anyone re-running this phase from this file must apply all three.
+
+1. **Step 1's `sanitizeNinaModelTitle` had a real defect, not a test error.** The snippet's own
+   comment says "Truncating can expose a comma" and the code never implemented it, so
+   `sanitizeNinaModelTitle('Cedera lutut kanan, sakit banget')` returned
+   `'Cedera lutut kanan, sakit'` — the 5-word overshoot slices to 4 words, which leaves the comma
+   *interior*, where `TRAILING_PUNCT_RE` cannot see it. Step 2's own assertion expected
+   `'Cedera lutut kanan'`, so the plan contradicted itself. Fixed with `CLAUSE_END_RE = /[,;:]$/`
+   applied **only when truncation actually happened**, so the legitimate 3-word
+   `'Cedera lutut: kanan'` is never sliced. Both cases have tests.
+
+2. **Step 2's test imported `NINA_SESSION_TITLE_MAX_CHARS` from `./title`**, which contradicts
+   this phase's own D3 — `title.ts` "declares nothing and re-exports nothing". A leftover from a
+   draft that declared the cap there. It imports from `@/lib/nina/sessions`, the cap's one
+   declared home for the whole set.
+
+3. **Step 1's `/* eslint-disable-next-line no-control-regex */` is an unused directive** under
+   this repo's eslint config, which does not enable that rule. Removed; the explanation it
+   carried was kept in the docstring.
+
+Also worth knowing rather than fixing: a bare `vi.fn(async () => …)` infers zero parameters, so
+`mock.calls[0]` is a TS2493 tuple-index error. The mock needs typing against
+`TitleClientLike['messages']['create']`.
