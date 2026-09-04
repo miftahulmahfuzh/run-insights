@@ -6,21 +6,21 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "be1057eb2310e435c6f049bcfa9511483a84d3f7",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "Tuning model + nina_tuning table + 0004 migration + readNinaTuning/writeNinaTuning. Nothing reads the row yet, by design. Full suite 2234 passing; all guards and drizzle-kit check clean.",
       "package": "lib/nina`, `lib/db`, `drizzle",
       "plan": ".workflows/plan/nina-character-tuning/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T15:37:59+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A000",
       "title": "The tuning model and its row"
     },
     {
@@ -41,7 +41,7 @@
         "R4",
         "R6"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The canon, re-cut as a function \u2014 and the repeal"
     },
@@ -135,6 +135,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T15:17:34+00:00",
+  "updated": "2026-09-04T15:38:44+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }
