@@ -3,15 +3,15 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-04
-**Total Active Tasks**: 0
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
 - P1 High: 0
-- P2 Medium: 0
+- P2 Medium: 1
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
+- Blocked: 1
 - Completed: 6
 
 ---
@@ -23,6 +23,16 @@
 ### [P1] High
 
 ### [P2] Medium
+
+- [ ] **P2-RI-A006** Phase 6: The sweep, and the record
+  - **Difficulty**: EASY
+  - **Type**: Update
+  - **Context**: Owns the final grep sweep, **re-run as a gate rather than a report**; `lib/nina/prompts/distill.ts` (`buildDistillSystemPrompt(relationship)`, `NINA_DISTILL_PROMPT_VERSION` 1 → 2 — **not** `NINA_PROMPT_VERSION`); `lib/nina/distill.ts` (optional `DistillInput.relationship`); **one property in `lib/nina/actions.ts`** — `relationship: tuning.relationship` at the `distillNinaMemory(...)` call, by reconciler exception; the tuning matrix appended to `tests/nina.prompts.test.ts` reusing phase 3's helpers; the three package readmes (`components/admin`, `lib/admin`, `lib/db`); `CHANGELOG.md`; and `docs/nina/persona.md`'s closing record, appended to phase 2's repeal table rather than starting a second one. Exit: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, all seven `check-*.mjs` guards and `drizzle-kit check` pass; **the two confirming greps come back clean** — no rule surviving anywhere in the prompt surface contradicts a dial that can be turned up; the librarian is told the real relationship; the readmes, the changelog and the canon document describe what shipped, including the twelve repeals and the three deliberate non-repeals.
+  - **Status**: blocked
+  - **Plan Set**: `NINA_CHARACTER_TUNING_PLAN.md` (phase 6 of 6)
+  - **Satisfies**: R6 — The iron rule: every existing rule or prompt that contradicts the above is changed, not worked around
+  - **Depends on**: `P1-NIN-A001`, `P1-NIN-A002`, `P1-NIN-A003`, `P2-CA-A000`
+  - **Plan**: `.workflows/plan/P2-RI-A006.md`
 
 ### [P3] Low
 

@@ -590,6 +590,25 @@ export const ninaTurns = pgTable(
     /** `NINA_PROMPT_VERSION` at call time, so a voice regression can be dated. */
     promptVersion: integer('prompt_version'),
     /**
+     * **`nina_tuning.revision` at call time (F35 R1/R2/R3).** `prompt_version` identifies the
+     * ASSEMBLER; this identifies the SETTING it assembled. With a per-user character tuning the
+     * first is no longer sufficient on its own — two turns on prompt version 3 can be two
+     * different Ninas, and "what was she set to when she said that" is the question a voice
+     * regression actually asks.
+     *
+     * NULLABLE with no default, and NULL means one thing only: **a turn from before the tuning
+     * existed.** Every turn after phase 3 carries a number, because `readNinaTuning` returns the
+     * defaults rather than null and the defaults' revision is `0` — so `0` is "she was on the
+     * shipping character" and NULL is "we did not record it", which are genuinely different
+     * answers and must not be spelled the same way.
+     *
+     * `integer` and not a foreign key: `nina_tuning` holds one CURRENT row per user, not a
+     * history, so there is no row for revision 7 to point at once revision 8 is saved. An audit
+     * pointer must never be able to block a write — the same argument `nina_messages.turn_id`
+     * makes for carrying no FK.
+     */
+    tuningRevision: integer('tuning_revision'),
+    /**
      * The D3 token-floor canary again, one feature over: `extractions.prompt_tokens` exists for
      * exactly this reason and `lib/llm/vision.ts` reads it. A vision turn whose `input_tokens`
      * sits far below the floor is a turn where the endpoint silently dropped the image.
@@ -1416,6 +1435,141 @@ export const ninaFoldersRelations = relations(ninaFolders, ({ one }) => ({
 }))
 
 /* ============================================================================
+ * F35 — the character tuning. ONE ROW PER USER, and it is the only table in
+ * this file whose columns are a UI's controls rather than a domain's facts.
+ * ==========================================================================*/
+
+/**
+ * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Eleven trait
+ * intensities, a relationship, four behaviour dials, a wardrobe line and a notes field — fifteen
+ * integers and three strings. `lib/nina/tuning.ts` owns the vocabulary, the domains and the
+ * defaults; this table stores one row of it per user and nothing else.
+ *
+ * ── WHY COLUMNS AND NOT ONE `jsonb` BLOB ──────────────────────────────────────────────────────
+ * `nina_memory_slots.value` is `jsonb` because one column had to hold both a short phrase and a
+ * list of records with deadlines. Nothing like that is true here: this is a fixed set of integers
+ * with a fixed domain, which is what a column is for, and three arguments settle it.
+ *
+ *   1. **A misspelt key in a blob is indistinguishable from an unset one**, and
+ *      `coerceNinaTuning` would return that key's default — which is *today's Nina*. So the
+ *      failure mode of a typo would be "the slider silently does nothing", the one failure the
+ *      compatibility contract makes invisible. A column named `flirtty` fails at `db:generate`.
+ *   2. **The panel is a form over a fixed set of controls, not an extensible document.** A
+ *      sixteenth dial should cost a reviewed `ALTER TABLE` in an `0005_*` migration. That price is
+ *      the feature, not the bug: R3's discipline is that a dial must have a code path behind it,
+ *      and a migration is where somebody notices it does not.
+ *   3. `"what was she set to on 4 Sep"` wants columns, not `value->>'anger'`.
+ *
+ * ── NO SQL DEFAULTS, AND THAT IS THE POINT ────────────────────────────────────────────────────
+ * Every score column is `NOT NULL` with **no** `DEFAULT`. `NINA_TUNING_DEFAULTS` in
+ * `lib/nina/tuning.ts` is the compatibility contract — the setting that reproduces the Nina who
+ * ships — and a `DEFAULT 50` here would be a second copy of it in a second language, drifting
+ * silently. Instead:
+ *
+ *   · **no row means the defaults.** `readNinaTuning` returns `NINA_TUNING_DEFAULTS` for a user
+ *     with no row, which is what makes every downstream caller unconditional.
+ *   · `writeNinaTuning` is the only writer and always supplies every column, because it takes a
+ *     whole `NinaTuning`. One save, not sixteen (plan invariant 11).
+ *
+ * ── `relationship` IS PLAIN `text` WITH NO `.$type<>()`, DELIBERATELY ─────────────────────────
+ * The `nina_turns.trigger` argument, verbatim: *"the vocabulary belongs to phase 10, and this
+ * table must not become the thing phase 10 has to migrate to add a fifth trigger."* Here it also
+ * buys something stronger. `lib/nina/tuning.ts` MUST stay importable from a `'use client'` file,
+ * so it cannot import this module — and typing the column would mean either importing UPWARD from
+ * `lib/db` into `lib/nina` or restating the five-value union here as a second definition.
+ * Untyped `text` costs neither: `coerceNinaRelationship` is where an unknown value degrades to the
+ * default, and `tests/db.schema.nina.test.ts` asserts the sixteen score column names against
+ * `NINA_TRAITS` and `NINA_DIALS` so the two spellings cannot drift.
+ *
+ * ── `user_id` IS THE PRIMARY KEY ──────────────────────────────────────────────────────────────
+ * One row per user, so `user_id` alone is the natural key and there is no second fact to hang a
+ * surrogate id on — the `nina_nags` / `nina_folders` idiom with a one-column key instead of two.
+ * It is also what lets `writeNinaTuning` be a single `ON CONFLICT DO UPDATE` upsert that bumps
+ * `revision` in SQL, instead of a read-then-write that is correct until two tabs race.
+ */
+export const ninaTuning = pgTable('nina_tuning', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /**
+   * `NinaRelationship` from `lib/nina/tuning.ts` — one of `'nobody' | 'casual_friend' | 'sister' |
+   * 'best_friend' | 'girlfriend'`. Untyped `text` on purpose; see the header.
+   */
+  relationship: text('relationship').notNull(),
+
+  /* The eleven traits (R1), in the order the user wrote them. Integer percent, 0-100, the
+   * smallest-sensible-unit rule (roadmap D5) applied to an intensity — `nina_memory_facts.
+   * confidence` is the precedent. The domain is enforced by `clampNinaScore`, not by a CHECK: a
+   * CHECK would make widening the scale a migration, and a value outside it is a bug in one
+   * writer rather than a state the reader cannot survive. */
+  /** 0 = the nag ladder is untouched. Above 0 = the lowest rung she may occupy. */
+  anger: integer('anger').notNull(),
+  /** How little rattles her. */
+  chill: integer('chill').notNull(),
+  /** How much of her own low mood shows. */
+  sad: integer('sad').notNull(),
+  /** How much she flirts unprompted. */
+  flirty: integer('flirty').notNull(),
+  /** How explicit she is willing to be. The ceiling is the image provider's, never ours. */
+  steamy: integer('steamy').notNull(),
+  /** How much sports-science mechanism she volunteers. */
+  wise: integer('wise').notNull(),
+  /** How much of a pest she is. Persistence, not volume — volume is `anger`. */
+  annoying: integer('annoying').notNull(),
+  /** What kind of funny: deadpan at the default, jokes and teka-teki at the top. */
+  funny: integer('funny').notNull(),
+  /** Her baseline brightness. */
+  happy: integer('happy').notNull(),
+  /** How much she worries about HERSELF out loud. */
+  anxious: integer('anxious').notNull(),
+  /** How much she asks after HIM. Asking, not explaining — explaining is `wise`. */
+  concerned: integer('concerned').notNull(),
+
+  /* The four R3 dials. Each one moves a named line of shipping code, recorded in
+   * `NINA_DIAL_SPECS[key].path`; a dial with no such line was rejected rather than stored. */
+  /** How freely she swears. Moves the `anjir` and `bego` fences in `JAKARTA_SLANG`. */
+  profanity: integer('profanity').notNull(),
+  /** How soon she speaks first. Moves `proactive.ts`'s three silence thresholds. */
+  clinginess: integer('clinginess').notNull(),
+  /** How readily she takes and offers a photograph. NOT the daily money cap. */
+  photoEagerness: integer('photo_eagerness').notNull(),
+  /** How much she says per turn. Moves `SEND_TOOL.bubbles` and `OUTPUT_RULE`. */
+  verbosity: integer('verbosity').notNull(),
+
+  /**
+   * One line describing what she is wearing, baked into the image prompt at dispatch time
+   * (`NINA_WARDROBE_MAX` = 200). `''` means "no override" and phase 4 falls back to
+   * `NINA_APPEARANCE`'s heather-grey tank — which is what makes the empty default reproduce
+   * today's photographs exactly. NOT NULL with `''` as the empty value rather than NULL, because
+   * "no override" and "not set" are the same fact and two spellings for one fact is one too many.
+   */
+  wardrobe: text('wardrobe').notNull(),
+  /**
+   * Free text appended verbatim to the system prompt (`NINA_NOTES_MAX` = 2000). The escape hatch
+   * for something the operator wants that no dial expresses. `''` = nothing appended.
+   */
+  notes: text('notes').notNull(),
+  /**
+   * **Bumped by the database on every save**, and stamped onto `nina_turns.tuning_revision` so a
+   * voice change can be dated to a setting rather than only to a commit.
+   *
+   * A stored row always has `revision >= 1`; `0` is `NINA_TUNING_DEFAULTS.revision` and means no
+   * row has ever been written. `writeNinaTuning` computes it as `revision + 1` inside the upsert,
+   * so no caller can send one — a revision the client supplies is a revision a stale tab can move
+   * backwards. No `DEFAULT` here for the same reason as every column above: the one writer always
+   * supplies it.
+   */
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+})
+export const ninaTuningRelations = relations(ninaTuning, ({ one }) => ({
+  user: one(users, { fields: [ninaTuning.userId], references: [users.id] }),
+}))
+
+/* ============================================================================
  * Row types. Import these instead of re-deriving $inferSelect at call sites.
  * ==========================================================================*/
 
@@ -1456,6 +1610,14 @@ export type NinaAvatar = typeof ninaAvatars.$inferSelect
 export type NewNinaAvatar = typeof ninaAvatars.$inferInsert
 export type NinaFolder = typeof ninaFolders.$inferSelect
 export type NewNinaFolder = typeof ninaFolders.$inferInsert
+/**
+ * `NinaTuningRow`, not `NinaTuning` — the latter is the MODEL type in `lib/nina/tuning.ts`, which
+ * is what every consumer in the app actually holds (nested `traits`/`dials`, coerced, with the
+ * relationship as a union). The row is the flat, unvalidated storage shape and only
+ * `lib/nina/queries.ts` should ever name it. Same suffix, same reason, as `PushSubscriptionRow`.
+ */
+export type NinaTuningRow = typeof ninaTuning.$inferSelect
+export type NewNinaTuningRow = typeof ninaTuning.$inferInsert
 /**
  * `PushSubscriptionRow`, not `PushSubscription` — the latter is a DOM lib global that phase 11's
  * client code uses by that exact name, and shadowing it in a module that also talks to the
