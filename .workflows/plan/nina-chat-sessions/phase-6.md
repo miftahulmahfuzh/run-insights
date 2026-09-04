@@ -1,0 +1,2461 @@
+# Phase 6: Search all chats, with the persisted semantic-search toggle
+
+**Plan set:** `NINA_CHAT_SESSIONS_PLAN.md`
+**Analysis:** `20260904-223303-S3K9_code_analyzer.md`
+**Satisfies:** R6 — the second half: *"at the top of the sidebar we can search all chat as well. add a toggle at the right side of the search field (persist the toggle across app usage) to enable semantic search, so we can search using llm as well."*
+**Depends on:** Phase 5 (the sidebar and its named seam) **and Phase 4** (**added in
+reconciliation** — the `rankNinaSearchHits` entry in `scripts/check-llm-payload-boundary.mjs`, which
+this plan's Requires item 1 calls a hard dependency and which only phase 4 may write; both are in
+wave 3, so this costs no extra wave), and through them Phase 3 (`?s=`, `SESSION_PARAM`) and Phase 1
+(`nina_chat_sessions`, `nina_messages.session_id`)
+**Difficulty:** NORMAL
+**Package:** `lib/nina`, `components/nina`
+
+---
+
+## Goal
+
+A field at the top of the sidebar searches every message and every session title the runner owns,
+across all sessions, and a hit navigates straight to the message it found. A toggle to its right
+turns on a `glm-5.3` ranking pass over SQL-narrowed candidates, and that toggle survives a reload
+because it lives in `localStorage` — the first client-side persistence in this codebase. When the
+model is unavailable the results degrade to the text ranking and the UI says so, because a silent
+degrade would read as "no matches".
+
+---
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing.
+
+**Renames:** nothing.
+
+**Creates:**
+
+- `lib/nina/search.ts` — pure. No `db`, no `server-only`, no DOM types. Its one import is
+  `SESSION_PARAM` from phase 3's pure `lib/nina/active.ts` (reconciled — see Requires item 4).
+  Exports:
+  `NINA_SEMANTIC_PREF_KEY`, `SEMANTIC_PREF_ON`, `decodeSemanticPref`, `encodeSemanticPref`,
+  `SEARCH_MIN_CHARS`, `SEMANTIC_MIN_CHARS`, `SEARCH_DEBOUNCE_MS`, `SEMANTIC_DEBOUNCE_MS`,
+  `SEARCH_QUERY_MAX_CHARS`, `SEARCH_TERM_MAX`, `SEARCH_RESULT_MAX`, `TEXT_CANDIDATE_MAX`,
+  `SEMANTIC_CANDIDATE_MAX`, `SEMANTIC_RECENCY_WINDOW`, `SEMANTIC_SNIPPET_CHARS`,
+  `SEMANTIC_TITLE_CHARS`, `SEMANTIC_MAX_TOKENS`, `SEMANTIC_TIMEOUT_MS`, `SNIPPET_MAX_CHARS`,
+  `SESSION_HIT_BONUS`, `PHRASE_HIT_BONUS`, `OCCURRENCE_WEIGHT`, `OCCURRENCE_CAP`,
+  `normalizeSearchQuery`, `searchTerms`, `likePattern`, `searchDebounceMs`, `shouldRunSearch`,
+  `shouldRunSemantic`, `matchesAllTerms`, `snippetAround`, `searchHitHref`, `scoreTextCandidate`,
+  `rankTextHits`, `toSearchHit`, `buildSemanticCandidates`, `semanticCandidateBlock`,
+  `parseSemanticRanking`, `applySemanticRanking`, `isDegradedSearch`, `emptySearchResponse`, and
+  the types `NinaSearchHitKind`, `NinaSearchMode`, `NinaSearchCandidate`, `NinaSearchHit`,
+  `NinaSearchResponse`.
+- `lib/nina/search.test.ts` — vitest, `environment: 'node'`, no jsdom, no db, no network.
+- `lib/nina/semantic.ts` — `import 'server-only'`. Exports **`rankNinaSearchHits`** (the guarded
+  symbol), `NINA_SEARCH_SYSTEM_PROMPT`, `rankNinaSearchHitsWith`, and the type
+  `SemanticRankerClient`.
+- `lib/nina/searchActions.ts` — `'use server'`. Exports exactly one symbol: `searchNinaChats`.
+- `components/nina/useSemanticPref.ts` — `'use client'`. Exports `useSemanticPref`.
+- `components/nina/NinaSearchField.tsx` — `'use client'`. Exports `NinaSearchField`.
+
+**Signature changes:** none to any existing symbol.
+
+**Requires (from earlier phases) — every one of these is a hard build dependency:**
+
+1. **Phase 4 — the guard entry. ✅ RECONCILED: verified present and identical; nothing to rename.**
+   `scripts/check-llm-payload-boundary.mjs` must carry an entry whose `symbol` is exactly
+   `rankNinaSearchHits` and whose `sanctioned` list is exactly
+   `[join('lib','nina','semantic.ts'), join('lib','nina','searchActions.ts')]`. Phase 4 registered
+   exactly that — symbol and both paths, read verbatim off this contract and recorded as such in its
+   own plan (*"I did not choose that name; phase 6 did, and I am registering it unchanged"*). So
+   **keep this module's names as written**: `rankNinaSearchHits` in `lib/nina/semantic.ts`, called
+   from `lib/nina/searchActions.ts`. Phase 4 owns that file; I do not touch it. The separate
+   `semantic.ts` module exists precisely so the guard can sanction the definition site — the same
+   reason the guard sanctions `lib/nina/turn.ts` for `runNinaTurn` ("a guard that fails on the
+   definition site is a guard that forces the definition to be renamed"). Note the plan index's
+   draft credited this phase with a single `lib/nina/search.ts`; the reconciled index records the
+   real four-module layout (`search.ts`, `semantic.ts`, `searchActions.ts`, plus the two
+   components).
+2. **Phase 1 — `ninaChatSessions`** exported from `@/lib/db/schema`, with at least `id` (text PK),
+   `userId` (text, FK to `users.id`) and `title` (text; `null` tolerated).
+3. **Phase 1 — `ninaMessages.sessionId`** exported on the existing `ninaMessages` table, holding
+   `nina_chat_sessions.id`. The join below is a `leftJoin` deliberately, so it is correct whether
+   phase 1 made the column nullable or not.
+4. **Phase 3 — `?s=<sessionId>`** is the active-session query parameter on `/nina`, resolved by
+   `app/nina/page.tsx` **during the server render** (assumption A4). **✅ RECONCILED: phase 3 did
+   export a named constant**, `SESSION_PARAM = 's'` in `lib/nina/active.ts`, so `searchHitHref`
+   imports it rather than writing the literal. `active.ts` is pure and client-safe after
+   reconciliation, which this module needs because `NinaSearchField` is `'use client'`. Phase 5
+   imports the same constant for its session hrefs — one grammar, one owner, three consumers.
+5. **Phase 5 — the named seam** at the top of `components/nina/NinaSidebar.tsx`, into which
+   `<NinaSearchField onNavigate={…} />` is placed, and a close callback to pass to `onNavigate`.
+   `onNavigate` is a **required** prop so that `tsc` fails if phase 5's seam does not wire it — see
+   Step 6.
+
+**Leaves alone (owned by others):**
+
+- `scripts/check-llm-payload-boundary.mjs` (Phase 4 — including my entry)
+- `lib/db/schema.ts`, `drizzle/**` (Phase 1)
+- `lib/nina/queries.ts` (Phase 1 §4). My candidate query lives in `searchActions.ts` as a private
+  helper — see "Why the query is not in `queries.ts`" below.
+- `lib/nina/prompts/index.ts` and `lib/nina/prompts/system.ts` (shared; `NINA_PROMPT_VERSION`
+  describes *her* prompt and a search ranker is not her)
+- `app/nina/page.tsx` (Phases 3, 5, 8)
+- `components/nina/ChatScreen.tsx`, `MessageList.tsx`, `MessageBubble.tsx`, `ChatImages.tsx`
+  (Phases 3, 7, 9)
+- `components/ui/*` — I *import* `CONTROL_CLASS` from the `@/components/ui` barrel and change
+  nothing in it
+- `lib/nina/scroll.ts`, `components/nina/useChatScroll.ts` — I reuse the `?at=` grammar and edit
+  neither
+- `lib/nina/active.ts` (Phase 3, with one edit by Phase 4) — I *import* `SESSION_PARAM` from it and
+  write nothing in it
+
+---
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/nina/search.ts` | create | the pure module: query normalisation, LIKE escaping, term split, debounce rule, snippet extraction, text ranking, semantic candidate assembly, ranking parse, href construction, response shape |
+| `lib/nina/search.test.ts` | create | vitest suite over every function above |
+| `lib/nina/semantic.ts` | create | `rankNinaSearchHits` — the `glm-5.3` pass and its prompt; `import 'server-only'` |
+| `lib/nina/searchActions.ts` | create | `'use server'` `searchNinaChats`, plus the private candidate-narrowing SQL |
+| `components/nina/useSemanticPref.ts` | create | `useSyncExternalStore` over `localStorage`, hydration-safe |
+| `components/nina/NinaSearchField.tsx` | create | the field, the toggle, the debounce, the result list, the degraded notice |
+| `components/nina/NinaSidebar.tsx` | modify | phase 5's named seam at the top of the sidebar: one import, one element |
+
+---
+
+## Decisions, with the reasoning the brief demands
+
+### D1 — The toggle persists in `localStorage`, not in a cookie, and not in the URL
+
+Verified, not assumed: `grep -rn "localStorage" lib components app` returns nothing and
+`grep -rln "cookies()"` returns nothing. This is the first client-side persistence in the tree, so
+it needs an argument.
+
+**Not the URL.** `lib/panel/param.ts` and `components/ui/usePanelParam.ts` are the closest
+precedent, and they are the wrong precedent: they persist *this history entry's* UI state, which is
+explicitly not "across app usage". A `?semantic=1` on `/nina` would be lost the first time the
+runner opened a run and came back through a link that did not carry it.
+
+**Not a cookie.** A cookie is the only mechanism that lets the *server render* know the value, and
+that is the only thing it buys — this preference has **no server consumer**. The semantic flag is
+an *argument to a Server Action*: the client already knows it and sends it. A cookie would put a
+new input on the hottest page in the app (`/nina`, whose header says "ONE READ, NO MODEL CALL"),
+would be transmitted on every same-origin request for a preference exactly one component reads, and
+would need `cookies()` — a request API this codebase has never used — plus either a Server Action
+round trip or `document.cookie` to write. That is a lot of new surface for one boolean.
+
+**`localStorage`, with the hydration problem solved by the API designed for it.** A server-rendered
+control cannot know a client value, and rendering it from `localStorage` in the first client render
+is a hydration mismatch. The answer is `useSyncExternalStore(subscribe, getSnapshot,
+getServerSnapshot)`: React uses `getServerSnapshot` for the server render *and for hydration*, then
+reads `getSnapshot` after hydration commits and re-renders if it differs. That is not a mismatch —
+it is the contract of the hook, and it is the reason the third argument exists. `getServerSnapshot`
+returns the default (`false`), so the server HTML and the first client paint agree by construction.
+If the stored value is `true`, the toggle flips one frame after hydration — invisible in practice,
+because a search cannot have been typed yet.
+
+`subscribe` also listens for the `storage` event, so two open tabs agree. That is what "across app
+usage" means for a PWA the runner may have open twice.
+
+**The key and its grammar.** `NINA_SEMANTIC_PREF_KEY = 'ri:nina:semantic-search'`. A namespaced
+prefix because this is the first key and the convention is being set here; `nina` because the
+preference belongs to one feature. The value is `'1'` and nothing else is true — absent, `''`,
+`'0'`, `'true'`, `'yes'` and anything else read as off. That is `PANEL_DATES_PARAM`'s rule
+(`lib/panel/param.ts`: *"`1`, and nothing else is true"*) applied to a second storage medium, and it
+fails closed: an unrecognised value costs no model call.
+
+**The default is off**, because on means a `glm-5.3` call per typing pause. The text search is the
+one that always works and always costs nothing; opting in to the expensive one is the honest
+direction.
+
+### D2 — The text search is `ILIKE` over `nina_messages.text` and `nina_chat_sessions.title`
+
+Verified: `grep -rn "ilike\|to_tsvector\|websearch_to_tsquery"` over `lib app components scripts
+drizzle` returns nothing, and `lib/db/schema.ts` declares no GIN index. Both options are available
+on Neon; the choice is mine.
+
+**`ILIKE '%term%'`, for three reasons in order of weight.**
+
+1. **The corpus is bilingual.** Nina's conversation is mixed Indonesian and English —
+   `lib/nina/reply.test.ts`'s own fixtures are `'pagi mif lari lagi?'`. `to_tsvector` takes exactly
+   one `regconfig`, so `to_tsvector('english', 'lari gw kemaren')` stems Indonesian as English and
+   `to_tsvector('indonesian', …)` does the reverse to her English. A single configuration cannot
+   serve this text, and picking one silently mis-stems half of it. `ILIKE` has no stemmer to be
+   wrong about.
+2. **Substring is what a chat search means.** `websearch_to_tsquery` matches lexemes; the best it
+   offers is a prefix (`lari:*`). Typing `lari` and not finding `berlari` is a bug report.
+   `%lari%` finds it.
+3. **The corpus is small and the query is already index-narrowed.** `user_id = $1` reads
+   `nina_messages_user_seq_idx`; the `ILIKE` is a filter over one runner's conversation, which the
+   prompt layer itself measures in hundreds ("there are 312 earlier messages"). A GIN index would
+   optimise a scan of a few thousand rows — and it is a schema change, which phase 1 owns and I may
+   not make.
+
+**Stated limit.** This does not scale. At ~100k messages per user a sequential filter becomes
+visible, and the fix is `to_tsvector` plus a GIN index — a **handoff to phase 1's successor**, not
+an edit here. The plan set's Scope section already rules out the schema work.
+
+**Escaping is a tested pure function.** `likePattern` escapes `\`, `%` and `_`. Without it a query
+of `100%` matches every row and a query of `_` matches everything of length ≥ 1. drizzle binds the
+pattern as a parameter, so `\%` reaches `LIKE` with backslash as the default escape character.
+
+**Multi-term is AND.** Every term must appear in the row. That is what a search box means, and it
+is what makes ranking a refinement rather than the only filter.
+
+### D3 — What the semantic pass is given: text hits ∪ a recency window, capped
+
+Assumption A7 says "an LLM pass over candidate rows already narrowed by a SQL text match". Taken
+literally that contradicts the set's own exit criterion — *"with the toggle on, a query that shares
+no words with a message still finds it"* — because an AND-narrowed (or even OR-narrowed) text match
+returns nothing for a query with no shared words, and a ranker with no candidates ranks nothing.
+
+**So the candidate set is the union of three groups, in this order:**
+
+1. every session whose **title** matches all terms,
+2. every message whose **text** matches all terms (up to `TEXT_CANDIDATE_MAX = 200`, newest first),
+3. the newest `SEMANTIC_RECENCY_WINDOW = 80` messages across every session, as filler.
+
+deduplicated and truncated to `SEMANTIC_CANDIDATE_MAX = 120`. **The order is the whole point:** the
+cap can only ever eat recency filler, never a text hit. A7's SQL narrowing is fully present; the
+recency window is what makes "shares no words" answerable at all.
+
+**Token budget.** 120 candidates × `SEMANTIC_SNIPPET_CHARS = 240` chars ≈ 29k characters ≈ 8k
+tokens, plus a ~200-token system prompt and the query. Well inside `glm-5.3`'s window and cheap.
+Output is a JSON array of at most `SEARCH_RESULT_MAX = 20` integers, so
+**`SEMANTIC_MAX_TOKENS = 400`** — deliberately *not* `NINA_MAX_TOKENS = 2400` from
+`lib/nina/turn.ts`, which is sized for a four-bubble reply plus a `tool_use` block. A search box
+emits `{"ranked":[12,3,40]}`.
+
+**`SEMANTIC_TIMEOUT_MS = 8_000`.** `lib/llm/narrate.ts` measured 10.2–16.4 s, but those calls emit
+1,200–1,600 tokens of prose through a tool. This one emits ≤400 tokens of a flat array with
+`thinking` disabled, and 8 s is the outer edge of what a person will hold still for while staring at
+a search field. **No repair round trip**, unlike `narrate.ts` and `turn.ts`: a repair spends more of
+the runner's attention to recover a *ranking*, and the fallback here is not silence — it is the text
+ranking, which is already correct by construction. That asymmetry is the reason the budget is one
+number and not four.
+
+**`thinking: { type: 'disabled' }` is mandatory.** `lib/llm/narrate.ts:128`'s `baseBody` records the
+2026-08-26 incident: `glm-5.3` began emitting an extended thinking block by default, it consumed
+the entire `max_tokens` ceiling before any answer, and the insights table stopped growing for 31
+hours. At `max_tokens: 400` that failure is instant and total. The field is not optional.
+
+### D4 — `narrativeClient()`, and why retries stay off
+
+`lib/llm/client.ts`'s `narrativeClient()` is `@anthropic-ai/sdk` against `api.z.ai/api/anthropic` —
+Anthropic Messages, which is the right envelope for text. `lib/llm/vision.ts` is the other client
+and speaks Chat Completions for images; this call sends no image.
+
+`maxRetries: 0` is deliberate and its header says why: the SDK's default two silent retries under a
+15 s timeout can occupy 45 s of a 28 s budget and starve the repair that would have fixed the
+response. Here the reasoning lands even harder — there *is* no repair, and a search box's retry is
+the runner typing again. Three attempts behind an 8 s timeout would be a 24 s search.
+
+**No tool, no `tool_choice`.** `narrate.ts` and `turn.ts` use a tool because their payloads are rich
+nested objects behind Zod. Mine is `{"ranked": [int]}`. `lib/llm/extractJson.ts`'s
+`extractJsonObject` is the codebase's already-proven answer for pulling an object out of whatever
+the model actually said (ported verbatim from `research/score.mjs`, "not improved… rewriting it
+would mean re-proving it"), it returns `null` rather than throwing on every failure mode, and it
+rejects a bare array — which is why the payload is an object with one key rather than a naked array.
+A fifth tool schema for three integers is not proportionate.
+
+### D5 — When the model is unavailable: fall back to text, and *say so*
+
+`lib/llm/narrate.ts`'s ruling is that *"the only safe fallback for prose is the absence of prose"*.
+Applied to ranking, the analogue is not silence — it is **the ranking we can compute**, said out
+loud. An empty result list after a semantic search reads as "your conversation does not contain
+this", which is a false statement about the runner's own history.
+
+So `NinaSearchResponse` carries both `requested` and `mode`. `requested === 'semantic' && mode ===
+'text'` is the degraded state, `isDegradedSearch` names it, and the field renders one
+`aria-live="polite"` line: *"Semantic ranking is unavailable — showing text matches."*
+
+**An empty `ranked` array is treated as a failure**, i.e. it degrades. The model cannot be
+distinguished from a parse failure at that point, and degrading is never dishonest here: the text
+hits are exact AND-matches, so they are relevant by construction. Claiming "no matches" on the
+model's say-so would be the worse of the two errors.
+
+`rankNinaSearchHits` never throws. Transport failure, timeout, `stop_reason === 'max_tokens'` and an
+unparseable body all return `null` and log one `console.warn` — not `console.error`, following
+`logLlmFailure`'s note that an unavailable model is an expected state of the feature, not an
+incident.
+
+### D6 — A hit navigates to the **message**, through the two URL grammars that already exist
+
+It is cheap, and it invents nothing. `lib/nina/scroll.ts` already defines
+`?at=<messageId>~<offset>`: `decodeChatScrollMark` accepts a message id matching
+`^[A-Za-z0-9_-]{1,64}$` and an offset matching `^-?\d{1,6}$`, and `resolveRestoreTop` returns
+`anchorTop - offset` clamped into the document. So **`at=<messageId>~0` means "put this message's
+top edge at the top of the viewport"**, which is exactly a jump to it, and
+`components/nina/MessageList.tsx:123` already consumes it.
+
+Combined with phase 3's `?s=`, a hit's href is `/nina?s=<sessionId>&at=<messageId>~0`. Two existing
+parameters, zero new grammar. `searchHitHref` is a pure tested function so that stays true.
+
+Three consequences, all stated rather than discovered later:
+
+- **A session-title hit has no message**, so its href is `/nina?s=<sessionId>` alone — open the
+  session at its default position.
+- **`encodeURIComponent` and not `URLSearchParams`.** `URLSearchParams.toString()`
+  percent-encodes `~` to `%7E`; it round-trips correctly through `useSearchParams().get('at')`
+  either way, but `scroll.ts`'s header chose `~` *because* it needs no percent-encoding, and
+  `encodeURIComponent` leaves it alone. The href stays readable.
+- **A hit older than `CHAT_HISTORY_LIMIT = 200` within its own session degrades.** The anchor is not
+  in the document, `resolveRestoreTop` returns `null`, and the screen opens where it normally would.
+  That is `scroll.ts`'s documented behaviour ("if the anchor is gone… the caller does the ordinary
+  thing"), not a new failure. Fixing it needs per-session paging, which is a handoff.
+
+**A `<Link>`, not `window.history.pushState`.** This is the one place the `usePanelParam` idiom must
+*not* be copied. `?panel=` is read only by a client hook, which is why `pushState` works there and
+why `app/me/page.tsx` deliberately never re-runs. `?s=` is read by
+`app/nina/page.tsx` **on the server** (phase 3), so `pushState` would change the URL and leave the
+old session's messages on screen. A `<Link>` is a real navigation and gets prefetch, long-press and
+middle-click for free — the same argument `app/nina/page.tsx:269` makes for Nina's avatar.
+
+### D7 — Debounce, and what "cancel" can honestly mean
+
+A Server Action is a serverless invocation, so a call per keystroke is an invocation per keystroke.
+
+- `SEARCH_DEBOUNCE_MS = 250` for a text search, `SEMANTIC_DEBOUNCE_MS = 700` when the toggle is on.
+  `searchDebounceMs(semantic)` is the pure rule.
+- `SEARCH_MIN_CHARS = 2`: below it nothing is called and nothing is rendered — an **idle** state,
+  distinct from "no matches".
+- `SEMANTIC_MIN_CHARS = 4`: below it the toggle is honoured but the model pass is skipped and the
+  response comes back `mode: 'text'`. A two-character query is a substring probe, not a concept, and
+  this is the cheapest real reduction in model calls available.
+- Even with the toggle on, the response **always** carries the text ranking as its fallback, so one
+  action call per pause does both jobs. There is never a second round trip.
+
+**An in-flight search is not cancellable, and the plan says so rather than pretending.** A Server
+Action call takes no `AbortSignal` and the invocation cannot be recalled. What *is* cancellable is
+its effect: a monotonically increasing `requestRef` id, and a response whose id is not the current
+one is dropped. `useExtractionStatus`'s `cancelled` flag is the same idiom for the same reason. So
+the last keystroke always wins the render, and a stale 8 s semantic response can never overwrite a
+fresh one.
+
+The honest cost, recorded: with the toggle on and a query of 4+ characters, one `glm-5.3` call per
+700 ms typing pause. That is what the requirement asks for, and the off-by-default toggle is what
+keeps it opt-in.
+
+### D8 — Invariant 5: `nina_message_images.description` is not merely avoided, it is unreachable
+
+Matching is on `nina_messages.text` and `nina_chat_sessions.title` and nothing else. **This phase's
+SQL never names `nina_message_images`**, so there is no query whose projection could carry
+`description` and no code path in which it could reach a component. That is a structural guarantee
+rather than a discipline.
+
+A consequence worth naming: an **image-only** message has empty `text`, so it can never be a hit,
+and a search result therefore can never be a blank row. Making photos searchable means searching
+`glm-4.6v`'s private prose, which invariant 5 forbids surfacing — and a hit whose snippet had to be
+suppressed would be a result the runner cannot read. That is a handoff with a design question
+attached, not an omission.
+
+### D9 — Why the candidate query is not in `lib/nina/queries.ts`
+
+Phase 1 owns that file's §4 and the set's concurrency discipline is file disjointness. The scope
+handed me "the candidate-narrowing query" inside `lib/nina/search.ts`, but `search.ts` is imported
+by a **client component** and by vitest, so it cannot reach `db` — invariant 7 ("decisions live in
+pure functions under `lib/`") and `lib/nina/reply.ts`'s stated rule ("No `import 'server-only'`,
+deliberately: a Server Action and `components/nina/*` both import this") both forbid it.
+
+So the query lives as a **private, non-exported helper inside `lib/nina/searchActions.ts`**, which
+is `'use server'` and is its only caller. That is exactly `lib/nina/actions.ts`'s shape —
+`scheduleDistillation` is a plain unexported `function` in a `'use server'` file — and it means
+`searchNinaChats` is the single exported symbol, so the module surfaces exactly one endpoint.
+
+**Invariant 3 holds and is proved twice.** `searchNinaChats` opens with `requireUserId()`, and both
+`eq(ninaMessages.userId, userId)` and `eq(ninaChatSessions.userId, userId)` are in the SQL — the FK
+proves the session *exists*, not that it is his, which is the distinction
+`insertNinaMessageImages` already spells out.
+
+---
+
+## Implementation Steps
+
+### Step 1: `lib/nina/search.ts` — the pure module
+
+**File:** `lib/nina/search.ts` (new file)
+**Change:** every rule this feature has, as pure functions with no import of `db`, `server-only`,
+React or the DOM.
+**Code:**
+
+```ts
+/**
+ * Chat search (R6, second half), as the decisions it actually is: what a query means, what the SQL
+ * narrows to, how a match is scored, what a result says, and where a tap goes.
+ *
+ * ── WHY THIS FILE EXISTS AT ALL ───────────────────────────────────────────────────────────────
+ * `vitest.config.ts` is `environment: 'node'` with an `include` matching `*.test.ts` only: there is
+ * no jsdom, so a rule that lives in a component cannot be tested. `lib/nina/chatview.ts`,
+ * `lib/nina/reply.ts` and `lib/photos/gallery.ts` were all split out for exactly this reason and
+ * each says so in its own header. This module is the same shape: decisions here, measurement in the
+ * component, SQL in the action.
+ *
+ * **No `import 'server-only'`, deliberately.** Three importers with three different graphs:
+ * `lib/nina/searchActions.ts` (a Server Action), `lib/nina/semantic.ts` (server), and
+ * `components/nina/NinaSearchField.tsx` plus `components/nina/useSemanticPref.ts` (client). That is
+ * only safe because there is nothing in here but string handling and arithmetic — no `db`, no
+ * `env`, no DOM type in any signature. `lib/nina/reply.ts` states the same rule for the same reason.
+ *
+ * ── WHAT THE SEARCH DOES NOT READ ─────────────────────────────────────────────────────────────
+ * `nina_message_images.description` (invariant 5). Not avoided by discipline — the SQL in
+ * `searchActions.ts` never names that table, so there is no projection that could carry it. The
+ * visible consequence is that an image-only message has empty `text` and can never be a hit, which
+ * is also why a result row can never be blank.
+ */
+
+/* ── the persisted toggle ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * **The first `localStorage` key in this codebase**, so it sets the convention: an `ri:` origin
+ * prefix, then the feature, then the preference. `grep -rn "localStorage" lib components app`
+ * returned nothing before this line existed.
+ *
+ * Why `localStorage` at all, when the app's habit (`lib/panel/param.ts`, `usePanelParam`) is to put
+ * UI state in the URL: the URL is per-history-entry and R6 asks for "across app usage". Why not a
+ * cookie, which the server render could read: this preference has **no server consumer** — it is an
+ * argument to a Server Action that the client already holds — so a cookie would add a request-time
+ * input to `/nina` and buy nothing.
+ */
+export const NINA_SEMANTIC_PREF_KEY = 'ri:nina:semantic-search'
+
+/**
+ * The one stored value that means "on". `PANEL_DATES_OPEN`'s rule, in a second storage medium:
+ * absent, `''`, `'0'`, `'true'`, `'yes'` and anything else are off. One spelling to write, one to
+ * parse, and it fails closed — an unrecognised value costs no model call.
+ */
+export const SEMANTIC_PREF_ON = '1'
+
+export function decodeSemanticPref(raw: string | null | undefined): boolean {
+  return raw === SEMANTIC_PREF_ON
+}
+
+/** The value to store, or `null` for "remove the key" — the `encodePanelDates` shape. */
+export function encodeSemanticPref(on: boolean): string | null {
+  return on ? SEMANTIC_PREF_ON : null
+}
+
+/* ── budgets and floors ────────────────────────────────────────────────────────────────────── */
+
+/** Below this, nothing is queried and nothing is rendered. Idle is not "no matches". */
+export const SEARCH_MIN_CHARS = 2
+
+/**
+ * Below this the toggle is honoured but the model pass is skipped and the response comes back
+ * `mode: 'text'`. Two or three characters is a substring probe, not a concept, and this is the
+ * cheapest real reduction in model calls the feature has.
+ */
+export const SEMANTIC_MIN_CHARS = 4
+
+/** A Server Action per keystroke is a serverless invocation per keystroke. See `searchDebounceMs`. */
+export const SEARCH_DEBOUNCE_MS = 250
+export const SEMANTIC_DEBOUNCE_MS = 700
+
+/** A search field is not a composer. Longer than this is a paste, and it is truncated, not refused. */
+export const SEARCH_QUERY_MAX_CHARS = 200
+
+/**
+ * More terms than this and every extra one is another `ILIKE` in an `AND` chain that already
+ * returns nothing. Six is past the point where a seventh changes an answer.
+ */
+export const SEARCH_TERM_MAX = 6
+
+/** How many hits the list shows, and the ceiling on what the model may rank. */
+export const SEARCH_RESULT_MAX = 20
+
+/** The SQL cap on text matches. Newest first, so the cap drops the oldest matches. */
+export const TEXT_CANDIDATE_MAX = 200
+
+/** The ceiling on what goes to `glm-5.3`. 120 × 240 chars ≈ 8k tokens. See `buildSemanticCandidates`. */
+export const SEMANTIC_CANDIDATE_MAX = 120
+
+/**
+ * The recency filler. This is what makes "a query that shares no words with a message still finds
+ * it" answerable at all — a text-only narrowing returns nothing for such a query, so the ranker
+ * would have nothing to rank.
+ */
+export const SEMANTIC_RECENCY_WINDOW = 80
+
+/** Per-candidate text budget in the prompt. */
+export const SEMANTIC_SNIPPET_CHARS = 240
+
+/** Per-candidate session-title budget in the prompt. A title is 3-4 words (R3); 60 is generous. */
+export const SEMANTIC_TITLE_CHARS = 60
+
+/**
+ * The output is `{"ranked":[12,3,40]}` and nothing else, so 400 tokens is roomy.
+ * **Deliberately not `NINA_MAX_TOKENS = 2400`** from `lib/nina/turn.ts`, which is sized for a
+ * four-bubble reply plus a `tool_use` block. Inheriting that number here would be inheriting a
+ * budget for a different shape of answer.
+ */
+export const SEMANTIC_MAX_TOKENS = 400
+
+/**
+ * `lib/llm/narrate.ts` measured `glm-5.3` at 10.2-16.4 s, but for 1,200-1,600 tokens of prose
+ * through a tool. This call emits at most 400 tokens of a flat integer array with `thinking`
+ * disabled, and 8 s is the outer edge of what a person holds still for at a search field. There is
+ * no repair round trip, so this is the whole budget rather than one of four numbers.
+ */
+export const SEMANTIC_TIMEOUT_MS = 8_000
+
+/** About two lines at the result row's size, matching `QUOTE_PREVIEW_MAX_CHARS`'s reasoning. */
+export const SNIPPET_MAX_CHARS = 140
+
+/* ── scoring weights, named so a test can assert on the rule and not on a number ──────────── */
+
+/** A session-title hit outranks every message hit. Titles are the coarse answer; group them first. */
+export const SESSION_HIT_BONUS = 1_000
+/** The whole query present as a contiguous phrase beats the same words scattered. */
+export const PHRASE_HIT_BONUS = 100
+export const OCCURRENCE_WEIGHT = 2
+/** Past three occurrences of one term, a fourth says nothing new about relevance. */
+export const OCCURRENCE_CAP = 3
+
+/* ── the query ─────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Whatever arrived from a client, as one line of at most `SEARCH_QUERY_MAX_CHARS`.
+ *
+ * `unknown` in, `string` out: a Server Action is an untrusted POST endpoint
+ * (`lib/nina/actions.ts`'s point 3), so the action's first act on its own argument is to run it
+ * through here rather than to trust its declared type.
+ */
+export function normalizeSearchQuery(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  return raw.replace(/\s+/g, ' ').trim().slice(0, SEARCH_QUERY_MAX_CHARS)
+}
+
+/**
+ * The query as distinct lowercased terms, in order, capped. Deduplicated, because `lari lari` is
+ * one condition twice and the second one narrows nothing.
+ */
+export function searchTerms(query: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const piece of normalizeSearchQuery(query).toLowerCase().split(' ')) {
+    if (piece.length === 0) continue
+    if (seen.has(piece)) continue
+    seen.add(piece)
+    out.push(piece)
+    if (out.length === SEARCH_TERM_MAX) break
+  }
+  return out
+}
+
+/**
+ * A term as a `LIKE` pattern, with `LIKE`'s own metacharacters escaped.
+ *
+ * **This is not cosmetic.** Unescaped, a query of `100%` matches every row in the table and a query
+ * of `_` matches everything of length one or more — the search would silently claim the whole
+ * conversation is a hit. drizzle binds the pattern as a parameter, so the backslashes below reach
+ * `LIKE` intact and `\` is `LIKE`'s default escape character.
+ */
+export function likePattern(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+}
+
+/** 250 ms for text, 700 ms when a keystroke pause costs a `glm-5.3` call. */
+export function searchDebounceMs(semantic: boolean): number {
+  return semantic ? SEMANTIC_DEBOUNCE_MS : SEARCH_DEBOUNCE_MS
+}
+
+export function shouldRunSearch(query: string): boolean {
+  return normalizeSearchQuery(query).length >= SEARCH_MIN_CHARS
+}
+
+/** The toggle AND a query long enough to be a concept. Both, or the model pass is skipped. */
+export function shouldRunSemantic(query: string, semantic: boolean): boolean {
+  return semantic && normalizeSearchQuery(query).length >= SEMANTIC_MIN_CHARS
+}
+
+/**
+ * The TypeScript mirror of the SQL's `AND` chain of `ILIKE`s.
+ *
+ * It exists so ranking and the tests can agree with the database without a database: the SQL
+ * narrows, this re-checks, and a divergence between the two shows up as a unit-test failure rather
+ * than as a row that came back and then scored zero. Zero terms match nothing — a search with no
+ * terms is not a search that matches everything.
+ */
+export function matchesAllTerms(text: string, terms: readonly string[]): boolean {
+  if (terms.length === 0) return false
+  const haystack = text.toLowerCase()
+  return terms.every((term) => haystack.includes(term))
+}
+
+/* ── what a result says ────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One line of text around the first matching term.
+ *
+ * Whitespace is collapsed first, for `quotePreview`'s reason: the bubble is `whitespace-pre-wrap`
+ * because her line breaks are how she talks, but a result row is a reference and a two-line snippet
+ * spending both lines on a blank line is useless. Collapsing also makes the budget mean 140
+ * characters of prose rather than 140 characters of `\n`.
+ *
+ * A quarter of the budget of lead-in, so the matched word is visible without being flush against
+ * the left edge. Ellipses mark a cut on either side and only where one happened — a snippet that is
+ * the whole message gets none, which is how the reader can tell.
+ *
+ * No matching term (the semantic path, where a hit need share no word with the query) falls back to
+ * the head of the message. That is the honest answer: there is nothing to centre on.
+ */
+export function snippetAround(
+  text: string,
+  terms: readonly string[],
+  budget: number = SNIPPET_MAX_CHARS,
+): string {
+  if (budget <= 0) return ''
+  const flat = text.replace(/\s+/g, ' ').trim()
+  if (flat.length === 0) return ''
+  if (flat.length <= budget) return flat
+
+  const haystack = flat.toLowerCase()
+  let first = -1
+  for (const term of terms) {
+    if (term.length === 0) continue
+    const at = haystack.indexOf(term)
+    if (at !== -1 && (first === -1 || at < first)) first = at
+  }
+  if (first === -1) return `${flat.slice(0, budget).trimEnd()}…`
+
+  const lead = Math.floor(budget / 4)
+  let start = Math.max(0, first - lead)
+  let end = start + budget
+  if (end > flat.length) {
+    end = flat.length
+    start = Math.max(0, end - budget)
+  }
+
+  const head = start > 0 ? '…' : ''
+  const tail = end < flat.length ? '…' : ''
+  return `${head}${flat.slice(start, end).trim()}${tail}`
+}
+
+/** A title hit points at a session; a text hit points at one message inside one. */
+export type NinaSearchHitKind = 'session' | 'message'
+
+/**
+ * A row the search may return, as the pure layer wants it.
+ *
+ * **Structural, not imported from `lib/db` or from `lib/nina/queries.ts`.** `lib/nina/attach.ts`
+ * and `lib/nina/reply.ts` both draw this boundary and both state why: the pure module declares what
+ * it needs and the query happens to return something assignable to it, so a column rename is a
+ * compile error at one call site rather than an edit to this file. It also means this module never
+ * learns that `role` is spelled `'runner'` — `mine` is a boolean the action computes.
+ *
+ * `day` is a **rendered string**, produced on the server by `lib/format.ts`'s `formatDay`
+ * (invariant 4). A client component formatting an instant is the classic hydration mismatch and the
+ * codebase says so in three places.
+ */
+export interface NinaSearchCandidate {
+  kind: NinaSearchHitKind
+  sessionId: string
+  sessionTitle: string
+  /** `null` for a `'session'` candidate — a title hit names no message. */
+  messageId: string | null
+  /** `nina_messages.seq`. `0` for a `'session'` candidate, which never competes on recency. */
+  seq: number
+  /** True when the runner wrote it. False for hers, and for a session candidate. */
+  mine: boolean
+  /** The message body, or the session title for a `'session'` candidate. */
+  text: string
+  /** `formatDay(jakartaDayOf(sentAt))`. Empty for a `'session'` candidate. */
+  day: string
+}
+
+/** What a result row renders. Everything it needs, nothing it does not. */
+export interface NinaSearchHit {
+  kind: NinaSearchHitKind
+  sessionId: string
+  sessionTitle: string
+  messageId: string | null
+  mine: boolean
+  /** Never empty for a message hit — see `snippetAround`. */
+  snippet: string
+  day: string
+  /** Where a tap goes. `searchHitHref`, so the grammar is tested and not retyped. */
+  href: string
+}
+
+export type NinaSearchMode = 'text' | 'semantic'
+
+/**
+ * `requested` is what he asked for; `mode` is what actually ran. They differ exactly when the model
+ * was unavailable or the query was too short for a concept, and `isDegradedSearch` is the name for
+ * that. `lib/llm/narrate.ts`'s ruling — "the only safe fallback for prose is the absence of prose"
+ * — applied to ranking gives the opposite answer: the fallback is the ranking we CAN compute, said
+ * out loud. Silence here would read as "your conversation does not contain this", which is a false
+ * claim about the runner's own history.
+ */
+export interface NinaSearchResponse {
+  requested: NinaSearchMode
+  mode: NinaSearchMode
+  hits: NinaSearchHit[]
+  /** The SQL cap cut the corpus, so "nothing else matched" is not a claim about everything. */
+  capped: boolean
+}
+
+export function emptySearchResponse(requested: NinaSearchMode): NinaSearchResponse {
+  return { requested, mode: 'text', hits: [], capped: false }
+}
+
+export function isDegradedSearch(response: NinaSearchResponse | null): boolean {
+  return response !== null && response.requested === 'semantic' && response.mode === 'text'
+}
+
+/**
+ * Where a hit goes: **phase 3's `?s=` and `lib/nina/scroll.ts`'s `?at=`, and no third grammar.**
+ *
+ * `decodeChatScrollMark` accepts `<messageId>~<offset>` with the id matching
+ * `^[A-Za-z0-9_-]{1,64}$` and the offset `^-?\d{1,6}$`, and `resolveRestoreTop` returns
+ * `anchorTop - offset` clamped into the document. So `~0` means "this message's top edge at the top
+ * of the viewport", which is exactly a jump to it, and `components/nina/MessageList.tsx` already
+ * consumes the mark. Deep-linking to the message therefore costs one function and no new parameter.
+ *
+ * `encodeURIComponent` rather than `URLSearchParams`: the latter percent-encodes `~` to `%7E`,
+ * which round-trips fine through `useSearchParams().get('at')` but throws away the reason
+ * `scroll.ts` chose `~` in the first place ("unreserved in a query string, so no percent-encoding").
+ * Ids are `[0-9A-Za-z_-]{12}` so the call is a no-op in practice and correct hygiene anyway.
+ *
+ * **A message older than `CHAT_HISTORY_LIMIT` inside its own session degrades**: the anchor is not
+ * in the document, `resolveRestoreTop` returns `null`, and the screen opens where it normally
+ * would. That is `scroll.ts`'s documented behaviour, not a new failure mode.
+ *
+ * **RECONCILED: the parameter's name is imported, not spelled.** Phase 3 exports
+ * `SESSION_PARAM = 's'` from `lib/nina/active.ts`, which is pure and client-safe (its cap comes
+ * from phase 1's `lib/nina/sessions.ts`, and phase 4's model call lives in
+ * `lib/nina/autotitle.ts`, so nothing `server-only` is reachable from it). This module is imported
+ * by the `'use client'` `NinaSearchField`, so that matters — and it is the very path phase 4's D1
+ * cites when it argues for keeping `active.ts` pure. Phase 5's session hrefs import the same
+ * constant, so `?s=` has exactly one spelling in the set.
+ */
+export function searchHitHref(hit: { sessionId: string; messageId: string | null }): string {
+  const session = encodeURIComponent(hit.sessionId)
+  const base = `/nina?${SESSION_PARAM}=${session}`
+  if (hit.messageId === null) return base
+  return `${base}&at=${encodeURIComponent(hit.messageId)}~0`
+}
+
+export function toSearchHit(
+  candidate: NinaSearchCandidate,
+  terms: readonly string[],
+): NinaSearchHit {
+  return {
+    kind: candidate.kind,
+    sessionId: candidate.sessionId,
+    sessionTitle: candidate.sessionTitle,
+    messageId: candidate.messageId,
+    mine: candidate.mine,
+    snippet: snippetAround(candidate.text, terms),
+    day: candidate.day,
+    href: searchHitHref(candidate),
+  }
+}
+
+/* ── text ranking ──────────────────────────────────────────────────────────────────────────── */
+
+/** Occurrences of `needle`, stopping at `cap`. Non-overlapping, which is what "how often" means. */
+function countOccurrences(haystack: string, needle: string, cap: number): number {
+  if (needle.length === 0 || cap <= 0) return 0
+  let found = 0
+  let at = haystack.indexOf(needle)
+  while (at !== -1 && found < cap) {
+    found += 1
+    at = haystack.indexOf(needle, at + needle.length)
+  }
+  return found
+}
+
+/**
+ * How well a candidate answers the query, given that every term is already present (the SQL's `AND`
+ * chain guarantees it, and `matchesAllTerms` re-checks). So coverage cannot discriminate and the
+ * three things that can are: a title hit, the query present as a contiguous phrase, and how often
+ * the terms appear.
+ *
+ * The `+1` for a candidate that STARTS with a term is a tiebreak, not a signal: between two
+ * otherwise equal messages, the one whose first word is what he searched for is the one he meant.
+ */
+export function scoreTextCandidate(
+  candidate: NinaSearchCandidate,
+  terms: readonly string[],
+): number {
+  const haystack = candidate.text.toLowerCase()
+  let score = candidate.kind === 'session' ? SESSION_HIT_BONUS : 0
+  if (terms.length > 1 && haystack.includes(terms.join(' '))) score += PHRASE_HIT_BONUS
+  for (const term of terms) {
+    score += countOccurrences(haystack, term, OCCURRENCE_CAP) * OCCURRENCE_WEIGHT
+  }
+  if (terms.some((term) => term.length > 0 && haystack.startsWith(term))) score += 1
+  return score
+}
+
+/**
+ * The text ranking: score descending, then `seq` descending, then id, so the order is total and a
+ * test can assert on it.
+ *
+ * Recency as the first tiebreak is the honest default for a conversation — two messages that score
+ * the same are distinguished by which one he is more likely to be looking for, and that is the
+ * newer one. `nina_messages.seq` is the total order (invariant 6); nothing here re-sorts by a
+ * timestamp.
+ */
+export function rankTextHits(
+  candidates: readonly NinaSearchCandidate[],
+  terms: readonly string[],
+  limit: number = SEARCH_RESULT_MAX,
+): NinaSearchHit[] {
+  const scored = candidates
+    .filter((candidate) => matchesAllTerms(candidate.text, terms))
+    .map((candidate) => ({ candidate, score: scoreTextCandidate(candidate, terms) }))
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    if (b.candidate.seq !== a.candidate.seq) return b.candidate.seq - a.candidate.seq
+    const left = a.candidate.messageId ?? a.candidate.sessionId
+    const right = b.candidate.messageId ?? b.candidate.sessionId
+    return left < right ? -1 : left > right ? 1 : 0
+  })
+
+  return scored
+    .slice(0, Math.max(0, limit))
+    .map(({ candidate }) => toSearchHit(candidate, terms))
+}
+
+/* ── the semantic pass ─────────────────────────────────────────────────────────────────────── */
+
+/**
+ * What `glm-5.3` is given, and **the order is the whole design.**
+ *
+ * Assumption A7 reads "search using llm" as a model pass over SQL-narrowed candidates. Taken
+ * literally as "narrowed by a text match", that contradicts R6's own acceptance test — *a query
+ * that shares no words with a message still finds it* — because a text narrowing returns nothing
+ * for such a query and a ranker with no candidates ranks nothing. So the set is a union:
+ *
+ *   1. session-title matches,
+ *   2. message text matches (newest first),
+ *   3. the newest `SEMANTIC_RECENCY_WINDOW` messages, as filler.
+ *
+ * In that order, deduplicated, truncated to `limit`. **The cap can therefore only ever eat recency
+ * filler, never a text hit** — A7's narrowing is fully present, and the filler is what makes the
+ * no-shared-word case answerable at all.
+ *
+ * The dedup key includes `kind`, because a session hit and a message hit are different rows even
+ * when one session produced both.
+ */
+export function buildSemanticCandidates(
+  sessions: readonly NinaSearchCandidate[],
+  textMatches: readonly NinaSearchCandidate[],
+  recent: readonly NinaSearchCandidate[],
+  limit: number = SEMANTIC_CANDIDATE_MAX,
+): NinaSearchCandidate[] {
+  const out: NinaSearchCandidate[] = []
+  const seen = new Set<string>()
+  for (const group of [sessions, textMatches, recent]) {
+    for (const candidate of group) {
+      if (out.length >= limit) return out
+      const key = `${candidate.kind}:${candidate.messageId ?? candidate.sessionId}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(candidate)
+    }
+  }
+  return out
+}
+
+/** One flat line, so a tab in the source text cannot break the format the prompt describes. */
+function clampFlat(text: string, budget: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length <= budget ? flat : `${flat.slice(0, budget).trimEnd()}…`
+}
+
+/**
+ * The candidates as the prompt's tab-separated block: `<index>\t<HIM|HER|TITLE>\t<title>\t<text>`.
+ *
+ * The index is what comes back, not the id: an integer array is a fraction of the output tokens of
+ * an array of nanoids, and `SEMANTIC_MAX_TOKENS = 400` is sized for the former. Ownership is not at
+ * stake either way — every candidate came out of an owner-scoped read, so the ids are already facts
+ * (`lib/nina/queries.ts`'s rule) and the model is only permuting them.
+ *
+ * Both fields are flattened and clamped, so 120 candidates cost a predictable number of tokens
+ * however long a message was.
+ */
+export function semanticCandidateBlock(candidates: readonly NinaSearchCandidate[]): string {
+  const lines: string[] = []
+  for (const [index, candidate] of candidates.entries()) {
+    const who = candidate.kind === 'session' ? 'TITLE' : candidate.mine ? 'HIM' : 'HER'
+    const title = clampFlat(candidate.sessionTitle, SEMANTIC_TITLE_CHARS)
+    const text = clampFlat(candidate.text, SEMANTIC_SNIPPET_CHARS)
+    lines.push(`${index}\t${who}\t${title}\t${text}`)
+  }
+  return lines.join('\n')
+}
+
+/**
+ * `{"ranked": [12, 3, 40]}` → the indexes we will actually use, or `null`.
+ *
+ * Tolerant in exactly the ways a model is untidy — a numeric string, a duplicate, an index it
+ * invented — and intolerant of nothing else, because every one of those is repairable here for free
+ * and none of them is a reason to throw away a good answer. Out-of-range indexes are dropped rather
+ * than clamped: an index we did not send is not a candidate, and clamping it would return a row the
+ * model never chose.
+ *
+ * **An empty result is `null`, i.e. a failure, and that is a decision.** We cannot distinguish "the
+ * model judged nothing relevant" from "the model returned junk", and degrading to the text ranking
+ * is never dishonest in either case: the text hits are exact `AND` matches, so they are relevant by
+ * construction. Reporting "no matches" on the model's say-so is the worse of the two errors, and it
+ * is the failure `lib/llm/narrate.ts` names.
+ */
+export function parseSemanticRanking(raw: unknown, candidateCount: number): number[] | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const value = (raw as { ranked?: unknown }).ranked
+  if (!Array.isArray(value)) return null
+
+  const seen = new Set<number>()
+  const out: number[] = []
+  for (const entry of value) {
+    const index = typeof entry === 'number' ? entry : Number(entry)
+    if (!Number.isInteger(index)) continue
+    if (index < 0 || index >= candidateCount) continue
+    if (seen.has(index)) continue
+    seen.add(index)
+    out.push(index)
+    if (out.length === SEARCH_RESULT_MAX) break
+  }
+  return out.length === 0 ? null : out
+}
+
+/**
+ * The model's order, applied. No re-sort and no re-score: the ranking IS the answer, and second-
+ * guessing it with the text score would produce a third order that neither layer chose.
+ */
+export function applySemanticRanking(
+  candidates: readonly NinaSearchCandidate[],
+  order: readonly number[],
+  terms: readonly string[],
+): NinaSearchHit[] {
+  const hits: NinaSearchHit[] = []
+  for (const index of order) {
+    const candidate = candidates[index]
+    if (candidate == null) continue
+    hits.push(toSearchHit(candidate, terms))
+  }
+  return hits
+}
+```
+
+**Impact:** a new pure module. Nothing imports it yet, so this step alone builds and the suite is
+green.
+
+---
+
+### Step 2: `lib/nina/search.test.ts` — the suite (invariant 7)
+
+**File:** `lib/nina/search.test.ts` (new file)
+**Change:** one `describe` per exported rule. `environment: 'node'`, no jsdom, no db, no network —
+picked up by `vitest.config.ts`'s `include: ['lib/**/*.test.ts', …]` with no config change.
+**Code:**
+
+```ts
+import { describe, expect, it } from 'vitest'
+
+import {
+  NINA_SEMANTIC_PREF_KEY,
+  OCCURRENCE_CAP,
+  SEARCH_DEBOUNCE_MS,
+  SEARCH_MIN_CHARS,
+  SEARCH_QUERY_MAX_CHARS,
+  SEARCH_RESULT_MAX,
+  SEARCH_TERM_MAX,
+  SEMANTIC_CANDIDATE_MAX,
+  SEMANTIC_DEBOUNCE_MS,
+  SEMANTIC_MIN_CHARS,
+  SEMANTIC_PREF_ON,
+  SEMANTIC_SNIPPET_CHARS,
+  SESSION_HIT_BONUS,
+  SNIPPET_MAX_CHARS,
+  applySemanticRanking,
+  buildSemanticCandidates,
+  decodeSemanticPref,
+  emptySearchResponse,
+  encodeSemanticPref,
+  isDegradedSearch,
+  likePattern,
+  matchesAllTerms,
+  normalizeSearchQuery,
+  parseSemanticRanking,
+  rankTextHits,
+  scoreTextCandidate,
+  searchDebounceMs,
+  searchHitHref,
+  searchTerms,
+  semanticCandidateBlock,
+  shouldRunSearch,
+  shouldRunSemantic,
+  snippetAround,
+  type NinaSearchCandidate,
+} from './search'
+
+/* ── fixtures ──────────────────────────────────────────────────────────────────────────────── */
+
+function message(over: Partial<NinaSearchCandidate> = {}): NinaSearchCandidate {
+  return {
+    kind: 'message',
+    sessionId: 'sess00000001',
+    sessionTitle: 'Morning long run',
+    messageId: 'msg000000001',
+    seq: 1,
+    mine: true,
+    text: 'lari gw kemaren gimana menurut lo?',
+    day: 'Thu, 20 Aug 2026',
+    ...over,
+  }
+}
+
+function session(over: Partial<NinaSearchCandidate> = {}): NinaSearchCandidate {
+  return {
+    kind: 'session',
+    sessionId: 'sess00000001',
+    sessionTitle: 'Morning long run',
+    messageId: null,
+    seq: 0,
+    mine: false,
+    text: 'Morning long run',
+    day: '',
+    ...over,
+  }
+}
+
+/* ── the persisted toggle ──────────────────────────────────────────────────────────────────── */
+
+describe('the semantic-search preference', () => {
+  it('uses one namespaced key', () => {
+    expect(NINA_SEMANTIC_PREF_KEY).toBe('ri:nina:semantic-search')
+  })
+
+  it('reads exactly one value as on', () => {
+    expect(decodeSemanticPref(SEMANTIC_PREF_ON)).toBe(true)
+  })
+
+  it('fails closed on everything else', () => {
+    for (const raw of [null, undefined, '', '0', 'true', 'yes', 'on', '1 ', ' 1']) {
+      expect(decodeSemanticPref(raw)).toBe(false)
+    }
+  })
+
+  it('encodes off as null, so the key is removed rather than set to a falsy string', () => {
+    expect(encodeSemanticPref(true)).toBe(SEMANTIC_PREF_ON)
+    expect(encodeSemanticPref(false)).toBeNull()
+  })
+
+  it('round-trips', () => {
+    expect(decodeSemanticPref(encodeSemanticPref(true))).toBe(true)
+    expect(decodeSemanticPref(encodeSemanticPref(false))).toBe(false)
+  })
+})
+
+/* ── the query ─────────────────────────────────────────────────────────────────────────────── */
+
+describe('normalizeSearchQuery', () => {
+  it('collapses every kind of whitespace and trims', () => {
+    expect(normalizeSearchQuery('  pagi   mif\n\nlari\tlagi?  ')).toBe('pagi mif lari lagi?')
+  })
+
+  it('returns empty for a non-string', () => {
+    for (const raw of [null, undefined, 42, {}, [], true]) {
+      expect(normalizeSearchQuery(raw)).toBe('')
+    }
+  })
+
+  it('truncates a paste rather than refusing it', () => {
+    expect(normalizeSearchQuery('a'.repeat(SEARCH_QUERY_MAX_CHARS + 50))).toHaveLength(
+      SEARCH_QUERY_MAX_CHARS,
+    )
+  })
+})
+
+describe('searchTerms', () => {
+  it('lowercases and splits', () => {
+    expect(searchTerms('Lari Pagi')).toEqual(['lari', 'pagi'])
+  })
+
+  it('drops duplicates, keeping first order', () => {
+    expect(searchTerms('lari lari pagi lari')).toEqual(['lari', 'pagi'])
+  })
+
+  it('caps the term count', () => {
+    const query = Array.from({ length: SEARCH_TERM_MAX + 4 }, (_, i) => `t${i}`).join(' ')
+    expect(searchTerms(query)).toHaveLength(SEARCH_TERM_MAX)
+  })
+
+  it('is empty for an empty query', () => {
+    expect(searchTerms('   ')).toEqual([])
+  })
+})
+
+describe('likePattern', () => {
+  it('wraps a plain term in wildcards', () => {
+    expect(likePattern('lari')).toBe('%lari%')
+  })
+
+  it('escapes the percent that would otherwise match every row', () => {
+    expect(likePattern('100%')).toBe('%100\\%%')
+  })
+
+  it('escapes the underscore that would otherwise match any character', () => {
+    expect(likePattern('a_b')).toBe('%a\\_b%')
+  })
+
+  it('escapes a literal backslash first, so an escape cannot be forged', () => {
+    expect(likePattern('a\\b')).toBe('%a\\\\b%')
+    expect(likePattern('\\%')).toBe('%\\\\\\%%')
+  })
+})
+
+describe('the run gates', () => {
+  it('needs at least SEARCH_MIN_CHARS to query anything', () => {
+    expect(shouldRunSearch('a'.repeat(SEARCH_MIN_CHARS - 1))).toBe(false)
+    expect(shouldRunSearch('a'.repeat(SEARCH_MIN_CHARS))).toBe(true)
+  })
+
+  it('measures the NORMALISED query, so whitespace does not buy a search', () => {
+    expect(shouldRunSearch('  a  ')).toBe(false)
+  })
+
+  it('needs the toggle AND SEMANTIC_MIN_CHARS for the model pass', () => {
+    const short = 'a'.repeat(SEMANTIC_MIN_CHARS - 1)
+    const long = 'a'.repeat(SEMANTIC_MIN_CHARS)
+    expect(shouldRunSemantic(long, false)).toBe(false)
+    expect(shouldRunSemantic(short, true)).toBe(false)
+    expect(shouldRunSemantic(long, true)).toBe(true)
+  })
+
+  it('charges a longer debounce for a query that costs a model call', () => {
+    expect(searchDebounceMs(false)).toBe(SEARCH_DEBOUNCE_MS)
+    expect(searchDebounceMs(true)).toBe(SEMANTIC_DEBOUNCE_MS)
+    expect(SEMANTIC_DEBOUNCE_MS).toBeGreaterThan(SEARCH_DEBOUNCE_MS)
+  })
+})
+
+describe('matchesAllTerms', () => {
+  it('requires every term', () => {
+    expect(matchesAllTerms('lari pagi enak', ['lari', 'pagi'])).toBe(true)
+    expect(matchesAllTerms('lari pagi enak', ['lari', 'malam'])).toBe(false)
+  })
+
+  it('is case-insensitive on both sides of the comparison', () => {
+    expect(matchesAllTerms('LARI Pagi', ['lari', 'pagi'])).toBe(true)
+  })
+
+  it('matches inside a word, which is the point of ILIKE over to_tsquery', () => {
+    expect(matchesAllTerms('berlari terus', ['lari'])).toBe(true)
+  })
+
+  it('matches nothing when there are no terms', () => {
+    expect(matchesAllTerms('anything', [])).toBe(false)
+  })
+})
+
+/* ── snippets ──────────────────────────────────────────────────────────────────────────────── */
+
+describe('snippetAround', () => {
+  it('returns a short message whole, with no ellipsis', () => {
+    expect(snippetAround('lari pagi', ['lari'])).toBe('lari pagi')
+  })
+
+  it('collapses newlines, because a result row is a reference and not the message', () => {
+    expect(snippetAround('lari\n\npagi', ['lari'])).toBe('lari pagi')
+  })
+
+  it('centres on the first matching term and marks both cuts', () => {
+    const text = `${'x'.repeat(400)} TARGET ${'y'.repeat(400)}`
+    const snippet = snippetAround(text, ['target'], 40)
+    expect(snippet.startsWith('…')).toBe(true)
+    expect(snippet.endsWith('…')).toBe(true)
+    expect(snippet.toLowerCase()).toContain('target')
+  })
+
+  it('does not mark a leading cut when the match is already near the start', () => {
+    const snippet = snippetAround(`TARGET ${'y'.repeat(400)}`, ['target'], 40)
+    expect(snippet.startsWith('…')).toBe(false)
+    expect(snippet.endsWith('…')).toBe(true)
+  })
+
+  it('does not mark a trailing cut when the match is at the very end', () => {
+    const snippet = snippetAround(`${'x'.repeat(400)} TARGET`, ['target'], 40)
+    expect(snippet.startsWith('…')).toBe(true)
+    expect(snippet.endsWith('…')).toBe(false)
+  })
+
+  it('falls back to the head when no term is present — the semantic path', () => {
+    const snippet = snippetAround('a'.repeat(400), ['nothing'], 40)
+    expect(snippet).toBe(`${'a'.repeat(40)}…`)
+  })
+
+  it('stays within budget plus its ellipses', () => {
+    const snippet = snippetAround('z'.repeat(1000), ['zz'], 40)
+    expect(snippet.length).toBeLessThanOrEqual(42)
+  })
+
+  it('returns empty for empty text and for a non-positive budget', () => {
+    expect(snippetAround('   ', ['a'])).toBe('')
+    expect(snippetAround('lari', ['lari'], 0)).toBe('')
+  })
+
+  it('defaults to SNIPPET_MAX_CHARS', () => {
+    expect(snippetAround('q'.repeat(1000), [])).toHaveLength(SNIPPET_MAX_CHARS + 1)
+  })
+})
+
+/* ── the href: no third URL grammar ────────────────────────────────────────────────────────── */
+
+describe('searchHitHref', () => {
+  it('deep-links to the message through phase 3 s ?s= and scroll.ts s ?at=', () => {
+    expect(searchHitHref({ sessionId: 'sess00000001', messageId: 'msg000000001' })).toBe(
+      '/nina?s=sess00000001&at=msg000000001~0',
+    )
+  })
+
+  it('leaves the ~ unencoded, which is why scroll.ts chose it', () => {
+    const href = searchHitHref({ sessionId: 's1', messageId: 'm1' })
+    expect(href).toContain('~0')
+    expect(href).not.toContain('%7E')
+  })
+
+  it('opens the session with no mark when the hit is a title', () => {
+    expect(searchHitHref({ sessionId: 'sess00000001', messageId: null })).toBe(
+      '/nina?s=sess00000001',
+    )
+  })
+})
+
+/* ── text ranking ──────────────────────────────────────────────────────────────────────────── */
+
+describe('scoreTextCandidate', () => {
+  it('puts every session-title hit above every message hit', () => {
+    const title = scoreTextCandidate(session({ text: 'lari' }), ['lari'])
+    const body = scoreTextCandidate(message({ text: 'lari '.repeat(50) }), ['lari'])
+    expect(title).toBeGreaterThan(body)
+    expect(title).toBeGreaterThanOrEqual(SESSION_HIT_BONUS)
+  })
+
+  it('rewards the query appearing as a contiguous phrase', () => {
+    const phrase = scoreTextCandidate(message({ text: 'lari pagi enak' }), ['lari', 'pagi'])
+    const scattered = scoreTextCandidate(message({ text: 'lari kemarin, pagi ini' }), [
+      'lari',
+      'pagi',
+    ])
+    expect(phrase).toBeGreaterThan(scattered)
+  })
+
+  it('does not award a phrase bonus for a single term', () => {
+    const once = scoreTextCandidate(message({ text: 'lari' }), ['lari'])
+    expect(once).toBeLessThan(100)
+  })
+
+  it('caps how much repetition can buy', () => {
+    const capped = scoreTextCandidate(
+      message({ text: 'lari '.repeat(OCCURRENCE_CAP) }),
+      ['lari'],
+    )
+    const beyond = scoreTextCandidate(
+      message({ text: 'lari '.repeat(OCCURRENCE_CAP + 20) }),
+      ['lari'],
+    )
+    expect(beyond).toBe(capped)
+  })
+})
+
+describe('rankTextHits', () => {
+  it('drops a candidate that does not match every term', () => {
+    const hits = rankTextHits(
+      [message({ messageId: 'm1', text: 'lari pagi' }), message({ messageId: 'm2', text: 'lari' })],
+      ['lari', 'pagi'],
+    )
+    expect(hits.map((hit) => hit.messageId)).toEqual(['m1'])
+  })
+
+  it('breaks a score tie by seq descending — the newer message is the one he means', () => {
+    const hits = rankTextHits(
+      [
+        message({ messageId: 'old', seq: 1, text: 'lari' }),
+        message({ messageId: 'new', seq: 9, text: 'lari' }),
+      ],
+      ['lari'],
+    )
+    expect(hits.map((hit) => hit.messageId)).toEqual(['new', 'old'])
+  })
+
+  it('is a total order, so two equal candidates never swap between runs', () => {
+    const rows = [
+      message({ messageId: 'bbb', seq: 5, text: 'lari' }),
+      message({ messageId: 'aaa', seq: 5, text: 'lari' }),
+    ]
+    expect(rankTextHits(rows, ['lari']).map((hit) => hit.messageId)).toEqual(['aaa', 'bbb'])
+    expect(rankTextHits([...rows].reverse(), ['lari']).map((hit) => hit.messageId)).toEqual([
+      'aaa',
+      'bbb',
+    ])
+  })
+
+  it('groups titles first', () => {
+    const hits = rankTextHits(
+      [message({ messageId: 'm1', text: 'lari' }), session({ text: 'lari' })],
+      ['lari'],
+    )
+    expect(hits.map((hit) => hit.kind)).toEqual(['session', 'message'])
+  })
+
+  it('honours the limit', () => {
+    const rows = Array.from({ length: SEARCH_RESULT_MAX + 8 }, (_, i) =>
+      message({ messageId: `m${i}`, seq: i, text: 'lari' }),
+    )
+    expect(rankTextHits(rows, ['lari'])).toHaveLength(SEARCH_RESULT_MAX)
+    expect(rankTextHits(rows, ['lari'], 3)).toHaveLength(3)
+  })
+
+  it('returns nothing for no terms rather than everything', () => {
+    expect(rankTextHits([message()], [])).toEqual([])
+  })
+
+  it('carries the rendered day straight through, formatting nothing', () => {
+    const [hit] = rankTextHits([message({ day: 'Thu, 20 Aug 2026' })], ['lari'])
+    expect(hit?.day).toBe('Thu, 20 Aug 2026')
+  })
+})
+
+/* ── the semantic pass ─────────────────────────────────────────────────────────────────────── */
+
+describe('buildSemanticCandidates', () => {
+  it('orders titles, then text matches, then recency filler', () => {
+    const built = buildSemanticCandidates(
+      [session({ sessionId: 's1' })],
+      [message({ messageId: 'text' })],
+      [message({ messageId: 'recent' })],
+    )
+    expect(built.map((row) => row.messageId)).toEqual([null, 'text', 'recent'])
+  })
+
+  it('deduplicates a message that is both a text match and inside the recency window', () => {
+    const row = message({ messageId: 'shared' })
+    const built = buildSemanticCandidates([], [row], [row, message({ messageId: 'other' })])
+    expect(built.map((r) => r.messageId)).toEqual(['shared', 'other'])
+  })
+
+  it('keeps a session and a message from the same session as two candidates', () => {
+    const built = buildSemanticCandidates(
+      [session({ sessionId: 'same' })],
+      [message({ sessionId: 'same', messageId: 'm1' })],
+      [],
+    )
+    expect(built).toHaveLength(2)
+  })
+
+  it('lets the cap eat only recency filler, never a text hit', () => {
+    const texts = Array.from({ length: 5 }, (_, i) => message({ messageId: `t${i}` }))
+    const recent = Array.from({ length: 50 }, (_, i) => message({ messageId: `r${i}` }))
+    const built = buildSemanticCandidates([], texts, recent, 6)
+    expect(built).toHaveLength(6)
+    expect(built.slice(0, 5).map((r) => r.messageId)).toEqual(['t0', 't1', 't2', 't3', 't4'])
+    expect(built[5]?.messageId).toBe('r0')
+  })
+
+  it('defaults to SEMANTIC_CANDIDATE_MAX', () => {
+    const recent = Array.from({ length: SEMANTIC_CANDIDATE_MAX + 30 }, (_, i) =>
+      message({ messageId: `r${i}` }),
+    )
+    expect(buildSemanticCandidates([], [], recent)).toHaveLength(SEMANTIC_CANDIDATE_MAX)
+  })
+})
+
+describe('semanticCandidateBlock', () => {
+  it('emits one tab-separated line per candidate, indexed from zero', () => {
+    const block = semanticCandidateBlock([
+      message({ mine: true, text: 'lari pagi', sessionTitle: 'Long run' }),
+      message({ mine: false, text: 'mantap', sessionTitle: 'Long run' }),
+    ])
+    expect(block.split('\n')).toEqual(['0\tHIM\tLong run\tlari pagi', '1\tHER\tLong run\tmantap'])
+  })
+
+  it('labels a session candidate TITLE', () => {
+    expect(semanticCandidateBlock([session({ sessionTitle: 'Long run' })])).toBe(
+      '0\tTITLE\tLong run\tLong run',
+    )
+  })
+
+  it('flattens text, so a tab in a message cannot forge a column', () => {
+    const block = semanticCandidateBlock([message({ text: 'a\tb\nc' })])
+    expect(block.split('\t')).toHaveLength(4)
+    expect(block.endsWith('a b c')).toBe(true)
+  })
+
+  it('clamps a long message to the per-candidate budget', () => {
+    const block = semanticCandidateBlock([message({ text: 'w'.repeat(2000) })])
+    const text = block.split('\t')[3] ?? ''
+    expect(text).toHaveLength(SEMANTIC_SNIPPET_CHARS + 1)
+    expect(text.endsWith('…')).toBe(true)
+  })
+
+  it('is empty for no candidates', () => {
+    expect(semanticCandidateBlock([])).toBe('')
+  })
+})
+
+describe('parseSemanticRanking', () => {
+  it('accepts the documented shape', () => {
+    expect(parseSemanticRanking({ ranked: [2, 0, 1] }, 3)).toEqual([2, 0, 1])
+  })
+
+  it('coerces a numeric string, because a model is untidy and this is free', () => {
+    expect(parseSemanticRanking({ ranked: ['2', 0] }, 3)).toEqual([2, 0])
+  })
+
+  it('drops an index it invented rather than clamping it into a row nobody chose', () => {
+    expect(parseSemanticRanking({ ranked: [0, 99, -1, 1.5, 1] }, 3)).toEqual([0, 1])
+  })
+
+  it('drops duplicates', () => {
+    expect(parseSemanticRanking({ ranked: [1, 1, 0] }, 3)).toEqual([1, 0])
+  })
+
+  it('caps the result count', () => {
+    const ranked = Array.from({ length: SEARCH_RESULT_MAX + 10 }, (_, i) => i)
+    expect(parseSemanticRanking({ ranked }, ranked.length)).toHaveLength(SEARCH_RESULT_MAX)
+  })
+
+  it('treats an empty ranking as a failure, so the caller degrades to text', () => {
+    expect(parseSemanticRanking({ ranked: [] }, 3)).toBeNull()
+  })
+
+  it('returns null for every malformed body', () => {
+    for (const raw of [null, undefined, 'ranked', 42, [], [1, 2], {}, { ranked: 'nope' }]) {
+      expect(parseSemanticRanking(raw, 3)).toBeNull()
+    }
+  })
+})
+
+describe('applySemanticRanking', () => {
+  it('preserves the model s order exactly, with no re-score', () => {
+    const candidates = [
+      message({ messageId: 'a', seq: 9 }),
+      message({ messageId: 'b', seq: 1 }),
+      message({ messageId: 'c', seq: 5 }),
+    ]
+    const hits = applySemanticRanking(candidates, [1, 2, 0], ['lari'])
+    expect(hits.map((hit) => hit.messageId)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('skips an index with no candidate behind it', () => {
+    expect(applySemanticRanking([message({ messageId: 'a' })], [0, 7], [])).toHaveLength(1)
+  })
+
+  it('still builds a snippet when the hit shares no word with the query', () => {
+    const [hit] = applySemanticRanking(
+      [message({ text: 'kaki gw ga mau gerak' })],
+      [0],
+      ['exhausted'],
+    )
+    expect(hit?.snippet).toBe('kaki gw ga mau gerak')
+  })
+})
+
+/* ── the response shape ────────────────────────────────────────────────────────────────────── */
+
+describe('the response shape', () => {
+  it('starts empty in text mode, whatever was requested', () => {
+    expect(emptySearchResponse('semantic')).toEqual({
+      requested: 'semantic',
+      mode: 'text',
+      hits: [],
+      capped: false,
+    })
+  })
+
+  it('names the degraded state and only that state', () => {
+    expect(isDegradedSearch(emptySearchResponse('semantic'))).toBe(true)
+    expect(isDegradedSearch(emptySearchResponse('text'))).toBe(false)
+    expect(
+      isDegradedSearch({ requested: 'semantic', mode: 'semantic', hits: [], capped: false }),
+    ).toBe(false)
+    expect(isDegradedSearch(null)).toBe(false)
+  })
+})
+```
+
+**Impact:** the suite grows; nothing else changes.
+
+---
+
+### Step 3: `lib/nina/semantic.ts` — the model call
+
+**File:** `lib/nina/semantic.ts` (new file)
+**Change:** `rankNinaSearchHits` — the guarded symbol, in its own module so the payload guard can
+sanction the definition site.
+**Code:**
+
+```ts
+import 'server-only'
+
+import type Anthropic from '@anthropic-ai/sdk'
+
+import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { extractJsonObject } from '@/lib/llm/extractJson'
+import {
+  SEARCH_RESULT_MAX,
+  SEMANTIC_MAX_TOKENS,
+  SEMANTIC_TIMEOUT_MS,
+  parseSemanticRanking,
+  semanticCandidateBlock,
+  type NinaSearchCandidate,
+} from './search'
+
+/**
+ * R6's "search using llm": a `glm-5.3` ranking pass over candidates the SQL already narrowed.
+ *
+ * ── WHY THIS IS ITS OWN MODULE AND NOT PART OF `searchActions.ts` ─────────────────────────────
+ * `scripts/check-llm-payload-boundary.mjs` greps every file under `app`, `lib` and `components` for
+ * a guarded symbol followed by `(` and fails unless the file is on that symbol's `sanctioned` list.
+ * Its own note on `runNinaTurn` explains the consequence: "a guard that fails on the definition
+ * site is a guard that forces the definition to be renamed", so `runNinaTurn` lives in
+ * `lib/nina/turn.ts` and that file is sanctioned. `rankNinaSearchHits` lives here for the same
+ * reason, and the guard's entry sanctions exactly `lib/nina/semantic.ts` and
+ * `lib/nina/searchActions.ts`. **Phase 4 owns that guard file and wrote the entry; this phase does
+ * not touch it.**
+ *
+ * ── WHY NOT A VECTOR SEARCH ───────────────────────────────────────────────────────────────────
+ * Assumption A7 and the plan set's Scope section. There is no `pgvector`, no embedding column and
+ * no embedding client anywhere in the tree, and adding one is a migration plus a backfill plus an
+ * ongoing write path — a larger feature than the request. **What this honestly cannot do**, stated
+ * so nobody discovers it as a bug: it ranks the candidates it is given and nothing else, so a
+ * relevant message that is neither a text match nor inside the recency window is invisible to it.
+ * A vector index would not have that hole. That is the trade, and it is the one the set chose.
+ *
+ * ── WHY `narrativeClient()` AND WHY RETRIES STAY OFF ──────────────────────────────────────────
+ * `lib/llm/client.ts` is `@anthropic-ai/sdk` against `api.z.ai/api/anthropic` — Anthropic Messages,
+ * the right envelope for text. Its `maxRetries: 0` is deliberate: the SDK's default two silent
+ * retries under a timeout can occupy three times the budget and starve the repair that would have
+ * fixed the response. Here it lands harder still, because there IS no repair and a search box's
+ * retry is the runner typing again — three attempts behind an 8 s timeout is a 24 s search.
+ *
+ * ── NOTHING HERE THROWS, AND THE FALLBACK IS NOT SILENCE ──────────────────────────────────────
+ * `lib/llm/narrate.ts`'s contract, with its conclusion inverted for this shape of answer. There,
+ * "the only safe fallback for prose is the absence of prose", because no mechanical transformation
+ * turns a number into a truthful sentence. Here the fallback is a real answer we can compute — the
+ * text ranking — so `null` means "use it, and say the ranking degraded". An empty result list after
+ * a semantic search would read as "your conversation does not contain this", which is a false claim
+ * about the runner's own history.
+ */
+
+/**
+ * ── THE PROMPT ────────────────────────────────────────────────────────────────────────────────
+ * Deliberately NOT added to `lib/nina/prompts/`. That barrel carries `NINA_PROMPT_VERSION`, which
+ * its own header says "covers the system text AND every tool schema" and must be bumped by hand so
+ * that "a change in her behaviour can be traced to the commit that caused it". A search ranker is
+ * not her behaviour; bumping her version for it would file a false report in `nina_turns`. It is
+ * also a file phase 4 may be editing concurrently.
+ *
+ * The bilingual instruction is load-bearing, not decoration: the conversation is mixed Indonesian
+ * and English, which is the same fact that ruled out `to_tsvector` for the text half.
+ */
+export const NINA_SEARCH_SYSTEM_PROMPT = `You rank search results over a private chat log between a runner ("HIM") and Nina, his running coach ("HER"). The log is a mix of Indonesian and English; treat both as the same language for the purpose of meaning.
+
+You receive a QUERY and a numbered list of CANDIDATES, one per line, tab separated:
+
+<index>\t<HIM|HER|TITLE>\t<session title>\t<text>
+
+Return the indexes of the candidates whose MEANING answers the query, most relevant first.
+
+Judge meaning, not shared words. A query about feeling wrecked after a long run should match a message about legs that would not move, even with no word in common. Do not include a candidate that is merely on the same broad subject.
+
+Return at most ${SEARCH_RESULT_MAX} indexes. Return only indexes that appear in the list.
+
+Reply with one JSON object and nothing else — no markdown fences, no commentary:
+
+{"ranked": [12, 3, 40]}
+
+If nothing is genuinely relevant, reply {"ranked": []}.`
+
+/**
+ * The seam the unit suite injects at, mirroring `lib/llm/narrate.ts`'s `LlmClientLike` and F04's
+ * `ExtractDeps` for the same reason: this module opens with `import 'server-only'` and reaches
+ * `@/lib/env` through the client, so the only honest way to test the parse and the failure paths is
+ * to hand it a client.
+ */
+export interface SemanticRankerClient {
+  messages: {
+    create(
+      body: Anthropic.MessageCreateParamsNonStreaming,
+      options?: { timeout?: number },
+    ): Promise<Anthropic.Message>
+  }
+}
+
+function textOf(message: Anthropic.Message): string {
+  let out = ''
+  for (const block of message.content) {
+    if (block.type === 'text') out += block.text
+  }
+  return out
+}
+
+/**
+ * The testable core. Client and model injected; no database, no environment.
+ *
+ * **No `tools` and no `tool_choice`.** `narrate.ts` and `turn.ts` use a tool because their payloads
+ * are rich nested objects behind Zod; this one is `{"ranked":[int]}`. `lib/llm/extractJson.ts` is
+ * the codebase's already-proven answer for pulling an object out of whatever the model actually
+ * said — ported verbatim from `research/score.mjs` and explicitly "not improved" — it returns
+ * `null` rather than throwing on every failure mode, and it rejects a bare array, which is why the
+ * payload is an object with one key rather than a naked array.
+ *
+ * **`thinking: { type: 'disabled' }` is not optional.** `lib/llm/narrate.ts`'s `baseBody` records
+ * the 2026-08-26 incident: `glm-5.3` began emitting an extended thinking block by default, it ate
+ * the whole `max_tokens` ceiling before producing any answer, and the insights table stopped
+ * growing for 31 hours with nothing recording why. At `max_tokens: ${SEMANTIC_MAX_TOKENS}` that
+ * failure is instant and total. Both existing callers send this field; so does this one.
+ *
+ * The allowed request surface on this endpoint is `model · max_tokens · system · messages · tools ·
+ * tool_choice · thinking` and nothing else — no `temperature`, no `cache_control`. It is
+ * Anthropic-*compatible*, not Anthropic.
+ */
+export async function rankNinaSearchHitsWith(
+  client: SemanticRankerClient,
+  model: string,
+  input: { query: string; candidates: readonly NinaSearchCandidate[] },
+): Promise<number[] | null> {
+  if (input.candidates.length === 0) return null
+
+  const body: Anthropic.MessageCreateParamsNonStreaming = {
+    model,
+    max_tokens: SEMANTIC_MAX_TOKENS,
+    system: NINA_SEARCH_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: `QUERY: ${input.query}\n\nCANDIDATES:\n${semanticCandidateBlock(input.candidates)}`,
+      },
+    ],
+    thinking: { type: 'disabled' },
+  }
+
+  let message: Anthropic.Message
+  try {
+    message = await client.messages.create(body, { timeout: SEMANTIC_TIMEOUT_MS })
+  } catch (cause) {
+    /* `console.warn`, never `console.error`: an unavailable model is an expected state of this
+       feature, not an incident — `logLlmFailure`'s rule in `lib/llm/narrate.ts`. The caller falls
+       back to the text ranking and the field says so. */
+    console.warn('[nina] semantic search call failed', { error: String(cause) })
+    return null
+  }
+
+  /* A `max_tokens` stop is a response cut mid-object, and the same prompt at the same ceiling will
+     cut it again — `narrate.ts`'s reasoning for not repairing one. There is no repair here at all,
+     so this is simply a degrade. If it ever fires, SEMANTIC_MAX_TOKENS is the bug: 400 tokens is
+     ~15x the 20 integers the answer can contain. */
+  if (message.stop_reason === 'max_tokens') {
+    console.warn('[nina] semantic search was cut at max_tokens', {
+      outputTokens: message.usage?.output_tokens ?? 0,
+    })
+    return null
+  }
+
+  return parseSemanticRanking(extractJsonObject(textOf(message)), input.candidates.length)
+}
+
+/**
+ * **The guarded entry point.** `scripts/check-llm-payload-boundary.mjs` sanctions this symbol in
+ * this file and in `lib/nina/searchActions.ts` and nowhere else, so no page render can await it
+ * (invariant 2). It is reached from a Server Action fired by a debounced client effect — the same
+ * shape as `describeNinaImage` firing from `Composer`'s pick handler.
+ */
+export async function rankNinaSearchHits(input: {
+  query: string
+  candidates: readonly NinaSearchCandidate[]
+}): Promise<number[] | null> {
+  return rankNinaSearchHitsWith(narrativeClient(), narrativeModel(), input)
+}
+```
+
+**Impact:** introduces the guarded symbol. `npm run ci:llm-payload-guard` passes only once phase 4's
+entry names it — which is why phase 4 is a hard Requires. Until then the guard *also* passes (an
+unlisted symbol is simply not guarded); the failure mode is the reverse, a guard entry naming a
+symbol that does not exist, which is why the name must match phase 4's exactly.
+
+---
+
+### Step 4: `lib/nina/searchActions.ts` — the Server Action and the narrowing SQL
+
+**File:** `lib/nina/searchActions.ts` (new file)
+**Change:** one exported action, one private query helper.
+**Code:**
+
+```ts
+'use server'
+
+import { and, desc, eq, ilike } from 'drizzle-orm'
+
+import { requireUserId } from '@/lib/auth/requireUserId'
+import { jakartaDayOf } from '@/lib/date/ranges'
+import { db } from '@/lib/db'
+import { ninaChatSessions, ninaMessages } from '@/lib/db/schema'
+import { formatDay } from '@/lib/format'
+import {
+  SEARCH_RESULT_MAX,
+  SEMANTIC_RECENCY_WINDOW,
+  TEXT_CANDIDATE_MAX,
+  applySemanticRanking,
+  buildSemanticCandidates,
+  emptySearchResponse,
+  likePattern,
+  normalizeSearchQuery,
+  rankTextHits,
+  searchTerms,
+  shouldRunSearch,
+  shouldRunSemantic,
+  type NinaSearchCandidate,
+  type NinaSearchMode,
+  type NinaSearchResponse,
+} from './search'
+import { rankNinaSearchHits } from './semantic'
+
+/**
+ * R6's search, as one Server Action.
+ *
+ * ── WHY AN ACTION AND NOT A ROUTE HANDLER ─────────────────────────────────────────────────────
+ * D7 fixes the route-handler list at `/api/extract`, `/api/upload`, `/api/auth/[...nextauth]` and
+ * `/api/cron/*`; everything else is a Server Action. This one writes nothing, but it does reach a
+ * model, and `lib/nina/actions.ts` already establishes the shape for that.
+ *
+ * ── WHY THE QUERY IS HERE AND NOT IN `lib/nina/queries.ts` ────────────────────────────────────
+ * Two reasons, and the first is the binding one. `lib/nina/search.ts` is imported by a **client**
+ * component, so it cannot reach `db` — invariant 7 and `lib/nina/reply.ts`'s stated rule. And
+ * phase 1 owns `lib/nina/queries.ts` §4; this set's whole concurrency discipline is that two phases
+ * never want the same file, because a shared git index across concurrent sessions has already
+ * destroyed committed work on this repo once. So the narrowing lives here, as a private
+ * non-exported helper, which is exactly `lib/nina/actions.ts`'s shape for `scheduleDistillation`.
+ *
+ * `searchNinaChats` is the ONLY export, so this module surfaces exactly one endpoint.
+ *
+ * ── INVARIANT 3, PROVED TWICE ─────────────────────────────────────────────────────────────────
+ * `requireUserId()` first, and then `user_id = $1` on **both** tables. The foreign key proves that
+ * a session exists, not that it is his — the distinction `insertNinaMessageImages` spells out, and
+ * the reason it runs an extra statement of its own. Nothing here takes an id from the client, so
+ * there is nothing to forge: the input is a string of text and a boolean.
+ *
+ * ── INVARIANT 5, STRUCTURALLY ─────────────────────────────────────────────────────────────────
+ * `nina_message_images` is not named in this file. There is no projection that could carry
+ * `description`, so there is no path by which `glm-4.6v`'s private prose reaches a component. The
+ * visible consequence is that an image-only message has empty `text` and can never be a hit, which
+ * is also why a result row can never be blank.
+ *
+ * ── INVARIANT 4, WHICH IS WHY `day` IS A SENTENCE ─────────────────────────────────────────────
+ * `formatDay(jakartaDayOf(sentAt))` runs HERE, on the server, through the one module that owns
+ * every rendered string. A client component formatting an instant is the classic hydration
+ * mismatch: the server's timezone is UTC and the phone's is not, and the codebase says so in three
+ * places. `NinaSearchField` receives sentences and imports no formatter.
+ */
+
+/** A row as the two message statements project it. Structural; the pure layer never sees it. */
+interface MessageCandidateRow {
+  messageId: string
+  seq: number
+  role: string
+  text: string
+  createdAt: Date
+  sessionId: string | null
+  sessionTitle: string | null
+}
+
+function toMessageCandidate(row: MessageCandidateRow): NinaSearchCandidate {
+  return {
+    kind: 'message',
+    /* A message whose session is somehow NULL still opens the chat — `?s=` simply carries an empty
+       value and phase 3's degradation rules decide what that means. Dropping the hit instead would
+       hide a real message from a search that claims to cover all of them. */
+    sessionId: row.sessionId ?? '',
+    sessionTitle: row.sessionTitle ?? '',
+    messageId: row.messageId,
+    seq: row.seq,
+    /* `'runner'` is him and `'nina'` is her (never `user`/`assistant`). Narrowed structurally, the
+       same way `app/nina/page.tsx` does it, so the pure module never learns a column's spelling. */
+    mine: row.role !== 'nina',
+    text: row.text,
+    day: formatDay(jakartaDayOf(row.createdAt)),
+  }
+}
+
+/**
+ * The candidate-narrowing SQL. Three statements at most, two round trips at most.
+ *
+ * `ILIKE '%term%'` and not `to_tsvector`, and the reasoning is worth keeping next to the code: the
+ * corpus is mixed Indonesian and English, `to_tsvector` takes exactly one `regconfig`, so any
+ * choice silently mis-stems half the conversation; `to_tsquery` matches lexemes, so `lari` would not
+ * find `berlari`, which is a bug report; and `user_id = $1` already reduces the scan to one
+ * runner's messages, which the prompt layer itself counts in hundreds. **The known limit:** this
+ * does not scale to a six-figure conversation, and the fix is `to_tsvector` plus a GIN index — a
+ * schema change phase 1 owns and this phase may not make. It is a stated handoff.
+ *
+ * `leftJoin` and not `innerJoin`, with `sessionTitle` tolerated as `null`: phase 1 decides whether
+ * `session_id` is nullable, and this phase must be correct either way. An inner join would silently
+ * drop a message whose session is NULL from a search that promises to cover every chat.
+ *
+ * The join predicate carries `ninaChatSessions.userId` as well as the id, so ownership is proved on
+ * both sides of it rather than inferred from the foreign key.
+ *
+ * The recency statement runs only in semantic mode, and it is where the round trip goes from one to
+ * two. That is a fair trade against a call that is about to spend up to 8 s in a model.
+ */
+async function narrowSearchCandidates(
+  userId: string,
+  terms: readonly string[],
+  wantSemantic: boolean,
+): Promise<{
+  sessions: NinaSearchCandidate[]
+  textMatches: NinaSearchCandidate[]
+  recent: NinaSearchCandidate[]
+}> {
+  const titleWhere = and(
+    eq(ninaChatSessions.userId, userId),
+    ...terms.map((term) => ilike(ninaChatSessions.title, likePattern(term))),
+  )
+
+  const messageWhere = and(
+    eq(ninaMessages.userId, userId),
+    ...terms.map((term) => ilike(ninaMessages.text, likePattern(term))),
+  )
+
+  const sessionOwned = and(
+    eq(ninaMessages.sessionId, ninaChatSessions.id),
+    eq(ninaChatSessions.userId, userId),
+  )
+
+  const messageProjection = {
+    messageId: ninaMessages.id,
+    seq: ninaMessages.seq,
+    role: ninaMessages.role,
+    text: ninaMessages.text,
+    createdAt: ninaMessages.sentAt,
+    sessionId: ninaMessages.sessionId,
+    sessionTitle: ninaChatSessions.title,
+  }
+
+  const [[sessionRows, messageRows], recentRows] = await Promise.all([
+    db.batch([
+      db
+        .select({ sessionId: ninaChatSessions.id, title: ninaChatSessions.title })
+        .from(ninaChatSessions)
+        .where(titleWhere)
+        .limit(SEARCH_RESULT_MAX),
+
+      db
+        .select(messageProjection)
+        .from(ninaMessages)
+        .leftJoin(ninaChatSessions, sessionOwned)
+        .where(messageWhere)
+        .orderBy(desc(ninaMessages.seq))
+        .limit(TEXT_CANDIDATE_MAX),
+    ]),
+
+    wantSemantic
+      ? db
+          .select(messageProjection)
+          .from(ninaMessages)
+          .leftJoin(ninaChatSessions, sessionOwned)
+          .where(eq(ninaMessages.userId, userId))
+          .orderBy(desc(ninaMessages.seq))
+          .limit(SEMANTIC_RECENCY_WINDOW)
+      : Promise.resolve([] as MessageCandidateRow[]),
+  ])
+
+  return {
+    sessions: sessionRows.map((row) => ({
+      kind: 'session' as const,
+      sessionId: row.sessionId,
+      sessionTitle: row.title ?? '',
+      messageId: null,
+      /* Zero, so a title hit never competes with a message on recency. Its `SESSION_HIT_BONUS`
+         already puts it above every message; the seq only has to be deterministic. */
+      seq: 0,
+      mine: false,
+      text: row.title ?? '',
+      /* A session is not an instant, so it gets no day. Nothing renders one for a title hit. */
+      day: '',
+    })),
+    textMatches: messageRows.map(toMessageCandidate),
+    recent: recentRows.map(toMessageCandidate),
+  }
+}
+
+/**
+ * Search every chat. Text always; a `glm-5.3` ranking pass on top when the toggle is on and the
+ * query is long enough to be a concept.
+ *
+ * **The response always carries the text ranking as its fallback**, so one call does both jobs and
+ * there is never a second round trip from the field. `requested` versus `mode` is how the UI knows
+ * to say that the ranking degraded.
+ *
+ * Every input is re-validated here even though the caller is our own component: a Server Action is
+ * an untrusted POST endpoint (`lib/nina/actions.ts`'s point 3). `normalizeSearchQuery` takes
+ * `unknown`, so a client that sends a number, an object or nothing at all gets an empty query
+ * rather than a stack trace.
+ */
+export async function searchNinaChats(input: {
+  query: string
+  semantic: boolean
+}): Promise<NinaSearchResponse> {
+  const userId = await requireUserId()
+
+  const requested: NinaSearchMode = input?.semantic === true ? 'semantic' : 'text'
+  const query = normalizeSearchQuery(input?.query)
+  if (!shouldRunSearch(query)) return emptySearchResponse(requested)
+
+  const terms = searchTerms(query)
+  if (terms.length === 0) return emptySearchResponse(requested)
+
+  const wantSemantic = shouldRunSemantic(query, requested === 'semantic')
+  const { sessions, textMatches, recent } = await narrowSearchCandidates(
+    userId,
+    terms,
+    wantSemantic,
+  )
+
+  const hits = rankTextHits([...sessions, ...textMatches], terms)
+  /* The SQL cap, surfaced honestly: at the cap, "nothing else matched" is a claim we cannot make. */
+  const capped = textMatches.length >= TEXT_CANDIDATE_MAX
+
+  if (!wantSemantic) return { requested, mode: 'text', hits, capped }
+
+  const candidates = buildSemanticCandidates(sessions, textMatches, recent)
+  const order = await rankNinaSearchHits({ query, candidates })
+  /* `null` is transport failure, a `max_tokens` cut, an unparseable body, or a model that judged
+     nothing relevant. All four degrade to the text ranking, and the field says the ranking
+     degraded — see `lib/nina/semantic.ts`'s header for why silence is the wrong answer here. */
+  if (order === null) return { requested, mode: 'text', hits, capped }
+
+  return {
+    requested,
+    mode: 'semantic',
+    hits: applySemanticRanking(candidates, order, terms),
+    capped,
+  }
+}
+```
+
+**Impact:** the first `'use server'` module that reaches the model outside `lib/nina/actions.ts`.
+Requires phase 1's `ninaChatSessions` and `ninaMessages.sessionId` to typecheck.
+
+---
+
+### Step 5: `components/nina/useSemanticPref.ts` — the hydration-safe persisted toggle
+
+**File:** `components/nina/useSemanticPref.ts` (new file)
+**Change:** the first `localStorage` read and write in the codebase.
+**Code:**
+
+```tsx
+'use client'
+
+import { useCallback, useSyncExternalStore } from 'react'
+
+import {
+  NINA_SEMANTIC_PREF_KEY,
+  decodeSemanticPref,
+  encodeSemanticPref,
+} from '@/lib/nina/search'
+
+/**
+ * R6's *"persist the toggle across app usage"* — **the first `localStorage` in this codebase.**
+ *
+ * ── WHY `localStorage`, GIVEN THAT THIS APP'S HABIT IS THE URL ────────────────────────────────
+ * `lib/panel/param.ts` and `components/ui/usePanelParam.ts` persist UI state in the query string,
+ * and that is the wrong mechanism here twice over: a query parameter belongs to one history entry,
+ * so it is lost the moment the runner follows a link that does not carry it, and "across app usage"
+ * is exactly the guarantee it cannot make.
+ *
+ * A cookie was the other candidate, and the reason it lost is that its one advantage — the server
+ * render could read it — buys nothing. **This preference has no server consumer.** The semantic flag
+ * is an argument to a Server Action that the client already holds; the server never needs to know
+ * it unprompted. A cookie would put a new request-time input on `/nina`, whose own header opens
+ * "ONE READ, NO MODEL CALL", and would be transmitted on every same-origin request for a boolean
+ * one component reads.
+ *
+ * ── HOW THE HYDRATION PROBLEM IS SOLVED, AND IT IS NOT BY GUESSING ────────────────────────────
+ * A server-rendered control cannot know a client value, and reading `localStorage` during the first
+ * client render is a React hydration error. `useSyncExternalStore` is the API that exists for this:
+ * React uses `getServerSnapshot` for the server render **and for hydration**, then reads
+ * `getSnapshot` after hydration commits and re-renders if the two differ. That is not a mismatch —
+ * it is the hook's documented contract, and the third argument exists for no other reason.
+ *
+ * `getServerSnapshot` returns the default (`false`), so the server HTML and the first client paint
+ * agree by construction. If the stored value is `true` the toggle flips one frame after hydration,
+ * which is invisible in practice: the sidebar has to be opened and a query typed before the flag
+ * changes any behaviour, and both happen long after hydration.
+ *
+ * ── WHY THERE IS A `storage` LISTENER ────────────────────────────────────────────────────────
+ * "Across app usage" includes two open tabs, which this app produces on purpose — `/admin/nina`'s
+ * file explorer opens `/nina?photo=…` in a new one. The `storage` event fires in every OTHER
+ * document on the origin, and the module-level listener set covers the mounts in THIS one, so both
+ * halves are handled and the two tabs never disagree about a preference the runner just changed.
+ *
+ * ── WHAT HAPPENS WHEN THE STORE IS UNAVAILABLE ───────────────────────────────────────────────
+ * Safari in private mode and a full quota both throw from `localStorage`. Every access is guarded,
+ * and a failed write falls back to a module-level value so the toggle still works for the life of
+ * the tab — it simply does not survive a reload. Stated rather than hidden: the degradation is that
+ * the preference is not persisted, never that the toggle stops responding.
+ */
+
+const listeners = new Set<() => void>()
+
+/**
+ * The in-memory answer when the store refused a write. `null` means "the store is authoritative".
+ * Module-level, because it has to outlive a mount for the tab-lifetime promise above to be true.
+ */
+let fallback: boolean | null = null
+
+function emit(): void {
+  for (const listener of listeners) listener()
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  window.addEventListener('storage', listener)
+  return () => {
+    listeners.delete(listener)
+    window.removeEventListener('storage', listener)
+  }
+}
+
+function getSnapshot(): boolean {
+  if (fallback !== null) return fallback
+  try {
+    return decodeSemanticPref(window.localStorage.getItem(NINA_SEMANTIC_PREF_KEY))
+  } catch {
+    return false
+  }
+}
+
+/** The default, used for the server render and for hydration. See the header. */
+function getServerSnapshot(): boolean {
+  return false
+}
+
+export function useSemanticPref(): readonly [boolean, (next: boolean) => void] {
+  const semantic = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+
+  const setSemantic = useCallback((next: boolean) => {
+    try {
+      const value = encodeSemanticPref(next)
+      if (value === null) window.localStorage.removeItem(NINA_SEMANTIC_PREF_KEY)
+      else window.localStorage.setItem(NINA_SEMANTIC_PREF_KEY, value)
+      fallback = null
+    } catch {
+      /* Private mode, or a full quota. The toggle keeps working for this tab; it just will not
+         survive a reload. A thrown error here must never reach the runner as a broken control. */
+      fallback = next
+    }
+    emit()
+  }, [])
+
+  return [semantic, setSemantic] as const
+}
+```
+
+**Impact:** a new client hook. No existing component imports it.
+
+---
+
+### Step 6: `components/nina/NinaSearchField.tsx` — the field, the toggle, the results
+
+**File:** `components/nina/NinaSearchField.tsx` (new file)
+**Change:** the whole visible surface of this phase, self-contained so that filling phase 5's seam
+is one element.
+**Code:**
+
+```tsx
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
+
+import { CONTROL_CLASS } from '@/components/ui'
+import { cn } from '@/lib/cn'
+import {
+  SEARCH_QUERY_MAX_CHARS,
+  isDegradedSearch,
+  normalizeSearchQuery,
+  searchDebounceMs,
+  shouldRunSearch,
+  shouldRunSemantic,
+  type NinaSearchResponse,
+} from '@/lib/nina/search'
+import { searchNinaChats } from '@/lib/nina/searchActions'
+import { useSemanticPref } from './useSemanticPref'
+
+/**
+ * R6's second half: *"at the top of the sidebar we can search all chat as well. add a toggle at the
+ * right side of the search field (persist the toggle across app usage) to enable semantic search,
+ * so we can search using llm as well."*
+ *
+ * ── THIS COMPONENT MEASURES; `lib/nina/search.ts` DECIDES ─────────────────────────────────────
+ * Invariant 7, and `lib/nina/chatview.ts` / `lib/nina/reply.ts` are the shape. Every rule below —
+ * the minimum query length, the debounce, whether the model pass runs, the snippet, the ranking,
+ * the href — is a tested function in `lib/nina/search.ts`, because `vitest.config.ts` is
+ * `environment: 'node'` with no jsdom and a rule that lives here cannot be tested at all.
+ *
+ * ── WHY THE RESULTS PUSH THE SESSION LIST DOWN INSTEAD OF REPLACING IT ────────────────────────
+ * Replacing it would mean owning phase 5's render of the list, which is another phase's file and
+ * another phase's state. This component renders its own block and the list follows it in the
+ * sidebar's scroll container. That keeps the seam to a single element with a single prop — which is
+ * the difference between a coordination point and a merge conflict.
+ *
+ * ── WHY A `<Link>` AND NOT `history.pushState` ───────────────────────────────────────────────
+ * This is the one place the `usePanelParam` idiom must NOT be copied. `?panel=` is read only by a
+ * client hook, which is exactly why `pushState` works there and why `app/me/page.tsx` deliberately
+ * never re-runs. `?s=` is resolved by `app/nina/page.tsx` **during the server render** (phase 3),
+ * so `pushState` would change the URL and leave the old session's messages on screen. A real
+ * navigation also gets prefetch, long-press and middle-click for free — `app/nina/page.tsx`'s
+ * argument for making Nina's avatar a `<Link>` rather than a `<button>`.
+ *
+ * ── MOTION (INVARIANT 8) ─────────────────────────────────────────────────────────────────────
+ * The only transition here is `transition-colors` on the toggle. `app/globals.css` is explicit that
+ * the `transition-*` utilities in `Chip`, `KindSelector` and `Button` are "deliberately untouched"
+ * because they "animate colour only, which is not motion". So there is no new keyframe and nothing
+ * for `prefers-reduced-motion` to answer.
+ */
+
+export interface NinaSearchFieldProps {
+  /**
+   * Close the sidebar. **Required, and deliberately not optional**: a hit is a navigation to
+   * `/nina?s=…`, and a sidebar left open over the session it just opened is the bug. Making it
+   * required means `tsc` fails if phase 5's seam does not wire it, which is a better guarantee than
+   * a comment asking phase 5 to remember.
+   */
+  onNavigate: () => void
+}
+
+export function NinaSearchField({ onNavigate }: NinaSearchFieldProps) {
+  const [text, setText] = useState('')
+  const [semantic, setSemantic] = useSemanticPref()
+  const [response, setResponse] = useState<NinaSearchResponse | null>(null)
+  const [pending, setPending] = useState(false)
+
+  /**
+   * **A Server Action cannot be cancelled, and pretending otherwise would be the bug.** There is no
+   * `AbortSignal` on an action call and a serverless invocation cannot be recalled. What IS
+   * cancellable is its effect: every effect run takes the next id, and a response whose id is no
+   * longer current is dropped. So the last keystroke always wins the render and a stale 8 s
+   * semantic response can never overwrite a fresh one.
+   *
+   * `useExtractionStatus`'s `cancelled` flag is the same idiom for the same reason.
+   */
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    const query = normalizeSearchQuery(text)
+
+    if (!shouldRunSearch(query)) {
+      /* Bump the id so an in-flight response cannot repaint a field the runner has cleared. Idle is
+         not "no matches", so the response goes to null rather than to an empty result set. */
+      requestRef.current += 1
+      setResponse(null)
+      setPending(false)
+      return
+    }
+
+    requestRef.current += 1
+    const id = requestRef.current
+    setPending(true)
+
+    const timer = window.setTimeout(
+      () => {
+        void searchNinaChats({ query, semantic })
+          .then((next) => {
+            if (requestRef.current !== id) return
+            setResponse(next)
+            setPending(false)
+          })
+          .catch(() => {
+            /* A transport failure of the ACTION, not of the model — the model's own failure comes
+               back as `mode: 'text'`. Nothing to say beyond clearing the spinner; the field is
+               still typed in and the next keystroke tries again. */
+            if (requestRef.current !== id) return
+            setResponse(null)
+            setPending(false)
+          })
+      },
+      /* 250 ms for text, 700 ms when a pause costs a `glm-5.3` call. `shouldRunSemantic` is what
+         decides which, so the field and the action agree on the same rule. */
+      searchDebounceMs(shouldRunSemantic(query, semantic)),
+    )
+
+    return () => window.clearTimeout(timer)
+  }, [text, semantic])
+
+  const hits = response?.hits ?? []
+  const showEmpty = response !== null && hits.length === 0 && !pending
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-2">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">Search all chats</span>
+          <input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            maxLength={SEARCH_QUERY_MAX_CHARS}
+            placeholder="Search all chats"
+            /* No `autoFocus`: the sidebar opens to a session list, and raising the phone keyboard
+               over it on every open would hide the thing the runner came for. */
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="search"
+            /* `CONTROL_CLASS` carries the `text-base` that stops Safari zooming the viewport on
+               focus — an iOS rule `components/ui/Field.tsx` says beats the design. */
+            className={cn(CONTROL_CLASS, 'h-11')}
+          />
+        </label>
+
+        {/*
+          `role="switch"` with `aria-checked`, and not `Chip`'s `aria-pressed`. `Chip`'s own comment
+          argues for exactly this distinction: "a screen reader that announces 'selected' for a
+          filter chip has told the user nothing about whether tapping it again turns it off". A
+          persisted setting is a switch, and a switch announces "on"/"off".
+
+          `h-11` is 44 px, the iOS tap-target floor that `Chip` and `NinaAvatar` both hold to.
+        */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={semantic}
+          onClick={() => setSemantic(!semantic)}
+          title="Rank results by meaning, using the language model"
+          className={cn(
+            'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-pill px-3.5',
+            'text-[13px] font-semibold transition-colors',
+            semantic ? 'bg-ink text-card' : 'bg-paper-2 text-ink-2',
+          )}
+        >
+          <span aria-hidden="true">✨</span>
+          <span>AI</span>
+        </button>
+      </div>
+
+      {/*
+        The degraded notice, and it is the whole point of `requested` versus `mode`.
+        `lib/llm/narrate.ts` rules that "the only safe fallback for prose is the absence of prose";
+        the analogue for a RANKING is the opposite, because the fallback is a real answer we can
+        compute. Falling back silently would let an empty list read as "your conversation does not
+        contain this", which is a false claim about the runner's own history.
+
+        `aria-live="polite"` so it is announced when it appears, rather than only on a re-read.
+      */}
+      <p aria-live="polite" className="sr-only-empty">
+        {isDegradedSearch(response) ? (
+          <span className="mt-2 block text-[11px] font-semibold text-ink-3">
+            Semantic ranking is unavailable right now — showing text matches.
+          </span>
+        ) : null}
+      </p>
+
+      {pending && (
+        <p className="mt-2 text-[11px] font-medium text-ink-3">
+          {shouldRunSemantic(normalizeSearchQuery(text), semantic)
+            ? 'Reading through your chats…'
+            : 'Searching…'}
+        </p>
+      )}
+
+      {showEmpty && <p className="mt-2 text-[11px] font-medium text-ink-3">No matches.</p>}
+
+      {hits.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {hits.map((hit) => (
+            <li key={`${hit.kind}:${hit.messageId ?? hit.sessionId}`}>
+              <Link
+                href={hit.href}
+                onClick={onNavigate}
+                className="block rounded-field bg-paper-2 px-3 py-2.5 active:opacity-70"
+              >
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate text-[11px] font-semibold text-ink-3">
+                    {hit.sessionTitle}
+                  </span>
+                  {/* Server-formatted by `formatDay` in the action — invariant 4. Nothing in this
+                      file formats a date, and a title hit carries no day to render. */}
+                  {hit.day !== '' && (
+                    <span className="shrink-0 text-[11px] font-medium text-ink-3">{hit.day}</span>
+                  )}
+                </span>
+                <span className="mt-0.5 block text-[13px] font-medium text-ink">
+                  {hit.kind === 'message' && (
+                    <span className="font-semibold text-ink-2">
+                      {hit.mine ? 'You: ' : 'Nina: '}
+                    </span>
+                  )}
+                  {hit.snippet}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* The SQL cap, said out loud. At the cap this search saw the newest 200 matches and not the
+          conversation, so "that is all of them" is a claim it cannot make. */}
+      {response?.capped === true && (
+        <p className="mt-2 text-[11px] font-medium text-ink-3">
+          Showing the most recent matches — narrow the search to see older ones.
+        </p>
+      )}
+    </div>
+  )
+}
+```
+
+**Note on one class name:** `sr-only-empty` is not a Tailwind utility and not in `app/globals.css`.
+Replace that wrapper with a bare fragment-free form — the block below is the corrected version of
+that one element, and the implementer should use it verbatim:
+
+```tsx
+      {isDegradedSearch(response) && (
+        <p aria-live="polite" className="mt-2 text-[11px] font-semibold text-ink-3">
+          Semantic ranking is unavailable right now — showing text matches.
+        </p>
+      )}
+```
+
+**Impact:** the phase's whole UI, with no dependency on the sidebar beyond being rendered inside it.
+
+---
+
+### Step 7: Fill phase 5's named seam in `NinaSidebar.tsx`
+
+**File:** `components/nina/NinaSidebar.tsx` — **phase 5's file**, at the seam it left at the top of
+the sidebar. Two lines and nothing else.
+
+**This is the one step this plan cannot quote, and the reason is recorded rather than papered over:**
+`components/nina/NinaSidebar.tsx` does not exist in the worktree at planning time (phase 5's planner
+is running concurrently and its plan file is not written yet), so there is no post-phase-5 text to
+quote. What the seam contract needs is therefore stated exactly, and it is deliberately tiny.
+
+**Change 1 — the import**, alongside the sidebar's other `./`-relative component imports:
+
+```tsx
+import { NinaSearchField } from './NinaSearchField'
+```
+
+**Change 2 — the element**, as the **first child** of the sidebar's scrolling content column, above
+Nina's circle and above the session list, inside phase 5's documented seam:
+
+```tsx
+<NinaSearchField onNavigate={close} />
+```
+
+where `close` is phase 5's own "close the sidebar" callback — whatever it named it. If phase 5's
+seam is a `children` slot or a named prop rather than an inline position, the element goes there
+unchanged; `NinaSearchField` reads nothing from its surroundings and holds all of its own state, so
+it is correct in any of those shapes.
+
+**Why `onNavigate` is required and not optional:** a hit navigates to `/nina?s=…`, and phase 5's
+sidebar is a client overlay whose open state survives the server re-render. Left open, it would sit
+over the session it just opened. A required prop makes `tsc` — not a reviewer — the thing that
+catches a seam that forgot to wire it.
+
+**Impact:** the search field appears at the top of the sidebar. This is the only line of another
+phase's file that this phase writes.
+
+---
+
+## Verification
+
+**Build:** `npm run typecheck` (`next typegen && tsc --noEmit`), then `npm run build`
+**Lint / format:** `npm run lint` · `npm run format:check`
+**Tests:** `npm test` (must include the new `lib/nina/search.test.ts`)
+**Guards:** `npm run ci:llm-payload-guard` — must report `rankNinaSearchHits` among its guarded
+symbols and pass. If it reports a symbol phase 4 named that does not exist in the tree, the rename
+in the Interface Contract's Requires #1 has not been applied.
+Also `npm run ci:data-layer-guard` and `npm run ci:client-secret-guard`, both of which this phase
+should leave untouched (the new query is not in `lib/db/queries.ts`, and nothing new reaches `env`
+from a client module).
+
+**Manual check, in this order:**
+
+1. `/nina` → tap `>` → the sidebar opens with a search field at the top and an `AI` switch to its
+   right. Type `lari`. Matching messages and session titles appear across every session. Tap one:
+   the sidebar closes, the chat opens the right session and lands on the message.
+2. Tap `AI` on, reload the page, reopen the sidebar → the switch is still on, and there is no
+   hydration error in the console.
+3. Toggle `AI` on in a second tab → the first tab's switch follows it (the `storage` listener).
+4. With `AI` on, search a phrase that appears in no message but describes one — e.g. `too tired to
+   finish` against a message about legs that would not move. A hit appears.
+5. Break the model deliberately (an invalid `LLM_API_KEY` in `.env.local`, or a `SEMANTIC_TIMEOUT_MS`
+   of `1`): the results fall back to text matches **and the line "Semantic ranking is unavailable
+   right now — showing text matches." is visible.** The console shows one `[nina] semantic search
+   call failed` warning and no error.
+6. Search `100%` and `_`: neither returns the whole conversation.
+7. Type a nine-character query one character at a time with `AI` on, then check the server log — one
+   model call, not nine.
+
+**Exit criteria:**
+
+- Typing in the sidebar's field lists matching sessions and messages across all sessions.
+- The toggle survives a reload and produces no hydration warning.
+- With the toggle on, a query that shares no words with a message still finds it.
+- With the model unavailable, results degrade to text matching and the UI says so, rather than
+  erroring or showing an empty list.
+- No model call in a render path: `npm run ci:llm-payload-guard` passes with `rankNinaSearchHits`
+  confined to `lib/nina/semantic.ts` and `lib/nina/searchActions.ts`.
+- Matching, ranking and snippet extraction are pure functions in `lib/nina/search.ts` with a
+  `environment: 'node'` vitest suite (invariant 7).
+- `nina_message_images.description` appears nowhere in the phase's diff (invariant 5).
+
+---
+
+## Handoffs
+
+1. **A GIN index and `to_tsvector`, if the corpus ever outgrows `ILIKE`.** `lib/db/schema.ts` is
+   phase 1's, so this phase adds no index. The change is `to_tsvector` plus
+   `websearch_to_tsquery` on a stored generated column and a GIN index over it — and it needs the
+   bilingual `regconfig` problem (D2) solved first, probably by indexing `simple` and accepting no
+   stemming at all. **Deliberately not done here**, and the search is correct without it at this
+   app's scale.
+2. **Making photos searchable.** Invariant 5 forbids surfacing `nina_message_images.description`,
+   and a hit whose snippet had to be suppressed is a result the runner cannot read. Doing this needs
+   a design answer first — probably a short server-side-only *caption* column distinct from
+   `glm-4.6v`'s private prose — so it is a card, not a step.
+3. **Deep-linking to a message beyond `CHAT_HISTORY_LIMIT = 200` inside its own session.** The
+   `?at=` mark degrades to the default screen (`scroll.ts`'s documented behaviour). Fixing it needs
+   per-session paging, which belongs to whoever owns `olderCount` after phase 3.
+4. **A shared constant for `?s=`.** `searchHitHref` writes the literal `s` from assumption A4. If
+   phase 3 exported a named constant, importing it is strictly better — a reconciliation edit, not
+   a behaviour change.
+5. **`embeddings` / `pgvector`.** Ruled out by the plan set's Scope section. If semantic recall ever
+   needs to see beyond the candidate window, that is the feature — with a migration, a backfill and
+   an ongoing write path — and this phase's `rankNinaSearchHits` header records what it cannot do.
+6. **`lib/nina/semantic.test.ts`.** The pure parse is fully covered in `search.test.ts` via
+   `parseSemanticRanking`, and `rankNinaSearchHitsWith` takes an injected `SemanticRankerClient`
+   precisely so a suite *can* exercise the timeout, the `max_tokens` cut and the transport failure.
+   Writing that suite is cheap and is left as a follow-up rather than smuggled into this phase's
+   scope; the `narrate.ts` fixtures are the shape to copy.
+7. **`components/nina/README` / `package_readme.md`.** Not this phase's file.
+
+---
+
+## Rollback
+
+This phase is one commit on `feature/nina-chat-sessions` and is UI-plus-`lib` only — no migration,
+no schema, no change to an existing signature. `git revert -m 1 <phase-6 commit>` after the merge,
+or `git revert <commit>` before it, backs it out alone.
+
+Six of the seven files are new, so reverting deletes them. The seventh is the two-line seam fill in
+`components/nina/NinaSidebar.tsx`; reverting removes the import and the element and leaves phase 5's
+sidebar exactly as it shipped, with an unfilled seam.
+
+**One coupling to be aware of when reverting.** Phase 4 owns the entry for `rankNinaSearchHits` in
+`scripts/check-llm-payload-boundary.mjs`. That guard only fails on a *call* from an unsanctioned
+file, never on a sanctioned symbol that no longer exists, so reverting this phase without reverting
+phase 4 leaves a dead table entry — harmless, and `npm run ci:llm-payload-guard` still passes. It
+should be pruned in the same commit as a courtesy, but it is not a blocker and the file is not this
+phase's to edit.
