@@ -79,21 +79,21 @@
     },
     {
       "card": "#70",
-      "commit": null,
+      "commit": "9d5fddcdb1e0bbd280b63709893a5d7f12bf425d",
       "depends_on": [
         4
       ],
       "difficulty": "HARD",
       "n": 5,
-      "note": null,
+      "note": "File explorer landed: folder tree, breadcrumb, paginated grid, drop-zone walk, bounded upload queue, set-as-profile. AlbumManager, UploadAvatar and the singular register action retired in the same commit. All gates + six guards green; nine manual browser checks unverified (0003 applied nowhere).",
       "package": "components/admin`, `app/admin`, `lib/admin",
       "plan": ".workflows/plan/admin-album-file-manager/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T10:44:00+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A003",
       "title": "The file explorer: tree, breadcrumb, paginated grid, drop zone, upload queue, set-as-profile"
     },
     {
@@ -139,7 +139,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-album-file-manager/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-album-file-manager",
-  "updated": "2026-09-04T10:13:40+00:00",
+  "updated": "2026-09-04T10:44:00+00:00",
   "verified_at": "2026-09-04T09:47:06+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-album-file-manager"
 }
