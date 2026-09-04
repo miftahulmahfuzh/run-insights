@@ -85,7 +85,7 @@ describe('dispatchNinaImageJob', () => {
     expect(result).toEqual({ ok: true })
     expect(fetchSpy).toHaveBeenCalledTimes(1)
 
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
     /* The repo coordinates are module constants on purpose (lib/env.ts:112) — assert them. */
     expect(url).toContain('/repos/miftahulmahfuzh/run-insights/actions/workflows/')
     expect(url).toContain('/dispatches')

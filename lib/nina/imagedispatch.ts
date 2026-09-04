@@ -92,9 +92,7 @@ export function githubDispatchUrl(): string {
  */
 export async function dispatchNinaImageJob(
   jobId: string,
-): Promise<
-  { ok: true } | { ok: false; detail: string; leaveForBackstop?: true }
-> {
+): Promise<{ ok: true } | { ok: false; detail: string; leaveForBackstop?: true }> {
   let GITHUB_DISPATCH_TOKEN: string
   try {
     ;({ GITHUB_DISPATCH_TOKEN } = ninaEnv())
