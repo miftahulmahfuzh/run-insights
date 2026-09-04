@@ -20,6 +20,7 @@ import Link from 'next/link'
 const LINKS = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/nina', label: "Nina's album" },
+  { href: '/admin/memory', label: 'Memory' },
 ] as const
 
 export function AdminNav() {
