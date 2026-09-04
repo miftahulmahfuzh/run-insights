@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { SEX_VALUES, type Sex } from '@/lib/db/schema'
 import { birthYearFromAge } from '@/lib/metrics/age'
 
 /**
@@ -35,6 +36,15 @@ export const profileFormSchema = z
   .object({
     age: z.preprocess(blankToUndefined, z.coerce.number().int().min(10).max(100).optional()),
     heightCm: z.preprocess(blankToUndefined, z.coerce.number().int().min(100).max(250).optional()),
+    /**
+     * Optional like everything else on this form (D11), and `''` is a real submission: the
+     * radios ship with none selected, so an untouched form posts no `sex` key at all and
+     * `blankToUndefined` turns a cleared one into the same thing.
+     *
+     * `z.enum` over the schema's own `SEX_VALUES`, so the form's domain and the column's domain
+     * cannot drift — one tuple, two consumers.
+     */
+    sex: z.preprocess(blankToUndefined, z.enum(SEX_VALUES).optional()),
     weightKg: z.preprocess(
       blankToUndefined,
       z.coerce.number().min(20).max(300).transform(toOneDecimal).optional(),
@@ -64,6 +74,7 @@ export const profileWriteSchema = z.object({
   birthYear: z.number().int().nullable(),
   heightCm: z.number().int().min(100).max(250).nullable(),
   weightKg: z.number().min(20).max(300).nullable(),
+  sex: z.enum(SEX_VALUES).nullable(),
   restingHr: z.number().int().min(30).max(120).nullable(),
   maxHr: z.number().int().min(100).max(230).nullable(),
 })
@@ -82,6 +93,7 @@ export function toProfileWrite(input: ProfileFormInput, now: Date = new Date()):
     birthYear: input.age != null ? birthYearFromAge(input.age, now) : null,
     heightCm: input.heightCm ?? null,
     weightKg: input.weightKg ?? null,
+    sex: input.sex ?? null,
     restingHr: input.restingHr ?? null,
     maxHr: input.maxHr ?? null,
   }
@@ -92,6 +104,7 @@ export interface ProfileFormValues {
   age: number | null
   heightCm: number | null
   weightKg: number | null
+  sex: Sex | null
   restingHr: number | null
   maxHr: number | null
 }

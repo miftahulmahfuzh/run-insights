@@ -57,6 +57,22 @@ describe('the public share route reaches nothing it must not', () => {
     expect(graph).not.toContain('auth.config.ts')
   })
 
+  it('does not reach the shell, which is how the session got in once already', () => {
+    /*
+     * F33 phase 10 put Nina's unread badge — and therefore `getUserId()` — inside `TabBar`, which
+     * `AppShell` renders. This page has never rendered either, but it imported five components
+     * through `@/components/ui`, whose barrel re-exports `AppShell`, and the assertion above went
+     * red. The fix was to import those five by file; this is what keeps the barrel from coming
+     * back and taking the shell with it.
+     *
+     * A shared run is a standalone page for somebody with no account. There is no tab bar to
+     * render for them and nothing on it they could press.
+     */
+    expect(graph).not.toContain('components/ui/index.ts')
+    expect(graph).not.toContain('components/ui/AppShell.tsx')
+    expect(graph).not.toContain('components/ui/TabBar.tsx')
+  })
+
   it('reaches no Server Action — a shared page has no mutation surface', () => {
     expect(graph.filter((f) => f.startsWith('app/actions/'))).toEqual([])
   })

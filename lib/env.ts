@@ -88,6 +88,90 @@ const cronSchema = z.object({
   CRON_SECRET: nonEmpty('CRON_SECRET'),
 })
 
+/**
+ * F33 owns these. Lazily validated, like `blobEnv()` and `cronEnv()`: a deploy without an
+ * OpenRouter key must still serve every screen that is not Nina's, so a missing value is an
+ * error at her first turn and not at build time.
+ *
+ * **RU-2 in one variable.** `OPENROUTER_API_KEY` was build-time-only (D12) and read by
+ * `tools/gen_badge_art.py` and nothing else. It is now also a RUNTIME credential, for `lib/nina/`
+ * ONLY, queued and daily-capped. Badge and record art stay offline-and-committed.
+ *
+ * `scripts/check-openrouter-boundary.mjs` still greps `app/`, `lib/` and `components/` for this
+ * literal and still fails for every one of them except two exempted paths: `lib/nina/`, and this
+ * file. `lib/env.ts` is exempted because it is the app's single environment contract and the
+ * alternative — hiding the variable in `lib/nina/env.ts`, or assembling its name so the grep
+ * misses it — would be evading the guard rather than amending it.
+ */
+const ninaSchema = z.object({
+  OPENROUTER_API_KEY: nonEmpty('OPENROUTER_API_KEY'),
+  /**
+   * **RU-20's dispatch credential (RULING C4).** A GitHub fine-grained PAT with `actions: write`
+   * on this repo, used by `lib/nina/imagedispatch.ts` to fire the image worker's
+   * `workflow_dispatch`. Lazily validated with the rest of the group, so a deploy without it
+   * serves every screen and fails only at the first image job.
+   *
+   * **The repo coordinates are deliberately NOT env vars.** `owner`/`repo`/`workflow` are module
+   * constants in `lib/nina/imagedispatch.ts`, exactly as phase 12 wrote them, because an
+   * environment variable is a thing a deploy can get wrong — and getting these wrong means
+   * dispatching a workflow at SOMEBODY ELSE'S repository with this token in the header. A
+   * constant in a reviewed file cannot be misconfigured; only rewritten.
+   */
+  GITHUB_DISPATCH_TOKEN: nonEmpty('GITHUB_DISPATCH_TOKEN'),
+})
+
+/**
+ * F33 / R3 owns these. Generate a pair with:
+ *
+ *     npx --yes web-push generate-vapid-keys
+ *
+ * **The public key is read SERVER-SIDE and passed to the client component as a prop** — there is
+ * no `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and there must not be one (plan invariant 10, enforced by
+ * `ci:client-secret-guard`). The Next.js PWA guide's recipe uses the `NEXT_PUBLIC_` form; that
+ * step is deliberately not followed here.
+ */
+const pushSchema = z.object({
+  VAPID_PUBLIC_KEY: nonEmpty('VAPID_PUBLIC_KEY'),
+  VAPID_PRIVATE_KEY: nonEmpty('VAPID_PRIVATE_KEY'),
+  /**
+   * **The `mailto:` `web-push` requires (RULING C4).** `webpush.setVapidDetails(subject, pub,
+   * priv)` throws unless `subject` is a `mailto:` or `https:` URL — it is the contact address a
+   * push service uses to reach the sender when a subscription misbehaves, so it is part of the
+   * credential and not part of the code. Env rather than a hardcoded string for the same reason
+   * `ADMIN_EMAILS` is env: it is a personal address, it is the one field here that a second
+   * deploy would want different, and a literal in `lib/nina/push.ts` would be a code change.
+   *
+   * Phase 11 asked to add this line itself; it ships here, because this file has one owner.
+   */
+  VAPID_SUBJECT: nonEmpty('VAPID_SUBJECT'),
+})
+
+/**
+ * R23 / R24 — who may open `/admin/nina` and `/admin/memory`.
+ *
+ * ── WHY ENV AND NOT A `users.is_admin` COLUMN ─────────────────────────────────────────────────
+ * Considered, and rejected on three grounds. (1) A column needs a bootstrap: the first admin has
+ * to be granted by something, and that something is either a migration with an email literal in
+ * it — which is this variable with extra steps and a deploy to change — or an admin page you
+ * cannot reach until you are an admin. (2) Authorisation that lives in the database is data an
+ * SQL bug can grant; authorisation that lives in the environment is data only a deploy can grant,
+ * and for a two-page admin surface on a single-user app the environment is the stronger of the
+ * two. (3) It matches how `CRON_SECRET` already gates `/api/cron/*` — the app's existing answer
+ * to "who is allowed to do the privileged thing" is an environment variable, and a second,
+ * different answer is a second thing to reason about.
+ *
+ * Comma-separated so a second address is a Vercel env edit rather than a code change.
+ *
+ * **The Google account you sign in with must be one of these**, or the admin pages 404. There is
+ * no relationship between this list and `users.email` other than string equality, and if the app
+ * is signed in as a different Google address than the one below, the pages are unreachable and
+ * the symptom is a 404 rather than an error — which is the correct symptom and a confusing one,
+ * so it is written down here.
+ */
+const adminSchema = z.object({
+  ADMIN_EMAILS: nonEmpty('ADMIN_EMAILS'),
+})
+
 function fail(group: string, error: z.ZodError): never {
   const lines = error.issues
     .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
@@ -134,6 +218,43 @@ export function cronEnv(): z.infer<typeof cronSchema> {
   return cronCache
 }
 
+let ninaCache: z.infer<typeof ninaSchema> | null = null
+export function ninaEnv(): z.infer<typeof ninaSchema> {
+  ninaCache ??= load('nina', ninaSchema)
+  return ninaCache
+}
+
+let pushCache: z.infer<typeof pushSchema> | null = null
+export function pushEnv(): z.infer<typeof pushSchema> {
+  pushCache ??= load('push', pushSchema)
+  return pushCache
+}
+
+let adminCache: z.infer<typeof adminSchema> | null = null
+export function adminEnv(): z.infer<typeof adminSchema> {
+  adminCache ??= load('admin', adminSchema)
+  return adminCache
+}
+
+/**
+ * The one piece of logic in this module, and therefore the one piece with a test
+ * (`tests/env.admin.test.ts`). Case-insensitive because Google reports `Foo@Gmail.com` and
+ * `foo@gmail.com` as the same account and a person typing the variable will not think about it;
+ * whitespace-tolerant because `a@b.com, c@d.com` is how anyone writes a list.
+ *
+ * `null` and `''` are not admins. That matters: `requireUserId()` gives a user id, the email
+ * comes from the session, and a session without one must fail closed.
+ */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (email == null || email.trim() === '') return false
+  const needle = email.trim().toLowerCase()
+  return adminEnv()
+    .ADMIN_EMAILS.split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0)
+    .includes(needle)
+}
+
 export const isProduction = env.NODE_ENV === 'production'
 export const isDevelopment = env.NODE_ENV === 'development'
 
@@ -141,3 +262,6 @@ export type CoreEnv = z.infer<typeof coreSchema>
 export type AuthEnv = z.infer<typeof authSchema>
 export type BlobEnv = z.infer<typeof blobSchema>
 export type CronEnv = z.infer<typeof cronSchema>
+export type NinaEnv = z.infer<typeof ninaSchema>
+export type PushEnv = z.infer<typeof pushSchema>
+export type AdminEnv = z.infer<typeof adminSchema>

@@ -41,6 +41,15 @@ import { decideSwipe, stepIndex, type SwipeGesture } from '@/lib/photos/gallery'
 export interface ViewerPhoto {
   url: string
   kind: string
+  /**
+   * What to call this photo, when `kind` is not a `ScreenKind`. F33's album and chat gallery pass
+   * a human phrase here; the review surfaces pass nothing and keep `SCREEN_KIND_LABEL`.
+   *
+   * Without it the header renders `SCREEN_KIND_LABEL[kind] ?? kind`, which for an album photo is
+   * the literal word `avatar` and for one of her selfies the literal word `generated` — and the
+   * dot row then announces "generated screenshot".
+   */
+  label?: string
 }
 
 export function PhotoViewer({
@@ -48,13 +57,25 @@ export function PhotoViewer({
   index,
   onIndex,
   onClose,
+  subject = 'screenshot',
 }: {
   photos: readonly ViewerPhoto[]
   index: number
   onIndex: (index: number) => void
   onClose: () => void
+  /**
+   * The noun in the dialog's accessible name. `'screenshot'` for the three review surfaces,
+   * `'foto'` for F33's album and gallery — "avatar screenshot" is not a thing.
+   */
+  subject?: string
 }) {
   const photo = photos[index]!
+  /**
+   * The one place a photo is named. Both new props are defaulted and both reduce to the expression
+   * that was already here when they are absent, so `ScreenshotStrip`, `SheetSource` and
+   * `PhotoInclusionList` are byte-identical in behaviour.
+   */
+  const nameOf = (p: ViewerPhoto) => p.label ?? SCREEN_KIND_LABEL[p.kind as ScreenKind] ?? p.kind
   const panRef = React.useRef<HTMLDivElement | null>(null)
 
   /**
@@ -159,12 +180,12 @@ export function PhotoViewer({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`${SCREEN_KIND_LABEL[photo.kind as ScreenKind] ?? photo.kind} screenshot`}
+      aria-label={`${nameOf(photo)} ${subject}`}
       className="fixed inset-0 z-60 flex flex-col bg-ink/95"
     >
       <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+var(--safe-top))] pb-3">
         <span className="text-[13px] font-semibold text-card">
-          {SCREEN_KIND_LABEL[photo.kind as ScreenKind] ?? photo.kind}
+          {nameOf(photo)}
           {photos.length > 1 && (
             <span className="ml-2 font-medium opacity-60">
               {index + 1} / {photos.length}
@@ -202,7 +223,7 @@ export function PhotoViewer({
               key={p.url}
               type="button"
               onClick={() => onIndex(i)}
-              aria-label={`Show the ${SCREEN_KIND_LABEL[p.kind as ScreenKind] ?? p.kind} screenshot`}
+              aria-label={`Show the ${nameOf(p)} ${subject}`}
               aria-current={i === index}
               className={
                 i === index

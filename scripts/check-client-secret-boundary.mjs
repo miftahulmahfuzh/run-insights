@@ -47,6 +47,16 @@ const SECRETS = [
   'DATABASE_URL',
   'DATABASE_URL_UNPOOLED',
   'OPENROUTER_API_KEY',
+  /*
+   * F33 phase 11 / R3. The signing half of the VAPID pair: whoever holds it can send push
+   * notifications to every subscription this app has ever stored, as this app.
+   *
+   * `VAPID_PUBLIC_KEY` is deliberately NOT in this list. It is public by construction — it travels
+   * inside every `pushManager.subscribe()` call and is readable in any subscribed browser — and
+   * listing it would make RULE 1 forbid `components/push/PushSetup.tsx`, the one server component
+   * whose entire job is to read it and hand it to the browser as a prop.
+   */
+  'VAPID_PRIVATE_KEY',
 ]
 /** Raw-read exemptions. Each is deliberate and commented at its call site. */
 const RAW_READ_ALLOWED = new Set(['lib/env.ts', 'lib/db/index.ts'])

@@ -14,7 +14,21 @@
  * and a display-only concern (R-30's pace bar) into the review screen.
  */
 
-export { AppShell, ScreenHeader } from './AppShell'
+/*
+ * **`AppShell` and `ScreenHeader` are deliberately NOT re-exported here. Import them from
+ * `@/components/ui/AppShell`.**
+ *
+ * This barrel is a client-safe component kit: ten client components import it, so everything
+ * reachable through it has to be safe in a browser bundle. `AppShell` stopped being that in F33
+ * phase 10, when it began rendering Nina's unread badge — an async Server Component that reads the
+ * session, and therefore reaches `auth.ts` and `lib/env.ts`, which is `server-only`. Left in the
+ * barrel, that turned every `import { Card } from '@/components/ui'` in a `'use client'` file into
+ * a build error, and put `AppShell` into `/s/[token]`'s static import graph, where
+ * `tests/share.bundle.test.ts` correctly refused it.
+ *
+ * The shell is a Server Component and could never have been rendered from a client component
+ * anyway, so nothing loses a legitimate call site. Do not add it back.
+ */
 export { Button, ButtonLink, LoadingDots, buttonClasses } from './Button'
 export type { ButtonProps, ButtonLinkProps, ButtonSize, ButtonVariant } from './Button'
 export { Card, Eyebrow, Stat } from './Card'

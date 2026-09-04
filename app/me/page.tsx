@@ -1,16 +1,10 @@
 import { AccountMenu } from '@/components/auth/AccountMenu'
 import { BadgeShelf } from '@/components/profile/BadgeShelf'
 import { ProfileForm } from '@/components/profile/ProfileForm'
+import { PushSetup } from '@/components/push/PushSetup'
 import { RecordsTable, type RecordRowView } from '@/components/profile/RecordsTable'
-import {
-  AppShell,
-  ButtonLink,
-  Card,
-  EmptyState,
-  Eyebrow,
-  ScreenHeader,
-  Stat,
-} from '@/components/ui'
+import { ButtonLink, Card, EmptyState, Eyebrow, Stat } from '@/components/ui'
+import { AppShell, ScreenHeader } from '@/components/ui/AppShell'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { buildShelf } from '@/lib/badges/shelf'
 import { dbBadgeGateway } from '@/lib/badges/gateway'
@@ -33,10 +27,15 @@ import { isRecordKey, RECORD_KEYS } from '@/lib/records/catalog'
  * "91.5% of max" somewhere in the app should be able to find out *why that denominator* without
  * hunting. It is the whole of D11's honesty promise, rendered as one paragraph.
  *
- * ── SIX READS, ONE `Promise.all`, NO MODEL CALL ──────────────────────────────────────────────
+ * ── SIX READS IN ONE `Promise.all`, PLUS ONE INSIDE `PushSetup`, NO MODEL CALL ───────────────
  * Every number on this page is either stored or computed in TypeScript, so the whole screen is a
  * handful of indexed queries — no `getOrCreateInsight`, nothing that can take 15 s. F07's payload
  * guard exists to keep it that way.
+ *
+ * F33 phase 11's `countLivePushSubscriptions` is the seventh read and is deliberately NOT folded
+ * into the `Promise.all`: it belongs to `PushSetup`'s own component boundary, and hoisting it here
+ * would put push vocabulary into a function whose whole point is that every number on it is
+ * stored or computed in TypeScript.
  */
 export default async function MePage() {
   const userId = await requireUserId()
@@ -105,6 +104,11 @@ export default async function MePage() {
       </Card>
 
       <Card className="mb-4">
+        <Eyebrow className="mb-3">Notifications</Eyebrow>
+        <PushSetup />
+      </Card>
+
+      <Card className="mb-4">
         <Eyebrow className="mb-3">Max heart rate</Eyebrow>
         <HrMaxPanel hrMax={hrMax} birthYear={profile?.birthYear ?? null} />
       </Card>
@@ -117,6 +121,7 @@ export default async function MePage() {
             age: profile?.birthYear != null ? ageFromBirthYear(profile.birthYear) : null,
             heightCm: profile?.heightCm ?? null,
             weightKg: profile?.weightKg ?? null,
+            sex: profile?.sex ?? null,
             restingHr: profile?.restingHr ?? null,
             maxHr: profile?.maxHr ?? null,
           }}

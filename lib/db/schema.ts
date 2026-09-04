@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm'
 import {
+  bigserial,
   boolean,
   date,
   index,
@@ -12,6 +13,7 @@ import {
   time,
   timestamp,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 
 /**
@@ -23,8 +25,10 @@ import {
  * Two rules that are invisible in the column list but govern the whole schema:
  *
  *   - **Integers in the smallest sensible unit** (roadmap D5). Distance is metres, duration and
- *     pace are seconds. `profiles.weight_kg` is the single deliberate exception. Floats summed
- *     over a month drift visibly; integers do not.
+ *     pace are seconds. `profiles.weight_kg` is the single deliberate exception among MEASURED
+ *     values; `nina_avatars.crop_scale` is a display transform rather than a measurement and is
+ *     `numeric` for the same reason a zoom factor is not an integer. Floats summed over a month
+ *     drift visibly; integers do not.
  *   - **`runs.reviewed_at IS NOT NULL` gates every aggregate** (roadmap D16 / R-13). The column
  *     is declared here; the filter is enforced in lib/db/queries.ts and asserted by
  *     tests/db.queries.reviewedOnly.test.ts.
@@ -94,6 +98,24 @@ export const verificationTokens = pgTable(
  * whether a run was ever committed from it.
  * ==========================================================================*/
 
+/**
+ * The runner's sex, R6. **The schema has never carried this** — the roadmap's §4.3 `profiles`
+ * block has five columns and none of them is gender — so this is a genuinely new fact about the
+ * runner rather than a rename of something.
+ *
+ * Four members, and `'unspecified'` is deliberately distinct from `NULL`: NULL means "never
+ * asked", `'unspecified'` means "asked, and declined to say". Nina treats those differently — the
+ * first is a thing she may ask about once, the second is a thing she must not ask about again.
+ *
+ * A plain `text` column, not a `pgEnum`: this file has no enum anywhere (`runs.intent`,
+ * `runs.source`, `badges.key` and `insights.scope` are all `text().$type<…>()`), and adding the
+ * first one would mean every future member is a migration instead of a one-line union edit.
+ */
+export type Sex = 'male' | 'female' | 'other' | 'unspecified'
+
+/** Iteration order for the form's segmented control. Same order, one source. */
+export const SEX_VALUES = ['male', 'female', 'other', 'unspecified'] as const
+
 export const profiles = pgTable('profiles', {
   userId: text('user_id')
     .primaryKey()
@@ -103,10 +125,20 @@ export const profiles = pgTable('profiles', {
   heightCm: integer('height_cm'),
   /**
    * kg, one decimal — the one non-integer measured column in the schema (roadmap §4.2).
-   * D15/R-28: this value must never enter an LLM payload. It is stored because the profile
-   * screen collects it, and it is read by nothing that talks to a model.
+   *
+   * **D15/R-28 REPEALED (RU-1, F33).** This column used to be documented as "must never enter an
+   * LLM payload, and read by nothing that talks to a model". Both halves of that are now false:
+   * `lib/llm/facts.ts`'s `NarrativeProfile` carries it, Nina's context carries it, and the
+   * grep in `scripts/check-llm-payload-boundary.mjs` that enforced it has been deleted. The
+   * repeal is recorded in RECONCILIATION_v0.1.0.md R-28 and in NINA_CHATBOT_PLAN.md RU-1; the
+   * user's reason, verbatim, is "i am the only one that uses this app… this is my personal toy".
+   *
+   * Everything else about the column is unchanged: still `numeric(4,1)`, still the one deliberate
+   * non-integer, still rounded to one decimal by `lib/profile/schema.ts` before it gets here.
    */
   weightKg: numeric('weight_kg', { precision: 4, scale: 1, mode: 'number' }),
+  /** R6 / F33. See `Sex` above for why NULL and `'unspecified'` are not the same answer. */
+  sex: text('sex').$type<Sex>(),
   restingHr: integer('resting_hr'),
   /**
    * MEASURED only (roadmap §4.4 / D11). A Tanaka estimate never lands here — the resolver
@@ -115,6 +147,31 @@ export const profiles = pgTable('profiles', {
    */
   maxHr: integer('max_hr'),
   onboardedAt: timestamp('onboarded_at', { withTimezone: true, mode: 'date' }),
+  /**
+   * **The day the app was last opened**, as an Asia/Jakarta calendar day (roadmap D6) — a string,
+   * never a JS `Date`, exactly like `runs.occurred_on`.
+   *
+   * F33 R3's fourth proactive trigger is prolonged silence, and the user specified it on two
+   * signals: *no run in N days*, **or** *the app unopened for N days*. The schema had no answer
+   * to the second — there is no last-seen column anywhere — so phase 10 was forced to proxy it
+   * with CHAT silence, which is a different thing: he can open the app every morning, read his
+   * runs, never message Nina, and be scolded for ghosting her. This column is the missing signal.
+   *
+   * **A cheap best-effort touch, not an audit trail.** One `date`, not a timestamp and not a
+   * history table: the trigger asks "which day", so a day is the whole of what needs storing, and
+   * a per-request timestamp write would turn every page load into a database write for a number
+   * nobody reads at that resolution. A missed touch costs nothing.
+   *
+   * **NULL means "never seen", which the silence rule must read as NO SIGNAL and not as
+   * infinitely silent.** A profile row exists from the moment onboarding is skipped, so a fresh
+   * install has `NULL` here — and a rule that treats NULL as "silent since the epoch" roasts him
+   * on day one for not having used an app he just installed.
+   *
+   * **This phase declares the column and nothing else.** Nothing writes it yet: phase 10 owns the
+   * trigger that reads it, and where the touch belongs (a layout, a middleware, a Server Action)
+   * is a later phase's decision. See Handoffs.
+   */
+  lastSeenOn: date('last_seen_on', { mode: 'string' }),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
     .notNull()
     .defaultNow()
@@ -400,9 +457,12 @@ export const badges = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     key: text('key').notNull(), // lib/badges/catalog.ts (F09) — 22 keys, roadmap §4.6
     /**
-     * R-22 — the ONE non-cascade FK in the schema, and deliberately so. A badge is a fact about
-     * the past; deleting the run that earned it must not delete the history that it happened.
-     * Do not "fix" this to cascade by pattern-matching the other FKs in this file.
+     * R-22 — the one non-cascade FK among the F03 tables, and deliberately so. A badge is a fact
+     * about the past; deleting the run that earned it must not delete the history that it
+     * happened. Do not "fix" this to cascade by pattern-matching the other FKs in this file.
+     *
+     * (F33 adds two more `set null` FKs, both on `nina_messages`, for the reason given in that
+     * table's header. R-22's argument here is untouched by them.)
      */
     runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
     scopeKey: text('scope_key'), // '2026-W34' | '2026-08' for period badges
@@ -462,6 +522,650 @@ export const shares = pgTable(
 )
 
 /* ============================================================================
+ * F33 — Nina. Eight tables, and one rule that explains the shape of all of them:
+ * SHE READS THROUGH `lib/nina/queries.ts` AND NOWHERE ELSE. Every table below
+ * carries `user_id` even though this app has exactly one user (plan invariant 7),
+ * because the query layer is built that way and diverging from it is more work
+ * rather than less.
+ *
+ * `nina_turns` is declared first because `nina_messages.turn_id` carries its id.
+ * ==========================================================================*/
+
+export type NinaTurnKind = 'chat' | 'proactive' | 'image' | 'vision'
+
+/**
+ * **`'pending'` is here under RULING C2, and it is what makes RU-20's out-of-process generation
+ * auditable.** A `kind = 'image'` turn is dispatched to a GitHub Actions worker and finishes
+ * minutes later in another process, so between the dispatch and the callback there is a real row
+ * that is neither a success nor a failure. Phase 12's originally documented fallback — write it
+ * as `failed` with `error_code: 'queued'` and correct it later — is **withdrawn**: it would put a
+ * failure row in the table for every single image she ever makes, and poison every "how often
+ * does she fail" reading of `nina_turns` for the life of the app. A cheap word in a union beats a
+ * permanently wrong table.
+ *
+ * Plain `text` with `.$type<>()`, exactly like `kind`, so **adding the member is NOT a migration**
+ * — the column domain lives in TypeScript and Postgres holds a string.
+ */
+export type NinaTurnStatus = 'pending' | 'ok' | 'repaired' | 'failed'
+
+/**
+ * **The audit trail for every model call Nina makes.** One row per call, written whether it
+ * succeeded or not — this is the table that answers "why did that turn take nineteen seconds",
+ * "how much has she cost this month" and "how often does the repair round-trip actually fire",
+ * and it is the only place those questions can be answered after the fact.
+ *
+ * It is deliberately NOT `insights`-shaped: no `facts_hash`, no unique index, no cache. An
+ * insight is a cacheable product keyed by its inputs; a conversation turn is an event, and two
+ * identical inputs a minute apart are two events. Nothing here is ever read to avoid a call.
+ *
+ * `cost_micro_usd` is an INTEGER in millionths of a dollar, not a float in dollars — the schema's
+ * smallest-sensible-unit rule (roadmap D5) applied to money, which is where float drift is least
+ * forgivable. A $0.04 image generation is `40000`.
+ *
+ * ── IT IS ALSO THE JOB ROW FOR RU-20, WHICH IS WHY `args` AND `'pending'` EXIST ───────────────
+ * An `image` turn does not finish in this process. It is dispatched to a GitHub Actions worker
+ * and lands minutes later, so its row is written `status = 'pending'` with the job phase in
+ * `error_code` and its full arguments in `args`, and is closed by the callback. That makes this
+ * one row the audit record AND the queue entry, which is the right call for exactly one reason:
+ * a separate `nina_image_jobs` table would hold the same nine columns, need the same daily-cap
+ * count, and then have to be joined against this table to answer "what did that cost". One row
+ * per model call stays one row per model call even when the call outlives the request.
+ *
+ * `trigger` holds phase 2's `ProactiveTriggerKind` ('run_committed' | 'missed_usual_day' |
+ * 'pattern_crossed' | 'silence' | 'avatar_changed') for `kind = 'proactive'` rows and NULL
+ * otherwise. It is untyped `text` here on purpose: the vocabulary belongs to phase 10, and this
+ * table must not become the thing phase 10 has to migrate to add a fifth trigger.
+ */
+export const ninaTurns = pgTable(
+  'nina_turns',
+  {
+    /** nanoid(12) — lib/id.ts newId(). Phase 3 stamps it onto every message the turn emitted. */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<NinaTurnKind>().notNull(),
+    trigger: text('trigger'),
+    model: text('model').notNull(),
+    /** `NINA_PROMPT_VERSION` at call time, so a voice regression can be dated. */
+    promptVersion: integer('prompt_version'),
+    /**
+     * The D3 token-floor canary again, one feature over: `extractions.prompt_tokens` exists for
+     * exactly this reason and `lib/llm/vision.ts` reads it. A vision turn whose `input_tokens`
+     * sits far below the floor is a turn where the endpoint silently dropped the image.
+     */
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    /**
+     * **WHICH tools fired, comma-joined. `''` when none — not an integer count (RULING C8).**
+     * A count would have answered a question nobody asked. Phase 3's ruling (b) keeps
+     * `save_memory` as a tool with an *empirical exit condition* — drop it if it never actually
+     * fires — and that is only decidable if the column records the tool NAMES. `'save_memory'`,
+     * `'save_memory,attach_run'`, `''`. `NOT NULL DEFAULT ''` so "no tools" and "not recorded"
+     * cannot be told apart by accident, and so `WHERE tool_calls <> ''` is the whole query.
+     * Phase 12 also writes the sentinel `'dropped:save_memory'` here.
+     */
+    toolCalls: text('tool_calls').notNull().default(''),
+    latencyMs: integer('latency_ms'),
+    /** Millionths of a USD. See the header — never a float, never dollars. */
+    costMicroUsd: integer('cost_micro_usd'),
+    status: text('status').$type<NinaTurnStatus>().notNull(),
+    /**
+     * Free text, ours not the provider's. NULL on success.
+     *
+     * **Phase 12 also uses it as the job PHASE while `status = 'pending'`** —
+     * `'queued' | 'dispatched' | 'running'` — and only writes an actual failure reason here when
+     * `status = 'failed'`. Two meanings in one column, disambiguated by `status`, which is
+     * cheaper than a `job_phase` column that is NULL for every one of the other three kinds.
+     */
+    errorCode: text('error_code'),
+    /**
+     * **The job's own arguments, and RU-20 makes them mandatory rather than nice to have
+     * (RULING C1).** Nullable, and NULL for every `kind` except `'image'`.
+     *
+     * Phase 12's `NinaImageJobArgs`, verbatim as the documented shape:
+     * `{ purpose, scene, mood, prompt, seed, replyToId, source, attempts, sidecar }`.
+     *
+     * TWO independent reasons it cannot live anywhere else:
+     *
+     *   1. **THE REPO IS PUBLIC.** A `workflow_dispatch` input is world-readable in the Actions
+     *      run log, forever. So the prompt must travel in the DATABASE and the dispatch may carry
+     *      only an opaque job id. Putting the prompt in the dispatch input would publish every
+     *      word Nina ever generates an image from.
+     *   2. **The `schedule:` backstop wakes with NO ARGUMENTS AT ALL.** It exists because a
+     *      dispatch can be dropped, and its whole job is to find work that was left behind. A
+     *      retry is therefore impossible unless the arguments are in the row — a job whose args
+     *      were only ever in the dispatch payload is a job that can never be retried.
+     *
+     * Untyped `jsonb` on purpose: `NinaImageJobArgs` belongs to phase 12, and this table must not
+     * become the thing phase 12 has to migrate to add a tenth field to its own job shape. Same
+     * argument as `trigger` above.
+     */
+    args: jsonb('args'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** "her turns, newest first" and "how many image turns today" both read this. */
+    index('nina_turns_user_created_idx').on(t.userId, t.createdAt.desc()),
+  ],
+)
+
+export type NinaRole = 'runner' | 'nina'
+
+/**
+ * **Why the row exists. RULING C9 fixed this union, and it is `'chat'` plus every member of phase
+ * 2's `ProactiveTriggerKind` — nothing more and nothing less.**
+ *
+ * This phase originally declared `'chat' | 'proactive' | 'operator'`. Both of the losers lost for
+ * a concrete reason, and the reasons are recorded here because a column domain is the hardest
+ * thing in the schema to widen later.
+ *
+ * ── `'proactive'` LOSES: IT WOULD HAVE COST R8 ITS INDEXED READ ───────────────────────────────
+ * Phase 10 owns every writer of a non-`'chat'` source, and its durable idempotence marker for R8
+ * — "did I already speak about this run?" — is
+ * `source = 'run_committed' AND run_id = <this run>`: one indexed read on
+ * `nina_messages_user_run_idx`, decided by the row itself. Collapsing all five triggers into
+ * `'proactive'` would make that question unanswerable from this table and force a join against
+ * `nina_turns.trigger` — an audit table — to decide whether to send a message. Idempotence that
+ * depends on a join against the audit trail is idempotence that breaks the first time the audit
+ * trail is pruned.
+ *
+ * ── `'operator'` LOSES: IT HAS NO WRITER AT ALL ──────────────────────────────────────────────
+ * It was declared for phase 14's operator script, and phase 14 deliberately writes **no**
+ * `nina_messages` row: it re-anchors her face and inserts a `nina_avatars` row, and the
+ * announcement reaches the conversation through `'avatar_changed'` when she next speaks. A member
+ * with no writer is a member every `switch` has to handle and no test can ever exercise.
+ *
+ * ── ONE VOCABULARY, TWO DECLARATIONS, AND A TEST THAT PINS THEM TOGETHER ─────────────────────
+ * The union is declared HERE, in `lib/db/schema.ts`, because it is a column domain and the column
+ * lives here. Phase 2 declares `ProactiveTriggerKind` for the prompt layer. **Phase 10 owns the
+ * test asserting `NinaMessageSource` equals `'chat' | ProactiveTriggerKind`** — not this phase,
+ * because phase 10 is the first phase in which both types exist and a test cannot import a type
+ * that has not been written yet.
+ */
+export type NinaMessageSource =
+  'chat' | 'run_committed' | 'missed_usual_day' | 'pattern_crossed' | 'silence' | 'avatar_changed'
+
+/**
+ * **The conversation.** One row per bubble, which is RU-5 made structural: Nina returns 1–4 short
+ * messages per turn and each one is a real row, so each is independently quotable (phase 7),
+ * independently unread (phase 10) and independently attachable to an image (phase 6). A `jsonb`
+ * array of bubbles on one row would have made every one of those a special case.
+ *
+ * ── `seq`, AND WHY IT IS A SEQUENCE AND NOT A TIMESTAMP ───────────────────────────────────────
+ * Four bubbles written inside one `db.batch` must read back in the order Nina emitted them, and
+ * `sent_at` cannot promise that: `defaultNow()` inside one transaction returns the SAME instant
+ * for all four statements, so `ORDER BY sent_at` leaves their order up to the planner. A
+ * per-turn integer would fix that but still ties two DIFFERENT turns landing in the same instant,
+ * which is exactly what an `after()` hook and a cron running concurrently can do.
+ *
+ * So `seq` is a `bigserial`: a total order over the whole conversation, `ORDER BY seq` is
+ * deterministic with no composite key, and rows inserted in one batch are numbered in array
+ * order. It is also the natural cursor for "the messages before this one" (phase 4's
+ * `olderCount`) and the natural watermark for "read up to here" (phase 10).
+ *
+ * The PK stays `id` (nanoid(12)) because ids appear in URLs, in `reply_to_id` and in the DOM
+ * (`#nina-msg-<id>`), and a guessable integer in any of those is a change of kind.
+ *
+ * ── TWO `SET NULL` FKs, DELIBERATELY (see `badges.run_id`'s note) ─────────────────────────────
+ * `reply_to_id` and `run_id` are BOTH dereferenced on every render — a quote bubble and a run
+ * card. A dangling id would paint an empty quote or an empty card, so they are real FKs; and a
+ * deleted run must not delete the conversation about it, so they are `set null` rather than
+ * cascade. Phase 7 and phase 8 both degrade a NULL to plain text, which is the designed outcome.
+ * `turn_id` gets neither: nothing renders it, and an audit pointer must not be able to block a
+ * delete.
+ */
+export const ninaMessages = pgTable(
+  'nina_messages',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    /**
+     * The total order. Assigned by Postgres, never by the app, and never reused. See the header.
+     */
+    seq: bigserial('seq', { mode: 'number' }).notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** 'runner' is him, 'nina' is her. Not 'user'/'assistant' — she is not an assistant. */
+    role: text('role').$type<NinaRole>().notNull(),
+    /** Her words or his, verbatim. Never a template, never a rendered number. */
+    text: text('text').notNull(),
+    /**
+     * Why the row exists — see the type's own note (RULING C9). `'chat'` is him or her in a
+     * conversation; the other five are phase 10's, one per `ProactiveTriggerKind`, and phase 10
+     * is the only writer of any of them. `'run_committed'` plus `run_id` is R8's whole
+     * idempotence check, which is why the triggers are spelled out instead of collapsed.
+     */
+    source: text('source').$type<NinaMessageSource>().notNull().default('chat'),
+    /** `nina_turns.id`. A plain column on purpose — see the header's last paragraph. */
+    turnId: text('turn_id'),
+    /** WhatsApp-style quote (R12). Self-referencing; `AnyPgColumn` is what makes that typecheck. */
+    replyToId: text('reply_to_id').references((): AnyPgColumn => ninaMessages.id, {
+      onDelete: 'set null',
+    }),
+    /** The run he shared into the chat (R13). */
+    runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    /** Phase 11 stamps it when Web Push accepted the notification. NULL = never pushed. */
+    deliveredAt: timestamp('delivered_at', { withTimezone: true, mode: 'date' }),
+    /** Phase 10's unread badge is `role = 'nina' AND read_at IS NULL`. */
+    readAt: timestamp('read_at', { withTimezone: true, mode: 'date' }),
+  },
+  (t) => [
+    /** The one hot read: "her last N messages, in order". Index-only for the ORDER BY. */
+    index('nina_messages_user_seq_idx').on(t.userId, t.seq),
+    /**
+     * **The unread count, as a PARTIAL index — and RULING C9's index check resolves to "already
+     * done here".** Phase 10 asked for either `(user_id, read_at) WHERE read_at IS NULL` or
+     * `(user_id, role, read_at)`; this index is strictly stronger than both and no second one is
+     * added. It carries the `role = 'nina'` predicate too, so his own messages — which are
+     * `read_at IS NULL` forever, because nothing ever marks them read — are not even in the
+     * index, let alone counted.
+     *
+     * Partial rather than full, on the `shares_run_id_active_unq` precedent one table over:
+     * almost every row is read almost all of the time, so a full index on `read_at` would be a
+     * big index answering a question about a handful of rows.
+     *
+     * This matters more than an index note usually does, which is why it is spelled out: the
+     * count runs on **every page render of every tabbed screen** — the badge lives in the bottom
+     * bar, so `/`, `/runs`, `/nina`, `/trends` and `/me` each pay for it. A sequential scan of
+     * the whole conversation on every navigation is the one performance mistake in this schema
+     * that a user would actually feel.
+     */
+    index('nina_messages_user_unread_idx')
+      .on(t.userId, t.seq)
+      .where(sql`${t.readAt} is null and ${t.role} = 'nina'`),
+    /** Phase 7 resolves a quote's target, and phase 13 needs "what replied to this". */
+    index('nina_messages_reply_to_idx').on(t.replyToId),
+    /** Phase 8's "did he already share this run" and the run-detail back-link. */
+    index('nina_messages_user_run_idx').on(t.userId, t.runId),
+  ],
+)
+
+export type NinaImageKind = 'upload' | 'generated'
+
+/**
+ * **Its own table, not a `jsonb` column on `nina_messages`.** Three readers force that: phase 13's
+ * detail page queries "every image in this conversation, newest first" without touching the
+ * message rows, phase 6 writes a `description` per image, and phase 12 writes a `prompt` per
+ * image. A `jsonb` array would make the gallery a full table scan plus a TypeScript flatten, and
+ * `run_photos` — the table this one is modelled on — made the same call for the same reason.
+ *
+ * `user_id` is denormalised alongside `message_id` so the gallery read is `WHERE user_id = $1`
+ * rather than a join back through `nina_messages` purely to prove ownership (invariant 7).
+ *
+ * `description` is `glm-4.6v`'s dense private text (RU-12): what is actually in the picture, in
+ * prose, written for `glm-5.3` to react to and never shown to the runner. It is what makes R10
+ * work at all, and phase 6 is the only writer.
+ */
+export const ninaMessageImages = pgTable(
+  'nina_message_images',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Cascade: an image with no message is nothing. Unlike a badge, it is not a fact. */
+    messageId: text('message_id')
+      .notNull()
+      .references(() => ninaMessages.id, { onDelete: 'cascade' }),
+    /** 'upload' = he sent it (phase 6). 'generated' = she made it (phase 12). */
+    kind: text('kind').$type<NinaImageKind>().notNull(),
+    blobUrl: text('blob_url').notNull(),
+    /** `nina/<userId>/…` (RU-7). The reaper's future handle on these — see Handoffs. */
+    pathname: text('pathname').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    bytes: integer('bytes'),
+    /** `glm-4.6v`'s private description. See the header. Phase 6 writes it. */
+    description: text('description'),
+    /** The generation prompt, `kind = 'generated'` only. Phase 12 writes it. */
+    prompt: text('prompt'),
+    /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** "the images on these messages" — phase 4's list hydration. */
+    index('nina_message_images_message_idx').on(t.messageId),
+    /** Phase 13's gallery, newest first, without a join. */
+    index('nina_message_images_user_created_idx').on(t.userId, t.createdAt.desc()),
+  ],
+)
+
+/** Who put the row there. `'admin'` is the `/admin/memory` editor (R26, phase 16). */
+export type NinaMemorySource = 'distilled' | 'admin'
+
+/**
+ * One `pending_promises` entry (R19). Phase 5 writes them from a finished turn, phase 13's
+ * evaluator reads them, checks each against reality, and on a met promise generates a new avatar
+ * and makes her announce it.
+ *
+ * `metric` plus `target`/`targetKey` is what makes a promise CHECKABLE against precomputed facts
+ * instead of re-asked of the model — invariant 2 applied to a promise. `'free'` is the escape
+ * hatch for a promise no field can decide; phase 13 leaves those pending and she may ask.
+ *
+ * Every date is a Jakarta `'YYYY-MM-DD'` string (roadmap D6), never a JS `Date`.
+ */
+export type NinaPromiseMetric = 'distance_km_total' | 'run_count' | 'record' | 'badge' | 'free'
+
+export type NinaPendingPromise = {
+  /** nanoid(12), so she can refer to one promise across turns. */
+  id: string
+  /** Her promise in her own words, display-ready. */
+  text: string
+  /** The condition in his terms, display-ready — "kalau lo lari 50k bulan ini". */
+  condition: string
+  metric: NinaPromiseMetric
+  /** The number to reach, in the metric's own unit. NULL for 'record' | 'badge' | 'free'. */
+  target: number | null
+  /** A `RECORD_CATALOG` or `BADGE_CATALOG` key for 'record' | 'badge'. NULL otherwise. */
+  targetKey: string | null
+  /** Deadline, or NULL for open-ended. */
+  byDate: string | null
+  promisedOn: string
+  /** `nina_messages.id` she said it in, or NULL if the admin typed it. */
+  sourceMessageId: string | null
+  status: 'pending' | 'met' | 'expired'
+  resolvedOn: string | null
+  /**
+   * ── THE THREE FIELDS BELOW ARE RULING C3, AND RU-20 IS WHY THEY HAVE TO EXIST ────────────────
+   * The promise state machine used to be answerable in one process: evaluate the promise,
+   * generate the avatar, make her announce it, mark it `met`. RU-20 broke that — generation is
+   * now dispatched to a GitHub Actions worker and LANDS IN ANOTHER PROCESS MINUTES LATER. So
+   * "did she keep her promise" can no longer be answered by a return value, and the only place
+   * left to answer it is the promise itself.
+   *
+   *   · `jobId`   — the `nina_turns.id` of the dispatched generation. Without it, a promise that
+   *                 has been acted on and a promise nobody has touched are indistinguishable,
+   *                 and the evaluator fires a second job on its next sweep. This is the
+   *                 idempotence marker for the promise path, exactly as
+   *                 `source='run_committed' AND run_id=…` is for R8.
+   *   · `firedOn` — the Jakarta `'YYYY-MM-DD'` the job was dispatched. A day, not an instant,
+   *                 because every other date on this type is a day (roadmap D6) and the rule it
+   *                 serves is "not twice in one day".
+   *   · `attempts`— how many dispatches this promise has already cost. A worker that fails
+   *                 transport is retried by the `schedule:` backstop, and a promise with no
+   *                 attempt counter is a promise that can be retried forever.
+   *
+   * `nina_memory_slots.value` is `jsonb`, so **all three cost no migration**; and all three are
+   * **optional**, so phase 5's constructor, its `mergePendingPromises` and its tests compile
+   * untouched — a promise written before phase 12 lands simply has none of them, which reads
+   * correctly as "never dispatched".
+   */
+  jobId?: string | null
+  /** Jakarta `'YYYY-MM-DD'`. See the note above. */
+  firedOn?: string | null
+  attempts?: number
+}
+
+/** The `pending_promises` slot's value, in full. Phase 13 parses exactly this. */
+export type NinaPendingPromisesSlot = { promises: NinaPendingPromise[] }
+
+/** The one slot key this phase names. Phase 5 owns every other key in the vocabulary. */
+export const NINA_SLOT_PENDING_PROMISES = 'pending_promises'
+
+/**
+ * What may live in `nina_memory_slots.value`. A bare JSON string is the common case — see the
+ * table's header for why that is a feature and not a shortcut.
+ */
+export type NinaSlotValue =
+  string | number | boolean | NinaPendingPromisesSlot | { [key: string]: unknown } | unknown[]
+
+/**
+ * **The upserted half of RU-6.** One row per `(user, key)`, overwritten in place: the runner's
+ * nickname, his usual running days, what he is training for, what hurts, what he has promised.
+ * These are the facts Nina must not have to search for — they are pre-injected on every turn
+ * (RU-4), so a slot that is wrong is wrong in every conversation until it is corrected.
+ *
+ * ── WHY `jsonb` AND NOT `text` ────────────────────────────────────────────────────────────────
+ * Almost every slot is a short display-ready phrase, and `jsonb` stores one as a bare JSON string
+ * (`"suka lari pagi"`) perfectly well. But `pending_promises` is a list of records with a
+ * deadline and a status, and phase 13 has to evaluate its fields — so one column has to hold
+ * both. The alternative, a `text` column plus a `value_json` column, is two columns to keep in
+ * step and a rule about which one wins. `lib/nina/queries.ts` absorbs the difference instead:
+ * `getNinaMemorySlots` renders every value to the string phase 2's context wants, and
+ * `getNinaMemorySlot` returns one parsed for phase 13.
+ *
+ * ── `source_message_id` IS NULLABLE, AND `source` SAYS WHY ────────────────────────────────────
+ * A distilled slot points at the message it came from. A slot the admin typed into
+ * `/admin/memory` (R26, phase 16) points at nothing, because nothing in the chat said it. NULL is
+ * therefore a real answer and not missing data — and `source` is what tells the two apart, so
+ * phase 5's distiller can refuse to silently overwrite something a human asserted, and so the
+ * editor can show which rows it owns. Same argument as `nina_avatars.source`.
+ */
+export const ninaMemorySlots = pgTable(
+  'nina_memory_slots',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Phase 5 owns the vocabulary. `NINA_SLOT_PENDING_PROMISES` is the one key declared here. */
+    key: text('key').notNull(),
+    value: jsonb('value').$type<NinaSlotValue>().notNull(),
+    source: text('source').$type<NinaMemorySource>().notNull().default('distilled'),
+    /** `nina_messages.id`, unenforced (see `nina_messages`' header). NULL = the admin typed it. */
+    sourceMessageId: text('source_message_id'),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  // `(user_id, key)` is the natural key and the whole access pattern is "every slot for this
+  // user", which is a leading-column PK scan. No secondary index earns its place — the same
+  // argument `records` makes for its own PK.
+  (t) => [primaryKey({ columns: [t.userId, t.key] })],
+)
+
+/**
+ * Phase 5 owns this vocabulary; these six are its starting set. A `text` column, so adding a
+ * seventh is a one-line union edit and not a migration.
+ */
+export type NinaFactCategory =
+  'person' | 'preference' | 'body' | 'life' | 'goal' | 'training' | 'other'
+
+/**
+ * **The append-only half of RU-6.** A slot answers "what is true now"; the ledger answers "what
+ * has he told me". It is never updated and never deleted by the app — a contradicting later
+ * statement REPLACES the slot and leaves both ledger rows, which is what lets her say "lo bilang
+ * benci lari pagi bulan lalu" three months after the slot moved on.
+ *
+ * `confidence` is an INTEGER PERCENT, 0–100 — the smallest-sensible-unit rule applied to a
+ * probability, so that summing or thresholding it never drifts. 100 is "he said it outright".
+ *
+ * `source_message_id` is nullable for the same reason as the slots table, and `source`
+ * distinguishes a distilled row from one the admin typed (R26, phase 16). Phase 16 is the only
+ * caller of `updateNinaMemoryFact` and `deleteNinaMemoryFact`; nothing in the runtime mutates a
+ * ledger row.
+ */
+export const ninaMemoryFacts = pgTable(
+  'nina_memory_facts',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    category: text('category').$type<NinaFactCategory>().notNull(),
+    /** One fact, one sentence, in the language he said it in. */
+    text: text('text').notNull(),
+    /** Integer percent 0–100. See the header. */
+    confidence: integer('confidence').notNull().default(100),
+    source: text('source').$type<NinaMemorySource>().notNull().default('distilled'),
+    /** `nina_messages.id`, unenforced. NULL = the admin typed it, not the chat. */
+    sourceMessageId: text('source_message_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** "the newest 60 facts" — the only read (`MEMORY_FACT_LIMIT`, phase 2). */
+    index('nina_memory_facts_user_created_idx').on(t.userId, t.createdAt.desc()),
+  ],
+)
+
+/**
+ * **The escalation ledger (RU-9).** `lib/nina/patterns.ts` computes what is true; this table
+ * records what she has already SAID about it, so the third late start gets a different sentence
+ * from the first instead of the same one three times. Anger that repeats verbatim stops being
+ * anger and starts being a notification.
+ *
+ * `level` is the rung on phase 2's anger ladder, `count` is how many times the code has ever
+ * fired, and `last_mentioned_on` is a Jakarta calendar day (roadmap D6, a string) because "did
+ * she already mention this today" is a day question and never an instant question.
+ *
+ * Phase 9 owns the decay rule — a level that never falls is a friend who never forgives.
+ */
+export const ninaNags = pgTable(
+  'nina_nags',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Phase 9's code. **The model never coins one** — it is handed codes that fired. */
+    code: text('code').notNull(),
+    level: integer('level').notNull().default(0),
+    count: integer('count').notNull().default(0),
+    lastMentionedOn: date('last_mentioned_on', { mode: 'string' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.code] })],
+)
+
+/** 'seed' is the committed first avatar, 'generated' phase 12, 'operator' phase 14, 'admin' 15. */
+export type NinaAvatarSource = 'seed' | 'generated' | 'operator' | 'admin'
+
+/**
+ * **Her album (RU-7, R19).** Per-user, blobs under `nina/<userId>/`, exactly one row current.
+ *
+ * ── THE PARTIAL UNIQUE INDEX IS THE POINT ─────────────────────────────────────────────────────
+ * `nina_avatars_user_current_unq on (user_id) where is_current` makes two current avatars
+ * IMPOSSIBLE rather than merely unlikely — the `shares_run_id_active_unq` precedent, and for the
+ * same reason: the alternative is a read-then-compare that is correct until two writers race.
+ * **A consequence every writer must respect: un-current the old row BEFORE inserting the new
+ * one, in one `db.batch`.** Insert-first violates the index mid-transaction. Phase 14's script
+ * documents this and gets the order right; `insertNinaAvatarAsCurrent` in Step 6 is the runtime
+ * half and gets it right for the same reason.
+ *
+ * ── `announced_at` ────────────────────────────────────────────────────────────────────────────
+ * Nullable, so "the current avatar she has not mentioned yet" is a query
+ * (`is_current AND announced_at IS NULL`) and not a flag someone has to remember to set. That
+ * query is what makes RU-17 work: a hand-uploaded avatar makes her speak, because something
+ * finds the un-announced row and asks her to comment on it.
+ *
+ * ── THE CROP TRANSFORM (R23) ──────────────────────────────────────────────────────────────────
+ * `/admin/nina` (phase 15) lets the user zoom and drag an image until her face sits centred in a
+ * CIRCULAR frame, and that transform has to persist per avatar or every screen re-guesses it.
+ * Three nullable columns, in a resolution-independent convention so the same numbers work for a
+ * 28 px bubble avatar and a full-screen photo:
+ *
+ *   - `crop_scale` — a multiple of the COVER fit. `1.000` is the smallest scale that still fills
+ *     the circle; `1.500` is zoomed 50% further in. `numeric(5,3)`, so 0.001 … 9.999.
+ *   - `crop_x`, `crop_y` — the image centre's offset from the frame centre, in THOUSANDTHS OF
+ *     THE FRAME'S WIDTH. Positive x moves the image right, positive y moves it down. Integers,
+ *     because the schema's rule is integers in the smallest sensible unit and a per-mille of a
+ *     frame is that unit here.
+ *
+ * **All three NULL together means "no transform": render the image `object-cover`, centred.**
+ * That is the value every row written before phase 15 carries — the seed row, phase 12's
+ * generations, phase 14's operator uploads — so none of them needs a backfill and none of them is
+ * invalid. A renderer must treat a partial triple (scale set, offsets NULL) as offsets of zero
+ * rather than as an error.
+ *
+ * ── `description` (R25) ───────────────────────────────────────────────────────────────────────
+ * What the picture DEPICTS, in prose. It exists so that "lah lo ganti foto profil na, itu lagi
+ * dimana?" can be answered with a story consistent with the actual image and with the chat
+ * history — she cannot invent where she was in a photograph she cannot see, and RU-12 forbids
+ * sending `glm-5.3` an image. Nullable, and three different phases populate it three different
+ * ways: **phase 12** already has its own generation prompt and writes from that; **phase 14**
+ * and **phase 15** are handed a file with no prompt at all, so both run phase 6's `glm-4.6v`
+ * describe pre-pass over it. Declaring the column is this phase's whole share of R25.
+ */
+export const ninaAvatars = pgTable(
+  'nina_avatars',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    blobUrl: text('blob_url').notNull(),
+    /** `nina/<userId>/avatar-<id>.jpg` (RU-7). Phase 12 owns the exact shape. */
+    pathname: text('pathname').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    bytes: integer('bytes'),
+    source: text('source').$type<NinaAvatarSource>().notNull(),
+    /** Multiple of the cover fit; NULL = no transform. See the header. */
+    cropScale: numeric('crop_scale', { precision: 5, scale: 3, mode: 'number' }),
+    /** Per-mille of frame width, positive = right. NULL = 0. */
+    cropX: integer('crop_x'),
+    /** Per-mille of frame width, positive = down. NULL = 0. */
+    cropY: integer('crop_y'),
+    /** What the picture shows, in prose (R25). See the header for its three writers. */
+    description: text('description'),
+    isCurrent: boolean('is_current').notNull().default(false),
+    /** NULL = she has not mentioned this one yet. See the header. */
+    announcedAt: timestamp('announced_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** Two current avatars are impossible, not unlikely. Writers: un-current first. */
+    uniqueIndex('nina_avatars_user_current_unq')
+      .on(t.userId)
+      .where(sql`${t.isCurrent}`),
+    /** The album, newest first. */
+    index('nina_avatars_user_created_idx').on(t.userId, t.createdAt.desc()),
+  ],
+)
+
+/**
+ * **DECLARATION ONLY — phase 11 owns every write against this table.** It is here because a
+ * migration per phase is a migration per phase, and because phase 11's exit criteria are about
+ * VAPID and a service worker rather than about DDL.
+ *
+ * The shape is the Web Push subscription as `PushSubscription.toJSON()` gives it, flattened:
+ * `endpoint` plus the two `keys` fields. `endpoint` is globally unique by spec, so it gets a
+ * unique index — but the PK stays a nanoid, because an endpoint is a 300-character URL and a
+ * 300-character primary key is a 300-character foreign key everywhere it is referenced.
+ *
+ * `failure_count` and `revoked_at` are the pruning story: a browser that has revoked its
+ * subscription answers 404/410 to every send, and a sender that does not record that will retry
+ * forever. Phase 11 decides the threshold.
+ */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    /** `keys.p256dh` — the client's public key, base64url. */
+    p256dh: text('p256dh').notNull(),
+    /** `keys.auth` — the client's auth secret, base64url. */
+    auth: text('auth').notNull(),
+    /** Which browser this is, so a stale subscription is identifiable by a human. */
+    userAgent: text('user_agent'),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true, mode: 'date' }),
+    lastFailureAt: timestamp('last_failure_at', { withTimezone: true, mode: 'date' }),
+    failureCount: integer('failure_count').notNull().default(0),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One row per browser endpoint. Re-subscribing upserts on this. */
+    uniqueIndex('push_subscriptions_endpoint_unq').on(t.endpoint),
+    /** "every live subscription for this user" — the send fan-out. */
+    index('push_subscriptions_user_idx').on(t.userId),
+  ],
+)
+
+/* ============================================================================
  * Relations. The sanctioned read path is explicit selects inside db.batch
  * (getRunDetail), because that is one HTTP round trip and one snapshot. These
  * cost nothing at runtime and keep db.query.* available if a later feature wants
@@ -506,6 +1210,32 @@ export const sharesRelations = relations(shares, ({ one }) => ({
   user: one(users, { fields: [shares.userId], references: [users.id] }),
 }))
 
+export const ninaMessagesRelations = relations(ninaMessages, ({ one, many }) => ({
+  user: one(users, { fields: [ninaMessages.userId], references: [users.id] }),
+  run: one(runs, { fields: [ninaMessages.runId], references: [runs.id] }),
+  /** The quoted message (R12). Named so `replyTo` reads as the noun it is. */
+  replyTo: one(ninaMessages, {
+    relationName: 'ninaMessageReplyTo',
+    fields: [ninaMessages.replyToId],
+    references: [ninaMessages.id],
+  }),
+  /** The messages quoting THIS one. The other side of the self-relation. */
+  replies: many(ninaMessages, { relationName: 'ninaMessageReplyTo' }),
+  images: many(ninaMessageImages),
+}))
+
+export const ninaMessageImagesRelations = relations(ninaMessageImages, ({ one }) => ({
+  message: one(ninaMessages, {
+    fields: [ninaMessageImages.messageId],
+    references: [ninaMessages.id],
+  }),
+  user: one(users, { fields: [ninaMessageImages.userId], references: [users.id] }),
+}))
+
+export const ninaAvatarsRelations = relations(ninaAvatars, ({ one }) => ({
+  user: one(users, { fields: [ninaAvatars.userId], references: [users.id] }),
+}))
+
 /* ============================================================================
  * Row types. Import these instead of re-deriving $inferSelect at call sites.
  * ==========================================================================*/
@@ -531,3 +1261,24 @@ export type Badge = typeof badges.$inferSelect
 export type NewBadge = typeof badges.$inferInsert
 export type Share = typeof shares.$inferSelect
 export type NewShare = typeof shares.$inferInsert
+export type NinaTurn = typeof ninaTurns.$inferSelect
+export type NewNinaTurn = typeof ninaTurns.$inferInsert
+export type NinaMessage = typeof ninaMessages.$inferSelect
+export type NewNinaMessage = typeof ninaMessages.$inferInsert
+export type NinaMessageImage = typeof ninaMessageImages.$inferSelect
+export type NewNinaMessageImage = typeof ninaMessageImages.$inferInsert
+export type NinaMemorySlot = typeof ninaMemorySlots.$inferSelect
+export type NewNinaMemorySlot = typeof ninaMemorySlots.$inferInsert
+export type NinaMemoryFact = typeof ninaMemoryFacts.$inferSelect
+export type NewNinaMemoryFact = typeof ninaMemoryFacts.$inferInsert
+export type NinaNag = typeof ninaNags.$inferSelect
+export type NewNinaNag = typeof ninaNags.$inferInsert
+export type NinaAvatar = typeof ninaAvatars.$inferSelect
+export type NewNinaAvatar = typeof ninaAvatars.$inferInsert
+/**
+ * `PushSubscriptionRow`, not `PushSubscription` — the latter is a DOM lib global that phase 11's
+ * client code uses by that exact name, and shadowing it in a module that also talks to the
+ * browser API is how a subscription gets written to the wrong shape.
+ */
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect
+export type NewPushSubscriptionRow = typeof pushSubscriptions.$inferInsert

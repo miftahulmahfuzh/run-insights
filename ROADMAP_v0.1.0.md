@@ -61,7 +61,7 @@ this run.** It is a deliberately unflattering run (90.6% in zones 4–5, +41 s/k
 | D4 | Extraction runs as a **background job**, never inside a request | 33 s median vs a 60 s function ceiling with a repair round-trip to spare for |
 | D5 | Distance stored as **integer metres**; pace and duration as **integer seconds** | Floats summed over 17 runs a month drift visibly |
 | D6 | Timezone fixed to **Asia/Jakarta**; `occurred_on` is a `date` | Single-region personal app |
-| D7 | **Server Actions** for every mutation. Route Handlers only for `/api/extract`, `/api/upload`, `/api/auth/[...nextauth]`, `/api/cron/*` | Fewest files |
+| D7 | **Server Actions** for every mutation. Route Handlers only for `/api/extract`, `/api/upload`, `/api/auth/[...nextauth]`, `/api/cron/*` and — since F33 — `/api/admin/nina/upload` (an ADMIN-GATED Blob handshake: separate from `/api/upload` because its auth rule, size cap, content types and pathname regex all differ) | Fewest files |
 | D8 | Any Google account may sign in; **all data scoped per `user_id`** | Multi-user from day one, no allowlist |
 | D9 | Sharing = unguessable token at `/s/<token>`, no login, read-only, revocable | "send it to a friend over WhatsApp" |
 | D10 | **Copy is straight English.** No i18n layer | Author's choice |
@@ -69,7 +69,7 @@ this run.** It is a deliberately unflattering run (90.6% in zones 4–5, +41 s/k
 | D12 | Badge art is **generated offline by a skill and committed**. No runtime image generation | ~$0.04 and 4–5 min per image |
 | D13 | `research/` **stays in the repo**, and `score.mjs` runs in CI | A 108-field ground-truth fixture on day one is rare; it is the F04 regression test |
 | D14 | Partial final kilometres are stored and **excluded from every pace average** | km 11 is 0.67 km; averaging it makes a fade look like a sprint |
-| D15 | No weight-based coaching claims, ever — **enforced structurally: `weight_kg` never enters any LLM payload** (R-28) | This is a running app, not a weight app |
+| D15 | ~~No weight-based coaching claims, ever~~ — **REPEALED for v0.2.0 by F33/RU-1.** Body weight enters every LLM payload, public share pages included. See RECONCILIATION_v0.1.0.md R-28 | Was: "this is a running app, not a weight app". Now: the app has a physiologist in it, and one who may not know your mass cannot do the job |
 | D16 | **The reviewed-data invariant:** every rollup, list, chart, record input and badge input filters `runs.reviewed_at IS NOT NULL` (R-13) | The mechanical expression of D1 |
 | D17 | **Repair round-trips are text-only.** An image is never sent twice (R-2) | 3 images resent = ~70–80 s, through the 60 s ceiling; the measured failure is structural, not perceptual |
 
@@ -128,9 +128,25 @@ AUTH_URL=https://runins.site  # PRODUCTION ONLY. Leave empty locally and on prev
 BLOB_READ_WRITE_TOKEN=
 CRON_SECRET=                  # guards /api/cron/*
 
-# Build-time ONLY. Read by tools/gen_badge_art.py and by NOTHING in app/ or lib/.
-# `grep -rE 'OPENROUTER_API_KEY' app/ lib/ components/` must stay empty, asserted in CI.
+# Build-time AND runtime, since F33/RU-2. Read by tools/gen_badge_art.py and
+# tools/extend_badge_art.py offline, and by lib/nina/ at runtime (queued, daily-capped).
+# `grep -rE 'OPENROUTER_API_KEY' app/ lib/ components/` must match ONLY lib/nina/ and
+# lib/env.ts, asserted in CI by scripts/check-openrouter-boundary.mjs.
 OPENROUTER_API_KEY=
+
+# F33/RU-20 — a fine-grained GitHub PAT with `actions: write` on THIS repo, used to fire
+# the image worker's workflow_dispatch. The repo coordinates are NOT env: they are module
+# constants in lib/nina/imagedispatch.ts, so no deploy can dispatch at another repository.
+GITHUB_DISPATCH_TOKEN=
+
+# F33 — Web Push (R3). All three server-only; the public key reaches the client as a PROP.
+# VAPID_SUBJECT is the mailto: that web-push's setVapidDetails() throws without.
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:mahfuzh74@gmail.com
+
+# F33 — who may open /admin/nina and /admin/memory (R23/R24). Comma-separated.
+ADMIN_EMAILS=mahfuzh74@gmail.com
 ```
 
 Every variable is server-only. **None may ever be prefixed `NEXT_PUBLIC_`.** `lib/env.ts` parses
@@ -147,7 +163,7 @@ the core group eagerly at import and crashes the build if any is missing, follow
 | Cadence, HR | `int` | `144 spm`, `173 bpm` |
 | Energy | `int` kcal | `646 kcal` |
 | Elevation | `int` metres | `15 m` |
-| Weight | `numeric(4,1)` kg | `55.0 kg` |
+| Weight | `numeric(4,1)` kg | `55.0 kg` — and, since F33/RU-1, a value that reaches LLM payloads |
 
 > Apple renders `10,67KM` with a comma. **We render `10.67 km` with a period**, because the copy
 > is English (D10). The extractor's job is to parse Apple's comma correctly; the UI's job is to
@@ -443,21 +459,29 @@ share a twill tone, a border weight and a thread gauge.
 /me                   profile: totals, records, badge shelf
 /onboarding           age / height / weight, first login only
 /s/[token]            public read-only share
+/nina                 Nina — the chat (F33, the fifth tab)
+/nina/about           her detail page: avatar full-screen, every image in the chat
+/admin                DESKTOP, ADMIN_EMAILS only — the admin index
+/admin/nina           DESKTOP, ADMIN_EMAILS only — avatar upload and circular-frame crop
+/admin/memory         DESKTOP, ADMIN_EMAILS only — hand-edit her memory slots and ledger
 /api/upload           blob client-upload handshake
 /api/extract          starts a background extraction, returns immediately
 /api/extract/[id]     poll status
 /api/cron/rollup      nightly weekly/monthly insight refresh (guarded by CRON_SECRET)
+/api/cron/nina        Nina's proactivity sweep     (guarded by CRON_SECRET)
+/api/admin/nina/upload  admin-gated Blob handshake (guarded by ADMIN_EMAILS)
 /api/auth/[...nextauth]
 /api/health           unauthenticated liveness probe (R-14)
 ```
 
-**Navigation is a four-tab bottom bar**, from the v2 design's `TabBar`. The routes above are
+**Navigation is a five-tab bottom bar**, from the v2 design's `TabBar`. The routes above are
 the surface; this is how a phone reaches them:
 
 | tab | route | note |
 |---|---|---|
 | Runs | `/` | default landing once signed in |
-| **Upload** | `/upload` | **centre, raised, coral (`--z5`)** — a circular FAB breaking the bar's top edge, not a peer of the other three. It is the one flow that matters (§1), and the IA says so |
+| Nina | `/nina` | F33 — the chat, with an unread badge |
+| **Upload** | `/upload` | **centre, raised, coral (`--z5`)** — a circular FAB breaking the bar's top edge, not a peer of the others. It is the one flow that matters (§1), and the IA says so. F33 made the "centre" claim literally true rather than aspirational: the FAB sat at 37.5% of the bar's width in a four-column grid and sits at 50% in a five-column one |
 | Trends | `/trends` | |
 | Me | `/me` | profile, records, badge shelf |
 
@@ -483,6 +507,9 @@ hostname would produce links that die on the next deploy.
 ## 5. Features
 
 Eleven. Each gets a plan in `docs/plans/`.
+
+> Features after F11 are tracked in `docs/plans/` and `CHANGELOG.md`, not here. This table is
+> v0.1.0's scope and is left as the record of it.
 
 | # | Feature | Owns | Depends on |
 |---|---|---|---|
@@ -516,6 +543,12 @@ last because it spends real money per image and needs the badge catalog to have 
 
 Apple Health / HealthKit import · GPX or route maps · manual run entry as a primary flow (the
 schema allows `source='manual'`; no UI ships) · training-plan generation · social features,
-following, comparison against other runners · push notifications · streak pressure mechanics ·
-weight tracking or any weight-based advice (D15) · a settings page beyond `/me` · non-running
-activity types · runtime badge-image generation (D12).
+following, comparison against other runners · streak pressure mechanics · weight *tracking* as a
+feature (the column is collected, not charted — weight-based **advice** is no longer a non-goal:
+F33/RU-1 repealed D15) · a settings page beyond `/me` · non-running activity types · runtime
+**badge** image generation (D12, narrowed by F33/RU-2 — badge and record art stay
+offline-and-committed; `lib/nina/` generates at runtime, queued and daily-capped).
+
+> **Two of these shipped in v0.2.0 and are struck rather than deleted, so the change is
+> auditable.** ~~push notifications~~ — F33/RU-3, real Web Push plus an unread badge, phase 11.
+> ~~weight-based advice~~ — F33/RU-1, above.

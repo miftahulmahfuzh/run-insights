@@ -33,6 +33,48 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       /**
+       * F33 phase 11 — the app's only service worker (`lib/service-worker.js`).
+       *
+       * ── WHY THIS MATCHER AND NOT THE GUIDE'S `/sw.js` ─────────────────────────────────────
+       * `node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md` §8 sets these
+       * headers on `/sw.js`, which is where a HAND-PLACED worker in `public/` would live. §2 of
+       * the same guide — the part this app follows — registers a BUNDLED module via
+       * `new URL('../../lib/service-worker.js', import.meta.url)`, and Next 16 compiles that into
+       * `.next/static/service-worker/` and serves it from `/_next/static/service-worker/…`
+       * (`next/dist/build/index.js:1657`). `/sw.js` matches nothing in this app, and a header
+       * entry that matches nothing is worse than no entry: it looks like protection.
+       *
+       * The framework already supplies `Service-Worker-Allowed: /` on this path — which is what
+       * lets a script served from `/_next/…` claim scope `/` — so it is deliberately NOT repeated
+       * here. Two copies of that header on one response is how a scope failure becomes
+       * intermittent.
+       *
+       * ── `no-store`, EVEN THOUGH NEXT ALREADY SENDS `max-age=0, must-revalidate` ────────────
+       * `router-server.js:436` sets that default only `if (!res.getHeader('cache-control'))`, so
+       * this entry wins cleanly. It is stricter on purpose: `must-revalidate` still permits a
+       * shared cache to STORE the script, and the artefact this feature can leave behind on a
+       * phone — a service worker from three deploys ago, handling pushes with last month's
+       * payload contract — is the one worth spending a round trip to avoid. The script is fetched
+       * on the update check, not on every page load, so the cost is close to nothing.
+       *
+       * `Content-Type` is deliberately NOT set, unlike the guide's block. Next already serves
+       * `.next/static/service-worker/*.js` with a JavaScript content type through its static
+       * handler, and a second one on a response that has one is the header here most likely to end
+       * up fighting the framework — with a registration failure that names neither. If registration
+       * ever fails with "The script has an unsupported MIME type", that is the moment to add it
+       * back with a note, not before.
+       *
+       * The CSP is the guide's, verbatim and for its stated reason: the worker executes with it,
+       * and it has no business loading anything from anywhere.
+       */
+      {
+        source: '/_next/static/service-worker/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
+      /**
        * F10 / D12. `public/badges/<key>.<hash8>.webp` carries the first 8 hex of its master's
        * SHA-256 in the filename, written by `tools/make_badge_assets.py` and recomputed from
        * the master by `npm run badges:check`. That is what makes a one-year immutable cache

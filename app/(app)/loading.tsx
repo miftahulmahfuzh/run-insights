@@ -1,4 +1,4 @@
-import { AppShell, ScreenHeader } from '@/components/ui'
+import { AppShell, ScreenHeader } from '@/components/ui/AppShell'
 
 /**
  * `/`'s route-level loading boundary. Three skeleton rows at `RunRow`'s exact height — three lines

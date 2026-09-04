@@ -116,7 +116,7 @@ describe('units — roadmap §4.2 / D5: integers in the smallest sensible unit',
     expect(sqlType(schema.badges, 'count')).toBe('integer')
   })
 
-  it('weight_kg is the one and only numeric column in the schema', () => {
+  it('weight_kg is the one and only numeric column among the F03 tables', () => {
     expect(sqlType(schema.profiles, 'weight_kg')).toBe('numeric(4, 1)')
     const numericColumns = [
       schema.profiles,
@@ -382,7 +382,7 @@ describe('records and badges — the asymmetry is the point (D7 / R-10 / R-22)',
     expect(fkFor(schema.records, 'run_id')?.onDelete).toBe('cascade')
   })
 
-  it('R-22: badges.run_id is nullable and SET NULL — the only non-cascade FK in the schema', () => {
+  it('R-22: badges.run_id is nullable and SET NULL — the only non-cascade FK among the F03 tables', () => {
     expect(columnMap(schema.badges).get('run_id')?.notNull).toBe(false)
     expect(fkFor(schema.badges, 'run_id')?.onDelete).toBe('set null')
 
@@ -411,6 +411,11 @@ describe('records and badges — the asymmetry is the point (D7 / R-10 / R-22)',
     // Exactly two FKs are not cascades, and both are deliberate: badge history survives its
     // run, and a run survives its (never-deleted) extraction.
     expect(nonCascade.sort()).toEqual(['badges.run_id=set null', 'runs.extraction_id=no action'])
+
+    // F33 adds two more `set null` FKs, both on nina_messages, and both deliberate — see that
+    // table's header. Asserted here so the count is a fact rather than a comment.
+    expect(fkFor(schema.ninaMessages, 'reply_to_id')?.onDelete).toBe('set null')
+    expect(fkFor(schema.ninaMessages, 'run_id')?.onDelete).toBe('set null')
   })
 
   it('badges.count defaults to 1 — every row this app writes is exactly one earn', () => {

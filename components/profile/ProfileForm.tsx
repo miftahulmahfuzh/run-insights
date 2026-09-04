@@ -2,7 +2,9 @@
 
 import { useActionState } from 'react'
 
-import { Button, Field, NumberInput } from '@/components/ui'
+import { Button, CHIP_CLASS, Field, NumberInput } from '@/components/ui'
+import { cn } from '@/lib/cn'
+import { SEX_VALUES, type Sex } from '@/lib/db/schema'
 import {
   IDLE_PROFILE_FORM_STATE,
   type ProfileFormState,
@@ -20,6 +22,70 @@ export interface ProfileFormProps {
   skipAction?: () => Promise<void>
 }
 
+/** Sentence case, in the copy's own voice — the column's value is never shown to anyone. */
+const SEX_LABELS: Record<Sex, string> = {
+  male: 'Male',
+  female: 'Female',
+  other: 'Other',
+  unspecified: 'Rather not say',
+}
+
+/**
+ * Four radios that look like the chips everywhere else. A `fieldset`/`legend` rather than a
+ * `Field`, because `Field` labels ONE input and this is a group — see the plan's Step 11.
+ *
+ * `peer` + `peer-checked:` is what lets a native radio carry the chip's selected styling with no
+ * client state: the input is visually hidden but still focusable and still the thing a screen
+ * reader announces, and the `<span>` beside it is what gets painted. `has-[:focus-visible]` puts
+ * the focus ring on the painted half, so keyboard focus is visible where the eye is looking.
+ *
+ * NOTHING IS PRESELECTED. A default of 'male' would be the app guessing, and 'unspecified' as a
+ * default would record a decision he never made — the column's NULL already means "never asked".
+ */
+function SexField({ value, error }: { value: Sex | null; error?: string }) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 block text-xs font-semibold tracking-[0.02em] text-ink-2">
+        Sex
+      </legend>
+      <p className="mb-2 text-[11px] font-medium text-ink-3">
+        Used for the physiology, and safe to leave blank.
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        {SEX_VALUES.map((option) => (
+          <label
+            key={option}
+            className="cursor-pointer rounded-pill has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent"
+          >
+            <input
+              type="radio"
+              name="sex"
+              value={option}
+              defaultChecked={value === option}
+              className="peer sr-only"
+            />
+            <span
+              className={cn(
+                CHIP_CLASS,
+                'bg-paper-2 text-ink-2 peer-checked:bg-ink peer-checked:text-card',
+              )}
+            >
+              {SEX_LABELS[option]}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-1.5 text-[11px] font-semibold text-red">
+          {error}
+        </p>
+      )}
+    </fieldset>
+  )
+}
+
 /**
  * One form, two modes. Onboarding renders it empty with a "Skip for now"; `/me` renders it
  * pre-filled without one.
@@ -31,7 +97,7 @@ export interface ProfileFormProps {
  * why the column and the input are deliberately different shapes.
  *
  * EVERY FIELD IS OPTIONAL. There is no required marker anywhere on this form and no submit-blocking
- * validation — blank is a valid answer to all five questions, and the app degrades honestly rather
+ * validation — blank is a valid answer to all six questions, and the app degrades honestly rather
  * than guessing (D11).
  */
 export function ProfileForm({ mode, values, action, skipAction }: ProfileFormProps) {
@@ -64,6 +130,8 @@ export function ProfileForm({ mode, values, action, skipAction }: ProfileFormPro
             maxLength={3}
           />
         </Field>
+
+        <SexField value={values.sex} error={errors.sex} />
 
         <Field label="Weight" error={errors.weightKg} suffix="kg">
           <NumberInput

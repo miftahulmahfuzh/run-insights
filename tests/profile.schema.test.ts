@@ -14,6 +14,7 @@ const form = (over: Record<string, string> = {}) => ({
   age: '',
   heightCm: '',
   weightKg: '',
+  sex: '',
   restingHr: '',
   maxHr: '',
   ...over,
@@ -86,6 +87,7 @@ describe('toProfileWrite', () => {
       birthYear: null,
       heightCm: null,
       weightKg: null,
+      sex: null,
       restingHr: null,
       maxHr: null,
     })
@@ -103,9 +105,21 @@ describe('toProfileWrite', () => {
       birthYear: 1996,
       heightCm: 170,
       weightKg: 55,
+      sex: null,
       restingHr: 72,
       maxHr: 189,
     })
+  })
+
+  it('carries sex through untouched — it is the one field that is neither converted nor rounded', () => {
+    const write = toProfileWrite(profileFormSchema.parse(form({ sex: 'male' })), TODAY)
+    expect(write.sex).toBe('male')
+    expect(profileWriteSchema.safeParse(write).success).toBe(true)
+  })
+
+  it('rejects a sex outside the four-member domain, so a hand-posted form cannot widen it', () => {
+    expect(profileFormSchema.safeParse(form({ sex: 'Male' })).success).toBe(false)
+    expect(profileFormSchema.safeParse(form({ sex: 'nonbinary' })).success).toBe(false)
   })
 })
 

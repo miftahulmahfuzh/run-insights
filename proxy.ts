@@ -52,6 +52,14 @@ export const proxy = withAuth((req) => {
  * review screen (R-1). Adding a protected page means adding a line here; adding a public one means
  * doing nothing, which is the safer default because every page also enforces auth itself.
  *
+ * DELIBERATELY OMITTED, and not an oversight: `/nina` (F33) and `/admin/**`. Both are protected —
+ * `/nina` by `requireUserId()`, `/admin/**` by `requireAdmin()`, which redirects a signed-out
+ * visitor and `notFound()`s a signed-in non-admin — so neither needs this file to be safe, and the
+ * only thing a line here would buy is a slightly nicer bounce. It would cost more than that:
+ * `?next=` is read by nothing on `/`, and listing `/admin/:path*` in a UX-redirect matcher implies
+ * this file is the admin boundary, which is the exact misreading the header above exists to
+ * prevent.
+ *
  * Matcher values are statically analysed at build time: no variables, no imported constants, no
  * template literals. `tests/auth.proxy.matcher.test.ts` asserts every line of the list above
  * against Next's own matcher compiler.
