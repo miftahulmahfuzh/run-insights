@@ -99,6 +99,46 @@ Two consequences for implementation, and neither is "delete the flag":
 The probe script is `probe-tools.mjs` in this session's scratchpad; re-run it against any endpoint
 change before assuming these results still hold.
 
+### ⚠ A second correction, measured 2026-09-04 while implementing phase 3: `tool_choice` IS NOT HONOURED EITHER
+
+The table above says `tool_choice: { type: 'any' }` is honoured, and it is — **on the first call.**
+Driving the finished loop against `glm-5.3` (not a hand-built probe: `runNinaTurnWith` itself, with
+a spy on the client) showed the flag being ignored on later calls, intermittently:
+
+| Call | Request | Response |
+|---|---|---|
+| 1 | `tool_choice {any}`, 4 tools | `stop_reason tool_use`, `[thinking, tool_use]` ✓ |
+| 2 | `tool_choice {any}`, 4 tools | `stop_reason end_turn`, `[thinking, text]` ✗ |
+| 3 | `tool_choice {tool, name:'send'}`, **`tools: [SEND_TOOL]` alone** | `stop_reason end_turn`, `[thinking, text]` ✗ |
+
+Row 3 is the load-bearing one: that is the **strictest request this endpoint accepts** — one tool
+offered, that tool named — and it still answered with a paragraph. Her actual reply was sitting in
+the `text` block both times. It is intermittent, not deterministic: several probes of the same
+continuation did return a `tool_use`, and one in four full turns degraded.
+
+So `tool_choice` is a **request, exactly like `thinking: { type: 'disabled' }`**, and the same rule
+applies to it: keep sending it, never do arithmetic against it. Phase 3's plan built one branch on
+the assumption it was a guarantee — "with `{ type: 'auto' }` she may answer in prose, which this
+loop correctly reads as malformed and then repairs" — and treated a prose answer as a dead end,
+which threw away a reply she had already written and told the runner she was not answering.
+
+**What phase 3 ships instead**, and it is the plan's own reasoning followed one step further: a
+turn that answers in prose is echoed its own text back, told that only `send` is delivered, and
+asked once more with `send` forced. It costs **one extra model call**, held in `MAX_PROSE_RETRIES`
+and deliberately NOT taken out of `MAX_TOOL_ROUNDS`' allowance — because the measured failure is a
+turn that spends both rounds on real tool calls and *then* answers the forced `send` with prose, so
+a shared budget leaves nothing to re-ask with. It does not touch the repair budget, which stays
+reserved for a malformed `send`. `nina_turns.tool_calls` records `prose:no_tool` so the rate is
+measurable rather than folklore.
+
+Measured after the fix: **five consecutive live runs of `npm run test:live:nina`, all green**,
+against nought for three before it. `lib/nina/turn.test.ts` pins all four shapes — prose on the
+first call, prose after a tool round, prose on the forced `send` after both rounds, and prose twice
+in a row degrading honestly.
+
+*Revisit if* z.ai starts honouring `tool_choice`, at which point the branch becomes dead code that
+costs nothing and the tests still pass.
+
 ### ⛔ Image generation does NOT fit Vercel Hobby — measured, not estimated
 
 Phase 12 named this its largest risk: `tools/gen_badge_art.py`'s comment records an anchored Qwen

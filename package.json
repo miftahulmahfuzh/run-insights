@@ -42,7 +42,8 @@
     "og:default": "node scripts/gen-og-default.mjs",
     "icon:assets": "python3 tools/make_icon_assets.py",
     "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live/vision.live.test.ts",
-    "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts"
+    "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts",
+    "test:live:nina": "LLM_LIVE_TEST=1 vitest run tests/live/nina.live.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",
