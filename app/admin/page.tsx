@@ -4,15 +4,21 @@ import { Card } from '@/components/ui'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { loudestDials, relationshipCopy, toTuningDraft, tuningCopy } from '@/lib/admin/tuningModel'
 import { getAdminUser } from '@/lib/admin/users'
-import { countNinaAvatars, getCurrentNinaAvatar, readNinaTuning } from '@/lib/nina/queries'
+import {
+  countNinaAvatars,
+  countNinaChatPhotos,
+  getCurrentNinaAvatar,
+  readNinaTuning,
+} from '@/lib/nina/queries'
 import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
 
 /**
  * `/admin` — the hub. It exists because `/admin` would otherwise 404 for an admin, which reads as
  * the gate misfiring rather than as "there is no index here".
  *
- * Deliberately thin: a fact and a link, per card. Phase 16 added the memory card, and
- * nina-character-tuning phase 5 the character one — which names the relationship and the dials
+ * Deliberately thin: a fact and a link, per card. Phase 16 added the memory card,
+ * admin-memory-and-chat-photos phase 2 the chat-photos one, and nina-character-tuning phase 5 the
+ * character one — which names the relationship and the dials
  * furthest from their defaults, so "what is she set to" is answered without a navigation. That is
  * also why this page gets a card rather than `AdminNav` getting a fourth row: the panel is a
  * section of `/admin/nina`, not a route, and two sidebar rows pointing at one URL is worse
@@ -23,7 +29,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminHomePage() {
   const { userId, email } = await requireAdmin()
-  const [albumCount, current, me, tuning] = await Promise.all([
+  const [albumCount, current, me, chatPhotoCount, tuning] = await Promise.all([
     /*
      * A COUNT, not the album. This page renders `albumCount` and nothing else about the rows, and
      * F34 R1 makes the album *"hundreds of profile pics"* — so `listNinaAvatars(userId)` here was
@@ -34,8 +40,15 @@ export default async function AdminHomePage() {
     getCurrentNinaAvatar(userId),
     getAdminUser(userId),
     /*
+     * R2's count, and it is a count for the same reason the one above it is: this card prints one
+     * integer. `countNinaChatPhotos` shares its `kind = 'generated'` predicate with
+     * `listNinaChatPhotos` through one private function, so the number here and the number on
+     * `/admin/photos` cannot disagree.
+     */
+    countNinaChatPhotos(userId),
+    /*
      * The tuning row, for the character card below. It joins the existing `Promise.all` rather
-     * than adding a fourth sequential await, and it is a single indexed read of one row.
+     * than adding a further sequential await, and it is a single indexed read of one row.
      */
     readNinaTuning(userId),
   ])
@@ -68,6 +81,20 @@ export default async function AdminHomePage() {
           </p>
           <Link href="/admin/nina" className="text-[13px] font-semibold text-accent">
             Manage the album &rarr;
+          </Link>
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Chat photos</h2>
+          <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
+            {chatPhotoCount === 0
+              ? 'She has not sent a photo in the chat yet.'
+              : `${chatPhotoCount} photo${
+                  chatPhotoCount === 1 ? '' : 's'
+                } she has generated in the conversation.`}
+          </p>
+          <Link href="/admin/photos" className="text-[13px] font-semibold text-accent">
+            Open the collection &rarr;
           </Link>
         </Card>
 

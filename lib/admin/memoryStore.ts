@@ -1,6 +1,9 @@
 import 'server-only'
 
-import type { NinaFactCategory, NinaSlotValue } from '@/lib/db/schema'
+import { and, eq } from 'drizzle-orm'
+
+import { db } from '@/lib/db'
+import { ninaMemoryFacts, type NinaFactCategory, type NinaSlotValue } from '@/lib/db/schema'
 import {
   appendNinaMemoryFacts,
   deleteNinaMemoryFact,
@@ -8,14 +11,13 @@ import {
   getNinaMemorySlot,
   getNinaMemorySlots,
   listNinaMemoryFacts,
-  updateNinaMemoryFact,
   upsertNinaMemorySlot,
   type NinaFactRow,
   type NinaSlotRow,
 } from '@/lib/nina/queries'
 
 /**
- * **The only file in `/admin/memory` that names a phase-1 memory writer.**
+ * **The only file in `/admin/memory` that writes a memory row.**
  *
  * ── WHY THIS FILE EXISTS AT ALL ─────────────────────────────────────────────────────────────
  * `upsertNinaMemorySlot` and `appendNinaMemoryFacts` both default the `source` column to the
@@ -32,19 +34,33 @@ import {
  * `lib/admin/memoryActions.ts` imports only this module, and `tests/admin.memory.test.ts` asserts
  * both halves structurally.
  *
+ * ── WHY `adminUpdateFact` WRITES ITS OWN STATEMENT ──────────────────────────────────────────
+ * R1 allows an edit to a DISTILLED ledger row. Such a row points at a real chat message, so
+ * rewriting its text and leaving the pointer would make the row misquote that message — the one
+ * genuine data-integrity objection in this page, and the reason the old permissions predicate
+ * refused the edit at all. The resolution is not to keep refusing: it is to stop claiming the
+ * sentence is a quotation. So the edit re-labels the row `source = 'admin'` with
+ * `source_message_id = NULL`, in ONE statement, and the pointer stops being a lie.
+ *
+ * The query layer's own fact patch type has no `source` field on purpose, and `lib/nina/queries.ts`
+ * is edited by another phase of this plan set in this same worktree — so the statement is written
+ * here instead of growing that one. `lib/admin/users.ts` is the precedent for an admin module
+ * reaching `db` directly, behind `requireAdmin()`, with the reason written down. The `WHERE`
+ * carries `user_id` first (invariant 7) exactly as the query it replaces did.
+ *
  * ── AND WHY IT IS NOT IN `lib/nina/` ────────────────────────────────────────────────────────
  * `tests/nina.distill.test.ts` case 14 reads `lib/nina/memory.ts` and `lib/nina/distill.ts` and
  * asserts neither imports the two mutating ledger queries — phase 5's structural guarantee that
- * the distiller cannot rewrite the ledger. This file imports both. Putting it under `lib/nina/`
- * would put the mutating imports one directory away from a test whose entire point is that they
- * are not reachable from there. Under `lib/admin/` the separation is a directory boundary, not a
- * naming convention, and phase 5's test needs no edit.
+ * the distiller cannot rewrite the ledger. This file imports one of them and writes the other by
+ * hand. Putting it under `lib/nina/` would put the mutating writes one directory away from a test
+ * whose entire point is that they are not reachable from there. Under `lib/admin/` the separation
+ * is a directory boundary, not a naming convention, and phase 5's test needs no edit.
  *
  * `source_message_id` is ALWAYS null here, and that is a real answer rather than missing data:
  * nothing in the chat said it. Phase 1 made the column nullable for exactly this page.
  */
 
-/** A hand-written or composed ledger row. No source fields — see the header. */
+/** A hand-written ledger row. No source fields — see the header. */
 export interface AdminFactDraft {
   category: NinaFactCategory
   text: string
@@ -67,6 +83,11 @@ export async function adminUpsertSlot(userId: string, draft: AdminSlotDraft): Pr
   })
 }
 
+/**
+ * Remove one slot row. On one of phase 5's closed vocabulary keys this removes the VALUE and not
+ * the key — `/admin/memory` renders every key whether or not a row exists, so the key is back as a
+ * blank row on the very next render. That is `MemoryRow.reappears`, and the table says so.
+ */
 export async function adminDeleteSlot(userId: string, key: string): Promise<boolean> {
   return deleteNinaMemorySlot(userId, key)
 }
@@ -76,8 +97,8 @@ export async function adminDeleteSlot(userId: string, key: string): Promise<bool
  * of one is deliberate — there is exactly one writer of this table and it should stay the
  * multi-row INSERT phase 1 wrote, not gain a singular twin.
  *
- * Returns the row so a caller can report its id, and `null` if the insert returned nothing — which
- * `retractFactAction` and `retireSlotAction` treat as "do not delete anything".
+ * Returns the row so a caller can confirm the insert landed, and `null` if the insert returned
+ * nothing at all.
  */
 export async function adminAppendFact(
   userId: string,
@@ -96,20 +117,31 @@ export async function adminAppendFact(
 }
 
 /**
- * In-place edit — offered **only** for a row that the admin already wrote (§2). Phase 1's patch
- * type has no `source` field, which is exactly right: the row is already labelled and there is
- * nothing to relabel. The caller enforces the eligibility rule with `factPermissions`; this
- * function does not re-derive it, because two opinions about who may edit is one too many.
+ * In-place edit, offered on **every** ledger row, and the row becomes the admin's in the process.
+ * See the header: a sentence the admin wrote is no longer a quotation of a message, so the label
+ * and the pointer are corrected in the same statement as the text. Idempotent on a row that was
+ * already admin.
  */
 export async function adminUpdateFact(
   userId: string,
   id: string,
   patch: { category: NinaFactCategory; text: string; confidence: number },
 ): Promise<boolean> {
-  return updateNinaMemoryFact(userId, id, patch)
+  const updated = await db
+    .update(ninaMemoryFacts)
+    .set({
+      category: patch.category,
+      text: patch.text,
+      confidence: patch.confidence,
+      source: 'admin',
+      sourceMessageId: null,
+    })
+    .where(and(eq(ninaMemoryFacts.userId, userId), eq(ninaMemoryFacts.id, id)))
+    .returning({ id: ninaMemoryFacts.id })
+  return updated.length > 0
 }
 
-/** The one lossy call in the app. Reached only through `purgeFactAction`'s typed confirmation. */
+/** Delete one ledger row. One click on the table's `✕`, and nothing survives it. */
 export async function adminDeleteFact(userId: string, id: string): Promise<boolean> {
   return deleteNinaMemoryFact(userId, id)
 }

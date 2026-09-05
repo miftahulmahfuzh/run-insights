@@ -37,8 +37,8 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  *     "breaks text selection just as thoroughly".
  *
  * So: a 44px `⋯` button, a SIBLING of the row's link and not a child (a `<button>` inside an `<a>`
- * is invalid and breaks the link's hit testing). `components/admin/FolderMenu.tsx` and
- * `MemoryLedger`'s `FactRow` are the shape — a `mode` union, one panel per mode, one `run()` that
+ * is invalid and breaks the link's hit testing). `components/admin/FolderMenu.tsx` is the shape —
+ * a `mode` union, one panel per mode, one `run()` that
  * owns the pending flag and the error line, and a Cancel that just resets `mode`.
  *
  * The PIN STATE is on the row; the PIN CONTROL is in the menu. A tappable pin glyph would put a
@@ -73,8 +73,8 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  *   4. **No `window.confirm`**, for `RetryExtraction`'s recorded reason: on iOS it is "a system
  *      dialog that reads as an error".
  *
- * A typed confirmation phrase — `MemoryLedger`'s `ADMIN_PURGE_CONFIRMATION` — was considered and
- * rejected: that is an admin screen wiping a whole ledger, this is the per-row tidy-up R11 was
+ * A typed confirmation phrase — the kind an admin screen once used before wiping a whole ledger —
+ * was considered and rejected: that is an admin screen, this is the per-row tidy-up R11 was
  * added FOR, and friction people learn to type without reading is not a safeguard. The copy would
  * be measurably better if it named a message count; phase 1 shipped
  * `countNinaSessionMessages(userId, sessionId)` for exactly that, and wiring it is a follow-up

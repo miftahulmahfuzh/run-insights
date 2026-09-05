@@ -16,8 +16,8 @@ import { cn } from '@/lib/cn'
 /**
  * One folder's maintenance menu — R1's *"easier to maintain"*, at the tree node it acts on.
  *
- * ── FOUR PANELS, NO MODAL, AND `FactRow` IS THE PRECEDENT ───────────────────────────────────
- * `components/admin/MemoryLedger.tsx`'s `FactRow` is the shape: a `mode` union, one inline panel
+ * ── FOUR PANELS, NO MODAL, AND THE INLINE-PANEL ROW IS THE PRECEDENT ────────────────────────
+ * The admin memory page's old ledger row is the shape: a `mode` union, one inline panel
  * per mode, a single `run()` that owns the pending transition and the error line, and a Cancel that
  * just sets `mode` back. Nothing here opens a `<dialog>`. `DetailPanel`'s header explains when a
  * native modal earns its keep — a picture flush to three edges, a focus trap worth having — and

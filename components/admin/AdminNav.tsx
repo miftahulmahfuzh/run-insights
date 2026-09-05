@@ -20,6 +20,13 @@ import Link from 'next/link'
 const LINKS = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/nina', label: "Nina's album" },
+  /*
+   * R2's route. Deliberately named for the CONVERSATION and not for the person: the entry above it
+   * is `nina_avatars` (her profile album) and this one is `nina_message_images` (the photographs in
+   * the chat). Two different tables, adjacent in the nav so the distinction is legible, and the
+   * labels are the only thing carrying it — which is the reason the segment can stay `/admin/photos`.
+   */
+  { href: '/admin/photos', label: 'Chat photos' },
   { href: '/admin/memory', label: 'Memory' },
 ] as const
 
