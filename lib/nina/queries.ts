@@ -8,6 +8,7 @@ import {
   isNotNull,
   isNull,
   max,
+  or,
   sql,
   type SQL,
 } from 'drizzle-orm'
@@ -1419,6 +1420,215 @@ export async function countNinaChatPhotos(userId: string): Promise<number> {
     .from(ninaMessageImages)
     .where(generatedChatPhotoScope(userId))
   return counted[0]?.total ?? 0
+}
+
+/* ============================================================================
+ * §5b Conversation photographs — the admin write side (R2, phase 3)
+ *
+ * `/admin/photos` is the only caller. Every statement here is owner-scoped and none of them is
+ * reachable from a runner-facing path, which is why they sit in their own block rather than in §5:
+ * §5 is what the chat reads and what the worker writes, and this is what the operator changes.
+ * ==========================================================================*/
+
+/** The four measurements plus the two references a replaced photograph carries. */
+export interface NinaChatPhotoBlobPatch {
+  blobUrl: string
+  pathname: string
+  width: number
+  height: number
+  bytes: number
+}
+
+/**
+ * **REPLACE: new bytes behind an existing row.** R2, verbatim: *"replace a photo in there with a
+ * new photo"*.
+ *
+ * ── WHAT IT DELIBERATELY DOES NOT TOUCH, AND WHY EACH ONE MATTERS ───────────────────────────
+ *   · `id` — the row is the same row. `/nina` deep links to it and `attachableIdAt`
+ *     (`lib/nina/chatphotos.ts:93`) hands it to the re-attach path.
+ *   · `message_id` — the bubble that already exists keeps existing and now shows the new picture.
+ *     This IS the requirement; a delete-and-insert would move the photograph to the bottom of the
+ *     conversation.
+ *   · `created_at` — the gallery is ordered by it (`nina_message_images_user_created_idx`), so
+ *     bumping it would silently re-sort `/nina/about`. Replacing a photograph is not taking a new
+ *     one.
+ *   · `sort_order` — its place inside a multi-image bubble.
+ *   · `kind` — and the WHERE below carries `kind = 'generated'` as well, so this statement cannot
+ *     reach one of HIS uploads even if an id for one arrives. `/admin/photos` lists only hers.
+ *
+ * ── WHY `description` AND `prompt` GO TO NULL IN THE SAME STATEMENT ─────────────────────────
+ * They described the OLD picture. `description` is not decorative: `lib/nina/gateway.ts:162` puts
+ * it in `MessageInput.imageDescriptions` and `lib/nina/actions.ts:604` feeds it to Nina, so a stale
+ * one is a sentence she will confidently say about a photograph that is not there — invariant 6's
+ * exact failure. Nulling it HERE rather than in a second statement means there is no window in
+ * which the row points at new bytes and old prose. NULL degrades honestly: the send path
+ * substitutes `NINA_DESCRIPTION_UNAVAILABLE`, the instruction written for it.
+ * `lib/admin/chatPhotoActions.ts` earns a fresh description in `after()`.
+ *
+ * `prompt` is the generation sidecar for bytes that are gone. It has no reader anywhere in the repo
+ * (only this file's projection and `insertNinaMessageImages`), and it is already NULL on every
+ * `kind = 'upload'` row, so NULL is honest and invisible rather than a marker.
+ */
+export async function updateNinaChatPhotoBlob(
+  userId: string,
+  id: string,
+  patch: NinaChatPhotoBlobPatch,
+): Promise<NinaImageRow | null> {
+  const updated = await db
+    .update(ninaMessageImages)
+    .set({
+      blobUrl: patch.blobUrl,
+      pathname: patch.pathname,
+      width: patch.width,
+      height: patch.height,
+      bytes: patch.bytes,
+      description: null,
+      prompt: null,
+    })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.id, id),
+        eq(ninaMessageImages.kind, 'generated'),
+      ),
+    )
+    .returning(imageColumns)
+
+  return updated[0] ?? null
+}
+
+/**
+ * **REMOVE, the row-only half.** One image off a message that has others, or off a message that is
+ * HIS and must survive (the R26 re-attach path). `removeChatPhotoAction` decides which half runs;
+ * the other half is `deleteNinaMessage`, whose `ON DELETE CASCADE` takes the image rows with it.
+ *
+ * Returns the row as it was so the caller knows exactly which object it has stopped referencing —
+ * `deleteNinaAvatar`'s shape.
+ */
+export async function deleteNinaMessageImage(
+  userId: string,
+  id: string,
+): Promise<NinaImageRow | null> {
+  const deleted = await db
+    .delete(ninaMessageImages)
+    .where(and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id)))
+    .returning(imageColumns)
+
+  return deleted[0] ?? null
+}
+
+/**
+ * **Is any row still pointing at this Blob object?** The one question that stands between
+ * `/admin/photos` and deleting bytes somebody is still rendering.
+ *
+ * ── WHY THIS EXISTS: BLOB OBJECTS ARE SHARED ────────────────────────────────────────────────
+ * `resolveAttachment` (`lib/nina/actions.ts:143-192`) implements R26's re-attach by COPYING
+ * `blob_url` and `pathname` onto a NEW row. No bytes are copied. Both of its branches do it:
+ *
+ *   · the avatar branch (`:166-174`) copies from `nina_avatars` — so a chat photograph's object can
+ *     be the object behind **her current profile picture**;
+ *   · the image branch (`:185-192`) copies from another `nina_message_images` row.
+ *
+ * So an unconditional `del()` in `/admin/photos` is a data-loss bug: her face goes blank, or an
+ * earlier bubble does, while both rows still point at a dead URL. Invariant 8 (no orphaned blobs)
+ * and this pull in opposite directions and correctness wins: an orphan costs storage, and a
+ * deleted-but-referenced object is visible data loss the operator cannot undo.
+ *
+ * ── THE REFERENCE SITES ARE `scripts/blob-reap.mjs`'s, EXACTLY ──────────────────────────────
+ * The reaper (`2c1e7ba`) counts references rather than reacting to a row disappearing, and it
+ * enumerates six columns for the `nina/` prefix: `nina_message_images.pathname` / `.blob_url`,
+ * `nina_avatars.pathname` / `.blob_url`, and `nina_avatars.thumb_pathname` / `.thumb_url`. This
+ * asks the same six, so "nothing references these bytes" has ONE definition in the repo and a
+ * photograph the reaper would keep is a photograph this will not delete. The URL columns are
+ * checked as well as the pathname columns because a URL is the only thing `del()` is ever handed,
+ * and a row whose two spellings ever disagreed would otherwise be invisible to this question. The
+ * album thumbnail is the case that makes it more than symmetry: a `thumb-<id>.<ext>` object cannot
+ * collide with the `selfie-<id>.jpg` shape this phase WRITES, but `resolveAttachment` can copy any
+ * avatar reference onto a chat row, and a shape argument is a weaker guarantee than an `OR`.
+ *
+ * ── EXISTENCE, NOT A COUNT ──────────────────────────────────────────────────────────────────
+ * `LIMIT 1` each — the answer is boolean. Both scoped by `user_id` (invariant 3), which is also
+ * correct rather than merely conventional: Blob objects are per-user by pathname
+ * (`nina/<userId>/…`), so a row of another user's cannot reference this object and a cross-user
+ * read would prove nothing extra.
+ *
+ * ── NO "EXCEPT THIS ROW" PARAMETER, AND THAT IS A CORRECTNESS PROPERTY ──────────────────────
+ * Both callers run this AFTER the row has stopped referencing the pathname — Remove deletes the row
+ * (or the message, whose cascade deletes the row) first, and Replace updates the row to the NEW
+ * pathname first. That is the same "row first, blob second" ordering `deleteNinaAvatarAction`
+ * already states, doing a second job here: an exclusion parameter is unnecessary, and a parameter
+ * that does not exist cannot be passed wrongly.
+ *
+ * ── COST ────────────────────────────────────────────────────────────────────────────────────
+ * There is no index on any of those columns, so these are bounded scans filtered by `user_id`. At
+ * this table's size (single-digit thousands of rows at the horizon, per the analysis) that is
+ * correct as-is, and it runs once per human-paced remove or replace. Invariant 10 forbids adding an
+ * index anyway.
+ *
+ * `blobUrl` is optional so the question can still be asked about a pathname alone (a reaper-style
+ * caller holding a store listing); every caller in this repo passes it.
+ */
+export async function isBlobPathnameReferenced(
+  userId: string,
+  pathname: string,
+  blobUrl?: string,
+): Promise<boolean> {
+  const [images, avatars] = await Promise.all([
+    db
+      .select({ id: ninaMessageImages.id })
+      .from(ninaMessageImages)
+      .where(
+        and(
+          eq(ninaMessageImages.userId, userId),
+          or(
+            eq(ninaMessageImages.pathname, pathname),
+            ...(blobUrl == null ? [] : [eq(ninaMessageImages.blobUrl, blobUrl)]),
+          ),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ id: ninaAvatars.id })
+      .from(ninaAvatars)
+      .where(
+        and(
+          eq(ninaAvatars.userId, userId),
+          or(
+            eq(ninaAvatars.pathname, pathname),
+            eq(ninaAvatars.thumbPathname, pathname),
+            ...(blobUrl == null
+              ? []
+              : [eq(ninaAvatars.blobUrl, blobUrl), eq(ninaAvatars.thumbUrl, blobUrl)]),
+          ),
+        ),
+      )
+      .limit(1),
+  ])
+
+  return images.length > 0 || avatars.length > 0
+}
+
+/**
+ * Stamp `glm-4.6v`'s prose on a conversation photograph. The mirror of `setNinaAvatarDescription`
+ * in §9, and it exists for the mirror reason: a hand-uploaded photograph has no generation prompt,
+ * so a vision model is the only way this column is ever filled for one (invariant 5 — the prose is
+ * private and its only consumer is Nina's prompt).
+ *
+ * Returns whether a row was hit, so an `after()` callback whose row was deleted while it ran logs a
+ * miss instead of pretending it wrote something.
+ */
+export async function setNinaMessageImageDescription(
+  userId: string,
+  id: string,
+  description: string,
+): Promise<boolean> {
+  const updated = await db
+    .update(ninaMessageImages)
+    .set({ description })
+    .where(and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id)))
+    .returning({ id: ninaMessageImages.id })
+
+  return updated.length > 0
 }
 
 /* ============================================================================

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 
+import { ChatPhotoAdd } from '@/components/admin/ChatPhotoAdd'
 import { ChatPhotoDetail } from '@/components/admin/ChatPhotoDetail'
 import { ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -122,6 +123,8 @@ export function ChatPhotoGrid({
         <span className="shrink-0 text-[12px] font-semibold text-ink-3 tabular-nums">
           {page.total} photo{page.total === 1 ? '' : 's'}
         </span>
+        {/* Phase 3 — R2's "add a new photo". No confirmation: picking files IS the gesture. */}
+        <ChatPhotoAdd userId={userId} />
       </div>
 
       {/* SEAM — PHASE 3. The notice line. Never rendered in phase 2 (`notice` is always null), so

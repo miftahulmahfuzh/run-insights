@@ -1,5 +1,6 @@
 'use client'
 
+import { ChatPhotoControls } from './ChatPhotoControls'
 import type { ChatPhoto } from './chatPhotoModel'
 
 /**
@@ -22,8 +23,10 @@ import type { ChatPhoto } from './chatPhotoModel'
  * `glm-4.6v` says the photograph shows, `prompt` is the sidecar `finishSelfie` recorded. Neither
  * is passed to any surface the runner sees, here or anywhere downstream of here.
  *
- * ── READ-ONLY, THIS PHASE ───────────────────────────────────────────────────────────────────
- * No Server Action import, no `useTransition`, no `Button`. See the SEAM at the bottom.
+ * ── THE RAIL WRITES NOW (PHASE 3) ───────────────────────────────────────────────────────────
+ * Everything above still holds. The action stack at the bottom holds `ChatPhotoControls` —
+ * Replace and Remove, one click each, no confirmation — and this file still imports no Server
+ * Action itself: the controls own that, so a prop rename here cannot reach a mutation.
  */
 
 export function ChatPhotoDetail({
@@ -55,9 +58,6 @@ export function ChatPhotoDetail({
    */
   onRemoved: (note: string | null) => void
 }) {
-  void userId
-  void onRemoved
-
   return (
     <aside className="rounded-card border border-rule bg-card p-5 lg:sticky lg:top-8">
       <div className="mb-4 flex items-start justify-between gap-2">
@@ -168,8 +168,8 @@ export function ChatPhotoDetail({
       </div>
 
       {/*
-       * SEAM — PHASE 3. The action stack. Empty in phase 2 and the divider above it exists anyway,
-       * so filling it moves nothing on screen.
+       * THE ACTION STACK — filled by phase 3. The divider above it existed in phase 2 already, so
+       * filling it moved nothing on screen.
        *
        * Three controls land here and at the collection header in `ChatPhotoGrid`:
        *   1. Replace  — first in this stack. Needs `photo.id`, `photo.pathname` and `userId`; all
@@ -180,14 +180,18 @@ export function ChatPhotoDetail({
        *   3. Add      — NOT here. It is a collection-level action and its seam is the header row in
        *      `ChatPhotoGrid`.
        *
-       * Phase 3 fills this with a single `<ChatPhotoControls userId={userId} photoId={photo.id}
-       * onRemoved={onRemoved} />`, which is what consumes the two `void` statements at the top.
+       * It is a single `<ChatPhotoControls userId={userId} photoId={photo.id}
+       * onRemoved={onRemoved} />`, which is what consumed the two `void` statements phase 2 left
+       * at the top of this component.
        *
        * No confirmation on any of the three. R1's ruling is a property of this admin surface, not
        * of one page: "i am the only one using this app, no need for all these bullshit
        * confirmation."
        */}
-      <div className="mt-4 space-y-2 border-t border-rule pt-4" />
+      <div className="mt-4 space-y-2 border-t border-rule pt-4">
+        {/* Phase 3 — R2's "replace" and "remove". One click each, no confirmation. */}
+        <ChatPhotoControls userId={userId} photoId={photo.id} onRemoved={onRemoved} />
+      </div>
     </aside>
   )
 }
