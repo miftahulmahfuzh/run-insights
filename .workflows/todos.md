@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-05
-**Total Active Tasks**: 3
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 3
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 14
+- Completed: 15
 
 ---
 
@@ -41,17 +41,6 @@
   - **Depends on**: `P1-RI-A009`
   - **Plan**: `.workflows/plan/P1-RI-A012.md`
   - **Card**: `miftahulmahfuzh/run-insights#85`
-
-- [ ] **P1-RI-A016** Phase 2: The composer clears the bar's outer height, so it sits flush
-  - **Difficulty**: NORMAL
-  - **Type**: Bug
-  - **Context**: Closes the 1 px seam phase 1 leaves. `components/ui/TabBar.tsx` gains — **additively only**, no markup touched — `TAB_BAR_BORDER_PX = 1` (mirrors `border-t`) and `TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX` (59), each carrying the invariant-3 comment naming the Tailwind class it mirrors; `TAB_BAR_HEIGHT_PX` stays, as it is the grid's own height. `ChatChrome.tsx`'s `BAR_CLEARANCE_PX` and `ChatScreen.tsx`'s `COMPOSER_CLEARANCE_PX` become `TAB_BAR_OUTER_HEIGHT_PX`, keeping their comments' shape with the derivation rewritten to "the bar's outer height: its grid plus the `border-t` the grid sits under" plus a sentence recording the measured bug — the border was never in the sum, so the composer floated 1 px above the bar even after the FAB was gone. Doc sites: `composerBottomCss`'s docblock in `lib/nina/chatview.ts` (the overhang term goes, the border term arrives; the `--safe-bottom`-outside-the-multiplier paragraph stays verbatim), `controlBottomCss`'s docblock at `lib/nina/chrome.ts:167-185` and `barClearancePx`'s JSDoc at `:189` — **this is the edit that makes phase 1's repo-wide grep true** (D9) — plus `TabBar.tsx:45-50`, `chatview.ts:189` ("a 78 px settle"), and `Composer.tsx:34,86,92`. Tests move with it: `chrome.test.ts`'s `BAR_CLEARANCE` 58 → 59, `chatview.test.ts`'s clearance inputs 58 → 59, and `tests/tabbar.geometry.test.ts` is extended to assert `TAB_BAR_BORDER_PX === 1`, `TAB_BAR_OUTER_HEIGHT_PX === TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX`, and — the assertion that actually holds R2 — that the clearance both `ChatChrome` and `ChatScreen` compose is the **outer** height, not the grid height, so reintroducing the gap fails a test rather than shipping. No signature or body change to `composerBottomCss`/`controlBottomCss` (invariant 4); no markup in `TabBar.tsx`, no `BOTTOM_GAP`, no `ROADMAP_v0.1.0.md`, no keyboard branch, no reveal state machine. Exit criteria: with the bar shown and no keyboard, `composerBottomCss(0, COMPOSER_CLEARANCE_PX)` returns `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`, landing the composer's bottom edge exactly on the bar's top border — zero gap, no overlap; no literal `78` remains at any live geometry site across `chatview.ts`, `chrome.ts`, their tests, `Composer.tsx`, `ChatChrome.tsx` and `ChatScreen.tsx` (unrelated numbers such as `TEXTAREA_MAX_PX` stay); `npx tsc --noEmit`, `npm run lint` and `npx vitest run` green.
-  - **Status**: open
-  - **Plan Set**: `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` (phase 2 of 2)
-  - **Satisfies**: R2 — The query bar and the bottom bar do not sit flush — there is a gap; close it
-  - **Depends on**: `P1-RI-A015`
-  - **Plan**: `.workflows/plan/P1-RI-A016.md`
-  - **Card**: `miftahulmahfuzh/run-insights#88`
 
 ### [P2] Medium
 
@@ -356,5 +345,26 @@
   - **Decided**: Phase 1's exit grep demands `TAB_BAR_FAB_OVERHANG_PX` appear on exactly one line repo-wide, but returns 5 — accepted as passing (rung 3, the phase plan's own code blocks): four of the five are past-tense prose that Steps 1, 7 and 15 themselves prescribe (`TabBar.tsx`'s header, `ChatChrome`'s clearance docstring, and the new test's comment plus its `not.toContain` assertion string). The criterion's stated intent, *no **executable** reference*, holds — nothing imports or reads the deleted export. `lib/nina/chrome.ts:189` stays phase 2's per D9.
   - **Decided**: Exit criterion "`TabBar.tsx` contains no `absolute`, no `-top-`, no `size-14`" — accepted as passing (rung 3): all three tokens remain only inside comments that Steps 1 and 4 deliberately wrote, and `readRepoCode` strips comments before asserting, which the passing `tests/tabbar.geometry.test.ts` confirms is the operative check.
   - **Decided**: Task package for both phases — repo root `.` (rung 6, surrounding convention): the phase spans `components/`, `lib/`, `tests/` and docs, and only `.` and `lib/db` are tracked packages.
+
+### [P1] P1-RI-A016
+- [x] **P1-RI-A016** Phase 2: The composer clears the bar's outer height, so it sits flush
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Closes the 1 px seam phase 1 leaves. `components/ui/TabBar.tsx` gains — **additively only**, no markup touched — `TAB_BAR_BORDER_PX = 1` (mirrors `border-t`) and `TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX` (59), each carrying the invariant-3 comment naming the Tailwind class it mirrors; `TAB_BAR_HEIGHT_PX` stays, as it is the grid's own height. `ChatChrome.tsx`'s `BAR_CLEARANCE_PX` and `ChatScreen.tsx`'s `COMPOSER_CLEARANCE_PX` become `TAB_BAR_OUTER_HEIGHT_PX`, keeping their comments' shape with the derivation rewritten to "the bar's outer height: its grid plus the `border-t` the grid sits under" plus a sentence recording the measured bug — the border was never in the sum, so the composer floated 1 px above the bar even after the FAB was gone. Doc sites: `composerBottomCss`'s docblock in `lib/nina/chatview.ts` (the overhang term goes, the border term arrives; the `--safe-bottom`-outside-the-multiplier paragraph stays verbatim), `controlBottomCss`'s docblock at `lib/nina/chrome.ts:167-185` and `barClearancePx`'s JSDoc at `:189` — **this is the edit that makes phase 1's repo-wide grep true** (D9) — plus `TabBar.tsx:45-50`, `chatview.ts:189` ("a 78 px settle"), and `Composer.tsx:34,86,92`. Tests move with it: `chrome.test.ts`'s `BAR_CLEARANCE` 58 → 59, `chatview.test.ts`'s clearance inputs 58 → 59, and `tests/tabbar.geometry.test.ts` is extended to assert `TAB_BAR_BORDER_PX === 1`, `TAB_BAR_OUTER_HEIGHT_PX === TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX`, and — the assertion that actually holds R2 — that the clearance both `ChatChrome` and `ChatScreen` compose is the **outer** height, not the grid height, so reintroducing the gap fails a test rather than shipping. No signature or body change to `composerBottomCss`/`controlBottomCss` (invariant 4); no markup in `TabBar.tsx`, no `BOTTOM_GAP`, no `ROADMAP_v0.1.0.md`, no keyboard branch, no reveal state machine. Exit criteria: with the bar shown and no keyboard, `composerBottomCss(0, COMPOSER_CLEARANCE_PX)` returns `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`, landing the composer's bottom edge exactly on the bar's top border — zero gap, no overlap; no literal `78` remains at any live geometry site across `chatview.ts`, `chrome.ts`, their tests, `Composer.tsx`, `ChatChrome.tsx` and `ChatScreen.tsx` (unrelated numbers such as `TEXTAREA_MAX_PX` stay); `npx tsc --noEmit`, `npm run lint` and `npx vitest run` green.
+  - **Status**: completed
+  - **Plan Set**: `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — The query bar and the bottom bar do not sit flush — there is a gap; close it
+  - **Depends on**: `P1-RI-A015`
+  - **Plan**: `.workflows/plan/P1-RI-A016.md`
+  - **Card**: `miftahulmahfuzh/run-insights#88`
+  - **Completed**: 2026-09-05 08:23
+  - **Method**: /do (swarm phase 2 of 2)
+  - **Files**: components/ui/TabBar.tsx, components/nina/ChatChrome.tsx, components/nina/ChatScreen.tsx, components/nina/Composer.tsx, lib/nina/chatview.ts, lib/nina/chrome.ts, lib/nina/chrome.test.ts, lib/nina/chatview.test.ts, tests/tabbar.geometry.test.ts
+  - **Result**: `/nina`'s composer and control lane now clear the tab bar's **outer** height — `TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX` = 58 grid + 1 px `border-t` = 59 — instead of the grid alone, closing the last 1 px of R2's seam so the composer's bottom edge lands exactly on the bar's top border. Two new exported constants in `TabBar.tsx` (additive only; no markup touched), both clearances re-pointed, six doc sites brought in line with the new arithmetic, and `tests/tabbar.geometry.test.ts` extended so either clearance regressing to the grid height fails a test rather than shipping (14 tests now).
+  - **Verification**: `npx tsc --noEmit` — 13 errors, identical to the stashed clean tree (missing Next-generated `PageProps`/`LayoutProps`/`RouteContext`; `.next/types` is not built in this worktree), zero new; `npm run lint` 0 errors (2 pre-existing warnings in the untouched `scripts/capture/shoot.mjs`); `npx vitest run` 137 files / **2533/2533** passed; `npx prettier --check` clean on all nine files. Static check: no clearance figure of `78` remains at any live geometry site (grep empty).
+  - **Drift**: No code drift. Every 'Before' block in the phase plan matched the tree byte-for-byte as phase 1 left it.
+  - **Drift**: `npx tsc --noEmit` reports 13 pre-existing errors (missing Next.js generated globals `PageProps`/`LayoutProps`/`RouteContext` because `.next/types` is not generated in this worktree). Verified identical count on the stashed clean tree — this phase adds zero new type errors. `npm run typecheck` runs `next typegen` first and is the script that would resolve them.
+  - **Drift**: The phase plan's Step 9 code block declares 7 `it`s, though its prose said 6. Followed the code block (rung 3). `tests/tabbar.geometry.test.ts` now runs 14 tests, all passing.
+  - **Decided**: The plan's static check says the repo-wide `TAB_BAR_FAB_OVERHANG_PX` grep 'must come back empty', but after Step 6 three textual sites remain → kept all three; the governing criterion is the narrowed one. Rung 1: index `## Decisions` D9, which narrowed phase 1's grep to 'no *executable* reference, and the only textual reference left is the doc comment phase 2 owns'. The survivors are `components/ui/TabBar.tsx:44` (phase 1's deliberate 'do not silently delete the argument' header prose, in a region phase 2 must not open) and `tests/tabbar.geometry.test.ts:69,76` (phase 1's comment plus the `not.toContain` assertion that the constant is gone — deleting it would relax a check, which the ladder's tie-break rules forbid). The executable reference phase 2 owned, `lib/nina/chrome.ts:189`, is cleared.
 
 ## Archive

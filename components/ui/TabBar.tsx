@@ -56,12 +56,40 @@ import { cn } from '@/lib/cn'
  */
 
 /**
- * The bar's own height, matching `h-[58px]` below. Exported because `/nina`'s composer is the
- * app's first fixed bar that stacks *above* the tab bar and has to compute its own `bottom` in
- * JavaScript (`lib/nina/chatview.ts`). **If the class changes, change this with it** — Tailwind
- * cannot read a TypeScript constant, so the number is spelled twice by necessity.
+ * The **grid's** own height, matching `h-[58px]` below. **If the class changes, change this with
+ * it** — Tailwind cannot read a TypeScript constant, so the number is spelled twice by necessity.
+ *
+ * This is the grid and not the bar: the nav's border box is this plus `TAB_BAR_BORDER_PX`, and the
+ * bar's top *edge* is therefore `TAB_BAR_OUTER_HEIGHT_PX` up. Anything positioning itself against
+ * that edge wants the outer height — which is what `/nina`'s composer, the app's first fixed bar
+ * that stacks *above* the tab bar and computes its own `bottom` in JavaScript
+ * (`lib/nina/chatview.ts`), reads. Still exported on its own because the outer height is derived
+ * from it, and because `components/ui/AppShell.tsx` and `components/ui/PhotoViewer.tsx` cite it by
+ * name when they explain their own Tailwind literals.
  */
 export const TAB_BAR_HEIGHT_PX = 58
+
+/**
+ * The bar's `border-t`, in px — 1, matching the `border-t` on the `<nav>` above. Spelled as a
+ * number for the same reason `TAB_BAR_HEIGHT_PX` is: the composer stacked above this bar computes
+ * its own `bottom` in JavaScript and has to add this term, and Tailwind cannot read a TypeScript
+ * constant. **If that class changes — a different width, or no border at all — change this with
+ * it**, or every clearance built on it is wrong by exactly the difference.
+ */
+export const TAB_BAR_BORDER_PX = 1
+
+/**
+ * The bar's **outer** height — 59 px: the grid plus the `border-t` the grid sits under. This, and
+ * not `TAB_BAR_HEIGHT_PX`, is what a fixed bar stacked above the tab bar must clear, because the
+ * border is part of the nav's border box and the bar's top border IS its top edge.
+ *
+ * MEASURED (R2): the border was never a term in any clearance. `/nina`'s composer cleared the grid
+ * plus the old Upload FAB's overhang, the bar's top edge sat a pixel above the grid, and the
+ * scrolling conversation was visible through the seam between the two bars — still 1 px of it once
+ * the overhang was gone. The sum lives here rather than in `ChatChrome` and `ChatScreen` because a
+ * caller cannot forget a term that is inside the constant.
+ */
+export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
 
 /**
  * Five entries for a five-column grid, consumed positionally below. `/upload` is the THIRD

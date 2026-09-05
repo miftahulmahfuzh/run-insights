@@ -58,7 +58,7 @@ would make both of those states expressible; one prop makes them unrepresentable
 | `screen` | chrome rendered | bottom gap | used by |
 |---|---|---|---|
 | `'tabs'` (default) | `<TabBar>`, unconditional | `pb-[calc(6rem+var(--safe-bottom))]` | `/`, `/trends`, `/me`, `/r/[id]`, `/nina/about`, and both `loading.tsx` fallbacks |
-| `'chat'` | `<ChatChrome>` — **no bar on screen**, one floating control | `pb-[calc(8.5rem+var(--safe-bottom))]` | `app/nina/page.tsx` only |
+| `'chat'` | `<ChatChrome>` — **no bar on screen**, one floating control | `pb-[calc(7.5rem+var(--safe-bottom))]` | `app/nina/page.tsx` only |
 
 > **Renamed in P1-RI-A006.** The prop was `bottomGap` and the type was `AppShellBottomGap`. The
 > value now selects the chrome as well as the gap, and the old name described half of what it does.
@@ -108,8 +108,9 @@ export type NinaBarState = 'hidden' | 'shown'          // 'hidden' is /nina's re
 export type NinaChromeEvent = 'toggle' | 'autohide' | 'composer-engaged' | 'composer-released'
 
 export const CHROME_AUTOHIDE_MS = 5_000
-export const CHROME_CONTROL_PX = 44
+export const CHROME_CONTROL_PX = 32          // was 44; the repo owner asked for a smaller disc
 export const CHROME_CONTROL_GAP_PX = 8
+export const NINA_CHROME_CONTROL_CLASS: string   // the `>` and `^`/`v` discs' shared skin
 export const COMPOSER_RESTING_PX = 68
 
 export function nextBarState(state: NinaBarState, event: NinaChromeEvent): NinaBarState
@@ -158,29 +159,35 @@ single control announce correctly) and this module owns the rule.
 
 ### The geometry, and why the same numbers are written more than once
 
-> **STALE — refresh pending (as of P1-RI-A015, 2026-09-05).** This section still describes the
-> pre-`P1-RI-A015` bar. `/upload` is no longer a raised coral FAB overhanging the bar's top edge;
-> it is the third of five ordinary tab cells, so `TAB_BAR_FAB_OVERHANG_PX` **no longer exists**,
-> the hidden transform is a plain `0 100%`, and both clearances (`BAR_CLEARANCE_PX`,
-> `COMPOSER_CLEARANCE_PX`) are now `TAB_BAR_HEIGHT_PX` alone. Every number and argument below that
-> mentions the overhang, the FAB, or the `safe+22`–`safe+78` band is therefore obsolete; read
-> `components/ui/TabBar.tsx` and `tests/tabbar.geometry.test.ts` instead. The table is deliberately
-> **not** rewritten yet: phase 2 (`P1-RI-A016`) closes the remaining 1 px `border-t` seam and moves
-> these numbers again, so the whole section is refreshed once after that phase lands. `BOTTOM_GAP.chat`
-> is separately stale below (it reads `8.5rem`; the code says `7.5rem`) — not caused by this phase.
+**The bar occupies exactly its own border box, and every clearance is derived from that.** Until
+`P1-RI-A015` it did not: `/upload` was a 56 px coral FAB, `absolute -top-5` against the grid and
+therefore out of flow, so 20 px of it painted above the nav's top edge and over whatever screen was
+behind — on `/nina`, over the newest bubble. It is now the third of five ordinary tab cells (a
+`size-5` `+` glyph over a `text-[10px]` caption reading `New`, coral at rest *and* when active via
+an optional `accent` prop on the module-local `Tab`), the overhang constant that named those 20 px
+is **deleted** and no longer exists anywhere in the source, and the hide transform is a plain
+`translate: '0 100%'` with no `calc()` on top.
 
 ```
-TAB_BAR_HEIGHT_PX        = 58      components/ui/TabBar.tsx      ⟷ h-[58px]
-TAB_BAR_FAB_OVERHANG_PX  = 20      components/ui/TabBar.tsx      ⟷ -top-5
-COMPOSER_CLEARANCE_PX    = 78      components/nina/ChatScreen.tsx  = 58 + 20
-COMPOSER_FALLBACK_PX     = 146     components/nina/ChatScreen.tsx  = 78 + 68
+TAB_BAR_HEIGHT_PX        = 58      components/ui/TabBar.tsx      ⟷ h-[58px]        the GRID's height
+TAB_BAR_BORDER_PX        = 1       components/ui/TabBar.tsx      ⟷ border-t
+TAB_BAR_OUTER_HEIGHT_PX  = 59      components/ui/TabBar.tsx        = 58 + 1        the bar's TOP EDGE
+BAR_CLEARANCE_PX         = 59      components/nina/ChatChrome.tsx  = TAB_BAR_OUTER_HEIGHT_PX
+COMPOSER_CLEARANCE_PX    = 59      components/nina/ChatScreen.tsx  = TAB_BAR_OUTER_HEIGHT_PX
+COMPOSER_FALLBACK_PX     = 127     components/nina/ChatScreen.tsx  = 59 + 68
 COMPOSER_RESTING_PX      = 68      lib/nina/chrome.ts            ⟷ Composer's py-3 (24) + min-h-11 (44)
-CHROME_CONTROL_PX        = 44      lib/nina/chrome.ts            ⟷ size-11, the iOS tap-target floor
+CHROME_CONTROL_PX        = 32      lib/nina/chrome.ts            ⟷ size-8 in NINA_CHROME_CONTROL_CLASS
 CHROME_CONTROL_GAP_PX    = 8       lib/nina/chrome.ts
-BOTTOM_GAP.chat  = pb-[calc(8.5rem+var(--safe-bottom))]   components/ui/AppShell.tsx  = ⌈68 + 8 + 44 + 12⌉ = 136
+BOTTOM_GAP.chat  = pb-[calc(7.5rem+var(--safe-bottom))]   components/ui/AppShell.tsx  = 68 + 8 + 32 + 12 = 120
 BOTTOM_GAP.tabs  = pb-[calc(6rem+var(--safe-bottom))]     components/ui/AppShell.tsx  = 96
-translate (hidden) = `0 calc(100% + ${TAB_BAR_FAB_OVERHANG_PX}px)`   components/ui/TabBar.tsx
+translate (hidden) = '0 100%'                             components/ui/TabBar.tsx
 ```
+
+**The outer height is one constant rather than a sum spelled at two call sites**, and that is the
+whole design: a caller cannot forget a term that lives inside the constant. `TAB_BAR_HEIGHT_PX` is
+still exported and is still the grid's own height — `AppShell.tsx` and `PhotoViewer.tsx` cite it by
+name when they explain their own Tailwind literals — but nothing stacking *above* the bar may use
+it, because the bar's top border is its top edge.
 
 **These are all the same handful of numbers, and nothing in the toolchain checks that they agree.**
 Tailwind cannot read a TypeScript constant, an inline `translate` cannot read a Tailwind class, and
@@ -188,37 +195,56 @@ Tailwind cannot read a TypeScript constant, an inline `translate` cannot read a 
 only to CSS. So the numbers are spelled several times by necessity, and **changing one without the
 others is a silent visual bug, not a type error**:
 
-- Change `TAB_BAR_HEIGHT_PX` without `h-[58px]` (or the reverse) and the composer floats above the
-  bar or is overlapped by it, because `composerBottomCss` is passed a clearance the bar no longer
-  has.
-- Change `TAB_BAR_FAB_OVERHANG_PX` without `-top-5` and the hidden bar leaves coral on screen. This
-  constant is also **why `hidden` cannot be `translate-y-full`**: measuring up from the viewport
-  bottom, the nav's border box is 1 px of `border-t` plus the 58 px grid plus its own
-  `--safe-bottom` padding, so `100%` is `59px + safe`; the FAB is `absolute -top-5` inside a
-  `relative` grid container that starts at `safe`, so its `size-14` box spans `safe+22` to
-  `safe+78`. Clearing it needs `safe + 78`, and `100%` is 19 px short — on a device with no
-  home-indicator inset, 20 px of coral circle would sit on screen with the bar supposedly hidden.
+- Change `TAB_BAR_HEIGHT_PX` without `h-[58px]`, or `TAB_BAR_BORDER_PX` without the `border-t` (or
+  either reverse), and every clearance built on the outer height is wrong by exactly the
+  difference: the composer floats above the bar or is overlapped by it, because `composerBottomCss`
+  is passed a clearance the bar no longer has. `tests/tabbar.geometry.test.ts` asserts both classes
+  still exist in the source, which is the cheapest possible alarm for that.
+- Use `TAB_BAR_HEIGHT_PX` where the outer height belongs and you re-open the seam. **MEASURED
+  (R2):** with the bar revealed on `/nina` the composer did not rest on it — a band of the
+  scrolling conversation showed between the composer's bottom border and the bar's top border. Most
+  of that band was the FAB's 20 px overhang, which the composer had to clear or the coral circle
+  would have been sliced; the last pixel of it was the `border-t`, which no clearance term had ever
+  counted. Deleting the FAB closed 18 px of 19; the outer height closes the last one. The two
+  regression cases in `tests/tabbar.geometry.test.ts` fail on the literal text
+  `const BAR_CLEARANCE_PX = TAB_BAR_HEIGHT_PX` / `const COMPOSER_CLEARANCE_PX = TAB_BAR_HEIGHT_PX`.
+- Re-derive the sum at a call site (`TAB_BAR_OUTER_HEIGHT_PX` is deliberately not
+  `TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX` written out in `ChatChrome`/`ChatScreen`) and you have a
+  third file with an opinion about how tall the bar is. The same suite asserts neither component
+  names `TAB_BAR_BORDER_PX` at all.
+- Position anything out of the nav's flow again and **`hidden` stops being able to be `0 100%`**.
+  `100%` is the nav's border box and nothing more; the old FAB's `size-14` box spanned `safe+22` to
+  `safe+78` while `100%` reached only `59px + safe`, so 20 px of coral sat on screen with the bar
+  supposedly hidden — on phones with no home-indicator inset only, which is why it survived. The
+  hide transform is the second thing that breaks; `tests/tabbar.geometry.test.ts` fails on any
+  `calc` in that property, and on `absolute`, `-top-`, `size-14` or `bg-z5` anywhere in the file.
 - Change the composer's `py-3` / `min-h-11` without `COMPOSER_RESTING_PX` and the floating control
   either overlaps the composer or drifts away from it before the first measurement lands.
 - Change any of `COMPOSER_RESTING_PX`, `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX` or the
   composer's own geometry without `BOTTOM_GAP.chat` and the newest bubble is sliced by the composer
   or sits above a strip of empty paper.
 
-`TAB_BAR_HEIGHT_PX` and `TAB_BAR_FAB_OVERHANG_PX` are deliberately **not** in `BOTTOM_GAP.chat`'s
-sum — on that screen the bar is not below the composer. `BOTTOM_GAP.chat` is also **fixed, not
-dynamic**: this padding is the document's height, so making it follow the reveal would move the
-scroll position on every toggle and `MessageList`'s auto-scroll would chase it. While the bar is
-showing, the composer rises 78 px and the last bubble sits behind it for those five seconds — the
-right trade, because a runner who pulls up the bar is on his way to another tab, not re-reading the
-last line.
+No tab-bar constant is in `BOTTOM_GAP.tabs`'s or `BOTTOM_GAP.chat`'s sum, for two different
+reasons. On `/nina` the bar is not below the composer at all. On the four tabbed screens the 96 px
+*is* the bar plus room, but it was documented as "58 px bar + the FAB's 20 px overhang + breathing
+room" and the **value is deliberately unchanged** now that the overhang is gone: the report was a
+gap between two bars on `/nina`, not too much padding under the content on four screens nobody
+complained about, and the 20 px that used to be the overhang is simply breathing room — which is
+what it always looked like.
+
+`BOTTOM_GAP.chat` is also **fixed, not dynamic**: this padding is the document's height, so making
+it follow the reveal would move the scroll position on every toggle and `MessageList`'s auto-scroll
+would chase it. While the bar is showing, the composer rises 59 px and the last bubble sits behind
+it for those five seconds — the right trade, because a runner who pulls up the bar is on his way to
+another tab, not re-reading the last line.
 
 `controlBottomCss` composes the lane's `bottom` as the bar's clearance (only when showing) plus the
 measured composer height plus the gap plus the inset. That is what keeps the lane clear of the
-composer's Send button at every composer height *and* clear of the tab bar's centre FAB — the
-`safe+22`–`safe+78` band that a bottom-centre control must never cover. Degenerate input is the
-resting screen rather than an error: a non-finite or non-positive composer height means "not
-measured yet" and falls back to `COMPOSER_RESTING_PX`; a non-finite or negative clearance
-contributes nothing; a hidden bar contributes no clearance whatever the argument says.
+composer's Send button at every composer height, and — now that the bar paints nothing above its
+own border box — clearing the bar is clearing the whole of it. Degenerate input is the resting
+screen rather than an error: a non-finite or non-positive composer height means "not measured yet"
+and falls back to `COMPOSER_RESTING_PX`; a non-finite or negative clearance contributes nothing; a
+hidden bar contributes no clearance whatever the argument says.
 
 ### `--nina-bar-visible` — the channel across the sibling gap
 
@@ -238,11 +264,14 @@ crosses that gap without threading a boolean through three components with no ot
 `ChatChrome` sets the property to `1` while the bar is shown and removes it otherwise; the `, 0`
 fallback is what makes the server's HTML and the first client frame agree.
 
-**A multiplier, not a length.** `calc(<length> * <number>)` keeps the number 78 inside
+**A multiplier, not a length.** `calc(<length> * <number>)` keeps the number 59 inside
 `composerBottomCss`, where the caller already passes it, instead of moving it into whichever
 component writes the variable. The flag then says one thing only — *is the bar on screen* — and
-cannot disagree with `TAB_BAR_HEIGHT_PX` about how tall it is. A `var(--nina-bar-clearance, 0px)`
-form would put the geometry in two places.
+cannot disagree with `TAB_BAR_OUTER_HEIGHT_PX` about how tall the bar is. A
+`var(--nina-bar-clearance, 0px)` form would put the geometry in two places. The default is `0` and
+not the clearance because the resting state is a hidden bar: an absent variable means the composer
+paints on the home-indicator inset, so there is no 59 px settle between the server's HTML and the
+first client frame.
 
 The `--safe-bottom` term sits **outside** the multiplication and outside the keyboard branch,
 because the inset is the phone's, not the bar's, and it is there whether or not the bar is. It is
@@ -258,14 +287,16 @@ keyframe:
 
 ```
 'transition-[translate] duration-200 ease-out motion-reduce:transition-none'
-translate: hidden ? `0 calc(100% + ${TAB_BAR_FAB_OVERHANG_PX}px)` : '0 0'
+translate: hidden ? '0 100%' : '0 0'
 ```
 
 Both ends are written explicitly, because `translate`'s initial value is `none` and interpolating
-from it does not animate. `transition-[translate]` and not `transition-transform`: Tailwind v4
-compiles `translate` and `scale` to separate CSS longhands (which is also why the FAB's
-`active:scale-[0.97]` and its `-translate-x-1/2` compose instead of overwriting each other), so
-`translate` is the property that actually changes and naming it removes the question.
+from it does not animate. `100%` with no arithmetic on top is sufficient **only because the nav's
+border box is the whole of the bar** — see the geometry section above. `transition-[translate]` and
+not `transition-transform`: Tailwind v4 compiles `translate` and `scale` to separate CSS longhands
+(which is why the floating discs' `active:scale-[0.97]` composes with a translate instead of
+overwriting it), so `translate` is the property that actually changes and naming it removes the
+question.
 
 `tests/motion.reducedMotion.test.ts` guards the repo-wide contract by reading source as text —
 every keyframe an `[animation:…]` utility runs must be redefined as genuinely still under the
@@ -413,10 +444,10 @@ Generated by Next; not to be edited.
 ```
 app/nina/page.tsx  <AppShell screen="chat">
         │
-        ├── <main class="pb-[calc(8.5rem+var(--safe-bottom))]">   ← fixed document height
+        ├── <main class="pb-[calc(7.5rem+var(--safe-bottom))]">   ← fixed document height
         │        └── ChatScreen ── Composer
-        │              bottomCss = composerBottomCss(overlap, COMPOSER_CLEARANCE_PX /* 78 */)
-        │                        = calc(78px * var(--nina-bar-visible, 0) + var(--safe-bottom))
+        │              bottomCss = composerBottomCss(overlap, COMPOSER_CLEARANCE_PX /* 59 */)
+        │                        = calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))
         │
         └── <ChatChrome ninaBadge={<NinaUnreadBadgeSlot />}>      ← 'use client', owns the state
                  │
@@ -426,10 +457,11 @@ app/nina/page.tsx  <AppShell screen="chat">
                  │
                  ├── writes :root style --nina-bar-visible = '1' when shown, removes it when hidden
                  ├── floating control, rendered only when isControlVisible(engaged)
-                 │     bottom = controlBottomCss({ barState, barClearancePx: 58 + 20, composerHeightPx })
+                 │     bottom = controlBottomCss({ barState, barClearancePx: BAR_CLEARANCE_PX /* 59 */,
+                 │                                 composerHeightPx })
                  │     glyph  = barToggleGlyph(barState)
                  └── <TabBar hidden={barState === 'hidden'} ninaBadge={…} id="main-tab-bar">
-                           translate: hidden ? '0 calc(100% + 20px)' : '0 0'
+                           translate: hidden ? '0 100%' : '0 0'
 ```
 
 The four other tabbed screens take the left branch of `AppShell`'s ternary and are unchanged: an
@@ -446,7 +478,7 @@ neither of which contributes a URL segment.
 | route | file | chrome | notes |
 |---|---|---|---|
 | `/` | `app/(app)/page.tsx` | `AppShell` (tabs) | runs list **and** the signed-out sign-in screen |
-| `/upload` | `app/upload/page.tsx` | none — own full-bleed | the one flow that matters; the raised coral FAB |
+| `/upload` | `app/upload/page.tsx` | none — own full-bleed | the one flow that matters; the coral `New` tab, the bar's centre cell |
 | `/x/[extractionId]` | `app/x/[extractionId]/page.tsx` | none — own full-bleed | pre-commit review; no run id exists yet |
 | `/r/[id]` | `app/r/[id]/page.tsx` | `AppShell` (tabs) | the roadmap/wireframe disagreement below |
 | `/r/[id]/edit` | `app/r/[id]/edit/page.tsx` | none — own full-bleed | post-review correction |
@@ -487,9 +519,12 @@ chrome slightly over-claims.
 
 `TabBar` itself is `'use client'` for exactly one reason: `usePathname`, for `aria-current`.
 Nothing else in it is interactive — the tabs are plain `<Link>`s, so the bar works before
-hydration. Its five-cell grid is what centres the raised coral `+` FAB: in a four-column grid the
-FAB's cell centre was at 37.5 % of the bar, and the fifth cell (`/nina`) puts the third cell's
-centre at exactly 50 %.
+hydration. Its five-cell grid is what centres `/upload`, and `/upload` is the **third** of the five
+entries in `TABS` for that reason alone: `(2 + 0.5) / 5` is exactly 50 % of the bar, where
+appending it to the end would put it at 90 % and every type would still check. That centring
+argument came from F33 and a raised circle; it is **superseded, not wrong** — what it made true of
+a FAB is now true of a caption, and a grid cell needs no `left-1/2 -translate-x-1/2` to be centred.
+`tests/tabbar.geometry.test.ts` asserts the label order.
 
 ## Dependencies
 
@@ -537,8 +572,9 @@ package readmes of their own.
 ### Boundary rule
 
 `lib/` never imports `components/`. That is why `controlBottomCss` takes `barClearancePx` as an
-argument rather than importing `TAB_BAR_HEIGHT_PX` and `TAB_BAR_FAB_OVERHANG_PX` itself — the two
-constants are summed in `ChatScreen`/`ChatChrome`, on the components side, and passed in.
+argument rather than importing `TAB_BAR_OUTER_HEIGHT_PX` itself — the constant is read in
+`ChatScreen`/`ChatChrome`, on the components side, and passed in. `NINA_CHROME_CONTROL_CLASS` lives
+in `lib/nina/chrome.ts` for the same direction: both consumers are components.
 
 ## Reverse Dependencies
 
@@ -564,11 +600,19 @@ name, not a title and a link, so that screen builds its own header row out of `N
 
 ### Geometry-constant consumers
 
-`TAB_BAR_HEIGHT_PX` / `TAB_BAR_FAB_OVERHANG_PX` are imported by `components/nina/ChatScreen.tsx`
-(as `COMPOSER_CLEARANCE_PX`) and `components/nina/ChatChrome.tsx` (as the control lane's
-clearance). `lib/nina/chrome.test.ts` reads `components/ui/TabBar.tsx` **as text** to assert the
-motion contract — the only file that reaches across the `lib`/`components` boundary, and it does so
-with `readFileSync`, not an import.
+`TAB_BAR_OUTER_HEIGHT_PX` is imported by `components/nina/ChatScreen.tsx` (as
+`COMPOSER_CLEARANCE_PX`) and `components/nina/ChatChrome.tsx` (as `BAR_CLEARANCE_PX`, the control
+lane's clearance) — the two files that stack fixed chrome above the bar, and the only two importers
+of it. `TAB_BAR_HEIGHT_PX` and `TAB_BAR_BORDER_PX` are cited by name in `AppShell.tsx` and
+`PhotoViewer.tsx` comments and consumed only through the outer height.
+
+Two suites reach across the `lib`/`components` boundary, and both do it by reading source **as
+text** rather than by importing: `lib/nina/chrome.test.ts` for the motion contract, and
+`tests/tabbar.geometry.test.ts` for the bar's geometry. The latter *imports* the three exported
+constants (they are safe under `environment: 'node'` — `TabBar.tsx` is `'use client'` but nothing
+in it runs at module scope) and *scans* the two clearances, which are module-private constants
+inside client components that reach Server Actions: there is nothing to import and no DOM to render
+them in. It is the home for the bar's geometry rules; the next one belongs there too.
 
 ## Concurrency
 
@@ -665,9 +709,12 @@ export default function Page() {
   `AppShellScreen`. Documents predating that phase quote the old spelling.
 - **Never add `AppShell` back to `components/ui/index.ts`.** It reaches `server-only` code through
   the unread badge; the barrel is imported by client components.
-- **Do not change one geometry constant.** The list above is the whole set, and no type checker,
-  linter or test asserts that they agree. The symptom is a floating composer or a bubble sliced by
-  the bar.
+- **Do not change one geometry constant.** The list above is the whole set. `tsc` and the linter
+  see none of it; `tests/tabbar.geometry.test.ts` now covers the bar's own numbers, and nothing
+  covers the rest. The symptom is a floating composer or a bubble sliced by the bar.
+- **Anything stacked above the tab bar clears `TAB_BAR_OUTER_HEIGHT_PX`, never
+  `TAB_BAR_HEIGHT_PX`.** 58 is the grid; 59 is the bar's top edge. The one-pixel version of that
+  mistake shipped, and it looked like a seam with the conversation scrolling through it.
 - **Do not make `BOTTOM_GAP.chat` follow the reveal.** It is the document's height; tying it to the
   bar's state moves the scroll position on every toggle.
 - **Do not put a reveal rule in a component.** `vitest` runs `environment: 'node'` — no jsdom, no
@@ -676,8 +723,10 @@ export default function Page() {
 - **Do not pause the auto-hide timer while the composer is engaged.** Hide instead; the paused-timer
   version fires on blur and hides a bar the runner never saw, because iOS does not resize the
   layout viewport for the keyboard.
-- **`hidden` is not `translate-y-full`.** `100%` leaves 20 px of the FAB on screen on a device with
-  no home-indicator inset.
+- **Nothing may paint above the nav's border box.** `translate: '0 100%'` moves the whole bar off
+  screen only while that holds; the last thing that broke it (`absolute -top-5` on the Upload FAB)
+  left 20 px of coral on screen with the bar "hidden", on phones with no home-indicator inset only.
+  `tests/tabbar.geometry.test.ts` is what notices.
 
 ## Notes
 
@@ -693,8 +742,50 @@ auth edge and the repo-wide configuration. The persistence layer is documented i
 The product contracts this file defers to, in precedence order: `RECONCILIATION_v0.1.0.md` (the
 `R-n` rulings, which supersede any individual plan and amend the roadmap), then
 `ROADMAP_v0.1.0.md` (§4.1 env-var names, §4.2 formatting, §4.3 schema, §4.8 routes), then the
-per-feature plans in `docs/plans/` (`F01`–`F33`). `NINA_CHAT_SESSIONS_PLAN.md` is the current
-branch's plan set and `R1` is the requirement this phase satisfies.
+per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` is the
+current branch's plan set; `R1` (the `New` tab) and `R2` (the composer seam) are its two
+requirements, landed as `P1-RI-A015` and `P1-RI-A016`.
+
+### Recent changes — P1-RI-A015 and P1-RI-A016 (2026-09-05)
+
+*`TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md`, both phases: the `+` becomes the `New` tab, and the
+composer lands on the bar.*
+
+Two reports, one root cause. The raised `/upload` FAB painted 20 px above the bar's top edge and
+over the newest bubble on `/nina`, and the composer sat over a band of scrolling conversation
+instead of resting on the bar. **Phase 1 (`P1-RI-A015`)** demoted `/upload` to the third of five
+ordinary tab cells — a `size-5` `+` glyph over a `text-[10px]` caption reading `New`, coral at rest
+*and* when active through one new optional `accent` prop on the module-local `Tab`, which
+*replaces* the active/inactive pair rather than adding a branch to it. The 20 px overhang constant
+was deleted, `relative` came off the grid, and the hide transform collapsed from
+`calc(100% + 20px)` to a plain `0 100%`. That closed 18 px of the 19 px gap. **Phase 2
+(`P1-RI-A016`)** closed the last one: the bar's `border-t` had never been a term in any clearance,
+so the composer's bottom edge landed a pixel *below* the bar's top border.
+
+**New:**
+
+- `TAB_BAR_BORDER_PX` (1) and `TAB_BAR_OUTER_HEIGHT_PX` (59) in `components/ui/TabBar.tsx`. The sum
+  lives in the constant, not at the call sites, because a caller cannot forget a term that is
+  inside it. `TAB_BAR_HEIGHT_PX` (58) is unchanged and is still the grid's own height.
+- `tests/tabbar.geometry.test.ts` — the home for the bar's geometry rules. Phase 1's half is a
+  `readRepoCode` source scan (no `absolute`, no `-top-`, no `size-14`, no `bg-z5`, no `calc` in the
+  hide transform, the five captions in order, five `<Tab>`s for five columns, `accent` outside the
+  active branch); phase 2's half imports the three constants and scans both clearances, and **fails
+  if either regresses to `TAB_BAR_HEIGHT_PX`** or re-derives the sum locally.
+
+**Changed:**
+
+- `components/nina/ChatChrome.tsx` / `components/nina/ChatScreen.tsx` — `BAR_CLEARANCE_PX` and
+  `COMPOSER_CLEARANCE_PX` are each `TAB_BAR_OUTER_HEIGHT_PX` (59). They were `58 + 20 = 78`; that
+  arithmetic is gone from the repo. `COMPOSER_FALLBACK_PX` follows to `59 + 68 = 127`.
+- `lib/nina/chatview.ts` — `composerBottomCss` is unchanged in behaviour; its docs now name the
+  border term and `TAB_BAR_OUTER_HEIGHT_PX`. `lib/nina/chatview.test.ts` and
+  `lib/nina/chrome.test.ts` move their inputs from 78 to 59.
+- `components/nina/Composer.tsx` — comments only: the fixed bar clears the tab bar's outer height,
+  not a bar plus a FAB.
+- `components/ui/AppShell.tsx` — comments only, in both `BOTTOM_GAP` cases. **No value changed**:
+  the 96 px under the four tabbed screens was never the complaint, and the 20 px that used to be
+  the overhang is breathing room now.
 
 ### Recent changes — P1-RI-A006 (2026-09-05)
 
@@ -723,12 +814,12 @@ same unread dot.
 
 - `components/ui/TabBar.tsx` — gained an optional `hidden` prop (default `false`), the inline
   `translate` that reveals it, `transition-[translate] … motion-reduce:transition-none`, and
-  `inert` while hidden. `TAB_BAR_FAB_OVERHANG_PX`'s docstring now carries the argument for why
-  `100%` alone is 19 px short.
+  `inert` while hidden. *(At the time the hidden translate was `calc(100% + 20px)`, to clear the
+  Upload FAB's overhang; it is a plain `0 100%` since `P1-RI-A015`.)*
 - `components/ui/AppShell.tsx` — `TabBar` stops being unconditional; **`bottomGap` → `screen` and
-  `AppShellBottomGap` → `AppShellScreen`**; `BOTTOM_GAP` gained the `'chat'` case
-  (`pb-[calc(8.5rem+var(--safe-bottom))]`, the no-bar sum), which deliberately drops
-  `TAB_BAR_HEIGHT_PX` and `TAB_BAR_FAB_OVERHANG_PX` from its arithmetic.
+  `AppShellBottomGap` → `AppShellScreen`**; `BOTTOM_GAP` gained the `'chat'` case, the no-bar sum,
+  which deliberately drops every tab-bar constant from its arithmetic. *(Its literal was `8.5rem`
+  then; it is `7.5rem` now, following `CHROME_CONTROL_PX` 44 → 32.)*
 - `lib/nina/chatview.ts` — `composerBottomCss` multiplies the clearance by
   `var(--nina-bar-visible, 0)` so it clears nothing when the bar is gone; `NINA_BAR_VISIBLE_VAR`
   added. The keyboard branch is untouched.

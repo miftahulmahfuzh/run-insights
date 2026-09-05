@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 
-import { TabBar, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
+import { TabBar, TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
 import { NINA_BAR_VISIBLE_VAR } from '@/lib/nina/chatview'
 import {
   autoHideDelayMs,
@@ -69,16 +69,17 @@ import { NinaSidebarTrigger } from './NinaSidebar'
 const COMPOSER_ID = 'nina-composer'
 
 /**
- * What the bar occupies when it is showing: its own height, and that is now the whole of it.
+ * What the bar occupies when it is showing: its **outer** height — the 58 px grid plus the 1 px
+ * `border-t` the grid sits under, which is the bar's actual top edge. The same constant
+ * `ChatScreen`'s `COMPOSER_CLEARANCE_PX` reads, because both are positioning against the same bar.
  *
- * It used to be `TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX` — 78 — because `/upload` was a raised
- * coral circle reaching 20 px above the bar's top edge, and a composer that cleared only the bar
- * would have sliced the top off it. `/upload` is a normal tab cell now
- * (`components/ui/TabBar.tsx`), nothing paints above the nav's border box, and the constant that
- * named the overhang no longer exists. The same figure `ChatScreen`'s `COMPOSER_CLEARANCE_PX`
- * computes, because both are positioning against the same bar.
+ * MEASURED (R2): the border was never in this sum. The clearance cleared the grid alone, the bar's
+ * top border sat a pixel above it, and the composer floated over the seam with the conversation
+ * showing through — 1 px of it even after the Upload FAB's overhang was gone. The border is part of
+ * the nav's border box, so the outer height is the honest clearance, and it is one constant rather
+ * than a sum spelled at two call sites.
  */
-const BAR_CLEARANCE_PX = TAB_BAR_HEIGHT_PX
+const BAR_CLEARANCE_PX = TAB_BAR_OUTER_HEIGHT_PX
 
 export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
   const [bar, setBar] = useState<NinaBarState>('hidden')

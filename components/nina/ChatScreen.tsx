@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
-import { TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
+import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
 import {
@@ -96,11 +96,14 @@ const NOTICE_TEXT: Record<Notice, string> = {
 }
 
 /**
- * The chrome the composer sits above: the bar's own height, and nothing else. It was `58 + 20`
- * while `/upload` was a raised coral circle overhanging the bar's top edge; the circle is a normal
- * tab cell now, so the overhang term — and the constant that named it — are gone.
+ * The chrome the composer sits above: the bar's **outer** height — its 58 px grid plus the 1 px
+ * `border-t` the grid sits under, which is the bar's actual top edge.
+ *
+ * MEASURED (R2): the border was never in this sum, so the composer's bottom edge landed a pixel
+ * below the bar's top border and the scrolling conversation showed through the seam between them.
+ * `ChatChrome`'s `BAR_CLEARANCE_PX` is the same constant for the same reason.
  */
-const COMPOSER_CLEARANCE_PX = TAB_BAR_HEIGHT_PX
+const COMPOSER_CLEARANCE_PX = TAB_BAR_OUTER_HEIGHT_PX
 
 /**
  * Fallback for `obstructedBottomPx` if `#nina-composer` cannot be measured — the clearance plus

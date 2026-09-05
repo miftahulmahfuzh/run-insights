@@ -216,30 +216,35 @@ describe('keyboardOverlapPx', () => {
 })
 
 describe('composerBottomCss', () => {
+  // 59 is the tab bar's outer height: `TAB_BAR_HEIGHT_PX` (58) + `TAB_BAR_BORDER_PX` (1). The
+  // border is the bar's top edge, so a composer clearing 58 floats a pixel above it — R2's gap.
+  // `tests/tabbar.geometry.test.ts` is what ties this literal back to those two constants.
+
   it('clears nothing but the home-indicator inset while the bar is hidden', () => {
     // R1: `/nina`'s resting state. The flag is absent, `var()` substitutes 0, and the composer sits
     // on the inset. This is also the SSR and pre-hydration answer, which is why the default is the
     // hidden geometry and not the showing one.
-    expect(composerBottomCss(0, 58)).toBe(
-      'calc(58px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+    expect(composerBottomCss(0, 59)).toBe(
+      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
     )
   })
 
   it('names the variable the chrome writes', () => {
     // Spelled once, in `chatview.ts`, and read by `ChatChrome`. If the constant and the emission
     // ever disagree the composer stops following the bar and nothing else notices.
-    expect(composerBottomCss(0, 58)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerBottomCss(0, 59)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
   })
 
   it('sits on the keyboard when there is one', () => {
     // Every term of the idle clearance is behind the keyboard, so none of it is added — and that
-    // is true whether or not the bar is showing, which is why this branch is untouched by R1.
-    expect(composerBottomCss(KEYBOARD_HEIGHT, 58)).toBe('336px')
+    // is true whether or not the bar is showing, which is why this branch is untouched by R1 and
+    // by R2 alike: the border is behind the keyboard too.
+    expect(composerBottomCss(KEYBOARD_HEIGHT, 59)).toBe('336px')
   })
 
   it('treats unmeasurable input as no keyboard', () => {
-    expect(composerBottomCss(NaN, 58)).toBe(
-      'calc(58px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+    expect(composerBottomCss(NaN, 59)).toBe(
+      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
     )
   })
 
