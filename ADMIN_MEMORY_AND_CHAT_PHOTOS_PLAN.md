@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/admin-memory-and-chat-photos`
 **Branch:** `feature/admin-memory-and-chat-photos` (base: `origin/main` @ `7cec803`)
 **Phases:** 3
-**Status:** planned — 3/3 phases planned, reconciled 2026-09-05 (round 1)
+**Status:** complete — 3/3 phases landed (1, 2, 3), reconciled 2026-09-05 (round 1), merged to `main`
 **Coordinator:** —
 **Cards:** R1 #89 · R2 #90 (phases: #91, #92) · bugs found while planning: #93, #94
 
@@ -114,9 +114,9 @@ Every phase must hold all of these. They are checkable, not felt.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | One memory table, zero confirmations | R1 | `app/admin/memory`, `components/admin`, `lib/admin` | 10 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-1.md` | — | #89 |
-| 2 | Her chat photographs, listed in `/admin` | R2 | `app/admin/photos`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-2.md` | — | #91 |
-| 3 | Replace, add, remove | R2 | `lib/admin`, `app/api/admin`, `components/admin` | 10 | 2 | HARD | `.workflows/plan/admin-memory-and-chat-photos/phase-3.md` | — | #92 |
+| 1 ✅ | One memory table, zero confirmations | R1 | `app/admin/memory`, `components/admin`, `lib/admin` | 10 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-1.md` | — | #89 |
+| 2 ✅ | Her chat photographs, listed in `/admin` | R2 | `app/admin/photos`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-2.md` | — | #91 |
+| 3 ✅ | Replace, add, remove | R2 | `lib/admin`, `app/api/admin`, `components/admin` | 10 | 2 | HARD | `.workflows/plan/admin-memory-and-chat-photos/phase-3.md` | — | #92 |
 
 **Phases 1 and 2 share no file and run concurrently.** That is the reason phase 3's Zod schemas go
 in a new `lib/admin/chatPhotoSchema.ts` rather than into `lib/admin/schema.ts`: phase 1 deletes
