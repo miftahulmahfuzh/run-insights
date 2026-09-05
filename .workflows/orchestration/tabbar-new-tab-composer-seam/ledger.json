@@ -1,0 +1,49 @@
+{
+  "branch": "feature/tabbar-new-tab-composer-seam",
+  "coordinator": "orch-tabbar-new-tab-composer-seam",
+  "coordinator_session_id": "afa608cb-1418-4636-8ff8-fdaaedb2ad8a",
+  "created": "2026-09-05T01:04:56+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#87",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "components/ui`, `components/nina`, `lib/nina`, `tests`, docs",
+      "plan": ".workflows/plan/tabbar-new-tab-composer-seam/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The `+` becomes the `New` tab, and the overhang is deleted"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#88",
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "components/ui`, `components/nina`, `lib/nina`, `tests",
+      "plan": ".workflows/plan/tabbar-new-tab-composer-seam/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The composer clears the bar's outer height, so it sits flush"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/tabbar-new-tab-composer-seam/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "tabbar-new-tab-composer-seam",
+  "updated": "2026-09-05T01:04:56+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/tabbar-new-tab-composer-seam"
+}
