@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 13
+- Completed: 14
 
 ---
 
@@ -21,15 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-RI-A014** The `nina/` blob reaper must count references, not rows
-  - **Difficulty**: NORMAL
-  - **Type**: Chore
-  - **Context**: `reap-orphaned-blobs` does not cover the `nina/` prefix at all, and F35 made that gap sharper in two independent ways. Phase 7's delete reads a message's image rows *before* the cascade takes them and logs the orphaned blob pathnames precisely because nothing reaps them. Phase 9's attach then made one blob legitimately reachable from **two** messages — `attachExisting` pins an existing photo to a new message without re-uploading a byte — so a reaper that deletes a blob when *a* row disappears would delete the photo another message still shows. The fix is therefore a reference count over `nina_message_images`, not a row-existence check, and it must be written that way from the start rather than retrofitted.
-  - **Status**: open
-  - **Satisfies**: — (follow-up raised by F35 phases 7 and 9)
-  - **Source**: `NINA_CHAT_SESSIONS_PLAN.md` — phase 7's handoffs and phase 9's H5
-
 
 - [ ] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
@@ -325,5 +316,23 @@
   - **Drift**: a real plan defect — it specified `chatViewerPhotos({ urls, kinds })` but called it `chatViewerPhotos(viewerMessage)`; those cannot both be true and it failed typecheck (TS2345). The parameter now takes `ChatMessage`'s own `imageUrls`/`imageKinds` spelling, the half needing no adapter.
   - **Drift**: `chooseSaveStrategy` never returns `'open'` — the plan's prose described a three-branch ladder its own code and tests do not have. Code and tests kept as written; `'open'` re-documented as the runtime fallback rather than a returned strategy.
   - **Drift**: `<PhotoViewer>` renders after phase 7's `<MessageActionsSheet>` rather than immediately after `<Composer>`; the plan said "last child of the fragment", which with phase 7 landed is now after the sheet. `z-60` over `z-50` means stacking was never in question.
+
+### [P1] P1-RI-A014
+- [x] **P1-RI-A014** The `nina/` blob reaper must count references, not rows
+  - **Difficulty**: NORMAL
+  - **Type**: Chore
+  - **Context**: `reap-orphaned-blobs` does not cover the `nina/` prefix at all, and F35 made that gap sharper in two independent ways. Phase 7's delete reads a message's image rows *before* the cascade takes them and logs the orphaned blob pathnames precisely because nothing reaps them. Phase 9's attach then made one blob legitimately reachable from **two** messages — `attachExisting` pins an existing photo to a new message without re-uploading a byte — so a reaper that deletes a blob when *a* row disappears would delete the photo another message still shows. The fix is therefore a reference count over `nina_message_images`, not a row-existence check, and it must be written that way from the start rather than retrofitted.
+  - **Status**: completed
+  - **Satisfies**: — (follow-up raised by F35 phases 7 and 9)
+  - **Source**: `NINA_CHAT_SESSIONS_PLAN.md` — phase 7's handoffs and phase 9's H5
+  - **Completed**: 2026-09-05 08:15
+  - **Method**: direct (unattended session)
+  - **Files**: scripts/blob-reap.mjs, .claude/skills/reap-orphaned-blobs/SKILL.md
+  - **Verification**: `npm run typecheck` clean; `npm test` 136 files / 2519 tests green; `npm run format:check` clean; `npm run lint` clean apart from the 2 pre-existing `scripts/capture/shoot.mjs` warnings, identical at HEAD. Live dry run against the real store (183 blobs): 276 live names, `shots/` 135 referenced / 43 orphans, `nina/` 3 referenced / 2 unreferenced both under the age floor / **0 orphans**. `--prefix nina/` reads only the nina sites; `--prefix bogus/` exits 2. Per-prefix interlock exercised with the nina sites forced empty **and `--delete` present**: refused and exited 1 without deleting, while 270 `shots/` names were still live.
+  - **Decided**: the card named `nina_message_images` only, but `nina/` carries a second family — `nina_avatars`, with four blob-naming columns including `thumb_pathname`/`thumb_url` for the derived grid thumbnail. Teaching the script the prefix with only the chat table would have deleted every album photo and every thumbnail. Scope widened to all six `nina/` columns. Rung: the skill's own standing rule, "teach the script that prefix's reference sites before pointing it at them", which is stated in the file being edited. **Confirmed live**: the store's 2 `nina_avatars` rows produce 6 names over 3 blobs — an original, its thumbnail, and a second original — so the thumbnail is a real object that reads as unreferenced without those two columns.
+  - **Decided**: the interlock is now **per prefix** rather than global. A global check passes as soon as `run_photos` has one row, so a `DATABASE_URL` on a branch predating the `nina_*` tables would delete the whole of `nina/` with the arithmetic looking healthy. Rung: the interlock's own stated subject in the script header. Proven by forcing the nina sites empty — 270 global live names, per-prefix refusal, exit 1.
+  - **Decided**: the reference count is reported on two deliberately different lines. `named by 2+ rows` is every `shots/` blob (`run_photos` plus the `extractions` snapshot) and never meant reuse; `reused` is 2+ rows of ONE table, which is the `attachExisting` shape the card is about. A single `refCount > 1` line reported all 135 screenshots as shared, which is true and useless.
+  - **Decided**: `nina_turns.args` and `nina_memory_slots.value` are untyped jsonb holding no blob references today. Rather than assert that, a defensive sweep walks both for known-prefix strings, protects anything it finds, and prints a loud warning naming the missing reference site. Rung: `args` is documented as the column a later phase will put its own job shape into, so the assertion has a known expiry date.
+  - **Note**: the store was NOT reaped. 43 `shots/` orphans (4.3 MB) are eligible and `nina/` has none; deleting bytes is irreversible and was no part of this card. Run `npm run blob:reap -- --delete` when you want them gone.
 
 ## Archive
