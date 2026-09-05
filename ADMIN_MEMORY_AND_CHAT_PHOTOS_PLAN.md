@@ -8,6 +8,7 @@
 **Phases:** 3
 **Status:** planned — 3/3 phases planned, reconciled 2026-09-05 (round 1)
 **Coordinator:** —
+**Cards:** R1 #89 · R2 #90 (phases: #91, #92) · bugs found while planning: #93, #94
 
 ---
 
@@ -39,8 +40,8 @@ Four phrases are load-bearing and are quoted again in the phases that own them:
 
 | ID | What the user asked for | Phases |
 |---|---|---|
-| R1 | Revamp `/admin`'s memory editing: much simpler, **one simple table** for all the memory, easy edit / add / remove of a single row, and **no confirmation of any kind** on delete or edit | 1 |
-| R2 | Every Nina-generated photograph in the chat collection is also shown in the admin page, in a folder or similar, where the user can **replace** a photo with a new one, **add** a new photo (which then reads as if Nina generated it), or **remove** a photo | 2, 3 |
+| R1 (#89) | Revamp `/admin`'s memory editing: much simpler, **one simple table** for all the memory, easy edit / add / remove of a single row, and **no confirmation of any kind** on delete or edit | 1 |
+| R2 (#90) | Every Nina-generated photograph in the chat collection is also shown in the admin page, in a folder or similar, where the user can **replace** a photo with a new one, **add** a new photo (which then reads as if Nina generated it), or **remove** a photo | 2, 3 |
 
 Every phase serves exactly one R.
 
@@ -113,9 +114,9 @@ Every phase must hold all of these. They are checkable, not felt.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | One memory table, zero confirmations | R1 | `app/admin/memory`, `components/admin`, `lib/admin` | 10 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-1.md` | — | — |
-| 2 | Her chat photographs, listed in `/admin` | R2 | `app/admin/photos`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-2.md` | — | — |
-| 3 | Replace, add, remove | R2 | `lib/admin`, `app/api/admin`, `components/admin` | 10 | 2 | HARD | `.workflows/plan/admin-memory-and-chat-photos/phase-3.md` | — | — |
+| 1 | One memory table, zero confirmations | R1 | `app/admin/memory`, `components/admin`, `lib/admin` | 10 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-1.md` | — | #89 |
+| 2 | Her chat photographs, listed in `/admin` | R2 | `app/admin/photos`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/admin-memory-and-chat-photos/phase-2.md` | — | #91 |
+| 3 | Replace, add, remove | R2 | `lib/admin`, `app/api/admin`, `components/admin` | 10 | 2 | HARD | `.workflows/plan/admin-memory-and-chat-photos/phase-3.md` | — | #92 |
 
 **Phases 1 and 2 share no file and run concurrently.** That is the reason phase 3's Zod schemas go
 in a new `lib/admin/chatPhotoSchema.ts` rather than into `lib/admin/schema.ts`: phase 1 deletes

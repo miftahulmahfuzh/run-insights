@@ -105,9 +105,11 @@ export type PhotoMoveInput = z.infer<typeof photoMoveSchema>
  * and it is a required boolean rather than a defaulted one on purpose: a client that forgets the
  * field gets the safe branch by shape error, not by a default that could be flipped later.
  *
- * `folder` is checked for emptiness by the ACTION rather than by a `.min(1)` here, for the same
- * reason `factPurgeSchema.confirm` is a bare `z.string()` at `lib/admin/schema.ts:139-146`: "the
- * album root is not a folder" is a sentence the operator should read, not a field error.
+ * `folder` is checked for emptiness by the ACTION rather than by a `.min(1)` here: "the album root
+ * is not a folder" is a sentence the operator should read, not a field error. The memory editor's
+ * purge gate used to make the same argument with a bare `z.string()` confirmation field; it was
+ * deleted with every other confirmation step on `/admin/memory`, so the reasoning now stands on
+ * its own rather than citing a schema that no longer exists.
  */
 export const folderDeleteSchema = z.object({
   folder: folderPathSchema,

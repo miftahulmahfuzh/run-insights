@@ -1,22 +1,12 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
+import { ADMIN_FACT_CATEGORIES } from '@/lib/admin/memoryModel'
 import {
-  ADMIN_FACT_CATEGORIES,
-  ADMIN_FACT_TEXT_MAX,
-  ADMIN_PURGE_CONFIRMATION,
-  ADMIN_RETRACTION_TEXT_MAX,
-  composeRetraction,
-  composeSlotRetirement,
-  factPermissions,
-  isPurgeConfirmed,
-} from '@/lib/admin/memoryModel'
-import {
-  buildSlotCards,
+  buildMemoryRows,
   canonicaliseSlotValue,
   slotEditKind,
-  slotFactCategory,
   slotProtection,
 } from '@/lib/admin/memoryVocab'
 import {
@@ -29,10 +19,14 @@ import {
 /**
  * `/admin/memory`'s testable surface — invariant 6's "testable here = pure functions".
  *
- * The last four cases are STRUCTURAL: they read source files and assert an import boundary, the
- * same technique (and the same reason) as `tests/nina.distill.test.ts` case 14 — *a structural
- * guarantee that is only a comment decays.*
+ * The structural half at the bottom reads source files and asserts boundaries, the same technique
+ * (and the same reason) as `tests/nina.distill.test.ts` case 14 — *a structural guarantee that is
+ * only a comment decays.* R1's exit criteria are encoded there deliberately: "no confirmation
+ * anywhere on this page" is a property a future edit could quietly reintroduce, and a prose
+ * exit criterion in a landed plan cannot fail a build.
  */
+
+const NON_STRUCTURED_SLOT_KEYS = NINA_SLOT_KEYS.filter((key) => slotEditKind(key) !== 'structured')
 
 describe('the fact category vocabulary', () => {
   it('has all seven of phase 1s categories, in a stable order', () => {
@@ -45,107 +39,6 @@ describe('the fact category vocabulary', () => {
       'training',
       'other',
     ])
-  })
-})
-
-describe('factPermissions — §2s one rule', () => {
-  it('lets the admin edit a row he wrote', () => {
-    const permissions = factPermissions({ source: 'admin', sourceMessageId: null })
-    expect(permissions.canEditInPlace).toBe(true)
-    expect(permissions.canRetract).toBe(true)
-    expect(permissions.canPurge).toBe(true)
-  })
-
-  it('refuses in-place editing of a distilled row, and says to retract instead', () => {
-    const permissions = factPermissions({ source: 'distilled', sourceMessageId: 'msg_1' })
-    expect(permissions.canEditInPlace).toBe(false)
-    expect(permissions.canRetract).toBe(true)
-    expect(permissions.editNote).toMatch(/retract/i)
-  })
-
-  it('still refuses a distilled row whose source message is null', () => {
-    // `source` is the discriminator, not the presence of a message id. A distilled row with a null
-    // message id is a distiller bug, not an admin row.
-    expect(factPermissions({ source: 'distilled', sourceMessageId: null }).canEditInPlace).toBe(
-      false,
-    )
-  })
-})
-
-describe('composeRetraction — the sentence that makes an edit non-destructive', () => {
-  it('quotes the original verbatim in a pure retraction', () => {
-    const text = composeRetraction({
-      original: 'he only runs on weekends',
-      replacement: '',
-      on: '2026-09-03',
-    })
-    expect(text).toContain('"he only runs on weekends"')
-    expect(text).toContain('2026-09-03')
-  })
-
-  it('carries both the truth and the original in a correction', () => {
-    const text = composeRetraction({
-      original: 'he only runs on weekends',
-      replacement: 'he runs Tuesday and Thursday',
-      on: '2026-09-03',
-    })
-    expect(text).toContain('he runs Tuesday and Thursday')
-    expect(text).toContain('"he only runs on weekends"')
-  })
-
-  it('collapses whitespace so a pasted multi-line original does not break the row', () => {
-    const text = composeRetraction({
-      original: 'he\n  only   runs\ton weekends ',
-      replacement: '',
-      on: '2026-09-03',
-    })
-    expect(text).toContain('"he only runs on weekends"')
-  })
-
-  it('stays inside ADMIN_RETRACTION_TEXT_MAX at the worst case', () => {
-    const text = composeRetraction({
-      original: 'x'.repeat(ADMIN_FACT_TEXT_MAX),
-      replacement: 'y'.repeat(ADMIN_FACT_TEXT_MAX),
-      on: '2026-09-03',
-    })
-    expect(text.length).toBeLessThanOrEqual(ADMIN_RETRACTION_TEXT_MAX)
-  })
-})
-
-describe('composeSlotRetirement — §4s record', () => {
-  it('names the key and quotes the final value', () => {
-    const text = composeSlotRetirement({
-      key: 'favourite_shoe',
-      value: 'Novablast 4',
-      reason: '',
-      on: '2026-09-03',
-    })
-    expect(text).toContain('"favourite_shoe"')
-    expect(text).toContain('"Novablast 4"')
-    expect(text).not.toContain('Reason:')
-  })
-
-  it('appends the reason when one is given', () => {
-    const text = composeSlotRetirement({
-      key: 'favourite_shoe',
-      value: 'Novablast 4',
-      reason: 'not one of the nine keys',
-      on: '2026-09-03',
-    })
-    expect(text).toContain('Reason: not one of the nine keys')
-  })
-})
-
-describe('isPurgeConfirmed — the one lossy gate', () => {
-  it('accepts the word, trimmed', () => {
-    expect(isPurgeConfirmed(ADMIN_PURGE_CONFIRMATION)).toBe(true)
-    expect(isPurgeConfirmed('  PURGE  ')).toBe(true)
-  })
-
-  it('rejects anything else, including the lowercase form', () => {
-    expect(isPurgeConfirmed('purge')).toBe(false)
-    expect(isPurgeConfirmed('')).toBe(false)
-    expect(isPurgeConfirmed('PURGE PLEASE')).toBe(false)
   })
 })
 
@@ -188,68 +81,243 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
     expect(result.ok).toBe(false)
   })
 
-  it('refuses a key outside the nine', () => {
+  it('refuses a key outside the nine, and points at the delete control', () => {
     const result = canonicaliseSlotValue('favourite_shoe', 'Novablast 4')
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.reason).toMatch(/retire/i)
+    expect(result.reason).toMatch(/delete/i)
+  })
+
+  it('never tells the admin to retire anything — there is no retire any more', () => {
+    for (const key of [...NINA_SLOT_KEYS, 'favourite_shoe']) {
+      const result = canonicaliseSlotValue(key, '')
+      if (result.ok) continue
+      expect(result.reason, `${key}'s refusal must not mention retiring`).not.toMatch(/retire/i)
+    }
   })
 })
 
-describe('the slot cards', () => {
-  it('renders all nine keys as empty cards when there is no row at all', () => {
-    const cards = buildSlotCards([])
-    expect(cards).toHaveLength(NINA_SLOT_KEYS.length)
-    expect(cards.map((card) => card.key)).toEqual([...NINA_SLOT_KEYS])
-    expect(cards.every((card) => card.present === false)).toBe(true)
-    expect(cards.every((card) => card.origin === null)).toBe(true)
-  })
-
-  it('puts an orphaned key after the nine, marked and retire-only', () => {
-    const cards = buildSlotCards([
-      {
-        key: 'favourite_shoe',
-        value: 'Novablast 4',
-        source: 'distilled',
-        sourceMessageId: 'msg_1',
-        updatedAt: new Date('2026-09-01T00:00:00Z'),
-      },
-    ])
-    expect(cards).toHaveLength(NINA_SLOT_KEYS.length + 1)
-    const orphan = cards[cards.length - 1]
-    expect(orphan?.key).toBe('favourite_shoe')
-    expect(orphan?.inVocabulary).toBe(false)
-    expect(orphan?.editKind).toBe('orphaned')
-  })
-
+describe('the slot vocabulary readings the row builder uses', () => {
   it('classifies the edit kind from phase 5s write policy, not from a key literal', () => {
     expect(slotEditKind('goals')).toBe('text')
     expect(slotEditKind('pending_promises')).toBe('structured')
     expect(slotEditKind('favourite_shoe')).toBe('orphaned')
   })
 
-  it('reports phase 5s protection so the page can show it', () => {
+  it('reports phase 5s protection so the row can say it', () => {
     expect(slotProtection('goals', 'admin')).toBe('deferred')
     expect(slotProtection('pending_promises', 'admin')).toBe('sticky')
     expect(slotProtection('goals', 'distilled')).toBe('none')
     expect(slotProtection('goals', null)).toBe('none')
     expect(slotProtection('favourite_shoe', 'admin')).toBe('none')
   })
+})
 
-  it('maps a slot to phase 5s own fact category, and an orphan to other', () => {
-    expect(slotFactCategory('injuries')).toBe('body')
-    expect(slotFactCategory('favourite_shoe')).toBe('other')
+describe('buildMemoryRows — R1s one table', () => {
+  const empty = { slots: [], facts: [], promises: [] }
+
+  it('renders every non-structured slot key as an empty row when there is no data at all', () => {
+    const rows = buildMemoryRows(empty)
+    expect(rows).toHaveLength(NON_STRUCTURED_SLOT_KEYS.length)
+    expect(rows.map((row) => row.target)).toEqual([...NON_STRUCTURED_SLOT_KEYS])
+    expect(rows.every((row) => row.kind === 'slot')).toBe(true)
+    expect(rows.every((row) => row.text === '')).toBe(true)
+    expect(rows.every((row) => row.origin === null)).toBe(true)
+    // Nothing to delete, but everything is typeable — an empty row IS how a slot is inserted.
+    expect(rows.every((row) => row.deletable === false)).toBe(true)
+    expect(rows.every((row) => row.editable === true)).toBe(true)
+  })
+
+  it('never renders pending_promises as a slot row — its entries are the rows', () => {
+    const rows = buildMemoryRows(empty)
+    expect(rows.some((row) => row.target === 'pending_promises')).toBe(false)
+    expect(NINA_SLOT_KEYS).toContain('pending_promises')
+  })
+
+  it('marks a closed-vocabulary slot as one that comes back blank after a delete', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      slots: [
+        {
+          key: 'goals',
+          value: 'sub-25 5k',
+          source: 'admin',
+          sourceMessageId: null,
+          updatedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ],
+    })
+    const goals = rows.find((row) => row.target === 'goals')
+    expect(goals?.deletable).toBe(true)
+    expect(goals?.reappears).toBe(true)
+    expect(goals?.note).toMatch(/defers/i)
+  })
+
+  it('puts an orphaned key after the eight, read-only, and gone for good when deleted', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      slots: [
+        {
+          key: 'favourite_shoe',
+          value: 'Novablast 4',
+          source: 'distilled',
+          sourceMessageId: 'msg_1',
+          updatedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ],
+    })
+    expect(rows).toHaveLength(NON_STRUCTURED_SLOT_KEYS.length + 1)
+    const orphan = rows[rows.length - 1]
+    expect(orphan?.target).toBe('favourite_shoe')
+    expect(orphan?.editable).toBe(false)
+    expect(orphan?.deletable).toBe(true)
+    // The key is not in the vocabulary, so nothing re-manufactures it.
+    expect(orphan?.reappears).toBe(false)
+  })
+
+  it('gives a promise its own row: deletable, never editable as text', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      promises: [
+        {
+          id: 'p1',
+          text: 'gw bikinin foto kalau lo lari 50k bulan ini',
+          condition: 'kalau lo lari 50k bulan ini',
+          metric: 'distance_km_total',
+          target: 50,
+          targetKey: null,
+          byDate: '2026-09-30',
+          promisedOn: '2026-09-02',
+          status: 'pending',
+        },
+      ],
+    })
+    const promise = rows.find((row) => row.kind === 'promise')
+    expect(promise?.rowId).toBe('promise:p1')
+    expect(promise?.target).toBe('p1')
+    expect(promise?.editable).toBe(false)
+    expect(promise?.deletable).toBe(true)
+    expect(promise?.reappears).toBe(false)
+    expect(promise?.at).toBe('2026-09-02')
+    expect(promise?.hint).toContain('by 2026-09-30')
+    expect(promise?.hint).toContain('target 50')
+  })
+
+  it('makes every ledger row editable, including a distilled one, and says what that costs', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      facts: [
+        {
+          id: 'f1',
+          category: 'training',
+          text: 'he only runs on weekends',
+          confidence: 80,
+          source: 'distilled',
+          sourceMessageId: 'msg_9',
+          createdAt: new Date('2026-09-03T10:00:00Z'),
+        },
+        {
+          id: 'f2',
+          category: 'person',
+          text: 'his sister is called Nadia',
+          confidence: 100,
+          source: 'admin',
+          sourceMessageId: null,
+          createdAt: new Date('2026-09-02T10:00:00Z'),
+        },
+      ],
+    })
+
+    const distilled = rows.find((row) => row.target === 'f1')
+    expect(distilled?.editable).toBe(true)
+    expect(distilled?.category).toBe('training')
+    expect(distilled?.confidence).toBe(80)
+    expect(distilled?.reappears).toBe(false)
+    // The re-label rule is DESCRIBED on the row. There is no permission predicate any more, so
+    // this sentence is the only place the operator learns what an edit does.
+    expect(distilled?.note).toMatch(/re-labelled admin/i)
+
+    const admin = rows.find((row) => row.target === 'f2')
+    expect(admin?.editable).toBe(true)
+    expect(admin?.note).toMatch(/admin/i)
+    expect(admin?.note).not.toMatch(/re-labelled/i)
+  })
+
+  it('orders the table slots, then orphans, then promises, then the ledger', () => {
+    const rows = buildMemoryRows({
+      slots: [
+        {
+          key: 'favourite_shoe',
+          value: 'Novablast 4',
+          source: 'distilled',
+          sourceMessageId: null,
+          updatedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ],
+      promises: [
+        {
+          id: 'p1',
+          text: 'a promise',
+          condition: 'a condition',
+          metric: 'free',
+          target: null,
+          targetKey: null,
+          byDate: null,
+          promisedOn: '2026-09-02',
+          status: 'pending',
+        },
+      ],
+      facts: [
+        {
+          id: 'f1',
+          category: 'other',
+          text: 'a fact',
+          confidence: 100,
+          source: 'admin',
+          sourceMessageId: null,
+          createdAt: new Date('2026-09-03T10:00:00Z'),
+        },
+      ],
+    })
+
+    const kinds = rows.map((row) => row.kind)
+    const firstPromise = kinds.indexOf('promise')
+    const firstFact = kinds.indexOf('fact')
+    expect(kinds.slice(0, NON_STRUCTURED_SLOT_KEYS.length + 1).every((k) => k === 'slot')).toBe(
+      true,
+    )
+    expect(firstPromise).toBe(NON_STRUCTURED_SLOT_KEYS.length + 1)
+    expect(firstFact).toBeGreaterThan(firstPromise)
+  })
+
+  it('gives every row a unique rowId, because it is the React key and the result map key', () => {
+    const rows = buildMemoryRows({
+      ...empty,
+      facts: [
+        {
+          id: 'f1',
+          category: 'other',
+          text: 'a',
+          confidence: 100,
+          source: 'admin',
+          sourceMessageId: null,
+          createdAt: new Date('2026-09-03T10:00:00Z'),
+        },
+      ],
+    })
+    expect(new Set(rows.map((row) => row.rowId)).size).toBe(rows.length)
   })
 })
 
-/* ── the structural half — §5 layer 3 ───────────────────────────────────────────────────────── */
+/* ── the structural half ────────────────────────────────────────────────────────────────────── */
 
 const STORE = 'lib/admin/memoryStore.ts'
 const ACTIONS = 'lib/admin/memoryActions.ts'
 const MODEL = 'lib/admin/memoryModel.ts'
+const TABLE = 'components/admin/MemoryTable.tsx'
 
 describe("source: 'admin' cannot be forgotten", () => {
-  it('routes every memory write through memoryStore, never straight at phase 1', () => {
+  it('routes every memory write through memoryStore, never straight at the query layer', () => {
     const source = readFileSync(ACTIONS, 'utf8')
     expect(source).not.toMatch(/from '@\/lib\/nina\/queries'/)
     for (const writer of [
@@ -263,13 +331,34 @@ describe("source: 'admin' cannot be forgotten", () => {
     }
   })
 
-  it("spells source: 'admin' on both write paths and never mentions 'distilled'", () => {
+  it("spells source: 'admin' on all three write paths and never mentions the other label", () => {
     const source = readFileSync(STORE, 'utf8')
     expect(source).not.toContain("'distilled'")
-    // The slot upsert and the fact append. `adminUpdateFact` needs none: only an already-admin row
-    // is editable, so there is nothing to relabel.
-    expect(source.match(/source: 'admin'/g)).toHaveLength(2)
-    expect(source.match(/sourceMessageId: null/g)?.length).toBeGreaterThanOrEqual(2)
+    // The slot upsert, the fact append, and the fact update — which RE-LABELS, which is the whole
+    // reason an edit to a distilled row is allowed at all.
+    expect(source.match(/source: 'admin'/g)).toHaveLength(3)
+    expect(source.match(/sourceMessageId: null/g)).toHaveLength(3)
+  })
+
+  it('re-labels an edited ledger row and drops its message pointer, in one statement', () => {
+    const source = readFileSync(STORE, 'utf8')
+    const update = source.slice(source.indexOf('export async function adminUpdateFact'))
+    expect(update).toContain("source: 'admin'")
+    expect(update).toContain('sourceMessageId: null')
+  })
+
+  it('keeps every memory-table write inside memoryStore, and nowhere else under lib/admin', () => {
+    for (const entry of readdirSync('lib/admin', { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
+      if (entry.name === 'memoryStore.ts') continue
+      const source = readFileSync(`lib/admin/${entry.name}`, 'utf8')
+      expect(source, `lib/admin/${entry.name} must not write nina_memory_facts`).not.toMatch(
+        /\.(insert|update|delete)\(\s*ninaMemoryFacts/,
+      )
+      expect(source, `lib/admin/${entry.name} must not write nina_memory_slots`).not.toMatch(
+        /\.(insert|update|delete)\(\s*ninaMemorySlots/,
+      )
+    }
   })
 
   it('is not reachable from anything under lib/nina, so phase 5s case 14 stays true', () => {
@@ -286,5 +375,74 @@ describe("source: 'admin' cannot be forgotten", () => {
     const imports = source.match(/^import .*$/gm) ?? []
     expect(imports.length).toBeGreaterThan(0)
     for (const line of imports) expect(line.startsWith('import type ')).toBe(true)
+  })
+
+  it('keeps the table client-safe: it names neither zod nor a server-only module', () => {
+    const source = readFileSync(TABLE, 'utf8')
+    for (const banned of [
+      "from 'zod'",
+      '@/lib/db/schema',
+      '@/lib/admin/memoryVocab',
+      '@/lib/admin/memoryStore',
+      '@/lib/admin/schema',
+    ]) {
+      expect(source, `${TABLE} must not import ${banned}`).not.toContain(banned)
+    }
+  })
+})
+
+describe('R1 — no confirmation, anywhere on this page', () => {
+  it('has retired both card components rather than hiding them behind a flag', () => {
+    expect(existsSync('components/admin/MemoryLedger.tsx')).toBe(false)
+    expect(existsSync('components/admin/MemorySlots.tsx')).toBe(false)
+  })
+
+  it('never asks a second time', () => {
+    const source = readFileSync(TABLE, 'utf8')
+    for (const banned of [
+      'window.confirm',
+      'PURGE',
+      '<dialog',
+      'showModal',
+      'Are you sure',
+      'confirming',
+    ]) {
+      expect(source, `${TABLE} must not contain "${banned}"`).not.toContain(banned)
+    }
+  })
+
+  it('has no retract, retire or purge left in the write side', () => {
+    const source = readFileSync(ACTIONS, 'utf8')
+    for (const gone of [
+      'retractFactAction',
+      'retireSlotAction',
+      'purgeFactAction',
+      'recordSlotAsFactAction',
+      'removePendingPromiseAction',
+      'isPurgeConfirmed',
+      'composeRetraction',
+      'composeSlotRetirement',
+    ]) {
+      expect(source, `${ACTIONS} must not mention ${gone}`).not.toContain(gone)
+    }
+  })
+
+  it('exports exactly the four actions the table calls', () => {
+    const source = readFileSync(ACTIONS, 'utf8')
+    const exported = [...source.matchAll(/^export async function (\w+)/gm)].map(([, name]) => name)
+    expect(exported.sort()).toEqual([
+      'deleteMemoryRowAction',
+      'editFactAction',
+      'insertFactAction',
+      'saveSlotAction',
+    ])
+  })
+
+  it('keeps Zod at every one of those four boundaries — validation is not confirmation', () => {
+    const source = readFileSync(ACTIONS, 'utf8')
+    expect(source.match(/\.safeParse\(input\)/g)).toHaveLength(4)
+    // Anchored to the STATEMENT form (start of line, two-space body indent) so the numbered list in
+    // this module's own header does not count as a fifth call site.
+    expect(source.match(/^ {2}await requireAdmin\(\)$/gm)).toHaveLength(4)
   })
 })

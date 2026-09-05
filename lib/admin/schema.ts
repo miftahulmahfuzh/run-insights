@@ -71,19 +71,25 @@ export const avatarRegisterSchema = z.object({
 export type AvatarRegister = z.infer<typeof avatarRegisterSchema>
 
 /* ============================================================================
- * Phase 16 — /admin/memory. Appended; nothing above this line changed.
+ * Phase 16 — /admin/memory. Reshaped by admin-memory-and-chat-photos phase 1
+ * (R1: one table, four actions). Nothing above this line changed.
  * ==========================================================================*/
 
 /**
- * The eight memory actions' input bounds. They are here rather than in a second `lib/admin/*`
+ * The four memory actions' input bounds. They are here rather than in a second `lib/admin/*`
  * schema file for the reason phase 15 gave for appending to `lib/nina/queries.ts`: two homes for
  * one concern is worse than one additive edit to a landed file.
  *
  * `userId` is a `user.id` — `crypto.randomUUID()` from the Auth.js adapter
  * (`lib/db/schema.ts:47-49`), **not** a nanoid — so `isValidId` is the wrong check for it and a
  * length-bounded non-empty string is the right one. Ownership is not established by this regex; it
- * is established by `requireAdmin()`, and every read and write is scoped to the id that survives
- * `getAdminUser`.
+ * is established by `requireAdmin()` and by the `WHERE user_id = $1` on every statement the store
+ * reaches.
+ *
+ * ── VALIDATION IS NOT CONFIRMATION ──────────────────────────────────────────────────────────
+ * R1 removed every second click from this page and left every one of these schemas standing. A
+ * schema refuses a payload the UI could not have produced; a confirmation asks a question the
+ * operator has already answered. The purge gate's `confirm` field was the second kind and is gone.
  */
 export const userIdSchema = z.string().trim().min(1).max(64)
 
@@ -95,6 +101,9 @@ export const slotKeySchema = z
   .max(64)
   .regex(/^[a-z][a-z0-9_]*$/, 'A slot key is lower_snake_case.')
 
+/** A `nina_memory_facts.id` or a `NinaPendingPromise.id` — both `newId()` nanoids. */
+const memoryIdSchema = z.string().trim().min(1).max(64)
+
 export const slotEditSchema = z.object({
   userId: userIdSchema,
   /** Not trimmed here — `canonicaliseSlotValue` owns every transformation of a slot value. */
@@ -103,23 +112,12 @@ export const slotEditSchema = z.object({
 })
 export type SlotEdit = z.infer<typeof slotEditSchema>
 
-export const slotRetireSchema = z.object({
-  userId: userIdSchema,
-  key: slotKeySchema,
-  reason: z.string().trim().max(ADMIN_FACT_TEXT_MAX).default(''),
-})
-
-export const promiseRemoveSchema = z.object({
-  userId: userIdSchema,
-  /** A `NinaPendingPromise.id`, minted by `newId()`. */
-  promiseId: z.string().trim().min(1).max(64),
-})
-
 const factCategorySchema = z.enum(ADMIN_FACT_CATEGORIES)
 
 /**
- * A hand-typed fact — R24's backdoor, literally. `confidence` defaults to 100 because a human
- * asserting something outright is phase 1's documented meaning of 100, and it is still editable.
+ * A hand-typed fact — R24's backdoor, literally, and now R1's one add affordance. `confidence`
+ * defaults to 100 because a human asserting something outright is phase 1's documented meaning of
+ * 100, and it is still editable in the row it produces.
  */
 export const factInsertSchema = z.object({
   userId: userIdSchema,
@@ -129,30 +127,36 @@ export const factInsertSchema = z.object({
 })
 export type FactInsert = z.infer<typeof factInsertSchema>
 
+/**
+ * A cell save on a ledger row. All three editable fields every time, because the table sends the
+ * row's current state rather than a diff — with sequential dispatch and a full re-render per
+ * action, a partial patch would race the re-render for no saving.
+ */
 export const factEditSchema = z.object({
   userId: userIdSchema,
-  id: z.string().trim().min(1).max(64),
+  id: memoryIdSchema,
   category: factCategorySchema,
   text: z.string().trim().min(1).max(ADMIN_FACT_TEXT_MAX),
   confidence: z.number().int().min(0).max(100),
 })
 export type FactEdit = z.infer<typeof factEditSchema>
 
-/** `replacement` may be empty — that is a pure retraction rather than a correction. */
-export const factRetractSchema = z.object({
-  userId: userIdSchema,
-  id: z.string().trim().min(1).max(64),
-  replacement: z.string().trim().max(ADMIN_FACT_TEXT_MAX).default(''),
-})
-export type FactRetract = z.infer<typeof factRetractSchema>
-
-export const factPurgeSchema = z.object({
-  userId: userIdSchema,
-  id: z.string().trim().min(1).max(64),
-  /** Compared against `ADMIN_PURGE_CONFIRMATION` by `isPurgeConfirmed`, not by a Zod literal, so */
-  /** the refusal message can explain itself rather than being a field error. */
-  confirm: z.string(),
-})
+/**
+ * **The one delete this page has.** A discriminated union rather than three schemas, because there
+ * is one delete CONTROL — the `✕` on a row — and the row's `kind` is the only thing that decides
+ * which table the delete lands in. One control, one schema, one action.
+ *
+ * `slot` gets `slotKeySchema` and the other two get `memoryIdSchema`, so a forged payload cannot
+ * hand a nanoid to `deleteNinaMemorySlot` or a slot key to `deleteNinaMemoryFact`. Both statements
+ * are `userId`-scoped regardless, so the worst a mismatch could do is delete nothing — but a
+ * schema that cannot express the mistake is better than a statement that survives it.
+ */
+export const memoryDeleteSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('slot'), userId: userIdSchema, target: slotKeySchema }),
+  z.object({ kind: z.literal('promise'), userId: userIdSchema, target: memoryIdSchema }),
+  z.object({ kind: z.literal('fact'), userId: userIdSchema, target: memoryIdSchema }),
+])
+export type MemoryDelete = z.infer<typeof memoryDeleteSchema>
 
 /* ============================================================================
  * admin-album-file-manager phase 4 — the folder-aware upload boundary.

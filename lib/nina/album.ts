@@ -75,6 +75,33 @@ export const NINA_ALBUM_MAX = 60
 export const NINA_ADMIN_PAGE_SIZE = 120
 
 /**
+ * How many of HER conversation photographs `/admin/photos` renders per page — this round's R2.
+ *
+ * ── DELIBERATELY NOT `NINA_ADMIN_PAGE_SIZE`, AND THE DIFFERENCE IS A MISSING COLUMN ─────────
+ * Eight lines up, 120 is defensible because `nina_avatars.thumb_url` exists: an album page is 120
+ * derived 256 px JPEGs, a few megabytes. `nina_message_images` has NO thumbnail column, so this
+ * grid loads originals, and hers are 768x1024 PNGs (`NINA_IMAGE_WIDTH`/`NINA_IMAGE_HEIGHT`, written
+ * by `finishSelfie`) on the order of a megabyte each. 120 of those is not a page, it is a download.
+ *
+ * 48 is about seven rows in the admin shell's grid, and roughly a week of generations at phase 12's
+ * six-a-day cap — so the common case is one page and the pager is there for the archive, which is
+ * the same shape `/admin/nina` bought and not the same number.
+ *
+ * It is both the DEFAULT and the CEILING in `listNinaChatPhotos`, for the reason
+ * `NINA_ADMIN_PAGE_SIZE` is in `listNinaAvatarsInFolder`: a caller may ask for fewer and cannot ask
+ * for more, so no hand-edited limit can turn one page into the unpaginated read this constant
+ * exists to prevent.
+ *
+ * ── NO THUMBNAIL IS BEING ADDED TO CLOSE THIS GAP, AND `next/image` IS NOT THE WAY OUT ──────
+ * A `thumb_url` column is a migration, which invariant 10 forbids in this plan.
+ * `components/nina/NinaPhotoGrid.tsx:56-58` already ruled out `next/image` for Blob-hosted photos
+ * outright — it re-optimises finished files on a paid transform quota — and
+ * `components/admin/explorer/PhotoGrid.tsx:29-34` reaffirmed it. So the cost here is known, paid,
+ * and bounded by this number plus `loading="lazy"`.
+ */
+export const NINA_CHAT_PHOTO_PAGE_SIZE = 48
+
+/**
  * The hard ceiling on one folder-subtree manifest — the `source_key` set the client-side diff
  * compares a walked folder against.
  *

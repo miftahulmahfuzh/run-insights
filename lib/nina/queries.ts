@@ -41,6 +41,7 @@ import {
   NINA_ADMIN_BATCH_MAX,
   NINA_ADMIN_MANIFEST_MAX,
   NINA_ADMIN_PAGE_SIZE,
+  NINA_CHAT_PHOTO_PAGE_SIZE,
 } from '@/lib/nina/album'
 import {
   NINA_SESSION_TITLE_MAX_CHARS,
@@ -199,6 +200,21 @@ export interface NinaImageInsert {
   description?: string | null
   prompt?: string | null
   sortOrder?: number
+}
+
+/**
+ * One page of `/admin/photos` — R2's *"all the photos in in user chat collection with nina (nina
+ * generated images)"*.
+ *
+ * The mirror of `NinaAvatarFolderPage` (:379) and the same argument for `total` being here rather
+ * than inferred: the pager renders "1-48 of 137" and offers Newer as well as Older, and an
+ * over-shot `?page=` has to be distinguishable from an empty collection. `rows` is `NinaImageRow`
+ * unchanged — `imageColumns` is the projection, so the admin surface reads exactly what every
+ * other reader of this table reads and no second row shape enters the module.
+ */
+export interface NinaChatPhotoPage {
+  rows: NinaImageRow[]
+  total: number
 }
 
 /**
@@ -1299,6 +1315,96 @@ export async function getNinaMessageImagesForMessages(
       ),
     )
     .orderBy(asc(ninaMessageImages.messageId), asc(ninaMessageImages.sortOrder))
+}
+
+/**
+ * The predicate that DEFINES "her chat photographs", written once so the listing and the count
+ * cannot drift apart.
+ *
+ * ── `kind`, NEVER `message.role`. THIS IS THE PHASE'S WHOLE CORRECTNESS ──────────────────────
+ * R2 says *"nina generated images"*, and `kind = 'generated'` is what that means. It is NOT the
+ * same set as "images on messages where role = 'nina'": `lib/nina/actions.ts:512-531` is R26's
+ * re-attach path, and when the runner re-attaches one of her selfies it writes
+ * `kind: attached.kind` — resolved to `'generated'` at `:167-172` — onto a message whose `role` is
+ * `'runner'`. `photoSideOf` (`lib/nina/album.ts:146`) exists for that case and
+ * `lib/nina/chatphotos.ts:30-37` documents it in as many words. A `role`-filtered admin listing
+ * would silently omit those rows and would then disagree with `/nina/about`'s gallery about which
+ * photographs are hers, which is the one failure mode this surface cannot have.
+ *
+ * ── `kind` IS A RESIDUAL PREDICATE AND THAT IS CORRECT HERE ──────────────────────────────────
+ * There is no `(user_id, kind, created_at)` index. Both statements below read
+ * `nina_message_images_user_created_idx` — equality on `user_id`, `(created_at desc, id desc)`
+ * already in index order — and filter `kind` on the rows that come back. At this table's size (one
+ * user, phase 12's six generations a day, single-digit thousands of rows at the horizon) that is a
+ * bounded index range scan and the correct read. **An index is not being added:** invariant 10 of
+ * this plan forbids a migration, and nothing has measured a need for one.
+ */
+function generatedChatPhotoScope(userId: string) {
+  return and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.kind, 'generated'))
+}
+
+/**
+ * One page of HER photographs in the conversation, newest first, plus the total — the read behind
+ * `/admin/photos`.
+ *
+ * The paginated sibling of `listNinaMessageImages` (:1240) and NOT a replacement for it: that one
+ * is "the newest N, his and hers together" and `/nina/about` needs exactly that. This one is a
+ * different question — one page of one side of the collection, with a total — and the analysis
+ * recorded that no existing read of this table could answer it (there is no `count` query and no
+ * `offset` reader on `nina_message_images`).
+ *
+ * `kind` is NOT a parameter; see `generatedChatPhotoScope`. Widening this function is how an admin
+ * listing quietly becomes "the whole conversation" without anyone deciding to.
+ *
+ * ── TWO STATEMENTS, RUN CONCURRENTLY ────────────────────────────────────────────────────────
+ * Same call as `listNinaAvatarsInFolder` (:1902-1908): a `count(*) OVER ()` window would be one
+ * round trip and would report `total: 0` for an over-shot `?page=`, which the pager has to tell
+ * apart from an empty collection. So the count is its own statement, in the same `Promise.all`,
+ * and it is literally `countNinaChatPhotos` rather than a second copy of the predicate.
+ *
+ * `NINA_CHAT_PHOTO_PAGE_SIZE` is both the default and the ceiling for `limit`; `offset` is floored
+ * at 0 because a negative offset is a Postgres error, not a query.
+ */
+export async function listNinaChatPhotos(
+  userId: string,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<NinaChatPhotoPage> {
+  const limit = Math.max(
+    1,
+    Math.min(opts.limit ?? NINA_CHAT_PHOTO_PAGE_SIZE, NINA_CHAT_PHOTO_PAGE_SIZE),
+  )
+  const offset = Math.max(0, Math.trunc(opts.offset ?? 0))
+
+  const [rows, total] = await Promise.all([
+    db
+      .select(imageColumns)
+      .from(ninaMessageImages)
+      .where(generatedChatPhotoScope(userId))
+      .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+      .limit(limit)
+      .offset(offset),
+    countNinaChatPhotos(userId),
+  ])
+
+  return { rows, total }
+}
+
+/**
+ * How many photographs the collection holds, as a number rather than as a list of rows.
+ *
+ * Two callers, and they are different questions asked of the same predicate: `/admin`'s hub card
+ * needs the integer and nothing else — the mistake `countNinaAvatars` (:2336) was written to undo —
+ * and `listNinaChatPhotos` needs it beside a page of rows.
+ *
+ * `id` is the final tiebreak in the sibling's ORDER BY because `created_at` ties for rows written
+ * in one statement; it has no bearing here, and is noted so the two are not "fixed" into agreement.
+ */
+export async function countNinaChatPhotos(userId: string): Promise<number> {
+  const counted = await db
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
+    .from(ninaMessageImages)
+    .where(generatedChatPhotoScope(userId))
+  return counted[0]?.total ?? 0
 }
 
 /* ============================================================================

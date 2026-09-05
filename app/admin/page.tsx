@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { getAdminUser } from '@/lib/admin/users'
-import { countNinaAvatars, getCurrentNinaAvatar } from '@/lib/nina/queries'
+import { countNinaAvatars, countNinaChatPhotos, getCurrentNinaAvatar } from '@/lib/nina/queries'
 
 /**
  * `/admin` — the hub. It exists because `/admin` would otherwise 404 for an admin, which reads as
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminHomePage() {
   const { userId, email } = await requireAdmin()
-  const [albumCount, current, me] = await Promise.all([
+  const [albumCount, current, me, chatPhotoCount] = await Promise.all([
     /*
      * A COUNT, not the album. This page renders `albumCount` and nothing else about the rows, and
      * F34 R1 makes the album *"hundreds of profile pics"* — so `listNinaAvatars(userId)` here was
@@ -26,6 +26,13 @@ export default async function AdminHomePage() {
     countNinaAvatars(userId),
     getCurrentNinaAvatar(userId),
     getAdminUser(userId),
+    /*
+     * R2's count, and it is a count for the same reason the one above it is: this card prints one
+     * integer. `countNinaChatPhotos` shares its `kind = 'generated'` predicate with
+     * `listNinaChatPhotos` through one private function, so the number here and the number on
+     * `/admin/photos` cannot disagree.
+     */
+    countNinaChatPhotos(userId),
   ])
 
   return (
@@ -49,6 +56,20 @@ export default async function AdminHomePage() {
           </p>
           <Link href="/admin/nina" className="text-[13px] font-semibold text-accent">
             Manage the album &rarr;
+          </Link>
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Chat photos</h2>
+          <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
+            {chatPhotoCount === 0
+              ? 'She has not sent a photo in the chat yet.'
+              : `${chatPhotoCount} photo${
+                  chatPhotoCount === 1 ? '' : 's'
+                } she has generated in the conversation.`}
+          </p>
+          <Link href="/admin/photos" className="text-[13px] font-semibold text-accent">
+            Open the collection &rarr;
           </Link>
         </Card>
 
