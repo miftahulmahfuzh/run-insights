@@ -43,7 +43,18 @@ import { TabBar } from './TabBar'
 export type AppShellScreen = 'tabs' | 'chat'
 
 const BOTTOM_GAP: Record<AppShellScreen, string> = {
-  // 58px bar + the FAB's overhang + breathing room, then the safe-area inset on top.
+  /*
+   * 96px, then the safe-area inset on top: the 58px bar, and breathing room so the last card is
+   * not flush against it.
+   *
+   * This was documented as "58px bar + the FAB's overhang + breathing room", when `/upload` was a
+   * raised coral circle reaching 20px above the bar's top edge. That circle is a normal tab cell
+   * now (`components/ui/TabBar.tsx`) and the VALUE here is deliberately unchanged: the repo owner
+   * reported a gap between two bars on `/nina`, not too much padding under the content on these
+   * four screens, and shrinking this would change four screens nobody complained about. The 20px
+   * that used to be the overhang is simply breathing room now, which is what it always looked
+   * like.
+   */
   tabs: 'pb-[calc(6rem+var(--safe-bottom))]',
   /*
    * R1. NO BAR: the composer's own 68px (a 44px control in a py-3 bar), the 8px gap above it, the
@@ -58,14 +69,14 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
    *
    * Those numbers are `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX` and `COMPOSER_RESTING_PX` in
    * `lib/nina/chrome.ts`, plus `Composer`'s own geometry; Tailwind cannot read a constant, so a
-   * change to any of them changes this literal. `TAB_BAR_HEIGHT_PX` and `TAB_BAR_FAB_OVERHANG_PX`
-   * are deliberately NOT in this sum any more — the bar is not below the composer on this screen.
+   * change to any of them changes this literal. `TAB_BAR_HEIGHT_PX` is deliberately NOT in this
+   * sum — the bar is not below the composer on this screen.
    *
    * FIXED, not dynamic. This padding is the document's height: making it follow the reveal would
    * move the scroll position every time the bar toggles, and `MessageList`'s auto-scroll would
-   * chase it. So while the bar is showing, the composer rises 78px and the last bubble sits behind
-   * it for those five seconds — which is the right trade, because a runner who pulls up the bar is
-   * on his way to another tab, not re-reading the last line.
+   * chase it. So while the bar is showing, the composer rises by the bar's clearance and the last
+   * bubble sits behind it for those five seconds — which is the right trade, because a runner who
+   * pulls up the bar is on his way to another tab, not re-reading the last line.
    */
   chat: 'pb-[calc(7.5rem+var(--safe-bottom))]',
 }

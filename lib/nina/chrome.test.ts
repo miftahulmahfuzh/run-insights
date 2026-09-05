@@ -15,8 +15,12 @@ import {
   type NinaBarState,
 } from './chrome'
 
-/** `TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX`. Spelled here so the test names its own input. */
-const BAR_CLEARANCE = 78
+/**
+ * `TAB_BAR_OUTER_HEIGHT_PX`: the bar's 58 px grid plus the 1 px `border-t` the grid sits under.
+ * Spelled here so the test names its own input, and 59 rather than 58 because the border is part of
+ * the nav's border box — a lane that clears only the grid clears one pixel too little.
+ */
+const BAR_CLEARANCE = 59
 
 describe('CHROME_AUTOHIDE_MS', () => {
   it('is exactly the five seconds the requirement asks for', () => {
@@ -113,7 +117,9 @@ describe('controlBottomCss', () => {
     expect(hidden).toBe(noBarAtAll)
   })
 
-  it('rises by the bar and the FAB overhang when the bar is shown', () => {
+  it("rises by the bar's outer height when the bar is shown", () => {
+    // Outer, not the grid: the `border-t` is the bar's top edge, and the lane sits above the
+    // composer, which sits on that edge. R2's missing pixel was missing here too.
     expect(
       controlBottomCss({
         barState: 'shown',

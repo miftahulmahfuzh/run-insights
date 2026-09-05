@@ -186,7 +186,7 @@ export function keyboardOverlapPx(viewport: {
  * resting state is a hidden bar, so the default has to be the hidden geometry: an absent variable
  * substitutes `0`, the composer paints on the home-indicator inset, and there is no reposition
  * between the server's HTML and the first client frame. Setting the variable on *hide* instead
- * would put a 78 px settle into the first paint of every conversation.
+ * would put a 59 px settle into the first paint of every conversation.
  *
  * Set by `components/nina/ChatChrome.tsx` on `document.documentElement`, and removed by that
  * effect's cleanup — so hiding the bar and navigating off `/nina` both restore the default and
@@ -206,8 +206,9 @@ export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
  * With no keyboard it clears the fixed chrome below it — but only when there IS chrome below it.
  * On `/nina` the tab bar is hidden by default (R1), so `chromeClearancePx` is the clearance to
  * apply **while the bar is showing**, and it is multiplied by `NINA_BAR_VISIBLE_VAR`, which is `1`
- * only then. The terms are the bar's own height, the FAB's overhang above the bar's top edge, and
- * the home-indicator inset the bar pads itself by.
+ * only then. The terms are the bar's own grid, the 1 px `border-t` the grid sits under — the two
+ * together are the bar's outer height, and the border is its real top edge — and the
+ * home-indicator inset the bar pads itself by.
  *
  * The inset is honoured **here and not as the composer's own padding** — the composer sits above
  * chrome that already pads by `--safe-bottom`, so padding it a second time would open a gap. It is
@@ -217,12 +218,16 @@ export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
  * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind it.
  * That branch is unchanged by R1: a bar behind the keyboard clears nothing either way.
  *
+ * The border term is R2, and it is worth saying why it was missing: a clearance of the grid alone
+ * (58) puts this bar's bottom edge one pixel BELOW the bar's top border, so the conversation shows
+ * through the seam. The caller passes the outer height (59) and the two are flush.
+ *
  * ── WHY A MULTIPLIER AND NOT A LENGTH ────────────────────────────────────────────────────────
- * `calc(<length> * <number>)` keeps the number 78 in this function, where the caller already
+ * `calc(<length> * <number>)` keeps the number 59 in this function, where the caller already
  * passes it, instead of moving it into whichever component writes the variable. The flag then says
- * one thing only — is the bar on screen — and cannot disagree with `TAB_BAR_HEIGHT_PX` about how
- * tall it is. A `var(--nina-bar-clearance, 0px)` form would make this argument dead and put the
- * geometry in two places.
+ * one thing only — is the bar on screen — and cannot disagree with `TAB_BAR_OUTER_HEIGHT_PX` about
+ * how tall the bar is. A `var(--nina-bar-clearance, 0px)` form would make this argument dead and
+ * put the geometry in two places.
  *
  * Returns a string because that is what the style attribute takes, and because `var(--safe-bottom)`
  * cannot be resolved in JavaScript — `env(safe-area-inset-bottom)` is only readable to CSS.

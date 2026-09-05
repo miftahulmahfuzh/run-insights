@@ -169,9 +169,10 @@ export function barToggleGlyph(state: NinaBarState): 'up' | 'down' {
  *
  * Entirely above the composer: the bar's clearance when the bar is showing, plus the composer's
  * measured height, plus the gap, plus the home-indicator inset. That is what keeps the lane clear
- * of the composer's Send button at every composer height, and clear of the tab bar's centre FAB —
- * which spans the 22-78 px band above the viewport bottom and is the one thing a bottom-centre
- * control must never cover.
+ * of the composer's Send button at every composer height, and clear of the tab bar itself — the
+ * bar's OUTER height is the whole of what it has to rise past, because no part of the bar paints
+ * above its own top border: the raised centre FAB that used to overhang it by 20 px is now an
+ * ordinary tab cell, and the bar occupies exactly its own border box.
  *
  * The inset is honoured here and not as the lane's own padding, for the reason
  * `composerBottomCss` gives: everything in this stack sits above chrome that already pads by
@@ -186,7 +187,7 @@ export function barToggleGlyph(state: NinaBarState): 'up' | 'down' {
  */
 export function controlBottomCss(input: {
   barState: NinaBarState
-  /** `TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX`, passed in — `lib/` never imports `components/`. */
+  /** `TAB_BAR_OUTER_HEIGHT_PX`, passed in — `lib/` never imports `components/`. */
   barClearancePx: number
   /** `#nina-composer`'s measured height, or 0 before the first measurement. */
   composerHeightPx: number

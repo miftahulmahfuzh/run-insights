@@ -12,28 +12,41 @@ import { cn } from '@/lib/cn'
  * |---|---|---|
  * | Runs | `/` | the default landing once signed in |
  * | Nina | `/nina` | F33's conversational surface; owns `/nina/*` |
- * | **Upload** | `/upload` | **centre, raised, coral** — a circular FAB breaking the bar's top edge |
+ * | **New** | `/upload` | the centre cell of five, and the only coral one |
  * | Trends | `/trends` | |
  * | Me | `/me` | profile, records, badge shelf |
  *
- * **Upload is still not a peer of the other four.** It is the one flow that matters (roadmap §1),
- * and the information architecture says so out loud: a raised coral circle, larger tap target, its
- * label suppressed because a `+` in a circle needs no caption. Making it the fifth grey icon in a
- * row would be a design that disagrees with the product. F33 adds a tab beside it and changes
- * nothing about that argument.
+ * ── UPLOAD WAS A RAISED FAB, AND THE REPO OWNER ASKED FOR IT NOT TO BE ────────────────────────
+ * Until this change `/upload` was not a peer of the other four. It was a 56 px coral circle,
+ * `absolute -top-5` against the `relative` grid and therefore out of flow, so 20 px of it hung
+ * above the nav's top edge and painted over whatever screen was behind — on `/nina`, over the
+ * newest message bubble. The argument for that shape was real and belongs on the record: upload is
+ * the one flow that matters (roadmap §1), the information architecture said so out loud, and a
+ * larger raised target with its caption suppressed said it louder than a fifth grey icon in a row.
  *
- * ── WHY THE FIFTH CELL MAKES THE ROADMAP TRUE (F33 / R9) ──────────────────────────────────────
- * §4.8 has described the FAB as "centre, raised, coral" since it was written, and in a four-column
- * grid the FAB's cell centre was at (1 + 0.5) / 4 = 37.5 % of the bar — raised and coral, but not
- * centre. With five columns the third cell's centre is (2 + 0.5) / 5 = exactly 50 %. So the new
- * tab is what finally centres the `+`, which is the whole of the request.
+ * What replaced it was not a disagreement about emphasis. The request was **"replace the + button
+ * to a normal 'new' text that does not take more space outside the bottom bar"** — a constraint on
+ * geometry, that a bar may not occupy pixels above its own border box. So the emphasis moved to
+ * somewhere that costs no space: the cell is the same `size-5` glyph over a `text-[10px]` caption
+ * as its four neighbours, and it is coral at rest AND when active (`accent` on `Tab` below), which
+ * is the one thing no other tab does. It keeps the `+` glyph, because the objection was to a
+ * control taking space outside the bar and not to the `+`.
  *
- * `left-1/2 -translate-x-1/2` then makes that centring explicit rather than inferred. Before F33
- * the FAB was placed horizontally by its *static position* inside a `flex justify-center` cell —
- * correct per the Flexbox spec for an absolutely-positioned flex child, and two layers of layout
- * away from being readable. Positioning it against the `relative` bar states the intent in one
- * line. Safe in Tailwind v4, which compiles `translate` and `scale` to separate CSS longhands, so
- * `active:scale-[0.97]` and the translate compose instead of overwriting each other.
+ * F33's centring argument is **superseded, not wrong**, and it is why `/upload` is the THIRD of the
+ * five entries in `TABS` rather than appended to the end. §4.8 has described this tab as "centre"
+ * since it was written; in a four-column grid the cell centre was at (1 + 0.5) / 4 = 37.5 %, and
+ * with five columns the third cell's centre is (2 + 0.5) / 5 = exactly 50 %. What F33 made true of
+ * a raised circle is now true of a caption, and the caption needs no `left-1/2 -translate-x-1/2`
+ * to say so — a grid cell is centred by the grid.
+ *
+ * ── WHY THE HIDE TRANSFORM IS A PLAIN `100%` ──────────────────────────────────────────────────
+ * Nothing paints above the nav's border box any more, so translating the nav by its own height
+ * moves all of it off screen. It used to need `calc(100% + 20px)` from a `TAB_BAR_FAB_OVERHANG_PX`
+ * constant: measuring up from the viewport bottom, `100%` is 1 px of `border-t` plus the 58 px grid
+ * plus the nav's own `--safe-bottom` padding, while the FAB's `size-14` box reached `safe + 78`, so
+ * `100%` was 19 px short and 20 px of coral circle stayed on screen with the bar supposedly hidden.
+ * That constant is deleted with the FAB. If anything is ever positioned out of this nav's flow
+ * again, this transform is the second thing that breaks.
  *
  * `'use client'` for exactly one reason: `usePathname`, for `aria-current`. Nothing else here is
  * interactive — the tabs are plain `<Link>`s, so the bar works before hydration.
@@ -43,31 +56,54 @@ import { cn } from '@/lib/cn'
  */
 
 /**
- * The bar's own height, matching `h-[58px]` below. Exported because `/nina`'s composer is the
- * app's first fixed bar that stacks *above* the tab bar and has to compute its own `bottom` in
- * JavaScript (`lib/nina/chatview.ts`). **If the class changes, change this with it** — Tailwind
- * cannot read a TypeScript constant, so the number is spelled twice by necessity.
+ * The **grid's** own height, matching `h-[58px]` below. **If the class changes, change this with
+ * it** — Tailwind cannot read a TypeScript constant, so the number is spelled twice by necessity.
+ *
+ * This is the grid and not the bar: the nav's border box is this plus `TAB_BAR_BORDER_PX`, and the
+ * bar's top *edge* is therefore `TAB_BAR_OUTER_HEIGHT_PX` up. Anything positioning itself against
+ * that edge wants the outer height — which is what `/nina`'s composer, the app's first fixed bar
+ * that stacks *above* the tab bar and computes its own `bottom` in JavaScript
+ * (`lib/nina/chatview.ts`), reads. Still exported on its own because the outer height is derived
+ * from it, and because `components/ui/AppShell.tsx` and `components/ui/PhotoViewer.tsx` cite it by
+ * name when they explain their own Tailwind literals.
  */
 export const TAB_BAR_HEIGHT_PX = 58
 
 /**
- * How far the FAB overhangs the bar's top edge, matching `-top-5` below. Same coupling.
- *
- * **It is also why `hidden` cannot be `translate-y-full`** (R1). Measuring up from the viewport
- * bottom: the nav's border box is 1 px of `border-t` plus the 58 px grid plus its own
- * `--safe-bottom` padding, so `100%` is `59px + safe`. The FAB is `absolute -top-5` inside the
- * `relative` grid container, which starts at `safe`, so the FAB's top is at `safe + 78` and its
- * `size-14` box spans `safe+22` to `safe+78`. Clearing it needs `safe + 78`, and `100%` is 19 px
- * short of that — on a device with no home-indicator inset, 20 px of coral circle would sit on
- * screen with the bar supposedly hidden. So the transform is `100%` plus this constant, written
- * as an inline style so the number is read from here rather than spelled a fourth time in a
- * Tailwind arbitrary value.
+ * The bar's `border-t`, in px — 1, matching the `border-t` on the `<nav>` above. Spelled as a
+ * number for the same reason `TAB_BAR_HEIGHT_PX` is: the composer stacked above this bar computes
+ * its own `bottom` in JavaScript and has to add this term, and Tailwind cannot read a TypeScript
+ * constant. **If that class changes — a different width, or no border at all — change this with
+ * it**, or every clearance built on it is wrong by exactly the difference.
  */
-export const TAB_BAR_FAB_OVERHANG_PX = 20
+export const TAB_BAR_BORDER_PX = 1
 
+/**
+ * The bar's **outer** height — 59 px: the grid plus the `border-t` the grid sits under. This, and
+ * not `TAB_BAR_HEIGHT_PX`, is what a fixed bar stacked above the tab bar must clear, because the
+ * border is part of the nav's border box and the bar's top border IS its top edge.
+ *
+ * MEASURED (R2): the border was never a term in any clearance. `/nina`'s composer cleared the grid
+ * plus the old Upload FAB's overhang, the bar's top edge sat a pixel above the grid, and the
+ * scrolling conversation was visible through the seam between the two bars — still 1 px of it once
+ * the overhang was gone. The sum lives here rather than in `ChatChrome` and `ChatScreen` because a
+ * caller cannot forget a term that is inside the constant.
+ */
+export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
+
+/**
+ * Five entries for a five-column grid, consumed positionally below. `/upload` is the THIRD
+ * deliberately: `(2 + 0.5) / 5` is exactly the middle of the bar, and appending it to the end would
+ * move it to 90 % of the bar's width while every type still checked. See the header.
+ *
+ * `accent` rides in the data because it is a property of this tab and not of where it is rendered:
+ * upload is the one flow that matters (roadmap §1), and coral is how the IA says so now that the
+ * raised circle no longer can.
+ */
 const TABS = [
   { href: '/', label: 'Runs', icon: RunsIcon },
   { href: '/nina', label: 'Nina', icon: NinaIcon },
+  { href: '/upload', label: 'New', icon: NewIcon, accent: true },
   { href: '/trends', label: 'Trends', icon: TrendsIcon },
   { href: '/me', label: 'Me', icon: MeIcon },
 ] as const
@@ -138,37 +174,24 @@ export function TabBar({
       style={{
         paddingBottom: 'var(--safe-bottom)',
         /* Both ends written explicitly. `translate`'s initial value is `none`, and interpolating a
-           length against `none` is a spec corner this does not need to rely on. See
-           `TAB_BAR_FAB_OVERHANG_PX` for why `100%` alone leaves the FAB on screen. */
-        translate: hidden ? `0 calc(100% + ${TAB_BAR_FAB_OVERHANG_PX}px)` : '0 0',
+           length against `none` is a spec corner this does not need to rely on. `100%` with no
+           arithmetic on top is now sufficient, because the nav's border box is the whole of the
+           bar — see the header. */
+        translate: hidden ? '0 100%' : '0 0',
       }}
     >
-      <div className="relative mx-auto grid h-[58px] w-full max-w-[470px] grid-cols-5 items-center">
+      {/* No `relative`: nothing is positioned against this grid any more. `Tab`'s badge span
+          carries its own `relative`, which is what pins Nina's unread dot to her glyph. */}
+      <div className="mx-auto grid h-[58px] w-full max-w-[470px] grid-cols-5 items-center">
         <Tab {...TABS[0]} active={isActive(TABS[0].href)} />
         {/* F33 phase 10: the unread dot, rendered on the server and handed down as a node. */}
         <Tab {...TABS[1]} active={isActive(TABS[1].href)} badge={ninaBadge} />
-
-        {/* The FAB owns the middle cell of five and overflows upward out of the bar. */}
-        <div className="flex justify-center">
-          <Link
-            href="/upload"
-            aria-label="Upload a run"
-            aria-current={pathname.startsWith('/upload') ? 'page' : undefined}
-            className="absolute -top-5 left-1/2 grid size-14 -translate-x-1/2 place-items-center rounded-full bg-z5 text-white shadow-card active:scale-[0.97]"
-          >
-            <svg viewBox="0 0 24 24" className="size-7" fill="none" aria-hidden="true">
-              <path
-                d="M12 5v14M5 12h14"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-              />
-            </svg>
-          </Link>
-        </div>
-
+        {/* `New` owns the middle cell of five and stays inside the bar. It was a raised coral
+            circle here, `absolute -top-5`, overhanging the bar's top edge; it is a normal cell
+            now and `accent` is all that is left of the emphasis. */}
         <Tab {...TABS[2]} active={isActive(TABS[2].href)} />
         <Tab {...TABS[3]} active={isActive(TABS[3].href)} />
+        <Tab {...TABS[4]} active={isActive(TABS[4].href)} />
       </div>
     </nav>
   )
@@ -183,6 +206,14 @@ export function TabBar({
  * outside it, which is why the dot does not shift when a label is one character longer. The
  * `<span>` is `size-5 grid place-items-center` — exactly the box the icon already occupied — so no
  * tab moves by a pixel on a bar with no badge.
+ *
+ * `accent` is the whole of what survived the FAB, and it **replaces** the active/inactive pair
+ * rather than adding a branch to it: `New` is coral on all five screens, including the four where
+ * it is not the current route. That is deliberate and it is the point — emphasis that costs no
+ * space is the only kind this bar is allowed (see the header). A `New` tab that greyed out on
+ * `/`, `/nina`, `/trends` and `/me` would have kept the letter of the request and lost the reason
+ * the raised circle existed. `aria-current` still marks the active route, so the accent is decor
+ * and never the only signal.
  */
 function Tab({
   href,
@@ -190,12 +221,14 @@ function Tab({
   icon: Icon,
   active,
   badge,
+  accent = false,
 }: {
   href: string
   label: string
   icon: (props: { className: string }) => React.ReactNode
   active: boolean
   badge?: React.ReactNode
+  accent?: boolean
 }) {
   return (
     <Link
@@ -203,7 +236,7 @@ function Tab({
       aria-current={active ? 'page' : undefined}
       className={cn(
         'flex h-full flex-col items-center justify-center gap-1 text-[10px] font-semibold',
-        active ? 'text-ink' : 'text-ink-3',
+        accent ? 'text-z5' : active ? 'text-ink' : 'text-ink-3',
       )}
     >
       <span className="relative grid size-5 place-items-center">
@@ -215,7 +248,7 @@ function Tab({
   )
 }
 
-/* The icons are hand-written SVG rather than a dependency: four glyphs is not worth a package,
+/* The icons are hand-written SVG rather than a dependency: five glyphs is not worth a package,
    and an icon font would be a second webfont on a page whose first is already Poppins. */
 
 function RunsIcon({ className }: { className: string }) {
@@ -248,6 +281,22 @@ function NinaIcon({ className }: { className: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+/**
+ * The `+`, at the four other glyphs' weight.
+ *
+ * This is the FAB's own path (`M12 5v14M5 12h14`) at `size-5` instead of `size-7`, and at
+ * `strokeWidth="2"` instead of the FAB's `2.4`: on a raised 56 px circle the heavier stroke was
+ * proportionate, and beside four 20 px siblings drawn at 2 it would simply read as off-weight.
+ * Coral is what distinguishes this tab now (`accent` on `Tab`), not stroke weight.
+ */
+function NewIcon({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
