@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#87",
-      "commit": null,
+      "commit": "75922a74748f4639f1057702d75bcdb169dc7891",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "FAB -> New tab, overhang deleted, clearances 78->58; 18 of 19px closed, 1px border-t is phase 2's. Exit grep accepted at 5 hits not 1 per rung 3 (4 are the plan's own past-tense prose); no executable ref remains, chrome.ts:189 still phase 2's per D9. COORDINATOR VERIFIED: commit is an ancestor of feature branch and on origin; the 3 surviving absolute/-top-/size-14 hits in TabBar.tsx are all comment prose (lines 21, 46, 162), so both self-accepted exit criteria hold. INHERITED BY PHASE 2: invariant 1's 'tsc --noEmit passes' is false on this worktree independent of the set - 13 pre-existing Cannot-find-name PageProps/LayoutProps/RouteContext errors in app/** because Next's generated .next/types is not built here. Phase 2's bar is ZERO NEW errors vs its parent commit, not a clean tsc. Rung 1 (invariant 1's intent: no phase leaves the tree worse). ALSO: phase 1 ran readme-updater mid-set, which added an 11-line marked STALE notice to .workflows/package_readme.md - out of the plan's stated scope per D10, but additive-only and phase 2 does not open that file, so left standing rather than reverted; it asserts phase 2 settles the clearance at 59, which is what D5 specifies.",
       "package": "components/ui`, `components/nina`, `lib/nina`, `tests`, docs",
       "plan": ".workflows/plan/tabbar-new-tab-composer-seam/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-05T01:17:27+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A015",
       "title": "The `+` becomes the `New` tab, and the overhang is deleted"
     },
     {
@@ -44,6 +44,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/tabbar-new-tab-composer-seam/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "tabbar-new-tab-composer-seam",
-  "updated": "2026-09-05T01:06:14+00:00",
+  "updated": "2026-09-05T01:17:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/tabbar-new-tab-composer-seam"
 }
