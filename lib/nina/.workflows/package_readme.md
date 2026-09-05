@@ -164,12 +164,15 @@ disagree.
    you two are that close."*, because R2 names `bestie` for `best_friend` and `best_friend` is the
    default. That block's *shape* is the repeal, so invariant 2 does not scope to it.
 
-## The six repeals
+## The repeals — six in `persona.ts`, six more in `prompts/system.ts`
 
-Six rules went, because each would have made a slider do nothing. Each is replaced **in place** by a
-comment recording what the rule said, that the user repealed it, and the verbatim instruction — the
-shape `scripts/check-llm-payload-boundary.mjs` established when it deleted its own Rule 1. Search
-`REPEAL n OF 6` in `persona.ts`.
+**Twelve rule sites went** across this package, because each would have made a slider do nothing.
+Each is replaced **in place** by a comment recording what the rule said, that the user repealed it,
+and the verbatim instruction — the shape `scripts/check-llm-payload-boundary.mjs` established when
+it deleted its own Rule 1. Search `REPEAL n OF 6` in `persona.ts` and `THE IRON RULE, FINDING n OF
+4` in `prompts/system.ts`.
+
+The six in `persona.ts` are the character itself:
 
 | # | The rule | Now |
 |---|---|---|
@@ -185,9 +188,19 @@ lifts them. **Not repealed, and deliberately a separate decision:** `NINA_NOT_A_
 `'the name of a medical condition'` entry, and *"Never mock a real setback"*. R6 is read as *"remove
 every rule that blocks a dial"*, not *"remove every rule"*.
 
-**Repeal 4 is only two-thirds landed.** A third body prohibition survives inside `NUMBERS_RULE` in
-`lib/nina/prompts/system.ts`, which phase 2 may not touch. Phase 3 gates it on the same exported
-`BODY_REPEALED_BY` array.
+**Repeal 4 is whole.** The third body prohibition lived inside `NUMBERS_RULE` in
+`prompts/system.ts`, a file phase 2 may not touch; phase 3 gated it on the same exported
+`BODY_REPEALED_BY` array — one repeal, one list, three places it lands.
+
+**The six in `prompts/system.ts`** are rules three paragraphs away from a slider, cancelling it, and
+five of the six were found by the closing sweep rather than by the phase that owned the file:
+`OUTPUT_RULE`'s no-greeting clause (gated on `concerned`), `NUMBERS_RULE`'s third body clause,
+`CONTEXT_GUIDE`'s *"This is where your anger comes from"* (gated on the anger floor), and the
+*"and not one higher"* / *"do not lecture him"* / *"do not sulk"* clauses inside
+`PROACTIVE_INSTRUCTIONS`. Those last three are edits to the trigger copy itself, not a tuning-aware
+suffix: **a suffix cannot repeal a clause inside the string it is appended to** — the model receives
+both and picks. `avatar_changed`'s *"Do not describe the photo to him"* was reviewed and **kept** at
+every setting; no dial asks for it. `docs/nina/persona.md` carries all twelve as one table.
 
 ## Accepted deviation from the plan: `ANGER_CEILING_BY_BAND.off === 4`
 
@@ -257,7 +270,17 @@ a promise he did not keep. A promise with no `reward` field is today's avatar pr
 ### Prompts (`prompts/`)
 `index.ts` (public surface + `NINA_PROMPT_VERSION`), `system.ts` (`NINA_SYSTEM_PROMPT`,
 `NUMBERS_RULE`, `PROACTIVE_INSTRUCTIONS`), `tools.ts` (every tool schema as a constant),
-`distill.ts`, `describe.ts`. Pure text — no I/O — so tests can assert prompt shape without the loop.
+`distill.ts` (`buildDistillSystemPrompt(relationship)` + `NINA_DISTILL_PROMPT_VERSION`),
+`describe.ts`. Pure text — no I/O — so tests can assert prompt shape without the loop.
+
+**The librarian is told the relationship too.** `distill.ts`'s prompt is a function of it, threaded
+`actions.ts` -> `scheduleDistillation` -> `runTurnDistillation` -> `distillNinaMemory` as an
+optional `relationship` that defaults to `NINA_TUNING_DEFAULTS.relationship`. Without it an
+exhaustive librarian files *"he calls her sayang"* as a standing fact about the runner, for which
+the nine-key slot vocabulary has no home — so it lands in the ledger as biography, and `nickname` is
+one bad inference from being overwritten with a word **she** said. `NINA_DISTILL_PROMPT_VERSION`
+(1 -> 2) is the distiller's own constant and is **not** `NINA_PROMPT_VERSION`: different model call,
+different system prompt, its own schedule.
 
 **`persona.ts` is WHO SHE IS; `prompts/system.ts` is WHAT SHE IS READING and HOW SHE MUST ANSWER.**
 The split matters because the second half changes whenever `context.ts` changes shape and the first

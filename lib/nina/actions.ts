@@ -27,6 +27,7 @@ import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
 import { productionDeps, runNinaTurn } from './turn'
+import type { NinaRelationship } from './tuning'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
 /**
@@ -581,6 +582,7 @@ export async function sendNinaMessage(input: {
       ninaBubbles: [],
       memoryWrites: [],
       context,
+      relationship: tuning.relationship,
     })
     return { ok: true, userMessageId: runnerMessageId, bubbles: [], unavailable: true }
   }
@@ -658,6 +660,7 @@ export async function sendNinaMessage(input: {
     ninaBubbles: bubbles.map((bubble) => bubble.body),
     memoryWrites: result.payload.memoryWrites ?? [],
     context,
+    relationship: tuning.relationship,
   })
 
   return { ok: true, userMessageId: runnerMessageId, bubbles, unavailable: false }
@@ -809,6 +812,13 @@ function scheduleDistillation(input: {
   ninaBubbles: readonly string[]
   memoryWrites: readonly NinaMemoryWrite[]
   context: NinaContext
+  /*
+   * F33 / R6, the sweep: the librarian is told what she is SET to be, so the couple's own register
+   * — "yang", "sayang", "bestie" — is recognised as the register and not filed as a standing fact
+   * about him. It rides the input and never `context`: `NinaContext` is serialised into the USER
+   * turn and is documented as the boundary of everything she may know (plan invariant 3).
+   */
+  relationship: NinaRelationship
 }): void {
   after(async () => {
     await runTurnDistillation({
@@ -823,6 +833,7 @@ function scheduleDistillation(input: {
         nickname: input.context.runner.nickname,
         messageCount: input.context.conversation.window.length,
       },
+      relationship: input.relationship,
     })
   })
 }

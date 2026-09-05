@@ -142,9 +142,7 @@ export async function saveNinaTuningAction(input: {
  * 1 agrees with itself. The two records ARE spread, though — `NINA_TUNING_DEFAULTS` is frozen and
  * so are `traits` and `dials`, and `writeNinaTuning` should never be handed the singleton itself.
  */
-export async function resetNinaTuningAction(input: {
-  userId: string
-}): Promise<AdminTuningResult> {
+export async function resetNinaTuningAction(input: { userId: string }): Promise<AdminTuningResult> {
   await requireAdmin()
 
   const parsed = ninaTuningResetSchema.safeParse(input)

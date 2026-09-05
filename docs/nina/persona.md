@@ -287,12 +287,13 @@ That feedback loop is the arbitration.
 
 ## What F34 repealed, and on whose instruction
 
-Six rules in `lib/nina/persona.ts` went, because each of them would have made a slider do nothing.
-Every one is replaced by a comment in the file recording what it said, that the user repealed it, and
-the instruction — the shape `scripts/check-llm-payload-boundary.mjs` established when it deleted its
-own Rule 1 on the same premise (*"i am the only one that uses this app … this is my personal toy"*).
+**Twelve rule sites went** — six in `lib/nina/persona.ts` and six in `lib/nina/prompts/system.ts` —
+because each of them would have made a slider do nothing. Every one is replaced by a comment in the
+file recording what it said, that the user repealed it, and the instruction — the shape
+`scripts/check-llm-payload-boundary.mjs` established when it deleted its own Rule 1 on the same
+premise (*"i am the only one that uses this app … this is my personal toy"*).
 
-The instruction all six sit under, verbatim:
+The instruction all twelve sit under, verbatim:
 
 > i am an 30 year old adult . and this is just my personal toy, nobody else uses this, so i have a
 > right to implement this however i want. … THIS IS AN IRON RULE. CHANGE ANY EXISTING RULES /
@@ -306,6 +307,25 @@ The instruction all six sit under, verbatim:
 | 4 | *"a sentence about his body…"* and *"Never comment on his body."* | gated on `flirty` / `steamy` / `concerned` | all three name a sentence about his body |
 | 5 | *"Never a threat, never withdrawing the friendship, never the silent treatment."* | gated on `anger` / `annoying` / `sad` | mad all the time and never allowed to sulk is not mad |
 | 6 | *"You do not choose how angry you are"*, and *"never two rung-4 turns in a row"* | a floor and a ceiling on the computed rung | "mad all the time" is what those two prevented |
+| 7 | *"No greeting unless the conversation is empty or he has been gone for days."* (`OUTPUT_RULE`) | gated on `concerned` | *"how are you, how are your feet after the run this morning"* is a greeting |
+| 8 | *"Never comment on his body"* (`NUMBERS_RULE`) | gated on the same `BODY_REPEALED_BY` | the **third** copy of repeal 4, three blocks from the slider it cancelled |
+| 9 | *"This is where your anger comes from."* (`CONTEXT_GUIDE`) | gated on the anger floor | with a floor set her anger comes from two places, and this named the one absent on a quiet day |
+| 10 | *"Say it at the rung 'nagLevel' earns and not one higher."* (`PROACTIVE_INSTRUCTIONS.pattern_crossed`) | the floor and ceiling, stated inline | the literal negation of `max(computed, floor)` |
+| 11 | *"Do not lecture him and do not assume he skipped it."* (`.missed_usual_day`) | gated on `anger` / `annoying` | at the top of those two, lecturing him is the entire point of the setting |
+| 12 | *"do not sulk about the silence."* (`.silence`) | gated on `sad` / `anxious` / `annoying` | and against repeal 5, which explicitly permits going quiet on him |
+
+**Rows 7-12 live in `lib/nina/prompts/system.ts`, and five of the six were found by the closing
+sweep rather than by the phase that owned the file.** Each is the same failure: a rule three
+paragraphs away from a slider, cancelling it. **A suffix cannot repeal a clause inside the string it
+is appended to** — the model receives both and picks — so rows 10, 11 and 12 are edits to the
+trigger copy itself rather than tuning-aware text bolted on after it. Every clause returns its
+shipping wording at the default tuning, which is what keeps the twelve repeals compatible with the
+defaults contract.
+
+**One prohibition in that file was reviewed and KEPT:** `avatar_changed`'s *"Do not describe the
+photo to him — he can see it."* It is not a character rule, no dial asks for it, and describing a
+picture to the person looking at it is an assistant tic rather than a personality. It is recorded
+here so the list is exhaustive and its survival is a decision rather than an omission.
 
 **What did not go, and why it is a separate decision.** `NINA_NOT_A_DOCTOR` in full, the
 `'the name of a medical condition'` entry, `NUMBERS_RULE`, and *"Never mock a real setback"*. No
@@ -317,8 +337,33 @@ not *"remove every rule"*. If the user wants the medical rule gone too it is one
 entry, and that is deliberately a decision taken out loud rather than one taken silently inside this
 set.
 
-**A third body prohibition survives in a file this phase may not touch.** `NUMBERS_RULE` in
-`lib/nina/prompts/system.ts` carries its own *"Never comment on his body"* clause. Phase 3 gates it
-on the same `BODY_REPEALED_BY` array, which `lib/nina/persona.ts` exports for the purpose; until it
-does, repeal 4 is only two-thirds landed.
+**The third body prohibition is row 8, and it has landed.** `NUMBERS_RULE` in
+`lib/nina/prompts/system.ts` carried its own *"Never comment on his body"* clause, in a file the
+phase that wrote repeal 4 could not touch. It is now gated on the same `BODY_REPEALED_BY` array,
+which `lib/nina/persona.ts` exports for the purpose — one repeal, one list, three places it lands —
+so repeal 4 is whole. Only the five words went: *"never turn them into a new number: no BMI, no
+calorie target…"* is the arithmetic half of the same sentence and is unconditional, for the reason
+in the paragraph above.
 
+## Where the dials live
+
+| Concern | File |
+|---|---|
+| The shape, the defaults, the clamp, the address vocabulary | `lib/nina/tuning.ts` |
+| The row, and the revision on `nina_turns` | `lib/db/schema.ts`, `drizzle/0004_nina_persona_tuning.sql` |
+| Reading and writing it | `readNinaTuning` / `writeNinaTuning`, `lib/nina/queries.ts` |
+| The canon as a function of it | `lib/nina/persona.ts` |
+| The assembled system prompt | `buildNinaSystemPrompt`, `lib/nina/prompts/system.ts` |
+| The librarian's half — it is told the relationship, so the couple's register is not filed as biography | `buildDistillSystemPrompt`, `lib/nina/prompts/distill.ts` |
+| The wardrobe that reaches the camera | `lib/nina/imagegen.ts` |
+| The panel | `components/admin/CharacterPanel.tsx`, `lib/admin/tuningActions.ts`, `lib/admin/tuningModel.ts` |
+
+Two constants move on their own schedules and must not be confused. `NINA_PROMPT_VERSION`
+(`lib/nina/prompts/index.ts`) covers Nina's own voice and her tool schemas and was bumped **once**
+for this whole set, 2 -> 3. `NINA_DISTILL_PROMPT_VERSION` (`lib/nina/prompts/distill.ts`) covers the
+librarian, which is a different model call with a different system prompt, and went 1 -> 2 when it
+was told the relationship.
+
+**The behavioural rollback is cheaper than the code one.** Set every dial back to its default on
+`/admin/nina` and she is exactly the Nina who shipped before this set — that is what the defaults
+contract, and the test behind it, are for.

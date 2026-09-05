@@ -107,11 +107,13 @@ export interface TuningCopy {
 export function prettifyKey(key: string): string {
   const words = key.split(/[_-]/).filter((word) => word.length > 0)
   if (words.length === 0) return key
-  return words
-    /* `charAt` rather than `word[0]`: `noUncheckedIndexedAccess` types the index access as
-     * `string | undefined` even behind the `length > 0` filter above, and `charAt` is total. */
-    .map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
-    .join(' ')
+  return (
+    words
+      /* `charAt` rather than `word[0]`: `noUncheckedIndexedAccess` types the index access as
+       * `string | undefined` even behind the `length > 0` filter above, and `charAt` is total. */
+      .map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+      .join(' ')
+  )
 }
 
 /**

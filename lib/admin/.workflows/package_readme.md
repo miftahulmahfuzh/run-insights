@@ -1,7 +1,7 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-04
+**Last Updated**: 2026-09-05
 
 ## Overview
 
@@ -45,6 +45,8 @@ readers has exactly one definition — `lib/admin/avatars.ts`'s header states it
 | `memoryVocab.ts` | pure | The bridge from phase 5's closed slot vocabulary to `/admin/memory`'s cards. |
 | `memoryStore.ts` | `server-only` | The only file naming a phase-1 memory writer; forces the `admin` label. |
 | `memoryActions.ts` | `'use server'` | The eight memory Server Actions. |
+| `tuningActions.ts` | `'use server'` | The two character-tuning actions: one whole-tuning save, one reset to defaults. |
+| `tuningModel.ts` | **no directive** | The character panel's client-safe half: the copy for every dial and relationship, the draft shape, and the unsaved-field diff. Imports `@/lib/nina/tuning` and nothing else. |
 
 ## Exported API
 
@@ -211,6 +213,29 @@ export const albumManifestSchema        // type AlbumManifestRequest
 `NINA_FOLDER_SEPARATOR` come from `filetree.ts`; `NINA_ADMIN_BATCH_MAX` from `lib/nina/album.ts`;
 the crop range from `lib/nina/crop.ts`; the blob bounds from `avatars.ts`; the memory bounds from
 `memoryModel.ts`.
+
+#### `ninaTuningWriteSchema` — one object, not twenty fields
+
+The character tuning is validated as a single schema because it is saved as a single action (see
+`tuningActions.ts`). It obeys this file's standing rule literally: **every bound is imported, none
+is re-spelled.** The `0-100` range (`NINA_SCORE_MIN` / `NINA_SCORE_MAX`), the eleven trait keys
+(`NINA_TRAITS`), the four dial keys (`NINA_DIALS`), the five relationship values
+(`NINA_RELATIONSHIPS`) and the two free-text lengths (`NINA_WARDROBE_MAX` = 200,
+`NINA_NOTES_MAX` = 2000) all come from `lib/nina/tuning.ts`, which is the same module the panel
+imports for its labels and the same one `buildNinaSystemPrompt` reads. A `z.enum` retyped here would
+be a second list of relationships, and the first thing to happen to a second list is that it falls
+behind. **A length bound retyped here would be worse than that**: a Zod cap stricter than the
+model's coercion silently refuses a value the store would happily have kept, in a layer the operator
+cannot see.
+
+Each trait is `z.number().int().min(0).max(100)` — **validated, not clamped**. Clamping is the
+assembler's job, because the hand-edited row and the stale API client are reachable without a bug in
+the panel, and a value that fails Zod here is a rejected action with a message rather than a silent
+coercion. The two jobs coexist on purpose: this layer refuses a bad *request*, and
+`lib/nina/tuning.ts` survives a bad *row*.
+
+`ninaTuningResetSchema` beside it is the userId-only shape the reset action takes, for the same
+reason the reset is an action at all: the defaults are server-side.
 
 #### Two layers of bounds, and why both
 
@@ -464,6 +489,46 @@ page does after the pick is `userId`-first.
 `::int` on the counts is load-bearing — Postgres `count(*)` is `bigint`, which the Neon driver hands
 back as a string. Ordered by email so the picker's order is stable.
 
+### `tuningActions.ts` — the character panel's write side
+
+Two actions, both the same four-line shape every action in this package has: `requireAdmin()` first,
+Zod second, one write third, `revalidatePath` last, and a result object returned rather than an
+exception thrown.
+
+- **`saveNinaTuningAction`** — validates the whole tuning, writes one row, bumps its revision.
+- **`resetNinaTuningAction`** — writes `NINA_TUNING_DEFAULTS` back over the row. Server-side,
+  because the defaults are defined in `lib/nina/tuning.ts` and a client that re-implements them is a
+  second definition.
+
+`requireAdmin()` is line 1 of both, and it is not belt-and-braces: `proxy.ts` matches neither
+`/admin` nor `/api/*` (ruling D3), so these two calls are the entire gate between a signed-in
+stranger and Nina's personality.
+
+**`revalidatePath('/admin/nina')` is how the *panel* re-renders, and it is not how the edit reaches
+Nina.** `memoryActions.ts` under `lib/admin/` already records the general fact and it holds here
+without qualification: there is no cache anywhere on the turn path, the tuning is read live on every
+turn, and a committed row is in her next prompt with no invalidation step at all. Move a slider,
+save, and the very next thing she says is tuned.
+
+**The tuning is not a memory slot, and the reason is structural.** The distiller may overwrite any
+slot not marked `source: 'admin'`, so a tuning in `nina_memory_slots` is a character that could
+eventually rewrite itself; and `/admin/memory`'s card builder would render twenty dials as free-text
+prose. It gets its own table.
+
+### `tuningModel.ts` — the panel's vocabulary, client-safe
+
+The same split `memoryModel.ts` established, for the same reason: `app/admin/nina/page.tsx` is a
+Server Component and `components/admin/CharacterPanel.tsx` is `'use client'`, and a Server Component
+cannot read a plain export out of a `'use client'` module. So the copy for every trait, dial and
+relationship, the `TuningDraft` shape the panel edits, the unsaved-field diff (`changedTuningFields`)
+and the summary line's `loudestDials` all live here rather than in the panel.
+
+**It imports exactly one module — `@/lib/nina/tuning` — and a test asserts that.** Values as well as
+types, which is safe precisely because phase 1's `tuning.ts` has zero imports of its own and its own
+test reads the source to prove it. `memoryModel.ts` next door is type-imports-only because its
+vocabulary lives in a `server-only` module; this one's does not, and re-declaring phase 1's labels
+here to preserve a type-only rule would be exactly the drift the file exists to prevent.
+
 ### `memoryModel.ts` / `memoryVocab.ts` / `memoryStore.ts` / `memoryActions.ts`
 
 `memoryModel.ts` holds the bounds and shapes: `ADMIN_FACT_TEXT_MAX`, `ADMIN_RETRACTION_TEXT_MAX`,
@@ -716,3 +781,11 @@ to `ninaAlbumActions.ts`, along with the second `del()` on delete and the move o
 pre-pass onto `after()`; the thumbnail pathname shape and its 512 KB token cap to the upload Route
 Handler; the single-row reads in the chat-side `resolveAttachment`; and 21 tests to
 `tests/admin.avatars.test.ts` (29 in that suite).
+
+2026-09-05 — updated following `nina-character-tuning` phase 6 of 6 (R6, the sweep and the record),
+documenting phase 5's work (R1, R2, R3). Phase 5 added `tuningActions.ts` (one whole-tuning save
+plus a reset to defaults, both `requireAdmin()` -> Zod -> write -> `revalidatePath`),
+`tuningModel.ts` (the panel's client-safe copy and draft-diff layer, one import), and appended
+`ninaTuningWriteSchema` / `ninaTuningResetSchema` to `schema.ts`, importing every bound from
+`lib/nina/tuning.ts` rather than re-spelling any. Nothing above the append changed, and no existing
+action, schema or export in this package was touched.

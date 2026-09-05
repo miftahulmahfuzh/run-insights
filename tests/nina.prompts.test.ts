@@ -11,9 +11,14 @@ import {
   buildNinaSystemPrompt,
   buildProactiveInstruction,
 } from '@/lib/nina/prompts'
+import { buildDistillSystemPrompt } from '@/lib/nina/prompts/distill'
 import {
+  coerceNinaTuning,
+  NINA_ADDRESS,
+  NINA_RELATIONSHIPS,
   NINA_TUNING_DEFAULTS,
   type NinaDial,
+  type NinaRelationship,
   type NinaTrait,
   type NinaTuning,
 } from '@/lib/nina/tuning'
@@ -432,5 +437,218 @@ describe('NINA_PROMPT_VERSION', () => {
    * asserts the bump landed; the changelog comment above the constant says what it covers. */
   it('was bumped for the character tuning', () => {
     expect(NINA_PROMPT_VERSION).toBeGreaterThanOrEqual(3)
+  })
+})
+
+/* ============================================================================
+ * The tuning matrix — F33 phase 6. Phase 3 proved the DEFAULT render; this is every other one.
+ *
+ * Two local helpers carry every shape assumption in this block, on purpose: if phase 1 made
+ * `NinaTuning` flat rather than nesting the dials under `traits`, these two function bodies are
+ * the only thing that changes and none of the twenty assertions below moves.
+ * ==========================================================================*/
+
+/* Phase 1's own array, not a copy of it: a local list of five strings is a second vocabulary, and
+ * `NINA_RELATIONSHIPS` is a `readonly` tuple this file can iterate directly. Same reasoning as
+ * `JAKARTA_SLANG` being walked rather than restated. `withTrait` / `tuned` / `DEFAULT_RENDER` are
+ * phase 3's, already at the top of this file. */
+const RELATIONSHIPS = NINA_RELATIONSHIPS
+
+function withRelationship(relationship: NinaRelationship): NinaTuning {
+  return tuned({ relationship })
+}
+
+describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
+  it('renders all five relationships without throwing, and none is empty', () => {
+    for (const relationship of RELATIONSHIPS) {
+      const prompt = buildNinaSystemPrompt(withRelationship(relationship))
+      expect(prompt.length, relationship).toBeGreaterThan(0)
+    }
+  })
+
+  it('gives every relationship a DISTINGUISHABLE prompt — no two collapse into one', () => {
+    /* The failure this catches is a `switch` with a missing case falling through to the default:
+     * five settings on the panel, four behaviours in the prompt, and nothing to see in review. */
+    const rendered = RELATIONSHIPS.map((relationship) =>
+      buildNinaSystemPrompt(withRelationship(relationship)),
+    )
+    expect(new Set(rendered).size).toBe(RELATIONSHIPS.length)
+  })
+
+  it('states the address form the user named, for each relationship', () => {
+    /* His words, verbatim from the request: nobody -> full name, casual friend -> nickname,
+     * sister -> bro, best friend -> bestie, girlfriend -> "my man" / yang / sayang / beb / baby.
+     * One token each, chosen because it cannot plausibly appear in another relationship's block. */
+    const token: Record<NinaRelationship, string> = {
+      nobody: 'fullName',
+      casual_friend: 'nickname',
+      sister: 'bro',
+      best_friend: 'bestie',
+      girlfriend: 'sayang',
+    }
+    for (const relationship of RELATIONSHIPS) {
+      expect(
+        buildNinaSystemPrompt(withRelationship(relationship)),
+        `${relationship} does not name its address form`,
+      ).toContain(token[relationship])
+    }
+  })
+
+  it('carries EVERY word the user named, not just one token per level', () => {
+    /* The `JAKARTA_SLANG` walk, applied to R2's address vocabulary: `NINA_ADDRESS[rel].words` is
+     * the array phase 1 owns, phase 2's `ninaNameRules` composes the prose that names them, and
+     * this is what proves none of them was lost between the two. `girlfriend`'s five are the ones
+     * most likely to lose one silently. */
+    for (const relationship of RELATIONSHIPS) {
+      const render = buildNinaSystemPrompt(withRelationship(relationship))
+      for (const word of NINA_ADDRESS[relationship].words) {
+        expect(render, `${relationship} lost the word "${word}"`).toContain(word)
+      }
+    }
+  })
+
+  it("no longer forbids the full name, which relationship 'nobody' requires", () => {
+    /* The repealed clause, quoted: NAME_RULES used to say "do not use the full name at him".
+     * `nobody` is defined as exactly that, so the sentence and the setting cannot both survive. */
+    expect(buildNinaSystemPrompt(withRelationship('nobody'))).not.toContain(
+      'do not use the full name at him',
+    )
+  })
+})
+
+describe('buildNinaSystemPrompt — the trait matrix (R4)', () => {
+  /* Phase 3 already asserts, per trait, that 0 and 100 render differently and that a trait sitting
+   * at its own default renders the shipping prompt. Those cases are NOT repeated here. What is left
+   * is the R6 half: that no surviving rule cancels the two dials the plan says it repealed for, and
+   * that the two rules the plan deliberately KEPT are still there at every setting. */
+
+  it('no surviving rule contradicts a dial that is turned up', () => {
+    /* R6, as an assertion rather than a promise. All four strings are quoted from the shipping
+     * prompt and all four are named in the repeal list, so a re-added one fails here. The third
+     * and fourth are the ones the sweep found in `prompts/system.ts` rather than in `persona.ts`.
+     *
+     * `funny` is turned up here alongside `flirty` and `steamy`, and that is load-bearing rather
+     * than incidental: the no-jokes clause is repealed by `funny`, not by the other two, and it
+     * MUST survive at `funny`'s own default — that is plan invariant 2, and phase 3's default-render
+     * suite is what pins it. A tuning that raised only `flirty` and `steamy` would be asserting the
+     * absence of a rule nothing in it had asked to repeal. Each of the four strings below is
+     * repealed by a dial this tuning actually moves. */
+    const loud = tuned({
+      traits: { ...NINA_TUNING_DEFAULTS.traits, flirty: 100, steamy: 100, funny: 100 },
+      relationship: 'girlfriend',
+    })
+    const render = buildNinaSystemPrompt(loud)
+    expect(render).not.toContain('a sentence about his body or his weight or how he looks')
+    expect(render).not.toContain('You do not tell jokes')
+    expect(render).not.toContain('Never comment on his body')
+    expect(render).not.toContain('do not use the full name at him')
+  })
+
+  it('keeps the two rules the plan deliberately did NOT repeal, at every setting', () => {
+    /* The other half of R6, and the reason it is read as "remove every rule that blocks a dial"
+     * rather than "remove every rule". No dial asks her to diagnose him or to do arithmetic, and
+     * `lib/llm/facts.ts` records the measured sign error the numbers rule exists to contain. */
+    const loud = tuned({
+      traits: { ...NINA_TUNING_DEFAULTS.traits, steamy: 100, flirty: 100, anger: 100 },
+      relationship: 'girlfriend',
+    })
+    const render = buildNinaSystemPrompt(loud)
+    expect(render).toContain('never diagnose')
+    expect(render).toContain('Do NOT compute')
+    expect(render).toContain('the name of a medical condition')
+    expect(render).toContain('Never mock a real setback')
+  })
+})
+
+describe('buildNinaSystemPrompt — the free-text fields and the clamp', () => {
+  it('passes the notes field through VERBATIM', () => {
+    /* The operator's escape hatch. A note that is summarised, re-cased or trimmed of its own
+     * punctuation is a note that says something other than what was typed. */
+    const note = 'kalo gw bilang "capek", jangan langsung nyuruh gw istirahat. tanya dulu.'
+    expect(buildNinaSystemPrompt(tuned({ notes: note }))).toContain(note)
+  })
+
+  it('renders nothing extra when notes is empty', () => {
+    /* `notes` is a `string` and `''` is its ONE empty value — phase 1's `coerceNinaNotes` never
+     * returns null — so this is the whole of the empty case. */
+    expect(buildNinaSystemPrompt(tuned({ notes: '' }))).toBe(NINA_SYSTEM_PROMPT)
+    expect(buildNinaSystemPrompt(tuned({ notes: '   ' }))).toBe(NINA_SYSTEM_PROMPT)
+  })
+
+  it('CLAMPS a garbage tuning instead of throwing on it', () => {
+    /*
+     * The row is hand-editable and the column is an integer, so out-of-range and NaN are both
+     * reachable without a bug in the panel. A prompt assembler that throws takes the whole turn
+     * down; one that clamps degrades to a setting nobody chose but everybody survives.
+     *
+     * ── TWO FALLBACK POLICIES, AND THIS TEST PINS THE RIGHT ONE ────────────────────────────────
+     * `coerceNinaTuning` falls back PER KEY to that key's own default, because a dial it cannot
+     * read must read as "unchanged". `ninaBand`, which is what the assembler actually calls on a
+     * value it is handed, folds anything unreadable to band `'off'` — it has no key to look a
+     * default up by. So a `NaN` reaching `buildNinaSystemPrompt` DIRECTLY renders as `off`, not as
+     * `funny`'s default of 50. Both behaviours are correct at their own layer; asserting the wrong
+     * one here would be asserting that the assembler does the store's job.
+     */
+    const garbage = {
+      ...NINA_TUNING_DEFAULTS,
+      traits: {
+        ...NINA_TUNING_DEFAULTS.traits,
+        anger: 9001,
+        sad: -40,
+        funny: Number.NaN,
+      },
+    } as NinaTuning
+    expect(() => buildNinaSystemPrompt(garbage)).not.toThrow()
+    expect(buildNinaSystemPrompt(garbage)).toBe(
+      buildNinaSystemPrompt(
+        tuned({
+          traits: {
+            ...NINA_TUNING_DEFAULTS.traits,
+            anger: 100, // 9001 -> clamped to 100 -> band `max`
+            sad: 0, // -40 -> clamped to 0 -> band `off`, which is `sad`'s own default anyway
+            funny: 0, // NaN -> band `off`. NOT 50 — see the note above.
+          },
+        }),
+      ),
+    )
+  })
+
+  it('is what coerceNinaTuning is for: the STORE folds NaN to the key default, not to off', () => {
+    /* The other half of the pair, so the two policies are documented against each other rather
+     * than left as a surprise. This is why `readNinaTuning` coerces before anything renders. */
+    expect(coerceNinaTuning({ traits: { funny: Number.NaN } }).traits.funny).toBe(
+      NINA_TUNING_DEFAULTS.traits.funny,
+    )
+  })
+})
+
+describe('the distiller knows what the relationship is (R6, the sweep)', () => {
+  it('names the relationship, so the register is not filed as biography', () => {
+    expect(buildDistillSystemPrompt('girlfriend')).toContain('sayang')
+    expect(buildDistillSystemPrompt('nobody')).toContain('full name')
+  })
+
+  it('gives all five relationships a distinguishable librarian prompt', () => {
+    const rendered = RELATIONSHIPS.map((relationship) => buildDistillSystemPrompt(relationship))
+    expect(new Set(rendered).size).toBe(RELATIONSHIPS.length)
+  })
+
+  it('tells the librarian, at every setting, that the register is not a fact about him', () => {
+    for (const relationship of RELATIONSHIPS) {
+      expect(buildDistillSystemPrompt(relationship), relationship).toContain(
+        'THE WAY THEY ADDRESS EACH OTHER IS NOT A FACT ABOUT HIM',
+      )
+    }
+  })
+
+  it('is still a librarian and never Nina', () => {
+    /* `prompts/distill.ts`'s header states the reason: telling this pass it is Nina makes it
+     * write in her register and editorialise the facts. The relationship paragraph must not have
+     * quietly turned it into her. */
+    for (const relationship of RELATIONSHIPS) {
+      const prompt = buildDistillSystemPrompt(relationship)
+      expect(prompt, relationship).toContain('You are a librarian, not a participant')
+      expect(prompt, relationship).toContain("you never write in Nina's voice")
+    }
   })
 })

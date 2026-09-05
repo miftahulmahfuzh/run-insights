@@ -87,7 +87,10 @@ export function DialSlider({
         </label>
         <output
           htmlFor={inputId}
-          className={cn('text-[13px] font-semibold tabular-nums', moved ? 'text-accent' : 'text-ink-3')}
+          className={cn(
+            'text-[13px] font-semibold tabular-nums',
+            moved ? 'text-accent' : 'text-ink-3',
+          )}
         >
           {unsaved && (
             <span className="mr-1 text-accent" title="Unsaved">

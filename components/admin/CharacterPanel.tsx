@@ -361,7 +361,11 @@ export function CharacterPanel({
           </Button>
 
           {!confirmingReset && (
-            <Button variant="destructive" disabled={pending} onClick={() => setConfirmingReset(true)}>
+            <Button
+              variant="destructive"
+              disabled={pending}
+              onClick={() => setConfirmingReset(true)}
+            >
               Reset to defaults
             </Button>
           )}
