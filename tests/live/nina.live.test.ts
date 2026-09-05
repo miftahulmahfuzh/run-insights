@@ -6,7 +6,12 @@ import './loadEnvLocal'
 import { LOOKUP_RUNS_TOOL, SEND_TOOL } from '@/lib/nina/prompts'
 import { NinaSendPayloadSchema } from '@/lib/nina/schema'
 import { ninaClient, ninaModel, runNinaTurnWith } from '@/lib/nina/turn'
-import { fakeTurnDeps, ninaContextFixture, runHistoryFixture } from '@/tests/fixtures/ninaTurn'
+import {
+  fakeTurnDeps,
+  ninaContextFixture,
+  ninaTuningFixture,
+  runHistoryFixture,
+} from '@/tests/fixtures/ninaTurn'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -39,6 +44,8 @@ describe.skipIf(!HAS_KEY)('nina live', () => {
     const result = await runNinaTurnWith(fakeTurnDeps(ninaClient(), { model: ninaModel() }), {
       userId: 'live',
       context: ninaContextFixture(),
+      /* The DEFAULT tuning: this case is measuring the endpoint's tool loop, not the character. */
+      tuning: ninaTuningFixture(),
       history: runHistoryFixture(),
       sourceMessageId: null,
       runnerText: 'na, coba compare run gw tanggal 3 vs 1 bulan ini',

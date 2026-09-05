@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-04
+**Last Updated**: 2026-09-05
 
 ## Overview
 
@@ -72,6 +72,8 @@ and are unit-tested there.
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose memory is being edited. Plain links, selection in the URL. |
+| `CharacterPanel.tsx` | `'use client'` | `/admin/nina`'s character tuning: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Collapsed by default. |
+| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default. Decides nothing. |
 
 ## The `/admin/nina` file manager
 
@@ -517,6 +519,62 @@ than throwing. `alt=""` always: the frame is decorative, never a caption.
 `SelectionPane` draws it twice, at `size-11` and `size-7` — 44 px and 28 px, the chat header and the
 typing row — so "it looked right in the tool" and "it looks right in chat" cannot diverge.
 
+## The character panel
+
+`/admin/nina` has two screens stacked on one route, and the order is deliberate: the album is the
+working surface — the previous plan set built it for *"hundreds of profile pics"* — so
+`CharacterPanel` renders **above** the explorer and **collapsed**, as a summary line the operator
+opens when they want to change who she is rather than what she looks like.
+
+### One save, not sixteen
+
+There are twenty-odd controls on this panel and exactly one Server Action behind them. That is not
+tidiness, it is a platform constraint: **Server Actions dispatch one at a time per client**, so
+sixteen sliders each firing their own save would queue sixteen round trips and the panel would
+appear to hang on a drag. The panel holds the whole tuning in `useState`, and the save posts one
+object — comfortably inside the 1 MB body cap, which `next.config.ts` leaves at its default.
+
+The reset-to-defaults control is a second action rather than a client-side state reset, for the same
+reason `/admin/memory`'s purge is: the defaults are defined server-side in `lib/nina/tuning.ts`, and
+a client that re-implements them is a second definition that will one day disagree.
+
+### Why the slider is a new primitive rather than a `NumberInput`
+
+`components/ui/index.ts` has `Input`, `NumberInput` and `CONTROL_CLASS` and **no range control** —
+this panel is the first screen in the app that wants one. A trait is a coarse feel rather than a
+figure ("how angry, roughly"), and a number field asks the operator to type `73` when what they mean
+is "quite". The primitive stays in `components/admin` rather than graduating to `components/ui`
+until a second screen needs it, which is this package's standing rule about premature promotion.
+
+### Where the labels come from, and why there is no second copy of them
+
+Every slider's label and hint, every relationship's label, and every word she calls him come from
+`lib/nina/tuning.ts` — `NINA_TRAIT_SPECS[key].label` / `.axis` / `.userSaid`,
+`NINA_DIAL_SPECS[key].label` / `.axis`, and `NINA_ADDRESS[rel].label` / `.words`. The panel is a
+renderer, and it does not read them directly: `lib/admin/tuningModel.ts` is the client-safe adapter
+that turns them into `TuningCopy`, because a Server Component cannot read a plain export out of a
+`'use client'` module and both `/admin/nina` and `/admin` need the same vocabulary. A local table of
+labels would drift invisibly: the hint would promise one behaviour while the prompt produced
+another, nothing would fail, and the operator would report the wrong bug. The only copy this
+package owns is one sentence per relationship about what choosing it changes *about the app*, which
+has no counterpart in `tuning.ts` and so cannot contradict it.
+
+### The prompt preview is a string prop, and that is invariant 5
+
+The panel shows the operator the system prompt her current settings assemble to. It arrives as a
+**plain string prop** from `app/admin/nina/page.tsx`, which calls the pure assembler. It is never
+fetched, never streamed and never the result of a model call: `scripts/check-llm-payload-boundary.mjs`
+Rule 2 forbids awaiting a model call from a page render, by function name, and a preview that called
+one would fail the build. The pure-function-versus-model-call distinction is the whole reason phase 3
+kept `buildNinaSystemPrompt` free of I/O.
+
+### What this panel does NOT do
+
+It does not write memory. The tuning is deliberately **not** a memory slot: every slot value goes
+into her prompt and the distiller may overwrite anything not marked `source: 'admin'`, so a tuning
+in a slot is a character she could eventually rewrite about herself. It lives in its own table, and
+`/admin/memory` is untouched by it.
+
 ## `/admin/memory`
 
 Three components, unchanged by the file-manager work and documented here because they are the rest of
@@ -937,6 +995,12 @@ is load-bearing. `ci:client-secret-guard`'s Rule 3 forbids a particular string a
 `lib/` or `components/`, and its comment exemption recognises `//`, `/*` and `*` — so a JSX comment
 whose continuation lines are bare prose fails the guard while quoting the rule it is obeying.
 
+The character panel adds one accepted limitation. **There is no live preview of a bubble** — the
+panel shows the assembled *prompt*, not a sample reply, because a sample reply is a model call and
+Rule 2 puts that off a render entirely. Seeing the effect of a dial means moving it, saving, and
+talking to her; there is no cache anywhere on the turn path, so the next message she sends is
+already the tuned one.
+
 ## Documentation Created
 
 2026-09-04 — initial creation via `/update-readme`, following task **P1-RI-A003**
@@ -965,3 +1029,12 @@ requirement R2, "Share link to Nina"). It closed phase 5's `SEAM — PHASE 7`: a
 `FileExplorer` and `SelectionPane`, and left the URL grammar itself in the new pure
 `lib/admin/shareToNina.ts` (`ninaPhotoShareUrl`) so it could be tested in Node. Nothing else in the
 package changed shape.
+
+2026-09-05 — updated following `nina-character-tuning` phase 6 of 6 (requirement R6, the sweep and
+the record), documenting phase 5's work (requirements R1, R2, R3). Phase 5 added
+`CharacterPanel.tsx` and the `DialSlider.tsx` primitive `components/ui` does not carry, mounted the
+panel collapsed above the explorer on `/admin/nina`, and threaded the server-assembled prompt
+preview down as a plain string. Every rule and every bound stayed in `lib/nina/tuning.ts` and
+`lib/admin/schema.ts`, and the copy the panel renders comes from `lib/admin/tuningModel.ts`, the
+client-safe adapter over phase 1's specs; neither new component decides anything or imports `zod`,
+so this package still has no test files and that is still correct.

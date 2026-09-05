@@ -5,6 +5,7 @@ import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
 import { SEED_MAX } from './imagerecipe'
+import { readNinaTuning } from './queries'
 
 /**
  * **The avatar-generation entry point. Phases 13, 14 and 15 all call this and nothing else.**
@@ -80,7 +81,17 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
   const scene = request.scene.trim()
   const mood = request.mood?.trim() ?? null
   const seed = Math.floor(Math.random() * SEED_MAX)
-  const prompt = buildNinaImagePrompt({ purpose: 'avatar', scene, mood })
+  /*
+   * Phase 4. Read live, no cache — same as the chat selfie, and for the same reason: a wardrobe
+   * saved on /admin/nina is in the next photograph with no invalidation step at all.
+   *
+   * `NinaAvatarRequest` is deliberately NOT given a `tuning` field. Reading it here is what lets
+   * the `set_avatar` chat tool (`avatartools.ts`) and the admin album's Generate button both get
+   * the operator's wardrobe without either file being edited — and neither of those files belongs
+   * to this phase.
+   */
+  const tuning = await readNinaTuning(userId)
+  const prompt = buildNinaImagePrompt({ purpose: 'avatar', scene, mood, tuning })
 
   const jobId = await openNinaImageJob(userId, {
     purpose: 'avatar',

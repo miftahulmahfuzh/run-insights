@@ -23,6 +23,7 @@ import {
   ninaMessageImages,
   ninaMessages,
   ninaNags,
+  ninaTuning,
   ninaTurns,
   users,
   type NinaAvatarSource,
@@ -33,6 +34,7 @@ import {
   type NinaRole,
   type NinaSessionTitleSource,
   type NinaSlotValue,
+  type NinaTuningRow,
   type NinaTurnKind,
   type NinaTurnStatus,
 } from '@/lib/db/schema'
@@ -48,6 +50,12 @@ import {
   mostRecentNinaSession,
   orderNinaSessions,
 } from '@/lib/nina/sessions'
+import {
+  coerceNinaTuning,
+  NINA_TUNING_DEFAULTS,
+  type NinaTuning,
+  type NinaTuningWrite,
+} from '@/lib/nina/tuning'
 
 /**
  * Every Nina read and write, in one module — `lib/db/queries.ts` for `lib/nina/`.
@@ -279,6 +287,12 @@ export interface NinaTurnInsert {
   status: NinaTurnStatus
   trigger?: string | null
   promptVersion?: number | null
+  /**
+   * `nina_tuning.revision` at call time (F35). Optional, and omitting it writes NULL — which is
+   * exactly right for a caller that has no tuning in hand. `prompt_version` dates the assembler;
+   * this dates the setting. See the column's docstring.
+   */
+  tuningRevision?: number | null
   inputTokens?: number | null
   outputTokens?: number | null
   /**
@@ -1666,6 +1680,7 @@ export async function insertNinaTurn(userId: string, input: NinaTurnInsert): Pro
     trigger: input.trigger ?? null,
     model: input.model,
     promptVersion: input.promptVersion ?? null,
+    tuningRevision: input.tuningRevision ?? null,
     inputTokens: input.inputTokens ?? null,
     outputTokens: input.outputTokens ?? null,
     toolCalls: input.toolCalls ?? '',
@@ -2530,4 +2545,190 @@ export async function deleteNinaFolderSubtree(userId: string, folder: string): P
     .where(and(eq(ninaFolders.userId, userId), folderSubtree(ninaFolders.folder, folder)))
     .returning({ folder: ninaFolders.folder })
   return removed.length
+}
+
+/* ============================================================================
+ * §10 The character tuning — F35 R1/R2/R3
+ * ==========================================================================*/
+
+/**
+ * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells sixteen
+ * snake_case columns; `lib/nina/tuning.ts` spells `traits.anger` and `dials.photoEagerness`. The
+ * three-layer boundary this file's own header describes for `nina_messages.text` -> `body`, one
+ * table over: two spellings, ONE translation point, reviewable in one diff.
+ *
+ * It ends in `coerceNinaTuning`, so a row hand-edited in `psql` to `anger = 900` reaches the prompt
+ * as 100 rather than as a band index of 45.
+ */
+function tuningFromRow(row: NinaTuningRow): NinaTuning {
+  return coerceNinaTuning({
+    relationship: row.relationship,
+    traits: {
+      anger: row.anger,
+      chill: row.chill,
+      sad: row.sad,
+      flirty: row.flirty,
+      steamy: row.steamy,
+      wise: row.wise,
+      annoying: row.annoying,
+      funny: row.funny,
+      happy: row.happy,
+      anxious: row.anxious,
+      concerned: row.concerned,
+    },
+    dials: {
+      profanity: row.profanity,
+      clinginess: row.clinginess,
+      photoEagerness: row.photoEagerness,
+      verbosity: row.verbosity,
+    },
+    wardrobe: row.wardrobe,
+    notes: row.notes,
+    revision: row.revision,
+  })
+}
+
+/**
+ * The other direction. `revision` is absent on purpose — the database computes it (see
+ * `writeNinaTuning`), so it must not appear in a `set` clause a caller can influence.
+ */
+function tuningToColumns(tuning: NinaTuningWrite) {
+  return {
+    relationship: tuning.relationship,
+    anger: tuning.traits.anger,
+    chill: tuning.traits.chill,
+    sad: tuning.traits.sad,
+    flirty: tuning.traits.flirty,
+    steamy: tuning.traits.steamy,
+    wise: tuning.traits.wise,
+    annoying: tuning.traits.annoying,
+    funny: tuning.traits.funny,
+    happy: tuning.traits.happy,
+    anxious: tuning.traits.anxious,
+    concerned: tuning.traits.concerned,
+    profanity: tuning.dials.profanity,
+    clinginess: tuning.dials.clinginess,
+    photoEagerness: tuning.dials.photoEagerness,
+    verbosity: tuning.dials.verbosity,
+    wardrobe: tuning.wardrobe,
+    notes: tuning.notes,
+  }
+}
+
+/**
+ * **Her character, right now. Never null.**
+ *
+ * A user with no row gets `NINA_TUNING_DEFAULTS`, and that is the whole design: it is what makes
+ * every downstream caller unconditional — no `?? defaults` at four call sites, no "is she tuned
+ * yet" branch in `turn.ts`, and no way for a first-run user to get a prompt with holes in it.
+ * `NINA_TUNING_DEFAULTS` is frozen, so the shared object cannot be mutated by a caller that
+ * receives it.
+ *
+ * Read live on every turn with no cache, like everything else on this path.
+ * `memoryActions.ts` under `lib/admin/` records the consequence: a committed row is in her next
+ * prompt with no invalidation step at all, which is what makes R1's slider immediate. (Directory
+ * split off the filename deliberately — see `lib/nina/tuning.ts`'s header: `tests/admin.memory.
+ * test.ts` proves the boundary by forbidding the joined path as a substring in every file here.)
+ *
+ * `SELECT *` rather than a column list, and this is the one place in the file where that is right:
+ * the table is one row of twenty columns and every one of them is wanted, so a list would be
+ * twenty lines that can only ever be wrong.
+ */
+export async function readNinaTuning(userId: string): Promise<NinaTuning> {
+  const rows = await db.select().from(ninaTuning).where(eq(ninaTuning.userId, userId)).limit(1)
+  const row = rows[0]
+  return row ? tuningFromRow(row) : NINA_TUNING_DEFAULTS
+}
+
+/**
+ * **One save, not sixteen** (plan invariant 11). Upsert on `user_id` and return what was stored.
+ *
+ * ── THE REVISION IS COMPUTED IN SQL, AND THE CALLER CANNOT SEND ONE ───────────────────────────
+ * `NinaTuningWrite` is `Omit<NinaTuning, 'revision'>`, and the `ON CONFLICT DO UPDATE` sets
+ * `revision = nina_tuning.revision + 1`. Two reasons, and the second is the load-bearing one:
+ *
+ *   1. A revision the client supplies is a revision a stale tab can move backwards, and
+ *      `nina_turns.tuning_revision` would then date two different characters to one number.
+ *   2. It is one statement. A read-then-write is correct until two tabs race, which is the same
+ *      argument `nina_avatars`' partial unique index makes for its own writers.
+ *
+ * A brand-new row starts at `1`, so a stored row always has `revision >= 1` and `0` unambiguously
+ * means `NINA_TUNING_DEFAULTS` — nothing has ever been saved.
+ *
+ * ── IT COERCES BEFORE IT WRITES ───────────────────────────────────────────────────────────────
+ * `coerceNinaTuning` runs here as well as in phase 5's Zod boundary, on purpose. Zod's job is a
+ * good error message for a human at a form; this is the store defending its own invariants against
+ * every other caller — a script, a test, a future migration. A row that cannot be read back as a
+ * valid `NinaTuning` never gets written in the first place.
+ *
+ * ── RESETTING TO DEFAULTS IS A WRITE, NOT A DELETE ────────────────────────────────────────────
+ * Phase 5's "reset" calls this with the defaults, which bumps the revision. Deleting the row would
+ * take `revision` back to 0 and erase the fact that the operator did something on that date.
+ */
+export async function writeNinaTuning(
+  userId: string,
+  tuning: NinaTuningWrite,
+): Promise<NinaTuning> {
+  const safe = coerceNinaTuning({ ...tuning, revision: 0 })
+  const columns = tuningToColumns(safe)
+
+  const rows = await db
+    .insert(ninaTuning)
+    .values({ userId, ...columns, revision: 1 })
+    .onConflictDoUpdate({
+      target: ninaTuning.userId,
+      set: { ...columns, revision: sql`${ninaTuning.revision} + 1`, updatedAt: new Date() },
+    })
+    .returning()
+
+  const row = rows[0]
+  /* `.returning()` on an upsert always yields the row, so this is unreachable in practice — but
+   * this file returns a usable answer rather than throwing, everywhere, and the defaults are the
+   * usable answer. See the header: "these functions return null, [] or false rather than
+   * throwing". */
+  return row ? tuningFromRow(row) : NINA_TUNING_DEFAULTS
+}
+
+/* ============================================================================
+ * §11 The promise reward's landing test (R5, phase 4)
+ * ==========================================================================*/
+
+/**
+ * **The job ids of photographs that have actually reached the conversation.**
+ *
+ * `scripts/nina-image-worker.ts`'s `finishSelfie` writes two rows for every chat selfie: a
+ * `nina_messages` row with `turn_id` set to the image job's id, and a `nina_message_images` row
+ * with `kind = 'generated'`. So the existence of a `turn_id` in this result is proof that a
+ * specific dispatched job produced a specific visible photograph — which is exactly what
+ * `evaluatePromise`'s `selfieLandedForJob` needs, and which nothing weaker can promise.
+ *
+ * ── WHY IDS AND NOT A COUNT ───────────────────────────────────────────────────────────────────
+ * A count of photographs since a day would let a selfie HE asked for through `generate_image`
+ * settle a promise he had not kept — `NINA_IMAGE_DAILY_CAP` allows six a day, so that is not a
+ * theoretical collision. The avatar landing test can afford a same-day tolerance because a
+ * *generated avatar* only ever comes from a promise or an operator; a chat selfie cannot. Same
+ * read, same index, exact answer.
+ *
+ * ── WHY IT IS INDEXED ─────────────────────────────────────────────────────────────────────────
+ * `nina_message_images_user_created_idx on (user_id, created_at desc)` is the leading-column range
+ * scan, and the join to `nina_messages` is on that table's primary key. `since` is the Jakarta
+ * midnight of the earliest fired job the caller cares about; the caller computes it, because the
+ * calendar rules for a promise live in `lib/nina/promises.ts` and not here.
+ *
+ * `kind = 'generated'` excludes HIS uploads, which share the table.
+ */
+export async function listNinaSelfieJobIdsSince(userId: string, since: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ jobId: ninaMessages.turnId })
+    .from(ninaMessageImages)
+    .innerJoin(ninaMessages, eq(ninaMessages.id, ninaMessageImages.messageId))
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.kind, 'generated'),
+        gte(ninaMessageImages.createdAt, since),
+        isNotNull(ninaMessages.turnId),
+      ),
+    )
+  return rows.map((row) => row.jobId).filter((jobId): jobId is string => jobId != null)
 }

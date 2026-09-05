@@ -20,12 +20,13 @@ import {
   type NameSlotInput,
 } from './memory'
 import {
+  buildDistillSystemPrompt,
   DISTILL_REPAIR_PREAMBLE,
-  DISTILL_SYSTEM_PROMPT,
   DISTILL_TOOL,
   NINA_DISTILL_PROMPT_VERSION,
 } from './prompts/distill'
 import type { NinaMemoryWrite } from './schema'
+import { NINA_TUNING_DEFAULTS, type NinaRelationship } from './tuning'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -130,6 +131,16 @@ export interface DistillInput {
   ninaBubbles: readonly string[]
   /** The slots that already exist, as `key: value` lines, so it does not re-record what is known. */
   slotSummary: readonly { key: string; value: string }[]
+  /**
+   * What Nina is set to be to him right now, so the librarian can recognise the couple's own
+   * register and leave it out of his biography (F33 / R6 — see `prompts/distill.ts`'s header).
+   *
+   * **Optional on purpose.** The caller inside `after()` lives in `lib/nina/actions.ts`, which a
+   * different phase of this set owns, so this field lands ahead of the value that fills it: omit
+   * it and the librarian is told the default relationship, which is the behaviour that shipped
+   * before the dials existed. Passing `tuning.relationship` here is the one line that closes it.
+   */
+  relationship?: NinaRelationship
 }
 
 export type DistillSource = 'llm' | 'llm_repair' | 'unavailable'
@@ -149,11 +160,12 @@ function findRecordBlock(message: Anthropic.Message): Anthropic.ToolUseBlock | n
 function distillBody(
   model: string,
   messages: Anthropic.MessageParam[],
+  relationship: NinaRelationship,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model,
     max_tokens: DISTILL_MAX_TOKENS,
-    system: DISTILL_SYSTEM_PROMPT,
+    system: buildDistillSystemPrompt(relationship),
     messages,
     tools: [DISTILL_TOOL],
     tool_choice: { type: 'tool', name: DISTILL_TOOL.name },
@@ -188,10 +200,12 @@ export async function distillWith(
   const remaining = (): number => deadline - now()
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userTurn(input) }]
+  /* Resolved once, so the primary call and the repair call cannot disagree about who she is. */
+  const relationship = input.relationship ?? NINA_TUNING_DEFAULTS.relationship
 
   let first: Anthropic.Message | null = null
   try {
-    first = await client.messages.create(distillBody(options.model, messages), {
+    first = await client.messages.create(distillBody(options.model, messages, relationship), {
       timeout: Math.min(DISTILL_PRIMARY_MS, Math.max(remaining(), 1)),
     })
   } catch (cause) {
@@ -215,9 +229,12 @@ export async function distillWith(
           { role: 'user', content: DISTILL_REPAIR_PREAMBLE + describeDistillIssues(parsed.error) },
         ]
         try {
-          const second = await client.messages.create(distillBody(options.model, repairMessages), {
-            timeout: Math.max(Math.min(DISTILL_REPAIR_MS, remaining()), 1),
-          })
+          const second = await client.messages.create(
+            distillBody(options.model, repairMessages, relationship),
+            {
+              timeout: Math.max(Math.min(DISTILL_REPAIR_MS, remaining()), 1),
+            },
+          )
           const repairedBlock = findRecordBlock(second)
           if (repairedBlock !== null && second.stop_reason !== 'max_tokens') {
             const repaired = DistillPayloadSchema.safeParse(repairedBlock.input)
@@ -313,6 +330,14 @@ export interface TurnDistillationInput {
    * never a `COUNT(*)`, because phase 1 exports no `countNinaMessages` (RULING A2).
    */
   identity: NameSlotInput
+  /**
+   * What Nina is set to be to him right now, forwarded to the librarian (F33 / R6, the sweep).
+   *
+   * Optional for the same reason `DistillInput.relationship` is: omitted, the librarian is told
+   * the default relationship, which is the behaviour that shipped before the dials existed. The
+   * caller that fills it is `scheduleDistillation` in `lib/nina/actions.ts`.
+   */
+  relationship?: NinaRelationship
   gateway?: NinaMemoryGateway
   client?: DistillClientLike
   now?: () => Date
@@ -333,6 +358,7 @@ export async function runTurnDistillation(input: TurnDistillationInput): Promise
           runnerText: input.runnerText,
           ninaBubbles: input.ninaBubbles,
           slotSummary: input.slots,
+          relationship: input.relationship,
         },
         client: input.client,
       }),

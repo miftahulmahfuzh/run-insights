@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 13
+- Completed: 15
 
 ---
 
@@ -21,15 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-RI-A014** The `nina/` blob reaper must count references, not rows
-  - **Difficulty**: NORMAL
-  - **Type**: Chore
-  - **Context**: `reap-orphaned-blobs` does not cover the `nina/` prefix at all, and F35 made that gap sharper in two independent ways. Phase 7's delete reads a message's image rows *before* the cascade takes them and logs the orphaned blob pathnames precisely because nothing reaps them. Phase 9's attach then made one blob legitimately reachable from **two** messages — `attachExisting` pins an existing photo to a new message without re-uploading a byte — so a reaper that deletes a blob when *a* row disappears would delete the photo another message still shows. The fix is therefore a reference count over `nina_message_images`, not a row-existence check, and it must be written that way from the start rather than retrofitted.
-  - **Status**: open
-  - **Satisfies**: — (follow-up raised by F35 phases 7 and 9)
-  - **Source**: `NINA_CHAT_SESSIONS_PLAN.md` — phase 7's handoffs and phase 9's H5
-
 
 - [ ] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
@@ -174,6 +165,29 @@
   - **Drift**: No structural drift — every interface phase 7 required was present exactly as specified (`PHOTO_PARAM` / `formatNinaPhotoParam` / `parseNinaPhotoParam` in `lib/nina/attach.ts`; phase 5's `SEAM — PHASE 7` comment in `components/admin/explorer/SelectionPane.tsx`; `ensureNinaAvatarDescriptionAction` in `lib/admin/ninaAlbumActions.ts`).
   - **Drift**: Took the plan's own offered choice in its Step 3 *Styling* paragraph: `ShareToNinaItem`'s button wears `buttonClasses({ variant: 'secondary', size: 'md', fullWidth: true })` from `components/ui/Button.tsx` rather than the draft's ad-hoc `w-full text-left`. It stays a plain `<button>` so `window.open` runs inside the click's user activation.
   - **Drift**: The plan's docstrings quoted the literal `NEXT_PUBLIC_` prefix while explaining why the share origin cannot use one, which trips `ci:client-secret-guard`. Rephrased to *"a build-time public environment variable"* in all three places, and the JSX comment in `app/admin/nina/page.tsx` follows the repo's leading-`*` convention. The guard script was NOT modified.
+
+### [P2] P2-RI-A006
+- [x] **P2-RI-A006** Phase 6: The sweep, and the record
+  - **Difficulty**: EASY
+  - **Type**: Update
+  - **Context**: Owns the final grep sweep, **re-run as a gate rather than a report**; `lib/nina/prompts/distill.ts` (`buildDistillSystemPrompt(relationship)`, `NINA_DISTILL_PROMPT_VERSION` 1 → 2 — **not** `NINA_PROMPT_VERSION`); `lib/nina/distill.ts` (optional `DistillInput.relationship`); **one property in `lib/nina/actions.ts`** — `relationship: tuning.relationship` at the `distillNinaMemory(...)` call, by reconciler exception; the tuning matrix appended to `tests/nina.prompts.test.ts` reusing phase 3's helpers; the three package readmes (`components/admin`, `lib/admin`, `lib/db`); `CHANGELOG.md`; and `docs/nina/persona.md`'s closing record, appended to phase 2's repeal table rather than starting a second one. Exit: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, all seven `check-*.mjs` guards and `drizzle-kit check` pass; **the two confirming greps come back clean** — no rule surviving anywhere in the prompt surface contradicts a dial that can be turned up; the librarian is told the real relationship; the readmes, the changelog and the canon document describe what shipped, including the twelve repeals and the three deliberate non-repeals.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHARACTER_TUNING_PLAN.md` (phase 6 of 6)
+  - **Satisfies**: R6 — The iron rule: every existing rule or prompt that contradicts the above is changed, not worked around
+  - **Depends on**: `P1-NIN-A001`, `P1-NIN-A002`, `P1-NIN-A003`, `P2-CA-A000`
+  - **Plan**: `.workflows/plan/P2-RI-A006.md`
+  - **Completed**: 2026-09-05 08:08
+  - **Method**: /do
+  - **Files**: lib/nina/prompts/distill.ts, lib/nina/distill.ts, lib/nina/actions.ts, tests/nina.prompts.test.ts, components/admin/.workflows/package_readme.md, lib/admin/.workflows/package_readme.md, lib/db/.workflows/package_readme.md, lib/nina/.workflows/package_readme.md, CHANGELOG.md, docs/nina/persona.md, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, lib/admin/tuningActions.ts, lib/admin/tuningModel.ts
+  - **Verification**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` clean; `npm run build` succeeded (placeholder env; no `.env.local` in this worktree); `npm test` 126 files / 2324 tests green; all seven guards pass (`ci:openrouter-guard`, `ci:data-layer-guard`, `ci:client-secret-guard`, `ci:f08-guard`, `ci:llm-payload-guard`, `ci:f11-guard`, `badges:check`); `npm run db:check` "Everything's fine"; `npm run format:check` clean. The two confirming sweep greps return only comment text and default-band strings; the test suite proves the gated strings do not render at a turned-up dial.
+  - **Drift**: The plan places the `distillNinaMemory(...)` call in `lib/nina/actions.ts`; in the tree that call lives in `runTurnDistillation` (`lib/nina/distill.ts`), reached from `actions.ts` via `scheduleDistillation`. Threaded `relationship` through both hops instead of the plan's literal one-property edit.
+  - **Drift**: `lib/admin/tuningModel.ts` exists (phase 5) and is absent from the plan's readme steps; documented it in the `lib/admin` readme and module map.
+  - **Drift**: `lib/nina/.workflows/package_readme.md` now exists (written by the coordinator after the plan was authored); plan H-5 and reconciliation C-25 say `lib/nina` has no readme. Corrected two stale claims in it rather than creating one.
+  - **Drift**: Phase 5 landed four files that fail `npm run format:check` (`CharacterPanel.tsx`, `DialSlider.tsx`, `tuningActions.ts`, `tuningModel.ts`) — verified pre-existing on HEAD. Ran `prettier --write` on them so the gate passes; formatting only, no semantic change.
+  - **Decided**: The plan's `relationship: tuning.relationship` call site does not exist in `actions.ts` → threaded through `scheduleDistillation` → `runTurnDistillation` → `distillNinaMemory` (rung 2: exit criterion 6 names the outcome, the quoted call site is the stale half).
+  - **Decided**: The plan's test asserted `not.toContain('You do not tell jokes')` under a tuning leaving `funny` at its default → added `funny: 100` to that test's tuning rather than dropping the assertion (rung 1: invariant 2 requires funny's identity band to keep the no-jokes clause).
+  - **Decided**: `docs/nina/persona.md` said repeal 4 is "only two-thirds landed" → rewrote as landed, since phase 3 shipped it (rung 2: exit criterion 5).
+  - **Decided**: `format:check` red on four of phase 5's files → `prettier --write` rather than report the gate red (rung 2: exit criterion 3; fixing the code, not relaxing the check).
 
 ---
 
@@ -325,5 +339,23 @@
   - **Drift**: a real plan defect — it specified `chatViewerPhotos({ urls, kinds })` but called it `chatViewerPhotos(viewerMessage)`; those cannot both be true and it failed typecheck (TS2345). The parameter now takes `ChatMessage`'s own `imageUrls`/`imageKinds` spelling, the half needing no adapter.
   - **Drift**: `chooseSaveStrategy` never returns `'open'` — the plan's prose described a three-branch ladder its own code and tests do not have. Code and tests kept as written; `'open'` re-documented as the runtime fallback rather than a returned strategy.
   - **Drift**: `<PhotoViewer>` renders after phase 7's `<MessageActionsSheet>` rather than immediately after `<Composer>`; the plan said "last child of the fragment", which with phase 7 landed is now after the sheet. `z-60` over `z-50` means stacking was never in question.
+
+### [P1] P1-RI-A014
+- [x] **P1-RI-A014** The `nina/` blob reaper must count references, not rows
+  - **Difficulty**: NORMAL
+  - **Type**: Chore
+  - **Context**: `reap-orphaned-blobs` does not cover the `nina/` prefix at all, and F35 made that gap sharper in two independent ways. Phase 7's delete reads a message's image rows *before* the cascade takes them and logs the orphaned blob pathnames precisely because nothing reaps them. Phase 9's attach then made one blob legitimately reachable from **two** messages — `attachExisting` pins an existing photo to a new message without re-uploading a byte — so a reaper that deletes a blob when *a* row disappears would delete the photo another message still shows. The fix is therefore a reference count over `nina_message_images`, not a row-existence check, and it must be written that way from the start rather than retrofitted.
+  - **Status**: completed
+  - **Satisfies**: — (follow-up raised by F35 phases 7 and 9)
+  - **Source**: `NINA_CHAT_SESSIONS_PLAN.md` — phase 7's handoffs and phase 9's H5
+  - **Completed**: 2026-09-05 08:15
+  - **Method**: direct (unattended session)
+  - **Files**: scripts/blob-reap.mjs, .claude/skills/reap-orphaned-blobs/SKILL.md
+  - **Verification**: `npm run typecheck` clean; `npm test` 136 files / 2519 tests green; `npm run format:check` clean; `npm run lint` clean apart from the 2 pre-existing `scripts/capture/shoot.mjs` warnings, identical at HEAD. Live dry run against the real store (183 blobs): 276 live names, `shots/` 135 referenced / 43 orphans, `nina/` 3 referenced / 2 unreferenced both under the age floor / **0 orphans**. `--prefix nina/` reads only the nina sites; `--prefix bogus/` exits 2. Per-prefix interlock exercised with the nina sites forced empty **and `--delete` present**: refused and exited 1 without deleting, while 270 `shots/` names were still live.
+  - **Decided**: the card named `nina_message_images` only, but `nina/` carries a second family — `nina_avatars`, with four blob-naming columns including `thumb_pathname`/`thumb_url` for the derived grid thumbnail. Teaching the script the prefix with only the chat table would have deleted every album photo and every thumbnail. Scope widened to all six `nina/` columns. Rung: the skill's own standing rule, "teach the script that prefix's reference sites before pointing it at them", which is stated in the file being edited. **Confirmed live**: the store's 2 `nina_avatars` rows produce 6 names over 3 blobs — an original, its thumbnail, and a second original — so the thumbnail is a real object that reads as unreferenced without those two columns.
+  - **Decided**: the interlock is now **per prefix** rather than global. A global check passes as soon as `run_photos` has one row, so a `DATABASE_URL` on a branch predating the `nina_*` tables would delete the whole of `nina/` with the arithmetic looking healthy. Rung: the interlock's own stated subject in the script header. Proven by forcing the nina sites empty — 270 global live names, per-prefix refusal, exit 1.
+  - **Decided**: the reference count is reported on two deliberately different lines. `named by 2+ rows` is every `shots/` blob (`run_photos` plus the `extractions` snapshot) and never meant reuse; `reused` is 2+ rows of ONE table, which is the `attachExisting` shape the card is about. A single `refCount > 1` line reported all 135 screenshots as shared, which is true and useless.
+  - **Decided**: `nina_turns.args` and `nina_memory_slots.value` are untyped jsonb holding no blob references today. Rather than assert that, a defensive sweep walks both for known-prefix strings, protects anything it finds, and prints a loud warning naming the missing reference site. Rung: `args` is documented as the column a later phase will put its own job shape into, so the assertion has a known expiry date.
+  - **Note**: the store was NOT reaped. 43 `shots/` orphans (4.3 MB) are eligible and `nina/` has none; deleting bytes is irreversible and was no part of this card. Run `npm run blob:reap -- --delete` when you want them gone.
 
 ## Archive

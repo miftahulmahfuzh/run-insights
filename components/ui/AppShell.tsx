@@ -1,6 +1,7 @@
 import type * as React from 'react'
 
 import { ChatChrome } from '@/components/nina/ChatChrome'
+import { NinaSidebarProvider } from '@/components/nina/NinaSidebar'
 import { NinaUnreadBadgeSlot } from '@/components/nina/NinaUnreadBadge'
 import { cn } from '@/lib/cn'
 import { TabBar } from './TabBar'
@@ -46,9 +47,14 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
   tabs: 'pb-[calc(6rem+var(--safe-bottom))]',
   /*
    * R1. NO BAR: the composer's own 68px (a 44px control in a py-3 bar), the 8px gap above it, the
-   * floating control's 44px tap target, and 12px so the newest bubble is not flush against it.
-   * 68 + 8 + 44 + 12 = 132, rounded up to the nearest half-rem — the same rounding that made the
-   * pre-R1 literal `10.5rem` (168px) out of 78 + 68 + 16 = 162.
+   * floating control's 32px tap target, and 12px so the newest bubble is not flush against it.
+   * 68 + 8 + 32 + 12 = 120, which is exactly `7.5rem` — no rounding needed, where the pre-R1
+   * literal `10.5rem` (168px) rounded up from 78 + 68 + 16 = 162.
+   *
+   * WAS `8.5rem` (136px), from a 44px control. The repo owner asked for the two floating controls
+   * to be "much smaller", `CHROME_CONTROL_PX` went 44 -> 32, and this literal has to follow or the
+   * screen keeps reserving 12px of padding for a control that no longer occupies it — which reads
+   * as a gap under the conversation rather than as a bug, and so would have survived review.
    *
    * Those numbers are `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX` and `COMPOSER_RESTING_PX` in
    * `lib/nina/chrome.ts`, plus `Composer`'s own geometry; Tailwind cannot read a constant, so a
@@ -61,7 +67,7 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
    * it for those five seconds — which is the right trade, because a runner who pulls up the bar is
    * on his way to another tab, not re-reading the last line.
    */
-  chat: 'pb-[calc(8.5rem+var(--safe-bottom))]',
+  chat: 'pb-[calc(7.5rem+var(--safe-bottom))]',
 }
 
 export function AppShell({
@@ -73,7 +79,34 @@ export function AppShell({
   className?: string
   screen?: AppShellScreen
 }) {
-  return (
+  /*
+   * ── WHY THE SIDEBAR'S PROVIDER IS HERE AND NOT IN `app/nina/page.tsx` ──────────────────────
+   * MEASURED IN PRODUCTION: it was in the page, and the `>` that opens the chat list did not
+   * render at all.
+   *
+   * `NinaSidebarTrigger` reads `useNinaSidebar()` and returns `null` outside a provider — a
+   * deliberate design, so a `ChatChrome` on a screen with no sidebar simply has no `>`. But
+   * `ChatChrome` is rendered HERE, as a sibling of `<main>`, while the page's provider wrapped
+   * only what is inside `{children}`. So the trigger was a context consumer mounted outside its
+   * own provider on the one screen that needs it, and the panel was reachable only by typing
+   * `?sidebar=1` by hand. The page's comment asserted the trigger "lives inside `ChatChrome`
+   * (rendered by `ChatScreen`)"; the first half is true and the second is not, and that single
+   * wrong word is the whole bug.
+   *
+   * It also moved the `^`: with the trigger rendering `null`, the toggle became the first DOM
+   * child of `ChatChrome`'s `grid-cols-3` lane and `justify-self-center` centred it in column
+   * ONE, so R1's "bottom middle" control sat a fifth of the way across the screen. One cause,
+   * two symptoms.
+   *
+   * Wrapping here puts `{children}` (the panel) and `ChatChrome` (the trigger) under ONE
+   * provider, which is what the provider was always for: `pushedRef` is the single piece of
+   * state they must agree about — whether this session pushed the history entry the back gesture
+   * will pop — and two providers would give them one each, which is this bug again but quieter.
+   *
+   * Gated on `screen === 'chat'` because no other screen has a sidebar, and this file stays a
+   * Server Component: rendering a client provider from here is a boundary, not a conversion.
+   */
+  const shell = (
     <>
       <main
         className={cn('mx-auto min-h-dvh w-full max-w-[470px] p-5', BOTTOM_GAP[screen], className)}
@@ -98,6 +131,8 @@ export function AppShell({
       )}
     </>
   )
+
+  return screen === 'chat' ? <NinaSidebarProvider>{shell}</NinaSidebarProvider> : shell
 }
 
 /**

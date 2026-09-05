@@ -10,6 +10,43 @@ individual plan file.
 
 ## [Unreleased]
 
+### Added
+
+- **Nina's character is now tunable, per user, from `/admin/nina`.** Eleven trait sliders — anger,
+  chill, sad, flirty, steamy, wise, annoying, funny, happy, anxious, concerned — plus a
+  relationship setting (nobody / casual friend / sister / best friend / girlfriend) that decides
+  what she calls him and how she behaves, four further dials (profanity, clinginess, photo
+  eagerness, verbosity), a wardrobe line that reaches the camera, and a free-text note. Her system
+  prompt used to be one frozen `const`; it is now a pure function of a stored row, read live on
+  every turn with no cache anywhere on that path, so moving a slider changes the very next thing
+  she says. **The defaults reproduce the prompt that shipped before this, character for character,
+  and a test asserts it** — until a slider moves, the diff to her behaviour is empty. A promise she
+  makes can now pay out as a photograph *in the conversation* rather than only as a profile-picture
+  change, which is the feature the user asked for by name: *"she is proposing if i run consistently
+  this week, then she will send me her sexy photo … will DEFINITELY MOTIVATE ME TO RUN AS
+  CONSISTENT AS I COULD BE."* The librarian that distils her conversations into memory is told the
+  relationship too, so the couple's own register — *yang*, *sayang*, *bestie* — is recognised as
+  the register and never filed as a standing fact about him.
+
+  **Twelve prompt rule sites were repealed to make the dials real, and each one left its reason
+  behind in the file it was removed from.** The hardcoded "best friend" identity and the
+  no-jokes/no-puns clause, the nickname-only address rule and its explicit *"do not use the full
+  name at him"*, **all three** copies of the prohibition on commenting on his body (two in the
+  persona, one buried in the numbers rule), the prohibition on threats or withdrawal, the
+  no-greeting clause, the three inline clauses that told her not to lecture him, not to sulk and to
+  stay at the rung the ledger earned "and not one higher", and computed-only anger —
+  which becomes a computed rung with an operator-set floor, `max(computed, floor)`, so the
+  ledger-driven escalation still works on top of a baseline the operator chose. This follows the
+  precedent already in the tree: `scripts/check-llm-payload-boundary.mjs` deleted its own Rule 1 on
+  the same instruction from the same user (*"this is my personal toy"*) and kept the reasoning in
+  place so nobody would restore the check without discovering that a decision had been taken.
+
+  **What was deliberately NOT repealed**, because no dial asks for it: the not-a-doctor rule, the
+  arithmetic rule (`lib/llm/facts.ts` records a measured sign error it exists to contain), and the
+  medical-condition entry in the never-say list. The app also adds no content policy of its own and
+  removes none of the image provider's — the user named `qwen/qwen-image-3-pro`'s guardrails as the
+  ceiling, and a refused generation still arrives as her own apology, unchanged.
+
 ### Changed
 
 - **The session narrative now reads the runner's recent history (F28).** It used to see three

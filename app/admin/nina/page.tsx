@@ -1,9 +1,13 @@
+import { CharacterPanel } from '@/components/admin/CharacterPanel'
 import { FileExplorer } from '@/components/admin/FileExplorer'
 import type { ExplorerFolder, ExplorerPhoto } from '@/components/admin/explorer/model'
 import { NINA_FOLDER_ROOT, validateFolderPath } from '@/lib/admin/filetree'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { toTuningDraft } from '@/lib/admin/tuningModel'
 import { NINA_ADMIN_PAGE_SIZE, NINA_AVATAR_FALLBACK_SRC } from '@/lib/nina/album'
-import { listNinaAvatarFolders, listNinaAvatarsInFolder } from '@/lib/nina/queries'
+import { buildNinaSystemPrompt } from '@/lib/nina/prompts'
+import { listNinaAvatarFolders, listNinaAvatarsInFolder, readNinaTuning } from '@/lib/nina/queries'
+import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
 import { shareOrigin } from '@/lib/share/origin'
 
 /**
@@ -59,6 +63,32 @@ import { shareOrigin } from '@/lib/share/origin'
  * client the same way `userId` does: `<FileExplorer shareOrigin={shareOrigin()} … />`.
  */
 
+/*
+ * ── THE CHARACTER PANEL IS ABOVE THE ALBUM AND SHUT ─────────────────────────────────────────
+ * nina-character-tuning R1 named this route: *"i want us to implement a full nina character tuning
+ * in /admin/nina page / make several sliding bars."* It renders above the album because that is
+ * where the operator looks first for a page-level control, and it is a `<details>` shut on arrival
+ * because of the sentence at the top of this file: *"i will put hundreds of profile pics in there."*
+ * Sixteen sliders open by default would push the album below the fold on every visit, including
+ * every visit that is about a photograph. `CharacterPanel` owns the disclosure; this page only
+ * places it.
+ *
+ * ── THE PREVIEW IS A PURE FUNCTION, WHICH IS WHAT MAKES IT LEGAL HERE ───────────────────────
+ * `buildNinaSystemPrompt(tuning)` assembles a string. It is not a model call, it awaits nothing,
+ * and it is the SAME function `lib/nina/turn.ts` uses to build the system prompt — which is the
+ * whole value of the preview: what the panel shows is what she is actually handed, not a
+ * reconstruction of it.
+ *
+ * Plan invariant 5 / `scripts/check-llm-payload-boundary.mjs` Rule 2 forbids awaiting a MODEL CALL
+ * from a page render, by function name. Nothing on this page appears in that table and nothing on
+ * this page may: the preview is deliberately the pure assembler and never `runNinaTurn`. It shows
+ * the SAVED tuning, so it changes when a save changes the row, not as a slider moves.
+ *
+ * The read joins the existing `Promise.all` rather than adding a second await: the album's two
+ * queries and this one are independent, and three round trips in sequence on a `force-dynamic`
+ * page the operator opens constantly is latency for nothing.
+ */
+
 export const dynamic = 'force-dynamic'
 
 /** A hand-typed `?page=` cannot ask for an offset no album will ever reach. */
@@ -72,12 +102,13 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
   const folder = requested.ok ? requested.path : NINA_FOLDER_ROOT
   const page = readPage(readOne(params.page))
 
-  const [listed, folders] = await Promise.all([
+  const [listed, folders, tuning] = await Promise.all([
     listNinaAvatarsInFolder(userId, folder, {
       limit: NINA_ADMIN_PAGE_SIZE,
       offset: (page - 1) * NINA_ADMIN_PAGE_SIZE,
     }),
     listNinaAvatarFolders(userId),
+    readNinaTuning(userId),
   ])
 
   /*
@@ -125,6 +156,20 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
           moving a photo moves no bytes.
         </p>
       </header>
+
+      {/*
+       * The tuning crosses to the client as a plain `TuningDraft` — `toTuningDraft` is the one
+       * place on the read side that knows phase 1's field names, so no part of the row's shape
+       * reaches a component. `promptPreview` is a pure string assembly, never a model call: see the
+       * header, and plan invariant 5.
+       */}
+      <CharacterPanel
+        userId={userId}
+        tuning={toTuningDraft(tuning)}
+        defaults={toTuningDraft(NINA_TUNING_DEFAULTS)}
+        revision={tuning.revision}
+        promptPreview={buildNinaSystemPrompt(tuning)}
+      />
 
       {albumTotal === 0 ? (
         <p className="mb-6 max-w-[70ch] rounded-card border border-rule bg-card p-5 text-[13px] font-medium text-ink-2">

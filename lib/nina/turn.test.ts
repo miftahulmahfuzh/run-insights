@@ -3,6 +3,7 @@ import {
   fakeTurnDeps,
   fakeTurnStore,
   ninaContextFixture,
+  ninaTuningFixture,
   proseMessage,
   runHistoryFixture,
   scriptedClient,
@@ -14,7 +15,7 @@ import {
 } from '@/tests/fixtures/ninaTurn'
 import { describe, expect, it } from 'vitest'
 
-import { LOOKUP_RUNS_TOOL, SEND_TOOL } from './prompts'
+import { LOOKUP_RUNS_TOOL, NINA_SYSTEM_PROMPT, SEND_TOOL, buildNinaSystemPrompt } from './prompts'
 import {
   MAX_TOOL_ROUNDS,
   NINA_MAX_TOKENS,
@@ -24,16 +25,30 @@ import {
   runNinaTurnWith,
   type NinaTurnInput,
 } from './turn'
+import { NINA_TUNING_DEFAULTS } from './tuning'
 
 function input(overrides: Partial<NinaTurnInput> = {}): NinaTurnInput {
   return {
     userId: 'u1',
     context: ninaContextFixture(),
+    /* Required on the input, not optional with a default inside the loop — see the field's own
+     * note. A test that forgets it does not compile, which is the guarantee. */
+    tuning: ninaTuningFixture(),
     history: runHistoryFixture(),
     sourceMessageId: 'm1',
     runnerText: 'lari gw kemaren gimana menurut lo?',
     ...overrides,
   }
+}
+
+/** A tuning with one trait at the top of its range. */
+function tunedInput(overrides: Partial<NinaTurnInput> = {}): NinaTurnInput {
+  return input({
+    tuning: ninaTuningFixture({
+      traits: { ...NINA_TUNING_DEFAULTS.traits, concerned: 100 },
+    }),
+    ...overrides,
+  })
 }
 
 const GOOD = { bubbles: ['lumayan sih', 'tapi hr lo ketinggian'] }
@@ -478,6 +493,44 @@ describe('runNinaTurnWith — the request envelope', () => {
     expect(userTurn).not.toContain('promptVersion')
     expect(result.trace.promptVersion).toBeGreaterThan(0)
   })
+
+  /*
+   * ── THE ONE LINE THE WHOLE CHARACTER TUNING PASSES THROUGH ──────────────────────────────────
+   * `system` was a module-level constant until the nina-character-tuning set. If this assertion
+   * ever passes with the DEFAULT prompt on a tuned input, every slider on `/admin/nina` is
+   * decorative and nothing else in the suite would notice.
+   */
+  it('sends the ASSEMBLED prompt for this input, not the module constant', async () => {
+    const client = scriptedClient([sendMessage(GOOD)])
+    const turn = tunedInput()
+    await runNinaTurnWith(fakeTurnDeps(client), turn)
+    expect(client.calls[0]!.system).toBe(buildNinaSystemPrompt(turn.tuning))
+    expect(client.calls[0]!.system).not.toBe(NINA_SYSTEM_PROMPT)
+  })
+
+  it('sends the DEFAULT prompt for a default tuning — the compatibility contract, at the call site', async () => {
+    const client = scriptedClient([sendMessage(GOOD)])
+    await runNinaTurnWith(fakeTurnDeps(client), input())
+    expect(client.calls[0]!.system).toBe(NINA_SYSTEM_PROMPT)
+  })
+
+  /*
+   * One turn is one character. Built once outside the loop precisely so a re-read cannot split a
+   * turn between two Ninas — the repair call included, since a repair under a different prompt is
+   * a second reply from a second person.
+   */
+  it('sends the SAME system prompt on all three calls of one turn, repair included', async () => {
+    const day = runHistoryFixture().runs[0]!.occurredOn
+    const client = scriptedClient([
+      toolUseMessage(LOOKUP_RUNS_TOOL.name, { dates: [day] }),
+      sendMessage({ bubbles: [] }),
+      sendMessage(GOOD),
+    ])
+    await runNinaTurnWith(fakeTurnDeps(client), tunedInput())
+    expect(client.calls).toHaveLength(3)
+    const systems = new Set(client.calls.map((body) => body.system))
+    expect(systems.size).toBe(1)
+  })
 })
 
 describe('runNinaTurn — the log', () => {
@@ -488,6 +541,17 @@ describe('runNinaTurn — the log', () => {
     expect(store.rows).toHaveLength(1)
     expect(store.rows[0]!.source).toBe('llm')
     expect(store.rows[0]!.toolCalls).toBe('')
+  })
+
+  it('records the tuning revision beside the prompt version', async () => {
+    const store = fakeTurnStore()
+    const client = scriptedClient([sendMessage(GOOD)])
+    await runNinaTurn(
+      input({ tuning: ninaTuningFixture({ revision: 7 }) }),
+      fakeTurnDeps(client, { store }),
+    )
+    expect(store.rows[0]!.tuningRevision).toBe(7)
+    expect(store.rows[0]!.promptVersion).toBe(ninaContextFixture().promptVersion)
   })
 
   it('records the tool NAMES, not a count — ruling (b)’s empirical exit needs which', async () => {

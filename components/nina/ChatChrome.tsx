@@ -11,6 +11,7 @@ import {
   controlBottomCss,
   isControlVisible,
   nextBarState,
+  NINA_CHROME_CONTROL_CLASS,
   type NinaBarState,
 } from '@/lib/nina/chrome'
 import { NinaSidebarTrigger } from './NinaSidebar'
@@ -194,11 +195,21 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
          * the column, and without this it would swallow taps on the newest bubble — including
          * `MessageBubble`'s swipe-to-reply.
          *
-         * A three-column grid rather than `justify-between`, so the toggle is centred on the screen
-         * and stays centred whatever the left cell holds. R1 asks for it "in the bottom middle".
+         * ── A CENTRED PAIR, NOT A THREE-COLUMN GRID ─────────────────────────────────────────────
+         * This was `grid grid-cols-3` with the `>` in column one and the toggle centred in column
+         * two, so the two controls sat a third of the screen apart. The repo owner asked for them
+         * "lebih rapat" — closer together — so they are now one `flex` group centred as a unit,
+         * `gap-1.5` (6 px) apart. R1's "bottom middle" is still satisfied, and better than before:
+         * the PAIR is centred, where the grid centred only the toggle.
+         *
+         * The grid also had a failure mode worth remembering. A component that renders `null`
+         * produces no DOM node, so when `NinaSidebarTrigger` returned `null` — which it did in
+         * production, see `components/ui/AppShell.tsx` — the toggle became the grid's FIRST child
+         * and `justify-self-center` centred it in column one, a fifth of the way across the screen.
+         * `flex` with `justify-center` has no such trap: one control or two, the group is centred.
          */
         <div
-          className="pointer-events-none fixed inset-x-0 z-40 mx-auto grid max-w-[470px] grid-cols-3 items-end px-5"
+          className="pointer-events-none fixed inset-x-0 z-40 mx-auto flex max-w-[470px] items-end justify-center gap-1.5 px-5"
           style={{
             bottom: controlBottomCss({
               barState: bar,
@@ -214,15 +225,18 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
             `--safe-bottom`, and a third spelling of that sum in another file is how a control ends
             up over the composer on one device and under the keyboard on another.
 
-            `pointer-events-auto` because the lane is `pointer-events-none`; `justify-self-start`
-            because it is this cell's occupant now, and the lane's `grid-cols-3` is untouched so the
-            `^`/`v` toggle stays centred on the SCREEN rather than in the space the `>` leaves over.
+            `pointer-events-auto` because the lane is `pointer-events-none`. No `justify-self-*`
+            any more: the lane is a centred flex group, so the pair's position is the group's and
+            neither control positions itself.
 
             It needs NO props: its state is `?sidebar=1` in the URL, so it shares nothing with the
             panel and `ChatScreen` never learns a sidebar exists. Outside a `NinaSidebarProvider` it
-            renders null, so a `ChatChrome` on a screen with no sidebar simply has no `>`.
+            renders null, so a `ChatChrome` on a screen with no sidebar simply has no `>` — which is
+            correct by design and was ALSO this screen's bug for one release, because `AppShell`
+            renders `ChatChrome` outside `{children}` and the provider used to live in the page. See
+            `components/ui/AppShell.tsx`.
           */}
-          <NinaSidebarTrigger className="pointer-events-auto justify-self-start" />
+          <NinaSidebarTrigger className="pointer-events-auto" />
 
           <button
             type="button"
@@ -230,7 +244,7 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
             aria-expanded={bar === 'shown'}
             aria-controls="main-tab-bar"
             aria-label={glyph === 'up' ? 'Show the main navigation' : 'Hide the main navigation'}
-            className="pointer-events-auto grid size-11 place-items-center justify-self-center rounded-pill bg-card/95 text-ink-2 shadow-card ring-1 ring-rule backdrop-blur-sm active:scale-[0.97]"
+            className={`pointer-events-auto ${NINA_CHROME_CONTROL_CLASS}`}
           >
             {/*
               One control, one glyph, flipped by `barToggleGlyph`. The user named both `^` and `v`;
@@ -242,7 +256,7 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
               glyph inside it — which is what "small" means here and what every round control in
               `Composer` already does.
             */}
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" aria-hidden="true">
               <path
                 d={glyph === 'up' ? 'M6 14l6-6 6 6' : 'M6 10l6 6 6-6'}
                 stroke="currentColor"
@@ -252,8 +266,6 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
               />
             </svg>
           </button>
-
-          <div className="justify-self-end" />
         </div>
       )}
     </>

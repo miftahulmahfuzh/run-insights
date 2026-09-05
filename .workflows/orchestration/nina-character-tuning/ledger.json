@@ -25,93 +25,93 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "fc7c99e5e82671dfee1fb83405346198b1009d13",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "persona.ts re-cut as a function of NinaTuning; 6 repeals landed with reasons in place. Byte-identity gate: old vs new NINA_SYSTEM_PROMPT differs by exactly the one accepted bestie sentence. 2234/2234 tests, typecheck+format clean. ONE DRIFT: plan's ANGER_CEILING_BY_BAND.off=0 contradicted invariant 2 (off is anger's identity band, default 0); user chose invariant 2, so off ceils at 4 and no band means 'never angry' - cost recorded in code and docs.",
       "package": "lib/nina`, `docs",
       "plan": ".workflows/plan/nina-character-tuning/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T21:56:04+00:00",
       "satisfies": [
         "R2",
         "R3",
         "R4",
         "R6"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A001",
       "title": "The canon, re-cut as a function \u2014 and the repeal"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b3fe468e1ddf9470450f7707941c60dec864350a",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "buildNinaSystemPrompt(tuning) on both entry points; NINA_PROMPT_VERSION 2->3 (single bump for the set); 4 repeals in prompts/system.ts incl NUMBERS_RULE's third body prohibition gated on BODY_REPEALED_BY; no tool schema moved. Byte gate is an EMPTY diff vs HEAD, not the plan's bestie sentence (phase 2 already landed it) - verified identical for NINA_SYSTEM_PROMPT and PROACTIVE_INSTRUCTIONS. bodyClause's repealed branch ends ', and ' not '. ' so 'never' stays lower-case mid-sentence. Bookkeeping files left to the coordinator.",
       "package": "lib/nina`, `lib/nina/prompts`, `tests",
       "plan": ".workflows/plan/nina-character-tuning/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T22:11:10+00:00",
       "satisfies": [
         "R3",
         "R4",
         "R6"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A002",
       "title": "buildNinaSystemPrompt`, and the turn that reads it"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "cd88907b09463df22f3b5ec4a08a7f276fd91cf6",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "R5 landed: tuning-aware image prompt (optional, defaults byte-identical), new selfiegen.ts, reward on NinaPendingPromise (type-only, no migration), exact job-id selfie settle via queries \u00a711. Ladder: \u00a712->\u00a711 per Interface Contract/Handoff 6; bookkeeping files left to coordinator.",
       "package": "lib/nina`, `lib/db",
       "plan": ".workflows/plan/nina-character-tuning/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T22:06:32+00:00",
       "satisfies": [
         "R5"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A003",
       "title": "The camera, and a promise she keeps in the chat"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "1ea6824993b87dc16c793ca13cc70dea9b66b091",
       "depends_on": [
         1,
         3
       ],
       "difficulty": "NORMAL",
       "n": 5,
-      "note": null,
+      "note": "Panel landed: 11 traits + 5-way relationship + 4 dials + wardrobe/notes, one save, server-rendered prompt preview. All copy read from NINA_TRAIT_SPECS/NINA_DIAL_SPECS/NINA_ADDRESS, no second table. 5 plan defects fixed: WARDROBE/NOTES_MAX imported from lib/nina/tuning (Contract cut the admin copies); TuningDraft/TuningCopy declared (Step 1 block omitted them); NinaTuningWrite imported not re-declared; loudestDials ranking case rewritten for non-uniform defaults (it moved anger to 0, which IS anger's default); 3 structural guards narrowed to code-only because Steps 1/5/6 require docstrings naming 'server-only'/'runNinaTurn' that Step 9 then forbade. readme-updater deliberately skipped - phase 6 owns both package_readmes.",
       "package": "components/admin`, `lib/admin`, `app/admin",
       "plan": ".workflows/plan/nina-character-tuning/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-04T22:29:13+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CA-A000",
       "title": "The panel on `/admin/nina"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "400dea5",
       "depends_on": [
         2,
         3,
@@ -120,21 +120,21 @@
       ],
       "difficulty": "EASY",
       "n": 6,
-      "note": null,
+      "note": "Sweep clean: all 4 of my OQs verified gone at clause level. 4 decisions \u2014 relationship threaded via scheduleDistillation->runTurnDistillation (plan's actions.ts call site does not exist); plan test asserted no-jokes absent with funny at default, added funny:100 (invariant 2); persona.md 'repeal 4 two-thirds landed' rewritten as landed; prettier --write on 4 of phase 5's files that failed format:check pre-existing on HEAD. NINA_DISTILL_PROMPT_VERSION 1->2, NINA_PROMPT_VERSION untouched. drizzle/ untouched.",
       "package": "docs`, `tests`, `lib/nina/prompts",
       "plan": ".workflows/plan/nina-character-tuning/phase-6.md",
-      "reported_at": null,
+      "reported_at": "2026-09-05T01:10:59+00:00",
       "satisfies": [
         "R6"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-RI-A006",
       "title": "The sweep, and the record"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T15:38:44+00:00",
+  "updated": "2026-09-05T01:10:59+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }

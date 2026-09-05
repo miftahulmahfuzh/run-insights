@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
 import { cn } from '@/lib/cn'
+import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
 import type { NinaCropInput } from '@/lib/nina/crop'
 import {
   isSidebarOpen,
@@ -182,13 +183,9 @@ export function NinaSidebarTrigger({ className }: { className?: string }) {
       aria-label="Buka daftar chat"
       aria-expanded={sidebar.open}
       onClick={sidebar.openSidebar}
-      className={cn(
-        'grid size-11 place-items-center rounded-pill bg-card/95 text-ink-2 shadow-card',
-        'ring-1 ring-rule backdrop-blur-sm transition-[opacity,transform] active:scale-[0.97]',
-        className,
-      )}
+      className={cn(NINA_CHROME_CONTROL_CLASS, className)}
     >
-      <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="size-3.5" fill="none" aria-hidden="true">
         <path
           d="m9 6 6 6-6 6"
           stroke="currentColor"

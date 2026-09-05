@@ -7,9 +7,18 @@ import {
   NINA_SLOT_SPECS,
   SLOT_CONFIDENCE_FLOOR,
 } from '../memory'
+import { NINA_TUNING_DEFAULTS, type NinaRelationship } from '../tuning'
 
-/** Bumped by hand whenever the text or the tool schema below changes. Logged, never sent. */
-export const NINA_DISTILL_PROMPT_VERSION = 1
+/**
+ * Bumped by hand whenever the text or the tool schema below changes. Logged, never sent.
+ *
+ * 2 — the librarian was told what the relationship is, and told that the couple's own register is
+ * not a fact about him. **This constant is not `NINA_PROMPT_VERSION`**: that one covers Nina's own
+ * voice and her tool schemas and is bumped exactly once per plan set, by the phase that edits
+ * `prompts/system.ts`. This one covers the librarian, which is a different model call with a
+ * different system prompt, and it moves on its own schedule.
+ */
+export const NINA_DISTILL_PROMPT_VERSION = 2
 
 /**
  * The vocabulary, rendered from `NINA_SLOT_SPECS` rather than retyped. One list, so a tenth slot
@@ -20,11 +29,55 @@ export const SLOT_VOCABULARY_BLOCK = NINA_SLOT_KEYS.map(
 ).join('\n')
 
 /**
+ * What each relationship *is*, in one clause the librarian can read — deliberately including the
+ * address form, because that is the half it needs in order to recognise the register and leave it
+ * alone.
+ *
+ * Module-private and written out here rather than imported from `lib/nina/tuning.ts`: that file's
+ * `NINA_ADDRESS` is written FOR NINA, in the second person, and is the single source of truth for
+ * what she is TOLD to call him — composed by `persona.ts`'s `ninaNameRules` and rendered by
+ * `/admin/nina`. This is a third-person gloss for a different reader (a librarian being told what
+ * it is looking at), and the two will not change together. `satisfies` is what keeps them in step
+ * on the only thing that matters — the five keys — and the words themselves are quoted from
+ * `NINA_ADDRESS[rel].words` so a reviewer can check them against the one place they live.
+ */
+const RELATIONSHIP_GLOSS = {
+  nobody: 'someone who is not close to him at all, and who uses his full name',
+  casual_friend: 'a casual friend of his, who uses his nickname',
+  sister: 'like a sister to him, who calls him "bro"',
+  best_friend: 'his best friend, who calls him "bestie"',
+  girlfriend:
+    'his girlfriend, who calls him "my man", "yang", "sayang", "beb", "baby" and the like',
+} as const satisfies Record<NinaRelationship, string>
+
+/**
  * **This is not Nina.** She is a person with a voice; this pass is a librarian, and telling it it
  * is Nina makes it write in her register and editorialise the facts it is supposed to be
  * recording. The distinction is worth the extra system prompt.
+ *
+ * ── WHY THE LIBRARIAN IS TOLD THE RELATIONSHIP (F33 / R6, the sweep) ─────────────────────────
+ * It used to open with "his friend Nina" and nothing else, which was true of exactly one of the
+ * five settings the operator can now choose. Under `girlfriend` the exchange is full of *yang*,
+ * *sayang* and *beb* in both directions, and an exhaustive librarian with no idea why will file
+ * "he calls her sayang" as a standing fact about him — for which `NINA_SLOT_KEYS` has no home, so
+ * it lands in the ledger as biography and comes back at him for months. Worse, the `nickname`
+ * field is one bad inference from being overwritten with a word SHE said. The fix is to name the
+ * setting and to say plainly that the register is not biography.
+ *
+ * ── WHAT WAS DELIBERATELY *NOT* ADDED ────────────────────────────────────────────────────────
+ * No content limiter. The exhaustiveness clause records more under a steamy tuning, and that is
+ * the point: the user's instruction on this repo is *"i am the only one that uses this app. so i
+ * dont care about any privacy whatsoever. this is my personal toy"* — the same premise
+ * `scripts/check-llm-payload-boundary.mjs` already acted on when it deleted its own Rule 1. A new
+ * "do not record that" rule here would be a fresh prohibition against the freedom this set exists
+ * to grant. If that is ever wanted it is one paragraph, and it should be a stated decision rather
+ * than one taken quietly inside a sweep.
+ *
+ * `DISTILL_SYSTEM_PROMPT` below is this function at the default relationship, so every existing
+ * importer keeps compiling and a caller that has no tuning to hand still gets a coherent prompt.
  */
-export const DISTILL_SYSTEM_PROMPT = `You read one finished exchange between a runner and his friend Nina, and you record what the RUNNER revealed about himself. You are a librarian, not a participant. You never speak to him and you never write in Nina's voice.
+export function buildDistillSystemPrompt(relationship: NinaRelationship): string {
+  return `You read one finished exchange between a runner and Nina — she is set, right now, to be ${RELATIONSHIP_GLOSS[relationship]} — and you record what the RUNNER revealed about himself. You are a librarian, not a participant. You never speak to him and you never write in Nina's voice.
 
 Return everything through the "record" tool. Nothing else.
 
@@ -48,10 +101,17 @@ A slot is a fact about his LIFE, not about today. "gw lari 10k pagi ini" is a fa
 WHAT HE CALLS HIMSELF
 Set "nickname" only when he said, in this message, what to call him. Copy his word exactly. If he did not say it, leave it out — do not derive one from his full name.
 
+WHAT THE TWO OF THEM CALL EACH OTHER
+The relationship above is an operator setting. He did not tell her about it and she did not decide it, and it is what makes them talk the way they do: a full name, a nickname, "bro", "bestie", or "yang" / "sayang" / "beb" / "baby". THE WAY THEY ADDRESS EACH OTHER IS NOT A FACT ABOUT HIM. Do not record it as a fact, do not give it a slot, and never put a word SHE used into "nickname" — that field is only ever what HE asked to be called, in his own words, in this message. Her endearments are hers. If the two of them are affectionate, or blunt, or filthy with each other, that is the register and not biography: record what he revealed, in the language he used, and let the tone be the tone.
+
 PROMISES
-Use "promises" when NINA promised him something conditional in this exchange — "kalo lo lari 10km besok, gw ganti foto profile". Give the condition as a metric the app can check: distance_km_total with a target in km, run_count with a target, record or badge with its key, or free when no number can decide it. Never both a target and a targetKey.
+Use "promises" when NINA promised him something conditional in this exchange — "kalo lo lari 10km besok, gw ganti foto profile", "kalo lo lari 4x minggu ini, gw kirim foto". Give the condition as a metric the app can check: distance_km_total with a target in km, run_count with a target, record or badge with its key, or free when no number can decide it. Never both a target and a targetKey.
 
 If he revealed nothing at all, return the tool with empty arrays. That is a correct answer.`
+}
+
+/** This function at the default relationship. The only value every existing caller ever needed. */
+export const DISTILL_SYSTEM_PROMPT = buildDistillSystemPrompt(NINA_TUNING_DEFAULTS.relationship)
 
 export const DISTILL_REPAIR_PREAMBLE = `That did not fit the schema. Return the "record" tool again, reusing exactly the facts you already had and fixing only these problems:\n`
 
