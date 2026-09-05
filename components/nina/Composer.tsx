@@ -31,10 +31,11 @@ import { QuoteStub } from './QuoteStub'
  * this component is never given a `key` that changes, and `onSend` is a `useCallback` upstream.
  *
  * ── THE FIXED BAR'S GEOMETRY ──────────────────────────────────────────────────────────────────
- * `bottomCss` is computed by `composerBottomCss` in `lib/nina/chatview.ts` and clears 78 px of
- * chrome: the tab bar's 58 px plus the Upload FAB's 20 px overhang above the bar's top edge. The
- * FAB is not optional to clear — the composer is at `z-40` and the bar at `z-30`, so a bar sitting
- * flush on the tab bar's top edge would slice the top off the coral circle. The home-indicator
+ * `bottomCss` is computed by `composerBottomCss` in `lib/nina/chatview.ts` and clears 59 px of
+ * chrome: the tab bar's OUTER height, which is its 58 px grid plus the 1 px `border-t` the grid
+ * sits under. The border is not a rounding error — it is the bar's top edge, so a clearance of 58
+ * leaves this bar floating one pixel above the bar below it with the conversation visible through
+ * the seam. That was R2's reported gap, and 59 is what makes the two flush. The home-indicator
  * inset rides in that same offset rather than in this element's padding, because the tab bar below
  * already pads by it and counting it twice would open a gap.
  *
@@ -89,9 +90,9 @@ import { QuoteStub } from './QuoteStub'
  * The wrapper also gains `id="nina-composer"`, which `ChatScreen` measures. `planQuoteScroll`
  * needs `obstructedBottomPx`, and that number is not a constant: it is this bar's own height
  * (which grows with the reply strip, with a tile row and with a multi-line draft) plus its `bottom`
- * offset (the tab bar and FAB clearance, or the keyboard). One `getBoundingClientRect().top` on
- * this element answers all of it exactly, and every alternative re-derives what the browser
- * already knows.
+ * offset (the tab bar's outer height, or the keyboard). One `getBoundingClientRect().top` on this
+ * element answers all of it exactly, and every alternative re-derives what the browser already
+ * knows.
  *
  * ── `userId` IS A PROP AND IT IS NOT A CAPABILITY ────────────────────────────────────────────
  * The client needs it to build `nina/<userId>/chat/<id>.jpg`. `/api/upload` re-derives the owner

@@ -163,13 +163,13 @@ export function NinaSidebarProvider({ children }: { children: React.ReactNode })
  * R6's floating `>`, at the bottom-left corner.
  *
  * **It carries no positioning of its own, and that is deliberate.** The floating controls sit just
- * above the composer, whose `bottom` is computed from `TAB_BAR_HEIGHT_PX`,
- * `TAB_BAR_FAB_OVERHANG_PX`, the composer's own height and `--safe-bottom` — the three numbers the
- * analysis calls load-bearing and which are already spelled twice by necessity. Phase 2's
- * `ChatChrome` owns that geometry; spelling it a third time here is how a control ends up floating
- * over the composer on one device and under the keyboard on another. So this renders a bare 44 px
- * button and takes a `className` for whoever places it — including the `pointer-events-auto` that
- * phase 2's lane requires of everything inside it.
+ * above the composer, whose `bottom` is computed from the tab bar's clearance, the composer's own
+ * height and `--safe-bottom` — numbers that are already spelled twice by necessity, once as a
+ * TypeScript constant and once as a Tailwind arbitrary value. Phase 2's `ChatChrome` owns that
+ * geometry; spelling it a third time here is how a control ends up floating over the composer on
+ * one device and under the keyboard on another. So this renders a bare 44 px button and takes a
+ * `className` for whoever places it — including the `pointer-events-auto` that phase 2's lane
+ * requires of everything inside it.
  *
  * `size-11` is 44 px, the iOS tap-target floor, which is the same reason `NinaAvatar`'s `md` is.
  */

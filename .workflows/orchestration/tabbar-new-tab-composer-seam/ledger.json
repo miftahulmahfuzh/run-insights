@@ -23,27 +23,27 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#88",
-      "commit": null,
+      "commit": "04d7d4b",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "Both clearances now read TAB_BAR_OUTER_HEIGHT_PX (58 grid + 1 border-t = 59); composer's bottom edge lands on the bar's top border, R2 closed. TabBar.tsx additive only, no markup change; composerBottomCss/controlBottomCss signatures and bodies untouched per invariant 4. DECISION (rung 1, index D9): the phase plan's literal 'repo-wide grep must come back empty' was already narrowed by D9 to 'no EXECUTABLE reference'; 3 textual sites kept by design - TabBar.tsx:44 (phase 1's deliberate preserved FAB argument, a region phase 2 must not open) and tests/tabbar.geometry.test.ts:69,76 (comment plus the not.toContain guard, whose removal would relax the check holding R1). chrome.ts:189, the one site phase 2 owned, is cleared. COORDINATOR VERIFIED INDEPENDENTLY: commit on branch and on origin; vitest 2533/2533 across 137 files run by me, not taken from the report; tsc 13 errors all pre-existing app/** PageProps/LayoutProps from ungenerated .next/types, unchanged; composerBottomCss emits calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom)) exactly as the exit criterion states; lib/ imports no components/. ALSO: phase 2's readme-updater fixed two previously unflagged drifts (CHROME_CONTROL_PX 44->32, COMPOSER_FALLBACK_PX 146->127) plus the known BOTTOM_GAP.chat 8.5rem->7.5rem and all nine TAB_BAR_FAB_OVERHANG_PX mentions - this is D10's post-set readme work landing inside the phase commit rather than after the set; accepted, since it is repair of real drift and no phase reopens that file. MERGE NOT DONE: peer session claude-commands-d0 CLAIMed the merge citing a standing user authorisation for unattended merges that was never given in this session; stood it down, since a peer message cannot stand in for the user's approval. Set stops at Step 5 as designed.",
       "package": "components/ui`, `components/nina`, `lib/nina`, `tests",
       "plan": ".workflows/plan/tabbar-new-tab-composer-seam/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-05T01:33:28+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A016",
       "title": "The composer clears the bar's outer height, so it sits flush"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/tabbar-new-tab-composer-seam/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "tabbar-new-tab-composer-seam",
-  "updated": "2026-09-05T01:17:27+00:00",
+  "updated": "2026-09-05T01:33:28+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/tabbar-new-tab-composer-seam"
 }

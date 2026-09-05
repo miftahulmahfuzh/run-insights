@@ -481,7 +481,7 @@ the surface; this is how a phone reaches them:
 |---|---|---|
 | Runs | `/` | default landing once signed in |
 | Nina | `/nina` | F33 — the chat, with an unread badge |
-| **Upload** | `/upload` | **centre, raised, coral (`--z5`)** — a circular FAB breaking the bar's top edge, not a peer of the others. It is the one flow that matters (§1), and the IA says so. F33 made the "centre" claim literally true rather than aspirational: the FAB sat at 37.5% of the bar's width in a four-column grid and sits at 50% in a five-column one |
+| **New** | `/upload` | the **centre cell of five** and the only coral one (`--z5`, at rest and when active) — but a normal tab: a `+` glyph over a caption, the same shape as its four neighbours. Upload is still the one flow that matters (§1) and coral is still how the IA says so; what changed is that the emphasis may not cost space. It **was** a circular FAB, `absolute -top-5` against the grid, overhanging the bar's top edge by 20px and painting over the screen behind it — on `/nina`, over the newest message bubble — until the repo owner asked for "a normal 'new' text that does not take more space outside the bottom bar". F33's 37.5% → 50% argument is **superseded, not wrong**: it is why `/upload` is the third of five entries rather than appended, so the cell it centres is now a caption instead of a circle |
 | Trends | `/trends` | |
 | Me | `/me` | profile, records, badge shelf |
 
