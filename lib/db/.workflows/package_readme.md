@@ -668,17 +668,24 @@ NULL means the turn predates the dials. `revision` itself is computed as `revisi
 upsert rather than supplied by a caller — a revision the client sends is a revision a stale tab can
 move backwards.
 
-**Migration `drizzle/0004_nina_persona_tuning.sql`** plus its meta snapshot and journal entry
-(`_journal.json` moves from idx 3 to idx 4). Additive only — one `CREATE TABLE`, one nullable
-`ADD COLUMN`, one FK. Nothing drops, renames, retypes or narrows anything, and there is no
-data-migration statement, so it applies to a populated table without a rewrite and reverting the
-code leaves an unread table and an unread column, which is inert.
+**Migration `drizzle/0005_nina_persona_tuning.sql`** plus its meta snapshot and journal entry
+(`_journal.json` idx 5). Additive only — one `CREATE TABLE`, one nullable `ADD COLUMN`, one FK.
+Nothing drops, renames, retypes or narrows anything, and there is no data-migration statement, so it
+applies to a populated table without a rewrite and reverting the code leaves an unread table and an
+unread column, which is inert.
 
-> **Applying it is a deploy action** (`npm run db:migrate`), not something a phase does. Treat the
-> guarantees in this section as what `db:check`, typecheck and the unit suites can give until it has
-> run against a real database.
+> **APPLIED to production**, and the count is 6. `nina_tuning` exists with its 21 columns and
+> `nina_turns.tuning_revision` is present.
 >
-> **The number `0004` is this branch's, and it is expected to move.** `main` gained an unrelated
-> `0004_nina_chat_sessions` while this set was in flight, so merging renumbers this one and
-> regenerates the snapshot. That repair is the merge's, not this phase's; the number above describes
-> the branch as it stands.
+> **It was `0004` on the branch, and the renumber this section predicted is what happened.** `main`
+> gained an unrelated `0004_nina_chat_sessions` while this set was in flight, so both sets minted an
+> idx-4 migration. The fix kept main's journal and `0004` snapshot, dropped this set's `0004_*.sql`,
+> and **regenerated** it as `0005` from the merged `schema.ts` — so the snapshot genuinely chains
+> onto main's `0004` instead of merely claiming to.
+>
+> **Renaming the file by hand would have been silently wrong**, which is the part worth keeping.
+> The migrator applies journal entries whose `when` exceeds the newest applied row. This set's
+> `0004` was stamped 1788535743971 (14:49) and main's applied `0004` was 1788553112306 (20:18), so a
+> renamed-but-not-regenerated entry would have been *older than the watermark* and skipped in
+> silence: no error, a clean-looking deploy, and `nina_tuning` simply never created — discovered on
+> the first turn that read it. Regenerating restamps `when`, which is why it applied.

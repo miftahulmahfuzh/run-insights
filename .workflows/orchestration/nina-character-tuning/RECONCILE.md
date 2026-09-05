@@ -1,6 +1,8 @@
-# Pending repair: this branch is NOT mergeable as it stands
+# RESOLVED — the branch was merged and the migration renumbered
 
-**Status:** open. Owned by the coordinator, scheduled for AFTER phase 6.
+**Status:** CLOSED, 2026-09-05. Set merged to `main` as `a57b1e7`; migration applied
+(6 in the database, `nina_tuning` present with 21 columns, `nina_turns.tuning_revision`
+present). All six phase commits are ancestors of `main`.
 **Decided by the user, 2026-09-05**, when offered the choice of repairing it
 before phase 5 instead.
 
@@ -51,3 +53,21 @@ and nothing under `drizzle/`. So this survives to the end of the set untouched.
 Phase 6's documentation sweep runs against the PRE-merge tree. After the merge,
 its doc claims must be re-checked against the merged result and corrected. That
 is part of this repair, not a new phase.
+
+## How it was actually resolved, and the trap in it
+
+Regenerated, not renamed. Main's `_journal.json` and `0004_snapshot.json` were kept, this set's
+`0004_*.sql` was deleted, and `drizzle-kit generate` re-emitted it as `0005` from the merged
+`schema.ts`. Emitted DDL is identical to phase 1's.
+
+**Renaming the file by hand would have failed silently**, and this is the part worth remembering.
+The migrator applies journal entries whose `when` exceeds the newest applied row. This set's `0004`
+was stamped 1788535743971 (14:49); main's already-applied `0004_nina_chat_sessions` was stamped
+1788553112306 (20:18). A renamed-but-not-regenerated entry is therefore *older than the watermark*
+and gets skipped without an error: a clean-looking deploy, and `nina_tuning` simply never created —
+found on the first turn that reads it. Regenerating restamps `when` (1788570836694), which is why
+it applied.
+
+Documentation was corrected separately afterwards: `docs/nina/persona.md` and `lib/db`'s readme
+still pointed at `drizzle/0004_nina_persona_tuning.sql`, a file that no longer exists, and still
+carried the prediction that the number would move.

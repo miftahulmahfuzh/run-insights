@@ -350,7 +350,7 @@ in the paragraph above.
 | Concern | File |
 |---|---|
 | The shape, the defaults, the clamp, the address vocabulary | `lib/nina/tuning.ts` |
-| The row, and the revision on `nina_turns` | `lib/db/schema.ts`, `drizzle/0004_nina_persona_tuning.sql` |
+| The row, and the revision on `nina_turns` | `lib/db/schema.ts`, `drizzle/0005_nina_persona_tuning.sql` |
 | Reading and writing it | `readNinaTuning` / `writeNinaTuning`, `lib/nina/queries.ts` |
 | The canon as a function of it | `lib/nina/persona.ts` |
 | The assembled system prompt | `buildNinaSystemPrompt`, `lib/nina/prompts/system.ts` |

@@ -43,6 +43,7 @@
   - **Completed**: 2026-09-04 22:33
   - **Method**: /do
   - **Files**: lib/nina/tuning.ts, lib/db/schema.ts, drizzle/0004_nina_persona_tuning.sql, drizzle/meta/0004_snapshot.json, drizzle/meta/_journal.json, lib/nina/queries.ts, tests/nina.tuning.test.ts, tests/db.schema.nina.test.ts
+  - **Renumbered at merge**: the migration shipped here as `0004` collided with `0004_nina_chat_sessions`, which reached `main` while this set was in flight. It was regenerated as `drizzle/0005_nina_persona_tuning.sql` (idx 5) against the merged schema; the file named above no longer exists. Applied to production — 6 migrations, `nina_tuning` present.
 
 - [x] **P1-NIN-A001** Phase 2: The canon, re-cut as a function — and the repeal
   - **Difficulty**: HARD
