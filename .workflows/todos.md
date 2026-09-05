@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 14
+- Completed: 15
 
 ---
 
@@ -165,6 +165,29 @@
   - **Drift**: No structural drift — every interface phase 7 required was present exactly as specified (`PHOTO_PARAM` / `formatNinaPhotoParam` / `parseNinaPhotoParam` in `lib/nina/attach.ts`; phase 5's `SEAM — PHASE 7` comment in `components/admin/explorer/SelectionPane.tsx`; `ensureNinaAvatarDescriptionAction` in `lib/admin/ninaAlbumActions.ts`).
   - **Drift**: Took the plan's own offered choice in its Step 3 *Styling* paragraph: `ShareToNinaItem`'s button wears `buttonClasses({ variant: 'secondary', size: 'md', fullWidth: true })` from `components/ui/Button.tsx` rather than the draft's ad-hoc `w-full text-left`. It stays a plain `<button>` so `window.open` runs inside the click's user activation.
   - **Drift**: The plan's docstrings quoted the literal `NEXT_PUBLIC_` prefix while explaining why the share origin cannot use one, which trips `ci:client-secret-guard`. Rephrased to *"a build-time public environment variable"* in all three places, and the JSX comment in `app/admin/nina/page.tsx` follows the repo's leading-`*` convention. The guard script was NOT modified.
+
+### [P2] P2-RI-A006
+- [x] **P2-RI-A006** Phase 6: The sweep, and the record
+  - **Difficulty**: EASY
+  - **Type**: Update
+  - **Context**: Owns the final grep sweep, **re-run as a gate rather than a report**; `lib/nina/prompts/distill.ts` (`buildDistillSystemPrompt(relationship)`, `NINA_DISTILL_PROMPT_VERSION` 1 → 2 — **not** `NINA_PROMPT_VERSION`); `lib/nina/distill.ts` (optional `DistillInput.relationship`); **one property in `lib/nina/actions.ts`** — `relationship: tuning.relationship` at the `distillNinaMemory(...)` call, by reconciler exception; the tuning matrix appended to `tests/nina.prompts.test.ts` reusing phase 3's helpers; the three package readmes (`components/admin`, `lib/admin`, `lib/db`); `CHANGELOG.md`; and `docs/nina/persona.md`'s closing record, appended to phase 2's repeal table rather than starting a second one. Exit: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, all seven `check-*.mjs` guards and `drizzle-kit check` pass; **the two confirming greps come back clean** — no rule surviving anywhere in the prompt surface contradicts a dial that can be turned up; the librarian is told the real relationship; the readmes, the changelog and the canon document describe what shipped, including the twelve repeals and the three deliberate non-repeals.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHARACTER_TUNING_PLAN.md` (phase 6 of 6)
+  - **Satisfies**: R6 — The iron rule: every existing rule or prompt that contradicts the above is changed, not worked around
+  - **Depends on**: `P1-NIN-A001`, `P1-NIN-A002`, `P1-NIN-A003`, `P2-CA-A000`
+  - **Plan**: `.workflows/plan/P2-RI-A006.md`
+  - **Completed**: 2026-09-05 08:08
+  - **Method**: /do
+  - **Files**: lib/nina/prompts/distill.ts, lib/nina/distill.ts, lib/nina/actions.ts, tests/nina.prompts.test.ts, components/admin/.workflows/package_readme.md, lib/admin/.workflows/package_readme.md, lib/db/.workflows/package_readme.md, lib/nina/.workflows/package_readme.md, CHANGELOG.md, docs/nina/persona.md, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, lib/admin/tuningActions.ts, lib/admin/tuningModel.ts
+  - **Verification**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` clean; `npm run build` succeeded (placeholder env; no `.env.local` in this worktree); `npm test` 126 files / 2324 tests green; all seven guards pass (`ci:openrouter-guard`, `ci:data-layer-guard`, `ci:client-secret-guard`, `ci:f08-guard`, `ci:llm-payload-guard`, `ci:f11-guard`, `badges:check`); `npm run db:check` "Everything's fine"; `npm run format:check` clean. The two confirming sweep greps return only comment text and default-band strings; the test suite proves the gated strings do not render at a turned-up dial.
+  - **Drift**: The plan places the `distillNinaMemory(...)` call in `lib/nina/actions.ts`; in the tree that call lives in `runTurnDistillation` (`lib/nina/distill.ts`), reached from `actions.ts` via `scheduleDistillation`. Threaded `relationship` through both hops instead of the plan's literal one-property edit.
+  - **Drift**: `lib/admin/tuningModel.ts` exists (phase 5) and is absent from the plan's readme steps; documented it in the `lib/admin` readme and module map.
+  - **Drift**: `lib/nina/.workflows/package_readme.md` now exists (written by the coordinator after the plan was authored); plan H-5 and reconciliation C-25 say `lib/nina` has no readme. Corrected two stale claims in it rather than creating one.
+  - **Drift**: Phase 5 landed four files that fail `npm run format:check` (`CharacterPanel.tsx`, `DialSlider.tsx`, `tuningActions.ts`, `tuningModel.ts`) — verified pre-existing on HEAD. Ran `prettier --write` on them so the gate passes; formatting only, no semantic change.
+  - **Decided**: The plan's `relationship: tuning.relationship` call site does not exist in `actions.ts` → threaded through `scheduleDistillation` → `runTurnDistillation` → `distillNinaMemory` (rung 2: exit criterion 6 names the outcome, the quoted call site is the stale half).
+  - **Decided**: The plan's test asserted `not.toContain('You do not tell jokes')` under a tuning leaving `funny` at its default → added `funny: 100` to that test's tuning rather than dropping the assertion (rung 1: invariant 2 requires funny's identity band to keep the no-jokes clause).
+  - **Decided**: `docs/nina/persona.md` said repeal 4 is "only two-thirds landed" → rewrote as landed, since phase 3 shipped it (rung 2: exit criterion 5).
+  - **Decided**: `format:check` red on four of phase 5's files → `prettier --write` rather than report the gate red (rung 2: exit criterion 3; fixing the code, not relaxing the check).
 
 ---
 

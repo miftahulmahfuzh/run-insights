@@ -22,6 +22,7 @@ import {
   getNinaSession,
   insertNinaMessageImages,
   insertNinaMessages,
+  readNinaTuning,
 } from './queries'
 import type { NinaMessageRow } from './queries'
 import { resolveNinaWriteSession } from './sessionResolve'
@@ -29,6 +30,7 @@ import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
 import { productionDeps, runNinaTurn } from './turn'
+import type { NinaRelationship } from './tuning'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
 /**
@@ -542,12 +544,23 @@ export async function sendNinaMessage(input: {
    * and `recomputeRecords`, in one card, because all three re-read the same history and all three
    * stop being fine at the same moment.
    */
-  const [context, history] = await Promise.all([
+  const [context, history, tuning] = await Promise.all([
     /* The session is the second argument now (F35 phase 3). She reads the window of THIS
      * conversation and the memory ledger of the whole relationship — assumptions A1 and A2, in one
      * call. */
     loadNinaContext(userId, sessionId, dbNinaSourceGateway),
     dbNinaToolGateway.loadRunHistory(userId),
+    /*
+     * THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
+     * `/admin/nina` immediate. `memoryActions.ts` under `lib/admin/` already records the same
+     * property for the memory slots: `revalidatePath` re-renders the admin page and is not how the
+     * edit reaches Nina; a committed row is in her next prompt with no invalidation step at all.
+     *
+     * Third in an existing `Promise.all` on purpose. It is one indexed single-row read against a
+     * connection this turn is opening anyway, so it costs no extra wall clock against the two reads
+     * beside it — and the 45 s budget has no room for a fourth sequential round trip.
+     */
+    readNinaTuning(userId),
   ])
 
   /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
@@ -594,6 +607,9 @@ export async function sendNinaMessage(input: {
     {
       userId,
       context,
+      /* On the INPUT, never on the context. A dial inside the context JSON is a number she can
+       * quote back at him and it collides with `NUMBERS_RULE`. */
+      tuning,
       history,
       sourceMessageId: runnerMessageId,
       runnerText: text.length > 0 ? text : null,
@@ -629,6 +645,7 @@ export async function sendNinaMessage(input: {
       ninaBubbles: [],
       memoryWrites: [],
       context,
+      relationship: tuning.relationship,
     })
     return { ok: true, userMessageId: runnerMessageId, bubbles: [], unavailable: true }
   }
@@ -710,6 +727,7 @@ export async function sendNinaMessage(input: {
     ninaBubbles: bubbles.map((bubble) => bubble.body),
     memoryWrites: result.payload.memoryWrites ?? [],
     context,
+    relationship: tuning.relationship,
   })
 
   /*
@@ -885,6 +903,13 @@ function scheduleDistillation(input: {
   ninaBubbles: readonly string[]
   memoryWrites: readonly NinaMemoryWrite[]
   context: NinaContext
+  /*
+   * F33 / R6, the sweep: the librarian is told what she is SET to be, so the couple's own register
+   * — "yang", "sayang", "bestie" — is recognised as the register and not filed as a standing fact
+   * about him. It rides the input and never `context`: `NinaContext` is serialised into the USER
+   * turn and is documented as the boundary of everything she may know (plan invariant 3).
+   */
+  relationship: NinaRelationship
 }): void {
   after(async () => {
     await runTurnDistillation({
@@ -900,6 +925,7 @@ function scheduleDistillation(input: {
         messageCount:
           input.context.conversation.window.length + input.context.conversation.olderMessageCount,
       },
+      relationship: input.relationship,
     })
   })
 }

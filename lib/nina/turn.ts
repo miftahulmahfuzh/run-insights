@@ -5,7 +5,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 import { buildNinaRunFact, type NinaContext, type NinaRunFact } from './context'
 import { dbNinaToolGateway, dbNinaTurnStore } from './gateway'
-import { NINA_REPAIR_PREAMBLE, NINA_SYSTEM_PROMPT, SEND_TOOL } from './prompts'
+import { NINA_REPAIR_PREAMBLE, SEND_TOOL, buildNinaSystemPrompt } from './prompts'
 import { quoteContextBlock, type QuotedMessageInput } from './reply'
 import { NinaSendPayloadSchema, describeNinaIssues, type NinaSendPayload } from './schema'
 import {
@@ -15,6 +15,7 @@ import {
   type NinaToolGateway,
   type NinaToolSet,
 } from './tools'
+import type { NinaTuning } from './tuning'
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -180,6 +181,16 @@ export interface NinaTurnUsage {
 export interface NinaTurnTrace {
   model: string
   promptVersion: number
+  /**
+   * `NinaTuning.revision` at call time. **Beside `promptVersion` because neither answers the
+   * question alone.** `NINA_PROMPT_VERSION` now identifies the ASSEMBLER, not the output: with a
+   * per-user tuning, two turns on version 3 can have been produced by two different Ninas. This is
+   * what lets "what was she set to when she said that" be answered from the audit table.
+   *
+   * Nullable because `lib/nina/queries.ts`'s column is, and it is nullable there because rows
+   * written before the tuning existed must not claim a revision they never had.
+   */
+  tuningRevision: number | null
   /** Tool rounds actually completed. 0 for a turn she answered straight away. */
   rounds: number
   /** Every tool name dispatched, in order. A dropped sibling call is prefixed `dropped:`. */
@@ -209,6 +220,8 @@ export interface NinaTurnResult {
 export interface NinaTurnRow {
   model: string
   promptVersion: number
+  /** `NinaTuning.revision` at call time. See `NinaTurnTrace`'s note. */
+  tuningRevision: number | null
   /** Which mechanism produced the reply. NOT the `status` column — see `dbNinaTurnStore`. */
   source: NinaTurnSource
   /**
@@ -229,6 +242,27 @@ export interface NinaTurnInput {
   userId: string
   /** Phase 2's boundary. Everything she may ever know is in here. */
   context: NinaContext
+  /**
+   * **The tuning, and it is on the INPUT rather than on `NinaContext` or on `NinaTurnDeps`.**
+   * The file's own existing distinction, twice over:
+   *
+   *   - NOT `NinaContext`. That object is serialised into the USER turn as JSON, and it is
+   *     documented as the boundary of everything she may know. A dial in there is a number she can
+   *     quote back at him — "gw disetel 87 flirty" — and it collides head-on with `NUMBERS_RULE`,
+   *     whose whole content is "every number you say appears in the JSON below". The tuning reaches
+   *     her as behaviour in the SYSTEM prompt and never as a value.
+   *   - NOT `NinaTurnDeps`. Deps are MACHINERY — a client, a model id, a gateway, a store, all the
+   *     same for every user. The tuning is PER-USER DATA, which is the same line this file already
+   *     draws between `context` (input) and `gateway` (deps).
+   *
+   * **Required, not optional.** An optional field defaulting to `NINA_TUNING_DEFAULTS` inside the
+   * loop would mean a forgotten call site ships the DEFAULT character and nothing fails — which is
+   * precisely the bug the plan set names: a tuning threaded through the chat action alone leaves
+   * her proactive messages in the default character, and that is the exact behaviour the
+   * `concerned` dial exists to change. Required makes the compiler the guard, and there are only
+   * two production call sites plus three test builders to satisfy.
+   */
+  tuning: NinaTuning
   /** Built once per turn by `NinaToolGateway.loadRunHistory`, reused by every round. */
   history: NinaRunHistory
   /** The `nina_messages` row this turn answers, for `nina_memory_facts.source_message_id`. */
@@ -427,6 +461,7 @@ function userTurnText(input: NinaTurnInput): string {
  */
 function ninaBody(
   model: string,
+  system: string,
   messages: Anthropic.MessageParam[],
   toolSet: NinaToolSet,
   forceSend: boolean,
@@ -434,7 +469,16 @@ function ninaBody(
   return {
     model,
     max_tokens: NINA_MAX_TOKENS,
-    system: NINA_SYSTEM_PROMPT,
+    /*
+     * **ASSEMBLED, NOT READ.** This was `NINA_SYSTEM_PROMPT` — a module-level constant — until the
+     * nina-character-tuning set, and it was the single line the whole character tuning had to pass
+     * through. `system` is `buildNinaSystemPrompt(input.tuning)`, computed ONCE per turn by the
+     * caller: see `runNinaTurnWith`'s note on why once and not per call.
+     *
+     * `system` is second in the parameter list to match this object's own field order, so a reader
+     * comparing the call to the envelope is not reordering two strings in their head.
+     */
+    system,
     messages,
     tools: forceSend ? [SEND_TOOL] : [...toolSet.tools],
     tool_choice: forceSend ? { type: 'tool', name: SEND_TOOL.name } : { type: 'any' },
@@ -527,9 +571,24 @@ export async function runNinaTurnWith(
   const remaining = () => deadline - now()
 
   const usage: NinaTurnUsage = { inputTokens: 0, outputTokens: 0 }
+
+  /*
+   * ── ASSEMBLED ONCE PER TURN, AND THAT IS A CORRECTNESS PROPERTY, NOT A MICRO-OPTIMISATION ───
+   * A turn makes up to four model calls (primary, two continuations, one repair). Building the
+   * prompt inside `ninaBody` would re-run a ~10 KB string concat on each of them, which is cheap
+   * and irrelevant; what is NOT irrelevant is that all four calls of one turn must carry the SAME
+   * character. `buildNinaSystemPrompt` is pure, so a per-call build would in fact be identical
+   * today — but `input.tuning` is read live from the database on every turn with no cache
+   * anywhere on this path, and the moment anything re-reads it mid-turn, a slider moved between
+   * call 1 and call 2 would split one turn between two Ninas. One string, computed here, removes
+   * that possibility by construction.
+   */
+  const system = buildNinaSystemPrompt(input.tuning)
+
   const trace: NinaTurnTrace = {
     model: deps.model,
     promptVersion: input.context.promptVersion,
+    tuningRevision: input.tuning.revision,
     rounds: 0,
     toolCalls: [],
     latencyMs: 0,
@@ -584,7 +643,7 @@ export async function runNinaTurnWith(
     let message: Anthropic.Message
     try {
       message = await deps.client.messages.create(
-        ninaBody(deps.model, messages, deps.toolSet, forceSend),
+        ninaBody(deps.model, system, messages, deps.toolSet, forceSend),
         { timeout: Math.min(ceiling, Math.max(remaining(), 1)) },
       )
     } catch (cause) {
@@ -619,7 +678,7 @@ export async function runNinaTurnWith(
       /* THE ONE REPAIR. Ruling (g): nothing else in this function is allowed to spend it — a
        * malformed tool ARGUMENT gets a `tool_result` instead, inside an already-budgeted round. */
       if (remaining() <= NINA_MIN_REPAIR_BUDGET_MS) return finish(null, 'unavailable')
-      const repaired = await attemptNinaRepair(deps, messages, {
+      const repaired = await attemptNinaRepair(deps, system, messages, {
         malformed: send.input,
         issues: describeNinaIssues(parsed.error),
         timeoutMs: Math.min(NINA_TURN_BUDGET.repair, remaining()),
@@ -731,6 +790,11 @@ export async function runNinaTurnWith(
  */
 async function attemptNinaRepair(
   deps: NinaTurnDeps,
+  /**
+   * The same assembled prompt the failing call carried. A repair under a different character is a
+   * second reply from a second person, and "reuse exactly what you already had" would be a lie.
+   */
+  system: string,
   messages: readonly Anthropic.MessageParam[],
   input: { malformed: unknown; issues: string; timeoutMs: number },
 ): Promise<{ payload: NinaSendPayload; usage: NinaTurnUsage } | null> {
@@ -743,7 +807,7 @@ async function attemptNinaRepair(
   let second: Anthropic.Message
   try {
     second = await deps.client.messages.create(
-      ninaBody(deps.model, repairMessages, deps.toolSet, true),
+      ninaBody(deps.model, system, repairMessages, deps.toolSet, true),
       { timeout: Math.max(input.timeoutMs, 1) },
     )
   } catch (cause) {
@@ -820,6 +884,7 @@ export async function runNinaTurn(
       await deps.store.record(input.userId, {
         model: result.trace.model,
         promptVersion: result.trace.promptVersion,
+        tuningRevision: result.trace.tuningRevision,
         source: result.source,
         toolCalls: result.trace.toolCalls.join(','),
         inputTokens: result.usage.inputTokens,

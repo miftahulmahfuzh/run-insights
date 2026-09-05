@@ -3,6 +3,7 @@ import type { PgTable } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
 import * as schema from '@/lib/db/schema'
+import { NINA_DIALS, NINA_TRAITS } from '@/lib/nina/tuning'
 
 /**
  * F33's eight tables and two `profiles` columns, asserted against the names the phase plans were
@@ -32,6 +33,10 @@ function indexNames(table: PgTable): string[] {
   return cfg(table)
     .indexes.map((i) => i.config.name ?? '(unnamed)')
     .sort()
+}
+/** `photoEagerness` -> `photo_eagerness`. The one spelling difference between model and column. */
+function snake(key: string): string {
+  return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 }
 function fkFor(table: PgTable, column: string) {
   return cfg(table).foreignKeys.find((fk) =>
@@ -341,6 +346,96 @@ describe('nina_messages.session_id — F35 R2 and R11', () => {
   })
 })
 
+describe('nina_tuning', () => {
+  it('is one row per user, keyed by user_id alone, cascading from the account', () => {
+    // One row per user, so there is no second fact to hang a surrogate id on — the `nina_nags` /
+    // `nina_folders` natural-key idiom with one column instead of two. It is also what lets
+    // `writeNinaTuning` be a single ON CONFLICT DO UPDATE that bumps `revision` in SQL.
+    expect(cfg(schema.ninaTuning).name).toBe('nina_tuning')
+    expect(columns(schema.ninaTuning).get('user_id')?.primary).toBe(true)
+    expect(cfg(schema.ninaTuning).primaryKeys.length).toBe(0)
+    expect(fkFor(schema.ninaTuning, 'user_id')?.onDelete).toBe('cascade')
+  })
+
+  it('spells exactly the twenty columns phases 3, 4 and 5 were written against', () => {
+    expect(names(schema.ninaTuning)).toEqual(
+      [
+        'user_id',
+        'relationship',
+        // R1 — the eleven traits, in the order the user wrote them.
+        'anger',
+        'chill',
+        'sad',
+        'flirty',
+        'steamy',
+        'wise',
+        'annoying',
+        'funny',
+        'happy',
+        'anxious',
+        'concerned',
+        // R3 — the four dials that each name a line of shipping code.
+        'profanity',
+        'clinginess',
+        'photo_eagerness',
+        'verbosity',
+        'wardrobe',
+        'notes',
+        'revision',
+        'updated_at',
+      ].sort(),
+    )
+  })
+
+  it('agrees with lib/nina/tuning.ts about every score column, which is the only duplication', () => {
+    // `lib/nina/tuning.ts` must stay importable from a `'use client'` file, so it cannot import
+    // this module — and this module must not import UPWARD from `lib/nina/`. So the two spell the
+    // same fifteen keys independently, and THIS is what makes that checked rather than intended.
+    // The RULING A6 shape: `tests/nina.imagerecipe.test.ts` does exactly this for NINA_BLOB_PREFIX.
+    const declared = new Set(names(schema.ninaTuning))
+    for (const trait of NINA_TRAITS) expect(declared.has(trait), trait).toBe(true)
+    for (const dial of NINA_DIALS) expect(declared.has(snake(dial)), dial).toBe(true)
+    expect(NINA_TRAITS.length + NINA_DIALS.length).toBe(15)
+  })
+
+  it('stores every intensity as an integer percent, never a float', () => {
+    for (const key of [...NINA_TRAITS, ...NINA_DIALS.map(snake), 'revision']) {
+      expect(sqlType(schema.ninaTuning, key), key).toBe('integer')
+    }
+  })
+
+  it('carries NO SQL DEFAULT on any stored value — the defaults live in TypeScript', () => {
+    // `NINA_TUNING_DEFAULTS` is the compatibility contract: the setting that reproduces the Nina
+    // who ships. A `DEFAULT 50` here would be a second copy of it in a second language, drifting
+    // silently. Instead: no row means the defaults, and `writeNinaTuning` always supplies all of
+    // them because it takes a whole `NinaTuning`.
+    for (const key of [
+      'relationship',
+      ...NINA_TRAITS,
+      ...NINA_DIALS.map(snake),
+      'wardrobe',
+      'notes',
+      'revision',
+    ]) {
+      expect(columns(schema.ninaTuning).get(key)?.notNull, key).toBe(true)
+      expect(columns(schema.ninaTuning).get(key)?.hasDefault, key).toBe(false)
+    }
+    // The one exception, and it is not part of the contract: a timestamp.
+    expect(columns(schema.ninaTuning).get('updated_at')?.hasDefault).toBe(true)
+  })
+
+  it('leaves relationship as plain text with no CHECK, so a sixth level is not a migration', () => {
+    // The `nina_turns.trigger` argument: the vocabulary belongs to `lib/nina/tuning.ts`, and this
+    // table must not become the thing a later phase has to migrate to add a level.
+    expect(sqlType(schema.ninaTuning, 'relationship')).toBe('text')
+    expect(cfg(schema.ninaTuning).checks.length).toBe(0)
+  })
+
+  it('has no index at all, because the only read is a primary-key lookup', () => {
+    expect(indexNames(schema.ninaTuning)).toEqual([])
+  })
+})
+
 describe('nina_nags and nina_turns', () => {
   it('nags are keyed (user_id, code) and remember the DAY, not the instant', () => {
     expect(cfg(schema.ninaNags).primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
@@ -379,6 +474,19 @@ describe('nina_nags and nina_turns', () => {
     // is the reason `kind`, `trigger`, `source` and `status` are all `text` + `.$type<>()`.
     expect(sqlType(schema.ninaTurns, 'status')).toBe('text')
     expect(columns(schema.ninaTurns).get('status')?.notNull).toBe(true)
+  })
+
+  it('records the tuning revision beside the prompt version, nullable and with no default', () => {
+    // `prompt_version` dates the ASSEMBLER; `tuning_revision` dates the SETTING it assembled. With
+    // a per-user character the first is no longer sufficient on its own. NULL means "a turn from
+    // before the tuning existed" — distinct from 0, which means "she was on the shipping
+    // character", so the two must not be spelled the same way.
+    expect(sqlType(schema.ninaTurns, 'tuning_revision')).toBe('integer')
+    expect(columns(schema.ninaTurns).get('tuning_revision')?.notNull).toBe(false)
+    expect(columns(schema.ninaTurns).get('tuning_revision')?.hasDefault).toBe(false)
+    // No FK: `nina_tuning` holds one CURRENT row per user, not a history, so there is nothing for
+    // revision 7 to point at once 8 is saved. An audit pointer must not block a write.
+    expect(fkFor(schema.ninaTurns, 'tuning_revision')).toBeUndefined()
   })
 })
 

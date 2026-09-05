@@ -90,6 +90,7 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
+| `ninaTuning` | `nina_tuning` | Nina's per-user character: eleven trait dials, the relationship, the four extra dials, wardrobe and notes, plus a revision | PK `user_id` |
 | `pushSubscriptions` | `push_subscriptions` | Web Push subscription per browser endpoint | `push_subscriptions_endpoint_unq`, `push_subscriptions_user_idx` |
 
 #### Schema-wide conventions
@@ -125,9 +126,13 @@ TypeScript change and not a migration. The unions are exported alongside the tab
 `AdapterAccountType`, `Sex`, `ExtractionStatus`, `PhotoKind`, `RunIntent`, `RunSource`,
 `InsightScope`, `NinaTurnKind`, `NinaTurnStatus`, `NinaRole`, `NinaMessageSource`, `NinaImageKind`,
 `NinaMemorySource`, `NinaPromiseMetric`, `NinaFactCategory`, `NinaAvatarSource`,
-`NinaSessionTitleSource`. `badges.key`,
-`records.key` and `nina_turns.trigger`/`error_code` are left as plain `text` pointing at an
-external catalog, for the same "adding a member is not a migration" reason taken one step further.
+`NinaSessionTitleSource`. `badges.key`, `records.key`, `nina_turns.trigger`/`error_code` and
+`nina_tuning.relationship` are left as plain `text` pointing at an external catalog, for the same
+"adding a member is not a migration" reason taken one step further — `relationship`'s catalog is
+`NINA_RELATIONSHIPS` in `lib/nina/tuning.ts`, and a sixth relationship is a one-line edit there
+rather than a migration here. Its neighbours `nina_tuning.wardrobe` and `.notes` are not catalog
+pointers at all: they are free operator text, `NOT NULL` with `''` as the empty value, because
+"no override" and "not set" are the same fact.
 
 **Cascade is the default for ownership FKs**, with two documented exceptions: `badges.run_id` is
 `set null` (R-22 — "a badge is a fact about the past; deleting the run that earned it must not
@@ -620,3 +625,60 @@ data-migration statement.
 > run at deploy time.
 
 `is_current` still has exactly three writers, all in `lib/nina/queries.ts`.
+
+### Recent changes — `nina-character-tuning` phase 1 (2026-09-05)
+
+Within this package the phase touched `schema.ts` only; the reads and writes live in
+`lib/nina/queries.ts` and the prompt assembly in `lib/nina/persona.ts` and
+`lib/nina/prompts/system.ts`.
+
+**New table `nina_tuning`** — one row per user, primary-keyed on `user_id` with a cascading FK to
+`user`, holding Nina's whole character: the eleven trait dials as `0-100` integers, the relationship
+as a text column over five values, the four extra dials the request's *"among other things (you can
+define more comprehensively)"* asked for, a wardrobe line, a free-text notes field, a revision
+integer and an `updated_at`.
+
+**The dials are flat columns, not a JSON blob.** Twenty named `integer NOT NULL` columns rather than
+one `jsonb`, so the column list *is* the vocabulary: a dial that does not exist cannot be written,
+`drizzle-kit` diffs a rename, and a hand-run `UPDATE nina_tuning SET anger = 100` is the whole of
+the operator escape hatch. The domain is enforced by `clampNinaScore` and not by a `CHECK`, because
+a `CHECK` would make widening the scale a migration, and a value outside `0-100` is a bug in one
+writer rather than a state the reader cannot survive.
+
+Three more things about the shape are decisions rather than defaults:
+
+- **A row per user, not a row per dial.** The panel saves the whole tuning in one Server Action —
+  actions dispatch one at a time per client — so a normalised `(user_id, key, value)` table would be
+  one action writing twenty rows for no gain, and every read would be an aggregation. It is one
+  object with one lifetime.
+- **`readNinaTuning` returns the DEFAULTS when the row is absent**, and no phase writes a row on
+  sign-up. That is what makes the feature a provable superset of what shipped: until the operator
+  saves something, every user is on `NINA_TUNING_DEFAULTS`, and
+  `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` is asserted to equal the prompt that shipped before
+  the dials existed. No column carries a SQL `DEFAULT` for the same reason every other table here
+  does not: the one writer always supplies every value, and a default is a second opinion about it.
+- **The tuning is not a memory slot.** `nina_memory_slots` is written by the distiller for anything
+  not marked `source: 'admin'`, which would eventually let her rewrite her own character; and the
+  nine-key slot vocabulary in `lib/nina/memory.ts` is deliberately unchanged by this set.
+
+**`nina_turns` gained a nullable `tuning_revision` column.** `prompt_version` identifies the
+*assembler*; with a per-user tuning it no longer identifies the *output*, so without the revision
+beside it the audit trail cannot answer *"what was she set to when she said that"*. Nullable, and
+NULL means the turn predates the dials. `revision` itself is computed as `revision + 1` inside the
+upsert rather than supplied by a caller — a revision the client sends is a revision a stale tab can
+move backwards.
+
+**Migration `drizzle/0004_nina_persona_tuning.sql`** plus its meta snapshot and journal entry
+(`_journal.json` moves from idx 3 to idx 4). Additive only — one `CREATE TABLE`, one nullable
+`ADD COLUMN`, one FK. Nothing drops, renames, retypes or narrows anything, and there is no
+data-migration statement, so it applies to a populated table without a rewrite and reverting the
+code leaves an unread table and an unread column, which is inert.
+
+> **Applying it is a deploy action** (`npm run db:migrate`), not something a phase does. Treat the
+> guarantees in this section as what `db:check`, typecheck and the unit suites can give until it has
+> run against a real database.
+>
+> **The number `0004` is this branch's, and it is expected to move.** `main` gained an unrelated
+> `0004_nina_chat_sessions` while this set was in flight, so merging renumbers this one and
+> regenerates the snapshot. That repair is the merge's, not this phase's; the number above describes
+> the branch as it stands.

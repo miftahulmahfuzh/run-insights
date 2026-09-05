@@ -111,7 +111,7 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "400dea5",
       "depends_on": [
         2,
         3,
@@ -120,21 +120,21 @@
       ],
       "difficulty": "EASY",
       "n": 6,
-      "note": null,
+      "note": "Sweep clean: all 4 of my OQs verified gone at clause level. 4 decisions \u2014 relationship threaded via scheduleDistillation->runTurnDistillation (plan's actions.ts call site does not exist); plan test asserted no-jokes absent with funny at default, added funny:100 (invariant 2); persona.md 'repeal 4 two-thirds landed' rewritten as landed; prettier --write on 4 of phase 5's files that failed format:check pre-existing on HEAD. NINA_DISTILL_PROMPT_VERSION 1->2, NINA_PROMPT_VERSION untouched. drizzle/ untouched.",
       "package": "docs`, `tests`, `lib/nina/prompts",
       "plan": ".workflows/plan/nina-character-tuning/phase-6.md",
-      "reported_at": null,
+      "reported_at": "2026-09-05T01:10:59+00:00",
       "satisfies": [
         "R6"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-RI-A006",
       "title": "The sweep, and the record"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-character-tuning/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-character-tuning",
-  "updated": "2026-09-04T22:31:51+00:00",
+  "updated": "2026-09-05T01:10:59+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-character-tuning"
 }

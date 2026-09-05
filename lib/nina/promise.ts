@@ -1,5 +1,10 @@
 import { addDays, daysBetween, type DateISO } from '@/lib/date/ranges'
-import type { NinaPendingPromise, NinaPendingPromisesSlot } from '@/lib/db/schema'
+import type {
+  NinaPendingPromise,
+  NinaPendingPromisesSlot,
+  NinaPromiseReward,
+} from '@/lib/db/schema'
+import { ninaBand } from '@/lib/nina/tuning'
 
 /**
  * Did she keep her promise? — F33 R19, the pure half.
@@ -21,7 +26,7 @@ import type { NinaPendingPromise, NinaPendingPromisesSlot } from '@/lib/db/schem
  * It never creates a promise (phase 5), never calls a generator (Step 7), never posts a message
  * (phase 10 announces — D-3), and never edits a promise's `text`, `condition`, `metric`, `target`,
  * `targetKey`, `byDate`, `promisedOn` or `sourceMessageId`. It reads those and writes only
- * `status`, `resolvedOn`, `jobId`, `firedOn` and `attempts`.
+ * `status`, `resolvedOn`, `jobId`, `firedOn`, `attempts` and — since R5 — `reward`.
  */
 
 /**
@@ -54,6 +59,30 @@ export const PROMISE_EXPIRY_GRACE_DAYS = 2
  */
 export const PROMISE_OPEN_ENDED_TTL_DAYS = 60
 
+/**
+ * The reward a promise pays out, given the operator's `steamy` dial: at band **`high`** or above —
+ * a score of 60 or more — she SENDS him the photograph instead of changing her profile picture.
+ * Below that, nothing about the promise mechanism changes at all.
+ *
+ * ── THE THRESHOLD IS PHASE 1'S BAND, NOT A LOCAL CONSTANT ─────────────────────────────────────
+ * Reconciled: the draft had `PROMISE_SELFIE_STEAMY_FLOOR = 60` here, which was *already* the band
+ * edge (`NINA_BAND_WIDTH = 20`, so `high` starts at 60) — a private constant that agreed with the
+ * shared one by coincidence. `/admin/nina` shows the operator the band name, so the band is the
+ * only threshold he can actually see. `ninaBand` is imported from `./tuning`, which is zero-import
+ * plain data; this module keeps its independence from the tuning TYPE by still taking the raw
+ * number, and `ninaBand` never throws on anything, so garbage folds to band `off`.
+ *
+ * ── WHY THE DIAL AND NOT THE DISTILLER ────────────────────────────────────────────────────────
+ * R5's exploit only works if turning the dial up changes the promises she is ALREADY tracking. A
+ * reward frozen into each promise when it was made would apply only to promises made after the
+ * slider moved, which is the opposite of what a slider is for. And the distiller's job is to record
+ * what was said; which camera pays it out is the operator's decision, and the operator's decisions
+ * live in the tuning row.
+ */
+export function promiseRewardFor(steamy: number): NinaPromiseReward {
+  return ninaBand(steamy).index >= 3 ? 'selfie' : 'avatar'
+}
+
 /** One reviewed run, reduced to what a condition can be about. */
 export interface PromiseRunFact {
   /** Jakarta calendar day, `'YYYY-MM-DD'`. */
@@ -83,14 +112,32 @@ export interface PromiseEvalInput {
   todayISO: DateISO
   facts: PromiseFacts
   /**
-   * **The landing test (Stage B).** True when a `nina_avatars` row with `source = 'generated'` was
-   * created on or after `dayISO`. Injected as a predicate rather than as a row so this module
-   * stays free of the schema and so the test can pin it.
+   * **The landing test for an `'avatar'` reward (Stage B).** True when a `nina_avatars` row with
+   * `source = 'generated'` was created on or after `dayISO`. Injected as a predicate rather than as
+   * a row so this module stays free of the schema and so the test can pin it.
    *
    * Its one tolerance is stated in the plan: a *different* generated avatar landing the same day
    * settles this promise. The cost is a mis-attributed true event, not a false one.
    */
   avatarLandedOnOrAfter: (dayISO: DateISO) => boolean
+  /**
+   * **The landing test for a `'selfie'` reward (Stage B).** True when the photograph dispatched
+   * under `jobId` has actually reached the conversation — a `nina_message_images` row whose
+   * message carries `turn_id = jobId`.
+   *
+   * ── WHY THIS ONE IS EXACT AND THE AVATAR ONE IS NOT ───────────────────────────────────────────
+   * A *generated avatar* essentially only ever comes from a promise or from an operator clicking
+   * Generate, so a same-day match mis-attributes a true event at worst. Chat selfies are different:
+   * `generate_image` is a tool she calls whenever he asks for a photo, up to six times a day. A
+   * same-day match would let a selfie HE asked for settle a promise he had not kept — a false
+   * event, not a mis-attributed true one. The worker already writes the job id into
+   * `nina_messages.turn_id`, so the exact test costs the same single indexed read.
+   *
+   * **Optional, and absent means "no selfie has landed".** A caller that supplies no selfie port
+   * can never settle a selfie promise: it waits, retries, and eventually expires. That is the safe
+   * failure direction, and it is why this is an added port rather than a rename of the one above.
+   */
+  selfieLandedForJob?: (jobId: string) => boolean
 }
 
 /**
@@ -118,6 +165,12 @@ export interface PromiseDecision {
   verdict: PromiseVerdict
   /** The accepted job's id, or null when the generator refused. Ignored for every other kind. */
   jobId?: string | null
+  /**
+   * Which camera the sweep actually asked. Recorded on the entry by a `fire` so the settle test
+   * reads a stable value; absent means `'avatar'`, which is what a caller that knows nothing about
+   * rewards means. Ignored for every other kind.
+   */
+  reward?: NinaPromiseReward
 }
 
 export interface PromiseSlotResolution {
@@ -133,9 +186,25 @@ function attemptsOf(promise: NinaPendingPromise): number {
   return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0
 }
 
-function jobIdOf(promise: NinaPendingPromise): string | null {
+/**
+ * The dispatched job, or null. Exported because `promises.ts` needs it to decide whether the selfie
+ * landing read is worth performing at all — a sweep with no fired selfie promise does no extra
+ * read.
+ */
+export function promiseJobId(promise: NinaPendingPromise): string | null {
   const raw = (promise as { jobId?: string | null }).jobId
   return typeof raw === 'string' && raw.length > 0 ? raw : null
+}
+
+/**
+ * **Which camera this promise pays out with.** Absent, null, or anything that is not the string
+ * `'selfie'` reads as `'avatar'` — so a promise written before R5 landed, and a promise
+ * hand-edited in the memory editor, both behave exactly as they always did. Same defensive shape
+ * as `attemptsOf`, and for the same reason: a slot is `jsonb` a human can edit, and a thrown error
+ * here would stop the whole sweep over one bad row.
+ */
+export function promiseReward(promise: NinaPendingPromise): NinaPromiseReward {
+  return (promise as { reward?: unknown }).reward === 'selfie' ? 'selfie' : 'avatar'
 }
 
 function firedOnOf(promise: NinaPendingPromise): DateISO | null {
@@ -252,9 +321,38 @@ function deadlinePassed(promise: NinaPendingPromise, todayISO: DateISO): boolean
 }
 
 /**
+ * **Has the reward this promise actually dispatched arrived?** One predicate per reward, chosen by
+ * what the `fire` recorded — never by the operator's dial as it stands right now, because the dial
+ * may have moved since the dispatch and the photograph that landed is the one that was asked for.
+ *
+ * A missing `selfieLandedForJob` returns false, so a caller that does not know about selfies cannot
+ * settle one. A refused or failed generation lands nothing in either table, so it returns false as
+ * well — which is the whole of "a failed generation can never consume a promise".
+ */
+function rewardLanded(
+  promise: NinaPendingPromise,
+  jobId: string,
+  firedOn: DateISO | null,
+  input: PromiseEvalInput,
+): boolean {
+  if (promiseReward(promise) === 'selfie') {
+    return input.selfieLandedForJob?.(jobId) ?? false
+  }
+  return input.avatarLandedOnOrAfter(firedOn ?? promise.promisedOn)
+}
+
+/**
  * One promise, one verdict. The order of the branches IS the state machine, and it is the reason
  * a failed generation can never consume a promise: `settle` is reachable only through
- * `avatarLandedOnOrAfter`, and nothing else in this function writes `status: 'met'`.
+ * `rewardLanded` — that is, only through `avatarLandedOnOrAfter` or `selfieLandedForJob` — and
+ * nothing else in this function writes `status: 'met'`.
+ *
+ * R5 generalised the landing test from one reward to two and changed nothing else about that
+ * property. A refused dispatch still returns a null `jobId` and never reaches Stage B; a generation
+ * that fails in the worker still writes no `nina_avatars` row and no `nina_message_images` row, so
+ * both predicates are false; and a selfie promise evaluated by a caller that supplies no selfie
+ * port waits, retries and expires rather than settling. **Do not "simplify" this by settling on
+ * `firedOn` alone.**
  */
 export function evaluatePromise(
   promise: NinaPendingPromise,
@@ -268,15 +366,15 @@ export function evaluatePromise(
     return { id, kind: 'wait', reason: `already ${promise.status}` }
   }
 
-  const jobId = jobIdOf(promise)
+  const jobId = promiseJobId(promise)
   const firedOn = firedOnOf(promise)
   const attempts = attemptsOf(promise)
 
   /* ── STAGE B: a job is on record ─────────────────────────────────────────────────────────── */
   if (jobId != null) {
     /* The photograph landed. This is the ONLY path to 'met'. */
-    if (input.avatarLandedOnOrAfter(firedOn ?? promise.promisedOn)) {
-      return { id, kind: 'settle', reason: `avatar landed for job ${jobId}` }
+    if (rewardLanded(promise, jobId, firedOn, input)) {
+      return { id, kind: 'settle', reason: `${promiseReward(promise)} landed for job ${jobId}` }
     }
     /* Still the same Jakarta day: a GitHub Actions runner takes minutes (RU-20), so waiting is
      * the correct answer and re-firing would be the bug. */
@@ -285,7 +383,7 @@ export function evaluatePromise(
     }
     /* A day has passed with nothing to show. Out of attempts, this is over. */
     if (attempts >= PROMISE_MAX_ATTEMPTS) {
-      return { id, kind: 'expire', reason: `${attempts} attempts, no avatar` }
+      return { id, kind: 'expire', reason: `${attempts} attempts, no ${promiseReward(promise)}` }
     }
     return { id, kind: 'retry', reason: `job ${jobId} produced nothing on ${firedOn}` }
   }
@@ -357,8 +455,14 @@ export function resolvePromiseSlot(
         return { ...promise, status: 'expired' as const, resolvedOn: todayISO }
       case 'fire':
         changed = true
+        /* `reward` is recorded HERE and read by the next sweep's Stage B, so a dial that moves
+         * between the dispatch and the landing cannot make the evaluator watch the wrong table.
+         * A caller that names no reward means the avatar, which is what every caller meant before
+         * R5. A `retry` leaves it alone; the next `fire` overwrites it with the current dial, which
+         * is right — the operator changed their mind, so the payout follows. */
         return {
           ...promise,
+          reward: decision.reward ?? 'avatar',
           jobId: decision.jobId ?? null,
           firedOn: todayISO,
           attempts: attemptsOf(promise) + 1,
