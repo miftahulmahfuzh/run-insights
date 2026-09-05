@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-05
-**Total Active Tasks**: 1
+**Total Active Tasks**: 3
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 3
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 13
+- Completed: 14
 
 ---
 
@@ -41,6 +41,17 @@
   - **Depends on**: `P1-RI-A009`
   - **Plan**: `.workflows/plan/P1-RI-A012.md`
   - **Card**: `miftahulmahfuzh/run-insights#85`
+
+- [ ] **P1-RI-A016** Phase 2: The composer clears the bar's outer height, so it sits flush
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Closes the 1 px seam phase 1 leaves. `components/ui/TabBar.tsx` gains — **additively only**, no markup touched — `TAB_BAR_BORDER_PX = 1` (mirrors `border-t`) and `TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX` (59), each carrying the invariant-3 comment naming the Tailwind class it mirrors; `TAB_BAR_HEIGHT_PX` stays, as it is the grid's own height. `ChatChrome.tsx`'s `BAR_CLEARANCE_PX` and `ChatScreen.tsx`'s `COMPOSER_CLEARANCE_PX` become `TAB_BAR_OUTER_HEIGHT_PX`, keeping their comments' shape with the derivation rewritten to "the bar's outer height: its grid plus the `border-t` the grid sits under" plus a sentence recording the measured bug — the border was never in the sum, so the composer floated 1 px above the bar even after the FAB was gone. Doc sites: `composerBottomCss`'s docblock in `lib/nina/chatview.ts` (the overhang term goes, the border term arrives; the `--safe-bottom`-outside-the-multiplier paragraph stays verbatim), `controlBottomCss`'s docblock at `lib/nina/chrome.ts:167-185` and `barClearancePx`'s JSDoc at `:189` — **this is the edit that makes phase 1's repo-wide grep true** (D9) — plus `TabBar.tsx:45-50`, `chatview.ts:189` ("a 78 px settle"), and `Composer.tsx:34,86,92`. Tests move with it: `chrome.test.ts`'s `BAR_CLEARANCE` 58 → 59, `chatview.test.ts`'s clearance inputs 58 → 59, and `tests/tabbar.geometry.test.ts` is extended to assert `TAB_BAR_BORDER_PX === 1`, `TAB_BAR_OUTER_HEIGHT_PX === TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX`, and — the assertion that actually holds R2 — that the clearance both `ChatChrome` and `ChatScreen` compose is the **outer** height, not the grid height, so reintroducing the gap fails a test rather than shipping. No signature or body change to `composerBottomCss`/`controlBottomCss` (invariant 4); no markup in `TabBar.tsx`, no `BOTTOM_GAP`, no `ROADMAP_v0.1.0.md`, no keyboard branch, no reveal state machine. Exit criteria: with the bar shown and no keyboard, `composerBottomCss(0, COMPOSER_CLEARANCE_PX)` returns `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`, landing the composer's bottom edge exactly on the bar's top border — zero gap, no overlap; no literal `78` remains at any live geometry site across `chatview.ts`, `chrome.ts`, their tests, `Composer.tsx`, `ChatChrome.tsx` and `ChatScreen.tsx` (unrelated numbers such as `TEXTAREA_MAX_PX` stay); `npx tsc --noEmit`, `npm run lint` and `npx vitest run` green.
+  - **Status**: open
+  - **Plan Set**: `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — The query bar and the bottom bar do not sit flush — there is a gap; close it
+  - **Depends on**: `P1-RI-A015`
+  - **Plan**: `.workflows/plan/P1-RI-A016.md`
+  - **Card**: `miftahulmahfuzh/run-insights#88`
 
 ### [P2] Medium
 
@@ -325,5 +336,25 @@
   - **Drift**: a real plan defect — it specified `chatViewerPhotos({ urls, kinds })` but called it `chatViewerPhotos(viewerMessage)`; those cannot both be true and it failed typecheck (TS2345). The parameter now takes `ChatMessage`'s own `imageUrls`/`imageKinds` spelling, the half needing no adapter.
   - **Drift**: `chooseSaveStrategy` never returns `'open'` — the plan's prose described a three-branch ladder its own code and tests do not have. Code and tests kept as written; `'open'` re-documented as the runtime fallback rather than a returned strategy.
   - **Drift**: `<PhotoViewer>` renders after phase 7's `<MessageActionsSheet>` rather than immediately after `<Composer>`; the plan said "last child of the fragment", which with phase 7 landed is now after the sheet. `z-60` over `z-50` means stacking was never in question.
+
+### [P1] P1-RI-A015
+- [x] **P1-RI-A015** Phase 1: The `+` becomes the `New` tab, and the overhang is deleted
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns the tab bar's shape. `components/ui/TabBar.tsx`: `/upload` is demoted from a raised FAB to the third of five entries in `TABS`, rendering through the existing `Tab` component as a `size-5` `+` glyph (`M12 5v14M5 12h14`) above a `text-[10px]` caption reading `New`, coral at rest and when active via one new optional `accent` prop on `Tab`; the hand-written absolutely-positioned `<Link className="absolute -top-5 left-1/2 … size-14 … bg-z5">` and its wrapper are deleted, `relative` comes off the grid container, `TAB_BAR_FAB_OVERHANG_PX` is deleted, and the hide transform becomes a plain `translate: '0 100%'` with its `calc()` gone. The file header's FAB argument is rewritten to record what the bar is now and why it changed rather than silently dropped. `ChatChrome.tsx:77` and `ChatScreen.tsx:99` drop the overhang import and their clearance becomes `TAB_BAR_HEIGHT_PX` alone — **58, not 59**; the border term belongs to phase 2. `ChatChrome.tsx:222-226`'s floating-lane comment is rewritten to name no constant so phase 2 never reopens it. `lib/nina/chrome.test.ts:18` (`BAR_CLEARANCE` → 58) and `lib/nina/chatview.test.ts:218-249` (the five `composerBottomCss(0, 78)` inputs → 58) move with it, along with every computed-total expectation. Comment-only edits in `AppShell.tsx` (`BOTTOM_GAP.tabs` and `.chat`, **no value changes**), `NinaSidebar.tsx:166-167`, and `ROADMAP_v0.1.0.md:484`. Creates `tests/tabbar.geometry.test.ts`, a `readRepoCode` source scan asserting no `-top-5`, no `size-14`, no `absolute`, no filled `bg-z5` circle, a `0 100%` hide transform with no `calc`, the `New` caption, and `/upload` in `TABS`. Does **not** touch `lib/nina/chatview.ts` or `lib/nina/chrome.ts` sources, `Composer.tsx`, any `BOTTOM_GAP` value, the reveal state machine, the keyboard branch, or the unread badge. Exit criteria: `TAB_BAR_FAB_OVERHANG_PX` has no executable reference left in the repo (the grep excludes `.workflows/**`, `*_code_analyzer.md` and `*_PLAN.md`; `lib/nina/chrome.ts:189`'s JSDoc is phase 2's per D9); `TabBar.tsx` contains no `absolute`, no `-top-`, no `size-14`; the bar renders five captions — Runs, Nina, New, Trends, Me; `npx tsc --noEmit`, `npm run lint` and `npx vitest run` green; the composer clears 58 px while the bar shows, leaving the 1 px seam that is phase 2's.
+  - **Status**: completed
+  - **Plan Set**: `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — Replace the `+` button with a normal "new" text control that does not take up space outside the bottom bar
+  - **Plan**: `.workflows/plan/P1-RI-A015.md`
+  - **Card**: `miftahulmahfuzh/run-insights#87`
+  - **Completed**: 2026-09-05 08:12
+  - **Method**: /do (swarm phase 1 of 2)
+  - **Files**: components/ui/TabBar.tsx, components/nina/ChatChrome.tsx, components/nina/ChatScreen.tsx, components/ui/AppShell.tsx, components/nina/NinaSidebar.tsx, lib/nina/chrome.test.ts, lib/nina/chatview.test.ts, tests/tabbar.geometry.test.ts (new), ROADMAP_v0.1.0.md
+  - **Result**: `/upload` stopped being a raised coral FAB overhanging the bar's top edge and became the third of five ordinary tab cells — a `size-5` `+` glyph over a `text-[10px]` `New` caption, coral at rest and when active through one new optional `accent` prop on the module-local `Tab`. `TAB_BAR_FAB_OVERHANG_PX` is deleted, the hide transform collapses from `calc(100% + 20px)` to a plain `0 100%`, and both clearances (`ChatChrome`'s `BAR_CLEARANCE_PX`, `ChatScreen`'s `COMPOSER_CLEARANCE_PX`) go from `58 + 20 = 78` to `TAB_BAR_HEIGHT_PX` alone (58). That closes 18 of the reported 19 px gap; the last 1 px is the bar's `border-t` and is phase 2's (R2). New source-scan guard `tests/tabbar.geometry.test.ts` (7 tests) holds the no-overhang invariant in place.
+  - **Verification**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`); `npm run format:check` clean; `npx vitest run` 137 files / **2526/2526** passed. `npx tsc --noEmit` reports 13 errors — **identical before and after**, verified by `git stash` (13 both ways): all are `Cannot find name 'PageProps'/'LayoutProps'/'RouteContext'` in `app/**` because Next's generated `.next/types` is not built in this worktree. Zero new type errors.
+  - **Drift**: none.
+  - **Decided**: Phase 1's exit grep demands `TAB_BAR_FAB_OVERHANG_PX` appear on exactly one line repo-wide, but returns 5 — accepted as passing (rung 3, the phase plan's own code blocks): four of the five are past-tense prose that Steps 1, 7 and 15 themselves prescribe (`TabBar.tsx`'s header, `ChatChrome`'s clearance docstring, and the new test's comment plus its `not.toContain` assertion string). The criterion's stated intent, *no **executable** reference*, holds — nothing imports or reads the deleted export. `lib/nina/chrome.ts:189` stays phase 2's per D9.
+  - **Decided**: Exit criterion "`TabBar.tsx` contains no `absolute`, no `-top-`, no `size-14`" — accepted as passing (rung 3): all three tokens remain only inside comments that Steps 1 and 4 deliberately wrote, and `readRepoCode` strips comments before asserting, which the passing `tests/tabbar.geometry.test.ts` confirms is the operative check.
+  - **Decided**: Task package for both phases — repo root `.` (rung 6, surrounding convention): the phase spans `components/`, `lib/`, `tests/` and docs, and only `.` and `lib/db` are tracked packages.
 
 ## Archive

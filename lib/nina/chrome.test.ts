@@ -15,8 +15,12 @@ import {
   type NinaBarState,
 } from './chrome'
 
-/** `TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX`. Spelled here so the test names its own input. */
-const BAR_CLEARANCE = 78
+/**
+ * `TAB_BAR_HEIGHT_PX` — the whole of the bar, now that nothing overhangs its top edge. Spelled
+ * here rather than imported so the test names its own input, and because `vitest.config.ts` runs
+ * `environment: 'node'`: the numbers this suite asserts on must not depend on a component.
+ */
+const BAR_CLEARANCE = 58
 
 describe('CHROME_AUTOHIDE_MS', () => {
   it('is exactly the five seconds the requirement asks for', () => {
@@ -113,7 +117,7 @@ describe('controlBottomCss', () => {
     expect(hidden).toBe(noBarAtAll)
   })
 
-  it('rises by the bar and the FAB overhang when the bar is shown', () => {
+  it('rises by the bar when the bar is shown', () => {
     expect(
       controlBottomCss({
         barState: 'shown',

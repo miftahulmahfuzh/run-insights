@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 
-import { TabBar, TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
+import { TabBar, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
 import { NINA_BAR_VISIBLE_VAR } from '@/lib/nina/chatview'
 import {
   autoHideDelayMs,
@@ -69,12 +69,16 @@ import { NinaSidebarTrigger } from './NinaSidebar'
 const COMPOSER_ID = 'nina-composer'
 
 /**
- * What the bar occupies when it is showing: its own height plus the FAB's overhang above its top
- * edge, which the composer must clear or it would slice the top off the coral circle. The same sum
- * `ChatScreen`'s `COMPOSER_CLEARANCE_PX` computes from the same two constants, because both are
- * positioning against the same bar.
+ * What the bar occupies when it is showing: its own height, and that is now the whole of it.
+ *
+ * It used to be `TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX` — 78 — because `/upload` was a raised
+ * coral circle reaching 20 px above the bar's top edge, and a composer that cleared only the bar
+ * would have sliced the top off it. `/upload` is a normal tab cell now
+ * (`components/ui/TabBar.tsx`), nothing paints above the nav's border box, and the constant that
+ * named the overhang no longer exists. The same figure `ChatScreen`'s `COMPOSER_CLEARANCE_PX`
+ * computes, because both are positioning against the same bar.
  */
-const BAR_CLEARANCE_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX
+const BAR_CLEARANCE_PX = TAB_BAR_HEIGHT_PX
 
 export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
   const [bar, setBar] = useState<NinaBarState>('hidden')
@@ -220,10 +224,10 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
         >
           {/*
             R6's floating `>`: the sidebar's door, in the cell phase 2 left for it. Phase 5 owns
-            the button; phase 2 owns where it sits — the lane's `bottom` is computed from
-            `TAB_BAR_HEIGHT_PX`, `TAB_BAR_FAB_OVERHANG_PX`, the composer's measured height and
-            `--safe-bottom`, and a third spelling of that sum in another file is how a control ends
-            up over the composer on one device and under the keyboard on another.
+            the button; phase 2 owns where it sits — the lane's `bottom` is computed from the tab
+            bar's clearance, the composer's measured height and `--safe-bottom`, and a third
+            spelling of that sum in another file is how a control ends up over the composer on one
+            device and under the keyboard on another.
 
             `pointer-events-auto` because the lane is `pointer-events-none`. No `justify-self-*`
             any more: the lane is a centred flex group, so the pair's position is the group's and

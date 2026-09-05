@@ -158,6 +158,17 @@ single control announce correctly) and this module owns the rule.
 
 ### The geometry, and why the same numbers are written more than once
 
+> **STALE — refresh pending (as of P1-RI-A015, 2026-09-05).** This section still describes the
+> pre-`P1-RI-A015` bar. `/upload` is no longer a raised coral FAB overhanging the bar's top edge;
+> it is the third of five ordinary tab cells, so `TAB_BAR_FAB_OVERHANG_PX` **no longer exists**,
+> the hidden transform is a plain `0 100%`, and both clearances (`BAR_CLEARANCE_PX`,
+> `COMPOSER_CLEARANCE_PX`) are now `TAB_BAR_HEIGHT_PX` alone. Every number and argument below that
+> mentions the overhang, the FAB, or the `safe+22`–`safe+78` band is therefore obsolete; read
+> `components/ui/TabBar.tsx` and `tests/tabbar.geometry.test.ts` instead. The table is deliberately
+> **not** rewritten yet: phase 2 (`P1-RI-A016`) closes the remaining 1 px `border-t` seam and moves
+> these numbers again, so the whole section is refreshed once after that phase lands. `BOTTOM_GAP.chat`
+> is separately stale below (it reads `8.5rem`; the code says `7.5rem`) — not caused by this phase.
+
 ```
 TAB_BAR_HEIGHT_PX        = 58      components/ui/TabBar.tsx      ⟷ h-[58px]
 TAB_BAR_FAB_OVERHANG_PX  = 20      components/ui/TabBar.tsx      ⟷ -top-5

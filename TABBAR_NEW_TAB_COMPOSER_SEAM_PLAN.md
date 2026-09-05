@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/tabbar-new-tab-composer-seam`
 **Branch:** `feature/tabbar-new-tab-composer-seam` (base: `origin/main` @ `e343e34`)
 **Phases:** 2
-**Status:** planned
+**Status:** phase 1/2 complete
 **Coordinator:** —
 
 ---
@@ -104,8 +104,8 @@ Every phase must leave all of these true:
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | The `+` becomes the `New` tab, and the overhang is deleted | R1 | `components/ui`, `components/nina`, `lib/nina`, `tests`, docs | 9 | — | NORMAL | `.workflows/plan/tabbar-new-tab-composer-seam/phase-1.md` | — | `miftahulmahfuzh/run-insights#87` |
-| 2 | The composer clears the bar's outer height, so it sits flush | R2 | `components/ui`, `components/nina`, `lib/nina`, `tests` | 9 | 1 | NORMAL | `.workflows/plan/tabbar-new-tab-composer-seam/phase-2.md` | — | `miftahulmahfuzh/run-insights#88` |
+| 1 ✅ | The `+` becomes the `New` tab, and the overhang is deleted | R1 | `components/ui`, `components/nina`, `lib/nina`, `tests`, docs | 9 | — | NORMAL | `.workflows/plan/tabbar-new-tab-composer-seam/phase-1.md` | `P1-RI-A015` | `miftahulmahfuzh/run-insights#87` |
+| 2 | The composer clears the bar's outer height, so it sits flush | R2 | `components/ui`, `components/nina`, `lib/nina`, `tests` | 9 | 1 | NORMAL | `.workflows/plan/tabbar-new-tab-composer-seam/phase-2.md` | `P1-RI-A016` | `miftahulmahfuzh/run-insights#88` |
 
 Sequential by necessity, not by caution: phase 1 **deletes** `TAB_BAR_FAB_OVERHANG_PX`, and phase 2
 edits the same two `const … = TAB_BAR_HEIGHT_PX + …` lines that phase 1 rewrites, in the same two

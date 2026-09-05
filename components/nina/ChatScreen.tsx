@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
-import { TAB_BAR_FAB_OVERHANG_PX, TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
+import { TAB_BAR_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { sendNinaMessage } from '@/lib/nina/actions'
 import {
@@ -95,8 +95,12 @@ const NOTICE_TEXT: Record<Notice, string> = {
     'Give that one a moment to send — there is nothing to edit until Nina has it.',
 }
 
-/** The chrome the composer sits above: the bar, plus the FAB's overhang past the bar's top edge. */
-const COMPOSER_CLEARANCE_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_FAB_OVERHANG_PX
+/**
+ * The chrome the composer sits above: the bar's own height, and nothing else. It was `58 + 20`
+ * while `/upload` was a raised coral circle overhanging the bar's top edge; the circle is a normal
+ * tab cell now, so the overhang term — and the constant that named it — are gone.
+ */
+const COMPOSER_CLEARANCE_PX = TAB_BAR_HEIGHT_PX
 
 /**
  * Fallback for `obstructedBottomPx` if `#nina-composer` cannot be measured — the clearance plus

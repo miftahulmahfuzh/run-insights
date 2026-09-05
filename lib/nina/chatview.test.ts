@@ -220,26 +220,26 @@ describe('composerBottomCss', () => {
     // R1: `/nina`'s resting state. The flag is absent, `var()` substitutes 0, and the composer sits
     // on the inset. This is also the SSR and pre-hydration answer, which is why the default is the
     // hidden geometry and not the showing one.
-    expect(composerBottomCss(0, 78)).toBe(
-      'calc(78px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+    expect(composerBottomCss(0, 58)).toBe(
+      'calc(58px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
     )
   })
 
   it('names the variable the chrome writes', () => {
     // Spelled once, in `chatview.ts`, and read by `ChatChrome`. If the constant and the emission
     // ever disagree the composer stops following the bar and nothing else notices.
-    expect(composerBottomCss(0, 78)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerBottomCss(0, 58)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
   })
 
   it('sits on the keyboard when there is one', () => {
     // Every term of the idle clearance is behind the keyboard, so none of it is added — and that
     // is true whether or not the bar is showing, which is why this branch is untouched by R1.
-    expect(composerBottomCss(KEYBOARD_HEIGHT, 78)).toBe('336px')
+    expect(composerBottomCss(KEYBOARD_HEIGHT, 58)).toBe('336px')
   })
 
   it('treats unmeasurable input as no keyboard', () => {
-    expect(composerBottomCss(NaN, 78)).toBe(
-      'calc(78px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+    expect(composerBottomCss(NaN, 58)).toBe(
+      'calc(58px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
     )
   })
 
