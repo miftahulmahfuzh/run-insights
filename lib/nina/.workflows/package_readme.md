@@ -318,6 +318,32 @@ tool handlers and the tool sets), `avatargen.ts`.
 
 *(T)* = has a colocated `*.test.ts`.
 
+## Deleting a chat session takes what it taught her (R8)
+
+**Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a
+four-statement `db.batch` — the `nina_memory_facts` rows, the `nina_memory_slots` rows and the
+individual `pending_promises` entries whose `source_message_id` points into the session are
+purged in the same transaction as the delete, before it, so they still have messages to join
+against. `loadNinaContext` reads one session's message window but the whole relationship's
+memory ledger, which is why the ledger was the only surviving channel by which a deleted
+conversation still reached her prompt. There is no foreign key and no migration: an
+`ON DELETE CASCADE` could not tell a deleted sentence from a deleted conversation, and
+`deleteNinaMessage` is deliberately unchanged. A memory asserted through `/admin/memory` carries
+`source_message_id = NULL` and is structurally unreachable by the purge. `npm run nina:memory-reap`
+(dry-run by default) clears rows orphaned before this landed, and remains the backstop for a
+distillation that completes after its session is gone.
+
+Two consequences worth keeping straight, because they are easy to collapse and wrong when collapsed:
+
+- **A deleted session takes its messages with it, but a deleted message does not take its session.**
+  `deleteNinaMessage` (reachable from `lib/admin/chatPhotoActions.ts`) removes one sentence and
+  leaves the conversation standing. So "the triggering message is gone" and "the session was
+  removed" are *different* states, and any UI that jumps back to a source bubble must keep them
+  apart — `lib/db/schema.ts`'s `session_id` comment says the same thing from the schema side.
+- **The purge is scoped by provenance, not by authorship.** Anything with a NULL
+  `source_message_id` — every fact typed through `/admin/memory` — survives every session delete
+  by construction, which is what makes the admin surface a durable channel rather than a fragile one.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`

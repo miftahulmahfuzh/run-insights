@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-06
-**Total Active Tasks**: 6
+**Total Active Tasks**: 5
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 6
+- P1 High: 5
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 4
+- Completed: 5
 
 ---
 
@@ -79,17 +79,6 @@
   - **Card**: `miftahulmahfuzh/run-insights#100`
   - **Files**: components/nina/NinaAboutJobs.tsx, app/nina/about/page.tsx
 
-- [ ] **P1-NIN-A009** Phase 6: Permanent session deletion: take the distilled memory with it
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: `removeNinaSession` becomes a four-statement `db.batch` that purges the session's distilled `nina_memory_facts` in the SAME transaction as the delete. The provenance fork is decided: **PURGE**, not keep-dangling, rung 5 - the user's raw input overrides the schema's stated design, because the memory ledger is the only surviving channel by which a deleted session still pollutes her. **Generates NO migration and adds NO foreign key**, deliberately: an `ALTER TABLE ... ADD CONSTRAINT` cannot be applied while dangling pointers exist in production, and hand-writing a pre-clean `DELETE` into a generated migration is the class of edit invariant 10 forbids. 7 files, not 5, and the package loses `drizzle` - the two extra are the schema comment and the schema test whose prose asserts the design being overridden; the draft counted the mechanism and not the paper trail. **`scripts/nina-memory-reap.mjs --apply` is the one irreversible act in the set** and is dry-run by default; the `\copy` snapshot is taken first. R8 is NOT satisfied by this phase alone - phase 3 owns the delete-mid-turn guard.
-  - **Status**: in_progress
-  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 6 of 7)
-  - **Satisfies**: R8 — deleted chat sessions must be permanently deleted; they still pollute Nina's character
-  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md`
-  - **Card**: `miftahulmahfuzh/run-insights#101`
-  - **Files**: lib/nina/queries.ts, lib/nina/sessionActions.ts, lib/db/schema.ts, scripts/nina-memory-reap.mjs, package.json, tests/nina.sessionPurge.test.ts, tests/db.schema.nina.test.ts
-
 ### [P2] Medium
 
 ### [P3] Low
@@ -101,6 +90,21 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A009** Phase 6: Permanent session deletion: take the distilled memory with it
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: `removeNinaSession` becomes a four-statement `db.batch` that purges the session's distilled `nina_memory_facts` in the SAME transaction as the delete. The provenance fork is decided: **PURGE**, not keep-dangling, rung 5 - the user's raw input overrides the schema's stated design, because the memory ledger is the only surviving channel by which a deleted session still pollutes her. **Generates NO migration and adds NO foreign key**, deliberately: an `ALTER TABLE ... ADD CONSTRAINT` cannot be applied while dangling pointers exist in production, and hand-writing a pre-clean `DELETE` into a generated migration is the class of edit invariant 10 forbids. 7 files, not 5, and the package loses `drizzle` - the two extra are the schema comment and the schema test whose prose asserts the design being overridden; the draft counted the mechanism and not the paper trail. **`scripts/nina-memory-reap.mjs --apply` is the one irreversible act in the set** and is dry-run by default; the `\copy` snapshot is taken first. R8 is NOT satisfied by this phase alone - phase 3 owns the delete-mid-turn guard.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 6 of 7)
+  - **Satisfies**: R8 — deleted chat sessions must be permanently deleted; they still pollute Nina's character
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md`
+  - **Card**: `miftahulmahfuzh/run-insights#101`
+  - **Files**: lib/nina/queries.ts, lib/nina/sessionActions.ts, lib/db/schema.ts, scripts/nina-memory-reap.mjs, package.json, tests/nina.sessionPurge.test.ts, tests/db.schema.nina.test.ts
+  - **Completed**: 2026-09-06 22:25
+  - **Method**: /implement (swarm phase 6 of 7, session impl-nina-image-pipeline-and-async-chat-p6)
+  - **Commit**: `b4bc4905db0b8890d623fdf86c8d1fd504b580bb`
+  - **Verification**: `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm test` 142 files / 2698 tests all green; new suite `tests/nina.sessionPurge.test.ts` 11/11; all six CI guards PASS (openrouter, client-secret, llm-payload, data-layer, f08, f11); `npm run db:check` "Everything's fine" with `git status --porcelain drizzle/` EMPTY. `npm run nina:memory-reap` dry-run -> --apply -> dry-run again reports 0/0/0. **Irreversible act, done and snapshotted first**: full-table `\copy` to `/home/miftah/nina-memory-snapshot-20260906/` (facts COPY 13, slots COPY 6) BEFORE apply; then 1 fact, 1 slot deleted and 1 promise list pruned 2->1. **Two plan defects fixed rather than worked around**: drizzle-orm's `exists()` emits its argument's chunks verbatim and does NOT supply brackets for a raw `sql` template (the plan's Step 1 asserted the opposite and generated `and exists select 1 from ...`, which Postgres rejects) - hand-parenthesised, with a comment so nobody removes the brackets as noise; and the no-FK docstring naming `lib/admin/memoryStore.ts` in full tripped `tests/admin.memory.test.ts`'s textual reachability guard - comment rephrased, guard untouched.
 
 - [x] **P1-NIN-A000** Phase 1: The tuning model and its row
   - **Difficulty**: NORMAL
