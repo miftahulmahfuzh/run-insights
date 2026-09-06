@@ -11,9 +11,13 @@
 #                       would hit the same 60 s ceiling being escaped here.
 #
 # The schedule is best-effort by GitHub's own documentation: it is delayed under load and it is
-# DISABLED ENTIRELY after 60 days with no repository activity. So it is a good retry engine and a
-# bad deadline, which is why lib/nina/imagejobs.ts keeps an independent 20-minute give-up sweep that
-# runs on every /nina page load. Do not delete that sweep on the grounds that this exists.
+# DISABLED ENTIRELY after 60 days with no repository activity. MEASURED, 2026-09-04..06: twelve
+# consecutive `schedule` runs fired with gaps of 1 h 46 m to 4 h 19 m, never ten minutes. So it is a
+# good retry engine and a bad deadline — literally, not rhetorically — which is why
+# lib/nina/imagejobs.ts keeps an independent 20-minute give-up sweep that runs on every /nina page
+# load. Do not delete that sweep on the grounds that this exists, and do not derive any threshold
+# from the */10 below. NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS in lib/nina/imagerecipe.ts holds the
+# measurement and tests/nina.imagerecipe.test.ts asserts it against the give-up.
 name: nina-image
 
 on:
@@ -28,12 +32,17 @@ on:
         required: false
         default: ''
   schedule:
-    # Every ten minutes. GitHub's minimum is 5 and it promises no punctuality, so this is a
-    # cost/coverage trade rather than a deadline. At */10 the backstop is 144 runs a day at ~40 s
-    # each ~ 96 min/day ~ 2,900 min/month. THIS REPOSITORY IS PUBLIC, so Actions minutes are
-    # unmetered and that number is free. If it is ever made private, GitHub Free's 2,000 minutes
-    # would be exceeded and the one-line fix is */30 (~960 min/month), leaning harder on
-    # workflow_dispatch for latency and on the on-read sweep for the R22 guarantee.
+    # Declared every ten minutes. GitHub's minimum is 5 and it promises no punctuality — and MEASURED
+    # on this repository the real gaps were 1 h 46 m to 4 h 19 m (2026-09-04..06). The declared value
+    # is therefore a ceiling on the request, not a description of the behaviour, and nothing in the
+    # threshold chain may assume it.
+    #
+    # The cost note still holds at the declared rate: 144 runs a day at ~40 s each ~ 96 min/day ~
+    # 2,900 min/month. THIS REPOSITORY IS PUBLIC, so Actions minutes are unmetered and that number is
+    # free. If it is ever made private, GitHub Free's 2,000 minutes would be exceeded and the
+    # one-line fix is */30, leaning harder on workflow_dispatch for latency and on the on-read sweep
+    # for the R22 guarantee. Lowering it to chase punctuality would not work: the deprioritisation
+    # measured above is a function of repository activity, not of the requested interval.
     - cron: '*/10 * * * *'
 
 # One camera at a time. A dispatch and a scheduled run firing within seconds of each other would

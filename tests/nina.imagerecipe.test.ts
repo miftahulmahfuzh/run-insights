@@ -15,6 +15,7 @@ import {
   NINA_IMAGE_PATHNAME_RE,
   NINA_IMAGE_RECLAIM_MS,
   NINA_IMAGE_RESOLUTION,
+  NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS,
   NINA_IMAGE_STALE_MS,
   NINA_IMAGE_SWEEP_BUDGET,
   ninaImagePathname,
@@ -298,6 +299,15 @@ describe('the threshold chain', () => {
   it('a sweep run cannot exceed the workflow ceiling', () => {
     // 3 x 78 s at the measured latency, inside 6 minutes.
     expect(NINA_IMAGE_SWEEP_BUDGET * 90_000).toBeLessThan(NINA_WORKER_TIMEOUT_MINUTES * 60_000)
+  })
+
+  it('the schedule backstop cannot beat the give-up, and nothing may assume it can', () => {
+    // FINDING 3. The workflow declares `*/10` and twelve consecutive measured runs came 1 h 46 m to
+    // 4 h 19 m apart. The original chain was derived as if a ten-minute rescue existed, which put
+    // the backstop comfortably inside the 20-minute give-up; it is in fact five to thirteen times
+    // OUTSIDE it. This asserts the direction rather than the magnitude, so it survives a re-measure
+    // and fails the moment someone lowers STALE on the strength of the declared cron.
+    expect(NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS).toBeGreaterThan(NINA_IMAGE_STALE_MS)
   })
 
   it('the retry budget is small and positive', () => {

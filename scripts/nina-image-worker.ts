@@ -125,53 +125,181 @@ export function parseArgv(argv: readonly string[]): WorkerArgv {
 const REQUIRED_ENV = ['DATABASE_URL', 'BLOB_READ_WRITE_TOKEN', 'OPENROUTER_API_KEY'] as const
 
 /**
- * Every column this file writes, per table. **This list is the duplication `lib/db/schema.ts` costs
- * us**, and checking it against `information_schema` on every run is what makes the duplication
- * safe: the backstop runs every ten minutes, so a rename in phase 1's schema surfaces as a red
- * workflow within ten minutes of the deploy instead of as a silently unwritten photograph.
+ * Every column this file names for a table, and whether this file INSERTs rows into it.
+ *
+ * `columns` is **the duplication `lib/db/schema.ts` costs us**, and checking it against
+ * `information_schema` on every run is what makes the duplication safe: a rename surfaces as a red
+ * workflow on the very next run instead of as a silently unwritten photograph.
+ *
+ * `inserts` is **FINDING 1'S CLASS, made structural.** Checking that every column we name EXISTS is
+ * only half a check: it catches a rename and it is blind to an ADDITION. Migration 0004 added
+ * `nina_messages.session_id text NOT NULL` after this worker was written; both INSERTs kept
+ * compiling, kept passing preflight, and every generation crashed on the write that would have made
+ * the photograph visible — after the money was spent. So for an INSERT target `findSchemaDrift`
+ * also runs the CONVERSE: every `NOT NULL` column the database does not fill for us must appear in
+ * `columns`. A table this file only reads or only UPDATEs is exempt, because a statement that never
+ * supplies a column cannot omit one.
  */
-const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
-  nina_turns: [
-    'id',
-    'user_id',
-    'kind',
-    'model',
-    'status',
-    'error_code',
-    'tool_calls',
-    'latency_ms',
-    'cost_micro_usd',
-    'args',
-    'created_at',
-  ],
-  nina_messages: ['id', 'user_id', 'role', 'text', 'source', 'turn_id', 'reply_to_id', 'sent_at'],
-  nina_message_images: [
-    'id',
-    'user_id',
-    'message_id',
-    'kind',
-    'blob_url',
-    'pathname',
-    'width',
-    'height',
-    'bytes',
-    'description',
-    'prompt',
-    'sort_order',
-  ],
-  nina_avatars: [
-    'id',
-    'user_id',
-    'blob_url',
-    'pathname',
-    'width',
-    'height',
-    'bytes',
-    'source',
-    'description',
-    'is_current',
-    'announced_at',
-  ],
+interface WorkerTable {
+  /** True when this file writes an `insert into <table>`. Only then is NOT NULL coverage checked. */
+  readonly inserts: boolean
+  /** Every column this file names for the table, in any statement. */
+  readonly columns: readonly string[]
+}
+
+const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
+  /* UPDATE and SELECT only — `claimJob` and the three terminal updates. Never inserted here: the
+   * app opens every job (`openNinaImageJob`), and a worker that could open one would be a second
+   * writer of a table whose whole point is that the app owns the ledger. */
+  nina_turns: {
+    inserts: false,
+    columns: [
+      'id',
+      'user_id',
+      'kind',
+      'model',
+      'status',
+      'error_code',
+      'tool_calls',
+      'latency_ms',
+      'cost_micro_usd',
+      'args',
+      'created_at',
+    ],
+  },
+  /* SELECT only — `resolveWorkerSessionId`'s activity ordering. The worker deliberately cannot
+   * CREATE a session: `ensureNinaSession` is the app's policy and a worker that minted one would
+   * file a photograph into a conversation the runner has never seen. When no session exists the
+   * worker declines to write the message instead. */
+  nina_chat_sessions: {
+    inserts: false,
+    columns: ['id', 'user_id', 'created_at'],
+  },
+  nina_messages: {
+    inserts: true,
+    columns: [
+      'id',
+      'user_id',
+      /* FINDING 1. `NOT NULL` since migration 0004, and omitted by both INSERTs until this phase.
+       * It is listed here so the existence check covers it AND so the NOT NULL coverage check
+       * passes — the two halves have to agree or the worker will not start. */
+      'session_id',
+      'role',
+      'text',
+      'source',
+      'turn_id',
+      'reply_to_id',
+      'sent_at',
+    ],
+  },
+  nina_message_images: {
+    inserts: true,
+    columns: [
+      'id',
+      'user_id',
+      'message_id',
+      'kind',
+      'blob_url',
+      'pathname',
+      'width',
+      'height',
+      'bytes',
+      'description',
+      'prompt',
+      'sort_order',
+    ],
+  },
+  nina_avatars: {
+    inserts: true,
+    columns: [
+      'id',
+      'user_id',
+      'blob_url',
+      'pathname',
+      'width',
+      'height',
+      'bytes',
+      'source',
+      'description',
+      'is_current',
+      'announced_at',
+    ],
+  },
+}
+
+/**
+ * One `information_schema.columns` row, as much of it as `findSchemaDrift` reads. Written by hand
+ * for the same reason `NeonSql` is: the catalogue's own types are not reachable here.
+ */
+export interface SchemaColumn {
+  table_name: string
+  column_name: string
+  /** `'YES'` or `'NO'`. */
+  is_nullable: string
+  /** The `DEFAULT` expression, or null when the column has none. */
+  column_default: string | null
+  /** `'YES'` or `'NO'`. */
+  is_identity: string | null
+  /** `'ALWAYS'` or `'NEVER'`. */
+  is_generated: string | null
+}
+
+/**
+ * **The whole preflight decision, as a pure function over what the catalogue said.**
+ *
+ * Split out of `preflight` so `tests/nina.imageworker.test.ts` can drive Finding 1's exact shape —
+ * a `NOT NULL` column with no default that this worker never writes — with no database, no key and
+ * no network. A check that only runs against production is a check that first fails in production,
+ * which is precisely how Finding 1 shipped.
+ *
+ * Two rules, and the second is the new one:
+ *   1. every column this file NAMES must exist (a rename takes the workflow red);
+ *   2. on a table this file INSERTS into, every column the database will NOT fill for us must be
+ *      named (an addition takes the workflow red).
+ *
+ * "The database will fill it for us" means one of: a `DEFAULT` expression (`sent_at`, `source`,
+ * `sort_order`, `created_at`, `is_current`, `folder`), an identity column, or a generated column.
+ * `nina_messages.seq` is a `bigserial`, so its `column_default` is a `nextval(...)` and it is
+ * correctly exempt — the check must not demand that the worker write the conversation's sequence.
+ *
+ * Returns the drift as sentences. Empty means this file and the schema agree.
+ */
+export function findSchemaDrift(
+  rows: readonly SchemaColumn[],
+  tables: Record<string, WorkerTable> = REQUIRED_COLUMNS,
+): string[] {
+  const have = new Map<string, Map<string, SchemaColumn>>()
+  for (const row of rows) {
+    const columns = have.get(row.table_name) ?? new Map<string, SchemaColumn>()
+    columns.set(row.column_name, row)
+    have.set(row.table_name, columns)
+  }
+
+  const drift: string[] = []
+  for (const [table, spec] of Object.entries(tables)) {
+    const columns = have.get(table)
+    if (columns == null) {
+      drift.push(`${table} (whole table) is missing`)
+      continue
+    }
+
+    for (const column of spec.columns) {
+      if (!columns.has(column)) drift.push(`${table}.${column} is missing`)
+    }
+
+    if (!spec.inserts) continue
+
+    const named = new Set(spec.columns)
+    for (const [column, meta] of columns) {
+      if (named.has(column)) continue
+      if (meta.is_nullable !== 'NO') continue
+      if (meta.column_default != null) continue
+      if (meta.is_identity === 'YES') continue
+      if (meta.is_generated === 'ALWAYS') continue
+      drift.push(`${table}.${column} is NOT NULL with no default and this worker never writes it`)
+    }
+  }
+  return drift
 }
 
 export async function preflight(sql: NeonSql): Promise<void> {
@@ -187,35 +315,21 @@ export async function preflight(sql: NeonSql): Promise<void> {
 
   const tables = Object.keys(REQUIRED_COLUMNS)
   const rows = (await sql`
-    select table_name, column_name
+    select table_name, column_name, is_nullable, column_default, is_identity, is_generated
     from information_schema.columns
     where table_schema = 'public' and table_name = any(${tables})
-  `) as Array<{ table_name: string; column_name: string }>
+  `) as SchemaColumn[]
 
-  const have = new Map<string, Set<string>>()
-  for (const row of rows) {
-    const set = have.get(row.table_name) ?? new Set<string>()
-    set.add(row.column_name)
-    have.set(row.table_name, set)
-  }
-
-  const missing: string[] = []
-  for (const [table, columns] of Object.entries(REQUIRED_COLUMNS)) {
-    const set = have.get(table)
-    if (set == null) {
-      missing.push(`${table} (whole table)`)
-      continue
-    }
-    for (const column of columns) if (!set.has(column)) missing.push(`${table}.${column}`)
-  }
-  if (missing.length > 0) {
+  const drift = findSchemaDrift(rows)
+  if (drift.length > 0) {
     /*
-     * The most likely cause, in order: phase 1's migration has not been applied to this database; a
-     * column was renamed; the connection points at the wrong database entirely. All three are a code
-     * or configuration change rather than a retry, so this throws and takes the workflow red rather
-     * than failing a job quietly.
+     * The most likely cause, in order: a migration has not been applied to this database; a column
+     * was renamed; a column was ADDED as NOT NULL and this file was not updated with it (Finding 1);
+     * the connection points at the wrong database entirely. All four are a code or configuration
+     * change rather than a retry, so this throws and takes the workflow red rather than failing a
+     * job quietly.
      */
-    throw new Error(`schema drift — missing: ${missing.join(', ')}`)
+    throw new Error(`schema drift — ${drift.join('; ')}`)
   }
 }
 
@@ -227,32 +341,68 @@ export interface ClaimedJob {
 }
 
 /**
+ * **The instant a `dispatched` row becomes claimable. FINDING 2, in one function.**
+ *
+ * `fireNinaImageDispatch` stamps `error_code = 'dispatched'` BEFORE it POSTs to GitHub — deliberately,
+ * so two concurrent dispatch attempts cannot both call the API — and a GitHub runner takes ~25-40 s
+ * to reach the `Generate` step. Measured: job `ke20AUHNE0TB` was created at `03:02:31.897Z` and the
+ * worker ran at `03:03:00.4Z`, 28.5 seconds old. With a single cutoff of `now - GRACE` the row is
+ * `dispatched` and younger than 60 s, so the `WHERE` excluded it, and every one of the five
+ * `workflow_dispatch` runs on 2026-09-06 logged `finished { attempted: 0 }`. **The doorbell rang a
+ * runner that was structurally forbidden from opening the door.**
+ *
+ * The grace exists to stop a SWEEP stealing a job a runner is about to start. A job named by `--job`
+ * was named by the doorbell, so the name and the runner ARE the same event and there is nothing to
+ * protect it from. So:
+ *
+ *   · sweep      (`jobId == null`) -> `now - GRACE`. A fresh dispatch is left alone.
+ *   · named job  (`jobId != null`) -> `now + GRACE`. Claimable however young it is.
+ *
+ * The named cutoff runs the window FORWARD rather than simply using `now`, and that is not
+ * decoration: `created_at` is stamped by Vercel and `now` is read on a GitHub runner, so a minute of
+ * clock skew between the two must not be able to reintroduce the bug. It reuses the same constant so
+ * there is no second number to keep in step.
+ *
+ * **What this does NOT relax.** The `running` reclaim cutoff still applies to a named job, so a
+ * dispatch can never steal a job another runner is mid-generation on and bill the same picture
+ * twice. Neither does it relax `attempts < NINA_IMAGE_MAX_ATTEMPTS` — see `claimJob`'s note, where
+ * that bound is the only thing preventing an infinite reclaim loop.
+ */
+export function dispatchCutoffFor(jobId: string | null, now: Date): Date {
+  return jobId == null
+    ? new Date(now.getTime() - NINA_IMAGE_DISPATCH_GRACE_MS)
+    : new Date(now.getTime() + NINA_IMAGE_DISPATCH_GRACE_MS)
+}
+
+/**
  * **The only lock in the system.** One conditional UPDATE, and exactly one caller gets a row back.
  *
  * With a job id it claims that job. Without one it claims the oldest ACTIONABLE job, which is:
  *   · `queued`     — the doorbell never rang, or rang and the bookkeeping died;
- *   · `dispatched` older than `NINA_IMAGE_DISPATCH_GRACE_MS` — GitHub accepted it and no runner
- *     ever picked it up;
+ *   · `dispatched` past `dispatchCutoffFor` — for a sweep that means older than
+ *     `NINA_IMAGE_DISPATCH_GRACE_MS`, i.e. GitHub accepted it and no runner ever picked it up; for a
+ *     NAMED job it means unconditionally, because the runner asking IS the dispatch (Finding 2);
  *   · `running` older than `NINA_IMAGE_RECLAIM_MS` — the runner that owned it was killed by
- *     `timeout-minutes`, which is longer than the ceiling so it cannot still be alive.
+ *     `timeout-minutes`, which is longer than the ceiling so it cannot still be alive. **This one is
+ *     not relaxed for a named job**: a live generation must never be claimed twice.
  *
  * `attempts` is incremented in the same statement, so the retry budget cannot be spent twice by two
  * runners. A job at the budget is not claimed at all; the app-side sweep closes it instead.
  *
  * **One note on `created_at` in the WHERE clause.** It is the job's OPEN time, not its claim time,
- * because `nina_turns` has no claim timestamp and this phase did not ask phase 1 for one. For a
- * first attempt the two are within a minute of each other, so it is a fine proxy. For a SECOND
- * attempt the timestamp is already old, which would make a reclaimed job immediately eligible again
- * — and the only thing stopping an infinite reclaim loop is `attempts < NINA_IMAGE_MAX_ATTEMPTS` in
- * the same clause. **That bound is therefore load-bearing, not a nicety.** If a future phase adds a
- * `claimed_at` column, the cutoff should move to it and the bound should stay.
+ * because `nina_turns` has no claim timestamp and no phase has added one. For a first attempt the
+ * two are within a minute of each other, so it is a fine proxy. For a SECOND attempt the timestamp
+ * is already old, which would make a reclaimed job immediately eligible again — and the only thing
+ * stopping an infinite reclaim loop is `attempts < NINA_IMAGE_MAX_ATTEMPTS` in the same clause.
+ * **That bound is therefore load-bearing, not a nicety.** If a future phase adds a `claimed_at`
+ * column, the cutoff should move to it and the bound should stay.
  */
 export async function claimJob(
   sql: NeonSql,
   jobId: string | null,
   now: Date = new Date(),
 ): Promise<ClaimedJob | null> {
-  const dispatchCutoff = new Date(now.getTime() - NINA_IMAGE_DISPATCH_GRACE_MS)
+  const dispatchCutoff = dispatchCutoffFor(jobId, now)
   const runningCutoff = new Date(now.getTime() - NINA_IMAGE_RECLAIM_MS)
 
   const rows = (await sql`
@@ -392,6 +542,79 @@ async function store(
 }
 
 /**
+ * **Which session does a message this worker writes belong in? FINDING 1's real question.**
+ *
+ * `nina_messages.session_id` has been `NOT NULL` since migration 0004 (`lib/db/schema.ts:855`) and
+ * both of this file's INSERTs omitted it, so every successful generation crashed on the write that
+ * would have made the photograph visible, and the apology for that crash crashed the same way and
+ * took the process down before `nina_turns` could record what had been spent. Run `33986082744`
+ * measured all of it.
+ *
+ * ── WHY THIS IS SQL AND NOT AN IMPORT ─────────────────────────────────────────────────────────
+ * The app's answer to this exact question is `resolveNinaSessionForMessage` in
+ * `lib/nina/sessionResolve.ts`. It cannot be imported here: it begins `import 'server-only'` and
+ * reaches `lib/nina/queries.ts` through `@/` aliases, neither of which survives
+ * `--experimental-strip-types`. See this file's header. So the POLICY is duplicated and the
+ * duplication is stated rather than hidden — and the widened `findSchemaDrift` is what keeps the
+ * column list honest across the two hosts.
+ *
+ * ── THE POLICY, WHICH IS `resolveNinaSessionForMessage`'S, CLAUSE FOR CLAUSE ───────────────────
+ *   1. the session of `args.replyToId` — the runner message that asked — **when that message still
+ *      exists and is his**. So a photograph lands in the conversation where he asked for it, not in
+ *      whichever chat happens to be newest two minutes later.
+ *   2. otherwise his most recent session BY ACTIVITY, which is `max(sent_at)` over his own messages
+ *      in it, falling back to the session's `created_at` for one he made and has not written in.
+ *      This is `sessionActivityAt` + `compareNinaSessionActivity` from `lib/nina/sessions.ts`, and
+ *      **pins are irrelevant on purpose** — the display list is pinned-first, and a photograph does
+ *      not belong in a conversation he pinned in March. The `s.id desc` tie-break is that
+ *      comparator's, which returns `a.id < b.id ? 1 : -1` and therefore sorts the larger id first.
+ *   3. otherwise **null, and the caller declines to write the message**. This is the one place the
+ *      policies differ, deliberately: the app's fallback is `ensureNinaSession`, which CREATES. A
+ *      worker that minted a session would file a photograph into a conversation the runner has
+ *      never seen, and it would make `nina_chat_sessions` a table this file writes — which is a
+ *      second writer of a ledger the app owns. Declining is the honest outcome, and it is reachable
+ *      only in the R11 state where he has removed every session he has.
+ *
+ * Owner-scoped in both branches (invariant 5): a foreign or vanished id comes back empty and takes
+ * the fallback rather than reaching into somebody else's conversation.
+ *
+ * One statement rather than two, because neon-http charges a round trip per call and the `not
+ * exists` guard means exactly one branch of the `union all` ever produces a row.
+ */
+export async function resolveWorkerSessionId(
+  sql: NeonSql,
+  userId: string,
+  replyToId: string | null,
+): Promise<string | null> {
+  const rows = (await sql`
+    with reply as (
+      select m.session_id as id
+      from nina_messages m
+      where m.id = ${replyToId}::text and m.user_id = ${userId}
+      limit 1
+    ),
+    recent as (
+      select s.id
+      from nina_chat_sessions s
+      left join (
+        select m.session_id as session_id, max(m.sent_at) as last_user_at
+        from nina_messages m
+        where m.user_id = ${userId} and m.role = 'runner'
+        group by m.session_id
+      ) a on a.session_id = s.id
+      where s.user_id = ${userId}
+      order by coalesce(a.last_user_at, s.created_at) desc, s.id desc
+      limit 1
+    )
+    select id from reply
+    union all
+    select id from recent where not exists (select 1 from reply)
+  `) as Array<{ id: string | null }>
+
+  return rows[0]?.id ?? null
+}
+
+/**
  * Success, for a **chat selfie**. The photograph, as an ordinary chat message.
  *
  * **Not a special kind of message** — a `nina_messages` row plus a `nina_message_images` row with
@@ -419,8 +642,22 @@ async function store(
  *
  * `reply_to_id` is written through a subselect rather than trusted: a quote whose target was deleted
  * must degrade to a plain message, not violate the foreign key and lose the photograph.
+ *
+ * **`session_id` IS FINDING 1, AND IT IS RESOLVED RATHER THAN GUESSED.** It is `NOT NULL` and this
+ * function omitted it, so the picture was generated, paid for, stored in Blob — and thrown away by
+ * the INSERT that would have shown it. `resolveWorkerSessionId` is the policy, and it is the same
+ * policy `postNinaApologyMessage` uses on the app side. Note that `reply_to_id` and `session_id`
+ * degrade in OPPOSITE directions and that is correct: a deleted quote target degrades to a plain
+ * message (`set null`), while a message with no session is not a message at all.
+ *
+ * **When no session resolves, this throws rather than writing anything.** The caller turns that into
+ * a `transport` failure through `closeFailed`, which records what was spent and — once the retry
+ * budget is gone — apologises. The state is reachable only when he has removed every session he has
+ * (R11), and the honest cost is that the retry regenerates and spends a second $0.04 before giving
+ * up. That is priced rather than special-cased: both spends are now recorded (see `closeFailed`), so
+ * phase 4's detail page will show `attempts: 2` and a doubled cost, which is exactly what happened.
  */
-async function finishSelfie(
+export async function finishSelfie(
   sql: NeonSql,
   job: ClaimedJob,
   image: { blobUrl: string; pathname: string; bytes: number },
@@ -430,10 +667,16 @@ async function finishSelfie(
   const imageId = newId()
   const { jobId, userId, args } = job
 
+  const sessionId = await resolveWorkerSessionId(sql, userId, args.replyToId)
+  if (sessionId == null) {
+    throw new Error(`no session to file the photograph in (job ${jobId})`)
+  }
+
   await sql`
-    insert into nina_messages (id, user_id, role, text, source, turn_id, reply_to_id)
+    insert into nina_messages
+      (id, user_id, session_id, role, text, source, turn_id, reply_to_id)
     values (
-      ${messageId}, ${userId}, 'nina', ${ninaImageCaption(jobId)}, 'chat', ${jobId},
+      ${messageId}, ${userId}, ${sessionId}, 'nina', ${ninaImageCaption(jobId)}, 'chat', ${jobId},
       (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId})
     )
   `
@@ -448,7 +691,7 @@ async function finishSelfie(
   await sql`
     update nina_turns
     set status = 'ok', error_code = null, latency_ms = ${result.latencyMs},
-        cost_micro_usd = ${result.costMicroUsd}
+        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd}
     where id = ${jobId} and user_id = ${userId}
   `
 }
@@ -493,7 +736,7 @@ async function finishAvatar(
   await sql`
     update nina_turns
     set status = 'ok', error_code = null, latency_ms = ${result.latencyMs},
-        cost_micro_usd = ${result.costMicroUsd}
+        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd}
     where id = ${jobId} and user_id = ${userId}
   `
 }
@@ -502,22 +745,45 @@ async function finishAvatar(
  * Failure. **Two outcomes, and the choice is the retry budget.**
  *
  * If attempts remain, the row goes back to `queued` and stays `pending`, so the next backstop run
- * (<=10 minutes) tries again with the SAME prompt and the SAME seed — which is why both are stored
- * rather than rebuilt. Nothing is said to the runner: her bubble still says she is taking the photo,
- * and she is.
+ * tries again with the SAME prompt and the SAME seed — which is why both are stored rather than
+ * rebuilt. Nothing is said to the runner: her bubble still says she is taking the photo, and she is.
  *
  * If the budget is spent, the job is terminal and **the apology goes in with it, in the same
  * function**, because a caller that could mark a job failed without saying anything is a caller that
  * will eventually do so. An **avatar** job posts nothing — nobody asked for it in chat — which is
  * the same rule `failNinaImageJob` and both sweeps follow.
  *
- * `cost_micro_usd` is written for every kind, because a call that reached the provider and then timed
- * out was very probably billed. Guessing high is the honest direction for a cost log.
+ * ── FINDING 1's BLAST RADIUS: THE APOLOGY CANNOT TAKE THE JOB DOWN WITH IT ────────────────────
+ * The apology INSERT omitted `session_id`, so on the final attempt it threw, the throw propagated
+ * out of `runOneJob` and out of `main`, and the process died BEFORE the terminal
+ * `update nina_turns` ever ran. The job stayed `pending`, the app's 20-minute sweep later marked it
+ * `stale`, and `cost_micro_usd` stayed NULL — measured on jobs `pF5c6V8YbxAR` (73 925 ms) and
+ * `ChfwHZ2GJT4I` (55 600 ms), both of which reached OpenRouter successfully. **The money was spent
+ * and the ledger said it was free.**
+ *
+ * So the apology is now best-effort and the terminal UPDATE is not. The ordering is unchanged —
+ * apology first, then close — because the alternative (close first) would let a crash in between
+ * leave a `failed` job with no apology and no sweep left to notice it, and the sweep only looks at
+ * `pending` rows. Wrapping is strictly better than reordering here.
+ *
+ * ── INVARIANT 9: MONEY IS NEVER SPENT SILENTLY ───────────────────────────────────────────────
+ * `costMicroUsd` is what THIS attempt is known to have spent, or null when the call never came back
+ * with a figure. Both branches now accumulate onto the row rather than overwriting it, because two
+ * attempts are two generations and two bills. The retry branch adds only a KNOWN spend: an unknown
+ * one would otherwise be guessed twice for the same picture. The terminal branch keeps the old
+ * behaviour of guessing high when nothing is known — a call that reached the provider and then timed
+ * out was very probably billed, and guessing high is the honest direction for a cost log.
  */
-async function closeFailed(
+export async function closeFailed(
   sql: NeonSql,
   job: ClaimedJob,
-  outcome: { kind: NinaImageFailure; latencyMs: number; detail: string },
+  outcome: {
+    kind: NinaImageFailure
+    latencyMs: number
+    detail: string
+    /** Micro-USD this attempt is KNOWN to have spent. Null when the call returned no figure. */
+    costMicroUsd: number | null
+  },
 ): Promise<'retry' | 'gave-up'> {
   const { jobId, userId, args, attempts } = job
   console.warn('[nina-worker] generation failed', {
@@ -529,25 +795,47 @@ async function closeFailed(
 
   if (attempts < NINA_IMAGE_MAX_ATTEMPTS) {
     await sql`
-      update nina_turns set error_code = 'queued', latency_ms = ${outcome.latencyMs}
+      update nina_turns set
+        error_code = 'queued',
+        latency_ms = ${outcome.latencyMs},
+        cost_micro_usd = coalesce(cost_micro_usd, 0) + ${outcome.costMicroUsd ?? 0}
       where id = ${jobId} and user_id = ${userId} and status = 'pending'
     `
     return 'retry'
   }
 
   if (args.purpose === 'selfie') {
-    await sql`
-      insert into nina_messages (id, user_id, role, text, source, turn_id, reply_to_id)
-      values (
-        ${newId()}, ${userId}, 'nina', ${ninaImageApology(outcome.kind, jobId)}, 'chat', ${jobId},
-        (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId})
-      )
-    `
+    try {
+      const sessionId = await resolveWorkerSessionId(sql, userId, args.replyToId)
+      if (sessionId == null) {
+        console.warn('[nina-worker] no session for the apology; closing the job anyway', { jobId })
+      } else {
+        await sql`
+          insert into nina_messages
+            (id, user_id, session_id, role, text, source, turn_id, reply_to_id)
+          values (
+            ${newId()}, ${userId}, ${sessionId}, 'nina', ${ninaImageApology(outcome.kind, jobId)},
+            'chat', ${jobId},
+            (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId})
+          )
+        `
+      }
+    } catch (cause) {
+      /* Best-effort, and it MUST stay that way. See the header: this throw is what killed the
+       * process before the money could be recorded. Nothing identifying is logged — invariant 4,
+       * this repository is public and this line appears in an Actions run. */
+      console.warn('[nina-worker] the apology could not be written; closing the job anyway', {
+        jobId,
+        error: String(cause),
+      })
+    }
   }
+
   await sql`
     update nina_turns
     set status = 'failed', error_code = ${outcome.kind}, latency_ms = ${outcome.latencyMs},
-        cost_micro_usd = ${NINA_IMAGE_COST_MICRO_USD}
+        cost_micro_usd = coalesce(cost_micro_usd, 0)
+          + ${outcome.costMicroUsd ?? NINA_IMAGE_COST_MICRO_USD}
     where id = ${jobId} and user_id = ${userId} and status = 'pending'
   `
   return 'gave-up'
@@ -559,7 +847,8 @@ async function closeFailed(
  *
  * **A store failure is a `transport` failure and not a crash.** The picture exists and we could not
  * keep it, which from the runner's side is "the photo did not come through" — and the money is
- * already spent, which is why it is still logged and still counted against the cap.
+ * already spent, which is why it is still logged, still counted against the cap, and now also
+ * recorded on the row (invariant 9).
  */
 export async function runOneJob(
   sql: NeonSql,
@@ -575,7 +864,17 @@ export async function runOneJob(
   })
 
   const outcome = await generate(job.args.prompt, job.args.seed)
-  if (!outcome.ok) return closeFailed(sql, job, outcome)
+  if (!outcome.ok) {
+    return closeFailed(sql, job, {
+      kind: outcome.kind,
+      latencyMs: outcome.latencyMs,
+      detail: outcome.detail,
+      /* The call returned no figure, so what it cost is unknown. `closeFailed` adds nothing on a
+       * retry — an unknown guessed twice for one picture is a worse log than a missing one — and
+       * guesses high on the terminal attempt, where a timed-out call was very probably billed. */
+      costMicroUsd: null,
+    })
+  }
 
   let image: { blobUrl: string; pathname: string; bytes: number }
   try {
@@ -585,6 +884,8 @@ export async function runOneJob(
       kind: 'transport',
       latencyMs: outcome.latencyMs,
       detail: `store: ${String(cause)}`,
+      /* The generation SUCCEEDED and was billed; only the storage failed. */
+      costMicroUsd: outcome.costMicroUsd,
     })
   }
 
@@ -599,11 +900,16 @@ export async function runOneJob(
      * The bytes are stored and the row could not be written. Closing it as a failure is the honest
      * outcome — no photograph is visible, so she should say so — and the blob is left behind, which
      * the plan's Handoff 6 (the `nina/` reaper) exists for.
+     *
+     * **This is the branch Finding 1 lived in**, and it reached `closeFailed` correctly every time.
+     * What was broken was `closeFailed` itself, which threw the same way and killed the process
+     * before the spend below could be recorded.
      */
     return closeFailed(sql, job, {
       kind: 'transport',
       latencyMs: outcome.latencyMs,
       detail: `finish: ${String(cause)}`,
+      costMicroUsd: outcome.costMicroUsd,
     })
   }
 

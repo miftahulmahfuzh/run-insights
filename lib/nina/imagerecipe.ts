@@ -103,14 +103,53 @@ export const NINA_WORKER_CALL_TIMEOUT_MS = 240_000
 export const NINA_WORKER_TIMEOUT_MINUTES = 6
 /** The `api.github.com` POST, inside `after()`, sharing the Server Action's page budget. */
 export const NINA_IMAGE_DISPATCH_TIMEOUT_MS = 8_000
-/** How long a `dispatched` row is left alone before a backstop treats it as un-started. */
+/**
+ * How long a `dispatched` row is left alone before a SWEEP treats it as un-started.
+ *
+ * **It applies to a sweep and NOT to a job named by `--job`** — see `dispatchCutoffFor` in
+ * `scripts/nina-image-worker.ts`, which is where Finding 2 was fixed. The grace exists to stop a
+ * sweep stealing a job a runner is about to start; a named job and its runner are the same event, so
+ * for a named claim the same window runs FORWARD instead, absorbing clock skew between the Vercel
+ * process that stamped `created_at` and the GitHub runner that reads `now`.
+ */
 export const NINA_IMAGE_DISPATCH_GRACE_MS = 60_000
 /** > the job ceiling, so a `running` row this old cannot still be running. */
 export const NINA_IMAGE_RECLAIM_MS = 420_000
 /** One retry. 2 x RECLAIM = 14 min worst case, which must stay under STALE. */
 export const NINA_IMAGE_MAX_ATTEMPTS = 2
-/** The app-side give-up, and the only one that fires when GitHub never ran anything. */
+/**
+ * The app-side give-up, and — **measured, not assumed** — the only deadline in the system.
+ *
+ * The original derivation assumed the workflow's `schedule: '*\/10'` would rescue a lost dispatch at
+ * ~10 minutes, comfortably inside this 20. `NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS` records what
+ * `schedule:` actually does, and it is one to two orders of magnitude slower. So this is not "the
+ * backstop's deadline plus margin"; it is the whole guarantee, and the FAST path has to work. That
+ * is Finding 2's fix and, permanently, phase 2's in-platform generator.
+ *
+ * The value does not move. Twenty minutes is how long she may plausibly say "bentar" before an
+ * apology is the kinder answer, and stretching it to cover a four-hour backstop would mean a
+ * photograph that failed at 09:00 goes unacknowledged until lunch.
+ */
 export const NINA_IMAGE_STALE_MS = 1_200_000
+/**
+ * **What `schedule:` measured, against what it declares. FINDING 3.**
+ *
+ * `.github/workflows/nina-image.yml` declares `cron: '*\/10 * * * *'`. Twelve consecutive `schedule`
+ * runs over 2026-09-04..06 fired with gaps of **1 h 46 m to 4 h 19 m** — never ten minutes. GitHub
+ * documents `schedule:` as best-effort and heavily deprioritises it on low-activity public
+ * repositories, and the workflow's own comment anticipated the direction ("a good retry engine and a
+ * bad deadline") while the threshold chain was nonetheless derived as if the declared cron were
+ * honoured.
+ *
+ * This is the SHORTEST measured gap, so it is the most generous number the evidence supports.
+ * `tests/nina.imagerecipe.test.ts` asserts it exceeds `NINA_IMAGE_STALE_MS`, which is the fact that
+ * matters: **the backstop cannot beat the give-up.** If anyone later lowers `NINA_IMAGE_STALE_MS`
+ * on the belief that a ten-minute rescue exists, that assertion is what stops them.
+ *
+ * The `*\/` in the crons above is written `*\/` on purpose: an unescaped one closes this comment.
+ * `scripts/nina-image-worker.ts:36` and `tests/views.render.test.ts` use the same convention.
+ */
+export const NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS = 6_360_000
 /** Jobs one backstop run will drain, so a burst cannot exceed `timeout-minutes`. */
 export const NINA_IMAGE_SWEEP_BUDGET = 3
 
