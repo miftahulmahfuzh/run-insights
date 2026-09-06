@@ -102,5 +102,17 @@
   "slug": "admin-responsive-nina-intimacy",
   "updated": "2026-09-06T18:59:01+00:00",
   "verified_at": "2026-09-06T18:21:25+00:00",
-  "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
+  "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy",
+  "merged": {
+    "sha": "a44a209",
+    "into": "main",
+    "at": "2026-09-07",
+    "migrations_applied": [
+      "0006_chubby_wild_child",
+      "0007_graceful_mercury"
+    ],
+    "watermark_after": 1788720211261,
+    "drizzle_migrations_rows": 8,
+    "verified": "17 *_enabled columns + horny integer NOT NULL present on nina_tuning; existing row horny=0, all *_enabled NULL (no backfill)"
+  }
 }
