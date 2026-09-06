@@ -83,20 +83,20 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "3912cec",
       "depends_on": [
         4
       ],
       "difficulty": "EASY",
       "n": 5,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "R3 done, 2 files, pushed to origin. Reuse only: one NinaJobList, one listNinaImageJobs, no second empty-state renderer. DECISIONS: (1) depends-on P1-NIN-A007 was unticked in todos.md but phase 4's code was fully in tree (8ef6ba1, all 10 files) -> proceeded, rung 2, stale bookkeeping not an incomplete phase; (2) plan's inline jobsNowMs={Date.now()} JSX prop fails react-hooks/purity -> hoisted to a named binding with the SAME eslint-disable phase 4 already ships at app/nina/jobs/page.tsx:55-56, rung 1 (invariant 1: lint passes) over rung 3 (code block); check satisfied, not relaxed. No migration, db:check clean, drizzle/ untouched. package.json not touched.",
       "package": "components/nina`, `app/nina/about",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-5.md",
-      "reported_at": "2026-09-06T15:08:40+00:00",
+      "reported_at": "2026-09-06T19:13:36+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A008",
       "title": "The tracking section on `/nina/about`, below Media"
     },
@@ -140,6 +140,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T19:11:04+00:00",
+  "updated": "2026-09-06T19:13:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
