@@ -18,7 +18,7 @@ import {
   ninaOperatorNotesBlock,
   ninaTraitsBlock,
 } from '../persona'
-import { NINA_TUNING_DEFAULTS, type NinaTuning } from '../tuning'
+import { NINA_TUNING_DEFAULTS, type NinaTuning, ninaDialScore, ninaTraitScore } from '../tuning'
 
 /**
  * Nina's system prompt, assembled from the canon. **No I/O, no `server-only`, and no logic beyond
@@ -78,14 +78,18 @@ interface SystemDials {
 
 function systemDials(tuning: NinaTuning): SystemDials {
   return {
-    concerned: tuning.traits.concerned,
+    /* R4: `ninaTraitScore` / `ninaDialScore` and never `tuning.traits.x`. A parameter the operator
+     * switched off resolves to its own `defaultScore`, so `raised`, `lowered` and `loud` below are
+     * all false and every line this file varies is the line that shipped — zero bytes added by a
+     * dial that is off, whatever it is parked at. A direct read here would have given `concerned`,
+     * `verbosity` and `photoEagerness` toggles that do nothing, in the three places the operator is
+     * most likely to notice: the greeting, the bubble count and the camera. */
+    concerned: ninaTraitScore(tuning, 'concerned'),
     concernedBase: NINA_TUNING_DEFAULTS.traits.concerned,
-    /* NESTED under `dials`, and the dial is `photoEagerness` — phase 1's landed spelling. The
-     * draft of this plan read `tuning.verbosity` / `tuning.photoEagerness` flat; this function
-     * body was the entire cost of being wrong about it, which is why it exists. */
-    verbosity: tuning.dials.verbosity,
+    /* NESTED under `dials`, and the dial is `photoEagerness` — phase 1's landed spelling. */
+    verbosity: ninaDialScore(tuning, 'verbosity'),
     verbosityBase: NINA_TUNING_DEFAULTS.dials.verbosity,
-    photos: tuning.dials.photoEagerness,
+    photos: ninaDialScore(tuning, 'photoEagerness'),
     photosBase: NINA_TUNING_DEFAULTS.dials.photoEagerness,
   }
 }

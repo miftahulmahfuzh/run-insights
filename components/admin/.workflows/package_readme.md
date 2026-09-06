@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-07 (task `P1-NIN-A005`, phase 4 of the admin-responsive-nina-intimacy set — R4's per-parameter toggles on `CharacterPanel` / `DialSlider`)
 
 ## Overview
 
@@ -99,7 +99,7 @@ and are unit-tested there.
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose memory is being edited. Plain links, selection in the URL. |
 | `CharacterPanel.tsx` | `'use client'` | `/admin/nina`'s character tuning: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Collapsed by default. |
-| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default. Decides nothing. |
+| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Decides nothing. |
 
 ## The `/admin/nina` file manager
 
@@ -593,11 +593,23 @@ opens when they want to change who she is rather than what she looks like.
 
 ### One save, not sixteen
 
-There are twenty-odd controls on this panel and exactly one Server Action behind them. That is not
-tidiness, it is a platform constraint: **Server Actions dispatch one at a time per client**, so
-sixteen sliders each firing their own save would queue sixteen round trips and the panel would
-appear to hang on a drag. The panel holds the whole tuning in `useState`, and the save posts one
-object — comfortably inside the 1 MB body cap, which `next.config.ts` leaves at its default.
+There are close to forty controls on this panel — R4 put an on/off checkbox beside every one of the
+sixteen parameters — and exactly one Server Action behind all of them. That is not tidiness, it is a
+platform constraint: **Server Actions dispatch one at a time per client**, so sixteen sliders each
+firing their own save would queue sixteen round trips and the panel would appear to hang on a drag,
+and the toggles are in the same boat for the same reason. The panel holds the whole tuning in
+`useState` — scores, relationship *and* `enabled` map — and the save posts one object, comfortably
+inside the 1 MB body cap, which `next.config.ts` leaves at its default.
+
+A checkbox edits `draft.enabled[key]` and nothing else; **switching a parameter off never clears the
+number it is parked at**, which is the point of a toggle as opposed to dragging the slider back to
+the default. One row therefore has two ways to be unsaved — its score and its toggle — and
+`rowUnsaved` folds them into the single existing dot, because two identical marks on one row is an
+operator wondering which meant what. The collapsed summary line gains an `N off` count, since the
+number of excluded parameters is the one setting that cannot be inferred from the numbers beneath
+it. Both new checkboxes carry the 44 px rule: `DialSlider` wraps its box in `TOUCH_ICON`, and the
+relationship legend's label in `TOUCH_TARGET`, so a bare 16 px control never becomes the exception
+to it.
 
 The reset-to-defaults control is a second action rather than a client-side state reset, for the same
 reason `/admin/memory`'s purge is: the defaults are defined server-side in `lib/nina/tuning.ts`, and

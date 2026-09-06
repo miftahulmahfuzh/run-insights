@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-06
+**Last Updated**: 2026-09-07
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 
 ---
 
@@ -31,6 +31,30 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A005** Phase 4: Per-parameter enable toggles
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns an `enabled: Record<NinaTuningKey, boolean>` on the tuning row — `lib/nina/tuning.ts` (the key union derived by spread, defaults, coercion, and the gate-aware score readers `ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`), `lib/nina/persona.ts` (the gate under every band lookup), `lib/nina/prompts/system.ts`'s `systemDials` **only**, `lib/db/schema.ts`'s sixteen nullable `*_enabled` columns, `lib/nina/queries.ts`'s row mapping, `lib/admin/schema.ts`, `lib/admin/tuningActions.ts`, `lib/admin/tuningModel.ts`, `components/admin/CharacterPanel.tsx`, `components/admin/DialSlider.tsx`'s toggle affordance (quoting the file as phase 2 leaves it, so phase 2's 44 px touch work is preserved), one generated migration (`0006`), and four test files. Exit: every trait, dial and the relationship has a working checkbox saved by the same one Save button; for every key in `NINA_TUNING_KEYS`, parked at 100 with the toggle off renders the shipping prompt byte for byte; all-enabled at defaults is byte-identical; `tests/__snapshots__/nina.prompts.test.ts.snap` passes unmodified (never `vitest -u`); a row written before the migration reads as all-enabled with no backfill. `npm run test && npm run typecheck && npm run lint` green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R4 — An on/off toggle per parameter, to exclude it from the assembled prompt
+  - **Depends on**: P1-CA-A001, P1-NIN-A004
+  - **Plan**: `.workflows/plan/P1-NIN-A005.md`
+  - **Completed**: 2026-09-07 01:29
+  - **Method**: /do
+  - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/queries.ts, lib/db/schema.ts, lib/admin/schema.ts, lib/admin/tuningActions.ts, lib/admin/tuningModel.ts, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, drizzle/0006_chubby_wild_child.sql, drizzle/meta/0006_snapshot.json, drizzle/meta/_journal.json, tests/nina.tuning.test.ts, tests/nina.prompts.test.ts, tests/admin.tuning.test.ts, tests/db.schema.nina.test.ts, lib/nina/.workflows/todos.md, lib/nina/.workflows/plan/P1-NIN-A005.md
+  - **Drift**: Line numbers in the phase plan had shifted by phase 3's landed additions (persona.ts `ninaIdentity` :296 -> :313, `ninaNameRules` :485 -> :568; tuning.ts's old §5 banner at :491 not :490). Followed the plan's intent at the real locations; no structural drift.
+  - **Drift**: Phase 3 landed a third relationship read this plan's draft did not name individually: the exported `isGirlfriend` gate in persona.ts. Step 3's rg-and-replace instruction covered it generically and it was converted.
+  - **Drift**: Two of the plan's own test code blocks were defective and were corrected rather than dropped — see the third and fourth **Decided** lines.
+  - **Decided**: phase 3's `isGirlfriend` gate: `tuning.relationship === 'girlfriend' && tuning.enabled.relationship` (phase 3's suggestion) vs `ninaActiveRelationship(tuning) === 'girlfriend'` -> the latter (rung 3: Step 3's rg-and-replace code block, and the new structural guard test forbids `tuning.relationship` in persona.ts source). Semantically identical.
+  - **Decided**: `npm run db:migrate`: Step 6's prose says to apply it; the phase exit criteria name only `npm run db:check` -> not run (rung 2: exit criteria). Applying an unmerged branch's migration to the live Neon DB is deferred to the merge, where the numbering is final. The coordinator recorded the same call.
+  - **Decided**: `tests/nina.tuning.test.ts` 'reads a missing map as all-on': the plan's assertion LABEL `${String(absent)}` throws on the `Object.create(null)` input (no prototype, no toString) -> label built from the loop index instead. Every input and every assertion preserved (tie-break: a failing verification is never settled by relaxing the check; the defect was in the label, not the check).
+  - **Decided**: `tests/db.schema.nina.test.ts` read-direction assertion: the plan's `${key}Enabled: row.${key}Enabled` contradicts the plan's own Step 7 mapping, which nests under `enabled` keyed by tuning key as `${key}: row.${key}Enabled` -> assertion corrected to match the code block (rung 3: the code blocks are complete by construction; the assertion string was the stale half). The guard still fails if a key is forgotten in either direction.
+  - **Decided**: `tests/admin.tuning.test.ts` hostile-payload fixture `{ [key]: 'false' }` is a TS2322 under `Record<string, boolean>` -> added an explicit cast with the reason stated in a comment (rung 1: invariant 7, typecheck green at the end of every phase). The runtime assertion is unchanged.
+  - **Decided**: CharacterPanel's new relationship legend checkbox: the plan's code block leaves it a bare `size-4` (16 px) -> wrapped its label in `TOUCH_TARGET` (rung 2: phase 2's exit criterion is >= 44 px for every interactive control in `components/admin/`, and this phase's own Verification section instructs auditing the panel for it). Audited the rest of the panel: `Button` defaults to size `lg` = 52 px and the `<details>` summary is `py-5`, so this was the only control under 44 px.
+  - **Verified**: `npm run typecheck`, `npm run test` (142 files, 2733 tests), `npm run lint` (0 errors), `npm run build`, `npm run db:generate` -> `drizzle/0006_chubby_wild_child.sql` (16 ADD COLUMN, no backfill, journal idx 6, name never renamed), `npm run db:check`, `npm run format:check` — all green. `tests/__snapshots__/nina.prompts.test.ts.snap` passes UNMODIFIED; no `-u`/`--update` was ever passed to vitest.
+  - **Note**: R4 is complete — every trait, every dial and the relationship carries an `enabled` boolean, persisted in sixteen nullable `*_enabled` columns and gated at the score seam (`ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`), so a disabled parameter contributes zero bytes at any parked score. All-enabled at defaults is byte-identical to `origin/main`. `NINA_TUNING_KEYS` is a spread of `['relationship', ...NINA_TRAITS, ...NINA_DIALS]`, so phase 5's `horny` inherits the toggle everywhere without a second list.
 
 - [x] **P1-NIN-A000** Phase 1: The tuning model and its row
   - **Difficulty**: NORMAL

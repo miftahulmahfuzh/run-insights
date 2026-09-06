@@ -23,6 +23,7 @@ import {
   NINA_SCORE_MIN,
   NINA_TRAITS,
   NINA_TUNING_DEFAULTS,
+  NINA_TUNING_KEYS,
   NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
@@ -375,5 +376,61 @@ describe('the preview is an assembly, not a call — plan invariant 5', () => {
     ]) {
       expect(source, `the album page names ${guarded}`).not.toContain(guarded)
     }
+  })
+})
+
+describe('the enable map crosses the boundary (R4)', () => {
+  it('is carried by the draft, copied rather than aliased', () => {
+    for (const key of NINA_TUNING_KEYS) expect(DEFAULTS.enabled[key], key).toBe(true)
+    const draft = toTuningDraft(NINA_TUNING_DEFAULTS)
+    draft.enabled[NINA_TRAITS[0]] = false
+    expect(NINA_TUNING_DEFAULTS.enabled[NINA_TRAITS[0]]).toBe(true)
+  })
+
+  it('names a flipped toggle by its own dotted path, after the scalar fields', () => {
+    const key = NINA_TRAITS[0]
+    const off: TuningDraft = { ...DEFAULTS, enabled: { ...DEFAULTS.enabled, [key]: false } }
+    expect(changedTuningFields(off, DEFAULTS)).toEqual([`enabled.${key}`])
+    expect(tuningDraftEquals(off, DEFAULTS)).toBe(false)
+  })
+
+  it('treats an absent key as ON on both sides, so it is not a spurious difference', () => {
+    const bare: TuningDraft = { ...DEFAULTS, enabled: {} }
+    expect(changedTuningFields(bare, DEFAULTS)).toEqual([])
+  })
+
+  it('never prints a disabled dial on the hub card, whatever it is parked at', () => {
+    /* A disabled dial contributes zero bytes, so calling it "the loudest" would be the card
+     * describing text that is not in the prompt. */
+    const key = NINA_TRAITS.find((trait) => DEFAULTS.traits[trait] === NINA_SCORE_MIN)
+    expect(key).toBeDefined()
+    if (key === undefined) return
+    const parked: TuningDraft = { ...DEFAULTS, traits: { ...DEFAULTS.traits, [key]: 90 } }
+    expect(loudestDials(parked, DEFAULTS).map((dial) => dial.key)).toEqual([key])
+    const off: TuningDraft = { ...parked, enabled: { ...parked.enabled, [key]: false } }
+    expect(loudestDials(off, DEFAULTS)).toEqual([])
+  })
+
+  it('refuses a payload with a missing, unknown or non-boolean toggle', () => {
+    const short = { ...DEFAULTS.enabled }
+    delete short[NINA_TRAITS[0]]
+    expect(ninaTuningWriteSchema.safeParse(payload({ enabled: short })).success).toBe(false)
+
+    const extra = { ...DEFAULTS.enabled, flirtyy: true }
+    expect(ninaTuningWriteSchema.safeParse(payload({ enabled: extra })).success).toBe(false)
+
+    /* Cast because the point of the case is a value the DRAFT type forbids and a browser could
+     * still send: Zod is the runtime check, and a test that could not express the hostile payload
+     * would not be testing it. */
+    const stringly = { ...DEFAULTS.enabled, [NINA_TRAITS[0]]: 'false' } as unknown as Record<
+      string,
+      boolean
+    >
+    expect(ninaTuningWriteSchema.safeParse(payload({ enabled: stringly })).success).toBe(false)
+  })
+
+  it('accepts a payload with parameters switched off', () => {
+    const some = { ...DEFAULTS.enabled, flirty: false, relationship: false }
+    expect(ninaTuningWriteSchema.safeParse(payload({ enabled: some })).success).toBe(true)
   })
 })

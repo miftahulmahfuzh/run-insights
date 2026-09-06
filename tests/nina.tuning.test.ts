@@ -6,19 +6,23 @@ import { describe, expect, it } from 'vitest'
 import { ANGER_LADDER } from '@/lib/nina/persona'
 import {
   clampNinaScore,
+  coerceNinaEnabled,
   coerceNinaNotes,
   coerceNinaRelationship,
   coerceNinaTuning,
   coerceNinaWardrobe,
   isNinaDial,
+  isNinaKeyEnabled,
   isNinaRelationship,
   isNinaTrait,
+  isNinaTuningKey,
   NINA_ADDRESS,
   NINA_BAND_NAMES,
   NINA_BAND_WIDTH,
   NINA_DEFAULT_RELATIONSHIP,
   NINA_DIAL_SPECS,
   NINA_DIALS,
+  NINA_ENABLED_DEFAULTS,
   NINA_NOTES_MAX,
   NINA_RELATIONSHIPS,
   NINA_SCORE_MAX,
@@ -26,12 +30,18 @@ import {
   NINA_TRAIT_SPECS,
   NINA_TRAITS,
   NINA_TUNING_DEFAULTS,
+  NINA_TUNING_KEYS,
   NINA_WARDROBE_MAX,
+  ninaActiveRelationship,
   ninaBand,
+  ninaDialScore,
+  ninaTraitScore,
   type NinaBandName,
   type NinaDial,
   type NinaTrait,
+  type NinaTuning,
   type NinaTuningInput,
+  type NinaTuningKey,
 } from '@/lib/nina/tuning'
 
 /**
@@ -285,9 +295,14 @@ describe('clamping and coercion never throw', () => {
     for (const key of NINA_TRAITS) traits[key] = 73
     const dials = {} as Record<NinaDial, number>
     for (const key of NINA_DIALS) dials[key] = 11
+    /* Every key present and one of them off, so the round trip covers both booleans rather than
+     * only the one `coerceNinaEnabled` defaults to. */
+    const enabled = {} as Record<NinaTuningKey, boolean>
+    for (const key of NINA_TUNING_KEYS) enabled[key] = key !== 'flirty'
     const input = {
       traits,
       dials,
+      enabled,
       relationship: 'girlfriend' as const,
       wardrobe: 'a black cropped tank and shorts',
       notes: 'call him yang more often',
@@ -394,6 +409,104 @@ describe('NINA_TUNING_DEFAULTS is the Nina who ships today', () => {
     expect(coerced).toEqual(NINA_TUNING_DEFAULTS)
     expect(coerced).not.toBe(NINA_TUNING_DEFAULTS)
     expect(Object.isFrozen(coerced)).toBe(false)
+  })
+})
+
+describe('the per-parameter enable map (R4)', () => {
+  it('covers the relationship, every trait and every dial, and is DERIVED from those arrays', () => {
+    /* Derived and not hand-listed: a seventeenth key must inherit the toggle for free, which is the
+     * property that makes the next phase's `horny` a one-line addition to `NINA_TRAITS`. Note the
+     * array it joins: `horny` is a TRAIT (index decision D6), so it arrives through
+     * `...NINA_TRAITS` and every loop in this phase picks it up without an edit. */
+    expect(NINA_TUNING_KEYS).toEqual(['relationship', ...NINA_TRAITS, ...NINA_DIALS])
+    expect(NINA_TUNING_KEYS).toHaveLength(1 + NINA_TRAITS.length + NINA_DIALS.length)
+    expect(new Set(NINA_TUNING_KEYS).size).toBe(NINA_TUNING_KEYS.length)
+  })
+
+  it('isNinaTuningKey admits every key and nothing else', () => {
+    for (const key of NINA_TUNING_KEYS) expect(isNinaTuningKey(key), key).toBe(true)
+    expect(isNinaTuningKey('wardrobe')).toBe(false)
+    expect(isNinaTuningKey('notes')).toBe(false)
+    expect(isNinaTuningKey('')).toBe(false)
+    expect(isNinaTuningKey('__proto__')).toBe(false)
+  })
+
+  it('defaults to ALL TRUE, which is what holds the byte-identity invariant', () => {
+    for (const key of NINA_TUNING_KEYS) {
+      expect(NINA_ENABLED_DEFAULTS[key], key).toBe(true)
+      expect(NINA_TUNING_DEFAULTS.enabled[key], key).toBe(true)
+    }
+    expect(Object.isFrozen(NINA_ENABLED_DEFAULTS)).toBe(true)
+    expect(Object.isFrozen(NINA_TUNING_DEFAULTS.enabled)).toBe(true)
+  })
+
+  it('reads a missing map as all-on, which IS the migration backfill', () => {
+    /* A row written before the `*_enabled` columns existed hands sixteen nulls to `tuningFromRow`.
+     * If that read as "off" the deploy would silently mute her personality, so the rule is: ONLY an
+     * explicit `false` disables. There is no data migration behind this — this function is it. */
+    /* Indexed rather than stringified in the assertion label: `String(Object.create(null))` throws
+     * (no prototype, so no `toString`), and a null-prototype bag is precisely the input this case
+     * exists to cover — the label must not be the thing that fails. */
+    const absentees: unknown[] = [undefined, null, {}, 'nope', 42, [], Object.create(null)]
+    for (const [index, absent] of absentees.entries()) {
+      const map = coerceNinaEnabled(absent)
+      for (const key of NINA_TUNING_KEYS) expect(map[key], `input #${index}/${key}`).toBe(true)
+    }
+    const nulls = Object.fromEntries(NINA_TUNING_KEYS.map((key) => [key, null]))
+    for (const key of NINA_TUNING_KEYS) expect(coerceNinaEnabled(nulls)[key], key).toBe(true)
+  })
+
+  it('disables exactly and only the keys explicitly set to false', () => {
+    const map = coerceNinaEnabled({ flirty: false, verbosity: false, relationship: false })
+    expect(map.flirty).toBe(false)
+    expect(map.verbosity).toBe(false)
+    expect(map.relationship).toBe(false)
+    for (const key of NINA_TUNING_KEYS) {
+      if (key === 'flirty' || key === 'verbosity' || key === 'relationship') continue
+      expect(map[key], key).toBe(true)
+    }
+    /* Truthy-but-not-true is still on. Only the boolean `false` is a switch. */
+    expect(coerceNinaEnabled({ flirty: 0 }).flirty).toBe(true)
+    expect(coerceNinaEnabled({ flirty: 'false' }).flirty).toBe(true)
+  })
+
+  it('is carried through coerceNinaTuning as a fresh, unfrozen record', () => {
+    const coerced = coerceNinaTuning({ enabled: { steamy: false } })
+    expect(coerced.enabled.steamy).toBe(false)
+    expect(coerced.enabled.funny).toBe(true)
+    expect(Object.isFrozen(coerced.enabled)).toBe(false)
+    expect(coerced.enabled).not.toBe(NINA_ENABLED_DEFAULTS)
+  })
+
+  it('makes a disabled key read as the value the operator never moved', () => {
+    /* THE contract, in three lines. The stored score is untouched — that is the point of a toggle
+     * rather than dragging the slider back — and the PROMPT side reads the key's own default, which
+     * is by definition the value that reproduces the text that ships. */
+    const parked = coerceNinaTuning({
+      traits: { flirty: 100, concerned: 100 },
+      dials: { verbosity: 100 },
+      relationship: 'girlfriend',
+      enabled: { flirty: false, verbosity: false, relationship: false },
+    })
+
+    expect(parked.traits.flirty, 'the parked number must survive').toBe(100)
+    expect(ninaTraitScore(parked, 'flirty')).toBe(NINA_TRAIT_SPECS.flirty.defaultScore)
+    expect(ninaDialScore(parked, 'verbosity')).toBe(NINA_DIAL_SPECS.verbosity.defaultScore)
+    expect(ninaActiveRelationship(parked)).toBe(NINA_DEFAULT_RELATIONSHIP)
+
+    /* And an ENABLED key is a pass-through, or the toggle would be a second dial. */
+    expect(ninaTraitScore(parked, 'concerned')).toBe(100)
+    expect(isNinaKeyEnabled(parked, 'concerned')).toBe(true)
+    expect(isNinaKeyEnabled(parked, 'flirty')).toBe(false)
+  })
+
+  it('never throws on a tuning that has no enable map at all', () => {
+    /* A fixture, a `psql` round trip or an `as NinaTuning` cast can produce one, and the consumer
+     * is a model call in the middle of a conversation. */
+    const bare = { ...NINA_TUNING_DEFAULTS, enabled: undefined } as unknown as NinaTuning
+    expect(() => ninaTraitScore(bare, 'flirty')).not.toThrow()
+    expect(isNinaKeyEnabled(bare, 'flirty')).toBe(true)
+    expect(ninaActiveRelationship(bare)).toBe(NINA_TUNING_DEFAULTS.relationship)
   })
 })
 

@@ -43,6 +43,13 @@
       "when": 1788570836694,
       "tag": "0005_nina_persona_tuning",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788719027988,
+      "tag": "0006_chubby_wild_child",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs'
+
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import type { PgTable } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
 import * as schema from '@/lib/db/schema'
-import { NINA_DIALS, NINA_TRAITS } from '@/lib/nina/tuning'
+import { NINA_DIALS, NINA_TRAITS, NINA_TUNING_KEYS } from '@/lib/nina/tuning'
 
 /**
  * F33's eight tables and two `profiles` columns, asserted against the names the phase plans were
@@ -357,7 +359,7 @@ describe('nina_tuning', () => {
     expect(fkFor(schema.ninaTuning, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the twenty columns phases 3, 4 and 5 were written against', () => {
+  it('spells exactly the thirty-six columns phases 3, 4, 5 and R4 were written against', () => {
     expect(names(schema.ninaTuning)).toEqual(
       [
         'user_id',
@@ -381,10 +383,71 @@ describe('nina_tuning', () => {
         'verbosity',
         'wardrobe',
         'notes',
+        // R4 — one enable flag per parameter, in the same order.
+        'relationship_enabled',
+        'anger_enabled',
+        'chill_enabled',
+        'sad_enabled',
+        'flirty_enabled',
+        'steamy_enabled',
+        'wise_enabled',
+        'annoying_enabled',
+        'funny_enabled',
+        'happy_enabled',
+        'anxious_enabled',
+        'concerned_enabled',
+        'profanity_enabled',
+        'clinginess_enabled',
+        'photo_eagerness_enabled',
+        'verbosity_enabled',
         'revision',
         'updated_at',
       ].sort(),
     )
+  })
+
+  it('gives every parameter an enable column, derived from NINA_TUNING_KEYS (R4)', () => {
+    const declared = new Set(names(schema.ninaTuning))
+    for (const key of NINA_TUNING_KEYS) {
+      expect(declared.has(`${snake(key)}_enabled`), key).toBe(true)
+      expect(sqlType(schema.ninaTuning, `${snake(key)}_enabled`), key).toBe('boolean')
+    }
+    /* RECONCILED — DERIVED, never the literal 16. This assertion read `toHaveLength(16)` in the
+     * draft, and phase 5 adds `horny` to `NINA_TRAITS`, which makes it 17 and turns a passing test
+     * into a phase-5 failure that says nothing about phase 5's bug. The point of the case is that
+     * the array is the spread and has no duplicates, and that is what it now says. */
+    expect(NINA_TUNING_KEYS).toEqual(['relationship', ...NINA_TRAITS, ...NINA_DIALS])
+    expect(new Set(NINA_TUNING_KEYS).size).toBe(NINA_TUNING_KEYS.length)
+  })
+
+  it('leaves every enable column NULLABLE with no default, which IS the backfill (R4)', () => {
+    /* The `nina_turns.tuning_revision` idiom: NULL means one thing only — a row written before the
+     * toggles existed. `coerceNinaEnabled` reads anything that is not literally `false` as ON, so
+     * an existing production row is all-enabled the moment the migration lands, with no UPDATE
+     * behind it. A `DEFAULT true` would be `NINA_ENABLED_DEFAULTS` restated in SQL, which this
+     * table's own header forbids. */
+    for (const key of NINA_TUNING_KEYS) {
+      const column = columns(schema.ninaTuning).get(`${snake(key)}_enabled`)
+      expect(column?.notNull, key).toBe(false)
+      expect(column?.hasDefault, key).toBe(false)
+    }
+  })
+
+  it('maps every enable column in BOTH directions, which drizzle cannot check for a nullable one', () => {
+    /* A nullable column is optional in `NewNinaTuningRow`, so a key forgotten in `tuningToColumns`
+     * is not a compile error — it is a toggle that never persists. This is the guard for that, and
+     * it is what makes the next dial's toggle land with its row mapping or not at all. */
+    const source = readFileSync('lib/nina/queries.ts', 'utf8')
+    for (const key of NINA_TUNING_KEYS) {
+      /* The READ side nests under `enabled`, so it is keyed by the TUNING key and valued by the
+       * COLUMN — `relationship: row.relationshipEnabled`. The write side is flat columns, so it is
+       * the other way round. Both spellings are asserted as they are actually written; a key
+       * forgotten in either direction still fails here, which is the whole point of the case. */
+      expect(source, `${key} is not read out of the row`).toContain(`${key}: row.${key}Enabled`)
+      expect(source, `${key} is not written to the row`).toContain(
+        `${key}Enabled: tuning.enabled.${key}`,
+      )
+    }
   })
 
   it('agrees with lib/nina/tuning.ts about every score column, which is the only duplication', () => {

@@ -1619,9 +1619,10 @@ export const ninaFoldersRelations = relations(ninaFolders, ({ one }) => ({
 
 /**
  * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Eleven trait
- * intensities, a relationship, four behaviour dials, a wardrobe line and a notes field — fifteen
- * integers and three strings. `lib/nina/tuning.ts` owns the vocabulary, the domains and the
- * defaults; this table stores one row of it per user and nothing else.
+ * intensities, a relationship, four behaviour dials, sixteen enable flags, a wardrobe line and a
+ * notes field — fifteen integers, sixteen booleans and three strings. `lib/nina/tuning.ts` owns the
+ * vocabulary, the domains and the defaults; this table stores one row of it per user and nothing
+ * else.
  *
  * ── WHY COLUMNS AND NOT ONE `jsonb` BLOB ──────────────────────────────────────────────────────
  * `nina_memory_slots.value` is `jsonb` because one column had to hold both a short phrase and a
@@ -1727,6 +1728,46 @@ export const ninaTuning = pgTable('nina_tuning', {
    * for something the operator wants that no dial expresses. `''` = nothing appended.
    */
   notes: text('notes').notNull(),
+
+  /**
+   * ── R4's PER-PARAMETER ON/OFF SWITCH, ONE COLUMN PER PARAMETER ──────────────────────────────
+   * *"we need an on/off toggle for each parameter, so we can exclude some parameters to make prompt
+   * more accurate."* `lib/nina/tuning.ts`'s `NINA_TUNING_KEYS` owns the vocabulary; these are the
+   * sixteen booleans behind it, in the same order as the score columns above.
+   *
+   * **Columns and not one `jsonb` map**, for the three reasons this table's header already gives,
+   * and the first one bites harder here than it does for the scores: a misspelt key in a blob is
+   * indistinguishable from an unset one, `coerceNinaEnabled` reads an unset key as `true`, and the
+   * failure would therefore be *a toggle that silently does nothing* — the one failure R4 cannot
+   * survive. A column named `flirtty_enabled` fails at `db:generate`, and drizzle's insert type
+   * makes `tuningToColumns` a compile error if it forgets one it declares.
+   *
+   * ── NULLABLE, WITH NO DEFAULT, AND THAT IS THE BACKFILL ─────────────────────────────────────
+   * The `nina_turns.tuning_revision` idiom, verbatim: NULLABLE with no default, and NULL means one
+   * thing only — **a row written before the toggles existed**. `coerceNinaEnabled` reads anything
+   * that is not literally `false` as enabled, so an existing production row is all-on the moment
+   * the migration lands, with no `UPDATE` and no data step. A `DEFAULT true` would have been the
+   * second copy of `NINA_ENABLED_DEFAULTS` in a second language that this table's header forbids.
+   * `writeNinaTuning` supplies all sixteen on every save, so NULL never appears in a row this app
+   * has written.
+   */
+  relationshipEnabled: boolean('relationship_enabled'),
+  angerEnabled: boolean('anger_enabled'),
+  chillEnabled: boolean('chill_enabled'),
+  sadEnabled: boolean('sad_enabled'),
+  flirtyEnabled: boolean('flirty_enabled'),
+  steamyEnabled: boolean('steamy_enabled'),
+  wiseEnabled: boolean('wise_enabled'),
+  annoyingEnabled: boolean('annoying_enabled'),
+  funnyEnabled: boolean('funny_enabled'),
+  happyEnabled: boolean('happy_enabled'),
+  anxiousEnabled: boolean('anxious_enabled'),
+  concernedEnabled: boolean('concerned_enabled'),
+  profanityEnabled: boolean('profanity_enabled'),
+  clinginessEnabled: boolean('clinginess_enabled'),
+  photoEagernessEnabled: boolean('photo_eagerness_enabled'),
+  verbosityEnabled: boolean('verbosity_enabled'),
+
   /**
    * **Bumped by the database on every save**, and stamped onto `nina_turns.tuning_revision` so a
    * voice change can be dated to a setting rather than only to a commit.

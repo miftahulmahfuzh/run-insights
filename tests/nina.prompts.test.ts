@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -23,10 +26,12 @@ import {
   NINA_ADDRESS,
   NINA_RELATIONSHIPS,
   NINA_TUNING_DEFAULTS,
+  NINA_TUNING_KEYS,
   type NinaDial,
   type NinaRelationship,
   type NinaTrait,
   type NinaTuning,
+  type NinaTuningKey,
 } from '@/lib/nina/tuning'
 
 /**
@@ -767,6 +772,134 @@ describe('the distiller knows what the relationship is (R6, the sweep)', () => {
       const prompt = buildDistillSystemPrompt(relationship)
       expect(prompt, relationship).toContain('You are a librarian, not a participant')
       expect(prompt, relationship).toContain("you never write in Nina's voice")
+    }
+  })
+})
+
+/**
+ * ── R4, THE GATE ─────────────────────────────────────────────────────────────────────────────
+ * *"we need an on/off toggle for each parameter, so we can exclude some parameters to make prompt
+ * more accurate for what we would like nina to do."*
+ *
+ * The stated purpose is a SHORTER prompt, so the contract is ZERO BYTES and not "a neutral
+ * paragraph": a parameter that is off renders **the prompt that ships**, whatever it is parked at.
+ *
+ * The suite walks `NINA_TUNING_KEYS`, which is `[relationship, ...NINA_TRAITS, ...NINA_DIALS]`, so
+ * a key added to EITHER array in a later phase is covered here the moment it exists — including one
+ * whose band text nobody has read yet. Phase 5's `horny` is a TRAIT and arrives through
+ * `...NINA_TRAITS`; `parkedOn` below routes it by membership rather than by array, so neither this
+ * comment nor that function needs to know which array it landed in.
+ */
+describe('buildNinaSystemPrompt — a disabled parameter contributes zero bytes (R4)', () => {
+  /**
+   * The same tuning with one key turned all the way up, rendered twice: once with every toggle ON
+   * (the counter-check — a key wired to nothing must not pass this suite by being inert) and once
+   * with that one key OFF.
+   *
+   * Two functions rather than a destructure-and-discard: `tests/admin.tuning.test.ts` records why
+   * (*"the `{ [k]: _dropped, ...rest }` idiom leaves an unused binding, and a new lint warning is
+   * noise the next phase has to read"*).
+   */
+  function parkedOn(key: NinaTuningKey): NinaTuning {
+    if (key === 'relationship') return tuned({ relationship: 'girlfriend' })
+    return key in NINA_TUNING_DEFAULTS.traits
+      ? withTrait(key as NinaTrait, 100)
+      : withDial(key as NinaDial, 100)
+  }
+
+  function parkedOff(key: NinaTuningKey): NinaTuning {
+    return {
+      ...parkedOn(key),
+      enabled: { ...NINA_TUNING_DEFAULTS.enabled, [key]: false },
+    }
+  }
+
+  it('renders the SHIPPING prompt for every parameter, parked at its loudest and switched off', () => {
+    for (const key of NINA_TUNING_KEYS) {
+      expect(buildNinaSystemPrompt(parkedOn(key)), `${key} at 100 changes nothing`).not.toBe(
+        DEFAULT_RENDER,
+      )
+      expect(buildNinaSystemPrompt(parkedOff(key)), `${key} is off and still speaks`).toBe(
+        DEFAULT_RENDER,
+      )
+    }
+  })
+
+  it('leaves every OTHER parameter speaking when one is switched off', () => {
+    /* The failure this catches is a gate that reads the wrong key, or one boolean gating the lot. */
+    const loud = tuned({
+      traits: { ...NINA_TUNING_DEFAULTS.traits, flirty: 100, funny: 100 },
+      enabled: { ...NINA_TUNING_DEFAULTS.enabled, flirty: false },
+    })
+    const render = buildNinaSystemPrompt(loud)
+    expect(render).not.toContain('FLIRTY MAX')
+    expect(render).toContain('FUNNY MAX')
+    /* `flirty` is one of `BODY_REPEALED_BY`, so its repeal must not fire from a disabled key. */
+    expect(render).toContain('Never comment on his body')
+  })
+
+  it('shortens rather than neutralises — the render gets SMALLER, never longer', () => {
+    /* D3, as arithmetic. "Renders its identity band" would have produced a prompt at least as long
+     * as the tuned one; R4 asked for a shorter one. */
+    for (const key of NINA_TUNING_KEYS) {
+      const off = buildNinaSystemPrompt(parkedOff(key))
+      expect(off.length, key).toBeLessThanOrEqual(buildNinaSystemPrompt(parkedOn(key)).length)
+      expect(off.length, key).toBe(DEFAULT_RENDER.length)
+    }
+  })
+
+  it('switches off a parameter WITHOUT losing the number it is parked at', () => {
+    const parked = coerceNinaTuning({
+      traits: { flirty: 80 },
+      enabled: { flirty: false },
+    })
+    expect(parked.traits.flirty).toBe(80)
+    expect(buildNinaSystemPrompt(parked)).toBe(DEFAULT_RENDER)
+    /* And back on, with no second edit: the same row, one boolean flipped. */
+    expect(
+      buildNinaSystemPrompt({ ...parked, enabled: { ...parked.enabled, flirty: true } }),
+    ).not.toBe(DEFAULT_RENDER)
+  })
+
+  it('turns the relationship off to best_friend, which is the level that ships', () => {
+    for (const relationship of NINA_RELATIONSHIPS) {
+      const off = tuned({
+        relationship,
+        enabled: { ...NINA_TUNING_DEFAULTS.enabled, relationship: false },
+      })
+      expect(buildNinaSystemPrompt(off), relationship).toBe(DEFAULT_RENDER)
+    }
+  })
+})
+
+/**
+ * ── R4, THE STRUCTURAL HALF ──────────────────────────────────────────────────────────────────
+ * The gate is a substitution at the score seam (`ninaTraitScore` / `ninaDialScore` /
+ * `ninaActiveRelationship` in `lib/nina/tuning.ts`). A file on the prompt side that reads
+ * `tuning.traits.x` directly bypasses it, and the result is a toggle that silently does nothing —
+ * invisible in a diff, invisible in review, and only findable by an operator wondering why the
+ * checkbox did not take. So the property is checked by reading the source, the way
+ * `tests/nina.tuning.test.ts` checks phase 1's zero-import rule.
+ *
+ * `lib/nina/queries.ts` is deliberately NOT in this list: it is the STORE, and it must write the
+ * value the operator parked rather than the value the prompt uses.
+ */
+describe('the prompt side never reads a tuning value past the gate (R4)', () => {
+  const GATED = [
+    '../lib/nina/persona.ts',
+    '../lib/nina/prompts/system.ts',
+    '../lib/nina/proactive.ts',
+  ]
+
+  it('names no raw tuning field in any file that renders text', () => {
+    for (const relative of GATED) {
+      const source = readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
+      /* Comments stripped, so a docstring may quote the forbidden spelling to explain the rule —
+       * the same accommodation `tests/nina.tuning.test.ts` makes for `server-only`. */
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+      for (const forbidden of ['tuning.traits', 'tuning.dials', 'tuning.relationship']) {
+        expect(code, `${relative} reads ${forbidden} past the R4 gate`).not.toContain(forbidden)
+      }
     }
   })
 })

@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-06 (task `P1-NIN-A004`, phase 3 of the admin-responsive-nina-intimacy set — R2, the girlfriend register)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A005`, phase 4 of the admin-responsive-nina-intimacy set — R4, the per-parameter enable toggles)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -47,19 +47,87 @@ Zero imports, plain data and types, client-importable. Declares:
   canon.
 - **Four dials** (`NINA_DIALS`: profanity, clinginess, photoEagerness, verbosity), each naming a real
   code path.
-- **`NinaTuning`** — `{ traits, relationship, dials, wardrobe, notes, revision }`, all readonly.
-  `wardrobe` and `notes` are `string` and never null; `''` is the one empty value. `revision` is the
-  database's to assign, and `0` means *no row has ever been written*.
+- **`NinaTuning`** — `{ traits, relationship, dials, enabled, wardrobe, notes, revision }`, all
+  readonly. `enabled` is R4's per-parameter on/off map (see below). `wardrobe` and `notes` are
+  `string` and never null; `''` is the one empty value. `revision` is the database's to assign, and
+  `0` means *no row has ever been written*.
 - **`NINA_TUNING_DEFAULTS`** — frozen, and the setting that reproduces today's Nina exactly.
 - **`coerceNinaTuning`** — total, never throws, always returns a fresh unfrozen object. An
   unreadable key falls back to *that key's own default*, not to zero; an unknown relationship
-  degrades to `best_friend`.
+  degrades to `best_friend`; a missing or partial `enabled` map reads as **all on**.
 
 **The defaults are not uniform, and that matters everywhere below.** `anger`, `sad`, `flirty`,
 `steamy`, `annoying` and `anxious` default to **0** (`off`); `profanity` defaults to **30** (`low`);
 the other eight default to **50** (`mid`). They were read off the canon rather than set to the middle
 of the slider, because a uniform 50 would have shipped a Nina angrier and filthier than the one that
 exists.
+
+#### The enable map — one on/off switch per parameter (R4, phase 4)
+
+The user's requirement, verbatim: *"we need an on/off toggle for each parameter, so we can exclude
+some parameters to make prompt more accurate for what we would like nina to do"*. The stated purpose
+is a **shorter** prompt, so **a disabled parameter contributes ZERO BYTES to the assembled prompt at
+any parked score** — not "renders its identity band as a neutral paragraph", not "renders a
+disabled-value paragraph". Zero.
+
+- **`NINA_TUNING_KEYS`** — `[NINA_TUNING_RELATIONSHIP_KEY, ...NINA_TRAITS, ...NINA_DIALS]`, sixteen
+  keys today, **derived and never restated**. The Zod shape, the coercion walk, the panel's
+  checkboxes, the diff paths and the R4 gate test are all loops over this one array, so a new trait
+  or dial inherits its toggle everywhere in the same commit. `NinaTuningKey` is its element type;
+  `isNinaTuningKey` is the narrowing guard. Nothing outside the migration may hard-code sixteen.
+- **`NINA_ENABLED_DEFAULTS`** — frozen, all `true`, built by walking the array. All-true is what
+  makes `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` the prompt that shipped *arithmetically*
+  rather than by anyone remembering: the gate is a pass-through, every key sits at its own
+  `defaultScore`, and every identity-band skip fires exactly as before.
+- **`coerceNinaEnabled(value)`** — **only an explicit `false` disables.** `null`, `undefined`, a
+  missing key, `0`, `'off'`, `{}` all read as *on*. This asymmetry is the deliberate opposite of
+  `clampNinaScore`'s per-key fallback, and it **is** the migration's backfill: a row written before
+  the `*_enabled` columns existed hands back sixteen nulls and must be all-on, because the failure
+  mode of guessing wrong is a production row that silently loses her personality on deploy.
+- **`isNinaKeyEnabled(tuning, key)`** — reads through the same defensive `pick` as the coercers, so
+  a hand-built `NinaTuning` with no `enabled` at all (a fixture, a `psql` round trip, an
+  `as NinaTuning` cast) degrades to "everything on" instead of throwing mid-turn.
+
+**`relationship` has a toggle; `wardrobe` and `notes` deliberately do not.** `nobody` is not an off
+switch — `NINA_RELATIONSHIP_BLOCKS.nobody` is four sentences of *active* instruction and the coldest
+setting on the axis, so choosing it to "exclude" the parameter makes the prompt longer and changes
+her behaviour. Disabling the relationship therefore means `NINA_DEFAULT_RELATIONSHIP`, whose blocks
+*are* today's `NINA_IDENTITY`. `wardrobe` and `notes` are the mirror image: `''` genuinely is their
+absence and already costs zero bytes, so a toggle would be a second spelling for a state the field
+already has.
+
+#### The gate lives at the score seam, and only there
+
+```ts
+function ninaTraitScore(tuning: NinaTuning, trait: NinaTrait): number   // defaultScore when off
+function ninaDialScore(tuning: NinaTuning, dial: NinaDial): number      // defaultScore when off
+function ninaActiveRelationship(tuning: NinaTuning): NinaRelationship   // best_friend when off
+```
+
+**A disabled key is a key the operator never moved.** The parked score stays in the row and stays on
+the slider; every reader on the *prompt* side gets that key's own `defaultScore` instead — which is
+zero added bytes, because `defaultScore` is defined per key as *the value that reproduces the text
+that ships*.
+
+The gate is here and **not** inside `ninaTraitsBlock`'s loop because six other things read a raw
+score: `ANGER_FLOOR_BY_BAND` / `ANGER_CEILING_BY_BAND` via `ninaAngerFloor`, `BODY_REPEALED_BY` and
+`THREAT_REPEALED_BY` via `anyTurnedUp`, the `funny` clause in `ninaIdentity`, and `OUTPUT_RULE`'s
+greeting line, its bubble preference and the camera block via `systemDials`. A toggle that only
+skipped the paragraph would leave a disabled `anger: 100` still flooring the nag ladder at rung 4 —
+a switched-off slider that still rewrites three blocks of the prompt, with nothing in a diff to show
+it.
+
+**`persona.ts` and `prompts/system.ts` may not read `tuning.traits`, `tuning.dials` or
+`tuning.relationship` directly any more**, and `tests/nina.prompts.test.ts` reads their source and
+fails if they do. A direct read is a parameter whose toggle silently does nothing — the one failure
+R4 cannot survive and the one a reviewer cannot see. **The store is the exception**:
+`tuningToColumns` in `queries.ts` writes the value the operator *parked*, not the value the prompt
+uses, because switching a dial off must never lose the number it was parked at. That is the whole
+point of a toggle as opposed to dragging the slider back to the default.
+
+Inside `persona.ts` the gate cost exactly two lines — `traitBand` / `dialBand` now call
+`ninaTraitScore` / `ninaDialScore` — which is the two-places-read-the-shape contract below paying
+for itself. In `prompts/system.ts` the change is confined to `systemDials`.
 
 ### `persona.ts` — the text (phase 2)
 
@@ -181,7 +249,7 @@ function ninaGirlfriendVoiceBlock(tuning: NinaTuning): string    // R2, girlfrie
 ```ts
 function isTurnedUp(tuning: NinaTuning, trait: NinaTrait): boolean   // band is 'high' or 'max' (score >= 60)
 function anyTurnedUp(tuning: NinaTuning, traits: readonly NinaTrait[]): boolean
-const isGirlfriend: (tuning: NinaTuning) => boolean                  // relationship === 'girlfriend'
+const isGirlfriend: (tuning: NinaTuning) => boolean                  // ninaActiveRelationship === 'girlfriend'
 ```
 
 `isTurnedUp` / `anyTurnedUp` are **exported**, because phase 3 needs the same test for
@@ -190,9 +258,12 @@ how the two halves of one repeal come to disagree.
 
 `isGirlfriend` is exported for the same reason, and it is **the single gate seam for every
 girlfriend-only block in the file** — both R2 render functions call it rather than comparing
-`tuning.relationship` themselves. It is therefore the *one* expression a later phase edits to put the
-register behind a per-parameter enable toggle (`&& tuning.enabled.relationship`), instead of hunting
-for three scattered comparisons.
+`tuning.relationship` themselves. That seam is what made R4 a one-line change instead of a hunt for
+three scattered comparisons: `isGirlfriend` now reads `ninaActiveRelationship(tuning)`, so clearing
+the relationship's checkbox makes her the `best_friend` who shipped and the whole manja register
+leaves the prompt with her. **No expression in `persona.ts` compares `tuning.relationship`
+directly any more** — `ninaIdentity` and `ninaNameRules` go through `ninaActiveRelationship` too,
+and a structural test enforces it.
 
 ### Default-render constants (the compatibility surface)
 
@@ -205,7 +276,8 @@ for three scattered comparisons.
 
 1. **Every export is either unchanged or a function of `NinaTuning`.** Nothing reads a raw score; the
    two functions `traitBand` / `dialBand` are the only places the *shape* of `NinaTuning` is read, so
-   a change to how the tuning is stored is a two-line change rather than a forty-line one.
+   a change to how the tuning is stored is a two-line change rather than a forty-line one. **R4
+   collected on this**: routing a disabled parameter to its `defaultScore` was those same two lines.
 2. **Each key's own identity band renders `''`.** Held by construction, not by hand-checking.
 3. **The default render of every retained constant is byte-identical to `HEAD`** — with exactly one
    accepted exception: `NAME_RULES` gains the sentence *"Sometimes 'bestie' instead of the nickname —
@@ -291,7 +363,9 @@ its rule is an amendment the model may not connect — and `EXACTLY HOW YOU SOUN
 off the block above it, so **the order is load-bearing**. No section and no tool schema moved, and
 `NINA_SECTION_TITLES` is still ten. That bump is the **single** one for the whole
 admin-responsive-nina-intimacy set — later phases must not touch the constant, because two bumps
-would date two commits to one change. The changelog for each version lives as a comment above the
+would date two commits to one change. **R4 (phase 4) did not touch it and could not have**: the
+enable map adds no text and changes no assembler, it only substitutes a key's `defaultScore` for its
+parked score, so an all-enabled tuning renders version 4's exact bytes. The changelog for each version lives as a comment above the
 constant in `prompts/index.ts`.
 
 ## The camera is a function of the tuning
@@ -373,6 +447,20 @@ tool handlers and the tool sets), `avatargen.ts`.
 ### Persistence
 `queries.ts` — every Drizzle query for the `nina_*` tables, including `readNinaTuning` /
 `writeNinaTuning`.
+
+`tuningFromRow` / `tuningToColumns` are **the one place the flat row and the nested model meet**, and
+after R4 that is **thirty-six** snake_case columns against `traits.anger` / `dials.photoEagerness` /
+`enabled.flirty`. The toggles are **sixteen nullable `boolean` columns** on `nina_tuning`
+(`relationship_enabled`, then one per trait and per dial), added by
+`drizzle/0006_chubby_wild_child.sql` — sixteen `ADD COLUMN`, journal index 6, **no `DEFAULT` and no
+backfill step**. That is the `nina_turns.tuning_revision` idiom repeated: NULL means one thing only,
+*a row written before the toggles existed*, and `coerceNinaEnabled` reads it as enabled, so every
+existing production row is all-on the moment the migration lands. `writeNinaTuning` supplies all
+sixteen on every save, so NULL never appears in a row this app has written. Columns rather than one
+`jsonb` map for the reason the table header already gives, which bites harder here than for the
+scores: a misspelt key in a blob is indistinguishable from an unset one, an unset key reads as
+`true`, and the failure would be *a toggle that silently does nothing* — whereas `flirtty_enabled`
+fails at `db:generate` and drizzle's insert type makes a forgotten column a compile error.
 
 *(T)* = has a colocated `*.test.ts`.
 
@@ -475,6 +563,19 @@ are worth knowing:
   **That is correct and intended**: it is what makes phase 2 shippable alone, with the tree building,
   tests passing and behaviour byte-for-byte unchanged. Phase 3 replaces those references with
   `ninaXxx(tuning)`.
+- **Never read `tuning.traits`, `tuning.dials` or `tuning.relationship` from `persona.ts` or
+  `prompts/system.ts`.** Use `ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`. A direct
+  read compiles, passes every containment test, and produces a checkbox the operator can clear with
+  no effect — so `tests/nina.prompts.test.ts` reads both files' *source* and fails on one. The rule
+  stops at the seam: `queries.ts`'s `tuningToColumns` reads the raw values on purpose, because the
+  store keeps what was parked.
+- **Only an explicit `false` disables a parameter.** Never write `enabled[key] === true` or
+  `Boolean(enabled[key])` as the gate — a pre-migration row is sixteen `null`s and both spellings
+  would mute her personality on deploy. `isNinaKeyEnabled` / `coerceNinaEnabled` are the readers.
+- **Never hard-code sixteen.** `NINA_TUNING_KEYS` is a spread of `NINA_TRAITS` and `NINA_DIALS`, so a
+  new trait inherits its toggle everywhere at once; a second hand-written list is a key whose
+  checkbox never renders. The migration's sixteen `ADD COLUMN` are the one place the number is a
+  fact rather than an assumption.
 - **The identity band is not always `mid`.** Testing `band === 'mid'` instead of
   `atTraitIdentityBand` would emit seven paragraphs at the default tuning. Always ask phase 1's specs.
 - **Contradictory dials are the operator's problem, not the prompt's.** `anger: 100` with
@@ -511,6 +612,18 @@ subset precisely so that walk keeps proving something true at every setting rath
 default. That file also walks `GIRLFRIEND_VOICE_EXAMPLES` (an 8-case `girlfriend register (R2)`
 describe block) rather than retyping the user's five lines.
 
+**R4 is tested at three altitudes, all by walking `NINA_TUNING_KEYS` rather than naming keys.**
+`tests/nina.tuning.test.ts` covers the map itself (derived-not-restated, all-true defaults, a
+missing map as the migration backfill, only-`false`-disables, and never throwing on a tuning with no
+`enabled` at all). `tests/nina.prompts.test.ts` covers the behaviour: every parameter parked at its
+*loudest* and switched off still renders the shipping prompt, one key off leaves the other fifteen
+speaking, the render only ever gets **smaller**, and the relationship off is `best_friend`. It also
+carries the **structural guard** — it reads the source of `persona.ts` and `prompts/system.ts` and
+fails if either names a raw tuning field, because a direct read is the one R4 bug no assertion about
+output can catch. `tests/db.schema.nina.test.ts` holds the thirty-six columns, proves every key has
+a nullable-no-default enable column, and maps both directions, which drizzle's types cannot check
+for a nullable column.
+
 **The snapshot is the byte-identity gate for plan invariant 2.**
 `tests/__snapshots__/nina.prompts.test.ts.snap` holds the assembled prompt for the **four
 non-girlfriend relationships**, and it was **generated from the pristine tree before any source edit**
@@ -536,3 +649,12 @@ Phase 3 is the one that makes any of phase 2 visible: until it swaps the constan
 
 Plan files for this set live in `lib/nina/.workflows/plan/` (`P1-NIN-A000` … `P1-NIN-A003`). The
 prose canon — and the redline document — is `docs/nina/persona.md`.
+
+**`ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` is the set that followed**, and `lib/nina` is touched by
+its phases 3, 4 and 5. Phase 3 (`P1-NIN-A004`) landed R2, the girlfriend register; **phase 4
+(`P1-NIN-A005`) landed R4, the per-parameter enable toggles** documented above. Phase 5 adds
+`horny` as a **twelfth trait** with its own migration (`0007`), and it needs no work in this
+package to get a toggle: `NINA_TUNING_KEYS` spreads `NINA_TRAITS`, so the key arrives with its
+checkbox, its column and its gate already covered by the loops phase 4 wrote. Phase 5 reads
+`ninaTraitScore(tuning, 'horny')` as its seam, and owns the single `verbosity` line in
+`systemDials` that phase 4 leaves it.

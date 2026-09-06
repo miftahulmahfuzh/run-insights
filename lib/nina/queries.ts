@@ -2762,7 +2762,7 @@ export async function deleteNinaFolderSubtree(userId: string, folder: string): P
  * ==========================================================================*/
 
 /**
- * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells sixteen
+ * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells **thirty-six**
  * snake_case columns; `lib/nina/tuning.ts` spells `traits.anger` and `dials.photoEagerness`. The
  * three-layer boundary this file's own header describes for `nina_messages.text` -> `body`, one
  * table over: two spellings, ONE translation point, reviewable in one diff.
@@ -2792,6 +2792,27 @@ function tuningFromRow(row: NinaTuningRow): NinaTuning {
       photoEagerness: row.photoEagerness,
       verbosity: row.verbosity,
     },
+    /* R4's toggles. Every one of these is `boolean | null`, and a NULL is a row written before the
+     * columns existed — `coerceNinaEnabled` reads anything that is not literally `false` as on, so
+     * an existing production row arrives here all-enabled with no data migration behind it. */
+    enabled: {
+      relationship: row.relationshipEnabled,
+      anger: row.angerEnabled,
+      chill: row.chillEnabled,
+      sad: row.sadEnabled,
+      flirty: row.flirtyEnabled,
+      steamy: row.steamyEnabled,
+      wise: row.wiseEnabled,
+      annoying: row.annoyingEnabled,
+      funny: row.funnyEnabled,
+      happy: row.happyEnabled,
+      anxious: row.anxiousEnabled,
+      concerned: row.concernedEnabled,
+      profanity: row.profanityEnabled,
+      clinginess: row.clinginessEnabled,
+      photoEagerness: row.photoEagernessEnabled,
+      verbosity: row.verbosityEnabled,
+    },
     wardrobe: row.wardrobe,
     notes: row.notes,
     revision: row.revision,
@@ -2820,6 +2841,26 @@ function tuningToColumns(tuning: NinaTuningWrite) {
     clinginess: tuning.dials.clinginess,
     photoEagerness: tuning.dials.photoEagerness,
     verbosity: tuning.dials.verbosity,
+    /* R4. The RAW score above and the RAW flag here — this is the store, and switching a dial off
+     * must never lose the number it was parked at. The gate that substitutes `defaultScore` lives
+     * on the PROMPT side (`ninaTraitScore` / `ninaDialScore`), which is the whole point of a toggle
+     * as opposed to dragging the slider back. */
+    relationshipEnabled: tuning.enabled.relationship,
+    angerEnabled: tuning.enabled.anger,
+    chillEnabled: tuning.enabled.chill,
+    sadEnabled: tuning.enabled.sad,
+    flirtyEnabled: tuning.enabled.flirty,
+    steamyEnabled: tuning.enabled.steamy,
+    wiseEnabled: tuning.enabled.wise,
+    annoyingEnabled: tuning.enabled.annoying,
+    funnyEnabled: tuning.enabled.funny,
+    happyEnabled: tuning.enabled.happy,
+    anxiousEnabled: tuning.enabled.anxious,
+    concernedEnabled: tuning.enabled.concerned,
+    profanityEnabled: tuning.enabled.profanity,
+    clinginessEnabled: tuning.enabled.clinginess,
+    photoEagernessEnabled: tuning.enabled.photoEagerness,
+    verbosityEnabled: tuning.enabled.verbosity,
     wardrobe: tuning.wardrobe,
     notes: tuning.notes,
   }

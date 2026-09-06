@@ -76,23 +76,38 @@ import {
   NINA_DIAL_SPECS,
   NINA_TRAIT_SPECS,
   NINA_TUNING_DEFAULTS,
+  ninaActiveRelationship,
   ninaBand,
+  ninaDialScore,
+  ninaTraitScore,
 } from './tuning'
 
 export const NINA_NAME = 'Nina'
 
 /**
- * The two — and only two — places the SHAPE of `NinaTuning` is read. Everything below asks for a
- * band NAME, never for a number, so a change to how the tuning is stored is a two-line change here
- * rather than a forty-line change through the text.
+ * The two — and only two — places the SHAPE of `NinaTuning` is read for a score. Everything below
+ * asks for a band NAME, never for a number, so a change to how the tuning is stored is a two-line
+ * change here rather than a forty-line change through the text.
+ *
+ * ── R4'S GATE IS INSIDE THESE TWO LINES, AND THAT IS WHY THERE ARE ONLY TWO ───────────────────
+ * `ninaTraitScore` / `ninaDialScore` return the key's own `defaultScore` when the operator has
+ * switched that parameter OFF, so a disabled key resolves to its IDENTITY BAND and every skip below
+ * fires exactly as it does for a key nobody moved: `atTraitIdentityBand` is true, `ninaTraitsBlock`
+ * `continue`s BEFORE the band lookup, `isTurnedUp` is false so no repeal fires, and
+ * `ANGER_FLOOR_BY_BAND` reads `off` so the ladder is arithmetically untouched. Zero bytes, at any
+ * score — which is what R4 asked for: *"exclude some parameters to make prompt more accurate"*.
+ *
+ * **Nothing in this file may read `tuning.traits`, `tuning.dials` or `tuning.relationship`
+ * directly**, and `tests/nina.prompts.test.ts` reads this file's source and fails if it does. A
+ * direct read is a parameter whose toggle silently does nothing.
  *
  * `ninaBand()` returns `{ index, name }` — the index exists so the anger floor can be a rung. The
  * text below only ever wants the name.
  */
 const traitBand = (tuning: NinaTuning, trait: NinaTrait): NinaBandName =>
-  ninaBand(tuning.traits[trait]).name
+  ninaBand(ninaTraitScore(tuning, trait)).name
 const dialBand = (tuning: NinaTuning, dial: NinaDial): NinaBandName =>
-  ninaBand(tuning.dials[dial]).name
+  ninaBand(ninaDialScore(tuning, dial)).name
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
@@ -296,7 +311,10 @@ const NINA_JOKES_ALLOWED =
  * strings, and `mid` on the `funny` dial keeps `NINA_NO_JOKES`.
  */
 export function ninaIdentity(tuning: NinaTuning): string {
-  const spec = NINA_RELATIONSHIP_BLOCKS[tuning.relationship]
+  /* `ninaActiveRelationship`, not `tuning.relationship`: with the relationship switched off (R4)
+   * she is `best_friend`, whose `identity` and `history` ARE today's NINA_IDENTITY character for
+   * character — so "excluded" costs zero bytes here too. */
+  const spec = NINA_RELATIONSHIP_BLOCKS[ninaActiveRelationship(tuning)]
   const humour = isTurnedUp(tuning, 'funny') ? NINA_JOKES_ALLOWED : NINA_NO_JOKES
   return [
     `${NINA_PREAMBLE} ${spec.identity.join(' ')}`,
@@ -460,11 +478,13 @@ export const JAKARTA_REGISTER = `Jakarta, spoken, the way people actually type i
  *
  * Exported rather than inlined at its two call sites for the reason `isTurnedUp` is exported: a
  * second definition of "she is his girlfriend" is how two halves of one rule come to disagree. It
- * is also the ONE line a later phase edits to put this register behind a per-parameter enable
- * toggle — `tuning.relationship === 'girlfriend' && tuning.enabled.relationship` — instead of
- * hunting for three comparisons.
+ * was also the ONE line R4 had to edit to put this register behind the per-parameter enable
+ * toggle, instead of hunting for three comparisons — and R4 did exactly that: the comparison now
+ * reads `ninaActiveRelationship`, so clearing the relationship's checkbox makes her the
+ * `best_friend` who shipped and this whole register leaves the prompt with her.
  */
-export const isGirlfriend = (tuning: NinaTuning): boolean => tuning.relationship === 'girlfriend'
+export const isGirlfriend = (tuning: NinaTuning): boolean =>
+  ninaActiveRelationship(tuning) === 'girlfriend'
 
 /**
  * ── THE ORTHOGRAPHY. HOW SHE SPELLS, NOT WHAT SHE MEANS ──────────────────────────────
@@ -564,8 +584,10 @@ export function ninaNameRules(tuning: NinaTuning): string {
   /* PHASE 1'S STRINGS, COMPOSED — never restated. `NINA_ADDRESS` in `./tuning` is the one home for
    * what she calls him, because phase 5's `'use client'` panel has to show the operator the same
    * words and cannot import this file's canon. `addressFallback` is `string` and never null on any
-   * of the five levels, so there is no branch here: two paragraphs, always. */
-  const address = NINA_ADDRESS[tuning.relationship]
+   * of the five levels, so there is no branch here: two paragraphs, always.
+   *
+   * `ninaActiveRelationship` and not `tuning.relationship`, for R4 — see `ninaIdentity`. */
+  const address = NINA_ADDRESS[ninaActiveRelationship(tuning)]
   return `${address.addressRule}
 
 ${address.addressFallback}`

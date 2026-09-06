@@ -32,6 +32,7 @@ import {
   NINA_SCORE_MAX,
   NINA_SCORE_MIN,
   NINA_TRAITS,
+  NINA_TUNING_KEYS,
   NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
@@ -424,6 +425,9 @@ export type AlbumManifestRequest = z.infer<typeof albumManifestSchema>
  */
 const dialValueSchema = z.number().int().min(NINA_SCORE_MIN).max(NINA_SCORE_MAX)
 
+/** R4's toggle. A boolean and nothing else — no `"true"`, no `1`. The browser we wrote sends one. */
+const enabledValueSchema = z.boolean()
+
 /**
  * One `dialValueSchema` per key phase 1 declares, built from the array rather than spelled out.
  * Spelling eleven trait keys here would put phase 1's vocabulary in a second place, and the first
@@ -435,10 +439,29 @@ function dialShape<K extends string>(keys: readonly K[]): Record<K, typeof dialV
   return shape
 }
 
+/**
+ * The same idiom for R4's enable map, over `NINA_TUNING_KEYS` — which is itself
+ * `[relationship, ...NINA_TRAITS, ...NINA_DIALS]`, so a seventeenth key gets a validated toggle the
+ * moment it is added to either array (the next phase's `horny` joins through `NINA_TRAITS`) and
+ * nothing here changes.
+ */
+function enabledShape<K extends string>(keys: readonly K[]): Record<K, typeof enabledValueSchema> {
+  const shape = {} as Record<K, typeof enabledValueSchema>
+  for (const key of keys) shape[key] = enabledValueSchema
+  return shape
+}
+
 export const ninaTuningWriteSchema = z.object({
   userId: userIdSchema,
   traits: z.strictObject(dialShape(NINA_TRAITS)),
   dials: z.strictObject(dialShape(NINA_DIALS)),
+  /**
+   * R4. `strictObject` like the two above and for the same reason: a stripped `flirtyy` would save
+   * fifteen toggles and report success, and the operator would watch one checkbox silently refuse
+   * to take. Every key is REQUIRED — the panel always sends a complete map, and an absent key here
+   * would be an ambiguity between "on" and "the client is old".
+   */
+  enabled: z.strictObject(enabledShape(NINA_TUNING_KEYS)),
   relationship: z.enum(NINA_RELATIONSHIPS),
   /** Goes into an IMAGE prompt, not into her voice. Empty is valid and means "the anchor outfit". */
   wardrobe: z.string().trim().max(NINA_WARDROBE_MAX),

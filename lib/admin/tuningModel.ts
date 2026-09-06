@@ -54,6 +54,13 @@ import {
 export interface TuningDraft {
   traits: Record<string, number>
   dials: Record<string, number>
+  /**
+   * R4's per-parameter toggles, keyed by `NINA_TUNING_KEYS` — the relationship, the eleven traits
+   * and the four dials. `Record<string, boolean>` rather than the key union for the same reason the
+   * two score records are loose: this is the adaptation seam, and a component that reads
+   * `draft.enabled[key] ?? true` survives a key the model has and the panel has not caught up with.
+   */
+  enabled: Record<string, boolean>
   relationship: string
   wardrobe: string
   notes: string
@@ -188,6 +195,9 @@ export function toTuningDraft(tuning: NinaTuning): TuningDraft {
   return {
     traits: { ...tuning.traits },
     dials: { ...tuning.dials },
+    /* Copied, not aliased, like the two above — and `NINA_TUNING_DEFAULTS.enabled` is FROZEN, so a
+     * draft that aliased it would throw on the first checkbox. */
+    enabled: { ...tuning.enabled },
     relationship: tuning.relationship,
     wardrobe: tuning.wardrobe,
     notes: tuning.notes,
@@ -196,7 +206,7 @@ export function toTuningDraft(tuning: NinaTuning): TuningDraft {
 
 /**
  * Which fields differ, as stable dotted paths (`traits.anger`, `dials.photoEagerness`,
- * `relationship`, `wardrobe`, `notes`).
+ * `enabled.flirty`, `relationship`, `wardrobe`, `notes`).
  *
  * One function serves three jobs, which is why it returns names instead of a boolean: the summary
  * line counts them, each control asks whether its own path is in the set, and `tuningDraftEquals`
@@ -204,6 +214,9 @@ export function toTuningDraft(tuning: NinaTuning): TuningDraft {
  *
  * The key union is taken from BOTH sides, so a key present in one and absent in the other counts
  * as a difference rather than being silently skipped.
+ *
+ * **`enabled.*` is appended LAST**, after the three scalar fields rather than beside the scores, so
+ * that R4's paths are visibly a group and the existing order the tests pin is untouched.
  */
 export function changedTuningFields(next: TuningDraft, saved: TuningDraft): string[] {
   const changed: string[] = []
@@ -217,6 +230,14 @@ export function changedTuningFields(next: TuningDraft, saved: TuningDraft): stri
   if (next.relationship !== saved.relationship) changed.push('relationship')
   if (next.wardrobe !== saved.wardrobe) changed.push('wardrobe')
   if (next.notes !== saved.notes) changed.push('notes')
+
+  /* `?? true` on BOTH sides: an absent key means "on" everywhere in this feature, so a draft that
+   * has never seen a key and a row that has never stored one must not read as a difference. */
+  for (const key of Object.keys({ ...saved.enabled, ...next.enabled }).sort()) {
+    if ((next.enabled[key] ?? true) !== (saved.enabled[key] ?? true)) {
+      changed.push(`enabled.${key}`)
+    }
+  }
 
   return changed
 }
@@ -240,16 +261,23 @@ export interface LoudDial {
  * nobody moved and hide the one that changed her. Invariant 2 makes the default the meaningful zero
  * point: a dial at its default contributes nothing to her prompt that was not already there.
  *
+ * **A DISABLED dial is never loud, whatever it is parked at (R4).** It contributes zero bytes to
+ * the prompt, so printing it as the thing that changed her would be the card telling the operator
+ * about text that is not in there. A dial parked at 90 with its toggle off is exactly as loud as
+ * one at its default: silent.
+ *
  * Ties break on the key so the card does not reshuffle between two renders of the same row.
  */
 export function loudestDials(draft: TuningDraft, defaults: TuningDraft, limit = 3): LoudDial[] {
   const loud: LoudDial[] = []
 
   for (const [key, value] of Object.entries(draft.traits)) {
+    if (draft.enabled[key] === false) continue
     const delta = Math.abs(value - (defaults.traits[key] ?? 0))
     if (delta > 0) loud.push({ key, value, delta })
   }
   for (const [key, value] of Object.entries(draft.dials)) {
+    if (draft.enabled[key] === false) continue
     const delta = Math.abs(value - (defaults.dials[key] ?? 0))
     if (delta > 0) loud.push({ key, value, delta })
   }
