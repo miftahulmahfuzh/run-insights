@@ -22,16 +22,20 @@
 
 ### [P1] High
 
-- [ ] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
+- [x] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
   - **Type**: Bug
   - **Context**: Owns `components/nina/NinaUnreadBadge.tsx` (docstring only), `app/nina/page.tsx`'s `after()` mark-read call — now session-scoped as `markNinaMessagesRead(userId, { sessionId: activeSessionId })`, phase 1's options-bag shape rather than the positional form this plan assumed — a new pure `lib/nina/unread.ts` with tests, and a `null`-rendering `components/nina/NinaUnreadSync.tsx` firing at most one `router.refresh()` per change of the flag. **The mark is per session, the count is global**: phase 1 ships the session parameter as *optional* on both `markNinaMessagesRead` and `countUnreadNinaMessages`, so `countUnreadNinaMessages(userId)` stays callable with no session argument and keeps reading the partial index `nina_messages_user_unread_idx`, and no index is added. The `if (activeSessionId !== null)` guard stays, because phase 3 deliberately tolerates a runner with no sessions rather than writing to the database in a render path. The dot is stale because `NinaUnreadBadge` is a Server Component whose only refresh trigger is a server render of another tabbed screen, and `markNinaMessagesRead` already returns a changed-row count no caller has ever used — so the fix is most likely a `revalidatePath` or targeted refresh on the transition from unread to read, not a new query, and it must not reintroduce the polling that docstring rejects. Exit criteria: open `/nina`, read her newest messages, stay on the page — the dot is gone with no navigation; a message that arrives while the page is open still raises it; no polling; the partial index `nina_messages_user_unread_idx` is still the index the count reads.
-  - **Status**: open
+  - **Status**: completed
   - **Plan Set**: `NINA_CHAT_SESSIONS_PLAN.md` (phase 8 of 9)
   - **Satisfies**: R9 — The red dot must disappear on its own once the most recent chat has been opened
   - **Depends on**: `P1-RI-A009`
   - **Plan**: `.workflows/plan/P1-RI-A012.md`
   - **Card**: `miftahulmahfuzh/run-insights#85`
+  - **Completed**: 2026-09-05 04:06
+  - **Method**: /implement
+  - **Files**: app/nina/page.tsx, components/nina/NinaUnreadBadge.tsx, components/nina/NinaUnreadSync.tsx, lib/nina/unread.ts, lib/nina/unread.test.ts
+  - **Verification**: `npm run typecheck` clean; `npm run build` clean; new suite `lib/nina/unread.test.ts` 9/9; all three `ci:*` guards PASS; eslint + prettier clean on the five files. Landed as `d710ded` on `feature/nina-chat-sessions`, merged to `main`. Ledger note: session-scoped mark-read + one-shot `router.refresh()`; no poll, no new query, count stays global.
 
 ### [P2] Medium
 
