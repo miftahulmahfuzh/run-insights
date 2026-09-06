@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
@@ -24,7 +24,14 @@ import {
 } from '@/lib/nina/edit'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
-import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
+import { JOB_JUMP_PARAM, parseNinaJumpParam } from '@/lib/nina/jobview'
+import {
+  QUOTE_FLASH_MS,
+  buildQuote,
+  planQuoteScroll,
+  type QuoteScroll,
+  type QuoteView,
+} from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
 import {
   NINA_TURN_POLL_GIVE_UP_MS,
@@ -307,14 +314,36 @@ export function ChatScreen({
   const { mark } = useChatScrollMark()
 
   /*
-   * **`?attach=` AND `?photo=` are consumed, not left lying on the entry.** They have done their
+   * ── R1's DEEP LINK: `?jump=<messageId>` ───────────────────────────────────────────────────
+   * `/nina/jobs/[id]`'s "Buka chat-nya" lands here with `?s=<session>&jump=<message>`. The session
+   * opened the right conversation on the server; this is the bubble to pinpoint.
+   *
+   * **READ ON THE FIRST RENDER AND HELD IN A REF**, for two reasons that both bite:
+   *
+   *   - the layout effect below CONSUMES the parameter (see its header), so by the time the jump
+   *     runs `useSearchParams()` no longer has it. `useRef`'s initialiser is evaluated on every
+   *     render and React keeps only the first result, which is precisely the one-shot semantics
+   *     this needs;
+   *   - `useSearchParams()` resolves during the SERVER render on this dynamically rendered route,
+   *     so the first client render agrees with it and nothing here is a hydration hazard.
+   *
+   * The ref is cleared inside the animation frame rather than in the effect body. StrictMode
+   * double-invokes effects in development: clearing it up front would let the first (immediately
+   * torn down) run consume the target and the second run find nothing — the jump would work in
+   * production and never in dev, which is the worst of the two ways to be wrong.
+   */
+  const searchParams = useSearchParams()
+  const jumpRef = useRef<string | null>(parseNinaJumpParam(searchParams.get(JOB_JUMP_PARAM)))
+
+  /*
+   * **`?attach=`, `?photo=` AND `?jump=` are consumed, not left lying on the entry.** They have done their
    * job the moment they are in state, and leaving them would re-arm the composer on the way back:
    * send the message, tap its card, come back with the back-swipe, and the POP would re-render this
    * page from a URL still asking for the same run — pinning a run the runner already sent. `?photo=`
    * has the sharper version of the same problem, because the tab it opened in stays open: a reload
    * of that tab would re-arm the same album photo and invite a second send of it.
    *
-   * ONE effect deleting both, not two: `replaceState` on a `URLSearchParams` copy so R14's `at`
+   * ONE effect deleting all three, not three: `replaceState` on a `URLSearchParams` copy so R14's `at`
    * (which may be written onto this same entry later, or may already be on it) survives untouched,
    * and two independent `replaceState` calls in the same commit would race to decide which of them
    * wrote the surviving URL. The F24 idiom, and the reason it is `replace`: this entry is where we
@@ -323,19 +352,40 @@ export function ChatScreen({
    * ── AND SINCE F35 PHASE 3, `?s=` SURVIVES IT FOR EXACTLY THE SAME REASON ────────────────────
    * The session parameter (R2, assumption A4) names the open conversation and MUST outlive this
    * effect: deleting it would drop him back to his newest chat one frame after the page painted. It
-   * survives because this effect copies the query and deletes two keys BY NAME rather than
+   * survives because this effect copies the query and deletes three keys BY NAME rather than
    * rebuilding it — the property `useChatScroll.ts`'s header already anticipated when it wrote that
    * its own copy exists "so a future parameter on `/nina` survives". `?s=` is that parameter. **So
-   * do not "simplify" the two `delete` calls into a freshly built `URLSearchParams`**, and do not
+   * do not "simplify" the three `delete` calls into a freshly built `URLSearchParams`**, and do not
    * add a third `replaceState` to this component: phase 3 deliberately writes `?s=` by NAVIGATION
    * only — a `<Link>` or a `router.push` from a user gesture — so there is never a second writer of
    * this URL in the same commit as this effect, which is the race the paragraph above is about.
+   *
+   * ── AND SINCE F35 PHASE 4, `?jump=` IS THE THIRD KEY THIS EFFECT DELETES ────────────────────
+   * R1's deep link from `/nina/jobs/[id]`. **The deletes are BY NAME so that `?s=` and `?at=`
+   * survive; a fourth parameter belongs in this same list, never in a new effect** — which is the
+   * general form of the rule the two paragraphs above state about `?s=` in particular. Phase 4
+   * added a `delete`, not a `replaceState`, and that is precisely why its change went inside this
+   * effect rather than beside it.
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM)) return
+    if (
+      !params.has(ATTACH_PARAM) &&
+      !params.has(PHOTO_PARAM) &&
+      !params.has(JOB_JUMP_PARAM)
+    ) {
+      return
+    }
     params.delete(ATTACH_PARAM)
     params.delete(PHOTO_PARAM)
+    /*
+     * R1's `?jump=` is consumed here for the same reason as the other two, and for one more that
+     * is specific to it: it is a ONE-SHOT INSTRUCTION, not state. Leaving it on the entry would
+     * mean every back-swipe into this chat re-scrolls and re-flashes a bubble the runner has
+     * already read. That is exactly the property `?at=` must NOT have — which is why the two are
+     * different keys; see `lib/nina/jobview.ts`.
+     */
+    params.delete(JOB_JUMP_PARAM)
     const query = params.toString()
     window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
   }, [])
@@ -512,25 +562,26 @@ export function ChatScreen({
   }, [])
 
   /**
-   * R12's second half: tapping a quote scrolls to the message it names, and says which one it
-   * landed on.
+   * Where the page has to move so `targetId` is comfortably readable — or `null` when that message
+   * is not in the document.
    *
    * The DOM read is deliberate and is the only DOM read on this screen besides the keyboard's.
    * `getElementById` on phase 4's `nina-msg-${id}` anchor is the one honest source for where a
    * message actually is: React knows the order of the rows, not their pixel heights, which depend
    * on wrapping, on a quote stub, and on an image. A missing element is the degradation path, not
-   * an error — the row was on screen when the page rendered and is not now.
+   * an error — the row was on screen when the page rendered and is not now, or (F35 phase 4's deep
+   * link) it is further back than `CHAT_HISTORY_LIMIT` reaches.
    *
    * `getBoundingClientRect().top` on the composer, rather than a constant, because the obstruction
    * is the composer's height (which the reply strip, a tile row and a multi-line draft all change)
    * plus its offset (clearance, or the keyboard).
+   *
+   * **Extracted from `handleJumpToQuote` so R1's deep link reuses the same arithmetic rather than
+   * inventing a second scroll-and-flash.** `planQuoteScroll` stays the one decision function.
    */
-  const handleJumpToQuote = useCallback((targetId: string) => {
+  const measureQuoteScroll = useCallback((targetId: string): QuoteScroll | null => {
     const element = document.getElementById(`nina-msg-${targetId}`)
-    if (element === null) {
-      setNotice('quote-missing')
-      return
-    }
+    if (element === null) return null
 
     const composer = document.getElementById('nina-composer')
     const obstructedBottomPx =
@@ -539,7 +590,7 @@ export function ChatScreen({
         : Math.max(0, window.innerHeight - composer.getBoundingClientRect().top)
 
     const rect = element.getBoundingClientRect()
-    const plan = planQuoteScroll({
+    return planQuoteScroll({
       targetTop: rect.top + window.scrollY,
       targetHeight: rect.height,
       scrollTop: window.scrollY,
@@ -550,10 +601,16 @@ export function ChatScreen({
       obstructedBottomPx,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     })
-    if (plan.kind === 'scroll') window.scrollTo({ top: plan.top, behavior: plan.behavior })
+  }, [])
 
-    /* The tint runs whether or not the page moved: `kind: 'none'` means the target was already on
-     * screen, which is exactly the case where a scroll alone would identify nothing. */
+  /**
+   * The landing tint, held for `QUOTE_FLASH_MS`.
+   *
+   * It runs whether or not the page moved: `kind: 'none'` means the target was already on screen,
+   * which is exactly the case where a scroll alone would identify nothing. Transition-based in
+   * `MessageBubble`, so invariant 8 has nothing to guard.
+   */
+  const flashMessage = useCallback((targetId: string) => {
     setNotice(null)
     setFlashId(targetId)
     if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
@@ -561,6 +618,84 @@ export function ChatScreen({
       if (alive.current) setFlashId(null)
     }, QUOTE_FLASH_MS)
   }, [])
+
+  /**
+   * R12's second half: tapping a quote scrolls to the message it names, and says which one it
+   * landed on.
+   */
+  const handleJumpToQuote = useCallback(
+    (targetId: string) => {
+      const plan = measureQuoteScroll(targetId)
+      if (plan === null) {
+        setNotice('quote-missing')
+        return
+      }
+      if (plan.kind === 'scroll') window.scrollTo({ top: plan.top, behavior: plan.behavior })
+      flashMessage(targetId)
+    },
+    [measureQuoteScroll, flashMessage],
+  )
+
+  /**
+   * **R1's landing: a job page said "this bubble", so pinpoint it.**
+   *
+   * ── WHY IT REUSES `planQuoteScroll` ───────────────────────────────────────────────────────
+   * The user asked for it in those words — "just like how we can click and directly pinpoint
+   * reply_to message". A second scroll-and-flash would be a second set of rules about the band the
+   * composer leaves over, and the two would drift the first time the composer's geometry changed.
+   *
+   * ── WHY `'instant'`, OVERRIDING THE PLAN'S OWN `behavior` ─────────────────────────────────
+   * `planQuoteScroll` chooses `'smooth'` because a quote tap is a movement WITHIN a screen the
+   * runner is already reading, and watching the page travel is what tells them they went backwards.
+   * This is an ARRIVAL: the runner navigated here from another route and has not seen this
+   * conversation yet, so there is no "from" to animate out of — smooth-scrolling a screen that just
+   * painted only shows them the bottom of the chat on the way past. `MessageList`'s R14 restore
+   * takes `'instant'` for the same reason and says so.
+   *
+   * ── WHY AN ANIMATION FRAME, AND WHY TWICE ─────────────────────────────────────────────────
+   * Child effects run before parent effects, so `MessageList`'s mount jump-to-newest has already
+   * happened by the time this effect runs; one frame later, layout is settled and this wins. The
+   * second application is `MessageList`'s restore idiom, verbatim and for its reason: a web font
+   * settling or an image finishing decode moves the target after the first measurement, and
+   * re-deriving the same pure number from the element's new position is cheap. When nothing moved,
+   * `planQuoteScroll` returns `'none'` under its 8px tolerance and the second call is a no-op.
+   *
+   * ── IT MUST NOT CALL `revealBubbles` ──────────────────────────────────────────────────────
+   * That callback is phase 3's staggered reveal of rows Nina has just sent, and it is the SOLE
+   * appender of her bubbles. This effect appends nothing: every row it can land on was already in
+   * the server render. Scrolling is not arriving.
+   *
+   * A missing element is the `'quote-missing'` notice, which is already the right sentence: the
+   * message is real (the job page resolved it against the database) but it is not among the
+   * `CHAT_HISTORY_LIMIT` rows this screen renders.
+   */
+  useEffect(() => {
+    if (jumpRef.current === null) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const targetId = jumpRef.current
+      if (targetId === null || !alive.current) return
+      jumpRef.current = null
+
+      const plan = measureQuoteScroll(targetId)
+      if (plan === null) {
+        setNotice('quote-missing')
+        return
+      }
+      if (plan.kind === 'scroll') window.scrollTo({ top: plan.top, behavior: 'instant' })
+      flashMessage(targetId)
+
+      window.requestAnimationFrame(() => {
+        if (!alive.current) return
+        const again = measureQuoteScroll(targetId)
+        if (again !== null && again.kind === 'scroll') {
+          window.scrollTo({ top: again.top, behavior: 'instant' })
+        }
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [measureQuoteScroll, flashMessage])
 
   /**
    * R8, arming. The gesture (or the focus-revealed button) picked a message; decide whether it can
@@ -1087,7 +1222,7 @@ export function ChatScreen({
                        * A `router.push('/nina?photo=…')` would have cost a full server round trip,
                        * remounted this component under the runner, and — the real objection — put
                        * a SECOND writer on a URL whose one writer is deliberately one: the
-                       * `useLayoutEffect` above is one effect deleting both parameters because
+                       * `useLayoutEffect` above is one effect deleting all three parameters because
                        * "two independent `replaceState` calls in the same commit would race".
                        * This phase adds no URL writer at all.
                        *

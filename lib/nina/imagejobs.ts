@@ -1,9 +1,10 @@
 import 'server-only'
 
-import { and, asc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
 import { ninaTurns } from '@/lib/db/schema'
+import type { NinaTurnStatus } from '@/lib/db/schema'
 
 import { ninaImageApology, type NinaImageFailure } from './imagefail'
 import {
@@ -17,7 +18,12 @@ import {
   type NinaImageJobPhase,
   type NinaImagePurpose,
 } from './imagerecipe'
-import { countNinaTurnsSince, insertNinaMessages, insertNinaTurn } from './queries'
+import {
+  countNinaTurnsSince,
+  getNinaMessagesByIds,
+  insertNinaMessages,
+  insertNinaTurn,
+} from './queries'
 import { resolveNinaSessionForMessage } from './sessionResolve'
 
 /**
@@ -631,4 +637,199 @@ function toJobRow(row: {
     attempts: typeof args?.attempts === 'number' ? args.attempts : 0,
     createdAt: row.createdAt,
   }
+}
+
+/*
+ * ── R1's READS. WHY THEY ARE NOT `listOpenNinaImageJobs` WIDENED ──────────────────────────────
+ *
+ * `listOpenNinaImageJobs` is two things at once, and both of them are wrong for a tracking page.
+ * It returns only `status = 'pending'` rows, and R1 wants EVERY job — a runner opening this screen
+ * is usually asking why a photo never arrived, which is a question only the closed rows answer.
+ * And it SWEEPS first, deliberately, because `app/nina/page.tsx` awaits it for that side effect and
+ * that sweep is R22's last guarantee.
+ *
+ * A list read that silently marks jobs failed and writes apology messages into a conversation is a
+ * surprise, and a tracking screen is the last place to spring one: the runner would be looking at a
+ * page that CHANGED WHAT IT WAS DESCRIBING by being looked at. So the sweep stays exactly where it
+ * is, on `/nina`, and these two reads write nothing.
+ *
+ * The visible consequence is deliberate and honest: a job stuck `pending` for three hours shows as
+ * `pending` with a three-hour clock here, rather than being retro-labelled `stale` by the act of
+ * opening the page. That is the symptom findings 2 and 3 actually produce, and hiding it behind a
+ * sweep would hide the bug this whole plan set exists to fix.
+ *
+ * **`kind = 'image'` IS LOAD-BEARING IN BOTH `WHERE`s, AND IT IS NEWLY SO.** Since phase 3,
+ * `nina_turns` also carries `kind = 'chat'` rows sitting in `status = 'pending'` with a completely
+ * different `args` shape (`{ sessionId, runnerMessageId, depth }`) — and `closeNinaChatTurn` can
+ * write `error_code = 'session-gone'` on one of them. Dropping the filter would not error; it would
+ * list every backgrounded chat turn on this screen as though it were a photograph, with a null
+ * purpose falling through to `'selfie'`. Every image reader in this file filters on it for that
+ * reason.
+ */
+
+/**
+ * How many jobs the list renders. Six a day is `NINA_IMAGE_DAILY_CAP`, so sixty is ten days of
+ * flat-out use — `NINA_ALBUM_MAX`'s reasoning, one table over. A real `LIMIT`, not a `slice`: this
+ * table grows forever and a tracking page has no business reading all of it.
+ */
+export const NINA_JOB_LIST_LIMIT = 60
+
+/**
+ * One image job, as R1's screens need it — strictly wider than `NinaImageJobRow`.
+ *
+ * `errorCode` keeps the column's own dual meaning (the PHASE while `status='pending'`, the FAILURE
+ * REASON when `status='failed'`) rather than being split into two fields here. `lib/nina/jobview.ts`
+ * is where that ambiguity is resolved, once, by `jobStage` — resolving it in the read as well would
+ * be two places that have to agree about a rule neither of them owns.
+ *
+ * Every `args`-derived field is NULLABLE even where `NinaImageJobArgs` declares it required: three
+ * `kind='image'` rows in production predate that shape and carry `args = null`, and phase 2 may
+ * widen the shape again. A projection that assumed the args are there would be a projection that
+ * throws on the oldest rows in the table — which are exactly the rows a tracking page is for.
+ */
+export interface NinaImageJobRecord {
+  id: string
+  status: NinaTurnStatus
+  /** Phase while pending, failure reason when failed, `null` on success. */
+  errorCode: string | null
+  model: string
+  createdAt: Date
+  latencyMs: number | null
+  /**
+   * **A per-JOB CUMULATIVE TOTAL, not a per-attempt spend.** Reconciled across phases 1, 2, 4 and 7
+   * under invariant 9 ("money is never spent silently"): every writer on both hosts accumulates
+   * with `coalesce(cost_micro_usd, 0) + spend`, so a job that burned two attempts reads the sum of
+   * both bills. `NinaJobDetail` labels it "Biaya total" for exactly this reason. `null` means
+   * nothing was ever recorded — which is "we do not know", never "it was free".
+   */
+  costMicroUsd: number | null
+  purpose: NinaImagePurpose
+  scene: string | null
+  mood: string | null
+  /** **The exact prompt as sent.** R1 asks for this by name. */
+  prompt: string | null
+  /** The prompt-as-sent record that lands in `nina_message_images.prompt`. */
+  sidecar: string | null
+  seed: number | null
+  attempts: number
+  source: NinaImageJobArgs['source'] | null
+  /** The runner message that asked, per `NinaImageJobArgs`. `null` for every avatar job. */
+  replyToId: string | null
+}
+
+export interface NinaImageJobDetail extends NinaImageJobRecord {
+  /**
+   * The session `replyToId` lives in — **resolved, not assumed.**
+   *
+   * `null` means one of two things and they need the same answer: the message was deleted
+   * (`reply_to_id` is `ON DELETE SET NULL`, so the jsonb keeps pointing at nothing) or its session
+   * was removed and the cascade took it. `planJobJump` turns both into `{ kind: 'gone' }`, and its
+   * docstring records why they must not be split into two sentences.
+   */
+  replySessionId: string | null
+}
+
+const JOB_COLUMNS = {
+  id: ninaTurns.id,
+  status: ninaTurns.status,
+  errorCode: ninaTurns.errorCode,
+  model: ninaTurns.model,
+  createdAt: ninaTurns.createdAt,
+  latencyMs: ninaTurns.latencyMs,
+  costMicroUsd: ninaTurns.costMicroUsd,
+  args: ninaTurns.args,
+}
+
+function toJobRecord(row: {
+  id: string
+  status: NinaTurnStatus
+  errorCode: string | null
+  model: string
+  createdAt: Date
+  latencyMs: number | null
+  costMicroUsd: number | null
+  args: unknown
+}): NinaImageJobRecord {
+  const args = (row.args ?? null) as Partial<NinaImageJobArgs> | null
+  return {
+    id: row.id,
+    status: row.status,
+    errorCode: row.errorCode,
+    model: row.model,
+    createdAt: row.createdAt,
+    latencyMs: row.latencyMs,
+    costMicroUsd: row.costMicroUsd,
+    /* `toJobRow`'s rule, kept verbatim so the two projections cannot disagree about a purpose. */
+    purpose: args?.purpose === 'avatar' ? 'avatar' : 'selfie',
+    scene: typeof args?.scene === 'string' ? args.scene : null,
+    mood: typeof args?.mood === 'string' ? args.mood : null,
+    prompt: typeof args?.prompt === 'string' ? args.prompt : null,
+    sidecar: typeof args?.sidecar === 'string' ? args.sidecar : null,
+    seed: typeof args?.seed === 'number' ? args.seed : null,
+    attempts: typeof args?.attempts === 'number' ? args.attempts : 0,
+    source:
+      args?.source === 'chat' || args?.source === 'generated' || args?.source === 'admin'
+        ? args.source
+        : null,
+    replyToId: typeof args?.replyToId === 'string' ? args.replyToId : null,
+  }
+}
+
+/**
+ * **R1's list. Every image job, newest first, and NOTHING is written.** See the block above.
+ *
+ * One indexed read on `nina_turns_user_created_idx` (`(user_id, created_at DESC)`), with `kind`
+ * as a heap filter over rows that are already this user's — the same access path
+ * `countNinaTurnsSince` uses for the daily cap.
+ */
+export async function listNinaImageJobs(
+  userId: string,
+  opts: { limit?: number } = {},
+): Promise<NinaImageJobRecord[]> {
+  const rows = await db
+    .select(JOB_COLUMNS)
+    .from(ninaTurns)
+    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.kind, 'image')))
+    .orderBy(desc(ninaTurns.createdAt))
+    .limit(opts.limit ?? NINA_JOB_LIST_LIMIT)
+
+  return rows.map((row) => toJobRecord(row))
+}
+
+/**
+ * **R1's detail read, and invariant 5 in one function.**
+ *
+ * A job id in a URL is a CLAIM. `eq(ninaTurns.userId, userId)` in the `WHERE` is what turns it into
+ * a fact: somebody else's id and an id that never existed both come back `null`, so the page 404s
+ * identically for both and nothing leaks which ids exist. The route still shape-checks with
+ * `isValidId` first, on `/r/[id]`'s precedent — a segment that cannot be one of ours should 404
+ * without a query.
+ *
+ * The second read resolves the triggering message. `getNinaMessagesByIds` is owner-scoped too, so
+ * a `replyToId` belonging to another runner — or to a message that has since been deleted, or whose
+ * session was removed — comes back empty and `replySessionId` stays `null`. That is deliberately
+ * the SAME mechanism `resolveNinaSessionForMessage` uses to place an apology, so the two features
+ * cannot disagree about which conversation a job belongs to.
+ *
+ * It is a second round trip rather than a join, for the reason `postNinaApologyMessage` gives about
+ * the same lookup: it is one indexed read, on a page that is already one indexed read, opened at
+ * most a handful of times a day. A hand-written join against a `jsonb` field would buy a
+ * millisecond and cost the ownership scope being visible in one place.
+ */
+export async function getNinaImageJobDetail(
+  userId: string,
+  jobId: string,
+): Promise<NinaImageJobDetail | null> {
+  const [row] = await db
+    .select(JOB_COLUMNS)
+    .from(ninaTurns)
+    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.kind, 'image')))
+
+  if (row == null) return null
+
+  const record = toJobRecord(row)
+  if (record.replyToId === null) return { ...record, replySessionId: null }
+
+  const [message] = await getNinaMessagesByIds(userId, [record.replyToId])
+  return { ...record, replySessionId: message?.sessionId ?? null }
 }
