@@ -2,7 +2,7 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-06
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 1
+- Completed: 2
 
 ---
 
@@ -54,3 +54,21 @@
   - **Decided**: loudestDials ranking case -> rewritten for non-uniform defaults (Rung 1: invariant 2, 'the defaults are not uniform, and this is the invariant's real content')
   - **Decided**: Who writes the two package readmes? -> phase 6 (Rung 2: phase 5's Handoffs says 'I do not write them'; phase 6's Owns line claims both)
   - **Decided**: AdminNav.tsx gets no fourth entry -> recorded no-edit, per plan Step 8 (two sidebar rows pointing at one URL is worse navigation than one)
+
+- [x] **P1-CA-A001** Phase 2: Admin surfaces: explorer, crop studio, tables, dials
+  - **Difficulty**: HARD
+  - **Type**: Update
+  - **Context**: Owns `components/admin/touch.ts` (new — TOUCH_TARGET / TOUCH_ICON, the 44px rule spelled once), FileExplorer.tsx, explorer/{FolderTree,PhotoGrid,SelectionPane,UploadQueue}.tsx, CropStudio.tsx, MemoryTable.tsx, ChatPhoto{Grid,Detail}.tsx, PhotoMoveBar.tsx, DialSlider.tsx, FolderMenu.tsx, UserPicker.tsx, and components/admin/.workflows/package_readme.md — the one readme pass for both R1 phases. Exit: the three-pane explorer stacks with the folder rail behind a button; the crop studio pans, pinches and zooms by touch and raises no iOS callout; tables scroll inside their own container and no control on them zooms the viewport on focus; every interactive control in components/admin/ is >= 44px on its smaller axis; nothing scrolls the page sideways at 414px.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — Revamp the `/admin` UI to be responsive on iPhone XS Max Safari
+  - **Depends on**: P1-RI-A017
+  - **Plan**: `.workflows/plan/P1-CA-A001.md`
+  - **Completed**: 2026-09-06 22:08
+  - **Method**: /do
+  - **Files**: components/admin/touch.ts, components/admin/FileExplorer.tsx, components/admin/explorer/FolderTree.tsx, components/admin/explorer/PhotoGrid.tsx, components/admin/explorer/SelectionPane.tsx, components/admin/explorer/UploadQueue.tsx, components/admin/CropStudio.tsx, components/admin/MemoryTable.tsx, components/admin/ChatPhotoGrid.tsx, components/admin/ChatPhotoDetail.tsx, components/admin/PhotoMoveBar.tsx, components/admin/DialSlider.tsx, components/admin/FolderMenu.tsx, components/admin/UserPicker.tsx, components/admin/.workflows/package_readme.md, components/admin/.workflows/todos.md, components/admin/.workflows/plan/P1-CA-A001.md
+  - **Drift**: PhotoMoveBar's max-w-[240px] is at line 104, not the plan's quoted 241. Code identical; line number only.
+  - **Drift**: FolderTree's count <span> lacked the plan's px-1; the plan's replacement block supplies it. No behavioural difference.
+  - **Drift**: UploadQueue and MemoryTable already had the Button/Card imports the plan's import blocks quoted as context; only the new touch.ts import was added in each.
+  - **Decided**: Plan Steps 6b, 6d and 8d place a {/* … */} JSX-child comment in expression position (directly after `return (` and inside `{open && (`), which is a TypeScript syntax error (TS1005/TS1128) — JSX comments in braces are only valid as JSX children → converted those three to plain /* … */ block comments with the comment text unchanged (rung 1: invariant 7, the tree builds at the end of every phase).
+  - **Decided**: `npm run format` is `prettier --write .`, which writes the whole repo while peers run → ran `format:check` first, confirmed components/admin/MemoryTable.tsx was the ONLY unformatted file in the repo, then ran the full format as the plan directs. Nothing outside components/admin/ was written (rung 3 plus the narrower-blast-radius tie-break).

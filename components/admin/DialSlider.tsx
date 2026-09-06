@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { TOUCH_TARGET } from '@/components/admin/touch'
 import { cn } from '@/lib/cn'
 
 /**
@@ -25,6 +26,8 @@ import { cn } from '@/lib/cn'
  * `components/admin/`. If a runner-facing slider ever appears, moving this file is one rename plus
  * one line in the barrel, and that is the moment to make the case.
  *
+ * `components/admin/touch.ts` follows exactly this reasoning and is a sibling for it.
+ *
  * ── WHY NOT `Field` ─────────────────────────────────────────────────────────────────────────
  * `Field` owns the `label`/`hint`/`error`/`aria-describedby` wiring, but only `Input` reads its
  * context for the `id`, so a bare `<input type="range">` inside a `Field` would get a
@@ -45,6 +48,19 @@ import { cn } from '@/lib/cn'
  *
  * Clicking "default N" is the per-dial undo. It writes the default into the draft rather than
  * saving anything, so it is still one Save for the whole tuning (plan invariant 11).
+ *
+ * ── TOUCH, AND THE SLOT LEFT FOR THE PER-PARAMETER TOGGLE ───────────────────────────────────
+ * `h-11` on the track and `TOUCH_TARGET` on the reset are the 44 px rule; a range input's hit area
+ * is its box, and Safari draws the track vertically centred in whatever height it is given, so the
+ * control looks the same and is far easier to hit with a thumb.
+ *
+ * The header row is `items-center` with the readout pushed right by `ml-auto` **so that the head of
+ * that row can hold a control of any height without dragging the label's baseline around**; it used
+ * to be `items-baseline justify-between`, which could not. That is deliberate room left for the
+ * ON/OFF TOGGLE the enable-map phase adds beside every parameter — it renders as the first item of
+ * this row, giving `[toggle] Flirty ……… 60`, which is the order the questions get asked in: is this
+ * on, what is it, what is it set to. Nothing else about this component has to move when that toggle
+ * lands, and the existing `disabled` prop already greys the track and hides the reset.
  */
 
 export interface DialSliderProps {
@@ -81,14 +97,20 @@ export function DialSlider({
 
   return (
     <div className="py-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={inputId} className="text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+      {/* `items-center` + `ml-auto`, not `items-baseline justify-between`: the head of this row is
+          where the enable-map phase's per-parameter toggle lands, and a checkbox has no baseline. */}
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor={inputId}
+          className="min-w-0 text-[12px] font-semibold tracking-[0.02em] text-ink-2"
+        >
           {label}
         </label>
+
         <output
           htmlFor={inputId}
           className={cn(
-            'text-[13px] font-semibold tabular-nums',
+            'ml-auto shrink-0 text-[13px] font-semibold tabular-nums',
             moved ? 'text-accent' : 'text-ink-3',
           )}
         >
@@ -111,10 +133,13 @@ export function DialSlider({
         disabled={disabled}
         aria-describedby={hintId}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-1.5 w-full accent-accent disabled:opacity-50"
+        /* `h-11` is the 44 px tap target; `touch-none` keeps a slightly diagonal thumb drag from
+           being claimed by the page's scroll partway through. `mt-0.5` rather than `mt-1.5`: the
+           input's own box grew by 20 px, so the optical gap under the label is unchanged. */
+        className="mt-0.5 h-11 w-full touch-none accent-accent disabled:opacity-50"
       />
 
-      <div className="mt-1 flex items-baseline justify-between gap-3">
+      <div className="mt-1 flex items-center justify-between gap-3">
         {hint ? (
           <p id={hintId} className="max-w-[46ch] text-[11px] font-medium text-ink-3">
             {hint}
@@ -126,7 +151,11 @@ export function DialSlider({
           <button
             type="button"
             onClick={() => onChange(defaultValue)}
-            className="shrink-0 text-[11px] font-semibold text-ink-3 underline decoration-dotted hover:text-ink"
+            className={cn(
+              TOUCH_TARGET,
+              'inline-flex shrink-0 items-center px-1 text-[11px] font-semibold text-ink-3',
+              'underline decoration-dotted hover:text-ink',
+            )}
           >
             default {defaultValue}
           </button>

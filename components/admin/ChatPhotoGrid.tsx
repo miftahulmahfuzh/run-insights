@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { ChatPhotoAdd } from '@/components/admin/ChatPhotoAdd'
 import { ChatPhotoDetail } from '@/components/admin/ChatPhotoDetail'
+import { TOUCH_ICON } from '@/components/admin/touch'
 import { ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
@@ -133,7 +134,7 @@ export function ChatPhotoGrid({
 
       <div
         className={cn(
-          'grid items-start gap-5',
+          'grid items-start gap-4 lg:gap-5',
           selected != null ? 'lg:grid-cols-[minmax(0,1fr)_320px]' : 'lg:grid-cols-1',
         )}
       >
@@ -199,17 +200,19 @@ export function ChatPhotoGrid({
                 })}
               </ul>
 
-              <div className="mt-4 flex items-center justify-between gap-3 border-t border-rule pt-3">
+              <div className="mt-4 flex items-center justify-between gap-2 border-t border-rule pt-3">
                 {page.page > 1 ? (
                   <Link
                     href={hrefForPage(page.page - 1)}
-                    className="text-[12px] font-semibold text-accent"
+                    className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
                     rel="prev"
                   >
                     &lsaquo; Newer
                   </Link>
                 ) : (
-                  <span className="text-[12px] font-semibold text-ink-3">&lsaquo; Newer</span>
+                  <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
+                    &lsaquo; Newer
+                  </span>
                 )}
 
                 <span className="text-[12px] font-semibold text-ink-2 tabular-nums">
@@ -219,13 +222,15 @@ export function ChatPhotoGrid({
                 {page.page < lastPage ? (
                   <Link
                     href={hrefForPage(page.page + 1)}
-                    className="text-[12px] font-semibold text-accent"
+                    className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
                     rel="next"
                   >
                     Older &rsaquo;
                   </Link>
                 ) : (
-                  <span className="text-[12px] font-semibold text-ink-3">Older &rsaquo;</span>
+                  <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
+                    Older &rsaquo;
+                  </span>
                 )}
               </div>
             </>

@@ -101,7 +101,7 @@ export function PhotoMoveBar({
 
         <select
           aria-label="Move the selected photos into"
-          className={`${CONTROL_CLASS} max-w-[240px]`}
+          className={`${CONTROL_CLASS} sm:max-w-[240px]`}
           value={target}
           disabled={pending}
           onChange={(event) => setTarget(event.target.value)}

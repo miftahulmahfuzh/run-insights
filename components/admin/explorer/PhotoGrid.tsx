@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 
+import { TOUCH_ICON } from '@/components/admin/touch'
 import { ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
@@ -117,17 +118,21 @@ export function PhotoGrid({
         })}
       </ul>
 
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-rule pt-3">
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-rule pt-3">
         {page.page > 1 ? (
           <Link
             href={hrefForPage(page.page - 1)}
-            className="text-[12px] font-semibold text-accent"
+            className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
             rel="prev"
           >
             &lsaquo; Newer
           </Link>
         ) : (
-          <span className="text-[12px] font-semibold text-ink-3">&lsaquo; Newer</span>
+          /* The disabled end of the pager keeps the same box, so the row does not resize and the
+             live control does not move under a thumb when the page changes. */
+          <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
+            &lsaquo; Newer
+          </span>
         )}
 
         <span className="text-[12px] font-semibold text-ink-2 tabular-nums">
@@ -137,13 +142,15 @@ export function PhotoGrid({
         {page.page < lastPage ? (
           <Link
             href={hrefForPage(page.page + 1)}
-            className="text-[12px] font-semibold text-accent"
+            className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
             rel="next"
           >
             Older &rsaquo;
           </Link>
         ) : (
-          <span className="text-[12px] font-semibold text-ink-3">Older &rsaquo;</span>
+          <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
+            Older &rsaquo;
+          </span>
         )}
       </div>
     </div>

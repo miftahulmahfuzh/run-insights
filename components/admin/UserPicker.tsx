@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { TOUCH_TARGET } from '@/components/admin/touch'
 import type { AdminUserRow } from '@/lib/admin/users'
 import { cn } from '@/lib/cn'
 
@@ -36,7 +37,8 @@ export function UserPicker({
             href={`/admin/memory?user=${encodeURIComponent(user.id)}`}
             aria-current={selected ? 'page' : undefined}
             className={cn(
-              'rounded-field border px-3 py-2 text-[13px] font-semibold transition-colors',
+              TOUCH_TARGET,
+              'flex items-center rounded-field border px-3 text-[13px] font-semibold transition-colors',
               selected
                 ? 'border-accent bg-card text-ink'
                 : 'border-rule text-ink-2 hover:bg-card hover:text-ink',
