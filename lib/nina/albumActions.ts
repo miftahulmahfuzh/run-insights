@@ -19,6 +19,13 @@ import { NINA_ATTACH_MAX_CHARS } from './album'
  * `/nina` is a Server Component reading `listNinaMessages`, so her reply is simply there when it
  * paints, with no client state to hand across a route change.
  *
+ * ── AND WHY `unavailable` IS GONE (F36 R6) ────────────────────────────────────────────────────
+ * `sendNinaMessage` no longer waits for the model, so at the moment this returns there is no answer
+ * to the question "could she reply". The field could only ever have been `false`. What the caller
+ * does instead is unchanged and was already right: it navigates to `/nina`, whose Server Component
+ * reads `listNinaMessages` — so his photo is on screen immediately, and her reply appears through
+ * `ChatScreen`'s poll, which that page starts because the newest row is his.
+ *
  * ── WHY THE CLAMP IS IMPORTED AND NOT DECLARED ────────────────────────────────────────────────
  * A `'use server'` module may export only async functions, so `NINA_ATTACH_MAX_CHARS` cannot be a
  * `const` in this file. It lives in `lib/nina/album.ts`, which is the pure module the screen
@@ -36,8 +43,6 @@ export interface NinaAttachInput {
 export interface NinaAttachResult {
   ok: boolean
   userMessageId: string | null
-  /** True when the turn could not reach the model. His message is still saved. */
-  unavailable: boolean
 }
 
 export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<NinaAttachResult> {
@@ -58,6 +63,5 @@ export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<Nin
   return {
     ok: result.ok,
     userMessageId: result.userMessageId,
-    unavailable: result.unavailable,
   }
 }

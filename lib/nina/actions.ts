@@ -7,6 +7,14 @@ import { isValidId } from '@/lib/id'
 import { after } from 'next/server'
 
 import { titleNinaSessionIfNeeded } from './autotitle'
+import {
+  closeNinaChatTurn,
+  getPendingNinaChatTurn,
+  ninaChatTurnStore,
+  ninaSessionExists,
+  openNinaChatTurn,
+  sweepStaleNinaChatTurns,
+} from './chatturn'
 import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
@@ -22,6 +30,8 @@ import {
   getNinaSession,
   insertNinaMessageImages,
   insertNinaMessages,
+  listNinaMessages,
+  listNinaMessagesAfter,
   readNinaTuning,
 } from './queries'
 import type { NinaMessageRow } from './queries'
@@ -29,7 +39,13 @@ import { resolveNinaWriteSession } from './sessionResolve'
 import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
-import { productionDeps, runNinaTurn } from './turn'
+import {
+  NINA_BACKGROUND_BUDGET_MS,
+  NINA_TURN_CHAIN_MAX,
+  NINA_TURN_STALE_MS,
+  ninaAwaitingByMessage,
+} from './turnflight'
+import { NINA_TURN_BUDGET, productionDeps, runNinaTurn, type NinaTurnSource } from './turn'
 import type { NinaRelationship } from './tuning'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
@@ -100,19 +116,41 @@ export interface SendNinaMessageResult {
   ok: boolean
   userMessageId: string | null
   /**
-   * **At most four, guaranteed by `NinaSendPayloadSchema`'s `.max(MAX_BUBBLES)` rather than by a
-   * slice here** — so phase 4's `REVEAL_MAX_BUBBLES` assumption is a property of the type, not of
-   * a call this function promises to remember to make. Empty iff `unavailable`.
+   * **The conversation his message actually landed in (F36 R6).**
+   *
+   * New, and the client genuinely cannot do without it: `input.sessionId` may be `null` — "he has
+   * no sessions at all" is a real state — and in that case this action RESOLVES OR CREATES one. The
+   * screen then has to poll for her reply, and a poll needs a session id. Before the split the
+   * client never needed to know, because the bubbles came back in this same return value.
+   *
+   * Null iff `!ok`.
    */
-  bubbles: SentBubble[]
-  unavailable: boolean
+  sessionId: string | null
+  /**
+   * `nina_messages.seq` of the runner's row — where `pollNinaReply` resumes from.
+   *
+   * A `seq` rather than an id because `seq` is a `bigserial` Postgres assigns, so it is a total
+   * order and `> cursor` is a complete, gap-tolerant description of "everything I have not seen".
+   * Null iff `!ok`.
+   */
+  cursor: number | null
+  /**
+   * The `nina_turns.id` of the background turn this send started, or **null when a turn was already
+   * running for this conversation** — which is a normal outcome, not a failure. His message is
+   * saved either way; the turn already in flight chains onto it (see `runNinaBackgroundTurn`).
+   *
+   * The client does not branch on it. It is here because a null makes a log line and a test able to
+   * say which of the two happened, and phase 7's integration test drives its assertions off it.
+   */
+  turnId: string | null
 }
 
 const REFUSED: SendNinaMessageResult = {
   ok: false,
   userMessageId: null,
-  bubbles: [],
-  unavailable: false,
+  sessionId: null,
+  cursor: null,
+  turnId: null,
 }
 
 /**
@@ -462,6 +500,7 @@ export async function sendNinaMessage(input: {
   }
 
   let runnerMessageId: string
+  let runnerSeq: number
   try {
     const [row] = await insertNinaMessages(
       userId,
@@ -470,6 +509,9 @@ export async function sendNinaMessage(input: {
     )
     if (row == null) throw new Error('insertNinaMessages returned no row')
     runnerMessageId = row.id
+    /* F36 R6. The poll cursor, and it costs nothing: `insertNinaMessages` already `returning`s the
+     * whole `messageColumns` projection, and `seq` is in it. */
+    runnerSeq = row.seq
   } catch (cause) {
     console.warn('[nina] could not persist the runner message', { error: String(cause) })
     return REFUSED
@@ -535,220 +577,581 @@ export async function sendNinaMessage(input: {
   }
 
   /*
-   * STEP 2 — the two reads, concurrently. `loadNinaContext` reads the recent-20 window and
-   * `loadRunHistory` reads the whole reviewed history; both are one `db.batch` over the same
-   * bounded table, and running them together makes the duplication cost one round trip of wall
-   * clock instead of two. `getReviewedRunsWithChildren` therefore runs twice per turn, which is
-   * ACCEPTED at this size: ~200 rows a year, one user. The clean fix is one optional parameter on
-   * `loadNinaContext` — phase 2's file — and it should move together with `lib/insights/load.ts`
-   * and `recomputeRecords`, in one card, because all three re-read the same history and all three
-   * stop being fine at the same moment.
+   * ── STEP 1c — THE CLAIM, AND THE LINE THIS ACTION NOW RETURNS ON (F36 R6) ────────────────────
+   *
+   * Everything above this comment is unchanged and still synchronous, and that is the requirement
+   * rather than an accident. R6 is "i send the message, it quickly shown that the message is sent";
+   * what makes that honest is that his row, his photos and his attached run are all committed
+   * before the word "sent" appears. Everything below — the context load, the 13-45 s model call,
+   * the persist of her bubbles, the distillation, the auto-title — happens after the response is
+   * out, on the server, whether or not the browser is still there.
+   *
+   * ── THE WRITE ORDER THIS FILE'S HEADER CALLS PART OF THE CONTRACT IS PRESERVED, AND THE SPLIT
+   *    IS WHAT MAKES IT OBVIOUS ─────────────────────────────────────────────────────────────────
+   * The header: *"`loadNinaContext` reads the conversation window out of `nina_messages`, so a
+   * message not yet written is a message SHE CANNOT SEE. Insert first, then build the context."*
+   * The cut is placed exactly between the insert and the context load, so the ordering is no longer
+   * a convention two hundred lines apart — it is the boundary between the function that returns and
+   * the function that thinks.
+   *
+   * ── THE SWEEP RUNS HERE, WHICH IS THE CHEAPEST HONEST PLACE FOR IT ──────────────────────────
+   * One conditional UPDATE against an indexed predicate, on a path that is already writing rows. A
+   * turn that died is closed at the exact moment its deadness starts to matter — the moment he
+   * sends again — and `openNinaChatTurn` below is then free to open a new claim. See
+   * `sweepStaleNinaChatTurns` for why it does not retry and does not apologise.
    */
-  const [context, history, tuning] = await Promise.all([
-    /* The session is the second argument now (F35 phase 3). She reads the window of THIS
-     * conversation and the memory ledger of the whole relationship — assumptions A1 and A2, in one
-     * call. */
-    loadNinaContext(userId, sessionId, dbNinaSourceGateway),
-    dbNinaToolGateway.loadRunHistory(userId),
-    /*
-     * THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
-     * `/admin/nina` immediate. `memoryActions.ts` under `lib/admin/` already records the same
-     * property for the memory slots: `revalidatePath` re-renders the admin page and is not how the
-     * edit reaches Nina; a committed row is in her next prompt with no invalidation step at all.
-     *
-     * Third in an existing `Promise.all` on purpose. It is one indexed single-row read against a
-     * connection this turn is opening anyway, so it costs no extra wall clock against the two reads
-     * beside it — and the 45 s budget has no room for a fourth sequential round trip.
-     */
-    readNinaTuning(userId),
-  ])
+  try {
+    await sweepStaleNinaChatTurns(userId)
+  } catch (cause) {
+    /* A sweep that could not run must never cost him a send. The worst case is that
+     * `openNinaChatTurn` refuses because a dead claim is still standing, and his message is picked
+     * up by his next send — which is the same outcome the notice already promises. */
+    console.warn('[nina] chat turn sweep failed', { error: String(cause) })
+  }
 
-  /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
-   *
-   * INVARIANT 5 IS ENFORCED BY THIS ARGUMENT AND NOWHERE ELSE. `imageDescriptions` is TEXT.
-   * There is no code path in this file that puts an image part into `runNinaTurn`, and there must
-   * never be one: `glm-5.3` answers 200 and silently drops an image block, so sending one is not
-   * an error, it is a lie.
-   *
-   * `runnerText: null` for an image-only message, so `userTurnText` omits the "HE JUST SAID"
-   * block entirely rather than emitting an empty one.
-   */
-  /*
-   * `sentAtLabel` comes from the context window when the quoted message is in it, and is null when
-   * it is not. That is invariant 3 rather than laziness: `'Tue 2 Sep 07:14'` is spelled by phase
-   * 2's `conversationFacts`, and formatting a second one here would make this the app's second
-   * authority on how an instant is written. A quote with no timestamp reads fine —
-   * `quoteContextBlock` simply omits the clause.
-   */
-  const target = quotedRow
-  const quoted: QuotedMessageInput | null =
-    target === null
-      ? null
-      : {
-          id: target.id,
-          mine: target.role === 'runner',
-          text: target.body,
-          sentAtLabel:
-            context.conversation.window.find((turn) => turn.id === target.id)?.sentAtLabel ?? null,
-        }
+  let turnId: string | null = null
+  try {
+    turnId = await openNinaChatTurn(userId, { sessionId, runnerMessageId, depth: 0 })
+  } catch (cause) {
+    console.warn('[nina] could not open a chat turn', { error: String(cause) })
+  }
 
   /*
-   * `toolSet` is overridden here, and this line is the ONLY integration point for every tool phases
-   * 12 and 13 add. Phase 3 built `extendToolSet` so that adding `generate_image` needed no edit to
-   * `tools.ts` or `turn.ts`; `NINA_CHAT_TOOL_SET` was that composition, and `NINA_FULL_TOOL_SET`
-   * (phase 13) is `NINA_CHAT_TOOL_SET` plus `set_avatar` — layered, so this line moved one word and
-   * neither `imagetools.ts` nor `tools.ts` was touched. Two independent overrides here would
-   * silently drop one of the two tools, which is exactly what the layering prevents.
-   *
-   * `productionDeps()` is spread rather than re-spelled so client, model, gateway and store stay
-   * defined in exactly one place — the reason RULING C6 had phase 3 export it at creation.
+   * `turnId === null` is the ORDINARY burst case: a turn is already running for this conversation,
+   * so this message needs no second model call — the running turn chains onto it when it finishes.
+   * It is also what a failed open degrades to, and the two want the same handling, because in both
+   * of them the honest state is "his message is saved and something will answer it or the sweep
+   * will call it dead". Returning `ok: false` here would mark a perfectly persisted message as
+   * failed on screen, which is the one thing R6 exists to stop.
    */
-  const result = await runNinaTurn(
-    {
+  if (turnId !== null) {
+    startNinaBackgroundTurn({
       userId,
-      context,
-      /* On the INPUT, never on the context. A dial inside the context JSON is a number she can
-       * quote back at him and it collides with `NUMBERS_RULE`. */
-      tuning,
-      history,
-      sourceMessageId: runnerMessageId,
+      sessionId,
+      turnId,
+      runnerMessageId,
       runnerText: text.length > 0 ? text : null,
-      /* R26's description rides the same array, which is why the attach path needs no vision call
-       * and no second prompt slot: `glm-4.6v` already described this blob once, for whoever put it
-       * in the conversation first. Still TEXT, so invariant 5 is untouched. */
       imageDescriptions: [
         ...images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
         ...(attached === null ? [] : [attached.description ?? NINA_DESCRIPTION_UNAVAILABLE]),
       ],
-      quoted,
-      /*
-       * The facts half of R13. `turn.ts` resolves this id against the history it has ALREADY loaded
-       * and calls `buildNinaRunFact` — the same function `lookup_runs` calls, with the same
-       * arguments. There is no second facts path and no extra query; an id that is not in the
-       * reviewed history resolves to nothing and the turn proceeds without it (invariant 2, D16).
-       */
+      quotedRow,
       attachedRunId: runId,
-    },
-    { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET },
-  )
-
-  if (result.payload == null) {
-    /*
-     * She could not answer, but HE still spoke, and R4 is "every single thing". His message is
-     * persisted with an id, so distilling it is both possible and the honest reading of the
-     * requirement — a turn where she failed is not a turn where he said nothing.
-     */
-    scheduleDistillation({
-      userId,
-      runnerText: text,
-      sourceMessageId: runnerMessageId,
-      ninaBubbles: [],
-      memoryWrites: [],
-      context,
-      relationship: tuning.relationship,
+      depth: 0,
+      startedAtMs: Date.now(),
     })
-    return { ok: true, userMessageId: runnerMessageId, bubbles: [], unavailable: true }
   }
 
-  /*
-   * STEP 4 — `replyToMessageId`, re-checked against rows this user owns. The model produced this
-   * id, and a well-formed id is not proof of ownership (the Server Actions guide's own warning).
-   * The context window she was given is the authoritative list of what she could legitimately be
-   * answering, so it is also the cheapest check — no extra query. Phase 7 owns the quote UI; this
-   * is only the column being populated honestly from day one.
-   */
-  const ownedIds = new Set(context.conversation.window.map((turn) => turn.id))
-  const replyToId =
-    result.payload.replyToMessageId != null && ownedIds.has(result.payload.replyToMessageId)
-      ? result.payload.replyToMessageId
-      : null
+  return { ok: true, userMessageId: runnerMessageId, sessionId, cursor: runnerSeq, turnId }
+}
 
-  /*
-   * STEP 5 — one row per bubble (RU-5), in ONE multi-row `INSERT`.
-   *
-   * ── WHY THIS IS A BATCH AND WHY THAT MAKES THE ORDER A DATABASE FACT ─────────────────────────
-   * This file's draft wrote four sequential single inserts carrying `seq: 0..n-1`, and reasoned
-   * about the ordering of concurrent writes. None of that is needed and none of it is allowed:
-   * `seq` is a `bigserial` and Postgres assigns it, so nothing here supplies one. **Emission order
-   * comes free**, because Postgres evaluates `nextval` once per row in `VALUES` order — the first
-   * bubble gets the lower `seq`, always, and `insertNinaMessages` returns the rows in that same
-   * order with their ids and `seq` already on them. So phase 4's reveal keys on an array order the
-   * database itself produced, not on a convention this loop remembered to honour.
-   *
-   * It is also one round trip instead of four, and — the part that actually matters — it is
-   * **atomic**: the half-written four-bubble reply the `catch` below exists for can no longer
-   * happen from a partial insert. It can still happen from a failed statement, which is why the
-   * `catch` stays.
-   *
-   * `replyToId` goes on the FIRST bubble only. A four-bubble reply is one answer to one message,
-   * and quoting the same message four times would render four identical quote headers.
-   */
-  const bubbles: SentBubble[] = []
+/**
+ * **The seam phase 2 owns, isolated to three lines so consuming its convention is a three-line
+ * change and not a rewrite (F36 R6).**
+ *
+ * `after()` is already this module's convention for work that must outlive the response — STEP 6's
+ * distillation and STEP 7's auto-title both used it, and both noted that it "throws E468 outside a
+ * request scope, which is exactly why the CALL is here in the `'use server'` module". The same
+ * reasoning applies at four hundred times the duration, and Next 16.3.1's `after` reference is
+ * explicit that it is the right primitive: *"`after` allows you to schedule work to be executed
+ * after a response is finished"*, it is supported in Server Functions, and *"`after` will run for
+ * the platform's default or configured max duration of your route"* — which on Vercel means the
+ * invocation is held open by `waitUntil` until the callback settles. **That is the whole of "the
+ * app does not care whether user close the app or not": the wall clock belongs to the server.**
+ *
+ * ── WHY THIS IS A FUNCTION AND NOT AN INLINE `after()` ───────────────────────────────────────
+ * Phase 2 established this repo's convention for durable server-owned background work and chose
+ * `after()` in as many words, so this body is the whole of the seam: if the convention ever becomes
+ * a fetch to an internal route, this body changes and nothing else does — not the input type, not
+ * the caller, not the chain, not the client half.
+ *
+ * **The budget is the INVOKING SEGMENT's `maxDuration`, not this function's.** `app/nina/page.tsx`
+ * carries `export const maxDuration = 300` (phase 2), a Server Action's timeout is the page
+ * segment's, and `after()` runs for that same budget. So this must never be relocated into a route
+ * handler that does not carry 300 — a 240 s background budget under a 60 s segment is a silent
+ * truncation, not an error. `NINA_BACKGROUND_BUDGET_MS` documents the pairing.
+ *
+ * ── NESTED `after()` IS SANCTIONED, WHICH MATTERS MORE THAN IT LOOKS ─────────────────────────
+ * The turn below can call `generate_image` or `set_avatar`, and the generation registers its own
+ * `after()`. That is now an `after()` inside an `after()`. Next's reference sanctions it in as many
+ * words — *"`after` can be nested inside other `after` calls"* — so the image path keeps working
+ * through the split with no change to phase 1's or phase 2's files. The arithmetic phase 2 asserts
+ * is 45 s of turn plus 200 s of generation inside the segment's 300.
+ */
+function startNinaBackgroundTurn(input: NinaBackgroundTurnInput): void {
+  after(() => runNinaBackgroundTurn(input))
+}
+
+/**
+ * Everything `sendNinaMessage` used to do between STEP 2 and STEP 7, as one value.
+ *
+ * `quotedRow` travels whole rather than as a pre-built `QuotedMessageInput`, because the
+ * `sentAtLabel` half of that object is read out of `context.conversation.window` — which does not
+ * exist until the background task loads it (invariant 3: this file does not format an instant).
+ *
+ * `imageDescriptions` is precomputed by the caller so the verified ticket claims and the resolved
+ * attachment do not have to travel; they are the only thing the turn wanted from them.
+ */
+export interface NinaBackgroundTurnInput {
+  userId: string
+  sessionId: string
+  turnId: string
+  runnerMessageId: string
+  runnerText: string | null
+  imageDescriptions: readonly string[]
+  quotedRow: NinaMessageRow | null
+  attachedRunId: string | null
+  /** 0 for the turn a send started; 1 and 2 for chained follow-ups. */
+  depth: number
+  /** `Date.now()` at the send, so every link of a chain shares one wall-clock budget. */
+  startedAtMs: number
+}
+
+/**
+ * **The turn, after the response has gone out.**
+ *
+ * Steps 2 through 7 are the ones `sendNinaMessage` used to run inline, moved here verbatim in
+ * content and in order. What is new is the bookkeeping around them: the claim opened before the
+ * call is closed after her rows land, a `finally` guarantees the row never stays `pending` because
+ * of a throw we could see, and a bounded chain answers messages that arrived while this was working.
+ *
+ * ── IT NEVER THROWS ─────────────────────────────────────────────────────────────────────────
+ * There is nobody to throw at. The response left thirteen to forty-five seconds ago. Every failure
+ * mode ends in a closed `nina_turns` row with a reason on it and a warning in the log, which is
+ * what the ledger is for.
+ */
+async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<void> {
+  const { userId, sessionId, turnId, runnerMessageId } = input
+  let source: NinaTurnSource = 'unavailable'
+  let failure: string | undefined = 'crashed'
+  let closed = false
+  let bubbles: SentBubble[] = []
+
   try {
+    /*
+     * STEP 2 — the two reads, concurrently. `loadNinaContext` reads the recent-20 window and
+     * `loadRunHistory` reads the whole reviewed history; both are one `db.batch` over the same
+     * bounded table, and running them together makes the duplication cost one round trip of wall
+     * clock instead of two. `getReviewedRunsWithChildren` therefore runs twice per turn, which is
+     * ACCEPTED at this size: ~200 rows a year, one user. The clean fix is one optional parameter on
+     * `loadNinaContext` and it should move together with `lib/insights/load.ts` and
+     * `recomputeRecords`, in one card, because all three re-read the same history and all three
+     * stop being fine at the same moment.
+     *
+     * **This runs AFTER his row is committed and that has not changed** — see STEP 1c's note.
+     */
+    const [loadedContext, history, tuning] = await Promise.all([
+      loadNinaContext(userId, sessionId, dbNinaSourceGateway),
+      dbNinaToolGateway.loadRunHistory(userId),
+      /* THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
+       * `/admin/nina` immediate. Third in an existing `Promise.all` on purpose: one indexed
+       * single-row read against a connection this turn is opening anyway. */
+      readNinaTuning(userId),
+    ])
+
+    /*
+     * `sentAtLabel` comes from the context window when the quoted message is in it, and is null
+     * when it is not. That is invariant 3 rather than laziness: `'Tue 2 Sep 07:14'` is spelled by
+     * `conversationFacts`, and formatting a second one here would make this the app's second
+     * authority on how an instant is written.
+     */
+    const target = input.quotedRow
+    const quoted: QuotedMessageInput | null =
+      target === null
+        ? null
+        : {
+            id: target.id,
+            mine: target.role === 'runner',
+            text: target.body,
+            sentAtLabel:
+              loadedContext.conversation.window.find((turn) => turn.id === target.id)
+                ?.sentAtLabel ?? null,
+          }
+
+    /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
+     *
+     * INVARIANT 5 IS ENFORCED BY THIS ARGUMENT AND NOWHERE ELSE. `imageDescriptions` is TEXT.
+     * There is no code path in this file that puts an image part into `runNinaTurn`, and there must
+     * never be one: `glm-5.3` answers 200 and silently drops an image block, so sending one is not
+     * an error, it is a lie.
+     *
+     * `toolSet` is `NINA_FULL_TOOL_SET` and `store` is the chat turn's own — the same one-word
+     * override idiom, twice. `ninaChatTurnStore` UPDATEs the row opened before the call instead of
+     * INSERTing a second one, so `nina_turns` still holds exactly one row per turn; see its header
+     * for why it advances the phase rather than closing the row.
+     */
+    const result = await runNinaTurn(
+      {
+        userId,
+        context: loadedContext,
+        tuning,
+        history,
+        sourceMessageId: runnerMessageId,
+        runnerText: input.runnerText,
+        imageDescriptions: input.imageDescriptions,
+        quoted,
+        attachedRunId: input.attachedRunId,
+      },
+      { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
+    )
+    source = result.source
+
+    /*
+     * ── THE SESSION MAY HAVE BEEN DELETED WHILE SHE WAS THINKING (phase 6's handoff) ──────────
+     * Up to `NINA_BACKGROUND_BUDGET_MS` has passed since the response went out, and
+     * `removeNinaSession` is one tap away in the sidebar the whole time. Every write below is a
+     * write into a conversation that may no longer exist:
+     *
+     *   · her bubbles — `insertNinaMessages` already degrades to `[]` here, so this is belt;
+     *   · **the distillation** — `nina_memory_facts` / `nina_memory_slots` rows stamped with a
+     *     `source_message_id` whose row the cascade has already destroyed. That is precisely the
+     *     orphan class phase 6 purges, re-created milliseconds after the purge ran, and it is the
+     *     one that actually reaches her: `loadNinaContext` reads the session's message window but
+     *     the WHOLE relationship's memory ledger, so an orphaned fact is permanent pollution;
+     *   · the auto-title — naming a row that is gone.
+     *
+     * One indexed owner-scoped read answers it. Cheap on a path that has just spent 13-45 s on a
+     * model call, and it sits HERE — immediately after the model returns and before anything is
+     * persisted — so it runs ONCE per turn and covers both exits below, rather than once per write.
+     *
+     * ABANDONING IS THE WHOLE RESPONSE. Nothing is written, nothing is retried, nothing is
+     * re-homed into another conversation — a reply to a conversation he deleted does not belong in
+     * the one he kept. The claim is closed with a reason (`'session-gone'`) in the `finally`, so
+     * the ledger says what happened and no sweep has to guess.
+     */
+    if (!(await ninaSessionExists(userId, sessionId))) {
+      console.warn('[nina] session was deleted mid-turn; abandoning', { turnId, sessionId })
+      failure = 'session-gone'
+      return
+    }
+
+    if (result.payload == null) {
+      /*
+       * She could not answer, but HE still spoke, and R4 is "every single thing". His message is
+       * persisted with an id, so distilling it is both possible and the honest reading of the
+       * requirement — a turn where she failed is not a turn where he said nothing.
+       *
+       * **No bubble is written.** `runNinaTurn`'s silence is silence; app-authored prose in her
+       * mouth is what invariant 7 and `ChatScreen`'s header forbid. The screen says so in its own
+       * voice, through the 'no-reply' notice, once the poll sees the turn close with nothing new.
+       */
+      failure = undefined
+      await closeNinaChatTurn(userId, turnId, source)
+      closed = true
+      await runNinaDistillation({
+        userId,
+        runnerText: input.runnerText ?? '',
+        sourceMessageId: runnerMessageId,
+        ninaBubbles: [],
+        memoryWrites: [],
+        context: loadedContext,
+        relationship: tuning.relationship,
+      })
+      return
+    }
+
+    /*
+     * STEP 4 — `replyToMessageId`, re-checked against rows this user owns. The model produced this
+     * id, and a well-formed id is not proof of ownership (the Server Actions guide's own warning).
+     * The context window she was given is the authoritative list of what she could legitimately be
+     * answering, so it is also the cheapest check — no extra query.
+     */
+    const ownedIds = new Set(loadedContext.conversation.window.map((turn) => turn.id))
+    const replyToId =
+      result.payload.replyToMessageId != null && ownedIds.has(result.payload.replyToMessageId)
+        ? result.payload.replyToMessageId
+        : null
+
+    /*
+     * STEP 5 — one row per bubble (RU-5), in ONE multi-row `INSERT`.
+     *
+     * **Emission order comes free**, because Postgres evaluates `nextval` once per row in `VALUES`
+     * order — the first bubble gets the lower `seq`, always. It is one round trip instead of four
+     * and it is atomic, so a half-written four-bubble reply can no longer come from a partial
+     * insert. `replyToId` goes on the FIRST bubble only: a four-bubble reply is one answer to one
+     * message, and quoting the same message four times would render four identical quote headers.
+     *
+     * ── `turnId` IS NOW STAMPED, AND IT WAS NOT BEFORE ──────────────────────────────────────────
+     * `nina_messages.turn_id`'s own schema comment says "Phase 3 stamps it onto every message the
+     * turn emitted", and the analysis measured **0 of 48 rows carrying one** — because the row did
+     * not exist until after the messages were written. Opening the turn first is what makes the
+     * documented contract satisfiable, so it is satisfied here rather than left as a second gap.
+     * Nothing renders it; it is the audit join, and the column carries no foreign key precisely so
+     * that it can never block a delete.
+     */
     const rows = await insertNinaMessages(
       userId,
       result.payload.bubbles.map((body, index) => ({
         role: 'nina' as const,
         body,
+        turnId,
         replyToId: index === 0 ? replyToId : null,
       })),
       /* The same session his message went into. She is answering in the conversation she was asked
-       * in; there is no case in which a reply belongs anywhere else. One session for the whole
-       * batch, which is why it is a parameter and not a field. */
+       * in; there is no case in which a reply belongs anywhere else. */
       sessionId,
     )
-    for (const row of rows) bubbles.push({ id: row.id, body: row.body, replyToId: row.replyToId })
+    bubbles = rows.map((row) => ({ id: row.id, body: row.body, replyToId: row.replyToId }))
+
+    /*
+     * The claim drops HERE — after her rows are committed and not one statement earlier. The poll
+     * asks two questions of the server ("is a turn in flight" and "is there anything after my
+     * cursor"), and closing the claim before the rows exist would let a poll land in the gap and
+     * read a true "no" to both, raising 'no-reply' for a reply that was mid-insert. See
+     * `ninaChatTurnStore`'s header.
+     */
+    failure = undefined
+    await closeNinaChatTurn(userId, turnId, source)
+    closed = true
+
+    /*
+     * STEP 6 — the distillation (R4). AWAITED here rather than scheduled in a nested `after()`,
+     * and the change is a simplification rather than a reversal. The original reason for `after()`
+     * was that awaiting a 10-20 s model call would leave him "watching an idle screen after the
+     * bubbles have landed" — but there is no screen waiting on this function at all any more; the
+     * response went out before the turn even started. Both forms run inside the same segment budget
+     * (`after` is the platform's `waitUntil`, not a new invocation), so nesting would buy nothing
+     * and would make the ordering against the chain below unpredictable.
+     *
+     * `runTurnDistillation` never throws, so there is no `try` around it and nothing to swallow.
+     */
+    await runNinaDistillation({
+      userId,
+      runnerText: input.runnerText ?? '',
+      sourceMessageId: runnerMessageId,
+      ninaBubbles: bubbles.map((bubble) => bubble.body),
+      memoryWrites: result.payload.memoryWrites ?? [],
+      context: loadedContext,
+      relationship: tuning.relationship,
+    })
+
+    /*
+     * STEP 7 — the session's name (R3). **This exit and no other**: R3's trigger is "the first
+     * interaction (user then nina)", and this is the only path on which both rows exist.
+     * `titleNinaSessionIfNeeded` never throws and makes no call at all for a session that already
+     * has a name; its idempotence is `setNinaSessionTitleIfUntitled`'s `WHERE … AND title IS NULL`,
+     * not this line's, so two racing tabs are already handled.
+     */
+    await titleNinaSessionIfNeeded(userId, sessionId)
   } catch (cause) {
-    console.warn('[nina] could not persist her reply', { error: String(cause) })
-    /* His message IS stored; the batch either landed whole or not at all. `ok: false` tells phase
-     * 4 to reload the conversation from the server rather than trust this return value — cheaper
-     * than reasoning about which of the two states it is in. */
-    return { ok: false, userMessageId: runnerMessageId, bubbles: [], unavailable: false }
+    console.warn('[nina] background turn failed', { turnId, error: String(cause) })
+  } finally {
+    /*
+     * The row must never be left `pending` by a throw we were in a position to see. If it is, the
+     * only thing that closes it is the 90-second sweep — which is correct but slow, and the screen
+     * spends that whole time showing a typing indicator for a turn that is already dead.
+     * `closeNinaChatTurn`'s own `WHERE status = 'pending'` makes this a no-op when the happy path
+     * already closed it, so the `closed` flag is belt to that brace rather than the guard itself.
+     */
+    if (!closed) {
+      try {
+        await closeNinaChatTurn(userId, turnId, source, failure ?? 'crashed')
+      } catch (cause) {
+        console.warn('[nina] could not close a chat turn', { turnId, error: String(cause) })
+      }
+    }
   }
 
   /*
-   * STEP 6 — the distillation (phase 5, R4). `after()` and not `await`: the turn already cost
-   * 13-45 s and this is another 10-20 s model call, so awaiting it would leave him watching an
-   * idle screen after the bubbles have landed. `after` runs for the route's max duration and runs
-   * even when the response is already out.
+   * ── THE CHAIN: MESSAGES THAT ARRIVED WHILE SHE WAS TYPING ────────────────────────────────────
+   * This is the other half of `openNinaChatTurn` refusing a second claim. A burst — "eh", "nina",
+   * "gimana", which is exactly how this app gets used — persists three rows and starts ONE turn.
+   * The second and third messages would otherwise sit unanswered until he sent a fourth.
    *
-   * `after()` throws E468 outside a request scope, which is exactly why the CALL is here in the
-   * `'use server'` module and `runTurnDistillation` itself never calls it — the same lesson phase
-   * 10 learned when it moved its hook out of `lib/review/commit.ts`.
+   * So when this turn is done, it asks one indexed question: is the newest row in this conversation
+   * his? If it is, it opens a fresh claim and runs one more turn for it. That turn's context
+   * contains every message of the burst AND her reply to the first, so she answers the remainder
+   * coherently instead of four times in parallel.
    *
-   * Phase 3's own `send.memoryWrites` are no longer applied here: they are an input to the one
-   * plan the distillation builds, so there is one interpretation, one plan and one apply.
-   * `runTurnDistillation` never throws, so there is no `try` around this and nothing to swallow.
+   * BOUNDED TWICE, because an unbounded chain is a machine for spending money: by `depth` against
+   * `NINA_TURN_CHAIN_MAX`, and by wall clock against `NINA_BACKGROUND_BUDGET_MS` measured from the
+   * original send. The wall-clock bound is what makes this correct under BOTH of phase 2's
+   * outcomes: with a 60 s ceiling the budget is exhausted after the first link and the chain simply
+   * does not start, with no code change beyond the two literals `turnflight.ts` documents.
+   *
+   * Hitting either bound loses nothing. The unanswered messages are still in the database, still in
+   * her next context window, and his next send starts a turn that sees all of them.
    */
-  scheduleDistillation({
-    userId,
-    runnerText: text,
-    sourceMessageId: runnerMessageId,
-    ninaBubbles: bubbles.map((bubble) => bubble.body),
-    memoryWrites: result.payload.memoryWrites ?? [],
-    context,
-    relationship: tuning.relationship,
-  })
+  if (input.depth >= NINA_TURN_CHAIN_MAX) return
+  if (Date.now() - input.startedAtMs >= NINA_BACKGROUND_BUDGET_MS - NINA_TURN_BUDGET.overall) return
+
+  try {
+    /* The same guard as above, on the chain. `listNinaMessages` against a deleted session already
+     * returns `[]` so this would exit anyway — but exiting BY ACCIDENT is not the same as exiting
+     * on purpose, and the next reader should not have to derive the safety from a second file. */
+    if (!(await ninaSessionExists(userId, sessionId))) return
+
+    const [newest] = await listNinaMessages(userId, { limit: 1, sessionId })
+    if (newest == null || newest.role !== 'runner') return
+
+    const nextTurnId = await openNinaChatTurn(userId, {
+      sessionId,
+      runnerMessageId: newest.id,
+      depth: input.depth + 1,
+    })
+    if (nextTurnId === null) return
+
+    /*
+     * A DIRECT `await`, not another `after()`. We are already inside the background task's budget,
+     * and nesting would add a scheduling hop without adding a second of wall clock —
+     * `NINA_BACKGROUND_BUDGET_MS` is the segment's, not the callback's.
+     *
+     * `imageDescriptions: []` and `quotedRow: null` are correct rather than lossy. Those two inputs
+     * describe what is attached to THIS message right now; the photographs themselves reach her
+     * through `loadNinaContext`, which reads `nina_messages` joined to `nina_message_images` for
+     * the whole window (see STEP 1b's note in `sendNinaMessage`). So she can still see a photo sent
+     * mid-burst. A quote is genuinely absent: the runner armed it against a send that has already
+     * been answered, and re-quoting it on a follow-up would put the same quote header on two turns.
+     */
+    await runNinaBackgroundTurn({
+      userId,
+      sessionId,
+      turnId: nextTurnId,
+      runnerMessageId: newest.id,
+      runnerText: newest.body.length > 0 ? newest.body : null,
+      imageDescriptions: [],
+      quotedRow: null,
+      attachedRunId: newest.runId,
+      depth: input.depth + 1,
+      startedAtMs: input.startedAtMs,
+    })
+  } catch (cause) {
+    console.warn('[nina] chained turn failed', { turnId, error: String(cause) })
+  }
+}
+
+
+export interface NinaReplyPoll {
+  ok: boolean
+  /**
+   * **"Is there a message of his that has not been answered yet?"** — the client's whole stop
+   * condition, in one boolean, answered by the server so the screen never has to guess.
+   *
+   * TRUE while a `nina_turns` chat claim is live for this conversation, and ALSO true in the
+   * hand-off gap where one chained turn has closed and the next has not yet opened — because the
+   * second disjunct is "the newest row is his and it is fresh", which is exactly what is true in
+   * that gap. Without the disjunct the screen would stop polling for a quarter of a second and miss
+   * the whole of a chained reply.
+   */
+  awaiting: boolean
+  /** Her new bubbles since `afterSeq`, oldest first. Empty while she is still thinking. */
+  bubbles: SentBubble[]
+  /** The cursor to send next time. Unchanged from the input when nothing new arrived. */
+  cursor: number
+}
+
+/**
+ * **How an open tab learns that Nina has answered (F36 R6).**
+ *
+ * ── WHY A POLL AND NOT THE PUSH SEAM THAT ALREADY EXISTS ─────────────────────────────────────
+ * `lib/nina/live.ts`'s `SW_MESSAGE_TYPE = 'nina:new'` and `lib/service-worker.js`'s
+ * `notifyOpenWindows` are a real, shipped wake-up channel, and this phase leaves them completely
+ * untouched: a proactive push still refreshes the screen exactly as it does today. They are the
+ * wrong mechanism for THIS path, for two independent reasons.
+ *
+ *   1. **A push must show a notification.** The service worker's own comment records the platform
+ *      rule — a `push` handler that shows nothing "counts against the app's push budget" on iOS —
+ *      so the worker cannot suppress the tray for a tab the runner is staring at. Pushing every
+ *      chat reply would buzz his phone for every message he sends while watching the screen. That
+ *      is a worse app than the one he has.
+ *   2. **A push arrives as `router.refresh()`, which hands down a whole new `initial` and lands
+ *      through `mergeServerMessages` — in ONE frame.** RU-5's staggered reveal is a sequence of
+ *      `setState` calls separated by real time, and `ChatScreen`'s header spends a paragraph on why
+ *      it must not be collapsed. Delivering four bubbles at once is precisely that collapse. The
+ *      poll returns the bubbles as DATA, so `planReveal` still runs on them.
+ *
+ * ── AND A CLOSED TAB NEEDS NOTHING AT ALL ────────────────────────────────────────────────────
+ * Say it plainly, because it is the part of R6 people build for twice: her rows are committed by
+ * the background task, `app/nina/page.tsx` reads them with `listNinaMessages` on the next render,
+ * and they are simply there. No queue, no replay, no reconnection. The only thing the tab being
+ * closed changes is that nobody is watching, and the requirement is that this does not matter.
+ *
+ * ── COST ─────────────────────────────────────────────────────────────────────────────────────
+ * ONE round trip: three indexed reads issued together. Against the measured 13-16 s turn the
+ * backoff spends about nine of them, and it stops the instant `awaiting` goes false.
+ * `lib/extract/constants.ts` is the precedent — a polled 34 s job with the same shape.
+ *
+ * ── IT IS AN UNTRUSTED POST ENDPOINT LIKE EVERY OTHER ACTION ─────────────────────────────────
+ * `requireUserId()` first; `sessionId` is shape-checked and then proved by `messageScope`'s
+ * `user_id AND session_id` predicate, so a forged id returns `[]` rather than another
+ * conversation. It writes nothing except, on the rare expired-claim path, the sweep's own
+ * conditional UPDATE.
+ */
+export async function pollNinaReply(input: {
+  sessionId: string | null
+  afterSeq: number
+}): Promise<NinaReplyPoll> {
+  const userId = await requireUserId()
+
+  const afterSeq = Number.isFinite(input?.afterSeq) ? Math.max(0, Math.floor(input.afterSeq)) : 0
+  const sessionId =
+    typeof input?.sessionId === 'string' && isValidId(input.sessionId) ? input.sessionId : null
+  /* No conversation, nothing to wait for. Reachable for a runner who has never messaged. */
+  if (sessionId === null) return { ok: true, awaiting: false, bubbles: [], cursor: afterSeq }
+
+  let fresh: NinaMessageRow[]
+  let newestRows: NinaMessageRow[]
+  let pending: Awaited<ReturnType<typeof getPendingNinaChatTurn>>
+  try {
+    /* Three indexed reads, one round trip. Spelled as three separate `let`s and a plain tuple
+     * destructure rather than a nested pattern, so `tsc` infers each element rather than widening
+     * the tuple to a union of the three row shapes. */
+    ;[fresh, newestRows, pending] = await Promise.all([
+      listNinaMessagesAfter(userId, { sessionId, afterSeq }),
+      listNinaMessages(userId, { limit: 1, sessionId }),
+      getPendingNinaChatTurn(userId, sessionId),
+    ])
+  } catch (cause) {
+    console.warn('[nina] reply poll failed', { error: String(cause) })
+    /* `ok: false` and `awaiting: true`: a poll that could not read the database has learned
+     * NOTHING, and reporting "she is not answering" would be a claim it cannot make. The client
+     * treats this as "try again", and its own give-up at `NINA_TURN_POLL_GIVE_UP_MS` is what stops
+     * a database outage from polling for ever. */
+    return { ok: false, awaiting: true, bubbles: [], cursor: afterSeq }
+  }
+
+  const newest = newestRows[0] ?? null
+  const now = Date.now()
+  const expired = pending !== null && now - pending.createdAt.getTime() >= NINA_TURN_STALE_MS
+  if (expired) {
+    /*
+     * The claim outlived its deadline, so the process behind it is gone. Close it HERE rather than
+     * only on his next send: this is the moment the screen is asking, and `lib/extract`'s own note
+     * is the argument — "the poll that gives up is the poll that closes the row, so the runner's
+     * last request is the one that makes the state honest". One conditional UPDATE, on the rare
+     * path only, and never on the ~29 healthy polls of a turn that is simply still running.
+     */
+    try {
+      await sweepStaleNinaChatTurns(userId, new Date(now))
+    } catch (cause) {
+      console.warn('[nina] chat turn sweep failed in poll', { error: String(cause) })
+    }
+  }
+
+  const live = pending !== null && !expired
+  /*
+   * The two disjuncts. `live` is authoritative and covers a turn that is running. The message
+   * predicate covers the hand-off gap between two chained turns, and it is the SAME pure function
+   * `app/nina/page.tsx` uses for its cold-load heuristic — one definition of "unanswered", asserted
+   * in `lib/nina/turnflight.test.ts`, so the screen and the server cannot come to disagree.
+   */
+  const awaiting = live || ninaAwaitingByMessage(newest, now)
 
   /*
-   * STEP 7 — the session's name (R3). `after()` and not `await`, for the same two reasons STEP 6
-   * gives: this is another model call on top of a turn that already cost 13-45 s, and invariant 2
-   * is enforced by `scripts/check-llm-payload-boundary.mjs` either way. `after()` throws E468
-   * outside a request scope, which is why the CALL is here and `titleNinaSessionIfNeeded` never
-   * calls it itself.
-   *
-   * **This exit and no other.** R3's trigger is "the first interaction (user then nina)", and this
-   * is the only path on which both rows exist — the `result.payload == null` return above it is a
-   * turn where she said nothing, so there is no exchange to name yet.
-   *
-   * `after()` can run more than once and two tabs can race, so the idempotence is the titler's and
-   * not this line's: `setNinaSessionTitleIfUntitled`'s `WHERE … AND title IS NULL` is the durable
-   * marker, on `hasProactiveMessageForRun`'s reasoning. `titleNinaSessionIfNeeded` never throws and
-   * makes no call at all for a session that already has a name.
+   * HER bubbles only. His own rows come back from `listNinaMessagesAfter` too — a second tab may
+   * have sent one — and appending them here would duplicate a bubble the sending tab already has
+   * optimistically. The other tab gets them the way it always has, on the next server render.
    */
-  after(() => titleNinaSessionIfNeeded(userId, sessionId))
+  const hers = fresh.filter((row) => row.role === 'nina')
 
-  return { ok: true, userMessageId: runnerMessageId, bubbles, unavailable: false }
+  return {
+    ok: true,
+    awaiting,
+    bubbles: hers.map((row) => ({ id: row.id, body: row.body, replyToId: row.replyToId })),
+    /* The cursor advances past EVERY row read, not just hers, so a message from another tab is not
+     * re-read on every subsequent poll. */
+    cursor: fresh.length === 0 ? afterSeq : (fresh[fresh.length - 1]?.seq ?? afterSeq),
+  }
 }
 
 export type NinaDescribeFailureReason =
@@ -882,7 +1285,14 @@ export async function describeNinaImage(
 }
 
 /**
- * The `after()` wrapper, so the two exit paths schedule one identical pass.
+ * One identical distillation pass for the two exit paths of the background turn.
+ *
+ * **The `after()` that used to be here moved to `startNinaBackgroundTurn`, which now wraps the
+ * whole turn (F36 R6).** Wrapping this again would be an `after()` inside an `after()` for no
+ * budget gain — both forms run inside the same segment budget, because `after` is the platform's
+ * `waitUntil` rather than a new invocation — and it would make the ordering against
+ * `runNinaBackgroundTurn`'s chain unpredictable. Its two call sites are both in that function, and
+ * both already sit after the response has gone out.
  *
  * **`messageCount` is an exact count and still costs no query (F35 phase 3).** It used to be
  * `context.conversation.window.length` — the 40-message window, "exact everywhere below 40", which
@@ -896,7 +1306,7 @@ export async function describeNinaImage(
  * strictly better than what this comment used to promise, and it makes "the first conversation" a
  * property of the relationship rather than of a session — which is what the phrase means.
  */
-function scheduleDistillation(input: {
+async function runNinaDistillation(input: {
   userId: string
   runnerText: string
   sourceMessageId: string
@@ -910,22 +1320,20 @@ function scheduleDistillation(input: {
    * turn and is documented as the boundary of everything she may know (plan invariant 3).
    */
   relationship: NinaRelationship
-}): void {
-  after(async () => {
-    await runTurnDistillation({
-      userId: input.userId,
-      runnerText: input.runnerText,
-      sourceMessageId: input.sourceMessageId,
-      ninaBubbles: input.ninaBubbles,
-      memoryWrites: input.memoryWrites,
-      slots: input.context.memory.slots.map((slot) => ({ key: slot.key, value: slot.value })),
-      identity: {
-        fullName: input.context.runner.fullName,
-        nickname: input.context.runner.nickname,
-        messageCount:
-          input.context.conversation.window.length + input.context.conversation.olderMessageCount,
-      },
-      relationship: input.relationship,
-    })
+}): Promise<void> {
+  await runTurnDistillation({
+    userId: input.userId,
+    runnerText: input.runnerText,
+    sourceMessageId: input.sourceMessageId,
+    ninaBubbles: input.ninaBubbles,
+    memoryWrites: input.memoryWrites,
+    slots: input.context.memory.slots.map((slot) => ({ key: slot.key, value: slot.value })),
+    identity: {
+      fullName: input.context.runner.fullName,
+      nickname: input.context.runner.nickname,
+      messageCount:
+        input.context.conversation.window.length + input.context.conversation.olderMessageCount,
+    },
+    relationship: input.relationship,
   })
 }

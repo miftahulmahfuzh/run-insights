@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
-import { sendNinaMessage } from '@/lib/nina/actions'
+import { pollNinaReply, sendNinaMessage, type SentBubble } from '@/lib/nina/actions'
 import {
   ATTACH_PARAM,
   PHOTO_PARAM,
@@ -26,6 +26,11 @@ import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { QUOTE_FLASH_MS, buildQuote, planQuoteScroll, type QuoteView } from '@/lib/nina/reply'
 import { planReveal } from '@/lib/nina/reveal'
+import {
+  NINA_TURN_POLL_GIVE_UP_MS,
+  ninaPollDelayFor,
+  type NinaFlightView,
+} from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageActionsSheet } from './MessageActionsSheet'
@@ -59,14 +64,42 @@ import { useChatScrollMark } from './useChatScroll'
  * is the same shape one interaction earlier.
  *
  * ── THE TWO FAILURE STATES, AND WHY NEITHER IS A FAKE NINA MESSAGE ────────────────────────────
- * A thrown action is a send that did not happen; a returned `unavailable` or an empty `bubbles`
- * array is phase 3's documented silence after a repair also failed. They are told apart because
+ * A thrown or refused action is a send that did not happen. A turn that produced nothing — she
+ * declined, the model was unavailable, or the background task died and the sweep closed it — is
+ * learned from `pollNinaReply` returning `awaiting: false` with no new bubbles, because after the
+ * split the action returns long before she has said anything. They are told apart because
  * they call for different things — try again, versus she has nothing to say. Neither is rendered
  * as a bubble. Putting app-authored words in her mouth would be the fabrication `lib/llm/narrate.ts`
  * refuses ("the only safe fallback for prose is the absence of prose"), and it would teach the
  * runner to distrust every other bubble on the screen. R22's in-character apology is a genuinely
  * different case — a *tool* failing mid-turn, which phase 12 owns, and where Nina really is the one
  * who should speak.
+ *
+ * ── WHAT THE SPLIT CHANGED, AND WHAT IT DELIBERATELY DID NOT (F36 R6) ─────────────────────────
+ * `sendNinaMessage` no longer waits for the model. It persists his message and returns, so the
+ * bubble goes `sent` on the ACTION'S RETURN rather than on Nina's reply — which is the whole of
+ * R6's "i send the message, it quickly shown that the message is sent". Her bubbles arrive
+ * afterwards, through `pollNinaReply`, and the staggered reveal above runs on ARRIVAL instead of on
+ * return.
+ *
+ * **Every word of the transition argument above still holds, and the poll is why it holds harder.**
+ * The reveal is still a sequence of `setState` calls separated by real time, so it is still outside
+ * `startTransition` / `useActionState` / `useOptimistic` for exactly the reasons given — and the
+ * arrival path had to be a poll returning DATA rather than a `router.refresh()`, precisely because
+ * a refresh delivers all four bubbles through `mergeServerMessages` in one frame. See
+ * `pollNinaReply`'s own header for the two reasons the push seam is not used here.
+ *
+ * **`busy` now covers the ACTION, not the turn.** It used to be held for the whole 13-45 s, which
+ * is the grey state R6 is about. It is released the moment the action returns, so a second message
+ * can be sent while she is still answering — WhatsApp's actual behaviour. The server's claim on
+ * `nina_turns` is what stops that becoming a second concurrent model call.
+ *
+ * **The failure states are unchanged and neither is still a fake Nina message.** A thrown or
+ * refused action is 'send-failed'. A turn that produced nothing — she declined, or the background
+ * task died and the sweep closed it — is 'no-reply', raised by the poll rather than by the send.
+ * Its existing copy is now more true than it was: his message really was persisted before the model
+ * was called, and `loadNinaContext` reads the session window, so "send another and she will pick it
+ * up" describes a mechanism rather than a hope.
  */
 
 type Notice =
@@ -79,6 +112,10 @@ type Notice =
 
 const NOTICE_TEXT: Record<Notice, string> = {
   'send-failed': 'That didn’t send. Check your connection and try it again.',
+  /* Raised by the POLL, not by the send (F36 R6). Three states read the same to the runner and are
+   * deliberately not told apart in the copy: she answered with nothing, the model was unavailable,
+   * or the background turn died and the sweep closed it. He does not care which; he cares that his
+   * message is safe and that one more tap gets him an answer. Both halves are now literally true. */
   'no-reply':
     'Nina went quiet on that one. Your message is saved — send another and she will pick it up.',
   /* R12's honest end of the degradation. The quote rendered, so the target existed when the page
@@ -119,6 +156,7 @@ export function ChatScreen({
   sessionId,
   pending,
   pendingPhoto,
+  flight,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -174,9 +212,52 @@ export function ChatScreen({
    * onto the new row (invariant 5).
    */
   pendingPhoto: NinaExistingPhoto | null
+  /**
+   * **F36 R6. Whether a turn is already in flight when this screen mounts, and where the poll
+   * resumes from.**
+   *
+   * Computed on the server by `ninaFlightView` from the rows `app/nina/page.tsx` has ALREADY read —
+   * zero extra queries, which is why it is a pure function over `listNinaMessages`'s output and not
+   * a fifth read in that page's `Promise.all`.
+   *
+   * It is what makes "the app does not care whether user close the app" true for the case that
+   * actually happens: he sends, locks his phone, comes back forty seconds later. Without it the
+   * reopened screen would show his message with no indicator and no poll, and her reply would only
+   * appear if he happened to reload again. With it, the screen mounts already awaiting.
+   *
+   * `awaiting` is a HEURISTIC here — a cold load has no claim row in hand, so it is "the newest row
+   * is his and it is younger than `NINA_TURN_STALE_MS`". The first poll's answer is authoritative
+   * and corrects it inside two seconds. `ninaAwaitingByMessage`'s docstring carries the argument
+   * for why that direction of error is the safe one.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit and for the reason `sessionId` and
+   * `pendingPhoto` are: `app/nina/page.tsx` is the one caller and `tsc` should be what notices if
+   * it stops passing it. An optional prop defaulting to "not awaiting" would turn a broken page
+   * into a chat that silently never polled.
+   */
+  flight: NinaFlightView
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
+  /** Mid-reveal: the pause between two of her bubbles. Distinct from `awaiting`; see the render. */
   const [typing, setTyping] = useState(false)
+  /**
+   * F36 R6. She has a message of his that she has not answered, so the poll is running and the
+   * indicator is up. Seeded from the server so a cold load mid-turn already shows it.
+   */
+  const [awaiting, setAwaiting] = useState(flight.awaiting)
+  /**
+   * F36 R6. The conversation the poll asks about. Seeded from the prop and REPLACED by the send's
+   * answer, because `sessionId` may legitimately be `null` — "he has no sessions at all" — and the
+   * ACTION is what resolves or creates one. Without adopting it, the first message of a brand-new
+   * runner would send fine and then be polled for in a conversation the client cannot name.
+   */
+  const [liveSessionId, setLiveSessionId] = useState(sessionId)
+  /**
+   * F36 R6. `nina_messages.seq` of the newest row this screen holds — the poll's cursor. A REF and
+   * not state: it is read inside the poll loop and written by both the send and the poll, and a
+   * stale closure over it would re-read the same rows for ever. Nothing renders from it.
+   */
+  const cursorRef = useRef(flight.cursor)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [overlap, setOverlap] = useState(0)
@@ -270,12 +351,19 @@ export function ChatScreen({
    * bubbles behind a typing indicator that never resolves.
    */
   const flashTimer = useRef<number | null>(null)
+  /*
+   * Its own handle, on `flashTimer`'s exact reasoning. The poll's backoff wait and the reveal's
+   * `sleep` never overlap — the loop awaits one then the other — but sharing `timer` would mean the
+   * next person to add a cancel path silently cancels the wrong one.
+   */
+  const pollTimer = useRef<number | null>(null)
   useEffect(() => {
     alive.current = true
     return () => {
       alive.current = false
       if (timer.current !== null) window.clearTimeout(timer.current)
       if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
+      if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
     }
   }, [])
 
@@ -574,6 +662,153 @@ export function ChatScreen({
     return true
   }, [])
 
+  /**
+   * RU-5's staggered reveal, lifted verbatim out of `handleSend` so the SEND path and the POLL path
+   * cannot drift into two different rhythms. It is the only writer of `typing` besides the poll's
+   * own start and stop.
+   *
+   * It guards on `alive.current` at every timed step and on nothing else. Callers are sequential by
+   * construction — the poll loop awaits this before deciding whether to keep polling — so there is
+   * no second reveal to interleave with, and the single `timer` handle stays safe.
+   */
+  const revealBubbles = useCallback(async (bubbles: readonly SentBubble[]) => {
+    const plan = planReveal(bubbles.map((b) => b.body))
+    for (const [index, bubble] of bubbles.entries()) {
+      const gap = plan[index] ?? 0
+      if (gap > 0) {
+        setTyping(true)
+        await sleep(gap)
+        if (!alive.current) return
+      }
+      // The indicator stays up while there is another thought coming, and drops with the last.
+      setTyping(index < bubbles.length - 1)
+      setMessages((current) => [
+        ...current,
+        {
+          id: bubble.id,
+          role: 'nina',
+          body: bubble.body,
+          dayISO: todayInJakarta(),
+          state: 'sent',
+          /*
+           * HER OWN QUOTE. She may have replied to a specific message, and the server puts her
+           * `reply_to_id` on the FIRST bubble only ("a four-bubble reply is one answer to one
+           * message"). A hard `null` here would mean the quote only appeared on the next server
+           * render of `/nina`.
+           */
+          replyToId: bubble.replyToId,
+        },
+      ])
+    }
+    setTyping(false)
+  }, [])
+
+  /**
+   * **The arrival loop (F36 R6).** Runs while `awaiting` is true and stops itself the moment the
+   * server says there is nothing outstanding.
+   *
+   * ── ONE SEQUENTIAL ASYNC LOOP, NOT A `setInterval` ───────────────────────────────────────────
+   * Because a tick must not fire while the previous request is in flight, and — the part that
+   * matters — because a tick must not fire while a REVEAL is in progress. An interval would race
+   * the reveal's own `sleep` for the shared timer handle and could deliver a second batch of
+   * bubbles into the middle of the first batch's stagger. Awaiting each step in order makes both
+   * impossible by construction rather than by a guard someone has to remember.
+   *
+   * ── WHY IT DOES NOT STOP ON THE FIRST BUBBLES ────────────────────────────────────────────────
+   * Because a burst chains: the server may answer his first message, then open a second turn for
+   * the two he sent while she was typing. The stop condition is the server's `awaiting`, which is
+   * "is anything of his unanswered", not "did I just receive something".
+   *
+   * ── THE GIVE-UP ─────────────────────────────────────────────────────────────────────────────
+   * `NINA_TURN_POLL_GIVE_UP_MS` is the same number as the server's `NINA_TURN_STALE_MS`, asserted
+   * in `lib/nina/turnflight.test.ts`. By the time it fires, the server has already closed the row
+   * as dead, so the notice it raises is a fact. It exists for the case where the poll ITSELF cannot
+   * reach the server — an offline phone — where no server answer is coming at all.
+   */
+  useEffect(() => {
+    if (!awaiting) return
+    let cancelled = false
+
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        pollTimer.current = window.setTimeout(resolve, ms)
+      })
+
+    const stop = (raised: Notice | null) => {
+      setAwaiting(false)
+      setTyping(false)
+      if (raised !== null) setNotice(raised)
+    }
+
+    const run = async () => {
+      const startedAt = Date.now()
+      let attempts = 0
+
+      while (!cancelled && alive.current) {
+        await wait(ninaPollDelayFor(attempts))
+        if (cancelled || !alive.current) return
+        attempts += 1
+
+        let result: Awaited<ReturnType<typeof pollNinaReply>> | null = null
+        try {
+          result = await pollNinaReply({
+            sessionId: liveSessionId,
+            afterSeq: cursorRef.current,
+          })
+        } catch {
+          result = null
+        }
+        if (cancelled || !alive.current) return
+
+        const expired = Date.now() - startedAt >= NINA_TURN_POLL_GIVE_UP_MS
+
+        if (result === null || !result.ok) {
+          /* The poll itself failed. It has learned nothing, so it says nothing and tries again —
+           * until the give-up, which is the only thing that ends an offline wait. */
+          if (expired) {
+            stop('no-reply')
+            return
+          }
+          continue
+        }
+
+        cursorRef.current = result.cursor
+
+        if (result.bubbles.length > 0) {
+          setNotice(null)
+          /*
+           * `setAwaiting(false)` BEFORE the reveal when the server says nothing is outstanding, so
+           * the indicator is owned by `typing` alone for the duration of the stagger. Flipping it
+           * re-runs this effect's cleanup and sets `cancelled`, which is harmless: `revealBubbles`
+           * guards on `alive.current`, and this iteration returns immediately afterwards.
+           */
+          if (!result.awaiting) setAwaiting(false)
+          await revealBubbles(result.bubbles)
+          if (cancelled || !alive.current) return
+          if (!result.awaiting) return
+          continue
+        }
+
+        if (!result.awaiting) {
+          /* Nothing outstanding and nothing new: she said nothing, or the turn is dead and the
+           * server has closed it. One notice covers all of it — see NOTICE_TEXT's comment. */
+          stop('no-reply')
+          return
+        }
+        if (expired) {
+          stop('no-reply')
+          return
+        }
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+      if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
+    }
+  }, [awaiting, liveSessionId, revealBubbles])
+
   const handleSend = useCallback(
     async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
       if (busy) return
@@ -641,8 +876,10 @@ export function ChatScreen({
           attachment: sending,
         },
       ])
+      /* No `setTyping(true)` here any more (F36 R6): `awaiting` drives the indicator from the
+       * moment the action RETURNS, and raising it before the round trip would show Nina typing in
+       * response to a message that had not been accepted yet. */
       setBusy(true)
-      setTyping(true)
 
       let result: Awaited<ReturnType<typeof sendNinaMessage>> | null = null
       try {
@@ -678,9 +915,18 @@ export function ChatScreen({
       }
       if (!alive.current) return
 
+      /*
+       * **`busy` is released HERE (F36 R6).** It used to be held for the whole 13-45 s turn, and
+       * that is the grey composer R6 is about. The action's own round trip is one insert and one
+       * conditional insert, so this is well under a second and the Send button is live again while
+       * she is still answering — which is what WhatsApp does. The server's claim on `nina_turns` is
+       * what stops the next message becoming a second concurrent model call.
+       */
+      setBusy(false)
+
       if (result === null || !result.ok) {
+        setAwaiting(false)
         setTyping(false)
-        setBusy(false)
         setMessages((current) =>
           current.map((m) => (m.id === localId ? { ...m, state: 'failed' } : m)),
         )
@@ -688,8 +934,8 @@ export function ChatScreen({
         return
       }
 
-      // Adopt the server's id for the runner's own row, so phase 7 can quote it and phase 8 can
-      // anchor to it. Until this point it carried a client-minted `local-` id.
+      // Adopt the server's id for the runner's own row, so a quote can name it and the actions
+      // sheet can act on it. Until this point it carried a client-minted `local-` id.
       const confirmedId = result.userMessageId
       setMessages((current) =>
         current.map((m) =>
@@ -697,56 +943,38 @@ export function ChatScreen({
         ),
       )
 
-      const bubbles = result.bubbles
-      if (bubbles.length === 0) {
-        // `unavailable` and a merely empty reply read the same to the runner — he does not care
-        // *why* she said nothing. The distinction stays in the result type, not in the copy.
-        setTyping(false)
-        setBusy(false)
-        setNotice('no-reply')
-        return
-      }
-
-      const plan = planReveal(bubbles.map((b) => b.body))
-      for (const [index, bubble] of bubbles.entries()) {
-        const gap = plan[index] ?? 0
-        if (gap > 0) {
-          setTyping(true)
-          await sleep(gap)
-          if (!alive.current) return
-        }
-        // The indicator stays up while there is another thought coming, and drops with the last.
-        setTyping(index < bubbles.length - 1)
-        setMessages((current) => [
-          ...current,
-          {
-            id: bubble.id,
-            role: 'nina',
-            body: bubble.body,
-            dayISO: todayInJakarta(),
-            state: 'sent',
-            /*
-             * HER OWN QUOTE, ON THE OPTIMISTIC REVEAL. She may have replied to a specific message,
-             * and phase 3 puts her `reply_to_id` on the FIRST bubble only ("a four-bubble reply is
-             * one answer to one message"). A hard `null` here would mean the quote only appeared on
-             * the next server render of `/nina` — R12's UI lagging the database by a page load, for
-             * two lines. RULING B1 assigned those two lines to phase 7, which already edits
-             * `lib/nina/actions.ts` where `SentBubble` is declared.
-             */
-            replyToId: bubble.replyToId,
-          },
-        ])
-      }
-
-      setTyping(false)
-      setBusy(false)
+      /*
+       * The three things the poll needs, all of them facts the server just established.
+       *
+       * `sessionId` is adopted because the prop may have been `null` — "he has no sessions at all"
+       * is a real state and the ACTION resolves or creates one. `cursor` is his row's `seq`, so the
+       * first poll asks for everything strictly after his own message. `awaiting` goes true
+       * unconditionally on a successful send, INCLUDING when `result.turnId` is null: a null turn
+       * id means a turn was already running and will chain onto this message, so something is very
+       * much still coming.
+       */
+      if (result.sessionId !== null) setLiveSessionId(result.sessionId)
+      if (result.cursor !== null) cursorRef.current = result.cursor
+      setAwaiting(true)
     },
     [busy, draftQuote, attachment, photo, sessionId],
   )
 
+  /*
+   * F36 R6. The indicator is up while the SERVER owes an answer (`awaiting`) and between two of her
+   * bubbles mid-reveal (`typing`). Two pieces of state and one derived flag, rather than one
+   * overloaded boolean, because the poll and the reveal legitimately own different stretches of the
+   * same wait and each must be able to end its own without ending the other's.
+   *
+   * This is the honest signal R6 asks for: it means "she is answering", where the grey bubble it
+   * replaces meant "your message has not been saved yet" — which was never what the runner read it
+   * as, and is no longer true for even a second.
+   */
+  const showTyping = awaiting || typing
+
   return (
     <>
-      {messages.length === 0 && !typing ? (
+      {messages.length === 0 && !showTyping ? (
         <EmptyState
           title="Nina has not started yet"
           description="Say something and she will answer. She has read every run you have logged, so she already has opinions."
@@ -754,7 +982,7 @@ export function ChatScreen({
       ) : (
         <MessageList
           messages={messages}
-          typing={typing}
+          typing={showTyping}
           todayISO={todayISO}
           keyboardOverlapPx={overlap}
           restoreMark={mark}
@@ -772,7 +1000,7 @@ export function ChatScreen({
 
       {/* The spoken half of the typing indicator. The dots themselves are `aria-hidden`. */}
       <p className="sr-only" role="status" aria-live="polite">
-        {typing ? 'Nina is typing' : ''}
+        {showTyping ? 'Nina is typing' : ''}
       </p>
 
       <Composer

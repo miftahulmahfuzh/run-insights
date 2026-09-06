@@ -413,8 +413,14 @@ export const dbNinaToolGateway: NinaToolGateway & NinaMemoryGateway = {
  * `kind: 'chat'` and `trigger: null` for every turn this phase writes; phase 10 hands in the other
  * values. `rounds` is deliberately absent — phase 1's table has no such column and this phase does
  * not add one; `tool_calls` carries the names, which is strictly more than a count would say.
+ *
+ * ── EXPORTED, BECAUSE THERE ARE NOW TWO WRITE SITES AND STILL ONE MAP (F36 R6) ────────────────
+ * `lib/nina/chatturn.ts` closes a background chat turn by UPDATING a row it opened before the model
+ * was called, rather than INSERTing one after. It needs the identical translation, and the
+ * paragraph above is the argument for handing it this constant instead of letting it spell a second
+ * one: the drift this map exists to prevent is exactly what a copy would reintroduce.
  */
-const STATUS_BY_SOURCE = {
+export const STATUS_BY_SOURCE = {
   llm: 'ok',
   llm_repair: 'repaired',
   unavailable: 'failed',

@@ -4,6 +4,7 @@ import {
   desc,
   eq,
   exists,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -1058,6 +1059,42 @@ export async function listNinaMessages(
     .limit(opts.limit)
 
   return rows.reverse()
+}
+
+/**
+ * **The poll's read (F36 R6): everything in one session newer than a `seq` the client already
+ * holds, oldest first.**
+ *
+ * ── WHY A CURSOR AND NOT A RE-READ OF THE WHOLE WINDOW ────────────────────────────────────────
+ * `ChatScreen` polls this every 1.5–4 s while a turn is in flight, and it needs exactly the rows it
+ * does not have — because those rows are then handed to `planReveal`, which staggers them. Handing
+ * back the whole 200-row window instead would mean the client diffing it, and `mergeServerMessages`
+ * (the diff it already has) deliberately delivers everything in ONE frame. That is correct for a
+ * push-driven refresh and wrong here: it would collapse RU-5's four-bubble reveal into a single
+ * paint, which is the exact inversion `ChatScreen`'s header spends a paragraph forbidding.
+ *
+ * `seq` is a `bigserial` and therefore a total order Postgres assigns (invariant 6), so "> cursor"
+ * is a strict, gap-tolerant cursor: a row inserted concurrently gets a higher `seq` and is simply
+ * on the next poll.
+ *
+ * `limit` is a safety rail, not a page size. A turn emits at most `MAX_BUBBLES` (4) and a burst can
+ * add a handful of his own rows, so 50 is far past anything a single poll can legitimately see; a
+ * poll that hits it is a poll whose caller lost its cursor.
+ *
+ * The `user_id` predicate stays alongside the session predicate, exactly as `messageScope` requires
+ * (invariant 3): a forged `sessionId` from a client comes back as `[]`, never as somebody else's
+ * conversation.
+ */
+export async function listNinaMessagesAfter(
+  userId: string,
+  opts: { sessionId: string; afterSeq: number; limit?: number },
+): Promise<NinaMessageRow[]> {
+  return db
+    .select(messageColumns)
+    .from(ninaMessages)
+    .where(and(messageScope(userId, opts.sessionId), gt(ninaMessages.seq, opts.afterSeq)))
+    .orderBy(asc(ninaMessages.seq))
+    .limit(opts.limit ?? 50)
 }
 
 /**

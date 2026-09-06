@@ -22,6 +22,7 @@ import { SESSION_PARAM, chooseActiveSession, parseNinaSessionParam } from '@/lib
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import { reviveNinaImageJobs } from '@/lib/nina/imagerun'
 import { sessionTitleFor } from '@/lib/nina/sessions'
+import { ninaFlightView } from '@/lib/nina/turnflight'
 import { NINA_CHAT_HREF, sessionDayLabel, type SidebarSession } from '@/lib/nina/sidebar'
 import {
   getCurrentNinaAvatar,
@@ -263,6 +264,26 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const todayISO = todayInJakarta()
 
   /*
+   * **F36 R6. Is a turn already in flight for the conversation this render is painting?**
+   *
+   * ZERO EXTRA QUERIES. `rows` is `listNinaMessages`'s output — oldest first — and the question is
+   * answered by its last element: the newest row is his, and it is younger than
+   * `NINA_TURN_STALE_MS`. `ninaFlightView` is that predicate as a pure function so the page, the
+   * poll action and the client cannot come to disagree about what "unanswered" means; its suite
+   * asserts the agreement.
+   *
+   * A HEURISTIC, and knowingly. This render cannot see the `nina_turns` claim without a further
+   * read, and it does not need to: `ChatScreen` starts a poll on the strength of it, and the poll's
+   * first answer — which DOES read the claim — is authoritative within two seconds. The one
+   * direction it errs in is starting a poll that finds nothing, which is a single indexed batch.
+   * The opposite error, hiding a reply that is on its way, is the one that would matter.
+   *
+   * `cursor` rides along because the screen needs somewhere to resume from, and the newest row's
+   * `seq` is exactly that. Invariant 4 is untouched: this is arithmetic over rows already in hand.
+   */
+  const flight = ninaFlightView(rows, Date.now())
+
+  /*
    * The sidebar's rows — F35 R6/R4/R11, phase 5.
    *
    * **Every cross-phase dependency in this phase is concentrated here, on purpose.** The three
@@ -470,6 +491,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
           sessionId={activeSessionId}
           pending={pending}
           pendingPhoto={pendingPhoto}
+          flight={flight}
         />
 
         {/*
