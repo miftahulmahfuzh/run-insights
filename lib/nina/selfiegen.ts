@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { fireNinaImageDispatch } from './imagedispatch'
+import { fireNinaImageGeneration } from './imagerun'
 import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
@@ -12,9 +12,11 @@ import { readNinaTuning } from './queries'
  * sweep when the reward is a photograph she sends him (R5).
  *
  * ── IT ACCEPTS, IT DOES NOT DELIVER ───────────────────────────────────────────────────────────
- * `{ ok: true, state: 'dispatched' }` means the job row exists and GitHub has been rung — NOT that
- * a photograph exists. `scripts/nina-image-worker.ts` writes the `nina_messages` +
- * `nina_message_images` pair 1-3 minutes later (`finishSelfie`), with `turn_id` set to the job id.
+ * `{ ok: true, state: 'dispatched' }` means the job row exists and the generation has been scheduled
+ * on this server's remaining wall clock (`lib/nina/imagerun.ts`) — NOT that a photograph exists.
+ * `lib/nina/imagerun.ts` writes the `nina_messages` + `nina_message_images` pair ~80-120 s later
+ * (`finishSelfie`); `scripts/nina-image-worker.ts` is the backstop that does it if this invocation
+ * could not. Either way `turn_id` is set to the job id.
  * That `turn_id` is what the promise evaluator matches on, and it is the whole reason the settle
  * test can be exact instead of same-day.
  *
@@ -89,7 +91,19 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     sidecar: sidecarText({ prompt, seed, purpose: 'selfie' }),
   })
 
-  fireNinaImageDispatch({ userId, jobId, purpose: 'selfie', replyToId })
+  /*
+   * **The generation, on this server, in `after()`.** It used to be `fireNinaImageDispatch`, which
+   * POSTed a `workflow_dispatch` at GitHub; the 60 s ceiling that forced that is gone (see
+   * `imagerun.ts`'s header), and with it the grace window that made a targeted dispatch
+   * mathematically incapable of claiming the job it was dispatched for.
+   *
+   * `state: 'dispatched'` below is UNCHANGED on purpose. It has always meant "the job row exists
+   * and the work has been handed off, NOT that a photograph exists", and it still does — only the
+   * host on the other side of the handoff changed. Renaming it would edit `imagetools.ts`,
+   * `avatartools.ts` and `promises.ts` for no behavioural gain, and those three files belong to
+   * other phases.
+   */
+  fireNinaImageGeneration({ userId, jobId, purpose: 'selfie', replyToId })
 
   return { ok: true, jobId, state: 'dispatched' }
 }

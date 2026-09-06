@@ -26,6 +26,7 @@
     "db:studio": "drizzle-kit studio",
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
     "blob:reap": "node --env-file=.env.local scripts/blob-reap.mjs",
+    "nina:memory-reap": "node --env-file=.env.local scripts/nina-memory-reap.mjs",
     "badges:backfill-runs": "node --env-file=.env.local scripts/backfill-badge-run-ids.mjs",
     "records:backfill": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-record-keys.mjs",
     "nina:profpic": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/nina-profpic.mjs",
@@ -47,7 +48,8 @@
     "test:live:vision": "LLM_LIVE_TEST=1 vitest run tests/live/vision.live.test.ts",
     "test:live:narrate": "LLM_LIVE_TEST=1 vitest run tests/live/narrate.live.test.ts",
     "test:live:nina": "LLM_LIVE_TEST=1 vitest run tests/live/nina.live.test.ts",
-    "test:live:nina-vision": "LLM_LIVE_TEST=1 vitest run tests/live/ninaVision.live.test.ts"
+    "test:live:nina-vision": "LLM_LIVE_TEST=1 vitest run tests/live/ninaVision.live.test.ts",
+    "test:live:nina-image": "LLM_LIVE_TEST=1 vitest run tests/live/ninaImageE2E.live.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",

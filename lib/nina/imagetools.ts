@@ -32,11 +32,12 @@ import { generateNinaSelfie } from './selfiegen'
  * persona, what makes a retry reproduce the same photograph rather than a different one, and what
  * lets the backstop schedule work on a job nobody told it about.
  *
- * ── AND IF THE DOORBELL NEVER RINGS ───────────────────────────────────────────────────────────
- * The job row is already written. `fireNinaImageDispatch` fails it with an apology if the GitHub
- * call is refused; the backstop schedule retries it if the call succeeded but no runner ran; the
- * on-read sweep gives up and apologises at 20 minutes if GitHub is dead. So the failure mode of the
- * doorbell is "she says sorry" or "it happens anyway", never "the bubble spins forever".
+ * ── AND IF THE GENERATION NEVER STARTS ────────────────────────────────────────────────────────
+ * The job row is already written. `fireNinaImageGeneration` ends every failed generation in
+ * `failNinaImageJob`, which is her apology; `reviveNinaImageJobs` re-fires a job whose invocation
+ * was killed, on the next `/nina` render; the demoted GitHub backstop is behind that; and the
+ * on-read sweep gives up and apologises at 20 minutes. So the failure mode of the handoff is "she
+ * says sorry" or "it happens anyway", never "the bubble spins forever"
  */
 
 /**

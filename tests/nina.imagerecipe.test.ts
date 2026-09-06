@@ -8,16 +8,23 @@ import {
   jakartaDayStart,
   NINA_IMAGE_ASPECT,
   NINA_IMAGE_COST_MICRO_USD,
+  NINA_IMAGE_CALL_TIMEOUT_MS,
   NINA_IMAGE_DAILY_CAP,
   NINA_IMAGE_DISPATCH_GRACE_MS,
+  NINA_IMAGE_FINISH_RESERVE_MS,
   NINA_IMAGE_MAX_ATTEMPTS,
   NINA_IMAGE_MODEL,
   NINA_IMAGE_PATHNAME_RE,
   NINA_IMAGE_RECLAIM_MS,
   NINA_IMAGE_RESOLUTION,
+  NINA_IMAGE_REVIVE_BUDGET,
+  NINA_IMAGE_RUN_BUDGET_MS,
+  NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS,
   NINA_IMAGE_STALE_MS,
   NINA_IMAGE_SWEEP_BUDGET,
   ninaImagePathname,
+  NINA_HOST_MAX_DURATION_MS,
+  NINA_TURN_SPENT_MS,
   NINA_WORKER_CALL_TIMEOUT_MS,
   NINA_WORKER_TIMEOUT_MINUTES,
   OPENROUTER_IMAGE_URL,
@@ -267,10 +274,11 @@ describe('jakartaDayStart', () => {
 })
 
 describe('the threshold chain', () => {
-  // Every one of these is derived in the plan's §The threshold arithmetic. They are asserted here so
-  // an edit to one cannot silently break the ordering the whole R22 guarantee rests on.
+  // Every one of these is derived in the phase plan's Step 7. They are asserted here so an edit to
+  // one cannot silently break the ordering the whole R22 guarantee rests on. TWO HOSTS now: the
+  // Vercel invocation that does the work, and the GitHub runner that backstops it.
 
-  it('the call timeout is at least 2x the measured 78.2 s', () => {
+  it('the backstop worker keeps its own timeout, at least 2x the measured 78.2 s', () => {
     expect(NINA_WORKER_CALL_TIMEOUT_MS).toBeGreaterThanOrEqual(160_000)
   })
 
@@ -280,24 +288,66 @@ describe('the threshold chain', () => {
     )
   })
 
-  it('a running job is only reclaimed after it cannot still be running', () => {
-    // > the workflow ceiling, or a live generation would be claimed twice and billed twice.
-    expect(NINA_IMAGE_RECLAIM_MS).toBeGreaterThan(NINA_WORKER_TIMEOUT_MINUTES * 60_000)
+  it('the in-platform run fits inside the host ceiling with a full turn already spent', () => {
+    // THE inequality the whole in-platform design rests on. 45 + 200 = 245 <= 300.
+    expect(NINA_TURN_SPENT_MS + NINA_IMAGE_RUN_BUDGET_MS).toBeLessThanOrEqual(
+      NINA_HOST_MAX_DURATION_MS,
+    )
   })
 
-  it('the dispatch grace is shorter than the reclaim', () => {
+  it('one whole attempt plus its finish writes fits inside the run budget', () => {
+    // Otherwise `runNinaImageJob` could never start even its FIRST attempt without overrunning.
+    expect(NINA_IMAGE_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS).toBeLessThanOrEqual(
+      NINA_IMAGE_RUN_BUDGET_MS,
+    )
+  })
+
+  it('the in-platform call timeout is above the measured 78.2 s and below the worker’s', () => {
+    // Above, or a merely slow day throws away $0.04 and a photograph. Below the worker's 240 s,
+    // because THIS host has a ceiling to race and that one does not.
+    expect(NINA_IMAGE_CALL_TIMEOUT_MS).toBeGreaterThan(78_200)
+    expect(NINA_IMAGE_CALL_TIMEOUT_MS).toBeLessThan(NINA_WORKER_CALL_TIMEOUT_MS)
+  })
+
+  it('a running job is only reclaimed after NEITHER host can still be running it', () => {
+    // Reclaiming sooner claims a live generation twice and bills it twice. Both ceilings, because
+    // either host may have been the one that died.
+    expect(NINA_IMAGE_RECLAIM_MS).toBeGreaterThan(NINA_WORKER_TIMEOUT_MINUTES * 60_000)
+    expect(NINA_IMAGE_RECLAIM_MS).toBeGreaterThan(NINA_HOST_MAX_DURATION_MS)
+  })
+
+  it('the not-yet-started grace is shorter than the reclaim', () => {
+    // A queued row that nobody picked up is safe to steal long before a running one is.
     expect(NINA_IMAGE_DISPATCH_GRACE_MS).toBeLessThan(NINA_IMAGE_RECLAIM_MS)
   })
 
   it('the app gives up only after the retries can have been exhausted', () => {
-    // Otherwise she would apologise while a runner was still generating, and the photograph would
+    // Otherwise she would apologise while a generation was still running, and the photograph would
     // land after the apology. THIS is the inequality R22 depends on most.
     expect(NINA_IMAGE_STALE_MS).toBeGreaterThan(NINA_IMAGE_MAX_ATTEMPTS * NINA_IMAGE_RECLAIM_MS)
   })
 
-  it('a sweep run cannot exceed the workflow ceiling', () => {
-    // 3 x 78 s at the measured latency, inside 6 minutes.
+  it('a backstop sweep run cannot exceed the workflow ceiling', () => {
     expect(NINA_IMAGE_SWEEP_BUDGET * 90_000).toBeLessThan(NINA_WORKER_TIMEOUT_MINUTES * 60_000)
+  })
+
+  it('the schedule backstop cannot beat the give-up, and nothing may assume it can', () => {
+    // PHASE 1'S ASSERTION, KEPT. FINDING 3. The workflow declares `*/10` and twelve consecutive
+    // measured runs came 1 h 46 m to 4 h 19 m apart. The original chain was derived as if a
+    // ten-minute rescue existed, which put the backstop comfortably inside the 20-minute give-up;
+    // it is in fact five to thirteen times OUTSIDE it. This asserts the DIRECTION rather than the
+    // magnitude, so it survives a re-measure and fails the moment someone lowers STALE on the
+    // strength of the declared cron.
+    //
+    // It matters MORE after the migration, not less: the backstop is now the third net behind
+    // reviveNinaImageJobs and the give-up sweep, and a reader who mistook it for the first would
+    // conclude the deadline has hours of slack it does not have.
+    expect(NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS).toBeGreaterThan(NINA_IMAGE_STALE_MS)
+  })
+
+  it('a render revives at most one job', () => {
+    // A burst of six must not become six concurrent generations on one invocation's wall clock.
+    expect(NINA_IMAGE_REVIVE_BUDGET).toBe(1)
   })
 
   it('the retry budget is small and positive', () => {

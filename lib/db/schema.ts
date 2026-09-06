@@ -841,11 +841,22 @@ export const ninaMessages = pgTable(
      * **Cascade, and it is a requirement rather than a detail (R11).** Removing a session must take
      * its messages, and through `nina_message_images.message_id`'s cascade their image rows —
      * Postgres chains both from one DELETE. What it deliberately does NOT take: the Blob objects
-     * behind those image rows (the rows go, the bytes stay, exactly as for a deleted message), and
-     * the `source_message_id` pointers in `nina_memory_slots` / `nina_memory_facts`, which carry no
-     * foreign key at all and so leave dangling provenance rather than cascading a fact away. That
-     * is the memory ledger staying global on purpose: a distilled fact can be true after the
-     * sentence that produced it is gone.
+     * behind those image rows (the rows go, the bytes stay, exactly as for a deleted message).
+     *
+     * **This comment used to also say that the `source_message_id` pointers in
+     * `nina_memory_slots` / `nina_memory_facts` were left dangling on purpose — "the memory ledger
+     * staying global on purpose: a distilled fact can be true after the sentence that produced it
+     * is gone". That is no longer what happens on a SESSION delete, and the reversal is
+     * deliberate.** `loadNinaContext` reads one session's message window but the whole
+     * relationship's ledger, so the ledger was the only surviving channel by which a deleted
+     * conversation still reached Nina's prompt, and the runner measured the result as her character
+     * being polluted and worsening over time. `lib/nina/queries.ts`'s `removeNinaSession` therefore
+     * purges those rows in the same transaction as the delete, and its header carries the full
+     * argument including why this is NOT a foreign key.
+     *
+     * The old sentence still holds for a deleted MESSAGE, which is why `deleteNinaMessage` is
+     * unchanged and why neither column gained an FK: an `ON DELETE CASCADE` here could not tell a
+     * deleted sentence from a deleted conversation, and only one of those two was ever the problem.
      *
      * Sessions SLICE `seq`; they do not replace it. `seq` remains the total order of the whole
      * conversation and no per-session sequence exists.

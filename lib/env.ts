@@ -102,22 +102,23 @@ const cronSchema = z.object({
  * file. `lib/env.ts` is exempted because it is the app's single environment contract and the
  * alternative — hiding the variable in `lib/nina/env.ts`, or assembling its name so the grep
  * misses it — would be evading the guard rather than amending it.
+ *
+ * ── `GITHUB_DISPATCH_TOKEN` USED TO BE HERE, AND ITS ABSENCE IS A FIX ─────────────────────────
+ * It was RU-20's dispatch credential: a fine-grained PAT with `actions: write`, used by
+ * `lib/nina/imagedispatch.ts` to fire the image worker's `workflow_dispatch`. Phase 2 moved the
+ * generation onto Vercel's own 300 s Fluid ceiling, so there is no programmatic dispatch left to
+ * authenticate; the GitHub workflow survives as a `schedule:` backstop and a manual *Run workflow*
+ * button, and neither needs a token from us.
+ *
+ * **Deleting it also repairs a measured production failure.** A zod group `fail()`s when ANY
+ * member is absent, so `ninaEnv()` threw for callers that never read the missing member. Measured
+ * 2026-09-04: `vercel env ls production` carried neither variable, every call threw before
+ * reaching the network, and three image jobs sat `pending` with `cost_micro_usd` null while Nina
+ * said nothing for twenty minutes. A one-member group cannot have that failure mode — the only
+ * variable that can be missing is the one the code was about to use.
  */
 const ninaSchema = z.object({
   OPENROUTER_API_KEY: nonEmpty('OPENROUTER_API_KEY'),
-  /**
-   * **RU-20's dispatch credential (RULING C4).** A GitHub fine-grained PAT with `actions: write`
-   * on this repo, used by `lib/nina/imagedispatch.ts` to fire the image worker's
-   * `workflow_dispatch`. Lazily validated with the rest of the group, so a deploy without it
-   * serves every screen and fails only at the first image job.
-   *
-   * **The repo coordinates are deliberately NOT env vars.** `owner`/`repo`/`workflow` are module
-   * constants in `lib/nina/imagedispatch.ts`, exactly as phase 12 wrote them, because an
-   * environment variable is a thing a deploy can get wrong — and getting these wrong means
-   * dispatching a workflow at SOMEBODY ELSE'S repository with this token in the header. A
-   * constant in a reviewed file cannot be misconfigured; only rewritten.
-   */
-  GITHUB_DISPATCH_TOKEN: nonEmpty('GITHUB_DISPATCH_TOKEN'),
 })
 
 /**

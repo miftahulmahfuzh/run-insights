@@ -52,10 +52,26 @@ export const runtime = 'nodejs'
  * A LITERAL, not an imported constant: segment config exports are statically analysed at build
  * time and `next build` rejects an identifier here (the trap `/api/extract` and
  * `/api/cron/rollup` both document).
+ *
+ * ── WHY 300 AND NOT 60 ────────────────────────────────────────────────────────────────────────
+ * `resolveNinaPromises` below calls `generateNinaAvatar` when a promise comes due, and after the
+ * image pipeline moved on-platform that generation runs in THIS ROUTE'S `after()` budget — the
+ * Next `after` reference: "`after` will run for the platform's default or configured max duration
+ * of your route". At 60 a promised photograph would be killed at 60 s against a measured 78.2 s
+ * generation, silently, on a cron nobody is watching.
+ *
+ * **The loop's own pacing is unchanged.** `NINA_SOFT_DEADLINE_MS` (50 s) and `NINA_MIN_SLOT_MS`
+ * still decide how many users this pass serves, and they are deliberately NOT raised: a nightly
+ * proactive pass that runs for five minutes is not five times more proactive. This number is the
+ * ceiling for the background work the pass STARTS, not a licence for the pass itself to run longer.
  */
-export const maxDuration = 60
+export const maxDuration = 300
 
-/** 50 s against a 60 s ceiling: the response itself plus a call already in flight when it passes. */
+/**
+ * 50 s: the response itself plus a call already in flight when it passes. **Deliberately NOT
+ * re-derived from the 300 s ceiling above** — that ceiling exists for the generations this pass
+ * schedules into `after()`, not for the pass's own loop. See `maxDuration`.
+ */
 const NINA_SOFT_DEADLINE_MS = 50_000
 /**
  * A proactive turn is one `glm-5.3` call plus a persist — measured siblings run 13–16 s, and RU-4's

@@ -49,6 +49,30 @@
 
 ## Completed Tasks
 
+### [P1] High
+
+- [x] **P1-RI-A018** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
+  - **Difficulty**: NORMAL
+  - **Type**: Test
+  - **Context**: Proves the whole path the user says has never once worked: a chat message asking Nina to change her picture, through `set_avatar`, through generation, to a genuinely updated profpic row. Tests-only - touches nothing under `app/`, `lib/` or `components/`, which is what lets it run concurrently with phase 4. Asserts `2 x NINA_IMAGE_COST_MICRO_USD` on a job that burned both attempts, which is the per-JOB cumulative reading of `cost_micro_usd` from Decisions. **Branch-sensitive:** on Branch B the suite keeps the `runGenerator()` -> `worker.runOneJob(workerSql, jobId)` shape, the `GITHUB_DISPATCH_TOKEN` stub, the `githubDispatches` router arm and the three dispatch assertions, draining `after()` before the claim so the row is genuinely `dispatched` and seconds old - and deltas A1-A6 are NOT applied.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 7 of 7)
+  - **Satisfies**: R5 — end-to-end test: chat asks Nina to change her profpic and the profpic is truly updated
+  - **Depends on**: `P1-NIN-A009`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md`
+  - **Card**: `miftahulmahfuzh/run-insights#102`
+  - **Files**: tests/integration/ninaImageE2E.int.test.ts, tests/live/ninaImageE2E.live.test.ts, and 1 more
+  - **Completed**: 2026-09-07 02:11
+  - **Method**: /implement (swarm phase 7 of 7, session impl-nina-image-pipeline-and-async-chat-p7)
+  - **Commit**: `85ba9ed`
+  - **Verification**: R5 proved end to end on a **real Postgres and real Blob**. `test:int` 58/58; `npm test` 2769/2769 untouched; typecheck, lint, all six CI guards and `db:check` clean; `drizzle/` unchanged. Branch A shape with deltas A1-A6 applied. Three files: the always-on integration suite, the opt-in live variant, and one `package.json` script.
+  - **VERIFIED BY MUTATION, not just by passing**: dropping phase 1's session-resolution fix makes case 2 fail; making the requeue branch record 0 fails case 3 with *expected 40000 to be 80000*, which is exit criterion 4. A suite that only goes green proves less than one that has been shown to go red for the right reason.
+  - **MEASURED PLAN BUG (decision 3, and the most valuable thing this phase found)**: the plan seeded session C only in `beforeAll`, which left **Finding 1's session-resolution fix entirely untested** — the A3 fallback ranks by last activity and the case writes to B moments later, so deleting `finishSelfie`'s `quoted?.sessionId ??` kept the suite GREEN. C is now made most-recently-active one line before the generator runs, and that mutation now fails case 2 [rung 3]. Without this the set's headline fix would have shipped with a test that could not detect its removal.
+  - **Other decisions**: (1) case 3 makes ONE `runNinaImageJob` call returning `'gave-up'`, not two — the in-platform entry point owns its retry loop, so a fast failure burns both attempts in one invocation; the plan's two-call shape was Branch B's [rung 3]. Cost still asserted as `2 x NINA_IMAGE_COST_MICRO_USD`. (2) case 4's `'send'` handler assertion was wrong — `send` is the TERMINAL tool, present in `tools` with NO handler; now asserts both image tools in `tools` AND `handlers`, `send` first in `tools`, and no `send` handler [rung 2]. (3) per-case timeout 60 s, since vitest's default 5 s is far off the live path [rung 6].
+  - **Database isolation, done the careful way**: no Neon branch tooling exists on this box (no `neonctl`, no API key, preview secrets unpullable), so it created a **separate database** `run_insights_itest` on the same endpoint, migrated it, ran there, verified **0 leftover rows and 0 itest rows in production**, reaped one orphaned 70-byte blob, and DROPPED the database. **Production was never written.** The recipe, including the `pg_terminate_backend` step that `DROP` needs, is documented in the suite header.
+  - **Live suite cost and gating**: spends **$0.040 + one real Blob object + one throwaway user's quota slot**. Gated behind `LLM_LIVE_TEST=1` **and** a `TEST_DATABASE_URL` that must differ from `.env.local`'s, **and** three real-key checks. CI sets none of them. **Not run by this phase.**
+  - **Open**: exit criterion 2 is N/A on Branch A and was **deliberately not faked**.
+
 ### [P1] P1-RI-A000
 - [x] **P1-RI-A000** Phase 2: The pure file-tree library: image filter, path grammar, tree build, upload diff
   - **Difficulty**: NORMAL

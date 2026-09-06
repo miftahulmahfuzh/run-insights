@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { fireNinaImageDispatch } from './imagedispatch'
+import { fireNinaImageGeneration } from './imagerun'
 import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
@@ -11,8 +11,10 @@ import { readNinaTuning } from './queries'
  * **The avatar-generation entry point. Phases 13, 14 and 15 all call this and nothing else.**
  *
  * ── IT ACCEPTS, IT DOES NOT DELIVER (RU-19) ───────────────────────────────────────────────────
- * `{ ok: true, state: 'dispatched' }` means the job exists and GitHub has been rung — NOT that an
- * avatar exists. The row appears in `nina_avatars` 1-3 minutes later, written by the worker, with
+ * `{ ok: true, state: 'dispatched' }` means the job exists and the generation has been scheduled on
+ * this server's remaining wall clock (`lib/nina/imagerun.ts`) — NOT that an avatar exists. The row
+ * appears in `nina_avatars` ~80-120 s later, written by `lib/nina/imagerun.ts` (or by
+ * `scripts/nina-image-worker.ts`, the backstop, if this invocation could not), with
  * `is_current: true`, `announced_at: null` and `description` set to the scene prose.
  *
  * **This is good for phase 13 rather than merely tolerable.** Phase 10's `avatar_changed` trigger
@@ -106,7 +108,9 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
     sidecar: sidecarText({ prompt, seed, purpose: 'avatar' }),
   })
 
-  fireNinaImageDispatch({ userId, jobId, purpose: 'avatar', replyToId: null })
+  /* In-platform now — see `selfiegen.ts`'s note and `imagerun.ts`'s header. Nobody asked in chat,
+   * so there is nothing to quote and nothing to apologise into. */
+  fireNinaImageGeneration({ userId, jobId, purpose: 'avatar', replyToId: null })
 
   return { ok: true, jobId, state: 'dispatched' }
 }

@@ -1,10 +1,12 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
 import { attachNinaPhotoToChat } from '@/lib/nina/albumActions'
@@ -14,6 +16,7 @@ import {
   type NinaAvatarView,
   type NinaGalleryPhoto,
 } from '@/lib/nina/album'
+import { NINA_JOBS_HREF, type NinaJobListItem } from '@/lib/nina/jobview'
 
 /**
  * `/nina/about` — her detail page, the WhatsApp shape R17 asked for.
@@ -71,10 +74,25 @@ export function NinaAboutScreen({
   avatar,
   album,
   gallery,
+  jobs,
+  jobsNowMs,
 }: {
   avatar: NinaAvatarView
   album: readonly NinaAlbumPhoto[]
   gallery: readonly NinaGalleryPhoto[]
+  /**
+   * **R3's rows, in phase 4's own shape and never in this screen's words.**
+   *
+   * This section is a summary of `/nina/jobs`, so the one thing it must never do is describe a job
+   * row for itself — that is how two surfaces start disagreeing about what `dispatched` looks like,
+   * and the one the runner sees is whichever page he happened to open. `NinaJobListItem` is
+   * `lib/nina/jobview.ts`'s, already mapped by `toNinaJobListItems` on the server (its
+   * `createdAtMs` is a number precisely so it can cross this boundary), and when phase 4 widens the
+   * projection again nothing here changes.
+   */
+  jobs: readonly NinaJobListItem[]
+  /** The server's clock at render, for the elapsed tickers. See the page. */
+  jobsNowMs: number
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -230,7 +248,7 @@ export function NinaAboutScreen({
         <NinaPhotoGrid cells={album.map(toCell)} onOpen={(index) => openAt('album', index)} />
       </section>
 
-      <section>
+      <section className="mb-7">
         <h2 className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
           Media
         </h2>
@@ -241,6 +259,66 @@ export function NinaAboutScreen({
         ) : (
           <NinaPhotoGrid cells={gallery.map(toCell)} onOpen={(index) => openAt('chat', index)} />
         )}
+      </section>
+
+      {/*
+        ── R3: THE IMAGE-GENERATION TRACKING SECTION, DIRECTLY BELOW MEDIA ─────────────────────
+        Verbatim: *"put this image generation tracking section below media section (after user
+        click nina profpic)"*. "After user click nina profpic" is this route, and "below media
+        section" is this position — the last section on the page, after the album and the chat
+        photos, which is also the honest ordering: the album is what she has, Media is what the
+        conversation has, and this is what is still on its way.
+
+        ── IT REUSES PHASE 4'S LIST, IT DOES NOT REIMPLEMENT IT ───────────────────────────────
+        `NinaJobList` is `/nina/jobs`'s own list component and `listNinaImageJobs` is `/nina/jobs`'s
+        own read, bounded here by `ABOUT_JOB_LIMIT`. A second row renderer is exactly the drift F18
+        unified away for `ScreenshotStrip`'s arrows and their swipe, and the same argument holds
+        harder for a job's stage: two renderers means two opinions about what `dispatched` looks
+        like, and the one the runner sees is whichever page he happened to open.
+
+        ── AND THAT INCLUDES THE EMPTY CASE ──────────────────────────────────────────────────
+        There is no `jobs.length === 0` branch here, deliberately. `NinaJobList` renders absence
+        itself and takes the WORDS from `emptyText`, which is the division of labour its own
+        docstring sets out: "absence is one sentence, worded by the CALLER — /nina/jobs says
+        something different from a section under Media." So this screen supplies its sentence and
+        phase 4 supplies the markup. Branching here would be a second empty renderer for job rows,
+        which is the same drift one element down.
+
+        The section still renders when there is nothing to show. Media, twelve lines up, renders
+        its caption and a sentence rather than disappearing, and two adjacent sections disagreeing
+        about that is louder than either choice on its own. It is also the likelier render than it
+        looks: `nina_message_images` has had zero rows for the life of the app, which is the whole
+        reason this plan set exists.
+
+        NOT `components/ui/EmptyState.tsx`, and nothing here reaches for it. That component is a
+        dashed *card outline* for a whole screen; this screen has no cards.
+
+        ── "SEMUA" IS NAVIGATION, NOT A COUNT ────────────────────────────────────────────────
+        It goes to the full list; it does not claim more exist. Knowing that would cost a count
+        query or a `limit + 1` probe, and this page's docstring is a promise about how few reads it
+        makes. `NINA_JOBS_HREF` rather than the literal, so this link, the sidebar entry and the
+        detail page's "SEMUA JOB" cannot drift apart. Hidden when there are no jobs, because
+        `/nina/jobs` is empty then too and a link into a blank page is worse than no link.
+      */}
+      <section>
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <h2 className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+            Pembuatan foto
+          </h2>
+          {jobs.length > 0 && (
+            <Link
+              href={NINA_JOBS_HREF}
+              className="text-[11px] font-semibold text-ink-2 transition-colors hover:text-ink"
+            >
+              Semua
+            </Link>
+          )}
+        </div>
+        <NinaJobList
+          items={jobs}
+          nowMs={jobsNowMs}
+          emptyText="Belum ada foto yang dibuat. Minta Nina kirim foto lewat chat."
+        />
       </section>
 
       {open != null && (

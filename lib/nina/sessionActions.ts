@@ -180,12 +180,23 @@ export async function setNinaChatSessionPinned(input: {
  *
  * **What is deliberately NOT cleaned up, stated rather than discovered later.** The Vercel Blob
  * objects behind those image rows stay — nothing dereferences them and the `reap-orphaned-blobs`
- * skill does not cover `nina/` yet (the plan's scope section says so and gives it its own card). And
- * `nina_memory_facts.source_message_id` / `nina_memory_slots.source_message_id` are plain `text`
- * columns with **no** foreign key, so a distilled fact whose source message just vanished keeps a
- * dangling pointer instead of cascading away — which is the right outcome and the same one
- * assumption A5 reaches for a deleted message: a fact may still be true after the sentence that
- * produced it is gone.
+ * skill does not cover `nina/` yet (the plan's scope section says so and gives it its own card).
+ * `nina_turns` stays too: it is the audit trail and the money ledger, and a removed conversation
+ * does not un-spend its tokens.
+ *
+ * **What IS cleaned up, and used not to be (R8).** `removeNinaSession` now purges the distilled
+ * memory this conversation produced — the `nina_memory_facts` rows, the `nina_memory_slots` rows,
+ * and the individual `pending_promises` entries whose `source_message_id` points into the session —
+ * in the SAME transaction as the delete. `loadNinaContext` reads a session's message window but the
+ * whole relationship's memory ledger, so the ledger was the one channel left by which a deleted
+ * conversation still reached her prompt; the runner measured it as her character drifting and
+ * getting worse over time. Assumption A5 is unchanged for a deleted MESSAGE — a fact may still be
+ * true after the sentence that produced it is gone — and `deleteNinaMessage` still behaves that
+ * way. Deleting a whole conversation is a different act and gets a different answer.
+ *
+ * The cost, named: a nickname or a standing fact first learned in the session he deletes goes with
+ * it. A memory asserted through `/admin/memory` does not — those rows carry
+ * `source_message_id = NULL` and the purge cannot reach them.
  *
  * ── EDGE CASE 1: HE REMOVED THE SESSION HE WAS READING ────────────────────────────────────────
  * `next: '/nina'` — bare, with no `?s=`. The page re-resolves to his newest remaining chat, so he

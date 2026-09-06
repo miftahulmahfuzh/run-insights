@@ -6,6 +6,7 @@ import * as React from 'react'
 
 import { cn } from '@/lib/cn'
 import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
+import { NINA_JOBS_HREF } from '@/lib/nina/jobview'
 import type { NinaCropInput } from '@/lib/nina/crop'
 import {
   isSidebarOpen,
@@ -362,6 +363,46 @@ export function NinaSidebar({
         </div>
         <div className="mb-4">
           {newChatSlot ?? <NewChatButton onNavigate={() => closeRef.current()} />}
+        </div>
+
+        {/*
+          **R1's sidebar button — "in sidebar, add a button that will redirect user to a new page".**
+
+          ── A PLAIN `<Link>`, AND IT DELIBERATELY DOES NOT CALL `closeRef` ─────────────────────
+          This panel is an OVERLAY held open by `?sidebar=1`, and its close path is not symmetric:
+          `closeSidebar` calls `window.history.back()` when this session pushed the entry, and
+          `replaceState` when it did not. Firing it in the same tick as a `<Link>`'s push would put
+          a back and a forward on one entry and race them.
+
+          It does not need to. `/nina/jobs` is a DIFFERENT ROUTE, so the pushed entry carries no
+          `sidebar` key and the panel closes through the URL that opened it — which is exactly what
+          the avatar link to `/nina/about` above already relies on, in its own words: "Navigating to
+          `/nina/about` drops `?sidebar=1`, so the panel closes on its own, and the back gesture
+          returns to it open. Nothing extra is wired for that." `SessionRow` states the same rule
+          from the other side: an inactive row is a `<Link>` and does NOT call `onClose`; only the
+          ACTIVE row, which navigates nowhere, is a button that does.
+
+          The one cost is the one that link already pays: after a back gesture the provider
+          remounts with `pushedRef` false, so a later ✕ closes by `replaceState` and leaving `/nina`
+          takes one extra back-swipe. Pre-existing for every cross-route link out of this panel, and
+          not this phase's to change.
+
+          `paper-2`'s tint rather than `NewChatButton`'s ink slab: starting a conversation is the
+          primary act on this panel and there may be only one primary.
+        */}
+        <div className="mb-4">
+          <Link
+            href={NINA_JOBS_HREF}
+            className={cn(
+              'flex h-11 w-full items-center justify-center gap-2 rounded-field bg-paper-2 px-4',
+              'text-[14px] font-semibold text-ink transition-opacity active:opacity-80',
+            )}
+          >
+            <span aria-hidden="true" className="text-[15px] leading-none">
+              ◔
+            </span>
+            <span>Proses foto</span>
+          </Link>
         </div>
 
         <SessionList

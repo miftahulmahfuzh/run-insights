@@ -496,10 +496,16 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 `lib/review/actions.ts` right after a run is committed).
 
 ### Images
-`imagerecipe.ts` (camera settings shared with the worker), `imagegen.ts` (prompt text),
-`imagejobs.ts` (job row lifecycle and quota), `imagedispatch.ts` (fires the GH-Actions workflow),
+`imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
+`imagejobs.ts` (job row lifecycle and quota), `imagecall.ts` (the OpenRouter image call),
+`imagerun.ts` (claim → generate → store → finish, inside `after()`),
 `imagefail.ts` (classify a failure, pick what she says), `imagetools.ts` / `avatartools.ts` (the two
 tool handlers and the tool sets), `avatargen.ts`.
+
+The generation runs **in-platform**, on the app's own invocation, inside `after()` — Vercel Hobby +
+Fluid compute is a 300 s ceiling, measured on this deployment 2026-09-06. `.github/workflows/nina-image.yml`
+and `scripts/nina-image-worker.ts` survive as the **backstop** and the manual drain, not as the
+generator; `imagedispatch.ts` and its `GITHUB_DISPATCH_TOKEN` are gone with the doorbell.
 
 ### Vision and intake
 `vision.ts` *(T)*, `imageTicket.ts` *(T)* (HMAC-signed carrier so a description can cross from
@@ -538,6 +544,211 @@ scores: a misspelt key in a blob is indistinguishable from an unset one, an unse
 fails at `db:generate` and drizzle's insert type makes a forgotten column a compile error.
 
 *(T)* = has a colocated `*.test.ts`.
+
+## Why no photograph ever reached a chat bubble (R2)
+
+Three independent defects, each sufficient on its own, all measured rather than inferred. Phase 1
+repaired them in the shipped worker **without moving the generation host**, which is what lets a
+later host migration roll back onto a working pipeline instead of onto the broken one.
+
+- **`nina_messages.session_id` has been `NOT NULL` since migration `0004`, and both of the worker's
+  INSERTs omitted it.** Every generation was paid for, uploaded to Blob, and then destroyed by the
+  very write that would have displayed it. `resolveWorkerSessionId` now resolves the session in SQL
+  the worker owns, mirroring `resolveNinaSessionForMessage` clause for clause: the replying
+  message's session, else his most recent session by activity, else `null` — in which case the
+  message is *declined* rather than filed into a conversation he has never seen. Owner-scoped in
+  both branches (invariant 5).
+- **The same crash killed the apology.** The apology INSERT failed identically and took the process
+  down before the terminal UPDATE could record the spend, so jobs `pF5c6V8YbxAR` and `ChfwHZ2GJT4I`
+  reached OpenRouter, were billed, and logged `cost_micro_usd` NULL — invariant 9 failing silently.
+  The apology is now best-effort; the terminal close always runs.
+- **The preflight was blind to the whole class.** It checked only that *named* columns exist, which
+  catches a rename and cannot see an ADDITION. `findSchemaDrift` is now a pure function that also
+  runs the converse over INSERT targets: every `NOT NULL` column with no default must be named.
+  Verified live — against the real schema the pre-fix column list reports exactly *"nina_messages.
+  session_id is NOT NULL with no default and this worker never writes it"*, while the fixed list
+  reports preflight ok.
+
+Two further measurements from the same phase, recorded rather than acted on:
+`fireNinaImageDispatch` stamps `dispatched` *before* it POSTs while a runner needs ~25–40 s to reach
+Generate, so a single `now − GRACE` cutoff meant a targeted dispatch could never claim its own job —
+all five `workflow_dispatch` runs on 2026-09-06 logged `attempted: 0`. `dispatchCutoffFor` now runs
+the window **forward** for a named job (absorbing Vercel/runner clock skew) and backward for a
+sweep; the `running`-reclaim and attempts bounds are deliberately *not* relaxed. And twelve
+consecutive schedule runs fired 1 h 46 m to 4 h 19 m apart against a declared `*/10`, recorded as
+`NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS` — no existing constant's value changed.
+
+> **Gotcha for anyone editing these files:** `*/10` inside a JSDoc block closes the comment. Write
+> `*\/10`, which is the convention already in `scripts/nina-image-worker.ts:36` and
+> `tests/views.render.test.ts`.
+
+## The camera runs in-platform (R2, R4, R7)
+
+`imagecall.ts` makes the OpenRouter call and `imagerun.ts` owns the job — claim, generate, store into
+Blob, finish — inside `after()`, on the app's own invocation. That is R7: **`after()` is bound by the
+invoking route segment's `maxDuration`, not by the browser**, so `app/nina/page.tsx` and
+`app/api/cron/nina/route.ts` both carry a literal `300` and the runner may close the tab the instant
+send returns. Those two literals are what actually own a photograph's wall clock; the cron loop's own
+50 s pacing is deliberately not raised with them.
+
+**The 60 s ceiling that exiled this work to a GitHub runner was an expired measurement, and it was
+re-measured rather than assumed.** On 2026-09-06 a `maxDuration = 300` probe in `sin1` — production's
+own region — held an inline render to HTTP 200 at **90.418 s** with no 504, and, with the connection
+closed after a 1.25 s flush, went on ticking inside `after()` to `heldMs 90030`. Crossing 60 s with
+nothing attached at the far end is the whole of R7, demonstrated rather than argued.
+
+**There is no asynchronous OpenRouter image API.** `POST /api/v1/images` is synchronous — base64 in
+the response, or SSE partials with `stream: true`. There is no job id, no polling endpoint, no
+`callback_url`, no webhook; the async job API (`POST /api/v1/videos` → `GET /api/v1/videos/{id}`) is
+**video-only**. So durability is ours to provide, and `imagecall.ts` carries that answer where the
+next reader will look for it rather than in a plan file.
+
+Durability is three recovery nets in order, and only the first is the normal path:
+
+1. **`after()`** on the invoking segment — the generation itself.
+2. **`reviveNinaImageJobs`** on the next `/nina` render, bounded to one job per render, for a job
+   dropped because `after()` does not survive `maxDuration` or an instance kill.
+3. **`.github/workflows/nina-image.yml`** — demoted, never deleted. Comments-only in this phase: no
+   trigger removed, no step removed, `timeout-minutes` still 6. It is the backstop, the manual drain
+   for historical rows, and the rollback target — and a rollback now lands on a *working* pipeline
+   because phase 1 repaired the worker's three defects first. Behind it, `sweepStaleNinaImageJobs`'
+   20-minute apology.
+
+Two consequences worth keeping straight. **Finding 2 dies at the source**: the claim and the
+generation are one invocation, so there is no dispatch grace window left for a job to be lost in, and
+`error_code = 'dispatched'` becomes a legacy value that nothing writes any more — historical rows
+still render, so `toJobRow` and `PENDING_PHASES` keep mapping it. And **`cost_micro_usd` is a per-job
+cumulative total on both hosts** (`coalesce(cost_micro_usd, 0) + spend`), so a job that burned two
+attempts honestly reads $0.080; `stale` leaves the column untouched rather than nulling a spend a
+retry already recorded, and the terminal UPDATE runs even when the apology INSERT throws. Money spent
+is never written down as free.
+
+> **Gotcha, and it is asymmetric enough to get backwards:** `*/` closes a block comment, so the
+> declared `*/10` cron is only dangerous inside `/** … */`. Write `*\/10` there. It is harmless in
+> `//` line comments and in YAML `#` comments, where escaping it is noise a later reader will try to
+> "fix".
+
+## The chat turn is asynchronous (R6)
+
+`sendNinaMessage` persists the runner's message, its image rows and a claim on `nina_turns`
+(`kind='chat'`, `status='pending'`, `error_code` carrying the phase), then **returns in well under a
+second**. The 13–45 s model turn, the persist of Nina's bubbles, the distillation and the auto-title
+all run in `runNinaBackgroundTurn` inside `after()`, on the invoking page segment's 300 s budget —
+registered from the Server Action `app/nina/page.tsx` already owns, deliberately *not* relocated into
+a route handler, because `after()` inherits the segment's `maxDuration` and a new handler would
+silently inherit a smaller one.
+
+An open tab learns she has answered through **`pollNinaReply`**, a bounded poll whose schedule lives
+in `lib/nina/turnflight.ts` beside the server's own stale deadline, so the two cannot drift. A closed
+tab needs nothing at all: the rows are committed and the next render reads them. That is R6 — send is
+instant, and her reply arrives whether or not the app is open.
+
+**The push seam is deliberately not used for this.** `lib/nina/live.ts` is untouched and still serves
+proactive pushes. Two independent reasons, both in `pollNinaReply`'s header: the platform requires a
+`push` handler to show a notification, so every message the runner sends while watching would buzz
+his own phone; and a push arrives as `router.refresh()`, landing all four bubbles through
+`mergeServerMessages` in **one frame** — precisely the collapse of the staggered reveal that
+`ChatScreen`'s header spends a paragraph forbidding.
+
+`lib/nina/chatturn.ts` owns the claim's lifecycle — open, read, record, close, sweep.
+`sweepStaleNinaChatTurns` closes a turn whose process died as `failed`/`stale`; it **never retries and
+never writes an apology bubble**, because app-authored prose in Nina's mouth is forbidden (invariant
+7). A turn whose session was deleted mid-flight abandons and closes as `'session-gone'` rather than
+re-creating the orphaned memory rows the session purge just removed — that guard is the other half of
+R8, and it lives here rather than in the purge because backgrounding the distillation is what
+stretched the orphan window from milliseconds to as much as 240 s.
+
+One race is accepted permanently rather than closed: `openNinaChatTurn` reads then writes, and Next
+serialises Server Actions per client, so only two *different* clients within ~50 ms can collide. The
+cost of a collision is one duplicate reply — both replies real, nothing fabricated, the conversation
+still coherent — which is cheaper than the unique index it would take to prevent, and that index
+would have been this set's only migration.
+
+## Image-job tracking (`lib/nina/jobview.ts`, R1)
+
+Every `nina_turns` row with `kind='image'` is visible at `/nina/jobs`, and one job at
+`/nina/jobs/[id]` with the exact prompt as sent, the seed, the model, the attempt count, and
+`cost_micro_usd` as a per-job total ("Biaya total").
+
+`jobview.ts` is the **pure half** — the stage and error vocabulary, the elapsed and money formatting,
+the `?jump=` grammar, and `planJobJump`'s four outcomes. It holds no value import from any
+`server-only` module, which is what lets three client components and a bare node suite load it alike;
+**`npm run build` is the only gate that enforces that**, since no guard script inspects imports.
+
+The two reads it feeds — `listNinaImageJobs` and `getNinaImageJobDetail` — are owner-scoped, filter
+`kind='image'`, and **write nothing**. Both properties are load-bearing:
+
+- **The `kind='image'` filter became newly essential in phase 3**, which put `kind='chat'` rows into
+  `status='pending'` on the same table. A dropped filter would not error; it would list every
+  backgrounded chat turn as a photograph, with a null purpose falling through to `'selfie'`.
+- **Neither read sweeps.** `listOpenNinaImageJobs` keeps the sweep, so a job stuck `pending` for three
+  hours reads as `pending` with a three-hour clock rather than being retro-labelled by the act of
+  looking at it. Observing a system should not change it.
+
+The deep link back into the chat is **`?jump=<messageId>`** beside `?s=`, deliberately *not*
+`lib/nina/scroll.ts`'s `?at=`. They have opposite lifetimes — `at` must survive a back-swipe, `jump`
+must be consumed on arrival or the bubble re-flashes — and `jump` has no offset to carry. It reuses
+`planQuoteScroll` + `QUOTE_FLASH_MS` rather than growing a second scroll-and-flash.
+
+`planJobJump` keeps `'gone'` and the session-removed case as **separate** outcomes, and there is a
+test named *does not tell the runner a live session was removed* holding that line. The distinction is
+real because `deleteNinaMessage` removes one sentence and leaves the conversation standing, so a
+missing bubble does not imply a missing session. Its `'gone'` arm is the **common case**, not an edge:
+14 `nina_turns` image jobs were measured with an `args.replyToId` that resolves to nothing.
+
+`error_code = 'dispatched'` is a historical stage that still renders — it labels rows written before
+the generator moved in-platform, and they are the first thing on the page. The copy is **'Nunggu
+worker'**, not 'Dijadwalkan': the stage is no longer something about to happen, and not 'Nunggu
+runner' either, because in this codebase the runner is the human and that phrasing would tell him the
+job was waiting on *him*.
+
+## Tracking on `/nina/about`, below Media (R3)
+
+Tapping Nina's profile picture opens her detail page, and below the Media section it lists her five
+most recent image-generation jobs — stage, elapsed time and error, newest first — each row a link
+into `/nina/jobs/[id]`, with a "Semua" link to the full `/nina/jobs` list that hides when there are
+none.
+
+**It is reuse rather than a second surface.** The rows are phase 4's `NinaJobList` and the read is
+phase 4's `listNinaImageJobs`, so the two pages cannot name the same stage two ways. `grep` proves
+exactly one definition of each across `app/` and `components/` — no second query implementation, no
+second row renderer, no second empty-state renderer. The empty state is phase 4's markup carrying
+this screen's own sentence, passed as `emptyText`; that split was decided in the plan's Decisions
+table precisely so phase 5 would not fork the component to change one line of copy.
+
+The read is deliberately the **non-sweeping** one. `/nina` still awaits `listOpenNinaImageJobs` for
+its sweep, but a page reached by tapping her face writes nothing — observing a system should not
+change it. `ABOUT_JOB_LIMIT = 5` is module-local to the route: one caller, and no coupling to
+`CHAT_HISTORY_LIMIT`.
+
+The `?photo=` codec, the two-section swipe isolation and the album's wrap are untouched — the diff
+never enters that region.
+
+## Deleting a chat session takes what it taught her (R8)
+
+**Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a
+four-statement `db.batch` — the `nina_memory_facts` rows, the `nina_memory_slots` rows and the
+individual `pending_promises` entries whose `source_message_id` points into the session are
+purged in the same transaction as the delete, before it, so they still have messages to join
+against. `loadNinaContext` reads one session's message window but the whole relationship's
+memory ledger, which is why the ledger was the only surviving channel by which a deleted
+conversation still reached her prompt. There is no foreign key and no migration: an
+`ON DELETE CASCADE` could not tell a deleted sentence from a deleted conversation, and
+`deleteNinaMessage` is deliberately unchanged. A memory asserted through `/admin/memory` carries
+`source_message_id = NULL` and is structurally unreachable by the purge. `npm run nina:memory-reap`
+(dry-run by default) clears rows orphaned before this landed, and remains the backstop for a
+distillation that completes after its session is gone.
+
+Two consequences worth keeping straight, because they are easy to collapse and wrong when collapsed:
+
+- **A deleted session takes its messages with it, but a deleted message does not take its session.**
+  `deleteNinaMessage` (reachable from `lib/admin/chatPhotoActions.ts`) removes one sentence and
+  leaves the conversation standing. So "the triggering message is gone" and "the session was
+  removed" are *different* states, and any UI that jumps back to a source bubble must keep them
+  apart — `lib/db/schema.ts`'s `session_id` comment says the same thing from the schema side.
+- **The purge is scoped by provenance, not by authorship.** Anything with a NULL
+  `source_message_id` — every fact typed through `/admin/memory` — survives every session delete
+  by construction, which is what makes the admin surface a durable channel rather than a fragile one.
 
 ## Dataflow
 
