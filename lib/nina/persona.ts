@@ -1410,8 +1410,9 @@ const OPERATOR_NOTE_PREAMBLE =
  * an empty block means no section header is emitted and the shipping prompt is unchanged.
  *
  * The skip test is `atTraitIdentityBand` / `atDialIdentityBand` — the key's OWN default band, read
- * off phase 1's specs — and not `band === 'mid'`. Six traits identify at `off` and `profanity` at
- * `low`, so a `mid` test would emit seven paragraphs at the default tuning. The lookup then returns
+ * off phase 1's specs — and not `band === 'mid'`. Seven traits identify at `off` (`anger`, `sad`,
+ * `flirty`, `steamy`, `annoying`, `anxious` and R3's `horny`) and `profanity` identifies at `low`,
+ * so a `mid` test would emit eight paragraphs at the default tuning. The lookup then returns
  * `undefined` for any other band the table leaves blank, and blanks are skipped too.
  */
 export function ninaTraitsBlock(tuning: NinaTuning): string {

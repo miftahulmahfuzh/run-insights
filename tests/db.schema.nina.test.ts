@@ -455,7 +455,8 @@ describe('nina_tuning', () => {
   it('agrees with lib/nina/tuning.ts about every score column, which is the only duplication', () => {
     // `lib/nina/tuning.ts` must stay importable from a `'use client'` file, so it cannot import
     // this module — and this module must not import UPWARD from `lib/nina/`. So the two spell the
-    // same sixteen keys independently, and THIS is what makes that checked rather than intended.
+    // same score keys independently — twelve traits and four dials — and THIS is what makes that
+    // checked rather than intended.
     // The RULING A6 shape: `tests/nina.imagerecipe.test.ts` does exactly this for NINA_BLOB_PREFIX.
     const declared = new Set(names(schema.ninaTuning))
     for (const trait of NINA_TRAITS) expect(declared.has(trait), trait).toBe(true)
