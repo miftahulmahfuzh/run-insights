@@ -407,6 +407,42 @@ is never written down as free.
 > `//` line comments and in YAML `#` comments, where escaping it is noise a later reader will try to
 > "fix".
 
+## The chat turn is asynchronous (R6)
+
+`sendNinaMessage` persists the runner's message, its image rows and a claim on `nina_turns`
+(`kind='chat'`, `status='pending'`, `error_code` carrying the phase), then **returns in well under a
+second**. The 13–45 s model turn, the persist of Nina's bubbles, the distillation and the auto-title
+all run in `runNinaBackgroundTurn` inside `after()`, on the invoking page segment's 300 s budget —
+registered from the Server Action `app/nina/page.tsx` already owns, deliberately *not* relocated into
+a route handler, because `after()` inherits the segment's `maxDuration` and a new handler would
+silently inherit a smaller one.
+
+An open tab learns she has answered through **`pollNinaReply`**, a bounded poll whose schedule lives
+in `lib/nina/turnflight.ts` beside the server's own stale deadline, so the two cannot drift. A closed
+tab needs nothing at all: the rows are committed and the next render reads them. That is R6 — send is
+instant, and her reply arrives whether or not the app is open.
+
+**The push seam is deliberately not used for this.** `lib/nina/live.ts` is untouched and still serves
+proactive pushes. Two independent reasons, both in `pollNinaReply`'s header: the platform requires a
+`push` handler to show a notification, so every message the runner sends while watching would buzz
+his own phone; and a push arrives as `router.refresh()`, landing all four bubbles through
+`mergeServerMessages` in **one frame** — precisely the collapse of the staggered reveal that
+`ChatScreen`'s header spends a paragraph forbidding.
+
+`lib/nina/chatturn.ts` owns the claim's lifecycle — open, read, record, close, sweep.
+`sweepStaleNinaChatTurns` closes a turn whose process died as `failed`/`stale`; it **never retries and
+never writes an apology bubble**, because app-authored prose in Nina's mouth is forbidden (invariant
+7). A turn whose session was deleted mid-flight abandons and closes as `'session-gone'` rather than
+re-creating the orphaned memory rows the session purge just removed — that guard is the other half of
+R8, and it lives here rather than in the purge because backgrounding the distillation is what
+stretched the orphan window from milliseconds to as much as 240 s.
+
+One race is accepted permanently rather than closed: `openNinaChatTurn` reads then writes, and Next
+serialises Server Actions per client, so only two *different* clients within ~50 ms can collide. The
+cost of a collision is one duplicate reply — both replies real, nothing fabricated, the conversation
+still coherent — which is cheaper than the unique index it would take to prevent, and that index
+would have been this set's only migration.
+
 ## Deleting a chat session takes what it taught her (R8)
 
 **Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a

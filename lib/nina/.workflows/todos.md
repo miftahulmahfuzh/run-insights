@@ -3,34 +3,22 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 3
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 3
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 7
+- Completed: 8
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A006** Phase 3: WhatsApp-style send: instant persist, durable background turn
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Splits `sendNinaMessage` so the runner's message persists and returns immediately while the model turn runs in a durable background task. **Reply delivery is a bounded poll ONLY - `lib/nina/live.ts` is NOT edited** (Decisions, rung 3): a push handler would buzz the phone on every message the runner sends while watching, and a push arrives as `router.refresh()`, landing all four bubbles through `mergeServerMessages` in ONE frame, collapsing the staggered reveal `ChatScreen` spends a paragraph forbidding. Also owns **Step 6d, which is half of R8**: backgrounding `runTurnDistillation` stretches the window in which a distillation completing AFTER a session delete re-creates the exact orphan class phase 6 purges, from milliseconds to up to 240s - so `ninaSessionExists` plus an abandon lives here, in files this phase owns. **Does NOT depend on phase 6 and must not be made to.** `openNinaChatTurn`'s read-then-write race is accepted permanently: no unique index, no lock table, no migration.
-  - **Status**: pending
-  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 3 of 7)
-  - **Satisfies**: R6 — send is instant and the reply arrives even if the app is closed; R8 in part — the delete-mid-turn guard
-  - **Depends on**: `P1-NIN-A005`
-  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md`
-  - **Card**: `miftahulmahfuzh/run-insights#98`
-  - **Files**: lib/nina/turnflight.ts, lib/nina/sessionActions.ts, components/nina/ChatScreen.tsx, and 6 more
 
 - [ ] **P1-NIN-A007** Phase 4: Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble
   - **Difficulty**: NORMAL
@@ -67,6 +55,25 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A006** Phase 3: WhatsApp-style send: instant persist, durable background turn
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Splits `sendNinaMessage` so the runner's message persists and returns immediately while the model turn runs in a durable background task. **Reply delivery is a bounded poll ONLY - `lib/nina/live.ts` is NOT edited** (Decisions, rung 3): a push handler would buzz the phone on every message the runner sends while watching, and a push arrives as `router.refresh()`, landing all four bubbles through `mergeServerMessages` in ONE frame, collapsing the staggered reveal `ChatScreen` spends a paragraph forbidding. Also owns **Step 6d, which is half of R8**: backgrounding `runTurnDistillation` stretches the window in which a distillation completing AFTER a session delete re-creates the exact orphan class phase 6 purges, from milliseconds to up to 240s - so `ninaSessionExists` plus an abandon lives here, in files this phase owns. **Does NOT depend on phase 6 and must not be made to.** `openNinaChatTurn`'s read-then-write race is accepted permanently: no unique index, no lock table, no migration.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 3 of 7)
+  - **Satisfies**: R6 — send is instant and the reply arrives even if the app is closed; R8 in part — the delete-mid-turn guard
+  - **Depends on**: `P1-NIN-A005`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md`
+  - **Card**: `miftahulmahfuzh/run-insights#98`
+  - **Files**: lib/nina/turnflight.ts, lib/nina/sessionActions.ts, components/nina/ChatScreen.tsx, and 6 more
+  - **Completed**: 2026-09-07 02:05
+  - **Method**: /implement (swarm phase 3 of 7, session impl-nina-image-pipeline-and-async-chat-p3)
+  - **Commit**: `8c80ca4`
+  - **Verification**: `npm run typecheck && npm run lint && npm test && npm run build && npm run db:check` — all pass. `npm test` is 143 files / 2741 tests (14 new). All six CI guards `ci:{openrouter,client-secret,llm-payload,data-layer,f08,f11}-guard` pass **with no edit to any guard script**. `drizzle/` gained no file and `git status --porcelain drizzle/` is empty. Nine files, +1563/-258.
+  - **Contract held (verified by the coordinator, not just reported)**: `after()` is the primitive, not a floating promise or an internal fetch; `runNinaBackgroundTurn` was registered from the Server Action `app/nina/page.tsx` already owns and was **not** relocated into a route handler; `maxDuration = 300` is intact in both `app/nina/page.tsx:145` and `app/api/cron/nina/route.ts:68`; nesting left untouched so the image path still registers its own `after()` inside the backgrounded turn; and no new recovery was built — `reviveNinaImageJobs` and the give-up sweep are phase 2's and are unchanged. Branch A literals confirmed in place: `NINA_BACKGROUND_BUDGET_MS = 240_000`, `NINA_TURN_CHAIN_MAX = 2`.
+  - **Decisions**: (a) Branch A over B [rung 1, the index's PROBE RESULT]; (b) dropped the plan's `runNinaBackgroundTurn` locals `context` and `relationship`, assigned and never read [rung 1: invariant 1 requires lint to pass and an assigned-never-read local fails it] — nothing else in the block changed; (c) placed Step 6d's `ninaSessionExists` guard **once**, immediately after the model returns, rather than duplicated before STEP 5's insert and before the null arm's distillation [rung 3, the step's own prose: *"the guard goes immediately after the model returns and before anything is persisted"* and *"runs once per turn rather than once per write"*] — one placement dominates both exits, and both close through the `finally` with `error_code = 'session-gone'`.
+  - **Handoffs**: phase 4 — `nina_turns` now carries `kind='chat'` rows in `status='pending'` with `args = {sessionId, runnerMessageId, depth}`, so a widened read projection **must** keep the `kind='image'` filter or the job list shows chat turns; `closeNinaChatTurn` can write `error_code='session-gone'` on a chat row. All five `ChatScreen` anchors preserved, but the reveal is now the `revealBubbles` callback and a deep-link scroll must not call it. Phase 7 — the seam is `pollNinaReply({sessionId, afterSeq: cursor})` polled until `awaiting` is false, `turnId` is non-null exactly when a send started a turn, and `runNinaBackgroundTurn` is deliberately non-exported so drive `runNinaTurnWith`.
 
 - [x] **P1-NIN-A005** Phase 2: Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop
   - **Difficulty**: HARD
