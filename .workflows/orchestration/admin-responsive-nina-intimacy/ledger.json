@@ -1,0 +1,106 @@
+{
+  "branch": "feature/admin-responsive-nina-intimacy",
+  "coordinator": "orch-admin-responsive-nina-intimacy",
+  "coordinator_session_id": "e47cc887-189b-4785-91a0-4d701fba7477",
+  "created": "2026-09-06T14:36:27+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "48a86b53ac01055db45fd56aa6bf3565e834e5c8",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "Shell responsive at 414px: 4 safe-area insets, AdminNav a fixed 56px 4-cell bottom bar below lg and the unchanged sticky rail at lg, <main> reserves calc(5rem+--safe-bottom). Contract for phase 2 holds: one breakpoint (lg), <main className=\"min-w-0\">, bar h-14+border-t z-30 fixed bottom-0. DECISIONS: (1) swarm Step 3 mints only its own phase's task, not all five [rung 6] - phase 2 must mint its own; (2) phase 1's package is . /RI, components/admin left to phase 2; (3) plan's test code did not compile - shorts map needed m[1]! under noUncheckedIndexedAccess [rung 6, tests/tabbar.geometry.test.ts:86] - phases 4/5 using the same matchAll idiom will hit this; (4) root package_readme.md only, components/admin's is phase 2 Step 15. GOTCHA for 4/5: npm run build fails in this worktree - .env.local is gitignored and lives only in the main checkout, and lib/env.ts validates a 14-var core schema at module load, so /api/health dies before any route of ours. Placeholders satisfy it, nothing connects. SHARED-INDEX GOTCHA: never assert-and-correct the git index; use git commit -- <paths> and verify with git show --stat AFTER. I nearly unstaged p3's in-flight commit doing the opposite.",
+      "package": "app/admin`, `components/admin",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-1.md",
+      "reported_at": "2026-09-06T14:52:51+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "done",
+      "task_id": "P1-RI-A017",
+      "title": "Admin shell: viewport, safe areas, navigation"
+    },
+    {
+      "card": null,
+      "commit": "280b8e8",
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": "Phase 2 landed, all gates green (typecheck, build, 2710 tests, lint 0 errors, format). DECISION: plan Steps 6b/6d/8d place {/* */} JSX-child comments in expression position (after 'return (' and inside '{open && (') = TS1005/TS1128 syntax error; converted to plain /* */ block comments, text unchanged (rung 1, invariant 7 build-green). DECISION: ran format:check before 'npm run format' since prettier --write . writes the whole repo while peers run; MemoryTable.tsx was the only unformatted file, nothing outside components/admin/ written. Contract for phase 4 delivered: DialSlider header row is 'flex items-center gap-2' with ml-auto on the readout, NO prop added; touch.ts exports TOUCH_TARGET/TOUCH_ICON for phase 4's checkbox. FolderMenu 5 panels z-20 -> z-40. FYI for coordinator: phase 3's row in ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md is still unticked though 157b8f4 landed; I did not correct the shared index.",
+      "package": "components/admin",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-2.md",
+      "reported_at": "2026-09-06T15:13:48+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "done",
+      "task_id": "P1-CA-A001",
+      "title": "Admin surfaces: explorer, crop studio, tables, dials"
+    },
+    {
+      "card": null,
+      "commit": "157b8f408b19ebc3d6a271f8cb464ad544dcba9f",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": "Girlfriend register landed: 3 pure-insertion hunks in persona.ts (+134/-0), zero existing lines touched. NINA_PROMPT_VERSION 3->4 is the SET'S SINGLE BUMP - phases 4 and 5 must not touch it. tests/__snapshots__/nina.prompts.test.ts.snap is a SET-WIDE byte-identity gate generated from the pristine tree BEFORE any edit; vitest -u/--update is forbidden for the rest of the set. Phase 4 seam: isGirlfriend (persona.ts:467, exported) is one expression -> add '&& tuning.enabled.relationship'; ninaIdentity must be gated separately. MANJA_ORTHOGRAPHY is module-private (bare const :512), reachable only via ninaManjaRegisterBlock. lib/nina/tuning.ts deliberately unchanged. Verified 141 files/2696 tests, typecheck+lint+prettier clean. I did NOT tick row 3 in the tracked PLAN.md (TaskID still '-') - coordinator owns it. CONCURRENCY, for phases 4/5 in this shared worktree: use 'git commit -- <explicit paths>' (pathspec-limited, safe while a peer has files staged) then verify with 'git show --stat HEAD' AFTER; never a pre-commit index assertion with a corrective unstage branch - p1 nearly ate this commit that way, averted. Never delete index.lock, wait and retry. npm run build needs a gitignored .env.local: pass placeholders for DATABASE_URL, DATABASE_URL_UNPOOLED, AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, AUTH_URL, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_VISION_BASE_URL, LLM_VISION_MODEL, BLOB_READ_WRITE_TOKEN, CRON_SECRET, ADMIN_EMAILS.",
+      "package": "lib/nina`, `tests`, `docs",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-3.md",
+      "reported_at": "2026-09-06T14:49:58+00:00",
+      "satisfies": [
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A004",
+      "title": "Girlfriend register: manja, imut, vowel lengthening"
+    },
+    {
+      "card": null,
+      "commit": "137888d",
+      "depends_on": [
+        2,
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": "R4 landed: enabled map gated at the score seam (ninaTraitScore/ninaDialScore/ninaActiveRelationship), zero bytes when off. Migration 0006_chubby_wild_child, generated, NOT applied \u2014 db:migrate deferred to the merge per exit criteria (rung 2); db:check clean. isGirlfriend now reads ninaActiveRelationship, not tuning.relationship \u2014 phase 5 MUST read horny via ninaTraitScore(tuning,'horny') or the structural guard in nina.prompts.test.ts fails. NINA_TUNING_KEYS is a spread, so horny inherits its toggle; phase 5 still owes horny_enabled in db/schema.ts + the hornyEnabled pair in tuningFromRow (nested: horny: row.hornyEnabled) and tuningToColumns. Snapshot untouched.",
+      "package": "lib/nina`, `lib/admin`, `lib/db`, `components/admin`, `drizzle`, `tests",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-4.md",
+      "reported_at": "2026-09-06T18:36:13+00:00",
+      "satisfies": [
+        "R4"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A005",
+      "title": "Per-parameter enable toggles"
+    },
+    {
+      "card": null,
+      "commit": "11c91ad",
+      "depends_on": [
+        4
+      ],
+      "difficulty": "HARD",
+      "n": 5,
+      "note": "horny landed as the TWELFTH TRAIT (D6). Decisions: (1) horny defines a mid band, the only trait in NINA_TRAIT_BANDS that does, so it speaks from 40 not 60 \u2014 kept per rung 3, the phase plan's code block, against persona.ts's own 'default-off traits speak from 60' header rule; exception written down in the header, the entry and docs/nina/persona.md. (2) tests/admin.tuning.test.ts toHaveLength(11)->12 and tests/db.schema.nina.test.ts toBe(15)->16 bumped, not derived (rung 1, invariant 7; derived would be a tautology). admin.tuning.test.ts is outside phase 5's Files table, touched only because invariant 7 leaves no alternative. (3) db:migrate NOT run for 0007 (rung 2, exit criteria name db:check) \u2014 0006 and 0007 both still need applying to live Neon at the merge. (4) generated SQL edited to DEFAULT 0 / DROP DEFAULT for the NOT NULL column, per the plan's Step 6; never renamed, journal idx 7, when monotonic. Snapshot passes UNMODIFIED, NINA_PROMPT_VERSION stays 4, nothing under lib/llm or imagefail.ts touched so R5 stays unowned under D1. Follow-up commit 11c91ad fixes two prose tallies horny falsified.",
+      "package": "lib/nina`, `lib/db`, `drizzle`, `tests",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-5.md",
+      "reported_at": "2026-09-06T18:59:01+00:00",
+      "satisfies": [
+        "R3"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A006",
+      "title": "The `horny` trait"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "admin-responsive-nina-intimacy",
+  "updated": "2026-09-06T18:59:01+00:00",
+  "verified_at": "2026-09-06T18:21:25+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
+}
