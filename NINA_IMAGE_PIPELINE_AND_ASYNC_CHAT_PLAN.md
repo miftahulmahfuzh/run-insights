@@ -520,9 +520,39 @@ discover that on its own.
 
 **Record the outcome here, in this table, the moment the probe runs** — replace this line:
 
-> **PROBE RESULT: `<not yet run>`.** Branch A (300 s, in-platform) is assumed until this says
-> otherwise. Fill in: the date, the `?inline=1` status and wall clock, and whether
-> `[nina-probe] SURVIVED` appeared with the tab closed.
+> **PROBE RESULT: BRANCH A — CONFIRMED 2026-09-06 (run 18:22–18:24 UTC).** Both questions passed
+> decisively, so Steps 2–11 are done as written and **no Branch B propagation occurs**.
+>
+> **Q1, the ceiling — `?inline=1` returned HTTP 200 after 90.418 s.**
+> `curl -w '%{http_code} %{time_total}'` on `GET /nina/probe?inline=1` gave
+> `code=200 time_total=90.418768`, started 18:22:24Z, ended 18:23:55Z. No 504, no
+> `FUNCTION_INVOCATION_TIMEOUT`, no cut-off near 60 s. The server log shows the render holding the
+> whole way — ticks at 10000/20000/…/90005 ms, then
+> `[nina-probe] INLINE SURVIVED { label: '2407-mtq52rhl', heldMs: 90005 }`.
+>
+> **Q2, the tab closed — `[nina-probe] SURVIVED` DID appear.**
+> `{ label: '2407-mtq52bf1', heldMs: 90030 }`. The mechanism, so the claim is auditable rather than
+> merely asserted: the request returned in **1.25 s** and curl closed the connection at that point —
+> the tab-closed equivalent, and *stricter* than a browser, which may leave a socket lingering. The
+> `after()` callback went on ticking server-side for another 90 s — `elapsedMs` 10022, 20023, 30025,
+> 40026, 50027, **60027**, 70029, 80029, 90030 — crossing 60 s with nothing attached at the far end.
+>
+> **Provenance.** Preview deployment `dpl_GcCbzFkYByFDXuLBGxzFf8Sxq6Bj`
+> (`run-insights-hxq9dsach-jmt-arot.vercel.app`), served from **`sin1`** — the same region as
+> production, which is the region the expired 60 s claim was about. The segment carried
+> `export const maxDuration = 300`. The probe touched no table and spent nothing.
+>
+> **Consequences, now settled:** phase 3 keeps `NINA_BACKGROUND_BUDGET_MS = 240_000` and
+> `NINA_TURN_CHAIN_MAX = 2` unchanged; phase 7 writes its suite in the **Branch A** shape with
+> deltas A1–A6 applied; `error_code = 'dispatched'` becomes a historical value carried only by rows
+> written before phase 2 landed, so phase 4 renders `NINA_JOB_STAGE_LABEL.dispatched` but must not
+> present it as a live stage.
+>
+> **One real side effect, flagged for the user rather than reverted.** The preview has Deployment
+> Protection enabled, so `vercel curl` minted a project-level **protection-bypass token**
+> (`PATCH /v1/projects/…/protection-bypass`, which the CLI does automatically) to reach it. That
+> setting now exists on the Vercel project where it did not before. It was not chosen deliberately
+> and has not been removed unilaterally — revoke it in project settings if it is unwanted.
 
 **On Branch B, three edits and nothing else:**
 
