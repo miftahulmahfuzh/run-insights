@@ -64,20 +64,20 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "8ef6ba1",
       "depends_on": [
         3
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": "FROM PHASE 2 (Branch A): error_code='dispatched' is now LEGACY -- nothing writes it after phase 2, but toJobRow/PENDING_PHASES still map it and the fifteen historical orphans still render. Keep NINA_JOB_STAGE_LABEL.dispatched and jobStage's dispatched branch; change only the copy's tense, do not present it as a live stage. No column was added to nina_turns and no field to NinaImageJobArgs, so every row is the shape this plan quotes. listRevivableNinaImageJobs is a write-path read you may fold in; the two cutoffs are the whole content of that question. Cost renders as 'Biaya total' (per-JOB cumulative). || FROM PHASE 6 (b4bc490), with a coordinator correction: 14 nina_turns image jobs have an args.replyToId resolving to nothing -- reported by nina:memory-reap, never deleted (invariant 9) -- so planJobJump's 'gone' arm and its NINA_JOB_JUMP_NOTE copy are LIVE on real rows; build and test them as the common case. But REJECT phase 6's advice to treat 'the triggering message is gone' and 'the session was removed' as ONE state: it proved the converse of what that needs. The cascade means no message survives a deleted session; collapsing them requires that no message is GONE while its session SURVIVES, and deleteNinaMessage does exactly that -- unchanged by phase 6 (per lib/db/schema.ts:857, which phase 6 wrote) and reachable in production from lib/admin/chatPhotoActions.ts:231 and :283. Collapsing them would tell a runner 'the session was removed' about a job whose session is alive and whose message they deleted via /admin. Keep the kinds distinct. Phase 6 withdrew its 'larger than the plan guessed' framing: 14 dangling replyToIds vs the plan's 15 error_code='dispatched' rows are different predicates. Not a scope increase. Reconciliation row 23 assigns ChatScreen.tsx:236/246/862 to you, Step 9c.",
+      "note": "Pushed to origin. 10 files, 1516+/22-. Decisions: NINA_JOB_STAGE_LABEL.dispatched 'Dijadwalkan'->'Nunggu worker' per index Branch A (rung 4) -- branch kept, tense changed, 'worker' not 'runner' since the runner is the human; planJobJump 'gone' stays ONE arm, phase 6's collapse advice rejected (rung 3) because deleteNinaMessage kills a message while its session lives; react-hooks/purity disabled with a comment on the two server components' Date.now() (rung 6, async Server Component renders once, app/nina/page.tsx already relies on it); NinaJobElapsed's wire-time correction moved into a 0ms timer because react-hooks/set-state-in-effect is an error here. kind='image' filter kept in both new reads, so no chat turn can render. Phase 7's work is in the tree uncommitted (tests/integration/ninaImageE2E.int.test.ts, tests/live/ninaImageE2E.live.test.ts, one package.json script) -- untouched, committed by explicit pathspec.",
       "package": "app/nina/jobs`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md",
-      "reported_at": "2026-09-06T18:38:55+00:00",
+      "reported_at": "2026-09-06T19:07:59+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A007",
       "title": "Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble"
     },
@@ -96,7 +96,7 @@
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A008",
       "title": "The tracking section on `/nina/about`, below Media"
     },
@@ -119,20 +119,20 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "85ba9ed",
       "depends_on": [
         3
       ],
       "difficulty": "NORMAL",
       "n": 7,
-      "note": "BRANCH A CONFIRMED (phase 2 probe, 2026-09-06). Write the integration suite in the BRANCH A shape and APPLY deltas A1-A6. Do NOT use the Branch B shape your Step 1 spells out: no runGenerator() -> worker.runOneJob(workerSql, jobId), no GITHUB_DISPATCH_TOKEN stub, no githubDispatches router arm, and the three dispatch assertions do not stand. || PHASE 2's SEAMS, given for this suite: the awaitable entry point is runNinaImageJob(userId, jobId, opts?): Promise<'none'|'ok'|'retry'|'gave-up'> from lib/nina/imagerun.ts, whose return values match the old runOneJob one-for-one. The OpenRouter seam to stub is lib/nina/imagecall.ts's callNinaImageModel(prompt, seed), which imports NO database module. Nothing calls api.github.com any more, so that assertion becomes the STRONGER form: no request reaches it at all. Assert 2 x NINA_IMAGE_COST_MICRO_USD on a job that burned both attempts (per-JOB cumulative cost_micro_usd). Depends on phase 3, not phase 2.",
+      "note": "R5 proved end to end on a real Postgres + real Blob; test:int 58/58, npm test 2769/2769 untouched, typecheck/lint/6 guards/db:check clean, drizzle/ unchanged. Branch A, deltas A1-A6. DECISIONS: (1) case 3 makes ONE runNinaImageJob call returning 'gave-up', not two \u2014 the in-platform entry point owns its retry loop, so a fast failure burns both attempts in one invocation; plan's two-call shape was Branch B's [rung 3]. Cost still asserted as 2x NINA_IMAGE_COST_MICRO_USD. (2) case 4's 'send' handler assertion was wrong \u2014 send is the TERMINAL tool, in tools with NO handler; now asserts both image tools in tools AND handlers, send first in tools, no send handler [rung 2]. (3) MEASURED PLAN BUG: seeding session C only in beforeAll left Finding 1's session-resolution fix UNTESTED \u2014 the A3 fallback ranks by last activity and the case writes to B moments later, so deleting finishSelfie's 'quoted?.sessionId ??' kept the suite GREEN. C is now made most-recently-active one line before the generator runs; that mutation now fails case 2 [rung 3]. (4) per-case timeout 60s, vitest default is 5s off the live path [rung 6]. VERIFIED BY MUTATION: dropping the session fix fails case 2; the requeue branch recording 0 fails case 3 with 'expected 40000 to be 80000' (exit criterion 4). Exit criterion 2 N/A on Branch A, deliberately not faked. NO NEON BRANCH TOOLING on this box (no neonctl/API key, preview secrets unpullable), so I created a separate DATABASE run_insights_itest on the same endpoint, migrated, ran, verified 0 leftover rows and 0 itest rows in production, reaped 1 orphan 70-byte blob, and DROPPED it \u2014 production was never written. Recipe documented in the suite header incl. the pg_terminate_backend step DROP needs. LIVE SUITE spends $0.040 + 1 real Blob object + 1 throwaway user's quota slot; gated behind LLM_LIVE_TEST=1 AND TEST_DATABASE_URL != .env.local's AND three real-key checks \u2014 CI sets none; NOT RUN by me.",
       "package": "tests/integration`, `tests/live",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md",
-      "reported_at": "2026-09-06T18:38:55+00:00",
+      "reported_at": "2026-09-06T19:11:04+00:00",
       "satisfies": [
         "R5"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-RI-A017",
       "title": "End-to-end: chat \u2192 `set_avatar` \u2192 generation \u2192 the profpic really changes"
     }
@@ -140,6 +140,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T18:54:35+00:00",
+  "updated": "2026-09-06T19:11:04+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
