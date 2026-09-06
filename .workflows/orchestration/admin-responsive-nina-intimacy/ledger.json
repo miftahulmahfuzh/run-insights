@@ -79,28 +79,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "11c91ad",
       "depends_on": [
         4
       ],
       "difficulty": "HARD",
       "n": 5,
-      "note": "INHERITED (from p3, measured near-miss): this worktree is shared while peers run. Commit with pathspec-limited `git commit -- <explicit paths>` and verify AFTER with `git show --stat HEAD`; never assert on or CORRECT the shared index before committing (a peer sits between its own add and commit, and unstaging \"foreign\" files there truncates their commit silently, invisible to every gate). Never delete index.lock; wait and retry. Set-wide gates from phase 3: NINA_PROMPT_VERSION is already bumped 3->4 -- do not touch it; `vitest -u`/`--update` is FORBIDDEN, tests/__snapshots__/nina.prompts.test.ts.snap is the byte-identity gate. `npm run build` cannot run here (.env.local is gitignored and only in the main checkout; lib/env.ts validates at module load) -- tests/typecheck/lint are the gate. MIGRATION NUMBERING CONFIRMED (orch-nina-image-pipeline, 2026-09-06): the other live set on this base generates NO migration in any phase -- its invariant 10 requires drizzle/ to gain no file and git status --porcelain drizzle/ empty at the end of every phase, verified by an empty 'git diff origin/main...HEAD -- drizzle/ lib/db/schema.ts'. So 0006 (phase 4) and 0007 (phase 5) are uncontested and merge order between the two branches is free. Generate normally; do NOT run 'npm run db:migrate' from the branch -- both phases' exit criteria ask for 'npm run db:check' only (rung 2), and applying an unmerged branch's migration to the live Neon DB is deferred to the merge.",
+      "note": "horny landed as the TWELFTH TRAIT (D6). Decisions: (1) horny defines a mid band, the only trait in NINA_TRAIT_BANDS that does, so it speaks from 40 not 60 \u2014 kept per rung 3, the phase plan's code block, against persona.ts's own 'default-off traits speak from 60' header rule; exception written down in the header, the entry and docs/nina/persona.md. (2) tests/admin.tuning.test.ts toHaveLength(11)->12 and tests/db.schema.nina.test.ts toBe(15)->16 bumped, not derived (rung 1, invariant 7; derived would be a tautology). admin.tuning.test.ts is outside phase 5's Files table, touched only because invariant 7 leaves no alternative. (3) db:migrate NOT run for 0007 (rung 2, exit criteria name db:check) \u2014 0006 and 0007 both still need applying to live Neon at the merge. (4) generated SQL edited to DEFAULT 0 / DROP DEFAULT for the NOT NULL column, per the plan's Step 6; never renamed, journal idx 7, when monotonic. Snapshot passes UNMODIFIED, NINA_PROMPT_VERSION stays 4, nothing under lib/llm or imagefail.ts touched so R5 stays unowned under D1. Follow-up commit 11c91ad fixes two prose tallies horny falsified.",
       "package": "lib/nina`, `lib/db`, `drizzle`, `tests",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-5.md",
-      "reported_at": "2026-09-06T14:51:12+00:00",
+      "reported_at": "2026-09-06T18:59:01+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A006",
       "title": "The `horny` trait"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-responsive-nina-intimacy",
-  "updated": "2026-09-06T18:37:25+00:00",
+  "updated": "2026-09-06T18:59:01+00:00",
   "verified_at": "2026-09-06T18:21:25+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
 }
