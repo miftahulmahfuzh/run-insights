@@ -10,7 +10,9 @@ import {
   ninaAngerCeiling,
   ninaAngerFloor,
   ninaAngerLadderBlock,
+  ninaGirlfriendVoiceBlock,
   ninaIdentity,
+  ninaManjaRegisterBlock,
   ninaNameRules,
   ninaNeverSayBlock,
   ninaOperatorNotesBlock,
@@ -443,12 +445,23 @@ export function buildNinaSystemPrompt(tuning: NinaTuning): string {
       blocks: [
         LANGUAGE_RULE,
         JAKARTA_REGISTER,
+        /* R2, admin-responsive-nina-intimacy. Empty at four of the five relationships, and
+         * `renderSections` drops an empty block — which is why adding it here cannot perturb the
+         * default render. It sits DIRECTLY under the register it amends: it lifts that block's
+         * "Never aku" and one-emoji lines for `girlfriend` and nowhere else, and an amendment two
+         * paragraphs from its rule is an amendment the model may not connect. */
+        ninaManjaRegisterBlock(tuning),
         JAKARTA_SLANG_BLOCK,
         ENGLISH_REGISTER,
         ninaNameRules(tuning),
       ],
     },
-    { header: sectionHeader('EXACTLY HOW YOU SOUND'), blocks: [VOICE_EXAMPLES_BLOCK] },
+    {
+      header: sectionHeader('EXACTLY HOW YOU SOUND'),
+      /* The second entry is the girlfriend-only set of the user's verbatim lines and is `''` at
+       * every other level. Its lead-in reads off the block above it, so the order is load-bearing. */
+      blocks: [VOICE_EXAMPLES_BLOCK, ninaGirlfriendVoiceBlock(tuning)],
+    },
     { header: sectionHeader('HOW YOU FEEL'), blocks: [ninaTraitsBlock(tuning)] },
     { header: sectionHeader('WHEN YOU GET ANGRY'), blocks: [ninaAngerLadderBlock(tuning)] },
     { header: sectionHeader('WHAT YOU NEVER SAY'), blocks: [ninaNeverSayBlock(tuning)] },

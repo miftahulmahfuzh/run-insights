@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-06
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 4
+- Completed: 5
 
 ---
 
@@ -88,3 +88,20 @@
   - **Files**: lib/nina/imagegen.ts, lib/nina/selfiegen.ts, lib/nina/imagetools.ts, lib/nina/avatargen.ts, lib/nina/promise.ts, lib/nina/promises.ts, lib/nina/queries.ts, lib/db/schema.ts, tests/nina.imagerecipe.test.ts, tests/nina.promise.reward.test.ts
   - **Commit**: `cd88907`
   - **Decisions**: the new `queries.ts` section is numbered `§11`, not the `§12` in the plan's Step 8 code block — the Interface Contract, Handoff 6 and the plan index all say `§11`, and phase 1's `§10` is confirmed the last section on disk, so there is no hole · `drizzle/` untouched, verified by an empty `git diff --stat drizzle/`.
+
+- [x] **P1-NIN-A004** Phase 3: Girlfriend register: manja, imut, vowel lengthening
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `NINA_RELATIONSHIP_BLOCKS.girlfriend` in `lib/nina/persona.ts`, a new relationship-gated orthography rule beside `JAKARTA_REGISTER`, girlfriend-only `VOICE_EXAMPLES` (gated), the `isGirlfriend` gate seam, two block entries plus two import names in `lib/nina/prompts/system.ts`, the set's single `NINA_PROMPT_VERSION` bump (3 -> 4), `docs/nina/persona.md`, and `tests/__snapshots__/nina.prompts.test.ts.snap` (a set-wide gate). Exit: with `relationship: 'girlfriend'` the prompt carries the manja register and the vowel-lengthening rule with the user's five examples; with the other four relationships it is byte-identical to `origin/main` @ `02dc79a`, and the committed snapshot proves it. `npm run test && npm run typecheck && npm run lint` green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R2 — `girlfriend` relationship => more *manja* and *imut*, with Indonesian final-vowel lengthening
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A004.md`
+  - **Completed**: 2026-09-06 21:44
+  - **Method**: /implement (swarm wave 1, concurrent with phase 1)
+  - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts, tests/__snapshots__/nina.prompts.test.ts.snap, docs/nina/persona.md
+  - **Drift**: Plan cited `tests/nina.prompts.test.ts:445` for the snapshot insertion point; the named anchors ("carries F33's original headings" / "pads every heading to 80 columns") are actually at `:174`/`:196`. Anchors matched exactly, line numbers did not. Followed the anchors.
+  - **Drift**: Plan cited `persona.ts` `JAKARTA_REGISTER` ending at `:451` and `ENGLISH_REGISTER` at `:452`; actual `452`/`454`. Two-line offset, partly from Step 2's own insertion. Constants and every quoted bullet matched byte for byte.
+  - **Decided**: Step 1's `git add` of the snapshot + test file, in a worktree where a concurrent peer is committing -> skipped the stage; left the files unstaged for pusher to stage by explicit path (rung: durable swarm feedback on the shared git index; tie-break: narrower blast radius). The snapshot's correctness comes from its generation ORDER, which is fixed on disk at 21:39:22, before any source edit.
+  - **Decided**: Step 3 of /implement says create tasks for every phase in the set -> created ONLY phase 3's task, in `lib/nina/.workflows/todos.md`, and did not write the tracked orchestration `PLAN.md` TaskID column (rung: durable swarm feedback, hazard 4 — N concurrent phases doing read-modify-write on the same bookkeeping files; the coordinator owns them during a wave).

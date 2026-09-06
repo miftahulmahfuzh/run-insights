@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { ANGER_LADDER, JAKARTA_SLANG, NINA_APPEARANCE, VOICE_EXAMPLES } from '@/lib/nina/persona'
+import {
+  ANGER_LADDER,
+  GIRLFRIEND_VOICE_EXAMPLES,
+  JAKARTA_SLANG,
+  NINA_APPEARANCE,
+  VOICE_EXAMPLES,
+} from '@/lib/nina/persona'
 import {
   NINA_PROMPT_VERSION,
   NINA_SECTION_TITLES,
@@ -187,6 +193,28 @@ describe('buildNinaSystemPrompt — the default tuning is the shipping prompt', 
       expect(at, `${title} is missing from the default render`).toBeGreaterThan(cursor)
       cursor = at
     }
+  })
+
+  /*
+   * ── PLAN INVARIANT 2, AS A GATE RATHER THAN A CLAIM ──────────────────────────────────────
+   * The `girlfriend` register (R2, the admin-responsive-nina-intimacy set) is gated on the
+   * relationship, so the OTHER FOUR levels must render exactly the bytes they rendered at
+   * `origin/main` @ 02dc79a. Containment assertions cannot catch a whitespace change, a reordered
+   * block or a dropped sentence; a snapshot can, and it prints the diff.
+   *
+   * **This snapshot was generated from the tree BEFORE that phase's edits.** Regenerating it is
+   * how the invariant gets lost, so treat a failure here as a bug in the change, not in the file:
+   * every later phase in this set is likewise required to leave these four renders alone
+   * (`horny` defaults to 0, `enabled` defaults to all-true, precisely so that it does).
+   */
+  it('renders the four non-girlfriend relationships exactly as origin/main did', () => {
+    const renders: Record<string, string> = {}
+    for (const relationship of RELATIONSHIPS) {
+      if (relationship === 'girlfriend') continue
+      renders[relationship] = buildNinaSystemPrompt(withRelationship(relationship))
+    }
+    expect(Object.keys(renders)).toHaveLength(4)
+    expect(renders).toMatchSnapshot()
   })
 
   /*
@@ -513,6 +541,96 @@ describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
     expect(buildNinaSystemPrompt(withRelationship('nobody'))).not.toContain(
       'do not use the full name at him',
     )
+  })
+})
+
+/**
+ * ── R2 (admin-responsive-nina-intimacy): THE GIRLFRIEND REGISTER ─────────────────────
+ * "if relationship is set to girlfriend, make her more manja and imut. dalam bahasa indonesia kita
+ * suka menambah jumlah karakter vokal di akhir" — the user's own words, and his five example lines
+ * are the specification. They are stored verbatim in `GIRLFRIEND_VOICE_EXAMPLES`, so this suite
+ * WALKS that array rather than retyping the lines: a tidied copy here would pass while the prompt
+ * shipped a tidied line, which is the exact failure the verbatim rule exists to prevent.
+ */
+describe('buildNinaSystemPrompt — the girlfriend register (R2)', () => {
+  const girlfriend = buildNinaSystemPrompt(withRelationship('girlfriend'))
+
+  it("carries all five of the user's girlfriend lines, verbatim, emoji included", () => {
+    expect(GIRLFRIEND_VOICE_EXAMPLES).toHaveLength(5)
+    for (const example of GIRLFRIEND_VOICE_EXAMPLES) {
+      expect(girlfriend, `girlfriend lost the line "${example.line}"`).toContain(example.line)
+    }
+    /* The emoji specifically: a lint autofix or an editor's "normalise unicode" is the plausible
+     * way three kiss marks become one, and the one-emoji repeal below is what they are evidence
+     * for. */
+    expect(girlfriend).toContain('💋💋💋')
+  })
+
+  it('states the vowel lengthening as a spelling rule, with the forms the user typed', () => {
+    expect(girlfriend).toContain('Lengthen the last vowel')
+    expect(girlfriend).toContain('sayang -> sayaangg')
+    expect(girlfriend).toContain('This is SPELLING, not sentiment')
+  })
+
+  it('names manja and imut in the identity block, as register rather than as mood', () => {
+    expect(girlfriend).toContain('"manja"')
+    expect(girlfriend).toContain('"imut"')
+    /* The sentence that keeps a later reader from folding this into the `clinginess` dial, which
+     * moves three day-count constants in `lib/nina/proactive.ts` and nothing about her spelling. */
+    expect(girlfriend).toContain('it is not how often you go first')
+  })
+
+  it('lifts exactly the two register lines its own examples break, and no more', () => {
+    /* "tar aku kirim foto nya yaa" against `Never "aku"`, and 💋💋💋 against the one-emoji line. */
+    expect(girlfriend).toContain('"aku" is yours at this level')
+    expect(girlfriend).toContain('Emoji stop being rationed with him')
+    /* And the half that does NOT lift: the base register is still in the prompt underneath, so
+     * this is an amendment rather than a replacement, and formal Indonesian is still out. */
+    expect(girlfriend).toContain('Never "saya"')
+    expect(girlfriend).toContain('Never "Anda"')
+    expect(girlfriend).toContain('Never "kamu"')
+  })
+
+  it('keeps the register inside the sections that already exist', () => {
+    /* R2 adds no heading. If it ever does, `NINA_SECTION_TITLES` and the 80-column heading test
+     * are the two places that must agree, and this is the assertion that says so out loud. */
+    expect(NINA_SECTION_TITLES).toHaveLength(10)
+    const talk = girlfriend.indexOf('── HOW YOU TALK ')
+    const sound = girlfriend.indexOf('── EXACTLY HOW YOU SOUND ')
+    const manja = girlfriend.indexOf('Lengthen the last vowel')
+    const lines = girlfriend.indexOf('iyaa sayaangg')
+    expect(talk).toBeGreaterThanOrEqual(0)
+    expect(manja).toBeGreaterThan(talk)
+    expect(manja).toBeLessThan(sound)
+    expect(lines).toBeGreaterThan(sound)
+  })
+
+  it('is entirely invisible at the other four relationships', () => {
+    /* Plan invariant 2, stated as containment. The snapshot above is the byte-level gate; this is
+     * the readable one that names WHAT leaked when it fails. */
+    for (const relationship of RELATIONSHIPS) {
+      if (relationship === 'girlfriend') continue
+      const render = buildNinaSystemPrompt(withRelationship(relationship))
+      for (const example of GIRLFRIEND_VOICE_EXAMPLES) {
+        expect(render, `${relationship} leaked "${example.line}"`).not.toContain(example.line)
+      }
+      expect(render, `${relationship} leaked the manja register`).not.toContain('sayaangg')
+      expect(render, `${relationship} leaked "manja"`).not.toContain('"manja"')
+      expect(render, `${relationship} leaked "imut"`).not.toContain('"imut"')
+      expect(render, `${relationship} lost the emoji ration`).toContain(
+        'At most one emoji in a whole reply',
+      )
+    }
+  })
+
+  it('is invisible at the DEFAULT tuning, which is what makes it shippable', () => {
+    expect(DEFAULT_RENDER).not.toContain('sayaangg')
+    expect(DEFAULT_RENDER).not.toContain('💋')
+    expect(DEFAULT_RENDER).toBe(NINA_SYSTEM_PROMPT)
+  })
+
+  it('grows the prompt rather than replacing part of it', () => {
+    expect(girlfriend.length).toBeGreaterThan(DEFAULT_RENDER.length)
   })
 })
 

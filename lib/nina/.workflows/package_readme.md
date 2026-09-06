@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-06 (task `P1-NIN-A004`, phase 3 of the admin-responsive-nina-intimacy set — R2, the girlfriend register)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -85,6 +85,40 @@ renders `''` and the shipping prompt is untouched. It is computed from phase 1's
 trait is therefore today's Nina from 0 to 59 and speaks from 60 up — which is the shape every one of
 the user's own sentences asked in (*"if X is set to high"*).
 
+#### The girlfriend register — *manja* and *imut* (R2)
+
+At `relationship: 'girlfriend'` — and at no other level — she speaks in the **manja / imut** register,
+with Indonesian final-vowel lengthening. The user's requirement, verbatim: *"if relationship is set to
+girlfriend, make her more manja and imut. dalam bahasa indonesia kita suka menambah jumlah karakter
+vokal di akhir"*, and the five example lines that came with it **are the specification**, not
+illustrations of it — so they are stored verbatim in `GIRLFRIEND_VOICE_EXAMPLES` and nothing may tidy
+them. It lands in three pieces, all pure insertions:
+
+- **Identity.** `NINA_RELATIONSHIP_BLOCKS.girlfriend.identity` gains two sentences naming *manja* and
+  *imut* as a **register**, including the clause *"it is not how often you go first"* — that clause is
+  load-bearing and pinned by a test, because the next reader's instinct is to fold this into the
+  `clinginess` dial. It does not belong there: `clinginess` moves three day-count constants in
+  `proactive.ts` and decides **when** she speaks first; *manja* decides how a message she is already
+  sending sounds. `clinginess: 0` with `relationship: 'girlfriend'` is a Nina who never opens a
+  conversation and answers "iyaa sayaangg" when he opens one, and that Nina is unreachable if the two
+  are merged.
+- **Orthography.** `MANJA_ORTHOGRAPHY` (module-private; reached only through
+  `ninaManjaRegisterBlock`) sits **directly under `JAKARTA_REGISTER`** because that constant is this
+  file's home for spelling habits and this is a spelling habit. It **amends rather than rewrites**:
+  the base register stays exactly where it is and two of its bullets are repealed for `girlfriend`
+  alone — `Never "aku"` (against *"tar aku kirim foto nya yaa"*) and the one-emoji ration (against
+  *"i missed you too sayaangg, sini cium 💋💋💋"*). A prompt whose examples break its own rules teaches
+  the model that the rules are decorative. Editing `JAKARTA_REGISTER` itself was rejected: it is the
+  load-bearing text of plan invariant 2 and the other four levels must render it byte for byte.
+  **`kamu` is deliberately NOT repealed** — the evidence is one line and it is about her own first
+  person, and `NINA_ADDRESS.girlfriend.words` already fills the slot `kamu` would occupy.
+- **Voice.** `GIRLFRIEND_VOICE_EXAMPLES` (five entries) renders as a **second** block under
+  `EXACTLY HOW YOU SOUND`, after `VOICE_EXAMPLES_BLOCK` rather than merged into it: the first set is
+  who she is at every level, this set is who she is at one.
+
+`lib/nina/tuning.ts` is deliberately untouched — `NINA_ADDRESS.girlfriend` already ships the manja
+pet-name set.
+
 ## Exported API — `persona.ts`
 
 ### Data tables (walkable, and walked by tests)
@@ -102,6 +136,7 @@ the user's own sentences asked in (*"if X is set to high"*).
 | `ANGER_FLOOR_BY_BAND` | `Record<NinaBandName, NinaBandIndex>` | `off/low/mid → 0`, `high → 3`, `max → 4`. |
 | `ANGER_CEILING_BY_BAND` | `Record<NinaBandName, NinaBandIndex>` | `off → 4`, `low → 3`, `mid/high/max → 4`. See the deviation note below. |
 | `JAKARTA_SLANG`, `VOICE_EXAMPLES` | arrays | Data behind `JAKARTA_SLANG_BLOCK` / `VOICE_EXAMPLES_BLOCK`, which are `.map().join()` over them. |
+| `GIRLFRIEND_VOICE_EXAMPLES` | `readonly VoiceExample[]` | **R2.** The user's five girlfriend lines, quoted exactly — "aku" for "gw", "foto nya" with the space in it, 💋💋💋. A *second* array rather than five more entries in `VOICE_EXAMPLES`, which is her voice at every level and is pinned at five. Walked by `tests/nina.prompts.test.ts` rather than retyped, so a tidied copy cannot pass while a tidied line ships. |
 
 `anger` is in `NINA_TRAIT_BANDS` with **empty bands**, on purpose: its entire effect is the floor and
 ceiling inside `ninaAngerLadderBlock`, and a paragraph saying "you are angry all the time" beside a
@@ -121,6 +156,8 @@ function ninaTraitsBlock(tuning: NinaTuning): string
 function ninaOperatorNotesBlock(tuning: NinaTuning): string
 function ninaAngerFloor(tuning: NinaTuning): NinaBandIndex
 function ninaAngerCeiling(tuning: NinaTuning): NinaBandIndex
+function ninaManjaRegisterBlock(tuning: NinaTuning): string      // R2, girlfriend only
+function ninaGirlfriendVoiceBlock(tuning: NinaTuning): string    // R2, girlfriend only
 ```
 
 - `ninaIdentity` — paragraph 1 is the relationship's, 2 and 3 are fixed, paragraph 4's last clause is
@@ -134,17 +171,28 @@ function ninaAngerCeiling(tuning: NinaTuning): NinaBandIndex
 - `ninaOperatorNotesBlock` — the operator's own words with a preamble saying they *win* over
   everything above. It is a separate function from `ninaTraitsBlock` because phase 3 renders it
   **last in the whole prompt**, after `HOW YOU ANSWER`.
+- `ninaManjaRegisterBlock` / `ninaGirlfriendVoiceBlock` — the two R2 blocks. **Both return `''` at
+  four of the five relationships**, and `renderSections` drops an empty block, which is what makes
+  plan invariant 2 arithmetic here rather than careful: the sections they join receive exactly the
+  array of non-empty strings they received before R2 existed, so the join is the same join.
 
-### Band predicates
+### Band and relationship predicates
 
 ```ts
 function isTurnedUp(tuning: NinaTuning, trait: NinaTrait): boolean   // band is 'high' or 'max' (score >= 60)
 function anyTurnedUp(tuning: NinaTuning, traits: readonly NinaTrait[]): boolean
+const isGirlfriend: (tuning: NinaTuning) => boolean                  // relationship === 'girlfriend'
 ```
 
-Both **exported**, because phase 3 needs the same test for `NUMBERS_RULE`'s surviving body clause in
-`prompts/system.ts`. A second definition of "turned up" is how the two halves of one repeal come to
-disagree.
+`isTurnedUp` / `anyTurnedUp` are **exported**, because phase 3 needs the same test for
+`NUMBERS_RULE`'s surviving body clause in `prompts/system.ts`. A second definition of "turned up" is
+how the two halves of one repeal come to disagree.
+
+`isGirlfriend` is exported for the same reason, and it is **the single gate seam for every
+girlfriend-only block in the file** — both R2 render functions call it rather than comparing
+`tuning.relationship` themselves. It is therefore the *one* expression a later phase edits to put the
+register behind a per-parameter enable toggle (`&& tuning.enabled.relationship`), instead of hunting
+for three scattered comparisons.
 
 ### Default-render constants (the compatibility surface)
 
@@ -235,6 +283,16 @@ built ONCE per turn in `runNinaTurnWith` and passed to every model call includin
 turn is always one character. `nina_turns.tuning_revision` records which settings produced each
 turn; `prompt_version` identifies the assembler, the revision identifies what it assembled, and only
 the pair answers "what was she set to when she said that".
+
+**`NINA_PROMPT_VERSION` is `4`.** The `3 -> 4` bump is R2: `HOW YOU TALK` gained
+`ninaManjaRegisterBlock(tuning)` directly under `JAKARTA_REGISTER` — an amendment two paragraphs from
+its rule is an amendment the model may not connect — and `EXACTLY HOW YOU SOUND` gained
+`ninaGirlfriendVoiceBlock(tuning)` as a second entry after `VOICE_EXAMPLES_BLOCK`, whose lead-in reads
+off the block above it, so **the order is load-bearing**. No section and no tool schema moved, and
+`NINA_SECTION_TITLES` is still ten. That bump is the **single** one for the whole
+admin-responsive-nina-intimacy set — later phases must not touch the constant, because two bumps
+would date two commits to one change. The changelog for each version lives as a comment above the
+constant in `prompts/index.ts`.
 
 ## The camera is a function of the tuning
 
@@ -428,6 +486,14 @@ are worth knowing:
   `NEVER_SAY_ENTRIES`), and so are the three new tables. A paragraph that restates a list is a second
   source of truth for the list, and the failure is silent. Keep them walkable —
   `tests/nina.prompts.test.ts` walks them to prove every entry reached the prompt.
+- **Never regenerate `tests/__snapshots__/nina.prompts.test.ts.snap`.** It is not a convenience
+  snapshot; it is the recorded pre-change render of the four non-girlfriend relationships, and
+  `vitest -u` is exactly how plan invariant 2 gets silently lost. A failure there is a bug in your
+  change, not staleness in the file — read the diff it prints and fix the source.
+- **`manja` is not the `clinginess` dial**, and the sentence *"it is not how often you go first"* is
+  in the identity block to say so. One is spelling inside a message; the other is three day-count
+  constants deciding whether a message is sent at all. Merging them makes
+  `clinginess: 0` + `girlfriend` — a Nina who never goes first and is soft when he does — unreachable.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -442,7 +508,16 @@ including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*
 subset precisely so that walk keeps proving something true at every setting rather than only at the
-default.
+default. That file also walks `GIRLFRIEND_VOICE_EXAMPLES` (an 8-case `girlfriend register (R2)`
+describe block) rather than retyping the user's five lines.
+
+**The snapshot is the byte-identity gate for plan invariant 2.**
+`tests/__snapshots__/nina.prompts.test.ts.snap` holds the assembled prompt for the **four
+non-girlfriend relationships**, and it was **generated from the pristine tree before any source edit**
+— so a passing run is a proof that the four untouched levels still render exactly what `origin/main`
+@ `02dc79a` rendered. Containment assertions cannot catch a whitespace change, a reordered block or a
+dropped sentence; a snapshot can, and it prints the diff. The containment tests beside it are the
+readable half: they name *what* leaked when it fails.
 
 ## Notes
 
