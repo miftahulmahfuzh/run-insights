@@ -44,21 +44,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "8c80ca4",
       "depends_on": [
         2
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": "BRANCH A CONFIRMED (phase 2 probe, 2026-09-06: HTTP 200 after 90.418s; after() ticked to 90030ms with the connection closed; sin1, production's region; maxDuration=300). NOTHING IN THIS PHASE CHANGES: keep NINA_BACKGROUND_BUDGET_MS = 240_000 and NINA_TURN_CHAIN_MAX = 2. The Branch B instruction to move those two literals together to 45_000/0 is VOID. || PHASE 2's INTERFACE CONTRACT, four points, the second of which phase 2 says will bite: (1) the durability primitive is next/server's after() -- NOT a floating promise, NOT a fetch to an internal route. (2) THE BUDGET IS THE INVOKING ROUTE SEGMENT'S maxDuration, NOT THE ACTION'S. Keep runNinaTurn inside a segment carrying the literal 300 -- app/nina/page.tsx or app/api/cron/nina/route.ts -- and do NOT move it into a new route handler and do NOT lower either literal. (3) Nesting is expected and sanctioned (after.md:56): after this phase, a generate_image inside a backgrounded turn registers a second, nested after(). The arithmetic is 45s turn + 200s generation <= 300s, asserted in tests/nina.imagerecipe.test.ts. (4) after() does NOT survive maxDuration or an instance kill; recovery for both is phase 2's reviveNinaImageJobs plus the unchanged give-up sweep, NOT anything this phase builds. Phase 2 left lib/nina/queries.ts's import block untouched -- it calls four functions there and edits none. || STILL YOURS: lib/nina/live.ts is NOT edited (bounded poll only); Step 6d's ninaSessionExists guard closes the distillation race at source, with nina:memory-reap as the standing backstop (phase 6, b4bc490); no edge to phase 6. Reconciliation row 23 assigns ChatScreen.tsx:62 (names 'unavailable'/'bubbles' after this phase deletes both) to you, Step 9a-pre.",
+      "note": "Split landed: sendNinaMessage returns {ok,userMessageId,sessionId,cursor,turnId} after persisting his row + a nina_turns claim; the turn runs in after(). Arrival is pollNinaReply only \u2014 lib/nina/live.ts NOT edited and live.test.ts green untouched. New: lib/nina/turnflight.ts (+suite, 14 cases), lib/nina/chatturn.ts. Step 6d done (half of R8): ninaSessionExists guard placed ONCE right after the model returns \u2014 rung 3, the step's own prose says once per turn, not once per write; both exits close via finally with error_code='session-gone'. Branch A held per your brief: NINA_BACKGROUND_BUDGET_MS=240_000, NINA_TURN_CHAIN_MAX=2, Branch B edit void (rung 1, PROBE RESULT). Dropped the plan block's context/relationship locals in runNinaBackgroundTurn \u2014 assigned-never-read fails lint (rung 1, invariant 1). openNinaChatTurn race accepted permanently, no migration. nina_messages.turn_id now stamped (was 0/48). Verified: typecheck, lint 0 errors, npm test 143 files/2741 pass, build, all six guards with NO guard-script edit, db:check clean + drizzle/ empty. No .workflows/ file touched. Pushed to origin.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md",
-      "reported_at": "2026-09-06T18:38:55+00:00",
+      "reported_at": "2026-09-06T18:53:35+00:00",
       "satisfies": [
         "R6",
         "R8"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A006",
       "title": "WhatsApp-style send: instant persist, durable background turn"
     },
@@ -77,7 +77,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A007",
       "title": "Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble"
     },
@@ -132,7 +132,7 @@
       "satisfies": [
         "R5"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-RI-A017",
       "title": "End-to-end: chat \u2192 `set_avatar` \u2192 generation \u2192 the profpic really changes"
     }
@@ -140,6 +140,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T18:39:41+00:00",
+  "updated": "2026-09-06T18:54:35+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
