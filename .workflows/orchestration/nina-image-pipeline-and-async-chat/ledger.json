@@ -6,18 +6,18 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "f7f0985",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "Phase 1. All three measured defects fixed in the shipped worker; host unchanged. F1: resolveWorkerSessionId + session_id on both INSERTs. F1 blast radius: apology best-effort, terminal close always runs. F1 class: findSchemaDrift extracted, NOT-NULL coverage on INSERT targets \u2014 verified LIVE, the pre-fix column list reports exactly 'nina_messages.session_id is NOT NULL...' against the real schema while the fixed list is preflight ok. F2: dispatchCutoffFor runs the window forward for a named job; running-reclaim and attempts bounds NOT relaxed. F3: NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS=6_360_000, no existing constant changed. Invariant 9 held on all four cost_micro_usd writes (grep shows coalesce on every line), including both success paths per Decisions. NO migration; db:check clean, drizzle/ untouched. DECIDED: (a) /implement Step 3 skipped, subagent killed pre-write, coordinator embargo wins [rung 6 + narrower blast radius] \u2014 now the set-wide rule; (b) plan Step 8 block does not compile, '*/10' closes the JSDoc, written '*\\/10' per repo convention at nina-image-worker.ts:36 [rung 1, invariant 1]; (c) dropped the plan Step 11 unused NeonSql type import, it added a lint warning [rung 1]; (d) committed by explicit pathspec in-session rather than via completion-handler/readme-updater/pusher, which write embargoed files and would stage broadly. Verification: npm test 2724 passed (142 files), typecheck clean, lint 0 errors (2 pre-existing in shoot.mjs), build ok, six CI guards green, db:check clean, nina:worker:dry preflight ok.",
       "package": "scripts/`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md",
-      "reported_at": "2026-09-06T15:08:40+00:00",
+      "reported_at": "2026-09-06T15:15:33+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A004",
       "title": "Unblock the camera: the three measured defects"
     },
@@ -38,7 +38,7 @@
         "R4",
         "R7"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A005",
       "title": "Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop"
     },
@@ -70,10 +70,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "FROM PHASE 6 (landed b4bc490), with one correction the coordinator verified. (a) MEASURED: 14 nina_turns image jobs have an args.replyToId resolving to nothing; reported by nina:memory-reap, never deleted (invariant 9). So planJobJump's 'gone' arm and its NINA_JOB_JUMP_NOTE copy are LIVE on real rows -- build and test them as the common case. (b) Phase 6 called this 'larger than the plan guessed'; it withdrew that itself. Its count is dangling args.replyToId; the plan's 15 is rows carrying error_code='dispatched'. Different predicates, possibly non-overlapping, and 14 < 15. Not a scope increase. (c) REJECT phase 6's advice to treat 'the triggering message is gone' and 'the session was removed' as ONE state. It proved the converse of what that needs: the cascade means no message survives a deleted session, but collapsing the states requires that no message is GONE while its session SURVIVES -- and deleteNinaMessage does exactly that. It is unchanged by phase 6 (deliberately, per lib/db/schema.ts:857 which phase 6 itself wrote) and is reachable in production from lib/admin/chatPhotoActions.ts:231 and :283, the /admin chat-photo delete path. Collapsing them would tell a runner 'the session was removed' about a job whose session is alive and whose single message they deleted through /admin. Keep the kinds distinct.",
       "package": "app/nina/jobs`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md",
-      "reported_at": "2026-09-06T15:08:40+00:00",
+      "reported_at": "2026-09-06T15:14:11+00:00",
       "satisfies": [
         "R1"
       ],
@@ -102,18 +102,18 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b4bc4905db0b8890d623fdf86c8d1fd504b580bb",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 6,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "PHASE 6. removeNinaSession is now a 4-statement db.batch: purge facts, purge slots (minus pending_promises), prune pending_promises per ENTRY, session delete LAST. Correlated subquery, not a pre-read. No FK, no migration; drizzle/ gained no file and db:check is clean. Two forks decided on the ladder: (1) drizzle exists() emits no parens around a raw sql template -- the plan's Step 1 asserts the opposite outright -- producing 'and exists select 1 from', a syntax error; hand-parenthesised the template rather than relax the test, rung 2 (exit criteria need the purge to EXECUTE). (2) the no-FK comment named lib/admin/memoryStore.ts in full and tripped admin.memory.test.ts's textual guard over lib/nina; rephrased the comment, guard stands. Reap APPLIED after full-table \\copy snapshot at /home/miftah/nina-memory-snapshot-20260906/{facts,slots}-backup.csv (13 facts, 6 slots dumped whole, not orphans-only): deleted 1 fact, 1 slot (nickname 'tah', the plan's named accepted cost), pruned 1 promise list 2->1; second consecutive dry run reports ZERO. The dry run is also the only thing that proves the hand-written jsonb_array_elements/with-ordinality/jsonb_agg expression is ACCEPTED BY POSTGRES -- the unit suite asserts that SQL as a string, which proves the string and not the parse. FOR PHASE 4: 14 nina_turns image jobs have an args.replyToId that resolves to nothing; reported, never deleted (invariant 9). CORRECTION to my first note: I called that 'larger than the plan guessed' and that was wrong -- the plan's 15 counts rows with error_code='dispatched', a DIFFERENT predicate, so the two sets are not comparable and may not overlap. The usable finding is only that the 'gone' path is a common case rather than hypothetical; phase 4's planJobJump already handles it and needs no redesign. 2698 tests / 142 files green, six guards pass, typecheck clean, lint 0 errors. Committed by explicit pathspec; phase 1's four in-flight files left untouched.",
       "package": "lib/nina`, `scripts/",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md",
-      "reported_at": "2026-09-06T15:08:40+00:00",
+      "reported_at": "2026-09-06T15:13:06+00:00",
       "satisfies": [
         "R8"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A009",
       "title": "Permanent session deletion: take the distilled memory with it"
     },
@@ -140,6 +140,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T15:08:41+00:00",
+  "updated": "2026-09-06T15:16:38+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
