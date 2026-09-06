@@ -125,16 +125,17 @@ describe('the Apple web-app metadata', () => {
     expect(APPLE_WEB_APP.capable).toBe(true)
   })
 
-  it('keeps the status bar opaque, because no header in this app pads the notch', () => {
+  it('keeps the status bar opaque, because the runner screens still do not pad the notch', () => {
     /*
      * NOT 'black-translucent', however much better it looks in a screenshot. Translucent means the
      * page runs UNDER the status bar, which is only safe when every fixed top element pads itself
-     * by env(safe-area-inset-top). In this app exactly one does — components/review/
-     * ScreenshotStrip.tsx, a full-bleed overlay — while `ScreenHeader` and every page use a plain
-     * p-5. Switching this to translucent slides the "TODAY" and "TRENDS" titles under the clock.
+     * by env(safe-area-inset-top). Two surfaces do — components/review/ScreenshotStrip.tsx, a
+     * full-bleed overlay, and `/admin`'s shell since admin-responsive-nina-intimacy phase 1 — while
+     * `ScreenHeader` and every page under app/ still use a plain p-5. Switching this to translucent
+     * slides the "TODAY" and "TRENDS" titles under the clock.
      *
-     * If the padding is ever done properly, this assertion is the thing to change, and changing it
-     * is how you are reminded that the padding is the prerequisite.
+     * If the runner's padding is ever done too, this assertion is the thing to change, and changing
+     * it is how you are reminded that the padding is the prerequisite.
      */
     expect(APPLE_WEB_APP.statusBarStyle).toBe('default')
   })

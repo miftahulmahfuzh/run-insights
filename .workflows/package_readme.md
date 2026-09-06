@@ -487,7 +487,7 @@ neither of which contributes a URL segment.
 | `/nina` | `app/nina/page.tsx` | **`AppShell` (chat)** | `maxDuration = 60`; the only `screen` call site |
 | `/nina/about` | `app/nina/about/page.tsx` | `AppShell` (tabs) | a pushed screen that keeps the bar |
 | `/onboarding` | `app/onboarding/page.tsx` | none | standalone |
-| `/admin`, `/admin/memory`, `/admin/nina` | `app/admin/**` | none — `app/admin/layout.tsx` | desktop; the shell hardcodes `max-w-[470px]` |
+| `/admin`, `/admin/nina`, `/admin/photos`, `/admin/memory` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (fixed four-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; the shell caps at `max-w-[1400px]` |
 | `/s/[token]` | `app/(public)/s/[token]/page.tsx` | none — own layout | public share; `force-dynamic`, plus `not-found.tsx` |
 
 Route handlers, all `runtime = 'nodejs'`: `/api/auth/*` (re-exports Auth.js `handlers`),
@@ -590,9 +590,11 @@ itself.
 
 Deliberate non-consumers, each of which says so in a comment — do not "fix" them by wrapping them:
 `app/upload/page.tsx` and `app/x/*` (full-bleed feature chrome of their own), `app/admin/layout.tsx`
-and `components/admin/FileExplorer.tsx` (desktop, and the shell hardcodes `max-w-[470px]` and pairs
-itself with a bar), `app/(public)/s/[token]/page.tsx` (a public page, and the shell's import graph
-is what `tests/share.bundle.test.ts` guards), and `components/profile/RecordsTable.tsx` (would drag
+and `components/admin/FileExplorer.tsx` (`AppShell` is the shell that hardcodes `max-w-[470px]` and
+pairs itself with the runner's `TabBar`; the admin shell caps at `max-w-[1400px]` and carries its
+own four-cell `AdminNav` — and `FileExplorer` is still desktop-shaped),
+`app/(public)/s/[token]/page.tsx` (a public page, and the shell's import graph is what
+`tests/share.bundle.test.ts` guards), and `components/profile/RecordsTable.tsx` (would drag
 the shell across a client boundary for one empty state).
 
 `/nina` deliberately does not use `ScreenHeader` either: a conversation's identity is a face and a

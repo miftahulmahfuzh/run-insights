@@ -96,7 +96,7 @@ export default async function AdminChatPhotosPage(props: PageProps<'/admin/photo
 
   return (
     <div>
-      <header className="mb-6">
+      <header className="mb-5 lg:mb-6">
         <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Chat photos</h1>
         <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
           Every photograph Nina has generated in the conversation, newest first, in one collection
