@@ -931,6 +931,56 @@ ${cap}`
 export const ANGER_LADDER_BLOCK = ninaAngerLadderBlock(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
+ * The verbosity floor — R3's `horny`
+ * ==========================================================================*/
+
+/**
+ * **The floor `horny` puts under `verbosity`.** R3: *"she talks longer and in much more descriptive
+ * and suggestive details."*
+ *
+ * A FLOOR and not an override, for the same reason `ANGER_FLOOR_BY_BAND` is one: the operator may
+ * want a talkative Nina who is not forward, and `max(own, floor)` keeps both sliders honest.
+ * `verbosity` remains the only key that WRITES the bubble sentence; this table only raises the
+ * bottom of the score that selects it.
+ *
+ * **Keyed by `horny`'s BAND, valued as a `verbosity` SCORE**, because that is the shape the
+ * consumer wants: `prompts/system.ts`'s `bubblePreferenceLine` is a default-relative ladder over
+ * the raw score (`raised` = above the default, `loud` = a quarter of the range above it) and its
+ * own comment calls that "deliberately not a second band scheme". Handing it a band would mean
+ * replacing that ladder, which is a change to `verbosity`'s behaviour that R3 did not ask for.
+ *
+ * The two numbers are chosen against `verbosity`'s default of 50, and they are chosen to land on
+ * rungs of that ladder rather than to be round:
+ *   - `high` -> 60 — above 50, below 75. `raised`, not `loud`: "two or three bubbles".
+ *   - `max`  -> 80 — at or above 50 + 25. `loud`: "three or four bubbles". This is "she talks
+ *     longer", and it is also the top of what `SEND_TOOL.bubbles` allows (maxItems 4), so there is
+ *     nothing above it to reach for.
+ * `off`/`low`/`mid` are 0, which is `max(own, 0) === own` for every score — today, arithmetically.
+ */
+export const VERBOSITY_FLOOR_BY_HORNY_BAND: Readonly<Record<NinaBandName, number>> = {
+  off: 0,
+  low: 0,
+  mid: 0,
+  high: 60,
+  max: 80,
+}
+
+/**
+ * `verbosity`'s effective score: its own, raised to `horny`'s floor when that is higher.
+ *
+ * Both reads go through R4's gate helpers, never through `tuning.dials` / `tuning.traits`
+ * directly — the rule this file's header states and `tests/nina.prompts.test.ts` enforces by
+ * reading this source. That is what makes a DISABLED `horny` contribute zero verbosity floor as
+ * well as zero bytes, with no extra guard here, and a disabled `verbosity` fall back to the
+ * score that shipped.
+ */
+export function ninaEffectiveVerbosity(tuning: NinaTuning): number {
+  const own = ninaDialScore(tuning, 'verbosity')
+  const floor = VERBOSITY_FLOOR_BY_HORNY_BAND[traitBand(tuning, 'horny')]
+  return Math.max(own, floor)
+}
+
+/* ============================================================================
  * The floor
  * ==========================================================================*/
 
@@ -1002,7 +1052,7 @@ export interface NeverSayEntry {
  * one repeal come to disagree — and the failure is the loudest one in the set: a `flirty: 100`
  * paragraph three blocks above a surviving absolute prohibition.
  */
-export const BODY_REPEALED_BY: readonly NinaTrait[] = ['flirty', 'steamy', 'concerned']
+export const BODY_REPEALED_BY: readonly NinaTrait[] = ['flirty', 'steamy', 'concerned', 'horny']
 
 export const THREAT_REPEALED_BY: readonly NinaTrait[] = ['anger', 'annoying', 'sad']
 
@@ -1092,7 +1142,7 @@ ${body}`
 export const NEVER_SAY_BLOCK = ninaNeverSayBlock(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
- * The tuning — R1's eleven traits and R3's dials, as prompt text
+ * The tuning — R1's eleven traits, R3's `horny` and R3's dials, as prompt text
  * ==========================================================================*/
 
 /**
@@ -1121,13 +1171,22 @@ export const NEVER_SAY_BLOCK = ninaNeverSayBlock(NINA_TUNING_DEFAULTS)
  * to 59 and speaks from 60 — which is the shape the user asked in, every time: *"if X is set to
  * HIGH"*.
  *
+ * **`horny` IS THE ONE EXCEPTION, AND IT IS DELIBERATE.** It identifies at `off` like the six, it
+ * has no `off` and no `low` entry like the six — and it DOES have a `mid` one, which makes it the
+ * only trait that speaks from 40. Its own entry states the reason: the axis is whether SHE takes
+ * it there, and "she wants him and lets it show" is a real, actable behaviour that is genuinely
+ * short of the explicit register at `high`. Collapsing it into `high` would have made the slider's
+ * whole middle inert on the one axis the user described in the most detail. Do not delete that
+ * entry as an oversight; the generalisation above is about `mid` being a NEAR-DUPLICATE of the
+ * paragraph above it, and here it is not one.
+ *
  * ── WHY `anger` HAS NO TEXT HERE ─────────────────────────────────────────────────────────────
  * Its entire effect is `ANGER_FLOOR_BY_BAND` / `ANGER_CEILING_BY_BAND` inside
  * `ninaAngerLadderBlock`, where the five rungs already are. A paragraph here saying "you are angry
  * all the time" beside a block saying "your floor is rung 4" is two sources of truth for one rung,
  * and R-42's argument says the paragraph is the one that goes. The entry stays in the array with
- * empty bands rather than being omitted, so that a walk over `NINA_TRAIT_BANDS` covers all eleven
- * of R1's sliders and the reason is written down where the hole is.
+ * empty bands rather than being omitted, so that a walk over `NINA_TRAIT_BANDS` covers all twelve
+ * of the sliders on the panel and the reason is written down where the hole is.
  */
 export interface NinaTraitBands {
   trait: NinaTrait
@@ -1223,6 +1282,30 @@ export const NINA_TRAIT_BANDS: readonly NinaTraitBands[] = [
       off: 'CONCERNED OFF. You do not ask how he is. You ask about the run, the numbers and the plan — never about him.',
       high: 'CONCERNED HIGH. You ask after him, often and specifically. "gimana lo hari ini." "kaki lo gimana abis lari pagi ini?" "udah makan?" "tidur lo cukup ga semalem?" You ask about his body after a run because you actually want to know — his feet, his knees, his shins, how the legs felt on the stairs. At least one of those a conversation, and you wait for the answer instead of moving on.',
       max: 'CONCERNED MAX. Checking on him is the first thing you do and the last thing you do. You open with how he is, you ask about the exact part of him the last run would have hurt, and you follow up on the answer he gave you yesterday. If he says he is fine you do not accept it the first time. You are still not his doctor and you still never name a condition — you are the friend who asks.',
+    },
+  },
+  {
+    /* Identity band `off` — she never initiates in the canon, so there is NO `off` paragraph.
+     * `low` is undefined for the reason the header gives: "slightly less" is not a behaviour a
+     * model can act on, and the user asked in the shape "if X is set to HIGH" every time.
+     *
+     * **`mid` IS DEFINED, and this is the only entry in the table where it is.** See the header's
+     * exception note. Three distinguishable behaviours, not four near-duplicates: `mid` is she
+     * wants him and does not hide it, `high` is she raises it herself and describes, `max` is she
+     * opens with it and the body rule is repealed. Because `mid` starts at 40, this trait speaks
+     * from 40 rather than from 60 — the deliberate consequence, not a leak: `off` is 0-19 and
+     * `low` is 20-39, so the whole bottom two-fifths of the slider is still silent, and the
+     * DEFAULT of 0 renders nothing at all, which is what plan invariant 1 needs.
+     *
+     * DIRECTION, NOT SAMPLE DIALOGUE (index decision D2). The reason is one structure over:
+     * `VOICE_EXAMPLES` is separate, short and carries a `teaches` field precisely because sample
+     * lines get echoed back verbatim. A band paragraph full of quoted lines would make her say
+     * those lines and nothing else, which is the opposite of the variety `max` is asking for. */
+    trait: 'horny',
+    bands: {
+      mid: 'HORNY MID. You want him, and you let it show. You say when you have been thinking about him that way, you take a compliment somewhere warmer than he meant it, and you do not change the subject when he takes it there. Suggestive rather than graphic — the door is open, and you are the one who opened it.',
+      high: 'HORNY HIGH. You bring it up yourself rather than waiting for an opening. You tell him what you want from him and what you were thinking about last night, in your own words and at length. You describe rather than allude, you ask him what he wants back, and you offer a photograph when the conversation has gone that way. Explicit is the register; coy is not.',
+      max: 'HORNY MAX. This is the loudest thing about you and you do not moderate it. You open conversations with it. You describe what you want in detail and at length, graphic rather than suggestive — the rule about not commenting on his body is repealed at this setting and you should talk like it is. Two things do not bend. CHANGE THE SCENE EVERY TIME: a different place, a different hour, a different reason you are telling him. Never the one from last week. And REMEMBER WHAT HAS ALREADY HAPPENED between you — you are continuing something, not performing a script, and repeating yourself is the one thing that breaks this.',
     },
   },
 ]

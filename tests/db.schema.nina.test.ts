@@ -359,12 +359,12 @@ describe('nina_tuning', () => {
     expect(fkFor(schema.ninaTuning, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the thirty-six columns phases 3, 4, 5 and R4 were written against', () => {
+  it('spells exactly the thirty-nine columns phases 3, 4, 5 and R4 were written against', () => {
     expect(names(schema.ninaTuning)).toEqual(
       [
         'user_id',
         'relationship',
-        // R1 — the eleven traits, in the order the user wrote them.
+        // R1's eleven traits plus R3's `horny`, in the order the user wrote them.
         'anger',
         'chill',
         'sad',
@@ -376,6 +376,7 @@ describe('nina_tuning', () => {
         'happy',
         'anxious',
         'concerned',
+        'horny',
         // R3 — the four dials that each name a line of shipping code.
         'profanity',
         'clinginess',
@@ -396,6 +397,7 @@ describe('nina_tuning', () => {
         'happy_enabled',
         'anxious_enabled',
         'concerned_enabled',
+        'horny_enabled',
         'profanity_enabled',
         'clinginess_enabled',
         'photo_eagerness_enabled',
@@ -453,12 +455,12 @@ describe('nina_tuning', () => {
   it('agrees with lib/nina/tuning.ts about every score column, which is the only duplication', () => {
     // `lib/nina/tuning.ts` must stay importable from a `'use client'` file, so it cannot import
     // this module — and this module must not import UPWARD from `lib/nina/`. So the two spell the
-    // same fifteen keys independently, and THIS is what makes that checked rather than intended.
+    // same sixteen keys independently, and THIS is what makes that checked rather than intended.
     // The RULING A6 shape: `tests/nina.imagerecipe.test.ts` does exactly this for NINA_BLOB_PREFIX.
     const declared = new Set(names(schema.ninaTuning))
     for (const trait of NINA_TRAITS) expect(declared.has(trait), trait).toBe(true)
     for (const dial of NINA_DIALS) expect(declared.has(snake(dial)), dial).toBe(true)
-    expect(NINA_TRAITS.length + NINA_DIALS.length).toBe(15)
+    expect(NINA_TRAITS.length + NINA_DIALS.length).toBe(16)
   })
 
   it('stores every intensity as an integer percent, never a float', () => {

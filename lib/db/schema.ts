@@ -1676,7 +1676,8 @@ export const ninaTuning = pgTable('nina_tuning', {
    */
   relationship: text('relationship').notNull(),
 
-  /* The eleven traits (R1), in the order the user wrote them. Integer percent, 0-100, the
+  /* The twelve traits — R1's eleven plus R3's `horny` — in the order the user wrote them.
+   * Integer percent, 0-100, the
    * smallest-sensible-unit rule (roadmap D5) applied to an intensity — `nina_memory_facts.
    * confidence` is the precedent. The domain is enforced by `clampNinaScore`, not by a CHECK: a
    * CHECK would make widening the scale a migration, and a value outside it is a bug in one
@@ -1703,6 +1704,14 @@ export const ninaTuning = pgTable('nina_tuning', {
   anxious: integer('anxious').notNull(),
   /** How much she asks after HIM. Asking, not explaining — explaining is `wise`. */
   concerned: integer('concerned').notNull(),
+  /**
+   * R3's twelfth trait. How sexually forward she is — whether SHE takes it there, how graphic she
+   * is when she does, and how much she varies the scene. Distinct from `flirty` (teasing) and from
+   * `steamy` (how explicit she will go once HE has). **The ceiling is the model's, never ours** —
+   * the same sentence `steamy` above carries, and it is the whole of this app's policy on the
+   * subject: no refusal-detection and no re-softening retry anywhere in `lib/nina/` or `lib/llm/`.
+   */
+  horny: integer('horny').notNull(),
 
   /* The four R3 dials. Each one moves a named line of shipping code, recorded in
    * `NINA_DIAL_SPECS[key].path`; a dial with no such line was rejected rather than stored. */
@@ -1733,7 +1742,7 @@ export const ninaTuning = pgTable('nina_tuning', {
    * ── R4's PER-PARAMETER ON/OFF SWITCH, ONE COLUMN PER PARAMETER ──────────────────────────────
    * *"we need an on/off toggle for each parameter, so we can exclude some parameters to make prompt
    * more accurate."* `lib/nina/tuning.ts`'s `NINA_TUNING_KEYS` owns the vocabulary; these are the
-   * sixteen booleans behind it, in the same order as the score columns above.
+   * seventeen booleans behind it, in the same order as the score columns above.
    *
    * **Columns and not one `jsonb` map**, for the three reasons this table's header already gives,
    * and the first one bites harder here than it does for the scores: a misspelt key in a blob is
@@ -1748,8 +1757,8 @@ export const ninaTuning = pgTable('nina_tuning', {
    * that is not literally `false` as enabled, so an existing production row is all-on the moment
    * the migration lands, with no `UPDATE` and no data step. A `DEFAULT true` would have been the
    * second copy of `NINA_ENABLED_DEFAULTS` in a second language that this table's header forbids.
-   * `writeNinaTuning` supplies all sixteen on every save, so NULL never appears in a row this app
-   * has written.
+   * `writeNinaTuning` supplies all seventeen on every save, so NULL never appears in a row this
+   * app has written.
    */
   relationshipEnabled: boolean('relationship_enabled'),
   angerEnabled: boolean('anger_enabled'),
@@ -1763,6 +1772,7 @@ export const ninaTuning = pgTable('nina_tuning', {
   happyEnabled: boolean('happy_enabled'),
   anxiousEnabled: boolean('anxious_enabled'),
   concernedEnabled: boolean('concerned_enabled'),
+  hornyEnabled: boolean('horny_enabled'),
   profanityEnabled: boolean('profanity_enabled'),
   clinginessEnabled: boolean('clinginess_enabled'),
   photoEagernessEnabled: boolean('photo_eagerness_enabled'),

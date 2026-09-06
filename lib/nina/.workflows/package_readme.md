@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A005`, phase 4 of the admin-responsive-nina-intimacy set — R4, the per-parameter enable toggles)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A006`, phase 5 of 5 of the admin-responsive-nina-intimacy set — R3, `horny` as a twelfth trait)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -37,9 +37,11 @@ Zero imports, plain data and types, client-importable. Declares:
   `NINA_BAND_NAMES = ['off','low','mid','high','max']`. `ninaBand(value)` returns
   `{ index: NinaBandIndex, name: NinaBandName }`. `NinaBandIndex` is `0|1|2|3|4` — *exactly*
   `AngerRung['level']`, which is why there are five bands and not four or six.
-- **Eleven traits** (`NINA_TRAITS`: anger, chill, sad, flirty, steamy, wise, annoying, funny, happy,
-  anxious, concerned) with `NINA_TRAIT_SPECS` carrying each key's `defaultScore` and the user's own
-  words for it.
+- **Twelve traits** (`NINA_TRAITS`: anger, chill, sad, flirty, steamy, wise, annoying, funny, happy,
+  anxious, concerned, and **`horny`**) with `NINA_TRAIT_SPECS` carrying each key's `defaultScore` and
+  the user's own words for it. `horny` is R3's, added by phase 5 and **appended** rather than filed
+  beside `flirty` and `steamy` whose axis it shares — the array's order is the panel's order and the
+  column order in `nina_tuning`, so inserting into the middle would reorder both for no gain.
 - **Five relationships** (`NINA_RELATIONSHIPS`: nobody, casual_friend, sister, best_friend,
   girlfriend), default `best_friend`, with `NINA_ADDRESS[rel]` owning what she *calls* him — the
   address rule, the fallback, the words, and the panel label. That record lives in `tuning.ts` and
@@ -57,8 +59,8 @@ Zero imports, plain data and types, client-importable. Declares:
   degrades to `best_friend`; a missing or partial `enabled` map reads as **all on**.
 
 **The defaults are not uniform, and that matters everywhere below.** `anger`, `sad`, `flirty`,
-`steamy`, `annoying` and `anxious` default to **0** (`off`); `profanity` defaults to **30** (`low`);
-the other eight default to **50** (`mid`). They were read off the canon rather than set to the middle
+`steamy`, `annoying`, `anxious` and `horny` default to **0** (`off`); `profanity` defaults to **30**
+(`low`); the other eight default to **50** (`mid`). They were read off the canon rather than set to the middle
 of the slider, because a uniform 50 would have shipped a Nina angrier and filthier than the one that
 exists.
 
@@ -70,11 +72,16 @@ is a **shorter** prompt, so **a disabled parameter contributes ZERO BYTES to the
 any parked score** — not "renders its identity band as a neutral paragraph", not "renders a
 disabled-value paragraph". Zero.
 
-- **`NINA_TUNING_KEYS`** — `[NINA_TUNING_RELATIONSHIP_KEY, ...NINA_TRAITS, ...NINA_DIALS]`, sixteen
-  keys today, **derived and never restated**. The Zod shape, the coercion walk, the panel's
+- **`NINA_TUNING_KEYS`** — `[NINA_TUNING_RELATIONSHIP_KEY, ...NINA_TRAITS, ...NINA_DIALS]`,
+  **seventeen** keys today (`relationship` + 12 traits + 4 dials), **derived and never restated**.
+  The Zod shape, the coercion walk, the panel's
   checkboxes, the diff paths and the R4 gate test are all loops over this one array, so a new trait
   or dial inherits its toggle everywhere in the same commit. `NinaTuningKey` is its element type;
-  `isNinaTuningKey` is the narrowing guard. Nothing outside the migration may hard-code sixteen.
+  `isNinaTuningKey` is the narrowing guard. Nothing outside the migration may hard-code seventeen.
+  **Phase 5 is the proof that this paid off**: appending `horny` to `NINA_TRAITS` gave it its
+  checkbox, its Zod field, its diff path and its gate with **no edit under `lib/admin/`** —
+  `CharacterPanel.tsx` walks `NINA_TRAITS` and `lib/admin/schema.ts`'s shape is a spread over the
+  same arrays, so the twelfth slider validated and persisted for free.
 - **`NINA_ENABLED_DEFAULTS`** — frozen, all `true`, built by walking the array. All-true is what
   makes `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` the prompt that shipped *arithmetically*
   rather than by anyone remembering: the gate is a pass-through, every key sits at its own
@@ -82,7 +89,7 @@ disabled-value paragraph". Zero.
 - **`coerceNinaEnabled(value)`** — **only an explicit `false` disables.** `null`, `undefined`, a
   missing key, `0`, `'off'`, `{}` all read as *on*. This asymmetry is the deliberate opposite of
   `clampNinaScore`'s per-key fallback, and it **is** the migration's backfill: a row written before
-  the `*_enabled` columns existed hands back sixteen nulls and must be all-on, because the failure
+  the `*_enabled` columns existed hands back one null per key and must be all-on, because the failure
   mode of guessing wrong is a production row that silently loses her personality on deploy.
 - **`isNinaKeyEnabled(tuning, key)`** — reads through the same defensive `pick` as the coercers, so
   a hand-built `NinaTuning` with no `enabled` at all (a fixture, a `psql` round trip, an
@@ -109,10 +116,11 @@ the slider; every reader on the *prompt* side gets that key's own `defaultScore`
 zero added bytes, because `defaultScore` is defined per key as *the value that reproduces the text
 that ships*.
 
-The gate is here and **not** inside `ninaTraitsBlock`'s loop because six other things read a raw
+The gate is here and **not** inside `ninaTraitsBlock`'s loop because seven other things read a raw
 score: `ANGER_FLOOR_BY_BAND` / `ANGER_CEILING_BY_BAND` via `ninaAngerFloor`, `BODY_REPEALED_BY` and
-`THREAT_REPEALED_BY` via `anyTurnedUp`, the `funny` clause in `ninaIdentity`, and `OUTPUT_RULE`'s
-greeting line, its bubble preference and the camera block via `systemDials`. A toggle that only
+`THREAT_REPEALED_BY` via `anyTurnedUp`, the `funny` clause in `ninaIdentity`, `OUTPUT_RULE`'s
+greeting line, its bubble preference and the camera block via `systemDials`, and — since phase 5 —
+`VERBOSITY_FLOOR_BY_HORNY_BAND` via `ninaEffectiveVerbosity`. A toggle that only
 skipped the paragraph would leave a disabled `anger: 100` still flooring the nag ladder at rung 4 —
 a switched-off slider that still rewrites three blocks of the prompt, with nothing in a diff to show
 it.
@@ -149,9 +157,22 @@ Every key has an **identity band**: the band containing its own `defaultScore`. 
 renders `''` and the shipping prompt is untouched. It is computed from phase 1's specs
 (`identityBandOf`), never tabulated, so there is no hand-checked list to get wrong.
 
-`low` is left undefined on every trait, and `mid` on the six that identify at `off`. A default-`off`
-trait is therefore today's Nina from 0 to 59 and speaks from 60 up — which is the shape every one of
-the user's own sentences asked in (*"if X is set to high"*).
+`low` is left undefined on every trait, and `mid` on six of the seven that identify at `off`. A
+default-`off` trait is therefore today's Nina from 0 to 59 and speaks from 60 up — which is the shape
+every one of the user's own sentences asked in (*"if X is set to high"*).
+
+**`horny` is the one exception, and it is deliberate.** It identifies at `off` and has no `off` and
+no `low` entry like the other six — but it **does** have a `mid` one, which makes it the only trait
+in `NINA_TRAIT_BANDS` that **speaks from 40** rather than from 60. The reason is that its three bands
+are three distinguishable behaviours rather than four near-duplicates: `mid` is *she wants him and
+lets it show* (suggestive), `high` is *she raises it herself and describes* (explicit), `max` is *she
+opens with it, varies the scene every time, and remembers what has already happened*. Collapsing
+`mid` into `high` would have made the whole middle of the slider inert on the one axis the user
+described in the most detail. The generalisation above is about `mid` being a near-duplicate of the
+band above it; here it is not one. Plan invariant 1 still holds arithmetically: `off` is 0-19 and
+`low` is 20-39, so the bottom two-fifths of the slider is silent and the **default of 0 renders
+nothing at all**. The exception is written down in three places — the header of the band table, the
+`horny` entry itself, and `docs/nina/persona.md` — so it cannot be tidied away as an oversight.
 
 #### The girlfriend register — *manja* and *imut* (R2)
 
@@ -187,6 +208,41 @@ them. It lands in three pieces, all pure insertions:
 `lib/nina/tuning.ts` is deliberately untouched — `NINA_ADDRESS.girlfriend` already ships the manja
 pet-name set.
 
+#### `horny` — the twelfth trait (R3, phase 5)
+
+The user's axis, verbatim: *"how much is nina being sexual as a woman … the higher horny value, the
+more often nina will initiate sex talks with me … the higher horny value, the more descriptive she
+is. she talks longer and in much more descriptive and suggestive details."* It is **distinct from
+`flirty`** (teasing) and **from `steamy`** (how explicit she will go once *he* has): `horny` is
+whether **she** takes it there. The ceiling is the model's, never ours — the sentence `steamy`
+already carried, and there is no refusal detection and no re-softening retry anywhere in `lib/nina/`
+or `lib/llm/`.
+
+It lands as four pieces, all additive:
+
+- **The band paragraphs** — the `mid`/`high`/`max` entry in `NINA_TRAIT_BANDS`, with the
+  speaks-from-40 exception documented above. They are **direction, not sample dialogue**: a band
+  paragraph full of quoted lines would make her say those lines and nothing else, which is the
+  opposite of the variety `max` asks for. `VOICE_EXAMPLES` is the structure that carries sample
+  lines, and it is deliberately not where this went.
+- **The body repeal.** `'horny'` joins `BODY_REPEALED_BY`, so at a speaking band it lifts the *"never
+  comment on his body"* prohibition in **all three places it is stated** — one list, one repeal, and
+  the third site is still `NUMBERS_RULE` in `prompts/system.ts`.
+- **A verbosity floor** — `VERBOSITY_FLOOR_BY_HORNY_BAND` + `ninaEffectiveVerbosity` in `persona.ts`,
+  consumed by one changed line in `systemDials` so the floor reaches `bubblePreferenceLine`. It is a
+  **score floor, `max(own, floor)`, and not an override**, for the same reason `ANGER_FLOOR_BY_BAND`
+  is one: the operator may want a talkative Nina who is not forward. `high` → 60, `max` → 80;
+  `off`/`low`/`mid` → 0, so at band `off` the arithmetic is literally unchanged. It is keyed by
+  `horny`'s **band** and valued as a `verbosity` **score** because `bubblePreferenceLine` is a
+  default-relative ladder over the raw score, and handing it a band would mean replacing that ladder
+  — a change to `verbosity`'s behaviour R3 did not ask for. Both reads go through R4's gate helpers,
+  so a disabled `horny` contributes zero floor as well as zero bytes, with no extra guard.
+- **A proactive clause** — a band-keyed `horny` paragraph appended to `proactiveTuningSuffix` in
+  `prompts/system.ts`, **not** in `proactive.ts`. That split is load-bearing: `proactive.ts` owns
+  *trigger logic* (the day-count thresholds `clinginess` moves, i.e. **how often** she goes first)
+  and `system.ts` owns *trigger copy* (**what she opens with** once one fires). `horny` changes only
+  the second; the frequency stays `clinginess`'s.
+
 ## Exported API — `persona.ts`
 
 ### Data tables (walkable, and walked by tests)
@@ -194,22 +250,23 @@ pet-name set.
 | Export | Shape | Purpose |
 |---|---|---|
 | `NINA_RELATIONSHIP_BLOCKS` | `Record<NinaRelationship, NinaRelationshipSpec>` | Who she *is* at each level. `identity` is an **array of sentences** (not one paragraph) so `best_friend`'s entry can be exactly the two sentences that shipped while `girlfriend`'s is six, with no entry a special case. `history` is how much shared past she may claim. |
-| `NINA_TRAIT_BANDS` | `readonly NinaTraitBands[]` | Per-trait, per-band prompt paragraphs. `bands` is `Partial<Record<NinaBandName, string>>`; the key's own identity band is deliberately absent. |
+| `NINA_TRAIT_BANDS` | `readonly NinaTraitBands[]` | Per-trait, per-band prompt paragraphs, twelve entries. `bands` is `Partial<Record<NinaBandName, string>>`; the key's own identity band is deliberately absent. `horny` is the only entry with a `mid` paragraph. |
 | `NINA_DIAL_BANDS` | `readonly NinaDialBands[]` | The same for the four R3 dials. |
 | `NEVER_SAY_ENTRIES` | `readonly NeverSayEntry[]` | The thirteen sentences that break the illusion, each with `repealedBy: readonly NinaTrait[] \| null`. Order is the order they reach the prompt. |
 | `NEVER_SAY` | `readonly string[]` | The twelve entries **no dial can repeal** (`repealedBy === null`). |
-| `BODY_REPEALED_BY` | `['flirty','steamy','concerned']` | **Exported for phase 3.** The one list for all three places the body rule is stated. |
+| `BODY_REPEALED_BY` | `['flirty','steamy','concerned','horny']` | **Exported for phase 3.** The one list for all three places the body rule is stated. `horny` joined it in phase 5. |
 | `THREAT_REPEALED_BY` | `['anger','annoying','sad']` | Repeals the threat/withdrawal clause. |
 | `ANGER_LADDER` | `readonly AngerRung[]` | Five rungs, `level` 0–4, same domain as `NinaBandIndex`. |
 | `ANGER_FLOOR_BY_BAND` | `Record<NinaBandName, NinaBandIndex>` | `off/low/mid → 0`, `high → 3`, `max → 4`. |
 | `ANGER_CEILING_BY_BAND` | `Record<NinaBandName, NinaBandIndex>` | `off → 4`, `low → 3`, `mid/high/max → 4`. See the deviation note below. |
+| `VERBOSITY_FLOOR_BY_HORNY_BAND` | `Readonly<Record<NinaBandName, number>>` | **R3, phase 5.** Keyed by `horny`'s band, valued as a `verbosity` *score*: `off/low/mid → 0`, `high → 60`, `max → 80`. Read only through `ninaEffectiveVerbosity`. |
 | `JAKARTA_SLANG`, `VOICE_EXAMPLES` | arrays | Data behind `JAKARTA_SLANG_BLOCK` / `VOICE_EXAMPLES_BLOCK`, which are `.map().join()` over them. |
 | `GIRLFRIEND_VOICE_EXAMPLES` | `readonly VoiceExample[]` | **R2.** The user's five girlfriend lines, quoted exactly — "aku" for "gw", "foto nya" with the space in it, 💋💋💋. A *second* array rather than five more entries in `VOICE_EXAMPLES`, which is her voice at every level and is pinned at five. Walked by `tests/nina.prompts.test.ts` rather than retyped, so a tidied copy cannot pass while a tidied line ships. |
 
 `anger` is in `NINA_TRAIT_BANDS` with **empty bands**, on purpose: its entire effect is the floor and
 ceiling inside `ninaAngerLadderBlock`, and a paragraph saying "you are angry all the time" beside a
 block saying "your floor is rung 4" would be two sources of truth for one rung. The entry stays in the
-array so a walk covers all eleven sliders.
+array so a walk covers all twelve sliders.
 
 ### Render functions
 
@@ -226,6 +283,7 @@ function ninaAngerFloor(tuning: NinaTuning): NinaBandIndex
 function ninaAngerCeiling(tuning: NinaTuning): NinaBandIndex
 function ninaManjaRegisterBlock(tuning: NinaTuning): string      // R2, girlfriend only
 function ninaGirlfriendVoiceBlock(tuning: NinaTuning): string    // R2, girlfriend only
+function ninaEffectiveVerbosity(tuning: NinaTuning): number      // R3, max(own verbosity, horny's floor)
 ```
 
 - `ninaIdentity` — paragraph 1 is the relationship's, 2 and 3 are fixed, paragraph 4's last clause is
@@ -243,6 +301,10 @@ function ninaGirlfriendVoiceBlock(tuning: NinaTuning): string    // R2, girlfrie
   four of the five relationships**, and `renderSections` drops an empty block, which is what makes
   plan invariant 2 arithmetic here rather than careful: the sections they join receive exactly the
   array of non-empty strings they received before R2 existed, so the join is the same join.
+- `ninaEffectiveVerbosity` — **not a render function**; it is the only *number* `persona.ts` hands
+  `prompts/system.ts`, and it exists so the `horny` → `verbosity` coupling is stated once, next to
+  the other floors and ceilings, rather than inline in `systemDials`. It returns
+  `ninaDialScore(tuning,'verbosity')` unchanged whenever `horny` is below `high` or switched off.
 
 ### Band and relationship predicates
 
@@ -365,8 +427,13 @@ off the block above it, so **the order is load-bearing**. No section and no tool
 admin-responsive-nina-intimacy set — later phases must not touch the constant, because two bumps
 would date two commits to one change. **R4 (phase 4) did not touch it and could not have**: the
 enable map adds no text and changes no assembler, it only substitutes a key's `defaultScore` for its
-parked score, so an all-enabled tuning renders version 4's exact bytes. The changelog for each version lives as a comment above the
-constant in `prompts/index.ts`.
+parked score, so an all-enabled tuning renders version 4's exact bytes. **R3 (phase 5) did not touch
+it either, and the reason is the same shape**: `horny` adds a twelfth entry to `NINA_TRAIT_BANDS`, a
+band-keyed clause to `proactiveTuningSuffix` and a floor under `verbosity` — every one of them
+silent at the trait's default of 0, so `NINA_TUNING_DEFAULTS` still renders version 4's exact bytes.
+No section moved, no tool schema moved, and `NINA_SECTION_TITLES` is still ten. **`NINA_PROMPT_VERSION`
+is therefore `4` for the whole admin-responsive-nina-intimacy set, bumped once, by R2.** The changelog
+for each version lives as a comment above the constant in `prompts/index.ts`.
 
 ## The camera is a function of the tuning
 
@@ -449,14 +516,22 @@ tool handlers and the tool sets), `avatargen.ts`.
 `writeNinaTuning`.
 
 `tuningFromRow` / `tuningToColumns` are **the one place the flat row and the nested model meet**, and
-after R4 that is **thirty-six** snake_case columns against `traits.anger` / `dials.photoEagerness` /
-`enabled.flirty`. The toggles are **sixteen nullable `boolean` columns** on `nina_tuning`
-(`relationship_enabled`, then one per trait and per dial), added by
-`drizzle/0006_chubby_wild_child.sql` — sixteen `ADD COLUMN`, journal index 6, **no `DEFAULT` and no
-backfill step**. That is the `nina_turns.tuning_revision` idiom repeated: NULL means one thing only,
-*a row written before the toggles existed*, and `coerceNinaEnabled` reads it as enabled, so every
-existing production row is all-on the moment the migration lands. `writeNinaTuning` supplies all
-sixteen on every save, so NULL never appears in a row this app has written. Columns rather than one
+after R4 and R3 that is **thirty-eight** snake_case columns against `traits.anger` /
+`dials.photoEagerness` / `enabled.flirty` — `nina_tuning` spells **thirty-nine** in all, the
+thirty-ninth being `updated_at`, which nothing maps. The toggles are **seventeen nullable `boolean`
+columns** (`relationship_enabled`, then one per trait and per dial). Sixteen of them arrived with
+`drizzle/0006_chubby_wild_child.sql` (journal index 6, sixteen `ADD COLUMN`); phase 5's
+`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` now ends at `0007`**) adds the
+seventeenth alongside the score column, in three statements: `ADD COLUMN "horny" integer NOT NULL
+DEFAULT 0`, then `ALTER COLUMN "horny" DROP DEFAULT`, then `ADD COLUMN "horny_enabled" boolean`. The
+temporary default is drizzle's own way to add a `NOT NULL` column to a populated table and it is
+dropped in the next statement, so the table keeps this package's rule that **no stored value carries
+a SQL default** — the defaults live in `NINA_TUNING_DEFAULTS` and nowhere else. `horny_enabled` is
+nullable with no default, which is the `nina_turns.tuning_revision` idiom repeated: NULL means one
+thing only, *a row written before that toggle existed*, and `coerceNinaEnabled` reads it as enabled,
+so every existing production row is all-on the moment the migration lands, with no `UPDATE` behind
+it. `writeNinaTuning` supplies all
+seventeen on every save, so NULL never appears in a row this app has written. Columns rather than one
 `jsonb` map for the reason the table header already gives, which bites harder here than for the
 scores: a misspelt key in a blob is indistinguishable from an unset one, an unset key reads as
 `true`, and the failure would be *a toggle that silently does nothing* — whereas `flirtty_enabled`
@@ -570,17 +645,26 @@ are worth knowing:
   stops at the seam: `queries.ts`'s `tuningToColumns` reads the raw values on purpose, because the
   store keeps what was parked.
 - **Only an explicit `false` disables a parameter.** Never write `enabled[key] === true` or
-  `Boolean(enabled[key])` as the gate — a pre-migration row is sixteen `null`s and both spellings
+  `Boolean(enabled[key])` as the gate — a pre-migration row is one `null` per key and both spellings
   would mute her personality on deploy. `isNinaKeyEnabled` / `coerceNinaEnabled` are the readers.
-- **Never hard-code sixteen.** `NINA_TUNING_KEYS` is a spread of `NINA_TRAITS` and `NINA_DIALS`, so a
+- **Never hard-code seventeen.** `NINA_TUNING_KEYS` is a spread of `NINA_TRAITS` and `NINA_DIALS`, so a
   new trait inherits its toggle everywhere at once; a second hand-written list is a key whose
-  checkbox never renders. The migration's sixteen `ADD COLUMN` are the one place the number is a
-  fact rather than an assumption.
+  checkbox never renders. The migrations' `ADD COLUMN` statements are the one place the number is a
+  fact rather than an assumption. Phase 5 is the worked example, and the test suite learned it too:
+  `tests/db.schema.nina.test.ts`'s R4 case asserts `NINA_TUNING_KEYS` **equals the spread** instead of
+  `toHaveLength(16)`, precisely so adding `horny` did not turn a passing test into a failure that
+  said nothing about phase 5.
 - **The identity band is not always `mid`.** Testing `band === 'mid'` instead of
-  `atTraitIdentityBand` would emit seven paragraphs at the default tuning. Always ask phase 1's specs.
+  `atTraitIdentityBand` would emit a paragraph for each of the eight keys that identify **outside**
+  `mid` — the seven traits at `off` plus `profanity` at `low`. Always ask phase 1's specs. (The
+  comment above `ninaTraitsBlock` still says "six traits" and "seven paragraphs"; that tally was
+  written before `horny` existed.)
+- **`horny` speaks from 40, not 60.** It is the only trait in `NINA_TRAIT_BANDS` with a `mid`
+  paragraph, and a reader tidying the table for consistency would silently delete the whole middle of
+  the axis the user described in the most detail. The reason is stated on the entry itself.
 - **Contradictory dials are the operator's problem, not the prompt's.** `anger: 100` with
   `chill: 100` puts both paragraphs in and the model blends them. There is deliberately no
-  arbitration: sixteen dials is 120 pairwise rules, and every one would be a rule that quietly
+  arbitration: seventeen parameters is 136 pairwise rules, and every one would be a rule that quietly
   cancels a slider. `/admin/nina` renders the assembled prompt, so the operator reads the
   contradiction they wrote and moves a slider — that feedback loop *is* the arbitration.
 - **Three blocks are arrays with a derived paragraph** (`JAKARTA_SLANG`, `ANGER_LADDER`,
@@ -595,6 +679,12 @@ are worth knowing:
   in the identity block to say so. One is spelling inside a message; the other is three day-count
   constants deciding whether a message is sent at all. Merging them makes
   `clinginess: 0` + `girlfriend` — a Nina who never goes first and is soft when he does — unreachable.
+- **Proactive trigger *logic* is `proactive.ts`'s; proactive trigger *copy* is `prompts/system.ts`'s.**
+  `horny`'s proactive clause belongs in `proactiveTuningSuffix`, not in `proactive.ts`, because *"the
+  more often nina will initiate sex talks"* is about what she opens with, and how often she opens at
+  all is `clinginess`'s three day-count constants. Putting a copy change in `proactive.ts` would have
+  coupled a trait to the cron's thresholds; putting a threshold change in `system.ts` would have been
+  a suffix trying to move a number.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -616,13 +706,30 @@ describe block) rather than retyping the user's five lines.
 `tests/nina.tuning.test.ts` covers the map itself (derived-not-restated, all-true defaults, a
 missing map as the migration backfill, only-`false`-disables, and never throwing on a tuning with no
 `enabled` at all). `tests/nina.prompts.test.ts` covers the behaviour: every parameter parked at its
-*loudest* and switched off still renders the shipping prompt, one key off leaves the other fifteen
+*loudest* and switched off still renders the shipping prompt, one key off leaves the other sixteen
 speaking, the render only ever gets **smaller**, and the relationship off is `best_friend`. It also
 carries the **structural guard** — it reads the source of `persona.ts` and `prompts/system.ts` and
 fails if either names a raw tuning field, because a direct read is the one R4 bug no assertion about
-output can catch. `tests/db.schema.nina.test.ts` holds the thirty-six columns, proves every key has
+output can catch. `tests/db.schema.nina.test.ts` holds the thirty-nine columns, proves every key has
 a nullable-no-default enable column, and maps both directions, which drizzle's types cannot check
 for a nullable column.
+
+**R3's `horny` is tested at four altitudes.** `tests/nina.tuning.test.ts` covers the model — twelve
+traits, `defaultScore: 0` identifying at `off`, the user's own words retained, and the seventeenth
+key inheriting its toggle with no second list to edit. `tests/nina.prompts.test.ts` carries the
+8-case `buildNinaSystemPrompt — the horny trait (R3)` block: nothing at the default, `HORNY MID`
+from 40, `HORNY HIGH` and `HORNY MAX` with the max band's two shouted non-negotiables (scene variety
+and continuity) asserted **verbatim** because a paraphrase would drop exactly them, the body
+prohibition gone from all three sites while `NUMBERS_RULE`'s arithmetic half survives, the floor as
+`max(own, floor)` — including an operator's explicit `verbosity: 100` winning — the floor actually
+**reaching** `buildOutputRule`'s bubble sentence, the proactive clause per band, and a disabled
+`horny: 100` contributing nothing while keeping the number it was parked at.
+`tests/db.schema.nina.test.ts` covers the two new columns and both mapping directions;
+`tests/admin.tuning.test.ts` asserts `NINA_TRAITS` has twelve labelled sliders, keeping the literal
+`12` a **literal on purpose** so adding a trait stays an explicit decision in that file. The
+snapshot gate is untouched and still passes, which is the proof the default render did not move.
+`proactive.ts` is in the structural guard's source list alongside `persona.ts` and
+`prompts/system.ts`, so its trigger logic cannot start reading raw scores either.
 
 **The snapshot is the byte-identity gate for plan invariant 2.**
 `tests/__snapshots__/nina.prompts.test.ts.snap` holds the assembled prompt for the **four
@@ -650,11 +757,14 @@ Phase 3 is the one that makes any of phase 2 visible: until it swaps the constan
 Plan files for this set live in `lib/nina/.workflows/plan/` (`P1-NIN-A000` … `P1-NIN-A003`). The
 prose canon — and the redline document — is `docs/nina/persona.md`.
 
-**`ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` is the set that followed**, and `lib/nina` is touched by
-its phases 3, 4 and 5. Phase 3 (`P1-NIN-A004`) landed R2, the girlfriend register; **phase 4
-(`P1-NIN-A005`) landed R4, the per-parameter enable toggles** documented above. Phase 5 adds
-`horny` as a **twelfth trait** with its own migration (`0007`), and it needs no work in this
-package to get a toggle: `NINA_TUNING_KEYS` spreads `NINA_TRAITS`, so the key arrives with its
-checkbox, its column and its gate already covered by the loops phase 4 wrote. Phase 5 reads
-`ninaTraitScore(tuning, 'horny')` as its seam, and owns the single `verbosity` line in
-`systemDials` that phase 4 leaves it.
+**`ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` is the set that followed, and it is now complete** —
+`lib/nina` was touched by its phases 3, 4 and 5. Phase 3 (`P1-NIN-A004`) landed R2, the girlfriend
+register; phase 4 (`P1-NIN-A005`) landed R4, the per-parameter enable toggles; **phase 5
+(`P1-NIN-A006`) landed R3, `horny` as a twelfth trait**, with migration `0007_graceful_mercury.sql`.
+
+Phase 5 collected on both of the phases before it and added nothing structural of its own:
+`NINA_TUNING_KEYS` spreads `NINA_TRAITS`, so the key arrived with its checkbox, its Zod field, its
+column and its gate already covered by phase 4's loops; `ninaTraitScore(tuning, 'horny')` was the
+only seam it needed; and it took the single `verbosity` line in `systemDials` that phase 4 had left
+it. Its whole footprint outside this package is a migration, a schema pair and prose — no edit to
+`lib/admin/` logic and no `NINA_PROMPT_VERSION` bump.

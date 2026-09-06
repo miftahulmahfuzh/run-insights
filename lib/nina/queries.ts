@@ -2762,7 +2762,7 @@ export async function deleteNinaFolderSubtree(userId: string, folder: string): P
  * ==========================================================================*/
 
 /**
- * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells **thirty-six**
+ * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells **thirty-eight**
  * snake_case columns; `lib/nina/tuning.ts` spells `traits.anger` and `dials.photoEagerness`. The
  * three-layer boundary this file's own header describes for `nina_messages.text` -> `body`, one
  * table over: two spellings, ONE translation point, reviewable in one diff.
@@ -2785,6 +2785,7 @@ function tuningFromRow(row: NinaTuningRow): NinaTuning {
       happy: row.happy,
       anxious: row.anxious,
       concerned: row.concerned,
+      horny: row.horny,
     },
     dials: {
       profanity: row.profanity,
@@ -2808,6 +2809,7 @@ function tuningFromRow(row: NinaTuningRow): NinaTuning {
       happy: row.happyEnabled,
       anxious: row.anxiousEnabled,
       concerned: row.concernedEnabled,
+      horny: row.hornyEnabled,
       profanity: row.profanityEnabled,
       clinginess: row.clinginessEnabled,
       photoEagerness: row.photoEagernessEnabled,
@@ -2837,6 +2839,7 @@ function tuningToColumns(tuning: NinaTuningWrite) {
     happy: tuning.traits.happy,
     anxious: tuning.traits.anxious,
     concerned: tuning.traits.concerned,
+    horny: tuning.traits.horny,
     profanity: tuning.dials.profanity,
     clinginess: tuning.dials.clinginess,
     photoEagerness: tuning.dials.photoEagerness,
@@ -2857,6 +2860,7 @@ function tuningToColumns(tuning: NinaTuningWrite) {
     happyEnabled: tuning.enabled.happy,
     anxiousEnabled: tuning.enabled.anxious,
     concernedEnabled: tuning.enabled.concerned,
+    hornyEnabled: tuning.enabled.horny,
     profanityEnabled: tuning.enabled.profanity,
     clinginessEnabled: tuning.enabled.clinginess,
     photoEagernessEnabled: tuning.enabled.photoEagerness,
@@ -2892,7 +2896,7 @@ export async function readNinaTuning(userId: string): Promise<NinaTuning> {
 }
 
 /**
- * **One save, not sixteen** (plan invariant 11). Upsert on `user_id` and return what was stored.
+ * **One save, not seventeen** (plan invariant 11). Upsert on `user_id` and return what was stored.
  *
  * ── THE REVISION IS COMPUTED IN SQL, AND THE CALLER CANNOT SEND ONE ───────────────────────────
  * `NinaTuningWrite` is `Omit<NinaTuning, 'revision'>`, and the `ON CONFLICT DO UPDATE` sets

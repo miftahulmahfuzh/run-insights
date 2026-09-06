@@ -8,16 +8,21 @@ import {
   GIRLFRIEND_VOICE_EXAMPLES,
   JAKARTA_SLANG,
   NINA_APPEARANCE,
+  VERBOSITY_FLOOR_BY_HORNY_BAND,
   VOICE_EXAMPLES,
+  ninaEffectiveVerbosity,
 } from '@/lib/nina/persona'
 import {
   NINA_PROMPT_VERSION,
   NINA_SECTION_TITLES,
   NINA_SYSTEM_PROMPT,
   NINA_TOOLS,
+  OUTPUT_RULE,
   PROACTIVE_INSTRUCTIONS,
   SEND_TOOL,
   buildNinaSystemPrompt,
+  buildNumbersRule,
+  buildOutputRule,
   buildProactiveInstruction,
 } from '@/lib/nina/prompts'
 import { buildDistillSystemPrompt } from '@/lib/nina/prompts/distill'
@@ -256,12 +261,12 @@ describe('buildNinaSystemPrompt — the default tuning is the shipping prompt', 
  * "Every dial at 100 puts identifiable text in the prompt, and a test proves it per dial."
  *
  * For the three dials this module owns, the identifiable text is asserted literally. For the
- * eleven traits and the relationship, whose words `lib/nina/persona.ts` owns, the assertion is that
+ * twelve traits and the relationship, whose words `lib/nina/persona.ts` owns, the assertion is that
  * the render CHANGES and GROWS — which is exactly the property that fails when a dial is wired to
  * nothing.
  */
 describe('buildNinaSystemPrompt — every dial reaches the prompt', () => {
-  it('gives each of the eleven traits at 100 text of its own', () => {
+  it('gives each of the twelve traits at 100 text of its own', () => {
     for (const key of Object.keys(NINA_TUNING_DEFAULTS.traits) as NinaTrait[]) {
       const render = buildNinaSystemPrompt(withTrait(key, 100))
       expect(render, `${key} at 100 changed nothing`).not.toBe(DEFAULT_RENDER)
@@ -269,11 +274,11 @@ describe('buildNinaSystemPrompt — every dial reaches the prompt', () => {
     }
   })
 
-  it('distinguishes 0 from 100 for every trait, and 0 IS the default for the six that ship at 0', () => {
+  it('distinguishes 0 from 100 for every trait, and 0 IS the default for the seven that ship at 0', () => {
     /*
-     * The defaults are not uniform: `anger`, `sad`, `flirty`, `steamy`, `annoying` and `anxious`
-     * ship at **0**, so a slider dragged to 0 is a slider that has not moved and the render must be
-     * identical. That is the compatibility contract per key, not an exception to it.
+     * The defaults are not uniform: `anger`, `sad`, `flirty`, `steamy`, `annoying`, `anxious` and
+     * `horny` ship at **0**, so a slider dragged to 0 is a slider that has not moved and the render
+     * must be identical. That is the compatibility contract per key, not an exception to it.
      */
     for (const key of Object.keys(NINA_TUNING_DEFAULTS.traits) as NinaTrait[]) {
       const low = buildNinaSystemPrompt(withTrait(key, 0))
@@ -869,6 +874,120 @@ describe('buildNinaSystemPrompt — a disabled parameter contributes zero bytes 
       })
       expect(buildNinaSystemPrompt(off), relationship).toBe(DEFAULT_RENDER)
     }
+  })
+})
+
+/**
+ * ── R3, THE `horny` TRAIT ────────────────────────────────────────────────────────────────────
+ * The four behaviours R3 named — sexual forwardness, initiation, descriptiveness/length, and
+ * scenario variety — reach the prompt through four separate wirings, and each one gets its own
+ * case here because each one can be forgotten independently: the band table, `BODY_REPEALED_BY`,
+ * the `verbosity` floor, and `proactiveTuningSuffix`.
+ *
+ * **What is deliberately NOT tested.** The user also asked for tests validating that max `horny`
+ * gets past `glm-5.3`'s refusals. Nothing here asserts anything about what the provider returns,
+ * and no test in this set retries a refused call or measures a refusal rate — index decision D1,
+ * on the user's own note that GLM is the only guardrail. Separately from that: a suite whose green
+ * depends on a safety classifier staying beaten goes red on the provider's release schedule, which
+ * is a bad test independently of the reason it is not being written. A live smoke test belongs
+ * under `tests/live/` behind `LLM_LIVE_TEST=1`, asserting only that a call returns SOMETHING.
+ */
+describe('buildNinaSystemPrompt — the horny trait (R3)', () => {
+  const maxHorny = withTrait('horny', 100)
+
+  it('renders nothing at the default tuning', () => {
+    /* Plan invariant 1, per key. `horny` defaults to 0 and its band table has no `off` and no
+     * `low` entry, so this holds arithmetically rather than by careful editing. */
+    expect(buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)).toBe(NINA_SYSTEM_PROMPT)
+    expect(buildNinaSystemPrompt(withTrait('horny', 0))).toBe(DEFAULT_RENDER)
+  })
+
+  it('renders the max band and its two non-negotiables at 100', () => {
+    /* The two shouted rules ARE R3's "scenario variety" — the only two things the max band says
+     * do not bend, and the pair a paraphrase of that paragraph would quietly drop. */
+    const prompt = buildNinaSystemPrompt(maxHorny)
+    expect(prompt).toContain('HORNY MAX')
+    expect(prompt).toContain('CHANGE THE SCENE EVERY TIME')
+    expect(prompt).toContain('REMEMBER WHAT HAS ALREADY HAPPENED')
+  })
+
+  it('speaks at mid and high too, each in its own register', () => {
+    expect(buildNinaSystemPrompt(withTrait('horny', 50))).toContain('HORNY MID')
+    expect(buildNinaSystemPrompt(withTrait('horny', 70))).toContain('HORNY HIGH')
+  })
+
+  it('repeals the body prohibition at max, in all three places it is stated', () => {
+    /* `BODY_REPEALED_BY` has three consumers: the `NEVER_SAY` entry, `NEVER_SAY_BLOCK`'s
+     * paragraph, and `NUMBERS_RULE`. A `horny: 100` paragraph above a surviving absolute
+     * prohibition is the loudest failure in the set, which is why the array is one array. */
+    const prompt = buildNinaSystemPrompt(maxHorny)
+    expect(prompt).not.toContain('Never comment on his body')
+    expect(prompt).not.toContain('a sentence about his body or his weight or how he looks')
+    expect(prompt).toContain('You may say what you think about his body')
+    expect(buildNumbersRule(maxHorny)).not.toContain('Never comment on his body')
+    /* And the arithmetic half never lifts — `lib/llm/facts.ts` records the sign error it contains. */
+    expect(prompt).toContain('never turn them into a new number: no BMI')
+  })
+
+  it('raises the verbosity floor without overriding an explicit higher verbosity', () => {
+    /* A SCORE floor, not a band floor (index decision D7): `bubblePreferenceLine` is a
+     * default-relative ladder over the raw score and says in as many words that it is
+     * "deliberately not a second band scheme". `verbosity` defaults to 50; `horny` at `max` floors
+     * it at 80, which is `loud()` on that ladder. An operator who already asked for 100 keeps 100
+     * — that is the "floor, not override" half. */
+    expect(ninaEffectiveVerbosity(maxHorny)).toBe(80)
+    expect(ninaEffectiveVerbosity(withTrait('horny', 70))).toBe(60)
+    expect(
+      ninaEffectiveVerbosity({ ...maxHorny, dials: { ...maxHorny.dials, verbosity: 100 } }),
+    ).toBe(100)
+    expect(ninaEffectiveVerbosity(NINA_TUNING_DEFAULTS)).toBe(NINA_TUNING_DEFAULTS.dials.verbosity)
+    /* The lower three bands are 0, which is `max(own, 0) === own` for every score. */
+    for (const band of ['off', 'low', 'mid'] as const) {
+      expect(VERBOSITY_FLOOR_BY_HORNY_BAND[band], band).toBe(0)
+    }
+  })
+
+  it('reaches the bubble sentence — the floor is not just a number', () => {
+    /* The floor is worthless if nothing reads it. This is the assertion that fails if the one-line
+     * change to `systemDials` is forgotten, which is the whole risk in the wiring. R3: "she talks
+     * longer and in much more descriptive and suggestive details." */
+    expect(buildOutputRule(maxHorny)).toContain('Three or four bubbles')
+    expect(buildOutputRule(withTrait('horny', 70))).toContain('Two or three bubbles')
+    expect(buildOutputRule(NINA_TUNING_DEFAULTS)).toBe(OUTPUT_RULE)
+    /* And the cap is still the schema's — no trait may widen the envelope. */
+    expect(buildOutputRule(maxHorny)).toContain('- 1 to 4 bubbles.')
+  })
+
+  it('opens proactively on wanting him at max, and not at the default', () => {
+    /* R3: "the higher horny value, the more often nina will initiate sex talks with me." The
+     * FREQUENCY of a proactive turn is `clinginess`'s and is untouched; what `horny` changes is
+     * what she opens with once one fires. */
+    expect(buildProactiveInstruction('silence', maxHorny)).toContain('Open with wanting him')
+    expect(buildProactiveInstruction('silence', withTrait('horny', 70))).toContain(
+      'You may open with wanting him',
+    )
+    expect(buildProactiveInstruction('silence', NINA_TUNING_DEFAULTS)).not.toContain('wanting him')
+    /* The default render of the trigger is byte-identical, which is the suffix staying empty. */
+    expect(buildProactiveInstruction('silence', NINA_TUNING_DEFAULTS)).toBe(
+      PROACTIVE_INSTRUCTIONS.silence,
+    )
+  })
+
+  it('contributes nothing when disabled, at any score — and drops the floor with it', () => {
+    /* Phase 4's R4 suite already walks `NINA_TUNING_KEYS` and therefore covers `horny` the moment
+     * it exists. This case is kept because it also pins the FLOOR to the toggle, which that loop
+     * does not look at: a disabled `horny: 100` still flooring verbosity would be the same defect
+     * as a disabled `anger: 100` still flooring the nag ladder. */
+    const off: NinaTuning = {
+      ...maxHorny,
+      enabled: { ...maxHorny.enabled, horny: false },
+    }
+    expect(buildNinaSystemPrompt(off)).toBe(NINA_SYSTEM_PROMPT)
+    expect(ninaEffectiveVerbosity(off)).toBe(NINA_TUNING_DEFAULTS.dials.verbosity)
+    expect(buildOutputRule(off)).toBe(OUTPUT_RULE)
+    expect(buildProactiveInstruction('silence', off)).toBe(PROACTIVE_INSTRUCTIONS.silence)
+    /* The number it was parked at survives the switch — that is what a toggle is for. */
+    expect(off.traits.horny).toBe(100)
   })
 })
 

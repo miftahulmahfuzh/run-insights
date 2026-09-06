@@ -58,8 +58,8 @@ import {
  *     It cannot be tested by importing, so it is tested by reading the source.
  */
 
-describe('the eleven traits (R1)', () => {
-  it('are exactly the eleven the user named, in the order he wrote them', () => {
+describe("the twelve traits (R1, and R3's horny)", () => {
+  it('are exactly the twelve the user named, in the order he wrote them', () => {
     expect(NINA_TRAITS).toEqual([
       'anger',
       'chill',
@@ -72,6 +72,9 @@ describe('the eleven traits (R1)', () => {
       'happy',
       'anxious',
       'concerned',
+      /* R3's twelfth, APPENDED — the eleven above are "the order the user wrote them" and the
+       * eleven sliders already on the panel stay where his muscle memory has them. */
+      'horny',
     ])
   })
 
@@ -85,11 +88,11 @@ describe('the eleven traits (R1)', () => {
     }
   })
 
-  it('quotes the user verbatim for the six he gave a behaviour for, and null for the rest', () => {
+  it('quotes the user verbatim for the seven he gave a behaviour for, and null for the rest', () => {
     // `userSaid` is the SPECIFICATION for R4, not a comment about it, which is why it is stored
     // unedited — the `VOICE_EXAMPLES` argument. A tidied quote teaches a tidied requirement.
     const named = NINA_TRAITS.filter((k) => NINA_TRAIT_SPECS[k].userSaid !== null)
-    expect(named).toEqual(['anger', 'flirty', 'steamy', 'funny', 'anxious', 'concerned'])
+    expect(named).toEqual(['anger', 'flirty', 'steamy', 'funny', 'anxious', 'concerned', 'horny'])
     expect(NINA_TRAIT_SPECS.funny.userSaid).toContain('teka-teki')
     expect(NINA_TRAIT_SPECS.anger.userSaid).toBe(
       'if anger is set to high, nina will be mad all the time',
@@ -101,6 +104,53 @@ describe('the eleven traits (R1)', () => {
     expect(isNinaTrait('angry')).toBe(false)
     expect(isNinaTrait('')).toBe(false)
     expect(isNinaTrait('__proto__')).toBe(false)
+  })
+
+  /* ── R3's `horny`, the twelfth ──────────────────────────────────────────────────────────────
+   * A TRAIT and not a dial (index decision D6): `BODY_REPEALED_BY` is typed `readonly NinaTrait[]`
+   * and `horny` at the top has to repeal the body prohibition, `NINA_TRAIT_SPECS` is the record
+   * with a `userSaid` field, and `flirty` / `steamy` are traits on the same axis. */
+  it('horny is a trait, defaults to 0, and identifies at the off band', () => {
+    expect(NINA_TRAITS).toContain('horny')
+    expect(isNinaTrait('horny')).toBe(true)
+    expect(NINA_TUNING_DEFAULTS.traits.horny).toBe(0)
+    expect(ninaBand(NINA_TUNING_DEFAULTS.traits.horny).name).toBe('off')
+    /* And it is NOT a dial, which is the half of D6 that a stray second entry would break. */
+    expect(isNinaDial('horny')).toBe(false)
+    expect(NINA_DIALS).not.toContain('horny')
+  })
+
+  it('horny states the user behaviour it came from', () => {
+    /* `userSaid` is the SPECIFICATION for this key, stored unedited. The four behaviours R3 named
+     * — forwardness, initiation, descriptiveness, scenario variety — are what the band table has
+     * to act on, so the quote that states the axis is the one that is kept. */
+    const said = NINA_TRAIT_SPECS.horny.userSaid
+    expect(said).toBeTruthy()
+    expect(said).toContain('initiate')
+    expect(said).toContain('descriptive')
+  })
+
+  it('gives horny a toggle for free, because the key list is a spread', () => {
+    /* Phase 4's stated handoff: a seventeenth key inherits R4 with no second list to edit. */
+    expect(NINA_TUNING_KEYS).toContain('horny')
+    expect(isNinaTuningKey('horny')).toBe(true)
+    expect(NINA_ENABLED_DEFAULTS.horny).toBe(true)
+    expect(
+      ninaTraitScore(
+        { ...NINA_TUNING_DEFAULTS, traits: { ...NINA_TUNING_DEFAULTS.traits, horny: 100 } },
+        'horny',
+      ),
+    ).toBe(100)
+    expect(
+      ninaTraitScore(
+        {
+          ...NINA_TUNING_DEFAULTS,
+          traits: { ...NINA_TUNING_DEFAULTS.traits, horny: 100 },
+          enabled: { ...NINA_TUNING_DEFAULTS.enabled, horny: false },
+        },
+        'horny',
+      ),
+    ).toBe(0)
   })
 })
 
@@ -340,6 +390,9 @@ describe('NINA_TUNING_DEFAULTS is the Nina who ships today', () => {
       happy: 50,
       anxious: 0,
       concerned: 50,
+      /* D4: 0, band `off`. Any other default perturbs plan invariant 1, which two committed
+       * byte-identity tests assert — the operator reaches the behaviour with the slider. */
+      horny: 0,
     })
     expect(NINA_TUNING_DEFAULTS.dials).toEqual({
       profanity: 30,
@@ -376,6 +429,7 @@ describe('NINA_TUNING_DEFAULTS is the Nina who ships today', () => {
       happy: 'mid',
       anxious: 'off',
       concerned: 'mid',
+      horny: 'off',
       profanity: 'low',
       clinginess: 'mid',
       photoEagerness: 'mid',

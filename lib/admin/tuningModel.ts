@@ -55,7 +55,7 @@ export interface TuningDraft {
   traits: Record<string, number>
   dials: Record<string, number>
   /**
-   * R4's per-parameter toggles, keyed by `NINA_TUNING_KEYS` — the relationship, the eleven traits
+   * R4's per-parameter toggles, keyed by `NINA_TUNING_KEYS` — the relationship, the twelve traits
    * and the four dials. `Record<string, boolean>` rather than the key union for the same reason the
    * two score records are loose: this is the adaptation seam, and a component that reads
    * `draft.enabled[key] ?? true` survives a key the model has and the panel has not caught up with.

@@ -277,7 +277,13 @@ paragraphs nobody could review. So a trait that defaults to 0 is today's Nina fr
 speaks from 60 up — which is the shape every one of the user's own sentences asked in: *"if X is set
 to high"*.
 
-### The eleven traits
+**`horny` is the one exception**, and the only trait in the table with a `mid` entry: it still has
+no `off` and no `low`, so it is silent from 0 to 39 and the default of 0 renders nothing, but it
+speaks from 40. Its three bands are three distinguishable behaviours rather than four
+near-duplicates — `mid` wants him and lets it show, `high` raises it herself and describes, `max`
+opens with it and repeals the body rule.
+
+### The twelve traits
 
 | Trait | What the user asked for at high | Where it acts |
 |---|---|---|
@@ -292,6 +298,7 @@ to high"*.
 | `happy` | — | a paragraph: delighted, warm is where she lives |
 | `anxious` | *"anxious about herself"* | a paragraph — about HER life, not his. Worry about him is `concerned` |
 | `concerned` | *"how are you, how are your feet after the run this morning"* | a paragraph, and it repeals the body rule |
+| `horny` | *"how much is nina being sexual as a woman … the more often nina will initiate … the more descriptive she is"* | a paragraph; it repeals the body rule, floors `verbosity`, and adds a clause to her proactive openings |
 
 `anger` is the one trait with no paragraph of its own. Its whole effect is the rung floor, because a
 paragraph saying "you are angry all the time" beside a floor of rung 4 is two sources of truth for

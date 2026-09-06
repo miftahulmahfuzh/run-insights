@@ -8,7 +8,7 @@
  * ── THIS FILE MUST STAY IMPORTABLE FROM A `'use client'` COMPONENT ────────────────────────────
  * **Zero imports. No value import, no type import, no `server-only`, nothing from `@/lib/db/*`.**
  * The `lib/nina/crop.ts` rule and for the same reason: `components/admin/CharacterPanel.tsx`
- * renders eleven sliders from `NINA_TRAITS`, needs the labels in the browser, and needs
+ * renders twelve sliders from `NINA_TRAITS`, needs the labels in the browser, and needs
  * `NINA_TUNING_DEFAULTS` to reset to. `tests/nina.tuning.test.ts` reads this file's own source and
  * fails on an `import` line, so the property is checked rather than merely intended.
  *
@@ -131,13 +131,18 @@ export function ninaBand(value: unknown): NinaBand {
  * is what makes `max(computed, floor) === computed` for the Nina who ships. */
 
 /* ============================================================================
- * §2 The eleven traits (R1)
+ * §2 The twelve traits (R1, and R3's `horny`)
  * ==========================================================================*/
 
 /**
- * **The eleven, in the order the user wrote them.** The order is the panel's order and the
+ * **The twelve, in the order the user wrote them.** The order is the panel's order and the
  * prompt's order, and it is not alphabetical on purpose: it is the order in which he thought of
  * them, which is the order in which he will look for them.
+ *
+ * `horny` is APPENDED rather than filed beside `flirty` and `steamy`, whose axis it shares. Two
+ * reasons, and both are about the operator rather than about taste: the eleven above are "the order
+ * the user wrote them" and inserting into the middle makes that sentence false, and the eleven
+ * sliders already on `/admin/nina` stay where his muscle memory has them.
  */
 export const NINA_TRAITS = [
   'anger',
@@ -151,6 +156,7 @@ export const NINA_TRAITS = [
   'happy',
   'anxious',
   'concerned',
+  'horny',
 ] as const
 
 export type NinaTrait = (typeof NINA_TRAITS)[number]
@@ -163,7 +169,7 @@ export function isNinaTrait(key: string): key is NinaTrait {
  * One trait, fully described. The `NINA_SLOT_KEYS` / `NINA_SLOT_SPECS` idiom in
  * `lib/nina/memory.ts`: a key array for the order, a spec record for everything about each key.
  *
- * `userSaid` is **the user's own words, verbatim**, for the six traits he gave a behaviour for.
+ * `userSaid` is **the user's own words, verbatim**, for the seven traits he gave a behaviour for.
  * They are the specification for R4 rather than a comment about it, so they are stored rather than
  * paraphrased — the `VOICE_EXAMPLES` argument, one feature over. Phase 2 may quote them; nothing
  * may tidy them.
@@ -283,6 +289,24 @@ export const NINA_TRAIT_SPECS: Readonly<Record<NinaTrait, NinaTraitSpec>> = {
     defaultScore: 50,
     defaultBecause:
       'Noticing an absence is already the whole point of her ("lo kemaren kemana tah", VOICE_EXAMPLES), but she never asks after his body. The middle band is today, and it is the band phase 3 uses to gate OUTPUT_RULE\'s "No greeting unless..." clause.',
+  },
+  /**
+   * **R3's twelfth trait, and the reason it is a TRAIT and not a dial.** `BODY_REPEALED_BY` in
+   * `./persona` is typed `readonly NinaTrait[]`, and `horny` at the top has to repeal *"Never
+   * comment on his body"* — the single most load-bearing wiring point this key has. As a dial it
+   * would need a parallel repeal list and a second repeal test in `./prompts/system.ts`, which
+   * that file's own docstring calls out as *"how the two halves of one repeal come to disagree"*.
+   * `NINA_DIAL_SPECS` also has no `userSaid`, and the user described this one at length.
+   */
+  horny: {
+    key: 'horny',
+    label: 'Horny',
+    axis: 'How sexually forward she is. Distinct from `flirty` (which is teasing and pet names) and from `steamy` (which is how explicit she is willing to get once he has taken it there): this is whether SHE takes it there, how graphic she is when she does, and how much she varies the scene instead of replaying one.',
+    userSaid:
+      'this parameter is controlling how much is nina being sexual as a woman. full horny means nina is being so explicit about everything. [...] the higher horny value, the more often nina will initiate sex talks with me [...] the higher horny value, the more descriptive she is. she talks longer and in much more descriptive and suggestive details',
+    defaultScore: 0,
+    defaultBecause:
+      'There is nothing in the shipping canon where she initiates. `flirty` and `steamy` both default to 0 and identify at `off` for the same reason, and plan invariant 1 requires that `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` render byte-identically — a nonzero default here would put a paragraph into the prompt that shipped. 0 makes today arithmetic rather than careful editing.',
   },
 }
 
@@ -556,7 +580,7 @@ export const NINA_TUNING_RELATIONSHIP_KEY = 'relationship'
 /**
  * **Every parameter the operator can switch off, in the panel's own order** — the relationship
  * first, because it is the first control on the page and the first column in `nina_tuning`, then
- * the eleven traits and the four dials in the order the user wrote them.
+ * the twelve traits and the four dials in the order the user wrote them.
  *
  * DERIVED, never restated. See the note above.
  */
@@ -729,7 +753,7 @@ export interface NinaTuning {
   readonly dials: Readonly<Record<NinaDial, number>>
   /**
    * **R4's per-parameter on/off switch.** One boolean per key in `NINA_TUNING_KEYS` — the
-   * relationship, the eleven traits and the four dials. A `false` here means the key contributes
+   * relationship, the twelve traits and the four dials. A `false` here means the key contributes
    * ZERO BYTES to the assembled prompt at any score; see §5. All true is the default and is what
    * makes `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` the prompt that ships.
    */

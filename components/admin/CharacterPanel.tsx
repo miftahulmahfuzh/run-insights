@@ -37,7 +37,7 @@ import {
  * The user named `/admin/nina`, and the previous plan set rebuilt that page into a paginated
  * folder-scoped file manager for a stated reason: *"i will put hundreds of profile pics in there."*
  * The album is the page's working surface and must stay the first thing on it, so this panel is a
- * native `<details>`, shut on arrival. Sixteen sliders open by default would push the album below
+ * native `<details>`, shut on arrival. Seventeen sliders open by default would push the album below
  * the fold on every single visit, including the hundreds of visits that are about a photograph.
  *
  * A native `<details>` rather than a `useState` toggle: it needs no JavaScript to open, it is
@@ -54,14 +54,14 @@ import {
  *
  * ── ONE SAVE ────────────────────────────────────────────────────────────────────────────────
  * Every control edits a local draft; nothing writes on change. One button sends the whole tuning
- * (plan invariant 11) — Next dispatches actions one at a time per client, so sixteen dials as
- * sixteen actions would stall behind each other.
+ * (plan invariant 11) — Next dispatches actions one at a time per client, so seventeen dials as
+ * seventeen actions would stall behind each other.
  *
  * ── THE TOGGLES ARE PART OF THE SAME ONE SAVE (R4) ──────────────────────────────────────────
  * *"we need an on/off toggle for each parameter, so we can exclude some parameters to make prompt
  * more accurate."* Each checkbox edits `draft.enabled[key]` and nothing else; the same button sends
- * the whole map with the scores. Seventeen toggles as seventeen actions is the same stall sixteen
- * dials would have been, and for the same reason: Next dispatches Server Actions one at a time per
+ * the whole map with the scores. Seventeen toggles as seventeen actions is the same stall the
+ * seventeen dials would have been, and for the same reason: Next dispatches Server Actions one at a time per
  * client.
  *
  * The score is NOT reset when a parameter is switched off, and that is the feature: the operator
@@ -276,7 +276,7 @@ export function CharacterPanel({
         <section className="mb-6">
           <h3 className="text-[13px] font-semibold text-ink">Traits</h3>
           <p className="mb-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
-            Eleven dials, 0 to 100.
+            Twelve dials, 0 to 100.
           </p>
           <div className="grid gap-x-8 xl:grid-cols-2">
             {NINA_TRAITS.map((key) => {

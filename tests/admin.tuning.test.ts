@@ -81,8 +81,11 @@ describe('the copy is complete for phase 1s vocabulary', () => {
   // phase 1 adds arrives with its label and its hint already written. The cases stay anyway,
   // because they are what would catch a spec entry landing with an empty `label` or `axis`, and
   // because the fallback below must never be how an unlabelled slider ships.
-  it('has a real label and hint for all eleven traits', () => {
-    expect(NINA_TRAITS).toHaveLength(11)
+  it('has a real label and hint for all twelve traits', () => {
+    /* Twelve since R3's `horny` landed. The literal stays a literal rather than becoming
+     * `NINA_TRAITS.length`, which would be a tautology — the number is here to make ADDING a
+     * trait an explicit decision in this file, and it just was. */
+    expect(NINA_TRAITS).toHaveLength(12)
     for (const key of NINA_TRAITS) {
       expect(hasTuningCopy(key), `no copy for trait ${key}`).toBe(true)
       expect(tuningCopy(key).label.length).toBeGreaterThan(0)
