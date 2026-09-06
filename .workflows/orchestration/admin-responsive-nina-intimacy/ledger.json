@@ -1,0 +1,105 @@
+{
+  "branch": "feature/admin-responsive-nina-intimacy",
+  "coordinator": "orch-admin-responsive-nina-intimacy",
+  "coordinator_session_id": "e47cc887-189b-4785-91a0-4d701fba7477",
+  "created": "2026-09-06T14:36:27+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "app/admin`, `components/admin",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Admin shell: viewport, safe areas, navigation"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "components/admin",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Admin surfaces: explorer, crop studio, tables, dials"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina`, `tests`, `docs",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Girlfriend register: manja, imut, vowel lengthening"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        2,
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": null,
+      "package": "lib/nina`, `lib/admin`, `lib/db`, `components/admin`, `drizzle`, `tests",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Per-parameter enable toggles"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        4
+      ],
+      "difficulty": "HARD",
+      "n": 5,
+      "note": null,
+      "package": "lib/nina`, `lib/db`, `drizzle`, `tests",
+      "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-5.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The `horny` trait"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "admin-responsive-nina-intimacy",
+  "updated": "2026-09-06T14:36:27+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
+}
