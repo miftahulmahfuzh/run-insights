@@ -26,6 +26,7 @@
     "db:studio": "drizzle-kit studio",
     "db:smoke": "node --env-file=.env.local scripts/db-smoke.mjs",
     "blob:reap": "node --env-file=.env.local scripts/blob-reap.mjs",
+    "nina:memory-reap": "node --env-file=.env.local scripts/nina-memory-reap.mjs",
     "badges:backfill-runs": "node --env-file=.env.local scripts/backfill-badge-run-ids.mjs",
     "records:backfill": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/backfill-record-keys.mjs",
     "nina:profpic": "node --experimental-strip-types --no-warnings --env-file=.env.local scripts/nina-profpic.mjs",

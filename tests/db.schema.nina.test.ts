@@ -165,7 +165,15 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
   it('source_message_id is NULLABLE on both, because the admin editor types rows the chat never said', () => {
     expect(columns(schema.ninaMemorySlots).get('source_message_id')?.notNull).toBe(false)
     expect(columns(schema.ninaMemoryFacts).get('source_message_id')?.notNull).toBe(false)
-    // And neither is an FK: provenance must not be able to block a conversation delete.
+    /*
+     * And neither is an FK — still true after R8, and now for a sharper reason than "provenance
+     * must not block a delete". `removeNinaSession` purges these rows itself, in the same
+     * transaction as the session delete (`tests/nina.sessionPurge.test.ts` proves it), precisely so
+     * that a SESSION delete takes the memory while a MESSAGE delete does not. An
+     * `ON DELETE CASCADE` cannot express that difference, and it would also reach a row an admin
+     * asserted. The NULL this test insists on is what makes an admin row structurally unreachable
+     * by the purge: `source_message_id IS NULL` never matches an `IN`.
+     */
     expect(fkFor(schema.ninaMemorySlots, 'source_message_id')).toBeUndefined()
     expect(fkFor(schema.ninaMemoryFacts, 'source_message_id')).toBeUndefined()
   })
@@ -339,8 +347,11 @@ describe('nina_messages.session_id — F35 R2 and R11', () => {
   })
 
   it('CASCADES, which is what makes removing a session take its messages (R11)', () => {
-    // …and through nina_message_images.message_id's own cascade, their image rows. The blobs and
-    // the memory ledger's source_message_id pointers are deliberately left — see the schema header.
+    // …and through nina_message_images.message_id's own cascade, their image rows. The Blob bytes
+    // are still deliberately left (the reap-orphaned-blobs card owns them). The memory ledger's
+    // source_message_id pointers are NO LONGER left: R8 made removeNinaSession purge them in the
+    // same transaction, without a foreign key — see the schema header and
+    // tests/nina.sessionPurge.test.ts.
     expect(fkFor(schema.ninaMessages, 'session_id')?.onDelete).toBe('cascade')
     expect(fkFor(schema.ninaMessageImages, 'message_id')?.onDelete).toBe('cascade')
   })

@@ -3,11 +3,13 @@ import {
   asc,
   desc,
   eq,
+  exists,
   gte,
   inArray,
   isNotNull,
   isNull,
   max,
+  ne,
   or,
   sql,
   type SQL,
@@ -16,6 +18,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core'
 
 import { db } from '@/lib/db'
 import {
+  NINA_SLOT_PENDING_PROMISES,
   ninaAvatars,
   ninaChatSessions,
   ninaFolders,
@@ -801,34 +804,185 @@ export async function countNinaSessionMessages(userId: string, sessionId: string
 }
 
 /**
- * **R11. One DELETE, and the foreign keys do the rest.**
+ * **R11's delete, and R8's purge, in one transaction.**
  *
  * `nina_chat_sessions` -> `nina_messages.session_id` (cascade) -> `nina_message_images.message_id`
- * (cascade, and it predates this feature). Postgres chains both, so this statement removes the
- * conversation and its photo ROWS.
+ * (cascade, and it predates this feature). Postgres chains both, so the last statement below
+ * removes the conversation and its photo ROWS.
  *
- * **What it deliberately leaves behind, stated rather than assumed:**
+ * ── THE THREE STATEMENTS IN FRONT OF IT, AND WHY THEY EXIST (R8) ──────────────────────────────
+ * This function used to be one DELETE, and its own comment argued that the memory ledger should
+ * survive it: *"a distilled fact can be true after the sentence that produced it is gone"*. That
+ * argument is still correct about a SENTENCE and it is still what `deleteNinaMessage` does. It is
+ * wrong about a CONVERSATION, and the runner measured it: *"the deleted sessions polluted nina
+ * character and it gets worse as time goes on"*. `loadNinaContext` reads the session's message
+ * window and THE WHOLE RELATIONSHIP'S memory ledger — the window is scoped, the ledger is not — so
+ * the ledger was the only surviving channel by which a deleted session still reached her prompt.
+ * Deleting a session is him saying the topic never happened; deleting one bubble is him tidying one
+ * line. This function overrides the first and leaves the second exactly as it was.
+ *
+ * ── WHY A SUBQUERY AND NOT A PRE-READ ─────────────────────────────────────────────────────────
+ * The purge has to name the messages the cascade is about to destroy, which means reading them
+ * BEFORE the DELETE. A pre-read would do it, and would open a window in which a concurrent send
+ * files a new message into the session between the read and the delete — a message whose distilled
+ * facts would then survive. `db.batch` runs the whole array inside ONE transaction in array order,
+ * so `sessionMessageIds` below is evaluated three times against rows that are still there, and
+ * there is no window at all.
+ *
+ * ── WHY NOT A FOREIGN KEY WITH `ON DELETE CASCADE` ────────────────────────────────────────────
+ * Three reasons, and the first is the one that decides it. (1) An FK fires from
+ * `deleteNinaMessage` too, and cannot tell a deleted sentence from a deleted conversation. (2) It
+ * cannot be added by a generated migration while dangling rows exist, and they do —
+ * `npm run nina:memory-reap` is the one-off that clears them. (3) The membership test below can
+ * never match `source_message_id IS NULL`, which is how `/admin/memory` writes and re-labels every
+ * hand-asserted row (its store module lives under `lib/admin/`, and is deliberately NOT named in
+ * full here — `tests/admin.memory.test.ts` asserts textually that nothing under `lib/nina/` so much
+ * as mentions that specifier) — so R24's admin-row guarantee holds STRUCTURALLY here, rather than
+ * through a `source <> 'admin'` predicate somebody could drop. An admin-asserted fact is the
+ * runner's way to make a memory immune to this purge.
+ *
+ * **What it STILL deliberately leaves behind:**
  *   - the Blob objects those image rows pointed at. The rows go, the bytes stay — the same call
  *     `deleteNinaMessage` makes, and the `reap-orphaned-blobs` skill does not cover the `nina/`
  *     prefix yet. This function does NOT pre-read the image rows to hand their pathnames back: a
  *     return value nothing consumes is a promise this set has not made.
- *   - every `source_message_id` in `nina_memory_slots` / `nina_memory_facts` that pointed into the
- *     session. Neither column has a foreign key, so nothing cascades and the ledger keeps its facts.
- *     That is the memory staying global on purpose (assumption A2): a distilled fact can be true
- *     after the sentence that produced it is gone, and deleting a conversation must not quietly
- *     delete what she knows about him.
- *   - `nina_turns`. It is the audit trail; a removed conversation does not un-spend its tokens.
+ *   - `nina_turns`. It is the audit trail and the money ledger; a removed conversation does not
+ *     un-spend its tokens (plan invariant 9). A job's `args.replyToId` may afterwards name a
+ *     message that no longer exists, which is the same degradation a deleted message already
+ *     produces, in bulk.
+ *   - `nina_nags` and `nina_avatars`. A nag records what she has said about a TRAINING pattern and
+ *     carries no message pointer; an avatar is her face. Neither is a conversation.
+ *   - the `name` slot, whose `source_message_id` is null by design (`lib/nina/memory.ts`) because
+ *     it is derived bookkeeping. It is recomputed on the next distillation.
  *
  * A surviving message in ANOTHER session that quoted one of these has its `reply_to_id` set to NULL
- * by the self-FK, and `resolveQuote` already degrades that to plain text. No new behaviour.
+ * by the self-FK, and `resolveQuote` already degrades that to plain text. `SET NULL` never blocks a
+ * delete, so it cannot deadlock the cascade. No new behaviour.
  *
- * `false` is "not yours, or already gone" — the caller turns that into one message.
+ * `false` is "not yours, or already gone" — the caller turns that into one message. When it is
+ * false, the three purge statements have already selected nothing: `sessionMessageIds` carries
+ * `user_id` in its own WHERE beside `session_id` (rule 1), so a foreign or stale id yields an empty
+ * set rather than somebody else's message ids.
  */
 export async function removeNinaSession(userId: string, id: string): Promise<boolean> {
-  const removed = await db
-    .delete(ninaChatSessions)
-    .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
-    .returning({ id: ninaChatSessions.id })
+  /* The messages this session is about to lose. A subquery, not a value — see the header, and see
+   * `getRunByShareToken` in `lib/db/queries.ts`, which builds a correlated subquery exactly this
+   * way and for the neighbouring reason: *"so the child selects are filtered by the token itself
+   * rather than by a run id the caller could have supplied. All five statements share one
+   * snapshot."* Here it is a session id rather than a token, and the snapshot is what makes the
+   * purge and the delete indivisible. */
+  const sessionMessageIds = db
+    .select({ id: ninaMessages.id })
+    .from(ninaMessages)
+    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.sessionId, id)))
+
+  /* The `pending_promises` entries that came from this conversation, as a predicate over the slot's
+   * jsonb array. Spelled once and used twice: once to decide whether the row needs rewriting at
+   * all, and once (inverted) to decide which entries survive the rewrite.
+   *
+   * **The outer parentheses are load-bearing and hand-written.** `drizzle-orm`'s `exists()` emits
+   * `exists ` followed by its argument's chunks verbatim; it only LOOKS like it adds the brackets
+   * because a subquery BUILDER serialises itself with them. A raw `sql` template does not, so
+   * without the pair below the generated statement is `... and exists select 1 from ...`, which is
+   * a syntax error Postgres rejects — measured, not theorised, and caught by
+   * `tests/nina.sessionPurge.test.ts`'s `exists (` assertion. */
+  const promisesFromThisSession = sql`(
+    select 1
+      from jsonb_array_elements(${ninaMemorySlots.value} -> 'promises') as t(entry)
+     where t.entry ->> 'sourceMessageId' in (
+             select ${ninaMessages.id}
+               from ${ninaMessages}
+              where ${ninaMessages.userId} = ${userId}
+                and ${ninaMessages.sessionId} = ${id}
+           )
+  )`
+
+  const [, , , removed] = await db.batch([
+    /* 1. The ledger rows distilled from this conversation. `source_message_id IS NULL` can never
+     *    match an `IN`, which is exactly the admin-row guarantee. */
+    db
+      .delete(ninaMemoryFacts)
+      .where(
+        and(
+          eq(ninaMemoryFacts.userId, userId),
+          inArray(ninaMemoryFacts.sourceMessageId, sessionMessageIds),
+        ),
+      ),
+
+    /* 2. The standing slots this conversation set — his nickname, his usual running days, what he
+     *    is training for. `pending_promises` is EXCLUDED and handled by statement 3: it is one row
+     *    holding a LIST, so dropping the row over one entry would cancel every promise she has
+     *    outstanding, including the ones she made in conversations he kept. */
+    db
+      .delete(ninaMemorySlots)
+      .where(
+        and(
+          eq(ninaMemorySlots.userId, userId),
+          ne(ninaMemorySlots.key, NINA_SLOT_PENDING_PROMISES),
+          inArray(ninaMemorySlots.sourceMessageId, sessionMessageIds),
+        ),
+      ),
+
+    /* 3. `pending_promises`, pruned entry by entry rather than row by row.
+     *
+     *    The ROW's own `source_message_id` is not usable for this and it is worth saying why:
+     *    `lib/nina/promises.ts`'s sweep rewrites the slot through `upsertNinaMemorySlot` WITHOUT a
+     *    `sourceMessageId`, which defaults the column to NULL — so after the first sweep the row
+     *    points at nothing while its entries still point at real messages. The entries are the
+     *    provenance; the row is not.
+     *
+     *    `jsonb_typeof(... ) = 'array'` is a guard and not decoration: without it, a malformed slot
+     *    value would make `jsonb_array_elements` yield zero rows, `jsonb_agg` return NULL, and the
+     *    coalesce rewrite the row to an empty promise list — destroying data on the way past. With
+     *    it, a malformed row is left exactly as it is, for a human to look at.
+     *
+     *    The `exists` in the WHERE means this statement is a no-op — no write, no `updated_at`
+     *    bump, nothing in `/admin/memory`'s "updated" column — unless this session actually
+     *    produced one of the promises. */
+    db
+      .update(ninaMemorySlots)
+      .set({
+        value: sql`
+          jsonb_build_object(
+            'promises',
+            coalesce(
+              (
+                select jsonb_agg(t.entry order by t.ord)
+                  from jsonb_array_elements(${ninaMemorySlots.value} -> 'promises')
+                       with ordinality as t(entry, ord)
+                 where t.entry ->> 'sourceMessageId' is null
+                    or t.entry ->> 'sourceMessageId' not in (
+                         select ${ninaMessages.id}
+                           from ${ninaMessages}
+                          where ${ninaMessages.userId} = ${userId}
+                            and ${ninaMessages.sessionId} = ${id}
+                       )
+              ),
+              '[]'::jsonb
+            )
+          )
+        `,
+        /* Written explicitly for the reason `upsertNinaMemorySlot` gives: `$onUpdate` and
+         * `defaultNow()` fire on different paths, and a caller comparing two slots' `updated_at`
+         * should be comparing like with like. */
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(ninaMemorySlots.userId, userId),
+          eq(ninaMemorySlots.key, NINA_SLOT_PENDING_PROMISES),
+          sql`jsonb_typeof(${ninaMemorySlots.value} -> 'promises') = 'array'`,
+          exists(promisesFromThisSession),
+        ),
+      ),
+
+    /* 4. And only now the session itself, so the three statements above still had messages to join
+     *    against. `RETURNING` is what makes ownership a fact rather than a claim. */
+    db
+      .delete(ninaChatSessions)
+      .where(and(eq(ninaChatSessions.userId, userId), eq(ninaChatSessions.id, id)))
+      .returning({ id: ninaChatSessions.id }),
+  ])
 
   return removed.length > 0
 }
