@@ -10,13 +10,22 @@ import {
   ninaAngerCeiling,
   ninaAngerFloor,
   ninaAngerLadderBlock,
+  ninaEffectiveVerbosity,
+  ninaGirlfriendVoiceBlock,
   ninaIdentity,
+  ninaManjaRegisterBlock,
   ninaNameRules,
   ninaNeverSayBlock,
   ninaOperatorNotesBlock,
   ninaTraitsBlock,
 } from '../persona'
-import { NINA_TUNING_DEFAULTS, type NinaTuning } from '../tuning'
+import {
+  NINA_TUNING_DEFAULTS,
+  type NinaTuning,
+  ninaBand,
+  ninaDialScore,
+  ninaTraitScore,
+} from '../tuning'
 
 /**
  * Nina's system prompt, assembled from the canon. **No I/O, no `server-only`, and no logic beyond
@@ -38,7 +47,7 @@ import { NINA_TUNING_DEFAULTS, type NinaTuning } from '../tuning'
  * `persona.ts` is WHO SHE IS and changes when the user redlines the canon. This file is WHAT SHE
  * IS READING and changes every time `lib/nina/context.ts` changes shape. Two edit rhythms; mixing
  * them is how a schema change quietly rewrites her character. The tuning does not change that
- * split: the eleven traits and the relationship are character text and live over there, and this
+ * split: the twelve traits and the relationship are character text and live over there, and this
  * file composes them. The three dials read HERE are the three that vary a rule this file owns.
  *
  * ── "THE PROMPT" MEANS THIS TEXT AND EVERY TOOL SCHEMA ──────────────────────────────────
@@ -57,7 +66,7 @@ import { NINA_TUNING_DEFAULTS, type NinaTuning } from '../tuning'
  * the same time as this file, and a naming mismatch that costs one function body is a mismatch
  * that costs nothing. If the dials move, this is the only body that changes.
  *
- * Why only three, when there are eleven traits and a relationship: the other twelve vary CHARACTER
+ * Why only three, when there are twelve traits and a relationship: the other thirteen vary CHARACTER
  * text, and character text is `persona.ts`'s. These three vary a rule that lives in THIS file —
  * `OUTPUT_RULE`'s greeting clause, `OUTPUT_RULE`'s bubble preference, and the camera block. A dial
  * belongs in the file that owns the sentence it changes.
@@ -76,14 +85,22 @@ interface SystemDials {
 
 function systemDials(tuning: NinaTuning): SystemDials {
   return {
-    concerned: tuning.traits.concerned,
+    /* R4: `ninaTraitScore` / `ninaDialScore` and never `tuning.traits.x`. A parameter the operator
+     * switched off resolves to its own `defaultScore`, so `raised`, `lowered` and `loud` below are
+     * all false and every line this file varies is the line that shipped — zero bytes added by a
+     * dial that is off, whatever it is parked at. A direct read here would have given `concerned`,
+     * `verbosity` and `photoEagerness` toggles that do nothing, in the three places the operator is
+     * most likely to notice: the greeting, the bubble count and the camera. */
+    concerned: ninaTraitScore(tuning, 'concerned'),
     concernedBase: NINA_TUNING_DEFAULTS.traits.concerned,
-    /* NESTED under `dials`, and the dial is `photoEagerness` — phase 1's landed spelling. The
-     * draft of this plan read `tuning.verbosity` / `tuning.photoEagerness` flat; this function
-     * body was the entire cost of being wrong about it, which is why it exists. */
-    verbosity: tuning.dials.verbosity,
+    /* NESTED under `dials`, and the dial is `photoEagerness` — phase 1's landed spelling. */
+    /* R3: `horny` raises a FLOOR under verbosity — `ninaEffectiveVerbosity` is `max(own, floor)`
+     * and reads BOTH keys through the gate, so a disabled `verbosity` OR a disabled `horny` both
+     * fall out of it correctly. `verbosityBase` stays the raw default: the ladder below measures
+     * against the Nina who shipped, not against the floor. */
+    verbosity: ninaEffectiveVerbosity(tuning),
     verbosityBase: NINA_TUNING_DEFAULTS.dials.verbosity,
-    photos: tuning.dials.photoEagerness,
+    photos: ninaDialScore(tuning, 'photoEagerness'),
     photosBase: NINA_TUNING_DEFAULTS.dials.photoEagerness,
   }
 }
@@ -416,7 +433,7 @@ function renderSections(sections: readonly PromptSection[]): string {
  *                         it too. `ninaNameRules(tuning)` — what she CALLS him — then arrives
  *                         downstream of it, inside HOW YOU TALK, exactly as it does today.
  *   HOW YOU FEEL          immediately before WHEN YOU GET ANGRY, because the anger dial is one of
- *                         the eleven and the ladder reads it as a FLOOR on the computed rung. The
+ *                         the twelve and the ladder reads it as a FLOOR on the computed rung. The
  *                         floor and the ladder have to be readable together.
  *   THE CAMERA            after THE NUMBERS and before WHAT YOU ARE READING: it is an instruction
  *                         about a tool, and it belongs with the other mechanics rather than in the
@@ -443,12 +460,23 @@ export function buildNinaSystemPrompt(tuning: NinaTuning): string {
       blocks: [
         LANGUAGE_RULE,
         JAKARTA_REGISTER,
+        /* R2, admin-responsive-nina-intimacy. Empty at four of the five relationships, and
+         * `renderSections` drops an empty block — which is why adding it here cannot perturb the
+         * default render. It sits DIRECTLY under the register it amends: it lifts that block's
+         * "Never aku" and one-emoji lines for `girlfriend` and nowhere else, and an amendment two
+         * paragraphs from its rule is an amendment the model may not connect. */
+        ninaManjaRegisterBlock(tuning),
         JAKARTA_SLANG_BLOCK,
         ENGLISH_REGISTER,
         ninaNameRules(tuning),
       ],
     },
-    { header: sectionHeader('EXACTLY HOW YOU SOUND'), blocks: [VOICE_EXAMPLES_BLOCK] },
+    {
+      header: sectionHeader('EXACTLY HOW YOU SOUND'),
+      /* The second entry is the girlfriend-only set of the user's verbatim lines and is `''` at
+       * every other level. Its lead-in reads off the block above it, so the order is load-bearing. */
+      blocks: [VOICE_EXAMPLES_BLOCK, ninaGirlfriendVoiceBlock(tuning)],
+    },
     { header: sectionHeader('HOW YOU FEEL'), blocks: [ninaTraitsBlock(tuning)] },
     { header: sectionHeader('WHEN YOU GET ANGRY'), blocks: [ninaAngerLadderBlock(tuning)] },
     { header: sectionHeader('WHAT YOU NEVER SAY'), blocks: [ninaNeverSayBlock(tuning)] },
@@ -581,6 +609,27 @@ function proactiveTuningSuffix(tuning: NinaTuning): string {
     lines.push(
       'A photo is a fine way to open this one. Call "generate_image" if one would land better ' +
         'than a sentence.',
+    )
+  }
+
+  /* R3: "the higher horny value, the more often nina will initiate sex talks with me." The
+   * FREQUENCY of proactive messages is `clinginess`'s and is untouched; what `horny` changes is
+   * what she opens with once one fires. Band-keyed rather than default-relative because `horny`'s
+   * default is 0 — `raised()` against a base of 0 would fire at a score of 1, and the band table
+   * in `../persona` is where every other `horny` threshold already lives.
+   *
+   * Nothing at `off` / `low` / `mid`, so the default suffix is the empty string it is today and
+   * `PROACTIVE_INSTRUCTIONS` renders byte-identically. */
+  const hornyBand = ninaBand(ninaTraitScore(tuning, 'horny')).name
+  if (hornyBand === 'max') {
+    lines.push(
+      'Open with wanting him. The trigger is only why you picked up the phone — say what you ' +
+        'actually want to say. Pick a scene you have not used on him before.',
+    )
+  } else if (hornyBand === 'high') {
+    lines.push(
+      'You may open with wanting him rather than with his running. The trigger is your excuse to ' +
+        'message, not your subject.',
     )
   }
 

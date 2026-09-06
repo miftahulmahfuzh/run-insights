@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
 import { FolderMenu } from '@/components/admin/FolderMenu'
+import { TOUCH_ICON } from '@/components/admin/touch'
 import { buildTree, folderAncestors, type FolderNode } from '@/lib/admin/filetree'
 import { cn } from '@/lib/cn'
 
@@ -241,20 +242,22 @@ function Row({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 rounded-chip pr-2',
+        'flex min-h-11 items-center gap-1 rounded-chip pr-1',
         active ? 'bg-accent-soft' : 'hover:bg-paper-2',
       )}
       style={{ paddingLeft: `${depth * 12}px` }}
     >
+      {/* The spacer matches the chevron's new box exactly, which is the whole point of it: a leaf
+          and its expandable sibling have to put their labels on the same x. */}
       {chevron === 'none' ? (
-        <span className="w-5 shrink-0" aria-hidden="true" />
+        <span className="w-11 shrink-0" aria-hidden="true" />
       ) : (
         <button
           type="button"
           onClick={onToggle}
           disabled={onToggle == null}
           aria-label={chevron === 'open' ? `Collapse ${label}` : `Expand ${label}`}
-          className="flex size-5 shrink-0 items-center justify-center text-ink-3 disabled:opacity-40"
+          className={cn(TOUCH_ICON, 'shrink-0 text-ink-3 disabled:opacity-40')}
         >
           <span
             aria-hidden="true"
@@ -266,11 +269,18 @@ function Row({
         </button>
       )}
 
+      {/*
+       * `py-3` and NOT `TOUCH_TARGET` + `flex items-center`. `truncate` is
+       * `overflow:hidden; text-overflow:ellipsis; white-space:nowrap`, and on a flex container the
+       * text becomes an anonymous flex item that `text-overflow` never applies to — the label
+       * would clip with no ellipsis. Padding keeps the link a block, keeps the ellipsis, and
+       * 12 + ~20 + 12 is the 44 px the row is asking for.
+       */}
       <Link
         href={href}
         aria-current={active ? 'page' : undefined}
         className={cn(
-          'min-w-0 flex-1 truncate py-1.5 text-[13px] font-medium',
+          'min-w-0 flex-1 truncate py-3 text-[13px] font-medium',
           active ? 'text-ink' : 'text-ink-2',
         )}
         title={label}
@@ -278,10 +288,13 @@ function Row({
         {label}
       </Link>
 
-      <span className="shrink-0 text-[11px] font-semibold text-ink-3 tabular-nums">{count}</span>
+      <span className="shrink-0 px-1 text-[11px] font-semibold text-ink-3 tabular-nums">
+        {count}
+      </span>
 
       {/* PHASE 6. The per-folder menu — New subfolder / Rename / Move to… / Delete. Its trigger is
-          the `…` on this line; its panels overlay the rail (see `FolderMenu`'s header). */}
+          the `…` on this line; its panels overlay the rail (see `FolderMenu`'s header). Step 13
+          gives that trigger its own 44 px box, which is why this row's `pr-2` became `pr-1`. */}
       <FolderMenu
         folder={path}
         folders={allFolders}

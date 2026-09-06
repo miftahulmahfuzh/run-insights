@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-07 (task `P1-NIN-A005`, phase 4 of the admin-responsive-nina-intimacy set — R4's per-parameter toggles on `CharacterPanel` / `DialSlider`)
 
 ## Overview
 
@@ -13,15 +13,38 @@ from a Server Component; writes leave through a Server Action in `lib/admin`.
 Most of it is `'use client'`, but **not all of it, and the exceptions are deliberate**. `AdminNav`,
 `UserPicker` and `CircleFrame` carry no directive. The first two could only need one for active-link
 highlighting, and `usePathname()` would make an entire sidebar client-rendered to bold one word — so
-selection is expressed in the URL and conveyed with `aria-current` instead. `CircleFrame` holds no
-state and imports only pure modules, so it renders on the server *and* compiles into the client graph
-of whichever client component imports it.
+selection is expressed in the URL instead. In `UserPicker` it is also conveyed with `aria-current`;
+`AdminNav` sets no such attribute, which is the honest reading of "no active-link highlighting" —
+it renders four plain links and marks none of them. `CircleFrame` holds no state and imports only
+pure modules, so it renders on the server *and* compiles into the client graph of whichever client
+component imports it.
 
-It is a *desktop admin surface* package, and that is a deliberate exception to the rest of
-`components/`. There is no `AppShell`, no `TabBar` and no 470 px column: `/admin` is stated as
-desktop-only (*"admin page (desktop usage)"*), so `app/admin/layout.tsx` gives these components
-~1080 px and they spend it on rails and a canvas. Tokens are still borrowed from the app's design
-system rather than re-invented.
+`touch.ts` is the third file with no directive, and for a different reason again: it exports two
+class strings and nothing else, so it compiles into whichever graph imports it — the Server
+Component `UserPicker` and the client component `DialSlider` both do.
+
+It is a **responsive admin surface** package with exactly one breakpoint, `lg` (64rem / 1024 px),
+and that is still a deliberate exception to the rest of `components/`. It used to be desktop-only —
+*"admin page (desktop usage)"* — and R1 of the admin-responsive plan set retired that premise: the
+operator opens every one of these screens on an iPhone XS Max in Safari, so at 414 px the explorer
+is one column with the folder rail behind a **Folders** button, the memory table drops two columns
+and scrolls inside its own box, and the crop studio takes a pinch. At `lg` and above every screen
+is the rails-and-canvas layout it always was, at the same widths.
+
+There **is** a bottom bar below `lg`, and it is `AdminNav` — not `components/ui/TabBar.tsx`. The
+distinction is worth a sentence because the two now look alike and are not: `TabBar` is the
+runner's four-tab navigation inside `AppShell`'s 470 px column; `AdminNav` is this package's own
+four-cell `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
+active-link highlighting. There is no `AppShell` and no 470 px column here. Tokens are still
+borrowed from the app's design system rather than re-invented.
+
+**Anything in this package that a thumb has to hit is at least 44 px on its smaller axis**, and
+that number is spelled once, in `touch.ts`: `TOUCH_TARGET` (`min-h-11`) for a control that is
+already a block or a flex line, `TOUCH_ICON` for a glyph that needs a 44 × 44 box built around it.
+Every non-`Button` interactive control here uses one of those two. `Button` needs neither —
+`size="md"` IS `h-11` (`components/ui/Button.tsx:42`, `h-11 px-4`), which is why
+`ChatPhotoControls`, `ChatPhotoAdd` and `ShareToNinaItem` needed no change at all when the rule
+landed. When something in here looks 20 px, that is the bug, not the density.
 
 The organising rule is **invariant 6, read as a boundary**: anything decidable is a pure function
 in `lib/`, because vitest runs `environment: 'node'` with no jsdom. What is left here is what
@@ -54,28 +77,51 @@ and are unit-tested there.
 
 | File | Kind | Purpose |
 |---|---|---|
-| `FileExplorer.tsx` | `'use client'` | The screen. Layout, toolbar, breadcrumb, drop target, the URL grammar. |
+| `touch.ts` | **no directive** | The 44 px rule, spelled once: `TOUCH_TARGET` and `TOUCH_ICON`. Zero imports, no JSX. |
+| `FileExplorer.tsx` | `'use client'` | The screen. Layout, toolbar, breadcrumb, drop target, the URL grammar. Below `lg` the toolbar is two rows and the folder rail is a drawer (`treeOpen`, `id="admin-folder-rail"`). |
 | `explorer/model.ts` | **types only**, no directive | The props contract between the Server Component and the explorer. No runtime export at all. |
 | `explorer/dropWalk.ts` | browser APIs, no directive | `webkitGetAsEntry()` capture, the `readEntries` pump, the `webkitdirectory` picker. Decides nothing. |
 | `explorer/thumbnail.ts` | browser APIs, no directive | One decode: intrinsic size out, 256 px JPEG out. |
 | `explorer/useFolderUpload.ts` | `'use client'` hook | One gesture end to end: walk, diff, four-lane upload, chunked register. |
-| `explorer/FolderTree.tsx` | `'use client'` | The folder rail. Every row is a `<Link>`. |
+| `explorer/FolderTree.tsx` | `'use client'` | The folder rail. Every row is a `<Link>`, and every row is 44 px. |
 | `explorer/PhotoGrid.tsx` | `'use client'` | One folder's page of square tiles, plus the pager. |
 | `explorer/SelectionPane.tsx` | `'use client'` | The details rail: framing, facts, and the action list. |
 | `explorer/UploadQueue.tsx` | `'use client'` | One honest line about what the upload is doing. |
 | `FolderMenu.tsx` | `'use client'` | One folder's four verbs: New subfolder / Rename / Move to… / Delete. A `mode` union, four `absolute` panels. Decides nothing. |
 | `PhotoMoveBar.tsx` | `'use client'` | Move or remove the current selection. Reads phase 5's `selectedId`, never writes it. `null` when nothing is selected. |
 | `ShareToNinaItem.tsx` | `'use client'` | "Share link to Nina". Opens the chat in a new tab; fires the describe and never awaits it. |
-| `CropStudio.tsx` | `'use client'` | Drag / wheel / slider / arrow keys. Contains one subtraction. |
+| `CropStudio.tsx` | `'use client'` | Drag / pinch / wheel / slider / arrow keys. Multi-pointer: every contact is tracked by `pointerId`, one pans and two pinch. Contains one subtraction and one `Math.hypot`. |
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
-| `AdminNav.tsx` | **no directive** | The `/admin` nav. No active-link highlighting, on purpose. |
+| `ChatPhotoGrid.tsx` | `'use client'` | `/admin/photos` — every photo Nina has put in the conversation, as one flat collection: one folder line, one grid, no tree. Borrows the breadcrumb look, imports nothing from `explorer/`. |
+| `ChatPhotoDetail.tsx` | `'use client'` | One chat photo in full. `SelectionPane`'s shape, not its content — and it *does* print `description` and `prompt`, which the album deliberately does not. |
+| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed four-cell bottom bar (`h-14`, `border-t`, `z-30`) below `lg`, the sticky left rail at `lg`. No active-link highlighting, on purpose. |
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose memory is being edited. Plain links, selection in the URL. |
 | `CharacterPanel.tsx` | `'use client'` | `/admin/nina`'s character tuning: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Collapsed by default. |
-| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default. Decides nothing. |
+| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Decides nothing. |
 
 ## The `/admin/nina` file manager
+
+### Three columns at `lg`, one column and a drawer below it
+
+At `lg` and above this screen is what it always was: a 200 px folder rail, a `minmax(0,1fr)` canvas,
+and a 320 px details rail when one is open. Below `lg` those become one column in DOM order — rail,
+content, details — and the rail is a **drawer**: `FileExplorer` holds a `treeOpen` boolean, the
+toolbar grows a `Folders` / `Hide folders` `Button` that is `lg:hidden`, and the rail's wrapper
+carries `id="admin-folder-rail"` so `aria-controls` points at something real.
+
+Three things about it are deliberate. It is **closed by default**, because the breadcrumb above
+already answers "where am I" and the question a file manager gets asked at 414 px is "show me this
+folder's photos". It is `lg:` **classes rather than a `matchMedia` hook**, so there is no breakpoint
+to observe, nothing to hydrate against, and no first frame where the desktop layout is missing a
+column. And the rail **stays in the DOM at every width** — hidden with `hidden lg:block`, not
+unmounted — which is what keeps `FolderTree`'s expansion overrides and an open `FolderMenu` panel
+alive across a toggle.
+
+The toolbar itself is two rows below `lg` (crumbs over controls) and one flex line at `lg`, via
+`lg:contents` on the control group: at `lg` the wrapper stops generating a box and its children
+rejoin the toolbar's flex line in the same order.
 
 ### What lives in the URL and what lives in state
 
@@ -328,9 +374,12 @@ row is the operator's *place* in a hundreds-deep album, and a modal is precisely
 loses it.
 
 The trigger is a `…` rendered inline in `FolderTree`'s `Row` — a 200 px flex line already holding a
-chevron, a `<Link>` and a count — so **every panel is an `absolute` overlay** beneath it: `z-20`,
-280 px wide, `shadow-sheet`. A panel laid out as a fourth flex *item* would squeeze the other three
-and then wrap a text field into ~60 px. The overlay is a layout necessity of the seam phase 5 left,
+chevron, a `<Link>` and a count — so **every panel is an `absolute` overlay** beneath it: `z-40`,
+280 px wide (capped at `calc(100vw-2rem)`), `shadow-sheet`. A panel laid out as a fourth flex *item*
+would squeeze the other three and then wrap a text field into ~60 px. **The `z-40` is not
+decorative and must not be tidied down**: below `lg` the shell's `AdminNav` is `fixed bottom-0` at
+`z-30`, and a panel opened from the last row of the rail extends past that line — at `z-20` its
+Delete and Move rows painted underneath the bar and could not be tapped. The overlay is a layout necessity of the seam phase 5 left,
 not a second opinion about where the affordance goes.
 
 Four verbs, and the root gets exactly one: **New subfolder** appears on every menu including the
@@ -446,6 +495,22 @@ function, and therefore testable, per the boundary rule this package is organise
 
 ## The framing studio
 
+**It is multi-pointer, and that is what makes it work on a phone.** Every contact is tracked in a
+`Map` keyed by `pointerId`: one pointer pans, two pinch, and lifting either one ends the pinch
+rather than quietly re-pairing with whatever is still down. The single `last` ref this component
+used to hold had a real bug in it — a second `pointerdown` overwrote the id, so landing a thumb
+mid-drag and lifting it again stranded the first finger and the photograph froze under it.
+
+The pinch does not move the arithmetic budget: it is one `Math.hypot` over one pointer subtraction,
+and the RATIO of this frame's span to the last is handed to `zoomCrop` unchanged — the same shape of
+factor `zoomFactorForWheel` produces. Every clamp, bound and re-centring still lives in
+`lib/nina/crop.ts`, which this work did not touch.
+
+`select-none` and `[-webkit-touch-callout:none]` on the frame are not cosmetic either: without them
+a press-and-hold over the photograph raises iOS's Copy / Share callout mid-drag, and a drag that
+ends in a system sheet is a drag the operator cannot finish. `draggable={false}` only ever answered
+the desktop half of that.
+
 ```ts
 export function CropStudio(props: {
   src: string
@@ -477,9 +542,9 @@ Three non-obvious mechanics:
   centre holds still exactly as the wheel does.
 
 Keyboard: arrows nudge, shift multiplies the step by five, `+`/`-` zoom. `touch-none` on the frame so
-a touch drag pans instead of scrolling. Pinch-to-zoom is deliberately **not** implemented — the
-screen is desktop-only, the slider covers every zoom a touch user needs, and this is named here
-rather than left as an unexplained gap.
+a touch drag pans instead of scrolling — and so Safari cannot claim a two-finger gesture as a page
+pinch before the second pointer arrives. Pinch-to-zoom **is** implemented; see the multi-pointer
+model above.
 
 ### `CircleFrame` — three stored numbers, correct at every size
 
@@ -528,11 +593,23 @@ opens when they want to change who she is rather than what she looks like.
 
 ### One save, not sixteen
 
-There are twenty-odd controls on this panel and exactly one Server Action behind them. That is not
-tidiness, it is a platform constraint: **Server Actions dispatch one at a time per client**, so
-sixteen sliders each firing their own save would queue sixteen round trips and the panel would
-appear to hang on a drag. The panel holds the whole tuning in `useState`, and the save posts one
-object — comfortably inside the 1 MB body cap, which `next.config.ts` leaves at its default.
+There are close to forty controls on this panel — R4 put an on/off checkbox beside every one of the
+sixteen parameters — and exactly one Server Action behind all of them. That is not tidiness, it is a
+platform constraint: **Server Actions dispatch one at a time per client**, so sixteen sliders each
+firing their own save would queue sixteen round trips and the panel would appear to hang on a drag,
+and the toggles are in the same boat for the same reason. The panel holds the whole tuning in
+`useState` — scores, relationship *and* `enabled` map — and the save posts one object, comfortably
+inside the 1 MB body cap, which `next.config.ts` leaves at its default.
+
+A checkbox edits `draft.enabled[key]` and nothing else; **switching a parameter off never clears the
+number it is parked at**, which is the point of a toggle as opposed to dragging the slider back to
+the default. One row therefore has two ways to be unsaved — its score and its toggle — and
+`rowUnsaved` folds them into the single existing dot, because two identical marks on one row is an
+operator wondering which meant what. The collapsed summary line gains an `N off` count, since the
+number of excluded parameters is the one setting that cannot be inferred from the numbers beneath
+it. Both new checkboxes carry the 44 px rule: `DialSlider` wraps its box in `TOUCH_ICON`, and the
+relationship legend's label in `TOUCH_TARGET`, so a bare 16 px control never becomes the exception
+to it.
 
 The reset-to-defaults control is a second action rather than a client-side state reset, for the same
 reason `/admin/memory`'s purge is: the defaults are defined server-side in `lib/nina/tuning.ts`, and
@@ -576,6 +653,29 @@ in a slot is a character she could eventually rewrite about herself. It lives in
 `/admin/memory` is untouched by it.
 
 ## `/admin/memory`
+
+### The table on a phone: 16 px controls, and two columns that are not there
+
+Two facts about `MemoryTable` below `lg`, both of which a reader comes looking for after being
+surprised:
+
+- **`CELL_CONTROL` is `text-base` below `lg`, and this is the iOS rule beating the design.** Safari
+  zooms the viewport when a control smaller than 16 px takes focus, which is why `app/globals.css`
+  sets `font-size: max(16px, 1rem)` on `input`, `select` and `textarea` in `@layer base`. A Tailwind
+  utility sits in `@layer utilities` and **beats that outright**, so the `text-[13px]` this constant
+  used to carry re-opened the exact hole the global rule exists to close, on the one page in
+  `/admin` that is nothing but form controls: every cell zoomed the page on focus and left it
+  zoomed. 13 px density returns at `lg`, where there is no viewport to zoom.
+- **Origin and When are hidden below `lg`** (`CELL_WIDE_ONLY` / `HEAD_CELL_WIDE_ONLY`, both
+  `hidden lg:table-cell`). Six columns need 940 px; the four that stay are what it is, what it says,
+  how confident, and delete. **The `<colgroup>` had to go for this to be safe** — a `<col>` maps to a
+  column by POSITION among the cells actually rendered, so hiding two `<td>`s would have slid the
+  delete cell into column 4 and given it Origin's 250 px. The widths now live on the `<th>`s, which
+  carry them whether the cell is hidden or not. Do not put the `<colgroup>` back.
+
+The table already scrolled inside its own `overflow-x-auto` box rather than scrolling the page, and
+still does; `overscroll-x-contain` was added so that flicking it past its edge does not hand the
+remaining scroll to the page, where a horizontal overscroll at the left edge is Safari's back-swipe.
 
 Three components, unchanged by the file-manager work and documented here because they are the rest of
 the package. All three take their data as props from `app/admin/memory/page.tsx` and write through
@@ -938,7 +1038,9 @@ down the string.
 - **Do not treat `pendingFolders` as where a new folder lives.** It is a one-render bridge;
   `nina_folders` is the storage, and the merge is a filter so a server-known folder drops out of it.
 - **Do not lay a `FolderMenu` panel out inside `Row`.** It is a 200 px flex line. The panels are
-  `absolute`, 280 px, `z-20`; a fourth flex item wraps the text field into ~60 px.
+  `absolute`, 280 px, `z-40`; a fourth flex item wraps the text field into ~60 px. The `z-40`
+  clears `AdminNav`'s `z-30` bottom bar below `lg` — lowering it hides Delete and Move behind the
+  bar on the last row of the rail.
 - **Do not branch on the text of a refusal.** `keepOffer` comes off `mode === 'delete'` for exactly
   this reason: the server owns the wording and must stay free to change it.
 - **The thumbnail upload's third argument is `'jpg'`.** The Route Handler cross-checks the pathname's
@@ -979,8 +1081,7 @@ Two seams were marked in the source for phases that follow. Both are now closed:
 
 Known, accepted limitations: folder sort is lexicographic rather than natural; a tile can repeat
 across two consecutive pages while an upload is in flight (nothing is ever skipped); empty
-directories in a dropped tree are invisible to the browser and so cannot survive an upload; and
-pinch-to-zoom is not implemented in `CropStudio`.
+directories in a dropped tree are invisible to the browser and so cannot survive an upload.
 
 Phase 6 adds three more, all deliberate. **Multi-select is not built** — `PhotoMoveBar` acts on
 phase 5's single `selectedId` and wraps it in an array, so "N photos selected" reads "1" today; the

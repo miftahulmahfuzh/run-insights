@@ -73,14 +73,20 @@ export const INSTALL = {
  * ── `statusBarStyle: 'default'`, AND WHY IT IS NOT 'black-translucent' ─────────────────────────
  * Translucent is the better-looking option and the wrong one here. It means the page is drawn
  * UNDER the status bar, and it is only safe when every fixed top element pads itself by
- * `env(safe-area-inset-top)`. In this app exactly one element does — `components/review/
- * ScreenshotStrip.tsx`, a full-bleed overlay — while `ScreenHeader` and every page under `app/`
- * use a plain `p-5`. Turning this translucent would slide the "TODAY" and "TRENDS" titles up
- * behind the clock and the notch, trading a visible bug for a worse-looking one.
+ * `env(safe-area-inset-top)`.
  *
- * The prerequisite for changing it is padding the top of the app's chrome by `--safe-top`, the
- * inset token `globals.css` already defines and almost nothing uses. Until then, `default` keeps
- * the status bar opaque and the layout honest.
+ * That is now true of PART of the app and not of the part that decides this value.
+ * `components/review/ScreenshotStrip.tsx` has always padded it, and `admin-responsive-nina-intimacy`
+ * phase 1 added the second surface: `app/admin/layout.tsx` pads all four insets and
+ * `components/admin/AdminNav.tsx` is a bottom bar on a phone. But `/admin` is one authenticated
+ * tool with four routes, while `ScreenHeader` and every page under `app/` still use a plain `p-5`
+ * — and those are the screens that would slide up behind the clock and the notch. Turning this
+ * translucent today would still trade a visible bug for a worse-looking one, on more screens than
+ * it fixed.
+ *
+ * The prerequisite for changing it is unchanged and is now half done: pad the top of the RUNNER's
+ * chrome by `--safe-top`, the inset token `globals.css` defines. Until then, `default` keeps the
+ * status bar opaque and the layout honest.
  */
 export const APPLE_WEB_APP = {
   /*

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { TOUCH_ICON } from '@/components/admin/touch'
 import { Button, Card } from '@/components/ui'
 import {
   deleteMemoryRowAction,
@@ -64,14 +65,55 @@ import { cn } from '@/lib/cn'
 /** The row id under which the add row's result is stored. Not a `MemoryRow`; it has no target yet. */
 const ADD_ROW_ID = 'add:fact'
 
-/** `CONTROL_CLASS`'s tokens at table density. See the header. */
+/**
+ * `CONTROL_CLASS`'s tokens at table density. See the header.
+ *
+ * ── 16 px BELOW `lg`, AND THAT IS THE iOS RULE BEATING THE DESIGN ───────────────────────────
+ * `components/ui/Field.tsx:85-92` and `app/globals.css`'s base block both state it: Safari zooms
+ * the viewport when a control smaller than 16 px takes focus, and the design brief makes that one
+ * of the rules that wins over the design. `app/globals.css` sets `font-size: max(16px, 1rem)` on
+ * `input`, `select` and `textarea` in `@layer base` — and a Tailwind utility sits in
+ * `@layer utilities`, which beats it in the cascade regardless of specificity. So the `text-[13px]`
+ * that used to be here was not merely dense: it re-opened the exact hole the global rule exists to
+ * close, on the one page in `/admin` that is nothing but form controls. Every cell zoomed the page
+ * on focus and left it zoomed. `text-base` closes it again below `lg`; 13 px density returns at
+ * `lg`, where there is no viewport to zoom.
+ *
+ * `min-h-11` is the 44 px tap target, at the same widths and for the same reason, and it goes back
+ * to `min-h-0` at `lg` so a forty-row ledger is still one screen of scanning rather than three.
+ */
 const CELL_CONTROL =
-  'w-full rounded-field bg-paper-2 px-2 py-1.5 text-[13px] font-medium text-ink outline-none ' +
-  'placeholder:font-normal placeholder:text-ink-3 focus-visible:ring-2 focus-visible:ring-accent'
+  'min-h-11 w-full rounded-field bg-paper-2 px-2 py-1.5 text-base font-medium text-ink outline-none ' +
+  'placeholder:font-normal placeholder:text-ink-3 focus-visible:ring-2 focus-visible:ring-accent ' +
+  'lg:min-h-0 lg:text-[13px]'
 
 const CELL = 'border-t border-rule px-2 py-2 align-top'
 
+/**
+ * Origin and When, below `lg`, are not there.
+ *
+ * Six columns need 940 px and a phone offers 318 of them inside `Card`'s padding, so the table
+ * scrolls — which is correct and is what `overflow-x-auto` is for — but 620 px of hidden width is
+ * a table nobody can edit with a thumb. These two columns are the ones to spend: **When** is a
+ * date the operator does not act on, and **Origin** is a badge that says `admin` or `distilled`,
+ * which the `What` column's own label already implies for slots and promises. The four that stay —
+ * what it is, what it says, how confident, and delete — are the four R1 asked for: *"i can easily
+ * edit, add or remove one row easily"*.
+ *
+ * ── WHY THE `<colgroup>` HAD TO GO ──────────────────────────────────────────────────────────
+ * A `<col>` maps to a column by POSITION among the cells that are actually rendered. Hiding two
+ * `<td>`s with `display:none` removes them from the table, so the delete cell would slide into
+ * column 4 and inherit the 250 px `Origin` width. `display:none` on a `<col>` itself is not
+ * defined to hide a column at all (that is `visibility: collapse`, whose support is patchy and
+ * whose behaviour in Safari is not something to bet a table on). Putting the widths on the `<th>`s
+ * instead removes the positional mapping entirely: a header cell carries its own width, hidden or
+ * not, and the auto table layout honours it exactly as it honoured the `<col>`.
+ */
+const CELL_WIDE_ONLY = `${CELL} hidden lg:table-cell`
+
 const HEAD_CELL = 'px-2 py-2 text-[11px] font-semibold tracking-[0.02em] text-ink-2'
+
+const HEAD_CELL_WIDE_ONLY = `${HEAD_CELL} hidden lg:table-cell`
 
 /**
  * The three groups, in the order the table renders them. They are `<tbody>` sections of ONE table
@@ -186,41 +228,38 @@ export function MemoryTable({
    * class attribute. The table lives inside the card's padding, which is also where it looks right.
    */
   return (
-    <Card className="mt-8 overflow-x-auto">
-      <table className="w-full min-w-[940px] border-collapse text-left">
+    /* `overscroll-x-contain`: without it, flicking the table past its right edge hands the
+        remaining horizontal scroll to the page, and on iOS a horizontal overscroll at the left
+        edge is the back-swipe gesture — so scrolling a table would navigate away from it. */
+    <Card className="mt-8 overflow-x-auto overscroll-x-contain">
+      <table className="w-full min-w-[420px] border-collapse text-left lg:min-w-[940px]">
         <caption className="sr-only">
           Every memory Nina holds for this account: her eight slots, her pending promises, and the
           ledger. A cell saves when you leave it. The delete control removes a row on the first
-          click, with no confirmation.
+          click, with no confirmation. On a narrow screen the Origin and When columns are not shown;
+          the table scrolls sideways inside its own box.
         </caption>
 
-        <colgroup>
-          <col className="w-[190px]" />
-          <col />
-          <col className="w-[86px]" />
-          <col className="w-[250px]" />
-          <col className="w-[104px]" />
-          <col className="w-[48px]" />
-        </colgroup>
-
+        {/* No `<colgroup>` — the widths live on the header cells now. `CELL_WIDE_ONLY`'s docstring
+            has the whole argument. */}
         <thead>
           <tr className="bg-paper-2">
-            <th scope="col" className={HEAD_CELL}>
+            <th scope="col" className={cn(HEAD_CELL, 'w-[128px] lg:w-[190px]')}>
               What
             </th>
             <th scope="col" className={HEAD_CELL}>
               Value
             </th>
-            <th scope="col" className={HEAD_CELL}>
+            <th scope="col" className={cn(HEAD_CELL, 'w-[72px] lg:w-[86px]')}>
               Conf.
             </th>
-            <th scope="col" className={HEAD_CELL}>
+            <th scope="col" className={cn(HEAD_CELL_WIDE_ONLY, 'lg:w-[250px]')}>
               Origin
             </th>
-            <th scope="col" className={HEAD_CELL}>
+            <th scope="col" className={cn(HEAD_CELL_WIDE_ONLY, 'lg:w-[104px]')}>
               When
             </th>
-            <th scope="col" className={HEAD_CELL}>
+            <th scope="col" className={cn(HEAD_CELL, 'w-[56px] lg:w-[48px]')}>
               <span className="sr-only">Delete</span>
             </th>
           </tr>
@@ -405,7 +444,7 @@ function Row({
         {row.editable ? (
           <textarea
             aria-label={row.label === '' ? 'Ledger row text' : `${row.label} value`}
-            className={cn(CELL_CONTROL, 'min-h-[34px] resize-y leading-snug')}
+            className={cn(CELL_CONTROL, 'resize-y leading-snug')}
             rows={1}
             value={text}
             maxLength={row.kind === 'slot' ? ADMIN_SLOT_VALUE_MAX : ADMIN_FACT_TEXT_MAX}
@@ -468,7 +507,7 @@ function Row({
         )}
       </td>
 
-      <td className={CELL}>
+      <td className={CELL_WIDE_ONLY}>
         <span
           className={cn(
             'rounded-field px-1.5 py-0.5 text-[11px] font-semibold',
@@ -480,7 +519,7 @@ function Row({
         <span className="mt-1 block text-[11px] font-medium text-ink-3">{row.note}</span>
       </td>
 
-      <td className={cn(CELL, 'text-[11px] font-medium text-ink-3 tabular-nums')}>
+      <td className={cn(CELL_WIDE_ONLY, 'text-[11px] font-medium text-ink-3 tabular-nums')}>
         {row.at?.slice(0, 10) ?? '—'}
       </td>
 
@@ -495,7 +534,8 @@ function Row({
                 : 'Delete this row. No confirmation.'
             }
             className={cn(
-              'rounded-field px-2 py-1 text-[15px] leading-none font-semibold text-ink-3',
+              TOUCH_ICON,
+              'rounded-field text-[15px] leading-none font-semibold text-ink-3',
               'transition-colors hover:bg-red/10 hover:text-red',
               'focus-visible:ring-2 focus-visible:ring-red focus-visible:outline-none',
             )}
@@ -603,15 +643,19 @@ function AddRow({
         />
       </td>
 
-      <td className={cn(CELL, 'text-[11px] font-medium text-ink-3')} colSpan={2}>
+      <td className={cn(CELL_WIDE_ONLY, 'text-[11px] font-medium text-ink-3')} colSpan={2}>
         Written as <code className="text-ink">admin</code>, with no message behind it. No
         distillation can rewrite or remove it.
       </td>
 
       <td className={cn(CELL, 'text-right')}>
+        {/* No `h-8` override any more. `size="md"` IS `h-11` (`components/ui/Button.tsx:41-44`),
+            and the override was fighting it for a property `lib/cn.ts` does not arbitrate — a
+            plain join leaves `h-8` vs `h-11` to Tailwind's emission order, which is not a thing to
+            depend on. The 56 px narrow column holds `h-11 px-4` plus a `+`. */}
         <Button
           size="md"
-          className="h-8 px-2 text-[15px]"
+          className="text-[15px]"
           aria-label="Add this row to the ledger"
           loading={pending}
           disabled={text.trim().length === 0}

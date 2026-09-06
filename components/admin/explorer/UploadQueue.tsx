@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 
+import { TOUCH_TARGET } from '@/components/admin/touch'
 import { Button } from '@/components/ui'
 import type { UploadRefusal } from '@/lib/admin/filetree'
 import { ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
+import { cn } from '@/lib/cn'
 
 import type { QueueItem, QueueReport } from './model'
 import type { UploadPhase } from './useFolderUpload'
@@ -90,9 +92,36 @@ export function UploadQueue({
   const percent = items.length === 0 ? 0 : Math.round((done / items.length) * 100)
 
   return (
-    <div className="sticky bottom-0 mt-4 rounded-card border border-rule bg-card p-4 shadow-card">
-      <div className="flex items-center gap-3">
-        <p className="min-w-0 flex-1 text-[13px] font-semibold text-ink">
+    /*
+     * TWO offsets, and they answer two different obstacles.
+     *
+     * `bottom-[calc(3.5rem+var(--safe-bottom))] lg:bottom-0` is the STICKY ANCHOR. Below `lg` the
+     * admin shell's nav is `fixed bottom-0 h-14 z-30` (phase 1), so an anchor of `bottom-0` parks
+     * this panel behind it. `3.5rem` IS `h-14`. At `lg` the nav is a left rail again and the
+     * anchor goes back to the bottom of the scrollport. `var(--safe-bottom)` is in the anchor as
+     * well as in the padding because the nav bar itself sits above the home indicator — the bar's
+     * top edge is `56px + inset` off the bottom of the viewport, and that is the line this panel
+     * has to clear.
+     *
+     * `pb-[calc(1rem+var(--safe-bottom))]` is the PADDING — the repo's idiom for a bottom-stuck
+     * element, the same one `app/x/[extractionId]/page.tsx:81` and `components/ui/Sheet.tsx:134`
+     * use. It is kept for the `lg` case, where the anchor is `bottom-0` again and the Dismiss
+     * button would otherwise land under the home indicator on a large touch screen. Below `lg` it
+     * is redundant with the anchor and costs 34 px of padding on a panel that has room for it;
+     * `p-4` still sets the other three sides, and `padding-bottom` is a longhand that Tailwind
+     * emits after the `p-*` shorthand, which is why this reads as an override and behaves as one.
+     */
+    <div className="sticky bottom-[calc(3.5rem+var(--safe-bottom))] mt-4 rounded-card border border-rule bg-card p-4 pb-[calc(1rem+var(--safe-bottom))] shadow-card lg:bottom-0">
+      <div className="flex flex-wrap items-center gap-2 lg:gap-3">
+        {/*
+         * `w-full lg:w-auto lg:min-w-0 lg:flex-1`: the headline is the sentence this component
+         * exists for (see the header), and at 366 px it cannot share a line with a toggle and a
+         * Dismiss button without becoming three words and an ellipsis. So it takes its own row
+         * below `lg`. At `lg` the flex basis of 0% from `flex-1` decides the width and `w-auto`
+         * is inert, which is the one ordering in flex layout that is specified rather than
+         * emission-dependent.
+         */}
+        <p className="w-full text-[13px] font-semibold text-ink lg:w-auto lg:min-w-0 lg:flex-1">
           {headline({ phase, items, report, done, failed: failed.length })}
         </p>
 
@@ -101,7 +130,7 @@ export function UploadQueue({
             type="button"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            className="shrink-0 text-[12px] font-semibold text-accent"
+            className={cn(TOUCH_TARGET, 'shrink-0 px-2 text-[12px] font-semibold text-accent')}
           >
             {open ? 'Hide the list' : 'Show the list'}
           </button>
@@ -156,7 +185,10 @@ export function UploadQueue({
       )}
 
       {open && (
-        <ul className="mt-3 max-h-64 space-y-0.5 overflow-y-auto border-t border-rule pt-3">
+        /* `overscroll-contain` so reaching the end of a 12-row list inside a sticky panel does
+           not hand the remaining scroll to the page underneath and yank the queue off screen —
+           the specific way a nested scroller misbehaves on iOS. */
+        <ul className="mt-3 max-h-64 space-y-0.5 overflow-y-auto overscroll-contain border-t border-rule pt-3">
           {failed.map((item) => (
             <li key={item.id} className="flex gap-2 text-[11px] font-medium">
               <span className="min-w-0 flex-1 truncate text-ink-2">{item.path}</span>

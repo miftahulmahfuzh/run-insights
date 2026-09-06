@@ -148,7 +148,7 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
 
   return (
     <div>
-      <header className="mb-6">
+      <header className="mb-5 lg:mb-6">
         <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Nina&rsquo;s album</h1>
         <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
           Drop a folder straight out of Explorer and only the new files upload. Click a photo to
