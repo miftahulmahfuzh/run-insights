@@ -10,14 +10,14 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "live in tmux @5 as impl-...-p1; verify downgraded spawned->pending on absence of a commit, which is expected mid-phase, not evidence it died. Do NOT respawn.",
       "package": "app/admin`, `components/admin",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T14:50:56+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": null,
       "title": "Admin shell: viewport, safe areas, navigation"
     },
@@ -29,10 +29,10 @@
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "INHERITED (from p3, measured near-miss): this worktree is shared while peers run. Commit with pathspec-limited `git commit -- <explicit paths>` and verify AFTER with `git show --stat HEAD`; never assert on or CORRECT the shared index before committing (a peer sits between its own add and commit, and unstaging \"foreign\" files there truncates their commit silently, invisible to every gate). Never delete index.lock; wait and retry. Set-wide gates from phase 3: NINA_PROMPT_VERSION is already bumped 3->4 -- do not touch it; `vitest -u`/`--update` is FORBIDDEN, tests/__snapshots__/nina.prompts.test.ts.snap is the byte-identity gate. `npm run build` cannot run here (.env.local is gitignored and only in the main checkout; lib/env.ts validates at module load) -- tests/typecheck/lint are the gate.",
       "package": "components/admin",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T14:51:12+00:00",
       "satisfies": [
         "R1"
       ],
@@ -42,19 +42,19 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "157b8f408b19ebc3d6a271f8cb464ad544dcba9f",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "Girlfriend register landed: 3 pure-insertion hunks in persona.ts (+134/-0), zero existing lines touched. NINA_PROMPT_VERSION 3->4 is the SET'S SINGLE BUMP - phases 4 and 5 must not touch it. tests/__snapshots__/nina.prompts.test.ts.snap is a SET-WIDE byte-identity gate generated from the pristine tree BEFORE any edit; vitest -u/--update is forbidden for the rest of the set. Phase 4 seam: isGirlfriend (persona.ts:467, exported) is one expression -> add '&& tuning.enabled.relationship'; ninaIdentity must be gated separately. MANJA_ORTHOGRAPHY is module-private (bare const :512), reachable only via ninaManjaRegisterBlock. lib/nina/tuning.ts deliberately unchanged. Verified 141 files/2696 tests, typecheck+lint+prettier clean. I did NOT tick row 3 in the tracked PLAN.md (TaskID still '-') - coordinator owns it. CONCURRENCY, for phases 4/5 in this shared worktree: use 'git commit -- <explicit paths>' (pathspec-limited, safe while a peer has files staged) then verify with 'git show --stat HEAD' AFTER; never a pre-commit index assertion with a corrective unstage branch - p1 nearly ate this commit that way, averted. Never delete index.lock, wait and retry. npm run build needs a gitignored .env.local: pass placeholders for DATABASE_URL, DATABASE_URL_UNPOOLED, AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, AUTH_URL, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_VISION_BASE_URL, LLM_VISION_MODEL, BLOB_READ_WRITE_TOKEN, CRON_SECRET, ADMIN_EMAILS.",
       "package": "lib/nina`, `tests`, `docs",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T14:49:58+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A004",
       "title": "Girlfriend register: manja, imut, vowel lengthening"
     },
     {
@@ -66,10 +66,10 @@
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "INHERITED (from p3, measured near-miss): this worktree is shared while peers run. Commit with pathspec-limited `git commit -- <explicit paths>` and verify AFTER with `git show --stat HEAD`; never assert on or CORRECT the shared index before committing (a peer sits between its own add and commit, and unstaging \"foreign\" files there truncates their commit silently, invisible to every gate). Never delete index.lock; wait and retry. Set-wide gates from phase 3: NINA_PROMPT_VERSION is already bumped 3->4 -- do not touch it; `vitest -u`/`--update` is FORBIDDEN, tests/__snapshots__/nina.prompts.test.ts.snap is the byte-identity gate. `npm run build` cannot run here (.env.local is gitignored and only in the main checkout; lib/env.ts validates at module load) -- tests/typecheck/lint are the gate.",
       "package": "lib/nina`, `lib/admin`, `lib/db`, `components/admin`, `drizzle`, `tests",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T14:51:12+00:00",
       "satisfies": [
         "R4"
       ],
@@ -85,10 +85,10 @@
       ],
       "difficulty": "HARD",
       "n": 5,
-      "note": null,
+      "note": "INHERITED (from p3, measured near-miss): this worktree is shared while peers run. Commit with pathspec-limited `git commit -- <explicit paths>` and verify AFTER with `git show --stat HEAD`; never assert on or CORRECT the shared index before committing (a peer sits between its own add and commit, and unstaging \"foreign\" files there truncates their commit silently, invisible to every gate). Never delete index.lock; wait and retry. Set-wide gates from phase 3: NINA_PROMPT_VERSION is already bumped 3->4 -- do not touch it; `vitest -u`/`--update` is FORBIDDEN, tests/__snapshots__/nina.prompts.test.ts.snap is the byte-identity gate. `npm run build` cannot run here (.env.local is gitignored and only in the main checkout; lib/env.ts validates at module load) -- tests/typecheck/lint are the gate.",
       "package": "lib/nina`, `lib/db`, `drizzle`, `tests",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T14:51:12+00:00",
       "satisfies": [
         "R3"
       ],
@@ -100,6 +100,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-responsive-nina-intimacy",
-  "updated": "2026-09-06T14:37:08+00:00",
+  "updated": "2026-09-06T14:51:12+00:00",
+  "verified_at": "2026-09-06T14:50:37+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
 }
