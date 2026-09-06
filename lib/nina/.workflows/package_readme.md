@@ -481,6 +481,28 @@ worker'**, not 'Dijadwalkan': the stage is no longer something about to happen, 
 runner' either, because in this codebase the runner is the human and that phrasing would tell him the
 job was waiting on *him*.
 
+## Tracking on `/nina/about`, below Media (R3)
+
+Tapping Nina's profile picture opens her detail page, and below the Media section it lists her five
+most recent image-generation jobs — stage, elapsed time and error, newest first — each row a link
+into `/nina/jobs/[id]`, with a "Semua" link to the full `/nina/jobs` list that hides when there are
+none.
+
+**It is reuse rather than a second surface.** The rows are phase 4's `NinaJobList` and the read is
+phase 4's `listNinaImageJobs`, so the two pages cannot name the same stage two ways. `grep` proves
+exactly one definition of each across `app/` and `components/` — no second query implementation, no
+second row renderer, no second empty-state renderer. The empty state is phase 4's markup carrying
+this screen's own sentence, passed as `emptyText`; that split was decided in the plan's Decisions
+table precisely so phase 5 would not fork the component to change one line of copy.
+
+The read is deliberately the **non-sweeping** one. `/nina` still awaits `listOpenNinaImageJobs` for
+its sweep, but a page reached by tapping her face writes nothing — observing a system should not
+change it. `ABOUT_JOB_LIMIT = 5` is module-local to the route: one caller, and no coupling to
+`CHAT_HISTORY_LIMIT`.
+
+The `?photo=` codec, the two-section swipe isolation and the album's wrap are untouched — the diff
+never enters that region.
+
 ## Deleting a chat session takes what it taught her (R8)
 
 **Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a
