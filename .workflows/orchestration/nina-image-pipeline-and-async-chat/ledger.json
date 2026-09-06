@@ -23,22 +23,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "040a70b",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "PROBE RESULT 2026-09-06: BRANCH A CONFIRMED. Q1 ceiling: GET /nina/probe?inline=1 returned HTTP 200 after 90.418s wall clock (curl time_total), log '[nina-probe] INLINE SURVIVED heldMs: 90005' label 2407-mtq52rhl - no 504, ceiling is above 60s. Q2 durability: response flushed in 1.25s and connection CLOSED (tab-closed equivalent), after() kept ticking every 10s past 60s and logged '[nina-probe] SURVIVED heldMs: 90030' label 2407-mtq52bf1. Preview dpl_GcCbzFkYByFDXuLBGxzFf8Sxq6Bj, region sin1, maxDuration=300. Proceeding with Steps 2-11 as written.",
+      "note": "PROBE: BRANCH A (2026-09-06). Q1 ceiling: /nina/probe?inline=1 -> HTTP 200 after 90.418s wall clock, log 'INLINE SURVIVED heldMs 90005', no 504 at 60s. Q2 durability: response flushed 1.25s + connection CLOSED, after() ticked past 60s and logged 'SURVIVED heldMs 90030'. sin1, maxDuration=300. NO Branch B propagation: phase 3 keeps NINA_BACKGROUND_BUDGET_MS=240000 and NINA_TURN_CHAIN_MAX=2; phase 7 applies deltas A1-A6. LANDED: imagecall.ts + imagerun.ts new (OpenRouter call; claim/generate/store/finish inside after()); imagedispatch.ts + its test + GITHUB_DISPATCH_TOKEN deleted (ninaSchema now one member); imagejobs.ts gains claim/complete/requeue/listRevivable, markNinaImageJobDispatched gone, read projection untouched for phase 4; app/nina/page.tsx and app/api/cron/nina/route.ts maxDuration 60->300 (cron loop pacing deliberately NOT raised); workflow demoted, comments only, no trigger/step removed. Finding 2 dies at source: no dispatch grace window left. Invariant 9: cost_micro_usd ACCUMULATES on every path incl. the retry path that recorded nothing, 'stale' leaves the column untouched, terminal UPDATE survives a failed apology. Phase 1 untouched (not one line of the worker or its test); carried forward NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS + its assertion. No migration, db:check clean, drizzle/ empty. FORKS+RUNGS: phase-1 task read in_progress while ledger+git said done -> proceeded, rung 2; probe needed auth on a protected preview -> minted an Auth.js JWT locally from .env.local AUTH_SECRET rather than block, rung 4; coordinator embargoed bookkeeping but Step 6d's package_readme clause is in THIS phase's declared Files table and names the deleted module -> kept 6d, dropped the rest of the chain (no completion-handler, no readme-updater), rung 3. SIDE EFFECTS: vercel curl minted a project-level protection-bypass token; preview dpl_GcCbzFkYByFDXuLBGxzFf8Sxq6Bj still exists. VERIFIED: build, typecheck, lint 0 errors, 2727 tests, db:check, all six guards (payload guard now 8 symbols). UNVERIFIED: exit criteria 1-6 are manual production checks (real chat, real photo, tab closed) and need a deploy.",
       "package": "lib/nina`, `app/nina`, `app/api/cron/nina`, `.github/workflows",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md",
-      "reported_at": "2026-09-06T18:24:45+00:00",
+      "reported_at": "2026-09-06T18:38:38+00:00",
       "satisfies": [
         "R2",
         "R4",
         "R7"
       ],
-      "status": "running",
+      "status": "done",
       "task_id": "P1-NIN-A005",
       "title": "Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop"
     },
@@ -50,15 +50,15 @@
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": "BRANCH A CONFIRMED by phase 2's probe, 2026-09-06 (HTTP 200 after 90.418s on ?inline=1; after() ticked to 90030ms with the connection closed, crossing 60s with nothing attached; sin1, same region as production; maxDuration=300). CONSEQUENCE FOR THIS PHASE: NOTHING CHANGES. Keep NINA_BACKGROUND_BUDGET_MS = 240_000 and NINA_TURN_CHAIN_MAX = 2 exactly as the plan has them -- the Branch B instruction to move those two literals TOGETHER to 45_000/0 is void and must NOT be applied. lib/nina/turnflight.test.ts fails loudly if the budget is lowered while the chain stays at 2, so a half-applied Branch B would be caught, but do not go there. Everything else in this phase was branch-independent anyway: the split, the bounded poll, the claim, and Step 6d. STILL TRUE: lib/nina/live.ts is NOT edited (bounded poll only); Step 6d's ninaSessionExists guard is yours and closes the distillation race at source, with npm run nina:memory-reap as the standing backstop, not a superseded one (phase 6, landed b4bc490); no edge to phase 6.",
+      "note": "BRANCH A CONFIRMED (phase 2 probe, 2026-09-06: HTTP 200 after 90.418s; after() ticked to 90030ms with the connection closed; sin1, production's region; maxDuration=300). NOTHING IN THIS PHASE CHANGES: keep NINA_BACKGROUND_BUDGET_MS = 240_000 and NINA_TURN_CHAIN_MAX = 2. The Branch B instruction to move those two literals together to 45_000/0 is VOID. || PHASE 2's INTERFACE CONTRACT, four points, the second of which phase 2 says will bite: (1) the durability primitive is next/server's after() -- NOT a floating promise, NOT a fetch to an internal route. (2) THE BUDGET IS THE INVOKING ROUTE SEGMENT'S maxDuration, NOT THE ACTION'S. Keep runNinaTurn inside a segment carrying the literal 300 -- app/nina/page.tsx or app/api/cron/nina/route.ts -- and do NOT move it into a new route handler and do NOT lower either literal. (3) Nesting is expected and sanctioned (after.md:56): after this phase, a generate_image inside a backgrounded turn registers a second, nested after(). The arithmetic is 45s turn + 200s generation <= 300s, asserted in tests/nina.imagerecipe.test.ts. (4) after() does NOT survive maxDuration or an instance kill; recovery for both is phase 2's reviveNinaImageJobs plus the unchanged give-up sweep, NOT anything this phase builds. Phase 2 left lib/nina/queries.ts's import block untouched -- it calls four functions there and edits none. || STILL YOURS: lib/nina/live.ts is NOT edited (bounded poll only); Step 6d's ninaSessionExists guard closes the distillation race at source, with nina:memory-reap as the standing backstop (phase 6, b4bc490); no edge to phase 6. Reconciliation row 23 assigns ChatScreen.tsx:62 (names 'unavailable'/'bubbles' after this phase deletes both) to you, Step 9a-pre.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md",
-      "reported_at": "2026-09-06T18:26:10+00:00",
+      "reported_at": "2026-09-06T18:38:55+00:00",
       "satisfies": [
         "R6",
         "R8"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A006",
       "title": "WhatsApp-style send: instant persist, durable background turn"
     },
@@ -70,10 +70,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": "TWO INHERITED ITEMS. (1) BRANCH A CONFIRMED by phase 2's probe 2026-09-06, so error_code='dispatched' is now a HISTORICAL value carried only by rows written before phase 2 landed. Keep NINA_JOB_STAGE_LABEL.dispatched and jobStage's dispatched branch -- they are not dead code, those rows are the first thing on /nina/jobs -- but do not present it as a live stage; only the copy's tense changes. (2) FROM PHASE 6 (landed b4bc490), with a correction the coordinator verified: 14 nina_turns image jobs have an args.replyToId resolving to nothing, reported by nina:memory-reap and never deleted (invariant 9), so planJobJump's 'gone' arm and its NINA_JOB_JUMP_NOTE copy are LIVE on real rows -- build and test them as the common case. But REJECT phase 6's advice to treat 'the triggering message is gone' and 'the session was removed' as ONE state: it proved the converse of what that needs. The cascade means no message survives a deleted session; collapsing the states requires that no message is GONE while its session SURVIVES, and deleteNinaMessage does exactly that -- unchanged by phase 6 (per lib/db/schema.ts:857, which phase 6 itself wrote) and reachable in production from lib/admin/chatPhotoActions.ts:231 and :283. Collapsing them would tell a runner 'the session was removed' about a job whose session is alive and whose message they deleted through /admin. Keep the kinds distinct. Phase 6 also withdrew its 'larger than the plan guessed' framing: 14 dangling replyToIds vs the plan's 15 error_code='dispatched' rows are different predicates, possibly non-overlapping. Not a scope increase.",
+      "note": "FROM PHASE 2 (Branch A): error_code='dispatched' is now LEGACY -- nothing writes it after phase 2, but toJobRow/PENDING_PHASES still map it and the fifteen historical orphans still render. Keep NINA_JOB_STAGE_LABEL.dispatched and jobStage's dispatched branch; change only the copy's tense, do not present it as a live stage. No column was added to nina_turns and no field to NinaImageJobArgs, so every row is the shape this plan quotes. listRevivableNinaImageJobs is a write-path read you may fold in; the two cutoffs are the whole content of that question. Cost renders as 'Biaya total' (per-JOB cumulative). || FROM PHASE 6 (b4bc490), with a coordinator correction: 14 nina_turns image jobs have an args.replyToId resolving to nothing -- reported by nina:memory-reap, never deleted (invariant 9) -- so planJobJump's 'gone' arm and its NINA_JOB_JUMP_NOTE copy are LIVE on real rows; build and test them as the common case. But REJECT phase 6's advice to treat 'the triggering message is gone' and 'the session was removed' as ONE state: it proved the converse of what that needs. The cascade means no message survives a deleted session; collapsing them requires that no message is GONE while its session SURVIVES, and deleteNinaMessage does exactly that -- unchanged by phase 6 (per lib/db/schema.ts:857, which phase 6 wrote) and reachable in production from lib/admin/chatPhotoActions.ts:231 and :283. Collapsing them would tell a runner 'the session was removed' about a job whose session is alive and whose message they deleted via /admin. Keep the kinds distinct. Phase 6 withdrew its 'larger than the plan guessed' framing: 14 dangling replyToIds vs the plan's 15 error_code='dispatched' rows are different predicates. Not a scope increase. Reconciliation row 23 assigns ChatScreen.tsx:236/246/862 to you, Step 9c.",
       "package": "app/nina/jobs`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md",
-      "reported_at": "2026-09-06T18:26:10+00:00",
+      "reported_at": "2026-09-06T18:38:55+00:00",
       "satisfies": [
         "R1"
       ],
@@ -125,10 +125,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 7,
-      "note": "BRANCH A CONFIRMED by phase 2's probe, 2026-09-06. CONSEQUENCE FOR THIS PHASE: write the integration suite in the BRANCH A shape and APPLY deltas A1-A6. Do NOT use the Branch B shape your Step 1 spells out in full -- that means no worker.runOneJob(workerSql, jobId) via runGenerator(), no GITHUB_DISPATCH_TOKEN stub, no githubDispatches router arm, and the three dispatch assertions do not stand. Assert 2 x NINA_IMAGE_COST_MICRO_USD on a job that burned both attempts, per the per-JOB cumulative cost_micro_usd decision. Depends on phase 3, not phase 2.",
+      "note": "BRANCH A CONFIRMED (phase 2 probe, 2026-09-06). Write the integration suite in the BRANCH A shape and APPLY deltas A1-A6. Do NOT use the Branch B shape your Step 1 spells out: no runGenerator() -> worker.runOneJob(workerSql, jobId), no GITHUB_DISPATCH_TOKEN stub, no githubDispatches router arm, and the three dispatch assertions do not stand. || PHASE 2's SEAMS, given for this suite: the awaitable entry point is runNinaImageJob(userId, jobId, opts?): Promise<'none'|'ok'|'retry'|'gave-up'> from lib/nina/imagerun.ts, whose return values match the old runOneJob one-for-one. The OpenRouter seam to stub is lib/nina/imagecall.ts's callNinaImageModel(prompt, seed), which imports NO database module. Nothing calls api.github.com any more, so that assertion becomes the STRONGER form: no request reaches it at all. Assert 2 x NINA_IMAGE_COST_MICRO_USD on a job that burned both attempts (per-JOB cumulative cost_micro_usd). Depends on phase 3, not phase 2.",
       "package": "tests/integration`, `tests/live",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md",
-      "reported_at": "2026-09-06T18:26:10+00:00",
+      "reported_at": "2026-09-06T18:38:55+00:00",
       "satisfies": [
         "R5"
       ],
@@ -140,6 +140,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T18:26:10+00:00",
+  "updated": "2026-09-06T18:39:41+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
