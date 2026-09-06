@@ -59,21 +59,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "137888d",
       "depends_on": [
         2,
         3
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": "PAUSED, NOT DEAD \u2014 do not respawn. Session impl-...-p4 (tmux @18/%21) hit its usage limit at Step 10 of 15 and says it continues automatically at 01:20 Asia/Jakarta. Its work is UNCOMMITTED in the worktree: 8 modified files (lib/nina/tuning.ts, persona.ts, prompts/system.ts, queries.ts, lib/admin/schema.ts, tuningActions.ts, lib/db/schema.ts, lib/nina/.workflows/todos.md) plus the new plan P1-NIN-A005.md. Steps 1,2,3,5,7,8,9 applied; Step 6 (the generated 0006 migration) deliberately deferred until the schema settles. verify downgrades spawned->pending on absence of a commit, which is expected mid-phase and is NOT evidence the phase died: a respawn here would put a second session on top of eight dirty files and lose them. TaskID P1-NIN-A005 already minted.",
+      "note": "R4 landed: enabled map gated at the score seam (ninaTraitScore/ninaDialScore/ninaActiveRelationship), zero bytes when off. Migration 0006_chubby_wild_child, generated, NOT applied \u2014 db:migrate deferred to the merge per exit criteria (rung 2); db:check clean. isGirlfriend now reads ninaActiveRelationship, not tuning.relationship \u2014 phase 5 MUST read horny via ninaTraitScore(tuning,'horny') or the structural guard in nina.prompts.test.ts fails. NINA_TUNING_KEYS is a spread, so horny inherits its toggle; phase 5 still owes horny_enabled in db/schema.ts + the hornyEnabled pair in tuningFromRow (nested: horny: row.hornyEnabled) and tuningToColumns. Snapshot untouched.",
       "package": "lib/nina`, `lib/admin`, `lib/db`, `components/admin`, `drizzle`, `tests",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-4.md",
-      "reported_at": "2026-09-06T18:21:52+00:00",
+      "reported_at": "2026-09-06T18:36:13+00:00",
       "satisfies": [
         "R4"
       ],
-      "status": "running",
+      "status": "done",
       "task_id": "P1-NIN-A005",
       "title": "Per-parameter enable toggles"
     },
@@ -92,7 +92,7 @@
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The `horny` trait"
     }
@@ -100,7 +100,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-responsive-nina-intimacy",
-  "updated": "2026-09-06T18:21:52+00:00",
+  "updated": "2026-09-06T18:37:25+00:00",
   "verified_at": "2026-09-06T18:21:25+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
 }
