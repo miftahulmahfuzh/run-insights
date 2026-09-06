@@ -10,15 +10,15 @@
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "scripts/`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:40+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "spawned",
+      "task_id": "P1-NIN-A004",
       "title": "Unblock the camera: the three measured defects"
     },
     {
@@ -29,17 +29,17 @@
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "lib/nina`, `app/nina`, `app/api/cron/nina`, `.github/workflows",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:40+00:00",
       "satisfies": [
         "R2",
         "R4",
         "R7"
       ],
       "status": "pending",
-      "task_id": null,
+      "task_id": "P1-NIN-A005",
       "title": "Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop"
     },
     {
@@ -50,16 +50,16 @@
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:40+00:00",
       "satisfies": [
         "R6",
         "R8"
       ],
       "status": "pending",
-      "task_id": null,
+      "task_id": "P1-NIN-A006",
       "title": "WhatsApp-style send: instant persist, durable background turn"
     },
     {
@@ -70,15 +70,15 @@
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "app/nina/jobs`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:40+00:00",
       "satisfies": [
         "R1"
       ],
       "status": "pending",
-      "task_id": null,
+      "task_id": "P1-NIN-A007",
       "title": "Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble"
     },
     {
@@ -89,15 +89,15 @@
       ],
       "difficulty": "EASY",
       "n": 5,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "components/nina`, `app/nina/about",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:40+00:00",
       "satisfies": [
         "R3"
       ],
       "status": "pending",
-      "task_id": null,
+      "task_id": "P1-NIN-A008",
       "title": "The tracking section on `/nina/about`, below Media"
     },
     {
@@ -106,15 +106,15 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 6,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "lib/nina`, `scripts/",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:40+00:00",
       "satisfies": [
         "R8"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "spawned",
+      "task_id": "P1-NIN-A009",
       "title": "Permanent session deletion: take the distilled memory with it"
     },
     {
@@ -125,21 +125,21 @@
       ],
       "difficulty": "NORMAL",
       "n": 7,
-      "note": null,
+      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
       "package": "tests/integration`, `tests/live",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md",
-      "reported_at": null,
+      "reported_at": "2026-09-06T15:08:41+00:00",
       "satisfies": [
         "R5"
       ],
       "status": "pending",
-      "task_id": null,
+      "task_id": "P1-RI-A017",
       "title": "End-to-end: chat \u2192 `set_avatar` \u2192 generation \u2192 the profpic really changes"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T15:02:08+00:00",
+  "updated": "2026-09-06T15:08:41+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
