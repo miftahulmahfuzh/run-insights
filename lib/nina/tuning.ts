@@ -8,7 +8,7 @@
  * ── THIS FILE MUST STAY IMPORTABLE FROM A `'use client'` COMPONENT ────────────────────────────
  * **Zero imports. No value import, no type import, no `server-only`, nothing from `@/lib/db/*`.**
  * The `lib/nina/crop.ts` rule and for the same reason: `components/admin/CharacterPanel.tsx`
- * renders eleven sliders from `NINA_TRAITS`, needs the labels in the browser, and needs
+ * renders twelve sliders from `NINA_TRAITS`, needs the labels in the browser, and needs
  * `NINA_TUNING_DEFAULTS` to reset to. `tests/nina.tuning.test.ts` reads this file's own source and
  * fails on an `import` line, so the property is checked rather than merely intended.
  *
@@ -131,13 +131,18 @@ export function ninaBand(value: unknown): NinaBand {
  * is what makes `max(computed, floor) === computed` for the Nina who ships. */
 
 /* ============================================================================
- * §2 The eleven traits (R1)
+ * §2 The twelve traits (R1, and R3's `horny`)
  * ==========================================================================*/
 
 /**
- * **The eleven, in the order the user wrote them.** The order is the panel's order and the
+ * **The twelve, in the order the user wrote them.** The order is the panel's order and the
  * prompt's order, and it is not alphabetical on purpose: it is the order in which he thought of
  * them, which is the order in which he will look for them.
+ *
+ * `horny` is APPENDED rather than filed beside `flirty` and `steamy`, whose axis it shares. Two
+ * reasons, and both are about the operator rather than about taste: the eleven above are "the order
+ * the user wrote them" and inserting into the middle makes that sentence false, and the eleven
+ * sliders already on `/admin/nina` stay where his muscle memory has them.
  */
 export const NINA_TRAITS = [
   'anger',
@@ -151,6 +156,7 @@ export const NINA_TRAITS = [
   'happy',
   'anxious',
   'concerned',
+  'horny',
 ] as const
 
 export type NinaTrait = (typeof NINA_TRAITS)[number]
@@ -163,7 +169,7 @@ export function isNinaTrait(key: string): key is NinaTrait {
  * One trait, fully described. The `NINA_SLOT_KEYS` / `NINA_SLOT_SPECS` idiom in
  * `lib/nina/memory.ts`: a key array for the order, a spec record for everything about each key.
  *
- * `userSaid` is **the user's own words, verbatim**, for the six traits he gave a behaviour for.
+ * `userSaid` is **the user's own words, verbatim**, for the seven traits he gave a behaviour for.
  * They are the specification for R4 rather than a comment about it, so they are stored rather than
  * paraphrased — the `VOICE_EXAMPLES` argument, one feature over. Phase 2 may quote them; nothing
  * may tidy them.
@@ -283,6 +289,24 @@ export const NINA_TRAIT_SPECS: Readonly<Record<NinaTrait, NinaTraitSpec>> = {
     defaultScore: 50,
     defaultBecause:
       'Noticing an absence is already the whole point of her ("lo kemaren kemana tah", VOICE_EXAMPLES), but she never asks after his body. The middle band is today, and it is the band phase 3 uses to gate OUTPUT_RULE\'s "No greeting unless..." clause.',
+  },
+  /**
+   * **R3's twelfth trait, and the reason it is a TRAIT and not a dial.** `BODY_REPEALED_BY` in
+   * `./persona` is typed `readonly NinaTrait[]`, and `horny` at the top has to repeal *"Never
+   * comment on his body"* — the single most load-bearing wiring point this key has. As a dial it
+   * would need a parallel repeal list and a second repeal test in `./prompts/system.ts`, which
+   * that file's own docstring calls out as *"how the two halves of one repeal come to disagree"*.
+   * `NINA_DIAL_SPECS` also has no `userSaid`, and the user described this one at length.
+   */
+  horny: {
+    key: 'horny',
+    label: 'Horny',
+    axis: 'How sexually forward she is. Distinct from `flirty` (which is teasing and pet names) and from `steamy` (which is how explicit she is willing to get once he has taken it there): this is whether SHE takes it there, how graphic she is when she does, and how much she varies the scene instead of replaying one.',
+    userSaid:
+      'this parameter is controlling how much is nina being sexual as a woman. full horny means nina is being so explicit about everything. [...] the higher horny value, the more often nina will initiate sex talks with me [...] the higher horny value, the more descriptive she is. she talks longer and in much more descriptive and suggestive details',
+    defaultScore: 0,
+    defaultBecause:
+      'There is nothing in the shipping canon where she initiates. `flirty` and `steamy` both default to 0 and identify at `off` for the same reason, and plan invariant 1 requires that `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` render byte-identically — a nonzero default here would put a paragraph into the prompt that shipped. 0 makes today arithmetic rather than careful editing.',
   },
 }
 
@@ -488,7 +512,173 @@ export const NINA_DIAL_SPECS: Readonly<Record<NinaDial, NinaDialSpec>> = {
 }
 
 /* ============================================================================
- * §5 The two free-text fields
+ * §5 The parameter keys, and the enable map (R4)
+ * ==========================================================================*/
+
+/**
+ * One property of something that may not be an object at all. Never throws.
+ *
+ * **Moved up from the tuning section** when the enable map landed: `coerceNinaEnabled` and
+ * `coerceNinaTuning` are two halves of one trust boundary and a second copy of this three-line
+ * reader is a second place for `__proto__` to be handled differently.
+ */
+function pick(bag: unknown, key: string): unknown {
+  if (typeof bag !== 'object' || bag === null) return undefined
+  return (bag as Record<string, unknown>)[key]
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *  **THE ON/OFF TOGGLE, PER PARAMETER (R4).** The user's words: *"we need an on/off toggle for
+ *  each parameter, so we can exclude some parameters to make prompt more accurate for what we
+ *  would like nina to do"*. The stated purpose is a SHORTER prompt, so a disabled parameter
+ *  contributes ZERO BYTES — not "renders its identity band", not "renders a neutral paragraph".
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ── WHAT "DISABLED" MEANS, IN ONE SENTENCE ────────────────────────────────────────────────────
+ * **A disabled key is a key the operator never moved.** The stored score stays in the row and stays
+ * on the slider; every reader on the PROMPT side reads that key's own `defaultScore` instead. Which
+ * is exactly zero added bytes, because `defaultScore` is defined, per key, as *the value that
+ * reproduces the text that ships* (see the IDENTITY BAND note in this file's header).
+ *
+ * That is why the gate is here, at the score seam, and not inside `ninaTraitsBlock`'s loop. Six
+ * other things read a raw score: `ANGER_FLOOR_BY_BAND` / `ANGER_CEILING_BY_BAND` via
+ * `ninaAngerFloor`, `BODY_REPEALED_BY` and `THREAT_REPEALED_BY` via `anyTurnedUp`, the `funny`
+ * clause in `ninaIdentity`, and `OUTPUT_RULE`'s greeting line, its bubble preference and the camera
+ * block via `systemDials`. A toggle that only skipped the paragraph would leave a disabled
+ * `anger: 100` still flooring the nag ladder at rung 4 — a slider the operator switched off that
+ * still rewrites three blocks of the prompt, and nothing in a diff to show it.
+ *
+ * ── WHY THE KEY LIST IS A SPREAD AND NEVER A HAND-WRITTEN UNION ───────────────────────────────
+ * A SEVENTEENTH KEY must inherit the toggle for free, and there is a known one: the next phase adds
+ * `horny` as a TWELFTH TRAIT. `NINA_TUNING_KEYS` is `[relationship, ...NINA_TRAITS, ...NINA_DIALS]`,
+ * so the Zod shape, the coercion walk, the panel's checkbox, the diff paths and the R4 gate test in
+ * `tests/nina.prompts.test.ts` are all loops over one array — and adding a key to EITHER source
+ * array adds its toggle everywhere in the same commit, with no second list to forget. Nothing in
+ * this phase may hard-code the number sixteen; the two places that did are corrected, and the
+ * columns are the one place where sixteen is a fact rather than an assumption, because sixteen is
+ * how many this phase's own migration creates.
+ *
+ * ── `relationship` IS IN HERE AND `wardrobe` / `notes` ARE NOT ────────────────────────────────
+ * `nobody` is NOT an off switch for the relationship. Read `NINA_RELATIONSHIP_BLOCKS.nobody` in
+ * `persona.ts`: it is four sentences of active instruction — *"You do not know him"*, *"you keep
+ * your distance"*, *"you do not go first"* — the COLDEST setting on the axis, not the absent one.
+ * Choosing it to "exclude" the parameter makes the prompt longer and changes her behaviour
+ * drastically. And there is no representable "no relationship" at all: `ninaIdentity` needs a first
+ * paragraph and `ninaNameRules` needs an address rule, and a prompt that names no address form
+ * teaches her to invent one. So disabling the relationship means what disabling anything else
+ * means: `NINA_DEFAULT_RELATIONSHIP`, whose blocks ARE today's `NINA_IDENTITY`.
+ *
+ * `wardrobe` and `notes` are the mirror image and therefore have NO toggle. `''` genuinely is their
+ * absence — `ninaOperatorNotesBlock` returns `''` and the whole STANDING INSTRUCTIONS section
+ * disappears, `ninaAppearance` falls back to `NINA_DEFAULT_OUTFIT` — so both already contribute zero
+ * bytes at their empty value, and a toggle would be a second spelling for a state the field already
+ * has. Two spellings for one fact is one too many.
+ */
+export const NINA_TUNING_RELATIONSHIP_KEY = 'relationship'
+
+/**
+ * **Every parameter the operator can switch off, in the panel's own order** — the relationship
+ * first, because it is the first control on the page and the first column in `nina_tuning`, then
+ * the twelve traits and the four dials in the order the user wrote them.
+ *
+ * DERIVED, never restated. See the note above.
+ */
+export const NINA_TUNING_KEYS = [
+  NINA_TUNING_RELATIONSHIP_KEY,
+  ...NINA_TRAITS,
+  ...NINA_DIALS,
+] as const
+
+export type NinaTuningKey = (typeof NINA_TUNING_KEYS)[number]
+
+export function isNinaTuningKey(key: string): key is NinaTuningKey {
+  return (NINA_TUNING_KEYS as readonly string[]).includes(key)
+}
+
+/** Every key on. Built by walking the array, so a new dial arrives enabled without an edit here. */
+function allNinaKeysEnabled(): Record<NinaTuningKey, boolean> {
+  const out = {} as Record<NinaTuningKey, boolean>
+  for (const key of NINA_TUNING_KEYS) out[key] = true
+  return out
+}
+
+/**
+ * **ALL TRUE, and that is plan invariant 1 held arithmetically.**
+ *
+ * `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` must render the string that shipped. With every key
+ * enabled the gate is a pass-through, every key sits at its own `defaultScore`, every identity-band
+ * skip fires exactly as it did before this phase, and the default render is untouched — rather than
+ * untouched-if-somebody-remembered.
+ *
+ * Frozen, because `NINA_TUNING_DEFAULTS` below is frozen and `readNinaTuning` hands that exact
+ * object to every caller for a user with no row.
+ */
+export const NINA_ENABLED_DEFAULTS: Readonly<Record<NinaTuningKey, boolean>> =
+  Object.freeze(allNinaKeysEnabled())
+
+/**
+ * **An enable map, made safe. ONLY AN EXPLICIT `false` DISABLES.**
+ *
+ * This is the migration's backfill, and it is why there is no data backfill (see the plan's
+ * Verification): a row written before the `*_enabled` columns existed reads them as `null`, a row
+ * written by an older client omits keys entirely, and both must mean *enabled*. Anything that is
+ * not literally `false` — `null`, `undefined`, a missing key, `0`, `'off'`, `{}` — reads as on.
+ *
+ * The asymmetry is deliberate and is the opposite of `clampNinaScore`'s per-key fallback. A score
+ * we cannot read must read as "unchanged"; an enable flag we cannot read must read as "on", because
+ * the failure mode of guessing wrong is a production row that silently loses her personality on
+ * deploy. There is exactly one way to switch a parameter off and it is a checkbox.
+ */
+export function coerceNinaEnabled(value: unknown): Record<NinaTuningKey, boolean> {
+  const out = {} as Record<NinaTuningKey, boolean>
+  for (const key of NINA_TUNING_KEYS) out[key] = pick(value, key) !== false
+  return out
+}
+
+/**
+ * Whether a parameter reaches the prompt at all.
+ *
+ * Reads through `pick` rather than `tuning.enabled[key]` so that a hand-built `NinaTuning` with no
+ * `enabled` at all — a fixture, a `psql` round trip, a `as NinaTuning` cast in a test — degrades to
+ * "everything on" instead of throwing in the middle of a turn.
+ */
+export function isNinaKeyEnabled(tuning: NinaTuning, key: NinaTuningKey): boolean {
+  return pick(tuning.enabled, key) !== false
+}
+
+/**
+ * ── THE THREE READERS THE PROMPT SIDE MUST USE, AND THE ONLY ONES ─────────────────────────────
+ * `lib/nina/persona.ts` and `lib/nina/prompts/system.ts` may not read `tuning.traits`,
+ * `tuning.dials` or `tuning.relationship` directly any more, and
+ * `tests/nina.prompts.test.ts` reads their source and fails if they do. A direct read is a
+ * parameter whose toggle silently does nothing, which is the one failure R4 cannot survive and the
+ * one a reviewer cannot see.
+ *
+ * The STORE is the exception and stays a direct read: `tuningToColumns` in `lib/nina/queries.ts`
+ * writes the value the operator PARKED, not the value the prompt uses. Switching a dial off must
+ * never lose the number it was parked at — that is the whole point of a toggle as opposed to
+ * dragging it back to the default.
+ */
+export function ninaTraitScore(tuning: NinaTuning, trait: NinaTrait): number {
+  return isNinaKeyEnabled(tuning, trait)
+    ? tuning.traits[trait]
+    : NINA_TRAIT_SPECS[trait].defaultScore
+}
+
+export function ninaDialScore(tuning: NinaTuning, dial: NinaDial): number {
+  return isNinaKeyEnabled(tuning, dial) ? tuning.dials[dial] : NINA_DIAL_SPECS[dial].defaultScore
+}
+
+/** `best_friend` when the relationship is switched off — the level whose blocks ARE today's text. */
+export function ninaActiveRelationship(tuning: NinaTuning): NinaRelationship {
+  return isNinaKeyEnabled(tuning, NINA_TUNING_RELATIONSHIP_KEY)
+    ? tuning.relationship
+    : NINA_DEFAULT_RELATIONSHIP
+}
+
+/* ============================================================================
+ * §6 The two free-text fields
  * ==========================================================================*/
 
 /**
@@ -537,7 +727,7 @@ export function coerceNinaNotes(value: unknown): string {
 }
 
 /* ============================================================================
- * §6 The tuning itself
+ * §7 The tuning itself
  * ==========================================================================*/
 
 /**
@@ -561,6 +751,13 @@ export interface NinaTuning {
   readonly traits: Readonly<Record<NinaTrait, number>>
   readonly relationship: NinaRelationship
   readonly dials: Readonly<Record<NinaDial, number>>
+  /**
+   * **R4's per-parameter on/off switch.** One boolean per key in `NINA_TUNING_KEYS` — the
+   * relationship, the twelve traits and the four dials. A `false` here means the key contributes
+   * ZERO BYTES to the assembled prompt at any score; see §5. All true is the default and is what
+   * makes `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` the prompt that ships.
+   */
+  readonly enabled: Readonly<Record<NinaTuningKey, boolean>>
   /** `''` = no override; phase 4 uses `NINA_APPEARANCE`'s outfit. */
   readonly wardrobe: string
   /** `''` = nothing appended to the system prompt. */
@@ -592,16 +789,13 @@ export interface NinaTuningInput {
   readonly traits?: unknown
   readonly relationship?: unknown
   readonly dials?: unknown
+  readonly enabled?: unknown
   readonly wardrobe?: unknown
   readonly notes?: unknown
   readonly revision?: unknown
 }
 
-/** One property of something that may not be an object at all. Never throws. */
-function pick(bag: unknown, key: string): unknown {
-  if (typeof bag !== 'object' || bag === null) return undefined
-  return (bag as Record<string, unknown>)[key]
-}
+/* `pick` moved to §5, where `coerceNinaEnabled` also needs it. One reader, one trust boundary. */
 
 /** The defaults for a key set, read off its specs so there is one source of truth for each. */
 function defaultScores<K extends string>(
@@ -632,6 +826,8 @@ export const NINA_TUNING_DEFAULTS: NinaTuning = Object.freeze({
   traits: defaultScores(NINA_TRAITS, NINA_TRAIT_SPECS),
   relationship: NINA_DEFAULT_RELATIONSHIP,
   dials: defaultScores(NINA_DIALS, NINA_DIAL_SPECS),
+  /* Frozen and shared like the two score records above, and ALL TRUE — see §5. */
+  enabled: NINA_ENABLED_DEFAULTS,
   wardrobe: '',
   notes: '',
   revision: 0,
@@ -678,6 +874,11 @@ export function coerceNinaTuning(input: NinaTuningInput | null | undefined): Nin
     traits,
     relationship: coerceNinaRelationship(input?.relationship),
     dials,
+    /* 4. **A missing or partial enable map is ALL TRUE.** A row written before the `*_enabled`
+     *    columns existed hands us sixteen nulls, and every one of them must mean "on" — the
+     *    alternative is a deploy that silently mutes her personality. Only an explicit `false`
+     *    disables. */
+    enabled: coerceNinaEnabled(input?.enabled),
     wardrobe: coerceNinaWardrobe(input?.wardrobe),
     notes: coerceNinaNotes(input?.notes),
     revision: coerceRevision(input?.revision),

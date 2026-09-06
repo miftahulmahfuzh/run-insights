@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { CircleFrame } from '@/components/admin/CircleFrame'
 import { CropStudio } from '@/components/admin/CropStudio'
 import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
+import { TOUCH_ICON } from '@/components/admin/touch'
 import { Button } from '@/components/ui'
 import {
   deleteNinaAvatarAction,
@@ -13,6 +14,7 @@ import {
   setCurrentNinaAvatarAction,
 } from '@/lib/admin/ninaAlbumActions'
 import { folderBreadcrumbs } from '@/lib/admin/filetree'
+import { cn } from '@/lib/cn'
 import { isIdentityCrop, resolveCrop, type NinaCrop } from '@/lib/nina/crop'
 
 import type { ExplorerPhoto } from './model'
@@ -82,6 +84,27 @@ export function SelectionPane({
     })
   }
 
+  /**
+   * The rail scrolls itself into view when the selection changes.
+   *
+   * Below `lg` this `<aside>` is the third block of a single column, under a grid of up to 120
+   * tiles. Tapping a photograph near the bottom of that grid opens a pane a screen and a half
+   * further down, and the screen does not move — which is indistinguishable from a broken button.
+   *
+   * `block: 'nearest'` is why this can run unconditionally instead of behind a breakpoint check:
+   * at `lg` the pane is already beside the grid and fully visible, and `nearest` on a fully
+   * visible element scrolls nothing. So there is no media query to observe and the desktop scroll
+   * position is never touched.
+   *
+   * Keyed on `photo.id`, not on mount. The rail is REUSED when the selection moves from one
+   * photograph to another — `FileExplorer` renders one `SelectionPane` and swaps its `photo` —
+   * so the second selection deserves the same courtesy as the first.
+   */
+  const paneRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    paneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [photo.id])
+
   /* `folderBreadcrumbs` (phase 2's name; the draft assumed `breadcrumbFor`) returns crumbs of
    * `{ path, name, depth, isCurrent }` — so the label is `name`, and the root's own name is
    * `NINA_FOLDER_ROOT_LABEL`, which is why "Album" needs no special case here. */
@@ -90,7 +113,7 @@ export function SelectionPane({
     .join(' / ')
 
   return (
-    <aside className="rounded-card border border-rule bg-card p-5">
+    <aside ref={paneRef} className="rounded-card border border-rule bg-card p-4 lg:p-5">
       <div className="mb-4 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold text-ink" title={photo.filename}>
@@ -104,7 +127,7 @@ export function SelectionPane({
           type="button"
           onClick={onClose}
           aria-label="Close the details pane"
-          className="shrink-0 px-1 text-[13px] font-semibold text-ink-3"
+          className={cn(TOUCH_ICON, '-mt-2 -mr-2 shrink-0 text-[15px] font-semibold text-ink-3')}
         >
           &times;
         </button>

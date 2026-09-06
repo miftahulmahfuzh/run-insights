@@ -79,6 +79,9 @@ function toTuningWrite(input: NinaTuningWriteInput): NinaTuningWrite {
   return {
     traits: input.traits,
     dials: input.dials,
+    /* R4. `ninaTuningWriteSchema` builds this shape from `NINA_TUNING_KEYS`, so it is already
+     * `Record<NinaTuningKey, boolean>` and no cast is needed on this path either. */
+    enabled: input.enabled,
     relationship: input.relationship,
     wardrobe: input.wardrobe,
     notes: input.notes,
@@ -97,6 +100,8 @@ export async function saveNinaTuningAction(input: {
   userId: string
   traits: Record<string, number>
   dials: Record<string, number>
+  /** R4's per-parameter toggles, keyed by `NINA_TUNING_KEYS`. Zod narrows it; this is a comment. */
+  enabled: Record<string, boolean>
   relationship: string
   wardrobe: string
   notes: string
@@ -153,6 +158,10 @@ export async function resetNinaTuningAction(input: { userId: string }): Promise<
   const defaults: NinaTuningWrite = {
     traits: { ...NINA_TUNING_DEFAULTS.traits },
     dials: { ...NINA_TUNING_DEFAULTS.dials },
+    /* Spread like the two records above: `NINA_ENABLED_DEFAULTS` is frozen and `writeNinaTuning`
+     * must never be handed the singleton. "Reset" turns every parameter back ON, because the Nina
+     * who shipped is the one with nothing excluded. */
+    enabled: { ...NINA_TUNING_DEFAULTS.enabled },
     relationship: NINA_TUNING_DEFAULTS.relationship,
     wardrobe: NINA_TUNING_DEFAULTS.wardrobe,
     notes: NINA_TUNING_DEFAULTS.notes,

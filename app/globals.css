@@ -49,9 +49,25 @@
   --sh: 0 10px 24px rgba(23, 62, 92, 0.1);
   --sh-lg: 0 24px 60px rgba(23, 62, 92, 0.18);
 
-  /* Fixed chrome pads by these — the TabBar's bottom inset, notably. */
+  /*
+   * ── THE FOUR SAFE-AREA INSETS ───────────────────────────────────────────────────────────────
+   * Fixed chrome pads by these — the TabBar's bottom inset, notably. All four are inert without
+   * `viewportFit: 'cover'` in `app/layout.tsx`, which is set and load-bearing.
+   *
+   * They are this app's own tokens and are deliberately NOT part of the set mirrored from
+   * `docs/design/tokens.css`: that file carries the palette and the radii, and defines no inset.
+   * There is nothing to keep in step.
+   */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /*
+   * The LANDSCAPE pair, added by `admin-responsive-nina-intimacy` phase 1. On an iPhone XS Max
+   * held upright both are 0px and neither earns its keep; turn the phone and the notch takes 44px
+   * out of one side. `app/admin/layout.tsx` is the first surface in this app to pad them, because
+   * it is the first whose chrome runs edge to edge on a phone.
+   */
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 /*

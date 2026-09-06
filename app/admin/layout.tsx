@@ -26,6 +26,35 @@ import { requireAdmin } from '@/lib/admin/requireAdmin'
  * all. `Card`, `Button` and `Input` are reused unmodified. The layout is new; the palette is not,
  * which is what stops these pages from reading like a different product.
  *
+ * ── AND WHAT IT IS NOW: A PHONE SHELL BELOW `lg` ───────────────────────────────────────────
+ * F33 R23 opened this file with *"this UI is for desktop"* and that framing held until
+ * `admin-responsive-nina-intimacy` R1: *"revam admin UI to be responsive to my xs max safari"*.
+ * The desktop layout is unchanged at `lg` and above — 1400 px cap, a 224 px rail, a 32 px gap.
+ * Below `lg` it is one column, and three things follow from the device:
+ *
+ *   1. **`lg` is the only structural breakpoint, and 896 px is below it.** An iPhone XS Max in
+ *      LANDSCAPE is 896 px wide, so it keeps the phone layout — which is right: landscape gives
+ *      414 px of height, and a sidebar would spend a third of the width to save none of it.
+ *   2. **Every gutter carries its own inset.** `pt`/`pl`/`pr` are `calc(<gutter> + var(--safe-*))`
+ *      rather than a flat `p-6`. All four insets are 0 px on a desktop and in portrait, so this
+ *      costs nothing where it is not needed and is the whole fix where it is.
+ *   3. **`<main>` reserves `calc(5rem + var(--safe-bottom))` below `lg`.** `AdminNav` is `fixed`
+ *      there, so it is out of flow and contributes no grid row; without this the last card of
+ *      every page sits under the bar. 80 px against the bar's 57 px border box (56 px row plus
+ *      `border-t`) leaves 23 px of breathing room, the same shape as `AppShell`'s `BOTTOM_GAP`.
+ *      **The two numbers are spelled in two files** — see `AdminNav`'s `h-14` comment — and
+ *      `tests/admin.shell.test.ts` is what keeps them in step.
+ *
+ * `min-h-dvh` was already here and was CHECKED rather than assumed: `dvh` is the DYNAMIC viewport
+ * unit, so the column grows and shrinks with Safari's retracting toolbar. `svh` would leave a
+ * strip of `--paper` under the shell whenever the toolbar hid; `lvh` would overflow whenever it
+ * showed. `dvh` is the correct unit for a min-height on a scrolling document and it stays.
+ *
+ * **Nothing here clips.** There is no `overflow-x-hidden` on the shell, deliberately: a component
+ * inside `<main>` that is wider than 382 px is a bug that phase 2 has to see, and a shell that
+ * hides it is a shell that hides the evidence. `min-w-0` on `<main>` keeps the GRID TRACK from
+ * being blown out; making each child scroll inside itself is the child's job.
+ *
  * ── THE GATE IS HERE **AND** IN EVERY PAGE AND ACTION ──────────────────────────────────────
  * A layout does not re-run on every navigation within its subtree and cannot be relied on as the
  * only check — Next's own docs are explicit that auth belongs next to the data. So `requireAdmin()`
@@ -46,7 +75,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
 
   return (
     <div className="min-h-dvh bg-paper-2">
-      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-6 p-6 lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8 lg:p-8">
+      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-6 pt-[calc(1rem+var(--safe-top))] pr-[calc(1rem+var(--safe-right))] pb-[calc(5rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))] lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8 lg:pt-[calc(2rem+var(--safe-top))] lg:pr-[calc(2rem+var(--safe-right))] lg:pb-8 lg:pl-[calc(2rem+var(--safe-left))]">
         <AdminNav />
         {/* `min-w-0` is load-bearing: without it a wide album grid blows out the grid track
             instead of scrolling inside it. */}

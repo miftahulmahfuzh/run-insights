@@ -23,7 +23,17 @@
  * MOVED** — see `./tools.ts`'s note on the two dials that were proposed for it and declined. This
  * is the SINGLE bump for the whole set: phase 3 owns it and no other phase touches this constant,
  * because two bumps would date two commits to one change. */
-export const NINA_PROMPT_VERSION = 3
+/* 4 — the admin-responsive-nina-intimacy set, R2. `buildNinaSystemPrompt` gained two gated blocks:
+ * `ninaManjaRegisterBlock` under HOW YOU TALK (the girlfriend orthography — final-vowel
+ * lengthening, and the repeal of `JAKARTA_REGISTER`'s "Never aku" and one-emoji lines for that
+ * level only) and `ninaGirlfriendVoiceBlock` under EXACTLY HOW YOU SOUND (the user's five
+ * girlfriend lines, verbatim). `NINA_RELATIONSHIP_BLOCKS.girlfriend.identity` gained the "manja"
+ * and "imut" sentences. Both blocks render `''` at the other four relationships and
+ * `renderSections` drops an empty block, so the DEFAULT render — `best_friend` — is byte-identical
+ * and `tests/__snapshots__/nina.prompts.test.ts.snap` pins the other three as well. **NO SECTION
+ * AND NO TOOL SCHEMA MOVED.** This is the SINGLE bump for the whole set: phase 3 owns it and no
+ * other phase touches this constant, because two bumps would date two commits to one change. */
+export const NINA_PROMPT_VERSION = 4
 
 export {
   LANGUAGE_RULE,

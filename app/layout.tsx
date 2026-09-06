@@ -27,8 +27,16 @@ export const metadata: Metadata = {
    * ── THE INSTALL CONTRACT ─────────────────────────────────────────────────────────────────────
    * These three entries are what make "Add to Home Screen" produce an app rather than a bookmark
    * with a letter on it. The values live in `lib/pwa.ts` because `app/manifest.ts` needs the same
-   * ones. See that file for why `statusBarStyle` is 'default' and not 'black-translucent' — the
-   * short version is that almost nothing in this app pads `env(safe-area-inset-top)` yet.
+   * ones. See that file for why `statusBarStyle` is 'default' and not 'black-translucent'.
+   *
+   * That line used to read "the short version is that almost nothing in this app pads
+   * `env(safe-area-inset-top)` yet". It is no longer the whole story: `/admin`'s shell pads all
+   * four insets since `admin-responsive-nina-intimacy` phase 1 (`app/admin/layout.tsx`), and its
+   * nav is a bottom bar on a phone that pads `--safe-bottom` the way `TabBar` does. What has NOT
+   * changed is the RUNNER's screens — `ScreenHeader` and every page under `app/` still open with a
+   * plain `p-5` — and they are what decides `statusBarStyle`, because they are the ones that would
+   * slide under the clock. So the prerequisite is now half met and the answer is still 'default';
+   * `lib/pwa.ts` carries the full argument and `tests/pwa.install.test.ts` holds the value.
    *
    * The home-screen ICON is not configured here: `app/icon.png` and `app/apple-icon.png` are file
    * conventions Next discovers by name and turns into `<link rel="icon">` and

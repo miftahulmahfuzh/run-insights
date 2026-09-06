@@ -16,6 +16,7 @@ import {
   tuningCopy,
   type TuningDraft,
 } from '@/lib/admin/tuningModel'
+import { TOUCH_TARGET } from '@/components/admin/touch'
 import { cn } from '@/lib/cn'
 import {
   NINA_DIALS,
@@ -24,6 +25,7 @@ import {
   NINA_SCORE_MAX,
   NINA_SCORE_MIN,
   NINA_TRAITS,
+  NINA_TUNING_RELATIONSHIP_KEY,
   NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
@@ -35,7 +37,7 @@ import {
  * The user named `/admin/nina`, and the previous plan set rebuilt that page into a paginated
  * folder-scoped file manager for a stated reason: *"i will put hundreds of profile pics in there."*
  * The album is the page's working surface and must stay the first thing on it, so this panel is a
- * native `<details>`, shut on arrival. Sixteen sliders open by default would push the album below
+ * native `<details>`, shut on arrival. Seventeen sliders open by default would push the album below
  * the fold on every single visit, including the hundreds of visits that are about a photograph.
  *
  * A native `<details>` rather than a `useState` toggle: it needs no JavaScript to open, it is
@@ -52,8 +54,19 @@ import {
  *
  * ── ONE SAVE ────────────────────────────────────────────────────────────────────────────────
  * Every control edits a local draft; nothing writes on change. One button sends the whole tuning
- * (plan invariant 11) — Next dispatches actions one at a time per client, so sixteen dials as
- * sixteen actions would stall behind each other.
+ * (plan invariant 11) — Next dispatches actions one at a time per client, so seventeen dials as
+ * seventeen actions would stall behind each other.
+ *
+ * ── THE TOGGLES ARE PART OF THE SAME ONE SAVE (R4) ──────────────────────────────────────────
+ * *"we need an on/off toggle for each parameter, so we can exclude some parameters to make prompt
+ * more accurate."* Each checkbox edits `draft.enabled[key]` and nothing else; the same button sends
+ * the whole map with the scores. Seventeen toggles as seventeen actions is the same stall the
+ * seventeen dials would have been, and for the same reason: Next dispatches Server Actions one at a time per
+ * client.
+ *
+ * The score is NOT reset when a parameter is switched off, and that is the feature: the operator
+ * parks `flirty` at 80, excludes it from tonight's prompt, and gets the 80 back with one click. A
+ * toggle that cleared the number would just be a slower way of dragging it to the default.
  *
  * ── EVERY WORD BESIDE A CONTROL COMES FROM `lib/nina/tuning.ts` ─────────────────────────────
  * Labels, hints and the address words are `tuningCopy` / `relationshipCopy`, which read phase 1's
@@ -121,6 +134,9 @@ export function CharacterPanel({
   const unsaved = React.useMemo(() => new Set(changedTuningFields(draft, tuning)), [draft, tuning])
   const dirty = unsaved.size > 0
   const loud = loudestDials(draft, defaults)
+  /* How many parameters are excluded from her prompt entirely (R4). It goes on the closed summary
+   * because it is the one setting that cannot be inferred from the numbers underneath it. */
+  const off = Object.values(draft.enabled).filter((value) => value === false).length
 
   function setTrait(key: string, value: number) {
     setDraft((current) => ({ ...current, traits: { ...current.traits, [key]: value } }))
@@ -128,6 +144,28 @@ export function CharacterPanel({
 
   function setDial(key: string, value: number) {
     setDraft((current) => ({ ...current, dials: { ...current.dials, [key]: value } }))
+  }
+
+  /**
+   * R4's toggle, into the same local draft as every other control. Nothing writes on change; the
+   * one Save button still sends the whole tuning (plan invariant 11).
+   */
+  function setEnabled(key: string, next: boolean) {
+    setDraft((current) => ({ ...current, enabled: { ...current.enabled, [key]: next } }))
+  }
+
+  /** Absent means ON, everywhere in this feature. One reader for that rule in this file. */
+  function isOn(key: string): boolean {
+    return draft.enabled[key] ?? true
+  }
+
+  /**
+   * One control's "unsaved" dot covers BOTH of its paths — the score and the toggle. Two dots on
+   * one row would be an operator wondering which of two identical marks meant what, and the answer
+   * to "is this row what the database holds" is one boolean.
+   */
+  function rowUnsaved(path: string, key: string): boolean {
+    return unsaved.has(path) || unsaved.has(`enabled.${key}`)
   }
 
   function run(action: () => Promise<AdminTuningResult>) {
@@ -153,8 +191,8 @@ export function CharacterPanel({
             ? 'every dial at its default'
             : loud
                 .map((dial) => `${tuningCopy(dial.key).label.toLowerCase()} ${dial.value}`)
-                .join(', ')}{' '}
-          &middot; revision {revision}
+                .join(', ')}
+          {off > 0 && ` · ${off} off`} &middot; revision {revision}
         </span>
       </summary>
 
@@ -164,14 +202,39 @@ export function CharacterPanel({
           <strong>There is no cache on her turn path</strong>, so a saved row is in her next message
           with no invalidation step, no distillation pass and no deploy. The defaults reproduce the
           Nina who shipped, character for character — a dial you never touch changes nothing about
-          her.
+          her. <strong>Clear a checkbox and that parameter leaves the prompt entirely</strong>,
+          whatever it is parked at — the number stays here for when you want it back.
         </p>
 
         <fieldset className="mb-6">
           <legend className="mb-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-            Relationship
-            {unsaved.has('relationship') && (
+            {/* `TOUCH_TARGET` for the same reason `DialSlider` wraps its checkbox in `TOUCH_ICON`:
+                a bare `size-4` box is 16 px, and the responsive phase's rule is that every
+                interactive control in this package is ≥ 44 px on its smaller axis. The label is
+                the hit target, so the height goes on the label rather than on the glyph. */}
+            <label
+              className={cn(
+                TOUCH_TARGET,
+                'inline-flex cursor-pointer items-center gap-2 align-middle',
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={isOn(NINA_TUNING_RELATIONSHIP_KEY)}
+                disabled={pending}
+                aria-label="Include the relationship in her prompt"
+                onChange={(event) => setEnabled(NINA_TUNING_RELATIONSHIP_KEY, event.target.checked)}
+                className="size-4 shrink-0 accent-accent disabled:opacity-50"
+              />
+              <span>Relationship</span>
+            </label>
+            {rowUnsaved('relationship', NINA_TUNING_RELATIONSHIP_KEY) && (
               <span className="ml-2 font-semibold text-accent">unsaved</span>
+            )}
+            {!isOn(NINA_TUNING_RELATIONSHIP_KEY) && (
+              <span className="ml-2 font-medium text-ink-3">
+                off — she is the best friend who shipped
+              </span>
             )}
           </legend>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -213,7 +276,7 @@ export function CharacterPanel({
         <section className="mb-6">
           <h3 className="text-[13px] font-semibold text-ink">Traits</h3>
           <p className="mb-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
-            Eleven dials, 0 to 100.
+            Twelve dials, 0 to 100.
           </p>
           <div className="grid gap-x-8 xl:grid-cols-2">
             {NINA_TRAITS.map((key) => {
@@ -228,7 +291,9 @@ export function CharacterPanel({
                   min={NINA_SCORE_MIN}
                   max={NINA_SCORE_MAX}
                   disabled={pending}
-                  unsaved={unsaved.has(`traits.${key}`)}
+                  unsaved={rowUnsaved(`traits.${key}`, key)}
+                  enabled={isOn(key)}
+                  onEnabledChange={(next) => setEnabled(key, next)}
                   onChange={(value) => setTrait(key, value)}
                 />
               )
@@ -254,7 +319,9 @@ export function CharacterPanel({
                   min={NINA_SCORE_MIN}
                   max={NINA_SCORE_MAX}
                   disabled={pending}
-                  unsaved={unsaved.has(`dials.${key}`)}
+                  unsaved={rowUnsaved(`dials.${key}`, key)}
+                  enabled={isOn(key)}
+                  onEnabledChange={(next) => setEnabled(key, next)}
                   onChange={(value) => setDial(key, value)}
                 />
               )
@@ -339,6 +406,7 @@ export function CharacterPanel({
                   userId,
                   traits: draft.traits,
                   dials: draft.dials,
+                  enabled: draft.enabled,
                   relationship: draft.relationship,
                   wardrobe: draft.wardrobe,
                   notes: draft.notes,

@@ -62,59 +62,72 @@ export default async function AdminHomePage() {
 
   return (
     <div>
-      <header className="mb-6">
+      <header className="mb-5 lg:mb-6">
         <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Admin</h1>
-        <p className="mt-1 text-[13px] font-medium text-ink-2">
+        <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
           Signed in as {email}. Everything here writes production.
         </p>
       </header>
 
+      {/* `min-h-11` on each card's link is `docs/design-brief.md`'s 44 pt minimum, spelled where
+          it is easiest to lose: a 13 px line of text is a 18 px target, and these four links are
+          the only navigation on this page that is not the nav bar. `mb-3` rather than `mb-4`
+          above them, so the taller control does not make every card 26 px longer. */}
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Nina&rsquo;s album</h2>
-          <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
+          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
             {albumCount === 0
               ? 'Empty — she is still using the committed photo.'
               : `${albumCount} photo${albumCount === 1 ? '' : 's'}, ${
                   current ? 'one current' : 'none current'
                 }.`}
           </p>
-          <Link href="/admin/nina" className="text-[13px] font-semibold text-accent">
+          <Link
+            href="/admin/nina"
+            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
+          >
             Manage the album &rarr;
           </Link>
         </Card>
 
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Chat photos</h2>
-          <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
+          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
             {chatPhotoCount === 0
               ? 'She has not sent a photo in the chat yet.'
               : `${chatPhotoCount} photo${
                   chatPhotoCount === 1 ? '' : 's'
                 } she has generated in the conversation.`}
           </p>
-          <Link href="/admin/photos" className="text-[13px] font-semibold text-accent">
+          <Link
+            href="/admin/photos"
+            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
+          >
             Open the collection &rarr;
           </Link>
         </Card>
 
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Memory</h2>
-          <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
+          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
             {me === null
               ? 'Nothing kept yet.'
               : `${me.slots} slot${me.slots === 1 ? '' : 's'} and ${me.facts} ledger row${
                   me.facts === 1 ? '' : 's'
                 } for your account.`}
           </p>
-          <Link href="/admin/memory" className="text-[13px] font-semibold text-accent">
+          <Link
+            href="/admin/memory"
+            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
+          >
             Read and edit her memory &rarr;
           </Link>
         </Card>
 
         <Card className="p-5">
           <h2 className="text-[15px] font-semibold text-ink">Her character</h2>
-          <p className="mt-1 mb-4 text-[13px] font-medium text-ink-2">
+          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
             {relationshipCopy(tuning.relationship).label}
             {loud.length === 0
               ? ', every dial at its default.'
@@ -127,7 +140,10 @@ export default async function AdminHomePage() {
               every browser and opens the disclosure in the ones that implement fragment-targeted
               details; where it does not, the panel is the first thing on the page and is one
               click. A deep link is not worth a second copy of the panel on its own route. */}
-          <Link href="/admin/nina#character" className="text-[13px] font-semibold text-accent">
+          <Link
+            href="/admin/nina#character"
+            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
+          >
             Tune her character &rarr;
           </Link>
         </Card>

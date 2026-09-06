@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { TOUCH_ICON, TOUCH_TARGET } from '@/components/admin/touch'
 import { Button, CONTROL_CLASS, Field } from '@/components/ui'
 import { folderName, folderParent, isInFolderTree } from '@/lib/admin/filetree'
 import {
@@ -162,8 +163,11 @@ export function FolderMenu({
    * chevron, the folder's `<Link>` and its count. An open panel as a fourth flex ITEM would
    * squeeze those three and then wrap a text field into ~60 px. So the trigger stays in the line
    * and every panel is `absolute` under it, at a width a sentence can actually be read at, with a
-   * `z-20` that clears the rows below it. That is a layout necessity of the seam phase 5 left, not
-   * a second opinion about where the affordance goes.
+   * `z-40` that clears the rows below it AND the admin shell's `z-30` bottom nav bar, which is
+   * fixed to the foot of the viewport below `lg` — a panel opened from the last row of the rail
+   * extends past that line, and at `z-20` its Delete and Move rows painted underneath the bar and
+   * could not be tapped. That is a layout necessity of the seam phase 5 left, not a second opinion
+   * about where the affordance goes.
    */
   return (
     <div className="relative text-[12px]">
@@ -171,7 +175,7 @@ export function FolderMenu({
         <button
           type="button"
           aria-label={`Folder actions for ${label}`}
-          className="rounded-field px-1.5 py-0.5 font-semibold text-ink-3 hover:bg-paper-2"
+          className={cn(TOUCH_ICON, 'rounded-field font-semibold text-ink-3 hover:bg-paper-2')}
           onClick={() => setMode('menu')}
         >
           &hellip;
@@ -180,7 +184,7 @@ export function FolderMenu({
         <button
           type="button"
           aria-label="Close folder actions"
-          className="rounded-field px-1.5 py-0.5 font-semibold text-ink-2 hover:bg-paper-2"
+          className={cn(TOUCH_ICON, 'rounded-field font-semibold text-ink-2 hover:bg-paper-2')}
           onClick={() => {
             setMode('idle')
             setError(null)
@@ -191,7 +195,7 @@ export function FolderMenu({
       )}
 
       {mode === 'menu' && (
-        <div className="absolute top-full right-0 z-20 mt-1 flex w-[280px] flex-col items-start gap-0.5 rounded-card bg-paper-2 p-1.5 shadow-sheet">
+        <div className="absolute top-full right-0 z-40 mt-1 flex w-[280px] max-w-[calc(100vw-2rem)] flex-col items-start gap-0.5 rounded-card bg-paper-2 p-1.5 shadow-sheet">
           <MenuItem onClick={() => open('create')}>New subfolder</MenuItem>
           {!isRoot && <MenuItem onClick={() => open('rename')}>Rename</MenuItem>}
           {!isRoot && <MenuItem onClick={() => open('move')}>Move to&hellip;</MenuItem>}
@@ -204,7 +208,7 @@ export function FolderMenu({
       )}
 
       {(mode === 'create' || mode === 'rename') && (
-        <div className="absolute top-full right-0 z-20 mt-1 w-[280px] rounded-card bg-paper-2 p-3 shadow-sheet">
+        <div className="absolute top-full right-0 z-40 mt-1 w-[280px] max-w-[calc(100vw-2rem)] rounded-card bg-paper-2 p-3 shadow-sheet">
           <Field label={mode === 'create' ? `New folder inside ${label}` : `Rename ${label}`}>
             <input
               autoFocus
@@ -252,7 +256,7 @@ export function FolderMenu({
       )}
 
       {mode === 'move' && (
-        <div className="absolute top-full right-0 z-20 mt-1 w-[280px] rounded-card bg-paper-2 p-3 shadow-sheet">
+        <div className="absolute top-full right-0 z-40 mt-1 w-[280px] max-w-[calc(100vw-2rem)] rounded-card bg-paper-2 p-3 shadow-sheet">
           <Field
             label={`Move ${label} into`}
             hint="No photo is re-uploaded — only the folder changes."
@@ -294,7 +298,7 @@ export function FolderMenu({
       )}
 
       {mode === 'delete' && (
-        <div className="absolute top-full right-0 z-20 mt-1 w-[280px] rounded-card border border-red/40 bg-paper-2 p-3 shadow-sheet">
+        <div className="absolute top-full right-0 z-40 mt-1 w-[280px] max-w-[calc(100vw-2rem)] rounded-card border border-red/40 bg-paper-2 p-3 shadow-sheet">
           <p className="mb-2 max-w-[54ch] font-semibold text-red">
             Delete {label} and the {photoCount} photo{photoCount === 1 ? '' : 's'} in it and under
             it. The rows go first and the files behind them are deleted afterwards, best effort — a
@@ -347,7 +351,7 @@ export function FolderMenu({
       {error != null && (
         <p
           role="alert"
-          className="absolute top-full right-0 z-20 mt-1 w-[280px] rounded-card bg-paper-2 p-2 font-semibold text-warn shadow-sheet"
+          className="absolute top-full right-0 z-40 mt-1 w-[280px] max-w-[calc(100vw-2rem)] rounded-card bg-paper-2 p-2 font-semibold text-warn shadow-sheet"
         >
           {error}
         </p>
@@ -371,7 +375,8 @@ function MenuItem({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full rounded-field px-2 py-1 text-left font-semibold hover:bg-card',
+        TOUCH_TARGET,
+        'flex w-full items-center rounded-field px-2 text-left font-semibold hover:bg-card',
         destructive ? 'text-red' : 'text-ink-2',
       )}
     >

@@ -95,6 +95,24 @@ export function FileExplorer({
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0)
 
+  /**
+   * The folder rail's visibility BELOW `lg`, where the explorer is one column and the rail would
+   * otherwise be a hundred rows of chrome sitting on top of the photographs.
+   *
+   * Closed by default, and that is not a compromise: the breadcrumb directly above already answers
+   * "where am I", and the question a file manager gets asked on a 414 px screen is "show me this
+   * folder's photos", not "show me the whole tree". Opening it is one tap, and it stays open until
+   * it is shut — so a session spent reorganising folders is not a session spent re-opening a
+   * drawer.
+   *
+   * `lg:` classes and NOT a `matchMedia` hook. At and above `lg` the rail is always rendered and
+   * this flag is inert, so there is no breakpoint to observe, nothing to hydrate against, and no
+   * first frame where the desktop layout is missing a column. The rail also stays in the DOM at
+   * every width, which is what keeps `FolderTree`'s expansion overrides and an open `FolderMenu`
+   * panel alive across a toggle instead of remounting them.
+   */
+  const [treeOpen, setTreeOpen] = useState(false)
+
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -212,9 +230,16 @@ export function FileExplorer({
 
   return (
     <div>
-      {/* ── TOOLBAR ─────────────────────────────────────────────────────────────────────── */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
+      {/* ── TOOLBAR ─────────────────────────────────────────────────────────────────────────
+          Two rows below `lg` — crumbs over controls — and one flex line at `lg`, unchanged from
+          what shipped. `lg:contents` on the control group is what buys that: at `lg` the wrapper
+          stops generating a box and its five children become direct items of the toolbar's flex
+          line again, in the same order, with the same gap. The alternative was a `basis-full
+          lg:basis-auto` on the crumbs, which puts `flex` (a shorthand that sets `flex-basis`) and
+          `flex-basis` in the same declaration and leaves the winner to Tailwind's emission order —
+          and `lib/cn.ts` is a plain join, so there is no merge library to arbitrate that. */}
+      <div className="mb-4 space-y-2 lg:flex lg:flex-wrap lg:items-center lg:gap-3 lg:space-y-0">
+        <nav aria-label="Breadcrumb" className="min-w-0 lg:flex-1">
           <ol className="flex min-w-0 flex-wrap items-center gap-1 text-[13px] font-medium">
             {trail.map((crumb, index) => (
               <li key={crumb.path} className="flex min-w-0 items-center gap-1">
@@ -224,7 +249,14 @@ export function FileExplorer({
                     {crumb.name}
                   </span>
                 ) : (
-                  <Link href={hrefFor(crumb.path)} className="truncate text-accent">
+                  /* A crumb is the primary way back up the tree on a phone, so it is a tap target
+                     and not a 16 px word. `py-*` and not `TOUCH_ICON`: `truncate` needs a block,
+                     and a flex box would make the text an anonymous flex item that `text-overflow`
+                     never reaches. */
+                  <Link
+                    href={hrefFor(crumb.path)}
+                    className="block min-w-0 truncate py-3 text-accent"
+                  >
                     {crumb.name}
                   </Link>
                 )}
@@ -233,60 +265,82 @@ export function FileExplorer({
           </ol>
         </nav>
 
-        <span className="shrink-0 text-[12px] font-semibold text-ink-3 tabular-nums">
-          {page.total} in this folder
-        </span>
+        <div className="flex flex-wrap items-center gap-2 lg:contents">
+          <span className="shrink-0 text-[12px] font-semibold text-ink-3 tabular-nums">
+            {page.total} in this folder
+          </span>
 
-        <input
-          ref={folderInputRef}
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={onPickFolder}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={onPickFolder}
-        />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={onPickFolder}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={onPickFolder}
+          />
 
-        <Button size="md" variant="secondary" onClick={() => fileInputRef.current?.click()}>
-          Add photos
-        </Button>
-        <Button size="md" onClick={() => folderInputRef.current?.click()}>
-          Add a folder
-        </Button>
-        <Button
-          size="md"
-          variant="ghost"
-          aria-pressed={detailOpen}
-          onClick={() => setDetailOpen(!detailOpen)}
-        >
-          {detailOpen ? 'Hide details' : 'Show details'}
-        </Button>
+          {/* The drawer's handle. It does not exist at `lg`, where the rail is a column that is
+              always on screen — so `aria-expanded` never lies about a control the operator can
+              still see. */}
+          <Button
+            size="md"
+            variant="secondary"
+            className="lg:hidden"
+            aria-expanded={treeOpen}
+            aria-controls="admin-folder-rail"
+            onClick={() => setTreeOpen(!treeOpen)}
+          >
+            {treeOpen ? 'Hide folders' : 'Folders'}
+          </Button>
+
+          <Button size="md" variant="secondary" onClick={() => fileInputRef.current?.click()}>
+            Add photos
+          </Button>
+          <Button size="md" onClick={() => folderInputRef.current?.click()}>
+            Add a folder
+          </Button>
+          <Button
+            size="md"
+            variant="ghost"
+            aria-pressed={detailOpen}
+            onClick={() => setDetailOpen(!detailOpen)}
+          >
+            {detailOpen ? 'Hide details' : 'Show details'}
+          </Button>
+        </div>
       </div>
 
-      {/* ── THE THREE COLUMNS ───────────────────────────────────────────────────────────── */}
+      {/* ── THE COLUMNS ─────────────────────────────────────────────────────────────────────
+          Two rails and a canvas at `lg`, exactly as `app/admin/layout.tsx` argued for. ONE column
+          below it, in DOM order: rail (hidden unless opened), content, details. R1 revisits F33
+          R23's *"this UI is for desktop"* premise, not the desktop layout it produced — the tracks
+          at `lg` are the same three, at the same widths. */}
       <div
         className={cn(
-          'grid items-start gap-5',
+          'grid grid-cols-1 items-start gap-4 lg:gap-5',
           detailOpen && selected != null
-            ? 'grid-cols-[200px_minmax(0,1fr)_320px]'
-            : 'grid-cols-[200px_minmax(0,1fr)]',
+            ? 'lg:grid-cols-[200px_minmax(0,1fr)_320px]'
+            : 'lg:grid-cols-[200px_minmax(0,1fr)]',
         )}
       >
-        <FolderTree
-          folders={folders}
-          current={folder}
-          hrefFor={hrefFor}
-          allFolders={allFolders}
-          onNavigate={navigateToFolder}
-          onFolderCreated={addPendingFolder}
-        />
+        <div id="admin-folder-rail" className={cn(treeOpen ? 'block' : 'hidden', 'lg:block')}>
+          <FolderTree
+            folders={folders}
+            current={folder}
+            hrefFor={hrefFor}
+            allFolders={allFolders}
+            onNavigate={navigateToFolder}
+            onFolderCreated={addPendingFolder}
+          />
+        </div>
 
         <div
           className="min-w-0"

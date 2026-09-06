@@ -1,5 +1,10 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
+
+import { TOUCH_ICON } from '@/components/admin/touch'
+import { cn } from '@/lib/cn'
+
 import { ChatPhotoControls } from './ChatPhotoControls'
 import type { ChatPhoto } from './chatPhotoModel'
 
@@ -58,8 +63,23 @@ export function ChatPhotoDetail({
    */
   onRemoved: (note: string | null) => void
 }) {
+  /**
+   * The rail scrolls itself into view when the selection changes — `SelectionPane.tsx`'s effect,
+   * for the same reason and with the same guarantee. Below `lg` this `<aside>` sits under a grid
+   * of up to 48 tiles, so tapping one near the bottom opens a pane the operator cannot see.
+   * `block: 'nearest'` makes it a no-op at `lg`, where the rail is already beside the grid and
+   * `lg:sticky lg:top-8` keeps it there.
+   */
+  const paneRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    paneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [photo.id])
+
   return (
-    <aside className="rounded-card border border-rule bg-card p-5 lg:sticky lg:top-8">
+    <aside
+      ref={paneRef}
+      className="rounded-card border border-rule bg-card p-4 lg:sticky lg:top-8 lg:p-5"
+    >
       <div className="mb-4 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold text-ink">
@@ -73,7 +93,7 @@ export function ChatPhotoDetail({
           type="button"
           onClick={onClose}
           aria-label="Close the details pane"
-          className="shrink-0 px-1 text-[13px] font-semibold text-ink-3"
+          className={cn(TOUCH_ICON, '-mt-2 -mr-2 shrink-0 text-[15px] font-semibold text-ink-3')}
         >
           &times;
         </button>

@@ -51,14 +51,14 @@
 
 ### [P1] High
 
-- [x] **P1-RI-A017** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
+- [x] **P1-RI-A018** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
   - **Difficulty**: NORMAL
   - **Type**: Test
   - **Context**: Proves the whole path the user says has never once worked: a chat message asking Nina to change her picture, through `set_avatar`, through generation, to a genuinely updated profpic row. Tests-only - touches nothing under `app/`, `lib/` or `components/`, which is what lets it run concurrently with phase 4. Asserts `2 x NINA_IMAGE_COST_MICRO_USD` on a job that burned both attempts, which is the per-JOB cumulative reading of `cost_micro_usd` from Decisions. **Branch-sensitive:** on Branch B the suite keeps the `runGenerator()` -> `worker.runOneJob(workerSql, jobId)` shape, the `GITHUB_DISPATCH_TOKEN` stub, the `githubDispatches` router arm and the three dispatch assertions, draining `after()` before the claim so the row is genuinely `dispatched` and seconds old - and deltas A1-A6 are NOT applied.
   - **Status**: completed
   - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 7 of 7)
   - **Satisfies**: R5 — end-to-end test: chat asks Nina to change her profpic and the profpic is truly updated
-  - **Depends on**: `P1-NIN-A006`
+  - **Depends on**: `P1-NIN-A009`
   - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md`
   - **Card**: `miftahulmahfuzh/run-insights#102`
   - **Files**: tests/integration/ninaImageE2E.int.test.ts, tests/live/ninaImageE2E.live.test.ts, and 1 more
@@ -72,6 +72,7 @@
   - **Database isolation, done the careful way**: no Neon branch tooling exists on this box (no `neonctl`, no API key, preview secrets unpullable), so it created a **separate database** `run_insights_itest` on the same endpoint, migrated it, ran there, verified **0 leftover rows and 0 itest rows in production**, reaped one orphaned 70-byte blob, and DROPPED the database. **Production was never written.** The recipe, including the `pg_terminate_backend` step that `DROP` needs, is documented in the suite header.
   - **Live suite cost and gating**: spends **$0.040 + one real Blob object + one throwaway user's quota slot**. Gated behind `LLM_LIVE_TEST=1` **and** a `TEST_DATABASE_URL` that must differ from `.env.local`'s, **and** three real-key checks. CI sets none of them. **Not run by this phase.**
   - **Open**: exit criterion 2 is N/A on Branch A and was **deliberately not faked**.
+
 ### [P1] P1-RI-A000
 - [x] **P1-RI-A000** Phase 2: The pure file-tree library: image filter, path grammar, tree build, upload diff
   - **Difficulty**: NORMAL
@@ -424,5 +425,30 @@
   - **Drift**: `npx tsc --noEmit` reports 13 pre-existing errors (missing Next.js generated globals `PageProps`/`LayoutProps`/`RouteContext` because `.next/types` is not generated in this worktree). Verified identical count on the stashed clean tree — this phase adds zero new type errors. `npm run typecheck` runs `next typegen` first and is the script that would resolve them.
   - **Drift**: The phase plan's Step 9 code block declares 7 `it`s, though its prose said 6. Followed the code block (rung 3). `tests/tabbar.geometry.test.ts` now runs 14 tests, all passing.
   - **Decided**: The plan's static check says the repo-wide `TAB_BAR_FAB_OVERHANG_PX` grep 'must come back empty', but after Step 6 three textual sites remain → kept all three; the governing criterion is the narrowed one. Rung 1: index `## Decisions` D9, which narrowed phase 1's grep to 'no *executable* reference, and the only textual reference left is the doc comment phase 2 owns'. The survivors are `components/ui/TabBar.tsx:44` (phase 1's deliberate 'do not silently delete the argument' header prose, in a region phase 2 must not open) and `tests/tabbar.geometry.test.ts:69,76` (phase 1's comment plus the `not.toContain` assertion that the constant is gone — deleting it would relax a check, which the ladder's tie-break rules forbid). The executable reference phase 2 owned, `lib/nina/chrome.ts:189`, is cleared.
+
+### [P1] P1-RI-A017
+- [x] **P1-RI-A017** Phase 1: Admin shell: viewport, safe areas, navigation
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns `app/globals.css`'s two new horizontal safe-area tokens, `app/admin/layout.tsx`, `components/admin/AdminNav.tsx`, the four admin `page.tsx` header rhythms and container widths, `tests/admin.shell.test.ts` (new), and — declared boundary exception, comment and test-title text only — `app/layout.tsx`, `lib/pwa.ts`, `tests/pwa.install.test.ts`. Does not touch the interactive components in `components/admin/*` that phase 2 owns; nothing under `lib/` except `lib/pwa.ts`'s comment; `components/admin/.workflows/package_readme.md`, which is phase 2's. Exit criteria: `/admin` and its three sub-routes render at 414 px with the shell introducing no horizontal scroll; nothing sits under the notch or the home indicator; the nav is a four-cell fixed bar in the bottom 56 px below `lg` and the unchanged sticky rail at `lg`; reachable one-handed. Structural facts phase 2 depends on: one breakpoint (`lg`), `<main className="min-w-0">`, and the bar's geometry — `h-14` + `border-t`, `z-30`, `fixed bottom-0` below `lg`.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md` (phase 1 of 5)
+  - **Satisfies**: R1 — Revamp the `/admin` UI to be responsive on iPhone XS Max Safari
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A017.md`
+  - **Completed**: 2026-09-06 21:48
+  - **Method**: /do (swarm phase 1 of 5)
+  - **Files**: app/globals.css, components/admin/AdminNav.tsx, app/admin/layout.tsx, app/admin/page.tsx, app/admin/nina/page.tsx, app/admin/photos/page.tsx, app/admin/memory/page.tsx, tests/admin.shell.test.ts, app/layout.tsx, lib/pwa.ts, tests/pwa.install.test.ts
+  - **Result**: `/admin` is a phone shell below `lg` and the unchanged desktop rail at `lg`. `app/globals.css` gains `--safe-left`/`--safe-right` so all four safe-area insets are tokens; `AdminNav` becomes a fixed four-cell 56 px bottom bar (`h-14` + `border-t`, `z-30`, `fixed bottom-0`) below `lg` and stays the sticky rail at `lg` — still a Server Component with no active-link highlighting, per the package readme rule; the shell's gutters are inset-aware and `<main className="min-w-0">` reserves `calc(5rem + var(--safe-bottom))`; the four page headers share one `mb-5 lg:mb-6` rhythm and the hub's four card links are 44 px targets. `tests/admin.shell.test.ts` (14 cases) guards the whole contract, including the bar-height/clearance pair that is spelled in two files. Comment-only corrections in `app/layout.tsx`, `lib/pwa.ts` and `tests/pwa.install.test.ts`, each of which claimed exactly one element in the app pads the top inset.
+  - **Verification**: `npm run format` then `npm run format:check` — "All matched files use Prettier code style!"; `npm run lint` 0 errors (2 pre-existing warnings in the untouched `scripts/capture/shoot.mjs`); `npm run typecheck` (`next typegen && tsc --noEmit`) clean; `npm run test` 142 files / **2710/2710** passed, including the new `tests/admin.shell.test.ts` (14 cases) and phase 3's byte-identity snapshot gate; `npm run build` compiled successfully — 18 static pages, all four `/admin` routes dynamic.
+  - **Drift**: No code drift. Every file the plan quoted matched the tree byte for byte; all ten steps applied as written.
+  - **Drift**: prettier-plugin-tailwindcss re-sorted AdminNav's three padding utilities to `pr-[var(--safe-right)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]`. `tests/admin.shell.test.ts` asserts each individually with `toContain`, so the guard is unaffected — the plan anticipated this and says class order is never asserted.
+  - **Drift**: `npm run build` needs env vars that live only in the main checkout's gitignored `.env.local`; a worktree has none. Verified with placeholder values passed on the command line — no file created, no credential in the tree.
+  - **Decided**: Step 3 in a swarm: mint only this phase's task, not all five → only P1-RI-A017 created (rung 6, surrounding convention: four peer sessions run Step 3 concurrently against the same todos.md, so five sessions each minting five tasks yields duplicates)
+  - **Decided**: Phase 1's package: `.` (RI), not `components/admin` → root `.workflows/todos.md` (rung 4, the plan index: the Package column lists both, phase 1's owned files are app-level, and the index gives `components/admin`'s readme to phase 2)
+  - **Decided**: The plan's `shorts` map does not compile under `noUncheckedIndexedAccess` → `.map((m) => m[1]!)` (rung 6, surrounding convention: `tests/tabbar.geometry.test.ts:86` is the same capture in the same idiom; the assertion itself is unchanged, the check was not relaxed)
+  - **Decided**: Build verification without `.env.local` → placeholder env on the command line, not a copy of the gitignored file (tie-break: narrower blast radius and reversible; no production credential enters the worktree)
+  - **Decided**: Which readme phase 1 updates → the root `.workflows/package_readme.md` only (rung 2/3: the phase plan names `components/admin`'s readme as phase 2's Step 15 and names no other readme as off-limits; the root one carries two rows this phase falsifies)
+
 
 ## Archive
