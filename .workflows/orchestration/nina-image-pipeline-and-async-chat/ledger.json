@@ -18,7 +18,7 @@
         "R2"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A004",
+      "task_id": "P1-NIN-A007",
       "title": "Unblock the camera: the three measured defects"
     },
     {
@@ -39,7 +39,7 @@
         "R7"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A005",
+      "task_id": "P1-NIN-A008",
       "title": "Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop"
     },
     {
@@ -59,7 +59,7 @@
         "R8"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A006",
+      "task_id": "P1-NIN-A009",
       "title": "WhatsApp-style send: instant persist, durable background turn"
     },
     {
@@ -78,7 +78,7 @@
         "R1"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A007",
+      "task_id": "P1-NIN-A010",
       "title": "Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble"
     },
     {
@@ -89,7 +89,7 @@
       ],
       "difficulty": "EASY",
       "n": 5,
-      "note": "R3 done, 2 files, pushed to origin. Reuse only: one NinaJobList, one listNinaImageJobs, no second empty-state renderer. DECISIONS: (1) depends-on P1-NIN-A007 was unticked in todos.md but phase 4's code was fully in tree (8ef6ba1, all 10 files) -> proceeded, rung 2, stale bookkeeping not an incomplete phase; (2) plan's inline jobsNowMs={Date.now()} JSX prop fails react-hooks/purity -> hoisted to a named binding with the SAME eslint-disable phase 4 already ships at app/nina/jobs/page.tsx:55-56, rung 1 (invariant 1: lint passes) over rung 3 (code block); check satisfied, not relaxed. No migration, db:check clean, drizzle/ untouched. package.json not touched.",
+      "note": "R3 done, 2 files, pushed to origin. Reuse only: one NinaJobList, one listNinaImageJobs, no second empty-state renderer. DECISIONS: (1) depends-on P1-NIN-A010 was unticked in todos.md but phase 4's code was fully in tree (8ef6ba1, all 10 files) -> proceeded, rung 2, stale bookkeeping not an incomplete phase; (2) plan's inline jobsNowMs={Date.now()} JSX prop fails react-hooks/purity -> hoisted to a named binding with the SAME eslint-disable phase 4 already ships at app/nina/jobs/page.tsx:55-56, rung 1 (invariant 1: lint passes) over rung 3 (code block); check satisfied, not relaxed. No migration, db:check clean, drizzle/ untouched. package.json not touched.",
       "package": "components/nina`, `app/nina/about",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-5.md",
       "reported_at": "2026-09-06T19:13:36+00:00",
@@ -97,7 +97,7 @@
         "R3"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A008",
+      "task_id": "P1-NIN-A011",
       "title": "The tracking section on `/nina/about`, below Media"
     },
     {
@@ -114,7 +114,7 @@
         "R8"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A009",
+      "task_id": "P1-NIN-A012",
       "title": "Permanent session deletion: take the distilled memory with it"
     },
     {
@@ -133,7 +133,7 @@
         "R5"
       ],
       "status": "done",
-      "task_id": "P1-RI-A017",
+      "task_id": "P1-RI-A018",
       "title": "End-to-end: chat \u2192 `set_avatar` \u2192 generation \u2192 the profpic really changes"
     }
   ],
