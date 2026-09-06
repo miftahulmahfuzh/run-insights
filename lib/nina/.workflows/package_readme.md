@@ -318,6 +318,43 @@ tool handlers and the tool sets), `avatargen.ts`.
 
 *(T)* = has a colocated `*.test.ts`.
 
+## Why no photograph ever reached a chat bubble (R2)
+
+Three independent defects, each sufficient on its own, all measured rather than inferred. Phase 1
+repaired them in the shipped worker **without moving the generation host**, which is what lets a
+later host migration roll back onto a working pipeline instead of onto the broken one.
+
+- **`nina_messages.session_id` has been `NOT NULL` since migration `0004`, and both of the worker's
+  INSERTs omitted it.** Every generation was paid for, uploaded to Blob, and then destroyed by the
+  very write that would have displayed it. `resolveWorkerSessionId` now resolves the session in SQL
+  the worker owns, mirroring `resolveNinaSessionForMessage` clause for clause: the replying
+  message's session, else his most recent session by activity, else `null` — in which case the
+  message is *declined* rather than filed into a conversation he has never seen. Owner-scoped in
+  both branches (invariant 5).
+- **The same crash killed the apology.** The apology INSERT failed identically and took the process
+  down before the terminal UPDATE could record the spend, so jobs `pF5c6V8YbxAR` and `ChfwHZ2GJT4I`
+  reached OpenRouter, were billed, and logged `cost_micro_usd` NULL — invariant 9 failing silently.
+  The apology is now best-effort; the terminal close always runs.
+- **The preflight was blind to the whole class.** It checked only that *named* columns exist, which
+  catches a rename and cannot see an ADDITION. `findSchemaDrift` is now a pure function that also
+  runs the converse over INSERT targets: every `NOT NULL` column with no default must be named.
+  Verified live — against the real schema the pre-fix column list reports exactly *"nina_messages.
+  session_id is NOT NULL with no default and this worker never writes it"*, while the fixed list
+  reports preflight ok.
+
+Two further measurements from the same phase, recorded rather than acted on:
+`fireNinaImageDispatch` stamps `dispatched` *before* it POSTs while a runner needs ~25–40 s to reach
+Generate, so a single `now − GRACE` cutoff meant a targeted dispatch could never claim its own job —
+all five `workflow_dispatch` runs on 2026-09-06 logged `attempted: 0`. `dispatchCutoffFor` now runs
+the window **forward** for a named job (absorbing Vercel/runner clock skew) and backward for a
+sweep; the `running`-reclaim and attempts bounds are deliberately *not* relaxed. And twelve
+consecutive schedule runs fired 1 h 46 m to 4 h 19 m apart against a declared `*/10`, recorded as
+`NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS` — no existing constant's value changed.
+
+> **Gotcha for anyone editing these files:** `*/10` inside a JSDoc block closes the comment. Write
+> `*\/10`, which is the convention already in `scripts/nina-image-worker.ts:36` and
+> `tests/views.render.test.ts`.
+
 ## Deleting a chat session takes what it taught her (R8)
 
 **Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a

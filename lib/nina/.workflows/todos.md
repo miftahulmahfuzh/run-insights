@@ -3,33 +3,22 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-06
-**Total Active Tasks**: 5
+**Total Active Tasks**: 4
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 5
+- P1 High: 4
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A004** Phase 1: Unblock the camera: the three measured defects
-  - **Difficulty**: HARD
-  - **Type**: Bug
-  - **Context**: Repairs the three measured defects that block every photograph (analysis Findings 1-3), and is the whole fix if phase 2's probe fails. Owns the worker's missing `nina_messages.session_id` write - the invariant-6 breach Finding 1 introduced, `NOT NULL` since migration 0004 and omitted by both INSERTs - plus `dispatchCutoffFor`/`claimJob`'s grace window and the recipe path. Per Decisions, `cost_micro_usd` is a per-JOB CUMULATIVE total (`coalesce(cost_micro_usd,0) + spend`) on every writer and both hosts, never a per-attempt overwrite that discards the first bill. Finding 2's regression coverage lives PERMANENTLY in the `dispatchCutoffFor`/`claimJob` unit tests, because the fix still guards the manual `--job` drain of the 15 historical `dispatched` rows and the backstop that is phase 2's rollback target. Adds no `claimed_at` column and generates no migration, though `claimJob`'s own comment invites one. Exit: `drizzle/` gains no file, `db:check` clean, all six CI guards pass.
-  - **Status**: in_progress
-  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 1 of 7)
-  - **Satisfies**: R2 — No photo has ever been generated through chat; fix it. Absolute priority
-  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md`
-  - **Card**: `miftahulmahfuzh/run-insights#96`
-  - **Files**: scripts/nina-image-worker.ts, lib/nina/imagerecipe.ts, .github/workflows/nina-image.yml, tests/nina.imageworker.test.ts, tests/nina.imagerecipe.test.ts
 
 - [ ] **P1-NIN-A005** Phase 2: Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop
   - **Difficulty**: HARD
@@ -90,6 +79,23 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A004** Phase 1: Unblock the camera: the three measured defects
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Repairs the three measured defects that block every photograph (analysis Findings 1-3), and is the whole fix if phase 2's probe fails. Owns the worker's missing `nina_messages.session_id` write - the invariant-6 breach Finding 1 introduced, `NOT NULL` since migration 0004 and omitted by both INSERTs - plus `dispatchCutoffFor`/`claimJob`'s grace window and the recipe path. Per Decisions, `cost_micro_usd` is a per-JOB CUMULATIVE total (`coalesce(cost_micro_usd,0) + spend`) on every writer and both hosts, never a per-attempt overwrite that discards the first bill. Finding 2's regression coverage lives PERMANENTLY in the `dispatchCutoffFor`/`claimJob` unit tests, because the fix still guards the manual `--job` drain of the 15 historical `dispatched` rows and the backstop that is phase 2's rollback target. Adds no `claimed_at` column and generates no migration, though `claimJob`'s own comment invites one. Exit: `drizzle/` gains no file, `db:check` clean, all six CI guards pass.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 1 of 7)
+  - **Satisfies**: R2 — No photo has ever been generated through chat; fix it. Absolute priority
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md`
+  - **Card**: `miftahulmahfuzh/run-insights#96`
+  - **Files**: scripts/nina-image-worker.ts, lib/nina/imagerecipe.ts, .github/workflows/nina-image.yml, tests/nina.imageworker.test.ts, tests/nina.imagerecipe.test.ts
+  - **Completed**: 2026-09-06 22:15
+  - **Method**: /implement (swarm phase 1 of 7, session impl-nina-image-pipeline-and-async-chat-p1)
+  - **Commit**: `f7f0985`
+  - **Verification**: `npm test` 2724 passed (142 files); `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`); `npm run build` succeeds; all six CI guards green; `npm run db:check` clean with `drizzle/` unchanged (no migration, invariant 10); `npm run nina:worker:dry` prints preflight ok against the real database. Invariant 9 held on all four `cost_micro_usd` writes (`coalesce` on every line), including both success paths.
+  - **Decisions**: (a) `/implement` Step 3 skipped, its subagent killed pre-write, coordinator embargo wins [rung 6 + narrower blast radius] — adopted as the set-wide rule; (b) the plan's Step 8 block does not compile, `*/10` closes the JSDoc — written `*\/10` per repo convention at `scripts/nina-image-worker.ts:36` [rung 1, invariant 1]; (c) dropped the plan's Step 11 unused `NeonSql` import, which added a lint warning [rung 1]; (d) committed in-session by explicit pathspec rather than via the completion-handler/readme-updater/pusher chain, which write embargoed files and stage broadly.
+  - **Note**: reported to the ledger at 15:15:33 and reaped at 15:15:50, so the notification half of its report was lost; this entry is reconstructed by the coordinator from the ledger note and commit message, both of which carry the full content.
 
 - [x] **P1-NIN-A009** Phase 6: Permanent session deletion: take the distilled memory with it
   - **Difficulty**: NORMAL
