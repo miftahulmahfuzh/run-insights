@@ -1,0 +1,519 @@
+import 'server-only'
+
+import { put } from '@vercel/blob'
+import { after } from 'next/server'
+
+import { blobEnv } from '@/lib/env'
+import { newId } from '@/lib/id'
+
+import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
+import { ninaImageCaption, type NinaImageFailure } from './imagefail'
+import {
+  claimNinaImageJob,
+  completeNinaImageJob,
+  failNinaImageJob,
+  listRevivableNinaImageJobs,
+  requeueNinaImageJob,
+} from './imagejobs'
+import {
+  NINA_IMAGE_CACHE_MAX_AGE,
+  NINA_IMAGE_CALL_TIMEOUT_MS,
+  NINA_IMAGE_CONTENT_TYPE,
+  NINA_IMAGE_COST_MICRO_USD,
+  NINA_IMAGE_DISPATCH_GRACE_MS,
+  NINA_IMAGE_FINISH_RESERVE_MS,
+  NINA_IMAGE_HEIGHT,
+  NINA_IMAGE_MAX_ATTEMPTS,
+  NINA_IMAGE_RECLAIM_MS,
+  NINA_IMAGE_REVIVE_BUDGET,
+  NINA_IMAGE_RUN_BUDGET_MS,
+  NINA_IMAGE_WIDTH,
+  ninaImagePathname,
+  type NinaImageJobArgs,
+  type NinaImagePurpose,
+} from './imagerecipe'
+import {
+  getNinaMessagesByIds,
+  insertNinaAvatarAsCurrent,
+  insertNinaMessageImages,
+  insertNinaMessages,
+} from './queries'
+import { resolveNinaWriteSession } from './sessionResolve'
+
+/**
+ * **Nina's camera, back on the platform.** This file is what
+ * `scripts/nina-image-worker.ts` was, minus the reason it had to be somewhere else.
+ *
+ * ── WHY IT MOVED, IN ONE PARAGRAPH ────────────────────────────────────────────────────────────
+ * The off-platform design rested on a sentence repeated in five files: *"the shipping generation
+ * is 78.2 s measured and the Hobby ceiling in `sin1` is 60 s, so the work cannot happen on Vercel
+ * at all — not in a Server Action, not in a route handler, not in `after()`."* That number
+ * expired. Vercel's `/docs/fluid-compute` and `/docs/functions/configuring-functions/duration`
+ * (both `last_updated: 2026-08-24`) give Hobby + Fluid compute a default AND maximum of 300 s, and
+ * fluid compute has been on by default for new projects since 2025-04-23; this project was created
+ * 20 August 2026. **Phase 2 step 1 measured it on this deployment rather than trusting the docs**
+ * — a `maxDuration = 300` route in `sin1` held 90.4 s and returned 200, and an `after()` callback
+ * logged `SURVIVED { heldMs: 90030 }` 90 s after its response was flushed and the connection
+ * closed. 78.2 s fits in 300 s with 3.8x headroom.
+ *
+ * ── WHAT MOVING BACK BUYS, AND IT IS NOT ONLY LATENCY ─────────────────────────────────────────
+ *   1. **THIS FILE CAN IMPORT `lib/nina/queries.ts`.** The worker could not (that module uses
+ *      `server-only` and `@/` aliases), so it wrote its own SQL, and its two `nina_messages`
+ *      INSERTs enumerated `(id, user_id, role, text, source, turn_id, reply_to_id)` and omitted
+ *      `session_id`, which migration 0004 had made `NOT NULL`. Measured on run 33986082744: the
+ *      picture was generated, paid for and stored, and the INSERT that would have made it visible
+ *      threw — on the success path AND on the apology path. `insertNinaMessages` takes the session
+ *      as a REQUIRED third parameter, so **a writer that has not resolved one does not compile.**
+ *      That whole class of bug is gone structurally, not by vigilance.
+ *   2. **There is no dispatch grace window to lose a job in.** See `claimNinaImageJob`.
+ *   3. **One host, one set of column names.** The worker's `information_schema` preflight exists
+ *      to catch drift between two hand-written copies; there is one copy on this path.
+ *
+ * ── R7: "ONCE THE BACKGROUND TASK HAS STARTED, CLOSING THE APP MUST NOT MATTER" ────────────────
+ * The guarantee is `after()`'s, and this is exactly what it promises, quoted from
+ * `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/after.md` (Next 16.3.1):
+ *
+ *   · *"`after` will run for the platform's default or configured max duration of your route. If
+ *     your platform supports it, you can configure the timeout limit using the `maxDuration` route
+ *     segment config."* (:50)
+ *   · *"`after` will be executed even if the response didn't complete successfully. Including when
+ *     an error is thrown or when `notFound` or `redirect` is called."* (:54)
+ *   · *"…a primitive called `waitUntil(promise)`, which extends the lifetime of a serverless
+ *     invocation until all promises passed to `waitUntil` have settled."* (:250)
+ *
+ * So the clock that owns this work is the SERVER INVOCATION'S, extended by `waitUntil`, bounded by
+ * the invoking route segment's `maxDuration`. The browser is not in that sentence. Closing the
+ * tab, losing the network, killing the app — none of them is an input to it. **That is R7, and it
+ * is a platform guarantee rather than a hope.**
+ *
+ * **What it does NOT promise, said plainly so nobody re-promises it:** survival past
+ * `maxDuration`, and survival of the instance being killed. Both leave the row `pending`/`running`
+ * with the money possibly spent, and both are recovered by `reviveNinaImageJobs` below on the next
+ * `/nina` render — or, failing that, by the GitHub backstop, or, failing that, by
+ * `sweepStaleNinaImageJobs`' 20-minute apology. Three nets, in that order.
+ *
+ * ── THE BUDGET IS THE SEGMENT'S, WHICH IS WHY TWO LITERALS MOVED ──────────────────────────────
+ * `after()` inherits the `maxDuration` of the route segment it was registered from. The two
+ * segments that can start a generation therefore both carry 300:
+ *   · `app/nina/page.tsx`         — the chat, whose Server Action runs `generate_image`/`set_avatar`
+ *   · `app/api/cron/nina/route.ts` — the evening pass, whose `resolveNinaPromises` calls
+ *                                   `generateNinaAvatar`
+ * A third caller would need the same line. `NINA_IMAGE_RUN_BUDGET_MS` is what this file may spend
+ * of it; `imagerecipe.ts`'s threshold block derives it and `tests/nina.imagerecipe.test.ts`
+ * asserts the arithmetic.
+ *
+ * ── THE GITHUB WORKER IS NOT DELETED, AND THAT IS THE POINT ───────────────────────────────────
+ * `scripts/nina-image-worker.ts` and `.github/workflows/nina-image.yml` survive as the backstop
+ * and as the manual drain, repaired by phase 1. If Vercel turns out to be the wrong host after
+ * all, re-pointing at them is a revert, not a rewrite.
+ */
+
+interface StoredImage {
+  blobUrl: string
+  pathname: string
+  bytes: number
+}
+
+/** The PNG into Blob, under `nina/<userId>/<purpose>-<id>.png`. RU-7's per-user prefix. */
+async function storeNinaImage(
+  userId: string,
+  purpose: NinaImagePurpose,
+  b64: string,
+): Promise<StoredImage> {
+  const bytes = Buffer.from(b64, 'base64')
+  const blob = await put(ninaImagePathname(userId, purpose, newId()), bytes, {
+    access: 'public',
+    contentType: NINA_IMAGE_CONTENT_TYPE,
+    addRandomSuffix: true,
+    allowOverwrite: false,
+    cacheControlMaxAge: NINA_IMAGE_CACHE_MAX_AGE,
+    /* Through `lib/env.ts`, never `process.env` — plan invariant 3. `lib/share/rotateBlobs.ts:64`
+     * is the precedent; `scripts/` is the only place that reads the raw variable. */
+    token: blobEnv().BLOB_READ_WRITE_TOKEN,
+  })
+  return { blobUrl: blob.url, pathname: blob.pathname, bytes: bytes.byteLength }
+}
+
+/**
+ * Success, for a **chat selfie**. The photograph, as an ordinary chat message.
+ *
+ * **Not a special kind of message** — a `nina_messages` row plus a `nina_message_images` row with
+ * `kind = 'generated'`, the same pair an upload writes. That is what makes it quotable,
+ * gallery-able and unread-able for free. `source = 'chat'` on purpose and NOT a sixth
+ * `NinaMessageSource`: she is answering something he said in an open conversation, minutes ago.
+ *
+ * ── ONE READ ANSWERS BOTH QUESTIONS THE WORKER GOT WRONG ──────────────────────────────────────
+ * `getNinaMessagesByIds` is owner-scoped, so the single row it returns settles:
+ *   · **which session** the photograph lands in — the one he asked in, which is
+ *     `resolveNinaSessionForMessage`'s policy verbatim, not a second copy of it; and
+ *   · **whether the quote target still exists** — a `reply_to_id` whose target was deleted would
+ *     violate the foreign key and lose the photograph, so a miss degrades to a plain message. The
+ *     worker spells this as a subselect inside its INSERT; this is the same rule through the same
+ *     policy module.
+ * A foreign or vanished id comes back empty and falls through to `resolveNinaWriteSession`, which
+ * is assumption A3 and creates a session rather than giving up (R11 lets him delete his last one).
+ *
+ * ── THE ORDER IS LOAD-BEARING ─────────────────────────────────────────────────────────────────
+ * The message and its image row go in FIRST, then the job is marked `ok`. A crash between the two
+ * leaves a `pending` job whose photo is already in the chat, which a sweep will eventually
+ * apologise for — odd, survivable, self-correcting. The reverse order would mark the job done with
+ * no photograph anywhere and no sweep left to notice, which is precisely the failure the user
+ * reported.
+ *
+ * `prompt` gets the sidecar (prompt as sent, model, seed) and `description` gets the scene prose.
+ * No `glm-4.6v` describe pre-pass runs over a generated image: we wrote the picture, so paying a
+ * vision call to be told back our own prompt would be absurd.
+ */
+async function finishSelfie(
+  userId: string,
+  jobId: string,
+  args: NinaImageJobArgs,
+  image: StoredImage,
+  result: { latencyMs: number; costMicroUsd: number },
+): Promise<void> {
+  const quoted =
+    args.replyToId == null
+      ? null
+      : ((await getNinaMessagesByIds(userId, [args.replyToId]))[0] ?? null)
+
+  const sessionId = quoted?.sessionId ?? (await resolveNinaWriteSession(userId))
+
+  const [message] = await insertNinaMessages(
+    userId,
+    [
+      {
+        role: 'nina',
+        /* Never empty. `nina_messages.text` is notNull and would accept `''`, but an empty bubble
+         * is not a message. `ninaImageCaption` is deterministic in the job id, so a row read twice
+         * says the same thing. */
+        body: ninaImageCaption(jobId),
+        source: 'chat',
+        turnId: jobId,
+        replyToId: quoted?.id ?? null,
+      },
+    ],
+    sessionId,
+  )
+
+  /* `insertNinaMessages` returns `[]` rather than throwing when the session is not his. That
+   * cannot happen here — we just resolved it from his own rows — so it is a bug, not a
+   * degradation, and it must not be swallowed into a "successful" job with no bubble. */
+  if (message == null) throw new Error('finishSelfie: no message row was written')
+
+  await insertNinaMessageImages(userId, [
+    {
+      messageId: message.id,
+      kind: 'generated',
+      blobUrl: image.blobUrl,
+      pathname: image.pathname,
+      width: NINA_IMAGE_WIDTH,
+      height: NINA_IMAGE_HEIGHT,
+      bytes: image.bytes,
+      description: args.scene,
+      prompt: args.sidecar,
+      sortOrder: 0,
+    },
+  ])
+
+  await completeNinaImageJob(userId, jobId, result)
+}
+
+/**
+ * Success, for an **avatar**.
+ *
+ * `insertNinaAvatarAsCurrent` is `lib/nina/queries.ts`'s, and using it rather than re-implementing
+ * it is the second half of what moving on-platform buys. The un-current and the insert are one
+ * `db.batch`, in that order, because the partial unique index `nina_avatars_user_current_unq`
+ * makes the order mandatory rather than merely tidy: inserting a second `is_current` row before
+ * un-currenting the first violates the index. The worker had to hand-roll that transaction; this
+ * does not.
+ *
+ * **`announced_at` is left NULL, and that NULL IS the `avatar_changed` proactive trigger.** It is
+ * reached only on success, which is the structural half of "her announcement must not fire for a
+ * photograph that does not exist". No `nina_messages` row: nobody asked in chat, and the next cron
+ * tick is what makes her mention it.
+ */
+async function finishAvatar(
+  userId: string,
+  jobId: string,
+  args: NinaImageJobArgs,
+  image: StoredImage,
+  result: { latencyMs: number; costMicroUsd: number },
+): Promise<void> {
+  await insertNinaAvatarAsCurrent(userId, {
+    blobUrl: image.blobUrl,
+    pathname: image.pathname,
+    width: NINA_IMAGE_WIDTH,
+    height: NINA_IMAGE_HEIGHT,
+    bytes: image.bytes,
+    source: args.source === 'admin' ? 'admin' : 'generated',
+    description: args.scene,
+  })
+
+  await completeNinaImageJob(userId, jobId, result)
+}
+
+/**
+ * Failure. **Two outcomes, and the choice is the retry budget.**
+ *
+ * With budget left, the row goes back to `queued` and stays `pending`, so the SAME prompt and the
+ * SAME seed are tried again — by `runNinaImageJob`'s own loop if the wall clock allows, otherwise
+ * by the next `/nina` render's revival, otherwise by the GitHub backstop. Nothing is said to the
+ * runner.
+ *
+ * With the budget spent, the job is terminal and **the apology goes in with it, in the same
+ * call**, because a caller that could mark a job failed without saying anything is a caller that
+ * will eventually do so. `failNinaImageJob` owns that pairing, skips the message for an avatar
+ * job, and writes the terminal UPDATE even if the apology INSERT fails.
+ */
+async function closeFailed(
+  userId: string,
+  jobId: string,
+  args: NinaImageJobArgs,
+  attempts: number,
+  outcome: {
+    kind: NinaImageFailure
+    latencyMs: number
+    costMicroUsd: number | null
+    detail: string
+  },
+): Promise<'retry' | 'gave-up'> {
+  console.warn('[nina] in-platform generation failed', {
+    jobId,
+    kind: outcome.kind,
+    attempts,
+    detail: outcome.detail,
+  })
+
+  if (attempts < NINA_IMAGE_MAX_ATTEMPTS) {
+    /* The spend travels with the requeue. Invariant 9: this attempt reached the provider and was
+     * billed, and the retry must not erase it. `null` adds nothing rather than guessing — see
+     * `requeueNinaImageJob`. */
+    await requeueNinaImageJob(userId, jobId, {
+      latencyMs: outcome.latencyMs,
+      costMicroUsd: outcome.costMicroUsd,
+    })
+    return 'retry'
+  }
+
+  await failNinaImageJob({
+    userId,
+    jobId,
+    kind: outcome.kind,
+    purpose: args.purpose,
+    latencyMs: outcome.latencyMs,
+    /* `null` means "we do not know, guess high" and `failNinaImageJob` substitutes the constant;
+     * `0` means the request never left. Passed STRAIGHT THROUGH, not `?? undefined`: `undefined`
+     * is the "caller has no opinion" case that only the give-up sweep uses, and conflating the two
+     * is what would let an unknown spend be recorded as nothing. Plan invariant 9 in one argument. */
+    costMicroUsd: outcome.costMicroUsd,
+    replyToId: args.replyToId,
+    detail: outcome.detail,
+  })
+  return 'gave-up'
+}
+
+/** One attempt: claim, call, store, finish. Returns what happened. */
+async function attemptOnce(
+  userId: string,
+  jobId: string,
+  opts: { queuedBefore?: Date | null; runningBefore?: Date | null },
+): Promise<'none' | 'ok' | 'retry' | 'gave-up'> {
+  const claim = await claimNinaImageJob(userId, jobId, opts)
+  if (claim == null) return 'none'
+
+  const { args, attempts } = claim
+  console.info('[nina] image job claimed', { jobId, purpose: args.purpose, attempt: attempts })
+
+  const outcome: NinaImageCallResult = await callNinaImageModel(args.prompt, args.seed)
+  if (!outcome.ok) return closeFailed(userId, jobId, args, attempts, outcome)
+
+  /* The provider reported nothing, so the measured price stands in. ONE substitution point on this
+   * path — `imagecall.ts` deliberately does not do it too. */
+  const costMicroUsd = outcome.costMicroUsd > 0 ? outcome.costMicroUsd : NINA_IMAGE_COST_MICRO_USD
+  const result = { latencyMs: outcome.latencyMs, costMicroUsd }
+
+  let image: StoredImage
+  try {
+    image = await storeNinaImage(userId, args.purpose, outcome.b64)
+  } catch (cause) {
+    /*
+     * **A store failure is a `transport` failure and not a crash.** The picture exists and we could
+     * not keep it, which from the runner's side is "the photo did not come through" — and the
+     * money is already spent, which is why it is still logged and still counted against the cap.
+     */
+    return closeFailed(userId, jobId, args, attempts, {
+      kind: 'transport',
+      latencyMs: outcome.latencyMs,
+      costMicroUsd,
+      detail: `store: ${String(cause)}`,
+    })
+  }
+
+  try {
+    if (args.purpose === 'avatar') {
+      await finishAvatar(userId, jobId, args, image, result)
+    } else {
+      await finishSelfie(userId, jobId, args, image, result)
+    }
+  } catch (cause) {
+    /*
+     * The bytes are stored and the row could not be written. Closing it as a failure is the honest
+     * outcome — no photograph is visible, so she should say so — and the blob is left behind, which
+     * the `reap-orphaned-blobs` skill exists for.
+     */
+    return closeFailed(userId, jobId, args, attempts, {
+      kind: 'transport',
+      latencyMs: outcome.latencyMs,
+      costMicroUsd,
+      detail: `finish: ${String(cause)}`,
+    })
+  }
+
+  console.info('[nina] image job done', {
+    jobId,
+    purpose: args.purpose,
+    bytes: image.bytes,
+    costMicroUsd,
+    latencyMs: outcome.latencyMs,
+  })
+  return 'ok'
+}
+
+/**
+ * **Claim, generate, close — and retry only while the wall clock can actually hold another one.**
+ *
+ * The retry loop is bounded twice, and both bounds matter:
+ *   · `NINA_IMAGE_MAX_ATTEMPTS`, enforced inside `claimNinaImageJob`'s WHERE, so two runners
+ *     cannot spend the same budget; and
+ *   · the DEADLINE below, so a second attempt is started only when a whole `NINA_IMAGE_CALL_TIMEOUT_MS`
+ *     plus the finish writes still fit. **A retry that would be killed halfway is worse than no
+ *     retry**: it spends $0.04 and leaves a `running` row for a sweep to apologise for.
+ *
+ * That deadline is why a FAST failure (a 500 at five seconds) retries immediately and a SLOW one (a
+ * 150 s timeout) does not. The slow case is left `queued` and picked up by
+ * `reviveNinaImageJobs` on the next `/nina` render, which starts a fresh invocation with a fresh
+ * 300 s.
+ */
+export async function runNinaImageJob(
+  userId: string,
+  jobId: string,
+  opts: { queuedBefore?: Date | null; runningBefore?: Date | null } = {},
+): Promise<'none' | 'ok' | 'retry' | 'gave-up'> {
+  const deadlineAt = Date.now() + NINA_IMAGE_RUN_BUDGET_MS
+
+  for (;;) {
+    const outcome = await attemptOnce(userId, jobId, opts)
+    if (outcome !== 'retry') return outcome
+
+    if (Date.now() + NINA_IMAGE_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS > deadlineAt) {
+      console.warn('[nina] retry left for the next host — not enough wall clock', {
+        jobId,
+        remainingMs: deadlineAt - Date.now(),
+      })
+      return 'retry'
+    }
+    /* A reclaim on the SAME invocation: the row is `queued` again and this loop owns it. The
+     * cutoffs stay as the caller set them, so a revival that was allowed to steal a stale row is
+     * still allowed to retry it. */
+  }
+}
+
+/**
+ * **The entry point every caller uses, and the reason the tab does not matter.**
+ *
+ * `after()` and not a bare floating promise: a floating promise in a Server Action can be cut off
+ * the instant the response is flushed, whereas `after` is documented to *"run for the platform's
+ * default or configured max duration of your route"* and to be *"executed even if the response
+ * didn't complete successfully"*. On Vercel that is `waitUntil`, which *"extends the lifetime of a
+ * serverless invocation until all promises passed to `waitUntil` have settled"*. The work is the
+ * server's from the moment this returns.
+ *
+ * **It is registered from inside another `after()` after phase 3**, when `runNinaTurn` moves into
+ * the background — the Next 16 reference sanctions that in as many words: *"`after` can be nested
+ * inside other `after` calls"*. The budget does not compound; both share the segment's
+ * `maxDuration`, which is what `NINA_TURN_SPENT_MS` accounts for in the threshold block.
+ *
+ * It returns `void` and never throws. A generation nobody is waiting for that fails to start must
+ * not take a chat turn down with it: the row stays `pending`, and the revival and the give-up
+ * sweep are both still ahead of it.
+ */
+export function fireNinaImageGeneration(input: {
+  userId: string
+  jobId: string
+  purpose: NinaImagePurpose
+  replyToId: string | null
+  /** Set only by `reviveNinaImageJobs`. See `claimNinaImageJob`. */
+  queuedBefore?: Date | null
+  runningBefore?: Date | null
+}): void {
+  const { userId, jobId, purpose, queuedBefore, runningBefore } = input
+
+  after(async () => {
+    try {
+      const outcome = await runNinaImageJob(userId, jobId, { queuedBefore, runningBefore })
+      console.info('[nina] image run finished', { jobId, purpose, outcome })
+    } catch (cause) {
+      /*
+       * The bookkeeping itself broke — a dead connection, a bug. The row stays `pending`; the next
+       * `/nina` render revives it, and if that never happens `sweepStaleNinaImageJobs` closes it at
+       * 20 minutes with her apology. This is the one path here that relies on a later mechanism
+       * rather than closing the job itself, and both later mechanisms exist.
+       */
+      console.error('[nina] image run threw', { jobId, purpose, error: String(cause) })
+    }
+  })
+}
+
+/**
+ * **R7's second net: arriving at `/nina` restarts what an invocation dropped.**
+ *
+ * `sweepStaleNinaImageJobs` already turns a 20-minute-old `pending` job into an apology. That is
+ * the DEADLINE. This is the RESCUE, and it runs first: a job whose invocation was killed at
+ * `maxDuration`, or whose doorbell (in the old design) never rang, is re-fired on a fresh
+ * invocation with a fresh 300 s — on the server, in `after()`, so the runner may close the tab the
+ * instant the page paints.
+ *
+ * **It is deliberately not part of the give-up sweep and not part of `listOpenNinaImageJobs`.**
+ * Those are phase 4's to widen and one of them writes an apology; this one writes nothing and only
+ * schedules. Keeping them separate is what lets phase 4 reshape the projection without touching
+ * the recovery path.
+ *
+ * `NINA_IMAGE_REVIVE_BUDGET` is 1: one revival per render. A burst of six queued jobs must not
+ * turn one page load into six concurrent generations sharing one function's wall clock — and the
+ * next render takes the next one.
+ *
+ * The two cutoffs are the whole content of the question: a `queued` row younger than
+ * `NINA_IMAGE_DISPATCH_GRACE_MS` may be about to be started by the invocation that opened it, and
+ * a `running` row younger than `NINA_IMAGE_RECLAIM_MS` may still be generating. Reviving either
+ * would bill twice for one photograph.
+ */
+export async function reviveNinaImageJobs(userId: string, now: Date = new Date()): Promise<number> {
+  const queuedBefore = new Date(now.getTime() - NINA_IMAGE_DISPATCH_GRACE_MS)
+  const runningBefore = new Date(now.getTime() - NINA_IMAGE_RECLAIM_MS)
+
+  let candidates: Awaited<ReturnType<typeof listRevivableNinaImageJobs>>
+  try {
+    candidates = await listRevivableNinaImageJobs(userId, { queuedBefore, runningBefore })
+  } catch (cause) {
+    /* A render must not fail over a recovery read. The give-up sweep is still ahead of the job. */
+    console.warn('[nina] could not look for revivable image jobs', { error: String(cause) })
+    return 0
+  }
+
+  let revived = 0
+  for (const candidate of candidates.slice(0, NINA_IMAGE_REVIVE_BUDGET)) {
+    fireNinaImageGeneration({
+      userId,
+      jobId: candidate.id,
+      purpose: candidate.purpose,
+      replyToId: candidate.replyToId,
+      queuedBefore,
+      runningBefore,
+    })
+    revived += 1
+  }
+
+  if (revived > 0) console.warn('[nina] revived image jobs in-platform', { userId, revived })
+  return revived
+}

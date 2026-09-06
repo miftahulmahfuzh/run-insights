@@ -48,6 +48,29 @@
  * "a candidate you like six weeks from now" has to be explainable. That habit is worth keeping and
  * the database is where it goes: `nina_message_images.prompt` receives it (assembled by
  * `sidecarText` in `imagegen.ts`). No file is written; the row IS the sidecar.
+ * ── THE CEILING THAT MOVED, AND THE ONE MEASUREMENT THAT MATTERS ──────────────────────────────
+ * Five files used to say: *"the shipping generation is 78.2 s measured and the Hobby ceiling in
+ * `sin1` is 60 s, so the work cannot happen on Vercel at all."* That is no longer true.
+ * `/docs/fluid-compute` and `/docs/functions/configuring-functions/duration` (both
+ * `last_updated: 2026-08-24`) give Hobby + Fluid compute a default AND maximum of 300 s, and
+ * fluid compute has been on by default for new projects since 2025-04-23; `vercel project
+ * inspect run-insights` reports Created At: 20 August 2026. **The phase that acted on this
+ * measured it rather than trusting it** — on 2026-09-06 a deployed `maxDuration = 300` route in
+ * `sin1` held 90.4 s and returned 200 (no 504 at 60 s), and an `after()` callback logged
+ * `SURVIVED { heldMs: 90030 }` 90 s after its response had been flushed and the connection
+ * closed. Both numbers are in that phase's plan file.
+ *
+ * The threshold chain below is therefore derived for a host with TWO ceilings, not one:
+ *   · VERCEL, the primary — 300 s per invocation, shared with whatever the turn already spent.
+ *   · GITHUB ACTIONS, the backstop — six hours per job, capped at `timeout-minutes: 6` by us.
+ * That is why there are two call timeouts. They are not a duplication; they are two hosts.
+ *
+ * ── THERE IS NO ASYNCHRONOUS OPENROUTER IMAGE API (R4) ────────────────────────────────────────
+ * The full answer, with the endpoints, is in `lib/nina/imagecall.ts`'s header, next to the code
+ * that would have used one. Short version: image generation is synchronous (base64 in the
+ * response, or SSE partials with `stream: true`), and the async job API — `POST /api/v1/videos`,
+ * `callback_url`, `X-OpenRouter-Signature` — is video-only. Do not go looking for a webhook.
+ *
  */
 
 export const NINA_IMAGE_MODEL = 'qwen/qwen-image-3-pro'
@@ -95,63 +118,144 @@ export const NINA_IMAGE_COST_MICRO_USD = 40_000
  */
 export const NINA_IMAGE_DAILY_CAP = 6
 
-/* ── The threshold chain. Derived in the plan's §The threshold arithmetic; asserted in the test. ── */
+/* ── The threshold chain. Two hosts, one ordering; asserted in tests/nina.imagerecipe.test.ts. ── */
 
-/** The worker's own OpenRouter timeout. 3x the measured 78.2 s. */
-export const NINA_WORKER_CALL_TIMEOUT_MS = 240_000
-/** `timeout-minutes` on the workflow job. Must exceed the call timeout plus setup. */
-export const NINA_WORKER_TIMEOUT_MINUTES = 6
-/** The `api.github.com` POST, inside `after()`, sharing the Server Action's page budget. */
-export const NINA_IMAGE_DISPATCH_TIMEOUT_MS = 8_000
 /**
- * How long a `dispatched` row is left alone before a SWEEP treats it as un-started.
+ * **The primary host's ceiling, measured.** Vercel Hobby + Fluid compute: default AND maximum
+ * 300 s. Every `after()` callback registered from a route segment inherits that segment's
+ * `maxDuration`, which is why `app/nina/page.tsx` and `app/api/cron/nina/route.ts` both carry the
+ * literal `300` — a segment left at 60 would kill a generation at 60 no matter what this file
+ * says.
  *
- * **It applies to a sweep and NOT to a job named by `--job`** — see `dispatchCutoffFor` in
- * `scripts/nina-image-worker.ts`, which is where Finding 2 was fixed. The grace exists to stop a
- * sweep stealing a job a runner is about to start; a named job and its runner are the same event, so
- * for a named claim the same window runs FORWARD instead, absorbing clock skew between the Vercel
- * process that stamped `created_at` and the GitHub runner that reads `now`.
+ * DECLARED here so the arithmetic below is checkable in one place; the segments themselves must
+ * spell a LITERAL, because segment config exports are statically analysed at build time and an
+ * imported constant is not a value the analyser can see.
+ */
+export const NINA_HOST_MAX_DURATION_MS = 300_000
+
+/**
+ * What a chat turn may already have spent out of the invocation before a `generate_image` tool
+ * call starts a generation in a nested `after()`. **Measured: 13-45 s.** The high end, because a
+ * budget derived from the typical case is a budget that fails on the bad day.
+ */
+export const NINA_TURN_SPENT_MS = 45_000
+
+/**
+ * **The in-platform OpenRouter call's timeout.** 1.9x the measured 78.2 s.
+ *
+ * Not `NINA_WORKER_CALL_TIMEOUT_MS`: on a GitHub runner there is no ceiling to race, so 240 s is
+ * free there and would be reckless here. 45 + 150 + 20 = 215 s inside a 300 s invocation, with
+ * 85 s of slack for a cold start and a slow Blob write.
+ */
+export const NINA_IMAGE_CALL_TIMEOUT_MS = 150_000
+
+/** The Blob `put` plus three indexed writes, with slack. Reserved out of the run budget. */
+export const NINA_IMAGE_FINISH_RESERVE_MS = 20_000
+
+/**
+ * What `lib/nina/imagerun.ts` may spend of the invocation, from the moment it starts. Its retry
+ * loop refuses to begin an attempt that would not fit inside what is left of this — a retry killed
+ * halfway spends $0.04 and leaves a `running` row for a sweep to apologise for.
+ *
+ * `NINA_TURN_SPENT_MS + NINA_IMAGE_RUN_BUDGET_MS <= NINA_HOST_MAX_DURATION_MS` is the inequality
+ * the whole in-platform design rests on. 45 + 200 = 245 <= 300.
+ */
+export const NINA_IMAGE_RUN_BUDGET_MS = 200_000
+
+/** The backstop worker's own OpenRouter timeout. 3x the measured 78.2 s; off Vercel, nothing to
+ *  race. Unchanged by the migration, because that host's ceiling did not move. */
+export const NINA_WORKER_CALL_TIMEOUT_MS = 240_000
+
+/** `timeout-minutes` on the backstop workflow's job. Must exceed the call timeout plus setup. */
+export const NINA_WORKER_TIMEOUT_MINUTES = 6
+
+/**
+ * How long a job nobody has started is left alone before ANOTHER host may pick it up.
+ *
+ * **Its meaning narrowed and its value did not.** It used to be "how long a `dispatched` row is
+ * left alone before a backstop treats it as un-started", and it was the arithmetic half of the
+ * measured deadlock: the doorbell stamped `dispatched` 25-40 s before the runner it woke could
+ * boot, and a runner may not claim a `dispatched` row younger than this — so a targeted dispatch
+ * could never claim the job it was dispatched for. In-platform there is no doorbell, so nothing
+ * writes `dispatched` at all; what survives is the honest question `reviveNinaImageJobs` asks on
+ * a `/nina` render — *has this `queued` row been sitting long enough that whoever opened it is
+ * plainly not going to run it?* Sixty seconds is a generous yes: the ordinary path claims within
+ * milliseconds.
+ *
+ * `scripts/nina-image-worker.ts` still reads it for `dispatchCutoffFor`, which is phase 1's fix
+ * and still guards the manual `--job` drain of the historical `dispatched` rows.
  */
 export const NINA_IMAGE_DISPATCH_GRACE_MS = 60_000
-/** > the job ceiling, so a `running` row this old cannot still be running. */
-export const NINA_IMAGE_RECLAIM_MS = 420_000
-/** One retry. 2 x RECLAIM = 14 min worst case, which must stay under STALE. */
-export const NINA_IMAGE_MAX_ATTEMPTS = 2
+
 /**
- * The app-side give-up, and — **measured, not assumed** — the only deadline in the system.
+ * How old a `running` row must be before it is safe to reclaim. **> BOTH ceilings**, because
+ * either host may have been the one that died:
+ *   · Vercel  — `NINA_HOST_MAX_DURATION_MS` = 300 s
+ *   · Actions — `NINA_WORKER_TIMEOUT_MINUTES` = 6 min = 360 s
+ * 420 s clears both. Reclaiming sooner would claim a live generation twice and bill it twice.
+ */
+export const NINA_IMAGE_RECLAIM_MS = 420_000
+
+/**
+ * One retry. **Load-bearing, not a nicety**: neither host has a claim timestamp to compare against
+ * (`nina_turns` has no `claimed_at` column), so both use `created_at` as a proxy, and this bound
+ * is the only thing that stops an infinite reclaim loop on a row whose `created_at` is already old.
+ */
+export const NINA_IMAGE_MAX_ATTEMPTS = 2
+
+/**
+ * **The app-side give-up, and the deadline the runner actually experiences.** A `pending` row
+ * older than this is closed `failed`/`stale` with her apology, by `sweepStaleNinaImageJobs` on
+ * every `/nina` render.
  *
- * The original derivation assumed the workflow's `schedule: '*\/10'` would rescue a lost dispatch at
- * ~10 minutes, comfortably inside this 20. `NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS` records what
- * `schedule:` actually does, and it is one to two orders of magnitude slower. So this is not "the
- * backstop's deadline plus margin"; it is the whole guarantee, and the FAST path has to work. That
- * is Finding 2's fix and, permanently, phase 2's in-platform generator.
+ * `NINA_IMAGE_STALE_MS > NINA_IMAGE_MAX_ATTEMPTS * NINA_IMAGE_RECLAIM_MS` (1200 > 840) is the
+ * inequality R22 depends on most: she must not apologise while a generation is still running, or
+ * the photograph lands after the apology.
  *
- * The value does not move. Twenty minutes is how long she may plausibly say "bentar" before an
- * apology is the kinder answer, and stretching it to cover a four-hour backstop would mean a
- * photograph that failed at 09:00 goes unacknowledged until lunch.
+ * **It is a real deadline again, and it was not before.** The design used to lean on the workflow's
+ * `schedule: '*\/10'` to rescue a lost job inside this window. Measured over 2026-09-05/06, the
+ * actual gaps between scheduled runs were **1 h 46 m to 4 h 19 m** — one to two orders of magnitude
+ * past this. So every lost job was declared stale long before any backstop looked at it. With the
+ * generation in-platform the normal path never touches the backstop at all: it resolves in ~80-120
+ * s, `reviveNinaImageJobs` re-fires a dropped one on the next render, and twenty minutes is the
+ * outer bound on how long he can be left wondering. Long on purpose — apologising at four minutes
+ * and delivering at five is worse than a two-minute wait.
  */
 export const NINA_IMAGE_STALE_MS = 1_200_000
+
 /**
  * **What `schedule:` measured, against what it declares. FINDING 3.**
  *
- * `.github/workflows/nina-image.yml` declares `cron: '*\/10 * * * *'`. Twelve consecutive `schedule`
- * runs over 2026-09-04..06 fired with gaps of **1 h 46 m to 4 h 19 m** — never ten minutes. GitHub
- * documents `schedule:` as best-effort and heavily deprioritises it on low-activity public
- * repositories, and the workflow's own comment anticipated the direction ("a good retry engine and a
- * bad deadline") while the threshold chain was nonetheless derived as if the declared cron were
- * honoured.
+ * **CARRIED FORWARD FROM PHASE 1 — do not drop it when replacing this block.** Phase 1 added this
+ * constant and `tests/nina.imagerecipe.test.ts` asserts it against `NINA_IMAGE_STALE_MS`; deleting
+ * it here would stop the test file compiling. The value and the measurement are unchanged by the
+ * migration, because the migration did not change what GitHub does.
  *
- * This is the SHORTEST measured gap, so it is the most generous number the evidence supports.
- * `tests/nina.imagerecipe.test.ts` asserts it exceeds `NINA_IMAGE_STALE_MS`, which is the fact that
- * matters: **the backstop cannot beat the give-up.** If anyone later lowers `NINA_IMAGE_STALE_MS`
- * on the belief that a ten-minute rescue exists, that assertion is what stops them.
+ * `.github/workflows/nina-image.yml` declares `cron: '*\/10 * * * *'`. Twelve consecutive
+ * `schedule` runs over 2026-09-04..06 fired with gaps of **1 h 46 m to 4 h 19 m** — never ten
+ * minutes. GitHub documents `schedule:` as best-effort and heavily deprioritises it on low-activity
+ * public repositories. This is the SHORTEST measured gap, so it is the most generous number the
+ * evidence supports.
+ *
+ * The assertion that matters is `> NINA_IMAGE_STALE_MS`: **the backstop cannot beat the give-up.**
+ * That was the load-bearing fact when the backstop was the only rescue, and it is now the reason
+ * the backstop is a THIRD net rather than the deadline — `reviveNinaImageJobs` is the second, and
+ * it runs on the same render as the give-up sweep.
  *
  * The `*\/` in the crons above is written `*\/` on purpose: an unescaped one closes this comment.
  * `scripts/nina-image-worker.ts:36` and `tests/views.render.test.ts` use the same convention.
  */
 export const NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS = 6_360_000
-/** Jobs one backstop run will drain, so a burst cannot exceed `timeout-minutes`. */
+
+/** Jobs one BACKSTOP run will drain, so a burst cannot exceed the workflow's `timeout-minutes`. */
 export const NINA_IMAGE_SWEEP_BUDGET = 3
+
+/**
+ * Jobs one `/nina` RENDER will revive. One. A burst of six queued jobs must not turn a single page
+ * load into six concurrent generations sharing one invocation's wall clock — and the next render
+ * takes the next one, which is fast enough for a cap of six a day.
+ */
+export const NINA_IMAGE_REVIVE_BUDGET = 1
 
 /**
  * `nina/<userId>/selfie-<id>.png`. RU-7, and the shape phase 14 already writes.

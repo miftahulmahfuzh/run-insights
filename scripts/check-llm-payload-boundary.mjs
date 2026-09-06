@@ -19,10 +19,10 @@
 // finding out that a decision was taken, and nobody deletes the weight from a payload thinking
 // they are fixing a leak.
 //
-// ── RULE 2 STANDS, AND NOW COVERS SEVEN ENTRY POINTS. THIS TABLE IS COMPLETE ──────────────────
+// ── RULE 2 STANDS, AND NOW COVERS EIGHT ENTRY POINTS. THIS TABLE IS COMPLETE ──────────────────
 // A MODEL CALL IS NEVER AWAITED FROM A PAGE RENDER (plan §7.2, and F33 plan invariant 4).
 //
-// All seven entries ship from the phase that owns this file, and NO OTHER PHASE EDITS IT. The
+// All eight entries ship from the phase that owns this file, and NO OTHER PHASE EDITS IT. The
 // last two arrived together in F35 phase 4 and one of the two symbols did not exist yet — phase 6
 // creates it — and the entry is written for it anyway, because the alternative was two phases each
 // appending to one guard: two merge conflicts, and a window in each of them where the new
@@ -57,6 +57,11 @@
 //     results are already correct and already on screen, so awaiting the model would replace a
 //     complete list with a spinner. It runs from `lib/nina/searchActions.ts`, a Server Action
 //     fired from the sidebar's field.
+//   · `runNinaImageJob` — the in-platform image generation, 78.2 s measured plus a Blob write.
+//     It is the reason `app/nina/page.tsx` and `app/api/cron/nina/route.ts` carry
+//     `maxDuration = 300`: `after()` inherits the route segment's ceiling, and at 60 the
+//     generation would be killed mid-call. It runs from `lib/nina/imagerun.ts` and nowhere else;
+//     every caller reaches it through `fireNinaImageGeneration`, never by awaiting it.
 //
 // Fix the code, never silence the check.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -168,6 +173,19 @@ const GUARDED_CALLS = [
       'lib/nina/searchActions.ts, a Server Action fired from the sidebar field. The text results ' +
       'are already correct without it, so a render that awaited it would trade a complete list ' +
       'for a spinner — fall back to the text ranking instead.',
+  },
+  {
+    symbol: 'runNinaImageJob',
+    sanctioned: [
+      // Its own module, because a guard that fails on the definition site is a guard that forces
+      // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
+      join('lib', 'nina', 'imagerun.ts'),
+    ],
+    advice:
+      'A generation is a 78.2 s measured OpenRouter call plus a Blob write. It runs ONLY from ' +
+      'lib/nina/imagerun.ts, inside after(), scheduled by fireNinaImageGeneration — which is what ' +
+      'makes it survive the tab closing (R7). A page or an action that awaited it would block the ' +
+      'runner for well over a minute on work the server already owns.',
   },
 ]
 

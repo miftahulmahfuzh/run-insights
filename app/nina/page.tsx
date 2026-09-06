@@ -20,6 +20,7 @@ import {
 } from '@/lib/nina/attach'
 import { SESSION_PARAM, chooseActiveSession, parseNinaSessionParam } from '@/lib/nina/active'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
+import { reviveNinaImageJobs } from '@/lib/nina/imagerun'
 import { sessionTitleFor } from '@/lib/nina/sessions'
 import { NINA_CHAT_HREF, sessionDayLabel, type SidebarSession } from '@/lib/nina/sidebar'
 import {
@@ -108,24 +109,39 @@ import { hasUnreadFromNina } from '@/lib/nina/unread'
 const CHAT_HISTORY_LIMIT = 200
 
 /**
- * **For the Server Action, not for this render.** This page is one indexed read and is done in
- * milliseconds; `ChatScreen` then calls `sendNinaMessage` from a client event handler, and a
- * Server Action's timeout is the *page segment's*, not the action file's. `app/r/[id]/page.tsx:65`
- * already states this quoting Next's `maxDuration` reference — "If using Server Actions, set the
- * `maxDuration` at the page level to change the default timeout of all Server Actions used on the
- * page" — and `app/trends/page.tsx` and `app/r/[id]/page.tsx` both carry the line for exactly this
- * reason.
+ * **For the Server Action AND for the generation it starts, not for this render.** This page is a
+ * handful of indexed reads and is done in milliseconds; `ChatScreen` then calls `sendNinaMessage`
+ * from a client event handler, and a Server Action's timeout is the *page segment's*, not the
+ * action file's. `app/r/[id]/page.tsx:65` already states this quoting Next's `maxDuration`
+ * reference — "If using Server Actions, set the `maxDuration` at the page level to change the
+ * default timeout of all Server Actions used on the page".
  *
- * Without it, `sendNinaMessage`'s 45 s budget is fiction: the platform default kills the action
- * mid-call and the runner gets R-17's "unavailable" for a model that was answering correctly. Worse
- * than the failure is how it reads — an intermittent bug rather than a timeout, which is the same
- * trap F31 walked into once already.
+ * Without it, `sendNinaMessage`'s budget is fiction: the platform default kills the action mid-call
+ * and the runner gets R-17's "unavailable" for a model that was answering correctly.
  *
- * A LITERAL `60`, for the reason `app/api/extract/route.ts` spells out at length: segment config
+ * ── WHY IT IS 300 AND NOT 60 ──────────────────────────────────────────────────────────────────
+ * Everything Nina does off the response path runs in `after()`, and the Next 16 `after` reference
+ * is explicit that "`after` will run for the platform's default or configured max duration of your
+ * route". So THIS NUMBER is the wall clock that owns a photograph. At 60 it could not own one: the
+ * shipping generation is 78.2 s measured, which is why the work used to be exiled to a GitHub
+ * Actions runner reached through a `workflow_dispatch` doorbell.
+ *
+ * Vercel Hobby + Fluid compute gives 300 s by default and as a maximum (`/docs/fluid-compute`,
+ * `/docs/functions/configuring-functions/duration`, both `last_updated: 2026-08-24`; fluid on by
+ * default for projects created after 2025-04-23, and this one was created 2026-08-20). **Measured
+ * on this deployment before it was relied on** — see the phase plan's probe. 45 s of turn plus a
+ * 200 s generation budget is 245 s inside it.
+ *
+ * Fluid bills active CPU rather than wall clock, so a function that spends 150 s awaiting
+ * OpenRouter costs about what a function that returns in 150 ms costs. Raising the ceiling buys
+ * headroom, not a bill.
+ *
+ * A LITERAL `300`, for the reason `app/api/extract/route.ts` spells out at length: segment config
  * exports are statically analysed at build time and an imported constant is not a value the
- * analyser can see.
+ * analyser can see. `NINA_HOST_MAX_DURATION_MS` in `lib/nina/imagerecipe.ts` is the same number
+ * for the arithmetic; these two must be changed together.
  */
-export const maxDuration = 60
+export const maxDuration = 300
 
 export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const userId = await requireUserId()
@@ -178,8 +194,12 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * rather than this one — which is the same one-load lag this screen already accepts for a photo
    * that lands while the tab is open (there is no live-refresh, by design).
    *
-   * Invariant 4 holds: two indexed reads and, on the rare stale path, a handful of UPDATEs. No
-   * model call is awaited in a render path — the generation itself is on a GitHub runner.
+   * Invariant 4 holds, and it holds for a longer reason than it used to. FIVE reads now, all
+   * indexed; on the rare stale path a handful of UPDATEs; and — new — `reviveNinaImageJobs`, which
+   * SCHEDULES a generation and awaits nothing. No model call is awaited in a render path. The
+   * generation itself no longer runs on a GitHub runner: it runs on THIS invocation, inside
+   * `after()`, which is why `maxDuration` above is 300 and why the runner may close the tab the
+   * moment this page paints (R7). `.github/workflows/nina-image.yml` is the backstop behind it.
    */
   const [rows, , avatarRow, photoRow] = await Promise.all([
     /*
@@ -217,6 +237,23 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
       : photoPointer.kind === 'avatar'
         ? getNinaAvatar(userId, photoPointer.id)
         : getNinaMessageImage(userId, photoPointer.id),
+    /*
+     * **R7's second net, and the reason `maxDuration` above is 300.** `listOpenNinaImageJobs`
+     * above sweeps a 20-minute-old job into an apology — that is the DEADLINE. This is the
+     * RESCUE, and it runs alongside: a job whose invocation was killed at `maxDuration`, or whose
+     * dispatch was lost back when there was a dispatch, is RE-FIRED here on a fresh 300 s
+     * invocation inside `after()`. Arriving on this page is therefore not only R22's last
+     * guarantee, it is the pipeline's self-repair.
+     *
+     * It schedules and returns; it awaits no model and writes no row, so plan invariant 4 holds —
+     * the generation itself is in `after()`, which the Next reference documents as running "after
+     * the response (or prerender) is finished". The runner may close the tab the moment this page
+     * paints and the photograph still arrives.
+     *
+     * Bounded to `NINA_IMAGE_REVIVE_BUDGET` (one) per render. Its result is deliberately unused:
+     * the count is a log line, and what the screen shows is `listOpenNinaImageJobs`' business.
+     */
+    reviveNinaImageJobs(userId),
   ])
   const avatar = ninaAvatarView(avatarRow)
 

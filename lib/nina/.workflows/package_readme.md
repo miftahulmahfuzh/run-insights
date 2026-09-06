@@ -297,10 +297,16 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 `lib/review/actions.ts` right after a run is committed).
 
 ### Images
-`imagerecipe.ts` (camera settings shared with the worker), `imagegen.ts` (prompt text),
-`imagejobs.ts` (job row lifecycle and quota), `imagedispatch.ts` (fires the GH-Actions workflow),
+`imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
+`imagejobs.ts` (job row lifecycle and quota), `imagecall.ts` (the OpenRouter image call),
+`imagerun.ts` (claim → generate → store → finish, inside `after()`),
 `imagefail.ts` (classify a failure, pick what she says), `imagetools.ts` / `avatartools.ts` (the two
 tool handlers and the tool sets), `avatargen.ts`.
+
+The generation runs **in-platform**, on the app's own invocation, inside `after()` — Vercel Hobby +
+Fluid compute is a 300 s ceiling, measured on this deployment 2026-09-06. `.github/workflows/nina-image.yml`
+and `scripts/nina-image-worker.ts` survive as the **backstop** and the manual drain, not as the
+generator; `imagedispatch.ts` and its `GITHUB_DISPATCH_TOKEN` are gone with the doorbell.
 
 ### Vision and intake
 `vision.ts` *(T)*, `imageTicket.ts` *(T)* (HMAC-signed carrier so a description can cross from

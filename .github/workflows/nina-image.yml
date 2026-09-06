@@ -1,48 +1,70 @@
-# Nina's camera. RU-19: the shipping generation is 78.2 s measured and Vercel Hobby caps a function
-# at 60 s in sin1, so this work cannot happen in the app. RU-20: it happens here.
+# Nina's camera, DEMOTED TO A BACKSTOP.
 #
-# TWO TRIGGERS, ON PURPOSE:
-#   workflow_dispatch — the doorbell, rung by lib/nina/imagedispatch.ts inside the chat turn.
-#                       The normal path; the photograph lands ~2 minutes after she says "bentar".
-#   schedule          — the backstop. It finds a job whose dispatch was lost and generates it
-#                       anyway. This is the third Vercel cron Hobby would not give us (two crons,
-#                       and phase 10 spent the second on /api/cron/nina), and it is the reason a
-#                       queue that calls back into a Vercel function was not chosen: the callback
-#                       would hit the same 60 s ceiling being escaped here.
+# ── WHAT CHANGED, AND WHY THIS FILE STILL EXISTS ──────────────────────────────────────────────
+# This workflow used to be THE generator. RU-19/RU-20 exiled the work here because "the shipping
+# generation is 78.2 s measured and Vercel Hobby caps a function at 60 s in sin1". That ceiling is
+# gone: Vercel Hobby + Fluid compute is 300 s by default AND as a maximum (/docs/fluid-compute and
+# /docs/functions/configuring-functions/duration, both last_updated 2026-08-24), fluid has been on
+# by default for projects created after 2025-04-23, and this project was created 2026-08-20. It was
+# MEASURED on the deployment, not merely read, before the generation was moved: on 2026-09-06 a
+# maxDuration=300 route in sin1 held 90.4 s and returned 200, and an after() callback logged
+# "[nina-probe] SURVIVED { heldMs: 90030 }" 90 s after its response was flushed and the connection
+# closed. The generator now lives in lib/nina/imagerun.ts and runs inside after() on the app's own
+# invocation.
 #
-# The schedule is best-effort by GitHub's own documentation: it is delayed under load and it is
-# DISABLED ENTIRELY after 60 days with no repository activity. MEASURED, 2026-09-04..06: twelve
-# consecutive `schedule` runs fired with gaps of 1 h 46 m to 4 h 19 m, never ten minutes. So it is a
-# good retry engine and a bad deadline — literally, not rhetorically — which is why
-# lib/nina/imagejobs.ts keeps an independent 20-minute give-up sweep that runs on every /nina page
-# load. Do not delete that sweep on the grounds that this exists, and do not derive any threshold
-# from the */10 below. NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS in lib/nina/imagerecipe.ts holds the
-# measurement and tests/nina.imagerecipe.test.ts asserts it against the give-up.
+# THIS FILE IS NOT DEAD, AND MUST NOT BE DELETED. It is:
+#   1. the BACKSTOP — a job whose Vercel invocation was killed at maxDuration is still `pending`,
+#      and scripts/nina-image-worker.ts can finish it;
+#   2. the MANUAL DRAIN — "Run workflow" in the Actions UI, with a job id, drains one stuck job
+#      without a laptop, a database client or a deploy;
+#   3. the ROLLBACK TARGET — if Vercel turns out to be the wrong host, reverting the phase that
+#      moved the work lands on a WORKING pipeline rather than on the broken one, because the
+#      three measured defects were repaired here first.
+#
+# ── THE SCHEDULE IS NOT WHAT IT SAYS, AND THIS IS THE MEASUREMENT ─────────────────────────────
+# The cron below declares */10. It is not honoured. Measured over 2026-09-05 and 2026-09-06, the
+# actual gaps between `schedule` runs were 1 h 46 m to 4 h 19 m — never ten minutes:
+#
+#   2026-09-06T13:01:11Z   2026-09-06T09:21:01Z   2026-09-06T05:02:58Z   2026-09-06T00:35:29Z
+#   2026-09-05T22:56:43Z   2026-09-05T21:10:08Z   2026-09-05T19:06:09Z   2026-09-05T17:17:15Z
+#   2026-09-05T15:06:34Z   2026-09-05T12:03:18Z   2026-09-05T08:38:38Z   2026-09-05T04:45:49Z
+#
+# GitHub documents `schedule:` as best-effort, deprioritises it heavily on low-activity public
+# repositories, and DISABLES it entirely after 60 days with no repository activity. The old design
+# derived its 20-minute give-up window as if */10 were honoured, so every lost job was declared
+# stale one to two orders of magnitude before any backstop looked at it — findings 2 and 3 composed
+# into a closed loop with no exit.
+#
+# So: DO NOT DERIVE A DEADLINE FROM THIS SCHEDULE. The deadline is lib/nina/imagejobs.ts's
+# sweepStaleNinaImageJobs (NINA_IMAGE_STALE_MS, 20 min, on every /nina render), and the RESCUE is
+# lib/nina/imagerun.ts's reviveNinaImageJobs, which re-fires a dropped job in-platform on the same
+# render. This schedule is a third net behind those two, and it is the one whose arrival time we do
+# not control. NINA_IMAGE_SCHEDULE_MEASURED_GAP_MS in lib/nina/imagerecipe.ts holds the measurement
+# and tests/nina.imagerecipe.test.ts asserts it against the give-up.
 name: nina-image
 
 on:
   workflow_dispatch:
     inputs:
       job_id:
-        # The ONLY input, and deliberately opaque. THIS REPOSITORY IS PUBLIC, so dispatch inputs are
-        # world-readable in the run log and the Actions UI. The scene prose, the prompt and the user
-        # id therefore live in nina_turns.args and never travel as an input; a nanoid names a row
-        # that nobody without DATABASE_URL can read.
+        # The ONLY input, and deliberately opaque. THIS REPOSITORY IS PUBLIC, so dispatch inputs
+        # are world-readable in the run log and the Actions UI. The scene prose, the prompt and the
+        # user id therefore live in nina_turns.args and never travel as an input; a nanoid names a
+        # row that nobody without DATABASE_URL can read.
+        #
+        # NOTHING DISPATCHES THIS PROGRAMMATICALLY ANY MORE. lib/nina/imagedispatch.ts and the
+        # GITHUB_DISPATCH_TOKEN it needed are both gone; this input is for a HUMAN clicking "Run
+        # workflow", which needs no PAT. Leave it blank to sweep.
         description: 'nina_turns.id of the job to run (blank = sweep)'
         required: false
         default: ''
   schedule:
-    # Declared every ten minutes. GitHub's minimum is 5 and it promises no punctuality — and MEASURED
-    # on this repository the real gaps were 1 h 46 m to 4 h 19 m (2026-09-04..06). The declared value
-    # is therefore a ceiling on the request, not a description of the behaviour, and nothing in the
-    # threshold chain may assume it.
-    #
-    # The cost note still holds at the declared rate: 144 runs a day at ~40 s each ~ 96 min/day ~
-    # 2,900 min/month. THIS REPOSITORY IS PUBLIC, so Actions minutes are unmetered and that number is
-    # free. If it is ever made private, GitHub Free's 2,000 minutes would be exceeded and the
-    # one-line fix is */30, leaning harder on workflow_dispatch for latency and on the on-read sweep
-    # for the R22 guarantee. Lowering it to chase punctuality would not work: the deprioritisation
-    # measured above is a function of repository activity, not of the requested interval.
+    # Kept at */10 rather than widened, and the reason is NOT latency — see the header: the real
+    # cadence is hours. It stays because THIS REPOSITORY IS PUBLIC, so Actions minutes are
+    # unmetered and the coverage is free; a run that finds nothing exits 0 in ~40 s. If the
+    # repository is ever made private, GitHub Free's 2,000 minutes/month would be exceeded and the
+    # one-line fix is */30 — with no loss of guarantee, because the guarantee has not lived here
+    # since the generation moved on-platform.
     - cron: '*/10 * * * *'
 
 # One camera at a time. A dispatch and a scheduled run firing within seconds of each other would
@@ -63,8 +85,9 @@ jobs:
     runs-on: ubuntu-latest
     # NINA_WORKER_TIMEOUT_MINUTES in lib/nina/imagerecipe.ts. It must exceed
     # NINA_WORKER_CALL_TIMEOUT_MS (240 s) plus setup, and NINA_IMAGE_RECLAIM_MS (7 min) must exceed
-    # it, so a job killed here cannot be mistaken for one still running.
-    # tests/nina.imagerecipe.test.ts asserts that chain.
+    # BOTH this and the Vercel ceiling (NINA_HOST_MAX_DURATION_MS, 300 s), so a job killed on
+    # EITHER host cannot be mistaken for one still running. tests/nina.imagerecipe.test.ts asserts
+    # that chain.
     timeout-minutes: 6
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
