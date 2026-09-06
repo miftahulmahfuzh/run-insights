@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy`
 **Branch:** `feature/admin-responsive-nina-intimacy` (base: `origin/main` @ `02dc79a`)
 **Phases:** 5
-**Status:** reconciled
-**Coordinator:** —
+**Status:** phase 3/5 complete (3 ✅) — a phase is complete when its row in the Phases table is ticked ✅, which is the authoritative per-phase record because the phases land in parallel; the set is reviewed and merged as a whole
+**Coordinator:** `orch-admin-responsive-nina-intimacy`
 
 ---
 
@@ -83,9 +83,9 @@ The user's rationale, in their own framing:
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Admin shell: viewport, safe areas, navigation | R1 | `app/admin`, `components/admin` | 11 | — | NORMAL | `.workflows/plan/admin-responsive-nina-intimacy/phase-1.md` | P1-RI-A017 | — |
-| 2 | Admin surfaces: explorer, crop studio, tables, dials | R1 | `components/admin` | 15 | 1 | HARD | `.workflows/plan/admin-responsive-nina-intimacy/phase-2.md` | — | — |
-| 3 | Girlfriend register: manja, imut, vowel lengthening | R2 | `lib/nina`, `tests`, `docs` | 6 | — | NORMAL | `.workflows/plan/admin-responsive-nina-intimacy/phase-3.md` | P1-NIN-A004 | — |
+| 1 ✅ | Admin shell: viewport, safe areas, navigation | R1 | `app/admin`, `components/admin` | 11 | — | NORMAL | `.workflows/plan/admin-responsive-nina-intimacy/phase-1.md` | P1-RI-A017 | — |
+| 2 ✅ | Admin surfaces: explorer, crop studio, tables, dials | R1 | `components/admin` | 15 | 1 | HARD | `.workflows/plan/admin-responsive-nina-intimacy/phase-2.md` | P1-CA-A001 | — |
+| 3 ✅ | Girlfriend register: manja, imut, vowel lengthening | R2 | `lib/nina`, `tests`, `docs` | 6 | — | NORMAL | `.workflows/plan/admin-responsive-nina-intimacy/phase-3.md` | P1-NIN-A004 | — |
 | 4 | Per-parameter enable toggles | R4 | `lib/nina`, `lib/admin`, `lib/db`, `components/admin`, `drizzle`, `tests` | 15 | 2, 3 | HARD | `.workflows/plan/admin-responsive-nina-intimacy/phase-4.md` | — | — |
 | 5 | The `horny` trait | R3 | `lib/nina`, `lib/db`, `drizzle`, `tests` | 10 | 4 | HARD | `.workflows/plan/admin-responsive-nina-intimacy/phase-5.md` | — | — |
 

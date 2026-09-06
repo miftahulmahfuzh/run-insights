@@ -23,21 +23,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "280b8e8",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "INHERITED (from p3, measured near-miss): this worktree is shared while peers run. Commit with pathspec-limited `git commit -- <explicit paths>` and verify AFTER with `git show --stat HEAD`; never assert on or CORRECT the shared index before committing (a peer sits between its own add and commit, and unstaging \"foreign\" files there truncates their commit silently, invisible to every gate). Never delete index.lock; wait and retry. Set-wide gates from phase 3: NINA_PROMPT_VERSION is already bumped 3->4 -- do not touch it; `vitest -u`/`--update` is FORBIDDEN, tests/__snapshots__/nina.prompts.test.ts.snap is the byte-identity gate. `npm run build` cannot run here (.env.local is gitignored and only in the main checkout; lib/env.ts validates at module load) -- tests/typecheck/lint are the gate.",
+      "note": "Phase 2 landed, all gates green (typecheck, build, 2710 tests, lint 0 errors, format). DECISION: plan Steps 6b/6d/8d place {/* */} JSX-child comments in expression position (after 'return (' and inside '{open && (') = TS1005/TS1128 syntax error; converted to plain /* */ block comments, text unchanged (rung 1, invariant 7 build-green). DECISION: ran format:check before 'npm run format' since prettier --write . writes the whole repo while peers run; MemoryTable.tsx was the only unformatted file, nothing outside components/admin/ written. Contract for phase 4 delivered: DialSlider header row is 'flex items-center gap-2' with ml-auto on the readout, NO prop added; touch.ts exports TOUCH_TARGET/TOUCH_ICON for phase 4's checkbox. FolderMenu 5 panels z-20 -> z-40. FYI for coordinator: phase 3's row in ADMIN_RESPONSIVE_NINA_INTIMACY_PLAN.md is still unticked though 157b8f4 landed; I did not correct the shared index.",
       "package": "components/admin",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-2.md",
-      "reported_at": "2026-09-06T14:51:12+00:00",
+      "reported_at": "2026-09-06T15:13:48+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CA-A001",
       "title": "Admin surfaces: explorer, crop studio, tables, dials"
     },
     {
@@ -73,7 +73,7 @@
       "satisfies": [
         "R4"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Per-parameter enable toggles"
     },
@@ -100,7 +100,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-responsive-nina-intimacy",
-  "updated": "2026-09-06T14:57:00+00:00",
+  "updated": "2026-09-06T15:15:36+00:00",
   "verified_at": "2026-09-06T14:50:37+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
 }
