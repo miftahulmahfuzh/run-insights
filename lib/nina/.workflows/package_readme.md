@@ -443,6 +443,44 @@ cost of a collision is one duplicate reply — both replies real, nothing fabric
 still coherent — which is cheaper than the unique index it would take to prevent, and that index
 would have been this set's only migration.
 
+## Image-job tracking (`lib/nina/jobview.ts`, R1)
+
+Every `nina_turns` row with `kind='image'` is visible at `/nina/jobs`, and one job at
+`/nina/jobs/[id]` with the exact prompt as sent, the seed, the model, the attempt count, and
+`cost_micro_usd` as a per-job total ("Biaya total").
+
+`jobview.ts` is the **pure half** — the stage and error vocabulary, the elapsed and money formatting,
+the `?jump=` grammar, and `planJobJump`'s four outcomes. It holds no value import from any
+`server-only` module, which is what lets three client components and a bare node suite load it alike;
+**`npm run build` is the only gate that enforces that**, since no guard script inspects imports.
+
+The two reads it feeds — `listNinaImageJobs` and `getNinaImageJobDetail` — are owner-scoped, filter
+`kind='image'`, and **write nothing**. Both properties are load-bearing:
+
+- **The `kind='image'` filter became newly essential in phase 3**, which put `kind='chat'` rows into
+  `status='pending'` on the same table. A dropped filter would not error; it would list every
+  backgrounded chat turn as a photograph, with a null purpose falling through to `'selfie'`.
+- **Neither read sweeps.** `listOpenNinaImageJobs` keeps the sweep, so a job stuck `pending` for three
+  hours reads as `pending` with a three-hour clock rather than being retro-labelled by the act of
+  looking at it. Observing a system should not change it.
+
+The deep link back into the chat is **`?jump=<messageId>`** beside `?s=`, deliberately *not*
+`lib/nina/scroll.ts`'s `?at=`. They have opposite lifetimes — `at` must survive a back-swipe, `jump`
+must be consumed on arrival or the bubble re-flashes — and `jump` has no offset to carry. It reuses
+`planQuoteScroll` + `QUOTE_FLASH_MS` rather than growing a second scroll-and-flash.
+
+`planJobJump` keeps `'gone'` and the session-removed case as **separate** outcomes, and there is a
+test named *does not tell the runner a live session was removed* holding that line. The distinction is
+real because `deleteNinaMessage` removes one sentence and leaves the conversation standing, so a
+missing bubble does not imply a missing session. Its `'gone'` arm is the **common case**, not an edge:
+14 `nina_turns` image jobs were measured with an `args.replyToId` that resolves to nothing.
+
+`error_code = 'dispatched'` is a historical stage that still renders — it labels rows written before
+the generator moved in-platform, and they are the first thing on the page. The copy is **'Nunggu
+worker'**, not 'Dijadwalkan': the stage is no longer something about to happen, and not 'Nunggu
+runner' either, because in this codebase the runner is the human and that phrasing would tell him the
+job was waiting on *him*.
+
 ## Deleting a chat session takes what it taught her (R8)
 
 **Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a

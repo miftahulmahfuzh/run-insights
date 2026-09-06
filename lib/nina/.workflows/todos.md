@@ -3,34 +3,22 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 8
+- Completed: 9
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A007** Phase 4: Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Two new routes, a sidebar entry, and the jump back to the chat bubble that triggered a job. 10 files rather than the draft's 8: `NinaJobElapsed.tsx` and `tests/nina.jobview.test.ts` are split out so the list and the detail share ONE ticker. Labels `cost_micro_usd` as 'Biaya total' beside the attempt count, per the Decisions row making it a per-job cumulative figure. **`NinaJobList` renders the empty state and phase 5 supplies the words via `emptyText`** - its docstring already assigns that sentence to the caller and warns that hard-coding it would be 'a component phase 5 has to fork'. One branch nuance: on Branch B `error_code = 'dispatched'` stays a LIVE stage the runner sees on every new job, so `NINA_JOB_STAGE_LABEL.dispatched`'s copy is correct as written; on Branch A it is historical only.
-  - **Status**: pending
-  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 4 of 7)
-  - **Satisfies**: R1 — sidebar entry to a tracking page; a job opens a detail page with prompt, elapsed time and error status, plus a jump to the triggering bubble
-  - **Depends on**: `P1-NIN-A006`
-  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md`
-  - **Card**: `miftahulmahfuzh/run-insights#99`
-  - **Files**: app/nina/jobs/page.tsx, app/nina/jobs/[id]/page.tsx, components/nina/NinaJobList.tsx, components/nina/NinaJobDetail.tsx, components/nina/NinaJobElapsed.tsx, and 5 more
 
 - [ ] **P1-NIN-A008** Phase 5: The tracking section on `/nina/about`, below Media
   - **Difficulty**: EASY
@@ -55,6 +43,25 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A007** Phase 4: Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Two new routes, a sidebar entry, and the jump back to the chat bubble that triggered a job. 10 files rather than the draft's 8: `NinaJobElapsed.tsx` and `tests/nina.jobview.test.ts` are split out so the list and the detail share ONE ticker. Labels `cost_micro_usd` as 'Biaya total' beside the attempt count, per the Decisions row making it a per-job cumulative figure. **`NinaJobList` renders the empty state and phase 5 supplies the words via `emptyText`** - its docstring already assigns that sentence to the caller and warns that hard-coding it would be 'a component phase 5 has to fork'. One branch nuance: on Branch B `error_code = 'dispatched'` stays a LIVE stage the runner sees on every new job, so `NINA_JOB_STAGE_LABEL.dispatched`'s copy is correct as written; on Branch A it is historical only.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 4 of 7)
+  - **Satisfies**: R1 — sidebar entry to a tracking page; a job opens a detail page with prompt, elapsed time and error status, plus a jump to the triggering bubble
+  - **Depends on**: `P1-NIN-A006`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md`
+  - **Card**: `miftahulmahfuzh/run-insights#99`
+  - **Files**: app/nina/jobs/page.tsx, app/nina/jobs/[id]/page.tsx, components/nina/NinaJobList.tsx, components/nina/NinaJobDetail.tsx, components/nina/NinaJobElapsed.tsx, and 5 more
+  - **Completed**: 2026-09-07 02:35
+  - **Method**: /implement (swarm phase 4 of 7, session impl-nina-image-pipeline-and-async-chat-p4)
+  - **Commit**: `8ef6ba1`
+  - **Verification**: `npm run build` (both routes present as `ƒ`), `npm run typecheck`, `npm run lint` (0 errors), `npm test` **144 files / 2769 tests**, all six CI guards (`openrouter`, `client-secret`, `llm-payload`, `data-layer`, `f08`, `f11`), `npm run db:check` clean with `drizzle/` unchanged. 10 files, +1516/-22, exactly the plan's Files table.
+  - **Decisions**: (a) `NINA_JOB_STAGE_LABEL.dispatched` 'Dijadwalkan' → **'Nunggu worker'** [rung 4, the index's Branch A consequences, over the phase plan's code block which still carried the live-stage word]. **`worker`, not `runner`** — in this codebase the runner is the human, so 'Nunggu runner' would have told him the job was waiting for *him*. The branch and `jobStage`'s arm are kept; one test asserts both that the arm still resolves and that the label is no longer 'Dijadwalkan'. (b) `planJobJump`'s `gone` stays ONE arm — phase 6's collapse advice rejected on the coordinator's reasoning, recorded in the function's docstring and a test named `does not tell the runner a live session was removed`; the 14 measured dangling `replyToId`s are documented as the common case in both `planJobJump` and `NinaJobDetail`. (c) `react-hooks/purity` on two server components' `Date.now()` — documented `eslint-disable-next-line` with the reason [rung 6]: an async Server Component renders once per request, and `app/nina/page.tsx:284` already relies on that; a wrapper the linter cannot see through would have satisfied the rule and told the next reader less. (d) `NinaJobElapsed`'s wire-time correction moved from the effect body into a 0 ms timer rather than disabling `react-hooks/set-state-in-effect`, matching how `ChatScreen`'s `seenInitial` and `NinaSearchField`'s `result` both restructured instead of suppressing.
+  - **Trap held**: both new reads carry `eq(ninaTurns.kind, 'image')` (`lib/nina/imagejobs.ts:792`, `:826`) with a block comment saying why it is newly load-bearing — a dropped filter would not error, it would list every backgrounded chat turn as a photograph with a null purpose falling through to `'selfie'`. Verified by the coordinator against the commit, not taken on report. `'session-gone'` is absent from the error vocabulary.
+  - **Drift absorbed, not escalated**: phase 2 moved `toJobRow` to the end of `imagejobs.ts` and widened the drizzle import; phase 3 shifted every `ChatScreen.tsx` line the plan cites. All anchors verified by text. Reconciliation row 23's assignment applied: the strip effect deletes three keys and all three stale counts are fixed (`:317`, `:245-247`, and the one inside the attach comment at `:1091`).
 
 - [x] **P1-NIN-A006** Phase 3: WhatsApp-style send: instant persist, durable background turn
   - **Difficulty**: HARD
