@@ -17,7 +17,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Admin shell: viewport, safe areas, navigation"
     },
@@ -53,7 +53,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Girlfriend register: manja, imut, vowel lengthening"
     },
@@ -100,6 +100,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-responsive-nina-intimacy",
-  "updated": "2026-09-06T14:36:27+00:00",
+  "updated": "2026-09-06T14:37:08+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
 }
