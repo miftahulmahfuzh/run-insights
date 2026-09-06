@@ -66,15 +66,15 @@
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": "INHERITED (from p3, measured near-miss): this worktree is shared while peers run. Commit with pathspec-limited `git commit -- <explicit paths>` and verify AFTER with `git show --stat HEAD`; never assert on or CORRECT the shared index before committing (a peer sits between its own add and commit, and unstaging \"foreign\" files there truncates their commit silently, invisible to every gate). Never delete index.lock; wait and retry. Set-wide gates from phase 3: NINA_PROMPT_VERSION is already bumped 3->4 -- do not touch it; `vitest -u`/`--update` is FORBIDDEN, tests/__snapshots__/nina.prompts.test.ts.snap is the byte-identity gate. `npm run build` cannot run here (.env.local is gitignored and only in the main checkout; lib/env.ts validates at module load) -- tests/typecheck/lint are the gate. MIGRATION NUMBERING CONFIRMED (orch-nina-image-pipeline, 2026-09-06): the other live set on this base generates NO migration in any phase -- its invariant 10 requires drizzle/ to gain no file and git status --porcelain drizzle/ empty at the end of every phase, verified by an empty 'git diff origin/main...HEAD -- drizzle/ lib/db/schema.ts'. So 0006 (phase 4) and 0007 (phase 5) are uncontested and merge order between the two branches is free. Generate normally; do NOT run 'npm run db:migrate' from the branch -- both phases' exit criteria ask for 'npm run db:check' only (rung 2), and applying an unmerged branch's migration to the live Neon DB is deferred to the merge.",
+      "note": "PAUSED, NOT DEAD \u2014 do not respawn. Session impl-...-p4 (tmux @18/%21) hit its usage limit at Step 10 of 15 and says it continues automatically at 01:20 Asia/Jakarta. Its work is UNCOMMITTED in the worktree: 8 modified files (lib/nina/tuning.ts, persona.ts, prompts/system.ts, queries.ts, lib/admin/schema.ts, tuningActions.ts, lib/db/schema.ts, lib/nina/.workflows/todos.md) plus the new plan P1-NIN-A005.md. Steps 1,2,3,5,7,8,9 applied; Step 6 (the generated 0006 migration) deliberately deferred until the schema settles. verify downgrades spawned->pending on absence of a commit, which is expected mid-phase and is NOT evidence the phase died: a respawn here would put a second session on top of eight dirty files and lose them. TaskID P1-NIN-A005 already minted.",
       "package": "lib/nina`, `lib/admin`, `lib/db`, `components/admin`, `drizzle`, `tests",
       "plan": ".workflows/plan/admin-responsive-nina-intimacy/phase-4.md",
-      "reported_at": "2026-09-06T14:51:12+00:00",
+      "reported_at": "2026-09-06T18:21:52+00:00",
       "satisfies": [
         "R4"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "running",
+      "task_id": "P1-NIN-A005",
       "title": "Per-parameter enable toggles"
     },
     {
@@ -100,7 +100,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-responsive-nina-intimacy/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-responsive-nina-intimacy",
-  "updated": "2026-09-06T15:15:36+00:00",
-  "verified_at": "2026-09-06T14:50:37+00:00",
+  "updated": "2026-09-06T18:21:52+00:00",
+  "verified_at": "2026-09-06T18:21:25+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-responsive-nina-intimacy"
 }
