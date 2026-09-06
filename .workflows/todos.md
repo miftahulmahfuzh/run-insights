@@ -2,12 +2,12 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-05
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-06
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -21,6 +21,18 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [ ] **P1-RI-A017** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
+  - **Difficulty**: NORMAL
+  - **Type**: Test
+  - **Context**: Proves the whole path the user says has never once worked: a chat message asking Nina to change her picture, through `set_avatar`, through generation, to a genuinely updated profpic row. Tests-only - touches nothing under `app/`, `lib/` or `components/`, which is what lets it run concurrently with phase 4. Asserts `2 x NINA_IMAGE_COST_MICRO_USD` on a job that burned both attempts, which is the per-JOB cumulative reading of `cost_micro_usd` from Decisions. **Branch-sensitive:** on Branch B the suite keeps the `runGenerator()` -> `worker.runOneJob(workerSql, jobId)` shape, the `GITHUB_DISPATCH_TOKEN` stub, the `githubDispatches` router arm and the three dispatch assertions, draining `after()` before the claim so the row is genuinely `dispatched` and seconds old - and deltas A1-A6 are NOT applied.
+  - **Status**: pending
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 7 of 7)
+  - **Satisfies**: R5 — end-to-end test: chat asks Nina to change her profpic and the profpic is truly updated
+  - **Depends on**: `P1-NIN-A006`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md`
+  - **Card**: `miftahulmahfuzh/run-insights#102`
+  - **Files**: tests/integration/ninaImageE2E.int.test.ts, tests/live/ninaImageE2E.live.test.ts, and 1 more
 
 - [x] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY

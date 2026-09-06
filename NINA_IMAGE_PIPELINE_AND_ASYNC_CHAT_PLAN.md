@@ -125,13 +125,13 @@ lists, which differs from the draft's estimate in four places.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Unblock the camera: the three measured defects | R2 | `scripts/`, `lib/nina` | 5 | — | HARD | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md` | — | — | miftahulmahfuzh/run-insights#96 |
-| 2 | Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop | R2, R4, R7 | `lib/nina`, `app/nina`, `app/api/cron/nina`, `.github/workflows` | 18 | 1 | HARD | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md` | — | — | miftahulmahfuzh/run-insights#97 |
-| 3 | WhatsApp-style send: instant persist, durable background turn | R6, R8 (the delete-mid-turn guard) | `lib/nina`, `components/nina` | 9 | 2 | HARD | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md` | — | — | miftahulmahfuzh/run-insights#98 |
-| 4 | Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble | R1 | `app/nina/jobs`, `components/nina`, `lib/nina` | 10 | 3 | NORMAL | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md` | — | — | miftahulmahfuzh/run-insights#99 |
-| 5 | The tracking section on `/nina/about`, below Media | R3 | `components/nina`, `app/nina/about` | 2 | 4 | EASY | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-5.md` | — | — | miftahulmahfuzh/run-insights#100 |
-| 6 | Permanent session deletion: take the distilled memory with it | R8 | `lib/nina`, `scripts/` | 7 | — | NORMAL | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md` | — | — | miftahulmahfuzh/run-insights#101 |
-| 7 | End-to-end: chat → `set_avatar` → generation → the profpic really changes | R5 | `tests/integration`, `tests/live` | 3 | 3 | NORMAL | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md` | — | — | miftahulmahfuzh/run-insights#102 |
+| 1 | Unblock the camera: the three measured defects | R2 | `scripts/`, `lib/nina` | 5 | — | HARD | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md` | `P1-NIN-A004` | — | miftahulmahfuzh/run-insights#96 |
+| 2 | Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop | R2, R4, R7 | `lib/nina`, `app/nina`, `app/api/cron/nina`, `.github/workflows` | 18 | 1 | HARD | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md` | `P1-NIN-A005` | — | miftahulmahfuzh/run-insights#97 |
+| 3 | WhatsApp-style send: instant persist, durable background turn | R6, R8 (the delete-mid-turn guard) | `lib/nina`, `components/nina` | 9 | 2 | HARD | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md` | `P1-NIN-A006` | — | miftahulmahfuzh/run-insights#98 |
+| 4 | Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble | R1 | `app/nina/jobs`, `components/nina`, `lib/nina` | 10 | 3 | NORMAL | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md` | `P1-NIN-A007` | — | miftahulmahfuzh/run-insights#99 |
+| 5 | The tracking section on `/nina/about`, below Media | R3 | `components/nina`, `app/nina/about` | 2 | 4 | EASY | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-5.md` | `P1-NIN-A008` | — | miftahulmahfuzh/run-insights#100 |
+| 6 | Permanent session deletion: take the distilled memory with it | R8 | `lib/nina`, `scripts/` | 7 | — | NORMAL | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md` | `P1-NIN-A009` | — | miftahulmahfuzh/run-insights#101 |
+| 7 | End-to-end: chat → `set_avatar` → generation → the profpic really changes | R5 | `tests/integration`, `tests/live` | 3 | 3 | NORMAL | `.workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md` | `P1-RI-A017` | — | miftahulmahfuzh/run-insights#102 |
 
 Phases 1 and 6 share no edge and start together. Phase 7 joins phase 4 once phase 3 lands. **No
 phase's dependency points forward**, verified against every plan's `Requires` section.

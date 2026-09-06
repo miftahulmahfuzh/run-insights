@@ -2,12 +2,12 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-05
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-06
+**Total Active Tasks**: 6
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 6
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -19,6 +19,76 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A004** Phase 1: Unblock the camera: the three measured defects
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Repairs the three measured defects that block every photograph (analysis Findings 1-3), and is the whole fix if phase 2's probe fails. Owns the worker's missing `nina_messages.session_id` write - the invariant-6 breach Finding 1 introduced, `NOT NULL` since migration 0004 and omitted by both INSERTs - plus `dispatchCutoffFor`/`claimJob`'s grace window and the recipe path. Per Decisions, `cost_micro_usd` is a per-JOB CUMULATIVE total (`coalesce(cost_micro_usd,0) + spend`) on every writer and both hosts, never a per-attempt overwrite that discards the first bill. Finding 2's regression coverage lives PERMANENTLY in the `dispatchCutoffFor`/`claimJob` unit tests, because the fix still guards the manual `--job` drain of the 15 historical `dispatched` rows and the backstop that is phase 2's rollback target. Adds no `claimed_at` column and generates no migration, though `claimJob`'s own comment invites one. Exit: `drizzle/` gains no file, `db:check` clean, all six CI guards pass.
+  - **Status**: in_progress
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 1 of 7)
+  - **Satisfies**: R2 — No photo has ever been generated through chat; fix it. Absolute priority
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-1.md`
+  - **Card**: `miftahulmahfuzh/run-insights#96`
+  - **Files**: scripts/nina-image-worker.ts, lib/nina/imagerecipe.ts, .github/workflows/nina-image.yml, tests/nina.imageworker.test.ts, tests/nina.imagerecipe.test.ts
+
+- [ ] **P1-NIN-A005** Phase 2: Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: **Carries the set's single highest-consequence conditional.** Step 1 deploys a `maxDuration = 300` probe route that must hold past 60s with an `after()` outliving a closed tab; the PROBE RESULT is recorded in the plan index's Decisions block the moment it runs. Branch A (300s, in-platform) is assumed until then. On Branch B the propagation is fully specified so no session re-derives it: this phase reduces to comments-only with NO constant changes, phase 3 moves exactly two literals in `lib/nina/turnflight.ts` together (`NINA_BACKGROUND_BUDGET_MS` 240000->45000 and `NINA_TURN_CHAIN_MAX` 2->0), and phase 7 writes its suite in the Branch B shape. R4's answer is settled and must not be re-derived: OpenRouter has NO async image API - `POST /api/v1/images` is synchronous, and the job API with `callback_url` is video-only - so durability is solved on our side of the wire. Creates NO `app/api/nina/image/route.ts`; the durability primitive is `after()` from the segment that already owns the request. Package widened to include `app/api/cron/nina` (its `maxDuration` 60->300 is required, not cosmetic: a measured 78.2s generation dies at 60s inside `resolveNinaPromises`) and `.github/workflows`.
+  - **Status**: pending
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 2 of 7)
+  - **Satisfies**: R2, R4 — is there an async OpenRouter image API, R7 — a started job survives the app closing
+  - **Depends on**: `P1-NIN-A004`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md`
+  - **Card**: `miftahulmahfuzh/run-insights#97`
+  - **Files**: lib/nina/imagerun.ts, app/api/cron/nina/route.ts, app/nina/page.tsx, .github/workflows/nina-image.yml, and 14 more
+
+- [ ] **P1-NIN-A006** Phase 3: WhatsApp-style send: instant persist, durable background turn
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Splits `sendNinaMessage` so the runner's message persists and returns immediately while the model turn runs in a durable background task. **Reply delivery is a bounded poll ONLY - `lib/nina/live.ts` is NOT edited** (Decisions, rung 3): a push handler would buzz the phone on every message the runner sends while watching, and a push arrives as `router.refresh()`, landing all four bubbles through `mergeServerMessages` in ONE frame, collapsing the staggered reveal `ChatScreen` spends a paragraph forbidding. Also owns **Step 6d, which is half of R8**: backgrounding `runTurnDistillation` stretches the window in which a distillation completing AFTER a session delete re-creates the exact orphan class phase 6 purges, from milliseconds to up to 240s - so `ninaSessionExists` plus an abandon lives here, in files this phase owns. **Does NOT depend on phase 6 and must not be made to.** `openNinaChatTurn`'s read-then-write race is accepted permanently: no unique index, no lock table, no migration.
+  - **Status**: pending
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 3 of 7)
+  - **Satisfies**: R6 — send is instant and the reply arrives even if the app is closed; R8 in part — the delete-mid-turn guard
+  - **Depends on**: `P1-NIN-A005`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md`
+  - **Card**: `miftahulmahfuzh/run-insights#98`
+  - **Files**: lib/nina/turnflight.ts, lib/nina/sessionActions.ts, components/nina/ChatScreen.tsx, and 6 more
+
+- [ ] **P1-NIN-A007** Phase 4: Job tracking: `/nina/jobs`, the detail page, and the jump to the triggering bubble
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Two new routes, a sidebar entry, and the jump back to the chat bubble that triggered a job. 10 files rather than the draft's 8: `NinaJobElapsed.tsx` and `tests/nina.jobview.test.ts` are split out so the list and the detail share ONE ticker. Labels `cost_micro_usd` as 'Biaya total' beside the attempt count, per the Decisions row making it a per-job cumulative figure. **`NinaJobList` renders the empty state and phase 5 supplies the words via `emptyText`** - its docstring already assigns that sentence to the caller and warns that hard-coding it would be 'a component phase 5 has to fork'. One branch nuance: on Branch B `error_code = 'dispatched'` stays a LIVE stage the runner sees on every new job, so `NINA_JOB_STAGE_LABEL.dispatched`'s copy is correct as written; on Branch A it is historical only.
+  - **Status**: pending
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 4 of 7)
+  - **Satisfies**: R1 — sidebar entry to a tracking page; a job opens a detail page with prompt, elapsed time and error status, plus a jump to the triggering bubble
+  - **Depends on**: `P1-NIN-A006`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md`
+  - **Card**: `miftahulmahfuzh/run-insights#99`
+  - **Files**: app/nina/jobs/page.tsx, app/nina/jobs/[id]/page.tsx, components/nina/NinaJobList.tsx, components/nina/NinaJobDetail.tsx, components/nina/NinaJobElapsed.tsx, and 5 more
+
+- [ ] **P1-NIN-A008** Phase 5: The tracking section on `/nina/about`, below Media
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: The smallest phase in the set: 2 files, not the draft's 3 - the third was a constant in `lib/nina/album.ts` that its own D-3 argues against. Reuses phase 4's `NinaJobList` rather than writing a second renderer, and supplies only the empty-state sentence through `emptyText`. Two row renderers is exactly the drift the 'no second row renderer' rule exists to stop.
+  - **Status**: pending
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 5 of 7)
+  - **Satisfies**: R3 — put the image-generation tracking section below the Media section on Nina's detail page
+  - **Depends on**: `P1-NIN-A007`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-5.md`
+  - **Card**: `miftahulmahfuzh/run-insights#100`
+  - **Files**: components/nina/NinaAboutJobs.tsx, app/nina/about/page.tsx
+
+- [ ] **P1-NIN-A009** Phase 6: Permanent session deletion: take the distilled memory with it
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: `removeNinaSession` becomes a four-statement `db.batch` that purges the session's distilled `nina_memory_facts` in the SAME transaction as the delete. The provenance fork is decided: **PURGE**, not keep-dangling, rung 5 - the user's raw input overrides the schema's stated design, because the memory ledger is the only surviving channel by which a deleted session still pollutes her. **Generates NO migration and adds NO foreign key**, deliberately: an `ALTER TABLE ... ADD CONSTRAINT` cannot be applied while dangling pointers exist in production, and hand-writing a pre-clean `DELETE` into a generated migration is the class of edit invariant 10 forbids. 7 files, not 5, and the package loses `drizzle` - the two extra are the schema comment and the schema test whose prose asserts the design being overridden; the draft counted the mechanism and not the paper trail. **`scripts/nina-memory-reap.mjs --apply` is the one irreversible act in the set** and is dry-run by default; the `\copy` snapshot is taken first. R8 is NOT satisfied by this phase alone - phase 3 owns the delete-mid-turn guard.
+  - **Status**: in_progress
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 6 of 7)
+  - **Satisfies**: R8 — deleted chat sessions must be permanently deleted; they still pollute Nina's character
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-6.md`
+  - **Card**: `miftahulmahfuzh/run-insights#101`
+  - **Files**: lib/nina/queries.ts, lib/nina/sessionActions.ts, lib/db/schema.ts, scripts/nina-memory-reap.mjs, package.json, tests/nina.sessionPurge.test.ts, tests/db.schema.nina.test.ts
 
 ### [P2] Medium
 
