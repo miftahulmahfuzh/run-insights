@@ -29,16 +29,16 @@
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "PROBE RESULT 2026-09-06: BRANCH A CONFIRMED. Q1 ceiling: GET /nina/probe?inline=1 returned HTTP 200 after 90.418s wall clock (curl time_total), log '[nina-probe] INLINE SURVIVED heldMs: 90005' label 2407-mtq52rhl - no 504, ceiling is above 60s. Q2 durability: response flushed in 1.25s and connection CLOSED (tab-closed equivalent), after() kept ticking every 10s past 60s and logged '[nina-probe] SURVIVED heldMs: 90030' label 2407-mtq52bf1. Preview dpl_GcCbzFkYByFDXuLBGxzFf8Sxq6Bj, region sin1, maxDuration=300. Proceeding with Steps 2-11 as written.",
       "package": "lib/nina`, `app/nina`, `app/api/cron/nina`, `.github/workflows",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md",
-      "reported_at": "2026-09-06T15:08:40+00:00",
+      "reported_at": "2026-09-06T18:24:45+00:00",
       "satisfies": [
         "R2",
         "R4",
         "R7"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": "P1-NIN-A005",
       "title": "Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop"
     },
@@ -50,10 +50,10 @@
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "BRANCH A CONFIRMED by phase 2's probe, 2026-09-06 (HTTP 200 after 90.418s on ?inline=1; after() ticked to 90030ms with the connection closed, crossing 60s with nothing attached; sin1, same region as production; maxDuration=300). CONSEQUENCE FOR THIS PHASE: NOTHING CHANGES. Keep NINA_BACKGROUND_BUDGET_MS = 240_000 and NINA_TURN_CHAIN_MAX = 2 exactly as the plan has them -- the Branch B instruction to move those two literals TOGETHER to 45_000/0 is void and must NOT be applied. lib/nina/turnflight.test.ts fails loudly if the budget is lowered while the chain stays at 2, so a half-applied Branch B would be caught, but do not go there. Everything else in this phase was branch-independent anyway: the split, the bounded poll, the claim, and Step 6d. STILL TRUE: lib/nina/live.ts is NOT edited (bounded poll only); Step 6d's ninaSessionExists guard is yours and closes the distillation race at source, with npm run nina:memory-reap as the standing backstop, not a superseded one (phase 6, landed b4bc490); no edge to phase 6.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-3.md",
-      "reported_at": "2026-09-06T15:08:40+00:00",
+      "reported_at": "2026-09-06T18:26:10+00:00",
       "satisfies": [
         "R6",
         "R8"
@@ -70,10 +70,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": "FROM PHASE 6 (landed b4bc490), with one correction the coordinator verified. (a) MEASURED: 14 nina_turns image jobs have an args.replyToId resolving to nothing; reported by nina:memory-reap, never deleted (invariant 9). So planJobJump's 'gone' arm and its NINA_JOB_JUMP_NOTE copy are LIVE on real rows -- build and test them as the common case. (b) Phase 6 called this 'larger than the plan guessed'; it withdrew that itself. Its count is dangling args.replyToId; the plan's 15 is rows carrying error_code='dispatched'. Different predicates, possibly non-overlapping, and 14 < 15. Not a scope increase. (c) REJECT phase 6's advice to treat 'the triggering message is gone' and 'the session was removed' as ONE state. It proved the converse of what that needs: the cascade means no message survives a deleted session, but collapsing the states requires that no message is GONE while its session SURVIVES -- and deleteNinaMessage does exactly that. It is unchanged by phase 6 (deliberately, per lib/db/schema.ts:857 which phase 6 itself wrote) and is reachable in production from lib/admin/chatPhotoActions.ts:231 and :283, the /admin chat-photo delete path. Collapsing them would tell a runner 'the session was removed' about a job whose session is alive and whose single message they deleted through /admin. Keep the kinds distinct.",
+      "note": "TWO INHERITED ITEMS. (1) BRANCH A CONFIRMED by phase 2's probe 2026-09-06, so error_code='dispatched' is now a HISTORICAL value carried only by rows written before phase 2 landed. Keep NINA_JOB_STAGE_LABEL.dispatched and jobStage's dispatched branch -- they are not dead code, those rows are the first thing on /nina/jobs -- but do not present it as a live stage; only the copy's tense changes. (2) FROM PHASE 6 (landed b4bc490), with a correction the coordinator verified: 14 nina_turns image jobs have an args.replyToId resolving to nothing, reported by nina:memory-reap and never deleted (invariant 9), so planJobJump's 'gone' arm and its NINA_JOB_JUMP_NOTE copy are LIVE on real rows -- build and test them as the common case. But REJECT phase 6's advice to treat 'the triggering message is gone' and 'the session was removed' as ONE state: it proved the converse of what that needs. The cascade means no message survives a deleted session; collapsing the states requires that no message is GONE while its session SURVIVES, and deleteNinaMessage does exactly that -- unchanged by phase 6 (per lib/db/schema.ts:857, which phase 6 itself wrote) and reachable in production from lib/admin/chatPhotoActions.ts:231 and :283. Collapsing them would tell a runner 'the session was removed' about a job whose session is alive and whose message they deleted through /admin. Keep the kinds distinct. Phase 6 also withdrew its 'larger than the plan guessed' framing: 14 dangling replyToIds vs the plan's 15 error_code='dispatched' rows are different predicates, possibly non-overlapping. Not a scope increase.",
       "package": "app/nina/jobs`, `components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-4.md",
-      "reported_at": "2026-09-06T15:14:11+00:00",
+      "reported_at": "2026-09-06T18:26:10+00:00",
       "satisfies": [
         "R1"
       ],
@@ -125,10 +125,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 7,
-      "note": "TaskID minted by coordinator; /implement Step 3 is embargoed for this set (7 concurrent writers on one todos.md)",
+      "note": "BRANCH A CONFIRMED by phase 2's probe, 2026-09-06. CONSEQUENCE FOR THIS PHASE: write the integration suite in the BRANCH A shape and APPLY deltas A1-A6. Do NOT use the Branch B shape your Step 1 spells out in full -- that means no worker.runOneJob(workerSql, jobId) via runGenerator(), no GITHUB_DISPATCH_TOKEN stub, no githubDispatches router arm, and the three dispatch assertions do not stand. Assert 2 x NINA_IMAGE_COST_MICRO_USD on a job that burned both attempts, per the per-JOB cumulative cost_micro_usd decision. Depends on phase 3, not phase 2.",
       "package": "tests/integration`, `tests/live",
       "plan": ".workflows/plan/nina-image-pipeline-and-async-chat/phase-7.md",
-      "reported_at": "2026-09-06T15:08:41+00:00",
+      "reported_at": "2026-09-06T18:26:10+00:00",
       "satisfies": [
         "R5"
       ],
@@ -140,6 +140,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-pipeline-and-async-chat/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-pipeline-and-async-chat",
-  "updated": "2026-09-06T15:16:38+00:00",
+  "updated": "2026-09-06T18:26:10+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-pipeline-and-async-chat"
 }
