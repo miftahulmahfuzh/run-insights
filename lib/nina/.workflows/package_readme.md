@@ -361,6 +361,52 @@ consecutive schedule runs fired 1 h 46 m to 4 h 19 m apart against a declared `*
 > `*\/10`, which is the convention already in `scripts/nina-image-worker.ts:36` and
 > `tests/views.render.test.ts`.
 
+## The camera runs in-platform (R2, R4, R7)
+
+`imagecall.ts` makes the OpenRouter call and `imagerun.ts` owns the job — claim, generate, store into
+Blob, finish — inside `after()`, on the app's own invocation. That is R7: **`after()` is bound by the
+invoking route segment's `maxDuration`, not by the browser**, so `app/nina/page.tsx` and
+`app/api/cron/nina/route.ts` both carry a literal `300` and the runner may close the tab the instant
+send returns. Those two literals are what actually own a photograph's wall clock; the cron loop's own
+50 s pacing is deliberately not raised with them.
+
+**The 60 s ceiling that exiled this work to a GitHub runner was an expired measurement, and it was
+re-measured rather than assumed.** On 2026-09-06 a `maxDuration = 300` probe in `sin1` — production's
+own region — held an inline render to HTTP 200 at **90.418 s** with no 504, and, with the connection
+closed after a 1.25 s flush, went on ticking inside `after()` to `heldMs 90030`. Crossing 60 s with
+nothing attached at the far end is the whole of R7, demonstrated rather than argued.
+
+**There is no asynchronous OpenRouter image API.** `POST /api/v1/images` is synchronous — base64 in
+the response, or SSE partials with `stream: true`. There is no job id, no polling endpoint, no
+`callback_url`, no webhook; the async job API (`POST /api/v1/videos` → `GET /api/v1/videos/{id}`) is
+**video-only**. So durability is ours to provide, and `imagecall.ts` carries that answer where the
+next reader will look for it rather than in a plan file.
+
+Durability is three recovery nets in order, and only the first is the normal path:
+
+1. **`after()`** on the invoking segment — the generation itself.
+2. **`reviveNinaImageJobs`** on the next `/nina` render, bounded to one job per render, for a job
+   dropped because `after()` does not survive `maxDuration` or an instance kill.
+3. **`.github/workflows/nina-image.yml`** — demoted, never deleted. Comments-only in this phase: no
+   trigger removed, no step removed, `timeout-minutes` still 6. It is the backstop, the manual drain
+   for historical rows, and the rollback target — and a rollback now lands on a *working* pipeline
+   because phase 1 repaired the worker's three defects first. Behind it, `sweepStaleNinaImageJobs`'
+   20-minute apology.
+
+Two consequences worth keeping straight. **Finding 2 dies at the source**: the claim and the
+generation are one invocation, so there is no dispatch grace window left for a job to be lost in, and
+`error_code = 'dispatched'` becomes a legacy value that nothing writes any more — historical rows
+still render, so `toJobRow` and `PENDING_PHASES` keep mapping it. And **`cost_micro_usd` is a per-job
+cumulative total on both hosts** (`coalesce(cost_micro_usd, 0) + spend`), so a job that burned two
+attempts honestly reads $0.080; `stale` leaves the column untouched rather than nulling a spend a
+retry already recorded, and the terminal UPDATE runs even when the apology INSERT throws. Money spent
+is never written down as free.
+
+> **Gotcha, and it is asymmetric enough to get backwards:** `*/` closes a block comment, so the
+> declared `*/10` cron is only dangerous inside `/** … */`. Write `*\/10` there. It is harmless in
+> `//` line comments and in YAML `#` comments, where escaping it is noise a later reader will try to
+> "fix".
+
 ## Deleting a chat session takes what it taught her (R8)
 
 **Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a

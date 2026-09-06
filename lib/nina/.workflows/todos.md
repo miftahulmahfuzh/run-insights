@@ -2,35 +2,23 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-06
-**Total Active Tasks**: 4
+**Last Updated**: 2026-09-07
+**Total Active Tasks**: 3
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 4
+- P1 High: 3
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 6
+- Completed: 7
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A005** Phase 2: Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: **Carries the set's single highest-consequence conditional.** Step 1 deploys a `maxDuration = 300` probe route that must hold past 60s with an `after()` outliving a closed tab; the PROBE RESULT is recorded in the plan index's Decisions block the moment it runs. Branch A (300s, in-platform) is assumed until then. On Branch B the propagation is fully specified so no session re-derives it: this phase reduces to comments-only with NO constant changes, phase 3 moves exactly two literals in `lib/nina/turnflight.ts` together (`NINA_BACKGROUND_BUDGET_MS` 240000->45000 and `NINA_TURN_CHAIN_MAX` 2->0), and phase 7 writes its suite in the Branch B shape. R4's answer is settled and must not be re-derived: OpenRouter has NO async image API - `POST /api/v1/images` is synchronous, and the job API with `callback_url` is video-only - so durability is solved on our side of the wire. Creates NO `app/api/nina/image/route.ts`; the durability primitive is `after()` from the segment that already owns the request. Package widened to include `app/api/cron/nina` (its `maxDuration` 60->300 is required, not cosmetic: a measured 78.2s generation dies at 60s inside `resolveNinaPromises`) and `.github/workflows`.
-  - **Status**: pending
-  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 2 of 7)
-  - **Satisfies**: R2, R4 — is there an async OpenRouter image API, R7 — a started job survives the app closing
-  - **Depends on**: `P1-NIN-A004`
-  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md`
-  - **Card**: `miftahulmahfuzh/run-insights#97`
-  - **Files**: lib/nina/imagerun.ts, app/api/cron/nina/route.ts, app/nina/page.tsx, .github/workflows/nina-image.yml, and 14 more
 
 - [ ] **P1-NIN-A006** Phase 3: WhatsApp-style send: instant persist, durable background turn
   - **Difficulty**: HARD
@@ -79,6 +67,25 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A005** Phase 2: Move generation onto Vercel Fluid compute; demote GitHub Actions to backstop
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: **Carries the set's single highest-consequence conditional.** Step 1 deploys a `maxDuration = 300` probe route that must hold past 60s with an `after()` outliving a closed tab; the PROBE RESULT is recorded in the plan index's Decisions block the moment it runs. Branch A (300s, in-platform) is assumed until then. On Branch B the propagation is fully specified so no session re-derives it: this phase reduces to comments-only with NO constant changes, phase 3 moves exactly two literals in `lib/nina/turnflight.ts` together (`NINA_BACKGROUND_BUDGET_MS` 240000->45000 and `NINA_TURN_CHAIN_MAX` 2->0), and phase 7 writes its suite in the Branch B shape. R4's answer is settled and must not be re-derived: OpenRouter has NO async image API - `POST /api/v1/images` is synchronous, and the job API with `callback_url` is video-only - so durability is solved on our side of the wire. Creates NO `app/api/nina/image/route.ts`; the durability primitive is `after()` from the segment that already owns the request. Package widened to include `app/api/cron/nina` (its `maxDuration` 60->300 is required, not cosmetic: a measured 78.2s generation dies at 60s inside `resolveNinaPromises`) and `.github/workflows`.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_PIPELINE_AND_ASYNC_CHAT_PLAN.md` (phase 2 of 7)
+  - **Satisfies**: R2, R4 — is there an async OpenRouter image API, R7 — a started job survives the app closing
+  - **Depends on**: `P1-NIN-A004`
+  - **Plan**: `.workflows/plan/nina-image-pipeline-and-async-chat/phase-2.md`
+  - **Card**: `miftahulmahfuzh/run-insights#97`
+  - **Files**: lib/nina/imagerun.ts, app/api/cron/nina/route.ts, app/nina/page.tsx, .github/workflows/nina-image.yml, and 14 more
+  - **Completed**: 2026-09-07 01:38
+  - **Method**: /implement (swarm phase 2 of 7, session impl-nina-image-pipeline-and-async-chat-p2)
+  - **Commit**: `040a70b7b1df9516597e62925895b2be97b22b23`
+  - **Verification**: `npm run build`, `npm run typecheck`, `npm run lint` (0 errors; the 2 warnings are pre-existing in `scripts/capture/shoot.mjs`, untouched), `npm test` (142 files, 2727 tests passed), `npm run db:check` clean with `drizzle/` unchanged, and all six CI guards — `ci:openrouter-guard`, `ci:client-secret-guard`, `ci:llm-payload-guard` (now **8** guarded symbols, `runNinaImageJob` added), `ci:data-layer-guard`, `ci:f08-guard`, `ci:f11-guard`. `/nina/probe` is absent from the built route table, which is Step 11's proof. Exactly 18 files, +1483/-503; not one line of phase 1's `scripts/nina-image-worker.ts` or `tests/nina.imageworker.test.ts`.
+  - **Probe**: **BRANCH A**, measured 2026-09-06 18:22-18:24 UTC on preview `dpl_GcCbzFkYByFDXuLBGxzFf8Sxq6Bj` in `sin1` (production's region). `?inline=1` returned HTTP 200 after **90.418 s** with no 504 and no cut at 60 s; and with the connection closed after a 1.25 s flush, `after()` went on ticking to `heldMs 90030`, crossing 60 s with nothing attached at the far end. The 60 s ceiling that exiled this work to a GitHub runner has expired. No Branch B propagation: phase 3 keeps `NINA_BACKGROUND_BUDGET_MS = 240_000` and `NINA_TURN_CHAIN_MAX = 2`; phase 7 applies deltas A1-A6.
+  - **Decisions**: (a) phase 1 read `in_progress` in `todos.md` while the ledger and git said `done` (`f7f0985`) -> dependency satisfied, proceeded [rung 2: the gate asks whether phase 1's code landed, and the commit proves it did] — the lag is structural, since the coordinator owns `todos.md` under the bookkeeping embargo and it trails the ledger; (b) minted an Auth.js session JWT locally from `.env.local`'s `AUTH_SECRET` to reach the protection-enabled preview rather than asking anyone to sign in; (c) `*/10` inside a `/** */` docblock closes the comment and **would have broken the build** — written `*\/10` per `scripts/nina-image-worker.ts:36`, and every other `*/` in the new blocks swept to confirm it was a genuine terminator. Harmless in `//` and YAML `#` comments, where escaping it would be noise; (d) dropped the plan's own flagged unused imports `lte` and `NINA_IMAGE_DISPATCH_GRACE_MS` from `imagejobs.ts`.
+  - **Open**: exit criteria 1-6 are **manual production checks** and are unverified, not assumed — they need a deploy and a real conversation: ask her for a selfie, close the tab, confirm `nina_message_images` gains its first row ever, confirm `nina_avatars` gains its first `source='generated'` row, confirm the backstop still drains a job from the Actions UI.
 
 - [x] **P1-NIN-A004** Phase 1: Unblock the camera: the three measured defects
   - **Difficulty**: HARD
