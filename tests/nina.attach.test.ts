@@ -5,6 +5,7 @@ import {
   ATTACH_PARAM,
   PHOTO_PARAM,
   formatNinaPhotoParam,
+  ninaPhotoProvenance,
   parseNinaPhotoParam,
 } from '@/lib/nina/attach'
 
@@ -88,5 +89,68 @@ describe('formatNinaPhotoParam / parseNinaPhotoParam', () => {
     expect(parseNinaPhotoParam(null)).toBeNull()
     expect(parseNinaPhotoParam(42)).toBeNull()
     expect(parseNinaPhotoParam({ kind: 'avatar', id: 'abcdefghijkl' })).toBeNull()
+  })
+})
+
+describe('ninaPhotoProvenance — which column, and what a copy of a copy points at', () => {
+  it('puts an album id in source_avatar_id and nothing in source_image_id', () => {
+    /* The wrong column is not a type error and not a visible failure: it fails the foreign key at
+     * INSERT time, and `sendNinaMessage` swallows that with a console.warn — so the photograph
+     * would still render and the duplicate would quietly come back. */
+    expect(ninaPhotoProvenance({ kind: 'avatar', id: 'avatarAAAAAA' })).toEqual({
+      sourceAvatarId: 'avatarAAAAAA',
+      sourceImageId: null,
+    })
+  })
+
+  it('points a re-attached chat photo at itself when it is the original', () => {
+    expect(
+      ninaPhotoProvenance({
+        kind: 'image',
+        id: 'imageAAAAAAA',
+        sourceAvatarId: null,
+        sourceImageId: null,
+      }),
+    ).toEqual({ sourceAvatarId: null, sourceImageId: 'imageAAAAAAA' })
+  })
+
+  it('FLATTENS a copy of a copy to the original, never to the row he tapped', () => {
+    /* He attaches A and gets B; he attaches B and gets C. If C pointed at B, then deleting B's
+     * message would SET NULL on C and C would reappear in the collection as a duplicate of A,
+     * which still exists. Pointing at A means the column always names the original — the same
+     * thing drizzle/0010's backfill writes for the rows that predate this function. */
+    expect(
+      ninaPhotoProvenance({
+        kind: 'image',
+        id: 'imageBBBBBBB',
+        sourceAvatarId: null,
+        sourceImageId: 'imageAAAAAAA',
+      }),
+    ).toEqual({ sourceAvatarId: null, sourceImageId: 'imageAAAAAAA' })
+  })
+
+  it('INHERITS the album pointer, which is what holds R3 after the middle row is deleted', () => {
+    /* An album face was attached (B), and B is now being attached again (C). Those bytes really
+     * are the album face's. Keeping `source_avatar_id` means that if B's message is later deleted
+     * and C's `source_image_id` goes NULL under the FK, C is STILL a reference — so the profile
+     * photo still never turns up in Media, which is R3 in the user's own words. */
+    expect(
+      ninaPhotoProvenance({
+        kind: 'image',
+        id: 'imageBBBBBBB',
+        sourceAvatarId: 'avatarAAAAAA',
+        sourceImageId: null,
+      }),
+    ).toEqual({ sourceAvatarId: 'avatarAAAAAA', sourceImageId: 'imageBBBBBBB' })
+  })
+
+  it('never answers with both NULL, because it is only ever asked about a photo we already have', () => {
+    for (const source of [
+      { kind: 'avatar' as const, id: 'avatarAAAAAA' },
+      { kind: 'image' as const, id: 'imageAAAAAAA', sourceAvatarId: null, sourceImageId: null },
+    ]) {
+      const provenance = ninaPhotoProvenance(source)
+      expect(provenance.sourceAvatarId ?? provenance.sourceImageId).not.toBeNull()
+    }
   })
 })

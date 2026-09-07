@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 1
+- Completed: 2
 
 ---
 
@@ -31,6 +31,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-ADM-B130** Phase 2: "What she can see in it", editable
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns a zod schema in `lib/admin/chatPhotoSchema.ts`, an `updateNinaChatPhotoDescription` statement in `lib/nina/queries.ts` §5b, `editChatPhotoDescriptionAction` in `lib/admin/chatPhotoActions.ts`, and the editable control in `components/admin/ChatPhotoDetail.tsx` plus a new `components/admin/ChatPhotoDescription.tsx`. Exit: an operator can rewrite the description on `/admin/photos` and a save survives a reload; an empty save clears the field to NULL and says so on screen; the next attach turn reads the new text with no invalidation step; lint, typecheck and vitest all green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2 — there is a "what she can see in it" field. make this field editable by user
+  - **Plan**: `.workflows/plan/P1-ADM-B130.md`
+  - **Card**: miftahulmahfuzh/run-insights#130
+  - **Completed**: 2026-09-07 17:54
+  - **Method**: /do
+  - **Files**: lib/admin/chatPhotos.ts, lib/admin/chatPhotoSchema.ts, lib/admin/chatPhotoActions.ts, lib/nina/queries.ts, components/admin/ChatPhotoDescription.tsx, components/admin/ChatPhotoDetail.tsx, tests/admin.chatPhotos.test.ts, tests/nina.chatPhotoDescription.test.ts
+  - **Outcome**: `nina_message_images.description` is writable by hand from `/admin/photos`. A new `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000` ceiling, a `chatPhotoDescriptionSchema` that caps before it normalises, an owner-scoped `updateNinaChatPhotoDescription` UPDATE carrying `user_id` + `id` + `kind = 'generated'`, an `editChatPhotoDescriptionAction` server action, and a new `ChatPhotoDescription` client control mounted (keyed by `photo.id`) in the rail. No DDL, no migration, no model call, no `after()` pass, nothing under `components/nina/`.
+  - **Drift**: No code drift: every anchor the plan quoted matched the branch exactly (chatPhotos.ts:159; chatPhotoSchema.ts:3-8/:71/:75; queries.ts `setNinaMessageImageDescription`:1826 and the §6 banner:1841; chatPhotoActions.ts:7-11/:12-17/:22-35 and :323-325; ChatPhotoDetail.tsx:8, the header docstring end :34-35, and the read-only block :155-172; all five test-suite anchors).
+  - **Drift**: Concurrent peer effect: the phase 3 session ran a repo-wide `npm run format` mid-phase, which left two files this phase had just written prettier-dirty. Fixed by running `npx prettier --write` on ONLY those two files (`components/admin/ChatPhotoDescription.tsx`, `tests/admin.chatPhotos.test.ts`). No logic changed; all three verification commands re-run green afterwards.
+  - **Decided**: Step 3 says create every phase's task, but peers p1/p3/p4 run concurrently on the same todos.md files -> created ONLY phase 2's task (rung 6, surrounding convention: the swarm ledger is the per-phase TaskID record and "derive, never trust" assumes one owner per row; tie-break: narrower blast radius).
+  - **Decided**: `lib/nina/queries.ts` is shared with phase 1, which has 10 uncommitted hunks in it -> staged ONLY phase 2's single hunk via `git apply --cached` rather than the whole file (rung 4, the plan index's Board section: each phase completes on its own commit; tie-break: reversible + narrowest blast radius).
+  - **Decided**: Empty save clears the description to NULL rather than refusing (plan D1, inherited -- not re-litigated).
+  - **Verified**: `npm run lint` 0 errors (2 warnings, both pre-existing in `scripts/capture/shoot.mjs`, untouched here); `npm run typecheck` clean; `npx vitest run tests/admin.chatPhotos.test.ts tests/nina.chatPhotoDescription.test.ts` 58 passed (the plan predicted exactly 40 + 6 + 8 + 4 = 58); `npx vitest run` 152 files / 3057 tests passed; `node scripts/check-llm-payload-boundary.mjs` passed with no new entry (invariant 5).
 
 - [x] **P1-ADM-A000** Phase 3: The admin add path captions from the photograph
   - **Difficulty**: NORMAL

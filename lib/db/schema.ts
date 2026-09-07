@@ -1078,6 +1078,44 @@ export const ninaMessageImages = pgTable(
     description: text('description'),
     /** The generation prompt, `kind = 'generated'` only. Phase 12 writes it. */
     prompt: text('prompt'),
+    /**
+     * ── PROVENANCE: WHERE THESE BYTES CAME FROM, WHEN THEY CAME FROM SOMEWHERE ────────────────
+     *
+     * A row is a **reference** when EITHER of these is non-null, and a reference is a row that is
+     * a real photograph in a real bubble whose bytes are already in the collection under another
+     * id. `lib/nina/actions.ts`'s `resolveAttachment` is the only writer: re-attaching an album
+     * face or an earlier chat photo copies `blob_url` and `pathname` onto a NEW row (no bytes are
+     * copied — the Blob object is shared), and before F37 nothing on the row said so. The two
+     * collection listings therefore showed the same picture twice, which is the defect.
+     *
+     * **The row is NOT dropped and must never be.** Every bubble, every photo-viewer open, every
+     * download control and Nina's own prompt read this table by `message_id`
+     * (`getNinaMessageImagesForMessages`, `getNinaMessageImage`,
+     * `dbNinaSourceGateway.readMessageWindow`). A message with no image row of its own is a blank
+     * bubble. So the row stays, these columns mark it, and only the three COLLECTION reads
+     * (`listNinaMessageImages`, `listNinaChatPhotos`, `countNinaChatPhotos`) skip it — one
+     * predicate, `isOriginalPhoto()` in `lib/nina/queries.ts`.
+     *
+     * **Two columns and not one polymorphic pointer**, because the two targets are two tables and
+     * a real foreign key on each is what makes `SET NULL` possible at all. The shape is
+     * `nina_messages.reply_to_id`'s (`:968`) — a nullable self-referencing FK — applied twice.
+     *
+     * **`ON DELETE SET NULL`, deliberately, and it is the interesting half.** When the original
+     * is deleted the copy stops being a copy: the column goes NULL, the row becomes an original,
+     * and the collection KEEPS the picture instead of losing it. `CASCADE` here would delete a
+     * photograph out of a conversation because an unrelated row was tidied away, which is exactly
+     * the data loss `isBlobPathnameReferenced` was written to prevent.
+     *
+     * **No index.** Both are residual predicates on reads that already range-scan
+     * `nina_message_images_user_created_idx` — the same call `generatedChatPhotoScope` argues in
+     * full for `kind`, at the same table size, and nothing has measured a need for one.
+     */
+    sourceAvatarId: text('source_avatar_id').references((): AnyPgColumn => ninaAvatars.id, {
+      onDelete: 'set null',
+    }),
+    sourceImageId: text('source_image_id').references((): AnyPgColumn => ninaMessageImages.id, {
+      onDelete: 'set null',
+    }),
     /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

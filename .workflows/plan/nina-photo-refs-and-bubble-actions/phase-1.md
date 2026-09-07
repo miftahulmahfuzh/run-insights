@@ -1,0 +1,1366 @@
+# Phase 1: A re-attached photo is a reference, not a copy
+
+**Plan set:** `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md`
+**Analysis:** `20260907-125041-PHRF_code_analyzer.md`
+**Satisfies:** R1 (no duplicate in Chat photos) and R3 (an album face never enters Media) — one
+defect, two surfaces, and the plan index states in as many words why it cannot be split
+**Depends on:** none
+**Difficulty:** HARD
+**Package:** `lib/nina` (with `lib/db/schema.ts` and `drizzle/`)
+
+---
+
+## Goal
+
+`nina_message_images` gains two nullable provenance columns, so a row can say *"these bytes are
+already in the collection, under this other id"*. The attach path fills them in;
+`drizzle/0010`'s hand-written backfill fills them in for the rows production already has; and the
+three **collection** reads — `/nina/about`'s Media feed, `/admin/photos`'s page and the `/admin`
+hub's count — skip a row that says it. Every read that makes a **bubble** render, or that builds
+Nina's context, is untouched and still returns the row, which is invariant 2.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Creates:**
+
+- `schema.ninaMessageImages.sourceAvatarId` — column `source_avatar_id`, `text`, nullable,
+  `references(() => ninaAvatars.id, { onDelete: 'set null' })` (`lib/db/schema.ts:1081`)
+- `schema.ninaMessageImages.sourceImageId` — column `source_image_id`, `text`, nullable,
+  `references(() => ninaMessageImages.id, { onDelete: 'set null' })` — self-referencing
+  (`lib/db/schema.ts:1081`)
+- `drizzle/0010_nina_image_provenance.sql` + `drizzle/meta/0010_snapshot.json` + one entry in
+  `drizzle/meta/_journal.json`
+- `queries.NinaImageRow.sourceAvatarId: string | null` and `.sourceImageId: string | null`
+  (required on the ROW type — `imageColumns` always projects them)
+- `queries.NinaImageInsert.sourceAvatarId?: string | null` and
+  `.sourceImageId?: string | null` (**optional** on the INSERT type — an upload and a generation
+  supply neither, and `insertNinaMessageImages` coalesces to `null`)
+- `imageColumns.sourceAvatarId` / `imageColumns.sourceImageId` (`lib/nina/queries.ts:517`)
+- **The predicate helper:** `function isOriginalPhoto(): SQL | undefined` — module-private in
+  `lib/nina/queries.ts`, declared immediately above `generatedChatPhotoScope`. Zero arguments; it
+  is a bare column predicate, not a scope, and it is composed into a `user_id`-scoped `and(...)`
+  by each caller. Body:
+  `and(isNull(ninaMessageImages.sourceAvatarId), isNull(ninaMessageImages.sourceImageId))`
+- `attach.NinaPhotoProvenance` — `{ sourceAvatarId: string | null; sourceImageId: string | null }`
+  (`lib/nina/attach.ts`)
+- `attach.NinaProvenanceSource` — the discriminated input of the function below
+  (`lib/nina/attach.ts`)
+- `attach.ninaPhotoProvenance(source: NinaProvenanceSource): NinaPhotoProvenance` — the pure
+  which-column-and-flatten rule, exported so it is unit-testable (`lib/nina/attach.ts`)
+- `tests/nina.photoRefs.test.ts` — new file, `installFakeDb()`-based SQL assertions
+
+**Signature changes:**
+
+- `resolveAttachment(userId, attach)` return type gains two fields:
+  `{ blobUrl, pathname, kind, description }` -> `{ blobUrl, pathname, kind, description,
+  sourceAvatarId, sourceImageId }`. Still module-private in `lib/nina/actions.ts`, still
+  `| null`.
+
+**Modified statements (no signature change):**
+
+- `insertNinaMessageImages` (`lib/nina/queries.ts:1435`) — two more columns in `.values()`
+- `listNinaMessageImages` (`:1477`) — `isOriginalPhoto()` joins its WHERE
+- `generatedChatPhotoScope` (`:1563`) — `isOriginalPhoto()` joins its `and(...)`, which is how
+  **both** `listNinaChatPhotos` (`:1589`) and `countNinaChatPhotos` (`:1623`) get the filter from
+  one edit. That is the property that helper's own docstring already claims ("written once so the
+  listing and the count cannot drift apart"), so the scope's *three filtered reads* are delivered
+  by **two** edit sites. Neither `listNinaChatPhotos` nor `countNinaChatPhotos` is edited.
+- `updateNinaChatPhotoBlob` (`lib/nina/queries.ts` §5b, `:1678`) — `sourceAvatarId: null,
+  sourceImageId: null` join the existing `description: null, prompt: null` in the same `.set()`.
+  **This is a §5b edit and phase 2 also edits §5b** — phase 2 adds a *new* function for
+  `description`; this is one line inside an *existing* function. Disjoint.
+
+**Deletes:** none. No row, no blob, no symbol, no config key.
+**Renames:** none.
+
+**Requires (from earlier phases):** nothing. This phase has no `depends_on`.
+
+**Leaves alone (owned by others):**
+
+- `components/admin/ChatPhotoDetail.tsx`, `lib/admin/chatPhotoActions.ts`,
+  `lib/admin/chatPhotoSchema.ts` (Phase 2, which owns `ChatPhotoDetail.tsx` **outright**). The
+  draft index's *optional* provenance line is **WITHDRAWN by the reconciler (D8)**, not merely
+  declined by me: phases 1 and 2 have no dependency edge and run concurrently, so an optional
+  second writer on that file was a collision with no stated sequence. See Handoffs H1 — the line
+  would also be unreachable code.
+- `components/admin/chatPhotoModel.ts` — untouched. `ChatPhoto` gains no field.
+- `lib/nina/edit.ts`, `components/nina/MessageBubble.tsx` (Phase 3)
+- `components/nina/MessageActionsSheet.tsx`, `components/nina/ChatScreen.tsx` (Phase 4)
+- `lib/nina/actions.ts` is shared with **Phase 4**, and the two footprints are disjoint by ~446
+  lines — RECONCILED and measured against `origin/main` @ `e6c68d6`, so **no dependency edge
+  between phases 1 and 4 is needed** and they may run concurrently. This phase's edits are exactly
+  three: one new `import { ninaPhotoProvenance } from './attach'` line (which sorts to `:9`, ahead
+  of `./autotitle`, and is a **different import statement** from the `./queries` block at `:26-36`
+  that Phase 4 adds a name to), `resolveAttachment` (`:183-233`), and the attach INSERT block
+  (`:562-576`). Phase 4's block goes in at `:1022`.
+  **Phase 4 exports nothing from this file, and it does not touch `startNinaBackgroundTurn`
+  (`:681`) at all** — that function stays module-private and Phase 4 calls it from inside the same
+  module (verified on the branch: `:681` is a private
+  `function startNinaBackgroundTurn(input: NinaBackgroundTurnInput): void` wrapping
+  `after(() => runNinaBackgroundTurn(input))`; `:695` is the exported `NinaBackgroundTurnInput`;
+  `:723` is the private `async function runNinaBackgroundTurn`).
+- `getNinaMessageImagesForMessages`, `getNinaMessageImage`,
+  `dbNinaSourceGateway.readMessageWindow` / `.readConversation` — **must not gain the filter**
+  (invariant 2). Step 8 asserts the absence.
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/db/schema.ts` | modify | two nullable provenance columns on `ninaMessageImages`, after `prompt` (`:1080`) |
+| `drizzle/0010_nina_image_provenance.sql` | create | generated `ALTER TABLE` + FKs, then the hand-appended two-statement backfill |
+| `drizzle/meta/0010_snapshot.json` | create | written by `db:generate`; never hand-edited |
+| `drizzle/meta/_journal.json` | modify | one appended entry, written by `db:generate` |
+| `lib/nina/attach.ts` | modify | `NinaPhotoProvenance`, `NinaProvenanceSource`, `ninaPhotoProvenance` — the pure rule |
+| `lib/nina/queries.ts` | modify | `NinaImageRow` (`:203`), `NinaImageInsert` (`:218`), `imageColumns` (`:517`), `insertNinaMessageImages` (`:1435`), `listNinaMessageImages` (`:1477`), new `isOriginalPhoto` + `generatedChatPhotoScope` (`:1563`), `updateNinaChatPhotoBlob` (`:1678`) |
+| `lib/nina/actions.ts` | modify | `resolveAttachment` (`:183`) returns provenance; the attach INSERT (`:562`) writes it |
+| `tests/nina.attach.test.ts` | modify | the pure `ninaPhotoProvenance` cases |
+| `tests/db.schema.nina.test.ts` | modify | the two columns, both FKs, both `SET NULL`, in the existing `nina_message_images` describe (`:157`) |
+| `tests/nina.photoRefs.test.ts` | create | generated-SQL assertions: the filter is in the two collection scopes, and is NOT in the four bubble reads |
+
+---
+
+## Implementation Steps
+
+### Step 1: The two provenance columns
+
+**File:** `lib/db/schema.ts:1080` — insert between `prompt` (`:1080`) and the `sortOrder` line
+(`:1082`), inside the `ninaMessageImages` column object.
+
+**Change:** Two nullable text columns with `ON DELETE SET NULL` foreign keys. `AnyPgColumn` is
+already imported (`:16`) and is already used for this file's one existing self-reference
+(`ninaMessages.replyToId`, `:968`).
+
+`source_avatar_id` is this file's **first forward reference** — `ninaAvatars` is declared at
+`:1459`, four hundred lines below `ninaMessageImages`. That is safe and was verified rather than
+assumed: drizzle calls a `references()` callback lazily (at `getTableConfig` / query-build time,
+not at `pgTable()` time), so the arrow body runs long after both `const`s are initialised, and
+`tsc --strict` accepts both the annotated and the unannotated form. Both are annotated
+`(): AnyPgColumn =>` here anyway, matching `:968`.
+
+**Code** — the replacement for lines 1079-1083 (`prompt` through `createdAt`, so the insertion
+point is unambiguous):
+
+```ts
+    /** The generation prompt, `kind = 'generated'` only. Phase 12 writes it. */
+    prompt: text('prompt'),
+    /**
+     * ── PROVENANCE: WHERE THESE BYTES CAME FROM, WHEN THEY CAME FROM SOMEWHERE ────────────────
+     *
+     * A row is a **reference** when EITHER of these is non-null, and a reference is a row that is
+     * a real photograph in a real bubble whose bytes are already in the collection under another
+     * id. `lib/nina/actions.ts`'s `resolveAttachment` is the only writer: re-attaching an album
+     * face or an earlier chat photo copies `blob_url` and `pathname` onto a NEW row (no bytes are
+     * copied — the Blob object is shared), and before F37 nothing on the row said so. The two
+     * collection listings therefore showed the same picture twice, which is the defect.
+     *
+     * **The row is NOT dropped and must never be.** Every bubble, every photo-viewer open, every
+     * download control and Nina's own prompt read this table by `message_id`
+     * (`getNinaMessageImagesForMessages`, `getNinaMessageImage`,
+     * `dbNinaSourceGateway.readMessageWindow`). A message with no image row of its own is a blank
+     * bubble. So the row stays, these columns mark it, and only the three COLLECTION reads
+     * (`listNinaMessageImages`, `listNinaChatPhotos`, `countNinaChatPhotos`) skip it — one
+     * predicate, `isOriginalPhoto()` in `lib/nina/queries.ts`.
+     *
+     * **Two columns and not one polymorphic pointer**, because the two targets are two tables and
+     * a real foreign key on each is what makes `SET NULL` possible at all. The shape is
+     * `nina_messages.reply_to_id`'s (`:968`) — a nullable self-referencing FK — applied twice.
+     *
+     * **`ON DELETE SET NULL`, deliberately, and it is the interesting half.** When the original
+     * is deleted the copy stops being a copy: the column goes NULL, the row becomes an original,
+     * and the collection KEEPS the picture instead of losing it. `CASCADE` here would delete a
+     * photograph out of a conversation because an unrelated row was tidied away, which is exactly
+     * the data loss `isBlobPathnameReferenced` was written to prevent.
+     *
+     * **No index.** Both are residual predicates on reads that already range-scan
+     * `nina_message_images_user_created_idx` — the same call `generatedChatPhotoScope` argues in
+     * full for `kind`, at the same table size, and nothing has measured a need for one.
+     */
+    sourceAvatarId: text('source_avatar_id').references((): AnyPgColumn => ninaAvatars.id, {
+      onDelete: 'set null',
+    }),
+    sourceImageId: text('source_image_id').references((): AnyPgColumn => ninaMessageImages.id, {
+      onDelete: 'set null',
+    }),
+    /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+```
+
+**Impact:** the `ninaMessageImages` insert type gains two optional fields; the select type gains
+two `string | null` fields. Nothing constructs a `NinaImageRow` object literal anywhere outside
+`lib/nina/queries.ts` (checked: `lib/nina/album.ts:192`'s `ImageLike` is a structural *supertype*
+that `NinaImageRow` assigns to, and every test that touches these functions mocks them with
+`vi.fn()`), so no existing call site breaks.
+
+---
+
+### Step 2: Generate the migration — GENERATE FIRST, APPEND SECOND
+
+**File:** `drizzle/0010_nina_image_provenance.sql` (created by the tool)
+
+**Change:** run the generator **before** writing a single character of the backfill.
+
+```bash
+npm run db:generate -- --name nina_image_provenance
+```
+
+`--name` is not cosmetic: without it drizzle-kit invents a name (`0006_chubby_wild_child`,
+`0007_graceful_mercury`), and `0009_nina_message_photo_only` set the precedent that a migration
+carrying a hand-written backfill says what it does. It writes three things and only these three:
+`drizzle/0010_nina_image_provenance.sql`, `drizzle/meta/0010_snapshot.json`, and one appended
+entry in `drizzle/meta/_journal.json`. **If it writes anything else, or if the SQL contains a
+statement about a table other than `nina_message_images`, stop** — the schema has drifted from
+`0009_snapshot.json` and that is a different problem.
+
+**The expected output**, from `0002_nina.sql:118-121`'s naming convention
+(`<table>_<column>_<foreignTable>_<foreignColumn>_fk`, 55 and 61 characters, both inside
+Postgres's 63-character identifier limit):
+
+```sql
+ALTER TABLE "nina_message_images" ADD COLUMN "source_avatar_id" text;--> statement-breakpoint
+ALTER TABLE "nina_message_images" ADD COLUMN "source_image_id" text;--> statement-breakpoint
+ALTER TABLE "nina_message_images" ADD CONSTRAINT "nina_message_images_source_avatar_id_nina_avatars_id_fk" FOREIGN KEY ("source_avatar_id") REFERENCES "public"."nina_avatars"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "nina_message_images" ADD CONSTRAINT "nina_message_images_source_image_id_nina_message_images_id_fk" FOREIGN KEY ("source_image_id") REFERENCES "public"."nina_message_images"("id") ON DELETE set null ON UPDATE no action;
+```
+
+**Take the generated text as authoritative where it differs from the block above** — the
+constraint names in particular. Do not hand-write this half.
+
+**Impact:** two nullable columns and two FK constraints on a populated table. Both `ADD COLUMN`s
+are nullable with no default, so neither rewrites the table; both `ADD CONSTRAINT`s take a brief
+`SHARE ROW EXCLUSIVE` and validate an all-NULL column, which is free.
+
+**If `origin/main` has already taken `0010` by the time this lands: DELETE AND REGENERATE. Never
+rename.** A renamed migration keeps the old `when` in `_journal.json`, drops below the applied
+watermark, and is skipped in silence. Regenerating also drops the backfill below — so `git diff`
+the old file against the new one, confirm the only difference is the header, and re-append Step 3
+by hand.
+
+**AND THIS IS NOT HYPOTHETICAL — `0010` IS ALREADY CONTESTED. See D12 in the plan index.** A second,
+concurrent plan set claims the same number: `nina-image-generation-tab` phase 7, in the sibling
+worktree `/home/miftah/.worktrees/run-insights/nina-image-generation-tab`, writes a `drizzle/0010_*.sql`
+for `ALTER TABLE "nina_tuning" DROP COLUMN "wardrobe"`. It was `Status: draft` at 2026-09-07 17:30, so
+it may land first, later, or never — and its base is the shared checkout's local `main`, which has
+diverged from `origin/main` (4 ahead, 44 behind, missing `0009`), so its number was derived from a tree
+this set does not share and cannot be trusted as a reservation either way.
+
+So do not renumber this set pre-emptively — `0010` is correct against this branch's base
+(`origin/main` @ `e6c68d6`, whose `_journal.json` ends at entry 9 / `0009_nina_message_photo_only`).
+Instead, **at landing**, re-read `drizzle/meta/_journal.json` on the merge base first:
+
+```bash
+python3 -c "import json;print([e['tag'] for e in json.load(open('drizzle/meta/_journal.json'))['entries']])"
+```
+
+If a `0010` is already there, run the delete-and-regenerate procedure above — `rm -f
+drizzle/0010_*.sql drizzle/meta/0010_snapshot.json`, drop the `_journal.json` entry, `npm run
+db:generate`, then diff and re-append Step 3's backfill by hand. `54e8c56` in this repo's history is
+the same class of collision resolved the same way, one identifier space over.
+
+---
+
+### Step 3: Append the backfill, by hand, below a `--> statement-breakpoint`
+
+**File:** `drizzle/0010_nina_image_provenance.sql` — appended after the last generated statement.
+
+**Change:** two `UPDATE`s that mark production's existing duplicates. This is exactly
+`drizzle/0009_nina_message_photo_only.sql`'s shape: generated DDL, a `--> statement-breakpoint` on
+its own line, then commented SQL whose rule is frozen at the migration's date.
+
+**`npm run db:generate` does not produce any of this and will silently destroy it if this file is
+regenerated.** That is why Step 2 runs first and this runs second, and why the block opens with a
+banner saying so.
+
+**Code** — appended verbatim, starting on the line after the generated file's final `;`:
+
+```sql
+--> statement-breakpoint
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+--  EVERYTHING BELOW THIS LINE IS HAND-WRITTEN.
+--  `npm run db:generate` does not produce it and WILL SILENTLY DROP IT if this file is
+--  regenerated. Diff the old file against the new one and re-append before deleting anything.
+--  Same arrangement as drizzle/0009_nina_message_photo_only.sql, for the same reason.
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Backfill 1 of 2 — R1: the duplicate chat photographs production already has.
+--
+-- The rule is spelled out here rather than imported, on 0009's precedent: a migration is a
+-- HISTORICAL RECORD. This is the rule as it stood on 2026-09-07 and it must NOT follow later
+-- edits to `resolveAttachment` in lib/nina/actions.ts.
+--
+-- "Duplicate" is an equal `blob_url` inside one `user_id`, because that is the one thing only the
+-- attach path can produce. Two separate uploads of the same photograph write two Blob objects and
+-- two URLs and are two photographs as far as anything can tell — the plan's Scope rules the
+-- upload path out in as many words. A re-attach is the only writer that REUSES a URL, so an equal
+-- URL inside one account is a re-attach.
+--
+-- The EARLIEST row wins as the original: `ORDER BY created_at ASC, id ASC`. `id` is the final
+-- tiebreak because `created_at` ties for rows written in one statement, which is the same reason
+-- `listNinaMessageImages` carries `id` in its own ORDER BY.
+--
+-- Every later row points at THAT row rather than at its immediate predecessor, so the column
+-- names the ORIGINAL and not a chain. `resolveAttachment` flattens the same way
+-- (`source_image_id ?? row.id`), so a row backfilled here and a row written tomorrow mean the
+-- same thing.
+--
+-- The `IS NULL` guard makes the statement idempotent. On a fresh column it is a no-op; it is here
+-- so that running this by hand a second time cannot move a pointer that has since been set.
+UPDATE "nina_message_images" AS i
+   SET "source_image_id" = f."first_id"
+  FROM (
+         SELECT DISTINCT ON ("user_id", "blob_url")
+                "user_id", "blob_url", "id" AS "first_id"
+           FROM "nina_message_images"
+          ORDER BY "user_id", "blob_url", "created_at" ASC, "id" ASC
+       ) AS f
+ WHERE i."user_id" = f."user_id"
+   AND i."blob_url" = f."blob_url"
+   AND i."id" <> f."first_id"
+   AND i."source_image_id" IS NULL;
+--> statement-breakpoint
+-- Backfill 2 of 2 — R3: an album face that was attached into the chat.
+--
+-- There is NO "not the earliest" clause here, and that is the requirement rather than an
+-- omission. The FIRST chat row whose bytes are an album face is ALREADY a reference, because the
+-- photograph was never a chat photograph to begin with. That row is precisely what the user is
+-- looking at: "existing photos in Nina profpic album being added into Media as well".
+--
+-- `DISTINCT ON` over `nina_avatars` as well, and that is not symmetry. Nothing stops two album
+-- rows sharing one `blob_url` — `nina_avatars_user_source_key_unq` is unique on `source_key`, not
+-- on the URL, and the profpic re-seed writes a fresh row for an anchor that is already stored.
+-- An `UPDATE ... FROM` whose subquery matches a target row twice picks one arbitrarily; with
+-- `DISTINCT ON` the earliest album row wins, every time this statement is run.
+--
+-- Both columns can end up non-null on one row — an album face re-attached twice. That is not a
+-- conflict: a reference is "either column non-null" (the plan's Decisions table), and two true
+-- facts about where the bytes came from are better than one. It is also what keeps the album face
+-- out of Media even if the intermediate chat row is later deleted and `source_image_id` goes NULL.
+UPDATE "nina_message_images" AS i
+   SET "source_avatar_id" = a."avatar_id"
+  FROM (
+         SELECT DISTINCT ON ("user_id", "blob_url")
+                "user_id", "blob_url", "id" AS "avatar_id"
+           FROM "nina_avatars"
+          ORDER BY "user_id", "blob_url", "created_at" ASC, "id" ASC
+       ) AS a
+ WHERE i."user_id" = a."user_id"
+   AND i."blob_url" = a."blob_url"
+   AND i."source_avatar_id" IS NULL;
+```
+
+**Impact:** production's two duplicate rows stop being listed. **No row and no blob is deleted**,
+here or anywhere in this phase. The two `UPDATE`s each do one sequential scan of a table sized in
+the low thousands, once, at migration time.
+
+**Why the two statements can run in either order:** each guards on its own column, so neither can
+mask the other. Backfill 1 is first because it is R1, which is the defect the user reported first.
+
+---
+
+### Step 4: The pure provenance rule
+
+**File:** `lib/nina/attach.ts` — appended at the end of the file, under the existing
+`parseNinaPhotoParam` (the module's second section, "THE SECOND IDIOM: `/nina?photo=avatar:<id>`").
+
+**Change:** the two rules that are easy to get wrong — *which column* an id goes in, and *what a
+reference to a reference means* — become one pure exported function. `lib/nina/attach.ts` is its
+home because that module already owns the `'avatar' | 'image'` discriminator on the pure side
+(`NinaPhotoKind`, whose docstring frames it as the bridge to `NinaAttachExisting`), it already has
+a unit suite (`tests/nina.attach.test.ts`), and it imports nothing that a client component cannot
+have. It adds no imports at all.
+
+**Code** — appended:
+
+```ts
+/* ────────────────────────────────────────────────────────────────────────────────────────────────
+ * PROVENANCE: WHICH COLUMN A RE-ATTACHED PHOTO RECORDS ITSELF IN — F37 R1/R3
+ * ──────────────────────────────────────────────────────────────────────────────────────────────*/
+
+/**
+ * The two `nina_message_images` columns that say where a row's bytes came from. A row is a
+ * **reference** when either is non-null, and a reference is skipped by the three collection reads
+ * in `lib/nina/queries.ts` and by nothing else.
+ *
+ * Declared here rather than imported out of `lib/nina/queries.ts` for `RunAttachmentInput`'s
+ * stated reason, sixty lines up: this module is read by a client component, a Server Component
+ * and a unit suite, and it stays pure by naming what it produces instead of reaching into a
+ * module that opens a database connection.
+ */
+export interface NinaPhotoProvenance {
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+}
+
+/**
+ * What the server has in hand after it has proved the attachment is his — one owner-scoped
+ * single-row read, already done.
+ *
+ * The `'image'` arm carries the row's OWN provenance because a runner can re-attach a photograph
+ * that was itself re-attached, and that chain has to be flattened; see `ninaPhotoProvenance`.
+ */
+export type NinaProvenanceSource =
+  | { kind: 'avatar'; id: string }
+  | {
+      kind: 'image'
+      id: string
+      sourceAvatarId: string | null
+      sourceImageId: string | null
+    }
+
+/**
+ * **Which provenance columns a newly attached row carries.** The whole of R1 and R3's write side,
+ * as a pure function, because the two mistakes available here are both silent:
+ *
+ *   1. **Putting the id in the wrong column.** An avatar id in `source_image_id` fails the
+ *      foreign key at INSERT time, and `sendNinaMessage` swallows that failure with a warning —
+ *      so the photograph would render and the duplicate would come back with no error anywhere.
+ *   2. **Not flattening.** He re-attaches A, getting B. He re-attaches B, getting C. If C pointed
+ *      at B, then deleting B's message would set C's column NULL and C would reappear in the
+ *      collection as a duplicate of A, which still exists. Pointing C at A instead means the
+ *      column always names the ORIGINAL — the same thing `drizzle/0010`'s backfill writes for the
+ *      rows that predate this function, so the two cannot disagree.
+ *
+ * **The avatar id is INHERITED, not dropped**, when a chat row that came from the album is
+ * re-attached. Those bytes really are the album face's, and keeping the pointer is what holds R3
+ * even after the intermediate chat row is deleted: `source_image_id` goes NULL under the FK's
+ * `SET NULL`, `source_avatar_id` does not, and the album face still never appears in Media.
+ *
+ * A fresh upload and one of her generations call this NOT AT ALL — they are originals, and
+ * `NinaImageInsert` leaves both fields optional so that saying nothing is how you say so.
+ */
+export function ninaPhotoProvenance(source: NinaProvenanceSource): NinaPhotoProvenance {
+  if (source.kind === 'avatar') {
+    return { sourceAvatarId: source.id, sourceImageId: null }
+  }
+  return {
+    sourceAvatarId: source.sourceAvatarId,
+    sourceImageId: source.sourceImageId ?? source.id,
+  }
+}
+```
+
+**Impact:** a new pure export on a module that four files already import. No behaviour changes
+until Step 6 calls it.
+
+---
+
+### Step 5: The row type, the insert type, the projection, and the writer
+
+**File:** `lib/nina/queries.ts` — four separate edits, at `:203`, `:218`, `:517` and `:1435`.
+
+#### 5a — `NinaImageRow` (`lib/nina/queries.ts:203-216`), replacing the whole interface
+
+```ts
+export interface NinaImageRow {
+  id: string
+  messageId: string
+  kind: NinaImageKind
+  blobUrl: string
+  pathname: string
+  width: number | null
+  height: number | null
+  bytes: number | null
+  description: string | null
+  prompt: string | null
+  /**
+   * F37 R3. The `nina_avatars` row these bytes belong to, or NULL. Non-null means this row is a
+   * REFERENCE and the three collection reads skip it; see `isOriginalPhoto`.
+   */
+  sourceAvatarId: string | null
+  /**
+   * F37 R1. The earlier `nina_message_images` row these bytes belong to, or NULL. Always the
+   * ORIGINAL rather than the row he tapped — `ninaPhotoProvenance` flattens, and
+   * `drizzle/0010`'s backfill wrote the same thing for the rows that predate it.
+   */
+  sourceImageId: string | null
+  sortOrder: number
+  createdAt: Date
+}
+```
+
+#### 5b — `NinaImageInsert` (`lib/nina/queries.ts:218-229`), replacing the whole interface
+
+```ts
+export interface NinaImageInsert {
+  messageId: string
+  kind: NinaImageKind
+  blobUrl: string
+  pathname: string
+  width?: number | null
+  height?: number | null
+  bytes?: number | null
+  description?: string | null
+  prompt?: string | null
+  /**
+   * F37. **Optional on purpose, and the default is what makes the rest of the repo correct.** An
+   * upload (`lib/nina/actions.ts:534`), one of her generations (`lib/nina/imagerun.ts:260`) and an
+   * operator's Add (`lib/admin/chatPhotoActions.ts:229`) are all ORIGINALS: they say nothing, and
+   * `insertNinaMessageImages` coalesces to NULL. Exactly one writer sets them —
+   * `resolveAttachment`'s attach INSERT — and it gets them from `ninaPhotoProvenance`.
+   */
+  sourceAvatarId?: string | null
+  sourceImageId?: string | null
+  sortOrder?: number
+}
+```
+
+#### 5c — `imageColumns` (`lib/nina/queries.ts:517-530`), replacing the whole const
+
+Every read of this table goes through this projection, so a column is invisible to all of them
+until it is here — including to `.returning(imageColumns)` in `insertNinaMessageImages`,
+`updateNinaChatPhotoBlob` and `deleteNinaMessageImage`.
+
+```ts
+const imageColumns = {
+  id: ninaMessageImages.id,
+  messageId: ninaMessageImages.messageId,
+  kind: ninaMessageImages.kind,
+  blobUrl: ninaMessageImages.blobUrl,
+  pathname: ninaMessageImages.pathname,
+  width: ninaMessageImages.width,
+  height: ninaMessageImages.height,
+  bytes: ninaMessageImages.bytes,
+  description: ninaMessageImages.description,
+  prompt: ninaMessageImages.prompt,
+  sourceAvatarId: ninaMessageImages.sourceAvatarId,
+  sourceImageId: ninaMessageImages.sourceImageId,
+  sortOrder: ninaMessageImages.sortOrder,
+  createdAt: ninaMessageImages.createdAt,
+}
+```
+
+#### 5d — `insertNinaMessageImages` (`lib/nina/queries.ts:1435-1467`), replacing the whole function
+
+```ts
+export async function insertNinaMessageImages(
+  userId: string,
+  rows: readonly NinaImageInsert[],
+): Promise<NinaImageRow[]> {
+  if (rows.length === 0) return []
+
+  const messageIds = [...new Set(rows.map((row) => row.messageId))]
+  const owned = await db
+    .select({ id: ninaMessages.id })
+    .from(ninaMessages)
+    .where(and(eq(ninaMessages.userId, userId), inArray(ninaMessages.id, messageIds)))
+
+  if (owned.length !== messageIds.length) return []
+
+  const inserted = await db
+    .insert(ninaMessageImages)
+    .values(
+      rows.map((row) => ({
+        id: newId(),
+        userId,
+        messageId: row.messageId,
+        kind: row.kind,
+        blobUrl: row.blobUrl,
+        pathname: row.pathname,
+        width: row.width ?? null,
+        height: row.height ?? null,
+        bytes: row.bytes ?? null,
+        description: row.description ?? null,
+        prompt: row.prompt ?? null,
+        /*
+         * F37 R1/R3. Coalesced rather than spread, so the column appears in EVERY insert this
+         * function builds — an original binds NULL, a reference binds an id, and the statement
+         * has one shape. The foreign keys are what make an id here safe to trust: the only writer
+         * that supplies one has already read the row it names, owner-scoped, in the same request.
+         */
+        sourceAvatarId: row.sourceAvatarId ?? null,
+        sourceImageId: row.sourceImageId ?? null,
+        sortOrder: row.sortOrder ?? 0,
+      })),
+    )
+    .returning(imageColumns)
+
+  return inserted
+}
+```
+
+**Impact:** `imageColumns` widens by two, so every `NinaImageRow` in the repo carries them. The
+INSERT gains two bound parameters on every path, including the three original ones, where both
+bind NULL.
+
+---
+
+### Step 6: `resolveAttachment` returns provenance, and the attach INSERT writes it
+
+**File:** `lib/nina/actions.ts` — the import block (`:23-25` area) and then `:183-233` and
+`:562-576`.
+
+#### 6a — the import
+
+Add to the import block, keeping the file's existing alphabetical-by-module ordering. `actions.ts`
+does not currently import from `./attach`; this is a new line, placed with the other relative
+`./` imports:
+
+```ts
+import { ninaPhotoProvenance } from './attach'
+```
+
+#### 6b — `resolveAttachment` (`lib/nina/actions.ts:183-233`), replacing the whole function
+
+The docstring above it (`:176-182`, "Resolved once, BEFORE the runner's row is written…") is
+unchanged; only the signature and the two `return`s move. **The avatar branch still rewrites
+`kind` to `'generated'` and that must not change** — `photoSideOf` is what keeps the bubble, the
+viewer's dot row and `/nina/about`'s his/hers split telling the truth about whose photograph it
+is, and three files argue it in writing.
+
+```ts
+async function resolveAttachment(
+  userId: string,
+  attach: NinaAttachExisting,
+): Promise<{
+  blobUrl: string
+  pathname: string
+  kind: NinaImageKind
+  description: string | null
+  /**
+   * F37 R1/R3. Which row or avatar these bytes already belong to. Both NULL is unreachable from
+   * here: this function is only ever called for a photograph the server ALREADY owns, so the row
+   * it writes is a reference by definition. `ninaPhotoProvenance` decides which column, and
+   * flattens a re-attached reference to its original.
+   */
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+} | null> {
+  if (attach.kind === 'avatar') {
+    /*
+     * ONE ROW, BY PRIMARY KEY, SCOPED TO `user_id` (F34). This was
+     * `listNinaAvatars(userId).find((candidate) => candidate.id === attach.id)`, which was correct
+     * and was cheap when the album held the handful of faces F33 R23 described. F34 R1's stated
+     * requirement is *"i will put hundreds of profile pics in there"*, and this runs on every send
+     * that carries a shared photo — so it read the whole album, every column and every
+     * `description`, to answer a question about one id.
+     *
+     * `getNinaAvatar` proves strictly the same thing: `user_id` is in its WHERE, so "not his" and
+     * "does not exist" come back as the same `null`, which is what the refusal below needs. The
+     * ownership property is not being relaxed; the read is.
+     */
+    const row = await getNinaAvatar(userId, attach.id)
+    if (row == null) return null
+    /* Her own photograph, so `kind: 'generated'` — the gallery's his/hers discriminator has to
+     * keep telling the truth about a photo that has now appeared twice. */
+    return {
+      blobUrl: row.blobUrl,
+      pathname: row.pathname,
+      kind: 'generated',
+      description: row.description,
+      /*
+       * F37 R3. `row.id` and not `attach.id`, though the read was by primary key and they are
+       * equal: the provenance names the row this function actually proved is his, which is a
+       * property the foreign key can then rely on rather than one a reader has to reconstruct.
+       */
+      ...ninaPhotoProvenance({ kind: 'avatar', id: row.id }),
+    }
+  }
+
+  /*
+   * The same substitution on the conversation-photo branch. `listNinaMessageImages(userId, {
+   * limit: NINA_GALLERY_LIMIT }).find(...)` read up to 200 rows to answer one id;
+   * `getNinaMessageImage` is phase 3's mirror of `getNinaAvatar` and is why this phase depends on
+   * phase 3. Bounded before, so this is a smaller win than the avatar branch — done in the same
+   * commit because leaving one of two identical mistakes in place is how it grows back.
+   *
+   * `getNinaMessageImage` deliberately does NOT filter references (invariant 2): a photograph
+   * hidden from the two listings is still a photograph in a bubble, and re-attaching it has to
+   * keep working. The row's own provenance is what makes that safe — it is passed through below
+   * and flattened, so the copy of a copy points at the original.
+   */
+  const row = await getNinaMessageImage(userId, attach.id)
+  if (row == null) return null
+  /* A re-attached chat photo keeps whoever's it was. */
+  return {
+    blobUrl: row.blobUrl,
+    pathname: row.pathname,
+    kind: row.kind,
+    description: row.description,
+    ...ninaPhotoProvenance({
+      kind: 'image',
+      id: row.id,
+      sourceAvatarId: row.sourceAvatarId,
+      sourceImageId: row.sourceImageId,
+    }),
+  }
+}
+```
+
+#### 6c — the attach INSERT (`lib/nina/actions.ts:562-576`), replacing the whole `if` block
+
+The comment above it (`:553-561`, "R26's row. Same table, same shape…") is unchanged.
+
+```ts
+  if (attached !== null) {
+    try {
+      await insertNinaMessageImages(userId, [
+        {
+          messageId: runnerMessageId,
+          kind: attached.kind,
+          blobUrl: attached.blobUrl,
+          pathname: attached.pathname,
+          description: attached.description,
+          sortOrder: images.length,
+          /*
+           * F37 R1/R3. **The two fields that make this row a reference rather than a duplicate.**
+           * `resolveAttachment` filled them in from the row it proved he owns, so the collection
+           * listings skip this row while the bubble, the viewer, the download control and Nina's
+           * prompt all still find it by `message_id`.
+           *
+           * The upload block twenty lines up sets NEITHER, and must not: those bytes arrived from
+           * his camera and the row is an original.
+           */
+          sourceAvatarId: attached.sourceAvatarId,
+          sourceImageId: attached.sourceImageId,
+        },
+      ])
+    } catch (cause) {
+      console.warn('[nina] could not persist the attached photo', { error: String(cause) })
+    }
+  }
+```
+
+**Impact:** every future re-attach writes a marked row. The upload path (`:534`) and
+`lib/nina/imagerun.ts:260` and `lib/admin/chatPhotoActions.ts:229` are untouched and keep writing
+originals, because `NinaImageInsert`'s two new fields are optional.
+
+---
+
+### Step 7: The predicate, in exactly two places, covering exactly three reads
+
+**File:** `lib/nina/queries.ts:1477` (`listNinaMessageImages`), `:1563`
+(`generatedChatPhotoScope`), and `:1678` (`updateNinaChatPhotoBlob`, §5b).
+
+`isNull` and `and` are already imported (`:10-11`, `:2`). `SQL` is already imported as a type
+(`:16`).
+
+#### 7a — `isOriginalPhoto`, declared immediately above `generatedChatPhotoScope`
+
+Insert directly before the `generatedChatPhotoScope` docstring (`lib/nina/queries.ts:1541`, the
+line that opens `/**\n * The predicate that DEFINES "her chat photographs"…`):
+
+```ts
+/**
+ * **"This row's bytes are not already in the collection under another id."** F37 R1 and R3, as one
+ * predicate, so that the three reads that must agree cannot drift.
+ *
+ * ── WHY IT IS A BARE PREDICATE AND NOT A `…Scope(userId)` ────────────────────────────────────
+ * `generatedChatPhotoScope` answers a whole question ("her chat photographs, his") and owns its
+ * ownership check. This answers half of one, and its callers differ in the other half — one is
+ * `user_id` alone, the other is `user_id AND kind`. A `userId` parameter here would mean two
+ * functions that both know about ownership and a reader who has to check whether they agree.
+ *
+ * ── THE THREE READS IT FILTERS, AND THE FOUR IT MUST NEVER FILTER ────────────────────────────
+ * Filtered — the COLLECTION reads, which describe a set of photographs to a human:
+ *   · `listNinaMessageImages`   → /nina/about's Media feed
+ *   · `listNinaChatPhotos`      → /admin/photos, via `generatedChatPhotoScope`
+ *   · `countNinaChatPhotos`     → /admin's hub card, via the same scope — which is why there are
+ *                                 only TWO call sites for three reads, and why the listing and
+ *                                 the count still cannot disagree about the total.
+ *
+ * NOT filtered, and a future "consistency" cleanup that adds it here is a data-loss bug —
+ * these are what makes a photograph RENDER and what Nina is given to look at (invariant 2):
+ *   · `getNinaMessageImagesForMessages` → every bubble, and the delete log
+ *   · `getNinaMessageImage`             → the ?photo= deep link and the re-attach path
+ *   · `dbNinaSourceGateway.readMessageWindow` / `.readConversation` → her context
+ *   · `isBlobPathnameReferenced`        → "is anyone still pointing at these bytes", which is
+ *                                         wrong by exactly the rows this predicate hides
+ * `tests/nina.photoRefs.test.ts` asserts that absence, as an absence, for the same reason
+ * `tests/nina.softDelete.test.ts` asserts one on `countNinaTurnsSince`.
+ *
+ * ── EITHER COLUMN, NOT BOTH ─────────────────────────────────────────────────────────────────
+ * An album face re-attached twice carries both. A chat photo re-attached once carries one. The
+ * definition is "either non-null", so the predicate is "both null" — and `IS NULL` is the only
+ * spelling that is correct here, because `= NULL` is never true and `<>` on a NULL is never
+ * false.
+ *
+ * No index; see the columns' own header in `lib/db/schema.ts`.
+ */
+function isOriginalPhoto(): SQL | undefined {
+  return and(isNull(ninaMessageImages.sourceAvatarId), isNull(ninaMessageImages.sourceImageId))
+}
+```
+
+#### 7b — `listNinaMessageImages` (`lib/nina/queries.ts:1471-1485`), replacing docstring and function
+
+```ts
+/**
+ * Phase 13's gallery: every image in the conversation, newest first, his and hers together. Reads
+ * `nina_message_images_user_created_idx` with no join — which is the whole reason this is a table
+ * and not a `jsonb` column on `nina_messages`.
+ *
+ * **F37 R3: not quite every image — a REFERENCE is skipped.** `/nina/about`'s Media section is a
+ * collection of the photographs in the conversation, and a row whose bytes are already in the
+ * album (or already further up the feed) is the same photograph, not a second one. The row itself
+ * is untouched and its bubble still renders it; see `isOriginalPhoto` for the three reads that
+ * filter and the four that must not.
+ *
+ * `limit` still bounds the ROWS RETURNED and not the rows examined, so hiding a reference lets one
+ * more original through rather than leaving a gap — which is what the caller wants from a feed.
+ */
+export async function listNinaMessageImages(
+  userId: string,
+  opts: { limit: number },
+): Promise<NinaImageRow[]> {
+  return db
+    .select(imageColumns)
+    .from(ninaMessageImages)
+    .where(and(eq(ninaMessageImages.userId, userId), isOriginalPhoto()))
+    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+    .limit(opts.limit)
+}
+```
+
+#### 7c — `generatedChatPhotoScope` (`lib/nina/queries.ts:1563-1565`), replacing the function body only
+
+The long docstring above it (`:1541-1562`) stays exactly as it is; append one paragraph to it,
+immediately before the closing `*/`:
+
+```
+ *
+ * ── AND SINCE F37, NOT A REFERENCE ──────────────────────────────────────────────────────────
+ * `isOriginalPhoto()` joins the `and(...)` here rather than in `listNinaChatPhotos` and
+ * `countNinaChatPhotos` separately, which is the same argument this docstring already makes for
+ * `kind`: the page and the total are one predicate or they are two chances to disagree about how
+ * many photographs the collection holds. R1's duplicate leaves /admin/photos and the /admin hub
+ * card in one edit.
+```
+
+and replace the function:
+
+```ts
+function generatedChatPhotoScope(userId: string) {
+  return and(
+    eq(ninaMessageImages.userId, userId),
+    eq(ninaMessageImages.kind, 'generated'),
+    isOriginalPhoto(),
+  )
+}
+```
+
+`listNinaChatPhotos` (`:1589`) and `countNinaChatPhotos` (`:1623`) are **not edited**. They
+already call this.
+
+#### 7d — `updateNinaChatPhotoBlob` (`lib/nina/queries.ts:1678-1704`), the `.set()` only
+
+Replace's whole point is new bytes behind an existing row — and after it, the row's
+`source_*` columns would be describing bytes that are gone. That is the same lie
+`description: null, prompt: null` are already there to prevent, in the same statement, for the
+same reason. Nulling them also closes the one hole the listing filter leaves: `/admin/photos`
+only ever lists originals, so Replace can normally only reach a row where both are NULL — but the
+id arrives from a client and `getNinaMessageImage` does not filter references, so a stale tab
+could Replace a reference and leave a row with fresh unique bytes that no listing will ever show.
+
+Replace the `.set({...})` object; the rest of the function, and its long docstring, are unchanged:
+
+```ts
+    .set({
+      blobUrl: patch.blobUrl,
+      pathname: patch.pathname,
+      width: patch.width,
+      height: patch.height,
+      bytes: patch.bytes,
+      description: null,
+      prompt: null,
+      /*
+       * F37. These described where the OLD bytes came from. The new bytes came from the operator's
+       * file picker, so the row is now an original and must say so — otherwise a Replace applied
+       * to a reference (reachable from a stale tab: the id comes from a client and
+       * `getNinaMessageImage` does not filter references) leaves a unique photograph that no
+       * listing will ever show. Same statement as the two nulls above it, for the same reason:
+       * there must be no window in which the row points at new bytes and old provenance.
+       */
+      sourceAvatarId: null,
+      sourceImageId: null,
+    })
+```
+
+**Impact:** three surfaces stop showing duplicates. `/nina/about`'s Media, `/admin/photos`'s
+grid + pager, and `/admin`'s count. Nothing else changes what it returns.
+
+---
+
+### Step 8: Tests
+
+Three files. Nothing here invents a database harness: `tests/support/fakeDb.ts` already records
+the real generated SQL through a stand-in Neon client, and `tests/nina.softDelete.test.ts` is the
+model this phase follows exactly — *"a spy cannot tell 'the function was called' from 'the
+predicate was in the WHERE'"*.
+
+#### 8a — `tests/db.schema.nina.test.ts`, replacing the `nina_message_images` describe (`:157-163`)
+
+```ts
+describe('nina_message_images', () => {
+  it('is its own table with a description column, because phase 13 queries it directly', () => {
+    expect(sqlType(schema.ninaMessageImages, 'description')).toBe('text')
+    expect(columns(schema.ninaMessageImages).get('description')?.notNull).toBe(false)
+    expect(fkFor(schema.ninaMessageImages, 'message_id')?.onDelete).toBe('cascade')
+  })
+
+  it('carries F37 provenance: two nullable pointers, so a reference is representable', () => {
+    for (const column of ['source_avatar_id', 'source_image_id']) {
+      expect(sqlType(schema.ninaMessageImages, column), column).toBe('text')
+      expect(columns(schema.ninaMessageImages).get(column)?.notNull, column).toBe(false)
+      /* NULLABLE is what let these be added to a populated table with no backfill of their own —
+       * `nina_avatars.source_key`'s recorded property, and the reason drizzle/0010 rewrites no
+       * rows. It is also the DEFINITION: both NULL means "these bytes are this row's own". */
+      expect(columns(schema.ninaMessageImages).get(column)?.hasDefault, column).toBe(false)
+    }
+  })
+
+  it('points source_avatar_id at the album and source_image_id at itself', () => {
+    const avatarFk = fkFor(schema.ninaMessageImages, 'source_avatar_id')
+    const imageFk = fkFor(schema.ninaMessageImages, 'source_image_id')
+    expect(cfg(avatarFk!.reference().foreignTable).name).toBe('nina_avatars')
+    /* Self-referencing, on nina_messages.reply_to_id's precedent — the repo's other nullable
+     * pointer from a row to an earlier row of the same table. */
+    expect(cfg(imageFk!.reference().foreignTable).name).toBe('nina_message_images')
+  })
+
+  it('SETS NULL on both, so deleting an original keeps the picture instead of losing it', () => {
+    /* THE decision of phase 1, and the one a "consistency" edit would get wrong. CASCADE here
+     * would delete a photograph out of a live conversation because an unrelated row was tidied
+     * away — the exact data loss `isBlobPathnameReferenced` exists to prevent. SET NULL instead
+     * demotes the copy to an original, which is honest: the bytes are still there and are now
+     * nobody else's. */
+    expect(fkFor(schema.ninaMessageImages, 'source_avatar_id')?.onDelete).toBe('set null')
+    expect(fkFor(schema.ninaMessageImages, 'source_image_id')?.onDelete).toBe('set null')
+  })
+
+  it('adds no index for them — they are residual predicates, like kind', () => {
+    // `generatedChatPhotoScope` argues this in full for `kind` at the same table size. An index
+    // asserted as an ABSENCE so that adding one is a decision somebody makes on purpose.
+    expect(indexNames(schema.ninaMessageImages)).toEqual([
+      'nina_message_images_message_idx',
+      'nina_message_images_user_created_idx',
+    ])
+  })
+})
+```
+
+`cfg`, `columns`, `sqlType`, `indexNames` and `fkFor` are the file's existing helpers (`:20-50`);
+no new helper is added.
+
+#### 8b — `tests/nina.attach.test.ts`, appended
+
+The import at `:3-9` gains `ninaPhotoProvenance`.
+
+```ts
+describe('ninaPhotoProvenance — which column, and what a copy of a copy points at', () => {
+  it('puts an album id in source_avatar_id and nothing in source_image_id', () => {
+    /* The wrong column is not a type error and not a visible failure: it fails the foreign key at
+     * INSERT time, and `sendNinaMessage` swallows that with a console.warn — so the photograph
+     * would still render and the duplicate would quietly come back. */
+    expect(ninaPhotoProvenance({ kind: 'avatar', id: 'avatarAAAAAA' })).toEqual({
+      sourceAvatarId: 'avatarAAAAAA',
+      sourceImageId: null,
+    })
+  })
+
+  it('points a re-attached chat photo at itself when it is the original', () => {
+    expect(
+      ninaPhotoProvenance({
+        kind: 'image',
+        id: 'imageAAAAAAA',
+        sourceAvatarId: null,
+        sourceImageId: null,
+      }),
+    ).toEqual({ sourceAvatarId: null, sourceImageId: 'imageAAAAAAA' })
+  })
+
+  it('FLATTENS a copy of a copy to the original, never to the row he tapped', () => {
+    /* He attaches A and gets B; he attaches B and gets C. If C pointed at B, then deleting B's
+     * message would SET NULL on C and C would reappear in the collection as a duplicate of A,
+     * which still exists. Pointing at A means the column always names the original — the same
+     * thing drizzle/0010's backfill writes for the rows that predate this function. */
+    expect(
+      ninaPhotoProvenance({
+        kind: 'image',
+        id: 'imageBBBBBBB',
+        sourceAvatarId: null,
+        sourceImageId: 'imageAAAAAAA',
+      }),
+    ).toEqual({ sourceAvatarId: null, sourceImageId: 'imageAAAAAAA' })
+  })
+
+  it('INHERITS the album pointer, which is what holds R3 after the middle row is deleted', () => {
+    /* An album face was attached (B), and B is now being attached again (C). Those bytes really
+     * are the album face's. Keeping `source_avatar_id` means that if B's message is later deleted
+     * and C's `source_image_id` goes NULL under the FK, C is STILL a reference — so the profile
+     * photo still never turns up in Media, which is R3 in the user's own words. */
+    expect(
+      ninaPhotoProvenance({
+        kind: 'image',
+        id: 'imageBBBBBBB',
+        sourceAvatarId: 'avatarAAAAAA',
+        sourceImageId: null,
+      }),
+    ).toEqual({ sourceAvatarId: 'avatarAAAAAA', sourceImageId: 'imageBBBBBBB' })
+  })
+
+  it('never answers with both NULL, because it is only ever asked about a photo we already have', () => {
+    for (const source of [
+      { kind: 'avatar' as const, id: 'avatarAAAAAA' },
+      { kind: 'image' as const, id: 'imageAAAAAAA', sourceAvatarId: null, sourceImageId: null },
+    ]) {
+      const provenance = ninaPhotoProvenance(source)
+      expect(provenance.sourceAvatarId ?? provenance.sourceImageId).not.toBeNull()
+    }
+  })
+})
+```
+
+#### 8c — `tests/nina.photoRefs.test.ts`, new file, complete
+
+```ts
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
+
+/**
+ * **F37 R1/R3's contract, asserted against generated SQL rather than against a spy.**
+ *
+ * A reference filter is only worth anything if the reads that must carry it do and the reads that
+ * must NOT carry it do not — and a `vi.fn()` cannot tell "the function ran" from "the predicate
+ * was in the WHERE". So this file installs the recording driver (`tests/support/fakeDb.ts`) and
+ * reads the statements, exactly as `tests/nina.softDelete.test.ts` does for `deleted_at`.
+ *
+ * Three properties, and the SECOND is the one most likely to rot:
+ *
+ *   1. The three COLLECTION reads skip a reference. Two call sites for three statements, because
+ *      `generatedChatPhotoScope` is shared by the page and the count on purpose.
+ *   2. The four reads that make a photograph RENDER, or that build Nina's context, carry NO such
+ *      predicate — invariant 2, written as an ABSENCE on purpose. A future "consistency" cleanup
+ *      that adds the filter to `getNinaMessageImagesForMessages` blanks a photograph in a live
+ *      conversation, and this is the only thing that would notice.
+ *   3. Every INSERT names both columns, so an original binds NULL rather than omitting the column.
+ *
+ * The assertions match `"source_avatar_id" is null` rather than the fully-qualified spelling,
+ * because drizzle qualifies a column in a SELECT and may not in an UPDATE and neither is the
+ * point — `tests/nina.softDelete.test.ts:59`'s `HIDDEN_SKIPPED` trick.
+ */
+
+type Queries = typeof import('@/lib/nina/queries')
+
+/** 12 chars, so `isValidId` would accept it and `newId()` could have produced it. */
+const IMAGE = 'imgAAAAAAAAA'
+const MESSAGE = 'msgAAAAAAAAA'
+
+let fake: FakeDb
+let queries: Queries
+
+beforeEach(async () => {
+  vi.resetModules()
+  fake = installFakeDb()
+  queries = await import('@/lib/nina/queries')
+})
+
+afterEach(() => {
+  uninstallFakeDb()
+  vi.resetModules()
+})
+
+const REFERENCE_SKIPPED = ['"source_avatar_id" is null', '"source_image_id" is null'] as const
+
+/**
+ * The WHERE clause alone. Both columns are in `imageColumns`, so they appear in every SELECT list
+ * on this table — an unscoped `not.toContain` would fail on the projection and prove nothing. The
+ * inverse of `tests/nina.softDelete.test.ts`'s `setClause` slice.
+ */
+function whereOf(sql: string): string {
+  const at = sql.indexOf(' where ')
+  if (at < 0) throw new Error(`no WHERE clause in: ${sql}`)
+  return sql.slice(at)
+}
+
+describe('the collection listings skip a reference (R1, R3)', () => {
+  it('listNinaMessageImages — /nina/about loses the duplicate and the album face', async () => {
+    fake.enqueue([])
+    await queries.listNinaMessageImages('u1', { limit: 200 })
+
+    const { sql } = fake.only()
+    const where = whereOf(sql)
+    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
+    // Still the same one indexed read it always was: user_id equality, (created_at, id) already
+    // in index order, limit real.
+    expect(where).toContain('"user_id" = $')
+    expect(sql).toContain('limit')
+  })
+
+  it('listNinaChatPhotos — BOTH of its statements carry it, so the pager cannot lie', async () => {
+    fake.enqueue([], [[0]])
+    await queries.listNinaChatPhotos('u1')
+
+    expect(fake.queries).toHaveLength(2)
+    for (const query of fake.queries) {
+      const where = whereOf(query.sql)
+      for (const predicate of REFERENCE_SKIPPED) expect(where, query.sql).toContain(predicate)
+      // The page and the total share `generatedChatPhotoScope`, which is why they cannot drift.
+      expect(where).toContain('"kind" = $')
+    }
+  })
+
+  it('countNinaChatPhotos — /admin’s hub card counts what /admin/photos lists', async () => {
+    fake.enqueue([[0]])
+    await expect(queries.countNinaChatPhotos('u1')).resolves.toBe(0)
+
+    const where = whereOf(fake.only().sql)
+    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
+  })
+})
+
+describe('invariant 2: whatever a listing hides, a bubble still gets', () => {
+  it('getNinaMessageImagesForMessages carries NO reference predicate — every bubble reads it', async () => {
+    /* An ABSENCE assertion on purpose. This is the read behind ChatImages, the photo viewer, the
+     * download control and the delete log. Adding the filter here blanks a photograph that is
+     * sitting in a conversation the runner can scroll to, and nothing else in the suite would
+     * notice. */
+    fake.enqueue([])
+    await queries.getNinaMessageImagesForMessages('u1', [MESSAGE])
+
+    const where = whereOf(fake.only().sql)
+    expect(where).not.toContain('source_avatar_id')
+    expect(where).not.toContain('source_image_id')
+  })
+
+  it('getNinaMessageImage carries none either — the ?photo= link and the re-attach path', async () => {
+    /* `resolveAttachment` reads through this. A reference that could not be re-attached would be a
+     * photograph the runner can see and cannot share, and the second attach is exactly what
+     * `ninaPhotoProvenance`'s flattening arm is for. */
+    fake.enqueue([])
+    await expect(queries.getNinaMessageImage('u1', IMAGE)).resolves.toBeNull()
+
+    const where = whereOf(fake.only().sql)
+    expect(where).not.toContain('source_avatar_id')
+    expect(where).not.toContain('source_image_id')
+  })
+
+  it('isBlobPathnameReferenced counts a reference as a reference — it is the whole question', async () => {
+    /* This is what stands between /admin/photos and deleting bytes somebody is still rendering,
+     * and a reference is BY DEFINITION a second row pointing at one Blob object. Filtering here
+     * would make Remove delete the object her profile picture is served from. */
+    fake.enqueue([], [])
+    await queries.isBlobPathnameReferenced('u1', 'nina/u1/selfie-x.png', 'https://x.example/s.png')
+
+    // TWO statements, run concurrently: one per table, each with its `OR`s inline. Not one per
+    // column — the function asks six columns across two `Promise.all` members.
+    expect(fake.queries).toHaveLength(2)
+    for (const query of fake.queries) {
+      const where = whereOf(query.sql)
+      expect(where, query.sql).not.toContain('source_avatar_id')
+      expect(where, query.sql).not.toContain('source_image_id')
+    }
+  })
+})
+
+describe('insertNinaMessageImages names both columns on every path', () => {
+  it('binds NULL for an original rather than omitting the column', async () => {
+    fake.enqueue([[MESSAGE]], [])
+    await queries.insertNinaMessageImages('u1', [
+      { messageId: MESSAGE, kind: 'upload', blobUrl: 'https://x/a.jpg', pathname: 'nina/u1/a.jpg' },
+    ])
+
+    expect(fake.queries).toHaveLength(2) // the hand-rolled FK check, then the insert
+    const insert = fake.sqlAt(1)
+    expect(insert).toMatch(/^insert into "nina_message_images"/)
+    expect(insert).toContain('"source_avatar_id"')
+    expect(insert).toContain('"source_image_id"')
+    /* Coalesced and not spread: one statement shape for every writer, so a reference and an
+     * original bind the same parameter list. */
+    expect(fake.queries[1]!.params).toContain(null)
+  })
+
+  it('binds the avatar id a re-attach supplies, in the avatar column', async () => {
+    fake.enqueue([[MESSAGE]], [])
+    await queries.insertNinaMessageImages('u1', [
+      {
+        messageId: MESSAGE,
+        kind: 'generated',
+        blobUrl: 'https://x/a.jpg',
+        pathname: 'nina/u1/a.jpg',
+        sourceAvatarId: 'avatarAAAAAA',
+      },
+    ])
+    expect(fake.queries[1]!.params).toContain('avatarAAAAAA')
+  })
+})
+
+describe('Replace stops the provenance lying about bytes that are gone', () => {
+  it('nulls both columns in the same statement as description and prompt', async () => {
+    fake.enqueue([])
+    await queries.updateNinaChatPhotoBlob('u1', IMAGE, {
+      blobUrl: 'https://x/new.jpg',
+      pathname: 'nina/u1/new.jpg',
+      width: 768,
+      height: 1024,
+      bytes: 123,
+    })
+
+    const { sql } = fake.only()
+    const setClause = sql.slice(0, sql.indexOf(' where '))
+    for (const column of ['description', 'prompt', 'source_avatar_id', 'source_image_id']) {
+      expect(setClause, column).toContain(column)
+    }
+    /* One statement, so there is no window in which the row points at new bytes and old
+     * provenance — `updateNinaChatPhotoBlob`'s own argument for nulling `description` here. */
+    expect(fake.queries).toHaveLength(1)
+  })
+})
+```
+
+**On the `isBlobPathnameReferenced` case:** the function (`lib/nina/queries.ts:1777`) asks six
+columns but issues **two** statements — one per table, `Promise.all`, with the columns folded into
+an `or(...)` inside each. Hence two enqueued results. If that shape ever changes, keep the loop
+over `fake.queries` and adjust the count; the assertion is the loop, not the number.
+
+**Impact:** three test files, all additive. No existing assertion changes.
+
+---
+
+## Verification
+
+**Build:** `npm run lint && npm run typecheck`
+**Tests:** `npx vitest run`
+**Migration consistency:** `npm run db:check` — proves `_journal.json`, `0010_snapshot.json` and
+the schema agree. Then `git status --porcelain drizzle/` must show exactly three paths:
+`drizzle/0010_nina_image_provenance.sql`, `drizzle/meta/0010_snapshot.json`,
+`drizzle/meta/_journal.json`.
+
+**Manual check — run the backfill's two `SELECT` counterparts BEFORE `npm run db:migrate`.** The
+backfill is the one thing in this phase that cannot be undone by a `git revert`, and it is the one
+thing no test can reach. Both are read-only:
+
+```sql
+-- How many chat rows will get source_image_id (R1)? Expect the reported duplicates and no more.
+SELECT count(*)
+  FROM "nina_message_images" i
+  JOIN (SELECT DISTINCT ON ("user_id","blob_url") "user_id","blob_url","id" AS f
+          FROM "nina_message_images"
+         ORDER BY "user_id","blob_url","created_at" ASC,"id" ASC) d
+    ON d."user_id" = i."user_id" AND d."blob_url" = i."blob_url"
+ WHERE i."id" <> d.f;
+
+-- How many will get source_avatar_id (R3)? These are album faces attached into the chat.
+SELECT count(*)
+  FROM "nina_message_images" i
+  JOIN "nina_avatars" a ON a."user_id" = i."user_id" AND a."blob_url" = i."blob_url";
+
+-- The number that must NOT move: the whole collection, before the filter.
+SELECT count(*) FROM "nina_message_images" WHERE "kind" = 'generated';
+```
+
+If the second number is anywhere near the third, **stop and do not migrate**: it would mean chat
+photographs and album rows share `blob_url` in bulk, and `/admin/photos` would go nearly empty.
+(The code says they should not — `finishSelfie` writes only a `nina_message_images` row and
+`finishAvatar` writes only a `nina_avatars` row, from two different Blob objects — but a count is
+cheaper than a rollback.)
+
+**Manual check — the two surfaces, after migrating.** Attach an album face from `/admin/nina`'s
+"Kirim ke chat", send, then: the photograph is in the bubble; it opens in the viewer; it is **not**
+in `/nina/about`'s Media; `/admin`'s Chat-photos count is unchanged. Then re-attach an existing
+chat photo from the viewer's attach control and check `/admin/photos`'s total is unchanged.
+
+**Exit criteria:**
+
+- `npm run lint`, `npm run typecheck` and `npx vitest run` are green; `npm run db:check` passes.
+- Attaching an album face or re-attaching a chat photo leaves `countNinaChatPhotos` unchanged and
+  adds nothing to `listNinaMessageImages`'s output, while the photo still renders in the bubble,
+  still opens in the viewer, and its `description` still reaches the turn.
+- `drizzle/0010_nina_image_provenance.sql` holds the generated DDL **and** the two hand-written
+  `UPDATE`s below a `--> statement-breakpoint`, and `db:generate` produced exactly one new
+  migration file with a matching journal entry.
+- `tests/nina.photoRefs.test.ts` asserts the filter's presence in two scopes and its **absence**
+  in the four bubble/context/reaper reads.
+- Not one row and not one blob was deleted.
+
+---
+
+## Handoffs
+
+**H1 — the provenance line on `ChatPhotoDetail` is NOT taken. RECONCILED AS D8: it is out of this
+phase's scope, not an option left open.** The draft index offered it as optional and told this phase
+to "coordinate with phase 2, which owns that file" — but phases 1 and 2 carry no dependency edge and
+therefore run concurrently in separate sessions on one branch, so "coordinate" named a collision
+rather than resolving one. The reconciler settled it in Phase 2's favour, on the fact this phase had
+already found independently: after Step 7c, `/admin/photos` lists only rows where **both** provenance
+columns are NULL. A "came from her album" line on that rail could therefore never render — it would
+be dead markup in a file **Phase 2 is rewriting**, and its only possible reader would be a row that
+stopped being a reference (`SET NULL` fired), at which point the honest label is "an original".
+
+So: `ChatPhoto` (`components/admin/chatPhotoModel.ts`) gains no field, `app/admin/photos/page.tsx`'s
+row→prop mapping is untouched, and `components/admin/ChatPhotoDetail.tsx` is not opened by this
+phase at all. **Phase 2 owns all three outright; there is no coordination to do, and no later phase
+should add the line either.**
+
+**H2 — Phase 2, `lib/nina/queries.ts` §5b.** Phase 2 adds a new `description`-only UPDATE. This
+phase's §5b footprint is two lines inside the existing `updateNinaChatPhotoBlob`'s `.set()`
+(Step 7d). Phase 2 should **not** add `sourceAvatarId` / `sourceImageId` to its own statement: an
+operator retyping "what she can see in it" does not change where the bytes came from.
+
+Also for Phase 2's benefit, found while reading the file and not touched here:
+`setNinaMessageImageDescription` already exists at `lib/nina/queries.ts:1826` — it is the
+`after()` vision pass's writer, `description`-only and owner-scoped, and it returns whether a row
+was hit. Whether the admin edit reuses it or gets its own statement is Phase 2's call; it is named
+so that Phase 2 does not write a second one by accident.
+
+**H3 — Phase 4, `lib/nina/actions.ts`. Disjoint, verified, no edge.** This phase edits one import
+line (`./attach`, sorting to `:9`), `resolveAttachment` (`:183-233`) and the attach INSERT
+(`:562-576`), and nothing else in that file. Phase 4 adds one name to the **separate** `./queries`
+import statement (`:26-36`) and inserts `resendNinaMessage` at `:1022`. The nearest pair of hunks is
+~446 lines apart, so git merges both cleanly and phases 1 and 4 may run concurrently.
+
+**`startNinaBackgroundTurn` (`:681`) is neither exported nor modified by anyone.** Phase 4's
+Interface Contract settles this explicitly: `resendNinaMessage` lives in this same module precisely
+so that private `after()` seam needs no public name.
+
+**One thing Phase 4 asked about, and the answer is "no edit needed":** Phase 4's
+`tests/nina.resend.test.ts` mocks `@/lib/nina/queries` with a factory that must list every name
+`actions.ts` imports from `./queries`. This phase adds **no** `./queries` import —
+`ninaPhotoProvenance` comes from `./attach`, which that suite does not mock — so the factory's nine
+names stay correct and Phase 4 needs nothing from me.
+
+**H4 — `nina_avatars` gets no provenance column, and Media's own duplicates are not addressed.**
+Two album rows can share a `blob_url` (the profpic re-seed), so `/nina/about`'s **album** rail can
+in principle show one face twice. The user did not report that and the plan index rules
+`nina_avatars` out of scope. Left as found.
+
+**H5 — the blob reaper still does not cover `nina/`.** A reference shares its original's Blob
+object, and `isBlobPathnameReferenced` already counts every row regardless of provenance
+(asserted in Step 8c), so nothing this phase does can orphan or over-delete bytes. Reaping stays
+the `reap-orphaned-blobs` card's job.
+
+**H6 — no index on either column, on purpose.** Both are residual predicates on reads that already
+range-scan `nina_message_images_user_created_idx`, which is the exact call `generatedChatPhotoScope`
+argues for `kind` at the same table size. Asserted as an absence in Step 8a so that adding one is a
+decision somebody makes on purpose, with a measurement.
+
+**H7 — `dbNinaSourceGateway.readConversation` still hardcodes `imageDescriptions: []` for window
+rows** (`lib/nina/gateway.ts:164`). A real gap, recorded as out of scope by the previous set and by
+this one, and untouched here. It is named because a reader of this plan will pass that line while
+checking invariant 2.
+
+---
+
+## Rollback
+
+`git revert` the phase's commit, then apply the migration's inverse by hand:
+
+```sql
+ALTER TABLE "nina_message_images"
+  DROP COLUMN "source_avatar_id",
+  DROP COLUMN "source_image_id";
+```
+
+Dropping the columns drops the two FK constraints with them, and it discards everything the
+backfill wrote — which is why the backfill needs no separate undo. **No row and no blob was deleted
+at any point**, so the conversation, the album, the bubbles and the Blob store are exactly as they
+were; the two listings simply go back to showing the duplicate.
+
+If the revert happens after `db:migrate` has run in production, also delete
+`drizzle/0010_nina_image_provenance.sql`, `drizzle/meta/0010_snapshot.json` and its
+`_journal.json` entry, and delete the row for tag `0010_nina_image_provenance` from
+`drizzle.__drizzle_migrations` — otherwise a re-landed `0010` is considered applied and its
+`ADD COLUMN`s are skipped in silence.

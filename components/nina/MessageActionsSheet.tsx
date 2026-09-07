@@ -6,6 +6,7 @@ import { Button } from '@/components/ui'
 import { Sheet } from '@/components/ui/Sheet'
 import { cn } from '@/lib/cn'
 import {
+  canResendMessage,
   describeMessageDeletion,
   editCapFor,
   planMessageEdit,
@@ -57,6 +58,7 @@ export function MessageActionsSheet({
   onClose,
   onSubmitEdit,
   onConfirmDelete,
+  onResend,
 }: {
   /** The message the gesture picked, or null — which renders nothing at all. */
   target: EditTarget | null
@@ -67,6 +69,27 @@ export function MessageActionsSheet({
   onSubmitEdit: (id: string, body: string) => Promise<boolean>
   /** Resolves true when the row is gone and the caller has dropped it. */
   onConfirmDelete: (id: string) => Promise<boolean>
+  /**
+   * R5. Re-run Nina's turn for this message. **Resolves `null` when the turn was claimed** — the
+   * cue to close, exactly as `true` is for the two above — and otherwise the SENTENCE to show as
+   * this sheet's refusal.
+   *
+   * ── WHY A STRING AND NOT A BOOLEAN, WHEN ITS SIBLINGS ARE BOOLEANS ───────────────────────────
+   * Because a resend has a refusal that is not a failure — a turn is already running for this
+   * conversation, so the message will be answered anyway — and the runner has to be told which of
+   * the two happened. The sheet is the surface covering the screen at that moment: `ChatScreen`'s
+   * `Notice` strip renders BEHIND it and would not be read until the sheet closed, so a notice
+   * would be a message delivered to nobody.
+   *
+   * The COPY still belongs to `ChatScreen`, which already owns `NOTICE_TEXT`, so this component
+   * imports no Server Action and never learns the refusal vocabulary — the same boundary
+   * `onSubmitEdit` and `onConfirmDelete` keep.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit: `ChatScreen` is the one caller and `tsc`
+   * should be what notices if it stops passing it. An optional callback defaulting to a no-op is
+   * how a menu item comes to do nothing at all.
+   */
+  onResend: (id: string) => Promise<string | null>
 }) {
   const [mode, setMode] = useState<Mode>('menu')
   const [value, setValue] = useState(target?.body ?? '')
@@ -121,6 +144,30 @@ export function MessageActionsSheet({
     if (ok) onClose()
   }
 
+  /**
+   * R5. One tap, one claim.
+   *
+   * `pending` is the SHARED flag the other two use, so an edit, a delete and a resend cannot
+   * overlap — and the two menu buttons gain `disabled={pending}` below for the same reason: leaving
+   * `menu` mode mid-resend would strand the spinner on a button nobody can see.
+   *
+   * The refusal is rendered rather than thrown away, and the sheet STAYS OPEN on one: 'she is
+   * already answering that one' is information the runner needs while the message is still in front
+   * of him, and closing the sheet would leave him with a tap that visibly did nothing.
+   */
+  async function resend() {
+    if (pending) return
+    setRefusal(null)
+    setPending(true)
+    const refused = await onResend(picked.id)
+    setPending(false)
+    if (refused === null) {
+      onClose()
+      return
+    }
+    setRefusal(refused)
+  }
+
   return (
     <Sheet
       open
@@ -154,6 +201,7 @@ export function MessageActionsSheet({
           <Button
             fullWidth
             variant="secondary"
+            disabled={pending}
             onClick={() => {
               setRefusal(null)
               setValue(picked.body)
@@ -163,7 +211,43 @@ export function MessageActionsSheet({
             Edit {whose}
           </Button>
 
-          <Button fullWidth variant="destructive" onClick={() => setMode('confirm')}>
+          {/*
+            R5, and HIS bubbles only — `canResendMessage` is the gate, in `lib/nina/edit.ts` beside
+            `canActOnMessage`, so "which bubbles offer a resend" is a rule with a unit test rather
+            than a condition in markup. There is no "was this answered" test here: the plan index
+            settled that a client-side one would be a second authority on turn state beside
+            `nina_turns`, and `resendNinaMessage` refuses when a claim is already live.
+
+            Between Edit and Delete deliberately. Delete stays last because it is the destructive
+            one, and Resend is the only item here that changes nothing about the message.
+          */}
+          {canResendMessage(picked) && (
+            <>
+              <Button fullWidth variant="secondary" loading={pending} onClick={resend}>
+                Resend your message
+              </Button>
+              {/*
+                Invariant 7, in the runner's own words. He is about to press a button labelled
+                "resend" on a message that is already in the log, and the thing he will reasonably
+                fear is a second copy of it appearing. It cannot: the action re-opens a turn for
+                this exact row and never calls `insertNinaMessages`.
+              */}
+              <p className="text-[11px] font-medium text-ink-3">
+                She answers the message that is already here. Nothing gets sent twice.
+              </p>
+            </>
+          )}
+
+          {/* The resend's refusal. `menu` mode had no refusal line before this phase; `edit` mode's
+              own copy of it is unchanged, and both read the same state. */}
+          {refusal !== null && <p className="text-[11px] font-semibold text-red">{refusal}</p>}
+
+          <Button
+            fullWidth
+            variant="destructive"
+            disabled={pending}
+            onClick={() => setMode('confirm')}
+          >
             Delete {whose}
           </Button>
         </div>

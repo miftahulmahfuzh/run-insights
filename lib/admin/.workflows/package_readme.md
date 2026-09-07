@@ -1,7 +1,7 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-07 (task `P2-CA-A002`, phase 1 of the nina-personality-tab set — the character panel moved to its own route, so `tuningActions.ts` revalidates it)
+**Last Updated**: 2026-09-07 (task `P1-ADM-B130`, phase 2 of the nina-photo-refs-and-bubble-actions set — R2: `nina_message_images.description` became hand-writable from `/admin/photos`)
 
 ## Overview
 
@@ -47,6 +47,9 @@ readers has exactly one definition — `lib/admin/avatars.ts`'s header states it
 | `memoryActions.ts` | `'use server'` | The eight memory Server Actions. |
 | `tuningActions.ts` | `'use server'` | The two character-tuning actions: one whole-tuning save, one reset to defaults. |
 | `tuningModel.ts` | **no directive** | The character panel's client-safe half: the copy for every dial and relationship, the draft shape, and the unsaved-field diff. Imports `@/lib/nina/tuning` and nothing else. |
+| `chatPhotos.ts` | pure (two constant imports) | `/admin/photos`'s vocabulary: the blob pathname shape and its session-binding predicate, the four size ceilings, the id regexes, the empty-bubble rule, `ChatPhotoActionResult`. |
+| `chatPhotoSchema.ts` | pure | Every Zod schema `/admin/photos` accepts. Separate from `schema.ts`, which is scoped to `/admin/nina` and a different table. |
+| `chatPhotoActions.ts` | `'use server'` | The chat-photo collection's four write actions: add, replace, remove, and the hand-written description edit. |
 
 ## Exported API
 
@@ -471,6 +474,94 @@ safe direction, and truncation is survivable at all because a short manifest mak
 OVER-report, the extra files are re-PUT, and their inserts are discarded by
 `ON CONFLICT DO NOTHING`. Slower, never wrong — and only because the dedupe key is a constraint.
 
+### `chatPhotos.ts` / `chatPhotoSchema.ts` / `chatPhotoActions.ts` — `/admin/photos`
+
+```ts
+// chatPhotos.ts — the ceilings and the shapes
+export const ADMIN_CHAT_PHOTOS_PATH = '/admin/photos'
+export const ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+export const ADMIN_CHAT_PHOTO_MAX_EDGE_PX = 12_000
+export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
+export const ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000
+export function adminChatPhotoPathname(userId: string, id: string): string
+export function isAdminChatPhotoPathname(pathname: string, userId: string): boolean
+export function blobUrlMatchesPathname(blobUrl: string, pathname: string): boolean
+
+// chatPhotoSchema.ts
+export const chatPhotoAddSchema
+export const chatPhotoReplaceSchema
+export const chatPhotoRemoveSchema
+export const chatPhotoDescriptionSchema   // { id, description } — max, then normalise
+
+// chatPhotoActions.ts
+export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult>
+export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult>
+export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult>
+export async function editChatPhotoDescriptionAction(input: unknown): Promise<ChatPhotoActionResult>
+```
+
+#### `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS` is measured, and the vendor could never reach it
+
+2000, and both halves of that number are written down at the declaration. The *measurement*:
+production holds three described `nina_message_images` rows (85 / 362 / 461 chars) and thirteen
+`nina_avatars` rows (mean 415, max 550) — every description in the store is under 40% of the cap.
+The *ceiling*: `NINA_DESCRIBE_SYSTEM_PROMPT` asks for 60-140 words and `NINA_DESCRIBE_MAX_TOKENS`
+(500) at `NINA_DESCRIBE_CHARS_PER_TOKEN = 3` caps the describe pass at 1500 characters, so 2000 lets
+an operator say *more* than `glm-4.6v` ever can — without minting a new size for this surface, since
+`NINA_NOTES_MAX` is already 2000 for a reason that applies verbatim here.
+
+It is prompt text, not metadata: `lib/nina/actions.ts` copies the string into
+`NinaBackgroundTurnInput.imageDescriptions` unchanged, so the cap is a per-turn token bill
+(~670 tokens at the full 2000, against the ~150 a real row costs today).
+
+#### `chatPhotoDescriptionSchema` caps the raw string *before* it normalises
+
+`.max()` then `.transform()`, in that order and deliberately. A 4000-character paste is **refused**
+and reported inline rather than sliced into range — truncation is the one outcome that puts half a
+sentence into Nina's prompt while telling the operator it saved fine. `coerceNinaNotes`
+(`lib/nina/tuning.ts`) slices instead and is right to: it coerces a stored blob at read time and has
+no operator to answer to.
+
+The transform is `coerceNinaNotes` minus the slice: CRLF to LF, three-or-more newlines to one blank
+line, trim. No sentence casing, no digit stripping, no length floor. The model's own rules (no
+digits, one paragraph) are instructions to a vendor, not validation of a human — this description is
+a witness statement and here the operator *is* the witness.
+
+There is no `.min(1)`, so an all-whitespace box normalises to `''` and parses clean. That is the
+schema handing a decision to the action, which is this package's standing division of labour: the
+schema knows shapes, the action owns policy and ownership.
+
+#### `editChatPhotoDescriptionAction` — no model call, and no re-caption
+
+The other three actions in the file change the *bytes*, so each schedules `scheduleChatPhotoCaption`
+inside `after()` to re-earn the prose. This one changes the prose, so re-earning it would overwrite
+the human who just typed it: there is no `after()` pass here, no vision call, no caption call, and
+`scripts/check-llm-payload-boundary.mjs` gains no entry.
+
+It also does not rewrite the bubble. `scheduleChatPhotoCaption` derives `nina_messages.text` from
+the description, and running it here would rewrite a sentence Nina has already said in the runner's
+conversation because an operator fixed a private note the runner never saw. **Editing what she saw
+is not editing what she said.** That remains its own decision, not an omission.
+
+Order of checks, unchanged from every other action here: `requireAdmin()` above any use of the
+argument, then the Zod shape (which knows no user id), then an owner-scoped re-read via
+`getNinaMessageImage`, then a write whose own `WHERE` carries `user_id` **and** `kind = 'generated'`.
+The `existing.kind !== 'generated'` guard is load-bearing rather than defensive: `getNinaMessageImage`
+does not filter on `kind`, so without it an id belonging to one of *his* composer uploads would reach
+a write nobody can see or undo from this screen — `replaceChatPhotoAction` refuses the same case with
+the same sentence, on purpose. There is no `isAdminChatPhotoPathname` call and nothing is missing:
+that predicate binds an uploaded blob to the session, and this action receives no blob, no pathname
+and no URL.
+
+#### An empty box clears the description to `NULL` (decision D1)
+
+The normalised string being empty maps to `null`, and the operator is *told* so in the result's
+`note`. Refusing empty was the alternative and it is worse: it would make a wrong description
+un-erasable — replaceable with different prose, never retractable. `NULL` is not a new state (a
+Replace writes it, every Add starts there) and it degrades honestly downstream, where
+`NINA_DESCRIPTION_UNAVAILABLE` is substituted and she asks him what the picture is instead of
+inventing something.
+
 ### `users.ts` — the memory page's user picker
 
 ```ts
@@ -628,7 +719,11 @@ handed to her, and then through `after()`.
 
 - `@/auth`, `@/lib/env` (`isAdminEmail`, `blobEnv` at the route) — the boundary's inputs.
 - `@/lib/auth/requireUserId` — `UnauthorizedError`, imported rather than redefined.
-- `@/lib/nina/queries` — every album and memory read/write.
+- `@/lib/nina/queries` — every album, chat-photo and memory read/write. `chatPhotoActions.ts`'s
+  description edit goes through `updateNinaChatPhotoDescription(userId, id, description | null)`,
+  whose `WHERE` carries `user_id`, `id` **and** `kind = 'generated'` and which returns the updated
+  row or `null`, so "not yours", "not there" and "his upload, not hers" collapse into one branch the
+  action already has.
 - `@/lib/nina/crop` — `clampCrop`, `cropForWrite`, `resolveCrop`, and the crop bounds.
 - `@/lib/nina/album` — `NINA_ADMIN_BATCH_MAX`, `NINA_ADMIN_MANIFEST_MAX`.
 - `@/lib/nina/images` — `NINA_BLOB_PREFIX`, the one definition of the store layout.
@@ -664,6 +759,11 @@ handed to her, and then through `after()`.
   `forbiddenJson`, `AdminIdentity`.
 - `app/admin/memory/page.tsx` — `memoryModel`, `memoryStore`, `memoryVocab`, `users`, `requireAdmin`.
 - `components/admin/MemoryLedger.tsx` / `MemorySlots.tsx` — `memoryActions` + `memoryModel`.
+- `components/admin/ChatPhotoDescription.tsx` — `editChatPhotoDescriptionAction` and
+  `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS`. The only caller of the description edit, mounted
+  `key={photo.id}` by `ChatPhotoDetail.tsx`, which itself imports no Server Action.
+- `components/admin/ChatPhotoAdd.tsx` / `ChatPhotoControls.tsx` — the other three chat-photo
+  actions plus the `chatPhotos.ts` pathname helpers and ceilings.
 
 ### Secondary consumers
 
@@ -678,6 +778,10 @@ handed to her, and then through `after()`.
 - `tests/admin.avatars.test.ts` — `avatars.ts`, `filetree.ts` and `schema.ts` (29 tests).
 - `tests/admin.filetree.test.ts` — `filetree.ts` against the `avatars.ts` caps.
 - `tests/admin.memory.test.ts` — `memoryModel.ts`, `memoryVocab.ts`.
+- `tests/admin.chatPhotos.test.ts` — `chatPhotos.ts`, `chatPhotoSchema.ts` and, through the mock
+  harness, `chatPhotoActions.ts` (54 tests).
+- `tests/nina.chatPhotoDescription.test.ts` — `updateNinaChatPhotoDescription`'s owner and `kind`
+  scoping, from the query side.
 
 ## Concurrency
 
@@ -752,6 +856,14 @@ export default async function Page() {
   that will one day disagree.
 - **Do not put a describe call on a register path.** It was there, it was measured, and it was
   moved for stated reasons.
+- **Do not schedule a captioner from `editChatPhotoDescriptionAction`.** A hand-written description
+  exists to override the vision pass; re-running it overwrites the operator, and re-captioning the
+  bubble rewrites a sentence Nina already said. Both are decisions, and neither has been made.
+- **Do not add `.min(1)` to `chatPhotoDescriptionSchema`.** The empty box is the clear (D1), and
+  refusing it makes a wrong description un-erasable.
+- **Keep `.max()` ahead of `.transform()` in that schema.** Reversed, an over-long paste normalises
+  first and then gets refused for a length the operator cannot see; sliced, it stores half a
+  sentence and reports success.
 - **Do not delete a photo's row without both blob references.** The row is the only record the
   thumbnail exists; its stored pathname is not derivable.
 - **`declareNinaFolders` goes before the insert**, and once per batch. Reversing the order leaves
@@ -846,3 +958,30 @@ incident from a dead socket.
 No action, schema, bound or export in this package was added, removed or renamed;
 `scheduleChatPhotoCaption` is private, as its predecessor was. `tests/admin.chatPhotos.test.ts` grew
 its first mock harness (it had been pure-function only) and 8 cases, 32 -> 40.
+
+2026-09-07 — updated following task **P1-ADM-B130** (`nina-photo-refs-and-bubble-actions` phase 2 of
+4, R2: *"there is a 'what she can see in it' field. make this field editable by user"*).
+
+`nina_message_images.description` is `glm-4.6v`'s prose and, per phase 3 of the previous set, the
+only text on that row that reaches Nina's prompt. Nothing could write it by hand, so a wrong
+description was a wrong belief with no correction available. This task is the correction:
+`ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000` (measured against production, argued against the
+vendor's own 1500-character ceiling) in `chatPhotos.ts`; `chatPhotoDescriptionSchema` in
+`chatPhotoSchema.ts`, capping the raw string before normalising it; the owner- and `kind`-scoped
+`updateNinaChatPhotoDescription` in `lib/nina/queries.ts`; and `editChatPhotoDescriptionAction` in
+`chatPhotoActions.ts`, which ends at `revalidatePath(ADMIN_CHAT_PHOTOS_PATH)`. An empty save clears
+the field to `NULL` and says so in the result's `note` (decision D1).
+
+Deliberately absent: no vision or caption call, no `after()` pass, no bubble re-caption, no new entry
+in `scripts/check-llm-payload-boundary.mjs`, no DDL and no migration — the column already existed and
+only its write path was missing. The client half is one new control,
+`components/admin/ChatPhotoDescription.tsx`, mounted `key={photo.id}` in `ChatPhotoDetail`'s rail so
+switching tiles cannot carry unsaved text across; it keeps that rail's rule that the detail component
+imports no Server Action itself. Nothing under `components/nina/` was touched.
+
+Refreshed here: the module map (which had no rows for the chat-photo trio at all), a new Exported API
+section for `/admin/photos` covering the cap, the schema, the action and D1, the
+`@/lib/nina/queries` dependency bullet, the test-consumer list, and four gotchas. No existing action,
+schema, bound or export in this package was renamed or removed. `tests/admin.chatPhotos.test.ts` grew
+14 cases, 40 -> 54 (6 on the schema, 8 on the action), and `tests/nina.chatPhotoDescription.test.ts`
+is new, with 4 on the query's scoping.

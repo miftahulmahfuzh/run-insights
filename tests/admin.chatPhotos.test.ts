@@ -4,10 +4,12 @@ import { ADMIN_CHAT_PHOTO_LONG_EDGE_PX } from '@/components/admin/chatPhotoUploa
 import { ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
 import {
   chatPhotoAddSchema,
+  chatPhotoDescriptionSchema,
   chatPhotoRemoveSchema,
   chatPhotoReplaceSchema,
 } from '@/lib/admin/chatPhotoSchema'
 import {
+  ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS,
   ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES,
   adminChatPhotoPathname,
   blobUrlMatchesPathname,
@@ -232,7 +234,9 @@ describe('isNinaPhotoCarrierMessage — the marker', () => {
   it('is true for an unmarked legacy bubble carrying one of the five', () => {
     for (const caption of NINA_IMAGE_CAPTIONS) {
       expect(isNinaPhotoCarrierMessage({ role: 'nina', body: caption })).toBe(true)
-      expect(isNinaPhotoCarrierMessage({ role: 'nina', body: caption, photoOnly: false })).toBe(true)
+      expect(isNinaPhotoCarrierMessage({ role: 'nina', body: caption, photoOnly: false })).toBe(
+        true,
+      )
     }
   })
 
@@ -243,9 +247,9 @@ describe('isNinaPhotoCarrierMessage — the marker', () => {
   })
 
   it('is false for an unmarked nina message carrying her own sentence', () => {
-    expect(
-      isNinaPhotoCarrierMessage({ role: 'nina', body: 'eh gimana lutut lo hari ini' }),
-    ).toBe(false)
+    expect(isNinaPhotoCarrierMessage({ role: 'nina', body: 'eh gimana lutut lo hari ini' })).toBe(
+      false,
+    )
   })
 })
 
@@ -291,6 +295,61 @@ describe('chatPhotoRemoveSchema', () => {
   })
 })
 
+describe('chatPhotoDescriptionSchema', () => {
+  const CEILING = 'x'.repeat(ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS)
+
+  it('accepts prose at the ceiling and refuses one character more', () => {
+    expect(chatPhotoDescriptionSchema.safeParse({ id: ID, description: CEILING }).success).toBe(
+      true,
+    )
+    expect(
+      chatPhotoDescriptionSchema.safeParse({ id: ID, description: `${CEILING}x` }).success,
+    ).toBe(false)
+  })
+
+  it('refuses rather than truncates, so half a sentence never reaches her prompt', () => {
+    // `.max()` BEFORE `.transform()`, asserted rather than reviewed. `coerceNinaNotes` slices,
+    // because it coerces a stored blob and has nobody to tell; this has an operator to tell.
+    const parsed = chatPhotoDescriptionSchema.safeParse({ id: ID, description: `${CEILING}x` })
+    expect(parsed.success).toBe(false)
+    if (parsed.success) throw new Error('unreachable')
+  })
+
+  it('normalises the way coerceNinaNotes does, minus the slice', () => {
+    const parsed = chatPhotoDescriptionSchema.parse({
+      id: ID,
+      description: '  she is underwater\r\n\r\n\r\n\r\nfins on  ',
+    })
+    expect(parsed.description).toBe('she is underwater\n\nfins on')
+  })
+
+  it('accepts an empty box, because the clear is the action policy and not the schema shape', () => {
+    // No `.min(1)`. Whitespace normalises to '' and parses; the action turns that into NULL (D1).
+    expect(chatPhotoDescriptionSchema.parse({ id: ID, description: '   \n  ' }).description).toBe(
+      '',
+    )
+  })
+
+  it('refuses an id that is not nanoid(12), a missing description and a non-string', () => {
+    expect(chatPhotoDescriptionSchema.safeParse({ id: 'short', description: 'x' }).success).toBe(
+      false,
+    )
+    expect(chatPhotoDescriptionSchema.safeParse({ id: ID }).success).toBe(false)
+    expect(chatPhotoDescriptionSchema.safeParse({ id: ID, description: 7 }).success).toBe(false)
+  })
+
+  it('does not police what the model was told to write', () => {
+    // The describe prompt forbids digits, caps the length at 140 words and demands one paragraph.
+    // Those are instructions to a VENDOR. Here the operator is the witness, and he is allowed to
+    // write a number if the number is true.
+    const parsed = chatPhotoDescriptionSchema.safeParse({
+      id: ID,
+      description: 'his watch reads 42.2 km\n\nand the sign behind him says Tebet',
+    })
+    expect(parsed.success).toBe(true)
+  })
+})
+
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════════
  *  THE CAPTION PASS — phase 3, and the only half of this file that mocks anything.
@@ -324,6 +383,7 @@ const insertNinaMessages = vi.fn()
 const insertNinaMessageImages = vi.fn()
 const setNinaMessageImageDescription = vi.fn()
 const updateNinaChatPhotoBlob = vi.fn()
+const updateNinaChatPhotoDescription = vi.fn()
 const updateNinaMessage = vi.fn()
 const readNinaTuning = vi.fn()
 const describeNinaImages = vi.fn()
@@ -367,6 +427,7 @@ vi.mock('@/lib/nina/queries', () => ({
   readNinaTuning: (...args: unknown[]) => readNinaTuning(...args),
   setNinaMessageImageDescription: (...args: unknown[]) => setNinaMessageImageDescription(...args),
   updateNinaChatPhotoBlob: (...args: unknown[]) => updateNinaChatPhotoBlob(...args),
+  updateNinaChatPhotoDescription: (...args: unknown[]) => updateNinaChatPhotoDescription(...args),
   updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
 }))
 
@@ -419,6 +480,7 @@ beforeEach(async () => {
   captionNinaPhoto.mockResolvedValue(CAPTION)
   updateNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
   updateNinaChatPhotoBlob.mockResolvedValue({ id: IMAGE_ID })
+  updateNinaChatPhotoDescription.mockResolvedValue({ id: IMAGE_ID })
 
   actions = await import('@/lib/admin/chatPhotoActions')
 })
@@ -562,5 +624,114 @@ describe('replaceChatPhotoAction schedules the same captioner', () => {
     await runTheAfterCallback()
     expect(describeNinaImages).toHaveBeenCalledWith(expect.anything(), { subject: 'self' })
     expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
+  })
+})
+
+/**
+ * `editChatPhotoDescriptionAction` — R2's write.
+ *
+ * `@/lib/admin/chatPhotoSchema` stays REAL in this file (the mock header at :304-306 says so and
+ * why), so these cases exercise the actual normalisation and the actual ceiling, not a stub of them.
+ * The SQL the action ends up issuing is asserted separately, in
+ * `tests/nina.chatPhotoDescription.test.ts`, for the reason `tests/nina.softDelete.test.ts`'s header
+ * gives: a spy cannot tell "the function was called" from "the predicate was in the WHERE".
+ */
+describe('editChatPhotoDescriptionAction', () => {
+  const PROSE = 'She is sitting on a kerb in low orange light, a bottle in one hand, jacket open.'
+
+  it('writes the trimmed prose and revalidates the collection', async () => {
+    const result = await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: `  ${PROSE}  `,
+    })
+
+    expect(updateNinaChatPhotoDescription).toHaveBeenCalledWith(USER, IMAGE_ID, PROSE)
+    expect(revalidatePath).toHaveBeenCalledWith('/admin/photos')
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+  })
+
+  it('clears the field to NULL on an empty box, and says what that costs', async () => {
+    // D1. NULL is not a new state for the row, and the send path substitutes
+    // NINA_DESCRIPTION_UNAVAILABLE for it — so the operator is told, in the `note`.
+    const result = await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: '  \n ',
+    })
+
+    expect(updateNinaChatPhotoDescription).toHaveBeenCalledWith(USER, IMAGE_ID, null)
+    expect(result.ok).toBe(true)
+    expect(result.note).toMatch(/could not see it/)
+  })
+
+  it('pays for no model call, schedules no after() pass, and does not re-caption the bubble', async () => {
+    // Invariant 5 of the plan set, asserted rather than reviewed. And the last assertion is the
+    // phase's own rule: editing what she SAW is not editing what she SAID.
+    await actions.editChatPhotoDescriptionAction({ id: IMAGE_ID, description: PROSE })
+
+    expect(afterCallbacks).toHaveLength(0)
+    expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(captionNinaPhoto).not.toHaveBeenCalled()
+    expect(updateNinaMessage).not.toHaveBeenCalled()
+    expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
+  })
+
+  it('refuses a row that is not in the collection', async () => {
+    getNinaMessageImage.mockResolvedValue(null)
+    const result = await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: PROSE,
+    })
+
+    expect(result).toEqual({ ok: false, error: 'That photo is not in the collection.' })
+    expect(updateNinaChatPhotoDescription).not.toHaveBeenCalled()
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('refuses one of HIS uploads, because this screen lists only hers', async () => {
+    // `getNinaMessageImage` does not filter on `kind`, so this guard is what stops an id for a
+    // composer upload reaching a write nobody could see or undo from /admin/photos.
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, kind: 'upload' })
+    const result = await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: PROSE,
+    })
+
+    expect(result).toEqual({ ok: false, error: 'That one is his upload, not hers.' })
+    expect(updateNinaChatPhotoDescription).not.toHaveBeenCalled()
+  })
+
+  it('refuses an over-long description without reading the row at all', async () => {
+    const result = await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: 'x'.repeat(ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS + 1),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain(String(ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS))
+    expect(getNinaMessageImage).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoDescription).not.toHaveBeenCalled()
+  })
+
+  it('gates on requireAdmin BEFORE it looks at the payload', async () => {
+    requireAdmin.mockRejectedValue(new Error('not an admin'))
+
+    await expect(
+      actions.editChatPhotoDescriptionAction({ id: IMAGE_ID, description: PROSE }),
+    ).rejects.toThrow('not an admin')
+
+    expect(getNinaMessageImage).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoDescription).not.toHaveBeenCalled()
+  })
+
+  it('reports a lost race as a miss rather than a success', async () => {
+    // The row was there at the re-read and gone (or no longer `generated`) by the write.
+    updateNinaChatPhotoDescription.mockResolvedValue(null)
+    const result = await actions.editChatPhotoDescriptionAction({
+      id: IMAGE_ID,
+      description: PROSE,
+    })
+
+    expect(result).toEqual({ ok: false, error: 'That photo is not in the collection.' })
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 })
