@@ -6,11 +6,13 @@ import { after } from 'next/server'
 
 import {
   chatPhotoAddSchema,
+  chatPhotoDescriptionSchema,
   chatPhotoRemoveSchema,
   chatPhotoReplaceSchema,
 } from '@/lib/admin/chatPhotoSchema'
 import {
   ADMIN_CHAT_PHOTOS_PATH,
+  ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS,
   isAdminChatPhotoPathname,
   isNinaPhotoCarrierMessage,
   type ChatPhotoActionResult,
@@ -31,6 +33,7 @@ import {
   readNinaTuning,
   setNinaMessageImageDescription,
   updateNinaChatPhotoBlob,
+  updateNinaChatPhotoDescription,
   updateNinaMessage,
 } from '@/lib/nina/queries'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
@@ -318,6 +321,88 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
     id,
     ...(outcome === 'shared'
       ? { note: 'The file is still used elsewhere, so it was kept in the store.' }
+      : {}),
+  }
+}
+
+/* ── DESCRIBE ────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * **Rewrite what she can see in a photograph, by hand.** R2 of
+ * `nina-photo-refs-and-bubble-actions`, verbatim: *"there is a 'what she can see in it' field. make
+ * this field editable by user"*.
+ *
+ * `nina_message_images.description` is `glm-4.6v`'s prose and it is the only text on that row that
+ * reaches Nina's prompt (`lib/nina/actions.ts:634-637`). Until now nothing could write it by hand,
+ * so a wrong description was a wrong belief with no correction available. This is the correction.
+ *
+ * ── NO MODEL CALL, NO `after()`, AND THAT IS THE POINT ────────────────────────────────────
+ * The other three actions in this file schedule `scheduleChatPhotoCaption` because they changed the
+ * BYTES and the prose had to be re-earned. This one changes the prose, so re-earning it would
+ * overwrite the human who just typed it. Invariant 5 of the plan set:
+ * `scripts/check-llm-payload-boundary.mjs` gains no entry.
+ *
+ * It also deliberately does NOT re-caption the bubble. `scheduleChatPhotoCaption` writes
+ * `nina_messages.text` from the description, and running it here would rewrite a sentence Nina has
+ * already said in the runner's conversation because an operator fixed a private note the runner
+ * never saw. **Editing what she SAW is not editing what she SAID.** If that is ever wanted it is one
+ * line, and it needs its own decision.
+ *
+ * ── AN EMPTY BOX CLEARS THE FIELD (D1) ───────────────────────────────────────────────────
+ * The normalised string is empty -> `NULL`, and the operator is TOLD, in the `note`. Refusing empty
+ * was the alternative and it is the worse one: it would make a wrong description un-erasable —
+ * replaceable with different prose, never retractable. NULL is not a new state (a Replace writes it,
+ * every Add starts there) and it degrades honestly on the send path, where
+ * `NINA_DESCRIPTION_UNAVAILABLE` is substituted and she asks him what the picture is rather than
+ * inventing something. A real consequence belongs in a sentence the operator reads, not in a
+ * docstring only I will read.
+ *
+ * ── THE TWO CHECKS, AGAIN AND FOR THE SAME REASON ─────────────────────────────────────────
+ * `requireAdmin()` first, above any use of the argument. Then the SHAPE (Zod, which knows no user
+ * id — *"A well-formed `Item` object can still refer to a row the caller does not own"*), then the
+ * owner-scoped re-read, then a write whose own WHERE carries `user_id` AND `kind = 'generated'`.
+ *
+ * The `existing.kind` guard is not decoration: `getNinaMessageImage` does not filter on `kind`, so
+ * without it an id for one of HIS composer uploads would reach a write nobody can see or undo from
+ * this screen. `replaceChatPhotoAction` refuses the same case with the same sentence, on purpose.
+ *
+ * And there is no `isAdminChatPhotoPathname` call here, with nothing missing: that predicate binds
+ * an UPLOADED BLOB to the session, and this action receives no blob, no pathname and no URL.
+ */
+export async function editChatPhotoDescriptionAction(
+  input: unknown,
+): Promise<ChatPhotoActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = chatPhotoDescriptionSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: `That description did not fit the field — ${ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS} characters at most.`,
+    }
+  }
+  const { id, description } = parsed.data
+
+  const existing = await getNinaMessageImage(userId, id)
+  if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
+  if (existing.kind !== 'generated') {
+    return { ok: false, error: 'That one is his upload, not hers.' }
+  }
+
+  /* The empty box IS the clear. D1, and this line is the only place that policy lives. */
+  const next = description.length === 0 ? null : description
+
+  const updated = await updateNinaChatPhotoDescription(userId, id, next)
+  if (updated == null) return { ok: false, error: 'That photo is not in the collection.' }
+
+  revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
+  return {
+    ok: true,
+    id,
+    ...(next === null
+      ? {
+          note: 'Cleared. If this photo comes up again she will say she could not see it and ask him what it is.',
+        }
       : {}),
   }
 }

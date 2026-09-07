@@ -158,6 +158,28 @@ export const ADMIN_CHAT_PHOTO_MAX_EDGE_PX = 12_000
 /** Longest URL any store produces, with room. A bound is cheaper than a `text` column overflow. */
 export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
 
+/**
+ * **How long a hand-written "what she can see in it" may be.** 2000 characters.
+ *
+ * MEASURED against production 2026-09-07, not chosen. `nina_message_images` holds three described
+ * rows, at 85 / 362 / 461 characters (mean 303); `nina_avatars` holds thirteen, mean 415, max 550.
+ * Every description in the store today is under 40% of this.
+ *
+ * The ceiling above the measurement is the VENDOR's, and it is a hard one:
+ * `NINA_DESCRIBE_SYSTEM_PROMPT` asks for "60 to 140 words. One paragraph" (~1000 characters) and
+ * `NINA_DESCRIBE_MAX_TOKENS` (500) caps the completion, which at this repo's own
+ * `NINA_DESCRIBE_CHARS_PER_TOKEN = 3` is 1500 characters the describe pass can never exceed. So
+ * 2000 lets an operator say MORE than `glm-4.6v` ever could — without inventing a new size for this
+ * surface, because `NINA_NOTES_MAX` is also 2000 for the reason given at its declaration:
+ * "roughly a screen of notes … small enough that it cannot drown the canon it is appended to."
+ *
+ * It is not decoration. `lib/nina/actions.ts:634-637` puts this string into
+ * `NinaBackgroundTurnInput.imageDescriptions` verbatim, so it is prompt text paid for on every turn
+ * that carries the photograph — ~670 tokens at the conversion above, against the ~150 a real row
+ * costs today.
+ */
+export const ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000
+
 /** `nina/<userId>/selfie-<id>.jpg` — what the client asks for. Blob appends its own suffix. */
 export function adminChatPhotoPathname(userId: string, id: string): string {
   return `${NINA_BLOB_PREFIX}${userId}/${ADMIN_CHAT_PHOTO_PURPOSE}-${id}.${ADMIN_CHAT_PHOTO_EXT}`

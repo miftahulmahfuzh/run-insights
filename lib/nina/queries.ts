@@ -1837,6 +1837,66 @@ export async function setNinaMessageImageDescription(
   return updated.length > 0
 }
 
+/**
+ * **EDIT: the operator rewrites what she can see in a photograph.** R2 of
+ * `nina-photo-refs-and-bubble-actions`, verbatim: *"there is a 'what she can see in it' field. make
+ * this field editable by user"*.
+ *
+ * ── WHY THIS IS NOT `setNinaMessageImageDescription` WITH A WIDER SIGNATURE ────────────────
+ * Three differences, and each one is load-bearing:
+ *
+ *   · `kind = 'generated'` is in the WHERE, exactly as `updateNinaChatPhotoBlob` carries it, and
+ *     that sibling's reason applies unchanged: `/admin/photos` lists only HERS, so a write reachable
+ *     from that screen must not be able to land on one of HIS composer uploads even if an id for one
+ *     arrives. `getNinaMessageImage` does not filter on `kind`, so this clause is not redundant with
+ *     the action's guard — it is the second of the two agreeing checks this admin surface uses
+ *     everywhere. `setNinaMessageImageDescription` has no such clause and must NOT grow one: its
+ *     caller is `after()`'s describe pass, which legitimately describes both sides.
+ *   · `description` is `string | null` here. NULL is the operator CLEARING the field (the phase's
+ *     D1), and it is not a new state for the row — `updateNinaChatPhotoBlob` writes it in the same
+ *     breath as a replace, and every `addChatPhotoAction` row starts there.
+ *     `setNinaMessageImageDescription` takes a `string` because a vision pass that produced nothing
+ *     writes nothing.
+ *   · It returns the ROW rather than a boolean, because its caller reports on what it wrote. That is
+ *     `updateNinaChatPhotoBlob`'s shape; the boolean is the `after()`-callback shape, for a caller
+ *     whose only options are "log a miss" and "log a write".
+ *
+ * ── IT TOUCHES ONE COLUMN, AND THE ABSENCES ARE THE CONTRACT ──────────────────────────────
+ *   · NOT `prompt` — the generation sidecar for bytes that have not changed.
+ *   · NOT `created_at` — `nina_message_images_user_created_idx` orders both `/nina/about` and
+ *     `/admin/photos` by it. Correcting a sentence about a photograph is not taking a new one.
+ *   · NOT `blob_url`, `pathname`, or the four measurements — the picture is the same picture.
+ *   · NOTHING on `nina_messages`. The bubble's caption is what she SAID; this column is what she
+ *     SAW. Rewriting the second from `/admin` must not silently rewrite the first in the runner's
+ *     conversation — see the action's docstring.
+ *
+ * ── NO INVALIDATION STEP, BY CONSTRUCTION ─────────────────────────────────────────────────
+ * `resolveAttachment` re-reads this row with `getNinaMessageImage` on every send, and
+ * `lib/nina/actions.ts:634-637` hands the value straight to
+ * `NinaBackgroundTurnInput.imageDescriptions`. So the next turn that carries this photograph reads
+ * what was just written, with no cache to bust. A NULL degrades exactly as a replace's NULL does:
+ * `NINA_DESCRIPTION_UNAVAILABLE` is substituted and she asks him what the picture is.
+ */
+export async function updateNinaChatPhotoDescription(
+  userId: string,
+  id: string,
+  description: string | null,
+): Promise<NinaImageRow | null> {
+  const updated = await db
+    .update(ninaMessageImages)
+    .set({ description })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.id, id),
+        eq(ninaMessageImages.kind, 'generated'),
+      ),
+    )
+    .returning(imageColumns)
+
+  return updated[0] ?? null
+}
+
 /* ============================================================================
  * §6 Memory — slots and the ledger (RU-6)
  * ==========================================================================*/
