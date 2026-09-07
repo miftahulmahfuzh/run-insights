@@ -39,12 +39,13 @@ import { ADMIN_INSTALL, APPLE_WEB_APP } from '@/lib/pwa'
  *   2. **Every gutter carries its own inset.** `pt`/`pl`/`pr` are `calc(<gutter> + var(--safe-*))`
  *      rather than a flat `p-6`. All four insets are 0 px on a desktop and in portrait, so this
  *      costs nothing where it is not needed and is the whole fix where it is.
- *   3. **`<main>` reserves `calc(5rem + var(--safe-bottom))` below `lg`.** `AdminNav` is `fixed`
+ *   3. **`<main>` reserves `calc(8rem + var(--safe-bottom))` below `lg`.** `AdminNav` is `fixed`
  *      there, so it is out of flow and contributes no grid row; without this the last card of
- *      every page sits under the bar. 80 px against the bar's 57 px border box (56 px row plus
- *      `border-t`) leaves 23 px of breathing room, the same shape as `AppShell`'s `BOTTOM_GAP`.
- *      **The two numbers are spelled in two files** — see `AdminNav`'s `h-14` comment — and
- *      `tests/admin.shell.test.ts` is what keeps them in step.
+ *      every page sits under the bar. The number moved from `5rem` to `8rem` with the sixth admin
+ *      route, which turned the bar from one 56 px row into two: 128 px against the bar's 113 px
+ *      border box (112 px of rows plus `border-t`) leaves 15 px of breathing room, the same shape
+ *      as `AppShell`'s `BOTTOM_GAP`. **The two numbers are spelled in two files** — see
+ *      `AdminNav`'s `h-28` comment — and `tests/admin.shell.test.ts` is what keeps them in step.
  *
  * `min-h-dvh` was already here and was CHECKED rather than assumed: `dvh` is the DYNAMIC viewport
  * unit, so the column grows and shrinks with Safari's retracting toolbar. `svh` would leave a
@@ -106,7 +107,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
 
   return (
     <div className="min-h-dvh bg-paper-2">
-      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-6 pt-[calc(1rem+var(--safe-top))] pr-[calc(1rem+var(--safe-right))] pb-[calc(5rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))] lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8 lg:pt-[calc(2rem+var(--safe-top))] lg:pr-[calc(2rem+var(--safe-right))] lg:pb-8 lg:pl-[calc(2rem+var(--safe-left))]">
+      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-6 pt-[calc(1rem+var(--safe-top))] pr-[calc(1rem+var(--safe-right))] pb-[calc(8rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))] lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8 lg:pt-[calc(2rem+var(--safe-top))] lg:pr-[calc(2rem+var(--safe-right))] lg:pb-8 lg:pl-[calc(2rem+var(--safe-left))]">
         <AdminNav />
         {/* `min-w-0` is load-bearing: without it a wide album grid blows out the grid track
             instead of scrolling inside it. */}

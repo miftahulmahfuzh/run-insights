@@ -104,6 +104,7 @@ describe('the admin nav', () => {
       '/admin',
       '/admin/nina',
       '/admin/personality',
+      '/admin/image-generation',
       '/admin/photos',
       '/admin/memory',
     ])
@@ -112,17 +113,18 @@ describe('the admin nav', () => {
     }
   })
 
-  it('carries a phone label short enough for an 82px cell', () => {
-    // 414px / 5 cells = 82.8px, down from 103px at four. The ceiling tightened with the cell
-    // count: past ~8 characters at text-[11px] the label wraps or clips, and a clipped nav label
-    // is worse than a shorter true one. All five clear it — Overview 8, Album 5, Persona 7,
-    // Photos 6, Memory 6 — which is why "Personality" (11) has a short form and the label does
-    // not go on a phone.
+  it('carries a phone label short enough for its cell', () => {
+    // The bar is a 3x2 grid since the sixth route, so a cell is 414px / 3 = 138px — up from
+    // 82.8px at five across. The 8-character ceiling is KEPT anyway: it was tightened from 10 when
+    // the fifth cell landed, all six clear it (Overview 8, Album 5, Persona 7, Images 6, Photos 6,
+    // Memory 6), and a label past eight characters at text-[11px] wants a shorter true form rather
+    // than a wider cell. `the bar and the padding that clears it` below is what asserts that the
+    // grid really is 3x2 and not six across, where 69px would clip every one of these.
     // `m[1]!` per `tests/tabbar.geometry.test.ts:86`, the sibling guard this file borrows its
     // shape from: a capture group that matched is a string, and `noUncheckedIndexedAccess`
     // cannot see that.
     const shorts = [...adminNav.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
-    expect(shorts).toHaveLength(5)
+    expect(shorts).toHaveLength(6)
     for (const short of shorts) {
       expect(short.length, `"${short}" will not fit a nav cell`).toBeLessThanOrEqual(8)
     }
@@ -157,41 +159,62 @@ describe('the admin nav', () => {
 
 describe('the bar and the padding that clears it', () => {
   /*
-   * THE CASE THIS FILE EXISTS FOR. The bar's height lives in `AdminNav`'s `h-14` and the clearance
-   * under `<main>` lives in the layout's `pb-[calc(5rem+var(--safe-bottom))]`; Tailwind can read
+   * THE CASE THIS FILE EXISTS FOR. The bar's height lives in `AdminNav`'s `h-28` and the clearance
+   * under `<main>` lives in the layout's `pb-[calc(8rem+var(--safe-bottom))]`; Tailwind can read
    * neither from a TypeScript constant, so the geometry is spelled twice by necessity —
    * `components/ui/AppShell.tsx` cites `TAB_BAR_HEIGHT_PX` in a comment for the same reason. If the
    * bar grows and the padding does not, the last card of every admin page sits under it, on the one
    * device this phase was written for.
    *
-   * The matched shape is `TabBar`'s own formatted row (`grid h-[58px] w-full max-w-[470px]
-   * grid-cols-5`) with this bar's numbers in it, so the class sorter produces it rather than
-   * breaking it. Since the Personality cell landed, the column count is the same as `TabBar`'s
-   * too — five — which is a coincidence and not a coupling: this bar carries the admin routes and
-   * may never carry the runner's.
+   * The ROW COUNT joined the matched shape when the sixth admin route landed. Six single-row cells
+   * would have been 69px wide at 414px — under the 8-character ceiling above and under
+   * `docs/design-brief.md`'s 44pt target on the horizontal axis — so the bar became
+   * `grid-cols-3 grid-rows-2` at `h-28`, which keeps a 56px-tall cell and widens it to 138px. Both
+   * numbers are captured, because a cell's tap target is now the height DIVIDED by the row count
+   * and a guard that read `h-28` as one cell would pass a bar with four rows of 28px.
+   *
+   * The matched shape is `TabBar`'s own formatted row with this bar's numbers in it, so the class
+   * sorter produces it rather than breaking it — verified against `prettier-plugin-tailwindcss`
+   * 0.8.1 / `tailwindcss` 4.3.3, which sorts `grid-rows-*` immediately after `grid-cols-*`.
    */
-  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-5/)
+  const bar = navClasses.match(
+    /grid h-(\d+) w-full max-w-\[470px\] grid-cols-(\d+) grid-rows-(\d+)/,
+  )
   const clearance = layoutClasses.match(/pb-\[calc\((\d+(?:\.\d+)?)rem\+var\(--safe-bottom\)\)\]/)
+  const cellCount = [...adminNav.matchAll(/short: '([^']*)'/g)].length
 
   it('spells both halves in the shape this case can read', () => {
     expect(
       bar,
-      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-5` row',
+      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-<n> grid-rows-<n>` row',
     ).not.toBeNull()
     expect(clearance, 'the admin layout lost its --safe-bottom clearance on <main>').not.toBeNull()
   })
 
+  it('has exactly one cell per route, with no empty cell and no overflow row', () => {
+    expect(Number(bar![2]) * Number(bar![3])).toBe(cellCount)
+  })
+
   it('reserves more room than the bar occupies', () => {
-    // Tailwind spacing: --spacing is 0.25rem, so `h-14` is 14 * 4 = 56px. The +1 is the `border-t`,
-    // which is part of the nav's border box and therefore part of what has to be cleared.
+    // Tailwind spacing: --spacing is 0.25rem, so `h-28` is 28 * 4 = 112px. The +1 is the
+    // `border-t`, which is part of the nav's border box and therefore part of what has to be
+    // cleared.
     const barPx = Number(bar![1]) * 4 + 1
     const clearancePx = Number(clearance![1]) * 16
     expect(clearancePx).toBeGreaterThan(barPx)
   })
 
-  it('gives the bar a tap target past the 44pt minimum', () => {
+  it('gives every cell a tap target past the 44pt minimum, on both axes', () => {
     // docs/design-brief.md:175 — "Minimum 44 × 44pt tap targets", and the iOS constraints win over
-    // any conflicting design output (line 18).
-    expect(Number(bar![1]) * 4).toBeGreaterThanOrEqual(44)
+    // any conflicting design output (line 18). A row is the bar's height over its row count; a
+    // column is 414px — the XS Max portrait width — over its column count.
+    expect((Number(bar![1]) * 4) / Number(bar![3])).toBeGreaterThanOrEqual(44)
+    expect(414 / Number(bar![2])).toBeGreaterThanOrEqual(44)
+  })
+
+  it('keeps a cell wide enough for an eight-character label at text-[11px]', () => {
+    // 82.8px is the five-across width the 8-character ceiling above was calibrated against. A
+    // narrower cell than that is a cell those labels no longer fit, whatever the row count says.
+    expect(414 / Number(bar![2])).toBeGreaterThanOrEqual(82.8)
   })
 })

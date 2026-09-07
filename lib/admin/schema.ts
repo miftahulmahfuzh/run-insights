@@ -36,6 +36,18 @@ import {
   NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
+import {
+  NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_PROMPT_LENGTH_MAX,
+  NINA_IMAGE_PROMPT_LENGTH_MIN,
+  NINA_IMAGE_NOTES_MAX,
+  NINA_IMAGE_REFERENCE_ID_MAX,
+  NINA_IMAGE_REFERENCE_SOURCES,
+  NINA_IMAGE_TIME_MAX,
+  NINA_IMAGE_VENUE_MAX,
+  NINA_IMAGE_WARDROBE_MAX,
+} from '@/lib/nina/imageprefs'
+
 /**
  * Everything `/admin/nina` accepts from a browser, validated at the boundary. F33 R23.
  *
@@ -479,3 +491,119 @@ export const ninaTuningResetSchema = z.object({
   userId: userIdSchema,
 })
 export type NinaTuningResetInput = z.infer<typeof ninaTuningResetSchema>
+
+/* ============================================================================
+ * nina-image-generation-tab phase 4 — ONE whole-prefs write.
+ * Appended; nothing above this line changed.
+ * ==========================================================================*/
+
+/**
+ * What `/admin/image-generation`'s panel may write. R4 through R9 — and R10's *selection* — arrive
+ * as **one object**, and that is plan invariant 7 rather than a preference.
+ *
+ * ── ONE SAVE, NOT ELEVEN ────────────────────────────────────────────────────────────────────
+ * A slider, six checkboxes, four text fields and a photograph is eleven controls. Next dispatches
+ * Server Actions ONE AT A TIME PER CLIENT — the fact `avatarBatchRegisterSchema` above is built
+ * around and `ninaTuningWriteSchema` restates — so eleven actions is not a design, it is a stall.
+ * The whole prefs object is well under a kilobyte against a 1 MB action body cap
+ * (`next.config.ts` sets no `serverActions.bodySizeLimit`), so there is nothing to batch and
+ * nothing to chunk: it is one write of one row.
+ *
+ * ── TWO LAYERS OF BOUNDS, THE SAME DIVISION AS `cropWriteSchema` ────────────────────────────
+ * This schema enforces the SHAPE — an integer inside phase 1's advertised range, a focus key that
+ * exists, strings under a length that cannot crowd out the canon they sit beside, a reference whose
+ * source and id agree. Phase 1's coercion (inside `writeNinaImagePrefs`) is what GUARANTEES the
+ * range, because it is on every path into the row and this schema is only on the path from a
+ * browser.
+ *
+ * ── STRICT, AND THEREFORE REFUSE-DON'T-REPAIR ───────────────────────────────────────────────
+ * `z.strictObject` on the focus map, so an unknown or misspelled focus key FAILS rather than being
+ * silently stripped — `ninaTuningWriteSchema`'s argument verbatim: a stripped `bigThighss` would
+ * save five options and report success, and the operator would watch one checkbox refuse to take.
+ *
+ * Every bound is IMPORTED. `lib/admin/avatars.ts`'s rule holds here too: *"a constant that is
+ * agreed rather than shared is a constant that will one day disagree."*
+ */
+const promptLengthSchema = z
+  .number()
+  .int()
+  .min(NINA_IMAGE_PROMPT_LENGTH_MIN)
+  .max(NINA_IMAGE_PROMPT_LENGTH_MAX)
+
+/** R5's option. A boolean and nothing else — no `"true"`, no `1`. The browser we wrote sends one. */
+const focusValueSchema = z.boolean()
+
+/**
+ * One `focusValueSchema` per key phase 1 declares, built from the array rather than spelled out.
+ * Spelling the six keys here would put the user's own vocabulary in a second place, and a seventh
+ * option would then pass typecheck and fail validation.
+ */
+function focusShape<K extends string>(keys: readonly K[]): Record<K, typeof focusValueSchema> {
+  const shape = {} as Record<K, typeof focusValueSchema>
+  for (const key of keys) shape[key] = focusValueSchema
+  return shape
+}
+
+/**
+ * R10's selection as the row holds it: a table discriminator and an id.
+ *
+ * The `refine` is the whole value of this schema and it refuses exactly the two shapes that would
+ * fail invisibly: `{ source: 'album', id: '' }`, which is a reference that names a set and no
+ * photograph, and `{ source: 'none', id: 'av_1' }`, which is an unselected reference still carrying
+ * one. Either would round-trip through the panel looking fine and then hand phase 6 a job it cannot
+ * anchor. The URL is deliberately NOT stored — a Blob URL can be re-minted, and the id is what
+ * survives it.
+ *
+ * **`id` is a plain bounded string with no `.min(1)` and no `.nullable()`, and that is phase 1's
+ * contract rather than a relaxation of this one.** `NinaImageReference.id` is `string`, with `''`
+ * EXACTLY when `source === 'none'` (`lib/nina/imageprefs.ts` §4), so `''` is the *only*
+ * representation of "nothing selected" that reaches this boundary — the panel's draft carries it
+ * and `NINA_IMAGE_PREFS_DEFAULTS` is built from it. A `.min(1)` here would reject the default
+ * state, so no unselected reference could ever be saved and the reset would fail too; a `.nullable()`
+ * would admit a second empty value the row cannot store. The pairing this schema exists to enforce
+ * is not weakened by either removal: the `refine` below is what rejects a half-selection, in both
+ * directions.
+ */
+const ninaImageReferenceSchema = z
+  .object({
+    source: z.enum(NINA_IMAGE_REFERENCE_SOURCES),
+    id: z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX),
+  })
+  .refine(
+    /* `''` is the empty id, not `null` — phase 1's `NinaImageReference.id` is `string`. */
+    (reference) => (reference.id === '') === (reference.source === 'none'),
+    'A reference names a photograph, or it names nothing at all',
+  )
+
+export const ninaImagePrefsWriteSchema = z.object({
+  userId: userIdSchema,
+  /** R4. */
+  promptLength: promptLengthSchema,
+  /**
+   * R5. `strictObject` like the tuning's toggles and for the same reason. Every key is REQUIRED —
+   * the panel always sends a complete map, and an absent key here would be an ambiguity between
+   * "off" and "the client is old".
+   */
+  focus: z.strictObject(focusShape(NINA_IMAGE_FOCUS_KEYS)),
+  /** R6. Empty is valid and means "the anchor outfit". */
+  wardrobe: z.string().trim().max(NINA_IMAGE_WARDROBE_MAX),
+  /** R7. Empty is valid and means "wherever the scene puts her". */
+  venue: z.string().trim().max(NINA_IMAGE_VENUE_MAX),
+  /** R8. Empty is valid. */
+  time: z.string().trim().max(NINA_IMAGE_TIME_MAX),
+  /** R9. Empty is valid. Free text, handed to the camera verbatim. */
+  notes: z.string().trim().max(NINA_IMAGE_NOTES_MAX),
+  /** R10's selection. Phase 5 supplies the grid; the round trip is already here. */
+  reference: ninaImageReferenceSchema,
+})
+export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
+
+/**
+ * The reset takes no prefs at all — deliberately, for `ninaTuningResetSchema`'s reason: the
+ * defaults it writes are phase 1's module constant, so accepting them from the client would be
+ * accepting a client's opinion of what "default" means.
+ */
+export const ninaImagePrefsResetSchema = z.object({
+  userId: userIdSchema,
+})
+export type NinaImagePrefsResetInput = z.infer<typeof ninaImagePrefsResetSchema>

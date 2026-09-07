@@ -11,7 +11,7 @@ import Link from 'next/link'
  * phone he operates this tool from has every inset this file said it did not have. So below `lg`
  * the nav is fixed to the bottom of the viewport and pads itself by `--safe-bottom` (the home
  * indicator) and by `--safe-left` / `--safe-right` (the notch, in landscape), and
- * `app/admin/layout.tsx` reserves `calc(5rem + var(--safe-bottom))` under `<main>` so the last card
+ * `app/admin/layout.tsx` reserves `calc(8rem + var(--safe-bottom))` under `<main>` so the last card
  * is not underneath it. At `lg` and above nothing about the old behaviour changes: `lg:sticky
  * lg:top-8 lg:self-start`, in flow, in the grid's first column, compensating nobody.
  *
@@ -24,19 +24,20 @@ import Link from 'next/link'
  * `app/admin/layout.tsx` refuses `AppShell` partly because that component pairs itself with the
  * runner's five-cell `<TabBar />`, and *"an admin tool that borrows it invites the runner to tap
  * into it"*. That argument is about the runner's five tabs appearing on an admin page, not about
- * the shape of a bottom bar, and it still stands: this bar carries the five admin routes and
+ * the shape of a bottom bar, and it still stands: this bar carries the six admin routes and
  * nothing else. What it does borrow, deliberately, is `components/ui/TabBar.tsx`'s MECHANICS —
  * `fixed inset-x-0 bottom-0 z-30`, `border-t border-rule`, `bg-card/95 backdrop-blur-sm`, the
  * `--safe-bottom` padding, and the 470 px centred row — because a second way of pinning a bar to
  * the bottom of an iPhone is a second way of getting it wrong.
  *
- * ── STILL PLAIN TEXT, STILL FIVE WORDS, NO ICONS ────────────────────────────────────────────
+ * ── STILL PLAIN TEXT, STILL ONE WORD A CELL, NO ICONS ───────────────────────────────────────
  * `docs/design-brief.md`'s *"a plain-text link, never an icon button — unambiguous at a glance and
  * an icon is a guess"* is a navigation stance and it survived the move to desktop; it survives the
- * move back to a phone too. What a 414 px viewport does force is length: five cells share 414 px,
- * so each gets ~82.8 px — down from ~103 px at four — and neither "Nina's album" nor
- * "Personality" fits. `LINKS` therefore carries BOTH strings — `short` renders below `lg`,
- * `label` at `lg` — so the pair cannot drift the way two hard-coded lists would.
+ * move back to a phone too. What a 414 px viewport forces is length. It forced a 3x2 grid at the
+ * sixth route (see the `<ul>` below), which pushed a cell back out to 138 px — but the two-string
+ * pair stays, because neither "Nina's album" nor "Personality" nor "Image Generation" fits a phone
+ * cell at `text-[11px]` and the pair is what stops the two lists drifting. `LINKS` therefore
+ * carries BOTH strings — `short` renders below `lg`, `label` at `lg`.
  *
  * ── STILL A SERVER COMPONENT, STILL NO ACTIVE-LINK HIGHLIGHTING ─────────────────────────────
  * `components/admin/.workflows/package_readme.md` carries this as a rule and not a preference:
@@ -48,13 +49,19 @@ import Link from 'next/link'
  */
 
 /**
- * The five routes, longest label first in each pair.
+ * The six routes, longest label first in each pair.
  *
- * `short` is the phone label and is not an abbreviation for its own sake: at `text-[11px]` in an
- * 82.8 px cell — 414 px shared five ways on the XS Max this bar was rebuilt for — anything past
- * ~8 characters wraps or clips, and a clipped nav label is worse than a shorter true one.
- * `tests/admin.shell.test.ts` holds the 8-character ceiling, tightened from 10 when the fifth cell
- * landed. All five clear it: Overview 8, Album 5, Persona 7, Photos 6, Memory 6.
+ * `short` is the phone label and is not an abbreviation for its own sake. **The arithmetic behind
+ * the ceiling changed with the sixth cell and it changed in our favour**: the bar below `lg` is a
+ * 3x2 grid now, not a six-across row, so a cell is 414 / 3 = 138 px rather than 414 / 6 = 69 px.
+ * The 8-character ceiling `tests/admin.shell.test.ts` holds is kept anyway — it was tightened from
+ * 10 when the fifth cell landed, every entry clears it (Overview 8, Album 5, Persona 7, Images 6,
+ * Photos 6, Memory 6), and a label that needs more than eight characters at `text-[11px]` is a
+ * label that wants a shorter true form rather than a wider cell.
+ *
+ * Six across was the alternative and it was rejected on measurement, not taste: 69 px at
+ * `text-[11px]` clips or wraps every one of these words, and it is below `docs/design-brief.md`'s
+ * 44 pt minimum on the horizontal axis of a tap target.
  */
 const LINKS = [
   { href: '/admin', label: 'Overview', short: 'Overview' },
@@ -65,22 +72,28 @@ const LINKS = [
    * the album and the chat photos because it is the third thing about HER, and the two photo
    * routes stay adjacent below it.
    *
-   * The phone label is "Persona" and not "Personality": eleven characters do not fit an 82.8 px
-   * cell at `text-[11px]`, and this pair of strings exists for exactly that. It is a true short
-   * form of the word rather than an invented abbreviation — `docs/nina/persona.md` is what this
-   * page edits.
+   * The phone label is "Persona" and not "Personality": eleven characters do not fit at
+   * `text-[11px]`, and this pair of strings exists for exactly that. It is a true short form of
+   * the word rather than an invented abbreviation — `docs/nina/persona.md` is what this page edits.
    */
   { href: '/admin/personality', label: 'Personality', short: 'Persona' },
   /*
-   * R2's route. Deliberately named for the CONVERSATION and not for the person: `/admin/nina` is
+   * *"make a new tab in admin: Image Generation."* It is placed HERE, directly after the
+   * personality tab, rather than appended at the end, and the reason is a move that has to be
+   * findable: the Wardrobe field leaves the personality tab and arrives on this page, so the two
+   * tabs are neighbours. They are the pair of configuration surfaces — who she is, and how she is
+   * photographed — and the three routes above and below them are the things you look AT.
+   *
+   * `short` is "Images" (6). Note that it is adjacent to "Photos", and that the two are not the
+   * same word by accident: this page is how a photograph is MADE, and the chat-photos route is the
+   * photographs that were. The full labels at `lg` carry the distinction outright.
+   */
+  { href: '/admin/image-generation', label: 'Image Generation', short: 'Images' },
+  /*
+   * Deliberately named for the CONVERSATION and not for the person: the album route is
    * `nina_avatars` (her profile album) and this one is `nina_message_images` (the photographs in
    * the chat). Two different tables, near each other in the nav so the distinction is legible, and
-   * the labels are the only thing carrying it — which is the reason the segment can stay
-   * `/admin/photos`.
-   *
-   * `short` had to keep that distinction alive on a phone, which is why it is "Album" and "Photos"
-   * and not two glyphs: they are still two different words for two different sets, where an icon
-   * pair would have been a guess at both.
+   * the labels are the only thing carrying it.
    */
   { href: '/admin/photos', label: 'Chat photos', short: 'Photos' },
   { href: '/admin/memory', label: 'Memory', short: 'Memory' },
@@ -98,27 +111,35 @@ export function AdminNav() {
        */
       className="fixed inset-x-0 bottom-0 z-30 border-t border-rule bg-card/95 pr-[var(--safe-right)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] backdrop-blur-sm lg:sticky lg:inset-x-auto lg:top-8 lg:bottom-auto lg:z-auto lg:self-start lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
     >
-      {/* The eyebrow is desktop-only: a 56 px bar has room for five words and no room for a
+      {/* The eyebrow is desktop-only: a 112 px bar is two rows of cells and has no room for a
           line above them. */}
       <p className="mb-3 hidden text-[11px] font-semibold tracking-[0.08em] text-ink-3 uppercase lg:block">
         Run Insights admin
       </p>
 
       {/*
-       * `h-14` — 56 px, comfortably past `docs/design-brief.md`'s 44 pt minimum once the cell is
-       * the whole target. The CELL COUNT changed with the fifth route and the HEIGHT deliberately
-       * did not: a five-cell row is narrower per cell, not shorter. **If this class changes,
-       * change `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` with it**: Tailwind
-       * cannot read a constant, so the geometry is spelled in two files by necessity and
-       * `tests/admin.shell.test.ts` is what stops them drifting apart.
-       * `components/ui/AppShell.tsx` cites `TAB_BAR_HEIGHT_PX` in a comment for exactly this
-       * reason.
+       * `h-28 grid-cols-3 grid-rows-2` — **two rows of 56 px, not one row of six cells.** The
+       * sixth route is where a single row runs out: 414 px / 6 = 69 px, which clips every one of
+       * these labels at `text-[11px]` and is under `docs/design-brief.md`'s 44 pt minimum on the
+       * horizontal axis. A 3x2 grid keeps the CELL exactly the 56 px tall it has always been —
+       * `h-28` is 112 px over two rows — and widens it to 138 px, which is more room per label
+       * than the five-across row ever had.
+       *
+       * **If this class changes, change `app/admin/layout.tsx`'s
+       * `pb-[calc(8rem+var(--safe-bottom))]` with it**: Tailwind cannot read a constant, so the
+       * geometry is spelled in two files by necessity and `tests/admin.shell.test.ts` is what
+       * stops them drifting apart. `components/ui/AppShell.tsx` cites `TAB_BAR_HEIGHT_PX` in a
+       * comment for exactly this reason. 128 px of reserve against a 113 px border box (112 px of
+       * rows plus `border-t`) leaves 15 px of breathing room.
        *
        * `max-w-[470px] mx-auto` is `TabBar`'s row, borrowed: it is a no-op at 414 px and it is
-       * what stops five cells stretching to 180 px each on a landscape phone or a small tablet,
-       * both of which are still below `lg`. At the cap each cell is 94 px; at 414 px, 82.8 px.
+       * what stops three cells stretching to 300 px each on a landscape phone or a small tablet,
+       * both of which are still below `lg`. At the cap each cell is 156 px; at 414 px, 138 px.
+       *
+       * `grid-rows-2` is inert at `lg`, where `lg:block` takes the list out of grid layout
+       * entirely — the same way `grid-cols-5` was inert there before it.
        */}
-      <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-5 lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1">
+      <ul className="mx-auto grid h-28 w-full max-w-[470px] grid-cols-3 grid-rows-2 lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1">
         {LINKS.map((link) => (
           <li key={link.href}>
             <Link
