@@ -105,7 +105,7 @@
     },
     {
       "card": null,
-      "commit": "f9d2a8a45209eb57cefde49d28ef25c82f6428a0",
+      "commit": "f9d2a8a",
       "depends_on": [
         2,
         3,
@@ -113,10 +113,10 @@
       ],
       "difficulty": "HARD",
       "n": 6,
-      "note": "R11+R12 landed. Decisions: readNinaImageTestAction's referenceUrl resolved via resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl (plan said prefs.referenceUrl, which phase 1's NinaImagePrefs has no member for) per rung 3; dispatch emits the resolveNinaPhotoReference statement the plan left inside a comment; mount read armed through setTimeout to satisfy react-hooks/set-state-in-effect (code fixed, check not relaxed); test's guarded-symbol list 8 -> 9 per D6 (captionNinaPhoto). Plan index NOT ticked - coordinator owns the phase table, as phases 1-5 recorded. readme-updater skipped per coordinator. No db command run.",
+      "note": "R11 + R12. lib/nina/imagetest.ts (pure assembleNinaImageTestPrompt + dispatchNinaImageTest: cap first, SAVED prefs, reference resolved owner-scoped onto phase 3's referenceUrl, one job, one fire, purpose:'selfie' + source:'admin' so the existing selfie finisher writes the Chat-photos pair -- R12 needs no new writer, no second writer of invariant 12); lib/admin/imageGenTestView.ts (seven-verdict lookup, policy the ONLY path to refused, timeout/transport/stale inconclusive, escalating poll, derived 480s give-up); two actions appended to imageGenActions.ts each opening with await requireAdmin(); ImageGenTestPanel.tsx; SEAM -- PHASE 6 filled; literal maxDuration = 300. 8 paths, parent b7a1233. COORDINATOR VERIFIED FROM GIT: on branch and origin, seam count 0 and ImageGenTestPanel referenced twice, maxDuration = 300 present, and none of phase 7's files (schema.ts, drizzle/, CharacterPanel) in it. DECISIONS (all rung 3 except #3): Step 3's readNinaImageTestAction referenced prefs.referenceUrl which phase 1's NinaImagePrefs has no member for -- resolved to resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null per its own Interface Contract ('the prefs row holds { source, id }, NOT a Blob URL') and added a test so it cannot silently regress; Step 1's block declared the resolve call only inside a comment -- emitted as real code, after the cap check so the unanchored path still costs no round trip; the plan's mount used void load(null) which fails react-hooks/set-state-in-effect -- fixed the CODE not the check, armed via setTimeout(...,0) with clearTimeout cleanup, useExtractionStatus's own shape; guarded-symbol list 8 -> 9 adding captionNinaPhoto (D6 over the code block's stale list). No database command run by phase 6 -- it adds no column and no migration. Verified on the combined 1-7 tip: typecheck clean, lint 0 errors, npm test 157 files / 3260 tests 0 failures; build green with the route dynamic and ci:llm-payload-guard confining all 9 symbols with the guard script unedited.",
       "package": "lib/nina`, `lib/admin`, `components/admin",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-6.md",
-      "reported_at": "2026-09-07T20:32:52+00:00",
+      "reported_at": "2026-09-07T20:33:51+00:00",
       "satisfies": [
         "R11",
         "R12"
@@ -149,6 +149,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T20:33:08+00:00",
+  "updated": "2026-09-07T20:33:51+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
