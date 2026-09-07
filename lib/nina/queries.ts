@@ -820,12 +820,14 @@ export async function setNinaSessionPinned(
 }
 
 /**
- * How many messages a session holds — **for phase 5's delete confirmation, which is the only thing
- * standing between a mis-tap and a lost conversation.**
+ * How many messages a session holds — written for phase 5's delete confirmation, **which task #136
+ * removed. It has no caller now.**
  *
- * There is no confirm dialog anywhere in this codebase today and no undo for R11 (the archive flag
- * was ruled out), so the confirmation has to be able to say what it destroys. A confirm that cannot
- * name the cost is not a confirm.
+ * Kept rather than deleted, because the number it produces is still the only honest way to name what
+ * an R11 removal costs, and there is still no undo for R11 (the archive flag was ruled out). What
+ * changed is a product decision — the runner asked for the panel to go — not the arithmetic. Anything
+ * that ever has to say what a session removal destroys (an undo, a trash view, a line before a
+ * purge) starts here rather than writing the statement again.
  *
  * Every role, not just his: the count is "what disappears", and her replies disappear too. That is
  * why it is a separate statement rather than a column on `listNinaSessions`'s aggregate, which is

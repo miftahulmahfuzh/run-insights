@@ -59,27 +59,44 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  * arrangement `lib/nina/albumActions.ts` argues for with `NINA_ATTACH_MAX_CHARS`, so the input's
  * `maxLength` and the server's clamp are one number.
  *
- * ── R11's CONFIRMATION IS THE ONE GENUINELY DANGEROUS CONTROL IN THIS SET ─────────────────────
- * Removing a chat hard-deletes its messages and, through the cascades, their photo rows. There is
- * no archive flag and therefore no undo, so the confirmation is the only thing between a mis-tap
- * and a lost conversation. Four properties, each doing a job:
+ * ── R11 DELETES ON THE TAP, AND THE CONFIRMATION PANEL THAT WAS HERE IS GONE ──────────────────
+ * `⋯` → Hapus, and the removal fires. There is no second panel: task #136 took it out, on the
+ * instruction this codebase already carried for the same class of control — *"we dont need
+ * confirmation message to execute them"*, recorded in `components/nina/NinaJobActions.tsx` and
+ * `lib/nina/jobActions.ts`. This file used to be the precedent that instruction overrode; the
+ * set is now one shape.
  *
- *   1. **Three deliberate taps**, not one: `⋯` → Hapus → Hapus chat.
- *   2. **The copy names the chat and says what goes**, because the row above may have scrolled and
- *      because a title is what the runner recognises.
- *   3. **The safe answer sits where the finger is heading.** "Simpan chat ini" comes first, and
- *      three lines of copy push both buttons below where the menu's "Hapus" was, so a double-tap
- *      lands on prose or on the safe button — never on the destructive one.
+ * **What that did NOT change is the stake.** Removing a chat is still a hard delete of the
+ * session, its messages and, through the cascades, their photo rows. There is still no archive
+ * flag and therefore still no undo — unlike `nina_turns.deleted_at`, where a mis-tap is one
+ * `update … set deleted_at = null` away from being reversed. So the asymmetry between this
+ * control and the job list's is real and stays on the record; what changed is the judgement about
+ * what is worth spending on it, and it is the runner's own chats he made that call about.
+ *
+ * What guards it now — all of it cheap, none of it a second screen:
+ *
+ *   1. **Two deliberate taps, not one.** The menu is still behind `⋯`, so the row's own tap is
+ *      still the navigation and no stray tap on a scrolling list can delete anything. The two
+ *      targets sit at different positions, so a double-tap on the disclosure cannot reach
+ *      "Hapus" either.
+ *   2. **`loading={pending}` on the destructive button**, which `Button.tsx` turns into
+ *      `disabled` — so a second tap inside the round trip cannot fire a second removal.
+ *      `NinaJobActions` calls this "the mis-tap protection that IS here … the one that costs
+ *      nothing", and for a one-tap mutation it is the whole of it.
+ *   3. **44px targets** (`Button`'s `md`), which the same file calls "the safeguard the
+ *      confirmation dialog would have been, spent on the input instead of on a second screen".
  *   4. **No `window.confirm`**, for `RetryExtraction`'s recorded reason: on iOS it is "a system
- *      dialog that reads as an error".
+ *      dialog that reads as an error". Nothing in #136 reopens that.
  *
- * A typed confirmation phrase — the kind an admin screen once used before wiping a whole ledger —
- * was considered and rejected: that is an admin screen, this is the per-row tidy-up R11 was
- * added FOR, and friction people learn to type without reading is not a safeguard. The copy would
- * be measurably better if it named a message count; phase 1 shipped
- * `countNinaSessionMessages(userId, sessionId)` for exactly that, and wiring it is a follow-up
- * rather than a drive-by, because it needs either a round trip on opening the confirm panel or a
- * per-row count folded into the page's server read.
+ * An UNDO is the honest replacement for a confirmation, and it is a feature rather than a
+ * drive-by: it needs somewhere to put the row, which means giving `nina_chat_sessions` what
+ * `nina_turns` already has — a nullable flag, every reader filtering on it, and a trash view to
+ * reach the flagged ones from. #136 put that out of scope, and a client-side "undo" over a row
+ * already gone from Postgres would be a lie rather than a cheap version of one.
+ *
+ * One consequence to keep straight: a REFUSED removal leaves the **menu** open with the sentence
+ * in it, which is why the error line lives in the menu block. `run()`'s rule is that a refusal
+ * keeps the panel it was fired from, and after #136 that panel is the menu.
  *
  * ── THE ACTIVE ROW IS A BUTTON, NOT A LINK ────────────────────────────────────────────────────
  * Navigating to the chat you are already reading costs a server round trip and a history entry to
@@ -87,7 +104,7 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  * and the open row also says the word "Open" — furniture, and worth it: the panel is opaque and
  * full-screen, so the runner cannot see the conversation a highlight would be pointing at.
  */
-type RowMode = 'idle' | 'menu' | 'rename' | 'remove'
+type RowMode = 'idle' | 'menu' | 'rename'
 
 export function SessionRow({
   session,
@@ -241,16 +258,24 @@ export function SessionRow({
       </div>
 
       {mode === 'menu' && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Button size="md" variant="secondary" loading={pending} onClick={pin}>
-            {session.pinned ? 'Lepas pin' : 'Pin ke atas'}
-          </Button>
-          <Button size="md" variant="secondary" onClick={() => open('rename')}>
-            Ganti nama
-          </Button>
-          <Button size="md" variant="destructive" onClick={() => open('remove')}>
-            Hapus
-          </Button>
+        <div className="mt-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="md" variant="secondary" loading={pending} onClick={pin}>
+              {session.pinned ? 'Lepas pin' : 'Pin ke atas'}
+            </Button>
+            <Button size="md" variant="secondary" onClick={() => open('rename')}>
+              Ganti nama
+            </Button>
+            {/* #136: no panel and no second tap. `loading` is `disabled` in `Button.tsx`, which is
+                the one safeguard a one-tap mutation gets and the one `NinaJobActions` settled on. */}
+            <Button size="md" variant="destructive" loading={pending} onClick={remove}>
+              Hapus
+            </Button>
+          </div>
+          {/* A refused pin or removal leaves THIS panel open, so the sentence belongs here —
+              `run()`'s rule, and after #136 the menu is the panel a removal fires from. A rename's
+              refusal renders in its own `Field` instead, where a form error reads. */}
+          {error !== null && <p className="mt-2 text-[12px] font-semibold text-red">{error}</p>}
         </div>
       )}
 
@@ -290,37 +315,6 @@ export function SessionRow({
             </Button>
           </div>
         </form>
-      )}
-
-      {mode === 'remove' && (
-        <div className="mt-2 rounded-card border border-red/40 bg-paper-2 p-3.5">
-          <p className="max-w-[54ch] text-[13px] leading-[1.5] font-semibold text-red">
-            Hapus “{session.title}”? Semua pesan di chat ini dan semua foto di dalamnya ikut
-            terhapus, permanen — tidak bisa dibatalkan.
-          </p>
-          {active && (
-            <p className="mt-2 max-w-[54ch] text-[12px] leading-[1.5] font-medium text-ink-2">
-              Ini chat yang sedang kamu baca. Setelah dihapus kamu akan dibawa ke chat terbaru yang
-              masih ada.
-            </p>
-          )}
-          {error !== null && <p className="mt-2 text-[12px] font-semibold text-red">{error}</p>}
-          {/* The safe answer first, and the copy above has already pushed both buttons below where
-              the menu's "Hapus" was — so a double-tap cannot reach the destructive one. */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              size="md"
-              variant="secondary"
-              disabled={pending}
-              onClick={() => setMode('menu')}
-            >
-              Simpan chat ini
-            </Button>
-            <Button size="md" variant="destructive" loading={pending} onClick={remove}>
-              Hapus chat
-            </Button>
-          </div>
-        </div>
       )}
     </div>
   )
