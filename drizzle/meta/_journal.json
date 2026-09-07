@@ -64,6 +64,27 @@
       "when": 1788746668774,
       "tag": "0008_thankful_cardiac",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788759885817,
+      "tag": "0009_nina_message_photo_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788778074226,
+      "tag": "0010_nina_image_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788786634959,
+      "tag": "0011_rare_blockbuster",
+      "breakpoints": true
     }
   ]
 }

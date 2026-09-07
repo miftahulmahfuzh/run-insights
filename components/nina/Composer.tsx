@@ -30,18 +30,49 @@ import { QuoteStub } from './QuoteStub'
  * one digit per keyboard". A composer is that bug's natural habitat. The rules that follow from it:
  * this component is never given a `key` that changes, and `onSend` is a `useCallback` upstream.
  *
- * ── THE FIXED BAR'S GEOMETRY ──────────────────────────────────────────────────────────────────
+ * ── THE FIXED BAR'S GEOMETRY: TWO PROPS, AND THE INSET IS IN EXACTLY ONE OF THEM ─────────────
  * `bottomCss` is computed by `composerBottomCss` in `lib/nina/chatview.ts` and clears 59 px of
  * chrome: the tab bar's OUTER height, which is its 58 px grid plus the 1 px `border-t` the grid
  * sits under. The border is not a rounding error — it is the bar's top edge, so a clearance of 58
  * leaves this bar floating one pixel above the bar below it with the conversation visible through
- * the seam. That was R2's reported gap, and 59 is what makes the two flush. The home-indicator
- * inset rides in that same offset rather than in this element's padding, because the tab bar below
- * already pads by it and counting it twice would open a gap.
+ * the seam. 59 is what makes the two flush.
+ *
+ * `padBottomCss` is its partner, from `composerPadBottomCss` in the same file, and the pair is
+ * what makes this bar paint to the bottom of the screen. The home-indicator inset USED to ride in
+ * the offset alone, "because the tab bar below already pads by it and counting it twice would open
+ * a gap" — which is true while the bar is showing and is exactly what left the inset UNPAINTED
+ * when it is not. `/nina`'s resting state is a hidden bar (`lib/nina/chrome.ts`), so at rest the
+ * bar's bottom edge sat one inset above the bottom of the viewport with the conversation showing
+ * through underneath. That was the reported gap.
+ *
+ * So the inset moved into this element's own `padding-bottom`, gated on the same
+ * `--nina-bar-visible` flag as the offset and by its complement: the offset carries the inset when
+ * the bar is showing, the padding carries it when it is not, the keyboard branch carries it in
+ * neither because the indicator is behind the keyboard. The inset appears exactly once in every
+ * state — the rule the old comment was defending, in the state it did not cover. Both functions
+ * are pure and both are asserted in `lib/nina/chatview.test.ts`; do not compute either here.
+ *
+ * One consequence to know before touching `ChatChrome`: this element's MEASURED height now
+ * includes the inset while the bar is hidden. `controlBottomCss` gates its own inset term on the
+ * same flag for that reason, and its docstring carries the arithmetic.
  *
  * `z-40` matches `ReviewClient`'s sticky action bar, the app's only other second fixed bar, and
- * leaves `Sheet` (`z-50`) and `PhotoViewer` (`z-60`) covering it. `bg-paper/90 backdrop-blur-md` is
- * that file's recipe too.
+ * leaves `Sheet` (`z-50`) and `PhotoViewer` (`z-60`) covering it.
+ *
+ * ── THE GLASS IS THE FLOATING CONTROLS' GLASS, VERBATIM ──────────────────────────────────────
+ * `bg-card/40 backdrop-blur-md backdrop-saturate-150`, which is `NINA_CHROME_CONTROL_CLASS`'s
+ * fill, blur and saturation exactly — asked for in those words: *"bikin backgroundnya frosted
+ * glass, persis kaya small buttons < and up"*. It was `bg-paper/90 backdrop-blur-md`, and that
+ * file's own argument applies here unchanged: at 90 % opacity the blur is decorative, since almost
+ * nothing shows through it. `backdrop-saturate-150` is what keeps the conversation's colour from
+ * going grey behind the glass, which is the difference between frosted and merely dim.
+ *
+ * A HAIRLINE AND NOT A RING, which is the one place this deliberately departs from the discs.
+ * `border-t border-rule/50` rather than `ring-1 ring-rule/50`: the controls are free-floating and
+ * need an edge on all sides, while this bar spans the viewport and has exactly one exposed edge.
+ * A ring would draw a hairline down both screen edges and across the bottom, where there is
+ * nothing on the other side of it. The `/50` weight is carried over so the pair still reads as one
+ * system, and `border-rule` at full weight — what this had — reads as chrome rather than as glass.
  *
  * ── 16px, AND WHY IT IS NOT NEGOTIABLE ────────────────────────────────────────────────────────
  * `app/globals.css` sets `input, select, textarea { font-size: max(16px, 1rem) }` because Safari
@@ -132,6 +163,7 @@ export function Composer({
   onSend,
   busy,
   bottomCss,
+  padBottomCss,
   userId,
   reply = null,
   onCancelReply,
@@ -153,6 +185,13 @@ export function Composer({
   busy: boolean
   /** From `composerBottomCss`. A CSS length, because `var(--safe-bottom)` is CSS-only. */
   bottomCss: string
+  /**
+   * From `composerPadBottomCss`, and NOT optional: it is the other half of `bottomCss`. Together
+   * they add the home-indicator inset exactly once — see the geometry section of the header. A
+   * caller that passes one and not the other either leaves an unpainted strip under this bar or
+   * pads it twice, and both are the bug R1 fixed.
+   */
+  padBottomCss: string
   /** Needed to build `nina/<userId>/chat/<id>.jpg`. Not a capability — see the header. */
   userId: string
   /** Phase 7 (R12). The message this draft answers. Null is the ordinary composer. */
@@ -350,10 +389,10 @@ export function Composer({
   return (
     <div
       id="nina-composer"
-      className="fixed inset-x-0 z-40 border-t border-rule bg-paper/90 backdrop-blur-md"
-      style={{ bottom: bottomCss }}
+      className="fixed inset-x-0 z-40 border-t border-rule/50 bg-card/40 backdrop-blur-md backdrop-saturate-150"
+      style={{ bottom: bottomCss, paddingBottom: padBottomCss }}
     >
-      <div className="mx-auto max-w-[470px] px-5 py-3">
+      <div className="mx-auto max-w-[470px] px-5 py-2">
         {reply != null && (
           <div className="mb-2 flex items-start gap-2">
             {/* `mine={false}`: the ground here is `--paper`, the same side of the range as Nina's

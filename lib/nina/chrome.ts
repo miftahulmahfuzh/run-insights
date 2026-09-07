@@ -1,3 +1,5 @@
+import { NINA_BAR_VISIBLE_VAR } from './chatview'
+
 /**
  * `/nina`'s chrome, as pure rules (R1).
  *
@@ -106,13 +108,30 @@ export const NINA_CHROME_CONTROL_CLASS =
   'transition-[opacity,transform] active:scale-[0.97]'
 
 /**
- * The composer with nothing armed: `py-3` (24) + `min-h-11` (44).
+ * The composer with nothing armed: `py-2` (16) + `min-h-11` (44).
  *
- * The same 68 that `ChatScreen`'s `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 68` already
- * spells. Used only when `#nina-composer` cannot be measured, which is the frame before the
- * observer's first callback.
+ * The same 60 that `ChatScreen`'s `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60` already
+ * spells, and the same 60 that opens `BOTTOM_GAP.chat`'s sum in `components/ui/AppShell.tsx`.
+ * Four sites, one number; a change to any one of them changes all four.
+ *
+ * WAS 68, from `py-3` (24). The repo owner asked for the query field to *"lebih kecil jadi lebih
+ * makan lesser space"*, and the 24 px of vertical padding was the only reclaimable dimension: the
+ * textarea's `min-h-11` and every round control in that bar are the 44 px iOS tap floor, and the
+ * 16 px font is forced by `app/globals.css` because Safari zooms the viewport on focus below it.
+ * So the reduction comes out of padding alone — the same trade `CHROME_CONTROL_PX` above made when
+ * the same voice asked for the two floating controls to be "much smaller".
+ *
+ * ── IT IS THE CONTENT BOX, AND IT DOES NOT INCLUDE THE HOME-INDICATOR INSET ──────────────────
+ * The composer's `padding-bottom` is `var(--safe-bottom)` while the tab bar is hidden and 0 while
+ * it is showing (`composerPadBottomCss`), so the element's MEASURED height is 60 in the showing
+ * state and 60 + the inset in the hidden one. This constant is neither of those: it is the 60,
+ * because an inset is `env(safe-area-inset-bottom)` and no number in TypeScript can stand for it.
+ * `controlBottomCss` is the one reader that has to care, and it does — see its fallback branch.
+ *
+ * Used only when `#nina-composer` cannot be measured, which is the frame before the observer's
+ * first callback (and the server's HTML, where there is no element at all).
  */
-export const COMPOSER_RESTING_PX = 68
+export const COMPOSER_RESTING_PX = 60
 
 /**
  * The state machine. Total over `NinaChromeEvent`, and every transition is one line of R1.
@@ -168,22 +187,43 @@ export function barToggleGlyph(state: NinaBarState): 'up' | 'down' {
  * The control lane's `bottom`, as a CSS length.
  *
  * Entirely above the composer: the bar's clearance when the bar is showing, plus the composer's
- * measured height, plus the gap, plus the home-indicator inset. That is what keeps the lane clear
- * of the composer's Send button at every composer height, and clear of the tab bar itself — the
- * bar's OUTER height is the whole of what it has to rise past, because no part of the bar paints
- * above its own top border: the raised centre FAB that used to overhang it by 20 px is now an
- * ordinary tab cell, and the bar occupies exactly its own border box.
+ * measured height, plus the gap. That is what keeps the lane clear of the composer's Send button
+ * at every composer height, and clear of the tab bar itself — the bar's OUTER height is the whole
+ * of what it has to rise past, because no part of the bar paints above its own top border: the
+ * raised centre FAB that used to overhang it by 20 px is now an ordinary tab cell, and the bar
+ * occupies exactly its own border box.
  *
- * The inset is honoured here and not as the lane's own padding, for the reason
- * `composerBottomCss` gives: everything in this stack sits above chrome that already pads by
- * `--safe-bottom`, so padding twice opens a gap.
+ * ── THE HOME-INDICATOR INSET, AND WHY IT IS NOW GATED ON THE BAR ─────────────────────────────
+ * This used to add `var(--safe-bottom)` unconditionally, for the reason `composerBottomCss` used
+ * to give: everything in this stack sits above chrome that already pads by it. That stopped being
+ * true when the composer took the inset into its own `padding-bottom` in the bar-hidden state
+ * (`composerPadBottomCss`, R1). The inset is now INSIDE the element this function measures, so
+ * adding it again here would count the phone's inset twice and float the pair one inset too
+ * high — the failure `components/nina/Composer.tsx` names, one state over.
+ *
+ * So the term is multiplied by the same flag the composer's offset uses. It contributes the inset
+ * when the bar is showing (where the composer's padding is 0 and the inset rides in its offset
+ * instead) and nothing when the bar is hidden (where the measurement already carries it). One
+ * inset in the stack, in either state — and the same variable in both files, so the two cannot
+ * drift apart.
+ *
+ * ── EXCEPT IN THE FALLBACK BRANCH, WHERE THERE IS NOTHING MEASURED TO CARRY IT ───────────────
+ * `COMPOSER_RESTING_PX` is the composer's CONTENT box: 60, with no inset in it, because an inset
+ * is `env(safe-area-inset-bottom)` and no TypeScript number can stand for one. So when the
+ * measurement is unavailable the inset has to come from here, ungated — otherwise the lane is
+ * emitted at 68 px while the composer's real top edge is at 60 px + inset, and the two controls
+ * spend the server's HTML and the first paint sitting BEHIND the composer's `z-40` glass. That is
+ * not a hypothetical frame: `ChatChrome` seeds `composerHeightPx` at 0 and measures in a passive
+ * effect, so the fallback is what renders on the server and on the first client paint of every
+ * conversation.
  *
  * A string, because that is what the style attribute takes and because `var(--safe-bottom)` is
  * `env(safe-area-inset-bottom)`, which is readable only to CSS.
  *
  * Degenerate input is the resting screen, not an error: a non-finite or non-positive composer
- * height means "not measured yet" and falls back to `COMPOSER_RESTING_PX`; a non-finite or negative
- * clearance contributes nothing. A hidden bar contributes no clearance whatever the argument says.
+ * height means "not measured yet" and falls back to `COMPOSER_RESTING_PX` with the ungated inset;
+ * a non-finite or negative clearance contributes nothing. A hidden bar contributes no clearance
+ * whatever the argument says.
  */
 export function controlBottomCss(input: {
   barState: NinaBarState
@@ -197,9 +237,10 @@ export function controlBottomCss(input: {
     barState === 'shown' && Number.isFinite(barClearancePx) && barClearancePx > 0
       ? Math.round(barClearancePx)
       : 0
-  const composer =
-    Number.isFinite(composerHeightPx) && composerHeightPx > 0
-      ? Math.round(composerHeightPx)
-      : COMPOSER_RESTING_PX
-  return `calc(${clearance + composer + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`
+  const measured = Number.isFinite(composerHeightPx) && composerHeightPx > 0
+  const composer = measured ? Math.round(composerHeightPx) : COMPOSER_RESTING_PX
+  const inset = measured
+    ? `var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0)`
+    : 'var(--safe-bottom)'
+  return `calc(${clearance + composer + CHROME_CONTROL_GAP_PX}px + ${inset})`
 }

@@ -1,7 +1,8 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-07 (task `P1-RI-A019`, R1 of `NINA_CHAT_AVATAR_PROFILE_PLAN.md` — the
+typing row's face)
 
 ## Overview
 
@@ -472,7 +473,7 @@ against and no reveal state to hold.
 
 ### The route tree, and its chrome
 
-Sixteen pages, eight route handlers, three layouts. Two route groups — `(app)` and `(public)` —
+Sixteen pages, nine route handlers, three layouts. Two route groups — `(app)` and `(public)` —
 neither of which contributes a URL segment.
 
 | route | file | chrome | notes |
@@ -487,7 +488,7 @@ neither of which contributes a URL segment.
 | `/nina` | `app/nina/page.tsx` | **`AppShell` (chat)** | `maxDuration = 60`; the only `screen` call site |
 | `/nina/about` | `app/nina/about/page.tsx` | `AppShell` (tabs) | a pushed screen that keeps the bar |
 | `/onboarding` | `app/onboarding/page.tsx` | none | standalone |
-| `/admin`, `/admin/nina`, `/admin/photos`, `/admin/memory` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (fixed four-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; the shell caps at `max-w-[1400px]` |
+| `/admin`, `/admin/nina`, `/admin/photos`, `/admin/memory` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (fixed four-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; the shell caps at `max-w-[1400px]`; its layout also carries the **second install contract** below |
 | `/s/[token]` | `app/(public)/s/[token]/page.tsx` | none — own layout | public share; `force-dynamic`, plus `not-found.tsx` |
 
 Route handlers, all `runtime = 'nodejs'`: `/api/auth/*` (re-exports Auth.js `handlers`),
@@ -495,10 +496,20 @@ Route handlers, all `runtime = 'nodejs'`: `/api/auth/*` (re-exports Auth.js `han
 `/api/cron/nina` (the two `vercel.json` crons, `maxDuration = 60`), and
 `/api/admin/nina/upload`.
 
+The ninth is the one that is not under `/api` and not `nodejs`:
+**`app/admin/manifest.webmanifest/route.ts`**, `export const dynamic = 'force-static'`, serving
+`application/manifest+json`. It is a hand-written handler rather than a second `manifest.ts`
+because the `manifest` file convention is root-of-`app` only (verified in
+`next/dist/lib/metadata/is-metadata-route.js`, whose matcher is anchored at the app root) — and it
+is `force-static` because a hand-written handler is
+dynamic by default in Next 16 while the convention route is cached, and the two should behave
+alike.
+
 `app/layout.tsx` is the root layout and the one place **`viewport-fit=cover`** is set — without it
 `env(safe-area-inset-*)` returns zero and every `--safe-bottom` term in the geometry above silently
 collapses. It also self-hosts Poppins via `next/font/google` and points `manifest` at
-`app/manifest.ts`. `app/robots.ts` allows `/` and `/s/` and disallows the rest; `/s/` is
+`app/manifest.ts` — the runner's install contract, and no longer the only one; see below.
+`app/robots.ts` allows `/` and `/s/` and disallows the rest; `/s/` is
 crawlable-but-`noindex` on purpose, because `Disallow` is not `noindex` and blocking it would break
 the WhatsApp preview card. There is no `sitemap.ts`, no root `error.tsx` and no root
 `not-found.tsx` — each absence is deliberate.
@@ -525,6 +536,73 @@ appending it to the end would put it at 90 % and every type would still check. T
 argument came from F33 and a raised circle; it is **superseded, not wrong** — what it made true of
 a FAB is now true of a caption, and a grid cell needs no `left-1/2 -translate-x-1/2` to be centred.
 `tests/tabbar.geometry.test.ts` asserts the label order.
+
+### The install contract — two manifests on one origin
+
+An install contract is invisible to lint, typecheck and build; only a phone can see it. So the
+facts are stated once in **`lib/pwa.ts`** — names, colours, and the `PWA_ICONS` list — and read
+from the three places that cannot see each other: the manifests, the layouts' `metadata`, and
+`tests/pwa.install.test.ts` (40 cases).
+
+There are **two** manifests, because a manifest describes one app and `start_url` is a single
+value. Safari launches an installed home-screen tile from the `start_url` of whatever manifest the
+page linked — **not** from the URL that was on screen. Every page linking the root manifest is why
+"Add to Home Screen" from `/admin` used to install the runner's app, correctly.
+
+| | runner | admin |
+|---|---|---|
+| constants | `INSTALL` | `ADMIN_INSTALL` |
+| served by | `app/manifest.ts` (file convention) | `app/admin/manifest.webmanifest/route.ts` (handler) |
+| linked from | `app/layout.tsx` | `app/admin/layout.tsx` |
+| `id` / `start_url` | `/` | `/admin` |
+| `orientation` | `portrait` — no landscape layout to rotate into | `any` — the admin shell has one |
+| splash / theme | `--paper` `#c9e9fb` | `--paper-2` `#f1f7fb`, matching `/admin`'s `bg-paper-2` |
+| notch band (`theme-color`) | `#c9e9fb` light / `#0e1b26` dark, from the root `viewport` | `#f1f7fb` light / `#162834` dark, from `app/admin/layout.tsx`'s own `viewport` |
+| `shortName` | `Run Insights` (12 chars, the iOS ceiling) | `RI Admin` (8; no room to suffix the above) |
+
+Both set `scope: '/'`, and for the admin one that is **load-bearing rather than copied**: anything
+outside scope opens in a browser tab instead of the installed app, and `requireAdmin` answers a
+session-less request with `redirect('/')`. A `scope: '/admin'` would eject the installed admin app
+into Safari on exactly the day the cookie expired.
+
+`metadata` resolves root → nested with duplicate keys **replaced**, which is what lets
+`app/admin/layout.tsx` override `manifest` for that segment and nothing else. The same rule is a
+trap one line down: `appleWebApp` is a nested field replaced *whole*, so it is written
+`{ ...APPLE_WEB_APP, title: ADMIN_INSTALL.shortName }` — the spread is what keeps `capable: true`,
+the single line that stops the install from being a bookmark, alive under `/admin`. Only the label
+iOS draws under the icon differs. `statusBarStyle` stays `'default'` on the runner's terms
+(`lib/pwa.ts` gates translucency on the runner's screens padding `--safe-top`; the tag is emitted
+once from the root). There is deliberately **no `icons` key** in either layout: an explicit
+`metadata.icons` suppresses the file-convention icons, which would silently delete the
+apple-touch-icon Safari actually reads on install.
+
+**`viewport` merges by key, and that is a different rule from `metadata`'s** — which is why
+`/admin` can own its notch band without owning anything else. `app/admin/layout.tsx` exports a
+`viewport` carrying `themeColor` and **nothing else**: a media-matched `ADMIN_INSTALL.paper` /
+`ADMIN_INSTALL.paperDark` pair (`--paper-2`, `#f1f7fb` / `#162834`), so an installed admin tile's
+status-bar band matches the shell it sits on instead of showing the runner's sky blue. Read from
+the framework's source rather than assumed: `mergeViewport`
+(`node_modules/next/dist/lib/metadata/resolve-metadata.js:315`) `structuredClone`s the *resolved
+parent* and then iterates `for (const key_ in viewport)`, so a key the child omits is inherited
+untouched. That is what keeps **`viewportFit: 'cover'` arriving from the root**, and with it all
+four `env(safe-area-inset-*)` paddings in the admin shell. Restating `viewportFit` there would
+create a second source of truth for the one value that must not drift — and it drifts silently,
+because an inert inset renders as a layout that is merely slightly wrong. Next's own
+`generate-viewport.md` documents no merge rule at all, so the source is the only authority.
+`statusBarStyle` is unaffected and stays `'default'`: a tint on an opaque bar needs none of
+translucency's prerequisites.
+
+A useful consequence when probing this: metadata and `viewport` resolve from the segment tree
+independently of what the page component *does*, so a session-less `curl` of `/admin` — a `307`
+with an empty body, since `requireAdmin` redirects — still carries the complete resolved `<head>`.
+Reading the served tags needs neither an auth cookie nor a live database.
+
+Two things a reader will ask. **A second domain does not fix this** — the launch URL comes from
+`start_url`, not the hostname, so `admin.example.com` would need the same field anyway, plus a DNS
+record, a certificate, a second `AUTH_URL` and Google OAuth origin, a cross-origin session cookie
+`auth.config.ts` does not issue, and an `images.remotePatterns` review. And **both tiles currently
+draw the same art**: the admin manifest still lists `PWA_ICONS`. That is a known cost, not an
+oversight.
 
 ## Dependencies
 
@@ -565,6 +643,9 @@ package readmes of their own.
 - `lib/nina/chrome` — the reveal rules, consumed only by `ChatChrome`.
 - `lib/nina/chatview` — `NINA_BAR_VISIBLE_VAR` (by `ChatChrome`), `composerBottomCss` and
   `keyboardOverlapPx` (by `ChatScreen`).
+- `lib/pwa` — the install contract (`INSTALL`, `ADMIN_INSTALL`, `APPLE_WEB_APP`, `PWA_ICONS`),
+  read by `app/manifest.ts`, `app/layout.tsx`, `app/admin/manifest.webmanifest/route.ts` and
+  `app/admin/layout.tsx`. Plain constants — no `server-only`, no env read, no image generation.
 - `lib/cn` — class composition, by both `AppShell` and `TabBar`.
 - `lib/env` — `server-only`; reachable from `AppShell` through the badge, which is why the shell is
   out of the UI barrel.
@@ -598,7 +679,10 @@ own four-cell `AdminNav` — and `FileExplorer` is still desktop-shaped),
 the shell across a client boundary for one empty state).
 
 `/nina` deliberately does not use `ScreenHeader` either: a conversation's identity is a face and a
-name, not a title and a link, so that screen builds its own header row out of `NinaAvatar`.
+name, not a title and a link. Since F35 R7 the screen has no header row at all — her face appears
+in `NinaSidebar`'s 44 px circle and in the 28 px circle beside the typing dots, and since
+`P1-RI-A019` both are fed from the **same** `ninaAvatarView(...)` value that `app/nina/page.tsx`
+resolves once (see the recent-changes note below).
 
 ### Geometry-constant consumers
 
@@ -744,9 +828,92 @@ auth edge and the repo-wide configuration. The persistence layer is documented i
 The product contracts this file defers to, in precedence order: `RECONCILIATION_v0.1.0.md` (the
 `R-n` rulings, which supersede any individual plan and amend the roadmap), then
 `ROADMAP_v0.1.0.md` (§4.1 env-var names, §4.2 formatting, §4.3 schema, §4.8 routes), then the
-per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` is the
-current branch's plan set; `R1` (the `New` tab) and `R2` (the composer seam) are its two
-requirements, landed as `P1-RI-A015` and `P1-RI-A016`.
+per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` holds `R1`
+(the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
+`NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
+`P1-RI-A019`.
+
+### Recent changes — P1-RI-A019 (2026-09-07)
+
+*R1 of `NINA_CHAT_AVATAR_PROFILE_PLAN.md`: the typing row's 28 px circle now honours the profile
+avatar.*
+
+The circle beside the typing dots was `<NinaAvatar size="sm" />` with no `src`, `natural` or
+`crop`, so it always took `NinaAvatar`'s `isFallback` branch and rendered the committed
+`public/nina/avatar-001.png` — `ninaCropStyle` was never called for it. It therefore ignored both
+the current album photo and the crop-studio framing while the 44 px sidebar circle honoured both,
+and the two faces on one screen could disagree. The fix threads the already-resolved
+`{ src, natural, crop }` triple four hops: `app/nina/page.tsx`'s existing
+`const avatar = ninaAvatarView(avatarRow)` — the *same* value `<NinaSidebar>` reads — into
+`ChatScreen` → `MessageList` → `TypingIndicator` → `NinaAvatar`.
+
+**New:**
+
+- `ChatAvatar` in `components/nina/types.ts` — `ninaAvatarView`'s three *render* fields and
+  nothing else. Structurally identical to `NinaSidebarAvatar` and deliberately a separate
+  declaration: `ChatScreen` importing a type out of `NinaSidebar.tsx` would contradict the boundary
+  `ChatChrome.tsx` states, to save one interface.
+- `tests/nina.chatAvatar.test.ts` — a source-text suite (vitest is `environment: 'node'`; there is
+  no jsdom to render a circle in) that fails if any hop is removed, and that asserts the page still
+  calls `ninaAvatarView` exactly once.
+
+**Changed:**
+
+- `components/nina/ChatScreen.tsx` and `components/nina/MessageList.tsx` — a **required**
+  `avatar: ChatAvatar` prop on each. Required rather than optional on purpose: each has exactly one
+  caller, so a caller that forgets it must be a `tsc` error and not a silent regression to the
+  fallback. An optional prop all the way up is how the bug happened. Neither component renders an
+  avatar itself; the prop exists only to reach `TypingIndicator`.
+- `components/nina/TypingIndicator.tsx` — `avatar` is **optional** here, the one deliberate
+  asymmetry: the row is `aria-hidden` decoration whose worst case should be the committed face, so
+  it keeps `NinaAvatar`'s own defaults.
+- `app/nina/page.tsx` — one prop on the existing `<ChatScreen>` call, destructured field by field
+  rather than spread, so `ninaAvatarView`'s `description` (`glm-4.6v`'s private prose, invariant 5)
+  cannot ride into a client component. The same care the `<NinaSidebar>` call beside it already
+  took.
+
+**Unchanged, and checked:** no new query and no new `await` on `/nina` — the row was already being
+read. `NinaAvatar.tsx`, `NinaSidebar.tsx` and `NinaAboutScreen.tsx` were not touched, and
+`NinaSidebarAvatar` was left as its own type rather than refactored onto `ChatAvatar`. The
+no-album case still renders `/nina/avatar-001.png` centred `cover`, exactly as before.
+
+### Recent changes — P1-RI-A021 (2026-09-07)
+
+*Phase 1 of 2 of the `admin-home-screen-shortcut` plan set: a home-screen tile that opens `/admin`.*
+
+"Add to Home Screen" from `/admin` installed a tile that opened `/`. Not a bug in the tile — Safari
+launches from the `start_url` of the manifest the page **linked**, and every page linked the root
+one. The fix is a second manifest scoped to the admin shell; the full argument, including why a
+second domain was not the answer, lives in the new route handler's docstring. The install contract
+is now a pair, described under *The install contract* above.
+
+**New:**
+
+- `app/admin/manifest.webmanifest/route.ts` — a `force-static` Route Handler (not a second
+  `manifest.ts`; that convention is root-of-`app` only) serving `application/manifest+json` with
+  `start_url: '/admin'`, `id: '/admin'`, `display: 'standalone'` and `orientation: 'any'` — the
+  runner's `portrait` is wrong here because the admin shell *has* a landscape layout. `scope` stays
+  `'/'` on purpose: `requireAdmin` redirects to `/`, and a narrower scope would eject the installed
+  app into Safari the day the cookie expired.
+- `ADMIN_INSTALL` in `lib/pwa.ts`, beside `INSTALL` — `RI Admin` at 8 characters because
+  "Run Insights" already sits at the ~12-char iOS label ceiling, and `--paper-2` `#f1f7fb` so the
+  launch splash matches `/admin`'s `bg-paper-2` shell. No `paperDark`, deliberately: a
+  scheme-varying tint would need a `viewport` export from `app/admin/layout.tsx`, and whether a
+  nested one merges or replaces is unverified — if it replaces, the shell loses `viewportFit:
+  'cover'` and all four safe-area insets go inert.
+
+**Changed:**
+
+- `app/admin/layout.tsx` — two keys on the existing `metadata`: `manifest:
+  '/admin/manifest.webmanifest'`, and `appleWebApp: { ...APPLE_WEB_APP, title:
+  ADMIN_INSTALL.shortName }`. **The spread is load-bearing** — `appleWebApp` is a nested field Next
+  replaces whole, so the short form would have dropped `capable: true` for every route under
+  `/admin`. Still no `icons` key, for the same class of reason.
+- `tests/pwa.install.test.ts` — two `describe` blocks, 12 new cases (26 in the file).
+
+Untouched by invariant: `app/manifest.ts`, `app/layout.tsx`, `public/**`, `app/icon.png`,
+`app/apple-icon.png`, `tools/**`, `next.config.ts`, `proxy.ts`. Both tiles therefore still draw the
+runner's art; phase 2 (`P1-RI-A022`) ships `ADMIN_PWA_ICONS` and `app/admin/apple-icon.png`.
 
 ### Recent changes — P1-RI-A015 and P1-RI-A016 (2026-09-05)
 

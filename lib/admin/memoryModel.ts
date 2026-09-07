@@ -58,10 +58,10 @@ export type AdminFactCategory = (typeof ADMIN_FACT_CATEGORIES)[number]
 /* ── the vocabulary's two readings ──────────────────────────────────────────────────────────── */
 
 /**
- * `'text'`       — the eight prose/scalar slots. Editable, canonicalised on save.
+ * `'text'`       — the nine prose/scalar slots. Editable, canonicalised on save.
  * `'structured'` — a `merge`-policy slot (`pending_promises`). Its ENTRIES become rows of their
  *                  own; the key itself is never rendered as a row.
- * `'orphaned'`   — a key outside phase 5's nine. Deletable, never editable.
+ * `'orphaned'`   — a key outside phase 5's ten. Deletable, never editable.
  */
 export type SlotEditKind = 'text' | 'structured' | 'orphaned'
 
@@ -109,8 +109,6 @@ export interface MemoryRow {
   editable: boolean
   /** Ledger rows only. `null` everywhere else, and the cell renders nothing. */
   category: AdminFactCategory | null
-  /** Ledger rows only, integer percent 0–100. `null` everywhere else. */
-  confidence: number | null
   /** `null` on a promise, and on a vocabulary key that has no row — nobody wrote it. */
   origin: NinaMemorySource | null
   /**

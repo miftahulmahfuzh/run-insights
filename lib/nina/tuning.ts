@@ -41,9 +41,12 @@
  * and the ladder lives over there.
  *
  * ── WHY THIS IS NOT A MEMORY SLOT ─────────────────────────────────────────────────────────────
- * `NINA_SLOT_KEYS` stays at nine. `lib/nina/prompts/distill.ts` may overwrite any slot not marked
- * `source: 'admin'`, so a tuning in a slot is a character the distiller eventually rewrites — and
- * `buildSlotCards` would render fifteen integers as free-text prose.
+ * **This is an argument about THE TUNING; it is not a cap on `NINA_SLOT_KEYS`.**
+ * `lib/nina/prompts/distill.ts` may overwrite any slot not marked `source: 'admin'`, so a tuning
+ * in a slot is a character the distiller eventually rewrites — and `buildSlotCards` would render
+ * fifteen integers as free-text prose. Neither reason bears on a PROSE slot the distiller is
+ * supposed to write, so how many keys `lib/nina/memory.ts` declares is that file's decision and
+ * not a rule this comment gets to make.
  *
  * ── THE DIALS THAT ARE NOT HERE, AND WHY (R3's TEST: NO CODE PATH, NO DIAL) ───────────────────
  * R3 is *"among other things (you can define more comprehensively)"*, and the discipline that
@@ -66,7 +69,9 @@
  * ==========================================================================*/
 
 /** Every trait and every dial is an integer percent, 0–100. The schema's smallest-sensible-unit
- * rule (roadmap D5) applied to an intensity: `nina_memory_facts.confidence` is the precedent. */
+ * rule (roadmap D5) applied to an intensity: `nina_model_calls.cost_micro_usd` is the precedent —
+ * integer millionths of a dollar. (It was `nina_memory_facts.confidence` until task #135 dropped
+ * that column.) */
 export const NINA_SCORE_MIN = 0
 export const NINA_SCORE_MAX = 100
 
@@ -315,8 +320,16 @@ export const NINA_TRAIT_SPECS: Readonly<Record<NinaTrait, NinaTraitSpec>> = {
  * ==========================================================================*/
 
 /**
- * **The five levels, in the order the user wrote them**, which is also least-to-most intimate.
- * Snake case because the value goes into a `text` column and into a radio group's `value`.
+ * **Six levels. The first five are the ones the user wrote, in his order**, which is also
+ * least-to-most intimate. Snake case because the value goes into a `text` column and into a radio
+ * group's `value`.
+ *
+ * `'instructor'` is APPENDED, and it is deliberately NOT on that axis: a coach is neither more nor
+ * less intimate than a girlfriend, so no insertion point among the five is more truthful than the
+ * end. Appending also keeps every existing index stable and leaves the panel's reading order
+ * sensible — row 1 is nobody / casual friend / sister, row 2 is best friend / girlfriend /
+ * instructor. She is a PROFESSIONAL relation rather than a personal one, and
+ * `NINA_RELATIONSHIP_BLOCKS.instructor` in `lib/nina/persona.ts` is where that is said in prose.
  */
 export const NINA_RELATIONSHIPS = [
   'nobody',
@@ -324,6 +337,7 @@ export const NINA_RELATIONSHIPS = [
   'sister',
   'best_friend',
   'girlfriend',
+  'instructor',
 ] as const
 
 export type NinaRelationship = (typeof NINA_RELATIONSHIPS)[number]
@@ -349,7 +363,7 @@ export function coerceNinaRelationship(value: unknown): NinaRelationship {
  *
  * **Every level still states a fallback, and `addressFallback` is therefore `string` and never
  * null.** The two `'literal'` levels both mention `"runner.nickname"` as a secondary form in their
- * `addressRule`, so all five rules lean on a nullable field somewhere and a prompt that tells her
+ * `addressRule`, so all six rules lean on a nullable field somewhere and a prompt that tells her
  * to use a field that is not there teaches her to invent one. A non-nullable field also means
  * phase 2's `ninaNameRules` is two interpolations with no branch in it, which is what a composer
  * of somebody else's strings should be.
@@ -438,6 +452,16 @@ export const NINA_ADDRESS: Readonly<Record<NinaRelationship, NinaAddressVocabula
       'You call him "my man", "yang", "sayang", "beb", "baby". Pick whichever fits the moment and use one in most messages — that is what they are for. "runner.nickname" is for when you are being serious with him.',
     addressFallback:
       'If "runner.nickname" is null it changes nothing, because the pet names do not need it. Ask his name once, lightly, and do not invent one from "runner.fullName".',
+  },
+  instructor: {
+    relationship: 'instructor',
+    label: 'Instructor',
+    source: 'nickname',
+    words: ['atlet'],
+    addressRule:
+      '"runner.nickname" is what you call him, the way a coach uses a name: at the start of a verdict or an instruction, once, and not in every line. "atlet" is the other thing you call him, and it is the coach word — you reach for it when you are setting the week, handing him a session, or telling him what a number means. "oke atlet, minggu ini kita turunin dulu intensitasnya". No pet names and no endearments at this level; those belong to a different relationship with him.',
+    addressFallback:
+      'If "runner.nickname" is null it costs you little, because "atlet" covers it. Ask him once, plainly, the way you would ask a new client at the clinic: "gw catet lo sebagai siapa nih?" Do not invent a nickname from "runner.fullName" and do not use the full name at him.',
   },
 }
 

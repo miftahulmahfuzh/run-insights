@@ -1,7 +1,8 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 
 import { AdminNav } from '@/components/admin/AdminNav'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { ADMIN_INSTALL, APPLE_WEB_APP } from '@/lib/pwa'
 
 /**
  * **The app's first deliberately-desktop layout.** F33 R23: *"in fact, i am thinking about a whole
@@ -68,6 +69,94 @@ export const metadata: Metadata = {
   title: 'Admin — Run Insights',
   // Belt to the 404's braces: an admin surface has no business in an index.
   robots: { index: false, follow: false },
+  /*
+   * ── THE SECOND INSTALL CONTRACT ────────────────────────────────────────────────────────────
+   * This is what makes Add to Home Screen from `/admin` produce a tile that opens `/admin`
+   * instead of `/`. Metadata is resolved root → nested and duplicate keys are REPLACED, so this
+   * line wins over `app/layout.tsx`'s `manifest: '/manifest.webmanifest'` for this segment and
+   * everything under it, and for nothing else. The runner's contract does not move.
+   *
+   * `app/admin/manifest.webmanifest/route.ts` carries the full argument, including why a second
+   * domain was not the answer.
+   */
+  manifest: '/admin/manifest.webmanifest',
+  /*
+   * ── THE SPREAD IS LOAD-BEARING, NOT TIDINESS ──────────────────────────────────────────────
+   * `appleWebApp` is a NESTED metadata field, and Next replaces those WHOLE rather than merging
+   * them key by key (`generate-metadata.md` §Merging). Writing `appleWebApp: { title: … }` would
+   * therefore drop `capable: true` and `statusBarStyle: 'default'` for every route under `/admin`
+   * — and `capable` is the single line that stops the install from being a Safari bookmark.
+   *
+   * Only `title` differs, and only because it is the label iOS draws under the icon: two tiles on
+   * one home screen both reading "Run Insights" is the failure this whole plan set exists to
+   * avoid. `statusBarStyle` stays `'default'` on the runner's terms — `lib/pwa.ts` gates
+   * translucency on the RUNNER's screens padding `--safe-top`, this meta tag is emitted once from
+   * the root, and flipping it here would flip it there.
+   *
+   * NOTE what is deliberately absent: `icons`. Next applies the file-convention icons only when
+   * no explicit `metadata.icons` was set (`next/dist/lib/metadata/resolve-metadata.js`), so an
+   * `icons` key here would silently delete `app/admin/apple-icon.png` — the file phase 2 ships and
+   * the one Safari actually reads on install. Do not add it.
+   */
+  appleWebApp: { ...APPLE_WEB_APP, title: ADMIN_INSTALL.shortName },
+}
+
+/**
+ * The `/admin` install's own status-bar tint. R4: *"make sure batas atas di xs max top notch is
+ * white, so it is kind of blend in with the UI"*.
+ *
+ * Without this export the ROOT layout's `themeColor` pair is the resolved value for `/admin` too,
+ * so an installed tile opened with the runner's sky blue (`#c9e9fb`) as a band across the notch,
+ * sitting on the `bg-paper-2` shell below. Now the band and the page are the same colour.
+ *
+ * ── WHY THIS EXPORT HAS EXACTLY ONE KEY ────────────────────────────────────────────────────
+ * Because a nested `viewport` MERGES key by key: every key it does not name is inherited from the
+ * root, and re-stating one would create a second source of truth for a value that must not drift.
+ * Read in the framework rather than assumed —
+ * `node_modules/next/dist/lib/metadata/resolve-metadata.js:315`:
+ *
+ *     function mergeViewport({ resolvedViewport, viewport }) {
+ *         const newResolvedViewport = structuredClone(resolvedViewport);
+ *         if (viewport) {
+ *             for(const key_ in viewport){
+ *
+ * (the real line 315 opens with the close of the preceding JSDoc; it cannot be reproduced inside
+ * this comment, which is the only edit made to the quotation.)
+ *
+ * It clones the ALREADY-RESOLVED parent and overwrites only the keys present in this object, then
+ * `accumulateViewport` folds that root -> leaf over the segment tree. `width`, `initialScale` and
+ * — the one that matters — `viewportFit: 'cover'` therefore keep arriving from `app/layout.tsx`.
+ *
+ * **Do not add `viewportFit` here.** That value is what makes `env(safe-area-inset-*)` non-inert,
+ * and all four insets in the shell below depend on it. A copy that agrees today is a copy that can
+ * disagree tomorrow, and the failure mode is silent: no error, no warning, the padding just stops
+ * working. Next's `generate-viewport.md` documents no merge rule at all, which is why the source
+ * is quoted above instead of cited. The `metadata` export overhead above is the other half of the
+ * same lesson, for the nested field that REPLACES rather than merges.
+ *
+ * ── WHY A PAIR, AND WHY BOTH VALUES ARE `--paper-2` ────────────────────────────────────────
+ * A `<meta name="theme-color" media="...">` pair is the only surface here that can follow the
+ * colour scheme — a manifest carries one `theme_color`, and `manifest.webmanifest/route.ts` spends
+ * it on the light value — and it is what Safari actually reads to tint an installed app's status
+ * bar. Both halves are `--paper-2` because the shell below is `bg-paper-2`: the band has to match
+ * the screen it sits on. NOT `#ffffff`, however literally the report said "white" — `lib/pwa.ts`'s
+ * `ADMIN_INSTALL` carries that argument.
+ *
+ * `APPLE_WEB_APP.statusBarStyle` stays `'default'` and this change does not need it. Translucent
+ * would draw the page UNDER the status bar, and `lib/pwa.ts` gates that on the RUNNER's screens
+ * padding `--safe-top` — still half done. A tint on an opaque bar has no such prerequisite.
+ *
+ * ── NO COMMENTS INSIDE THE OBJECT LITERAL, DELIBERATELY ────────────────────────────────────
+ * `tests/pwa.install.test.ts` slices this export out of the source and asserts that `viewportFit`
+ * and its neighbours do NOT appear inside it. A guard that a comment can satisfy or break is a
+ * guard that gets its explanation deleted instead of its bug caught, so all of the explanation
+ * lives up here and the object stays code only.
+ */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: ADMIN_INSTALL.paper },
+    { media: '(prefers-color-scheme: dark)', color: ADMIN_INSTALL.paperDark },
+  ],
 }
 
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {

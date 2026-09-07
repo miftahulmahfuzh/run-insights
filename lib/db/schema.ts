@@ -936,6 +936,32 @@ export const ninaMessages = pgTable(
      * idempotence check, which is why the triggers are spelled out instead of collapsed.
      */
     source: text('source').$type<NinaMessageSource>().notNull().default('chat'),
+    /**
+     * **This bubble exists ONLY to carry a photograph.** Set by every path that writes one; read by
+     * `isNinaPhotoCarrierMessage`, which is what lets Remove delete the message along with the last
+     * picture on it instead of leaving a caption with nothing under it.
+     *
+     * ── WHY A COLUMN AND NOT A SIXTH `NinaMessageSource` ────────────────────────────────────
+     * The cheap answer was `source = 'photo'`: this is a plain `text` column with a TS union, no
+     * database enum and no check constraint, and exactly one query in the repo compares it
+     * (`lib/nina/queries.ts`, `= 'run_committed'`). So widening the union needs no migration at all,
+     * and that is precisely what makes it the wrong answer — it would overwrite two recorded
+     * rulings to save one DDL statement. `NinaMessageSource`'s own docstring calls a column domain
+     * *"the hardest thing in the schema to widen later"* and rejects `'operator'` for having no
+     * writer; `finishSelfie`'s says *"`source = 'chat'` on purpose and NOT a sixth
+     * `NinaMessageSource`: she is answering something he said in an open conversation, minutes
+     * ago."* Both are still true. A photograph she sends in reply to him IS a chat message; what is
+     * new is not where the row came from but that its TEXT is disposable.
+     *
+     * ── AND WHY NOT A HEURISTIC ────────────────────────────────────────────────────────────
+     * "role = 'nina' and every image on it is generated and the text is short" re-introduces the
+     * false positive the caption-array clause was written to prevent, and it fails silently: the
+     * cost is a real sentence of hers deleted, which nothing can recover.
+     *
+     * `NOT NULL DEFAULT false` so no reader needs a null branch, and additive so a revert of the
+     * code leaves a column nothing consults. Migration 0008 backfills the pre-marker carriers.
+     */
+    photoOnly: boolean('photo_only').notNull().default(false),
     /** `nina_turns.id`. A plain column on purpose — see the header's last paragraph. */
     turnId: text('turn_id'),
     /** WhatsApp-style quote (R12). Self-referencing; `AnyPgColumn` is what makes that typecheck. */
@@ -1052,6 +1078,44 @@ export const ninaMessageImages = pgTable(
     description: text('description'),
     /** The generation prompt, `kind = 'generated'` only. Phase 12 writes it. */
     prompt: text('prompt'),
+    /**
+     * ── PROVENANCE: WHERE THESE BYTES CAME FROM, WHEN THEY CAME FROM SOMEWHERE ────────────────
+     *
+     * A row is a **reference** when EITHER of these is non-null, and a reference is a row that is
+     * a real photograph in a real bubble whose bytes are already in the collection under another
+     * id. `lib/nina/actions.ts`'s `resolveAttachment` is the only writer: re-attaching an album
+     * face or an earlier chat photo copies `blob_url` and `pathname` onto a NEW row (no bytes are
+     * copied — the Blob object is shared), and before F37 nothing on the row said so. The two
+     * collection listings therefore showed the same picture twice, which is the defect.
+     *
+     * **The row is NOT dropped and must never be.** Every bubble, every photo-viewer open, every
+     * download control and Nina's own prompt read this table by `message_id`
+     * (`getNinaMessageImagesForMessages`, `getNinaMessageImage`,
+     * `dbNinaSourceGateway.readMessageWindow`). A message with no image row of its own is a blank
+     * bubble. So the row stays, these columns mark it, and only the three COLLECTION reads
+     * (`listNinaMessageImages`, `listNinaChatPhotos`, `countNinaChatPhotos`) skip it — one
+     * predicate, `isOriginalPhoto()` in `lib/nina/queries.ts`.
+     *
+     * **Two columns and not one polymorphic pointer**, because the two targets are two tables and
+     * a real foreign key on each is what makes `SET NULL` possible at all. The shape is
+     * `nina_messages.reply_to_id`'s (`:968`) — a nullable self-referencing FK — applied twice.
+     *
+     * **`ON DELETE SET NULL`, deliberately, and it is the interesting half.** When the original
+     * is deleted the copy stops being a copy: the column goes NULL, the row becomes an original,
+     * and the collection KEEPS the picture instead of losing it. `CASCADE` here would delete a
+     * photograph out of a conversation because an unrelated row was tidied away, which is exactly
+     * the data loss `isBlobPathnameReferenced` was written to prevent.
+     *
+     * **No index.** Both are residual predicates on reads that already range-scan
+     * `nina_message_images_user_created_idx` — the same call `generatedChatPhotoScope` argues in
+     * full for `kind`, at the same table size, and nothing has measured a need for one.
+     */
+    sourceAvatarId: text('source_avatar_id').references((): AnyPgColumn => ninaAvatars.id, {
+      onDelete: 'set null',
+    }),
+    sourceImageId: text('source_image_id').references((): AnyPgColumn => ninaMessageImages.id, {
+      onDelete: 'set null',
+    }),
     /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
@@ -1231,8 +1295,10 @@ export type NinaFactCategory =
  * statement REPLACES the slot and leaves both ledger rows, which is what lets her say "lo bilang
  * benci lari pagi bulan lalu" three months after the slot moved on.
  *
- * `confidence` is an INTEGER PERCENT, 0–100 — the smallest-sensible-unit rule applied to a
- * probability, so that summing or thresholding it never drifts. 100 is "he said it outright".
+ * **There was a `confidence` column and task #135 dropped it** (`drizzle/0011`), on the user's
+ * explicit instruction to make the pipeline carry no confidence at all. What promotes a statement
+ * to a standing slot is now `lib/nina/memory.ts`'s quote gate alone — the fact's own text had to
+ * be a verbatim span of his message — which was always the load-bearing half of the pair.
  *
  * `source_message_id` is nullable for the same reason as the slots table, and `source`
  * distinguishes a distilled row from one the admin typed (R26, phase 16). Phase 16 is the only
@@ -1250,8 +1316,6 @@ export const ninaMemoryFacts = pgTable(
     category: text('category').$type<NinaFactCategory>().notNull(),
     /** One fact, one sentence, in the language he said it in. */
     text: text('text').notNull(),
-    /** Integer percent 0–100. See the header. */
-    confidence: integer('confidence').notNull().default(100),
     source: text('source').$type<NinaMemorySource>().notNull().default('distilled'),
     /** `nina_messages.id`, unenforced. NULL = the admin typed it, not the chat. */
     sourceMessageId: text('source_message_id'),
@@ -1744,14 +1808,16 @@ export const ninaTuning = pgTable('nina_tuning', {
     .references(() => users.id, { onDelete: 'cascade' }),
   /**
    * `NinaRelationship` from `lib/nina/tuning.ts` — one of `'nobody' | 'casual_friend' | 'sister' |
-   * 'best_friend' | 'girlfriend'`. Untyped `text` on purpose; see the header.
+   * 'best_friend' | 'girlfriend' | 'instructor'`. Untyped `text` on purpose; see the header.
    */
   relationship: text('relationship').notNull(),
 
   /* The twelve traits — R1's eleven plus R3's `horny` — in the order the user wrote them.
    * Integer percent, 0-100, the
-   * smallest-sensible-unit rule (roadmap D5) applied to an intensity — `nina_memory_facts.
-   * confidence` is the precedent. The domain is enforced by `clampNinaScore`, not by a CHECK: a
+   * smallest-sensible-unit rule (roadmap D5) applied to an intensity —
+   * `nina_model_calls.cost_micro_usd` is the precedent (it was `nina_memory_facts.confidence`
+   * until task #135 dropped that column). The domain is enforced by `clampNinaScore`, not by a
+   * CHECK: a
    * CHECK would make widening the scale a migration, and a value outside it is a bug in one
    * writer rather than a state the reader cannot survive. */
   /** 0 = the nag ladder is untouched. Above 0 = the lowest rung she may occupy. */

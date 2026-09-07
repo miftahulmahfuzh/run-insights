@@ -69,6 +69,20 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
     expect(formatWorkHours(parsed)).toBe(result.value)
   })
 
+  it('accepts a training plan verbatim, because nothing parses this slot', () => {
+    const result = canonicaliseSlotValue('training_plan', 'Senin easy 5k, Rabu interval 6x400')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value).toBe('Senin easy 5k, Rabu interval 6x400')
+  })
+
+  it('refuses an empty training plan and points at the delete control', () => {
+    const result = canonicaliseSlotValue('training_plan', '   ')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toMatch(/delete/i)
+  })
+
   it('stores a nickname as a bare string, because getNinaIdentity typeof-checks it', () => {
     const result = canonicaliseSlotValue('nickname', 'Miftah')
     expect(result.ok).toBe(true)
@@ -81,7 +95,7 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
     expect(result.ok).toBe(false)
   })
 
-  it('refuses a key outside the nine, and points at the delete control', () => {
+  it('refuses a key outside the vocabulary, and points at the delete control', () => {
     const result = canonicaliseSlotValue('favourite_shoe', 'Novablast 4')
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -100,6 +114,7 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
 describe('the slot vocabulary readings the row builder uses', () => {
   it('classifies the edit kind from phase 5s write policy, not from a key literal', () => {
     expect(slotEditKind('goals')).toBe('text')
+    expect(slotEditKind('training_plan')).toBe('text')
     expect(slotEditKind('pending_promises')).toBe('structured')
     expect(slotEditKind('favourite_shoe')).toBe('orphaned')
   })
@@ -211,7 +226,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f1',
           category: 'training',
           text: 'he only runs on weekends',
-          confidence: 80,
           source: 'distilled',
           sourceMessageId: 'msg_9',
           createdAt: new Date('2026-09-03T10:00:00Z'),
@@ -220,7 +234,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f2',
           category: 'person',
           text: 'his sister is called Nadia',
-          confidence: 100,
           source: 'admin',
           sourceMessageId: null,
           createdAt: new Date('2026-09-02T10:00:00Z'),
@@ -231,7 +244,6 @@ describe('buildMemoryRows — R1s one table', () => {
     const distilled = rows.find((row) => row.target === 'f1')
     expect(distilled?.editable).toBe(true)
     expect(distilled?.category).toBe('training')
-    expect(distilled?.confidence).toBe(80)
     expect(distilled?.reappears).toBe(false)
     // The re-label rule is DESCRIBED on the row. There is no permission predicate any more, so
     // this sentence is the only place the operator learns what an edit does.
@@ -272,7 +284,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f1',
           category: 'other',
           text: 'a fact',
-          confidence: 100,
           source: 'admin',
           sourceMessageId: null,
           createdAt: new Date('2026-09-03T10:00:00Z'),
@@ -298,7 +309,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f1',
           category: 'other',
           text: 'a',
-          confidence: 100,
           source: 'admin',
           sourceMessageId: null,
           createdAt: new Date('2026-09-03T10:00:00Z'),

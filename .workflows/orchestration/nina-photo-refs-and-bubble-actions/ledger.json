@@ -1,0 +1,91 @@
+{
+  "branch": "feature/nina-photo-refs-and-bubble-actions",
+  "coordinator": "orch-nina-photo-refs-and-bubble-actions",
+  "coordinator_session_id": "dbf97df1-37c4-4230-8c50-436b35d459f6",
+  "created": "2026-09-07T10:41:45+00:00",
+  "landed": {
+    "at": "2026-09-07T11:15:50+00:00",
+    "base": "main",
+    "commit": "2c987d459831d63a0e3c2b0d18d6c65b438dcb18",
+    "machine": "pc"
+  },
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#129",
+      "commit": "7a7d7e21f50b92c8e73002669615463133eeaef5",
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": "R1+R3 shipped. Two commits: 7a7d7e2 code (11 paths, drizzle/0010 + provenance columns + isOriginalPhoto filter), 751f96e docs-only (2 paths). Revert 7a7d7e2 to roll the phase back. MIGRATION 0010 IS COMMITTED AND NOT APPLIED -- coordinator applies and verifies it from the merge commit at landing; hand-written backfill sits below the --> statement-breakpoint and db:generate would silently drop it. Prod counts measured pre-commit: 0 chat-to-chat blob_url duplicates, 2 album faces attached into chat, 5 collection rows (all kind=generated), 21 album rows -- so the user's 2 prod duplicates are R3, not R1. Abort gate assessed and judged NOT tripped (rung 4+2): the gate's failure mode is bulk blob_url sharing, contradicted by the 0 chat-to-chat result; 2-of-5 is a tiny-table artefact against prose assuming single-digit thousands. Coordinator re-measures before migrating. D12 self-resolved: journal ended at 0009, so 0010 was uncontested at generate time.",
+      "package": "lib/db`, `drizzle`, `lib/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md",
+      "reported_at": "2026-09-07T11:03:41+00:00",
+      "satisfies": [
+        "R1",
+        "R3"
+      ],
+      "status": "done",
+      "task_id": "P1-DB-A003",
+      "title": "A re-attached photo is a reference, not a copy"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#130",
+      "commit": "f8f28c3cc9a545d8573197737ed08a0ce5ba918b",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": "R2 shipped: nina_message_images.description hand-writable from /admin/photos. Empty save CLEARS to NULL and says so (D1). No DDL, no model call, no after(). Two decisions: created only phase 2's task, not all four, because peers run concurrently on the same todos.md (rung 6); and staged only phase 2's single lib/nina/queries.ts hunk via git apply --cached, because phase 1 has ten uncommitted hunks in that file (rung 4, one commit per phase). Commit built with a temp index + guarded update-ref -- a bare git commit publishes the whole index and would have REVERTED phase 3's 8be755f, and git commit -- <pathspec> takes worktree content, which for queries.ts would publish phase 1's WIP. Verified no revert: p3's five files byte-identical to my parent.",
+      "package": "lib/admin`, `components/admin`, `lib/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md",
+      "reported_at": "2026-09-07T10:59:40+00:00",
+      "satisfies": [
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-ADM-B130",
+      "title": "\"What she can see in it\", editable"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#131",
+      "commit": "8be755f",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": "R4 shipped: decideMessageActionTap in lib/nina/edit.ts + pointer/touch opener in MessageBubble.tsx; ChatScreen.tsx zero lines (D9 honoured), both swipes untouched (invariant 6). canActOnMessage widened EditTarget->ActionableMessage, pure widening, caller at ChatScreen.tsx:743 unchanged -- phase 4 reads this from the commit. Decisions: (a) /implement Step 3 done inline for phase 3 only, not a subagent minting all 4 phases' TaskIDs, rung 6 + narrower blast radius, since p1/p2 share this worktree; TaskID P1-NIN-A021 from the NIN counter (p1 filed under lib/db, p2 under lib/admin, so no collision). (b) npm run format is repo-wide and reflowed 2 whitespace-only lines in peer files (ChatScreen.tsx:393, actions.ts:1021); left in place not reverse-applied (reversible/narrower blast radius), not staged, both peers warned -- p2 confirmed 2 of its files came back prettier-dirty and repaired them. In a shared worktree use npx prettier --write on owned paths only. (c) Committed with an explicit pathspec after p2 warned that a bare git commit takes the whole index -- it had a partial queries.ts hunk staged that would otherwise have landed in my sha.",
+      "package": "lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md",
+      "reported_at": "2026-09-07T10:57:39+00:00",
+      "satisfies": [
+        "R4"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A021",
+      "title": "Tap a bubble to edit or delete it"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#132",
+      "commit": "a6b9188",
+      "depends_on": [
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": "R5 done. resendNinaMessage inside actions.ts at :1145 (D10 honoured: nothing exported, startNinaBackgroundTurn still module-private); canResendMessage at the FOOT of edit.ts below phase 3's tap section (D9); MessageActionsSheet gains required onResend: Promise<string|null>, refusals render IN the sheet (D-f); cursor is the NEWEST seq, client takes Math.max (D-a); imageDescriptions rebuilt from the row, not [] (D-c). Invariant 7 held and asserted: zero insertNinaMessages. Decisions: absorbed phase 3's whitespace reflow at ChatScreen.tsx:425 rather than reverse-applying (reversible + narrower blast radius, file is mine outright); built the commit with a pathspec after finding p2's stale PRE-commit lib/admin docs staged in the shared index -- commit is exactly 8 files, and I then cleared that stale index entry with 'git restore --staged lib/admin/.workflows/' (index-only; the worktree copies already matched HEAD, so p2's f8f28c3 docs are intact and the index is now clean); minted P1-NIN-A022 after verifying it free. Drift: actions.ts had grown 1341->1377 from phase 1's concurrent landing, so the insertion anchored on quoted text and landed at :1061 rather than the plan's :1022 -- same seam, ~480 lines from phase 1's nearest hunk. Verified: lint 0 errors, typecheck clean, vitest 153 files / 3078 tests (21 new), ci:llm-payload-guard clean with 9 symbols unchanged, db:check clean, drizzle/ untouched. Did NOT run db:migrate. The 12 files still dirty in the worktree are the repo-wide formatter's pure reflow, owned by no phase -- left alone.",
+      "package": "lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md",
+      "reported_at": "2026-09-07T11:07:02+00:00",
+      "satisfies": [
+        "R5"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A022",
+      "title": "Resend a message that was never answered"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-refs-and-bubble-actions/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-photo-refs-and-bubble-actions",
+  "updated": "2026-09-07T11:15:50+00:00",
+  "verified_at": "2026-09-07T11:03:27+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions"
+}

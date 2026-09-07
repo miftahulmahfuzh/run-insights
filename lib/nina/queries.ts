@@ -148,6 +148,13 @@ export interface NinaMessageRow {
   replyToId: string | null
   runId: string | null
   readAt: Date | null
+  /**
+   * **This bubble exists only to carry a photograph** (see the column's note in `lib/db/schema.ts`).
+   * Not nullable, because the column is `NOT NULL DEFAULT false` — a reader never branches on null.
+   * `isNinaPhotoCarrierMessage` is the only consumer, and `removeChatPhotoAction` hands it the whole
+   * row, so projecting it here is what makes that call site need no change at all.
+   */
+  photoOnly: boolean
 }
 
 /** What a writer supplies. `seq` is absent on purpose — Postgres assigns it. */
@@ -158,6 +165,12 @@ export interface NinaMessageInsert {
   turnId?: string | null
   replyToId?: string | null
   runId?: string | null
+  /**
+   * **`true` when this row exists only to carry a photograph** — see the column's own note.
+   * Optional and defaulting to `false`, so the four existing writers of ordinary messages are
+   * unchanged and a new writer has to opt in deliberately rather than inherit a flag.
+   */
+  photoOnly?: boolean
 }
 
 /**
@@ -198,6 +211,17 @@ export interface NinaImageRow {
   bytes: number | null
   description: string | null
   prompt: string | null
+  /**
+   * F37 R3. The `nina_avatars` row these bytes belong to, or NULL. Non-null means this row is a
+   * REFERENCE and the three collection reads skip it; see `isOriginalPhoto`.
+   */
+  sourceAvatarId: string | null
+  /**
+   * F37 R1. The earlier `nina_message_images` row these bytes belong to, or NULL. Always the
+   * ORIGINAL rather than the row he tapped — `ninaPhotoProvenance` flattens, and
+   * `drizzle/0010`'s backfill wrote the same thing for the rows that predate it.
+   */
+  sourceImageId: string | null
   sortOrder: number
   createdAt: Date
 }
@@ -212,6 +236,15 @@ export interface NinaImageInsert {
   bytes?: number | null
   description?: string | null
   prompt?: string | null
+  /**
+   * F37. **Optional on purpose, and the default is what makes the rest of the repo correct.** An
+   * upload (`lib/nina/actions.ts:534`), one of her generations (`lib/nina/imagerun.ts:260`) and an
+   * operator's Add (`lib/admin/chatPhotoActions.ts:229`) are all ORIGINALS: they say nothing, and
+   * `insertNinaMessageImages` coalesces to NULL. Exactly one writer sets them —
+   * `resolveAttachment`'s attach INSERT — and it gets them from `ninaPhotoProvenance`.
+   */
+  sourceAvatarId?: string | null
+  sourceImageId?: string | null
   sortOrder?: number
 }
 
@@ -255,7 +288,6 @@ export interface NinaFactRow {
   id: string
   category: NinaFactCategory
   text: string
-  confidence: number
   source: NinaMemorySource
   sourceMessageId: string | null
   createdAt: Date
@@ -264,8 +296,6 @@ export interface NinaFactRow {
 export interface NinaFactInsert {
   category: NinaFactCategory
   text: string
-  /** Integer percent 0–100. Defaults to 100. */
-  confidence?: number
   source?: NinaMemorySource
   sourceMessageId?: string | null
 }
@@ -498,6 +528,7 @@ const messageColumns = {
   replyToId: ninaMessages.replyToId,
   runId: ninaMessages.runId,
   readAt: ninaMessages.readAt,
+  photoOnly: ninaMessages.photoOnly,
 }
 
 const imageColumns = {
@@ -511,6 +542,8 @@ const imageColumns = {
   bytes: ninaMessageImages.bytes,
   description: ninaMessageImages.description,
   prompt: ninaMessageImages.prompt,
+  sourceAvatarId: ninaMessageImages.sourceAvatarId,
+  sourceImageId: ninaMessageImages.sourceImageId,
   sortOrder: ninaMessageImages.sortOrder,
   createdAt: ninaMessageImages.createdAt,
 }
@@ -1201,6 +1234,7 @@ export async function insertNinaMessages(
         turnId: row.turnId ?? null,
         replyToId: row.replyToId ?? null,
         runId: row.runId ?? null,
+        photoOnly: row.photoOnly ?? false,
       })),
     )
     .returning(messageColumns)
@@ -1446,6 +1480,14 @@ export async function insertNinaMessageImages(
         bytes: row.bytes ?? null,
         description: row.description ?? null,
         prompt: row.prompt ?? null,
+        /*
+         * F37 R1/R3. Coalesced rather than spread, so the column appears in EVERY insert this
+         * function builds — an original binds NULL, a reference binds an id, and the statement
+         * has one shape. The foreign keys are what make an id here safe to trust: the only writer
+         * that supplies one has already read the row it names, owner-scoped, in the same request.
+         */
+        sourceAvatarId: row.sourceAvatarId ?? null,
+        sourceImageId: row.sourceImageId ?? null,
         sortOrder: row.sortOrder ?? 0,
       })),
     )
@@ -1458,6 +1500,15 @@ export async function insertNinaMessageImages(
  * Phase 13's gallery: every image in the conversation, newest first, his and hers together. Reads
  * `nina_message_images_user_created_idx` with no join — which is the whole reason this is a table
  * and not a `jsonb` column on `nina_messages`.
+ *
+ * **F37 R3: not quite every image — a REFERENCE is skipped.** `/nina/about`'s Media section is a
+ * collection of the photographs in the conversation, and a row whose bytes are already in the
+ * album (or already further up the feed) is the same photograph, not a second one. The row itself
+ * is untouched and its bubble still renders it; see `isOriginalPhoto` for the three reads that
+ * filter and the four that must not.
+ *
+ * `limit` still bounds the ROWS RETURNED and not the rows examined, so hiding a reference lets one
+ * more original through rather than leaving a gap — which is what the caller wants from a feed.
  */
 export async function listNinaMessageImages(
   userId: string,
@@ -1466,7 +1517,7 @@ export async function listNinaMessageImages(
   return db
     .select(imageColumns)
     .from(ninaMessageImages)
-    .where(eq(ninaMessageImages.userId, userId))
+    .where(and(eq(ninaMessageImages.userId, userId), isOriginalPhoto()))
     .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
     .limit(opts.limit)
 }
@@ -1524,6 +1575,46 @@ export async function getNinaMessageImagesForMessages(
 }
 
 /**
+ * **"This row's bytes are not already in the collection under another id."** F37 R1 and R3, as one
+ * predicate, so that the three reads that must agree cannot drift.
+ *
+ * ── WHY IT IS A BARE PREDICATE AND NOT A `…Scope(userId)` ──────────────────────────────
+ * `generatedChatPhotoScope` answers a whole question ("her chat photographs, his") and owns its
+ * ownership check. This answers half of one, and its callers differ in the other half — one is
+ * `user_id` alone, the other is `user_id AND kind`. A `userId` parameter here would mean two
+ * functions that both know about ownership and a reader who has to check whether they agree.
+ *
+ * ── THE THREE READS IT FILTERS, AND THE FOUR IT MUST NEVER FILTER ──────────────────────
+ * Filtered — the COLLECTION reads, which describe a set of photographs to a human:
+ *   · `listNinaMessageImages`   → /nina/about's Media feed
+ *   · `listNinaChatPhotos`      → /admin/photos, via `generatedChatPhotoScope`
+ *   · `countNinaChatPhotos`     → /admin's hub card, via the same scope — which is why there are
+ *                                 only TWO call sites for three reads, and why the listing and
+ *                                 the count still cannot disagree about the total.
+ *
+ * NOT filtered, and a future "consistency" cleanup that adds it here is a data-loss bug —
+ * these are what makes a photograph RENDER and what Nina is given to look at (invariant 2):
+ *   · `getNinaMessageImagesForMessages` → every bubble, and the delete log
+ *   · `getNinaMessageImage`             → the ?photo= deep link and the re-attach path
+ *   · `dbNinaSourceGateway.readMessageWindow` / `.readConversation` → her context
+ *   · `isBlobPathnameReferenced`        → "is anyone still pointing at these bytes", which is
+ *                                         wrong by exactly the rows this predicate hides
+ * `tests/nina.photoRefs.test.ts` asserts that absence, as an absence, for the same reason
+ * `tests/nina.softDelete.test.ts` asserts one on `countNinaTurnsSince`.
+ *
+ * ── EITHER COLUMN, NOT BOTH ────────────────────────────────────────────
+ * An album face re-attached twice carries both. A chat photo re-attached once carries one. The
+ * definition is "either non-null", so the predicate is "both null" — and `IS NULL` is the only
+ * spelling that is correct here, because `= NULL` is never true and `<>` on a NULL is never
+ * false.
+ *
+ * No index; see the columns' own header in `lib/db/schema.ts`.
+ */
+function isOriginalPhoto(): SQL | undefined {
+  return and(isNull(ninaMessageImages.sourceAvatarId), isNull(ninaMessageImages.sourceImageId))
+}
+
+/**
  * The predicate that DEFINES "her chat photographs", written once so the listing and the count
  * cannot drift apart.
  *
@@ -1544,9 +1635,20 @@ export async function getNinaMessageImagesForMessages(
  * user, phase 12's six generations a day, single-digit thousands of rows at the horizon) that is a
  * bounded index range scan and the correct read. **An index is not being added:** invariant 10 of
  * this plan forbids a migration, and nothing has measured a need for one.
+ *
+ * ── AND SINCE F37, NOT A REFERENCE ───────────────────────────────────────────
+ * `isOriginalPhoto()` joins the `and(...)` here rather than in `listNinaChatPhotos` and
+ * `countNinaChatPhotos` separately, which is the same argument this docstring already makes for
+ * `kind`: the page and the total are one predicate or they are two chances to disagree about how
+ * many photographs the collection holds. R1's duplicate leaves /admin/photos and the /admin hub
+ * card in one edit.
  */
 function generatedChatPhotoScope(userId: string) {
-  return and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.kind, 'generated'))
+  return and(
+    eq(ninaMessageImages.userId, userId),
+    eq(ninaMessageImages.kind, 'generated'),
+    isOriginalPhoto(),
+  )
 }
 
 /**
@@ -1675,6 +1777,16 @@ export async function updateNinaChatPhotoBlob(
       bytes: patch.bytes,
       description: null,
       prompt: null,
+      /*
+       * F37. These described where the OLD bytes came from. The new bytes came from the operator's
+       * file picker, so the row is now an original and must say so — otherwise a Replace applied
+       * to a reference (reachable from a stale tab: the id comes from a client and
+       * `getNinaMessageImage` does not filter references) leaves a unique photograph that no
+       * listing will ever show. Same statement as the two nulls above it, for the same reason:
+       * there must be no window in which the row points at new bytes and old provenance.
+       */
+      sourceAvatarId: null,
+      sourceImageId: null,
     })
     .where(
       and(
@@ -1822,6 +1934,66 @@ export async function setNinaMessageImageDescription(
   return updated.length > 0
 }
 
+/**
+ * **EDIT: the operator rewrites what she can see in a photograph.** R2 of
+ * `nina-photo-refs-and-bubble-actions`, verbatim: *"there is a 'what she can see in it' field. make
+ * this field editable by user"*.
+ *
+ * ── WHY THIS IS NOT `setNinaMessageImageDescription` WITH A WIDER SIGNATURE ────────────────
+ * Three differences, and each one is load-bearing:
+ *
+ *   · `kind = 'generated'` is in the WHERE, exactly as `updateNinaChatPhotoBlob` carries it, and
+ *     that sibling's reason applies unchanged: `/admin/photos` lists only HERS, so a write reachable
+ *     from that screen must not be able to land on one of HIS composer uploads even if an id for one
+ *     arrives. `getNinaMessageImage` does not filter on `kind`, so this clause is not redundant with
+ *     the action's guard — it is the second of the two agreeing checks this admin surface uses
+ *     everywhere. `setNinaMessageImageDescription` has no such clause and must NOT grow one: its
+ *     caller is `after()`'s describe pass, which legitimately describes both sides.
+ *   · `description` is `string | null` here. NULL is the operator CLEARING the field (the phase's
+ *     D1), and it is not a new state for the row — `updateNinaChatPhotoBlob` writes it in the same
+ *     breath as a replace, and every `addChatPhotoAction` row starts there.
+ *     `setNinaMessageImageDescription` takes a `string` because a vision pass that produced nothing
+ *     writes nothing.
+ *   · It returns the ROW rather than a boolean, because its caller reports on what it wrote. That is
+ *     `updateNinaChatPhotoBlob`'s shape; the boolean is the `after()`-callback shape, for a caller
+ *     whose only options are "log a miss" and "log a write".
+ *
+ * ── IT TOUCHES ONE COLUMN, AND THE ABSENCES ARE THE CONTRACT ──────────────────────────────
+ *   · NOT `prompt` — the generation sidecar for bytes that have not changed.
+ *   · NOT `created_at` — `nina_message_images_user_created_idx` orders both `/nina/about` and
+ *     `/admin/photos` by it. Correcting a sentence about a photograph is not taking a new one.
+ *   · NOT `blob_url`, `pathname`, or the four measurements — the picture is the same picture.
+ *   · NOTHING on `nina_messages`. The bubble's caption is what she SAID; this column is what she
+ *     SAW. Rewriting the second from `/admin` must not silently rewrite the first in the runner's
+ *     conversation — see the action's docstring.
+ *
+ * ── NO INVALIDATION STEP, BY CONSTRUCTION ─────────────────────────────────────────────────
+ * `resolveAttachment` re-reads this row with `getNinaMessageImage` on every send, and
+ * `lib/nina/actions.ts:634-637` hands the value straight to
+ * `NinaBackgroundTurnInput.imageDescriptions`. So the next turn that carries this photograph reads
+ * what was just written, with no cache to bust. A NULL degrades exactly as a replace's NULL does:
+ * `NINA_DESCRIPTION_UNAVAILABLE` is substituted and she asks him what the picture is.
+ */
+export async function updateNinaChatPhotoDescription(
+  userId: string,
+  id: string,
+  description: string | null,
+): Promise<NinaImageRow | null> {
+  const updated = await db
+    .update(ninaMessageImages)
+    .set({ description })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.id, id),
+        eq(ninaMessageImages.kind, 'generated'),
+      ),
+    )
+    .returning(imageColumns)
+
+  return updated[0] ?? null
+}
+
 /* ============================================================================
  * §6 Memory — slots and the ledger (RU-6)
  * ==========================================================================*/
@@ -1931,7 +2103,6 @@ export async function listNinaMemoryFacts(
       id: ninaMemoryFacts.id,
       category: ninaMemoryFacts.category,
       text: ninaMemoryFacts.text,
-      confidence: ninaMemoryFacts.confidence,
       source: ninaMemoryFacts.source,
       sourceMessageId: ninaMemoryFacts.sourceMessageId,
       createdAt: ninaMemoryFacts.createdAt,
@@ -1960,7 +2131,6 @@ export async function appendNinaMemoryFacts(
         userId,
         category: row.category,
         text: row.text,
-        confidence: row.confidence ?? 100,
         source: row.source ?? 'distilled',
         sourceMessageId: row.sourceMessageId ?? null,
       })),
@@ -1969,7 +2139,6 @@ export async function appendNinaMemoryFacts(
       id: ninaMemoryFacts.id,
       category: ninaMemoryFacts.category,
       text: ninaMemoryFacts.text,
-      confidence: ninaMemoryFacts.confidence,
       source: ninaMemoryFacts.source,
       sourceMessageId: ninaMemoryFacts.sourceMessageId,
       createdAt: ninaMemoryFacts.createdAt,
@@ -1984,16 +2153,15 @@ export async function appendNinaMemoryFacts(
 export async function updateNinaMemoryFact(
   userId: string,
   id: string,
-  patch: { category?: NinaFactCategory; text?: string; confidence?: number },
+  patch: { category?: NinaFactCategory; text?: string },
 ): Promise<boolean> {
-  if (patch.category == null && patch.text == null && patch.confidence == null) return false
+  if (patch.category == null && patch.text == null) return false
 
   const updated = await db
     .update(ninaMemoryFacts)
     .set({
       ...(patch.category != null ? { category: patch.category } : {}),
       ...(patch.text != null ? { text: patch.text } : {}),
-      ...(patch.confidence != null ? { confidence: patch.confidence } : {}),
     })
     .where(and(eq(ninaMemoryFacts.userId, userId), eq(ninaMemoryFacts.id, id)))
     .returning({ id: ninaMemoryFacts.id })

@@ -15,7 +15,7 @@ import { ChatImages } from './ChatImages'
 import { MessageBubble } from './MessageBubble'
 import { RunAttachmentCard } from './RunAttachmentCard'
 import { TypingIndicator } from './TypingIndicator'
-import type { ChatMessage } from './types'
+import type { ChatAvatar, ChatMessage } from './types'
 import { readAnchorRows } from './useChatScroll'
 
 /**
@@ -54,6 +54,7 @@ export function MessageList({
   onJumpToQuote,
   onRequestActions,
   onOpenImage,
+  avatar,
 }: {
   messages: readonly ChatMessage[]
   /** True while a turn is in flight, and between bubbles of a staggered reveal. */
@@ -93,6 +94,15 @@ export function MessageList({
    * would quietly turn every photo in every future consumer into a button.
    */
   onOpenImage?: (messageId: string, index: number) => void
+  /**
+   * R1. Her current face and its saved framing, resolved once on the server by `ninaAvatarView`
+   * and passed straight to `TypingIndicator` — this component renders no avatar of its own.
+   *
+   * REQUIRED, not optional, on RULING E2b's habit: `ChatScreen` is the one caller and `tsc` should
+   * be what notices if it stops passing it. An optional prop would silently fall back to the
+   * committed PNG, which is precisely the bug this phase fixes.
+   */
+  avatar: ChatAvatar
 }) {
   const readerNearBottom = useRef(true)
   const mounted = useRef(false)
@@ -308,7 +318,7 @@ export function MessageList({
 
       {typing && (
         <ul className="space-y-2">
-          <TypingIndicator />
+          <TypingIndicator avatar={avatar} />
         </ul>
       )}
     </div>

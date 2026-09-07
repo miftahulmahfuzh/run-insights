@@ -93,6 +93,19 @@ export interface EditTarget {
 }
 
 /**
+ * The two `EditTarget` fields `canActOnMessage` actually reads, as a shape a caller can build
+ * without knowing what a photo or an attached run is.
+ *
+ * `EditTarget` satisfies it structurally, so this is a WIDENING and not a change: every existing
+ * caller keeps passing the whole target and keeps typechecking. It exists because R4's tap opener
+ * has to consult the gate from inside `MessageBubble`, and the alternative was for the bubble to
+ * assemble a whole `EditTarget` — which means computing `hasImage` and `hasRun` a second time, in
+ * a second file, when RULING E2b deliberately put that computation in `MessageList` and nowhere
+ * else.
+ */
+export type ActionableMessage = Pick<EditTarget, 'id' | 'confirmed'>
+
+/**
  * Whether this message can be edited or deleted at all.
  *
  * Two gates, and the interesting one is the id. `ChatScreen` mints `local-${crypto.randomUUID()}`
@@ -103,7 +116,7 @@ export interface EditTarget {
  * `confirmed` catches the other half: a row whose send threw keeps its text in the bubble and its
  * `state: 'failed'`, and there is nothing on the server to edit.
  */
-export function canActOnMessage(target: EditTarget): boolean {
+export function canActOnMessage(target: ActionableMessage): boolean {
   return target.confirmed && isValidId(target.id)
 }
 
@@ -344,4 +357,211 @@ export function decideMessageActionSwipe(
   if (travel < REPLY_SWIPE_MIN_DISTANCE) return 'none'
   if (travel < Math.abs(dy) * REPLY_SWIPE_DOMINANCE) return 'none'
   return 'actions'
+}
+
+/* ── the tap ───────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * How far a finger or a mouse may travel and still be a tap, in CSS pixels, in EITHER axis.
+ *
+ * 10, which is the platforms' own answer rather than a guess: Android's `ViewConfiguration` touch
+ * slop is 8dp and UIKit allows roughly 10pt before a touch stops being a tap. Taking the larger of
+ * the two means a shaky thumb opens the sheet on the first try.
+ *
+ * It is deliberately far below `REPLY_SWIPE_MIN_DISTANCE` (44), and `edit.test.ts` pins the
+ * inequality so the two windows can never grow into each other. The 34 px between them is a DEAD
+ * BAND and that is the design: a drag long enough to be ambiguous is neither a tap nor a swipe and
+ * does nothing at all. The gesture that guesses on an ambiguous input is the one that opens a
+ * delete confirmation nobody asked for.
+ */
+export const MESSAGE_ACTION_TAP_SLOP_PX = 10
+
+/**
+ * The bubble's own prose, marked so a tap can tell it from the empty paper beside it.
+ *
+ * `MessageBubble`'s touch handlers sit on the `<li>`, which is a full-width flex row: his bubble is
+ * `justify-end` inside it, so the left portion of that row is blank. A SWIPE there is unambiguous
+ * and is allowed to open the sheet, exactly as it does today. A TAP there is not — tapping the
+ * empty part of a conversation is what a reader does when they mean nothing in particular, and
+ * that gesture must not open a sheet on whichever row happens to be under it.
+ *
+ * The `<li>` cannot simply be narrowed instead: that would move the reply gesture's hit area, and
+ * invariant 6 says the reply swipe keeps every pixel it has today. So the bubble's own `<div>`
+ * carries the attribute and a `closest()` from the element the press landed on answers the
+ * question.
+ *
+ * The literal attribute is written once, in `MessageBubble`'s JSX. This selector is its only
+ * reader, and it lives here rather than in the component for the reason every rule in this file
+ * lives here: the component measures, `lib/` decides.
+ */
+export const BUBBLE_BODY_SELECTOR = '[data-nina-bubble-body]'
+
+/**
+ * Everything inside a bubble that is already a control, and therefore is not the bubble.
+ *
+ * Read off the render, top to bottom. `QuoteStub` is a `<button>` whenever it can jump; `ChatImages`
+ * wraps each photograph in a `<button>` whenever the viewer is armed; `RunAttachmentCard` is a
+ * `next/link` — an `<a>` — to `/r/[id]`; and the bubble itself carries two
+ * `sr-only focus:not-sr-only` `<button>`s. So `a` and `button` are the two selectors this render
+ * actually needs, and they cover all five controls.
+ *
+ * The rest of the list is there because the safe direction of error is "that was a control".
+ * A missed exclusion opens a sheet over something the runner meant to press; an over-broad
+ * selector costs one extra tap on the prose. Anything a later phase hangs in `MessageBubble`'s
+ * `above` slot is therefore excluded by default, which is the behaviour a shared slot should have.
+ *
+ * A `closest()` selector rather than a `data-` attribute on each control, deliberately: the
+ * controls live in four other files, three of which this phase does not own, and a selector needs
+ * no cooperation from any of them.
+ */
+export const BUBBLE_INTERACTIVE_SELECTOR =
+  'a,button,input,select,textarea,summary,[role="button"],[role="link"],[contenteditable="true"]'
+
+/**
+ * What the bubble measures from a finished tap, with no DOM types in the signature.
+ *
+ * Four of the seven fields are `MessageActionSwipeGesture`'s, measured the same way and for the
+ * same reasons — see it. The three new ones are BOOLEANS THE COMPONENT COLLAPSES, on
+ * `EditTarget.hasImage`'s precedent and for its reason: answering them needs an `Element` and a
+ * `Selection`, and this module may not name either.
+ */
+export interface MessageActionTapGesture {
+  /** `end.clientX - start.clientX`. A tap has no direction, so only the MAGNITUDE is read. */
+  dx: number
+  /** `end.clientY - start.clientY`. Same, and it is what makes a scroll not a tap. */
+  dy: number
+  /** The MAXIMUM concurrent touches seen at any point in the interaction. 1 for a mouse. */
+  touches: number
+  /** `visualViewport.scale` at the end of the interaction; 1 when the page is not zoomed. */
+  zoomScale: number
+  /**
+   * True when the interaction BEGAN inside the bubble's own prose —
+   * `closest(BUBBLE_BODY_SELECTOR)` from the element the press landed on. False for the empty
+   * paper beside the bubble. See `BUBBLE_BODY_SELECTOR` for why the row is wider than the bubble.
+   */
+  startedOnBody: boolean
+  /**
+   * True when the interaction BEGAN on a control inside the bubble —
+   * `closest(BUBBLE_INTERACTIVE_SELECTOR)`.
+   *
+   * The START and not the end, and the browser agrees with that choice: a `click` whose press and
+   * release are on different elements fires on their common ancestor, so a press that begins on a
+   * photograph and lifts over the text opens neither the viewer nor this sheet. Consulting the end
+   * as well would be a second sample for a case where doing nothing and doing something are
+   * equally defensible.
+   */
+  startedOnInteractive: boolean
+  /**
+   * True when a non-collapsed text selection existed at ANY point in the interaction — sampled at
+   * the start and again at the end, the way `touches` is a maximum rather than a final count.
+   *
+   * Both samples are load-bearing and they catch different things. At the END: a short drag that
+   * selected a few characters without travelling far, and iOS's long-press selection callout —
+   * which is how this rule keeps the promise `MessageBubble`'s header made, that copying what she
+   * said stays a real capability. At the START: a click on a bubble that already carries a
+   * selection is the click that DISMISSES that selection, and the browser collapses it on
+   * `pointerdown`, so by the time the release could be asked the evidence is gone.
+   */
+  textSelected: boolean
+}
+
+export type MessageActionTapDecision = 'actions' | 'none'
+
+/**
+ * Whether a finished tap or click on a bubble should open the action menu — R4's opener.
+ *
+ * The capability it opens shipped in `75a9c34`; what never shipped was a way to ask for it with a
+ * pointer. A LEFT swipe and a focus-revealed button were the only two openers, so a mouse had none
+ * at all, and the user's words are "user can click any bubble (his or nina's) and choose: edit,
+ * delete". This function is that click, expressed as rules because `vitest.config.ts` is
+ * `environment: 'node'` and a rendered-scenario test would prove one gesture where these prove the
+ * gate — the same argument this file's header makes for existing.
+ *
+ * ── WHY A TAP IS ALLOWED NOW, WHEN `MessageBubble`'s HEADER REJECTED ONE TWICE ────────────────
+ * That header rejected a tap because it would "make the bubble itself a button, which breaks text
+ * selection just as thoroughly" as a long press. The objection is ANSWERED here rather than
+ * overruled, and it is answered in three places at once: nothing becomes a `<button>` (a bubble
+ * contains buttons and cannot be one), no `role` and no `tabIndex` are added, and `textSelected`
+ * gives the platform's own selection gesture right of way over the opener. The bubble stays
+ * selectable prose that happens to answer a tap. The long press stays the selection gesture, and
+ * it needs no rule of its own: a long press leaves a selection, and a selection refuses the tap.
+ *
+ * ── THE SEVEN RULES, IN THE ORDER THEY MATTER ─────────────────────────────────────────────────
+ *   1. it must have STARTED on the bubble's prose. The row is full-width and the paper beside a
+ *      bubble is not the bubble;
+ *   2. it must not have started on a control. The photo grid, the quote stub, the run card and the
+ *      two `sr-only` buttons all own their own presses;
+ *   3. no selection at either end — see `textSelected`;
+ *   4. the row has to be actionable, and `canActOnMessage` IS that gate, reused rather than
+ *      restated. **The refusal here is SILENT, and that is the one place a tap and a swipe
+ *      deliberately differ.** `ChatScreen.handleRequestActions` answers a rejected swipe with an
+ *      `edit-unavailable` notice, because "the runner performed a deliberate gesture and a gesture
+ *      that does nothing reads as a broken screen". A tap on the bubble he sent one second ago is
+ *      not deliberate — it is a thumb still resting where the send target was — and a notice for
+ *      it would be noise on the happy path. So an optimistic row opens nothing and says nothing,
+ *      and the swipe's notice is untouched;
+ *   5. one finger. The MAXIMUM seen during the interaction, as everywhere else on this screen,
+ *      because a pinch that begins with one finger down must still lose;
+ *   6. not on a zoomed page. Same epsilon and same reason as `decideMessageActionSwipe` and
+ *      `decideReplySwipe`: `visualViewport.scale` settles a hair above 1 after a pinch-release, and
+ *      while the page is zoomed a small movement is the reader panning, not choosing;
+ *   7. it must not have TRAVELLED, in either axis. `dx` is read as a magnitude — a tap has no
+ *      direction, and that is exactly what keeps this decision from re-litigating either swipe:
+ *      reply owns rightward past 44 px, actions owns leftward past 44 px, and a tap owns the 10 px
+ *      around zero. The three windows are disjoint by construction and `edit.test.ts` pins it.
+ *
+ * There is no timer anywhere in here, which is the second half of why this is a tap and not a long
+ * press: `MessageBubble`'s header rejected the long press partly on the timer, the cancel path and
+ * the haptic story it would need, and the plan set's Decisions table settled the fork the same way.
+ */
+export function decideMessageActionTap(
+  target: ActionableMessage,
+  gesture: MessageActionTapGesture,
+): MessageActionTapDecision {
+  const { dx, dy, touches, zoomScale, startedOnBody, startedOnInteractive, textSelected } = gesture
+  if (!startedOnBody) return 'none'
+  if (startedOnInteractive) return 'none'
+  if (textSelected) return 'none'
+  if (!canActOnMessage(target)) return 'none'
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return 'none'
+  if (touches > 1) return 'none'
+  if (Number.isFinite(zoomScale) && zoomScale > 1 + ZOOM_EPSILON) return 'none'
+  if (Math.abs(dx) > MESSAGE_ACTION_TAP_SLOP_PX) return 'none'
+  if (Math.abs(dy) > MESSAGE_ACTION_TAP_SLOP_PX) return 'none'
+  return 'actions'
+}
+
+/* ── the resend gate ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Whether this message may be RESENT — R5, and his bubbles only.
+ *
+ * ── WHY IT IS DOWN HERE AND NOT BESIDE `canActOnMessage` ──────────────────────────────────────
+ * It composes with that gate and would read better next to it, and it is here anyway: R4's phase
+ * rewrites `canActOnMessage`'s signature line and inserts `ActionableMessage` just above it, and
+ * two phases editing adjacent lines of one file is a merge conflict for no gain. `EditTarget` is
+ * still the parameter type — this predicate reads `.mine`, which `ActionableMessage` does not
+ * carry — and `canActOnMessage` accepts it structurally.
+ *
+ * ── WHY THIS IS A FUNCTION AND NOT `picked.mine &&` IN THE SHEET ──────────────────────────────
+ * Because it is the second rule in this file with two clauses that come from different places, and
+ * because the sheet is the one surface that must never be the authority on it. `canActOnMessage`
+ * carries the two exclusions this screen produces — a client-minted `local-…` id and a row whose
+ * send threw — and `mine` carries the user's own words: *"add option to resend as well (just for
+ * user's bubble)"*. Written here, both are asserted in node; written in markup, neither is.
+ *
+ * ── THERE IS DELIBERATELY NO "WAS THIS ANSWERED" CLAUSE ───────────────────────────────────────
+ * The plan index settled it: a client-side answered/unanswered test would be a second authority on
+ * turn state beside `nina_turns`, which `openNinaChatTurn` already owns. Resend is offered on every
+ * confirmed bubble of his, and `resendNinaMessage` refuses with `'turn-live'` when a claim is
+ * already live. Refusing at the action is honest; hiding the item on a guess is not.
+ *
+ * Note what this does NOT exclude: a message that carries no text at all. An image-only message is
+ * a legitimate send (`sendNinaMessage`'s R10 floor) and therefore a legitimate resend. The one
+ * genuinely empty case — a runner row whose only photo an operator removed — is not visible from
+ * `EditTarget` (`hasImage` is computed off the URLs the bubble holds, which is the right shape for
+ * every other rule here), so the ACTION refuses it with `'empty'`. One clause per authority.
+ */
+export function canResendMessage(target: EditTarget): boolean {
+  return canActOnMessage(target) && target.mine
 }

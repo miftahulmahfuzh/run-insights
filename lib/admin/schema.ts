@@ -104,7 +104,7 @@ export type AvatarRegister = z.infer<typeof avatarRegisterSchema>
  */
 export const userIdSchema = z.string().trim().min(1).max(64)
 
-/** A slot key. Membership in phase 5's nine is checked by `canonicaliseSlotValue`, not here. */
+/** A slot key. Membership in phase 5's ten is checked by `canonicaliseSlotValue`, not here. */
 export const slotKeySchema = z
   .string()
   .trim()
@@ -126,29 +126,28 @@ export type SlotEdit = z.infer<typeof slotEditSchema>
 const factCategorySchema = z.enum(ADMIN_FACT_CATEGORIES)
 
 /**
- * A hand-typed fact — R24's backdoor, literally, and now R1's one add affordance. `confidence`
- * defaults to 100 because a human asserting something outright is phase 1's documented meaning of
- * 100, and it is still editable in the row it produces.
+ * A hand-typed fact — R24's backdoor, literally, and now R1's one add affordance. A category and a
+ * sentence, and that is the whole row: task #135 retired `confidence` from the ledger, so there is
+ * no third field to default any more.
  */
 export const factInsertSchema = z.object({
   userId: userIdSchema,
   category: factCategorySchema,
   text: z.string().trim().min(1).max(ADMIN_FACT_TEXT_MAX),
-  confidence: z.number().int().min(0).max(100).default(100),
 })
 export type FactInsert = z.infer<typeof factInsertSchema>
 
 /**
- * A cell save on a ledger row. All three editable fields every time, because the table sends the
- * row's current state rather than a diff — with sequential dispatch and a full re-render per
- * action, a partial patch would race the re-render for no saving.
+ * A cell save on a ledger row. Both editable fields every time, because the table sends the row's
+ * current state rather than a diff — with sequential dispatch and a full re-render per action, a
+ * partial patch would race the re-render for no saving. (It was three fields until task #135
+ * retired `confidence`.)
  */
 export const factEditSchema = z.object({
   userId: userIdSchema,
   id: memoryIdSchema,
   category: factCategorySchema,
   text: z.string().trim().min(1).max(ADMIN_FACT_TEXT_MAX),
-  confidence: z.number().int().min(0).max(100),
 })
 export type FactEdit = z.infer<typeof factEditSchema>
 

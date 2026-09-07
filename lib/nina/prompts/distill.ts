@@ -5,12 +5,18 @@ import {
   NINA_FACT_CATEGORIES,
   NINA_SLOT_KEYS,
   NINA_SLOT_SPECS,
-  SLOT_CONFIDENCE_FLOOR,
 } from '../memory'
 import { NINA_TUNING_DEFAULTS, type NinaRelationship } from '../tuning'
 
 /**
  * Bumped by hand whenever the text or the tool schema below changes. Logged, never sent.
+ *
+ * 3 — the nina-instructor-character set. The librarian was told the sixth relationship exists:
+ * `RELATIONSHIP_GLOSS.instructor` is a new gloss it can be handed, and the hardcoded address-forms
+ * list below gained `"atlet"` so the coach word is read as REGISTER and not filed as a standing
+ * fact about him. The same set's tenth memory slot (`training_plan`) reaches this prompt without an
+ * edit here, through `SLOT_VOCABULARY_BLOCK` and the `slotKey` enum — **this single bump covers
+ * both**, because the set merges as one branch and this constant identifies the prompt as it ships.
  *
  * 2 — the librarian was told what the relationship is, and told that the couple's own register is
  * not a fact about him. **This constant is not `NINA_PROMPT_VERSION`**: that one covers Nina's own
@@ -18,7 +24,7 @@ import { NINA_TUNING_DEFAULTS, type NinaRelationship } from '../tuning'
  * `prompts/system.ts`. This one covers the librarian, which is a different model call with a
  * different system prompt, and it moves on its own schedule.
  */
-export const NINA_DISTILL_PROMPT_VERSION = 2
+export const NINA_DISTILL_PROMPT_VERSION = 3
 
 /**
  * The vocabulary, rendered from `NINA_SLOT_SPECS` rather than retyped. One list, so a tenth slot
@@ -38,7 +44,7 @@ export const SLOT_VOCABULARY_BLOCK = NINA_SLOT_KEYS.map(
  * what she is TOLD to call him — composed by `persona.ts`'s `ninaNameRules` and rendered by
  * `/admin/nina`. This is a third-person gloss for a different reader (a librarian being told what
  * it is looking at), and the two will not change together. `satisfies` is what keeps them in step
- * on the only thing that matters — the five keys — and the words themselves are quoted from
+ * on the only thing that matters — the six keys — and the words themselves are quoted from
  * `NINA_ADDRESS[rel].words` so a reviewer can check them against the one place they live.
  */
 const RELATIONSHIP_GLOSS = {
@@ -48,6 +54,7 @@ const RELATIONSHIP_GLOSS = {
   best_friend: 'his best friend, who calls him "bestie"',
   girlfriend:
     'his girlfriend, who calls him "my man", "yang", "sayang", "beb", "baby" and the like',
+  instructor: 'his running coach, who uses his nickname and calls him "atlet"',
 } as const satisfies Record<NinaRelationship, string>
 
 /**
@@ -85,10 +92,9 @@ WHAT TO RECORD
 Every single thing he said about himself, however small: his name, his job, his hours, his family, his body, what hurts, what he eats, what he is training for, what he owns, what he fears, what he finds funny, what he complains about. One fact per entry, one sentence each, in the language HE used. Be exhaustive — up to ${String(MAX_DISTILLED_CANDIDATES)} entries. A detail you drop is gone from her memory of him.
 
 THE QUOTE IS NOT OPTIONAL
-Every entry carries "quote": a VERBATIM SPAN OF HIS OWN MESSAGE, copied character for character. Not a paraphrase, not your summary, not something Nina said. An entry whose quote is not really in his message is recorded at low confidence and can never become a standing fact, so a fabricated quote costs you the entry.
+Every entry carries "quote": a VERBATIM SPAN OF HIS OWN MESSAGE, copied character for character. Not a paraphrase, not your summary, not something Nina said. THE QUOTE IS THE ONLY THING CHECKED, so it is the only thing standing between her and a memory he never gave her. An entry whose quote is not really in his message can never become a standing fact, so a fabricated quote costs you the entry.
 
-CONFIDENCE
-An integer percent. 100 means he stated it outright. Drop below ${String(SLOT_CONFIDENCE_FLOOR)} for anything you inferred, implied or read between the lines. Do not round an inference up to look useful — an inferred fact that becomes a standing memory is a lie she will repeat to him for months.
+And the quote has to hold up the "text" you wrote beside it. Do not quote something he really said and then write down a conclusion he did not draw: "sepatu gw udah tipis banget" is a fact about worn-out shoes, not evidence of which brand he runs in. Record what he said. An inference that becomes a standing memory is a lie she will repeat to him for months.
 
 CATEGORIES
 ${NINA_FACT_CATEGORIES.join(', ')}.
@@ -102,7 +108,7 @@ WHAT HE CALLS HIMSELF
 Set "nickname" only when he said, in this message, what to call him. Copy his word exactly. If he did not say it, leave it out — do not derive one from his full name.
 
 WHAT THE TWO OF THEM CALL EACH OTHER
-The relationship above is an operator setting. He did not tell her about it and she did not decide it, and it is what makes them talk the way they do: a full name, a nickname, "bro", "bestie", or "yang" / "sayang" / "beb" / "baby". THE WAY THEY ADDRESS EACH OTHER IS NOT A FACT ABOUT HIM. Do not record it as a fact, do not give it a slot, and never put a word SHE used into "nickname" — that field is only ever what HE asked to be called, in his own words, in this message. Her endearments are hers. If the two of them are affectionate, or blunt, or filthy with each other, that is the register and not biography: record what he revealed, in the language he used, and let the tone be the tone.
+The relationship above is an operator setting. He did not tell her about it and she did not decide it, and it is what makes them talk the way they do: a full name, a nickname, "bro", "bestie", "yang" / "sayang" / "beb" / "baby", or "atlet". THE WAY THEY ADDRESS EACH OTHER IS NOT A FACT ABOUT HIM. Do not record it as a fact, do not give it a slot, and never put a word SHE used into "nickname" — that field is only ever what HE asked to be called, in his own words, in this message. Her endearments are hers. If the two of them are affectionate, or blunt, or filthy with each other, that is the register and not biography: record what he revealed, in the language he used, and let the tone be the tone.
 
 PROMISES
 Use "promises" when NINA promised him something conditional in this exchange — "kalo lo lari 10km besok, gw ganti foto profile", "kalo lo lari 4x minggu ini, gw kirim foto". Give the condition as a metric the app can check: distance_km_total with a target in km, run_count with a target, record or badge with its key, or free when no number can decide it. Never both a target and a targetKey.
@@ -130,7 +136,7 @@ export const DISTILL_TOOL: Anthropic.Tool = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['text', 'category', 'confidence', 'quote'],
+          required: ['text', 'category', 'quote'],
           properties: {
             text: {
               type: 'string',
@@ -140,12 +146,6 @@ export const DISTILL_TOOL: Anthropic.Tool = {
               type: 'string',
               enum: [...NINA_FACT_CATEGORIES],
               description: 'REQUIRED. Which kind of fact this is.',
-            },
-            confidence: {
-              type: 'integer',
-              minimum: 0,
-              maximum: 100,
-              description: 'REQUIRED. 100 = he said it outright. Below 80 = you inferred it.',
             },
             quote: {
               type: 'string',

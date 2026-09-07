@@ -14,7 +14,6 @@ import {
   parseWorkHours,
   planMemoryWrites,
   syllabify,
-  UNVERIFIED_CONFIDENCE_CEILING,
   verifyQuote,
   type DistillPayload,
   type IsoWeekday,
@@ -37,12 +36,56 @@ import { describe, expect, it } from 'vitest'
 describe('the slot vocabulary is closed and agrees with phase 1', () => {
   it('contains phase 1’s one declared key, and every spec is keyed by its own key', () => {
     expect(NINA_SLOT_KEYS).toContain(NINA_SLOT_PENDING_PROMISES)
-    expect(NINA_SLOT_KEYS).toHaveLength(9)
+    expect(NINA_SLOT_KEYS).toHaveLength(10)
     for (const key of NINA_SLOT_KEYS) {
       expect(NINA_SLOT_SPECS[key].key).toBe(key)
       expect(isNinaSlotKey(key)).toBe(true)
     }
     expect(isNinaSlotKey('favourite_colour')).toBe(false)
+  })
+
+  it('keeps the training plan next to the days it is not, in the order both readers use', () => {
+    /* The order IS the librarian's list order and `/admin/memory`'s row order. These two keys are
+     * the pair a writer confuses, so they are adjacent deliberately rather than incidentally. */
+    const days = NINA_SLOT_KEYS.indexOf('running_days')
+    expect(NINA_SLOT_KEYS[days + 1]).toBe('training_plan')
+    expect(NINA_SLOT_KEYS[NINA_SLOT_KEYS.length - 1]).toBe('pending_promises')
+  })
+})
+
+describe('NINA_SLOT_SPECS.training_plan — R3\u2019s "set up schedules", stored', () => {
+  const spec = NINA_SLOT_SPECS.training_plan
+
+  it('is a replace-policy training slot, which is what makes it an editable admin row', () => {
+    /* `merge` would make it structured (`slotEditKind`), and `buildMemoryRows` excludes structured
+     * keys from the row list — so this assertion is the admin page's exit criterion, upstream. */
+    expect(spec.policy).toBe('replace')
+    expect(spec.category).toBe('training')
+  })
+
+  it('stores a week of sessions, collapsed onto one line', () => {
+    expect(spec.canonicalise('Senin easy 5k\nRabu interval 6x400\n  Sabtu tempo 8k ')).toBe(
+      'Senin easy 5k Rabu interval 6x400 Sabtu tempo 8k',
+    )
+  })
+
+  it('caps at the 400 characters both writers are already capped at', () => {
+    const stored = spec.canonicalise('x'.repeat(500))
+    expect(stored).not.toBeNull()
+    expect(stored).toHaveLength(400)
+  })
+
+  it('refuses a value with nothing in it, which §7 turns into a ledger fact', () => {
+    expect(spec.canonicalise('   ')).toBeNull()
+    expect(spec.canonicalise('')).toBeNull()
+  })
+
+  it('is not running_days: the sessions survive here and would not survive there', () => {
+    const raw = 'Senin easy 5k, Rabu interval 6x400'
+    expect(spec.canonicalise(raw)).toBe(raw)
+    /* Whatever `parseRunningDays` makes of that sentence, it is not that sentence — the weekday
+     * canonicaliser keeps the days and throws the work away. That is the hole this slot fills. */
+    expect(NINA_SLOT_SPECS.running_days.canonicalise(raw)).not.toBe(raw)
   })
 })
 
@@ -257,14 +300,12 @@ const FIXTURE_PAYLOAD: DistillPayload = {
     {
       text: 'Dia biasanya lari Selasa, Kamis, Sabtu dan Minggu.',
       category: 'training',
-      confidence: 100,
       quote: 'gw biasanya lari selasa, kamis, sabtu sama minggu',
       slotKey: 'running_days',
     },
     {
       text: 'Dia lagi siapin half marathon bulan depan.',
       category: 'goal',
-      confidence: 95,
       quote: 'lagi siapin half marathon bulan depan',
       slotKey: 'goals',
     },
@@ -279,13 +320,11 @@ describe('planMemoryWrites — the fixture conversation', () => {
       {
         category: 'training',
         text: 'Dia biasanya lari Selasa, Kamis, Sabtu dan Minggu.',
-        confidence: 100,
         sourceMessageId: 'm1',
       },
       {
         category: 'goal',
         text: 'Dia lagi siapin half marathon bulan depan.',
-        confidence: 95,
         sourceMessageId: 'm1',
       },
     ])
@@ -318,7 +357,6 @@ describe('planMemoryWrites — the contradiction', () => {
             {
               text: 'Sekarang dia lari Senin, Rabu, Jumat.',
               category: 'training',
-              confidence: 100,
               quote: 'sekarang senin rabu jumat',
               slotKey: 'running_days',
             },
@@ -402,7 +440,6 @@ describe('planMemoryWrites — ruling (d), the quote gate', () => {
             {
               text: 'Dia pindah ke Bandung.',
               category: 'life',
-              confidence: 100,
               quote: 'gw pindah ke Bandung',
               slotKey: 'goals',
             },
@@ -411,11 +448,30 @@ describe('planMemoryWrites — ruling (d), the quote gate', () => {
       }),
     )
     expect(plan.slots.map((slot) => slot.key)).toEqual(['name'])
-    expect(plan.facts[0]!.confidence).toBe(UNVERIFIED_CONFIDENCE_CEILING)
+    // Still recorded as a fact — nothing is ever dropped — and still refused as a slot. Task #135
+    // removed the CEILING the ledger row used to be capped to, not the refusal: the refusal is
+    // this `demoted` entry, and it comes from `verifyQuote` alone.
+    expect(plan.facts[0]!.text).toBe('Dia pindah ke Bandung.')
     expect(plan.demoted).toEqual([{ key: 'goals', reason: 'unverified-quote' }])
   })
 
-  it('records a low-confidence reading and refuses it as a slot', () => {
+  /**
+   * **This test asserts a REVERSAL, and the cost is the point of it.**
+   *
+   * It used to be "records a low-confidence reading and refuses it as a slot": the same candidate
+   * declared `confidence: 60`, and `SLOT_CONFIDENCE_FLOOR = 80` demoted it with
+   * `reason: 'low-confidence'`. Task #135 removed confidence from the pipeline entirely, on the
+   * user's explicit instruction, so the floor is gone and this candidate is now PROMOTED.
+   *
+   * Read what it promotes. The quote — `'sepatu gw udah tipis banget'` — is a genuine verbatim
+   * span of his message, so the surviving gate passes it; but the `text` beside it,
+   * `'Sepatunya mungkin Nike.'`, is a brand the model invented. She will now hold that as standing
+   * truth about his gear in every future conversation. Because the unverified-quote check runs
+   * FIRST, this shape — a real quote carrying an inferred conclusion — was the floor's entire
+   * remaining job, and it is the one thing lost. It is written down here rather than in a plan
+   * file because this is where a later session will actually meet it.
+   */
+  it('promotes an inference drawn from a real quote — the accepted cost of #135', () => {
     const plan = planMemoryWrites(
       planInput({
         runnerText: 'sepatu gw udah tipis banget',
@@ -424,7 +480,6 @@ describe('planMemoryWrites — ruling (d), the quote gate', () => {
             {
               text: 'Sepatunya mungkin Nike.',
               category: 'training',
-              confidence: 60,
               quote: 'sepatu gw udah tipis banget',
               slotKey: 'gear',
             },
@@ -432,9 +487,9 @@ describe('planMemoryWrites — ruling (d), the quote gate', () => {
         },
       }),
     )
-    expect(plan.slots.map((slot) => slot.key)).toEqual(['name'])
-    expect(plan.facts[0]!.confidence).toBe(60)
-    expect(plan.demoted).toEqual([{ key: 'gear', reason: 'low-confidence' }])
+    expect(plan.slots.map((slot) => slot.key)).toEqual(['gear', 'name'])
+    expect(plan.slots.find((slot) => slot.key === 'gear')?.value).toBe('Sepatunya mungkin Nike.')
+    expect(plan.demoted).toEqual([])
   })
 
   it('records a fact under a key it does not know, and coins no slot for it', () => {
@@ -446,7 +501,6 @@ describe('planMemoryWrites — ruling (d), the quote gate', () => {
             {
               text: 'Warna favoritnya hijau.',
               category: 'preference',
-              confidence: 100,
               quote: 'warna favorit gw ijo',
               slotKey: 'favourite_colour',
             },

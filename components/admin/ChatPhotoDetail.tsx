@@ -6,6 +6,7 @@ import { TOUCH_ICON } from '@/components/admin/touch'
 import { cn } from '@/lib/cn'
 
 import { ChatPhotoControls } from './ChatPhotoControls'
+import { ChatPhotoDescription } from './ChatPhotoDescription'
 import type { ChatPhoto } from './chatPhotoModel'
 
 /**
@@ -32,6 +33,12 @@ import type { ChatPhoto } from './chatPhotoModel'
  * Everything above still holds. The action stack at the bottom holds `ChatPhotoControls` —
  * Replace and Remove, one click each, no confirmation — and this file still imports no Server
  * Action itself: the controls own that, so a prop rename here cannot reach a mutation.
+ *
+ * ── AND THE DESCRIPTION IS EDITABLE NOW (R2, `nina-photo-refs-and-bubble-actions`) ────────
+ * *"there is a 'what she can see in it' field. make this field editable by user"*. The block under
+ * the second divider now mounts `ChatPhotoDescription`, which owns the Server Action. Everything
+ * above still holds, including the last sentence of it: this file imports a COMPONENT, not a
+ * mutation.
  */
 
 export function ChatPhotoDetail({
@@ -157,18 +164,23 @@ export function ChatPhotoDetail({
             What she can see in it
           </p>
           {/*
-           * The fallback copy is deliberately about the ROW's state and not about a permanent
-           * defect. Reconciled 2026-09-05 against phase 3's D2: after an admin Add or Replace this
-           * field is NULL for the few seconds `scheduleChatPhotoDescribe`'s `after()` pass takes,
-           * and then fills in on the next load. A sentence reading "she cannot talk about this
-           * photo" would be a lie during that window — and would read as a bug for a photograph
-           * that is about to be fine. On the send path a null description degrades honestly
-           * anyway: `lib/nina/actions.ts:604` substitutes `NINA_DESCRIPTION_UNAVAILABLE`.
+           * EDITABLE AS OF R2 — *"make this field editable by user"*. The heading stays a `<p>` here
+           * and the control labels itself with `aria-label`, which is `MemoryTable.tsx:446`'s call
+           * for the same reason: the visible heading lives in the parent, so a `<label htmlFor>`
+           * would need an id threaded across a component boundary to say what one attribute says.
+           *
+           * The fallback copy did NOT disappear. It split — see `ChatPhotoDescription`: the short
+           * half is the textarea's placeholder, the honest half about `after()`'s few-second window
+           * is a hint line under the field, shown for exactly the same rows it was shown for before.
+           * An editable field must not paper over that window and it does not.
+           *
+           * `key={photo.id}` IS LOAD-BEARING. `ChatPhotoGrid.tsx:240-250` renders this rail UNKEYED,
+           * so selecting a different tile re-renders the same instance with different props. Without
+           * the key, unsaved text in the box would survive onto another photograph's row and the
+           * next Save would write one picture's prose onto another picture. That is data corruption,
+           * not a stale render.
            */}
-          <p className="text-[12px] leading-relaxed font-medium text-ink-2">
-            {photo.description ??
-              'Not described yet. She cannot talk about this photo until it is — reload in a moment if it was just added or replaced.'}
-          </p>
+          <ChatPhotoDescription key={photo.id} photoId={photo.id} description={photo.description} />
         </div>
         <div>
           <p className="mb-1 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">

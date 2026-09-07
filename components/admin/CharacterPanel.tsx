@@ -262,7 +262,20 @@ export function CharacterPanel({
               </span>
             )}
           </legend>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {/* R1 — "to make it a nice 3 columns x 2 rows". The BREAKPOINTS do not move (index
+              decision D2: `AdminNav` is `lg:sticky` in this grid's first column, so three cards
+              only have legible room from `xl`). What was ragged is ROW-TO-ROW height. Grid items
+              already stretch inside their own row — the container's `align-items` is `normal`,
+              which behaves as `stretch` for grid items, and the label's `items-start` below is
+              the LABEL's own flex axis, aligning the radio against the text rather than the card
+              against its cell. But the implicit rows are `auto`, so the row holding the longest
+              hint is taller than the other, and `relationshipCopy`'s hints vary by about 3x.
+              `auto-rows-fr` is `grid-auto-rows: minmax(0, 1fr)`, and in a grid whose height is
+              indefinite an `fr` row resolves to the largest max-content contribution of the items
+              crossing it — so every row becomes the height of the tallest card and six cards read
+              as a rectangle. Left off below `sm`, where one column has no rectangle to make and
+              equal rows would only pad the short cards. */}
+          <div className="grid gap-2 sm:auto-rows-fr sm:grid-cols-2 xl:grid-cols-3">
             {NINA_RELATIONSHIPS.map((value) => {
               const copy = relationshipCopy(value)
               const selected = draft.relationship === value

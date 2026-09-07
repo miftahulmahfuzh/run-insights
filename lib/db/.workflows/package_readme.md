@@ -1,7 +1,7 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-07
 
 ## Overview
 
@@ -84,7 +84,7 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaTurns` | `nina_turns` | Audit/job row for every Nina model call | `nina_turns_user_created_idx` |
 | `ninaChatSessions` | `nina_chat_sessions` | The conversation's partition — one row per topic he started | `nina_chat_sessions_user_created_idx` |
 | `ninaMessages` | `nina_messages` | One bubble of the runner↔Nina conversation | `nina_messages_user_seq_idx`, `nina_messages_user_unread_idx` (partial), `nina_messages_reply_to_idx`, `nina_messages_user_run_idx`, `nina_messages_session_seq_idx`, `nina_messages_user_session_runner_idx` (partial) |
-| `ninaMessageImages` | `nina_message_images` | One image attached to a message | `nina_message_images_message_idx`, `nina_message_images_user_created_idx` |
+| `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from | `nina_message_images_message_idx`, `nina_message_images_user_created_idx` |
 | `ninaMemorySlots` | `nina_memory_slots` | Upserted "current fact" memory slot | PK `(user_id, key)` |
 | `ninaMemoryFacts` | `nina_memory_facts` | Append-only "what he has told me" ledger | `nina_memory_facts_user_created_idx` |
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
@@ -134,10 +134,12 @@ rather than a migration here. Its neighbours `nina_tuning.wardrobe` and `.notes`
 pointers at all: they are free operator text, `NOT NULL` with `''` as the empty value, because
 "no override" and "not set" are the same fact.
 
-**Cascade is the default for ownership FKs**, with two documented exceptions: `badges.run_id` is
+**Cascade is the default for ownership FKs**, with three documented exceptions: `badges.run_id` is
 `set null` (R-22 — "a badge is a fact about the past; deleting the run that earned it must not
-delete the history that it happened"), and `nina_messages.reply_to_id` / `run_id` are `set null` so
-a deleted parent degrades a quote bubble or run card instead of deleting conversation.
+delete the history that it happened"), `nina_messages.reply_to_id` / `run_id` are `set null` so
+a deleted parent degrades a quote bubble or run card instead of deleting conversation, and
+`nina_message_images.source_avatar_id` / `source_image_id` are `set null` so deleting the original
+photograph leaves the copy holding the picture rather than losing it (F37 — see the P1-DB-A003 note).
 `nina_messages.turn_id` carries **no** FK at all, because an audit pointer must not be able to block
 a delete. One cascade is not a default but a stated requirement: `nina_messages.session_id` →
 `nina_chat_sessions.id`, which chains through `nina_message_images.message_id` so removing a session
@@ -454,10 +456,19 @@ contents of a database.
 
 Generated is the norm but not the rule. `0004_nina_chat_sessions.sql` is the first migration here
 that was generated and then **hand-edited**, because generation cannot express a backfill: drizzle
-emits `ADD COLUMN … NOT NULL`, which simply fails on a populated table. The pattern, if a second one
-is ever needed: add the column nullable, backfill it, then `SET NOT NULL`, and add the FK after the
-rows are valid — all inside the file drizzle produced, so the snapshot it wrote still describes the
-end state and `db:check` stays clean.
+emits `ADD COLUMN … NOT NULL`, which simply fails on a populated table. The pattern: add the column
+nullable, backfill it, then `SET NOT NULL`, and add the FK after the rows are valid — all inside the
+file drizzle produced, so the snapshot it wrote still describes the end state and `db:check` stays
+clean.
+
+`0009_nina_message_photo_only.sql` and `0010_nina_image_provenance.sql` follow the same arrangement
+for the other reason a backfill is needed — a new *nullable* column whose meaning is retroactive, so
+production's existing rows have to be marked. Both keep the generated `ALTER TABLE`s at the top and
+put the hand-written statements below a `--> statement-breakpoint` under a banner saying so, because
+**`npm run db:generate` will silently drop them if the file is regenerated**: diff the old file
+against the new one and re-append before deleting anything. A backfill also states its rule inline
+rather than importing it — a migration is a historical record and must not follow later edits to the
+TypeScript that once matched it.
 
 ### Gotchas
 
@@ -480,6 +491,14 @@ end state and `db:check` stays clean.
   accumulates blob orphans that only a store listing can find.
 - **`NOT NULL` cannot be added to a populated table in one statement.** A new required column is
   three statements and a backfill between them, in the migration file itself. See `0004`.
+- **A re-attached photo is a reference, not a copy.** `nina_message_images` rows share a `blob_url`
+  on purpose: re-attaching an album face or an earlier chat photo writes a new row pointing at the
+  same Blob object, and `source_avatar_id` / `source_image_id` are how the row admits it. Never
+  delete such a row to de-duplicate a collection — every bubble, photo-viewer, download control and
+  prompt read reads this table by `message_id`, so a missing row is a blank bubble. Filter the three
+  collection reads instead (`isOriginalPhoto()` in `lib/nina/queries.ts`), and leave the pointers
+  naming the **original** rather than the immediate predecessor, so a `SET NULL` cannot resurrect a
+  duplicate.
 - **Removing a session is a hard delete, and the cascade stops at the database.** Messages and their
   `nina_message_images` rows go; the Vercel Blob objects behind those rows stay, and the
   `source_message_id` pointers in `nina_memory_slots` / `nina_memory_facts` are left dangling on
@@ -499,6 +518,81 @@ end state and `db:check` stays clean.
 Initial creation, prompted by task **P1-DB-A000** — phase 1 of 7 in
 `ADMIN_ALBUM_FILE_MANAGER_PLAN.md`, the plan set that turns `/admin/nina` into a file manager
 (F34 R1).
+
+### Recent changes — P1-DB-A003 (2026-09-07)
+
+Phase 1 of `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS` (F37), the plan set whose one sentence is **"a
+re-attached photo is a reference, not a copy."** Within this package the task touched `schema.ts` and
+`drizzle/` only; the rule that decides which column a new row carries lives in `lib/nina/attach.ts`
+and every read and write that honours it in `lib/nina/queries.ts`.
+
+The defect: re-attaching an album face or an earlier chat photo copies `blob_url` and `pathname`
+onto a **new** `nina_message_images` row — no bytes are copied, the Blob object is shared — and
+nothing on the row said where they came from. So `/nina/about`'s Media section and the chat-photo
+listing showed the same picture twice.
+
+**`nina_message_images` gained two nullable provenance columns:**
+
+- `source_avatar_id` → `nina_avatars.id`, `ON DELETE SET NULL`
+- `source_image_id` → `nina_message_images.id` — self-referencing, `ON DELETE SET NULL`
+
+A row is a **reference** when *either* column is non-null. Both can be non-null on one row (an album
+face re-attached twice); that is two true facts, not a conflict.
+
+Four things about the shape are decisions, and `tests/db.schema.nina.test.ts` asserts each:
+
+- **Two columns, not one polymorphic pointer.** Two targets are two tables, and a real foreign key
+  on each is the only thing that makes `SET NULL` possible at all. The shape is
+  `nina_messages.reply_to_id`'s — a nullable self-referencing FK — applied twice.
+- **`ON DELETE SET NULL` is the interesting half.** When the original is deleted the copy stops
+  being a copy: the column goes NULL, the row becomes an original, and the collection *keeps* the
+  picture instead of losing it. `CASCADE` would delete a photograph out of a conversation because an
+  unrelated row was tidied away — the same data loss `isBlobPathnameReferenced` exists to prevent.
+- **The row is never dropped.** Marking, not deleting, is the fix. Every bubble, photo-viewer open,
+  download control and Nina's own prompt reads this table by `message_id`, so a message with no
+  image row of its own is a blank bubble. Only the three **collection** reads skip a reference
+  (`listNinaMessageImages`, `listNinaChatPhotos`, `countNinaChatPhotos`, via the module-private
+  `isOriginalPhoto()`); every bubble, context and reaper read stays unfiltered on purpose.
+- **No index.** Both are residual predicates on reads that already range-scan
+  `nina_message_images_user_created_idx`, at the same table size that argument was accepted for
+  `kind`. Nothing has measured a need for one.
+
+No new union type, no new table, no new index, and no row type changed name — `NinaMessageImage` /
+`NewNinaMessageImage` simply widened.
+
+**Migration `drizzle/0010_nina_image_provenance.sql`** plus its meta snapshot and journal entry
+(`idx: 10`). The generated half is two `ADD COLUMN`s and the two FKs. Below a
+`--> statement-breakpoint` it carries a **hand-written two-statement backfill** that marks the
+duplicates production already has — see the Migrations note above for why that half is fragile:
+
+1. **R1, the duplicate chat photographs.** "Duplicate" is an equal `blob_url` within one `user_id`,
+   because re-attach is the only writer that *reuses* a URL — two separate uploads of the same
+   picture write two Blob objects and are two photographs as far as anything can tell. The earliest
+   row wins (`ORDER BY created_at ASC, id ASC`; `id` breaks the tie that `created_at` cannot for
+   rows written in one statement), and every later row points at *that* row rather than its
+   predecessor, so the column always names the **original**. This matches
+   `ninaPhotoProvenance`'s flatten (`sourceImageId ?? row.id`), so a row backfilled here and a row
+   written tomorrow mean the same thing — and a `SET NULL` on an intermediate row cannot make a
+   duplicate reappear.
+2. **R3, an album face attached into the chat.** No "not the earliest" clause, deliberately: the
+   *first* chat row whose bytes are an album face is already a reference, because the photograph was
+   never a chat photograph. `DISTINCT ON` runs over `nina_avatars` too — nothing stops two album
+   rows sharing a `blob_url`, since `nina_avatars_user_source_key_unq` is unique on `source_key`,
+   not on the URL, and the profpic re-seed writes a fresh row for an anchor already stored. Without
+   it an `UPDATE … FROM` whose subquery matches a target twice would pick arbitrarily.
+
+Both statements are guarded `IS NULL`, so they are idempotent: no-ops on a fresh column, and running
+one by hand a second time cannot move a pointer that has since been set.
+
+> **`npm run db:check` is clean, but NOT applied to production.** Applying `0010` is an open deploy
+> action (`npm run db:migrate`), deliberately a manual step because the file carries a data
+> migration over live rows.
+
+Two writes outside this package complete the invariant and are worth knowing from here:
+`lib/nina/queries.ts` coalesces both fields to NULL on insert (a fresh upload and one of her
+generations say "original" by saying nothing), and `updateNinaChatPhotoBlob` nulls them in the *same*
+statement that swaps the bytes — a Replace applied to a reference would otherwise leave a unique
+photograph that no listing ever shows.
 
 ### Recent changes — P1-DB-A001 (2026-09-05)
 

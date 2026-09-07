@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 18
+- Completed: 22
 
 ---
 
@@ -79,6 +79,83 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A022** Phase 4: Resend a message that was never answered
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `resendNinaMessage` in `lib/nina/actions.ts` (sweep -> `openNinaChatTurn` -> `startNinaBackgroundTurn`, rebuilding `NinaBackgroundTurnInput` from the persisted row); the Resend item in `components/nina/MessageActionsSheet.tsx`; its handler in `components/nina/ChatScreen.tsx` (`awaiting`, `cursorRef`) — sole owner of both components; and `canResendMessage` in `lib/nina/edit.ts`, appended at the foot of the file after phase 3's `── the tap ──` block (D9). `startNinaBackgroundTurn` stays module-private and unmodified (D10) — nothing is exported to make this phase work. Does not touch `insertNinaMessages` (invariant 7), `pollNinaReply`, the turnflight cadence, `messageActions.ts`, or phase 1's columns. Exit: Resend appears only on his confirmed bubbles, never on hers; pressing it puts the screen into the same awaiting state a send does and her answer arrives through the existing poll; no second copy of his message appears; a resend while a turn is already running is refused with a reason rather than opening a second claim.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R5 — "Resend, on his bubbles only, for a message left unanswered"
+  - **Depends on**: `P1-NIN-A021`
+  - **Plan**: `.workflows/plan/P1-NIN-A022.md`
+  - **Card**: `miftahulmahfuzh/run-insights#132`
+  - **Method**: /implement (swarm wave 1, the set's only gated phase — 4 -> 3)
+  - **Completed**: 2026-09-07 18:05
+  - **Commit**: `a6b9188` (pushed to `feature/nina-photo-refs-and-bubble-actions`)
+  - **Files**: lib/nina/actions.ts, lib/nina/edit.ts, lib/nina/edit.test.ts, components/nina/MessageActionsSheet.tsx, components/nina/ChatScreen.tsx, tests/nina.resend.test.ts, lib/nina/.workflows/plan/P1-NIN-A022.md, lib/nina/.workflows/todos.md
+  - **Drift**: `lib/nina/actions.ts` had grown from the plan's quoted 1341 lines to 1377, because phase 1 landed concurrently (`7a7d7e2`). Small drift, anticipated by the plan's reconciliation item 4: phase 1's `./attach` import at `:9` and its hunks at `:183-233` / `:562-576` are all far from this phase's insertion point. Anchored on quoted text rather than line numbers; the insertion landed at `:1061` (before `export interface NinaReplyPoll`) instead of the plan's `:1022`, which is the same seam.
+  - **Drift**: `components/nina/ChatScreen.tsx` carried an uncommitted whitespace-only reflow from phase 3's repo-wide `npm run format` (prettier collapsing a three-clause `if` at `:425`). Absorbed into this commit rather than reverse-applied.
+  - **Decided**: Phase 3's uncommitted whitespace reflow in `ChatScreen.tsx:425` -> absorbed into this phase's commit rather than reverse-applied (tie-break: reversible option + narrower blast radius; the file is this phase's outright per reconciliation item 9, and un-formatting it would leave the tree prettier-dirty for the merge).
+  - **Decided**: git staging -> built the commit inline with named paths (`git add <paths>` then `git commit -F msg -- <the same paths>`) instead of delegating `git add` to the pusher (rung 6, surrounding convention + tie-break narrower blast radius: peer p2 had `lib/admin/.workflows/package_readme.md` and `lib/admin/.workflows/todos.md` ALREADY STAGED in this shared worktree's index, and a bare commit would have published them under this sha; the pathspec kept the commit to exactly 8 files. This set's phase 2 recorded its commit as named-path-built for the same reason).
+  - **Decided**: TaskID mint -> `P1-NIN-A022`, verified free against the NIN counter (phase 3 advanced it to A021); minted rather than trusting the coordinator's reported string.
+  - **Decided**: Step 3 scope -> created ONLY phase 4's task inline, not all four phases', matching what p1/p2/p3 each did in their own packages (three sessions writing four entries into one todos.md collides by construction).
+  - **Verified**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` clean; `npx vitest run` 153 files / 3078 tests passed (21 new: 5 in `lib/nina/edit.test.ts`, 16 in `tests/nina.resend.test.ts`); `npx vitest run tests/nina.resend.test.ts lib/nina/edit.test.ts` 85 passed; `npm run ci:llm-payload-guard` clean at 9 guarded symbols with NO new entry (invariant 5); `npm run db:check` clean and `drizzle/` untouched by this phase (invariant 8); `npx prettier --check` clean on all six source paths.
+  - **Shipped**: `resendNinaMessage` re-runs Nina's turn for a runner row already on the server — sweep, `openNinaChatTurn` against the same `runner_message_id` at depth 0, then `startNinaBackgroundTurn` with a `NinaBackgroundTurnInput` rebuilt field by field from the persisted row (his text, his photos' descriptions with the `NINA_DESCRIPTION_UNAVAILABLE` substitution, his quote, his attached run). It writes NO `nina_messages` row (invariant 7). Five refusals: `not-found`, `not-mine`, `empty`, `turn-live`, `failed` — `turn-live` is a refusal here, unlike the send path where a null `turnId` is the ordinary burst case. The cursor returned is the NEWEST persisted `seq`, not the resent row's own, and `ChatScreen` applies it as a `Math.max`. `canResendMessage` in `lib/nina/edit.ts` (appended at the foot, below phase 3's `── the tap ──` section, per D9) gates the sheet item to his confirmed bubbles. `MessageActionsSheet` gains a required `onResend` prop resolving `Promise<string | null>`; refusals render in the sheet, not as a `Notice` (D-f). Nothing was exported from `actions.ts` to make this work — `startNinaBackgroundTurn` stays module-private (D10).
+
+- [x] **P1-NIN-A021** Phase 3: Tap a bubble to edit or delete it
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns a pure tap decision in `lib/nina/edit.ts` (`decideMessageActionTap`, `ActionableMessage`, `MESSAGE_ACTION_TAP_SLOP_PX`, `BUBBLE_BODY_SELECTOR`, `BUBBLE_INTERACTIVE_SELECTOR`, `MessageActionTapGesture`) and its tests; the pointer/tap opener in `components/nina/MessageBubble.tsx`. Does not touch `decideReplySwipe` or `decideMessageActionSwipe` (invariant 6), `MessageActionsSheet.tsx`, `messageActions.ts`, or `ChatScreen.tsx` (zero lines — left entirely to phase 4). Exit: a tap or click on the body of any bubble — his or hers — opens the shipped sheet; a tap on a photo still opens the viewer, a tap on a quote stub still jumps, a swipe still replies and still opens the sheet; an optimistic (`sending`) bubble opens nothing and shows no notice; `npm run lint`, `npm run typecheck` and `npx vitest run` all green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R4 — "Click any bubble (his or hers) and choose edit or delete"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A021.md`
+  - **Card**: `miftahulmahfuzh/run-insights#131`
+  - **Method**: /implement (swarm wave 0, concurrent with phases 1 and 2 in one shared worktree)
+  - **Completed**: 2026-09-07 17:51
+  - **Files**: lib/nina/edit.ts, lib/nina/edit.test.ts, components/nina/MessageBubble.tsx, lib/nina/.workflows/todos.md, lib/nina/.workflows/plan/P1-NIN-A021.md
+  - **Drift**: No drift. Every line number and code block the phase-3 plan quoted matched the tree exactly: `lib/nina/edit.ts` was 347 lines with `canActOnMessage` at `:106` and `decideMessageActionSwipe` ending at `:347`; `edit.test.ts` had the import block at `:4-18` and the `canActOnMessage` describe closing at `:72`; `MessageBubble.tsx` had the import at `:7` and the start-ref/`onTouchEnd` block where the plan said.
+  - **Decided**: Step 3 (task creation) in a swarm where peers p1/p2 share this one worktree -> created ONLY phase 3's task, inline, instead of a subagent creating all four phases' tasks (rung 6 + tie-break "narrower blast radius": three concurrent sessions each writing all four entries into the same todos.md is a guaranteed collision; each peer records its own, and p1/p2 did exactly that in `lib/db` and `lib/admin`).
+  - **Decided**: TaskID mint -> `P1-NIN-A021`, the conventional next (rung 6). An earlier phase-offset id was revised on measurement: p1 minted `P1-DB-A003` and p2 minted `P1-ADM-B130` in their own packages, and p4 is gated behind phase 3, so the NIN counter has no concurrent minter.
+  - **Decided**: `npm run format` reflowed two lines in files owned by other phases (`components/nina/ChatScreen.tsx:393`, `lib/nina/actions.ts:1021`) -> left in place rather than reverse-applied (tie-break "take the reversible option" + "narrower blast radius": un-formatting would leave the tree prettier-dirty for every peer, and a reflow Prettier itself demands is semantically inert). Both are pure whitespace; peers warned.
+  - **Verified**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` exit 0; `npx vitest run lib/nina/edit.test.ts` 64 passed (20 new); `npx vitest run` 150 files / 3021 tests all passed; `npx prettier --check` clean on all three source files.
+  - **Handoff to phase 4**: `lib/nina/edit.ts` is now 532 lines with a `── the tap ──` section at its foot — append `canResendMessage` BELOW that section (D9), not at `:109`. `canActOnMessage` now takes `ActionableMessage`, not `EditTarget`; a full `EditTarget` still satisfies it structurally. `edit.test.ts`'s `./edit` import block is widened by five names (`BUBBLE_BODY_SELECTOR`, `BUBBLE_INTERACTIVE_SELECTOR`, `MESSAGE_ACTION_TAP_SLOP_PX`, `decideMessageActionTap`, `type MessageActionTapGesture`) — quote the post-phase-3 block, and append the new describe at the end of the file. `components/nina/ChatScreen.tsx` and `MessageActionsSheet.tsx` were touched by ZERO lines here, as promised.
+
+- [x] **P1-NIN-A020** Phase 4: Generated selfies caption from the scene she asked for
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `lib/nina/imagerun.ts` — `finishSelfie` captions from `args.scene` with **no vision call** (*"we wrote the picture, so paying a vision call to be told back our own prompt would be absurd"*) — plus its tests. Quotes `finishSelfie` as phase 2 leaves it (the insert already carrying `photoOnly: true`); the diff is the `body:` expression and one added import. Does not touch `lib/admin/*`, `scripts/nina-image-worker.ts` (the GitHub runner has no z.ai key and `lib/nina/imagefail.ts` may never import anything, so the worker keeps the canned line — a stated limit, not a surprise), or `lib/nina/caption.ts`. The caption fallback **is** `ninaImageCaption(jobId)`, so it degrades into phase 1's narrowed pool. Exit: a completed selfie job's bubble reads as a line about the scene she requested; a caption failure leaves the deterministic canned line, so the job still completes and the photograph still lands; `finishSelfie` still throws only for `insertNinaMessages` returning `[]`, never for a caption problem.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
+  - **Depends on**: P1-NIN-A019, P1-DB-A002
+  - **Plan**: `.workflows/plan/P1-NIN-A020.md`
+  - **Card**: `miftahulmahfuzh/run-insights#117`
+  - **Completed**: 2026-09-07 13:05
+  - **Method**: /implement (swarm phase 4 of 4)
+  - **Files**: lib/nina/imagerun.ts, tests/nina.imagerun.test.ts
+  - **Drift**: None in the source tree. The phase plan quoted `finishSelfie` exactly as phase 2 left it, `photoOnly: true` included. Two plan expectations resolved against the tree rather than as written: the suite the plan hoped to extend (`tests/nina.imageworker.test.ts`) covers the WORKER script's `finishSelfie(sql, job, image, result)`, a different function with a different signature, so a new `tests/nina.imagerun.test.ts` was created as the plan's own fallback instructed; and `tests/integration/**` is excluded from `npm test` by `vitest.config.ts`, so the integration suite could not be the home for these cases.
+  - **Decided**: `readNinaTuning` is wrapped in a `try` of its own, falling back to `NINA_TUNING_DEFAULTS`. It is a bare `db.select()` (`lib/nina/queries.ts:3098`) and can throw on a connection fault, and it is in `finishSelfie` ONLY to dress the caption — so its failure is a caption problem, and exit criterion 5 says a caption problem must never cost the photograph. The three reads above it are deliberately left bare: if the quote target or the session cannot be read there is no correct row to write, and failing is the honest outcome. Rung 2: the phase's exit criteria.
+  - **Decided**: "makes no vision call, ever" is asserted against the SOURCE of `lib/nina/imagerun.ts` (no `./vision` import, no `describeNinaImages` mention) rather than against a spy. A spy on a module this file never imports can only ever pass, so it would assert nothing; the real guarantee is that `lib/nina/vision.ts` is absent from the import graph, which is a fact about the text. `tests/nina.tuning.test.ts` reads its own subject's source for the same reason. Rung 6: surrounding convention, at the precedent file.
+  - **Decided**: Dropped a drafted test asserting that a THROWN `captionNinaPhoto` fails the job. It passed, but it would have encoded the wrong behaviour as correct — `captionNinaPhoto` is contractually non-throwing (its own top-level `try`), and the phase plan trusts that contract rather than defending against it, which is exactly why it says to wrap `readNinaTuning` *alone* rather than widen the function's failure surface. Rung 3: the phase plan's code blocks.
+  - **Notes**: Verified green at 147 files / 2910 tests, up from 146 / 2893 at 31a542e; 8 of the 17 new tests are this phase's and the other 9 are phase 3's uncommitted work, which shares this worktree. `npm run lint` reports 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched). The payload-boundary guard passes with `captionNinaPhoto` confined — phase 1 had already sanctioned `lib/nina/imagerun.ts` as a caller, so no guard edit was needed. Phase 2's INSERT comment in `scripts/nina-image-worker.ts` already states the canned caption is permanent on that host and why, so Step 3 needed nothing placed. `replaceChatPhotoAction` and `gateway.ts`'s empty `imageDescriptions` remain deliberately out of scope.
+
+- [x] **P1-NIN-A019** Phase 1: Her eyes for her own photo, and her voice for the caption
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: The caption engine, landing unwired. Owns `lib/nina/imagefail.ts` — splits the *pick pool* from the *historical set* so `ninaImageCaption` can no longer return `'ini gw abis lari tadi'` (the reported sentence), while `NINA_IMAGE_CAPTIONS` keeps all five members because database rows carry them and phase 2's legacy clause must still recognise them. Also owns `lib/nina/prompts/describe.ts` (`NINA_SELF_DESCRIBE_SYSTEM_PROMPT`, a witness for a photograph **of Nina** — the shipped prompt describes *the runner*), `lib/nina/vision.ts` (`describeNinaImages(refs, { subject })`, defaulting to `'runner'` so every existing caller is unchanged), new `lib/nina/prompts/caption.ts` (caption system prompt composed from `persona.ts`'s voice blocks, forced tool schema, pure parser/sanitiser), new `lib/nina/caption.ts` (`captionNinaPhoto`: one `glm-5.3` call → parse → `null`), a ninth `GUARDED_CALLS` entry in `scripts/check-llm-payload-boundary.mjs`, and `tests/nina.caption.test.ts` (new), `tests/nina.imagefail.test.ts`, `lib/nina/vision.test.ts`. Touches no writer — nothing calls `captionNinaPhoto` at the end of this phase, deliberately, so the engine is unit-tested before either wiring phase depends on it. Not `prompts/system.ts`, not `NINA_PROMPT_VERSION`, not `lib/admin/*`, not `lib/nina/imagerun.ts`, not `lib/nina/queries.ts`. Exit: `ninaImageCaption` cannot return a scene-asserting sentence for **any** seed (proved over the whole pool, not sampled); `captionNinaPhoto` returns a short lower-case line for a stubbed client and `null` for every failure shape (throw, `max_tokens`, no tool block, empty string, a line tripping `NEVER_SAY`) and never throws; `describeNinaImages(refs, { subject: 'self' })` sends the self prompt and the token floor still trips on the measured drop signature; the payload-boundary guard passes; the prompt snapshot is unchanged.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — A photo added to the Chat photos collection must arrive with a chat message that says something true about **that** photograph; R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
+  - **Plan**: `.workflows/plan/P1-NIN-A019.md`
+  - **Completed**: 2026-09-07 12:19
+  - **Method**: /do
+  - **Files**: lib/nina/imagefail.ts, lib/nina/prompts/describe.ts, lib/nina/prompts/caption.ts, lib/nina/caption.ts, lib/nina/vision.ts, lib/nina/vision.test.ts, tests/nina.caption.test.ts, tests/nina.imagefail.test.ts, scripts/check-llm-payload-boundary.mjs
+  - **Drift**: None in the source tree. The phase plan quoted every site accurately.
+  - **Decided**: sanitizeNinaCaption stripped wrapping quotes BEFORE markdown edges, so the plan's own test input `Caption: **"nih, dari bawah laut"**` kept its quotes and failed. Two of the phase plan's code blocks contradicted each other (the sanitiser's step order vs the test asserting bare text). Resolved by stripping quotes and markdown to a FIXED POINT via a new `stripEdgeDecoration` helper, since either wraps the other. Rung 3: the phase plan's code blocks. Relaxes no check, adds no scope.
+  - **Decided**: Wrote CONTROL_RE/INVISIBLE_RE as \u escape sequences and carried NO eslint-disable directive, matching lib/nina/title.ts:98 which records that a directive there is an unused-directive warning rather than a suppression. Rung 6: surrounding convention, stated at the precedent file.
 
 - [x] **P1-NIN-A013** Phase 1: Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
   - **Difficulty**: NORMAL

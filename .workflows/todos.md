@@ -2,17 +2,17 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-06
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-07
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 18
+- Completed: 21
 
 ---
 
@@ -21,6 +21,19 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [x] **P1-RI-A022** Phase 2: A tile you can tell apart: the admin icon set
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `tools/make_icon_assets.py`'s new `--deck {app,admin}` flag (the admin deck is the same composition in the DARK scheme's tokens), the committed masters `assets/icon/master-admin.png` and `master-admin-maskable.png`, the three new `public/icons/admin-icon-{192,512,maskable-512}.png`, the new 180² `app/admin/apple-icon.png` Safari draws on install, an appended `ADMIN_PWA_ICONS` in `lib/pwa.ts`, the one-line `PWA_ICONS` → `ADMIN_PWA_ICONS` swap in `app/admin/manifest.webmanifest/route.ts`, and icon assertions added inside phase 1's admin `describe` blocks in `tests/pwa.install.test.ts`. Does not touch the runner's five icon files, `assets/icon/master.png`, `master-maskable.png`, `silhouette.png`, `app/manifest.ts`, `app/layout.tsx`, `next.config.ts` or `tools/gen_app_icon.py`. Exit criteria: `python3 tools/make_icon_assets.py --deck app` reproduces the five runner PNGs byte for byte (`git status` clean for them) as the refactor's regression guard; `--deck admin` writes the five admin files; `/admin`'s `<head>` carries exactly one `<link rel="apple-touch-icon">` resolving to `app/admin/apple-icon.png`; the admin manifest advertises three admin icons, all on disk, all opaque, all square, all the size they claim; lint, typecheck, test and build all green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_HOME_SCREEN_SHORTCUT_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R1 — A home-screen tile that opens on `/admin`
+  - **Depends on**: `P1-RI-A021`
+  - **Plan**: `.workflows/plan/P1-RI-A022.md`
+  - **Card**: `miftahulmahfuzh/run-insights#110`
+  - **Completed**: 2026-09-07 12:20
+  - **Method**: /implement (swarm phase 2/2)
 
 - [x] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
@@ -50,6 +63,84 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A023** Phase 1: The composer: paint to the edge, take less room, frost the glass
+  - **Difficulty**: HARD
+  - **Type**: Update
+  - **Context**: Owns `lib/nina/chatview.ts` (`composerBottomCss` changes shape; a companion `composerPadBottomCss` is added beside it), `lib/nina/chatview.test.ts` (the `composerBottomCss` block — lines 218-256, the file's tail — asserts exact strings and must be rewritten, plus new cases for the companion), `components/nina/Composer.tsx` (**only lines 352-357** change: the fixed element's `bottom` + `padding-bottom` pair for R1, the inner `py-3` for R2, and the fill/blur/border for R3 — the reply strip, the tiles, the picker, the textarea and the send button are untouched), `lib/nina/chrome.ts` (`COMPOSER_RESTING_PX` 68 → 60, and `controlBottomCss`'s inset term gated on the bar variable, per Decisions D2), `lib/nina/chrome.test.ts` (`controlBottomCss`'s assertions follow), `components/nina/ChatScreen.tsx` (`COMPOSER_FALLBACK_PX`'s `68` literal → `60`, and it passes the new pad value to `Composer`), `components/ui/AppShell.tsx` (`BOTTOM_GAP.chat` `7.5rem` → `7rem`, with its arithmetic comment updated to the new sum), and `tests/tabbar.geometry.test.ts` (the file's last `it`, 188-196, asserts `composerBottomCss`'s exact return string, which D2 changes, so it goes red the moment Step 1 lands — one `expect` and one comment line; **added by the reconciler**, it was in neither phase's `Owns` list in the draft and phase 2 does not touch it). Does not touch `components/ui/TabBar.tsx`, `BOTTOM_GAP.tabs`, `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX`, `NINA_CHROME_CONTROL_CLASS` itself, anything under `app/admin`, or `lib/pwa.ts`. Exit criteria: with `--nina-bar-visible: 0` (the resting state) the composer's painted box reaches the bottom of the viewport — no unpainted `--safe-bottom` strip — and its content still sits above the home indicator; with `--nina-bar-visible: 1` the composer is still flush on the tab bar's top edge, no seam and no overlap; with the keyboard up, the composer sits on the keyboard's top edge with **no** extra inset padding; the floating `<` / `up` lane clears the composer's Send button in all three states; the composer's resting height is 60 px and all four sites in invariant 2 say so; the bar's fill, blur and saturation match `NINA_CHROME_CONTROL_CLASS`, and its top hairline reads at the same weight as the controls' ring; `npm run lint`, `npx tsc --noEmit`, `npx vitest run`, `npm run build` all pass.
+  - **Status**: completed
+  - **Plan Set**: `COMPOSER_FROST_AND_ADMIN_NOTCH_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1, R2, R3 — R1: Remove the gap between the chat query field and the bottom of the screen; R2: Make the query-field section take less vertical space; R3: Frosted-glass background, exactly like the small `<` and `up` buttons
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A023.md`
+  - **Card**: `miftahulmahfuzh/run-insights#133`
+  - **Completed**: 2026-09-07 22:13
+  - **Method**: /do (swarm phase 1/2)
+  - **Files**: lib/nina/chatview.ts, lib/nina/chatview.test.ts, lib/nina/chrome.ts, lib/nina/chrome.test.ts, components/nina/Composer.tsx, components/nina/ChatScreen.tsx, components/ui/AppShell.tsx, tests/tabbar.geometry.test.ts
+  - **Drift**: No code drift. Every line range and file length the plan quoted matched the tree exactly.
+  - **Drift**: `components/nina/ChatScreen.tsx` carries one hunk the plan never named: an `if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM) && !params.has(JOB_JUMP_PARAM))` at ~line 399 collapsed from 5 lines onto one 94-char line. It is a pre-existing prettier violation on `0d50b26`, fixed as a side effect of running `prettier --write` on the file to format this phase's own edits. Semantically identical — no behaviour change, no gate affected (exit criterion 7 lists lint/tsc/vitest/build, not `format:check`). Kept rather than hand-reverted: rung 6, the repo's own formatter is the convention, and the file is in this phase's Owns list. `lib/nina/chrome.test.ts`, the other file formatted, has no hunk outside the block the plan replaced.
+  - **Decided**: Step 3 in a live swarm: created phase 1's task only, not the whole set — the concurrent peer `impl-composer-frost-and-admin-notch-p2` mints its own. Tie-break: narrower blast radius; the two phases' packages are disjoint.
+  - **Decided**: Formatting: ran `npx prettier --write` on the two flagged files instead of the repo-wide `npm run format` — shared worktree with a live peer mid-edit. Tie-break: narrower blast radius.
+  - **Decided**: Unrelated pre-existing prettier collapse in `ChatScreen.tsx` (~399) — keep, not hand-revert (rung 6: the repo's formatter is the convention; the file is in this phase's Owns).
+  - **Verification**: `npx tsc --noEmit` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npx vitest run` 150 files / 3017 tests all passed; `npm run build` succeeded. By hand: all four sites of invariant 2 agree at 60px (`Composer.tsx` `px-5 py-2`, `COMPOSER_RESTING_PX = 60`, `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60`, `BOTTOM_GAP.chat` `pb-[calc(7rem+var(--safe-bottom))]`); all 14 emitted geometry strings executed and matched the plan's reference tables exactly.
+
+- [x] **P1-RI-A024** Phase 2: The `/admin` install's own status-bar tint
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns `lib/pwa.ts` (`ADMIN_INSTALL` gains `paperDark: '#162834'` — `--paper-2` dark, from `app/globals.css:81`; appends only, `INSTALL`, `APPLE_WEB_APP` and `ADMIN_PWA_ICONS` are not edited), `app/admin/layout.tsx` (a new `export const viewport: Viewport` carrying **only** `themeColor`, beside the existing `metadata` export, with the docstring that explains why only that one key — Decisions D7), and `tests/pwa.install.test.ts` (cases asserting the admin pair's two colours, that they differ from the root pair, and that `ADMIN_INSTALL.paper` still equals the admin manifest's `theme_color`). Does not touch the root `app/layout.tsx`, `app/manifest.ts`, `INSTALL`, `APPLE_WEB_APP.statusBarStyle`, `app/admin/manifest.webmanifest/route.ts`, or any file under `components/`. Exit criteria: `app/admin/layout.tsx` exports `viewport: Viewport` whose `themeColor` is a media-matched pair of `ADMIN_INSTALL.paper` (light) and `ADMIN_INSTALL.paperDark` (dark), written as constant names and not hex literals; that export has exactly one key, with `viewportFit`, `width`, `initialScale` and `colorScheme` absent from the object literal and no comments inside it, so `viewportFit: 'cover'` stays resolved for `/admin` by inheritance (invariant 6, D7); `ADMIN_INSTALL.paperDark === '#162834'`, `ADMIN_INSTALL.paper === '#f1f7fb'`, neither is `#ffffff` (D6), and both differ from the corresponding `INSTALL` value; the served admin manifest's `theme_color` and `background_color` are still `ADMIN_INSTALL.paper`; observed in a rendered head from a local production build, `/admin` carries two `theme-color` tags (`#f1f7fb` light, `#162834` dark) and zero carrying `#c9e9fb`, `/` still carries `#c9e9fb` and `#0e1b26`, and `/admin`'s `viewport` meta still ends in `viewport-fit=cover`; `APPLE_WEB_APP.statusBarStyle` is still `'default'` (D8); `npm run lint`, `npx tsc --noEmit`, `npx vitest run` and `npm run build` all pass.
+  - **Status**: completed
+  - **Plan Set**: `COMPOSER_FROST_AND_ADMIN_NOTCH_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R4 — On the `/admin` home-screen shortcut, the top notch band blends with the UI
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A024.md`
+  - **Card**: `miftahulmahfuzh/run-insights#134`
+  - **Completed**: 2026-09-07 22:11
+  - **Method**: /implement (swarm phase 2/2)
+  - **Files**: lib/pwa.ts, app/admin/layout.tsx, tests/pwa.install.test.ts
+  - **Drift**: `tests/pwa.install.test.ts` was already prettier-dirty at `0d50b26` in a slice this phase's steps never touch; that hunk is fixed as a side effect of formatting this phase's own edits. No code drift otherwise.
+  - **Decided**: This entry and the TaskID were written by the coordinator, not by the phase session. `/implement` Step 3 is a set-level act — it mints ids and fills the index's TaskID column for every phase — and phase 1 was concurrent in the same worktree, so a phase session doing it would author identifiers for a sibling it cannot see and race it on `todos.md`. Rung 6.
+  - **Decided**: TaskID is `P1-RI-A024`, **not** the `P1-RI-A020` that `todos.py mint RI` returns. `mint` fills the lowest hole rather than returning highest+1, and `A020` was spent by the `admin-home-screen-shortcut` set then pruned from `todos.md` when it landed — absent from the file, present in five commits under `git log -S`. Confirmed `A024` unspent across all history, every `todos.md` in the tree, and every live orchestration ledger before writing. Rung 6.
+  - **Decided**: `format:check` scoped to this phase's three files rather than repo-wide. Exit criterion 7 names it, but invariant 1 enumerates the gates as lint / `tsc --noEmit` / `vitest run` / build, and `prettier --check .` is red on `main` for 15 pre-existing files — two of them phase 1's live ones. Rung 1 (invariant over exit criterion); a repo-wide `npm run format` would have rewritten a peer's files mid-flight.
+  - **Decided**: `"white"` → `#f1f7fb`, not `#ffffff` (D6, unchanged). The request carries its own purpose clause — *"so it is kind of blend in with the UI"* — and pure white satisfies the adjective while failing the purpose: the admin shell's ground already is `#f1f7fb`.
+  - **Verification**: `npx vitest run tests/pwa.install.test.ts` — 40 passed (32 → 40, eight new cases). Full suite 149/150 files green at the time, the one red being `tests/tabbar.geometry.test.ts`, which is phase 1's by reconciliation row 1 and red exactly as its plan predicts. `npm run lint` 0 errors. Because the shared worktree carried phase 1's mid-sequence `tsc` error, typecheck and `npm run build` were verified green in an isolated worktree holding only these three files. Exit criterion 5 observed in a real rendered head from that isolated production build: `/admin` serves exactly two `theme-color` tags, `#f1f7fb` light and `#162834` dark, and zero carrying `#c9e9fb`; `/` still serves `#c9e9fb` and `#0e1b26`; `/admin`'s `viewport` meta still ends in `viewport-fit=cover`.
+
+- [x] **P1-RI-A019** Phase 1: Thread the current avatar into the chat's typing row
+  - **Difficulty**: EASY
+  - **Type**: Bug
+  - **Context**: Owns `components/nina/types.ts` (new `ChatAvatar` type), `components/nina/ChatScreen.tsx`, `components/nina/MessageList.tsx`, `components/nina/TypingIndicator.tsx`, `app/nina/page.tsx` (the `<ChatScreen>` call only), and the new `tests/nina.chatAvatar.test.ts`. Does not touch `components/nina/NinaAvatar.tsx`, `components/nina/NinaSidebar.tsx`, `components/nina/NinaAboutScreen.tsx`, `lib/nina/crop.ts`, `lib/nina/album.ts`, `lib/nina/queries.ts`, any schema or migration. Exit criteria: `TypingIndicator` renders `<NinaAvatar size="sm" src={…} natural={…} crop={…} />`; the triple originates at `ninaAvatarView(avatarRow)` in `app/nina/page.tsx` — the same call the sidebar already reads, so the 28 px circle and the 44 px circle cannot disagree; the prop is REQUIRED at every hop (`ChatScreen`, `MessageList`), so a future caller that forgets it is a type error and not a silent regression to the fallback; `tests/nina.chatAvatar.test.ts` passes and would fail if any hop were removed; `npx tsc --noEmit && npm run lint && npm test && npm run build` all green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHAT_AVATAR_PROFILE_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — The small circular avatar in chat must render the profile settings actually in force — the current album photo and its saved crop framing — not a hardcoded picture
+  - **Plan**: `.workflows/plan/P1-RI-A019.md`
+  - **Card**: `miftahulmahfuzh/run-insights#111`
+  - **Files**: components/nina/types.ts, components/nina/TypingIndicator.tsx, components/nina/MessageList.tsx, components/nina/ChatScreen.tsx, app/nina/page.tsx, tests/nina.chatAvatar.test.ts
+  - **Completed**: 2026-09-07 11:42
+  - **Method**: /implement (plan set phase 1 of 1, worktree `nina-chat-avatar-profile`)
+  - **Verification**: `npm run typecheck` exit 0; `npm run lint` 0 errors (the only 2 warnings are pre-existing in `scripts/capture/shoot.mjs`); `npm test` 148 files / 2884 tests passed; `npm run build` exit 0. All four run in this worktree.
+  - **VERIFIED BY MUTATION, not just by passing**: deleting `avatar={avatar}` from `MessageList`'s `<TypingIndicator>` call makes `tests/nina.chatAvatar.test.ts` fail 1/5; restoring it passes 5/5. That is exit criterion 4 — the suite would fail if any hop were removed — demonstrated rather than asserted.
+  - **What it fixes (R1)**: the 28 px circle beside the typing dots was `<NinaAvatar size="sm" />` with no `src`, no `natural`, no `crop`, so it always rendered the committed `public/nina/avatar-001.png` through `NinaAvatar`'s `isFallback` branch and `ninaCropStyle` was never called for it. It ignored both the current album photo and the framing saved in the crop studio, while the 44 px sidebar circle honoured both.
+  - **The fix**: thread the already-resolved `{ src, natural, crop }` triple four hops — `app/nina/page.tsx:259`'s existing `const avatar = ninaAvatarView(avatarRow)`, the same value `<NinaSidebar>` reads, into `ChatScreen` -> `MessageList` -> `TypingIndicator` -> `NinaAvatar`. New exported `ChatAvatar` interface in `components/nina/types.ts`; required at `ChatScreen` and `MessageList`, optional at `TypingIndicator` which is `aria-hidden` decoration. No new query and no new await (invariant 1); `description` never crosses into a client component, the call site destructures field by field (invariants 2 and 5); the no-album case still renders `/nina/avatar-001.png` centred cover unchanged (invariant 3).
+  - **Decided**: the plan's Step 2 docstring quotes the defect verbatim (`<NinaAvatar size="sm" />`) while its Step 6 test forbids that exact string anywhere in the file — two rung-3 code blocks contradicting each other. Kept both: a `jsxOf()` helper in the test strips block comments before the two `not.toMatch` JSX-shape assertions. Resolved at rung 2, the phase's exit criteria: the test must pass AND still fail if a hop is removed.
+  - **Drift**: no code drift — every anchor the phase plan quoted matched the tree byte for byte.
+  - **Drift**: the worktree had no `node_modules`; `npm ci` was run so the plan's verification block could execute. `.env.local` was already present.
+
+- [x] **P1-RI-A021** Phase 1: The second manifest: `/admin` starts at `/admin`
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/pwa.ts` (appends `ADMIN_INSTALL` beside `INSTALL`, append-only), the new `app/admin/manifest.webmanifest/route.ts` — the manifest itself plus the docstring that answers R2 — `app/admin/layout.tsx`'s existing `metadata` export (adds `manifest` and `appleWebApp`), and two appended `describe` blocks in `tests/pwa.install.test.ts`. Does not touch `app/manifest.ts`, `app/layout.tsx`, anything under `public/`, `app/icon.png`, `app/apple-icon.png`, `tools/`, `next.config.ts`, `proxy.ts`, `AdminNav`, or any admin page. Exit criteria: `GET /admin/manifest.webmanifest` → `200`, `Content-Type: application/manifest+json`, `start_url: "/admin"`, `id: "/admin"`, `scope: "/"`, `display: "standalone"`; `/admin`'s `<head>` carries `<link rel="manifest" href="/admin/manifest.webmanifest">` and no link to `/manifest.webmanifest`; `/`'s `<head>` unchanged; `git diff --stat` names exactly those four files; lint, typecheck, test and build all green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_HOME_SCREEN_SHORTCUT_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1, R2 — A home-screen tile that opens on `/admin`; An answer to "should i buy a new domain, and put /admin into that new domain?"
+  - **Plan**: `.workflows/plan/P1-RI-A021.md`
+  - **Card**: `miftahulmahfuzh/run-insights#109`
+  - **Completed**: 2026-09-07 09:33
+  - **Method**: /do
+  - **Files**: lib/pwa.ts, app/admin/manifest.webmanifest/route.ts, app/admin/layout.tsx, tests/pwa.install.test.ts
+  - **Drift**: No code drift — every line of `lib/pwa.ts`, `app/admin/layout.tsx` and `tests/pwa.install.test.ts` quoted by the plan matched the tree exactly; all three edits are pure appends (`git diff` removes zero lines from `lib/pwa.ts`, and only the old metadata block's closing brace in `app/admin/layout.tsx`).
+    Environment, not drift: `node_modules` was absent in this fresh worktree, so `npm ci` ran before verification. `.env.local` was already present (written by /analyze for this worktree).
+    Environment, not drift: port 3000 on this machine is held by an unrelated service that 302s everything to `/login`. The first round of curl probes hit that stranger and was discarded; the real production server was started on `PORT=3457` and every exit criterion re-checked against it.
+    Expected, not a regression: `GET /admin` returns 500 against the placeholder `DATABASE_URL` because the admin page's `select count(*) from nina_avatars` cannot reach a Neon host. The admin LAYOUT still rendered its complete `<head>` — the only part this phase changes — so every head assertion was verifiable. `GET /` returns 200.
+  - **Verification**: `npm run lint` 0 errors (2 pre-existing warnings in the unrelated `scripts/capture/shoot.mjs`); `npm run typecheck` clean; `npm test -- tests/pwa.install.test.ts` 26 passed; full `npm test` 145 files / 2846 tests all passed; `npm run build` success with `/admin/manifest.webmanifest` prerendered as ○ (Static), matching `/manifest.webmanifest`. Against a real production server on `:3457`: `GET /admin/manifest.webmanifest` → 200, `content-type: application/manifest+json`, body `id=/admin start_url=/admin scope=/ display=standalone orientation=any short_name='RI Admin' background_color=#f1f7fb`; `/admin`'s head carries exactly one manifest link, `/admin/manifest.webmanifest`, and none to `/manifest.webmanifest`; `/admin` emits `apple-mobile-web-app-title=RI Admin` alongside BOTH `mobile-web-app-capable=yes` and `apple-mobile-web-app-capable=yes` plus `status-bar-style=default`, proving the `...APPLE_WEB_APP` spread preserved `capable` and `statusBarStyle`; `/`'s head unchanged. Invariant 1 checked mechanically: `git diff --name-only` over `app/manifest.ts`, `app/layout.tsx`, `public/`, `app/icon.png`, `app/apple-icon.png`, `tools/`, `next.config.ts` and `proxy.ts` is empty. Not machine-checkable, left to the phone: Add to Home Screen from `/admin` must launch `/admin` full-screen — it will wear the RUNNER’s icon under the label “RI Admin”, which is phase 1 working correctly; phase 2 changes the art. An older tile installed before this change must be deleted first, because iOS caches a manifest per install.
 
 - [x] **P1-RI-A018** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
   - **Difficulty**: NORMAL

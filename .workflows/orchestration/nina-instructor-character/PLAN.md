@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-instructor-character`
 **Branch:** `feature/nina-instructor-character` (base: `origin/main` @ `f839116`)
 **Phases:** 3
-**Status:** in progress
+**Status:** landed — merged to `main` @ `04dda1a`, 2026-09-07
 **Reconciled:** yes — three phase plans reconciled in one round; see **Reconciliation Log**
 **Baseline suite:** green on this branch at **145 test files, 2834 tests**. Every phase's exit
 criteria are measured against that number: the file count stays 145 (no phase creates a test file)

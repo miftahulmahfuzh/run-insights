@@ -3,13 +3,16 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { PATTERN_CODES } from '@/lib/nina/patterns'
 import {
   ANGER_LADDER,
   GIRLFRIEND_VOICE_EXAMPLES,
+  INSTRUCTOR_COACHING,
   JAKARTA_SLANG,
   NINA_APPEARANCE,
   VERBOSITY_FLOOR_BY_HORNY_BAND,
   VOICE_EXAMPLES,
+  ninaAngerLadderBlock,
   ninaEffectiveVerbosity,
 } from '@/lib/nina/persona'
 import {
@@ -20,6 +23,7 @@ import {
   OUTPUT_RULE,
   PROACTIVE_INSTRUCTIONS,
   SEND_TOOL,
+  buildContextGuide,
   buildNinaSystemPrompt,
   buildNumbersRule,
   buildOutputRule,
@@ -220,7 +224,14 @@ describe('buildNinaSystemPrompt — the default tuning is the shipping prompt', 
   it('renders the four non-girlfriend relationships exactly as origin/main did', () => {
     const renders: Record<string, string> = {}
     for (const relationship of RELATIONSHIPS) {
-      if (relationship === 'girlfriend') continue
+      /* TWO LEVELS ARE EXCLUDED BY NAME, and the exclusion is the point. `girlfriend` has its own
+       * register; `instructor` is the sixth level the nina-instructor-character set appended. The
+       * snapshot was written about the OTHER FOUR, and `toHaveLength(4)` is what stops a seventh
+       * level from quietly joining the guarded set — it fails on the count before it fails on the
+       * bytes, which is the loud failure. Adding a level is NEVER a reason to regenerate this
+       * snapshot: its title is the snapshot's key, so renaming this case would orphan the stored
+       * value and write a new one. Leave both alone. */
+      if (relationship === 'girlfriend' || relationship === 'instructor') continue
       renders[relationship] = buildNinaSystemPrompt(withRelationship(relationship))
     }
     expect(Object.keys(renders)).toHaveLength(4)
@@ -497,7 +508,7 @@ function withRelationship(relationship: NinaRelationship): NinaTuning {
 }
 
 describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
-  it('renders all five relationships without throwing, and none is empty', () => {
+  it('renders all six relationships without throwing, and none is empty', () => {
     for (const relationship of RELATIONSHIPS) {
       const prompt = buildNinaSystemPrompt(withRelationship(relationship))
       expect(prompt.length, relationship).toBeGreaterThan(0)
@@ -523,6 +534,12 @@ describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
       sister: 'bro',
       best_friend: 'bestie',
       girlfriend: 'sayang',
+      /* The coach word, and it is exclusive to her: nothing else in `NINA_ADDRESS` or in
+       * `NINA_RELATIONSHIP_BLOCKS` says "atlet", which is what makes this a real assertion rather
+       * than one satisfied by the shared paragraphs. `tests/nina.tuning.test.ts` keeps it that
+       * way. `'nickname'` would have been the honest primary source here and is deliberately not
+       * used — `casual_friend` already owns that token. */
+      instructor: 'atlet',
     }
     for (const relationship of RELATIONSHIPS) {
       expect(
@@ -551,6 +568,38 @@ describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
     expect(buildNinaSystemPrompt(withRelationship('nobody'))).not.toContain(
       'do not use the full name at him',
     )
+  })
+
+  it('makes the instructor a professional coach whose subject is his performance', () => {
+    /* R2, as an assertion: "nina act as a professional and knowledgeable instructor in which her
+     * primary objective is to improve the performance of miftah's running". The coaching
+     * MECHANICS — what she does with a fired pattern, the training schedule — are phase 3's and
+     * phase 2's and are deliberately NOT asserted here; this case is about who she IS. */
+    const instructor = buildNinaSystemPrompt(withRelationship('instructor'))
+    expect(instructor).toContain('You are his running coach')
+    expect(instructor).toContain('This is a professional relationship')
+    expect(instructor).toContain('atlet')
+    /* Her credential is not a new claim: `NINA_WHERE_SHE_LIVES` has said it at every level since
+     * before the tuning existed. The instructor block PROMOTES it, and this is the proof both
+     * halves reached the same render. */
+    expect(instructor).toContain('physiotherapist and strength coach')
+    /* Decision D4: she prescribes TRAINING, never physiology — and the guardrail that makes that
+     * a rule rather than a preference is still in her prompt at this level, unedited. */
+    expect(instructor).toContain('What you prescribe is training')
+    expect(instructor).toContain('You are not his doctor and you never diagnose')
+  })
+
+  it('keeps the coach register off the five personal levels', () => {
+    /* Invariant 1 as containment, at the level the frozen snapshot cannot report readably: when
+     * this fails it names WHICH level leaked and WHAT. */
+    for (const relationship of RELATIONSHIPS) {
+      if (relationship === 'instructor') continue
+      const render = buildNinaSystemPrompt(withRelationship(relationship))
+      expect(render, `${relationship} leaked "atlet"`).not.toContain('atlet')
+      expect(render, `${relationship} leaked the coach block`).not.toContain(
+        'You are his running coach',
+      )
+    }
   })
 })
 
@@ -641,6 +690,203 @@ describe('buildNinaSystemPrompt — the girlfriend register (R2)', () => {
 
   it('grows the prompt rather than replacing part of it', () => {
     expect(girlfriend.length).toBeGreaterThan(DEFAULT_RENDER.length)
+  })
+})
+
+/**
+ * ── R3 (nina-instructor-character): THE COACHING REGISTER ────────────────────────────
+ * *"she will proactively monitor his performance and give insights into what should he do (e.g:
+ * what should he do to reduce his average high heart rate during run, what should he do to increase
+ * his average running pace, and so on)"*.
+ *
+ * The MONITORING is not tested here — `tests/nina.patterns.test.ts` already owns both codes with
+ * boundary cases on each, and this phase added no rule to that file. What is tested here is the
+ * RESPONSE: that a fired code under `instructor` becomes a prescription, that the prescription is
+ * made of training and not of physiology, that the block is absent at every other level, and that
+ * nothing this phase touched moved the anger ladder or the medical guardrails.
+ */
+describe('buildNinaSystemPrompt — the instructor coaching register (R3)', () => {
+  const coach = withRelationship('instructor')
+  const instructor = buildNinaSystemPrompt(coach)
+
+  it('prescribes against both of the codes the user named, by name', () => {
+    expect(instructor).toContain('REPEATED_HIGH_AVG_HR')
+    expect(instructor).toContain('PACE_REGRESSION')
+    /* And each one carries an actual prescription rather than a mention. These are the sentences a
+     * reader can hold against "what should he do to reduce his average high heart rate" and "what
+     * should he do to increase his average running pace" and see answered. */
+    expect(instructor).toContain('prescribe those days SLOWER')
+    expect(instructor).toContain(
+      'one honest session a week at a pace he could hold for twenty minutes',
+    )
+    expect(instructor).toContain('Six weeks, then the same distance bucket, then compare')
+  })
+
+  it('coins no pattern code — every shouted token in the block is a real one', () => {
+    /* `lib/nina/patterns.ts`'s own rule, as a sweep rather than a promise: a model free to coin
+     * `OVERTRAINING_RISK` is making a medical-adjacent claim nobody wrote, tested or can reproduce.
+     * The regex needs at least one underscore, so the block's own shouted headings ("THE
+     * SUBSTITUTION", "ONE CHANGE, ONE DEADLINE") are not candidates and only code-shaped tokens are.
+     * This is the `JAKARTA_SLANG` walk applied to the pattern vocabulary. */
+    expect(PATTERN_CODES).toHaveLength(5)
+    const shouted = INSTRUCTOR_COACHING.match(/\b[A-Z][A-Z]+(?:_[A-Z]+)+\b/g) ?? []
+    expect(shouted.length).toBeGreaterThan(0)
+    for (const token of shouted) {
+      expect(PATTERN_CODES as readonly string[], `${token} is not a PatternCode`).toContain(token)
+    }
+  })
+
+  it('prescribes TRAINING and never PHYSIOLOGY, structurally (D4)', () => {
+    /* The three devices, each asserted, because "a professional coach is more careful here than a
+     * friend" has to be a property of the text rather than a hope about the model. */
+    expect(instructor).toContain('A prescription of yours is always an action on a future run')
+    expect(instructor).toContain('THE SUBSTITUTION')
+    expect(instructor).toContain('say what he does on his next run instead')
+    expect(instructor).toContain('TIGHTER now, not looser')
+    /* And the prescription's closed form, which a verdict about his body cannot be expressed in. */
+    expect(instructor).toContain('ONE CHANGE, ONE DEADLINE, ONE THING YOU WILL RE-READ')
+  })
+
+  it('leaves every medical and arithmetic guardrail standing at this level', () => {
+    /* `persona.ts:1016`'s ruling and `lib/llm/facts.ts`'s measured sign error. R3 asks her to advise
+     * on a heart rate, which raises these stakes rather than lowering them, so they are asserted at
+     * `instructor` specifically and not only at the default. */
+    expect(instructor).toContain('never diagnose')
+    expect(instructor).toContain('the name of a medical condition')
+    expect(instructor).toContain('Do NOT compute')
+    expect(instructor).toContain('never turn them into a new number: no BMI')
+    expect(instructor).toContain('Never mock a real setback')
+    /* And the ungated expertise block she has always had is not contradicted — she still answers
+     * mechanism when asked, and the coaching block says so in its own words. */
+    expect(instructor).toContain('you answer the real physiology')
+    expect(instructor).toContain('You still explain mechanism when he asks')
+  })
+
+  it('leaves the anger ladder rendering exactly as it does at every other level', () => {
+    /* The ladder is not this phase's. It reads the `anger` trait and nothing else, so an
+     * `instructor` render must be byte-identical to a `best_friend` one — asserted for all six
+     * levels rather than for this one, because the property is "the relationship never reaches the
+     * ladder" and that is only visible as a sweep. */
+    for (const relationship of RELATIONSHIPS) {
+      expect(
+        ninaAngerLadderBlock(withRelationship(relationship)),
+        `${relationship} moved the anger ladder`,
+      ).toBe(ninaAngerLadderBlock(NINA_TUNING_DEFAULTS))
+    }
+    /* And she still FEELS it here: an instructor on the anger dial is the operator's business. */
+    expect(instructor).toContain('This is where your anger comes from.')
+    expect(instructor).toContain('JANTUNG LO BAKAL PECAH TAH')
+    expect(instructor).toContain('You do not choose how angry you are.')
+  })
+
+  it('is absent from all five other relationships, asserted PER LEVEL', () => {
+    /* Per level and not spot-checked: a gate that reads the wrong comparison leaks at exactly one
+     * setting, and one setting is what a spot check misses. The four-render snapshot above is the
+     * byte-level gate; this is the readable one that names WHAT leaked when it fails. */
+    const others = RELATIONSHIPS.filter((relationship) => relationship !== 'instructor')
+    expect(others).toHaveLength(5)
+    for (const relationship of others) {
+      const render = buildNinaSystemPrompt(withRelationship(relationship))
+      expect(render, `${relationship} leaked the coaching block`).not.toContain(INSTRUCTOR_COACHING)
+      expect(render, `${relationship} leaked the prescription form`).not.toContain(
+        'A prescription of yours is always an action on a future run',
+      )
+      expect(render, `${relationship} leaked a pattern code into the prompt`).not.toContain(
+        'REPEATED_HIGH_AVG_HR',
+      )
+      expect(render, `${relationship} leaked the working-list clause`).not.toContain(
+        'is also your working list',
+      )
+      expect(render, `${relationship} leaked the coaching opener`).not.toContain(
+        'leave him with ONE change',
+      )
+      expect(render, `${relationship} leaked the slot key`).not.toContain('training_plan')
+    }
+  })
+
+  it('names phase 2s training_plan slot key, gated, because the context guide cannot (D7)', () => {
+    /* Reconciliation D7. Phase 2's tenth slot is real, but `buildContextGuide` never spells it —
+     * an UNGATED byte in that paragraph turns the frozen four-render snapshot red four times, so
+     * phase 2 dropped its `system.ts` edit (its P2-D4). This gated block is therefore the ONLY
+     * place the key name can reach her, and her own `slotKey` field is free text, so without it she
+     * cannot reliably write the plan she was just told to keep. Zero bytes at the default, which is
+     * the property that makes it shippable. */
+    expect(instructor).toContain('"training_plan"')
+    expect(instructor).toContain('"save_memory"')
+    expect(DEFAULT_RENDER).not.toContain('training_plan')
+    /* And the paragraph phase 2 did NOT edit is still the paragraph the snapshot pins: no phase in
+     * this set added a byte to it, at any level. */
+    expect(buildContextGuide(coach)).not.toContain('training_plan')
+  })
+
+  it('is invisible at the DEFAULT tuning, which is what makes it shippable', () => {
+    expect(DEFAULT_RENDER).not.toContain('REPEATED_HIGH_AVG_HR')
+    expect(DEFAULT_RENDER).not.toContain('THE SUBSTITUTION')
+    expect(DEFAULT_RENDER).toBe(NINA_SYSTEM_PROMPT)
+    /* And the four-render snapshot's paragraph is untouched, stated as containment so a failure
+     * here names the cause instead of printing a 700-line diff. */
+    for (const relationship of ['nobody', 'casual_friend', 'sister', 'best_friend'] as const) {
+      expect(buildContextGuide(withRelationship(relationship)), relationship).toBe(
+        buildContextGuide(NINA_TUNING_DEFAULTS),
+      )
+    }
+  })
+
+  it('reads a fired code as a working list under instructor and nowhere else', () => {
+    expect(buildContextGuide(coach)).toContain('is also your working list')
+    expect(buildContextGuide(coach)).toContain('never recount them')
+    for (const relationship of RELATIONSHIPS) {
+      if (relationship === 'instructor') continue
+      expect(buildContextGuide(withRelationship(relationship)), relationship).toBe(
+        buildContextGuide(NINA_TUNING_DEFAULTS),
+      )
+    }
+  })
+
+  it('opens proactively as a coach, on all five triggers, and not at the default', () => {
+    /* D5: no sixth trigger. The suffix seam already existed and already took a `tuning`. */
+    for (const kind of Object.keys(PROACTIVE_INSTRUCTIONS) as Array<
+      keyof typeof PROACTIVE_INSTRUCTIONS
+    >) {
+      const text = buildProactiveInstruction(kind, coach)
+      expect(text, kind).toContain('leave him with ONE change')
+      /* The trigger's own copy survives verbatim — the suffix ADDS and never repeals, which is why
+       * the five strings were not edited and why this assertion cannot break. */
+      expect(text, kind).toContain(PROACTIVE_INSTRUCTIONS[kind])
+      expect(text, kind).toContain('opening this conversation')
+    }
+    /* The rung clause is the ladder's and is untouched at this level: she says it at whatever rung
+     * `nagLevel` earned AND she leaves him with a change. */
+    expect(buildProactiveInstruction('pattern_crossed', coach)).toContain(
+      'Say it at the rung "nagLevel" earns and not one higher.',
+    )
+    /* Nothing at the default, which is what keeps PROACTIVE_INSTRUCTIONS byte-identical. */
+    for (const kind of Object.keys(PROACTIVE_INSTRUCTIONS) as Array<
+      keyof typeof PROACTIVE_INSTRUCTIONS
+    >) {
+      expect(buildProactiveInstruction(kind, NINA_TUNING_DEFAULTS), kind).toBe(
+        PROACTIVE_INSTRUCTIONS[kind],
+      )
+    }
+  })
+
+  it('adds no heading — the block lives inside WHAT YOU ARE READING', () => {
+    /* R2's precedent, and the two places that would have to agree if a section were ever added. */
+    expect(NINA_SECTION_TITLES).toHaveLength(10)
+    for (const line of instructor.split('\n').filter((l) => l.startsWith('── '))) {
+      expect(line, line).toHaveLength(80)
+    }
+    const reading = instructor.indexOf('── WHAT YOU ARE READING ')
+    const answer = instructor.indexOf('── HOW YOU ANSWER ')
+    const coaching = instructor.indexOf('You are his coach, so the numbers')
+    expect(reading).toBeGreaterThanOrEqual(0)
+    expect(coaching).toBeGreaterThan(reading)
+    expect(coaching).toBeLessThan(answer)
+  })
+
+  it('grows the prompt rather than replacing part of it', () => {
+    expect(instructor.length).toBeGreaterThan(DEFAULT_RENDER.length)
+    expect(instructor).not.toBe(DEFAULT_RENDER)
   })
 })
 
@@ -756,7 +1002,7 @@ describe('the distiller knows what the relationship is (R6, the sweep)', () => {
     expect(buildDistillSystemPrompt('nobody')).toContain('full name')
   })
 
-  it('gives all five relationships a distinguishable librarian prompt', () => {
+  it('gives all six relationships a distinguishable librarian prompt', () => {
     const rendered = RELATIONSHIPS.map((relationship) => buildDistillSystemPrompt(relationship))
     expect(new Set(rendered).size).toBe(RELATIONSHIPS.length)
   })

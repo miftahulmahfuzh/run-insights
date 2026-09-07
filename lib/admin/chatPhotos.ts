@@ -158,6 +158,28 @@ export const ADMIN_CHAT_PHOTO_MAX_EDGE_PX = 12_000
 /** Longest URL any store produces, with room. A bound is cheaper than a `text` column overflow. */
 export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
 
+/**
+ * **How long a hand-written "what she can see in it" may be.** 2000 characters.
+ *
+ * MEASURED against production 2026-09-07, not chosen. `nina_message_images` holds three described
+ * rows, at 85 / 362 / 461 characters (mean 303); `nina_avatars` holds thirteen, mean 415, max 550.
+ * Every description in the store today is under 40% of this.
+ *
+ * The ceiling above the measurement is the VENDOR's, and it is a hard one:
+ * `NINA_DESCRIBE_SYSTEM_PROMPT` asks for "60 to 140 words. One paragraph" (~1000 characters) and
+ * `NINA_DESCRIBE_MAX_TOKENS` (500) caps the completion, which at this repo's own
+ * `NINA_DESCRIBE_CHARS_PER_TOKEN = 3` is 1500 characters the describe pass can never exceed. So
+ * 2000 lets an operator say MORE than `glm-4.6v` ever could — without inventing a new size for this
+ * surface, because `NINA_NOTES_MAX` is also 2000 for the reason given at its declaration:
+ * "roughly a screen of notes … small enough that it cannot drown the canon it is appended to."
+ *
+ * It is not decoration. `lib/nina/actions.ts:634-637` puts this string into
+ * `NinaBackgroundTurnInput.imageDescriptions` verbatim, so it is prompt text paid for on every turn
+ * that carries the photograph — ~670 tokens at the conversion above, against the ~150 a real row
+ * costs today.
+ */
+export const ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000
+
 /** `nina/<userId>/selfie-<id>.jpg` — what the client asks for. Blob appends its own suffix. */
 export function adminChatPhotoPathname(userId: string, id: string): string {
   return `${NINA_BLOB_PREFIX}${userId}/${ADMIN_CHAT_PHOTO_PURPOSE}-${id}.${ADMIN_CHAT_PHOTO_EXT}`
@@ -253,26 +275,44 @@ export function blobUrlMatchesPathname(blobUrl: string, pathname: string): boole
  * **Does this message exist ONLY to carry a photograph?** The whole of the empty-bubble rule.
  *
  * `finishSelfie`'s message is *"not a special kind of message"* — an ordinary `nina_messages` row
- * whose text is one of five canned captions — so removing its last image would leave a caption
- * bubble with no picture in the runner's chat, forever. This predicate is what lets
- * `removeChatPhotoAction` delete the message too.
+ * that exists to deliver a picture — so removing its last image would leave a caption bubble with
+ * no picture in the runner's chat, forever. This predicate is what lets `removeChatPhotoAction`
+ * delete the message too.
  *
  * TWO clauses, and both are load-bearing:
  *
  *   · `role === 'nina'` protects HIS message. The R26 re-attach path
  *     (`lib/nina/actions.ts:518-530`) writes a `kind = 'generated'` image row onto a `role =
  *     'runner'` message that carries his own words. That message is his; only the image row goes.
- *   · the caption test protects HER words. `NINA_IMAGE_CAPTIONS` is a closed five-string array;
- *     `finishSelfie` and `addChatPhotoAction` both draw from it through `pickLine`, so the rule
- *     recognises both writers exactly. `role === 'nina'` ALONE would delete a real sentence of hers
- *     the day some later path attaches a photograph to one.
+ *   · `photoOnly` protects HER words — and it is a fact about the row now, not a guess about its
+ *     text. Every writer of a photo bubble sets it: `addChatPhotoAction`, `finishSelfie`, and
+ *     `scripts/nina-image-worker.ts`.
  *
- * The parameter is structural (`{ role, body }`) rather than `NinaMessageRow`, so this module stays
- * free of `lib/nina/queries.ts` and remains importable from a browser bundle and from the suite.
- * `body` is the DTO spelling of the `text` column (RULING A1).
+ * ── THE CAPTION TEST IS STILL HERE, AS A LEGACY CLAUSE, AND IT IS NOT DEAD CODE ─────────────
+ * It used to be the whole rule: *"`NINA_IMAGE_CAPTIONS` is a closed five-string array;
+ * `finishSelfie` and `addChatPhotoAction` both draw from it through `pickLine`, so the rule
+ * recognises both writers exactly."* That stopped being true the moment a caption could be written
+ * by a model, which is why the marker exists. But every row written **before** migration 0008 has
+ * `photo_only = false` on it unless the backfill reached it, and a backfill run against a database
+ * is not a guarantee about a database restored from an older dump. The clause costs one array scan
+ * over five short strings and it is the difference between an old bubble being removable and not.
+ *
+ * It is safe in a way it was not before: a free-text caption can never collide with the array,
+ * because `NINA_IMAGE_CAPTIONS` is now closed by definition — `lib/nina/imagefail.ts` documents it
+ * as a historical set that must not grow, and `ninaImageCaption` draws from a subset.
+ *
+ * The parameter stays structural so this module keeps out of `lib/nina/queries.ts` and remains
+ * importable from a browser bundle and from the suite. `body` is the DTO spelling of the `text`
+ * column (RULING A1); `photoOnly` is optional so a caller holding a row from before this column
+ * existed — or a test fixture written by hand — still typechecks and lands on the legacy clause.
  */
-export function isNinaPhotoCarrierMessage(message: { role: string; body: string }): boolean {
-  return message.role === 'nina' && NINA_IMAGE_CAPTIONS.includes(message.body)
+export function isNinaPhotoCarrierMessage(message: {
+  role: string
+  body: string
+  photoOnly?: boolean
+}): boolean {
+  if (message.role !== 'nina') return false
+  return message.photoOnly === true || NINA_IMAGE_CAPTIONS.includes(message.body)
 }
 
 /** One shape for all three actions, so the client has one branch and no `unknown`. */

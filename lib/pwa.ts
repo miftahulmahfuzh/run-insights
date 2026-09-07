@@ -68,6 +68,103 @@ export const INSTALL = {
 } as const
 
 /**
+ * The SECOND install contract: `/admin`, installed as its own home-screen app.
+ *
+ * ── WHY A SECOND ONE AND NOT A FIELD ON THE FIRST ──────────────────────────────────────────────
+ * Because a manifest describes ONE app. `start_url` is a single value, and it is the value Safari
+ * launches an installed tile from — so an app that starts at `/` and an app that starts at
+ * `/admin` are two manifests or they are one app. See `app/admin/manifest.webmanifest/route.ts`,
+ * which is the whole of the second one.
+ *
+ * ── WHAT DIFFERS FROM `INSTALL`, AND WHY EACH ONE DIFFERS ──────────────────────────────────────
+ * `shortName` is 8 characters and not a suffix of "Run Insights", because that string is already
+ * exactly the ~12-character ceiling iOS truncates at (see `INSTALL`) and there is no room to add
+ * to it. Two tiles whose labels both read "Run Insigh…" would be a worse outcome than no second
+ * tile at all.
+ *
+ * `paper` is `--paper-2` and not `--paper`: it becomes the admin manifest's `background_color`,
+ * which paints the launch splash, and `/admin`'s shell is `bg-paper-2` (`app/admin/layout.tsx`).
+ * `INSTALL`'s note applies unchanged — this is the APP's ground colour, not the icon's background,
+ * so it has to match the screen the app opens onto. **Phase 2's admin TILE is drawn on the dark
+ * scheme's `--paper` and that is not a contradiction**: the tile is the thing you tap, the splash
+ * is the frame you land in, and they are answering different questions.
+ *
+ * ── `paperDark`: THE DARK HALF, AND IT HAS EXACTLY ONE CONSUMER ────────────────────────────
+ * `--paper-2`, dark (`app/globals.css:81`, mirrored at `docs/design/tokens.css:77`). It exists for
+ * the media-matched `themeColor` pair in `app/admin/layout.tsx`'s `viewport` export and for
+ * nothing else, because that pair is the only surface in this app that can follow the colour
+ * scheme. The admin MANIFEST cannot take it — a manifest carries a single `theme_color` — so
+ * `app/admin/manifest.webmanifest/route.ts` spends `paper` on the splash and the dark value is
+ * reachable only through the layout.
+ *
+ * ── WHAT IT FIXES, AND WHAT WAS VERIFIED BEFORE IT WAS ADDED ─────────────────────────────
+ * The report: *"make sure batas atas di xs max top notch is white, so it is kind of blend in with
+ * the UI"*. Before this key existed `app/admin/layout.tsx` exported no `viewport` at all, so the
+ * ROOT layout's pair was still the resolved `themeColor` for `/admin` and an installed tile opened
+ * with an `INSTALL.paper` (`#c9e9fb`) band sitting on an `#f1f7fb` page.
+ *
+ * This key was previously absent on the stated grounds that a nested `viewport` export might
+ * REPLACE the resolved parent object rather than merge into it — which would have cost `/admin`
+ * its `viewportFit: 'cover'` and made all four `env(safe-area-inset-*)` paddings in that shell
+ * inert. That was the right call while it was unverified, and it has now been settled by reading
+ * the framework: `node_modules/next/dist/lib/metadata/resolve-metadata.js:315`, `mergeViewport`,
+ * opens `const newResolvedViewport = structuredClone(resolvedViewport)` and then walks
+ * `for(const key_ in viewport)`, so a key the child OMITS is inherited untouched. A nested
+ * `viewport: { themeColor: [...] }` overrides `themeColor` and nothing else. Next's own
+ * `generate-viewport.md` does not document that rule anywhere; only the source does.
+ *
+ * ── NOT `#ffffff`, THOUGH THE REPORT SAID "white" ──────────────────────────────────────────
+ * The request carries its own purpose clause — *"so it is kind of blend in with the UI"* — and
+ * pure white satisfies the adjective while failing the purpose: the admin shell's ground IS
+ * `#f1f7fb`, so `#ffffff` would trade one visible band for a fainter one. Both halves stay on the
+ * token.
+ */
+export const ADMIN_INSTALL = {
+  name: 'Run Insights Admin',
+  /** 8 characters. iOS truncates past ~12; see `INSTALL.shortName`. */
+  shortName: 'RI Admin',
+  description: "Nina's album, her personality, the chat photos and the memory store.",
+  /** --paper-2, light. The admin shell's ground, so the splash matches the first screen. */
+  paper: '#f1f7fb',
+  /**
+   * --paper-2, dark. Only `app/admin/layout.tsx`'s media-matched `themeColor` pair can use this.
+   * Keep in step with `app/globals.css:81` and `docs/design/tokens.css:77`.
+   */
+  paperDark: '#162834',
+} as const
+
+/**
+ * The admin app's icon entries. Same shape as `PWA_ICONS`, same three purposes, different files.
+ *
+ * These are the app's icon in the DARK scheme — the same committed silhouette and the same five
+ * zone colours as the runner's, drawn on `--paper` dark with the figure in `--ink` dark. That is
+ * not decoration: two identically-tiled squircles on one home screen is most of the value of
+ * installing the second one gone, and a light tile against a dark tile is the discriminator that
+ * survives being 40px wide in peripheral vision. `tools/make_icon_assets.py`'s `GROUND_DARK` note
+ * carries the measured contrast table.
+ *
+ * The HOME-SCREEN icon is not here: `app/admin/apple-icon.png` is a Next file convention, valid at
+ * any segment depth, and Next replaces the root's `apple-touch-icon` link with it for `/admin` and
+ * everything under it. A manifest alone does not give iOS a home-screen icon — the same sentence
+ * `app/layout.tsx` carries about the runner's tile, and the same file convention is the fix.
+ */
+export const ADMIN_PWA_ICONS = [
+  { src: '/icons/admin-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+  { src: '/icons/admin-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+  {
+    src: '/icons/admin-icon-maskable-512.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'maskable',
+  },
+] as const satisfies readonly {
+  src: string
+  sizes: string
+  type: string
+  purpose: 'any' | 'maskable'
+}[]
+
+/**
  * `metadata.appleWebApp`, spread into the root layout.
  *
  * ── `statusBarStyle: 'default'`, AND WHY IT IS NOT 'black-translucent' ─────────────────────────

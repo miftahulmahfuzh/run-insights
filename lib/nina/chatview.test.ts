@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   composerBottomCss,
+  composerPadBottomCss,
   decideAutoScroll,
   groupIntoDays,
   isNearBottom,
@@ -217,16 +218,26 @@ describe('keyboardOverlapPx', () => {
 
 describe('composerBottomCss', () => {
   // 59 is the tab bar's outer height: `TAB_BAR_HEIGHT_PX` (58) + `TAB_BAR_BORDER_PX` (1). The
-  // border is the bar's top edge, so a composer clearing 58 floats a pixel above it — R2's gap.
+  // border is the bar's top edge, so a composer clearing 58 floats a pixel above it.
   // `tests/tabbar.geometry.test.ts` is what ties this literal back to those two constants.
 
-  it('clears nothing but the home-indicator inset while the bar is hidden', () => {
-    // R1: `/nina`'s resting state. The flag is absent, `var()` substitutes 0, and the composer sits
-    // on the inset. This is also the SSR and pre-hydration answer, which is why the default is the
-    // hidden geometry and not the showing one.
+  it('sits flat on the bottom of the viewport while the bar is hidden', () => {
+    // R1. `/nina`'s resting state: the flag is absent, `var()` substitutes 0, the WHOLE sum is
+    // multiplied by it, and the offset collapses to nothing — so the bar's fill reaches the bottom
+    // edge and there is no strip of conversation under it. The inset is not missing, it moved:
+    // `composerPadBottomCss` carries it in this state. This is also the SSR and pre-hydration
+    // answer, which is why the default is the hidden geometry and not the showing one.
     expect(composerBottomCss(0, 59)).toBe(
-      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
+  })
+
+  it('puts the inset INSIDE the gate, not beside it', () => {
+    // The regression this phase fixes, stated as the shape rather than as a pixel. An inset added
+    // outside the multiplication is an inset that survives the flag going to 0, which is exactly
+    // the unpainted strip: `calc(59px * var(…, 0) + var(--safe-bottom))`.
+    expect(composerBottomCss(0, 59)).not.toContain(') + var(--safe-bottom)')
+    expect(composerBottomCss(0, 59)).toContain('(59px + var(--safe-bottom)) *')
   })
 
   it('names the variable the chrome writes', () => {
@@ -237,20 +248,63 @@ describe('composerBottomCss', () => {
 
   it('sits on the keyboard when there is one', () => {
     // Every term of the idle clearance is behind the keyboard, so none of it is added — and that
-    // is true whether or not the bar is showing, which is why this branch is untouched by R1 and
-    // by R2 alike: the border is behind the keyboard too.
+    // is true whether or not the bar is showing, and true of the inset too, which is why this
+    // branch is the one thing R1 did not change.
     expect(composerBottomCss(KEYBOARD_HEIGHT, 59)).toBe('336px')
   })
 
   it('treats unmeasurable input as no keyboard', () => {
     expect(composerBottomCss(NaN, 59)).toBe(
-      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
   })
 
   it('treats an unmeasurable clearance as no clearance', () => {
+    // The inset stays in the sum: a caller who cannot say how much chrome is below still gets a
+    // bar that pads correctly once the flag goes to 1.
     expect(composerBottomCss(0, NaN)).toBe(
-      'calc(0px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc((0px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
+  })
+})
+
+describe('composerPadBottomCss', () => {
+  it('carries the home-indicator inset, gated as the complement of the offset', () => {
+    // Invariant 5, as arithmetic: the offset multiplies its inset by `f`, this multiplies its
+    // inset by `1 - f`, and `f` is 0 or 1. One inset in the stack, in every state, always.
+    expect(composerPadBottomCss(0)).toBe(
+      'calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))',
+    )
+  })
+
+  it('is the complement of the gate `composerBottomCss` uses, by the same variable', () => {
+    // The two functions must read the SAME custom property or the complement is meaningless — a
+    // padding gated on a variable nobody writes is a padding that is always on.
+    expect(composerPadBottomCss(0)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerBottomCss(0, 59)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerPadBottomCss(0)).toContain('(1 - var(')
+  })
+
+  it('adds nothing at all when the keyboard is up', () => {
+    // Exit criterion 3. Engaging the composer HIDES the bar, so the flag is 0 here and a flag-only
+    // rule would pad by the inset — lifting the textarea a thumb's width off the keyboard's top
+    // edge. The keyboard is the floor; the home indicator is behind it.
+    expect(composerPadBottomCss(KEYBOARD_HEIGHT)).toBe('0px')
+  })
+
+  it('returns a LENGTH for zero, not a bare 0', () => {
+    // It goes into `style.paddingBottom`. A length-typed function returns a length.
+    expect(composerPadBottomCss(KEYBOARD_HEIGHT)).toBe('0px')
+    expect(composerPadBottomCss(KEYBOARD_HEIGHT)).not.toBe('0')
+  })
+
+  it('treats unmeasurable overlap as no keyboard', () => {
+    // Same degradation as `composerBottomCss`: unmeasurable means "no keyboard", because the
+    // resting screen is the common case and a NaN must not decide geometry.
+    for (const overlap of [NaN, 0, -1, Number.POSITIVE_INFINITY]) {
+      expect(composerPadBottomCss(overlap)).toBe(
+        'calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))',
+      )
+    }
   })
 })
