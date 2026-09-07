@@ -726,6 +726,100 @@ change it. `ABOUT_JOB_LIMIT = 5` is module-local to the route: one caller, and n
 The `?photo=` codec, the two-section swipe isolation and the album's wrap are untouched — the diff
 never enters that region.
 
+## Redoing a failed job — one tap, no dialog (R1 of the job-redo set)
+
+Every `Gagal` row on `/nina/jobs` carries a redo icon. Tapping it opens a **new** job from the
+failed one's own arguments and starts generating. The failed row is not touched.
+
+**Three modules, one responsibility each, and the split is the point:**
+
+- **`jobview.ts` — the rule and the vocabulary.** `jobCanRedo(stage)` is `stage === 'failed'` and
+  nothing else, and `NinaJobListItem.canRedo` is resolved by `toNinaJobListItems` rather than by a
+  `&&` inside a component: `vitest.config.ts` is `environment: 'node'`, so a condition written in a
+  `.tsx` file is a condition nothing in this repo can assert. `NinaJobRefusal` —
+  `'not-found' | 'not-failed' | 'no-args' | 'capped'` — lives here too, because this is the only
+  module a `server-only` reader, a `'use server'` action and a `'use client'` button can all
+  import. Declaring it in `imagejobs.ts` would drag a `server-only` import into a browser bundle's
+  type graph; declaring it in `jobActions.ts` would make a `server-only` module import a
+  `'use server'` one, which is backwards. `canRedo` is **required, not optional**, so both callers
+  of `toNinaJobListItems` carry it whether or not their screen draws a button.
+- **`imagejobs.ts` — `reopenNinaImageJob(userId, jobId)`.** An owner-scoped read (`userId`, `id`
+  and `kind='image'` in one `WHERE`), then four refusals **in cost order**: the row is not his
+  (`not-found`), it did not fail (`not-failed`), its `args` jsonb has no usable `prompt`/`seed`
+  (`no-args`), and only then the indexed `ninaImageQuotaLeft` count (`capped`) — so a job that was
+  never redoable does not pay for a count to be told so. On success it calls `openNinaImageJob`
+  with the **same args and `attempts: 0`**, an INSERT of a NEW row. It returns a discriminated
+  union and never throws, because its caller's job is to hand a code back to a button.
+- **`jobActions.ts` — a NEW `'use server'` module.** `redoNinaImageJob({ jobId })` →
+  `reopenNinaImageJob` → `fireNinaImageGeneration` → `revalidatePath(NINA_JOBS_HREF)`, returning
+  `NinaJobActionResult = { ok: boolean; reason: NinaJobRefusal | null }`. It is a new file rather
+  than more of `actions.ts` for the isolation argument `sessionActions.ts` and `albumActions.ts`
+  each make in their own headers: `actions.ts` is the chat's mutation surface and every chat phase
+  opens it, while these functions are read by one screen. **It schedules and never calls a model**,
+  so `scripts/check-llm-payload-boundary.mjs`'s file list did not change — `fireNinaImageGeneration`
+  registers `runNinaImageJob` in `after()` and returns `void`, and the provider call stays in
+  `imagerun.ts`.
+
+**The ledger only ever grows.** The failed row keeps its `status`, its `error_code`, its
+`latency_ms` and its `cost_micro_usd` — the three numbers the runner opened the page to read. So
+after a redo the list shows BOTH: the old `Gagal` row and a new `Antre` above it, and the redo
+control stays on the failed one. Two rows, two bills, two truths. **`attempts: 0` is the one field
+that does not copy**, and it must not: `claimNinaImageJob` bounds a job at
+`NINA_IMAGE_MAX_ATTEMPTS`, so a copied `attempts: 3` would open a row no claim predicate in the
+file can ever pick up. The seed does not re-roll either — a redo is the retry
+`requeueNinaImageJob` already performs, done by a human instead of by the loop, and re-rolling it
+would make the button mean "generate a different photo", which is not what "redo" says.
+`fireNinaImageGeneration` is called with **neither** of `reviveNinaImageJobs`' `queuedBefore` /
+`runningBefore` cutoffs: those exist to stop a recovery pass stealing a job another host may be
+starting, and this row was opened microseconds ago by this same invocation.
+
+**A control is not a guard.** `jobCanRedo` decides whether the button is DRAWN; `reopenNinaImageJob`
+re-checks `status !== 'failed'` against the row it read under the runner's own id, because a
+`jobId` arriving from a browser is a claim and never a fact. Purpose is deliberately **not** part
+of the rule — a failed **avatar** job is redoable too, and re-running it writes `nina_avatars` and
+leaves `announced_at` NULL so the next cron tick makes her mention the new face.
+
+**There is no confirmation dialog anywhere, and that is a requirement rather than a style choice.**
+The user's words are *"we dont need confirmation message to execute them"*. It deliberately
+overrides `components/nina/SessionRow.tsx`'s three-tap confirm, and the override is principled
+rather than lazy: that control hard-deletes a conversation and, through two cascades, its
+photographs, permanently and with no undo — whereas a redo costs one of six generations a day and
+produces a photograph the runner asked for. There is nothing here to protect him from. The only
+mis-tap protection is `disabled={pending}`, which costs nothing; the daily cap bounds the rest, on
+the server.
+
+**`app/nina/jobs/page.tsx` now exports `maxDuration = 300`, and its own comment block used to argue
+the opposite.** That argument rested on the true premise that the route "calls no action and awaits
+no model", and R1 made the premise false: a Server Action's timeout is the page SEGMENT's, and
+`after()` inherits the same budget. `lib/nina/imagerun.ts`'s header predicted this edit in advance
+— `app/nina/page.tsx` and `app/api/cron/nina/route.ts` were the two segments that can start a
+generation, and *"a third caller would need the same line"*. **This is the third caller.** Without
+the export the platform default kills the invocation partway through a ~78 s generation and leaves
+a job `pending` until a sweep apologises for it, which is the exact failure this feature exists to
+let him recover from. It is a **literal** for the reason `app/nina/page.tsx` already records:
+segment config exports are statically analysed at build time and an imported constant is not a
+value the analyser can see.
+
+**The control is opt-in per surface.** `NinaJobList` grew one boolean prop, `actions`, and
+`app/nina/jobs/page.tsx` is the only caller that sets it; `components/nina/NinaAboutScreen.tsx`
+renders the same rows as a read-only summary under Media and deliberately does not — putting a
+mutation there would put it on a page nobody asked to mutate from. With `actions` absent the markup
+is byte for byte what it was before this phase. A render prop (`renderActions?: (item) => ReactNode`)
+would have been the more flexible seam and is impossible here: the page is a Server Component and a
+function is not a serialisable prop across that boundary.
+
+`components/nina/NinaJobActions.tsx` is the `'use client'` half. It owns the
+`Record<NinaJobRefusal, string>` that turns a discriminant into Indonesian — the server has no
+business writing his language, and a `Record` over the whole union means `tsc` fails the day a
+fifth refusal appears without a sentence. It renders a **fragment of two flex children** rather
+than one wrapper: the icon cluster, which sits on the row's own line, and the refusal note, which
+carries `w-full` so the parent's `flex-wrap` drops it onto a line underneath. It is a **sibling**
+of the row's `<a>` and never a child — a `<button>` inside an `<a>` is invalid HTML and breaks the
+link's hit testing, which is `SessionRow`'s recorded rule one list over. Its accessible name names
+the row (`Coba lagi sore di kos`, not `Coba lagi`), built from the same `ninaJobTitle` that renders
+the visible title so the two cannot drift, because six rows of "Coba lagi" is a list a screen
+reader cannot navigate.
+
 ## Deleting a chat session takes what it taught her (R8)
 
 **Deleting a chat session now deletes what it taught her (R8).** `removeNinaSession` is a
@@ -899,6 +993,18 @@ are worth knowing:
   all is `clinginess`'s three day-count constants. Putting a copy change in `proactive.ts` would have
   coupled a trait to the cron's thresholds; putting a threshold change in `system.ts` would have been
   a suffix trying to move a number.
+- **`/nina/jobs` is the third segment that can start a generation, so `maxDuration = 300` on
+  `app/nina/jobs/page.tsx` is load-bearing.** Deleting it as "cargo on a read-only page" is the
+  tempting edit and it is wrong since R1: the segment's budget is the Server Action's budget and
+  `after()`'s. `app/nina/page.tsx` and `app/api/cron/nina/route.ts` are the other two.
+- **A rule a screen obeys is a rule a test reaches.** `jobCanRedo` is one comparison and it still
+  lives in `jobview.ts`, because `vitest` runs in `environment: 'node'` and cannot see a condition
+  written inside a `.tsx` file. Same reason `jobIsOpen` and `planJobJump` are there.
+- **Never add a confirmation to a `/nina/jobs` row control.** *"we dont need confirmation message to
+  execute them"* is the user's requirement, not an oversight, and `SessionRow`'s three-tap confirm
+  is deliberately not the precedent — it destroys a conversation, these controls do not.
+- **Never let a redo touch the failed row.** It is the audit trail: the spend, the `error_code` and
+  the `latency_ms` are why the runner opened the page. A redo INSERTs; it does not `UPDATE`.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -953,6 +1059,17 @@ non-girlfriend relationships**, and it was **generated from the pristine tree be
 dropped sentence; a snapshot can, and it prints the diff. The containment tests beside it are the
 readable half: they name *what* leaked when it fails.
 
+**R1's redo is tested at two altitudes.** `tests/nina.jobview.test.ts` covers the pure half —
+`jobCanRedo` is true for `failed` and false for every other stage walked from the union rather than
+named, and `toNinaJobListItems` puts the answer on `canRedo` — which is the whole reason the rule
+is a function in `jobview.ts` and not a `&&` in a component. `tests/nina.jobActions.test.ts` covers
+the action: `requireUserId` above the shape check, another runner's job answering exactly as one
+that never existed, each of the four refusals, the cap read happening **before** the row is opened,
+nothing revalidated on a refusal, every argument copied verbatim with only `attempts` reset, the
+failed row never rewritten, the generation scheduled for the NEW id — and an end-to-end case
+proving a redo of a job whose chat session is gone still produces a photograph, delivered into his
+most recent session.
+
 ## Notes
 
 Phase 2 of 6 of `NINA_CHARACTER_TUNING_PLAN.md`. Phase 1 (`lib/nina/tuning.ts` and the `nina_tuning`
@@ -982,3 +1099,19 @@ column and its gate already covered by phase 4's loops; `ninaTraitScore(tuning, 
 only seam it needed; and it took the single `verbosity` line in `systemDials` that phase 4 had left
 it. Its whole footprint outside this package is a migration, a schema pair and prose — no edit to
 `lib/admin/` logic and no `NINA_PROMPT_VERSION` bump.
+
+---
+
+**`NINA_JOB_REDO_AND_SOFT_DELETE_PLAN.md` is the set in flight.** Phase 1 (`P1-NIN-A013`) landed R1
+— `jobCanRedo` and `NinaJobListItem.canRedo` in `jobview.ts`, `reopenNinaImageJob` in
+`imagejobs.ts`, the new `jobActions.ts` and `components/nina/NinaJobActions.tsx`, `NinaJobList`'s
+`actions` prop, and `maxDuration = 300` on `app/nina/jobs/page.tsx`. No migration, no schema change
+and no new provider call.
+
+Phase 2 (`P1-NIN-A014`) is R2 — a soft delete. It adds a nullable `nina_turns.deleted_at`, a trash
+icon beside the redo one, and a filter that hides the row from every screen and every scheduler
+that would restart it while the row itself stays byte-for-byte in Neon and keeps counting against
+the daily image cap. It appends `deleteNinaImageJob` to `jobActions.ts` and a second `<button>` to
+the same cluster in `NinaJobActions.tsx`, and it needs **no new `NinaJobRefusal` member**: a delete
+is refused only when the row is not his, which is `'not-found'`. Plans for the set are
+`lib/nina/.workflows/plan/P1-NIN-A013.md` and `P1-NIN-A014.md`.
