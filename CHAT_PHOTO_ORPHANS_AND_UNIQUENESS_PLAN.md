@@ -7,6 +7,7 @@
 **Branch:** `feature/chat-photo-orphans-and-uniqueness` (base: `HEAD` @ `b0e492a`)
 **Phases:** 3
 **Status:** planned
+**Cards:** parent `miftahulmahfuzh/run-insights#139`; phases #140, #141, #142 (sub-issues 1-3, in phase order)
 **Reconciled:** round 1 — 8 conflicts found, 8 resolved; see the Reconciliation Log
 **Coordinator:** —
 
@@ -120,9 +121,9 @@ it bites** — see the Reconciliation Log, rows 1 and 5.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Orphan-able photographs: the FK, the migration, and every reader that assumed a message | R1 | `lib/db` + `lib/nina` + `components` | 17 | — | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md` | — | — |
-| 2 | One photograph per collection row: the reference marker and adopt-or-reference | R2, R3, R4 | `lib/nina` + `lib/admin` | 5 | 1 | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md` | — | — |
-| 3 | The backfill: bring the rows that already violate R2/R3 into line, deleting nothing | R2, R3 | `scripts` | 5 | 2 | NORMAL | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md` | — | — |
+| 1 | Orphan-able photographs: the FK, the migration, and every reader that assumed a message | R1 | `lib/db` + `lib/nina` + `components` | 17 | — | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md` | — | miftahulmahfuzh/run-insights#140 |
+| 2 | One photograph per collection row: the reference marker and adopt-or-reference | R2, R3, R4 | `lib/nina` + `lib/admin` | 5 | 1 | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md` | — | miftahulmahfuzh/run-insights#141 |
+| 3 | The backfill: bring the rows that already violate R2/R3 into line, deleting nothing | R2, R3 | `scripts` | 5 | 2 | NORMAL | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md` | — | miftahulmahfuzh/run-insights#142 |
 
 **Files** is the count of distinct paths in each plan's own Files table, not the number of table rows
 (phase 2's table has eleven rows across five files, because `lib/nina/queries.ts` and
