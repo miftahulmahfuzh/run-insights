@@ -3,32 +3,22 @@
 **Package Path**: `lib/admin`
 **Package Code**: ADM
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 2
+- Completed: 3
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-ADM-A001** Phase 3: `/admin/shortcuts`
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns a new `app/admin/shortcuts/page.tsx` (`force-dynamic`, `requireAdmin()`, `?user=` defaulting to the signed-in admin, `UserPicker`, rows built **server-side**); a new `lib/admin/shortcutModel.ts` — the client-safe row model and **the one door** the three length bounds come through, keeping `memoryModel.ts`'s value-import ban with one argued exception, a single `export { … } from '@/lib/nina/shortcuts'` re-export so `ShortcutTable.tsx` names no `@/lib/nina/` specifier at all; a new `'server-only'` `lib/admin/shortcutStore.ts` — the only `lib/admin` module that writes a shortcut, reaching **no drizzle table and no `db` handle** (every statement is `lib/nina/queries.ts`'s), owning the duplicate catch via `isUniqueViolation` on the 23505, the empty-trigger refusal, and the admin read's newest-first ordering and ceiling, deriving nothing; a new `'use server'` `lib/admin/shortcutActions.ts` with four actions (add, save a cell, toggle `enabled`, delete); `lib/admin/schema.ts` — the four zod schemas; a new `'use client'` `components/admin/ShortcutTable.tsx` (blur-to-save, optimistic delete, `MemoryTable.tsx`'s `CELL_CONTROL` / `CELL` / `HEAD_CELL` tokens reused verbatim; columns trigger · label · expansion · on/off · fired · ✕, with "fired" `hidden lg:table-cell`); `components/admin/AdminNav.tsx` — the sixth `LINKS` entry `{ href: '/admin/shortcuts', label: 'Shortcuts', short: 'Shortcut' }` placed last and `grid-cols-5` → `grid-cols-6`, the 8-character ceiling unchanged; `components/admin/UserPicker.tsx` — one **optional, defaulted** `basePath = '/admin/memory'` prop (additive; `app/admin/memory/page.tsx` is not edited); `tests/admin.shell.test.ts` — the three assertions that encode the cell count; and a new `tests/admin.shortcuts.test.ts`. Ten files. Does not touch anything under `lib/nina/` (it imports phase 1's `queries.ts` and `shortcuts.ts`), `lib/db/schema.ts`, `drizzle/`, `scripts/`, `app/admin/layout.tsx`, `app/admin/memory/page.tsx` or `components/admin/MemoryTable.tsx`. The page reads through **bare** `listNinaShortcuts(userId)` — every row, disabled included — and writes no `SELECT` of its own. No confirmation dialogs. Exit: the route renders on a 414 px viewport with no horizontal page scroll; add, edit, toggle and delete each write production and re-render in the same response; a duplicate trigger is refused with a sentence that names the existing trigger and nothing changes; `npm test` green.
-  - **Status**: pending
-  - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 3 of 4)
-  - **Satisfies**: R1 — An explicit shortcuts mechanism, separate from memory: an admin surface to add, edit, disable and remove shortcuts, each standing for a situation or for something Miftah and Nina were doing
-  - **Depends on**: `P1-DB-A004`
-  - **Plan**: `.workflows/plan/P1-ADM-A001.md`
 
 ### [P2] Medium
 
@@ -41,6 +31,24 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-ADM-A001** Phase 3: `/admin/shortcuts`
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new `app/admin/shortcuts/page.tsx` (`force-dynamic`, `requireAdmin()`, `?user=` defaulting to the signed-in admin, `UserPicker`, rows built **server-side**); a new `lib/admin/shortcutModel.ts` — the client-safe row model and **the one door** the three length bounds come through, keeping `memoryModel.ts`'s value-import ban with one argued exception, a single `export { … } from '@/lib/nina/shortcuts'` re-export so `ShortcutTable.tsx` names no `@/lib/nina/` specifier at all; a new `'server-only'` `lib/admin/shortcutStore.ts` — the only `lib/admin` module that writes a shortcut, reaching **no drizzle table and no `db` handle** (every statement is `lib/nina/queries.ts`'s), owning the duplicate catch via `isUniqueViolation` on the 23505, the empty-trigger refusal, and the admin read's newest-first ordering and ceiling, deriving nothing; a new `'use server'` `lib/admin/shortcutActions.ts` with four actions (add, save a cell, toggle `enabled`, delete); `lib/admin/schema.ts` — the four zod schemas; a new `'use client'` `components/admin/ShortcutTable.tsx` (blur-to-save, optimistic delete, `MemoryTable.tsx`'s `CELL_CONTROL` / `CELL` / `HEAD_CELL` tokens reused verbatim; columns trigger · label · expansion · on/off · fired · ✕, with "fired" `hidden lg:table-cell`); `components/admin/AdminNav.tsx` — the sixth `LINKS` entry `{ href: '/admin/shortcuts', label: 'Shortcuts', short: 'Shortcut' }` placed last and `grid-cols-5` → `grid-cols-6`, the 8-character ceiling unchanged; `components/admin/UserPicker.tsx` — one **optional, defaulted** `basePath = '/admin/memory'` prop (additive; `app/admin/memory/page.tsx` is not edited); `tests/admin.shell.test.ts` — the three assertions that encode the cell count; and a new `tests/admin.shortcuts.test.ts`. Ten files. Does not touch anything under `lib/nina/` (it imports phase 1's `queries.ts` and `shortcuts.ts`), `lib/db/schema.ts`, `drizzle/`, `scripts/`, `app/admin/layout.tsx`, `app/admin/memory/page.tsx` or `components/admin/MemoryTable.tsx`. The page reads through **bare** `listNinaShortcuts(userId)` — every row, disabled included — and writes no `SELECT` of its own. No confirmation dialogs. Exit: the route renders on a 414 px viewport with no horizontal page scroll; add, edit, toggle and delete each write production and re-render in the same response; a duplicate trigger is refused with a sentence that names the existing trigger and nothing changes; `npm test` green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R1 — An explicit shortcuts mechanism, separate from memory: an admin surface to add, edit, disable and remove shortcuts, each standing for a situation or for something Miftah and Nina were doing
+  - **Depends on**: `P1-DB-A004`
+  - **Plan**: `.workflows/plan/P1-ADM-A001.md`
+  - **Completed**: 2026-09-07 22:49
+  - **Method**: /do
+  - **Files**: lib/admin/shortcutModel.ts, lib/admin/shortcutStore.ts, lib/admin/shortcutActions.ts, lib/admin/schema.ts, components/admin/ShortcutTable.tsx, app/admin/shortcuts/page.tsx, components/admin/AdminNav.tsx, components/admin/UserPicker.tsx, tests/admin.shell.test.ts, tests/admin.shortcuts.test.ts
+  - **Drift**: `lib/admin/schema.ts` is 480 lines, not the 481 the plan quotes (task-135 removed `nina_memory_facts.confidence` upstream). Matched on content instead of line number: the new section was appended after `ninaTuningResetSchema`, the import block after the existing `memoryModel` import.
+  - **Drift**: Phase 1's landed `lib/nina/queries.ts` and `lib/nina/shortcuts.ts` match the plan's Interface Contract exactly. No drift there.
+  - **Decided**: The plan's `ShortcutTable.tsx` docstring spelled literals its own test bans by raw `not.toContain` (`'@/lib/nina/'`, `'window.confirm'`, `'<dialog'`, `'showModal'`, `'<colgroup'`) -> reworded the two docstring paragraphs so the prose explains the rules without spelling them; the test is unchanged and the guards stand. Rung 2 (exit criteria: `npm test` green), reinforced by the plan's own stated convention for this exact trap in its Step 3 schema note and by the ladder's bar on relaxing a failing check. A note in the file's header warns the next editor.
+  - **Verified**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` clean (`next typegen` generated `PageProps<'/admin/shortcuts'>`); `npm test` 3256 passed / 156 files; `npx vitest run tests/admin.shortcuts.test.ts tests/admin.shell.test.ts tests/admin.memory.test.ts` 74 passed; `npm run build` compiled with `/admin/shortcuts` listed as a dynamic route; `tests/__snapshots__/nina.prompts.test.ts.snap` unmodified in `git status` (invariant 3 holds); `npx prettier --check` clean on the ten files.
+  - **Note**: The plan's ten manual browser checks were NOT run — they need a live `nina_shortcuts` table and a signed-in admin session. Phase 1's migration is generated but deliberately never applied (the set's Rollback section), and every session in this wave is barred from `db:migrate`. The phase's exit criteria are satisfied by lint, typecheck, build and the suite.
 
 - [x] **P1-ADM-B130** Phase 2: "What she can see in it", editable
   - **Difficulty**: NORMAL

@@ -15,9 +15,27 @@ import { cn } from '@/lib/cn'
 export function UserPicker({
   users,
   selectedId,
+  basePath = '/admin/memory',
 }: {
   users: readonly AdminUserRow[]
   selectedId: string | null
+  /**
+   * Which per-user admin route the pills navigate within. Defaults to `/admin/memory`, which is
+   * where this component was born and its only caller until `/admin/shortcuts`.
+   *
+   * It is a PROP and not a `usePathname()` read, because
+   * `components/admin/.workflows/package_readme.md` names this component in the rule: *"Do not add
+   * active-link highlighting to `AdminNav` or `UserPicker`. `usePathname()` would turn a static nav
+   * into a Client Component to bold one word."* Going client to fix a href would be the same trade
+   * for less. Both callers are Server Components and both already know their own route.
+   *
+   * The counts in each pill stay MEMORY counts — `AdminUserRow` is `lib/admin/users.ts`'s shape and
+   * says how many slots and ledger rows an account has. On `/admin/shortcuts` that is still a true
+   * statement about the account, just not about this page; adding a shortcut count would mean
+   * widening `listAdminUsers` and `getAdminUser`, which are `/admin/memory`'s and are not this
+   * phase's to change.
+   */
+  basePath?: string
 }) {
   if (users.length === 0) {
     return (
@@ -34,7 +52,7 @@ export function UserPicker({
         return (
           <Link
             key={user.id}
-            href={`/admin/memory?user=${encodeURIComponent(user.id)}`}
+            href={`${basePath}?user=${encodeURIComponent(user.id)}`}
             aria-current={selected ? 'page' : undefined}
             className={cn(
               TOUCH_TARGET,

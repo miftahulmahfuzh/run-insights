@@ -18,6 +18,12 @@ import {
 } from '@/lib/admin/memoryModel'
 
 import {
+  NINA_SHORTCUT_EXPANSION_MAX,
+  NINA_SHORTCUT_LABEL_MAX,
+  NINA_TRIGGER_MAX,
+} from '@/lib/admin/shortcutModel'
+
+import {
   ADMIN_AVATAR_CONTENT_TYPES,
   ADMIN_AVATAR_ID_RE,
   ADMIN_AVATAR_MAX_EDGE_PX,
@@ -478,3 +484,100 @@ export const ninaTuningResetSchema = z.object({
   userId: userIdSchema,
 })
 export type NinaTuningResetInput = z.infer<typeof ninaTuningResetSchema>
+
+/* ============================================================================
+ * nina-emoji-shortcuts phase 3 — /admin/shortcuts. Appended; nothing above
+ * this line changed.
+ * ==========================================================================*/
+
+/**
+ * The four shortcut actions' input bounds. Same home and same reason as the memory four above:
+ * *"two homes for one concern is worse than one additive edit to a landed file."*
+ *
+ * ── NEITHER DERIVED COLUMN APPEARS ANYWHERE IN THIS SECTION, AND THAT IS THE POINT ──────────
+ * A shortcut row has two columns that are computed rather than typed — the folded key the matcher
+ * compares against, and the glyph/word classification that picks the boundary rule.
+ * `lib/admin/shortcutStore.ts` computes both from the trigger on every insert and every trigger
+ * edit. If either were a FIELD here, a forged POST could hand the matcher a key that does not
+ * belong to the trigger the table renders, and the row would fire on something nobody can see.
+ * They are absent from every schema below, so the payload has nowhere to put them.
+ * `tests/admin.shortcuts.test.ts` reads this section and asserts it.
+ *
+ * ── AND NOTHING HERE NORMALISES ─────────────────────────────────────────────────────────────
+ * `trim()` yes, fold no. Unicode normalisation is `normalizeNinaTrigger`'s, in the store, on the
+ * server, once. Running it here as well would put the fold in two places, and the day they
+ * disagree is the day a row's key stops matching its own trigger.
+ */
+
+/** A `nina_shortcuts.id` — `newId()`, a nanoid. Same shape and same bound as `memoryIdSchema`. */
+const shortcutIdSchema = z.string().trim().min(1).max(64)
+
+/** As typed, trimmed, and no longer than phase 1's ceiling. */
+const shortcutTriggerSchema = z.string().trim().min(1).max(NINA_TRIGGER_MAX)
+
+/** One line in a phone table cell. */
+const shortcutLabelSchema = z.string().trim().min(1).max(NINA_SHORTCUT_LABEL_MAX)
+
+/** The long context. Five times the ledger cap that is currently binding on these same sentences. */
+const shortcutExpansionSchema = z.string().trim().min(1).max(NINA_SHORTCUT_EXPANSION_MAX)
+
+/**
+ * The add row. All three at once, because a shortcut with no expansion is not a shortcut — there is
+ * nothing for it to stand in for — and a shortcut with no label is a row the operator cannot scan.
+ */
+export const shortcutInsertSchema = z.object({
+  userId: userIdSchema,
+  trigger: shortcutTriggerSchema,
+  label: shortcutLabelSchema,
+  expansion: shortcutExpansionSchema,
+})
+export type ShortcutInsert = z.infer<typeof shortcutInsertSchema>
+
+/**
+ * **One cell.** A discriminated union rather than three optional strings, for the reason
+ * `memoryDeleteSchema` gives: there is one control per cell, the cell knows which field it is, and
+ * the three fields have three different caps. A flat `{ field: string; value: string }` would have
+ * to check the longest cap for all three, so a 900-character trigger would pass validation and be
+ * refused by the column instead — a 500 where a sentence belongs.
+ *
+ * Unlike the ledger's cell save this sends ONE field and not the whole row, because the three are
+ * genuinely independent here: a shortcut's label has no bearing on its expansion, and the trigger
+ * edit is the only one that can be refused. Sending all three would make every label typo a
+ * candidate for a duplicate-trigger error.
+ */
+export const shortcutCellSchema = z.discriminatedUnion('field', [
+  z.object({
+    field: z.literal('trigger'),
+    userId: userIdSchema,
+    id: shortcutIdSchema,
+    value: shortcutTriggerSchema,
+  }),
+  z.object({
+    field: z.literal('label'),
+    userId: userIdSchema,
+    id: shortcutIdSchema,
+    value: shortcutLabelSchema,
+  }),
+  z.object({
+    field: z.literal('expansion'),
+    userId: userIdSchema,
+    id: shortcutIdSchema,
+    value: shortcutExpansionSchema,
+  }),
+])
+export type ShortcutCell = z.infer<typeof shortcutCellSchema>
+
+/** On or off. A boolean and not a toggle-what-it-is-not: the client sends the state it wants. */
+export const shortcutToggleSchema = z.object({
+  userId: userIdSchema,
+  id: shortcutIdSchema,
+  enabled: z.boolean(),
+})
+export type ShortcutToggle = z.infer<typeof shortcutToggleSchema>
+
+/** The one destructive action, and it takes an id and nothing else. No `confirm` field. */
+export const shortcutDeleteSchema = z.object({
+  userId: userIdSchema,
+  id: shortcutIdSchema,
+})
+export type ShortcutDelete = z.infer<typeof shortcutDeleteSchema>

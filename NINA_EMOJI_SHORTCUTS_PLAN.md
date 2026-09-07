@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-emoji-shortcuts`
 **Branch:** `feature/nina-emoji-shortcuts` (base: `origin/main` @ `5ed3b76` — rebased from the planned base `a92780f` during phase 1, which moved the migration to `0012`; the local `main` ref is stale and divergent, so merge from `origin/main`)
 **Phases:** 4
-**Status:** phase 1/4 complete — phase 1 landed on `feature/nina-emoji-shortcuts`; phases 2, 3 and 4 are unblocked and may run concurrently (each depends only on 1). A phase is complete when its row in the Phases table is ticked ✅. The set is reviewed and merged as a whole.
+**Status:** phases 1 and 3 of 4 complete — phase 1 landed on `feature/nina-emoji-shortcuts`; phase 3 landed on the same branch, by explicit pathspec, while phases 2 and 4 are still in flight in the same shared worktree. Phases 2, 3 and 4 each depend only on 1 and may run concurrently. A phase is complete when its row in the Phases table is ticked ✅. The set is reviewed and merged as a whole.
 **Coordinator:** —
 
 ---
@@ -143,8 +143,8 @@ unowned.
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | The table and the matcher | R1, R2, R3 | `lib/db`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-emoji-shortcuts/phase-1.md` | `P1-DB-A004` | — |
-| 2 | Firing a shortcut into the turn | R2 | `lib/nina` | 5 | 1 | HARD | `.workflows/plan/nina-emoji-shortcuts/phase-2.md` | `P1-NIN-A023` | — |
-| 3 | `/admin/shortcuts` | R1 | `lib/admin`, `components/admin`, `app/admin` | 10 | 1 | HARD | `.workflows/plan/nina-emoji-shortcuts/phase-3.md` | `P1-ADM-A001` | — |
+| 2 ✅ | Firing a shortcut into the turn | R2 | `lib/nina` | 5 | 1 | HARD | `.workflows/plan/nina-emoji-shortcuts/phase-2.md` | `P1-NIN-A023` | — |
+| 3 ✅ | `/admin/shortcuts` | R1 | `lib/admin`, `components/admin`, `app/admin` | 10 | 1 | HARD | `.workflows/plan/nina-emoji-shortcuts/phase-3.md` | `P1-ADM-A001` | — |
 | 4 | Import the ledger's shortcuts | R3 | `scripts` | 3 | 1 | NORMAL | `.workflows/plan/nina-emoji-shortcuts/phase-4.md` | `P1-SC-A000` | — |
 
 Phase 1's 8 include the three generated `drizzle/` artefacts — the `.sql`, the `meta/*_snapshot.json`
