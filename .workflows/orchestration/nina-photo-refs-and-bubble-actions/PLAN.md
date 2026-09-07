@@ -120,7 +120,7 @@ Every phase holds all of these. A phase that cannot is a phase whose plan is wro
 | 1 | A re-attached photo is a reference, not a copy | R1, R3 | `lib/db`, `drizzle`, `lib/nina` | 10 | — | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md` | — | `miftahulmahfuzh/run-insights#129` |
 | 2 | "What she can see in it", editable | R2 | `lib/admin`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md` | P1-ADM-B130 | `miftahulmahfuzh/run-insights#130` |
 | 3 | Tap a bubble to edit or delete it | R4 | `lib/nina`, `components/nina` | 3 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md` | P1-NIN-A021 | `miftahulmahfuzh/run-insights#131` |
-| 4 | Resend a message that was never answered | R5 | `lib/nina`, `components/nina` | 6 | 3 | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md` | — | `miftahulmahfuzh/run-insights#132` |
+| 4 | Resend a message that was never answered | R5 | `lib/nina`, `components/nina` | 6 | 3 | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md` | P1-NIN-A022 | `miftahulmahfuzh/run-insights#132` |
 
 **Board.** Parent card `miftahulmahfuzh/run-insights#128` owns the pull request; the four
 cards above are its sub-issues, in phase order, and each completes on its own commit
