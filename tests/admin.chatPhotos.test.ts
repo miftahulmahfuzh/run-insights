@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ADMIN_CHAT_PHOTO_LONG_EDGE_PX } from '@/components/admin/chatPhotoUpload'
 import { ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
@@ -22,6 +22,7 @@ import {
   ninaImagePathname,
 } from '@/lib/nina/imagerecipe'
 import { NINA_CHAT_MAX_UPLOAD_BYTES, ninaChatPathname } from '@/lib/nina/images'
+import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
 
 /**
  * `admin-memory-and-chat-photos` phase 3's boundary logic — the half that needs no database and no
@@ -287,5 +288,279 @@ describe('chatPhotoRemoveSchema', () => {
   it('takes an object so a later field is additive', () => {
     expect(chatPhotoRemoveSchema.safeParse({ id: ID }).success).toBe(true)
     expect(chatPhotoRemoveSchema.safeParse(ID).success).toBe(false)
+  })
+})
+
+/**
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *  THE CAPTION PASS — phase 3, and the only half of this file that mocks anything.
+ *
+ *  Everything above is pure and needs no store. `scheduleChatPhotoCaption` is not: it is a
+ *  DECISION TREE over four edges (the row, the eyes, the voice, the write), and every branch of it
+ *  is a failure branch that must leave the canned line standing. So the edges are mocked and the
+ *  calls are asserted — `tests/share.actions.test.ts`'s shape, dynamic `import()` after the
+ *  factories so the module under test picks the mocks up.
+ *
+ *  The mocks are file-wide, which is why they name only modules NOTHING above imports:
+ *  `@/lib/admin/chatPhotos`, `@/lib/admin/chatPhotoSchema`, `@/lib/nina/imagefail` and `@/lib/id`
+ *  stay REAL, so the placeholder those tests assert on is the placeholder this one writes.
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+const MESSAGE_ID = 'msg123XYZ_-9'
+const IMAGE_ID = 'img123XYZ_-9'
+const SESSION_ID = 'ses123XYZ_-9'
+const STORED_DESCRIPTION = 'A woman underwater in a black swimsuit and fins, mid-kick, light above.'
+const CAPTION = 'eh gw nyelam tadi'
+
+/** `instanceof` is the whole point of the class, so the mock exports a real one to be an instance of. */
+class FakeVisionTokenFloorError extends Error {
+  override name = 'NinaVisionTokenFloorError'
+}
+
+const requireAdmin = vi.fn()
+const getNinaMessageImage = vi.fn()
+const insertNinaMessages = vi.fn()
+const insertNinaMessageImages = vi.fn()
+const setNinaMessageImageDescription = vi.fn()
+const updateNinaChatPhotoBlob = vi.fn()
+const updateNinaMessage = vi.fn()
+const readNinaTuning = vi.fn()
+const describeNinaImages = vi.fn()
+const captionNinaPhoto = vi.fn()
+const resolveNinaWriteSession = vi.fn()
+const revalidatePath = vi.fn()
+
+/**
+ * `after()` is captured rather than executed, because the thing under test is precisely that the
+ * action does NOT wait for it. `runTheAfterCallback` is the second half of every case below.
+ */
+const afterCallbacks: Array<() => Promise<void>> = []
+
+vi.mock('next/server', () => ({
+  after: (cb: () => Promise<void>) => {
+    afterCallbacks.push(cb)
+  },
+}))
+vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidatePath(path) }))
+vi.mock('@vercel/blob', () => ({ del: vi.fn() }))
+vi.mock('@/lib/admin/requireAdmin', () => ({ requireAdmin: () => requireAdmin() }))
+vi.mock('@/lib/nina/sessionResolve', () => ({
+  resolveNinaWriteSession: (userId: string) => resolveNinaWriteSession(userId),
+}))
+vi.mock('@/lib/nina/vision', () => ({
+  NinaVisionTokenFloorError: FakeVisionTokenFloorError,
+  describeNinaImages: (...args: unknown[]) => describeNinaImages(...args),
+}))
+vi.mock('@/lib/nina/caption', () => ({
+  captionNinaPhoto: (...args: unknown[]) => captionNinaPhoto(...args),
+}))
+vi.mock('@/lib/nina/queries', () => ({
+  deleteNinaMessage: vi.fn(),
+  deleteNinaMessageImage: vi.fn(),
+  getNinaMessageImage: (...args: unknown[]) => getNinaMessageImage(...args),
+  getNinaMessageImagesForMessages: vi.fn(),
+  getNinaMessagesByIds: vi.fn(),
+  insertNinaMessageImages: (...args: unknown[]) => insertNinaMessageImages(...args),
+  insertNinaMessages: (...args: unknown[]) => insertNinaMessages(...args),
+  isBlobPathnameReferenced: vi.fn(),
+  readNinaTuning: (...args: unknown[]) => readNinaTuning(...args),
+  setNinaMessageImageDescription: (...args: unknown[]) => setNinaMessageImageDescription(...args),
+  updateNinaChatPhotoBlob: (...args: unknown[]) => updateNinaChatPhotoBlob(...args),
+  updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
+}))
+
+type Actions = typeof import('@/lib/admin/chatPhotoActions')
+let actions: Actions
+
+/** The row `getNinaMessageImage` hands the callback: no description yet, so the eyes run. */
+const imageRow = {
+  id: IMAGE_ID,
+  messageId: MESSAGE_ID,
+  kind: 'generated' as const,
+  blobUrl: storedUrl,
+  pathname: storedPathname,
+  width: 768,
+  height: 1024,
+  bytes: 240_000,
+  description: null as string | null,
+  prompt: null,
+  sortOrder: 0,
+  createdAt: new Date(0),
+}
+
+async function runTheAfterCallback(): Promise<void> {
+  const cb = afterCallbacks.at(-1)
+  if (cb == null) throw new Error('no after() callback was scheduled')
+  return cb()
+}
+
+beforeEach(async () => {
+  afterCallbacks.length = 0
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.spyOn(console, 'info').mockImplementation(() => {})
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+
+  requireAdmin.mockResolvedValue({ userId: USER })
+  resolveNinaWriteSession.mockResolvedValue(SESSION_ID)
+  insertNinaMessages.mockResolvedValue([{ id: MESSAGE_ID }])
+  insertNinaMessageImages.mockResolvedValue([{ id: IMAGE_ID }])
+  getNinaMessageImage.mockResolvedValue({ ...imageRow })
+  describeNinaImages.mockResolvedValue({
+    description: STORED_DESCRIPTION,
+    promptTokens: 900,
+    completionTokens: 60,
+    floor: 500,
+    finishReason: 'stop',
+  })
+  setNinaMessageImageDescription.mockResolvedValue(undefined)
+  readNinaTuning.mockResolvedValue(NINA_TUNING_DEFAULTS)
+  captionNinaPhoto.mockResolvedValue(CAPTION)
+  updateNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
+  updateNinaChatPhotoBlob.mockResolvedValue({ id: IMAGE_ID })
+
+  actions = await import('@/lib/admin/chatPhotoActions')
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.clearAllMocks()
+})
+
+describe('scheduleChatPhotoCaption (through addChatPhotoAction)', () => {
+  it('describes with subject: self, then writes the caption to the message', async () => {
+    const result = await actions.addChatPhotoAction(goodBlob)
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+
+    // Exit criterion 7, asserted rather than reviewed: the response path awaited NO model call.
+    // The scheduler only handed `after()` a closure, and nothing in it has run yet.
+    expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(captionNinaPhoto).not.toHaveBeenCalled()
+
+    // The bubble the operator sees for the next ~20 s asserts nothing about the picture — that is
+    // what makes every failure case below safe rather than merely non-fatal.
+    expect(insertNinaMessages).toHaveBeenCalledWith(
+      USER,
+      [expect.objectContaining({ role: 'nina', photoOnly: true })],
+      SESSION_ID,
+    )
+    const [, [inserted]] = insertNinaMessages.mock.calls[0] as [string, [{ body: string }], string]
+    expect(isNinaPhotoCarrierMessage({ role: 'nina', body: inserted.body })).toBe(true)
+
+    await runTheAfterCallback()
+
+    // The subject is the half a runner-subject prompt gets wrong, so it is asserted explicitly.
+    expect(describeNinaImages).toHaveBeenCalledWith(
+      [{ blobUrl: storedUrl, pathname: storedPathname }],
+      { subject: 'self' },
+    )
+    // The paragraph is stored BEFORE the caption is attempted (exit criterion 5), so a caption
+    // failure never costs it.
+    expect(setNinaMessageImageDescription).toHaveBeenCalledWith(USER, IMAGE_ID, STORED_DESCRIPTION)
+    expect(captionNinaPhoto).toHaveBeenCalledWith({
+      seen: STORED_DESCRIPTION,
+      seenKind: 'described',
+      tuning: NINA_TUNING_DEFAULTS,
+    })
+    expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
+  })
+
+  it('leaves the canned line and writes nothing when the caption is refused', async () => {
+    // captionNinaPhoto -> null. The placeholder is one of NINA_IMAGE_CAPTION_POOL's scene-agnostic
+    // lines, so keeping it is a true sentence rather than a wrong one.
+    captionNinaPhoto.mockResolvedValue(null)
+    await actions.addChatPhotoAction(goodBlob)
+    await runTheAfterCallback()
+
+    expect(setNinaMessageImageDescription).toHaveBeenCalled()
+    expect(updateNinaMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not caption when the eyes failed, and still stores no description', async () => {
+    describeNinaImages.mockRejectedValue(new FakeVisionTokenFloorError('600 < 500 floor'))
+    await actions.addChatPhotoAction(goodBlob)
+    await runTheAfterCallback()
+
+    expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
+    expect(captionNinaPhoto).not.toHaveBeenCalled()
+    expect(updateNinaMessage).not.toHaveBeenCalled()
+    // Exit criterion 4: the floor is a dropped image, not a transport failure, and it is LOUD.
+    expect(console.error).toHaveBeenCalledWith(
+      '[f36] TOKEN FLOOR TRIPPED on a chat photo',
+      expect.objectContaining({ pathname: storedPathname }),
+    )
+    expect(console.warn).not.toHaveBeenCalled()
+  })
+
+  it('logs a transport failure separately from the floor, and still captions nothing', async () => {
+    describeNinaImages.mockRejectedValue(new Error('socket hang up'))
+    await actions.addChatPhotoAction(goodBlob)
+    await runTheAfterCallback()
+
+    expect(console.error).not.toHaveBeenCalled()
+    expect(console.warn).toHaveBeenCalledWith(
+      '[f36] chat photo describe failed; the row keeps a null description',
+      expect.objectContaining({ id: IMAGE_ID }),
+    )
+    expect(captionNinaPhoto).not.toHaveBeenCalled()
+    expect(updateNinaMessage).not.toHaveBeenCalled()
+  })
+
+  it('skips the vision call but still captions when a description is already stored', async () => {
+    // getNinaMessageImage returns a row with description set — the free retry.
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, description: STORED_DESCRIPTION })
+    await actions.addChatPhotoAction(goodBlob)
+    await runTheAfterCallback()
+
+    expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
+    expect(captionNinaPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({ seen: STORED_DESCRIPTION, seenKind: 'described' }),
+    )
+    expect(updateNinaMessage).toHaveBeenCalled()
+  })
+
+  it('is a miss, not a failure, when the row is gone', async () => {
+    getNinaMessageImage.mockResolvedValue(null)
+    await actions.addChatPhotoAction(goodBlob)
+    await expect(runTheAfterCallback()).resolves.toBeUndefined()
+
+    expect(describeNinaImages).not.toHaveBeenCalled()
+    expect(captionNinaPhoto).not.toHaveBeenCalled()
+    expect(updateNinaMessage).not.toHaveBeenCalled()
+  })
+
+  it('is a miss when the bubble went away before its caption arrived', async () => {
+    updateNinaMessage.mockResolvedValue(null)
+    await actions.addChatPhotoAction(goodBlob)
+    await expect(runTheAfterCallback()).resolves.toBeUndefined()
+  })
+
+  it('never rejects, whatever the pass does', async () => {
+    // updateNinaMessage throws. The action still resolved { ok: true } and after() saw no rejection.
+    updateNinaMessage.mockRejectedValue(new Error('deadlock detected'))
+    const result = await actions.addChatPhotoAction(goodBlob)
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    await expect(runTheAfterCallback()).resolves.toBeUndefined()
+    expect(console.warn).toHaveBeenCalledWith(
+      '[f36] chat photo caption pass failed',
+      expect.objectContaining({ id: IMAGE_ID }),
+    )
+  })
+})
+
+describe('replaceChatPhotoAction schedules the same captioner', () => {
+  it('is the captioner and not the old describe-only pass', async () => {
+    // Replace HAD a `scheduleChatPhotoDescribe` call, so the rename reached it too. The bubble's
+    // text in the gap is deliberately undesigned — see the note at the call site — but the pass
+    // that runs is the same one, which is what keeps the two sites from drifting.
+    const result = await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(describeNinaImages).not.toHaveBeenCalled()
+
+    await runTheAfterCallback()
+    expect(describeNinaImages).toHaveBeenCalledWith(expect.anything(), { subject: 'self' })
+    expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
   })
 })
