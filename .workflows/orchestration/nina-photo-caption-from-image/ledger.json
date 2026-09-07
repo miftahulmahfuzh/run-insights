@@ -1,47 +1,49 @@
 {
   "branch": "feature/nina-photo-caption-from-image",
+  "card_note": "parent #113 owns the pull request; each phase completes on its commit via `finish <n> --child-of 113 --commit <sha>`. Minted by analyze-nina-photo-caption after GitHub's secondary content-creation limit cleared, verified subIssues total 4.",
   "coordinator": "orch-nina-photo-caption-from-image",
   "coordinator_session_id": "a34549c2-ef73-40b7-ace8-5b9ce442731a",
   "created": "2026-09-07T02:40:06+00:00",
+  "parent_card": "miftahulmahfuzh/run-insights#113",
   "phases": [
     {
-      "card": null,
+      "card": "miftahulmahfuzh/run-insights#114",
       "commit": null,
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "live in impl-...-p1 pane %53, confirmed against .runtime.json and ListAgents; no commit yet, so verify derives pending -- do NOT re-spawn",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-photo-caption-from-image/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T05:13:02+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "running",
+      "task_id": "P1-NIN-A014",
       "title": "Her eyes for her own photo, and her voice for the caption"
     },
     {
-      "card": null,
+      "card": "miftahulmahfuzh/run-insights#115",
       "commit": null,
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "live in impl-...-p2 pane %54, confirmed against .runtime.json and ListAgents; no commit yet, so verify derives pending -- do NOT re-spawn",
       "package": "lib/db` + `lib/nina` + `lib/admin` + `scripts",
       "plan": ".workflows/plan/nina-photo-caption-from-image/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T05:13:02+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "running",
+      "task_id": "P1-DB-A002",
       "title": "The carrier marker: a photo bubble free text cannot hide"
     },
     {
-      "card": null,
+      "card": "miftahulmahfuzh/run-insights#116",
       "commit": null,
       "depends_on": [
         1,
@@ -61,7 +63,7 @@
       "title": "The admin add path captions from the photograph"
     },
     {
-      "card": null,
+      "card": "miftahulmahfuzh/run-insights#117",
       "commit": null,
       "depends_on": [
         1,
@@ -84,6 +86,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-caption-from-image",
-  "updated": "2026-09-07T02:41:00+00:00",
+  "updated": "2026-09-07T05:13:02+00:00",
+  "verified_at": "2026-09-07T05:11:57+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
 }
