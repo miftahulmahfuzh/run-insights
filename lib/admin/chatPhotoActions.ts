@@ -122,6 +122,16 @@ import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision
  * The `existing.pathname !== pathname` guard is not paranoia: `addRandomSuffix` makes a collision
  * impossible in practice, and deleting the object the row now points at would be unrecoverable, so
  * the one comparison that rules it out is worth making.
+ *
+ * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REPLACEABLE ───────────────────────────────
+ * F37's `source_avatar_id` / `source_image_id` mark a row that RE-SHOWS a photograph which already
+ * exists elsewhere — an album row (F34 R2's share) or another chat row. `isOriginalPhoto()` is
+ * inside `generatedChatPhotoScope`, so such a row is not on `/admin/photos` at all and an id for one
+ * is a stale link or a hand-typed claim. `getNinaMessageImage` above deliberately does NOT filter
+ * references (it is the bubble/viewer read too), so the refusal has to be here. Replacing a
+ * reference's bytes would change what one bubble shows while the photograph it re-shows stayed as it
+ * was: two pictures where the operator asked for one, and no way to see the second one from this
+ * screen. The refusal is a sentence, in the same shape as the `kind` refusal above it.
  */
 export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -138,6 +148,12 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
   if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
   if (existing.kind !== 'generated') {
     return { ok: false, error: 'That one is his upload, not hers.' }
+  }
+  if (isChatPhotoReference(existing)) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Replace the original instead.',
+    }
   }
 
   const updated = await updateNinaChatPhotoBlob(userId, id, {
@@ -310,6 +326,20 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
  * another chat row or a `nina_avatars` row — possibly her current profile picture.
  * `releaseChatPhotoBlob` asks first. Deleting the row before asking is what makes the question
  * answerable without an exclusion parameter.
+ *
+ * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REMOVABLE FROM HERE ───────────────────────
+ * F37's `source_avatar_id` / `source_image_id` mark a row that re-shows a photograph which already
+ * exists elsewhere. `generatedChatPhotoScope` excludes it, so it never appears on `/admin/photos`
+ * and an id for one is a stale link or a hand-typed claim. Acting on it would be worse than useless:
+ * the photograph the operator can SEE on the screen would still be there afterwards, and
+ * `releaseChatPhotoBlob` would be asked about an object the original member still points at. The
+ * refusal is first, above every read and every delete, and it is a sentence rather than the generic
+ * miss so the operator knows the id was real and the answer was still no. Removing a re-share from a
+ * bubble is the runner's own message-edit path, not this screen's.
+ *
+ * It sits ABOVE `loadPhotoCarrier` for a reason worth one line: an ORPHANED reference row would
+ * otherwise take the `{ message: null, siblings: [] }` short-circuit straight into
+ * `deleteNinaMessageImage`, which is exactly the delete this paragraph forbids.
  */
 export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -320,6 +350,12 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
 
   const row = await getNinaMessageImage(userId, id)
   if (row == null) return { ok: false, error: 'That photo is not in the collection.' }
+  if (isChatPhotoReference(row)) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Remove the original instead.',
+    }
+  }
 
   const carrier = await loadPhotoCarrier(userId, row.messageId)
   const isLastImage = carrier.siblings.every((sibling) => sibling.id === id)
@@ -444,6 +480,36 @@ export async function editChatPhotoDescriptionAction(
  * "they are all me". `getNinaMessagesByIds` and `getNinaMessageImagesForMessages` are both
  * owner-scoped, so a `message_id` read off a row we already proved is his cannot widen anything.
  */
+/**
+ * **Is this row a re-share rather than a photograph of its own?** The row-level reading of
+ * `isOriginalPhoto()` (`lib/nina/queries.ts`), which is the SQL half of the same rule.
+ *
+ * Written here rather than exported out of `lib/nina/` because this is the only place that needs
+ * the question answered about a row already in hand: the three collection reads ask it in their
+ * WHERE, and `getNinaMessageImage` — the bubble, viewer and admin read — deliberately never asks it
+ * at all. A shared export would invite a fourth caller to filter a read that must not be filtered
+ * (`lib/db/schema.ts`'s own note on the four reads, asserted as an absence by
+ * `tests/nina.photoRefs.test.ts`).
+ *
+ * Either column being non-null is enough: `ninaPhotoProvenance` sets exactly one of the two, and
+ * both FKs are `ON DELETE SET NULL`, so a row whose origin was deleted stops being a re-share and
+ * becomes replaceable and removable again — which is correct, because by then it is the only copy
+ * left.
+ *
+ * `!= null` and not `!== null`, deliberately: the loose comparison answers "is there an origin id
+ * here" for an ABSENT field as well as a NULL one, and absent has to mean the same thing as null.
+ * The column is `string | null` so a live row cannot be `undefined` — but a caller holding a row
+ * shaped before F37 added the pair can be, and the strict form would then read a missing field as
+ * "this is a re-share" and refuse an ordinary photograph the operator can see on the screen. The
+ * safe direction for a REFUSAL is to fire only on evidence, which is the same widening
+ * `isOriginalPhoto()` gets for free from `IS NULL` in SQL.
+ */
+function isChatPhotoReference(
+  row: Pick<NinaImageRow, 'sourceAvatarId' | 'sourceImageId'>,
+): boolean {
+  return row.sourceAvatarId != null || row.sourceImageId != null
+}
+
 async function loadPhotoCarrier(
   userId: string,
   messageId: string | null,

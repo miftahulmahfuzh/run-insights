@@ -1563,6 +1563,78 @@ export async function insertNinaMessageImages(
 }
 
 /**
+ * **R4: an orphan gets a parent again.** The runner's own words — *"make sure these 'orphaned'
+ * photos got 'parent' chat session again if user attach a photo to another chat session"*. One
+ * UPDATE, and the row that was already there is the row that lands in the new bubble.
+ *
+ * Only expressible since R1: before `message_id` became nullable there were no orphans to adopt.
+ *
+ * ── WHY AN UPDATE AND NOT AN INSERT ─────────────────────────────────────────────────────────
+ * `insertNinaMessageImages` is one function up and it is the WRONG statement here. Re-attaching an
+ * orphan through it writes a SECOND row carrying `source_image_id` — a reference to a photograph
+ * whose own row has no message and never gets one, so the picture the runner just put back into a
+ * conversation stays parentless forever. That is precisely what R4 forbids. Adopting keeps the id
+ * — so `/nina`'s deep link and `attachableIdAt` (`lib/nina/chatphotos.ts`) still resolve to it —
+ * keeps the Blob object, and keeps one row per photograph rather than two.
+ *
+ * ── `message_id IS NULL` IS IN THE WHERE, NOT IN A BRANCH ABOVE IT ──────────────────────────
+ * The caller has just read the row and already knows whether it had a message. Asking again HERE,
+ * inside the statement, is what makes "adopt an orphan" and "leave a live bubble alone" one atomic
+ * decision instead of a branch on a value read a moment earlier: a row that gained a message between
+ * that read and this UPDATE is NOT adopted, and the `null` sends the caller to its fallback rather
+ * than emptying a bubble the runner never touched (plan Decisions, row 5 — *"the same class of loss
+ * this whole plan exists to stop"*). So `null` means exactly one thing to a caller — **"not his, or
+ * not an orphan"** — and both of those answers want identical handling.
+ *
+ * ── WHAT IT DELIBERATELY DOES NOT TOUCH ─────────────────────────────────────────────────────
+ *   · `created_at` — plan invariant 6. `/nina/about` and `/admin/photos` are both ordered by it, and
+ *     `updateNinaChatPhotoBlob`'s header below records the same argument for replace: *"replacing a
+ *     photograph is not taking a new one"*. Adopting one is not taking a new one either, and a
+ *     bumped `created_at` would silently re-sort both surfaces.
+ *   · `source_avatar_id` / `source_image_id` — F37's provenance, and whatever the row was, it stays.
+ *     An orphaned original comes back as an original; an orphaned reference comes back as a
+ *     reference. Either way `isOriginalPhoto()` counts this photograph exactly as often as it did
+ *     before, which is what keeps the collection honest through a re-attach. Re-parenting is not a
+ *     claim about where the bytes came from. (The plan's own text here named `is_reference`, the
+ *     column coordinator ruling C7 struck; these two columns are the mechanism that survived.)
+ *   · `description` — it describes this picture, and this is the same picture. Nina is handed it
+ *     through `imageDescriptions` on this very turn.
+ *   · `kind` — an orphaned upload of his, re-attached, is still his upload. `photoSideOf`
+ *     (`lib/nina/album.ts`) has to keep telling the truth.
+ *
+ * ── OWNER SCOPE, AND WHY THERE IS NO SECOND OWNERSHIP READ ──────────────────────────────────
+ * `user_id` is in the WHERE (plan invariant 4): a photograph id from a client is a claim, and this
+ * module's standing rule makes "not yours" and "does not exist" one outcome. `into.messageId` is NOT
+ * re-checked against `nina_messages` the way `insertNinaMessageImages` checks its `messageId`, and
+ * the reason is that the one caller INSERTED that message itself, in the same request, under the same
+ * `userId`, thirty lines above — with the foreign key behind that, so an id that is not a row fails
+ * this statement loudly instead of landing quietly. The reference was re-read, owner-scoped, by
+ * `getNinaMessageImage` before this ran.
+ *
+ * `sortOrder` is a parameter and not derived, because "where in the new bubble" is the caller's
+ * question: it is the count of the photographs he picked in the same message.
+ */
+export async function adoptNinaMessageImage(
+  userId: string,
+  id: string,
+  into: { messageId: string; sortOrder: number },
+): Promise<NinaImageRow | null> {
+  const adopted = await db
+    .update(ninaMessageImages)
+    .set({ messageId: into.messageId, sortOrder: into.sortOrder })
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.id, id),
+        isNull(ninaMessageImages.messageId),
+      ),
+    )
+    .returning(imageColumns)
+
+  return adopted[0] ?? null
+}
+
+/**
  * Phase 13's gallery: every image in the conversation, newest first, his and hers together. Reads
  * `nina_message_images_user_created_idx` with no join — which is the whole reason this is a table
  * and not a `jsonb` column on `nina_messages`.

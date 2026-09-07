@@ -25,6 +25,7 @@ import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
+  adoptNinaMessageImage,
   getNinaAvatar,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
@@ -198,6 +199,26 @@ async function resolveAttachment(
    */
   sourceAvatarId: string | null
   sourceImageId: string | null
+  /**
+   * **R4.** The `nina_message_images.id` to RE-PARENT onto the new message, or null to write a
+   * reference row the way this function always has.
+   *
+   *   · an `image` pointer at a row of his with **no message** -> `row.id`. The caller adopts THAT
+   *     row (R4) and inserts nothing, so a photograph the runner puts back into a conversation
+   *     stops being an orphan instead of gaining a second, permanently parentless row.
+   *   · an `image` pointer at a row that **still has** a message -> `null`. Moving it would empty
+   *     a bubble the runner never touched (plan Decisions, row 5), so the caller writes a reference
+   *     row and the original bubble is untouched.
+   *   · every `avatar` pointer -> `null`, always. An album photograph is a `nina_avatars` row;
+   *     there is no `nina_message_images` row here to adopt, and F37's `source_avatar_id` is what
+   *     keeps the share out of the collection.
+   *
+   * A **candidate, not a promise**. `message_id IS NULL` is in the adopting UPDATE's own WHERE, so a
+   * row that gains a message between this read and that statement is not adopted and the caller
+   * falls back to the reference row. This function reads; it decides nothing the statement cannot
+   * re-check.
+   */
+  adoptableId: string | null
 } | null> {
   if (attach.kind === 'avatar') {
     /*
@@ -227,6 +248,8 @@ async function resolveAttachment(
        * property the foreign key can then rely on rather than one a reader has to reconstruct.
        */
       ...ninaPhotoProvenance({ kind: 'avatar', id: row.id }),
+      /* An album row is not a chat row. There is nothing to adopt, ever. */
+      adoptableId: null,
     }
   }
 
@@ -256,6 +279,10 @@ async function resolveAttachment(
       sourceAvatarId: row.sourceAvatarId,
       sourceImageId: row.sourceImageId,
     }),
+    /* R4. A row with no message is an orphan, and an orphan is the ONLY thing adoption may move —
+     * `message_id IS NULL` is re-asserted inside the UPDATE, so this is a candidate and not a
+     * decision. A row that still has a message is left exactly where it is. */
+    adoptableId: row.messageId === null ? row.id : null,
   }
 }
 
@@ -578,37 +605,75 @@ export async function sendNinaMessage(input: {
   }
 
   /*
-   * R26's row. Same table, same shape, same reasons as the block above — it is an ordinary chat
-   * photo that happens to point at a blob we already had, which is the whole design: no new
-   * attachment kind, no new renderer, no second send path.
+   * R26's row — now **ADOPT-OR-REFERENCE** (R4).
    *
-   * `sortOrder: images.length` puts it after anything he picked in the same message. Today the
-   * album sends exactly one photo and no tickets, so that is 0; spelling it as the count rather
-   * than as 0 keeps the two blocks composable if a later card ever lets him do both.
+   * Same table, same shape, same reasons as the block above: it is an ordinary chat photo that
+   * happens to point at a blob we already had, which is the whole design — no new attachment kind,
+   * no new renderer, no second send path. What changed is that an INSERT is no longer the only
+   * outcome, because since R1 an `image` pointer can name a photograph that has no bubble at all.
+   *
+   * ── WHY AN UNCONDITIONAL INSERT BECAME WRONG ────────────────────────────────────────────────
+   * F37 made this row a REFERENCE rather than a duplicate, which fixed the collection. It cannot
+   * fix an ORPHAN: re-attaching one wrote a reference pointing at a row that has no message and
+   * would never get one, so the photograph the runner had just put back into a conversation was
+   * still parentless — *"make sure these 'orphaned' photos got 'parent' chat session again"*, R4,
+   * unserved. Nothing about the BUBBLE changes here (plan invariant 8), only which row the
+   * conversation shows the photograph through.
+   *
+   *   · `attached.adoptableId != null` -> the pointer named an ORPHANED row of his, so that row is
+   *     RE-PARENTED onto this message. Same id, same `created_at` (invariant 6), same Blob object,
+   *     same provenance — and no row written, so no row can be a duplicate.
+   *   · adoption came back `null` -> the row gained a message between the read and the UPDATE, or it
+   *     was not his after all. Fall through to the reference row: the photograph is in the
+   *     conversation either way, and the collection is unharmed either way. Every branch of that
+   *     race has an honest outcome, which is the reason the check lives in the statement's WHERE.
+   *   · anything else — every album share, and every re-attach of a photograph that still has a
+   *     bubble — -> ONE reference row, exactly as before this phase.
+   *
+   * `sortOrder: images.length` puts it after anything he picked in the same message, in BOTH arms,
+   * so the adopted row and the reference row land in the same place. Today the album sends exactly
+   * one photo and no tickets, so that is 0; spelling it as the count rather than as 0 keeps the two
+   * blocks composable if a later card ever lets him do both.
+   *
+   * ── THE FAILURE DISCIPLINE IS UNCHANGED, AND DELIBERATELY ───────────────────────────────────
+   * Warned and swallowed, as before. The message and the reply are worth more than a gallery row,
+   * and `imageDescriptions` below is built from `attached.description` rather than from either
+   * statement's return value — so the turn she takes is identical whichever arm ran, and identical
+   * if both failed.
    */
   if (attached !== null) {
     try {
-      await insertNinaMessageImages(userId, [
-        {
-          messageId: runnerMessageId,
-          kind: attached.kind,
-          blobUrl: attached.blobUrl,
-          pathname: attached.pathname,
-          description: attached.description,
-          sortOrder: images.length,
-          /*
-           * F37 R1/R3. **The two fields that make this row a reference rather than a duplicate.**
-           * `resolveAttachment` filled them in from the row it proved he owns, so the collection
-           * listings skip this row while the bubble, the viewer, the download control and Nina's
-           * prompt all still find it by `message_id`.
-           *
-           * The upload block twenty lines up sets NEITHER, and must not: those bytes arrived from
-           * his camera and the row is an original.
-           */
-          sourceAvatarId: attached.sourceAvatarId,
-          sourceImageId: attached.sourceImageId,
-        },
-      ])
+      const adopted =
+        attached.adoptableId === null
+          ? null
+          : await adoptNinaMessageImage(userId, attached.adoptableId, {
+              messageId: runnerMessageId,
+              sortOrder: images.length,
+            })
+
+      if (adopted === null) {
+        await insertNinaMessageImages(userId, [
+          {
+            messageId: runnerMessageId,
+            kind: attached.kind,
+            blobUrl: attached.blobUrl,
+            pathname: attached.pathname,
+            description: attached.description,
+            sortOrder: images.length,
+            /*
+             * F37 R1/R3. **The two fields that make this row a reference rather than a duplicate.**
+             * `resolveAttachment` filled them in from the row it proved he owns, so the collection
+             * listings skip this row while the bubble, the viewer, the download control and Nina's
+             * prompt all still find it by `message_id`.
+             *
+             * The upload block twenty lines up sets NEITHER, and must not: those bytes arrived from
+             * his camera and the row is an original.
+             */
+            sourceAvatarId: attached.sourceAvatarId,
+            sourceImageId: attached.sourceImageId,
+          },
+        ])
+      }
     } catch (cause) {
       console.warn('[nina] could not persist the attached photo', { error: String(cause) })
     }
