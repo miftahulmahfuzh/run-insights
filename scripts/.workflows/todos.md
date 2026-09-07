@@ -28,7 +28,7 @@
   - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 4 of 4)
   - **Satisfies**: R3 — The shortcut-shaped rows already in the production memory ledger carry over into the new mechanism instead of being retyped
   - **Depends on**: `P1-DB-A004`
-  - **Plan**: `.workflows/plan/nina-emoji-shortcuts/phase-4.md`
+  - **Plan**: `.workflows/plan/P1-SC-A000.md`
 
 ### [P2] Medium
 

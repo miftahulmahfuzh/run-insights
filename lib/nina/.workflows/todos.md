@@ -88,7 +88,7 @@
   - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 2 of 4)
   - **Satisfies**: R2 — Typing a single emoji character in the chat makes Nina understand the whole long context that emoji stands for
   - **Depends on**: `P1-DB-A004`
-  - **Plan**: `.workflows/plan/nina-emoji-shortcuts/phase-2.md`
+  - **Plan**: `.workflows/plan/P1-NIN-A023.md`
   - **Completed**: 2026-09-07 22:47
   - **Method**: /do (swarm wave 1, concurrent with phases 3 and 4)
   - **Files**: lib/nina/turn.ts, lib/nina/actions.ts, lib/nina/prompts/index.ts, lib/nina/turn.test.ts, tests/nina.resend.test.ts

@@ -43,7 +43,7 @@
   - **Status**: completed
   - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 1 of 4)
   - **Satisfies**: R1 — An explicit shortcuts mechanism, separate from memory: an admin surface to add, edit, disable and remove shortcuts, each standing for a situation or for something Miftah and Nina were doing; R2 — Typing a single emoji character in the chat makes Nina understand the whole long context that emoji stands for; R3 — The shortcut-shaped rows already in the production memory ledger carry over into the new mechanism instead of being retyped
-  - **Plan**: `.workflows/plan/nina-emoji-shortcuts/phase-1.md`
+  - **Plan**: `.workflows/plan/P1-DB-A004.md`
   - **Completed**: 2026-09-07 22:28
   - **Method**: /do (swarm phase 1 of 4)
   - **Files**: lib/db/schema.ts, lib/nina/shortcuts.ts, lib/nina/shortcuts.test.ts, lib/nina/queries.ts, tests/db.schema.nina.test.ts, drizzle/0012_nina_shortcuts.sql, drizzle/meta/0012_snapshot.json, drizzle/meta/_journal.json
