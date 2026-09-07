@@ -17,7 +17,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Thread the current avatar into the chat's typing row"
     }
@@ -25,6 +25,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-avatar-profile/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-avatar-profile",
-  "updated": "2026-09-07T02:34:20+00:00",
+  "updated": "2026-09-07T02:35:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-avatar-profile"
 }
