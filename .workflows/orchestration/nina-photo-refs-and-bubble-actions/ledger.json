@@ -58,28 +58,28 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#132",
-      "commit": null,
+      "commit": "a6b9188",
       "depends_on": [
         3
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": "Coordinator round 2: verify derived 'pending' from absence of a commit; restored to running -- session busy in ListAgents. Not re-spawned.",
+      "note": "R5 done. resendNinaMessage inside actions.ts at :1145 (D10 honoured: nothing exported, startNinaBackgroundTurn still module-private); canResendMessage at the FOOT of edit.ts below phase 3's tap section (D9); MessageActionsSheet gains required onResend: Promise<string|null>, refusals render IN the sheet (D-f); cursor is the NEWEST seq, client takes Math.max (D-a); imageDescriptions rebuilt from the row, not [] (D-c). Invariant 7 held and asserted: zero insertNinaMessages. Decisions: absorbed phase 3's whitespace reflow at ChatScreen.tsx:425 rather than reverse-applying (reversible + narrower blast radius, file is mine outright); built the commit with a pathspec after finding p2's stale PRE-commit lib/admin docs staged in the shared index -- commit is exactly 8 files, and I then cleared that stale index entry with 'git restore --staged lib/admin/.workflows/' (index-only; the worktree copies already matched HEAD, so p2's f8f28c3 docs are intact and the index is now clean); minted P1-NIN-A022 after verifying it free. Drift: actions.ts had grown 1341->1377 from phase 1's concurrent landing, so the insertion anchored on quoted text and landed at :1061 rather than the plan's :1022 -- same seam, ~480 lines from phase 1's nearest hunk. Verified: lint 0 errors, typecheck clean, vitest 153 files / 3078 tests (21 new), ci:llm-payload-guard clean with 9 symbols unchanged, db:check clean, drizzle/ untouched. Did NOT run db:migrate. The 12 files still dirty in the worktree are the repo-wide formatter's pure reflow, owned by no phase -- left alone.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md",
-      "reported_at": "2026-09-07T11:03:41+00:00",
+      "reported_at": "2026-09-07T11:07:02+00:00",
       "satisfies": [
         "R5"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A022",
       "title": "Resend a message that was never answered"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-refs-and-bubble-actions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-refs-and-bubble-actions",
-  "updated": "2026-09-07T11:03:41+00:00",
+  "updated": "2026-09-07T11:07:02+00:00",
   "verified_at": "2026-09-07T11:03:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions"
 }

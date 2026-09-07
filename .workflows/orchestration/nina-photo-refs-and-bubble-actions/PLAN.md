@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions`
 **Branch:** `feature/nina-photo-refs-and-bubble-actions` (base: `origin/main` @ `e6c68d6`)
 **Phases:** 4
-**Status:** executing — phase 2 of 4 complete  _(reconciled 2026-09-07; 1 round, 11 conflicts, 0 open questions)_
+**Status:** complete — all 4 of 4 phases landed on `feature/nina-photo-refs-and-bubble-actions`  _(reconciled 2026-09-07; 1 round, 11 conflicts, 0 open questions)_
 **Coordinator:** —
 
 ---
@@ -131,6 +131,9 @@ either one alone.
 **Landed.** One line per phase, appended by that phase's own session as it completes.
 
 - **Phase 2** — `P1-ADM-B130`, 2026-09-07 17:54. 10 files. Commit built by the coordinator (see `ledger.json` for the sha). `npm run lint` 0 errors, `npm run typecheck` clean, `npx vitest run` 152 files / 3057 tests, `check-llm-payload-boundary` clean. R2 satisfied.
+- **Phase 4** — `P1-NIN-A022`, 2026-09-07 18:05. 8 files, commit `a6b9188`, pushed. Commit built inline with named paths (`git commit -F msg -- <paths>`) because peer p2 had `lib/admin/.workflows/*` staged in this shared worktree's index. `npm run lint` 0 errors, `npm run typecheck` clean, `npx vitest run` 153 files / 3078 tests (21 new), `check-llm-payload-boundary` clean at 9 guarded symbols with no new entry, `npm run db:check` clean with `drizzle/` untouched. R5 satisfied.
+
+  Phases **1** and **3** landed as `7a7d7e2` and `8be755f` respectively; their sessions did not append lines here, so their verification is recorded in `lib/db/.workflows/todos.md` (`P1-DB-A003`) and `lib/nina/.workflows/todos.md` (`P1-NIN-A021`). With phase 4 in, every phase of the set is on the branch and it is ready to be reviewed and merged as a whole.
 
 **Concurrency, after reconciliation.** The only edge in the set is **4 → 3**. Phases **1, 2 and 3
 start together**; phase 4 starts when 3 lands. Three file-sharing pairs were checked line by line
