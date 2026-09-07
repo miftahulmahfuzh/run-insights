@@ -145,28 +145,69 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
 
   return (
     <AppShell>
-      <header className="mb-5 flex items-baseline justify-between gap-3">
+      {/*
+        ── THE ACTION ROW IS THREE GLYPHS, AND THAT IS THE WHOLE RULE (card #108) ─────────────────
+        Correct, Share, send-to-Nina. It held two words and one icon until this commit, which reads
+        as a row somebody stopped halfway through rather than as a deliberate mix.
+
+        `AppShell`'s "a plain-text link, never an icon button" is NOT reversed here, and the
+        distinction is the same one the Nina icon was argued in on: that rule governs
+        `ScreenHeader`'s SCREEN TITLE row, where the action navigates to another named screen and
+        the screen's name is what disambiguates it. This page hand-rolls its own header and this
+        group is an ACTION row — three things you do to the run in front of you, not three places
+        to go. `‹ Runs` on the left is the navigation, and it deliberately stays a word.
+
+        None of the three is unlabelled: each carries an `aria-label` AND a `title`, and the two
+        added here take their sentences from the screen and the copy module they open
+        (`/r/[id]/edit`'s own `<h1>`, and `SHARE_TITLE`) so an icon's name cannot drift from what
+        it does.
+
+        `items-center`, not `items-baseline`: an icon has no baseline worth aligning, which is why
+        the Nina link used to carry `self-center` on its own. Three icons make that the row's
+        property rather than one child's exception. `gap-4` is the glyph-to-glyph distance — each
+        box's `-m-1` exactly cancels its own `p-1`, so the padding that grows the 20px glyph into a
+        28px touch target is spent inside the gap rather than on top of it.
+      */}
+      <header className="mb-5 flex items-center justify-between gap-3">
         <Link href="/" className="text-[13px] font-semibold text-accent">
           ‹ Runs
         </Link>
-        <div className="flex items-baseline gap-4">
-          {/* F05's post-review correction path — the only way into it, so it must survive here. */}
-          <Link href={`/r/${id}/edit`} className="text-[13px] font-semibold text-accent">
-            Correct
+        <div className="flex items-center gap-4">
+          {/* F05's post-review correction path — the only way into it, so it must survive here.
+              A pencil: the one glyph that means "edit what is written here" without a caption. */}
+          <Link
+            href={`/r/${id}/edit`}
+            aria-label="Correct this run"
+            title="Correct this run"
+            className="-m-1 inline-flex p-1 text-accent"
+          >
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+              <path
+                d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="m13.5 6.5 4 4"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
           </Link>
           {/* F11's slot, now filled. The URL is passed in so a run that is ALREADY shared reaches
               `navigator.share()` synchronously inside the tap — no mint round trip, no Safari
-              transient-activation problem. See ShareButton's own note on why that matters. */}
+              transient-activation problem. See ShareButton's own note on why that matters — and on
+              why, now that its label is a glyph, the tick it shows after a clipboard copy is the
+              confirmation the word "Copied" used to be. */}
           <ShareButton runId={run.id} url={shareLink} />
           {/*
-            F33 R13 — "share a run to nina". The one icon in this app's chrome, and the argument
-            for it: there is no honest word for this tap. It does not ask her anything yet; it
-            hands her the run and leaves the question to the composer. `AppShell`'s "a plain-text
-            link, never an icon button" rule governs `ScreenHeader`'s SCREEN TITLE row, where the
-            action is a navigation to another named screen and the name disambiguates it. This page
-            hand-rolls its own header and this group is a share-affordance row, which is a
-            different row and a different question — and the icon is not unlabelled: its accessible
-            name is a full sentence.
+            F33 R13 — "share a run to nina". The first icon in this app's chrome, and the argument
+            that made it one is now the row's: there is no honest word for this tap. It does not
+            ask her anything yet; it hands her the run and leaves the question to the composer. See
+            the row's own note above for why `AppShell`'s plain-text rule is not what governs here.
 
             A plain `<Link>`, so this stays a server component: the chat page reads `?attach=` and
             does the loading. No action, no state, no `'use client'` — and therefore nothing new
@@ -177,17 +218,18 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
             reason: Nina's facts come from the reviewed history (D16), so an unreviewed run is one
             she cannot see. Offering the icon anyway would hand her a card she has no facts for,
             which is the one thing R-17's honesty rule forbids. A draft run's route to Nina is the
-            review flow, which is one tap away under "Correct".
+            review flow, which is one tap away under the pencil.
 
-            `self-center` because the row is `items-baseline` and an icon has no baseline worth
-            aligning; `-m-1 p-1` grows the touch target past the 20px glyph without moving the row.
+            So this row is two glyphs on a draft run and three on a reviewed one — and the pencil is
+            deliberately the one that never disappears, because on a draft it is the only way
+            forward.
           */}
           {run.reviewedAt != null && (
             <Link
               href={`/nina?${ATTACH_PARAM}=${run.id}`}
               aria-label="Attach this run to a message for Nina"
               title="Attach this run to a message for Nina"
-              className="-m-1 inline-flex self-center p-1 text-accent"
+              className="-m-1 inline-flex p-1 text-accent"
             >
               <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
                 <path
