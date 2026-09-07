@@ -24,23 +24,23 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "7c12c54",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "R1 + R4-R9 prompt half. persona.ts gains NINA_BODY_SENTENCES/NINA_BODY/NINA_BODY_AVATAR/ninaBodyBlock; NINA_APPEARANCE reordered body->face->outfit; NINA_FACE loses the body clause it wrongly carried and Lean/narrow shoulders are repealed; ninaAppearance re-pointed at NinaImagePrefs NOMINALLY so a leftover ninaAppearance(tuning) is a compile error. imagegen.ts gains the five-rung ladder (NINA_PROMPT_RUNGS, ninaPromptRung, NINA_PROMPT_LENGTH_FALLBACK=70) keyed off ninaBand, six focus clauses, VENUE:/TIME:/NOTES:. selfiegen/avatargen read both rows in one Promise.all, which is why avatartools/imagetools/promises needed zero edits. VERIFIED at 684e787: typecheck clean, lint 0, three CI guards pass, nina.imagerecipe+nina.prompts 153/153, property test green over 1280 combinations, buildNinaSystemPrompt snapshot unmoved. Commit carries only 6 paths, no peer file; did NOT re-add the A024 todos entry nor stage tests/nina.imagerecipe.test.ts (phase 3 published both in 5e70918) -- coordinator verified A024 appears exactly twice in 7c12c54, same as 5e70918, so no duplicate. IT WENT IDLE BEFORE SENDING ITS MESSAGE; coordinator derived done from git first and the report arrived after. TWO LADDER DECISIONS (rung 3, code blocks over the plan's prose): Step 6 asserted 'never lean and never slight' on the no-prefs render but that clause is body sentence 5 and the fallback (70 -> band high) renders four -- three code blocks agreed and only the test disagreed, so both negations now run across all five band floors (up from one render) and the positive repeal asserts at band max, one assertion MORE than the plan wrote; Step 2's header-repeal block ships self-delimited because nesting it inside the existing block comment as the prose says is a syntax error (rung 1, invariant 1). FOR PHASE 7: tuning.ts carries 7 wardrobe grep hits, NOT the 4 its exit criterion 3 predicts -- phase 2 never touched that file, so the 4 is a stale plan prediction and the gate must expect 7. In test 'R6: the PREFS wardrobe reaches the photograph and the TUNING wardrobe does NOT' delete ONLY the tuning: line. README: readme-updater had already run before the skip reached it; file reverted, accurate 234-line draft saved to phase-2-readme-draft.patch for the coordinator's end-of-set pass.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T20:14:53+00:00",
       "satisfies": [
         "R1",
         "R4",
         "R9"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A024",
       "title": "The prompt: body canon, length ladder, focus, venue, time, notes"
     },
     {
@@ -121,7 +121,7 @@
         "R11",
         "R12"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Test prompt, its verdict, and the photo in Chat photos"
     },
@@ -141,7 +141,7 @@
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Retire `nina_tuning.wardrobe"
     }
@@ -149,6 +149,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T16:05:55+00:00",
+  "updated": "2026-09-07T20:15:06+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
