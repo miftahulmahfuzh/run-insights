@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-emoji-shortcuts",
   "coordinator_session_id": "e03670dd-8c98-49ef-bb1a-4acc553dc4d3",
   "created": "2026-09-07T15:15:19+00:00",
+  "landed": {
+    "at": "2026-09-07T16:03:57+00:00",
+    "base": "main",
+    "commit": "addb867cc7173e2ea9b46b474088c9ad707bedb7",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -84,7 +90,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-emoji-shortcuts/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-emoji-shortcuts",
-  "updated": "2026-09-07T15:57:53+00:00",
+  "updated": "2026-09-07T16:03:57+00:00",
   "verified_at": "2026-09-07T15:57:23+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-emoji-shortcuts"
 }
