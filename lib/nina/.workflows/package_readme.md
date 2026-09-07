@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; previously `P1-NIN-A019`, the caption engine — `caption.ts`, `prompts/caption.ts`, and the pool/set split in `imagefail.ts`)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; previously `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -537,7 +537,9 @@ stores; zero imports by rule, because three hosts outside the package reach for 
 `album.ts` *(T)*, `albumActions.ts`, `attach.ts` *(T)*.
 
 ### Chat UI logic (pure, node-testable)
-`chatview.ts` *(T)*, `reply.ts` *(T)*, `reveal.ts` *(T)*, `scroll.ts` *(T)*, `live.ts` *(T)*.
+`chatview.ts` *(T)*, `reply.ts` *(T)*, `reveal.ts` *(T)*, `scroll.ts` *(T)*, `live.ts` *(T)*,
+`edit.ts` *(T)* (the edit/delete rules for one message, **and** all three bubble gestures —
+see *"Tapping a bubble opens the actions sheet"* below).
 
 ### Persistence
 `queries.ts` — every Drizzle query for the `nina_*` tables, including `readNinaTuning` /
@@ -1262,6 +1264,98 @@ Two consequences worth keeping straight, because they are easy to collapse and w
   `source_message_id` — every fact typed through `/admin/memory` — survives every session delete
   by construction, which is what makes the admin surface a durable channel rather than a fragile one.
 
+## Tapping a bubble opens the actions sheet (R4, `P1-NIN-A021`)
+
+`edit.ts` is the pure rule module behind editing and deleting one message: the two caps
+(`EDIT_MAX_CHARS_MINE` 4000 for his, `EDIT_MAX_CHARS_HERS` 700 for hers, picked by `editCapFor`),
+`canActOnMessage`, `planMessageEdit`, `describeMessageDeletion`, and the two optimistic reducers
+`applyMessageEdit` / `applyMessageDeletion`. All of that shipped in `75a9c34`. **What never shipped
+was a way to ask for it with a pointer**: the only openers of `MessageActionsSheet` were a left
+swipe on touch (`decideMessageActionSwipe`) and an `sr-only focus:not-sr-only` button, so a mouse
+user had no opener at all — while the requirement is *"user can click any bubble (his or nina's)
+and choose: edit, delete"*. This phase adds the tap and **changes neither swipe by a pixel**
+(set invariant 6).
+
+### The decision is pure; the component only measures
+
+```ts
+const MESSAGE_ACTION_TAP_SLOP_PX = 10
+const BUBBLE_BODY_SELECTOR = '[data-nina-bubble-body]'
+const BUBBLE_INTERACTIVE_SELECTOR = 'a,button,input,select,textarea,summary,[role="button"],…'
+type ActionableMessage = Pick<EditTarget, 'id' | 'confirmed'>
+function decideMessageActionTap(
+  target: ActionableMessage,
+  gesture: MessageActionTapGesture,
+): MessageActionTapDecision   // 'actions' | 'none'
+```
+
+`MessageActionTapGesture` has seven fields and **no DOM types**: `dx`, `dy`, `touches`, `zoomScale`
+measured exactly as the swipe measures them, plus three booleans the component collapses —
+`startedOnBody`, `startedOnInteractive`, `textSelected`. Answering those three needs an `Element`
+and a `Selection`, which this module may not name, so they arrive pre-collapsed on
+`EditTarget.hasImage`'s precedent. There is **no timer anywhere in it**, which is the other half of
+why this is a tap and not the long press `MessageBubble`'s header rejected.
+
+The seven rules, in the order they matter: it started on the bubble's own prose; not on a control
+inside it; no selection at either end of the interaction; `canActOnMessage` (**reused, not
+restated**); one finger, counted as the maximum seen; not on a zoomed page; and no travel past the
+slop in either axis. **Rule 4's refusal is silent, and that is the one place a tap and a swipe
+deliberately differ** — a rejected *swipe* still answers with the `edit-unavailable` notice, because
+a swipe is deliberate and a gesture that does nothing reads as a broken screen; a *tap* on the
+bubble he sent one second ago is a thumb still resting where the send target was, and a notice for
+it would be noise on the happy path.
+
+`canActOnMessage` was **widened** from `EditTarget` to `ActionableMessage`, and nothing else about
+it moved: a full `EditTarget` satisfies the narrow shape structurally, so its existing caller
+compiles untouched while a bubble can pass the two fields it actually holds.
+
+### The three gesture windows are disjoint by construction
+
+| Gesture | Window on a finished drag | Owner |
+|---|---|---|
+| reply swipe | `dx` past **+44** (`REPLY_SWIPE_MIN_DISTANCE`) | `reply.ts` |
+| actions swipe | `dx` past **−44**, same constant imported | `decideMessageActionSwipe` |
+| actions tap | `abs(dx) <= 10` **and** `abs(dy) <= 10` | `decideMessageActionTap` |
+
+The 34 px between the tap slop and either swipe threshold is a **dead band on purpose**: a drag long
+enough to be ambiguous is neither gesture and does nothing at all, because the gesture that guesses
+on an ambiguous input is the one that opens a delete confirmation nobody asked for. 10 is the
+platforms' own answer rather than a guess — Android's `ViewConfiguration` touch slop is 8dp and
+UIKit allows roughly 10pt — and `dx` is read as a **magnitude**, since a tap has no direction.
+`edit.test.ts` pins the inequality *and* asserts both directions of the disjointness (every drag the
+actions swipe accepts, the tap refuses, and the converse), which is how invariant 6 is enforced
+mechanically rather than by promise. That file now carries **64 cases, 20 of them this phase's**,
+including two that assert the two selectors against what `MessageBubble` actually renders.
+
+### `MessageBubble.tsx` answers its own header rather than overruling it
+
+That file's header rejects a tap **twice**, on the grounds that it would make the bubble itself a
+button and break text selection. The objection is *answered* in three places at once, and the header
+now records the answers: nothing becomes a `<button>` (a bubble **contains** buttons and cannot be
+one), no `role`, no `tabIndex`, no `aria-*`, no `cursor-pointer`, no `select-none` and no
+`preventDefault()` are added, and `textSelected` gives the platform's own selection gesture right of
+way — a long press leaves a selection and a selection refuses the tap, so the long press needs no
+rule of its own. The `sr-only focus:not-sr-only` button is still the AT opener, unmoved.
+
+**Two input paths that cannot double-fire.** Touch is decided last in `onTouchEnd`, after the reply
+check and the actions-swipe check, from three booleans recorded at `touchstart`. The mouse is
+decided in `onPointerUp` on the bubble's own `<div>`, **filtered to `event.pointerType === 'mouse'`**
+— `'pen'` is routed down the touch path on purpose, because iPadOS dispatches Apple Pencil as touch
+events too. There is deliberately **no `onClick`** on the body, which is what makes mobile Safari's
+synthetic post-`touchend` click a non-event: it has nothing to hit. Two module helpers
+(`hasTextSelection`, `closestMatches`) do the measuring, a `press` ref holds the pointer path's
+start, and `onPointerLeave` clears it.
+
+**The only markup added anywhere is `data-nina-bubble-body=""`** on the bubble's inner `<div>`. The
+`<li>` is a full-width flex row and the blank paper beside a bubble is not the bubble — but the
+`<li>` could not simply be narrowed, because that would move the reply gesture's hit area. So the
+row keeps every pixel it has (invariant 6) and the touch path asks `closest(BUBBLE_BODY_SELECTOR)`
+instead. A **swipe** on the empty paper still opens the sheet exactly as it does today; only the tap
+is restricted to the prose.
+
+`components/nina/ChatScreen.tsx` needed **zero lines**: the sheet, its state and the
+`edit-unavailable` notice were all already there.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
@@ -1492,6 +1586,16 @@ are worth knowing:
 - **`lib/nina/context.ts` is off-limits to every phase in this plan set** (plan invariant 3). Where
   the anger ladder needed a fix that would otherwise belong there — `nagLevel` is absent from the
   payload entirely on a quiet day — the fix is a sentence in `ninaAngerLadderBlock`.
+- **Never let the tap slop and the swipe thresholds grow into each other.**
+  `MESSAGE_ACTION_TAP_SLOP_PX` (10) must stay far below `REPLY_SWIPE_MIN_DISTANCE` (44), and
+  `edit.test.ts` fails on both halves if it does not. Overlapping windows mean one drag that opens
+  the reply composer *and* a delete confirmation; the 34 px between them is a dead band, not slack
+  to be spent.
+- **`edit.ts` may name no DOM type.** `vitest.config.ts` is `environment: 'node'`, so the component
+  reads `closest()` and `getSelection()` and hands down collapsed booleans — the component measures,
+  `lib/` decides. An `Element` or a `Selection` in one of these signatures is how the whole gesture
+  layer stops being testable, and a rendered-scenario test would prove one gesture where these
+  prove the gate.
 
 ## Tests
 

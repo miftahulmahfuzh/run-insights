@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 20
+- Completed: 21
 
 ---
 
@@ -79,6 +79,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A021** Phase 3: Tap a bubble to edit or delete it
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns a pure tap decision in `lib/nina/edit.ts` (`decideMessageActionTap`, `ActionableMessage`, `MESSAGE_ACTION_TAP_SLOP_PX`, `BUBBLE_BODY_SELECTOR`, `BUBBLE_INTERACTIVE_SELECTOR`, `MessageActionTapGesture`) and its tests; the pointer/tap opener in `components/nina/MessageBubble.tsx`. Does not touch `decideReplySwipe` or `decideMessageActionSwipe` (invariant 6), `MessageActionsSheet.tsx`, `messageActions.ts`, or `ChatScreen.tsx` (zero lines — left entirely to phase 4). Exit: a tap or click on the body of any bubble — his or hers — opens the shipped sheet; a tap on a photo still opens the viewer, a tap on a quote stub still jumps, a swipe still replies and still opens the sheet; an optimistic (`sending`) bubble opens nothing and shows no notice; `npm run lint`, `npm run typecheck` and `npx vitest run` all green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R4 — "Click any bubble (his or hers) and choose edit or delete"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A021.md`
+  - **Card**: `miftahulmahfuzh/run-insights#131`
+  - **Method**: /implement (swarm wave 0, concurrent with phases 1 and 2 in one shared worktree)
+  - **Completed**: 2026-09-07 17:51
+  - **Files**: lib/nina/edit.ts, lib/nina/edit.test.ts, components/nina/MessageBubble.tsx, lib/nina/.workflows/todos.md, lib/nina/.workflows/plan/P1-NIN-A021.md
+  - **Drift**: No drift. Every line number and code block the phase-3 plan quoted matched the tree exactly: `lib/nina/edit.ts` was 347 lines with `canActOnMessage` at `:106` and `decideMessageActionSwipe` ending at `:347`; `edit.test.ts` had the import block at `:4-18` and the `canActOnMessage` describe closing at `:72`; `MessageBubble.tsx` had the import at `:7` and the start-ref/`onTouchEnd` block where the plan said.
+  - **Decided**: Step 3 (task creation) in a swarm where peers p1/p2 share this one worktree -> created ONLY phase 3's task, inline, instead of a subagent creating all four phases' tasks (rung 6 + tie-break "narrower blast radius": three concurrent sessions each writing all four entries into the same todos.md is a guaranteed collision; each peer records its own, and p1/p2 did exactly that in `lib/db` and `lib/admin`).
+  - **Decided**: TaskID mint -> `P1-NIN-A021`, the conventional next (rung 6). An earlier phase-offset id was revised on measurement: p1 minted `P1-DB-A003` and p2 minted `P1-ADM-B130` in their own packages, and p4 is gated behind phase 3, so the NIN counter has no concurrent minter.
+  - **Decided**: `npm run format` reflowed two lines in files owned by other phases (`components/nina/ChatScreen.tsx:393`, `lib/nina/actions.ts:1021`) -> left in place rather than reverse-applied (tie-break "take the reversible option" + "narrower blast radius": un-formatting would leave the tree prettier-dirty for every peer, and a reflow Prettier itself demands is semantically inert). Both are pure whitespace; peers warned.
+  - **Verified**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` exit 0; `npx vitest run lib/nina/edit.test.ts` 64 passed (20 new); `npx vitest run` 150 files / 3021 tests all passed; `npx prettier --check` clean on all three source files.
+  - **Handoff to phase 4**: `lib/nina/edit.ts` is now 532 lines with a `── the tap ──` section at its foot — append `canResendMessage` BELOW that section (D9), not at `:109`. `canActOnMessage` now takes `ActionableMessage`, not `EditTarget`; a full `EditTarget` still satisfies it structurally. `edit.test.ts`'s `./edit` import block is widened by five names (`BUBBLE_BODY_SELECTOR`, `BUBBLE_INTERACTIVE_SELECTOR`, `MESSAGE_ACTION_TAP_SLOP_PX`, `decideMessageActionTap`, `type MessageActionTapGesture`) — quote the post-phase-3 block, and append the new describe at the end of the file. `components/nina/ChatScreen.tsx` and `MessageActionsSheet.tsx` were touched by ZERO lines here, as promised.
 
 - [x] **P1-NIN-A020** Phase 4: Generated selfies caption from the scene she asked for
   - **Difficulty**: NORMAL

@@ -2,18 +2,23 @@ import { describe, expect, it } from 'vitest'
 
 import { MAX_BUBBLE_CHARS, MAX_RUNNER_MESSAGE_CHARS } from './schema'
 import {
+  BUBBLE_BODY_SELECTOR,
+  BUBBLE_INTERACTIVE_SELECTOR,
   EDIT_MAX_CHARS_HERS,
   EDIT_MAX_CHARS_MINE,
   MESSAGE_ACTION_EDGE_GUARD_PX,
+  MESSAGE_ACTION_TAP_SLOP_PX,
   applyMessageDeletion,
   applyMessageEdit,
   canActOnMessage,
   decideMessageActionSwipe,
+  decideMessageActionTap,
   describeMessageDeletion,
   editCapFor,
   planMessageEdit,
   type EditTarget,
   type MessageActionSwipeGesture,
+  type MessageActionTapGesture,
 } from './edit'
 import { REPLY_SWIPE_DOMINANCE, REPLY_SWIPE_MIN_DISTANCE } from './reply'
 
@@ -68,6 +73,14 @@ describe('canActOnMessage', () => {
 
   it('refuses an empty id', () => {
     expect(canActOnMessage(target({ id: '' }))).toBe(false)
+  })
+
+  /* The signature widened to `ActionableMessage` so `MessageBubble` can ask the gate without
+   * assembling a whole `EditTarget`. Both shapes are the same call. */
+  it('accepts the narrow shape a bubble can build, as well as a whole EditTarget', () => {
+    expect(canActOnMessage({ id: ID, confirmed: true })).toBe(true)
+    expect(canActOnMessage({ id: ID, confirmed: false })).toBe(false)
+    expect(canActOnMessage({ id: 'local-6f0c1d2e-aaaa', confirmed: true })).toBe(false)
   })
 })
 
@@ -312,5 +325,153 @@ describe('decideMessageActionSwipe', () => {
     expect(decideMessageActionSwipe(gesture({ dx: Number.NaN }))).toBe('none')
     expect(decideMessageActionSwipe(gesture({ dy: Number.POSITIVE_INFINITY }))).toBe('none')
     expect(decideMessageActionSwipe(gesture({ startX: Number.NaN }))).toBe('none')
+  })
+})
+
+/* ── decideMessageActionTap — R4's opener ──────────────────────────────────────────────────── */
+
+describe('decideMessageActionTap', () => {
+  function tap(patch: Partial<MessageActionTapGesture> = {}): MessageActionTapGesture {
+    return {
+      dx: 1,
+      dy: -2,
+      touches: 1,
+      zoomScale: 1,
+      startedOnBody: true,
+      startedOnInteractive: false,
+      textSelected: false,
+      ...patch,
+    }
+  }
+
+  it('opens the sheet for a still press on a confirmed bubble', () => {
+    expect(decideMessageActionTap(target(), tap())).toBe('actions')
+  })
+
+  it('opens the sheet on HER bubble too — R4 is both sides', () => {
+    expect(decideMessageActionTap(target({ mine: false }), tap())).toBe('actions')
+  })
+
+  /* Rule 1. The `<li>` is a full-width row; the paper beside a bubble is not the bubble. */
+  it('refuses a press that began in the empty paper beside the bubble', () => {
+    expect(decideMessageActionTap(target(), tap({ startedOnBody: false }))).toBe('none')
+  })
+
+  /* Rule 2. The photo grid, the quote stub, the run card and the two sr-only buttons. */
+  it('refuses a press that began on a control inside the bubble', () => {
+    expect(decideMessageActionTap(target(), tap({ startedOnInteractive: true }))).toBe('none')
+  })
+
+  /* Rule 3. Copying what she said stays a real capability — MessageBubble's header. */
+  it('refuses while text is selected, at either end of the interaction', () => {
+    expect(decideMessageActionTap(target(), tap({ textSelected: true }))).toBe('none')
+  })
+
+  /* Rule 4, and it is SILENT here where the swipe's refusal is a notice. */
+  it('refuses an optimistic row: a local- id is not a database row', () => {
+    expect(decideMessageActionTap(target({ id: 'local-6f0c1d2e-aaaa' }), tap())).toBe('none')
+  })
+
+  it('refuses a row whose send has not been confirmed', () => {
+    expect(decideMessageActionTap(target({ confirmed: false }), tap())).toBe('none')
+  })
+
+  it('takes the narrow ActionableMessage shape the bubble builds', () => {
+    expect(decideMessageActionTap({ id: 'aBcD1234efGH', confirmed: true }, tap())).toBe('actions')
+  })
+
+  /* Rule 5. */
+  it('refuses two fingers, counted as the maximum seen during the interaction', () => {
+    expect(decideMessageActionTap(target(), tap({ touches: 2 }))).toBe('none')
+  })
+
+  /* Rule 6, with the swipes' own epsilon for a settled pinch. */
+  it('refuses a zoomed page but accepts a scale that merely settled above 1', () => {
+    expect(decideMessageActionTap(target(), tap({ zoomScale: 1.4 }))).toBe('none')
+    expect(decideMessageActionTap(target(), tap({ zoomScale: 1.000000000000002 }))).toBe('actions')
+  })
+
+  /* Rule 7, both axes, at the boundary. */
+  it('accepts movement of exactly the slop and refuses one pixel more, in x', () => {
+    expect(decideMessageActionTap(target(), tap({ dx: MESSAGE_ACTION_TAP_SLOP_PX }))).toBe(
+      'actions',
+    )
+    expect(decideMessageActionTap(target(), tap({ dx: MESSAGE_ACTION_TAP_SLOP_PX + 1 }))).toBe(
+      'none',
+    )
+  })
+
+  it('accepts movement of exactly the slop and refuses one pixel more, in y', () => {
+    expect(decideMessageActionTap(target(), tap({ dy: -MESSAGE_ACTION_TAP_SLOP_PX }))).toBe(
+      'actions',
+    )
+    expect(decideMessageActionTap(target(), tap({ dy: MESSAGE_ACTION_TAP_SLOP_PX + 1 }))).toBe(
+      'none',
+    )
+  })
+
+  it('reads dx as a magnitude, because a tap has no direction', () => {
+    expect(decideMessageActionTap(target(), tap({ dx: 6 }))).toBe('actions')
+    expect(decideMessageActionTap(target(), tap({ dx: -6 }))).toBe('actions')
+  })
+
+  it('refuses a gesture with non-finite numbers', () => {
+    expect(decideMessageActionTap(target(), tap({ dx: Number.NaN }))).toBe('none')
+    expect(decideMessageActionTap(target(), tap({ dy: Number.POSITIVE_INFINITY }))).toBe('none')
+  })
+
+  /* ── the three windows are disjoint, and this is the assertion that keeps them so ────────── */
+
+  it('leaves a gap between the tap window and either swipe window', () => {
+    expect(MESSAGE_ACTION_TAP_SLOP_PX).toBeLessThan(REPLY_SWIPE_MIN_DISTANCE)
+  })
+
+  it('refuses every drag the actions swipe accepts, and vice versa (invariant 6)', () => {
+    const dx = -REPLY_SWIPE_MIN_DISTANCE
+    expect(
+      decideMessageActionSwipe({
+        dx,
+        dy: 0,
+        touches: 1,
+        zoomScale: 1,
+        startX: 200,
+        viewportWidth: 414,
+      }),
+    ).toBe('actions')
+    expect(decideMessageActionTap(target(), tap({ dx, dy: 0 }))).toBe('none')
+
+    const still = 2
+    expect(
+      decideMessageActionSwipe({
+        dx: still,
+        dy: 0,
+        touches: 1,
+        zoomScale: 1,
+        startX: 200,
+        viewportWidth: 414,
+      }),
+    ).toBe('none')
+    expect(decideMessageActionTap(target(), tap({ dx: still, dy: 0 }))).toBe('actions')
+  })
+
+  it('refuses reply’s own rightward swipe, so the reply gesture keeps it', () => {
+    expect(decideMessageActionTap(target(), tap({ dx: REPLY_SWIPE_MIN_DISTANCE, dy: 0 }))).toBe(
+      'none',
+    )
+  })
+
+  /* ── the two selectors are contracts with `MessageBubble`, so their shape is asserted ────── */
+
+  it('names the bubble body by the data attribute MessageBubble writes', () => {
+    expect(BUBBLE_BODY_SELECTOR).toBe('[data-nina-bubble-body]')
+  })
+
+  it('covers every control this bubble actually renders', () => {
+    /* QuoteStub and ChatImages and the two sr-only buttons are `button`; RunAttachmentCard is a
+     * next/link, which is an `a`. A control added to the `above` slot later is excluded by one of
+     * the generic clauses rather than by a later bug report. */
+    for (const selector of ['a', 'button', '[role="button"]', '[role="link"]']) {
+      expect(BUBBLE_INTERACTIVE_SELECTOR.split(',')).toContain(selector)
+    }
   })
 })
