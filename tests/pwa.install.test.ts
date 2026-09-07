@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { GET as adminManifestRoute } from '@/app/admin/manifest.webmanifest/route'
 import manifest from '@/app/manifest'
-import { ADMIN_INSTALL, APPLE_WEB_APP, INSTALL, PWA_ICONS } from '@/lib/pwa'
+import { ADMIN_INSTALL, ADMIN_PWA_ICONS, APPLE_WEB_APP, INSTALL, PWA_ICONS } from '@/lib/pwa'
 
 /**
  * The regression guard for "Add to Home Screen gave me a bookmark with an 'R' on it".
@@ -244,14 +244,30 @@ describe('the admin web app manifest', () => {
     expect(adminManifestRoute().headers.get('content-type')).toBe('application/manifest+json')
   })
 
-  it('advertises icons that exist on disk', async () => {
-    // Phase 1 ships the runner's three; phase 2 replaces them with the admin set. Either way the
-    // paths have to resolve, or the tile falls back to a screenshot of the page.
+  it('advertises the admin deck, not the runner’s icons', async () => {
+    // The whole point of the deck: a home screen with two identical squircles is most of the value
+    // of installing the second one gone.
     const body = await adminManifestRoute().json()
-    expect(body.icons.length).toBeGreaterThan(0)
+    expect(body.icons.map((i: { src: string }) => i.src)).toEqual(
+      ADMIN_PWA_ICONS.map((i) => i.src),
+    )
     for (const icon of body.icons) {
-      expect(existsSync(`${ROOT}public${icon.src}`), `manifest advertises ${icon.src}`).toBe(true)
+      expect(PWA_ICONS.some((r) => r.src === icon.src), `${icon.src} is a runner icon`).toBe(false)
     }
+  })
+
+  it('offers the three icons an installer looks for', async () => {
+    const body = await adminManifestRoute().json()
+    const any = body.icons.filter((i: { purpose: string }) => i.purpose === 'any')
+    expect(any.map((i: { sizes: string }) => i.sizes)).toEqual(
+      expect.arrayContaining(['192x192', '512x512']),
+    )
+    expect(
+      body.icons.some(
+        (i: { purpose: string; sizes: string }) =>
+          i.purpose === 'maskable' && i.sizes === '512x512',
+      ),
+    ).toBe(true)
   })
 })
 
@@ -291,5 +307,70 @@ describe('the admin layout', () => {
      * reads on install. There is no error and no warning; the tile just goes back to the runner's.
      */
     expect(metadataBlock).not.toMatch(/\bicons\s*:/)
+  })
+})
+
+/**
+ * F-admin-shortcut R1, phase 2. The admin deck on disk.
+ *
+ * Same three properties `describe('the icon files on disk')` asserts for the runner, for the same
+ * reasons — the files exist, they are the size they claim, and they are OPAQUE, because iOS
+ * composites a transparent apple-touch-icon onto BLACK and turns any soft edge into a dark halo.
+ * Plus the one property only a second deck can have: it is not the first deck.
+ */
+describe('the admin icon files on disk', () => {
+  it('exist at every path the admin manifest advertises', () => {
+    for (const icon of ADMIN_PWA_ICONS) {
+      const path = `${ROOT}public${icon.src}`
+      expect(existsSync(path), `admin manifest advertises ${icon.src}, not in public/`).toBe(true)
+    }
+  })
+
+  it('are the size they claim to be, and are opaque', () => {
+    for (const icon of ADMIN_PWA_ICONS) {
+      const [declared] = icon.sizes.split('x')
+      const header = pngHeader(`${ROOT}public${icon.src}`)
+      expect(header.width, `${icon.src} width`).toBe(Number(declared))
+      expect(header.height, `${icon.src} is not square`).toBe(header.width)
+      expect(header.hasAlpha, `${icon.src} has an alpha channel; iOS mattes it onto black`).toBe(
+        false,
+      )
+    }
+  })
+
+  it('include the apple-touch-icon Safari reads when installing /admin', () => {
+    /*
+     * `app/admin/apple-icon.png` is a Next file convention, valid at any segment depth, and Next
+     * REPLACES the root's `apple-touch-icon` link with it under `/admin`
+     * (`resolve-metadata.js`, `mergeStaticMetadata`: `leafSegmentStaticIcons.apple = apple`, a
+     * plain assignment root → leaf). A manifest alone does not give iOS a home-screen icon; this
+     * file is what does.
+     */
+    const path = `${ROOT}app/admin/apple-icon.png`
+    expect(existsSync(path), 'app/admin/apple-icon.png is missing').toBe(true)
+    const header = pngHeader(path)
+    expect(header.width, 'app/admin/apple-icon.png is not 180²').toBe(180)
+    expect(header.height, 'app/admin/apple-icon.png is not square').toBe(180)
+    expect(header.hasAlpha, 'has an alpha channel; iOS mattes it onto black').toBe(false)
+  })
+
+  it('are actually different bytes from the runner’s, which is the entire requirement', () => {
+    // The one assertion that would catch someone "fixing" the deck by copying the app's files in.
+    const runner = readFileSync(`${ROOT}app/apple-icon.png`)
+    const admin = readFileSync(`${ROOT}app/admin/apple-icon.png`)
+    expect(admin.equals(runner)).toBe(false)
+  })
+
+  it('leaves the runner’s own five files alone', () => {
+    // Invariant 1. These are asserted present and correct by the suite above; this case is about
+    // the admin deck not having a path that collides with any of them.
+    //
+    // `Set<string>` explicitly: `PWA_ICONS` is `as const`, so an inferred Set would be keyed on the
+    // union of the runner's three literal paths and `.has()` would refuse an admin path as a type
+    // error — i.e. the typecheck would "prove" the thing this case exists to assert at runtime.
+    const runnerPaths = new Set<string>(PWA_ICONS.map((i) => i.src))
+    for (const icon of ADMIN_PWA_ICONS) {
+      expect(runnerPaths.has(icon.src), `${icon.src} collides with a runner icon`).toBe(false)
+    }
   })
 })

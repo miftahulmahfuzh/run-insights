@@ -108,6 +108,37 @@ export const ADMIN_INSTALL = {
 } as const
 
 /**
+ * The admin app's icon entries. Same shape as `PWA_ICONS`, same three purposes, different files.
+ *
+ * These are the app's icon in the DARK scheme — the same committed silhouette and the same five
+ * zone colours as the runner's, drawn on `--paper` dark with the figure in `--ink` dark. That is
+ * not decoration: two identically-tiled squircles on one home screen is most of the value of
+ * installing the second one gone, and a light tile against a dark tile is the discriminator that
+ * survives being 40px wide in peripheral vision. `tools/make_icon_assets.py`'s `GROUND_DARK` note
+ * carries the measured contrast table.
+ *
+ * The HOME-SCREEN icon is not here: `app/admin/apple-icon.png` is a Next file convention, valid at
+ * any segment depth, and Next replaces the root's `apple-touch-icon` link with it for `/admin` and
+ * everything under it. A manifest alone does not give iOS a home-screen icon — the same sentence
+ * `app/layout.tsx` carries about the runner's tile, and the same file convention is the fix.
+ */
+export const ADMIN_PWA_ICONS = [
+  { src: '/icons/admin-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+  { src: '/icons/admin-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+  {
+    src: '/icons/admin-icon-maskable-512.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'maskable',
+  },
+] as const satisfies readonly {
+  src: string
+  sizes: string
+  type: string
+  purpose: 'any' | 'maskable'
+}[]
+
+/**
  * `metadata.appleWebApp`, spread into the root layout.
  *
  * ── `statusBarStyle: 'default'`, AND WHY IT IS NOT 'black-translucent' ─────────────────────────

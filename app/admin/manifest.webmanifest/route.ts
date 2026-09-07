@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-import { ADMIN_INSTALL, PWA_ICONS } from '@/lib/pwa'
+import { ADMIN_INSTALL, ADMIN_PWA_ICONS } from '@/lib/pwa'
 
 /**
  * The admin app's web manifest, served at `/admin/manifest.webmanifest` and linked from
@@ -48,9 +48,9 @@ import { ADMIN_INSTALL, PWA_ICONS } from '@/lib/pwa'
  * says so out loud — an XS Max in landscape is 896 px, below `lg`, and therefore keeps the phone
  * layout deliberately.
  *
- * The icons are the runner's, for now. Phase 2 of this plan set swaps `PWA_ICONS` for
- * `ADMIN_PWA_ICONS` and ships `app/admin/apple-icon.png`, which is the file Safari actually draws
- * on install. Until then both tiles look the same, which is a real cost and a separate change.
+ * The icons are the admin deck's — `ADMIN_PWA_ICONS`, the app's icon in the dark scheme. And the
+ * one iOS actually draws on install is not in this file at all: `app/admin/apple-icon.png` is a
+ * Next file convention, and a manifest alone does not give iOS a home-screen icon.
  */
 
 /*
@@ -75,7 +75,7 @@ export function GET(): Response {
     background_color: ADMIN_INSTALL.paper,
     theme_color: ADMIN_INSTALL.paper,
     // `readonly` tuple from lib/pwa.ts; the Manifest type wants a mutable array.
-    icons: [...PWA_ICONS],
+    icons: [...ADMIN_PWA_ICONS],
   }
 
   /*
