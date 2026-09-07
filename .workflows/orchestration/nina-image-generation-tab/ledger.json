@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-image-generation-tab",
   "coordinator_session_id": "f3faf3b6-6161-4972-9577-8c5f4eb1e23a",
   "created": "2026-09-07T15:22:37+00:00",
+  "landed": {
+    "at": "2026-09-07T20:46:33+00:00",
+    "base": "main",
+    "commit": "aae3b96e9b4c8321d7bd0797e0cb705dd4377ac3",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -149,6 +155,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T20:33:51+00:00",
+  "updated": "2026-09-07T20:46:33+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
