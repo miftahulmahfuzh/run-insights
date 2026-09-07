@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/blob-stored-pathname-window`
 **Branch:** `feature/blob-stored-pathname-window` (base: `origin/main` @ `3902c58`)
 **Phases:** 1
-**Status:** planned
-**Coordinator:** —
+**Status:** landed — 1/1 phases complete, merged to `main` at `1708932`. Exit criterion 6 (the prod probe of `enina5.png` through `/admin/photos`) was run by phase 1 against a local production build of `c7752e5` wired to the production Neon database and the production blob store `ptezanncca27s5kn`: `nina_message_images` went 0 → 1 and the stored id segment measured 43 = 12 + `-` + 30. A Vercel *preview* cannot serve `/admin/photos` on this project — `ADMIN_EMAILS`, `VAPID_*` and `AUTH_URL` are Production-scope only, so `requireAdmin()` 500s.
+**Coordinator:** `orch-blob-stored-pathname-window`
 **Card:** [miftahulmahfuzh/run-insights#104](https://github.com/miftahulmahfuzh/run-insights/issues/104)
 
 ---
@@ -99,7 +99,7 @@ deleted. Phase 1 re-runs the same probe after the fix, as its exit criterion.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one | R1, R2 | `lib/admin`, `lib/nina`, `tests` | 4 + 2 | — | NORMAL | `.workflows/plan/blob-stored-pathname-window/phase-1.md` | — | `miftahulmahfuzh/run-insights#104` |
+| 1 ✅ | Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one | R1, R2 | `lib/admin`, `lib/nina`, `tests` | 4 + 2 | — | NORMAL | `.workflows/plan/blob-stored-pathname-window/phase-1.md` | `P1-NIN-A013` | `miftahulmahfuzh/run-insights#104` |
 
 ### Phase 1 — Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
 
