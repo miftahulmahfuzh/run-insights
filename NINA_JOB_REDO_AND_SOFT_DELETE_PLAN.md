@@ -65,7 +65,7 @@ Two sentences in there are specifications and are quoted again wherever they dec
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | Redo: reopen a failed job from its own args | R1 | `lib/nina` + `components/nina` + `app/nina/jobs` | 8 | — | NORMAL | `.workflows/plan/nina-job-redo-and-soft-delete/phase-1.md` | — | — |
-| 2 | Soft delete: `nina_turns.deleted_at` and the tidy list | R2 | `lib/db` + `lib/nina` + `components/nina` | 9 | 1 | NORMAL | `.workflows/plan/nina-job-redo-and-soft-delete/phase-2.md` | — | — |
+| 2 | Soft delete: `nina_turns.deleted_at` and the tidy list | R2 | `lib/db` + `lib/nina` + `components/nina` | 8 (+3 generated) | 1 | NORMAL | `.workflows/plan/nina-job-redo-and-soft-delete/phase-2.md` | — | — |
 
 ### Phase 1 — Redo: reopen a failed job from its own args
 
@@ -98,26 +98,45 @@ Two sentences in there are specifications and are quoted again wherever they dec
 **Owns:**
 - `lib/db/schema.ts` — `deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' })`, nullable, no default, on `nina_turns`, with the docstring that says what it means for each `kind`
 - `drizzle/0008_*.sql` — **generated with `npm run db:generate`, never hand-written and never renamed**
-- `lib/nina/imagejobs.ts` — `softDeleteNinaImageJob(userId, jobId)`; and `isNull(ninaTurns.deletedAt)` added to `listNinaImageJobs`, `getNinaImageJobDetail`, `listOpenNinaImageJobs`, `getNinaImageJob`, `listRevivableNinaImageJobs`, `sweepStaleNinaImageJobs`, `claimNinaImageJob` — and **deliberately not** to `countNinaTurnsSince` (D7)
+- `lib/nina/imagejobs.ts` — `softDeleteNinaImageJob(userId, jobId)`; and `isNull(ninaTurns.deletedAt)` added to **eight** functions / **nine** `WHERE`s: `listNinaImageJobs`, `getNinaImageJobDetail`, `listOpenNinaImageJobs`, `getNinaImageJob`, `listRevivableNinaImageJobs`, `sweepStaleNinaImageJobs` (SELECT **and** guarded UPDATE), `claimNinaImageJob`, and **`reopenNinaImageJob`** — phase 1's new read, so a redo cannot resurrect a hidden job from a stale tab — and **deliberately not** to `countNinaTurnsSince` (D7)
 - `lib/nina/jobActions.ts` — `deleteNinaImageJob({ jobId })`, appended to the module phase 1 created
 - `components/nina/NinaJobActions.tsx` — the delete icon button, appended beside phase 1's redo button
-- `tests/db.schema.nina.test.ts` — the column exists and is nullable
-- `tests/nina.jobActions.test.ts` — the delete refusals, and that a soft-deleted row is invisible to every list read and still counted by the cap
+- `tests/db.schema.nina.test.ts` — the column exists, is nullable, has no default and adds no index
+- `tests/nina.jobActions.test.ts` — the delete refusals, appended to phase 1's file and driven through its fake `db` (no `vi.mock` factory is edited)
+- `tests/nina.softDelete.test.ts` — **new**: the SQL-level proofs, on `tests/support/fakeDb.ts` — that all eight reads carry the predicate, that `countNinaTurnsSince` does not, and that the write is a flag and never a `DELETE`. Split out because `installFakeDb()` and `tests/nina.jobActions.test.ts`'s own `vi.mock('@/lib/db', …)` cannot both own `@/lib/db` in one file
 
-**Does not touch:** `lib/nina/jobview.ts` (a deleted job never reaches the view layer, so there is no view rule to add), `components/nina/NinaAboutScreen.tsx`, `scripts/nina-image-worker.ts`, `lib/nina/imagerun.ts`.
+**Does not touch:** `lib/nina/jobview.ts` (a deleted job never reaches the view layer, so there is no view rule to add — and phase 2 adds no member to `NinaJobRefusal`), `components/nina/NinaJobList.tsx` (phase 1 already gates the control slot on the `actions` prop alone, which is exactly what "delete on every row" needs), `app/nina/jobs/page.tsx`, `components/nina/NinaAboutScreen.tsx`, `scripts/nina-image-worker.ts`, `lib/nina/imagerun.ts`.
 
 **Exit criteria:**
 - tapping delete removes the row from `/nina/jobs` on the next paint; no dialog appears
 - `select * from nina_turns where id = <that job>` still returns the row, with `deleted_at` set and `cost_micro_usd` unchanged
 - `/nina/jobs/<that id>` 404s
 - `/nina`'s in-flight strip, the revival read and the stale sweep all skip the row
+- a redo fired at a hidden job from a stale tab is refused as `'not-found'` and opens nothing
 - the daily cap still counts it
 - `npm run db:generate` produced exactly one new migration file and `npm run db:check` is clean
 - `npm run lint && npm run typecheck && npm run test` green
 
 ## Reconciliation Log
 
-_(filled by the reconciler)_
+Two planners wrote in parallel; phase 2 could not see phase 1's plan and wrote its appends against
+four stated assumptions (A1–A4). Every one of them has been replaced with phase 1's actual shape,
+in the plan file, so **no assumption survives into execution**.
+
+| Conflict | Phases | Resolution |
+|---|---|---|
+| **Gap — an eighth read nobody filtered.** Phase 1 adds `reopenNinaImageJob`, a new owner-scoped `SELECT` on `nina_turns`, after phase 2's seven-read list was written. A hidden job would stay redoable from a stale tab | 1 → 2 | Added **Step 3k** to phase 2: `isNull(ninaTurns.deletedAt)` in that `WHERE`, with the same one-line-comment convention its other seven edits use. Verified against phase 1's actual `NinaJobRefusal`: the empty read takes the existing `if (row == null) … 'not-found'` branch, so **no new refusal code and no union widening**. Phase 2's arithmetic is now 8 functions / 9 statements throughout; a case was added to `tests/nina.softDelete.test.ts`; phase 1's handoff was marked LANDED |
+| **Contract drift — `NinaJobActionResult`.** Phase 2 assumed `{ ok }` (and hedged about a `next` member); phase 1 defines `{ ok: boolean; reason: NinaJobRefusal \| null }` and has no `next` | 1 → 2 | Rewrote `deleteNinaImageJob` to phase 1's exact type: `{ ok: false, reason: 'not-found' }` twice, `{ ok: true, reason: null }` once. The A1 adaptation note about `next` was struck. **Phase 2 invents no union member** — a delete's four causes (not his, never existed, not an image row, already hidden) collapse to `'not-found'`, which `NOTE` already words — so no widening had to move into phase 1, and `lib/nina/jobview.ts` stays untouched by phase 2 |
+| **Contract drift — `run()`'s arity and the refusal sentence** | 1 → 2 | Phase 1's `run()` takes ONE argument and the prop is `item`, not `jobId`/`canRedo`. Phase 2's call is now `run(() => deleteNinaImageJob({ jobId: item.id }))` and the two-argument A2 adaptation was deleted. `NOTE` is a `Record<NinaJobRefusal, string>` and `'not-found'` is the only refusal the delete path can produce, so coverage is complete with no new key |
+| **Requirement risk — the control-slot gate (R2).** Phase 2 feared phase 1 had written `{actions && item.canRedo && …}`, which would hide the delete button on every non-failed row | 1 → 2 | Read phase 1's code: the slot is `{withActions && <NinaJobActions item={item} />}` and `canRedo` gates the redo `<button>` **inside** `NinaJobActions`. That is already correct, so **phase 1 needed no fix**; phase 2's conditional "Step 6 ungate" was deleted as having nothing to do and `components/nina/NinaJobList.tsx` left phase 2's Files table. Phase 1's Handoffs now record that the gate must stay on the button |
+| **Broken test assumption.** Phase 2's Step 10a said to insert a key into phase 1's `vi.mock('@/lib/nina/imagejobs', …)` factory. Phase 1 has no such factory — it mocks only the edges and runs `imagejobs` for real, so R1's session-fallback assertion is reachable in the same file | 1 → 2 | **Step 10a deleted.** Step 10b re-derived: the delete cases append to the end of phase 1's file and drive `dbRows.update` — the real `softDeleteNinaImageJob` against phase 1's fake `db` chain — instead of a spy, which tests the real `flagged.length > 0` branch. No factory, fixture or `beforeEach` default is edited. The one assertion that arrangement cannot make (the authenticated id reaching the `WHERE`) was already covered in `tests/nina.softDelete.test.ts`'s `params` check, and Step 10 now says so |
+| **The split of the two test files.** Phase 2's stated reason for `tests/nina.softDelete.test.ts` was the (false) claim above | 2 | The split **stands**, on a corrected and stronger reason: `installFakeDb()` seeds `globalThis.__runInsightsDb` before `lib/db` is imported, while phase 1's file installs `vi.mock('@/lib/db', …)`; two owners of `@/lib/db` in one file is not a thing, and only the recorder can answer "was the predicate in the `WHERE`". Both the Files-table deviation note and the new file's own docstring were rewritten |
+| **Duplicate-work check — the seven-name mock factory.** Phase 1's `@/lib/nina/queries` factory must export exactly seven names or the suite fails at link time | 1, 2 | Verified the closure from source: `imagejobs` takes 4, `imagerun` 4, `sessionResolve` 2, union = exactly 7. Phase 2 edits `lib/nina/queries.ts` **docstring only** and adds no export, and its `tests/nina.softDelete.test.ts` imports the real `queries` through `fakeDb` with no factory of its own — so the two files cannot disagree. Recorded in both plans |
+| **Unowned consistency gap (reconciler's sweep) — the delete button's accessible name.** Phase 2 wrote `aria-label="Hapus dari daftar"`, identical on every row, against phase 1's stated rule that an icon button's name must name the row | 2 | Changed to an `aria-label` of "Hapus &lt;row title&gt; dari daftar" (a template literal over phase 1's in-scope `const title = ninaJobTitle(item)`), and `aria-busy={pending}` added to match phase 1's redo button attribute for attribute. The rule binds harder here than for redo: delete is on **every** row, so six rows of "Hapus dari daftar" is a list a screen reader cannot navigate |
+| **Invariant 5 (reconciler's sweep) — `/nina/about` byte for byte** | 1, 2 | **Verified by reading the code, not the prose.** Today's `<li>` carries no `className`; phase 1's `className={withActions ? cn(…) : undefined}` makes React omit the attribute. Today's `<a>` is `cn('block rounded-card px-3 py-2.5', item.open ? 'bg-card shadow-card' : 'bg-transparent')`; the non-actions branch is `cn('block rounded-card px-3 py-2.5', surface)` — same two arguments, same order. `ninaJobTitle(item)` is `item.scene ?? (item.purpose === 'avatar' ? 'Foto profil' : 'Selfie')`, character for character today's inline expression. `{false && …}` emits nothing. **The invariant holds.** Phase 2 does not open the file at all, so it cannot disturb it |
+| **`NinaJobListItem.canRedo` is REQUIRED (reconciler's sweep)** | 1 | Verified there is no third construction site: `grep` over `app/`, `components/`, `lib/`, `tests/` finds `toNinaJobListItems` as the only constructor, called at `app/nina/jobs/page.tsx:62` and `app/nina/about/page.tsx:100`, and no `NinaJobListItem` object literal anywhere. `tsc` covers a future one. No change needed |
+| **Build-green at each commit (reconciler's sweep)** | 1, 2 | Phase 1 deletes nothing, renames nothing, and its one new required field is produced by the only constructor — the tree compiles and the suite is green at its own commit. Phase 2 is additive: a nullable column, one new writer, predicates on existing `WHERE`s, appends to two files. Its migration is **generated, not applied** — `npm run db:migrate` is explicitly forbidden in its Verification and named as the operator's post-merge step, which the reconciler confirmed is stated in both Step 2 and Verification |
+| **`Satisfies` lines and requirement ids** | 1, 2 | No creep found: every step in phase 1 serves R1, every step in phase 2 serves R2 — including the new Step 3k, which is the flag's semantics (R2) applied to a function R1 introduced. No `R` moved, so neither `Satisfies` line changed and the Requirements table is unchanged |
 
 ## Decisions
 
@@ -137,7 +156,9 @@ _(filled by the reconciler)_
 
 ## Open Questions
 
-_(none — every fork above was decided from the ladder)_
+_(none — every fork was decided from the ladder before reconciliation, and reconciliation opened
+no new one: every conflict above was settled by reading phase 1's code and plan rather than by
+choosing between two intended behaviours.)_
 
 ## Rollback
 
