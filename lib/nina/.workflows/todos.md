@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-07
+**Last Updated**: 2026-09-08
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -12,13 +12,41 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 23
+- Completed: 25
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A030** Phase 1: Orphan-able photographs: the FK, the migration, and every reader that assumed a message
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: `nina_message_images.message_id` nullable + `ON DELETE SET NULL`, so deleting a chat session orphans its photographs instead of destroying them. `deleteNinaMessage` keeps taking its own, explicitly, images first in one batch. Every reader degrades to `string | null`; the runner's delete confirmation stops threatening the photographs.
+  - **Status**: completed
+  - **Plan Set**: `CHAT_PHOTO_ORPHANS_AND_UNIQUENESS_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — deleting a chat session must stop deleting the chat photographs, the hand-replaced ones included
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md`
+  - **Card**: miftahulmahfuzh/run-insights#140
+  - **Notes**: Commit `86891a9`. Migration generated on the branch as `0012_nina_photo_orphans` and **regenerated at landing as `0013_fixed_serpent_society`** (`when` 1788812808829) per coordinator ruling C10 — three statements, `nina_message_images` only, no destructive DDL. The branch's `0012` collided with main's `0012_messy_carlie_cooper` on `idx` and on snapshot lineage (both `0012_snapshot.json` files carried `prevId 81e07f7d-3d60-4f84-b3c7-32e7511815d4`), and neither is reported by any tool — `land --step check` said `migrations.added: []` while the branch plainly added three drizzle artefacts. The number was **derived by merging first and generating second, never named**; the regenerated SQL diffed byte-identical to the discarded `0012`, so nothing was dropped, and `0013_snapshot.json`'s `prevId` now equals `0012_snapshot.json`'s `id`. `is_reference` deliberately NOT declared (coordinator ruling C7, rung 5): `origin/main`'s F37 (P1-DB-A003) already serves R2/R3 via `source_avatar_id`/`source_image_id` + `isOriginalPhoto()`, so the column would have been dead in production and a second vocabulary for "reference"; phase 1's exit criterion naming it is superseded, not unmet. `NinaImageRow` and `tests/db.schema.nina.test.ts` edited surgically rather than block-replaced, preserving F37's provenance fields and its test. Main's F36 `scheduleChatPhotoCaption` gained an orphan guard (postdates the plan). Exit-criteria greps intentionally still match: every hit is the old text quoted inside the correction that replaced it. Verified 154 files / 3104 tests (+1/+10 over the post-merge 153/3094 baseline), typecheck + `db:check` clean, lint 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched), all 17 paths prettier-clean; `nina.sessionPurge`, `admin.chatPhotos` and `nina.photoRefs` pass unedited.
+
+- [x] **P1-NIN-A031** Phase 2: Re-parent an orphaned chat photograph instead of copying it
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns `adoptNinaMessageImage(userId, id, { messageId, sortOrder })` in `lib/nina/queries.ts` §5 — one owner-scoped UPDATE with `message_id IS NULL` in the WHERE (not in a branch above it), `created_at`, the F37 provenance pair, `description` and `kind` all outside the SET; `resolveAttachment`'s new module-private `adoptableId`; the attached-photo block in `sendNinaMessage`, now adopt-or-reference; and a reference-row refusal in `replaceChatPhotoAction` and `removeChatPhotoAction` via the module-local `isChatPhotoReference`. **RESCOPED to R4 only by coordinator ruling C8**: R2/R3 are served on `origin/main` by F37's `source_avatar_id`/`source_image_id` + `isOriginalPhoto()`, so `is_reference` was never declared (ruling C7) and plan exit criteria 1 and 3 are **superseded, not unmet**; criterion 6 was reframed onto the provenance pair. Phase 1 is what made this defect reachable — orphans could not exist while `message_id` was `NOT NULL`, and main's `resolveAttachment` COPIES, so a re-attached orphan got a reference row pointing at a parentless row and stayed parentless forever.
+  - **Status**: completed
+  - **Plan Set**: `CHAT_PHOTO_ORPHANS_AND_UNIQUENESS_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R4 — "make sure these 'orphaned' photos got 'parent' chat session again if user attach a photo to another chat session"
+  - **Depends on**: `P1-NIN-A030`
+  - **Plan**: `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md`
+  - **Method**: /implement (swarm, phase 2 of 3; phase 3 cancelled by ruling C9)
+  - **Card**: miftahulmahfuzh/run-insights#141
+  - **Files**: lib/nina/queries.ts, lib/nina/actions.ts, lib/admin/chatPhotoActions.ts, tests/nina.chatPhotoAdoption.test.ts, tests/nina.chatPhotoReattach.test.ts
+  - **Notes**: No migration and `drizzle/` untouched — R4 needs no schema change. Criterion 6 was **not** already served by F37: because `getNinaMessageImage` deliberately carries no reference filter, both admin actions could still reach a row `/admin/photos` never lists, so the refusal was implemented here (purely additive, 0 deletions in that file; phase 1's carrier block and docstring paragraphs untouched). Decisions: (1) `isChatPhotoReference` uses `!= null` not `!== null` (rung 3, safe direction) — a refusal must fire on evidence, and a pre-F37-shaped row has both fields `undefined`, which the strict form read as "re-share"; it turned `tests/admin.chatPhotos.test.ts` red and was fixed in this phase's own code rather than in another suite's fixture. (2) The row-level predicate is module-local to `lib/admin/chatPhotoActions.ts` rather than a new export from `lib/nina/attach.ts` — narrower blast radius, and a shared export invites a fourth caller to filter a read `lib/db/schema.ts:1091` and `tests/nina.photoRefs.test.ts` say must never be filtered. (3) Test files named `nina.chatPhotoAdoption` (the statement + the two admin refusals) and `nina.chatPhotoReattach` (the send path's four outcomes) instead of the plan's `nina.chatPhotoUniqueness` (rung 2 — that name described the R2/R3 half C7 struck); two files because the send-path suite mocks `@/lib/nina/queries` module-wide and would shadow the real `adoptNinaMessageImage`. Verified: typecheck clean, lint 0 errors (2 pre-existing warnings in the untouched `scripts/capture/shoot.mjs`), 156 test files / 3119 tests passing (+2 files / +15 tests over the 154/3104 baseline), all five paths prettier-clean.
+  - **Completed**: 2026-09-08
+  - **Commit**: `5a07dc5`
 
 - [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
   - **Difficulty**: NORMAL

@@ -14,8 +14,9 @@ import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/n
  *
  * ── ONE TAP, AND THE PRECEDENT IT OVERRIDES ON PURPOSE ────────────────────────────────────────
  * `components/nina/SessionRow.tsx` guards its remove behind `⋯` → Hapus → Hapus chat, and its
- * header explains why at length: that control hard-deletes a conversation and, through two
- * cascades, its photographs — permanently, with no undo. **None of that transfers here**, and the
+ * header explains why at length: that control hard-deletes a conversation and its messages — its
+ * photographs survive it since R1 — permanently, with no undo. **None of that transfers here**, and
+ * the
  * user said so first: *"we dont need confirmation message to execute them"*. A redo opens one row
  * and spends one of six generations a day, and what it produces is a photograph he asked for. So:
  * no menu, no panel, no second tap, and no `window.confirm` — which `RetryExtraction` already

@@ -1273,7 +1273,8 @@ export function ChatScreen({
         `Composer`'s "never given a `key` that changes", where a reset would have been the bug.
 
         `photoCount` comes off the row this component already holds, so the confirmation can
-        disclose that the photos go with the message (`nina_message_images` cascades) without a
+        disclose that the photos go with the message (`deleteNinaMessage` deletes them explicitly;
+        the FK is `set null` since R1) without a
         query. The URLs are not passed — the sheet shows no thumbnails, and phase 9 owns anything
         that renders a chat photo.
       */}

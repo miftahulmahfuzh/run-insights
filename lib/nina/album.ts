@@ -192,7 +192,8 @@ export interface AvatarLike {
 /** A `nina_message_images` row, structurally. `NinaImageRow` assigns to this. */
 export interface ImageLike {
   id: string
-  messageId: string
+  /** NULL once the photograph has outlived its bubble (R1). See `galleryPhotos`. */
+  messageId: string | null
   kind: string
   blobUrl: string
   createdAt: Date
@@ -222,7 +223,12 @@ export interface NinaAlbumPhoto {
 /** One conversation photo, ready for both the grid and `ViewerPhoto`. */
 export interface NinaGalleryPhoto {
   id: string
-  messageId: string
+  /**
+   * The bubble to jump to, or NULL for an orphan — a photograph whose conversation was deleted
+   * (R1). A consumer that offers "go to the message" must hide the affordance on a NULL rather than
+   * link into a session that does not exist. Nothing renders it today; see `galleryPhotos`.
+   */
+  messageId: string | null
   url: string
   kind: string
   side: NinaPhotoSide
@@ -297,9 +303,15 @@ export function albumPhotos(rows: readonly AvatarLike[]): NinaAlbumPhoto[] {
  * `nina_message_images_user_created_idx` with no join — which is phase 1's stated reason for the
  * table existing at all. So again: preserved, not re-sorted.
  *
- * `messageId` is carried because it is the only thing that makes a gallery photo reachable: the
- * viewer's "go to the message" affordance is Step 12's, and it needs phase 8's `?at=` idiom rather
- * than a second scroll mechanism.
+ * `messageId` is carried because it is the only thing that could make a gallery photo reachable:
+ * the viewer's "go to the message" affordance would need phase 8's `?at=` idiom rather than a
+ * second scroll mechanism. **It is nullable and, today, unread.** No component consumes it —
+ * `NinaAboutScreen`'s `toCell` takes `id`, `url` and `label` — so a NULL reaches no JSX and there is
+ * nothing to degrade yet. The field is passed through unchanged, NULL included, so that whoever
+ * builds the affordance is handed the orphan case in the type instead of discovering it: an
+ * orphaned photograph has no bubble to jump to, and the affordance must be absent rather than
+ * broken. `photoSideOf` still decides his-or-hers from `kind` alone, which is what keeps an orphan
+ * in the gallery on the correct side of the conversation it no longer belongs to.
  */
 export function galleryPhotos(rows: readonly ImageLike[]): NinaGalleryPhoto[] {
   return rows.slice(0, NINA_GALLERY_LIMIT).map((row) => {

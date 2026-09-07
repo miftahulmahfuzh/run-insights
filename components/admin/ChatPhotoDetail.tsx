@@ -41,6 +41,13 @@ import type { ChatPhoto } from './chatPhotoModel'
  * mutation.
  */
 
+/**
+ * What the Message row shows when the photograph has outlived its bubble (R1). Words, not an empty
+ * cell: an orphan is a member of this collection in good standing — a deleted conversation is not a
+ * missing value — and an operator looking at a blank field would go hunting for a bug.
+ */
+const NO_MESSAGE_LABEL = 'None — the conversation was deleted'
+
 export function ChatPhotoDetail({
   photo,
   userId,
@@ -142,8 +149,8 @@ export function ChatPhotoDetail({
         </div>
         <div className="flex gap-2">
           <dt>Message</dt>
-          <dd className="truncate text-ink-2" title={photo.messageId}>
-            {photo.messageId}
+          <dd className="truncate text-ink-2" title={photo.messageId ?? NO_MESSAGE_LABEL}>
+            {photo.messageId ?? NO_MESSAGE_LABEL}
           </dd>
         </div>
         <div className="flex gap-2">
