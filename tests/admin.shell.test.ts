@@ -208,8 +208,29 @@ describe('the bar and the padding that clears it', () => {
     expect(clearance, 'the admin layout lost its --safe-bottom clearance on <main>').not.toBeNull()
   })
 
-  it('has exactly one cell per route, with no empty cell and no overflow row', () => {
-    expect(Number(bar![2]) * Number(bar![3])).toBe(cellCount)
+  it('fits every route, with no blank row and at most one short row', () => {
+    /*
+     * This assertion was `cols * rows === cellCount` — an EXACT fit — and it held while the bar
+     * carried six routes in a 3x2 grid. Seven routes cannot satisfy it: 7 is prime, so the only
+     * uniform grid with no empty cell is one row of seven, and that layout was rejected on
+     * measurement (59.1px a cell, a 51.1px content box, exactly the width of the eight characters
+     * the ceiling above allows). A 4x2 grid therefore leaves ONE empty cell, deliberately, and
+     * `AdminNav`'s own comment says so.
+     *
+     * Relaxed, not removed. The two defects the exact-fit form actually caught are both still
+     * caught, and named separately so a failure says which one happened:
+     *   - a grid too small for the routes, which clips or drops a cell;
+     *   - a wholly blank row, which is 56px of dead bar.
+     * The trailing gap is bounded at `cols - 1` by construction, so "at most one short row" is
+     * the strongest true statement left.
+     */
+    const cols = Number(bar![2])
+    const rows = Number(bar![3])
+    expect(cols * rows, 'the grid has fewer cells than there are routes').toBeGreaterThanOrEqual(
+      cellCount,
+    )
+    expect(cols * (rows - 1), 'the last row of the grid is entirely empty').toBeLessThan(cellCount)
+    expect(cols * rows - cellCount, 'more than one row-worth of empty cells').toBeLessThan(cols)
   })
 
   it('reserves more room than the bar occupies', () => {
