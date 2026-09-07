@@ -106,10 +106,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": "finishSelfie captions from args.scene via captionNinaPhoto(seenKind:'requested'); no vision call, ninaImageCaption(jobId) is now the fallback. DECIDED: readNinaTuning wrapped alone -> NINA_TUNING_DEFAULTS, since it only dresses the caption and a caption problem must never cost the photograph (rung 2, exit criterion 5); the three reads above it stay bare. DECIDED: 'no vision call' asserted against imagerun.ts SOURCE not a spy, since a spy on a never-imported module always passes (rung 6). DECIDED: dropped a passing test that asserted a THROWN captionNinaPhoto fails the job -- it encoded wrong behaviour as correct; captionNinaPhoto is contractually non-throwing (rung 3). New suite tests/nina.imagerun.test.ts (8 cases) drives the private finishSelfie through runNinaImageJob; tests/nina.imageworker.test.ts covers the WORKER's same-named function, not this one. Worker comment from P2 already states the canned caption is permanent -- nothing to place. 147 files / 2910 tests green.",
+      "note": "landed b4f1004, verified ancestor of origin/feature; exactly 4 files, none of phase 3's. Decisions: (1) created tests/nina.imagerun.test.ts -- no suite existed to extend (imageworker.test.ts covers the WORKER's different finishSelfie signature; tests/integration is excluded by vitest.config.ts); drives module-private finishSelfie through runNinaImageJob, ninaImageCaption deliberately NOT mocked so fallback asserts against the real deterministic draw. (2) wrapped readNinaTuning alone in try -> NINA_TUNING_DEFAULTS: it is a bare db.select() present only to dress the caption, so its failure is a caption problem and exit criterion 5 forbids that costing the photograph -- rung 2; the three reads above it stay bare because without a session there is no correct row to write. (3) 'no vision call ever' asserted against imagerun.ts SOURCE (no ./vision import) not a spy -- a spy on a never-imported module can only pass, precedent tests/nina.tuning.test.ts, rung 6. (4) DROPPED a passing test that asserted a thrown captionNinaPhoto fails the job: it encoded wrong behaviour as correct, and captionNinaPhoto is contractually non-throwing -- rung 3. CONCURRENCY: its first pusher run correctly refused because phase 3 had staged into the shared index between its git add and the check; switched to a pathspec commit, which ignores index state. Verified b4f1004 holds only its 4 files and d67aa5c intact.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-photo-caption-from-image/phase-4.md",
-      "reported_at": "2026-09-07T05:40:01+00:00",
+      "reported_at": "2026-09-07T05:41:22+00:00",
       "satisfies": [
         "R2"
       ],
@@ -121,7 +121,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-caption-from-image",
-  "updated": "2026-09-07T05:40:01+00:00",
+  "updated": "2026-09-07T05:41:22+00:00",
   "verified_at": "2026-09-07T05:17:14+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
 }
