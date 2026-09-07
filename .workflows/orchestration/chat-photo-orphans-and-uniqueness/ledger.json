@@ -10,14 +10,14 @@
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": "TaskID minted by coordinator (single writer, hazard 7); /implement Step 3 embargoed for every phase in this set. Set-level Decisions and Open Questions already resolved by the reconciler -- 8 rows in the plan index, Open Questions: None.",
+      "note": "COORDINATOR DECISION (rung 1, invariant 3 'one migration... a renamed migration is skipped silently'; reinforced rung 4): branch base moved forward by merging origin/main into feature/chat-photo-orphans-and-uniqueness BEFORE any phase code existed. Measured: branch journal ended 0008, origin/main ends 0011 -- db:generate would have minted a second 0009 against main's applied 0009_nina_message_photo_only, and main's 0009+0010 carry hand-written backfill SQL that regeneration-at-landing silently drops. Also main was +788 lines across the four files this set owns (actions.ts +275, chatPhotoActions.ts +266, queries.ts +190, schema.ts +80) and main's 0010 already added source_avatar_id/source_image_id to nina_message_images. Consequences for all phases: locate edits by SYMBOL NAME not the plan's line numbers (base f03a3bc); phase 1's migration is 0012 not the plan's stated 0009 (the number was measured at plan time, the requirement is 'exactly one, nina_message_images only, no DROP/DELETE/TRUNCATE'); Decisions row 2 unchanged -- is_reference is the collection marker, the new provenance columns are not ours and stay untouched.",
       "package": "lib/db` + `lib/nina` + `components",
       "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md",
-      "reported_at": "2026-09-07T15:48:23+00:00",
+      "reported_at": "2026-09-07T15:53:37+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": "P1-NIN-A030",
       "title": "Orphan-able photographs: the FK, the migration, and every reader that assumed a message"
     },
@@ -66,6 +66,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/chat-photo-orphans-and-uniqueness/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "chat-photo-orphans-and-uniqueness",
-  "updated": "2026-09-07T15:48:23+00:00",
+  "updated": "2026-09-07T15:53:37+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/chat-photo-orphans-and-uniqueness"
 }
