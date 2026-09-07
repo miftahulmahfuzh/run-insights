@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 3
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 3
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 16
+- Completed: 17
 
 ---
 
@@ -32,17 +32,23 @@
   - **Method**: /implement (swarm wave 0, concurrent with phase 2)
   - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/admin/tuningModel.ts, lib/nina/prompts/distill.ts, lib/db/schema.ts, components/admin/CharacterPanel.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/nina.prompts.test.ts
 
-- [ ] **P1-NIN-A017** Phase 2: A schedule she can keep
+- [x] **P1-NIN-A017** Phase 2: A schedule she can keep
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns the tenth `NINA_SLOT_KEYS` member for the training plan — spelled **`training_plan`**, at index 3 immediately after `running_days` — its `NINA_SLOT_SPECS` entry (`policy: 'replace'`, `category: 'training'`, `canonicalise: prose(raw, 400)`, `prompt`), its `SLOT_LABELS` entry and refusal reason in `lib/admin/memoryVocab.ts`, the slot-count prose in `lib/admin/memoryModel.ts` and `lib/admin/schema.ts` (comments only), and the two slot-count test files. Exit: `NINA_SLOT_KEYS` has ten members with `training_plan` fourth and `pending_promises` last; the slot round-trips through `canonicalise`, refuses an empty value to a ledger fact rather than storing it, appears at `/admin/memory` with a label, hint and editable value, and is described to the distiller by **exactly one** rendered line from `SLOT_VOCABULARY_BLOCK`. **Neither `lib/nina/prompts/system.ts` nor `lib/nina/prompts/distill.ts` appears in `git diff --name-only`.** `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests; frozen snapshot byte-identical.
-  - **Status**: pending
+  - **Status**: completed
   - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 2 of 3)
   - **Satisfies**: R3 (the "set up schedules" half) — "she will set up schedules"
   - **Depends on**: —
   - **Plan**: `.workflows/plan/nina-instructor-character/phase-2.md`
   - **Method**: /implement (swarm wave 0, concurrent with phase 1)
   - **Files**: lib/nina/memory.ts, lib/admin/memoryVocab.ts, lib/admin/memoryModel.ts, lib/admin/schema.ts, tests/nina.memory.test.ts, tests/admin.memory.test.ts
+  - **Completed**: 2026-09-07 12:14
+  - **Commit**: `814fe8a`
+  - **Verification**: 145 test files / 2845 tests green (baseline 145/2834; +8 its own, +3 residual from phase 1's concurrent in-flight edits). Frozen snapshot unregenerated. `lib/nina/prompts/system.ts` and `lib/nina/prompts/distill.ts` both absent from its diff; `instructor` and `relationship` grep 0 across its six paths. `SLOT_VOCABULARY_BLOCK` verified at runtime to render exactly 10 lines with `training_plan —` fourth. prettier and eslint clean on all six.
+  - **Decisions**: `buildMemoryRows` docstring item 2 read "after the eight" — a fourth slot-count sentence the plan's Step 6 did not enumerate, two lines below one it does correct. Corrected to "after the nine" (rung 4, the deliverable: false the moment `NINA_SLOT_KEYS` grows, comment-only, inside this phase's stated Owns for slot-count prose in that file).
+  - **Drift**: none — every anchor the plan quoted was present as quoted.
+  - **Outstanding**: the manual `/admin/memory` browser check (plan's Manual check 1-4) was deliberately not run — a production build of the shared worktree would compile phase 1's in-flight edits, making the result attributable to neither phase. Every automated criterion is met; do the browser confirmation once the wave has landed.
 
 - [ ] **P1-NIN-A018** Phase 3: The coaching register and the insight path
   - **Difficulty**: HARD
