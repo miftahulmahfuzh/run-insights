@@ -3,6 +3,12 @@
   "coordinator": "orch-chat-photo-orphans-and-uniqueness",
   "coordinator_session_id": "8f5c05e2-02c4-4aa0-8ae3-563266ad36a7",
   "created": "2026-09-07T15:46:06+00:00",
+  "landed": {
+    "at": "2026-09-07T20:29:05+00:00",
+    "base": "main",
+    "commit": "973069aebac23b697c2f8fb64621ae006187654a",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -23,22 +29,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5a07dc5",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "RESCOPED by coordinator ruling C8 to R4 ONLY (adoption). R2/R3 halves are DROPPED -- served on main by F37's isOriginalPhoto()/provenance columns. R4 is untouched by F37 and could not have been served by it: orphans cannot exist on main because message_id is NOT NULL, so R4 only becomes expressible once phase 1 lands. Main's resolveAttachment COPIES, so absent this phase a re-attached orphan gets a new reference row and stays parentless forever -- exactly what R4 forbids. KEEP exit criteria 2, 4, 5 (adoptNinaMessageImage owner-scoped with message_id IS NULL, created_at and is_reference in neither SET nor returning; image-pointer-at-orphan issues one UPDATE and zero INSERTs; image-pointer-at-live-row issues zero UPDATEs). DROP criteria 1 and 3 (is_reference in generatedChatPhotoScope; avatar pointer writing is_reference=true). REFRAME criterion 6 (replaceChatPhotoAction/removeChatPhotoAction refusing a reference row) against isOriginalPhoto()/the source_* columns instead of is_reference. Criteria 7 and 8 stand.",
+      "note": "R4 done: adoptNinaMessageImage is one owner-scoped UPDATE with message_id IS NULL in the WHERE (not a branch above it), created_at + the F37 provenance pair + description + kind all outside the SET; resolveAttachment reports adoptableId; the attached-photo block in sendNinaMessage is adopt-or-reference (adoption inserts nothing, every other case writes the same F37 reference row as before). Exit criteria 1 and 3 SUPERSEDED by ruling C7, not unmet. Criterion 6 reframed and IMPLEMENTED: F37 had NOT added an admin refusal, and since getNinaMessageImage deliberately carries no reference filter both admin actions could still reach a row /admin/photos never lists -- replaceChatPhotoAction and removeChatPhotoAction now refuse one with a sentence before reading or deleting anything. Criteria 2,4,5,7,8 met. No migration, drizzle/ untouched, no db:generate. DECISIONS: (1) isChatPhotoReference uses != null not !== null -- rung 3, safe direction: a refusal must fire on evidence, and a pre-F37-shaped row has both fields undefined, which the strict form read as 're-share'; it turned tests/admin.chatPhotos.test.ts red and I fixed my own code rather than another suite's fixture. (2) the row-level predicate is module-local to lib/admin/chatPhotoActions.ts, not a new export from lib/nina/attach.ts -- narrower blast radius, and a shared export invites a fourth caller to filter a read schema.ts and nina.photoRefs.test.ts say must never be filtered. (3) test files are nina.chatPhotoAdoption (statement + the two admin refusals) and nina.chatPhotoReattach (the send path's four outcomes) instead of the plan's nina.chatPhotoUniqueness -- rung 2, that name described the R2/R3 half C7 struck; two files because the send-path suite mocks @/lib/nina/queries module-wide and would shadow the real adoptNinaMessageImage. Verified 156 files / 3119 tests (+2/+15 over the 154/3104 baseline), typecheck clean, lint 0 errors (2 pre-existing warnings in untouched scripts/capture/shoot.mjs), all 5 paths prettier-clean. todos.md entry text sent to the coordinator separately.",
       "package": "lib/nina` + `lib/admin",
       "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md",
-      "reported_at": "2026-09-07T16:00:26+00:00",
+      "reported_at": "2026-09-07T20:22:28+00:00",
       "satisfies": [
         "R2",
         "R3",
         "R4"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A031",
       "title": "One photograph per collection row: the reference marker and adopt-or-reference"
     },
@@ -66,7 +72,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/chat-photo-orphans-and-uniqueness/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "chat-photo-orphans-and-uniqueness",
-  "updated": "2026-09-07T20:12:23+00:00",
+  "updated": "2026-09-07T20:29:05+00:00",
   "verified_at": "2026-09-07T20:12:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/chat-photo-orphans-and-uniqueness"
 }
