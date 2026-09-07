@@ -1,0 +1,702 @@
+/**
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *  THE IMAGE-GENERATION PREFERENCES. One slider, six emphasis flags, four lines of free text
+ *  and one photograph. Everything the operator can say about HOW SHE IS PHOTOGRAPHED, as
+ *  opposed to `lib/nina/tuning.ts`, which is everything he can say about WHO SHE IS.
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ── THIS FILE MUST STAY IMPORTABLE FROM A `'use client'` COMPONENT, AND FROM THE WORKER ───────
+ * **Zero imports. No value import, no type import, no `server-only`, nothing from the db layer.**
+ * The `lib/nina/tuning.ts` and `lib/nina/imagerecipe.ts` rule, and for three reasons at once:
+ * phase 4's `components/admin/ImageGenPanel.tsx` is `'use client'` and renders every label and
+ * bound below in the browser; phase 4's Zod boundary must import the same bounds so the form and
+ * the schema cannot disagree; and phase 3's `scripts/nina-image-worker.ts` loads its dependencies
+ * by relative path under `node --experimental-strip-types`, where an `@/` alias does not resolve.
+ * `tests/nina.imageprefs.test.ts` reads this file's own source and fails on an `import` line, so
+ * the property is checked rather than merely intended.
+ *
+ * ── WHY `prompt_length` DOES NOT RESTATE THE BANDS, AND WHAT IT SHARES INSTEAD ────────────────
+ * The slider is a 0-100 integer read through the repo's existing FIVE bands (`ninaBand`,
+ * `NINA_BAND_NAMES` in `lib/nina/tuning.ts:80-122`), and this file cannot import them. It does not
+ * copy them either. `NINA_PROMPT_LENGTH_RUNGS` below is indexed by BAND INDEX — the numeric domain
+ * `NinaBandIndex` already is, and the same one `ANGER_FLOOR_BY_BAND` in `lib/nina/persona.ts`
+ * consumes — so the vocabulary crosses this boundary as a number 0..4 and nothing else. The caller
+ * writes:
+ *
+ *     ninaPromptLengthRungFor(ninaBand(prefs.promptLength).index)
+ *
+ * one `ninaBand` call, in a module that already imports it. What IS duplicated is the two scale
+ * endpoints and the clamp's semantics, and `tests/nina.imageprefs.test.ts` asserts both against
+ * `NINA_SCORE_MIN` / `NINA_SCORE_MAX` / `clampNinaScore` directly. That is the RULING A6 mitigation
+ * shape: `tests/nina.imagerecipe.test.ts` proves `ninaImagePathname` agrees with the one
+ * `NINA_BLOB_PREFIX` for exactly this reason. A test may reach where the consumer cannot.
+ *
+ * ── "FOCUS ON" IS EMPHASIS, NEVER INCLUSION ──────────────────────────────────────────────────
+ * The user's words are *"i dont care about her face, i care a lot about her voluptuous body: big
+ * boobs, bubble butt, big thighs, very long calves. **always** explicitly instruct these in the
+ * prompt."* So the body canon is unconditional prompt text (phase 2 owns it, plan invariant 4) and
+ * these six flags add emphasis ON TOP. `NINA_IMAGE_FOCUS_DEFAULTS` is therefore all-false: with
+ * nothing selected the prompt still names all four body facts, and a phase that made a focus flag
+ * the thing that PUTS the body in the prompt would have contradicted the word "always".
+ *
+ * ── THE COERCION ASYMMETRY, AND WHY IT IS THE OPPOSITE OF `coerceNinaEnabled` ────────────────
+ * `coerceNinaEnabled` reads anything that is not literally `false` as ON, because its failure mode
+ * is a deploy that silently mutes her personality. `coerceNinaImageFocus` is the mirror image:
+ * **only an explicit `true` enables.** Its failure mode is the other one — an unreadable value that
+ * read as ON would put an emphasis clause into the prompt that nobody selected, and R1 already
+ * guarantees the body is named, so OFF is the state that loses nothing.
+ *
+ * ── ALL FOUR TEXT FIELDS ARE ONE LINE, INCLUDING `notes` ────────────────────────────────────
+ * Unlike `coerceNinaNotes` in `lib/nina/tuning.ts`, which keeps newlines because it feeds a
+ * seven-kilobyte SYSTEM prompt where paragraphs are prose. These four are interpolated into an
+ * IMAGE prompt, where a newline splits a sentence the provider reads as two — `coerceNinaWardrobe`'s
+ * own argument, applied to all four rather than to one.
+ *
+ * ── THE REFERENCE IS AN ID PLUS A SET, NOT A URL ────────────────────────────────────────────
+ * `reference_source` + `reference_id`, and the reason is `updateNinaChatPhotoBlob`: replacing a
+ * chat photograph's bytes changes its `blob_url` and keeps its `id`. A stored URL would point at a
+ * deleted Blob object while the picker still showed the chosen tile. There is no foreign key —
+ * the parent is one of two tables, which no single FK can express, and a cascade would delete a
+ * whole prefs row because one photograph was deleted. A dangling id resolves to `null` and the
+ * generation degrades to unanchored; `NINA_IMAGE_REFERENCE_NONE` is the one representable "no
+ * reference", and a half-selection (a source with no id, or an id with no source) is coerced into
+ * it rather than stored.
+ */
+
+/* ============================================================================
+ * §1 The scale, and the five rungs of the length ladder (R4)
+ * ==========================================================================*/
+
+/**
+ * The slider's domain. **The same two integers as `NINA_SCORE_MIN` / `NINA_SCORE_MAX` in
+ * `lib/nina/tuning.ts`, restated because this file may not import them**, and asserted equal in
+ * `tests/nina.imageprefs.test.ts`. See the header for why the BANDS are not restated with them.
+ */
+export const NINA_IMAGE_PROMPT_LENGTH_MIN = 0
+export const NINA_IMAGE_PROMPT_LENGTH_MAX = 100
+
+/**
+ * The middle of the slider, which is the middle rung of the ladder.
+ *
+ * There is no byte-identical prompt to reproduce here and that is worth stating, because
+ * `NINA_TUNING_DEFAULTS`'s whole discipline is the opposite: R1 changes every image prompt
+ * unconditionally, so `tests/nina.imagerecipe.test.ts`'s byte-stability assertion is restated by
+ * phase 2 by design (see the plan index, phase 2). What survives of that discipline is the weaker
+ * and still useful claim: the default is the NEUTRAL rung, so an operator who never touches the
+ * slider gets the prompt phase 2 wrote as its baseline.
+ */
+export const NINA_IMAGE_PROMPT_LENGTH_DEFAULT = 50
+
+/**
+ * One rung of the ladder. Five of them, indexed by BAND INDEX — see the header.
+ *
+ * `detailSentences` is the operator's whole instruction, made a number: *"the longer the prompt,
+ * the more detailed the prompt would be"*. It is how many sentences of **generated** detail the
+ * assembler may add — the focus-emphasis clauses and the canon's own elaboration.
+ *
+ * **It is NOT a budget over the operator's own free text.** `wardrobe`, `venue`, `time` and `notes`
+ * reach the prompt at every rung, in full. A slider that could eat a field the operator typed into
+ * would be a control that makes another control silently do nothing, which is the failure
+ * `lib/db/schema.ts`'s `nina_tuning` header spends three paragraphs forbidding. Phase 2 owns what a
+ * sentence of detail SAYS; this table owns how many of them there are, and that the count rises.
+ */
+export interface NinaPromptLengthRung {
+  /** 0-4. The band index, which is also this rung's position in the array. */
+  readonly index: number
+  /** The panel's label, rendered beside the slider. Sentence case, like every other admin label. */
+  readonly label: string
+  /** What the rung is, in one line. Operator copy, not prompt text. */
+  readonly axis: string
+  /** Sentences of GENERATED detail the assembler may spend. Strictly increasing. */
+  readonly detailSentences: number
+}
+
+export const NINA_PROMPT_LENGTH_RUNGS: readonly NinaPromptLengthRung[] = Object.freeze([
+  Object.freeze({
+    index: 0,
+    label: 'Terse',
+    axis: 'The style block, the body, and the scene. Nothing else — the shortest prompt that still names all four body facts.',
+    detailSentences: 0,
+  }),
+  Object.freeze({
+    index: 1,
+    label: 'Short',
+    axis: 'One sentence of detail. The strongest emphasis and nothing more.',
+    detailSentences: 1,
+  }),
+  Object.freeze({
+    index: 2,
+    label: 'Standard',
+    axis: 'Two sentences of detail. The neutral rung, and the default.',
+    detailSentences: 2,
+  }),
+  Object.freeze({
+    index: 3,
+    label: 'Detailed',
+    axis: 'Four sentences of detail. Every selected emphasis gets its own clause.',
+    detailSentences: 4,
+  }),
+  Object.freeze({
+    index: 4,
+    label: 'Exhaustive',
+    axis: 'Six sentences of detail. Everything selected, elaborated, plus the texture and lighting the canon can spell out.',
+    detailSentences: 6,
+  }),
+])
+
+/**
+ * A band index, made a rung. **Never throws and never returns undefined**, which is why it takes a
+ * plain `number` rather than a band-index type: a type union restated here would be the second copy
+ * of the band vocabulary the header refuses. A non-integer floors, out of range clamps, and
+ * anything that is not a finite number falls to the middle rung — the same trust-boundary
+ * discipline as `clampNinaScore`, for a caller that may be a hand-run script.
+ */
+export function ninaPromptLengthRungFor(bandIndex: unknown): NinaPromptLengthRung {
+  const last = NINA_PROMPT_LENGTH_RUNGS.length - 1
+  if (typeof bandIndex !== 'number' || !Number.isFinite(bandIndex)) {
+    return NINA_PROMPT_LENGTH_RUNGS[Math.floor(last / 2)]!
+  }
+  const index = Math.min(last, Math.max(0, Math.floor(bandIndex)))
+  return NINA_PROMPT_LENGTH_RUNGS[index]!
+}
+
+/**
+ * A prompt-length score, made safe. Floor before clamp, so `100.9` is 100 and not a band index of
+ * 5 — `clampNinaScore`'s own ordering, and the reason it matters is the same.
+ */
+export function clampNinaImageScore(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(
+    NINA_IMAGE_PROMPT_LENGTH_MAX,
+    Math.max(NINA_IMAGE_PROMPT_LENGTH_MIN, Math.floor(value)),
+  )
+}
+
+/** The slider's value, made safe. Unreadable falls to the neutral rung, never to zero. */
+export function coerceNinaImagePromptLength(value: unknown): number {
+  return clampNinaImageScore(value, NINA_IMAGE_PROMPT_LENGTH_DEFAULT)
+}
+
+/* ============================================================================
+ * §2 "Focus on" — the six, in the order the user wrote them (R5)
+ * ==========================================================================*/
+
+/**
+ * **The six, in the user's own order**, which is the panel's order and the prompt's order.
+ *
+ * The keys are short because they become column names (`focus_boobs`) and object keys read by a
+ * client panel; the user's words are in `label` and `userSaid`, where nothing may tidy them.
+ */
+export const NINA_IMAGE_FOCUS_KEYS = ['face', 'skin', 'boobs', 'butt', 'thighs', 'calves'] as const
+
+export type NinaImageFocusKey = (typeof NINA_IMAGE_FOCUS_KEYS)[number]
+
+export function isNinaImageFocusKey(key: string): key is NinaImageFocusKey {
+  return (NINA_IMAGE_FOCUS_KEYS as readonly string[]).includes(key)
+}
+
+/**
+ * One focus option, fully described. The `NINA_TRAIT_SPECS` idiom: a key array for the order, a
+ * spec record for everything about each key.
+ *
+ * `userSaid` is **the user's own words, verbatim** — his list was *"face, skin, big boobs, bubble
+ * butt, big thighs, very long calves"*. Phase 2 may quote them into prompt text; nothing may
+ * rephrase them, because the whole complaint that produced this feature was that the prompt did not
+ * say them.
+ */
+export interface NinaImageFocusSpec {
+  readonly key: NinaImageFocusKey
+  /** The checkbox's label. Sentence case. */
+  readonly label: string
+  /** The user's own fragment, verbatim and lower case, as he typed it. */
+  readonly userSaid: string
+}
+
+export const NINA_IMAGE_FOCUS_SPECS: Readonly<Record<NinaImageFocusKey, NinaImageFocusSpec>> =
+  Object.freeze({
+    face: Object.freeze({ key: 'face', label: 'Face', userSaid: 'face' }),
+    skin: Object.freeze({ key: 'skin', label: 'Skin', userSaid: 'skin' }),
+    boobs: Object.freeze({ key: 'boobs', label: 'Big boobs', userSaid: 'big boobs' }),
+    butt: Object.freeze({ key: 'butt', label: 'Bubble butt', userSaid: 'bubble butt' }),
+    thighs: Object.freeze({ key: 'thighs', label: 'Big thighs', userSaid: 'big thighs' }),
+    calves: Object.freeze({
+      key: 'calves',
+      label: 'Very long calves',
+      userSaid: 'very long calves',
+    }),
+  })
+
+function allFocusOff(): Record<NinaImageFocusKey, boolean> {
+  const out = {} as Record<NinaImageFocusKey, boolean>
+  for (const key of NINA_IMAGE_FOCUS_KEYS) out[key] = false
+  return out
+}
+
+/**
+ * **ALL FALSE, and that is R1 held rather than hoped for.** Deselecting everything must still
+ * produce a prompt that names all four body facts (plan invariant 4), so the empty focus set is the
+ * default and phase 2's baseline prompt is the one an operator who never opens the tab gets.
+ *
+ * Frozen, because `NINA_IMAGE_PREFS_DEFAULTS` below is frozen and `readNinaImagePrefs` hands that
+ * exact object to every caller for a user with no row.
+ */
+export const NINA_IMAGE_FOCUS_DEFAULTS: Readonly<Record<NinaImageFocusKey, boolean>> =
+  Object.freeze(allFocusOff())
+
+/**
+ * A focus map, made safe. **ONLY AN EXPLICIT `true` ENABLES** — the mirror image of
+ * `coerceNinaEnabled`, and the header says why the asymmetry flips.
+ */
+export function coerceNinaImageFocus(value: unknown): Record<NinaImageFocusKey, boolean> {
+  const out = {} as Record<NinaImageFocusKey, boolean>
+  for (const key of NINA_IMAGE_FOCUS_KEYS) out[key] = pick(value, key) === true
+  return out
+}
+
+/**
+ * The selected keys, **in `NINA_IMAGE_FOCUS_KEYS` order and never in insertion order**. Phase 2's
+ * one reader. The order is the array's so that two identical selections produce one identical
+ * prompt — the reproducibility argument `getNinaMemorySlots` makes for ordering by key, and the
+ * reason a seed is worth storing at all.
+ *
+ * Reads through `pick` rather than `prefs.focus[key]` so a hand-built `NinaImagePrefs` with no
+ * `focus` at all — a fixture, a `psql` round trip, an `as NinaImagePrefs` cast — degrades to "none
+ * selected" instead of throwing in the middle of a generation.
+ */
+export function ninaImageFocusKeysOn(prefs: NinaImagePrefs): NinaImageFocusKey[] {
+  return NINA_IMAGE_FOCUS_KEYS.filter((key) => pick(prefs.focus, key) === true)
+}
+
+/* ============================================================================
+ * §3 The four free-text fields (R6, R7, R8, R9)
+ * ==========================================================================*/
+
+/**
+ * One line about clothes. **200, the same as `NINA_WARDROBE_MAX` in `lib/nina/tuning.ts`, and it is
+ * the same field moving house** — every existing value was capped at 200 by `coerceNinaWardrobe`,
+ * so the migration's copy in step 3 cannot truncate anything.
+ *
+ * Deliberately NOT asserted equal to `NINA_WARDROBE_MAX` in a test: phase 7 deletes that constant,
+ * and an assertion against it would be a phase-1 test that fails in phase 7 for no phase-7 reason.
+ * The number and its argument are here; the old constant's grave is phase 7's business.
+ */
+export const NINA_IMAGE_WARDROBE_MAX = 200
+
+/** One line about where. *"Kuta streets in Bali"* is nineteen characters; 200 is generous. */
+export const NINA_IMAGE_VENUE_MAX = 200
+
+/**
+ * One short phrase about when and what the weather is doing. *"sunny day, rainy night, cold
+ * afternoon"* are the user's three examples and the longest is nineteen characters. 120 is a
+ * phrase; anything longer is a venue in the wrong field.
+ */
+export const NINA_IMAGE_TIME_MAX = 120
+
+/**
+ * The escape hatch. *"nina is full of sweat"*.
+ *
+ * **600, and deliberately far below `NINA_NOTES_MAX`'s 2000.** That field is appended to a
+ * seven-kilobyte system prompt; this one is spliced into an image prompt of a few hundred words,
+ * where a paragraph fights the style block for the model's attention and loses money doing it —
+ * `NINA_WARDROBE_MAX`'s own argument (`lib/nina/tuning.ts:684-689`), applied at the scale this
+ * field actually needs.
+ */
+export const NINA_IMAGE_NOTES_MAX = 600
+
+/** The four, in the order the user wrote them, which is the order the panel renders them in. */
+export const NINA_IMAGE_TEXT_KEYS = ['wardrobe', 'venue', 'time', 'notes'] as const
+
+export type NinaImageTextKey = (typeof NINA_IMAGE_TEXT_KEYS)[number]
+
+/**
+ * One free-text field, fully described — so phase 4's input, its `maxLength`, its placeholder and
+ * phase 4's Zod bound are all one lookup and cannot drift from each other.
+ *
+ * `placeholder` is **the user's own example, verbatim**. He gave one for every field except the
+ * wardrobe's second half, and an example he wrote is worth more than an example we invent.
+ */
+export interface NinaImageTextSpec {
+  readonly key: NinaImageTextKey
+  /** The input's label. Sentence case. */
+  readonly label: string
+  /** The user's own line about this field, verbatim. */
+  readonly userSaid: string
+  /** His own example, verbatim — the input's `placeholder`. */
+  readonly placeholder: string
+  /** The cap. Enforced by `coerceNinaImageText`, by phase 4's `maxLength`, and by phase 4's Zod. */
+  readonly max: number
+}
+
+export const NINA_IMAGE_TEXT_SPECS: Readonly<Record<NinaImageTextKey, NinaImageTextSpec>> =
+  Object.freeze({
+    wardrobe: Object.freeze({
+      key: 'wardrobe',
+      label: 'Wardrobe',
+      userSaid: 'wardrobe (free text) : e.g: long hugging leggings with string bra',
+      placeholder: 'long hugging leggings with string bra',
+      max: NINA_IMAGE_WARDROBE_MAX,
+    }),
+    venue: Object.freeze({
+      key: 'venue',
+      label: 'Venue',
+      userSaid: 'venue (free text): Kuta streets in Bali',
+      placeholder: 'Kuta streets in Bali',
+      max: NINA_IMAGE_VENUE_MAX,
+    }),
+    time: Object.freeze({
+      key: 'time',
+      label: 'Time',
+      userSaid: 'time (free text): e.g: sunny day , rainy night, cold afternoon',
+      placeholder: 'sunny day, rainy night, cold afternoon',
+      max: NINA_IMAGE_TIME_MAX,
+    }),
+    notes: Object.freeze({
+      key: 'notes',
+      label: 'Notes',
+      userSaid: 'notes: e.g: nina is full of sweat',
+      placeholder: 'nina is full of sweat',
+      max: NINA_IMAGE_NOTES_MAX,
+    }),
+  })
+
+/**
+ * One free-text field, made safe. Whitespace collapsed to single spaces and cut at that field's own
+ * cap — **all four fields, including `notes`**; the header says why this differs from
+ * `coerceNinaNotes`.
+ *
+ * `''` is the one empty value and never null: "no override" and "not set" are the same fact, and
+ * two spellings for one fact is one too many (`nina_tuning.wardrobe`'s column docstring, verbatim).
+ * A cut mid-word at the cap is acceptable — phase 4's input carries the same constant as
+ * `maxLength`, so this is the last line of defence rather than the first.
+ */
+export function coerceNinaImageText(key: NinaImageTextKey, value: unknown): string {
+  const max = NINA_IMAGE_TEXT_SPECS[key].max
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim().slice(0, max)
+}
+
+/* ============================================================================
+ * §4 The photograph reference (R10 — the storage half)
+ * ==========================================================================*/
+
+/**
+ * Which set the chosen photograph came from. `'none'` is the empty value, and it is a member of the
+ * vocabulary rather than a NULL for the same reason `''` is the empty wardrobe.
+ *
+ * `'album'` is `nina_avatars`; `'chat'` is `nina_message_images WHERE kind = 'generated'`. Those are
+ * exactly the two sets the user named: *"all photos in Nina's album and Chat photos"*.
+ */
+export const NINA_IMAGE_REFERENCE_SOURCES = ['none', 'album', 'chat'] as const
+
+export type NinaImageReferenceSource = (typeof NINA_IMAGE_REFERENCE_SOURCES)[number]
+
+/** Ids in this repo are `lib/id.ts` nanoids; 64 is a defensive ceiling, not a shape claim. */
+export const NINA_IMAGE_REFERENCE_ID_MAX = 64
+
+/**
+ * The character class `NINA_IMAGE_PATHNAME_RE` in `lib/nina/imagerecipe.ts` already admits, for the
+ * same ids. An id outside it is not a row we could ever read, so it coerces to no reference at all
+ * rather than to a query that returns nothing.
+ */
+export const NINA_IMAGE_REFERENCE_ID_RE = /^[0-9A-Za-z_-]{1,64}$/
+
+/**
+ * The chosen photograph, as the row stores it: which set, and its id in that set. **Never a blob
+ * URL** — the header gives the `updateNinaChatPhotoBlob` argument.
+ *
+ * A half-selection is not representable: `coerceNinaImageReference` maps a source with no id, an id
+ * with no source, and an unreadable either to `NINA_IMAGE_REFERENCE_NONE`.
+ */
+export interface NinaImageReference {
+  readonly source: NinaImageReferenceSource
+  /** `''` exactly when `source === 'none'`. Otherwise the row's id in that set. */
+  readonly id: string
+}
+
+/** The one representable "no reference". Frozen; it is reachable from the frozen defaults. */
+export const NINA_IMAGE_REFERENCE_NONE: NinaImageReference = Object.freeze({
+  source: 'none',
+  id: '',
+})
+
+/**
+ * A reference, made safe. **Never throws, and never returns a half-selection.**
+ *
+ * Accepts either the nested shape (`{ source, id }`) or the two flat column values, because the
+ * three real inputs are a database row mapped by `lib/nina/queries.ts`, phase 4's Server Action
+ * payload, and a `NinaImagePrefs` being round-tripped, and a signature that admits only one of
+ * those pushes the validation out to three call sites.
+ */
+export function coerceNinaImageReference(value: unknown): NinaImageReference {
+  const rawSource = pick(value, 'source')
+  const rawId = pick(value, 'id')
+  if (typeof rawSource !== 'string' || typeof rawId !== 'string') return NINA_IMAGE_REFERENCE_NONE
+  if (!(NINA_IMAGE_REFERENCE_SOURCES as readonly string[]).includes(rawSource)) {
+    return NINA_IMAGE_REFERENCE_NONE
+  }
+  if (rawSource === 'none') return NINA_IMAGE_REFERENCE_NONE
+  const id = rawId.trim()
+  if (!NINA_IMAGE_REFERENCE_ID_RE.test(id)) return NINA_IMAGE_REFERENCE_NONE
+  return { source: rawSource as NinaImageReferenceSource, id }
+}
+
+/* ============================================================================
+ * §5 The picker's page — the union over both sets (R10)
+ * ==========================================================================*/
+
+/**
+ * One page of the caption-less grid. 48, the same as `NINA_CHAT_PHOTO_PAGE_SIZE` in
+ * `lib/nina/album.ts` — a 6x8 grid of square tiles on a phone, which is the iOS Photos idiom the
+ * user asked for. Both the default and the CEILING for `limit`, so a hand-edited request cannot
+ * turn one page into the unpaginated read this function exists to avoid.
+ */
+export const NINA_PHOTO_REF_PAGE_SIZE = 48
+
+/**
+ * **How deep the picker can reach, and it is a real bound rather than a formality.**
+ *
+ * The merge below is a pure function over two arrays, which is what lets `npm test` prove the
+ * ordering with no database — the *"SQL groups, the pure module rolls up"* split
+ * `listNinaAvatarFolders` and `lib/admin/filetree.ts` already use. The price of that split is that
+ * `listNinaPhotoReferences` must read `offset + limit` rows from EACH side before it can merge, so
+ * the depth has to be capped or the read stops being bounded — which is precisely the mistake
+ * `countNinaAvatars` exists to undo, and `listNinaAvatars` (`lib/nina/queries.ts:2314`) is the
+ * unbounded read this must not reuse.
+ *
+ * 480 is ten pages. The honest cost, stated rather than hidden: a photograph older than the newest
+ * 480 across both sets cannot be reached from the picker. Against that, the alternative is a SQL
+ * `UNION ALL` whose ordering can only be proved against a live database, bought for deep paging
+ * nobody does inside a modal grid.
+ */
+export const NINA_PHOTO_REF_SCAN_MAX = 480
+
+/** The two sets a photograph can come from. `'none'` is not one of them, so it is excluded. */
+export type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
+
+/**
+ * One selectable photograph, from either set, in the ONE shape the grid draws.
+ *
+ * `thumbUrl` is nullable because the two sets disagree: `nina_avatars` has a derived thumbnail and
+ * `nina_message_images` has no `thumb_url` column at all. A tile renders `thumbUrl ?? blobUrl`,
+ * which is what `ChatPhotoGrid` already knowingly does — and the plan's Scope rules out adding the
+ * column.
+ *
+ * There is no `description`, no `filename`, no `folder` and no `prompt`, and that is R10 held in the
+ * type: *"a simple photos grid without any captions (just like ios album app)"*. A field the grid
+ * must not render is a field the read must not ship.
+ */
+export interface NinaPhotoRef {
+  readonly source: NinaPhotoRefSource
+  readonly id: string
+  readonly blobUrl: string
+  readonly thumbUrl: string | null
+  readonly width: number | null
+  readonly height: number | null
+  readonly createdAt: Date
+}
+
+/**
+ * One page, plus the whole collection's size and the window it was taken from.
+ *
+ * `total` is a truthful count of BOTH sets, so an over-shot page returns `rows: []` beside a
+ * non-zero total — the distinction `NinaAvatarFolderPage`'s docstring calls out as the one case a
+ * pager has to tell apart. `offset` and `limit` are echoed back already clamped, so phase 5 renders
+ * the window it actually got rather than the one it asked for.
+ */
+export interface NinaPhotoRefPage {
+  readonly rows: NinaPhotoRef[]
+  readonly total: number
+  readonly offset: number
+  readonly limit: number
+}
+
+/** The clamped window, plus how many rows each side must be read to fill it. */
+export interface NinaPhotoRefBounds {
+  readonly offset: number
+  readonly limit: number
+  /** `min(offset + limit, NINA_PHOTO_REF_SCAN_MAX)` — the per-side `LIMIT`. */
+  readonly scan: number
+}
+
+function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+/**
+ * The one place the picker's window is decided, so the reader and the merge cannot disagree about
+ * it. `lib/nina/queries.ts` calls this once and passes the result to `mergeNinaPhotoRefs`.
+ */
+export function ninaPhotoRefBounds(
+  opts: { limit?: number; offset?: number } = {},
+): NinaPhotoRefBounds {
+  const limit = boundedInt(opts.limit, NINA_PHOTO_REF_PAGE_SIZE, 1, NINA_PHOTO_REF_PAGE_SIZE)
+  const offset = boundedInt(opts.offset, 0, 0, NINA_PHOTO_REF_SCAN_MAX)
+  return { offset, limit, scan: Math.min(offset + limit, NINA_PHOTO_REF_SCAN_MAX) }
+}
+
+/**
+ * Newest first across both sets, then the requested slice. **Pure, total, and never throws.**
+ *
+ * The tiebreak is `(createdAt desc, source asc, id desc)` and every part of it is load-bearing:
+ * both source reads already order `(created_at desc, id desc)`, rows written in one statement share
+ * `created_at` to the microsecond, and a grid whose order changes between two renders of the same
+ * page is a grid whose selection moves under the operator's finger. `source` sorts before `id` so
+ * that a tie is resolved the same way whichever side happened to be read first — and `'album'` <
+ * `'chat'` is plain string order, not a preference.
+ *
+ * A row with an unusable `createdAt` sorts last rather than corrupting the comparator, because the
+ * consumer is an admin screen that must render "gone" rather than an error page.
+ */
+export function mergeNinaPhotoRefs(
+  album: readonly NinaPhotoRef[],
+  chat: readonly NinaPhotoRef[],
+  bounds: NinaPhotoRefBounds,
+): NinaPhotoRef[] {
+  const merged = [...album, ...chat].sort(compareNinaPhotoRefs)
+  return merged.slice(bounds.offset, bounds.offset + bounds.limit)
+}
+
+function refTime(ref: NinaPhotoRef): number {
+  const at = ref.createdAt
+  return at instanceof Date && Number.isFinite(at.getTime()) ? at.getTime() : 0
+}
+
+function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
+  const at = refTime(a)
+  const bt = refTime(b)
+  if (at !== bt) return bt - at
+  if (a.source !== b.source) return a.source < b.source ? -1 : 1
+  if (a.id !== b.id) return a.id < b.id ? 1 : -1
+  return 0
+}
+
+/* ============================================================================
+ * §6 The preferences themselves
+ * ==========================================================================*/
+
+/**
+ * One property of something that may not be an object at all. Never throws.
+ *
+ * The same three lines as `lib/nina/tuning.ts`'s `pick`, and it is a second copy for the same
+ * reason `clampNinaImageScore` is: this file may not import that one. It is three lines with no
+ * vocabulary in it, so there is nothing here that can drift — which is the test the header's
+ * duplication rule actually applies.
+ */
+function pick(bag: unknown, key: string): unknown {
+  if (typeof bag !== 'object' || bag === null) return undefined
+  return (bag as Record<string, unknown>)[key]
+}
+
+/**
+ * **Everything the operator can set about how she is photographed.** One value, read live at
+ * dispatch time with no cache, exactly like `NinaTuning`: a wardrobe saved thirty seconds ago is in
+ * the next photograph, with no invalidation step at all.
+ *
+ * Every field is `readonly` and `NINA_IMAGE_PREFS_DEFAULTS` is frozen, because `readNinaImagePrefs`
+ * returns that shared singleton for a user with no row — a caller that mutated it would corrupt
+ * every subsequent generation in the same process. Frozen means the attempt throws instead.
+ */
+export interface NinaImagePrefs {
+  /** 0-100, read through the five bands. See §1 and the header. */
+  readonly promptLength: number
+  /** Emphasis, never inclusion. All false is the default and R1 still holds. */
+  readonly focus: Readonly<Record<NinaImageFocusKey, boolean>>
+  /** `''` = no override. */
+  readonly wardrobe: string
+  /** `''` = the canon's own home ground. */
+  readonly venue: string
+  /** `''` = nothing said about when. */
+  readonly time: string
+  /** `''` = nothing appended. */
+  readonly notes: string
+  /** `NINA_IMAGE_REFERENCE_NONE` = an unanchored generation. */
+  readonly reference: NinaImageReference
+  /**
+   * Bumped by the DATABASE on every save.
+   *
+   * **`0` means no row has ever been written**, i.e. the shipping defaults. A stored row always has
+   * `revision >= 1`, which is why `writeNinaImagePrefs` computes it in SQL and why
+   * `NinaImagePrefsWrite` cannot supply one: a revision the client sends is a revision a stale tab
+   * can move backwards. `writeNinaTuning`'s argument, verbatim.
+   */
+  readonly revision: number
+}
+
+/** What a caller supplies to `writeNinaImagePrefs`. The revision is the database's to assign. */
+export type NinaImagePrefsWrite = Omit<NinaImagePrefs, 'revision'>
+
+/**
+ * What `coerceNinaImagePrefs` accepts: the shape, with every field `unknown`.
+ *
+ * Deliberately not `Partial<NinaImagePrefs>`, for `NinaTuningInput`'s reason: the real inputs are a
+ * flat database row, a Server Action payload and a round-tripped model value, and a type that
+ * admits only the last of those pushes the trust boundary out to three call sites.
+ */
+export interface NinaImagePrefsInput {
+  readonly promptLength?: unknown
+  readonly focus?: unknown
+  readonly wardrobe?: unknown
+  readonly venue?: unknown
+  readonly time?: unknown
+  readonly notes?: unknown
+  readonly reference?: unknown
+  readonly revision?: unknown
+}
+
+/**
+ * **The shipping preferences: nothing selected, nothing typed, no reference, the neutral rung.**
+ *
+ * Frozen, and its two nested values frozen, because `readNinaImagePrefs` hands this exact object to
+ * every caller for a user with no row. That is the whole design: it is what makes every downstream
+ * caller unconditional — no `?? defaults` at four call sites, no "has he opened the tab yet" branch
+ * in `selfiegen.ts`, and no way for a first-run generation to get a prompt with holes in it.
+ */
+export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
+  promptLength: NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
+  focus: NINA_IMAGE_FOCUS_DEFAULTS,
+  wardrobe: '',
+  venue: '',
+  time: '',
+  notes: '',
+  reference: NINA_IMAGE_REFERENCE_NONE,
+  revision: 0,
+})
+
+/** A revision, made safe. Integer, never negative, and 0 is the "never written" sentinel. */
+function coerceRevision(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.floor(value))
+}
+
+/**
+ * **Anything at all, made into a usable `NinaImagePrefs`. This function never throws.**
+ *
+ * `coerceNinaTuning`'s rule, and this data has the same four writers: phase 4's panel, a hand-run
+ * SQL update, a restored backup and a future migration. Its consumer is a $0.040 model call, which
+ * must degrade rather than 500.
+ *
+ * Three behaviours worth stating because the tests pin them:
+ *
+ *   1. **An unreadable slider falls to the neutral rung, not to zero.** Zero is a real setting (the
+ *      terse rung), so it must not double as "we could not read this".
+ *   2. **An unreadable focus flag reads OFF.** The opposite of `coerceNinaEnabled`, and the header
+ *      says why.
+ *   3. **The result is always a fresh, unfrozen object**, never `NINA_IMAGE_PREFS_DEFAULTS` itself,
+ *      so a caller may hold it, spread it and hand it to React state without touching the
+ *      singleton.
+ */
+export function coerceNinaImagePrefs(
+  input: NinaImagePrefsInput | null | undefined,
+): NinaImagePrefs {
+  return {
+    promptLength: coerceNinaImagePromptLength(input?.promptLength),
+    focus: coerceNinaImageFocus(input?.focus),
+    wardrobe: coerceNinaImageText('wardrobe', input?.wardrobe),
+    venue: coerceNinaImageText('venue', input?.venue),
+    time: coerceNinaImageText('time', input?.time),
+    notes: coerceNinaImageText('notes', input?.notes),
+    reference: coerceNinaImageReference(input?.reference),
+    revision: coerceRevision(input?.revision),
+  }
+}
