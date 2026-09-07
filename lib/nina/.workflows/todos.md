@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 13
+- Completed: 14
 
 ---
 
@@ -31,6 +31,24 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A013** Phase 1: Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `lib/admin/chatPhotos.ts` and `lib/nina/images.ts` — each predicate stops answering for one `{12,24}` range and starts answering for TWO shapes: the REQUESTED id, exactly the 12 symbols `newId()` emits, and the STORED pathname Vercel hands back, those 12 symbols plus `-` plus a random suffix bounded `{16,64}`. `ADMIN_CHAT_PHOTO_ID_RE` and `NINA_CHAT_ID_RE` keep their names and tighten to `{12}` (the old `{12,24}` admitted 13–24, which `newId()` cannot produce); two new exports `ADMIN_CHAT_PHOTO_STORED_ID_RE` / `NINA_CHAT_STORED_ID_RE` carry the stored shape, and both predicates test both. No signature changes, so all five call sites compile untouched. Also owns `tests/admin.chatPhotos.test.ts` and `lib/nina/images.test.ts`, whose fixtures stop inventing a short suffix and carry a real 30-symbol one measured out of the prod store. Plus two comment-only, separable prose fixes (`components/admin/chatPhotoUpload.ts:103-105`, `lib/nina/actions.ts:1234-1235`) that this change makes factually false. No migration, no schema change, no new dependency, no new env var, no user-visible copy change; `lib/nina/imagerecipe.ts` and `lib/admin/avatars.ts` are MUST-NOT-TOUCH. Exit: `npm run typecheck`, `npm run lint`, `npm test` all green; each predicate has a test that accepts a stored pathname with a 30-symbol suffix and FAILS on `origin/main` @ `3902c58`; each refuses a requested id of 13–24 symbols; each accepts a 12-symbol id ending in `-` plus a 30-symbol suffix; neither fixture holds an invented suffix and both `BLOB_SUFFIX`/`SUFFIX` are asserted 30 symbols long in the suite itself; and the post-deploy prod probe (upload `enina5.png` to `/admin/photos` on the deployed branch) is re-run and passes.
+  - **Status**: completed
+  - **Plan Set**: `BLOB_STORED_PATHNAME_WINDOW_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — In `/admin/photos`, uploading an image must work; R2 — Upload `enina5.png` to prod myself rather than reasoning from the code
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A013.md`
+  - **Card**: `miftahulmahfuzh/run-insights#104`
+  - **Completed**: 2026-09-07 07:46
+  - **Method**: /do
+  - **Files**: lib/admin/chatPhotos.ts, lib/nina/images.ts, tests/admin.chatPhotos.test.ts, lib/nina/images.test.ts, components/admin/chatPhotoUpload.ts, lib/nina/actions.ts
+  - **Drift**: Line numbers in the phase plan were 1-3 lines off in three places (tests/admin.chatPhotos.test.ts storedPathname fixture was at 35-37 not 36-38; the isAdminChatPhotoPathname describe block at 73-93 not 69-93; lib/nina/images.ts NINA_CHAT_ID_RE docstring at 63-67 with the constant at 68). All anchors were located by exact text match instead, and every quoted snippet matched the tree verbatim. No semantic drift.
+  - **Verification**: `npx vitest run tests/admin.chatPhotos.test.ts lib/nina/images.test.ts` 44 passed; regression proof with only `lib/admin/chatPhotos.ts` and `lib/nina/images.ts` stashed to base 8 failed / 36 passed (all six rows the plan predicted, plus two more); `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in untouched `scripts/capture/shoot.mjs`); `npm test` 145 files, 2834 tests, all passed.
+  - **Outstanding**: exit criterion 6, the post-deploy prod probe (upload `enina5.png` through `/admin/photos` on the deployed branch and confirm a `nina_message_images` row), is NOT done and is run by the main context after this push.
+  - **Note**: the prod Blob store (`ptezanncca27s5kn`) still holds 15 orphaned objects, ~7.6 MB — 8 are this bug's direct residue, one per refused click; 7 are `.png` selfies whose rows were cascade-deleted by the merged "a deleted session is really deleted" work. Sweeping them is out of scope here; it belongs to the `reap-orphaned-blobs` skill.
 
 - [x] **P1-NIN-A007** Phase 1: Unblock the camera: the three measured defects
   - **Difficulty**: HARD

@@ -61,11 +61,37 @@ export const NINA_BLOB_PREFIX = 'nina/'
 /** The one segment this phase claims. `nina/<userId>/chat/<id>.jpg`. */
 export const NINA_CHAT_SEGMENT = 'chat'
 /**
- * `lib/id.ts`'s `newId()` is 12 symbols over the URL-safe alphabet. The upper bound is 24 because
- * the STORED pathname carries Vercel's random suffix on top of the requested one, and
- * `describeNinaImage` re-validates the stored form.
+ * What the browser may ASK for. `lib/id.ts`'s `newId()` is 12 symbols over the URL-safe alphabet,
+ * and `{12}` exactly is all `ninaChatPathname` below is ever handed —
+ * `components/nina/Composer.tsx:243` passes a bare `newId()`.
+ *
+ * This read `{12,24}` until the stored form was measured, on the theory that one range could cover
+ * both windows. It could not: see `NINA_CHAT_STORED_ID_RE` directly below.
  */
-export const NINA_CHAT_ID_RE = /^[A-Za-z0-9_-]{12,24}$/
+export const NINA_CHAT_ID_RE = /^[A-Za-z0-9_-]{12}$/
+
+/**
+ * What Vercel actually STORED. `addRandomSuffix: true` (`app/api/upload/route.ts:91`) rewrites the
+ * pathname, appending `-` plus a run of URL-safe symbols, and `describeNinaImage`
+ * (`lib/nina/actions.ts:1237`) re-validates THAT form — so `isNinaChatRequestPathname` has to answer
+ * for both windows, and this is the second one.
+ *
+ * MEASURED against the prod store, not intended: `chat/<12>-<30>.jpg`, id segment
+ * **12 + 1 + 30 = 43**. The single `{12,24}` range that stood here refused all 43 of them, so every
+ * camera upload landed in the store and then failed its describe as *"Nina could not take this
+ * one."* — one orphaned object per attempt, four of them counted in the store — and the unit fixture
+ * that was supposed to catch it had invented a 3-symbol suffix.
+ *
+ * `{16,64}` rather than 30 because the suffix is an internal of Vercel's we do not control. The
+ * bound and the argument are `SHOT_STORED_PATHNAME_RE`'s (`lib/extract/constants.ts:103-107`), the
+ * one place in the repo that got this right the first time, from a real observation rather than from
+ * expected arithmetic.
+ *
+ * The leading `{12}` is a FIXED quantifier so the separator is located by POSITION: a `newId()` may
+ * itself contain and end with `-`, as `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg` does
+ * with its doubled `--`, and splitting the id on `-` would mis-read it.
+ */
+export const NINA_CHAT_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
 
 /**
  * A user id is a path segment here, so it must be one. Auth.js's adapter mints `crypto.randomUUID()`
@@ -81,7 +107,13 @@ function assertPathSegment(userId: string): void {
   }
 }
 
-/** What the browser is allowed to ASK for. Vercel appends its own random suffix on top. */
+/**
+ * What the browser is allowed to ASK for. Vercel appends its own random suffix on top.
+ *
+ * Validated against `NINA_CHAT_ID_RE` and deliberately NOT against `NINA_CHAT_STORED_ID_RE`: this
+ * function builds the requested form, so being handed an already-stored id is a caller bug and a
+ * throw is the right answer to it.
+ */
 export function ninaChatPathname(userId: string, id: string): string {
   assertPathSegment(userId)
   if (!NINA_CHAT_ID_RE.test(id)) {
@@ -100,6 +132,12 @@ export function ninaChatPathname(userId: string, id: string): string {
  *
  * Compared segment by segment rather than by interpolating `userId` into a RegExp: a user id is
  * data, and data does not belong in a pattern.
+ *
+ * TWO WINDOWS, despite the `Request` in the name: `app/api/upload/route.ts:87` calls this with the
+ * REQUESTED pathname and `lib/nina/actions.ts:1237` calls it with the one Blob STORED, so the id
+ * segment is matched against `NINA_CHAT_ID_RE` or `NINA_CHAT_STORED_ID_RE`. Two patterns rather
+ * than one widened range, because a widened range would also let the mint authorise a 43-symbol
+ * requested id, and because the suffix length is not ours to fix.
  */
 export function isNinaChatRequestPathname(pathname: string, userId: string): boolean {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId)) return false
@@ -110,7 +148,8 @@ export function isNinaChatRequestPathname(pathname: string, userId: string): boo
   if (owner !== userId) return false
   if (segment !== NINA_CHAT_SEGMENT) return false
   if (file == null || !file.endsWith('.jpg')) return false
-  return NINA_CHAT_ID_RE.test(file.slice(0, -'.jpg'.length))
+  const id = file.slice(0, -'.jpg'.length)
+  return NINA_CHAT_ID_RE.test(id) || NINA_CHAT_STORED_ID_RE.test(id)
 }
 
 /* ── The picker's decision ───────────────────────────────────────────────────────────────── */

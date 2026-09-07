@@ -33,8 +33,17 @@ const USER = 'abc123XYZ_-9'
 const ID = 'aB3_dEf-hI9k'
 const STORE = 'https://abc123store.public.blob.vercel-storage.com'
 
-/** What Blob hands back: the requested pathname plus its random suffix. */
-const storedPathname = `nina/${USER}/selfie-${ID}-Xy7kQ2p.jpg`
+/**
+ * Vercel's random suffix, copied VERBATIM from the prod store rather than invented:
+ * `nina/…/selfie-Q8lWbmk0LG7W-yUFwuTN7o1ZNWvKU9FonuesJQKHQcQ.jpg`, the object the R2 reproduction
+ * wrote. This constant used to read `Xy7kQ2p` — 7 symbols, id segment 20, comfortably inside the
+ * old `{12,24}` window — while every real upload, id segment 43, was being refused. Inventing it
+ * was the defect; measuring it is the fix.
+ */
+const BLOB_SUFFIX = 'yUFwuTN7o1ZNWvKU9FonuesJQKHQcQ'
+
+/** What Blob hands back: the requested pathname plus its random suffix. 12 + 1 + 30 = 43. */
+const storedPathname = `nina/${USER}/selfie-${ID}-${BLOB_SUFFIX}.jpg`
 const storedUrl = `${STORE}/${storedPathname}`
 
 const goodBlob = {
@@ -72,6 +81,27 @@ describe('isAdminChatPhotoPathname', () => {
     expect(isAdminChatPhotoPathname(storedPathname, USER)).toBe(true)
   })
 
+  it('is checked against a REAL stored id — 43 symbols, not an invented short one', () => {
+    // The fixture IS the test. This assertion exists so a later edit cannot quietly shorten the
+    // suffix back to something the requested-form pattern would have accepted on its own, which is
+    // exactly how a predicate that refused every production upload shipped green.
+    expect(BLOB_SUFFIX).toHaveLength(30)
+    const id = storedPathname.slice(`nina/${USER}/selfie-`.length, -'.jpg'.length)
+    expect(id).toBe(`${ID}-${BLOB_SUFFIX}`)
+    expect(id).toHaveLength(43)
+  })
+
+  it('accepts a stored id whose requested half ENDS in a dash', () => {
+    // `newId()` draws from the 64 URL-safe symbols, so a 12-symbol id can both contain and end
+    // with `-`. Real object: `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg`, note the
+    // doubled `--`. The separator has to be found by position; splitting on `-` mis-reads this.
+    const dashy = 'Ve394_KsZZ7-'
+    expect(dashy).toHaveLength(12)
+    expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${dashy}-${BLOB_SUFFIX}.jpg`, USER)).toBe(
+      true,
+    )
+  })
+
   it('refuses another user folder, traversal, and the album prefix', () => {
     expect(isAdminChatPhotoPathname(storedPathname, 'someoneelse')).toBe(false)
     expect(isAdminChatPhotoPathname(`nina/${USER}/../selfie-${ID}.jpg`, USER)).toBe(false)
@@ -85,10 +115,29 @@ describe('isAdminChatPhotoPathname', () => {
     expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${ID}.jpg.html`, USER)).toBe(false)
   })
 
-  it('refuses an id outside the 12-24 window and a non-id user', () => {
+  it('refuses a requested id that is not exactly 12, and a non-id user', () => {
+    // TIGHTER than the window this replaced. `{12,24}` admitted 13-24, which `newId()` cannot
+    // produce and which no caller in the repo ever asked for; the mint-time check must not get
+    // looser in order for the action-time one to start working.
     expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-short.jpg`, USER)).toBe(false)
-    expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${'a'.repeat(25)}.jpg`, USER)).toBe(false)
+    for (const n of [11, 13, 18, 24, 25]) {
+      expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${'a'.repeat(n)}.jpg`, USER)).toBe(false)
+    }
     expect(isAdminChatPhotoPathname(storedPathname, '../evil')).toBe(false)
+  })
+
+  it('refuses a suffix outside the recorded 16-64 bound, and one that is not a suffix', () => {
+    // `{16,64}` is `SHOT_STORED_PATHNAME_RE`'s bound, deliberately loose around the 30 observed.
+    // Loose is not unbounded: the alphabet, the separator and the shape are still ours to enforce.
+    expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${ID}-${'b'.repeat(15)}.jpg`, USER)).toBe(
+      false,
+    )
+    expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${ID}-${'b'.repeat(65)}.jpg`, USER)).toBe(
+      false,
+    )
+    expect(isAdminChatPhotoPathname(`nina/${USER}/selfie-${ID}.${BLOB_SUFFIX}.jpg`, USER)).toBe(
+      false,
+    )
   })
 })
 

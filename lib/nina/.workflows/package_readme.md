@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A006`, phase 5 of 5 of the admin-responsive-nina-intimacy set — R3, `horny` as a twelfth trait)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A013`, the blob stored-pathname window — `images.ts`'s two id patterns)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -509,7 +509,11 @@ generator; `imagedispatch.ts` and its `GITHUB_DISPATCH_TOKEN` are gone with the 
 
 ### Vision and intake
 `vision.ts` *(T)*, `imageTicket.ts` *(T)* (HMAC-signed carrier so a description can cross from
-`describeNinaImage` to `sendNinaMessage` untrusted), `images.ts` *(T)*, `crop.ts` *(T)*.
+`describeNinaImage` to `sendNinaMessage` untrusted), `images.ts` *(T)* (the
+`nina/<userId>/chat/<id>.jpg` pathname model — the builder, the ownership check, and **both** id
+windows: `NINA_CHAT_ID_RE` for what the browser asks for and `NINA_CHAT_STORED_ID_RE` for what Blob
+stores; zero imports by rule, because three hosts outside the package reach for `NINA_BLOB_PREFIX`),
+`crop.ts` *(T)*.
 
 ### Album and attachments
 `album.ts` *(T)*, `albumActions.ts`, `attach.ts` *(T)*.
@@ -627,6 +631,59 @@ is never written down as free.
 > declared `*/10` cron is only dangerous inside `/** … */`. Write `*\/10` there. It is harmless in
 > `//` line comments and in YAML `#` comments, where escaping it is noise a later reader will try to
 > "fix".
+
+## One predicate, two windows: the stored blob pathname
+
+`images.ts` owns the whole path-traversal and don't-write-beside-anything-else defence for the chat
+branch, and it is asked about a pathname at **two different moments that do not carry the same
+string**:
+
+| Moment | Caller | Id segment |
+|---|---|---|
+| The mint — what the browser may **ASK** for | `app/api/upload/route.ts:87` | a bare `newId()`, **12** symbols |
+| The re-check — what Blob actually **STORED** | `describeNinaImage` (`actions.ts`) | `newId()` + `-` + Vercel's suffix, **12 + 1 + 30 = 43**, measured |
+
+`addRandomSuffix: true` on the upload token is what makes the two differ. `NINA_CHAT_ID_RE` was a
+single `/^[A-Za-z0-9_-]{12,24}$/` trying to cover both windows with one range, and 43 is outside it
+— so every camera photo was uploaded, paid for, stored, and *then* refused by its own describe as
+*"Nina could not take this one."*, leaving one orphaned blob per attempt. `lib/admin/chatPhotos.ts`'s
+`ADMIN_CHAT_PHOTO_ID_RE` carried the identical defect from the identical reasoning, which is why
+`/admin/photos` refused every upload it ever saw. Both were fixed together.
+
+The fix is **two patterns, not one widened range**:
+
+| Export | Pattern | Answers for |
+|---|---|---|
+| `NINA_CHAT_ID_RE` | `/^[A-Za-z0-9_-]{12}$/` | the **requested** id only |
+| `NINA_CHAT_STORED_ID_RE` | `/^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/` | the **stored** pathname |
+
+`isNinaChatRequestPathname` returns `requested.test(id) || stored.test(id)` after its segment-by-
+segment ownership check. `ninaChatPathname` validates against the requested pattern **only** and
+deliberately not against the stored one: it builds the requested form, so being handed an
+already-stored id is a caller bug and a throw is the right answer to it.
+
+Three things about that shape are load-bearing:
+
+- **The mint got TIGHTER, not looser.** `{12}` exactly is the length `lib/id.ts`'s `newId()` emits;
+  the old `{12,24}` admitted 13–24, which no caller in the repo can produce. A single widened
+  `{12,48}` would have fixed the describe and *simultaneously* authorised a 43-symbol **requested**
+  id at token-mint time — a real widening of what an unaudited client may write into the store.
+- **`{16,64}`, not `30`.** The suffix is an internal of Vercel's that we do not control, so the bound
+  is deliberately loose around the 30 observed. That bound and that argument are
+  `SHOT_STORED_PATHNAME_RE`'s verbatim (`lib/extract/constants.ts:103-107`) — the one place in the
+  repo that got this right the first time, from a measured object rather than expected arithmetic.
+- **The leading `{12}` is a FIXED quantifier, so the separator is found by POSITION.** A `newId()`
+  draws from the 64 URL-safe symbols, so it may itself contain and end with `-`; the real object
+  `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg` has the doubled `--` to prove it. Splitting
+  the id on `-` would mis-read exactly those.
+
+No signature moved, so all five call sites compile untouched: no migration, no schema change, no new
+dependency, no new env var, no user-visible copy change.
+
+> **`isNinaChatRequestPathname` is now a mild misnomer** — it answers for both windows despite the
+> `Request` in its name. The rename was deliberately left out of scope; the function's docstring
+> says so out loud, and renaming would churn `app/api/upload/route.ts` and `actions.ts` for no
+> behavioural gain.
 
 ## The chat turn is asynchronous (R6)
 
@@ -753,8 +810,10 @@ Two consequences worth keeping straight, because they are easy to collapse and w
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
-describes the upload → a signed `imageTicket` returns to the client. Then `ChatScreen.tsx` calls
-`sendNinaMessage`:
+describes the upload → a signed `imageTicket` returns to the client. `describeNinaImage`
+re-checks the pathname the client hands back with `isNinaChatRequestPathname` before signing
+anything into that ticket, and what it is handed is the **stored** pathname — Vercel's suffix and
+all — not the one the browser asked for. Then `ChatScreen.tsx` calls `sendNinaMessage`:
 
 1. `requireUserId`, then validate body / `replyToId` / tickets.
 2. Persist the user's message.
@@ -896,6 +955,13 @@ are worth knowing:
   all is `clinginess`'s three day-count constants. Putting a copy change in `proactive.ts` would have
   coupled a trait to the cron's thresholds; putting a threshold change in `system.ts` would have been
   a suffix trying to move a number.
+- **Never widen a blob-pathname range to cover the stored form.** The requested id and the stored
+  id are two windows, and one range that admits both also lets the upload route's token mint
+  authorise a suffixed id nothing in the repo can legitimately ask for. `NINA_CHAT_ID_RE` (`{12}`)
+  and `NINA_CHAT_STORED_ID_RE` (`{12}` + `-` + `{16,64}`) are separate exports for that reason, and
+  `lib/admin/chatPhotos.ts` mirrors the pair for `/admin/photos`. Related: a fixture with an
+  *invented* short suffix is what hid this for a whole phase, so never write a suffix you have not
+  copied out of the store.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -950,6 +1016,17 @@ non-girlfriend relationships**, and it was **generated from the pristine tree be
 dropped sentence; a snapshot can, and it prints the diff. The containment tests beside it are the
 readable half: they name *what* leaked when it fails.
 
+**The pathname windows are tested by measurement, not by arithmetic** (`images.test.ts`, and
+`tests/admin.chatPhotos.test.ts` for the admin twin). The stored fixture carries a real 30-symbol
+suffix copied out of the prod store, and the suite asserts *in the test itself* that `SUFFIX` is 30
+symbols and the whole id segment is 43 — so the case cannot quietly shrink back into a passing
+range. The fixture it replaced invented a 3-symbol suffix, giving an id segment of 16 that sat
+comfortably inside the broken `{12,24}` while every real upload was being refused; that is the whole
+reason a green suite coexisted with a feature that had never once worked. Beside it: a requested id
+of 11/13/18/24/25 is refused (the mint stays tight), a suffix of 3/15/65 is refused (the `{16,64}`
+bound), a requested half **ending in `-`** is accepted (`Ve394_KsZZ7-`), and `ninaChatPathname`
+throws when handed a stored-form id.
+
 ## Notes
 
 Phase 2 of 6 of `NINA_CHARACTER_TUNING_PLAN.md`. Phase 1 (`lib/nina/tuning.ts` and the `nina_tuning`
@@ -979,3 +1056,15 @@ column and its gate already covered by phase 4's loops; `ninaTraitScore(tuning, 
 only seam it needed; and it took the single `verbosity` line in `systemDials` that phase 4 had left
 it. Its whole footprint outside this package is a migration, a schema pair and prose — no edit to
 `lib/admin/` logic and no `NINA_PROMPT_VERSION` bump.
+
+**`P1-NIN-A013` is phase 1 of 1 of `BLOB_STORED_PATHNAME_WINDOW_PLAN.md`** — the blob
+stored-pathname window, card
+[miftahulmahfuzh/run-insights#104](https://github.com/miftahulmahfuzh/run-insights/issues/104), on
+`feature/blob-stored-pathname-window` off `origin/main` @ `3902c58`. The set's index is
+`.workflows/orchestration/blob-stored-pathname-window/PLAN.md`. It touched `lib/nina/images.ts`
+(`NINA_CHAT_ID_RE` narrowed to `{12}`, new `NINA_CHAT_STORED_ID_RE`, `isNinaChatRequestPathname`
+testing both), `lib/nina/images.test.ts`, and,
+in lockstep, `lib/admin/chatPhotos.ts` + `tests/admin.chatPhotos.test.ts` for the `/admin/photos`
+twin, plus comment-only prose fixes in `lib/nina/actions.ts` and `components/admin/chatPhotoUpload.ts`
+that the change made factually false. See *"One predicate, two windows"* above. Its plan file is
+`lib/nina/.workflows/plan/P1-NIN-A013.md`.

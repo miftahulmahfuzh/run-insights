@@ -24,6 +24,19 @@ describe('ninaChatPathname', () => {
     expect(() => ninaChatPathname('user_abc123', 'short')).toThrow()
     expect(() => ninaChatPathname('user_abc123', 'has.a.dot12')).toThrow()
   })
+
+  it('refuses an id longer than newId() — `{12}` exactly, so the mint cannot drift', () => {
+    // The window this replaced was `{12,24}` and would have built a pathname from any of these.
+    for (const n of [13, 18, 24]) {
+      expect(() => ninaChatPathname('user_abc123', 'a'.repeat(n))).toThrow()
+    }
+  })
+
+  it('refuses a STORED-form id: this builds the pathname we ASK for', () => {
+    expect(() =>
+      ninaChatPathname('user_abc123', 'aaaaaaaaaaaa-Pikq5mB56ZG2mBjkWsSpNVIn8M8oyw'),
+    ).toThrow()
+  })
 })
 
 describe('isNinaChatRequestPathname', () => {
@@ -33,10 +46,47 @@ describe('isNinaChatRequestPathname', () => {
     expect(isNinaChatRequestPathname(mine, 'user_someoneelse')).toBe(false)
   })
 
+  /**
+   * A REAL suffix, copied out of the prod store (`nina/…/avatar-DlA2teEDtOPP-Pikq5mB…oyw.jpg`)
+   * rather than invented. This case used to assert `chat/aaaaaaaaaaaa-Xy7.jpg` — a 3-symbol suffix,
+   * id segment 16, comfortably inside the old `{12,24}` — while every actual camera upload, id
+   * segment 43, was being refused and orphaning its blob.
+   */
+  const SUFFIX = 'Pikq5mB56ZG2mBjkWsSpNVIn8M8oyw'
+
   it('accepts the stored pathname, which carries Vercel’s random suffix', () => {
+    expect(SUFFIX).toHaveLength(30)
+    const stored = `nina/user_abc123/chat/aaaaaaaaaaaa-${SUFFIX}.jpg`
+    expect(stored.slice('nina/user_abc123/chat/'.length, -'.jpg'.length)).toHaveLength(43)
+    expect(isNinaChatRequestPathname(stored, 'user_abc123')).toBe(true)
+  })
+
+  it('accepts a stored id whose requested half ends in a dash', () => {
+    // `newId()`'s alphabet includes `-`, so the separator cannot be found by splitting. Real
+    // object: `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg`.
     expect(
-      isNinaChatRequestPathname('nina/user_abc123/chat/aaaaaaaaaaaa-Xy7.jpg', 'user_abc123'),
+      isNinaChatRequestPathname(`nina/user_abc123/chat/Ve394_KsZZ7--${SUFFIX}.jpg`, 'user_abc123'),
     ).toBe(true)
+  })
+
+  it('refuses a requested id that is not exactly 12 — the mint check stays tight', () => {
+    for (const n of [11, 13, 18, 24, 25]) {
+      expect(
+        isNinaChatRequestPathname(`nina/user_abc123/chat/${'a'.repeat(n)}.jpg`, 'user_abc123'),
+      ).toBe(false)
+    }
+  })
+
+  it('refuses a suffix outside the recorded 16-64 bound', () => {
+    // 3 is what this suite used to assert as a stored suffix. It never was one.
+    for (const n of [3, 15, 65]) {
+      expect(
+        isNinaChatRequestPathname(
+          `nina/user_abc123/chat/aaaaaaaaaaaa-${'b'.repeat(n)}.jpg`,
+          'user_abc123',
+        ),
+      ).toBe(false)
+    }
   })
 
   it('refuses traversal, extra segments, other prefixes and other extensions', () => {
