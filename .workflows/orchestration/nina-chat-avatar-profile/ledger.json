@@ -1,0 +1,30 @@
+{
+  "branch": "feature/nina-chat-avatar-profile",
+  "coordinator": "orch-nina-chat-avatar-profile",
+  "coordinator_session_id": "cec819ef-a980-4029-931f-3610e9c4ecca",
+  "created": "2026-09-07T02:34:20+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#111",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "EASY",
+      "n": 1,
+      "note": null,
+      "package": "components/nina`, `app/nina",
+      "plan": ".workflows/plan/nina-chat-avatar-profile/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Thread the current avatar into the chat's typing row"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-avatar-profile/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-chat-avatar-profile",
+  "updated": "2026-09-07T02:34:20+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-avatar-profile"
+}
