@@ -31,14 +31,14 @@
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "LIVE -- do not re-spawn. Code-complete and fully verified per its own report (typecheck/build/lint clean, npm test 3228/3228, prompt snapshot untouched, NINA_PROMPT_VERSION===6, all 11 R2 cases green incl D6's positive in-play-only case, D2 applied as {onlyEnabled:true}); waiting on its completion-handler/pusher for the commit sha. verify --apply downgraded this to pending at 15:5x because no commit exists yet; that derivation is correct about git and wrong about the session, which ListAgents shows busy. Ran no db:* command at any point.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-emoji-shortcuts/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:48:40+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": null,
       "title": "Firing a shortcut into the turn"
     },
@@ -50,40 +50,41 @@
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "LIVE -- do not re-spawn. Still implementing /admin/shortcuts (10 files). verify --apply downgraded this to pending because no commit exists yet; ListAgents shows the session busy. Carries the wave's shared-worktree commit discipline and the db:migrate bar.",
       "package": "lib/admin`, `components/admin`, `app/admin",
       "plan": ".workflows/plan/nina-emoji-shortcuts/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:48:40+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": null,
       "title": "/admin/shortcuts"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "aee6b75",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "Importer + test + one package.json line, 756 insertions, 3 files, no peer path in the stat. DECIDED: the plan's .mjs and its test disagreed under tsc -- in a .mjs 'ok: true' widens to boolean, collapsing the discriminated union so all 5 field reads were possibly-undefined; parseShortcutRow now carries a JSDoc @typedef union stating the return type its own Interface Contract already declares. Invariant 1 + 'never settle a failing check by relaxing it', so the code was fixed and every assertion survives verbatim. These were the 5 errors p2 saw tree-wide. DECIDED: /implement Step 3 SKIPPED -- no todos entry, no adopted plan copy; it is a set-level act (mints every phase's TaskID, and 'scripts' has no .workflows package at all) and phase 1 landed on the same footing, so the coordinator is the single writer. Entry text follows in my message. DRY RUN, read-only: 28 ledger rows read, 24 parsed (11 A / 2 B / 8 C / 3 D), 4 skipped as genuine facts, 'nothing was written'; the 4th skipped fact is now 'Miftah mau turunkan heart rate-nya' -- the plan fixture's 'Fantasi seksualnya' row is gone from prod, which is exactly D3's live-ledger case and no count is hard-coded. Confirmed nina_shortcuts does not exist (a count probe errored 'relation does not exist'), so --apply had no target even in principle. NO --apply, NO --prune, NO db:migrate. lint 0 errors, typecheck clean, 155 files / 3228 tests green; prettier scoped to my 3 paths only.",
       "package": "scripts",
       "plan": ".workflows/plan/nina-emoji-shortcuts/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:47:25+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-SC-A000",
       "title": "Import the ledger's shortcuts"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-emoji-shortcuts/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-emoji-shortcuts",
-  "updated": "2026-09-07T15:42:25+00:00",
+  "updated": "2026-09-07T15:48:40+00:00",
+  "verified_at": "2026-09-07T15:48:15+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-emoji-shortcuts"
 }
