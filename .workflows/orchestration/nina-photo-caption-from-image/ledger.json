@@ -65,22 +65,22 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#116",
-      "commit": null,
+      "commit": "d67aa5c",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "landed d67aa5c, verified ancestor of origin/feature; exactly 4 files, none of phase 4's. Decisions: (1) replaceChatPhotoAction DID have scheduleChatPhotoDescribe at :142, so the rename applied in full with the plan's verbatim deferral note -- rung 3. (2) tests/admin.chatPhotos.test.ts had NO mock harness at all (pure-function only), so built the whole thing rather than extending a pinned factory; kept chatPhotos, chatPhotoSchema, imagefail and id REAL so the placeholder phase 2 asserts on is the same one this phase writes -- rung 3. (3) two tests beyond the plan's six (floor-vs-transport logging, the replace call site) because exit criterion 4 and the second rename otherwise had no assertion -- rung 2. Guard 9/9, no edit needed. 32->40 tests in that file; full suite 147 files/2910 green.",
       "package": "lib/admin",
       "plan": ".workflows/plan/nina-photo-caption-from-image/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T05:38:49+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-A000",
       "title": "The admin add path captions from the photograph"
     },
     {
@@ -107,7 +107,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-caption-from-image",
-  "updated": "2026-09-07T05:29:04+00:00",
+  "updated": "2026-09-07T05:38:49+00:00",
   "verified_at": "2026-09-07T05:17:14+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
 }
