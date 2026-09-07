@@ -9,6 +9,12 @@ import { NINA_REPAIR_PREAMBLE, SEND_TOOL, buildNinaSystemPrompt } from './prompt
 import { quoteContextBlock, type QuotedMessageInput } from './reply'
 import { NinaSendPayloadSchema, describeNinaIssues, type NinaSendPayload } from './schema'
 import {
+  matchNinaShortcuts,
+  renderNinaShortcutBlock,
+  type NinaShortcutHits,
+  type NinaShortcutMatchable,
+} from './shortcuts'
+import {
   NINA_CORE_TOOL_SET,
   dispatchNinaTool,
   type NinaRunHistory,
@@ -204,6 +210,25 @@ export interface NinaTurnResult {
   source: NinaTurnSource
   usage: NinaTurnUsage
   trace: NinaTurnTrace
+  /**
+   * **R2.** The ids of the shortcuts that FIRED on this turn — the ones whose trigger is in
+   * `runnerText` itself. `[]` on every turn where none did, which is most of them, and `[]` for a
+   * shortcut that is only still IN PLAY from `recentRunnerTexts`: that one was counted on the turn
+   * it fired, and counting it again would turn `nina_shortcuts.uses` into a measure of how
+   * RECENTLY he used a code rather than how OFTEN.
+   *
+   * ── ON THE RESULT, RATHER THAN RECOMPUTED BY THE CALLER ─────────────────────────────────────
+   * `matchNinaShortcuts` runs exactly ONCE per turn — in `runNinaTurnWith`, against the
+   * `NinaTurnInput` this file actually assembled — and `lib/nina/actions.ts` reads what it decided
+   * instead of matching again. A second run in the action would take slightly different inputs
+   * (its own view of the window, its own idea of which message is current) and could disagree with
+   * the block the model was sent. The bug that produces is "`/admin/shortcuts` says 🍑 fired and
+   * the prompt did not contain it", which is unfalsifiable from the outside.
+   *
+   * **Not on `NinaTurnTrace`.** That object is what `nina_turns` records, and `NinaTurnRow` has no
+   * column for this. This is a return value the caller ACTS on, not an audit field.
+   */
+  firedShortcutIds: readonly string[]
 }
 
 /**
@@ -305,6 +330,45 @@ export interface NinaTurnInput {
    * of the other and neither may be collapsed into it.
    */
   attachedRunId?: string | null
+  /**
+   * **R2 (the nina-emoji-shortcuts set).** The shortcut rows that can fire — what
+   * `listNinaShortcuts(userId, { onlyEnabled: true })` returns, which is the
+   * `nina_shortcuts_user_enabled_idx` read the table carries that index for.
+   *
+   * **Passing disabled rows anyway is harmless and stays supported.** `matchNinaShortcuts` filters
+   * on `enabled` itself, so "live" has one definition no matter who calls this — the query is an
+   * optimisation over the wire, not the guarantee. A test that hands this field a disabled row and
+   * expects nothing to fire is asserting the guarantee, and it passes.
+   *
+   * ── OPTIONAL, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT ───────────────────────────────
+   * Contrast `tuning` directly above, which is required for a stated reason: a forgotten call site
+   * would ship the DEFAULT character and nothing would fail. Nothing of the kind is true here.
+   * `runNinaTurn` has one production call site (`lib/nina/actions.ts:821`), three more in
+   * `tests/live/` and `tests/integration/`, and `lib/nina/proactive.ts` — which has no runner text
+   * at all, so nothing there could ever fire. A required field would make every one of them
+   * rewrite a fixture to land a feature they do not exercise, and the failure it would guard
+   * against ("this turn silently carried no shortcut") is the correct behaviour on all of them.
+   *
+   * Absent, `[]`, and "present but nothing matched" are the SAME turn: **zero shortcut bytes**
+   * (invariant 2), asserted three ways in `lib/nina/turn.test.ts`.
+   */
+  shortcuts?: readonly NinaShortcutMatchable[]
+  /**
+   * **R2.** Earlier RUNNER messages — **newest first, already sliced** to
+   * `NINA_SHORTCUT_LOOKBACK` by the caller, and **excluding the message this turn is answering**.
+   * That one is `runnerText`, and a trigger in it FIRED; it must not also be counted as carried
+   * over, or one send would bump the counter twice.
+   *
+   * It exists because statefulness is in the DATA rather than in the mechanism. One real
+   * production shortcut sets a mode that outlives the message that opened it — `🫦`'s expansion
+   * reads "…selama miftah bilang terusin … sampe miftah bilang 💦". Without this field, "terusin"
+   * arrives as a turn with no trigger in it and the instruction she is meant to still be following
+   * has already fallen out of the payload.
+   *
+   * **His own turns only** (assumption A3). Hers are excluded at the caller, because an expansion
+   * she echoed back would otherwise re-fire itself for as long as it stayed in the window.
+   */
+  recentRunnerTexts?: readonly string[]
   /** Phase 10's `PROACTIVE_INSTRUCTIONS[kind]`, appended to the user turn. */
   proactive?: string | null
 }
@@ -346,11 +410,69 @@ function attachedRunFact(input: NinaTurnInput): NinaRunFact | null {
 }
 
 /**
+ * **R2.** The shortcuts this turn fired, plus the ones still in play from the last few of HIS
+ * messages.
+ *
+ * ── IT RUNS EXACTLY ONCE PER TURN, AND NOTHING MAY RUN IT A SECOND TIME ─────────────────────
+ * `runNinaTurnWith` calls this before it builds the first message and threads the answer into BOTH
+ * `userTurnText` (which renders the block) and `NinaTurnResult.firedShortcutIds` (which
+ * `lib/nina/actions.ts` bumps). Two runs over two slightly different inputs is exactly the failure
+ * this shape exists to make impossible — see `NinaTurnResult.firedShortcutIds`' own note.
+ *
+ * ── IT CANNOT THROW. INVARIANT 7. ───────────────────────────────────────────────────────────
+ * A malformed trigger is a row an admin typed on his phone, not a programming error, and nothing
+ * about a chat reply may depend on it. `matchNinaShortcuts` is a pure zero-import function that is
+ * not supposed to throw either; this is belt to that brace, and the brace failing would cost a
+ * reply rather than a shortcut.
+ */
+function shortcutHits(input: NinaTurnInput): NinaShortcutHits {
+  const shortcuts = input.shortcuts
+  if (shortcuts == null || shortcuts.length === 0) return { fired: [], inPlay: [] }
+  try {
+    return matchNinaShortcuts({
+      shortcuts,
+      current: input.runnerText,
+      recent: input.recentRunnerTexts,
+    })
+  } catch (cause) {
+    console.warn('[nina] shortcut matching failed; this turn carries no shortcut', {
+      error: String(cause),
+    })
+    return { fired: [], inPlay: [] }
+  }
+}
+
+/**
+ * The rendered block, or null.
+ *
+ * **Not one word of the instruction preamble lives in this file.** `renderNinaShortcutBlock`
+ * (`lib/nina/shortcuts.ts`) owns the wording, so it travels with the expansions it governs and
+ * there is exactly one copy of it. This function's whole job is the guard around it.
+ *
+ * The empty-hits short circuit is INVARIANT 2 enforced in the file the invariant is asserted
+ * against: a turn where nothing matched must produce a `userTurnText` byte-identical to the one
+ * this repo produced before the feature existed, and that must not depend on what a renderer in
+ * another file decides to do with an empty argument.
+ */
+function shortcutBlock(hits: NinaShortcutHits): string | null {
+  if (hits.fired.length === 0 && hits.inPlay.length === 0) return null
+  try {
+    const block = renderNinaShortcutBlock(hits)
+    return block != null && block.length > 0 ? block : null
+  } catch (cause) {
+    console.warn('[nina] shortcut block render failed; this turn carries no shortcut', {
+      error: String(cause),
+    })
+    return null
+  }
+}
+
+/**
  * The user turn. One JSON block of facts, then what he said — the same order and the same framing
  * `narrate.ts` uses (`Analyse this ${scope}.\n\n${json}`), because that is the shape this endpoint
  * has been measured against.
  */
-function userTurnText(input: NinaTurnInput): string {
+function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string {
   const parts: string[] = [
     'CONTEXT — every fact you are allowed to state is in here. Nothing outside it is real.',
     JSON.stringify(visibleContext(input.context), null, 2),
@@ -394,6 +516,22 @@ function userTurnText(input: NinaTurnInput): string {
             'Give it — react to this specific run, not to running in general.'
         : 'His message below is about this run unless he plainly says otherwise.',
     )
+  }
+
+  /*
+   * R2. AFTER the attached run and IMMEDIATELY BEFORE `'HE JUST SAID:'`, for the reason R12 gives
+   * one block up: this is the standing instruction his next sentence has to be read UNDER, so she
+   * reads it before the sentence rather than after it. Below the run block because a run he
+   * attached is the SUBJECT of the message, while the shortcut is the register the message is in.
+   *
+   * **A turn that fired nothing pushes nothing** — no header, no empty block, not one byte
+   * (invariant 2). That is the whole reason this is a user-turn block and not a section of the
+   * system prompt: the two dozen expansions sitting in the production memory ledger cost several
+   * kilobytes in every payload today, including all the turns where he used none of them.
+   */
+  const shortcuts = shortcutBlock(hits)
+  if (shortcuts != null) {
+    parts.push(shortcuts)
   }
 
   if (input.runnerText != null && input.runnerText.length > 0) {
@@ -585,6 +723,16 @@ export async function runNinaTurnWith(
    */
   const system = buildNinaSystemPrompt(input.tuning)
 
+  /*
+   * R2. Matched HERE and exactly once, for the same reason `system` is assembled here: everything
+   * that defines this turn must be fixed before its first model call and must not change between
+   * the up-to-four calls it may make. These hits feed BOTH the user turn built thirty lines below
+   * and `finish`'s `firedShortcutIds`, so the block the model was actually sent and the rows
+   * `lib/nina/actions.ts` bumps afterwards can never disagree.
+   */
+  const hits = shortcutHits(input)
+  const firedShortcutIds: readonly string[] = hits.fired.map((hit) => hit.id)
+
   const trace: NinaTurnTrace = {
     model: deps.model,
     promptVersion: input.context.promptVersion,
@@ -596,7 +744,7 @@ export async function runNinaTurnWith(
 
   function finish(payload: NinaSendPayload | null, source: NinaTurnSource): NinaTurnResult {
     trace.latencyMs = now() - startedAt
-    return { payload, source, usage, trace }
+    return { payload, source, usage, trace, firedShortcutIds }
   }
 
   function addUsage(message: Anthropic.Message): void {
@@ -613,7 +761,7 @@ export async function runNinaTurnWith(
     sourceMessageId: input.sourceMessageId,
   }
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userTurnText(input) }]
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userTurnText(input, hits) }]
 
   /*
    * Set once a call answers in prose instead of calling anything — see `ninaBody`'s measurement.

@@ -705,3 +705,87 @@ describe('nina_turns.deleted_at — the soft delete (R2)', () => {
     expect(indexNames(schema.ninaTurns)).toEqual(['nina_turns_user_created_idx'])
   })
 })
+
+describe('nina_shortcuts — the trigger registry (F36)', () => {
+  it('is a table with exactly the twelve columns phases 2, 3 and 4 were written against', () => {
+    expect(cfg(schema.ninaShortcuts).name).toBe('nina_shortcuts')
+    expect(names(schema.ninaShortcuts)).toEqual(
+      [
+        'id',
+        'user_id',
+        // Two columns for one trigger: what he typed, and what matching uses. See the header.
+        'trigger',
+        'match_key',
+        'kind',
+        'label',
+        'expansion',
+        'enabled',
+        // Telemetry — which codes actually fire. Nothing on the turn path reads them.
+        'uses',
+        'last_used_at',
+        'created_at',
+        'updated_at',
+      ].sort(),
+    )
+    expect(columns(schema.ninaShortcuts).get('id')?.primary).toBe(true)
+  })
+
+  it('cascades from users, so deleting the account takes the registry with it', () => {
+    expect(fkFor(schema.ninaShortcuts, 'user_id')?.onDelete).toBe('cascade')
+  })
+
+  it('carries NO source_message_id and NO source — there is no distilled shortcut', () => {
+    // Every row is authored by a human on /admin/shortcuts or lifted from the ledger by phase 4.
+    // Their absence is also what makes removeNinaSession's memory purge — which matches on
+    // `source_message_id IN (…)` — structurally unable to reach this table.
+    expect(names(schema.ninaShortcuts)).not.toContain('source_message_id')
+    expect(names(schema.ninaShortcuts)).not.toContain('source')
+    expect(names(schema.ninaShortcuts)).not.toContain('confidence')
+  })
+
+  it('has the unique key on (user_id, match_key), which is the duplicate check itself', () => {
+    expect(indexNames(schema.ninaShortcuts)).toEqual([
+      'nina_shortcuts_user_enabled_idx',
+      'nina_shortcuts_user_match_unq',
+    ])
+    const unq = cfg(schema.ninaShortcuts).indexes.find(
+      (i) => i.config.name === 'nina_shortcuts_user_match_unq',
+    )
+    expect(unq?.config.unique).toBe(true)
+    // NOT partial: every row claims a key, so there is nothing to exempt.
+    expect(unq?.config.where).toBeUndefined()
+    expect(unq?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
+      'user_id',
+      'match_key',
+    ])
+  })
+
+  it('indexes (user_id, enabled) for the every-turn read', () => {
+    const idx = cfg(schema.ninaShortcuts).indexes.find(
+      (i) => i.config.name === 'nina_shortcuts_user_enabled_idx',
+    )
+    expect(idx?.config.unique).toBe(false)
+  })
+
+  it('leaves kind as plain text with no CHECK, so lib/nina/shortcuts.ts owns the vocabulary', () => {
+    // The `nina_tuning.relationship` argument, and here it also buys the client-safety property:
+    // `lib/nina/shortcuts.ts` must stay importable from a 'use client' file, so it cannot import
+    // this module — and typing the column would mean importing UPWARD or restating the union.
+    expect(sqlType(schema.ninaShortcuts, 'kind')).toBe('text')
+    expect(cfg(schema.ninaShortcuts).checks.length).toBe(0)
+    expect(columns(schema.ninaShortcuts).get('match_key')?.notNull).toBe(true)
+    expect(columns(schema.ninaShortcuts).get('trigger')?.notNull).toBe(true)
+  })
+
+  it('is enabled by default, has never been used by default, and says so with NULL', () => {
+    expect(sqlType(schema.ninaShortcuts, 'enabled')).toBe('boolean')
+    expect(columns(schema.ninaShortcuts).get('enabled')?.notNull).toBe(true)
+    expect(columns(schema.ninaShortcuts).get('enabled')?.hasDefault).toBe(true)
+    expect(sqlType(schema.ninaShortcuts, 'uses')).toBe('integer')
+    expect(columns(schema.ninaShortcuts).get('uses')?.notNull).toBe(true)
+    expect(columns(schema.ninaShortcuts).get('uses')?.hasDefault).toBe(true)
+    // NULL = this code has never fired. A real answer, and the one phase 3 renders as "never".
+    expect(sqlType(schema.ninaShortcuts, 'last_used_at')).toBe('timestamp with time zone')
+    expect(columns(schema.ninaShortcuts).get('last_used_at')?.notNull).toBe(false)
+  })
+})

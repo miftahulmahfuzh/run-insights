@@ -1328,6 +1328,110 @@ export const ninaMemoryFacts = pgTable(
 )
 
 /**
+ * **The shortcut registry (F36 R1/R2/R3).** A trigger he types, and the whole situation it stands
+ * for. Nineteen emoji and five onomatopoeic tokens already live in `nina_memory_facts` in four
+ * prose grammars, because there was nowhere else to put them; this table is that somewhere, and
+ * phase 4's importer moves them. (Twenty-four at the time of the read. The ledger is LIVE and moved
+ * during the analysis — a fact was deleted mid-read — so no count is hard-coded anywhere in this
+ * plan set; phase 4 classifies at run time and reports what it found.)
+ *
+ * ── WHY THIS IS NOT A MEMORY FACT, AND WHY THAT IS STRUCTURAL RATHER THAN STYLISTIC ───────────
+ * A fact is something true about the runner that Nina may state. A shortcut is a STANDING
+ * DIRECTIVE she must act on. Four things go wrong when the ledger is asked to hold one, and all
+ * four are visible in production right now: `MEMORY_FACT_LIMIT = 60` silently ages the oldest
+ * shortcut out of every prompt; `prompts/system.ts` frames the ledger as *"colour, not
+ * structure"*, which is the wrong instruction for a directive; every expansion is in every turn
+ * whether or not it fired; and `ADMIN_FACT_TEXT_MAX = 400` already truncates the longest three.
+ * A separate table fixes all four at once, and — the part that cannot be achieved any other way —
+ * it makes a shortcut STRUCTURALLY UNREACHABLE by `lib/nina/distill.ts`, which writes facts. The
+ * distiller cannot rewrite what it has no query for.
+ *
+ * ── `trigger` AND `match_key` ARE TWO COLUMNS, AND THE SECOND ONE IS THE KEY ──────────────────
+ * `trigger` is what the admin typed and what `/admin/shortcuts` renders: `✌️`, `Plak!`, `nom nom`.
+ * `match_key` is `normalizeNinaTrigger(trigger)` — NFC, `U+FE0F` removed, whitespace collapsed,
+ * trimmed, lowercased — and it is what matching and the unique index use. Storing only the raw
+ * trigger would mean normalising on every read of every turn AND would let `✌️` and `✌` be two
+ * rows; storing only the key would show him a peace sign stripped of its variation selector in
+ * his own table. `lib/nina/queries.ts` derives the key on write, in one place, so the two cannot
+ * drift.
+ *
+ * ── `kind` IS PLAIN `text` WITH NO `.$type<>()` ───────────────────────────────────────────────
+ * `nina_tuning.relationship`'s argument, verbatim, and it bites for the same reason:
+ * `lib/nina/shortcuts.ts` MUST stay importable from a `'use client'` file, so it cannot import
+ * this module — and typing the column would mean either importing UPWARD from `lib/db` into
+ * `lib/nina` or restating `'glyph' | 'word'` here as a second definition. Untyped `text` costs
+ * neither: `lib/nina/queries.ts` narrows it on read and falls back to `classifyNinaTrigger` for a
+ * value it does not recognise, which is invariant 7 (nothing on the turn path throws for a
+ * shortcut problem) made concrete at the boundary where a bad value would first be noticed.
+ *
+ * ── `uses` AND `last_used_at` ARE TELEMETRY, NOT STATE ────────────────────────────────────────
+ * *"so the admin can see which codes actually fire"*. Nothing reads them on the turn path; they
+ * exist so `/admin/shortcuts` can show a dead code as dead. `uses` is incremented IN SQL by
+ * `bumpNinaShortcutUses`, never read-then-written, because the bump is fire-and-forget and two
+ * concurrent turns are a real pair. **A bump also moves `updated_at`** — `$onUpdate` fires on
+ * every drizzle UPDATE of this table — so `updated_at` means "the row last changed" and NOT "the
+ * admin last edited it". Phase 3 must render `last_used_at` for telemetry and must not label
+ * `updated_at` as "edited".
+ *
+ * ── NO `source_message_id`, NO `source`, NO `confidence` ──────────────────────────────────────
+ * Every shortcut is authored by a human on `/admin/shortcuts` or lifted from the ledger by phase
+ * 4's importer. There is no distilled shortcut and there never will be, so a provenance
+ * discriminator would be a column with one value. Its absence is also what keeps
+ * `removeNinaSession`'s memory purge (which matches on `source_message_id IN (…)`) structurally
+ * unable to reach this table.
+ *
+ * ── THE TWO INDEXES ───────────────────────────────────────────────────────────────────────────
+ *   · `nina_shortcuts_user_match_unq (user_id, match_key)` — UNIQUE, and it is the authority on
+ *     "this trigger already exists". Phase 3 lets the insert fail and reports the violation as a
+ *     sentence rather than running a check-then-write that is correct until two tabs race. The
+ *     `shares_run_id_active_unq` argument. It is also the total order `listNinaShortcuts` sorts
+ *     by, so the registry read is an index scan and not a sort.
+ *   · `nina_shortcuts_user_enabled_idx (user_id, enabled)` — phase 2's every-turn read,
+ *     `WHERE user_id = $1 AND enabled`.
+ */
+export const ninaShortcuts = pgTable(
+  'nina_shortcuts',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** As the admin typed it. What the table renders; never what matching uses. */
+    trigger: text('trigger').notNull(),
+    /** `normalizeNinaTrigger(trigger)`. What matching and the unique index use. See the header. */
+    matchKey: text('match_key').notNull(),
+    /**
+     * `NinaShortcutKind` from `lib/nina/shortcuts.ts` — `'glyph' | 'word'`, and it decides the
+     * boundary rule: a glyph matches anywhere, a word only when not touching a letter or digit.
+     * Untyped `text` on purpose; see the header.
+     */
+    kind: text('kind').notNull(),
+    /** One line, what this code is for. `NINA_SHORTCUT_LABEL_MAX` = 80. */
+    label: text('label').notNull(),
+    /** The long context the trigger stands for. `NINA_SHORTCUT_EXPANSION_MAX` = 2000. */
+    expansion: text('expansion').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    /** Telemetry. Bumped in SQL, fire-and-forget, off the turn's critical path. */
+    uses: integer('uses').notNull().default(0),
+    /** NULL = this code has never fired. A real answer, and the one phase 3 shows as "never". */
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    /** Moves on ANY update, a usage bump included. See the header before reading it as "edited". */
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    /** Two rows for one code are impossible, not unlikely. The duplicate error IS the check. */
+    uniqueIndex('nina_shortcuts_user_match_unq').on(t.userId, t.matchKey),
+    /** Phase 2's every-turn read: `WHERE user_id = $1 AND enabled`. */
+    index('nina_shortcuts_user_enabled_idx').on(t.userId, t.enabled),
+  ],
+)
+
+/**
  * **The escalation ledger (RU-9).** `lib/nina/patterns.ts` computes what is true; this table
  * records what she has already SAID about it, so the third late start gets a different sentence
  * from the first instead of the same one three times. Anger that repeats verbatim stops being
@@ -1936,6 +2040,10 @@ export const ninaTuningRelations = relations(ninaTuning, ({ one }) => ({
   user: one(users, { fields: [ninaTuning.userId], references: [users.id] }),
 }))
 
+export const ninaShortcutsRelations = relations(ninaShortcuts, ({ one }) => ({
+  user: one(users, { fields: [ninaShortcuts.userId], references: [users.id] }),
+}))
+
 /* ============================================================================
  * Row types. Import these instead of re-deriving $inferSelect at call sites.
  * ==========================================================================*/
@@ -1971,6 +2079,15 @@ export type NinaMemorySlot = typeof ninaMemorySlots.$inferSelect
 export type NewNinaMemorySlot = typeof ninaMemorySlots.$inferInsert
 export type NinaMemoryFact = typeof ninaMemoryFacts.$inferSelect
 export type NewNinaMemoryFact = typeof ninaMemoryFacts.$inferInsert
+/**
+ * `NinaShortcutRow`, not `NinaShortcut` — the same suffix, and the same reason, as
+ * `NinaTuningRow`. `kind` is bare `string` here because the column is untyped `text`; the narrowed
+ * DTO is `NinaShortcutRecord` in `lib/nina/queries.ts`, and the structural minimum the matcher
+ * needs is `NinaShortcutMatchable` in `lib/nina/shortcuts.ts`. Three names, three layers, no
+ * duplication — see the table's header.
+ */
+export type NinaShortcutRow = typeof ninaShortcuts.$inferSelect
+export type NewNinaShortcutRow = typeof ninaShortcuts.$inferInsert
 export type NinaNag = typeof ninaNags.$inferSelect
 export type NewNinaNag = typeof ninaNags.$inferInsert
 export type NinaAvatar = typeof ninaAvatars.$inferSelect

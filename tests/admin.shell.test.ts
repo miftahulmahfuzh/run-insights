@@ -106,23 +106,35 @@ describe('the admin nav', () => {
       '/admin/personality',
       '/admin/photos',
       '/admin/memory',
+      '/admin/shortcuts',
     ])
     for (const href of hrefs) {
       expect(existsSync(`${ROOT}app${href}/page.tsx`), `${href} has no page.tsx`).toBe(true)
     }
   })
 
-  it('carries a phone label short enough for an 82px cell', () => {
-    // 414px / 5 cells = 82.8px, down from 103px at four. The ceiling tightened with the cell
-    // count: past ~8 characters at text-[11px] the label wraps or clips, and a clipped nav label
-    // is worse than a shorter true one. All five clear it — Overview 8, Album 5, Persona 7,
-    // Photos 6, Memory 6 — which is why "Personality" (11) has a short form and the label does
-    // not go on a phone.
+  it('carries a phone label short enough for a 69px cell', () => {
+    // 414px / 6 cells = 69px, down from 82.8px at five and 103px at four. The ceiling did NOT move
+    // with the sixth cell and it is worth writing down why, because the next route is where this
+    // stops being free:
+    //
+    //   cell           414 / 6            = 69.0px
+    //   content box    69 - px-1 (4+4)    = 61.0px
+    //   8 characters   Poppins semibold, text-[11px], ~6.4px/char measured on the existing
+    //                  "Overview" cell    = ~51.0px
+    //   slack                             = ~10.0px
+    //
+    // So 8 still fits, and two labels now sit exactly on it — Overview 8, Album 5, Persona 7,
+    // Photos 6, Memory 6, Shortcut 8. A SEVENTH route makes the cell 59.1px and the content box
+    // 51.1px, which is the width of the eight characters themselves with nothing to spare: the
+    // ceiling has to come down to 7 the day that happens, and two of the six labels above would
+    // have to be reworded to meet it. That is the cost, stated before it is spent.
+    //
     // `m[1]!` per `tests/tabbar.geometry.test.ts:86`, the sibling guard this file borrows its
     // shape from: a capture group that matched is a string, and `noUncheckedIndexedAccess`
     // cannot see that.
     const shorts = [...adminNav.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
-    expect(shorts).toHaveLength(5)
+    expect(shorts).toHaveLength(6)
     for (const short of shorts) {
       expect(short.length, `"${short}" will not fit a nav cell`).toBeLessThanOrEqual(8)
     }
@@ -166,17 +178,17 @@ describe('the bar and the padding that clears it', () => {
    *
    * The matched shape is `TabBar`'s own formatted row (`grid h-[58px] w-full max-w-[470px]
    * grid-cols-5`) with this bar's numbers in it, so the class sorter produces it rather than
-   * breaking it. Since the Personality cell landed, the column count is the same as `TabBar`'s
-   * too — five — which is a coincidence and not a coupling: this bar carries the admin routes and
-   * may never carry the runner's.
+   * breaking it. The column count parted ways with `TabBar`'s when the Shortcuts cell landed —
+   * six here, five there — which is the coupling this comment always denied existing: this bar
+   * carries the admin routes and may never carry the runner's.
    */
-  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-5/)
+  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-6/)
   const clearance = layoutClasses.match(/pb-\[calc\((\d+(?:\.\d+)?)rem\+var\(--safe-bottom\)\)\]/)
 
   it('spells both halves in the shape this case can read', () => {
     expect(
       bar,
-      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-5` row',
+      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-6` row',
     ).not.toBeNull()
     expect(clearance, 'the admin layout lost its --safe-bottom clearance on <main>').not.toBeNull()
   })

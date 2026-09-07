@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 22
+- Completed: 23
 
 ---
 
@@ -79,6 +79,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A023** Phase 2: Firing a shortcut into the turn
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/turn.ts` — an **optional** `shortcuts?: readonly NinaShortcutMatchable[]` and `recentRunnerTexts?: readonly string[]` on `NinaTurnInput`, a **required** `firedShortcutIds: readonly string[]` on `NinaTurnResult`, the module-private `shortcutHits` / `shortcutBlock` helpers, the second parameter on the module-private `userTurnText(input, hits)`, and the fired-shortcut block pushed **after** the attached-run block and **immediately before** `'HE JUST SAID:'`; the matcher runs **exactly once per turn**, in `runNinaTurnWith`, feeding both the block and `firedShortcutIds`. Also `lib/nina/actions.ts` — a fourth entry in the `Promise.all` at `actions.ts:781` (`listNinaShortcuts(userId, { onlyEnabled: true })`, its rejection swallowed), the `recentRunnerTexts` derivation from the already-loaded `loadedContext.conversation.window` (runner turns only, newest `NINA_SHORTCUT_LOOKBACK`, excluding the message being answered — **no new query**), the two new arguments at the `runNinaTurn` call at `actions.ts:821`, and a best-effort `bumpNinaShortcutUses` after the turn returns, wrapped so a rejection is logged and swallowed; `lib/nina/prompts/index.ts` — `NINA_PROMPT_VERSION` 5 → 6, the set's single bump, with the reason in the existing numbered-comment format; `lib/nina/turn.test.ts`; and three lines in `tests/nina.resend.test.ts` (two entries in the `@/lib/nina/queries` mock **factory**, plus `firedShortcutIds: []` on the `runNinaTurn` mock the drained background turn reads). Five files. Does not touch `prompts/system.ts`, `context.ts`, `load.ts`, `gateway.ts`, `lib/db/schema.ts`, `queries.ts`, `shortcuts.ts`, or anything under `lib/admin/`, `components/`, `app/` or `scripts/`; the prompt snapshot is **not** regenerated and `tests/nina.prompts.test.ts` is **not** touched. Exit: a turn whose text contains `🍑` puts that whole expansion in `userTurnText`, after the attached-run block and before `HE JUST SAID:`, with `firedShortcutIds === ['<that id>']`; a turn matching **neither** `runnerText` nor `recentRunnerTexts` produces a `userTurnText` byte-identical to today's; a turn matching only `recentRunnerTexts` DOES carry the block, under its STILL IN PLAY header, with `firedShortcutIds` still `[]`; `NINA_PROMPT_VERSION === 6`; the snapshot unmodified in `git status`; `npm test` green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2 — Typing a single emoji character in the chat makes Nina understand the whole long context that emoji stands for
+  - **Depends on**: `P1-DB-A004`
+  - **Plan**: `.workflows/plan/nina-emoji-shortcuts/phase-2.md`
+  - **Completed**: 2026-09-07 22:47
+  - **Method**: /do (swarm wave 1, concurrent with phases 3 and 4)
+  - **Files**: lib/nina/turn.ts, lib/nina/actions.ts, lib/nina/prompts/index.ts, lib/nina/turn.test.ts, tests/nina.resend.test.ts
+  - **Exit criteria met**: `🍑` in `runnerText` -> full expansion in `userTurnText`, after the attached-run block and before `HE JUST SAID:`, `firedShortcutIds === ['sc0000000001']`; shortcuts absent / `[]` / present-but-not-matching with no matching recent message -> `userTurnText` byte-identical to the field-absent baseline (invariant 2, three ways); `recentRunnerTexts`-only match -> block DOES render under STILL IN PLAY with `firedShortcutIds` still `[]`; `NINA_PROMPT_VERSION === 6` with changelog comment 6 above it, prompt snapshot unmodified.
+  - **Verification**: `npm run typecheck` clean; `npm run build` succeeded, all routes emitted; `npm test` green at 155 files / 3228 tests; targeted `npx vitest run lib/nina/turn.test.ts tests/nina.resend.test.ts tests/nina.prompts.test.ts lib/nina/shortcuts.test.ts` 188 passed, `turn.test.ts` alone 52 including all 11 new R2 cases; `npm run lint` 0 errors (2 pre-existing warnings in the untouched `scripts/capture/shoot.mjs`); `npx prettier --check` clean on the five files. Manual 1 — `git status --porcelain tests/__snapshots__/nina.prompts.test.ts.snap` empty, so invariant 3 holds and no `-u`/`--update` was ever passed. Manual 2 — invariant 2 proved against the right condition: all three byte-identity cases miss on `recentRunnerTexts` as well as `runnerText`, and the positive in-play-only case (STILL IN PLAY, `firedShortcutIds` `[]`) passes alongside them. Manual 3 — `matchNinaShortcuts(` has exactly one real call site, `lib/nina/turn.ts:432`; the occurrence in `actions.ts` is inside an explanatory comment, not a call. Manual 4 — `node scripts/check-llm-payload-boundary.mjs` passed, all 9 guarded symbols confined.
+  - **Drift**:
+    - None in phase 2's five files. Every line anchor the plan quoted (turn.ts 201-207/307/340-346/353/397-399/586/597-600/616; actions.ts 27-38/43/781-788/807/822-832/835; prompts/index.ts 52; resend.test.ts 65-77/162) matched the tree exactly. The coordinator's warning about stale anchors applied to `lib/db/schema.ts` and `lib/nina/queries.ts`, which this phase does not touch.
+    - Prettier reflowed one long line in `lib/nina/turn.test.ts` (the "puts the FULL expansion..." case), which the plan's Step 10 explicitly anticipated and told the session to accept as Prettier's output. Applied with `npx prettier --write` on that single file rather than the repo-wide `npm run format`, because two peers have uncommitted work in this shared worktree.
+  - **Decided**:
+    - Transient tree-wide typecheck failure (5 errors, all in phase 4's uncommitted `tests/nina.shortcutsImport.test.ts`) -> did NOT touch the peer's file to make this phase green; verified this phase's own five files were error-free and re-ran. Rung 2 plus the tie-break "never widen scope to settle an ambiguity" — editing a file this phase's contract lists as not-touched would be drift, and a failing verification is never settled by relaxing the check. The peer fixed it independently; typecheck is now clean tree-wide, so invariant 1 holds and no decision was ultimately load-bearing.
 
 - [x] **P1-NIN-A022** Phase 4: Resend a message that was never answered
   - **Difficulty**: HARD

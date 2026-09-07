@@ -12,13 +12,14 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 3
+- Completed: 4
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
+
 
 - [ ] **P1-DB-A002** Phase 2: The carrier marker: a photo bubble free text cannot hide
   - **Difficulty**: NORMAL
@@ -34,6 +35,28 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-DB-A004** Phase 1: The table and the matcher
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema.ts`'s new `ninaShortcuts` `pgTable` placed beside `ninaMemoryFacts` (`schema.ts:1306`) with its two indexes (`nina_shortcuts_user_match_unq` on `(user_id, match_key)`, `nina_shortcuts_user_enabled_idx` on `(user_id, enabled)`), its inferred types and its `relations` entry; the generated migration pair under `drizzle/` and `drizzle/meta/`; a new **zero-import** `lib/nina/shortcuts.ts` — the bounds (`NINA_TRIGGER_MAX` 16, `NINA_SHORTCUT_LABEL_MAX` 80, `NINA_SHORTCUT_EXPANSION_MAX` 2000, `NINA_SHORTCUT_MAX_FIRED` 4, `NINA_SHORTCUT_LOOKBACK` 6, `NINA_SHORTCUT_BLOCK_MAX_CHARS` 5000) plus `normalizeNinaTrigger`, `classifyNinaTrigger`, `matchNinaShortcuts` and `renderNinaShortcutBlock` (which returns `null` only when BOTH `fired` and `inPlay` are empty); five statements in `lib/nina/queries.ts` (`listNinaShortcuts`, `insertNinaShortcut` — a duplicate **THROWS** 23505, `updateNinaShortcut`, `deleteNinaShortcut`, `bumpNinaShortcutUses`), with `match_key` and `kind` derived INSIDE the query layer by one private `derivedTrigger` so the input types have nowhere for a caller to mislabel a row; a new `lib/nina/shortcuts.test.ts`; and `tests/db.schema.nina.test.ts`. Eight files, the three generated `drizzle/` artefacts included — committed together or not at all. Does not touch `turn.ts`, `actions.ts`, any prompt file, `lib/admin/`, `components/`, `app/` or `scripts/`. This phase fixes the contract phases 2, 3 and 4 build against. Exit: `npm run db:generate` has produced a migration; `npm run db:check` passes; the matcher's test drives every real production trigger as a fixture plus the `✌️`/`✌` variation-selector pair, `yummy`, `Plak!`, `nomnom`, a disabled row, an empty message and a null message; `npm test` green. **No count is asserted anywhere.** Migration hazard: `drizzle/` ends at `0010_nina_image_provenance.sql` with three peer worktrees live — if `main` has moved, delete the generated `.sql` and its `drizzle/meta/*_snapshot.json`, `git checkout drizzle/meta/_journal.json`, rebase and regenerate. Never rename a migration: `drizzle-kit migrate` keys on the journal tag and a renamed file is skipped in silence.
+  - **Status**: completed
+  - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — An explicit shortcuts mechanism, separate from memory: an admin surface to add, edit, disable and remove shortcuts, each standing for a situation or for something Miftah and Nina were doing; R2 — Typing a single emoji character in the chat makes Nina understand the whole long context that emoji stands for; R3 — The shortcut-shaped rows already in the production memory ledger carry over into the new mechanism instead of being retyped
+  - **Plan**: `.workflows/plan/nina-emoji-shortcuts/phase-1.md`
+  - **Completed**: 2026-09-07 22:28
+  - **Method**: /do (swarm phase 1 of 4)
+  - **Files**: lib/db/schema.ts, lib/nina/shortcuts.ts, lib/nina/shortcuts.test.ts, lib/nina/queries.ts, tests/db.schema.nina.test.ts, drizzle/0012_nina_shortcuts.sql, drizzle/meta/0012_snapshot.json, drizzle/meta/_journal.json
+  - **Drift**:
+    - `origin/main` moved from the plan's base `a92780f` to `5ed3b76` (6 commits) and had ALREADY minted `0011_rare_blockbuster`. Applied the phase plan's Step 2 migration-hazard recipe: rebased onto `origin/main`, then generated. The migration is **`0012_nina_shortcuts`, not `0011`**. Branch history rewritten `d792c86` -> `3f0bbd8` (that one commit is plan files only; the rebase was conflict-free). Phases 2-4 were unspawned, so no peer was sitting on the branch.
+    - task-135 (`b27a033`, "remove confidence from the memory pipeline entirely") landed on `origin/main` and shifted every line anchor the plan quotes in `lib/db/schema.ts` and `lib/nina/queries.ts` — `NinaFactInsert` lost its `confidence?: number` field. All six code insertions were therefore re-applied by **content** anchor rather than line number; every inserted byte is still the plan's code block verbatim, extracted programmatically from `phase-1.md`.
+    - The local `main` ref in this repo is **STALE and divergent** (`8f1a10d`, diverged at `f03a3bc`, does not even contain the plan's own base `a92780f`; its `drizzle/` stops at `0008`). `origin/main` @ `5ed3b76` is the real trunk — the merge at the end of this set must target `origin/main`, not local `main`.
+    - Minor: the plan's shapes-insert anchor said `NinaFactInsert` closes at `:305` and `NinaNagRow` opens at `:307`; the real offsets were 304/306 even before the rebase. One blank line, no semantic effect.
+    - prettier re-wrapped 3 statements in `lib/nina/shortcuts.test.ts` (cosmetic line-wrapping only). Fixed by pathspec: `npx prettier --write lib/nina/shortcuts.test.ts` — deliberately not a repo-wide `npm run format`, which would have swept 11 unrelated pre-existing violations into this commit.
+  - **Decided**:
+    - `normalizeNinaTrigger`'s docstring claimed phase 4's importer "reimplements these rules in plain JS" -> corrected to say it **imports this very function** under `--experimental-strip-types`, with `tests/nina.shortcutsImport.test.ts` asserting function identity. (Rung 1, a stated invariant: invariant 4 says phase 4 imports the module directly, inherited decision D5 says the same, and the file's own header already contradicted the docstring.)
+    - `origin/main` had moved and `0011` was already taken -> **rebase onto `origin/main` and generate as `0012`** rather than mint a colliding `0011`. (Rung 3: the phase plan's Step 2 MIGRATION HAZARD block names this exact condition and prescribes rebase-then-regenerate, never rename.)
+    - `db:generate` auto-named the file `0012_narrow_vivisector.sql` -> deleted the `.sql` + snapshot, `git checkout`'d `_journal.json`, and regenerated with `--name nina_shortcuts` to match the plan's Files table (`00NN_nina_shortcuts.sql`) and the `0009`/`0010` convention. (Rung 3: the plan's Files table.) Verified the regenerated SQL is byte-identical to the auto-named one, so no generated content was lost — and byte-identical to the SQL the plan's Interface Contract predicted.
 
 - [x] **P1-DB-A003** Phase 1: A re-attached photo is a reference, not a copy
   - **Difficulty**: HARD
