@@ -89,14 +89,35 @@ export const INSTALL = {
  * scheme's `--paper` and that is not a contradiction**: the tile is the thing you tap, the splash
  * is the frame you land in, and they are answering different questions.
  *
- * ── NO `paperDark` HERE, DELIBERATELY ──────────────────────────────────────────────────────────
- * `INSTALL.paperDark` exists for the media-matched `themeColor` pair in `app/layout.tsx`'s
- * `viewport` export — the only place a scheme-varying status-bar tint can live. Giving `/admin` its
- * own tint would mean exporting `viewport` from `app/admin/layout.tsx`, and whether a nested
- * `viewport` export replaces the whole object or merges key by key has NOT been verified here. If
- * it replaces, `/admin` silently loses `viewportFit: 'cover'` — and every `env(safe-area-inset-*)`
- * in that shell, all four of which `admin-responsive-nina-intimacy` phase 1 put there on purpose,
- * goes inert. A status-bar tint is not worth that bet. Verify it first if you want the tint.
+ * ── `paperDark`: THE DARK HALF, AND IT HAS EXACTLY ONE CONSUMER ────────────────────────────
+ * `--paper-2`, dark (`app/globals.css:81`, mirrored at `docs/design/tokens.css:77`). It exists for
+ * the media-matched `themeColor` pair in `app/admin/layout.tsx`'s `viewport` export and for
+ * nothing else, because that pair is the only surface in this app that can follow the colour
+ * scheme. The admin MANIFEST cannot take it — a manifest carries a single `theme_color` — so
+ * `app/admin/manifest.webmanifest/route.ts` spends `paper` on the splash and the dark value is
+ * reachable only through the layout.
+ *
+ * ── WHAT IT FIXES, AND WHAT WAS VERIFIED BEFORE IT WAS ADDED ─────────────────────────────
+ * The report: *"make sure batas atas di xs max top notch is white, so it is kind of blend in with
+ * the UI"*. Before this key existed `app/admin/layout.tsx` exported no `viewport` at all, so the
+ * ROOT layout's pair was still the resolved `themeColor` for `/admin` and an installed tile opened
+ * with an `INSTALL.paper` (`#c9e9fb`) band sitting on an `#f1f7fb` page.
+ *
+ * This key was previously absent on the stated grounds that a nested `viewport` export might
+ * REPLACE the resolved parent object rather than merge into it — which would have cost `/admin`
+ * its `viewportFit: 'cover'` and made all four `env(safe-area-inset-*)` paddings in that shell
+ * inert. That was the right call while it was unverified, and it has now been settled by reading
+ * the framework: `node_modules/next/dist/lib/metadata/resolve-metadata.js:315`, `mergeViewport`,
+ * opens `const newResolvedViewport = structuredClone(resolvedViewport)` and then walks
+ * `for(const key_ in viewport)`, so a key the child OMITS is inherited untouched. A nested
+ * `viewport: { themeColor: [...] }` overrides `themeColor` and nothing else. Next's own
+ * `generate-viewport.md` does not document that rule anywhere; only the source does.
+ *
+ * ── NOT `#ffffff`, THOUGH THE REPORT SAID "white" ──────────────────────────────────────────
+ * The request carries its own purpose clause — *"so it is kind of blend in with the UI"* — and
+ * pure white satisfies the adjective while failing the purpose: the admin shell's ground IS
+ * `#f1f7fb`, so `#ffffff` would trade one visible band for a fainter one. Both halves stay on the
+ * token.
  */
 export const ADMIN_INSTALL = {
   name: 'Run Insights Admin',
@@ -105,6 +126,11 @@ export const ADMIN_INSTALL = {
   description: "Nina's album, her personality, the chat photos and the memory store.",
   /** --paper-2, light. The admin shell's ground, so the splash matches the first screen. */
   paper: '#f1f7fb',
+  /**
+   * --paper-2, dark. Only `app/admin/layout.tsx`'s media-matched `themeColor` pair can use this.
+   * Keep in step with `app/globals.css:81` and `docs/design/tokens.css:77`.
+   */
+  paperDark: '#162834',
 } as const
 
 /**
