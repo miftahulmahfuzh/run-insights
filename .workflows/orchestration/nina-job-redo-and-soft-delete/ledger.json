@@ -1,0 +1,49 @@
+{
+  "branch": "feature/nina-job-redo-and-soft-delete",
+  "coordinator": "orch-nina-job-redo-and-soft-delete",
+  "coordinator_session_id": "7b3a32ae-427b-402d-9067-98d1dd7807ca",
+  "created": "2026-09-07T01:46:28+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#105",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina` + `components/nina` + `app/nina/jobs",
+      "plan": ".workflows/plan/nina-job-redo-and-soft-delete/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Redo: reopen a failed job from its own args"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#106",
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/db` + `lib/nina` + `components/nina",
+      "plan": ".workflows/plan/nina-job-redo-and-soft-delete/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Soft delete: `nina_turns.deleted_at` and the tidy list"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-job-redo-and-soft-delete/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-job-redo-and-soft-delete",
+  "updated": "2026-09-07T01:46:28+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-job-redo-and-soft-delete"
+}
