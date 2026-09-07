@@ -1384,3 +1384,86 @@ Plans for the set are `lib/nina/.workflows/plan/P1-NIN-A015.md` and `P1-NIN-A014
 
 > **The one open operator step:** `npm run db:migrate` to apply `0008`. It was deliberately not run
 > during the task, and the code does not work without it.
+
+---
+
+## The Instructor character — a sixth relationship, and what she does with a fired pattern
+
+`NINA_INSTRUCTOR_CHARACTER_PLAN.md`, three phases, landed 2026-09-07 as `P1-NIN-A016`,
+`P1-NIN-A017` and `P1-NIN-A018`. No migration, no new table, no new column: the whole set is code.
+
+**The relationship has six settings, not five.** `NINA_RELATIONSHIPS` gained `'instructor'` — a
+professional running coach — **appended** at index 5 rather than inserted, because a coach is not on
+the least-to-most-intimate axis the first five are ordered by, and appending keeps every existing
+index stable. Adding a level means filling four `Record<NinaRelationship, …>` sites the compiler
+enforces (`NINA_ADDRESS`, `NINA_RELATIONSHIP_BLOCKS`, `RELATIONSHIP_GLOSS`, and the token record in
+`tests/nina.prompts.test.ts`) and four prose sites it cannot see (`RELATIONSHIP_NOTE`, the hardcoded
+address-forms list in `prompts/distill.ts`, the `nina_tuning.relationship` docstring in
+`lib/db/schema.ts`, and the level-counting comments). `RELATIONSHIP_NOTE` is `Record<string, string>`,
+so it is the one site a missing entry does not break the build — `tests/admin.tuning.test.ts` asserts
+a non-empty hint for every level, which is what catches it. Her address word is `"atlet"`, kept
+exclusive to her by `tests/nina.tuning.test.ts`, because per-level token assertions are only worth
+something if a token cannot come from another level.
+
+**The slot vocabulary is ten keys, not nine.** `training_plan` sits fourth, directly after
+`running_days`, and the adjacency is the point: those two are the pair a writer confuses.
+`running_days` answers WHICH days he runs and is read back through `parseRunningDays` by the evening
+cron, so a value that will not parse is refused to a ledger fact. `training_plan` answers WHAT HE
+DOES on them, and nothing in the app parses it — no cron, no pattern, no trigger. Its only reader is
+Nina, taking the value verbatim out of `memory.slots` on the next turn. That is why its canonicaliser
+is `prose(raw, 400)` and not a parser: a parser with no consumer would buy nothing and would throw
+away every legitimate phrasing it failed to read. The 400 matches both existing write caps exactly
+(`NinaMemoryWriteSchema.text` and `ADMIN_SLOT_VALUE_MAX`), so it can never truncate a legal write. It
+is a `replace` slot — a training week that changes is superseded, not accumulated — and `replace` is
+also what keeps it an editable row at `/admin/memory`, since `buildMemoryRows` excludes
+`merge`-policy keys. The slot is available at **every** relationship level, deliberately: a
+best-friend Nina who knows his training plan is better at her job too. A slot only one setting can
+fill is a slot the distiller never learns to write.
+
+**The thing worth knowing about the coaching register: the monitoring already existed.**
+`patterns.ts` has computed `REPEATED_HIGH_AVG_HR` and `PACE_REGRESSION` — the two examples the user
+named, by name — since the Nina set. What the app did with a fired code was get *angry* about it
+(`angerSourceClause`). That is the right response for a best friend and it is not what a coach does
+with the same number, so **the gap was the response, not the detection**: no `PatternCode` was
+coined and no proactive trigger was added. `INSTRUCTOR_COACHING` in `persona.ts` is the response — a
+fired code is a working list, and every one she raises leaves the conversation with one change, one
+length of time to hold it, and one field in the payload she will re-read. `proactiveTuningSuffix`
+gained a gated line so an opener under `instructor` arrives as a coach's.
+
+**All three additions are gated on `ninaActiveRelationship(tuning) === 'instructor'`** — never
+`tuning.relationship`, because `enabled.relationship` is an off-switch and clearing it must degrade
+her to the `best_friend` who shipped. `renderSections` drops an empty block, so the default render is
+byte-identical and `tests/__snapshots__/nina.prompts.test.ts.snap` still pins its four renders
+**unregenerated**. That is also why `training_plan` is spelled only inside the gated block and never
+in `buildContextGuide`: an ungated byte in the `memory.slots` paragraph fails that snapshot four
+times. The prompt grows 14203 → 21597 characters at `instructor` and by **zero bytes** at the
+default.
+
+**Nothing was repealed.** `NINA_NOT_A_DOCTOR`, `'the name of a medical condition'` in `NEVER_SAY`,
+the arithmetic half of `NUMBERS_RULE` and the whole anger ladder are untouched at every level
+*including* `instructor` — and the coaching block says the diagnosis rule is **tighter** for a coach,
+with a defined substitution: when the sentence would be a verdict on his body, say what he does on
+his next run instead. She prescribes training, never physiology. A professional is more careful here
+than a friend, not less. Three tests assert that structurally.
+
+Two version constants moved, one each: `NINA_DISTILL_PROMPT_VERSION` 2 → 3 (phase 1, covering both
+its own edit to the librarian's prompt and phase 2's indirect change through `SLOT_VOCABULARY_BLOCK`)
+and `NINA_PROMPT_VERSION` 4 → 5 (phase 3). Plans for the set are
+`.workflows/plan/nina-instructor-character/phase-1.md` through `phase-3.md`.
+
+> **The one open operator step:** select **Instructor** once at `/admin/personality` for the
+> character to be reachable by a real user. Deliberately not done by any phase — `.env.local` in a
+> worktree points at the **production** database, so a phase saving it would have flipped Nina's
+> live relationship for real users. It is one click and reversible: `coerceNinaRelationship`
+> degrades an unknown value to `best_friend` without throwing.
+
+### Known gaps, ruled out of this set by design
+
+- **She names a date she will look again, and nothing remembers it.** A sixth proactive trigger
+  firing when a prescription's deadline arrives — with its own idempotence marker and priority slot
+  — is the difference between a coach who says "six weeks" and a coach who comes back in six weeks.
+  Ruled out by D5 (the existing path produces the behaviour once the register is right); the
+  deadline-recall half is genuinely absent rather than deferred-and-covered.
+- **`REPEATED_LATE_START`, `MISSED_USUAL_DAY` and `ACWR_SPIKE` get no bespoke prescription.** The
+  block's general shape covers them; adding three paragraphs to `INSTRUCTOR_COACHING` is a one-file
+  change.
