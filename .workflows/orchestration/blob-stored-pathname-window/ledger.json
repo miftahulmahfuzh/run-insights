@@ -1,0 +1,31 @@
+{
+  "branch": "feature/blob-stored-pathname-window",
+  "coordinator": "orch-blob-stored-pathname-window",
+  "coordinator_session_id": "b91e064f-7220-4023-ad0a-6e25e8e67337",
+  "created": "2026-09-07T00:40:09+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#104",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/admin`, `lib/nina`, `tests",
+      "plan": ".workflows/plan/blob-stored-pathname-window/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/blob-stored-pathname-window/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "blob-stored-pathname-window",
+  "updated": "2026-09-07T00:40:09+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/blob-stored-pathname-window"
+}
