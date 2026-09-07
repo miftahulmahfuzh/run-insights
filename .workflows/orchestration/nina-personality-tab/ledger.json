@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-personality-tab",
   "coordinator_session_id": "f60771cf-764a-40a6-87e2-2058b95f88a5",
   "created": "2026-09-07T00:30:25+00:00",
+  "landed": {
+    "at": "2026-09-07T00:47:43+00:00",
+    "base": "main",
+    "commit": "405ca37108c08050d36e8c8462384d9335507c6f",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#103",
@@ -25,6 +31,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-personality-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-personality-tab",
-  "updated": "2026-09-07T00:46:30+00:00",
+  "updated": "2026-09-07T00:47:43+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-personality-tab"
 }
