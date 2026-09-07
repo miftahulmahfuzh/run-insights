@@ -33,7 +33,23 @@
  * and `tests/__snapshots__/nina.prompts.test.ts.snap` pins the other three as well. **NO SECTION
  * AND NO TOOL SCHEMA MOVED.** This is the SINGLE bump for the whole set: phase 3 owns it and no
  * other phase touches this constant, because two bumps would date two commits to one change. */
-export const NINA_PROMPT_VERSION = 4
+/* 5 — the nina-instructor-character set. A sixth relationship, `instructor`, and the coaching
+ * mechanics that make it more than a label. `buildNinaSystemPrompt` gained one gated block:
+ * `ninaInstructorCoachingBlock` under WHAT YOU ARE READING, directly beneath the context guide
+ * whose keys it gives her a job for. `buildContextGuide`'s `"patterns"` paragraph gained a gated
+ * clause — a fired code is a work item and not only a source of anger — and
+ * `proactiveTuningSuffix` gained a gated line, so an opener under `instructor` leaves him with one
+ * change and a date rather than only a rung. Every one of the three renders `''` at the other five
+ * relationships and `renderSections` drops an empty block, so the DEFAULT render — `best_friend` —
+ * is byte-identical and `tests/__snapshots__/nina.prompts.test.ts.snap` still pins the other three
+ * unregenerated. **NOTHING WAS REPEALED.** `NINA_NOT_A_DOCTOR`, `'the name of a medical condition'`
+ * in `NEVER_SAY`, the arithmetic half of `NUMBERS_RULE` and the whole anger ladder — floor, ceiling,
+ * rungs, `angerSourceClause` — are untouched at every level including this one; the coaching block
+ * states that the diagnosis rule is TIGHTER for a coach, because a coach gets acted on. No new
+ * `PatternCode`, no new proactive trigger, **NO SECTION AND NO TOOL SCHEMA MOVED.** This is the
+ * SINGLE bump for the whole set: phase 3 owns it and no other phase touches this constant, because
+ * two bumps would date two commits to one change. */
+export const NINA_PROMPT_VERSION = 5
 
 export {
   LANGUAGE_RULE,

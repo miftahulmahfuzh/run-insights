@@ -7,12 +7,14 @@ import {
   NINA_NOT_A_DOCTOR,
   VOICE_EXAMPLES_BLOCK,
   anyTurnedUp,
+  isInstructor,
   ninaAngerCeiling,
   ninaAngerFloor,
   ninaAngerLadderBlock,
   ninaEffectiveVerbosity,
   ninaGirlfriendVoiceBlock,
   ninaIdentity,
+  ninaInstructorCoachingBlock,
   ninaManjaRegisterBlock,
   ninaNameRules,
   ninaNeverSayBlock,
@@ -224,6 +226,35 @@ function angerSourceClause(tuning: NinaTuning): string {
     : 'This is where your anger comes from when a pattern has fired. The rest of it comes from how you are set, and that part holds even when "patterns" is empty.'
 }
 
+/**
+ * **R3, and the one edit this phase makes to a paragraph the frozen snapshot pins four times.**
+ *
+ * The `"patterns"` paragraph tells her what a fired code IS and, since the tuning set, where her
+ * anger comes from. What it never said is what a fired code is FOR. At `instructor` it is a work
+ * item: the thing the operator is paying a coach to change. This clause says so, and says which of
+ * the already-counted fields she quotes rather than recounts.
+ *
+ * ── WHY A GATED APPENDIX RATHER THAN A REWRITE OF THE PARAGRAPH ────────────────────────────
+ * `tests/__snapshots__/nina.prompts.test.ts.snap` holds four complete system prompts and therefore
+ * four copies of this paragraph. Rewriting the sentence would change all four and the snapshot is
+ * never regenerated. Returning `''` at every other level costs exactly zero bytes, so the four
+ * renders stay byte-identical by construction.
+ *
+ * ── AND IT DOES NOT TOUCH `angerSourceClause` ──────────────────────────────────────────────
+ * Both of that function's branches are untouched and the ladder still renders at `instructor`
+ * exactly as it renders everywhere else. This clause ADDS what she does about a pattern; it does not
+ * remove how she feels about one, and the coaching block in `../persona` states the same reading so
+ * the two halves cannot drift.
+ *
+ * The clause opens with a space and is interpolated straight after a full stop, so it reads as one
+ * paragraph at `instructor` and leaves no double space anywhere else.
+ */
+function patternPrescriptionClause(tuning: NinaTuning): string {
+  return isInstructor(tuning)
+    ? ' A fired code is also your working list: it is the thing you are being paid to change, so every one you raise leaves the conversation with one change he is going to make and one day you will look at it again. "occurrences" and "windowRuns" are how many runs offended out of how many were looked at, already counted for you — quote them, never recount them. "daysSinceLastMentioned" is how long your last ask has had to work, and under a week is too soon to judge it.'
+    : ''
+}
+
 /** A walk through the payload, key by key, including what each ABSENCE means. */
 export function buildContextGuide(tuning: NinaTuning): string {
   return `The JSON below is everything you know. What each part is:
@@ -244,7 +275,7 @@ export function buildContextGuide(tuning: NinaTuning): string {
 
 "badges.held" — what he has earned, with "count". "badges.locked" — what he has not, with the condition, so you can dare him. Note "earnedDaysOnRecord": if it is lower than "count", some earnings have no date on record and you must not invent one.
 
-"patterns" — longitudinal things the app computed about him, with "nagLevel": how many times you have already raised each one. ${angerSourceClause(tuning)} You never invent a pattern and you never invent a code.
+"patterns" — longitudinal things the app computed about him, with "nagLevel": how many times you have already raised each one. ${angerSourceClause(tuning)} You never invent a pattern and you never invent a code.${patternPrescriptionClause(tuning)}
 
 "avatar" — your own profile picture right now. "description" is what the photo actually shows: treat it as your own memory of where you were and what you were doing, not as a caption someone wrote for you. If he asks where you are in it, or what was going on, tell him — invent the details that are not in the description, keep them consistent with the photo AND with what you two have been talking about, and keep it short, the way anyone answers a question about their own photo. Do not repeat a story you already told word for word. "changedOn" is the day it became your picture. If "isSeed" is true you have never changed it, so do not talk as if you had. Never comment on your own face changing between photos, and never compare one photo of yourself to another — that is not a thing you would notice about yourself.`
 }
@@ -482,7 +513,15 @@ export function buildNinaSystemPrompt(tuning: NinaTuning): string {
     { header: sectionHeader('WHAT YOU NEVER SAY'), blocks: [ninaNeverSayBlock(tuning)] },
     { header: sectionHeader('THE NUMBERS'), blocks: [buildNumbersRule(tuning)] },
     { header: sectionHeader('THE CAMERA'), blocks: [buildCameraBlock(tuning)] },
-    { header: sectionHeader('WHAT YOU ARE READING'), blocks: [buildContextGuide(tuning)] },
+    {
+      header: sectionHeader('WHAT YOU ARE READING'),
+      /* R3, nina-instructor-character. The coaching block is `''` at all five other levels and
+       * `renderSections` drops an empty block, which is why adding it here cannot perturb the
+       * default render or the four-render snapshot. It sits DIRECTLY under the guide it acts on:
+       * every key it gives her a job for — "patterns", "recentRuns", "records", "memory.slots" —
+       * is a key the paragraph above has just introduced. */
+      blocks: [buildContextGuide(tuning), ninaInstructorCoachingBlock(tuning)],
+    },
     { header: sectionHeader('HOW YOU ANSWER'), blocks: [buildOutputRule(tuning)] },
     { header: sectionHeader('STANDING INSTRUCTIONS'), blocks: [ninaOperatorNotesBlock(tuning)] },
   ])
@@ -630,6 +669,29 @@ function proactiveTuningSuffix(tuning: NinaTuning): string {
     lines.push(
       'You may open with wanting him rather than with his running. The trigger is your excuse to ' +
         'message, not your subject.',
+    )
+  }
+
+  /* R3, nina-instructor-character. `buildProactiveInstruction` already takes a `tuning` and already
+   * appends a tuning-dependent suffix, so the seam for a relationship-dependent opener exists and is
+   * in use — D5 in the plan index is that no sixth trigger is needed for behaviour this path
+   * produces once the register is right.
+   *
+   * It ADDS rather than repeals: no sentence in any of the five trigger texts says she must not
+   * leave him with a change, so the suffix mechanism is sufficient here where it was not for
+   * `rungClause`, `lectureClause` and `sulkClause`. Those three stay exactly as they are, which is
+   * why `pattern_crossed` still carries "Say it at the rung \"nagLevel\" earns and not one higher."
+   * at this level: the rung is the ladder's business and the CHANGE is this line's.
+   *
+   * Relationship-gated rather than dial-gated, and last in the array: the three entries above are
+   * the operator's dials and open the message, this one is what the message is FOR. Empty at the
+   * other five levels, so `PROACTIVE_INSTRUCTIONS` still renders byte-identically. */
+  if (isInstructor(tuning)) {
+    lines.push(
+      'You are his coach and this is a coaching call, so it does not end at the observation: ' +
+        'leave him with ONE change to make and say when you will look at it again. If ' +
+        '"patterns[].nagLevel" is 1 or more then the last thing you asked for did not happen — ask ' +
+        'for something smaller, not something louder.',
     )
   }
 
