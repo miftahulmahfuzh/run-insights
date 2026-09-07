@@ -672,12 +672,28 @@ export async function finishSelfie(
     throw new Error(`no session to file the photograph in (job ${jobId})`)
   }
 
+  /* `photo_only = true` marks the bubble as existing only to carry the picture — the same fact
+   * `finishSelfie` and `addChatPhotoAction` record through `NinaMessageInsert.photoOnly`. Here it is
+   * a column name in SQL and nothing more, because this file may not import `@/lib/db/schema`.
+   *
+   * THE CANNED CAPTION IS PERMANENT ON THIS HOST, and it is not an inconsistency to fix. This
+   * worker runs on a GitHub runner with no z.ai key, and `lib/nina/imagefail.ts` — the one module it
+   * imports, by relative path under `--experimental-strip-types` — states in its own header that it
+   * may import nothing at all. Reaching for `@/lib/nina/caption` here would stop the worker booting,
+   * and a caption that fails to be produced is the exact bug `imagefail.ts` exists to kill. What
+   * makes the canned line acceptable is that its pool no longer asserts a scene: every member is
+   * true of any photograph of her.
+   *
+   * DEPLOY ORDER: this INSERT names a column migration 0008 creates. Additive, and migrations run
+   * before the deploy in the normal order — but a worker deployed against an un-migrated database
+   * fails this statement, so the order is a requirement here and not an incidental. */
   await sql`
     insert into nina_messages
-      (id, user_id, session_id, role, text, source, turn_id, reply_to_id)
+      (id, user_id, session_id, role, text, source, turn_id, reply_to_id, photo_only)
     values (
       ${messageId}, ${userId}, ${sessionId}, 'nina', ${ninaImageCaption(jobId)}, 'chat', ${jobId},
-      (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId})
+      (select id from nina_messages where id = ${args.replyToId} and user_id = ${userId}),
+      true
     )
   `
   await sql`

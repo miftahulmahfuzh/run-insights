@@ -2,12 +2,12 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-05
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-07
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -20,7 +20,14 @@
 
 ### [P1] High
 
-_None._
+- [ ] **P1-DB-A002** Phase 2: The carrier marker: a photo bubble free text cannot hide
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: The schema half, shippable and behaviour-neutral on its own — **no caption text changes in this phase at all**. Spans four packages and is filed here because the generated migration is its irreversible half: `lib/db` (a generated migration adding `nina_messages.photo_only boolean NOT NULL DEFAULT false` plus a backfill of the rows that are carriers under today's rule, and `lib/db/schema.ts` carrying the column with the argument for it beside the `source` docstring explaining why it is not a sixth `NinaMessageSource`); `lib/nina` (`queries.ts` — `NinaMessageInsert.photoOnly`, `messageColumns`/`NinaMessageRow`; `imagerun.ts` — `finishSelfie` sets `photoOnly: true`); `lib/admin` (`chatPhotos.ts` — `isNinaPhotoCarrierMessage` reads the marker, with the caption-array test kept as the **legacy** clause for pre-migration rows; `chatPhotoActions.ts` — `addChatPhotoAction` sets `photoOnly: true`); and `scripts` (`nina-image-worker.ts`'s raw `INSERT` sets `photo_only = true`). Plus `tests/admin.chatPhotos.test.ts`. Does not touch `lib/nina/imagefail.ts`, `caption.ts`, `vision.ts` or `prompts/*`. Exit: `npm run db:generate` produced the migration (not hand-written); `npm run db:check` passes; `isNinaPhotoCarrierMessage` returns `true` for a marked message with any text whatsoever, `true` for an unmarked legacy message whose text is one of the five, and `false` for a `role: 'runner'` message however marked; remove still deletes the message when the last photo goes, for a message carrying free text. **Merge hazard:** `nina-job-redo-and-soft-delete` is in flight from the same base `f839116` and both sets mint `0008` — whoever merges second deletes this branch's `0008_*.sql` and re-runs `db:generate` against the merged `schema.ts`. Never rename a migration; `when` is the ordering key and a renamed entry is skipped silently.
+  - **Status**: pending
+  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1 — A photo added to the Chat photos collection must arrive with a chat message that says something true about **that** photograph; R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
+  - **Plan**: `.workflows/plan/P1-DB-A002.md`
 
 ---
 

@@ -148,6 +148,13 @@ export interface NinaMessageRow {
   replyToId: string | null
   runId: string | null
   readAt: Date | null
+  /**
+   * **This bubble exists only to carry a photograph** (see the column's note in `lib/db/schema.ts`).
+   * Not nullable, because the column is `NOT NULL DEFAULT false` — a reader never branches on null.
+   * `isNinaPhotoCarrierMessage` is the only consumer, and `removeChatPhotoAction` hands it the whole
+   * row, so projecting it here is what makes that call site need no change at all.
+   */
+  photoOnly: boolean
 }
 
 /** What a writer supplies. `seq` is absent on purpose — Postgres assigns it. */
@@ -158,6 +165,12 @@ export interface NinaMessageInsert {
   turnId?: string | null
   replyToId?: string | null
   runId?: string | null
+  /**
+   * **`true` when this row exists only to carry a photograph** — see the column's own note.
+   * Optional and defaulting to `false`, so the four existing writers of ordinary messages are
+   * unchanged and a new writer has to opt in deliberately rather than inherit a flag.
+   */
+  photoOnly?: boolean
 }
 
 /**
@@ -498,6 +511,7 @@ const messageColumns = {
   replyToId: ninaMessages.replyToId,
   runId: ninaMessages.runId,
   readAt: ninaMessages.readAt,
+  photoOnly: ninaMessages.photoOnly,
 }
 
 const imageColumns = {
@@ -1201,6 +1215,7 @@ export async function insertNinaMessages(
         turnId: row.turnId ?? null,
         replyToId: row.replyToId ?? null,
         runId: row.runId ?? null,
+        photoOnly: row.photoOnly ?? false,
       })),
     )
     .returning(messageColumns)

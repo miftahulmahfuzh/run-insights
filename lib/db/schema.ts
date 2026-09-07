@@ -936,6 +936,32 @@ export const ninaMessages = pgTable(
      * idempotence check, which is why the triggers are spelled out instead of collapsed.
      */
     source: text('source').$type<NinaMessageSource>().notNull().default('chat'),
+    /**
+     * **This bubble exists ONLY to carry a photograph.** Set by every path that writes one; read by
+     * `isNinaPhotoCarrierMessage`, which is what lets Remove delete the message along with the last
+     * picture on it instead of leaving a caption with nothing under it.
+     *
+     * ── WHY A COLUMN AND NOT A SIXTH `NinaMessageSource` ────────────────────────────────────
+     * The cheap answer was `source = 'photo'`: this is a plain `text` column with a TS union, no
+     * database enum and no check constraint, and exactly one query in the repo compares it
+     * (`lib/nina/queries.ts`, `= 'run_committed'`). So widening the union needs no migration at all,
+     * and that is precisely what makes it the wrong answer — it would overwrite two recorded
+     * rulings to save one DDL statement. `NinaMessageSource`'s own docstring calls a column domain
+     * *"the hardest thing in the schema to widen later"* and rejects `'operator'` for having no
+     * writer; `finishSelfie`'s says *"`source = 'chat'` on purpose and NOT a sixth
+     * `NinaMessageSource`: she is answering something he said in an open conversation, minutes
+     * ago."* Both are still true. A photograph she sends in reply to him IS a chat message; what is
+     * new is not where the row came from but that its TEXT is disposable.
+     *
+     * ── AND WHY NOT A HEURISTIC ────────────────────────────────────────────────────────────
+     * "role = 'nina' and every image on it is generated and the text is short" re-introduces the
+     * false positive the caption-array clause was written to prevent, and it fails silently: the
+     * cost is a real sentence of hers deleted, which nothing can recover.
+     *
+     * `NOT NULL DEFAULT false` so no reader needs a null branch, and additive so a revert of the
+     * code leaves a column nothing consults. Migration 0008 backfills the pre-marker carriers.
+     */
+    photoOnly: boolean('photo_only').notNull().default(false),
     /** `nina_turns.id`. A plain column on purpose — see the header's last paragraph. */
     turnId: text('turn_id'),
     /** WhatsApp-style quote (R12). Self-referencing; `AnyPgColumn` is what makes that typecheck. */

@@ -632,7 +632,15 @@ handed to her, and then through `after()`.
 - `@/lib/nina/crop` — `clampCrop`, `cropForWrite`, `resolveCrop`, and the crop bounds.
 - `@/lib/nina/album` — `NINA_ADMIN_BATCH_MAX`, `NINA_ADMIN_MANIFEST_MAX`.
 - `@/lib/nina/images` — `NINA_BLOB_PREFIX`, the one definition of the store layout.
-- `@/lib/nina/vision` — `describeNinaImages`, reached from exactly two places here.
+- `@/lib/nina/vision` — `describeNinaImages` and `NinaVisionTokenFloorError`, reached from three
+  places here: `describeNinaAvatarAction`, the private `scheduleDescribe`, and
+  `chatPhotoActions.ts`'s `scheduleChatPhotoCaption`. **None is on a response path** — the latter
+  two run inside `after()`. `chatPhotoActions.ts` is the only caller that passes
+  `{ subject: 'self' }`: the default prompt is a witness written about the RUNNER, and pointed at
+  a photograph of Nina it looks for a man who is not in the frame.
+- `@/lib/nina/caption` — `captionNinaPhoto`, from `chatPhotoActions.ts` alone. One `glm-5.3` call
+  that turns a description into one line in her voice. It never throws and returns `null` for
+  every refusal, which is what lets every failure branch simply keep the canned line.
 - `@/lib/nina/memory` — read-only, from `memoryVocab.ts` alone.
 - `@/lib/db`, `@/lib/db/schema` — `users.ts` and the memory type imports.
 
@@ -802,3 +810,39 @@ name `/admin/personality` — the page the panel is mounted on — instead of `/
 own actions in `ninaAlbumActions.ts` still revalidate `/admin/nina`, which is still where the album
 is; the two targets are now genuinely different pages rather than one shared screen. No action,
 schema, bound, or export was added, removed or renamed.
+
+2026-09-07 — updated following task **P1-ADM-A000** (`nina-photo-caption-from-image` phase 3 of 4,
+R1: *"a photo added to the Chat photos collection must arrive with a chat message that says
+something true about **that** photograph"*).
+
+The bug was never in the multimodal call — that call already existed and had already run on the
+photograph the user complained about. `scheduleChatPhotoDescribe` was sending the picture to
+`glm-4.6v` and storing a good paragraph in `nina_message_images.description`, a column that on this
+path nothing reads (`dbNinaSourceGateway.readConversation` maps every window row with a literal
+`imageDescriptions: []`). The one text the runner sees came from `ninaImageCaption`, an FNV-1a hash
+of a fresh nanoid over a five-string array — no model, no image, no prompt. So an underwater
+photograph of her in fins was captioned `ini gw abis lari tadi`.
+
+The change here is the second half of that `after()`. `scheduleChatPhotoDescribe` became
+`scheduleChatPhotoCaption`: `glm-4.6v` looks with `{ subject: 'self' }`, `readNinaTuning` is read
+live, `captionNinaPhoto` speaks, and `updateNinaMessage` rewrites `nina_messages.text` and nothing
+else — not `seq`, not `sent_at`, not `read_at`, not `turn_id`, because rewriting a bubble is not
+re-sending it. Both call sites were renamed, `addChatPhotoAction` and `replaceChatPhotoAction`; the
+replace site carries a note saying its gap behaviour falls out of the shared scheduler rather than
+being designed for, and is its own card.
+
+Nothing moved onto a response path. Two model calls in one segment is ~15-25 s, and Server Actions
+are dispatched one at a time per client — the same arithmetic this package's describe pre-pass
+already refused for one call alone (see *"The describe pre-pass is OFF the upload path"*). The
+placeholder the action writes synchronously is one of `NINA_IMAGE_CAPTION_POOL`'s scene-agnostic
+lines, and phase 1 removed the one scene-asserting member from that pool, so **every** failure
+branch below leaves a sentence that is true of any photograph rather than a wrong one: the row gone,
+the token floor tripped, a transport failure, `captionNinaPhoto` returning `null`,
+`updateNinaMessage` returning `null` or throwing. The description is stored first and on its own, so
+a caption failure never costs the paragraph. The floor gets `console.error` and a transport failure
+`console.warn`, because a vendor that answers 200 with the image silently dropped is a different
+incident from a dead socket.
+
+No action, schema, bound or export in this package was added, removed or renamed;
+`scheduleChatPhotoCaption` is private, as its predecessor was. `tests/admin.chatPhotos.test.ts` grew
+its first mock harness (it had been pure-function only) and 8 cases, 32 -> 40.

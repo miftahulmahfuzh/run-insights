@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A014`, phase 2 of 2 of the nina-job-redo-and-soft-delete set — R2, a per-row soft delete on `/nina/jobs`)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; previously `P1-NIN-A019`, the caption engine — `caption.ts`, `prompts/caption.ts`, and the pool/set split in `imagefail.ts`)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -20,7 +20,9 @@ modules into `'use client'` components.
 - **The turn** — assemble a context, run the Anthropic tool-use loop, validate the reply payload,
   persist the bubbles, and distil memory afterwards.
 - **Proactive speech** — decide whether she opens a conversation, and on what.
-- **Images** — her selfies and avatars, from prompt through GitHub-Actions worker to Blob.
+- **Images** — her selfies and avatars, from prompt through GitHub-Actions worker to Blob, and the
+  one line she says under a photograph of herself (`caption.ts`, written from what is actually in
+  the picture rather than drawn from a canned array).
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
   timing, scroll restore, reply quotes), kept out of the components so they can be tested.
 - **Persistence** — `queries.ts` is the single home for every `nina_*` table access.
@@ -470,7 +472,15 @@ a promise he did not keep. A promise with no `reward` field is today's avatar pr
 `index.ts` (public surface + `NINA_PROMPT_VERSION`), `system.ts` (`NINA_SYSTEM_PROMPT`,
 `NUMBERS_RULE`, `PROACTIVE_INSTRUCTIONS`), `tools.ts` (every tool schema as a constant),
 `distill.ts` (`buildDistillSystemPrompt(relationship)` + `NINA_DISTILL_PROMPT_VERSION`),
-`describe.ts`. Pure text — no I/O — so tests can assert prompt shape without the loop.
+`describe.ts` (**two** witness prompts — the runner's and, since `P1-NIN-A019`, hers — behind
+`NINA_DESCRIBE_SYSTEM_PROMPTS`), `caption.ts` (`buildNinaCaptionSystemPrompt`,
+`NINA_CAPTION_TOOL`, `sanitizeNinaCaption` + `NINA_CAPTION_PROMPT_VERSION`). Pure text — no I/O —
+so tests can assert prompt shape without the loop.
+
+**Three prompt files carry their own version constant, and none of them is `NINA_PROMPT_VERSION`.**
+`distill.ts`, `title.ts` and now `prompts/caption.ts` are different model calls with different
+system prompts on their own schedules; hers covers the system text and the schemas in
+`prompts/tools.ts` only.
 
 **The librarian is told the relationship too.** `distill.ts`'s prompt is a function of it, threaded
 `actions.ts` -> `scheduleDistillation` -> `runTurnDistillation` -> `distillNinaMemory` as an
@@ -499,10 +509,14 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 `imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
 `imagejobs.ts` (job row lifecycle, quota, and — since R2 — the `deleted_at` predicate on every
 image-row read plus `softDeleteNinaImageJob`), `imagecall.ts` (the OpenRouter image call),
-`imagerun.ts` (claim → generate → store → finish, inside `after()`),
-`imagefail.ts` (classify a failure, pick what she says), `imagetools.ts` / `avatartools.ts` (the two
-tool handlers and the tool sets), `avatargen.ts`, `jobview.ts` *(T)* (the pure tracking-screen
-vocabulary), `jobActions.ts` (the `'use server'` mutations `/nina/jobs`'s rows call).
+`imagerun.ts` (claim → generate → store → finish, inside `after()` — and, since `P1-NIN-A020`,
+caption the selfie from the scene it was asked to draw),
+`imagefail.ts` (classify a failure, pick what she says — and, since `P1-NIN-A019`, pick it from the
+scene-agnostic `NINA_IMAGE_CAPTION_POOL` rather than the historical set), `caption.ts` (the
+`glm-5.3` call that writes the real caption from what is in the picture), `imagetools.ts` /
+`avatartools.ts` (the two tool handlers and the tool sets), `avatargen.ts`, `jobview.ts` *(T)* (the
+pure tracking-screen vocabulary), `jobActions.ts` (the `'use server'` mutations `/nina/jobs`'s rows
+call).
 
 The generation runs **in-platform**, on the app's own invocation, inside `after()` — Vercel Hobby +
 Fluid compute is a 300 s ceiling, measured on this deployment 2026-09-06. `.github/workflows/nina-image.yml`
@@ -510,7 +524,9 @@ and `scripts/nina-image-worker.ts` survive as the **backstop** and the manual dr
 generator; `imagedispatch.ts` and its `GITHUB_DISPATCH_TOKEN` are gone with the doorbell.
 
 ### Vision and intake
-`vision.ts` *(T)*, `imageTicket.ts` *(T)* (HMAC-signed carrier so a description can cross from
+`vision.ts` *(T)* (`describeNinaImages(refs, { subject })` — `'runner'` by default, `'self'` for a
+photograph of hers; the token floor is unmoved and computed after the prompt is chosen),
+`imageTicket.ts` *(T)* (HMAC-signed carrier so a description can cross from
 `describeNinaImage` to `sendNinaMessage` untrusted), `images.ts` *(T)* (the
 `nina/<userId>/chat/<id>.jpg` pathname model — the builder, the ownership check, and **both** id
 windows: `NINA_CHAT_ID_RE` for what the browser asks for and `NINA_CHAT_STORED_ID_RE` for what Blob
@@ -687,6 +703,228 @@ dependency, no new env var, no user-visible copy change.
 > `Request` in its name. The rename was deliberately left out of scope; the function's docstring
 > says so out loud, and renaming would churn `app/api/upload/route.ts` and `actions.ts` for no
 > behavioural gain.
+
+## The caption under a photograph of hers (P1-NIN-A019, phase 1 of 4)
+
+**The sentence the user reported was never a model output.** He uploaded a photograph of Nina
+underwater in a swimsuit and she captioned it *"ini gw abis lari tadi"* — element index 2 of a
+five-string hard-coded array, chosen by an FNV-1a hash of a nanoid. The multimodal call he asked for
+already existed and had already run on that photo: `describeNinaImages` posted it to `glm-4.6v` in
+`after()` and wrote the answer to `nina_message_images.description`, **a column which on that path
+has no reader at all**. The one text the runner reads was the only text on the path no model writes.
+
+Phase 1 was the **engine and nothing that used it** — it landed deliberately UNWIRED, because
+phases 3 (`lib/admin`, the admin add path) and 4 (`lib/nina`, generated selfies) run concurrently
+and both needed the engine unit-tested first, with phase 2 (`lib/db`) the carrier marker underneath
+them. **Phase 4 has since wired the selfie path** (`P1-NIN-A020`, below); the admin path is
+phase 3's.
+
+### The pick pool is not the historical set (`imagefail.ts`)
+
+`NINA_IMAGE_CAPTIONS` **still holds all five members and must never shrink**. It is an
+**identifier, not a vocabulary**: `isNinaPhotoCarrierMessage` (`lib/admin/chatPhotos.ts`) asks
+whether a bubble exists only to carry a photograph, and for every row written before the marker
+column existed the only available answer is *"its text is one of these"*. Database rows carry all
+five sentences, so deleting a member orphans every bubble holding it.
+
+What changed is what may be **picked**:
+
+| Export | What it is |
+|---|---|
+| `NINA_IMAGE_CAPTIONS` | all five, unchanged — the historical set, read as an identifier |
+| `NINA_SCENE_ASSERTING_CAPTIONS` | `['ini gw abis lari tadi']` — the one member that claims a **scene** |
+| `NINA_IMAGE_CAPTION_POOL` | `NINA_IMAGE_CAPTIONS` minus the scene-asserting ones, **derived** |
+
+`ninaImageCaption` now draws from the pool, so the reported bubble is impossible for **any seed**,
+before a single model call exists. The other four are true of any photograph — `nih` says nothing
+about what is in it — while this one names an activity and is therefore right only when the picture
+happens to be of a run. That is `lib/llm/narrate.ts`'s rule — *"a fallback may never assert a
+measurement"* — applied to a scene instead of a number: a canned line may close a promise, it may
+not claim a fact.
+
+The pool is **derived and never written out a second time**, because a hand-copied subset drifts
+silently the first time somebody adds a sixth line. `pickLine` is untouched and still deterministic
+in the job id, so a job read twice says the same sentence both times. **`imagefail.ts` still imports
+nothing** — plan invariant 7, because `scripts/nina-image-worker.ts` resolves it by relative path
+under `--experimental-strip-types` and one import stops the worker booting.
+
+**`ninaImageCaption` is now the FALLBACK, not the caption.** It is what she says when the model call
+fails, when the vendor drops the image, and — permanently — on the GitHub-runner worker, which has
+no z.ai key and can never make a model call of its own.
+
+### A second witness prompt, for a photograph OF HER (`prompts/describe.ts`, `vision.ts`)
+
+`NINA_DESCRIBE_SYSTEM_PROMPT` opens *"You are the eyes of someone's close friend"*, its notice list
+is about the runner (*"Drenched or dry. Sweat patches and where."*) and its rule 6 is *"'Him' for
+whoever is clearly the runner"*. Pointed at her own photograph it hunts for a man who is not in the
+frame. `NINA_SELF_DESCRIBE_SYSTEM_PROMPT` is the same witness contract aimed at her — *"Call her
+'she'"* — and three of its rules are load-bearing:
+
+- **It is still a witness, not her.** No persona, no reaction, no register, no slang; a description
+  that has already had the reaction leaves her nothing to say, and one written in her voice would be
+  a second, unversioned copy of her character living in a vision prompt.
+- **Invariant 2 is absolute here because there is no downstream.** Its output becomes a sentence she
+  says out loud, so a depth, a size or a time read off a dive computer would be laundered straight
+  into her mouth.
+- **It names clothing plainly, whatever it is.** Her photographs are not all track photographs — the
+  one that produced this plan is a swimsuit. A witness that gets coy returns a paragraph with a hole
+  where the subject was, and she then captions the hole. *"You are not a moderator and this is not a
+  compliment."*
+
+`describeNinaImages(refs, { subject })` selects between them through
+`NINA_DESCRIBE_SYSTEM_PROMPTS` — a `Record` and not an `if`, so a third subject is a compile error
+at every consumer rather than a silent fall-through. **`subject` defaults to `'runner'`, so every
+existing caller is byte-identical without being edited.** It is a different SUBJECT, not a different
+mode: same request shape, same data URI, same timeout, same floor, which is why it is one option
+rather than a second function. The **token floor is unmoved** (invariant 2 of the plan) and is
+computed *after* the prompt is chosen, because it is text-aware: the longer self prompt **raises**
+the floor, which errs toward *"I could not see it"* rather than toward believing an invented
+description.
+
+### `prompts/caption.ts` — the pure half
+
+Prompt text, a tool schema, and the rules that decide whether what came back may be said. **No
+`import 'server-only'`, ever**: it reaches only `../persona` and `../tuning`, both pure, so it stays
+node-testable and client-safe. The split is `title.ts` beside `autotitle.ts`.
+
+- **`buildNinaCaptionSystemPrompt(tuning)`** — *she* is told she is Nina here, unlike the titler
+  (`NINA_TITLE_SYSTEM_PROMPT` opens *"This is not Nina"* because a titler in her register returns a
+  useless label; for a caption her voice **is** the deliverable). It carries only the blocks that
+  decide how a single line *sounds*: `JAKARTA_REGISTER`, `ninaManjaRegisterBlock`,
+  `JAKARTA_SLANG_BLOCK`, `VOICE_EXAMPLES_BLOCK`, `ninaGirlfriendVoiceBlock`, `ninaNeverSayBlock`,
+  with `renderSections`' empty-block filter inlined. **It deliberately does NOT carry**
+  `ninaIdentity`, `NINA_EXPERTISE`, `NINA_NOT_A_DOCTOR`, the anger ladder, the context guide or the
+  tool list: ~3,000 tokens of prompt to produce twelve words, and — the concrete failure — an
+  invitation to coach, diagnose or bring up his training under a photograph of herself.
+  **`buildNinaSystemPrompt` remains the only assembler of the full character, and this file must
+  never grow into a second one.** The prompt also has an explicit way to **decline**, so a
+  description saying *"I cannot tell"* produces a refusal rather than a confident invention.
+- **`sanitizeNinaCaption(raw)`** — clean, then strip, then refuse, in that order. Cleaning first
+  because every check assumes single spaces; stripping next so a refusal is about the words and not
+  a wrapping quote; and **`stripEdgeDecoration` runs to a FIXED POINT** rather than once each,
+  because quotes and markdown each wrap the other (`**"nih"**` as readily as `"**nih**"`) and it
+  terminates because both operations only ever remove characters. Then the refusals, most absolute
+  first: no letter, **any digit**, alt-text vocabulary, over the ceiling.
+- **`NINA_CAPTION_MAX_CHARS = 120`, and over it the answer is REFUSED, not truncated.** The ceiling
+  is not a target — the pool's longest line is 27 characters — it is the point past which the answer
+  stops being a chat message and starts being the description paraphrased, which invariant 9
+  forbids. Cutting a sentence in half is how a caption becomes nonsense.
+- **`NINA_CAPTION_SEEN_CHARS = 900`** clamps how much of the description the prompt may see: the
+  witness asks for 60-140 words, so this is a well-behaved answer with slack, and the clamp exists
+  for the badly-behaved one that would otherwise crowd out the instruction.
+- **`NINA_CAPTION_PROMPT_VERSION = 1`** — its own constant, on `NINA_TITLE_PROMPT_VERSION`'s
+  precedent. **Bump that, never `NINA_PROMPT_VERSION`**, which scopes the system text and the
+  schemas in `prompts/tools.ts` only. The tool's property `description` is part of the prompt, so an
+  edit to it bumps this version.
+- **`NINA_CAPTION_TOOL`** — forced (`tool_choice: { type: 'tool' }`), one required `caption` string
+  with a JSON-Schema `maxLength`, and an empty string is an answer it explicitly asks for.
+- **`NinaCaptionSeenKind`** — `'described'` (a witness wrote a paragraph; the admin add path) or
+  `'requested'` (the photograph was made to order and this is the scene she asked for; the selfie
+  path, where no witness ran and none should — paying a vision call to be told back our own prompt
+  would be absurd). It changes only the sentence that introduces the observation, and getting it
+  wrong is how a prompt reads a request as prose.
+
+**Any digit refuses the whole caption**, with no carve-out. Every number that could reach a caption
+comes from a photograph — a depth on a dive computer, a pace on a watch face, a size on a label —
+the app computed none of them, and the witness prompt is already forbidden from reading them out. A
+digit arriving here means the vision model broke rule 1 or `glm-5.3` invented one; both are the same
+defect and both are unsayable. The two layers are not redundant: **the prompt stops the number being
+produced, the sanitiser stops it being said.** `\p{Nd}|\p{No}`, not `[0-9]`.
+
+The **alt-text refusal is invariant 9's enforcement**. The description is private prose written by a
+witness; the caption is her sentence. When the model returns *"foto ini menunjukkan gw sedang
+menyelam"* it has handed back the description in Indonesian, and the runner reads a museum label
+where a message from his friend should be. The canned pool line is a worse caption and a better
+message.
+
+### `caption.ts` — the impure half
+
+`captionNinaPhoto(request, deps?)`: **one `glm-5.3` call, parse, or `null`** — `autotitle.ts`'s
+contract, *one call → parse → silence*. `captionNinaPhotoWith(client, request, { model })` is the
+testable core with the client injected, no database and no environment beyond the model id; the
+injection seam is declared here rather than imported from `autotitle.ts`, on that file's own ruling
+that *"six lines duplicated beats a coupling"*. The tuning is passed **in** rather than fetched, so
+this module holds no store import and a wardrobe saved thirty seconds ago is in the prompt.
+
+**It never throws, and returns `null` for every failure shape** — a thrown call, a `max_tokens`
+stop, no tool block, an empty string, a line tripping a refusal. Every `null` lands in the same
+place, and it is a place that already exists: the caller keeps the `ninaImageCaption` line already
+on the row, which is now guaranteed scene-agnostic. Nothing is persisted on a refusal, so a later
+pass could try again for free. There is **no repair round trip**: a single short line cannot be
+malformed in a way worth describing back, and a refused line means the fallback is correct rather
+than that the model needs another go. `findCaptionBlock` **scans** the content array rather than
+reading `content[0]`, because `distill.ts` recorded a `thinking` block arriving in front of the
+answer.
+
+Budgets, both measured-derived: **`NINA_CAPTION_MAX_TOKENS = 400`** (the payload is under 40 output
+tokens, so everything below the ceiling is headroom for a `thinking` block nobody asked for; output
+tokens are wall clock at ~26-33 ms each, and a `max_tokens` stop is treated as *no caption*) and
+**`NINA_CAPTION_TIMEOUT_MS = 12_000`** (`NINA_TITLE_TIMEOUT_MS`'s number, and what leaves the
+describe call whole inside one segment). `thinking: { type: 'disabled' }` is sent and **not relied
+on** — a 2026-09-03 probe recorded one arriving on this endpoint with the flag set.
+
+### The ninth guarded symbol
+
+`scripts/check-llm-payload-boundary.mjs` names `captionNinaPhoto` and sanctions exactly three paths:
+its own module (a guard that fails on the definition site forces the definition to be renamed —
+`runNinaTurn`'s precedent), `lib/admin/chatPhotoActions.ts` and `lib/nina/imagerun.ts`, the two
+wiring modules phases 3 and 4 will fill in. **Nine guarded symbols; the guard exits 0.** The
+arithmetic behind the entry: on the admin path the caption runs *after* a `glm-4.6v` describe in the
+**same `after()`** — two model calls in one segment, ~15-25 s together — and Server Actions are
+dispatched one at a time per client, so an action that awaited it would make an operator wait that
+long **per photo, in series**. The caption is cosmetic and the row already carries a true canned
+line, so the render never has anything to wait for.
+
+### What this phase did not touch
+
+**Nina's system prompt is byte-for-byte unchanged.** `tests/__snapshots__/nina.prompts.test.ts.snap`,
+`prompts/index.ts` and `prompts/system.ts` are untouched and **`NINA_PROMPT_VERSION` is still `4`**.
+The caption prompt sits on `describe.ts`'s side of that line — a new surface, not an amendment to
+hers. No migration, no schema change, no new env var, no new dependency.
+
+## A generated selfie captions from the scene she asked for (P1-NIN-A020, phase 4 of 4)
+
+**Same bug as the reported one, on the other path that posts a photograph of hers.** `finishSelfie`
+(`imagerun.ts`) wrote `body: ninaImageCaption(jobId)` — a hash-picked draw — under a photograph
+whose content the app *already knew*. `args.scene` is the prose the `generate_image` tool was told
+to draw, and six lines below the caption it is written to `nina_message_images.description`. The
+truth about the picture was one field away from the caption, and the caption ignored it.
+
+The bubble's text now comes from that same scene, through
+`captionNinaPhoto({ seen: args.scene, seenKind: 'requested', tuning })`.
+
+**No vision call, ever, and that is not an omission.** `finishSelfie`'s own docstring settles it:
+*"we wrote the picture, so paying a vision call to be told back our own prompt would be absurd."*
+This is why `NinaCaptionSeenKind` has a `'requested'` member at all — the caption prompt is handed a
+REQUEST rather than a witness's observation, and it is told which it is holding. The one thing a
+witness could add is whether the generator obeyed the prompt, and this path has no budget for a
+second vision call in a segment that has already spent ~78 s generating. `tests/nina.imagerun.test.ts`
+asserts the absence against the **source** of `imagerun.ts` rather than against a spy: a spy on a
+module this file never imports can only ever pass, so the real guarantee is that `vision.ts` is
+absent from the import graph, which is a fact about the text.
+
+**The await is allowed here where the admin path's is not.** `runNinaImageJob` is already inside
+`after()` (see `fireNinaImageGeneration`) and has already spent ~78 s on the generation and a Blob
+write. Nobody is holding a response open — the runner was told "dispatched" a minute and a half ago
+— so a 4-8 s text call at the end is the cheapest thing in the function, and it is sequential with
+the insert because the insert consumes it.
+
+**`ninaImageCaption(jobId)` is the fallback and is unchanged.** Still deterministic in the job id,
+so a row read twice says the same thing, and since phase 1 it draws from `NINA_IMAGE_CAPTION_POOL`,
+which asserts nothing about the picture. That is what makes a caption failure harmless here: `null`
+leaves a *true* sentence rather than the wrong one. It is also, permanently, what
+`scripts/nina-image-worker.ts` says on this same path — no z.ai key, and `imagefail.ts` may import
+nothing — so the two hosts still agree whenever the model call does not land. The asymmetry stated
+plainly: a selfie posted by the server gets a caption about its scene, the rare one posted by the
+worker gets a scene-agnostic canned line, and both are true sentences about the photograph.
+
+**One read is wrapped, and only one.** `readNinaTuning` is a bare `db.select()` and exists in
+`finishSelfie` solely to dress the caption, so a connection fault there is a *caption* problem and
+degrades to `NINA_TUNING_DEFAULTS` rather than costing the photograph. The three reads above it
+(`getNinaMessagesByIds`, `resolveNinaWriteSession`, `insertNinaMessages`) stay bare deliberately:
+without a session or a quote target there is no correct row to write, and failing is the honest
+outcome. `finishSelfie`'s throw contract is unchanged — it still throws for exactly one thing,
+`insertNinaMessages` returning `[]`, and never for a caption problem.
 
 ## The chat turn is asynchronous (R6)
 
@@ -1116,6 +1354,11 @@ are worth knowing:
 - `vision.ts` has two named error classes — `NinaVisionTokenFloorError`, `NinaVisionTransportError`.
 - `imagefail.ts` classifies generation failures into `NINA_IMAGE_FAILURES` and picks what she says
   about each; a failure is a message from Nina, not a stack trace.
+- **`captionNinaPhoto` never throws and returns `null` for every failure shape** — a thrown call, a
+  `max_tokens` stop, no tool block, an empty string, a refused line. Even `narrativeClient()`
+  throwing (it reads `@/lib/env`) is caught, because both callers run it inside `after()` where a
+  rejection is a log line and nothing else. A `null` is not an error state: the row keeps the canned
+  scene-agnostic caption, nothing is persisted, and a later pass could try again for free.
 - `persona.ts` and `tuning.ts` define no error types and never throw.
 
 ## Gotchas
@@ -1126,6 +1369,10 @@ are worth knowing:
   **That is correct and intended**: it is what makes phase 2 shippable alone, with the tree building,
   tests passing and behaviour byte-for-byte unchanged. Phase 3 replaces those references with
   `ninaXxx(tuning)`.
+- **`captionNinaPhoto` has no importer either, and for the same reason.** `P1-NIN-A019` shipped the
+  engine unwired on purpose: phases 3 and 4 of that set run concurrently and both needed it
+  unit-tested first. The payload-boundary guard already sanctions the two wiring modules that do not
+  call it yet, so neither phase has to edit the guard and collide with the other.
 - **Never read `tuning.traits`, `tuning.dials` or `tuning.relationship` from `persona.ts` or
   `prompts/system.ts`.** Use `ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`. A direct
   read compiles, passes every containment test, and produces a checkbox the operator can clear with
@@ -1211,6 +1458,34 @@ are worth knowing:
   operator's post-merge step. Deploying the code without it leaves production without the column,
   and then every read naming `deleted_at` errors — the list, the detail, the claim, the revive and
   the sweep.
+- **Never shrink `NINA_IMAGE_CAPTIONS`.** It is a historical *set* read as an identifier by
+  `isNinaPhotoCarrierMessage`, not a menu. Rows in the database carry all five sentences, so
+  deleting a member stops every bubble holding it being recognised as a photo carrier. What you may
+  do is stop *picking* one: add it to `NINA_SCENE_ASSERTING_CAPTIONS` and
+  `NINA_IMAGE_CAPTION_POOL` derives itself. Never hand-copy the pool — a copied subset drifts
+  silently the first time a sixth line is added, and the test still passes.
+- **`imagefail.ts` imports nothing, by hard invariant.** Not `server-only`, not `@/lib/env`, not a
+  type. `scripts/nina-image-worker.ts` resolves it by relative path under
+  `--experimental-strip-types`, and one import stops the worker booting.
+- **`ninaImageCaption` is a fallback, not the caption.** Every degraded path lands on it — model
+  failure, timeout, token floor, empty completion, and permanently the GitHub-runner worker, which
+  has no z.ai key. That is why the pool must stay true of *any* photograph.
+- **`prompts/caption.ts` must never grow into a second character assembler.** It carries the blocks
+  that decide how one line *sounds* and nothing else; `buildNinaSystemPrompt` is the only assembler
+  of the full character. Adding `ninaIdentity` there costs ~3,000 tokens to produce twelve words and
+  invites her to coach or diagnose under a photograph of herself.
+- **Bump `NINA_CAPTION_PROMPT_VERSION`, never `NINA_PROMPT_VERSION`.** The tool's property
+  `description` is part of the prompt and counts. Hers scopes `prompts/system.ts` and
+  `prompts/tools.ts` only, and a bump there would date the snapshot gate to a change that never
+  touched it.
+- **A caption over the ceiling is refused, not truncated**, and any digit refuses the whole caption
+  with no carve-out. Both rules read as harsh and both are deliberate: half a sentence is nonsense,
+  and every number that could reach a caption came from the photograph rather than from
+  `lib/format.ts`.
+- **`describeNinaImages`'s `subject` defaults to `'runner'`** — never make it required and never
+  reorder the `Record`. It is what keeps the composer pre-pass, both avatar paths and the chat-photo
+  describe byte-identical. And never move the token floor to compute before the prompt is chosen:
+  it is text-aware, and the longer self prompt is *supposed* to raise it.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -1220,7 +1495,7 @@ are worth knowing:
 
 ## Tests
 
-In-package: 16 colocated `*.test.ts` files over the pure modules. Repo-level: 18 files in `tests/`,
+In-package: 25 colocated `*.test.ts` files over the pure modules. Repo-level: 23 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*
@@ -1264,6 +1539,25 @@ non-girlfriend relationships**, and it was **generated from the pristine tree be
 @ `02dc79a` rendered. Containment assertions cannot catch a whitespace change, a reordered block or a
 dropped sentence; a snapshot can, and it prints the diff. The containment tests beside it are the
 readable half: they name *what* leaked when it fails.
+
+**The caption engine is tested in three files, none of which needs a client or a store.**
+`tests/nina.caption.test.ts` covers the pure rules (`sanitizeNinaCaption`'s label prefix, a quote
+inside a quote, control characters and zero-width invisibles, a colon that belongs to the sentence,
+an ordinary word that merely *contains* a forbidden one, refusal rather than truncation over the
+ceiling), `parseNinaCaption`, `buildNinaCaptionRequest` (a `null` for nothing to caption so **no
+call is made**, the clamp, the instruction last, and the two `seenKind` preambles),
+`buildNinaCaptionSystemPrompt` (it carries the voice blocks, it does **not** carry the full
+character assembly, it gives the model a way to decline, and it has **no empty paragraph** at the
+default relationship) and `captionNinaPhotoWith` against an injected client — including reading past
+a `thinking` block rather than off the front of the array, and asserting the forced tool.
+`tests/nina.imagefail.test.ts` pins the pool/set derivation **in both directions** — all five
+captions survive because they are identifiers, every pool member is a set member, no pool member is
+scene-asserting — and proves the scene-asserting line is unreachable **exhaustively over the pool**
+rather than by sampling seeds, because the pool is what bounds the answer whatever `pickLine`
+hashes to. It also proves every pool member is still reachable, so nothing was stranded.
+`lib/nina/vision.test.ts` asserts the runner prompt is sent **byte for byte by default** and that
+the self prompt **still trips** the token floor on the measured drop signature — that case must keep
+failing rather than start passing, since a longer prompt raises a text-aware floor.
 
 **The pathname windows are tested by measurement, not by arithmetic** (`images.test.ts`, and
 `tests/admin.chatPhotos.test.ts` for the admin twin). The stored fixture carries a real 30-symbol
@@ -1467,3 +1761,21 @@ and `NINA_PROMPT_VERSION` 4 → 5 (phase 3). Plans for the set are
 - **`REPEATED_LATE_START`, `MISSED_USUAL_DAY` and `ACWR_SPIKE` get no bespoke prescription.** The
   block's general shape covers them; adding three paragraphs to `INSTRUCTOR_COACHING` is a one-file
   change.
+
+**`P1-NIN-A019` is phase 1 of 4 of `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md`** — *Nina's photo
+captions come from the photograph*, on `feature/nina-photo-caption-from-image` off `origin/main` @
+`f839116`. It satisfies R1 and R2 and ships **the caption engine with nothing wired to it**. Its
+plan file is `lib/nina/.workflows/plan/P1-NIN-A019.md`; see *"The caption under a photograph of
+hers"* above.
+
+| Phase | What | Package | Task |
+|---|---|---|---|
+| 1 | Her eyes for her own photo, and her voice for the caption | `lib/nina` | `P1-NIN-A019` *(this one)* |
+| 2 | The carrier marker: a photo bubble free text cannot hide | `lib/db` + `lib/nina` + `lib/admin` + `scripts` | `P1-DB-A002` |
+| 3 | The admin add path captions from the photograph | `lib/admin` | `P1-ADM-A000` |
+| 4 | Generated selfies caption from the scene she asked for | `lib/nina` | `P1-NIN-A020` |
+
+Phases 3 and 4 both depend on 1 and 2 and run concurrently — which is exactly why phase 1 shipped
+unwired and why the payload-boundary guard's ninth entry already sanctions both wiring modules: two
+phases each appending to one guard is two merge conflicts, and a window in each of them where the
+new call is unguarded.
