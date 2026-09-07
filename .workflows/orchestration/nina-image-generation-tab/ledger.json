@@ -45,43 +45,43 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "5e70918",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "R10 backend. buildImageRequestBody gains optional referenceDataUrl emitting one input_references entry; unanchored payload byte-identical, asserted against a literal not a re-derivation. NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS=220_000 via ninaImageCallTimeoutMs(anchored); NINA_IMAGE_RUN_BUDGET_MS 200_000->240_000 so an anchored attempt (220+20) fits at all. Invariant 3 asserted for BOTH paths: 45+150+20=215 and 45+220+20=285, each <=300. Invariant 2 intact (imagerecipe.ts imports nothing; worker still loads under --experimental-strip-types). Reference degrades to unanchored on all four fetch failure modes. TaskID is A026 not A023: A023 is spent on live feature/nina-emoji-shortcuts, committed there but not on main, so a local counter read calls it free. DELIBERATE PEER PUBLISH: 5e70918 carries p2's uncommitted prompt hunks in tests/nina.imagerecipe.test.ts (shared by design per conflict warning 1 -- p2 owns describe('the prompt'), p3 the payload/threshold blocks) and p2's P1-NIN-A024 todos entry, both byte-unaltered, file measured green (137 tests) immediately before commit; excluding it would have left phase 3 without the assertions its own exit criteria require. p2 warned explicitly not to re-add A024. Parent is b691af8 not 3a95d37 -- phase 5 landed mid-run, fast-forward, no conflict. 5 suite failures are all tests/admin.shell.test.ts, phase 4's remaining step, not a phase 3 regression.",
       "package": "lib/nina`, `scripts",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T16:04:08+00:00",
       "satisfies": [
         "R10"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A026",
       "title": "The reference image on the wire, and the timeout it costs"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "684e787",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "route+nav+form landed; carries phase 5's picker mount (it committed first, its test forced it); ninaImageReferenceSchema.id dropped .min(1).nullable() per phase 1's ''-is-empty id, else no unselected reference validated; readme-updater skipped, phase 7 owns both readmes",
       "package": "app/admin`, `components/admin`, `lib/admin",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T16:04:12+00:00",
       "satisfies": [
         "R2",
         "R4",
         "R9",
         "R10"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-C410",
       "title": "The route, the sixth nav cell, and the form"
     },
     {
@@ -149,6 +149,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T15:59:42+00:00",
+  "updated": "2026-09-07T16:04:12+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
