@@ -6,6 +6,7 @@ import { authEnv } from '@/lib/env'
 import { isValidId } from '@/lib/id'
 import { after } from 'next/server'
 
+import { ninaPhotoProvenance } from './attach'
 import { titleNinaSessionIfNeeded } from './autotitle'
 import {
   closeNinaChatTurn,
@@ -26,6 +27,7 @@ import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
   getNinaAvatar,
   getNinaMessageImage,
+  getNinaMessageImagesForMessages,
   getNinaMessagesByIds,
   getNinaSession,
   insertNinaMessageImages,
@@ -188,6 +190,14 @@ async function resolveAttachment(
   pathname: string
   kind: NinaImageKind
   description: string | null
+  /**
+   * F37 R1/R3. Which row or avatar these bytes already belong to. Both NULL is unreachable from
+   * here: this function is only ever called for a photograph the server ALREADY owns, so the row
+   * it writes is a reference by definition. `ninaPhotoProvenance` decides which column, and
+   * flattens a re-attached reference to its original.
+   */
+  sourceAvatarId: string | null
+  sourceImageId: string | null
 } | null> {
   if (attach.kind === 'avatar') {
     /*
@@ -211,6 +221,12 @@ async function resolveAttachment(
       pathname: row.pathname,
       kind: 'generated',
       description: row.description,
+      /*
+       * F37 R3. `row.id` and not `attach.id`, though the read was by primary key and they are
+       * equal: the provenance names the row this function actually proved is his, which is a
+       * property the foreign key can then rely on rather than one a reader has to reconstruct.
+       */
+      ...ninaPhotoProvenance({ kind: 'avatar', id: row.id }),
     }
   }
 
@@ -220,6 +236,11 @@ async function resolveAttachment(
    * `getNinaMessageImage` is phase 3's mirror of `getNinaAvatar` and is why this phase depends on
    * phase 3. Bounded before, so this is a smaller win than the avatar branch — done in the same
    * commit because leaving one of two identical mistakes in place is how it grows back.
+   *
+   * `getNinaMessageImage` deliberately does NOT filter references (invariant 2): a photograph
+   * hidden from the two listings is still a photograph in a bubble, and re-attaching it has to
+   * keep working. The row's own provenance is what makes that safe — it is passed through below
+   * and flattened, so the copy of a copy points at the original.
    */
   const row = await getNinaMessageImage(userId, attach.id)
   if (row == null) return null
@@ -229,6 +250,12 @@ async function resolveAttachment(
     pathname: row.pathname,
     kind: row.kind,
     description: row.description,
+    ...ninaPhotoProvenance({
+      kind: 'image',
+      id: row.id,
+      sourceAvatarId: row.sourceAvatarId,
+      sourceImageId: row.sourceImageId,
+    }),
   }
 }
 
@@ -569,6 +596,17 @@ export async function sendNinaMessage(input: {
           pathname: attached.pathname,
           description: attached.description,
           sortOrder: images.length,
+          /*
+           * F37 R1/R3. **The two fields that make this row a reference rather than a duplicate.**
+           * `resolveAttachment` filled them in from the row it proved he owns, so the collection
+           * listings skip this row while the bubble, the viewer, the download control and Nina's
+           * prompt all still find it by `message_id`.
+           *
+           * The upload block twenty lines up sets NEITHER, and must not: those bytes arrived from
+           * his camera and the row is an original.
+           */
+          sourceAvatarId: attached.sourceAvatarId,
+          sourceImageId: attached.sourceImageId,
         },
       ])
     } catch (cause) {
@@ -1019,7 +1057,6 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
     console.warn('[nina] chained turn failed', { turnId, error: String(cause) })
   }
 }
-
 
 export interface NinaReplyPoll {
   ok: boolean

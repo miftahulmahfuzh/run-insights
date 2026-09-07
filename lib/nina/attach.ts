@@ -161,3 +161,69 @@ export function parseNinaPhotoParam(raw: unknown): NinaPhotoPointer | null {
   if (!isValidId(id)) return null
   return { kind, id }
 }
+
+/* ────────────────────────────────────────────────────────────────────────────────────────────────
+ * PROVENANCE: WHICH COLUMN A RE-ATTACHED PHOTO RECORDS ITSELF IN — F37 R1/R3
+ * ──────────────────────────────────────────────────────────────────────────────────────────────*/
+
+/**
+ * The two `nina_message_images` columns that say where a row's bytes came from. A row is a
+ * **reference** when either is non-null, and a reference is skipped by the three collection reads
+ * in `lib/nina/queries.ts` and by nothing else.
+ *
+ * Declared here rather than imported out of `lib/nina/queries.ts` for `RunAttachmentInput`'s
+ * stated reason, sixty lines up: this module is read by a client component, a Server Component
+ * and a unit suite, and it stays pure by naming what it produces instead of reaching into a
+ * module that opens a database connection.
+ */
+export interface NinaPhotoProvenance {
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+}
+
+/**
+ * What the server has in hand after it has proved the attachment is his — one owner-scoped
+ * single-row read, already done.
+ *
+ * The `'image'` arm carries the row's OWN provenance because a runner can re-attach a photograph
+ * that was itself re-attached, and that chain has to be flattened; see `ninaPhotoProvenance`.
+ */
+export type NinaProvenanceSource =
+  | { kind: 'avatar'; id: string }
+  | {
+      kind: 'image'
+      id: string
+      sourceAvatarId: string | null
+      sourceImageId: string | null
+    }
+
+/**
+ * **Which provenance columns a newly attached row carries.** The whole of R1 and R3's write side,
+ * as a pure function, because the two mistakes available here are both silent:
+ *
+ *   1. **Putting the id in the wrong column.** An avatar id in `source_image_id` fails the
+ *      foreign key at INSERT time, and `sendNinaMessage` swallows that failure with a warning —
+ *      so the photograph would render and the duplicate would come back with no error anywhere.
+ *   2. **Not flattening.** He re-attaches A, getting B. He re-attaches B, getting C. If C pointed
+ *      at B, then deleting B's message would set C's column NULL and C would reappear in the
+ *      collection as a duplicate of A, which still exists. Pointing C at A instead means the
+ *      column always names the ORIGINAL — the same thing `drizzle/0010`'s backfill writes for the
+ *      rows that predate this function, so the two cannot disagree.
+ *
+ * **The avatar id is INHERITED, not dropped**, when a chat row that came from the album is
+ * re-attached. Those bytes really are the album face's, and keeping the pointer is what holds R3
+ * even after the intermediate chat row is deleted: `source_image_id` goes NULL under the FK's
+ * `SET NULL`, `source_avatar_id` does not, and the album face still never appears in Media.
+ *
+ * A fresh upload and one of her generations call this NOT AT ALL — they are originals, and
+ * `NinaImageInsert` leaves both fields optional so that saying nothing is how you say so.
+ */
+export function ninaPhotoProvenance(source: NinaProvenanceSource): NinaPhotoProvenance {
+  if (source.kind === 'avatar') {
+    return { sourceAvatarId: source.id, sourceImageId: null }
+  }
+  return {
+    sourceAvatarId: source.sourceAvatarId,
+    sourceImageId: source.sourceImageId ?? source.id,
+  }
+}
