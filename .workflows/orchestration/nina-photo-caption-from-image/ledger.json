@@ -12,6 +12,16 @@
       "fork": "The stale 'nina-job-redo-and-soft-delete is in flight' premise appears in the plan index's Rollback section AND in phase-2.md Step 1. Correct both, or only the index?",
       "rung": "The orchestrator's own Step 2 rule -- phase plans are copied unchanged, because 'a plan that gets touched on the way through is a plan whose reconciliation no longer holds'. Reinforced by p2 being a live reader of that plan's worktree twin right now: editing a plan under its own implementer is the shared-file hazard I declined for the index. The instruction in phase-2.md is correct as written; only its conditional is stale, and the operative correction belongs in the one document the lander reads.",
       "when": "2026-09-07"
+    },
+    {
+      "also": "P1-DB-A002 (phase 2) and P1-ADM-A000 (phase 3) were checked and are free -- no rename needed.",
+      "by": "orch-nina-photo-caption-from-image",
+      "chosen": "OURS MOVE: phase 1 P1-NIN-A014 -> P1-NIN-A019, phase 4 P1-NIN-A015 -> P1-NIN-A020. A016-A018 are claimed by the live nina-instructor-character set, so A019/A020 are the first unclaimed pair.",
+      "consequence": "A false 'done' on phases 1 and 4 would have (a) spawned wave 1 against a caption engine that does not exist yet, and (b) marked phase 4 complete without any work. Renaming is deferred until phase 1 commits, because lib/nina/.workflows/todos.md holds BOTH ids and impl-...-p1 is writing that file right now. Phase 4 cannot spawn before phase 1 lands anyway, so the ordering is naturally safe.",
+      "fork": "Our phase 1 minted P1-NIN-A014 and phase 4 minted P1-NIN-A015. Both ids are ALREADY TAKEN on origin/main by nina-job-redo-and-soft-delete (its phase 2 and phase 1), which landed at fa1b7e3 -- and both are marked [x] complete there. Whose ids move?",
+      "how_found": "swarm.py verify derived phase 1 as 'done' with evidence 'todos.md: P1-NIN-A014 complete' while phase 1 was demonstrably still running its test suite and had no commit. task_state() greps every todos.md for the id and returns 'complete' on an [x] anywhere in the hits -- so it was reading the OTHER set's finished task. swarm.py was correct; the duplicate id was the defect.",
+      "rung": "6: surrounding convention. The other set's ids are already committed to main and its tasks are closed; a landed, completed id is not renameable without rewriting history that other documents cite. Ours are still only in an uncommitted worktree file, so ours are the cheap side to move.",
+      "when": "2026-09-07"
     }
   ],
   "parent_card": "miftahulmahfuzh/run-insights#113",

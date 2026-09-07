@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "f1bdbc7",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": "live in tmux @48 (pane %56), mid tests/nina.prompts.test.ts; nine files edited uncommitted in the worktree. Derived 'pending' is the live-process blind spot -- a running session leaves no trace in git or todos.md -- NOT an abandoned phase. Do not re-spawn: a second session on these nine files is the shared-index hazard with both writers believing they own them.",
+      "note": "Verified: f1bdbc7 ancestor of local branch and origin, exactly 9 files. Branch invariants checked independently at the tip: NINA_DISTILL_PROMPT_VERSION === 3 (its D6 bump), NINA_PROMPT_VERSION === 4 (phase 3's), frozen snapshot byte-identical to base f839116, worktree clean. 145 test files / 2845 tests green -- run AFTER phase 2 landed, so the combined tree is corroborated by both sessions reporting the same count. R1 MEASURED not assumed: local prod build on port 3457 + Playwright at /admin/personality gave 3x2 with all six cards 93px at 1440px, 2x3 at 1024/800, 1 col content-sized at 420px; removing sm:auto-rows-fr at runtime returned rows to 77/93, so the fix is load-bearing. DECISION (a) rung 6: 15 PageProps/LayoutProps tsc errors are absent Next-generated types, cleared by one next build, none in its nine files -- pre-existing, not drift. DECISION (b) tie-break reversibility: did NOT run the plan's manual select-Instructor-and-Save step because .env.local points at the PRODUCTION Neon database and saving would flip Nina's live relationship for real users; the prompt content that step would eyeball is asserted by tests instead. COORDINATOR CONCURS -- a live prod write is not a phase's side effect. NOTE on its correction: P1-NIN-A016 was genuinely absent from the todos.md it could see, because the coordinator's task rows are committed on main while the phase reads the feature branch; the row exists and no phase bookkeeping was lost.",
       "package": "lib/nina`, `lib/admin`, `components/admin`, `lib/db",
       "plan": ".workflows/plan/nina-instructor-character/phase-1.md",
-      "reported_at": "2026-09-07T05:16:20+00:00",
+      "reported_at": "2026-09-07T05:20:53+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "running",
+      "status": "done",
       "task_id": "P1-NIN-A016",
       "title": "The sixth character, and the 3x2 grid"
     },
@@ -48,14 +48,14 @@
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "live in tmux @52 (pane %61), spawned into an exclusive worktree -- phases 1 and 2 both landed, so no concurrent writer this wave. Derived 'pending' is the live-process blind spot, NOT abandonment; do not re-spawn. Cross-set id check run per orch-nina-photo-caption-from-image's report: P1-NIN-A018 has exactly one checkbox line repo-wide and it is mine and open, so task_state() cannot derive a false 'done' for this phase from a foreign set's closed id.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-instructor-character/phase-3.md",
-      "reported_at": "2026-09-07T02:41:33+00:00",
+      "reported_at": "2026-09-07T05:22:30+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": "P1-NIN-A018",
       "title": "The coaching register and the insight path"
     }
@@ -63,6 +63,6 @@
   "plan": "/home/miftah/.worktrees/run-insights/nina-instructor-character/NINA_INSTRUCTOR_CHARACTER_PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-instructor-character",
-  "updated": "2026-09-07T05:16:27+00:00",
+  "updated": "2026-09-07T05:22:30+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-instructor-character"
 }
