@@ -79,7 +79,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The admin add path captions from the photograph"
     },
@@ -99,7 +99,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A020",
       "title": "Generated selfies caption from the scene she asked for"
     }
@@ -107,7 +107,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-caption-from-image",
-  "updated": "2026-09-07T05:27:09+00:00",
+  "updated": "2026-09-07T05:29:04+00:00",
   "verified_at": "2026-09-07T05:17:14+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
 }
