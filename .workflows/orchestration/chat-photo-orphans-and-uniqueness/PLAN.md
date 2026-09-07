@@ -364,6 +364,16 @@ stamped at generation time. The same property carries through the landing regene
 watermark's value is therefore not load-bearing for this set — which is what makes the property
 survive the watermark moving twice in one evening (13:10:34.959Z → 16:02:49.236Z).
 
+**Do not read that as "check the watermark" being the general test.** It is one of three independent
+ways a migration can be wrong on arrival, and here it is the one that happens *not* to fire. The
+durable lesson from the whole evening is narrower and harder: **a gate can pass clean on a question
+adjacent to the one you asked.** Measured instances, all tonight — `db:check` green over a duplicate
+`0009`; `land --step check` reporting `migrations.added: []` while the branch plainly added three
+drizzle artefacts; `db:migrate` exiting 0 on an entry it skipped; a `grep -c` over a path that may
+not exist returning the same `0` as a real no-match; a UNIQUE index answering *"can two rows
+coexist"* when the question was *"are the values I am about to insert distinct"*. Verify the object,
+not the exit code; read the file, not its provenance.
+
 Migration ordering, for the record: a merge fixes a journal's *numbering* and not its *ordering* —
 it preserves each entry's original `when`, so an entry stamped below production's applied watermark
 is skipped even after the number is right. That does not apply here, because phase 1's pre-merge
