@@ -101,7 +101,6 @@ export interface NinaMemoryGateway {
       text: string
       sourceMessageId: string | null
       category?: NinaFactCategory
-      confidence?: number
     },
   ): Promise<void>
   /** `source` per existing slot key. Ruling (c) rule 2 is unimplementable without this. */
@@ -286,7 +285,6 @@ export async function applyMemoryPlan(
         text: fact.text,
         sourceMessageId: fact.sourceMessageId,
         category: fact.category,
-        confidence: fact.confidence,
       })
     } catch (cause) {
       console.warn('[nina.distill] fact append failed', { error: String(cause) })

@@ -1,0 +1,1 @@
+ALTER TABLE "nina_memory_facts" DROP COLUMN "confidence";

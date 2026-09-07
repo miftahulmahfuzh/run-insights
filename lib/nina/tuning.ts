@@ -69,7 +69,9 @@
  * ==========================================================================*/
 
 /** Every trait and every dial is an integer percent, 0–100. The schema's smallest-sensible-unit
- * rule (roadmap D5) applied to an intensity: `nina_memory_facts.confidence` is the precedent. */
+ * rule (roadmap D5) applied to an intensity: `nina_model_calls.cost_micro_usd` is the precedent —
+ * integer millionths of a dollar. (It was `nina_memory_facts.confidence` until task #135 dropped
+ * that column.) */
 export const NINA_SCORE_MIN = 0
 export const NINA_SCORE_MAX = 100
 

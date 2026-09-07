@@ -109,8 +109,6 @@ export interface MemoryRow {
   editable: boolean
   /** Ledger rows only. `null` everywhere else, and the cell renders nothing. */
   category: AdminFactCategory | null
-  /** Ledger rows only, integer percent 0–100. `null` everywhere else. */
-  confidence: number | null
   /** `null` on a promise, and on a vocabulary key that has no row — nobody wrote it. */
   origin: NinaMemorySource | null
   /**
