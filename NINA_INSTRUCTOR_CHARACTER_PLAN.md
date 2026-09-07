@@ -6,12 +6,12 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-instructor-character`
 **Branch:** `feature/nina-instructor-character` (base: `origin/main` @ `f839116`)
 **Phases:** 3
-**Status:** planned
+**Status:** in progress
 **Reconciled:** yes — three phase plans reconciled in one round; see **Reconciliation Log**
 **Baseline suite:** green on this branch at **145 test files, 2834 tests**. Every phase's exit
 criteria are measured against that number: the file count stays 145 (no phase creates a test file)
 and the test count only rises.
-**Coordinator:** —
+**Coordinator:** `orch-nina-instructor-character`
 
 ---
 
@@ -122,9 +122,9 @@ coupling is stated rather than pretended away.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | The sixth character, and the 3x2 grid | R1, R2 | `lib/nina`, `lib/admin`, `components/admin`, `lib/db` | 9 | — | NORMAL | `.workflows/plan/nina-instructor-character/phase-1.md` | — | — |
-| 2 | A schedule she can keep | R3 | `lib/nina`, `lib/admin` | 6 | — | NORMAL | `.workflows/plan/nina-instructor-character/phase-2.md` | — | — |
-| 3 | The coaching register and the insight path | R3 | `lib/nina` | 4 | 1, 2 | HARD | `.workflows/plan/nina-instructor-character/phase-3.md` | — | — |
+| 1 | The sixth character, and the 3x2 grid | R1, R2 | `lib/nina`, `lib/admin`, `components/admin`, `lib/db` | 9 | — | NORMAL | `.workflows/plan/nina-instructor-character/phase-1.md` | `P1-NIN-A016` | — |
+| 2 | A schedule she can keep | R3 | `lib/nina`, `lib/admin` | 6 | — | NORMAL | `.workflows/plan/nina-instructor-character/phase-2.md` | `P1-NIN-A017` | — |
+| 3 | The coaching register and the insight path | R3 | `lib/nina` | 4 | 1, 2 | HARD | `.workflows/plan/nina-instructor-character/phase-3.md` | `P1-NIN-A018` | — |
 
 **File counts are post-reconciliation and each was checked against the phase plan's own Files
 table.** Phase 1 is 9 (`tuning.ts`, `persona.ts`, `tuningModel.ts`, `prompts/distill.ts`,
