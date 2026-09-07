@@ -140,7 +140,20 @@ export const NINA_IMAGE_CAPPED_NOTE =
   'of taking selfies. Do not mention a limit, a number, a quota, or a system. Do not promise a ' +
   'specific time. Just say it and move the conversation on.'
 
-/** Captions for a photo that DID arrive. Never empty: an empty bubble is not a message. */
+/**
+ * **Every caption the app has ever written into a photo bubble.** A HISTORICAL SET, not a menu.
+ *
+ * Never empty: an empty bubble is not a message.
+ *
+ * ── DO NOT SHRINK THIS ARRAY. IT IS AN IDENTIFIER, NOT A VOCABULARY. ───────────────────────────
+ * `isNinaPhotoCarrierMessage` (`lib/admin/chatPhotos.ts`) asks whether a message exists only to
+ * carry a photograph, and for every row written before the marker column existed the only
+ * available answer is "its text is one of these". Rows in the database carry all five sentences.
+ * Delete a member and every bubble holding it stops being recognised as a carrier, so removing its
+ * last photograph leaves the empty caption bubble that predicate exists to prevent.
+ *
+ * What you may do is stop PICKING one — see `NINA_IMAGE_CAPTION_POOL`.
+ */
 export const NINA_IMAGE_CAPTIONS: readonly string[] = [
   'nih',
   'nih, puas?',
@@ -148,6 +161,36 @@ export const NINA_IMAGE_CAPTIONS: readonly string[] = [
   'foto gw. jangan di-zoom',
   'udah nih, jangan minta lagi',
 ]
+
+/**
+ * **The one member that asserts a SCENE, and the whole reason this file changed.**
+ *
+ * MEASURED, from the user's own screenshot (2026-09-07): an underwater photograph of her in a
+ * swimsuit and fins, captioned `ini gw abis lari tadi`. That text was not a model output and was
+ * never about that photograph — `pickLine` hashed a fresh nanoid mod 5 and landed on index 2.
+ *
+ * The other four are true of ANY photograph of her: `nih` says nothing about what is in it. This
+ * one names an activity, so it is right one time in however many photographs happen to be of a
+ * run, and wrong the rest of the time. A canned line may close a promise; it may not claim a fact.
+ * That is `lib/llm/narrate.ts`'s rule — *"a fallback may never assert a measurement"* — applied to
+ * a scene instead of a number.
+ *
+ * It stays in `NINA_IMAGE_CAPTIONS` because that array is a set of identifiers. It leaves the pool.
+ */
+export const NINA_SCENE_ASSERTING_CAPTIONS: readonly string[] = ['ini gw abis lari tadi']
+
+/**
+ * **What `ninaImageCaption` may actually say**: the captions that assert nothing about the picture.
+ *
+ * DERIVED rather than written out a second time, on purpose. A hand-copied subset is a subset that
+ * drifts the first time somebody adds a sixth line, and the drift is silent — the test would still
+ * pass and the caption would still be wrong. `tests/nina.imagefail.test.ts` pins the derivation in
+ * both directions: every member of the pool is a member of the set, and no member of the pool is
+ * scene-asserting.
+ */
+export const NINA_IMAGE_CAPTION_POOL: readonly string[] = NINA_IMAGE_CAPTIONS.filter(
+  (line) => !NINA_SCENE_ASSERTING_CAPTIONS.includes(line),
+)
 
 /**
  * Deterministic choice, seeded by the job id. **Not `Math.random()`** — a pure function is testable,
@@ -171,6 +214,20 @@ export function ninaImageApology(kind: NinaImageFailure, jobId: string): string 
   return pickLine(NINA_IMAGE_APOLOGIES[kind], jobId)
 }
 
+/**
+ * The fallback caption for a photograph that DID arrive, when nothing better is in hand.
+ *
+ * Still deterministic in the job id, and still `pickLine`, for the reason it always was: a job read
+ * twice must say the same sentence both times. What changed is the array — it draws from the POOL,
+ * so this function can no longer put a claim about a run under a photograph of a dive.
+ *
+ * ── THIS IS NOW A FALLBACK, NOT THE CAPTION ───────────────────────────────────────────
+ * `lib/nina/caption.ts` writes the real one from what is actually in the picture. This is what she
+ * says when that call fails, when the vendor drops the image, and — permanently — on
+ * `scripts/nina-image-worker.ts`, which runs on a GitHub runner with no z.ai key and can never
+ * make a model call of its own. Every one of those paths needs a sentence that is true of any
+ * photograph, which is exactly what the pool now guarantees.
+ */
 export function ninaImageCaption(jobId: string): string {
-  return pickLine(NINA_IMAGE_CAPTIONS, jobId)
+  return pickLine(NINA_IMAGE_CAPTION_POOL, jobId)
 }

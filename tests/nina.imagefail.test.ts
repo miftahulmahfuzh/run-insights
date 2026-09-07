@@ -4,8 +4,10 @@ import {
   classifyImageFailure,
   NINA_IMAGE_APOLOGIES,
   NINA_IMAGE_CAPPED_NOTE,
+  NINA_IMAGE_CAPTION_POOL,
   NINA_IMAGE_CAPTIONS,
   NINA_IMAGE_FAILURES,
+  NINA_SCENE_ASSERTING_CAPTIONS,
   ninaImageApology,
   ninaImageCaption,
   pickLine,
@@ -169,5 +171,51 @@ describe('the captions and the cap note', () => {
 describe('pickLine', () => {
   it('throws on an empty list rather than returning undefined', () => {
     expect(() => pickLine([], 'k')).toThrow()
+  })
+})
+
+describe('the caption pool is not the caption set', () => {
+  it('keeps all five historical captions, because they are identifiers', () => {
+    // Shrinking this array orphans every bubble in the database that carries the missing line:
+    // `isNinaPhotoCarrierMessage`'s legacy clause stops recognising it as a carrier, and removing
+    // its last photograph then leaves the empty bubble that predicate exists to prevent.
+    expect(NINA_IMAGE_CAPTIONS).toHaveLength(5)
+    expect(NINA_IMAGE_CAPTIONS).toContain('ini gw abis lari tadi')
+  })
+
+  it('draws only from the set', () => {
+    for (const line of NINA_IMAGE_CAPTION_POOL) expect(NINA_IMAGE_CAPTIONS).toContain(line)
+  })
+
+  it('drops exactly the scene-asserting members from the pool', () => {
+    expect(NINA_IMAGE_CAPTION_POOL).toHaveLength(
+      NINA_IMAGE_CAPTIONS.length - NINA_SCENE_ASSERTING_CAPTIONS.length,
+    )
+    for (const line of NINA_SCENE_ASSERTING_CAPTIONS) {
+      expect(NINA_IMAGE_CAPTIONS).toContain(line)
+      expect(NINA_IMAGE_CAPTION_POOL).not.toContain(line)
+    }
+  })
+
+  it('cannot pick a scene-asserting line for ANY seed', () => {
+    // EXHAUSTIVE over the pool rather than sampled over seeds: the pool is what bounds the answer,
+    // so proving the pool is clean proves every seed is, whatever `pickLine` hashes to.
+    for (const line of NINA_IMAGE_CAPTION_POOL) {
+      expect(NINA_SCENE_ASSERTING_CAPTIONS).not.toContain(line)
+    }
+    // And a spot check through the real accessor, over enough seeds to hit every index.
+    for (let i = 0; i < 200; i++) {
+      expect(NINA_SCENE_ASSERTING_CAPTIONS).not.toContain(ninaImageCaption(`seed-${i}`))
+    }
+  })
+
+  it('reaches every member of the pool across seeds, so nothing is stranded', () => {
+    const seen = new Set<string>()
+    for (let i = 0; i < 200; i++) seen.add(ninaImageCaption(`seed-${i}`))
+    expect(seen.size).toBe(NINA_IMAGE_CAPTION_POOL.length)
+  })
+
+  it('is still deterministic in the id', () => {
+    expect(ninaImageCaption('abcdefghijkl')).toBe(ninaImageCaption('abcdefghijkl'))
   })
 })

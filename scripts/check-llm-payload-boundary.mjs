@@ -19,10 +19,10 @@
 // finding out that a decision was taken, and nobody deletes the weight from a payload thinking
 // they are fixing a leak.
 //
-// ── RULE 2 STANDS, AND NOW COVERS EIGHT ENTRY POINTS. THIS TABLE IS COMPLETE ──────────────────
+// ── RULE 2 STANDS, AND NOW COVERS NINE ENTRY POINTS. THIS TABLE IS COMPLETE ───────────────────
 // A MODEL CALL IS NEVER AWAITED FROM A PAGE RENDER (plan §7.2, and F33 plan invariant 4).
 //
-// All eight entries ship from the phase that owns this file, and NO OTHER PHASE EDITS IT. The
+// All nine entries ship from the phase that owns this file, and NO OTHER PHASE EDITS IT. The
 // last two arrived together in F35 phase 4 and one of the two symbols did not exist yet — phase 6
 // creates it — and the entry is written for it anyway, because the alternative was two phases each
 // appending to one guard: two merge conflicts, and a window in each of them where the new
@@ -62,6 +62,12 @@
 //     `maxDuration = 300`: `after()` inherits the route segment's ceiling, and at 60 the
 //     generation would be killed mid-call. It runs from `lib/nina/imagerun.ts` and nowhere else;
 //     every caller reaches it through `fireNinaImageGeneration`, never by awaiting it.
+//   · `captionNinaPhoto` — one line in Nina's voice under a photograph of herself. On the admin
+//     add path it runs AFTER a glm-4.6v describe in the SAME after() — two model calls in one
+//     segment, ~15-25 s together — and on the selfie path inside `runNinaImageJob`'s. Server
+//     Actions are dispatched one at a time per client, so an action that awaited it would make an
+//     operator wait that long PER PHOTO, in series. The caption is cosmetic and the row already
+//     carries a true canned line, so the render never has anything to wait for.
 //
 // Fix the code, never silence the check.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -186,6 +192,23 @@ const GUARDED_CALLS = [
       'lib/nina/imagerun.ts, inside after(), scheduled by fireNinaImageGeneration — which is what ' +
       'makes it survive the tab closing (R7). A page or an action that awaited it would block the ' +
       'runner for well over a minute on work the server already owns.',
+  },
+  {
+    symbol: 'captionNinaPhoto',
+    sanctioned: [
+      // Its own module, because a guard that fails on the definition site is a guard that forces
+      // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
+      join('lib', 'nina', 'caption.ts'),
+      join('lib', 'admin', 'chatPhotoActions.ts'),
+      join('lib', 'nina', 'imagerun.ts'),
+    ],
+    advice:
+      'The photo captioner is a glm-5.3 call that turns what is in a photograph into one line in ' +
+      'her voice. On the admin path it runs after a glm-4.6v describe in the SAME after() — two ' +
+      'model calls in one segment — and on the selfie path it runs inside runNinaImageJob\'s ' +
+      'after(). A render or an action that awaited it would make the operator wait 15-25 s per ' +
+      'photo, in series, because Server Actions are dispatched one at a time per client. The pure ' +
+      'rules are in lib/nina/prompts/caption.ts, which is client-safe — import from there.',
   },
 ]
 

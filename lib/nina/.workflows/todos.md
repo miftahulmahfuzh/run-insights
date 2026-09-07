@@ -3,22 +3,32 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 0
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
-- Completed: 14
+- Blocked: 1
+- Completed: 15
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A015** Phase 4: Generated selfies caption from the scene she asked for
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `lib/nina/imagerun.ts` — `finishSelfie` captions from `args.scene` with **no vision call** (*"we wrote the picture, so paying a vision call to be told back our own prompt would be absurd"*) — plus its tests. Quotes `finishSelfie` as phase 2 leaves it (the insert already carrying `photoOnly: true`); the diff is the `body:` expression and one added import. Does not touch `lib/admin/*`, `scripts/nina-image-worker.ts` (the GitHub runner has no z.ai key and `lib/nina/imagefail.ts` may never import anything, so the worker keeps the canned line — a stated limit, not a surprise), or `lib/nina/caption.ts`. The caption fallback **is** `ninaImageCaption(jobId)`, so it degrades into phase 1's narrowed pool. Exit: a completed selfie job's bubble reads as a line about the scene she requested; a caption failure leaves the deterministic canned line, so the job still completes and the photograph still lands; `finishSelfie` still throws only for `insertNinaMessages` returning `[]`, never for a caption problem.
+  - **Status**: blocked
+  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
+  - **Depends on**: P1-NIN-A014, P1-DB-A002
+  - **Plan**: `.workflows/plan/P1-NIN-A015.md`
 
 ### [P2] Medium
 
@@ -31,6 +41,21 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A014** Phase 1: Her eyes for her own photo, and her voice for the caption
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: The caption engine, landing unwired. Owns `lib/nina/imagefail.ts` — splits the *pick pool* from the *historical set* so `ninaImageCaption` can no longer return `'ini gw abis lari tadi'` (the reported sentence), while `NINA_IMAGE_CAPTIONS` keeps all five members because database rows carry them and phase 2's legacy clause must still recognise them. Also owns `lib/nina/prompts/describe.ts` (`NINA_SELF_DESCRIBE_SYSTEM_PROMPT`, a witness for a photograph **of Nina** — the shipped prompt describes *the runner*), `lib/nina/vision.ts` (`describeNinaImages(refs, { subject })`, defaulting to `'runner'` so every existing caller is unchanged), new `lib/nina/prompts/caption.ts` (caption system prompt composed from `persona.ts`'s voice blocks, forced tool schema, pure parser/sanitiser), new `lib/nina/caption.ts` (`captionNinaPhoto`: one `glm-5.3` call → parse → `null`), a ninth `GUARDED_CALLS` entry in `scripts/check-llm-payload-boundary.mjs`, and `tests/nina.caption.test.ts` (new), `tests/nina.imagefail.test.ts`, `lib/nina/vision.test.ts`. Touches no writer — nothing calls `captionNinaPhoto` at the end of this phase, deliberately, so the engine is unit-tested before either wiring phase depends on it. Not `prompts/system.ts`, not `NINA_PROMPT_VERSION`, not `lib/admin/*`, not `lib/nina/imagerun.ts`, not `lib/nina/queries.ts`. Exit: `ninaImageCaption` cannot return a scene-asserting sentence for **any** seed (proved over the whole pool, not sampled); `captionNinaPhoto` returns a short lower-case line for a stubbed client and `null` for every failure shape (throw, `max_tokens`, no tool block, empty string, a line tripping `NEVER_SAY`) and never throws; `describeNinaImages(refs, { subject: 'self' })` sends the self prompt and the token floor still trips on the measured drop signature; the payload-boundary guard passes; the prompt snapshot is unchanged.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — A photo added to the Chat photos collection must arrive with a chat message that says something true about **that** photograph; R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
+  - **Plan**: `.workflows/plan/P1-NIN-A014.md`
+  - **Completed**: 2026-09-07 12:19
+  - **Method**: /do
+  - **Files**: lib/nina/imagefail.ts, lib/nina/prompts/describe.ts, lib/nina/prompts/caption.ts, lib/nina/caption.ts, lib/nina/vision.ts, lib/nina/vision.test.ts, tests/nina.caption.test.ts, tests/nina.imagefail.test.ts, scripts/check-llm-payload-boundary.mjs
+  - **Drift**: None in the source tree. The phase plan quoted every site accurately.
+  - **Decided**: sanitizeNinaCaption stripped wrapping quotes BEFORE markdown edges, so the plan's own test input `Caption: **"nih, dari bawah laut"**` kept its quotes and failed. Two of the phase plan's code blocks contradicted each other (the sanitiser's step order vs the test asserting bare text). Resolved by stripping quotes and markdown to a FIXED POINT via a new `stripEdgeDecoration` helper, since either wraps the other. Rung 3: the phase plan's code blocks. Relaxes no check, adds no scope.
+  - **Decided**: Wrote CONTROL_RE/INVISIBLE_RE as \u escape sequences and carried NO eslint-disable directive, matching lib/nina/title.ts:98 which records that a directive there is an unused-directive warning rather than a suppression. Rung 6: surrounding convention, stated at the precedent file.
 
 - [x] **P1-NIN-A013** Phase 1: Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
   - **Difficulty**: NORMAL

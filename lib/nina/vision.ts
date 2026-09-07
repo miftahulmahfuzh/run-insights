@@ -3,9 +3,10 @@ import 'server-only'
 import { env } from '@/lib/env'
 import { NINA_CHAT_CONTENT_TYPE } from './images'
 import {
-  NINA_DESCRIBE_SYSTEM_PROMPT,
+  NINA_DESCRIBE_SYSTEM_PROMPTS,
   buildDescribeUserContent,
   type NinaDescribeImage,
+  type NinaDescribeSubject,
   type NinaVisionContentPart,
 } from './prompts/describe'
 
@@ -116,6 +117,16 @@ export interface NinaDescribeResult {
 
 export interface NinaDescribeOptions {
   timeoutMs?: number
+  /**
+   * Whose photograph this is. **Defaults to `'runner'`, which is the shipped behaviour**, so every
+   * existing caller — the composer pre-pass, both avatar paths, the chat-photo describe — is
+   * byte-identical without being edited.
+   *
+   * `'self'` selects `NINA_SELF_DESCRIBE_SYSTEM_PROMPT`. It is a different SUBJECT, not a
+   * different mode: the request shape, the data URI, the timeout and the floor are all the same,
+   * which is why this is one option rather than a second function.
+   */
+  subject?: NinaDescribeSubject
 }
 
 type FetchLike = typeof fetch
@@ -166,7 +177,11 @@ export async function describeNinaImagesWithFetch(
   if (images.length < 1) throw new Error('describeNinaImages expects at least one image')
 
   const messages: Message[] = [
-    { role: 'system', content: NINA_DESCRIBE_SYSTEM_PROMPT },
+    /* The floor is TEXT-AWARE (see the module header), so it is computed from `messages` AFTER the
+     * prompt is chosen. The self prompt is longer than the runner one; that raises the floor, which
+     * errs toward "I could not see it" rather than toward believing an invented description — the
+     * direction the header says is correct. No constant needs touching for a new prompt. */
+    { role: 'system', content: NINA_DESCRIBE_SYSTEM_PROMPTS[opts.subject ?? 'runner'] },
     { role: 'user', content: buildDescribeUserContent(images) },
   ]
   const floor = describeTokenFloor(textCharsOf(messages), images.length)
