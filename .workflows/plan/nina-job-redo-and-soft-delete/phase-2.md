@@ -66,7 +66,7 @@ export type NinaJobRefusal = 'not-found' | 'not-failed' | 'no-args' | 'capped'
 
 **A delete can only ever refuse with `'not-found'`**, and that is verified rather than assumed:
 `softDeleteNinaImageJob` returns a bare boolean, and its four causes — not his, never existed, not
-an image row, already hidden — are one answer by design (Step 3j). So this phase **widens nothing**
+an image row, already hidden — are one answer by design (Step 3k). So this phase **widens nothing**
 in `jobview.ts`, which is Phase 1's file, and `NOTE['not-found']` ("Job ini sudah nggak ada.")
 already covers every sentence the delete path can produce.
 
@@ -183,7 +183,7 @@ Two consequences, both already applied below:
 - `lib/nina/jobActions.ts` exists and exports `interface NinaJobActionResult { ok: boolean; reason: NinaJobRefusal | null }` (Phase 1) — see **F1**
 - `components/nina/NinaJobActions.tsx` exists, is `'use client'`, takes `{ item }`, and owns a ONE-argument `run()`, a `pending` flag, a `note` state and `const title = ninaJobTitle(item)` (Phase 1) — see **F3**
 - `NinaJobList`'s control slot is gated on the `actions` prop ALONE; `canRedo` gates the redo `<button>` inside `NinaJobActions` (Phase 1) — see **F4**. Nothing to fix; the old Step 6 is deleted
-- `lib/nina/imagejobs.ts` exports `reopenNinaImageJob(userId, jobId)` whose owner-scoped SELECT is this phase's eighth `WHERE` (Phase 1) — see Step 3k
+- `lib/nina/imagejobs.ts` exports `reopenNinaImageJob(userId, jobId)` whose owner-scoped SELECT is this phase's eighth `WHERE` (Phase 1) — see Step 3j
 - `tests/nina.jobActions.test.ts` mocks only the EDGES and runs `imagejobs` for real (Phase 1) — see **F6**, and Step 10
 - `NINA_JOBS_HREF` is already exported from `lib/nina/jobview.ts` (shipped, `jobview.ts:33`)
 
@@ -207,7 +207,7 @@ Two consequences, both already applied below:
 | `drizzle/0008_<generated>.sql` | **generate** | `npm run db:generate`. One `ALTER TABLE … ADD COLUMN`. Never hand-written, never renamed |
 | `drizzle/meta/0008_snapshot.json` | generate | written by the same command |
 | `drizzle/meta/_journal.json` | generate | one appended entry, `idx: 8`, by the same command |
-| `lib/nina/imagejobs.ts` | modify | `isNull` import (l.3); `isNull(ninaTurns.deletedAt)` in **8** functions (**9** `WHERE`s — the eighth is Phase 1's `reopenNinaImageJob`, Step 3k); new `softDeleteNinaImageJob` |
+| `lib/nina/imagejobs.ts` | modify | `isNull` import (l.3); `isNull(ninaTurns.deletedAt)` in **8** functions (**9** `WHERE`s — the eighth is Phase 1's `reopenNinaImageJob`, Step 3j); new `softDeleteNinaImageJob` |
 | `lib/nina/queries.ts` | modify | **docstring only** on `countNinaTurnsSince` (l.2098-2102). No code change |
 | `lib/nina/jobActions.ts` | append | `deleteNinaImageJob` + one import |
 | `components/nina/NinaJobActions.tsx` | append | delete `<button>` + `TrashIcon()` + one import name |
@@ -367,7 +367,7 @@ All line numbers are as of `origin/main`; Phase 1 inserts `reopenNinaImageJob` i
 text, not on the number.**
 
 **Eight functions, nine statements.** Seven of them were in this phase's original scope; the eighth
-— `reopenNinaImageJob`, Step 3k — is Phase 1's new function and did not exist when that list was
+— `reopenNinaImageJob`, Step 3j — is Phase 1's new function and did not exist when that list was
 written. It is a real `SELECT` on `nina_turns` that decides whether work gets scheduled, so it is
 exactly the kind of read the flag exists to stop.
 
@@ -614,7 +614,7 @@ with:
 **Impact:** `app/nina/jobs/[id]/page.tsx` 404s a hidden job with no edit to that file — its
 `if (job === null) notFound()` already says it.
 
-#### 3k — `reopenNinaImageJob`, Phase 1's read and the EIGHTH one (added by the reconciler)
+#### 3j — `reopenNinaImageJob`, Phase 1's read and the EIGHTH one (added by the reconciler)
 
 **File:** `lib/nina/imagejobs.ts` — inside `reopenNinaImageJob`, which Phase 1 inserts at `:111`
 between `openNinaImageJob` and `export interface NinaImageClaim`.
@@ -658,7 +658,7 @@ new predicate is asserted in Step 9.
 
 ---
 
-#### 3j — the new writer
+#### 3k — the new writer
 
 **File:** `lib/nina/imagejobs.ts` — append at the END of the file, after `getNinaImageJobDetail`.
 
@@ -1450,7 +1450,7 @@ its markup or its controls, and neither file is edited.
 - tapping delete on any `/nina/jobs` row removes it from the list on the next paint, with no dialog at any point
 - the row survives in `nina_turns` with `deleted_at` set and `status`, `error_code`, `cost_micro_usd` and `latency_ms` unchanged
 - `/nina/jobs/<that id>` 404s; `/nina`'s in-flight strip, the revival read and the stale sweep all skip it
-- a redo fired at a hidden job from a stale tab is refused as `'not-found'` and opens nothing (Step 3k), and no member was added to `NinaJobRefusal` to say so
+- a redo fired at a hidden job from a stale tab is refused as `'not-found'` and opens nothing (Step 3j), and no member was added to `NinaJobRefusal` to say so
 - `components/nina/NinaJobList.tsx`, `lib/nina/jobview.ts` and `app/nina/jobs/page.tsx` are byte-for-byte as Phase 1 left them — this phase edits none of the three
 - the daily cap still counts it
 - no `DELETE` statement was added anywhere, asserted by test
@@ -1466,7 +1466,7 @@ its markup or its controls, and neither file is edited.
   phase appends one `<button>` and one `TrashIcon()` and restructures nothing. The invariants on
   this side are: it renders on every row, it fires on one tap, it opens nothing, and it widens no
   type of Phase 1's.
-- **Phase 1's `reopenNinaImageJob` is this phase's eighth `WHERE` (Step 3k), and Phase 1 asked for
+- **Phase 1's `reopenNinaImageJob` is this phase's eighth `WHERE` (Step 3j), and Phase 1 asked for
   it in its own Handoffs.** If a later phase adds a ninth read of `nina_turns` that shows a job or
   schedules work on one, it carries `isNull(ninaTurns.deletedAt)` too, and it gets a case in
   `tests/nina.softDelete.test.ts`. That file's first `describe` is the register.
