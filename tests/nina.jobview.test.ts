@@ -9,11 +9,13 @@ import {
   NINA_JOB_STAGE_LABEL,
   formatJobLatency,
   formatMicroUsd,
+  jobCanRedo,
   jobElapsedSeconds,
   jobErrorLabel,
   jobIsOpen,
   jobStage,
   ninaJobHref,
+  ninaJobTitle,
   ninaJumpHref,
   parseNinaJumpParam,
   planJobJump,
@@ -151,6 +153,59 @@ describe('toNinaJobListItems', () => {
     const [item] = toNinaJobListItems([base])
     expect(item!.href).toBe(`${NINA_JOBS_HREF}/aaaaaaaaaaaa`)
     expect(item!.href).toBe(ninaJobHref('aaaaaaaaaaaa'))
+  })
+
+  it('offers a redo on the failed row and on no other', () => {
+    /*
+     * The two derivations that share one `stage`: a row that shows a failure sentence is exactly a
+     * row that offers a redo. Coupling them here rather than in the component is the point of
+     * `jobCanRedo` existing at all — `vitest` is `environment: 'node'` and cannot reach a rule
+     * living inside `NinaJobActions`.
+     */
+    const [open] = toNinaJobListItems([base])
+    expect(open!.canRedo).toBe(false)
+
+    const [failed] = toNinaJobListItems([{ ...base, status: 'failed', errorCode: 'stale' }])
+    expect(failed!.canRedo).toBe(true)
+    expect(failed!.errorLabel).not.toBeNull()
+
+    const [done] = toNinaJobListItems([{ ...base, status: 'ok', errorCode: null }])
+    expect(done!.canRedo).toBe(false)
+  })
+
+  it('titles a row by its scene, and by its purpose when it has none', () => {
+    /* The row's visible title and the redo button's accessible name are this one string. Two
+     * copies of it would drift, and the drift would be invisible to anyone who can see the
+     * screen. */
+    const [item] = toNinaJobListItems([base])
+    expect(ninaJobTitle(item!)).toBe('sore di kos')
+    expect(ninaJobTitle({ scene: null, purpose: 'selfie' })).toBe('Selfie')
+    expect(ninaJobTitle({ scene: null, purpose: 'avatar' })).toBe('Foto profil')
+  })
+})
+
+describe('jobCanRedo is R1’s one rule, and it is narrow', () => {
+  it('says yes to a failed job', () => {
+    expect(jobCanRedo('failed')).toBe(true)
+  })
+
+  it('never offers a redo for a job something is already retrying', () => {
+    /*
+     * D3, rung 5. `reviveNinaImageJobs` re-fires a `queued` row on the next `/nina` render and
+     * `claimNinaImageJob` bounds the whole thing at `NINA_IMAGE_MAX_ATTEMPTS`; a redo here would
+     * open a SECOND row for one photograph and bill twice for it. The two properties are asserted
+     * together on purpose — "open" and "redoable" must never both be true for one stage.
+     */
+    for (const stage of ['queued', 'dispatched', 'running'] as const) {
+      expect(jobIsOpen(stage)).toBe(true)
+      expect(jobCanRedo(stage)).toBe(false)
+    }
+  })
+
+  it('never offers a redo for a photograph that already exists', () => {
+    /* A re-roll of a `done` job is a different feature nobody asked for, and it costs one of six
+     * generations a day. */
+    expect(jobCanRedo('done')).toBe(false)
   })
 })
 

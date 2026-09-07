@@ -23,16 +23,33 @@ import { toNinaJobListItems } from '@/lib/nina/jobview'
  * skeleton would flash and be replaced. One at `app/nina/` would wrap the conversation too, which
  * is the specific thing that page declined to impose on a route it did not own.
  *
- * ── NO `maxDuration` ──────────────────────────────────────────────────────────────────────────
- * That export exists on `/nina` and `/r/[id]` because a Server Action's timeout is the page
- * SEGMENT's. This route calls no action and awaits no model; the platform default is correct and an
- * export claiming otherwise would be cargo.
+ * ── `maxDuration = 300`, AND IT USED TO SAY THE OPPOSITE ──────────────────────────────────────
+ * This block used to argue that the export would be cargo, on the true premise that the route
+ * "calls no action and awaits no model". **R1 made that premise false.** `NinaJobActions` calls
+ * `redoNinaImageJob`, which registers a generation in `after()`; a Server Action's timeout is the
+ * page SEGMENT's — Next 16.3.1's `maxDuration` reference: *"If using Server Actions, set the
+ * `maxDuration` at the page level to change the default timeout of all Server Actions used on the
+ * page"* — and `after()` inherits the same budget: *"`after` will run for the platform's default
+ * or configured max duration of your route"*.
+ *
+ * `lib/nina/imagerun.ts`'s header predicted this exact edit: `app/nina/page.tsx` and
+ * `app/api/cron/nina/route.ts` are the two segments that can start a generation, and *"a third
+ * caller would need the same line"*. This is the third caller. Without it the platform default
+ * kills the invocation partway through a 78 s generation and the runner gets a job that is
+ * `pending` forever until a sweep apologises for it — which is the failure this whole feature
+ * exists to let him recover from.
+ *
+ * See `app/nina/page.tsx`'s own `maxDuration` block for why the number is 300 and not 60, and for
+ * why it is a LITERAL: segment config exports are statically analysed at build time and an
+ * imported constant is not a value the analyser can see.
  *
  * ── `nowMs` IS READ ONCE, HERE ────────────────────────────────────────────────────────────────
  * One reading of the clock for this render, shared by every ticking row, so two rows a millisecond
  * apart cannot show two different elapsed times for jobs opened in the same second.
  * `app/nina/page.tsx` hoists `todayInJakarta()` out of `<ChatScreen>` for exactly this reason.
  */
+export const maxDuration = 300
+
 export default async function NinaJobsPage() {
   const userId = await requireUserId()
   const jobs = await listNinaImageJobs(userId)
@@ -62,6 +79,10 @@ export default async function NinaJobsPage() {
         items={toNinaJobListItems(jobs)}
         nowMs={nowMs}
         emptyText="Belum ada foto yang pernah digenerate. Minta Nina kirim satu di chat."
+        /* The one caller that sets it. `components/nina/NinaAboutScreen.tsx` renders the same
+           component as a read-only summary and deliberately does not — see `NinaJobList`'s header
+           and the plan's invariant 5. */
+        actions
       />
     </AppShell>
   )

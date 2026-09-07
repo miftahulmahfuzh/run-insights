@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
 import { ninaTurns } from '@/lib/db/schema'
@@ -18,6 +18,7 @@ import {
   type NinaImageJobPhase,
   type NinaImagePurpose,
 } from './imagerecipe'
+import type { NinaJobRefusal } from './jobview'
 import {
   countNinaTurnsSince,
   getNinaMessagesByIds,
@@ -107,6 +108,127 @@ export async function openNinaImageJob(userId: string, args: NinaImageJobArgs): 
     toolCalls: IMAGE_TOOL_CALL,
     args,
   })
+}
+
+/**
+ * **R1's redo. It INSERTS; it never resets.**
+ *
+ * ── WHY A NEW ROW AND NOT AN UPDATE OF THE FAILED ONE (plan index *Decisions*, rung 1) ────────
+ * `nina_turns` is the money ledger. Every writer in this file accumulates with
+ * `coalesce(cost_micro_usd, 0) + spend` for one stated reason — *"money is never spent silently"* —
+ * and a redo that flipped the failed row back to `status = 'pending'` would delete a billed
+ * attempt from the audit trail: the `$0.04` it recorded, the `error_code` that says WHY it died,
+ * and the `latency_ms` that says how long it took to die. The runner opens `/nina/jobs` precisely
+ * to read those three numbers. So the failed row is READ and left exactly as it is, and the retry
+ * is a second row that will accumulate its own spend. Two rows, two bills, two truths.
+ *
+ * The visible consequence is deliberate: after a redo, `/nina/jobs` shows BOTH — the old `Gagal`
+ * row and a new `Antre` row above it. That is the ledger being honest, and it is also why the
+ * redo control stays on the failed row afterwards.
+ *
+ * ── THE ARGS ARE COPIED VERBATIM (rung 6) ─────────────────────────────────────────────────────
+ * Same `prompt`, same `seed`, same `replyToId`, same `scene`, same `mood`, same `sidecar`, same
+ * `purpose`, same `source`. `requeueNinaImageJob` already states the rule for the retry inside a
+ * job — *"the same prompt and the same seed — which is why a retry produces the same photograph
+ * rather than a different one"* — and a redo is the same act performed by a human instead of by
+ * the loop. Re-rolling the seed here would make the button "generate a different photo", which is
+ * not what "redo" says. **`attempts: 0` is the ONE field that changes**, and it must: the row is
+ * new, `claimNinaImageJob` bounds a job at `NINA_IMAGE_MAX_ATTEMPTS`, and a copied `attempts: 3`
+ * would open a job that no claim predicate in this file can ever pick up.
+ *
+ * ── THE ORDER IS THE CAP, THEN THE INSERT (rung 6) ────────────────────────────────────────────
+ * `generateNinaSelfie` states it: the cap is checked *"before the row is opened and therefore
+ * before a cent is spent"*. A redo spends money exactly like a first request, and
+ * `NINA_IMAGE_DAILY_CAP` is *"a money cap and not a feature cap"* — so it applies, and refusing
+ * AFTER the insert would leave a `queued` row nobody will ever run. The cap read is deliberately
+ * the LAST of the four refusals: the three cheap in-memory checks answer first, so a job that was
+ * never redoable does not cost an extra indexed count to be told so.
+ *
+ * ── WHAT `no-args` ACTUALLY GUARDS ────────────────────────────────────────────────────────────
+ * Not merely `args IS NULL`. `runNinaImageJob` calls `callNinaImageModel(args.prompt, args.seed)`,
+ * so a row whose jsonb is present but whose `prompt` is missing or empty would open a job that
+ * reaches the provider with nothing to draw, burn a generation off the daily cap and fail. The
+ * three pre-`args` production rows and any future shape change land in the same refusal, which is
+ * the honest one: there is nothing here to redo FROM.
+ *
+ * ── OWNERSHIP (plan invariant 3) ──────────────────────────────────────────────────────────────
+ * `eq(ninaTurns.userId, userId)` is in the `WHERE` of the read, beside `eq(ninaTurns.id, jobId)`
+ * and `eq(ninaTurns.kind, 'image')`. Another runner's job and a job that never existed both come
+ * back `not-found`, identically. `kind = 'image'` is load-bearing for the reason the block above
+ * `listNinaImageJobs` gives at length: since phase 3 this table also holds `kind = 'chat'` rows
+ * sitting in `status = 'pending'` with a completely different `args` shape.
+ *
+ * It returns a discriminated union rather than throwing, because the caller is a Server Action
+ * whose job is to hand a refusal code back to a button — `generateNinaSelfie`'s `NinaSelfieResult`
+ * is the same shape for the same reason.
+ */
+export type NinaImageReopen =
+  | {
+      ok: true
+      /** The NEW row. The failed one keeps its own id and its own numbers. */
+      jobId: string
+      purpose: NinaImagePurpose
+      /** Copied verbatim. May name a message that no longer exists — see `finishSelfie`. */
+      replyToId: string | null
+    }
+  | { ok: false; reason: NinaJobRefusal }
+
+/**
+ * Is there enough in this jsonb to run a generation from?
+ *
+ * A type predicate rather than a boolean so the caller's spread is typed without a cast. It checks
+ * the two fields `runNinaImageJob` dereferences and nothing else: `scene`, `mood` and `sidecar` are
+ * copied through whatever they are, because a missing caption is a worse photograph and a missing
+ * prompt is no photograph at all.
+ */
+function isRedoableArgs(value: unknown): value is NinaImageJobArgs {
+  if (value == null || typeof value !== 'object') return false
+  const args = value as Partial<NinaImageJobArgs>
+  return typeof args.prompt === 'string' && args.prompt !== '' && typeof args.seed === 'number'
+}
+
+export async function reopenNinaImageJob(
+  userId: string,
+  jobId: string,
+): Promise<NinaImageReopen> {
+  const [row] = await db
+    .select({ status: ninaTurns.status, args: ninaTurns.args })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        // R2: a redo is a START, and a job he hid must not be redoable from a stale tab. The empty
+        // read makes this `'not-found'` for free — no new member of `NinaJobRefusal`.
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+
+  if (row == null) return { ok: false, reason: 'not-found' }
+
+  /* `jobCanRedo` decides whether the BUTTON is drawn. This decides whether the JOB is opened, and
+   * it asks the database rather than the browser. Same rule, two enforcement points, and the
+   * second one is the only one that counts. */
+  if (row.status !== 'failed') return { ok: false, reason: 'not-failed' }
+
+  const args = row.args
+  if (!isRedoableArgs(args)) return { ok: false, reason: 'no-args' }
+
+  if ((await ninaImageQuotaLeft(userId)) <= 0) return { ok: false, reason: 'capped' }
+
+  /* Verbatim, with the one field that must not be. See the header. */
+  const reopenedId = await openNinaImageJob(userId, { ...args, attempts: 0 })
+
+  return {
+    ok: true,
+    jobId: reopenedId,
+    /* `toJobRecord`'s normalisation, kept identical so the two projections cannot disagree about a
+     * purpose — the value below is what `fireNinaImageGeneration` logs and what decides whether
+     * `failNinaImageJob` writes an apology. */
+    purpose: args.purpose === 'avatar' ? 'avatar' : 'selfie',
+    replyToId: typeof args.replyToId === 'string' ? args.replyToId : null,
+  }
 }
 
 export interface NinaImageClaim {
@@ -205,6 +327,8 @@ export async function claimNinaImageJob(
         eq(ninaTurns.id, jobId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        // R2: a claim is a START, and the flag's rule is that nothing new starts for a hidden job.
+        isNull(ninaTurns.deletedAt),
         isNotNull(ninaTurns.args),
         sql`coalesce((${ninaTurns.args} ->> 'attempts')::int, 0) < ${NINA_IMAGE_MAX_ATTEMPTS}`,
         phasePredicate,
@@ -317,6 +441,8 @@ export async function listRevivableNinaImageJobs(
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        // R2: never revive a job he hid — reviving is exactly "start something new for it".
+        isNull(ninaTurns.deletedAt),
         isNotNull(ninaTurns.args),
         sql`coalesce((${ninaTurns.args} ->> 'attempts')::int, 0) < ${NINA_IMAGE_MAX_ATTEMPTS}`,
         or(
@@ -526,6 +652,10 @@ export async function sweepStaleNinaImageJobs(
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        /* R2: never APOLOGISE in the chat for a job he hid. The sweep's whole visible output is
+         * `postNinaApologyMessage`, and a sentence from Nina about a row that is no longer on any
+         * screen is the one thing tidying the list must not produce. */
+        isNull(ninaTurns.deletedAt),
         lt(ninaTurns.createdAt, olderThan),
       ),
     )
@@ -547,6 +677,11 @@ export async function sweepStaleNinaImageJobs(
             eq(ninaTurns.userId, userId),
             eq(ninaTurns.id, row.id),
             eq(ninaTurns.status, 'pending'),
+            /* R2, and the same race the `status` guard above covers: he may have hidden the row
+             * between the SELECT and this statement. `returning` length 0 then means "somebody
+             * else closed it OR he hid it", and both want the same answer — skip, apologise for
+             * nothing. */
+            isNull(ninaTurns.deletedAt),
           ),
         )
         .returning({ id: ninaTurns.id })
@@ -596,6 +731,9 @@ export async function listOpenNinaImageJobs(userId: string): Promise<NinaImageJo
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        // R2: `/nina`'s in-flight strip is a LIST, so a hidden job leaves it. The generation it
+        // describes keeps running; only the row is gone.
+        isNull(ninaTurns.deletedAt),
       ),
     )
     .orderBy(asc(ninaTurns.createdAt))
@@ -616,7 +754,16 @@ export async function getNinaImageJob(
       createdAt: ninaTurns.createdAt,
     })
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.kind, 'image')))
+    // R2: a poll on a hidden job answers "no such job" — which is what a poller should do with a
+    // row that has left every screen it could report into.
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
   return row == null ? null : toJobRow(row)
 }
 
@@ -789,7 +936,17 @@ export async function listNinaImageJobs(
   const rows = await db
     .select(JOB_COLUMNS)
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.kind, 'image')))
+    /* R2, and this is the read the feature is FOR. It also serves `/nina/about`'s "Pembuatan
+     * foto" section, so a job hidden on one surface is hidden on both — which is correct: he
+     * hid the JOB, not the row on one screen. `/nina/about`'s markup and controls are untouched;
+     * only its contents shrink. */
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
     .orderBy(desc(ninaTurns.createdAt))
     .limit(opts.limit ?? NINA_JOB_LIST_LIMIT)
 
@@ -823,7 +980,17 @@ export async function getNinaImageJobDetail(
   const [row] = await db
     .select(JOB_COLUMNS)
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.kind, 'image')))
+    /* R2: a hidden job 404s at `/nina/jobs/[id]`. `null` here already means "not yours OR never
+     * existed", stated in this function's own header as an anti-oracle property; "hidden" joins
+     * that set rather than getting a third, distinguishable answer. */
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
 
   if (row == null) return null
 
@@ -832,4 +999,48 @@ export async function getNinaImageJobDetail(
 
   const [message] = await getNinaMessagesByIds(userId, [record.replyToId])
   return { ...record, replySessionId: message?.sessionId ?? null }
+}
+
+/**
+ * **R2's only write, and it is a flag.** The runner tapped the trash icon on `/nina/jobs`; this
+ * stamps `deleted_at` and returns whether a row was actually flagged.
+ *
+ * ── WHY IT IS AN UPDATE AND NOT A DELETE, ONE MORE TIME ───────────────────────────────────────
+ * His words: *"delete job icon … (but just soft delete in neon db)"*. `nina_turns` is the money
+ * ledger and the audit trail at once, and this row carries a `cost_micro_usd` that was really
+ * billed. Nothing in the SET touches `status`, `error_code`, `cost_micro_usd` or `latency_ms` —
+ * tidying a list may not rewrite what a generation cost or how it ended.
+ *
+ * ── OWNERSHIP IS PROVED IN SQL, AND SO IS IDEMPOTENCE ─────────────────────────────────────────
+ * Invariant 3: `userId` is first and it is in the `WHERE`, so a job id from a browser is a claim
+ * that this statement turns into a fact. `kind = 'image'` is load-bearing for the reason the
+ * block above `listNinaImageJobs` gives — since phase 3 this table also holds pending `kind='chat'`
+ * turns, and this column has no meaning on one. `isNull(deletedAt)` makes a second tap a no-op
+ * rather than a re-stamp, so a double-tap cannot move the timestamp and `false` means exactly one
+ * thing to the caller: **nothing changed.** Not his, never existed, not an image row, or already
+ * hidden — four causes, one answer, deliberately, so the return value cannot be used to probe
+ * which job ids exist.
+ *
+ * `now()` and not `new Date()`: the database's clock, so `deleted_at` can never precede the
+ * `created_at` it sits beside because a serverless host's clock drifted. Same instinct as
+ * `created_at`'s `defaultNow()`.
+ *
+ * **This does not cancel anything.** A `pending` job that is already claimed keeps drawing and its
+ * photograph still arrives in the chat. See `nina_turns.deleted_at`'s docstring, point 2.
+ */
+export async function softDeleteNinaImageJob(userId: string, jobId: string): Promise<boolean> {
+  const flagged = await db
+    .update(ninaTurns)
+    .set({ deletedAt: sql`now()` })
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .returning({ id: ninaTurns.id })
+
+  return flagged.length > 0
 }
