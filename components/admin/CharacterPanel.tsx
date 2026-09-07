@@ -26,7 +26,6 @@ import {
   NINA_SCORE_MIN,
   NINA_TRAITS,
   NINA_TUNING_RELATIONSHIP_KEY,
-  NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
 /**
@@ -367,51 +366,43 @@ export function CharacterPanel({
           </div>
         </section>
 
-        <div className="mb-6 grid gap-5 xl:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-              Wardrobe
-              {unsaved.has('wardrobe') && (
-                <span className="ml-2 font-semibold text-accent">unsaved</span>
-              )}
-            </span>
-            <input
-              className={CONTROL_CLASS}
-              value={draft.wardrobe}
-              maxLength={NINA_WARDROBE_MAX}
-              disabled={pending}
-              placeholder="heather-grey racerback tank, black fitted running shorts"
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, wardrobe: event.target.value }))
-              }
-            />
-            <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
-              What she is wearing <strong>in the photograph</strong>. This line goes into the image
-              prompt, not into her voice. Leave it empty and she wears what the anchor photo shows.
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
-              Notes
-              {unsaved.has('notes') && (
-                <span className="ml-2 font-semibold text-accent">unsaved</span>
-              )}
-            </span>
-            <textarea
-              className={cn(CONTROL_CLASS, 'min-h-[76px] resize-y py-2 leading-snug')}
-              value={draft.notes}
-              maxLength={NINA_NOTES_MAX}
-              disabled={pending}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, notes: event.target.value }))
-              }
-            />
-            <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
-              Free text, handed to her verbatim in the system prompt. Anything no dial can say.
-            </span>
-          </label>
-        </div>
+        {/*
+         * ── ONE FIELD HERE NOW, AND THE GRID WENT WITH THE OTHER ONE ───────────────────────
+         * This was a two-column `xl:grid-cols-2` row holding Wardrobe beside Notes. F41 R3 moved
+         * the wardrobe to `/admin/image-generation` — *"remove Wardrobe field in
+         * /admin/personality (this new feature is more detailed version of it)"* — and a
+         * two-column grid with a single child renders that child at half width with an empty cell
+         * beside it, which reads as a control that failed to load rather than as a layout. So the
+         * wrapper is gone rather than left half-empty, and Notes is a plain block.
+         *
+         * `max-w-[70ch]` and not full width: this is a prose textarea, and 70ch is the measure
+         * every hint on this page already uses (`max-w-[70ch]` on both section descriptions and on
+         * the page header). An `xl` viewport would otherwise stretch it to a line length nobody
+         * writes prose at, which is a worse answer than the half-empty grid was.
+         *
+         * The leading `*` on every line is load-bearing, not style: `ci:client-secret-guard`'s
+         * Rule 3 exempts only lines a comment scanner recognises, and a JSX comment with bare
+         * prose continuation lines fails the guard. `app/admin/personality/page.tsx` records the
+         * same detail about its own JSX comment.
+         */}
+        <label className="mb-6 block max-w-[70ch]">
+          <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+            Notes
+            {unsaved.has('notes') && (
+              <span className="ml-2 font-semibold text-accent">unsaved</span>
+            )}
+          </span>
+          <textarea
+            className={cn(CONTROL_CLASS, 'min-h-[76px] resize-y py-2 leading-snug')}
+            value={draft.notes}
+            maxLength={NINA_NOTES_MAX}
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+          />
+          <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
+            Free text, handed to her verbatim in the system prompt. Anything no dial can say.
+          </span>
+        </label>
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
           <summary className="cursor-pointer list-none text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
@@ -446,7 +437,6 @@ export function CharacterPanel({
                   dials: draft.dials,
                   enabled: draft.enabled,
                   relationship: draft.relationship,
-                  wardrobe: draft.wardrobe,
                   notes: draft.notes,
                 }),
               )

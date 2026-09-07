@@ -1,6 +1,6 @@
 {
-  "id": "20689d76-ecb1-4a04-b4ec-1eb7eb21a22c",
-  "prevId": "81e07f7d-3d60-4f84-b3c7-32e7511815d4",
+  "id": "6105d6a7-5c7e-986e-5c45-c2d8268ca35b",
+  "prevId": "651b8794-9323-cc7e-f3c6-2d95a70b4148",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1578,152 +1578,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.nina_shortcuts": {
-      "name": "nina_shortcuts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "match_key": {
-          "name": "match_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expansion": {
-          "name": "expansion",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "uses": {
-          "name": "uses",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "nina_shortcuts_user_match_unq": {
-          "name": "nina_shortcuts_user_match_unq",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "match_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "nina_shortcuts_user_enabled_idx": {
-          "name": "nina_shortcuts_user_enabled_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "enabled",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "nina_shortcuts_user_id_user_id_fk": {
-          "name": "nina_shortcuts_user_id_user_id_fk",
-          "tableFrom": "nina_shortcuts",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.nina_tuning": {
       "name": "nina_tuning",
       "schema": "",
@@ -3226,6 +3080,130 @@
           ]
         }
       },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.nina_image_prefs": {
+      "name": "nina_image_prefs",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "prompt_length": {
+          "name": "prompt_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "focus_face": {
+          "name": "focus_face",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "focus_skin": {
+          "name": "focus_skin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "focus_boobs": {
+          "name": "focus_boobs",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "focus_butt": {
+          "name": "focus_butt",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "focus_thighs": {
+          "name": "focus_thighs",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "focus_calves": {
+          "name": "focus_calves",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wardrobe": {
+          "name": "wardrobe",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue": {
+          "name": "venue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_of_day": {
+          "name": "time_of_day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_source": {
+          "name": "reference_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_id": {
+          "name": "reference_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "nina_image_prefs_user_id_user_id_fk": {
+          "name": "nina_image_prefs_user_id_user_id_fk",
+          "tableFrom": "nina_image_prefs",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

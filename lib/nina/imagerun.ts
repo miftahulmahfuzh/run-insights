@@ -18,7 +18,6 @@ import {
 } from './imagejobs'
 import {
   NINA_IMAGE_CACHE_MAX_AGE,
-  NINA_IMAGE_CALL_TIMEOUT_MS,
   NINA_IMAGE_CONTENT_TYPE,
   NINA_IMAGE_COST_MICRO_USD,
   NINA_IMAGE_DISPATCH_GRACE_MS,
@@ -29,7 +28,9 @@ import {
   NINA_IMAGE_REVIVE_BUDGET,
   NINA_IMAGE_RUN_BUDGET_MS,
   NINA_IMAGE_WIDTH,
+  ninaImageCallTimeoutMs,
   ninaImagePathname,
+  ninaImageReferenceUrl,
   type NinaImageJobArgs,
   type NinaImagePurpose,
 } from './imagerecipe'
@@ -370,20 +371,49 @@ async function closeFailed(
   return 'gave-up'
 }
 
-/** One attempt: claim, call, store, finish. Returns what happened. */
+/**
+ * What one attempt did, and whether the job it did it to carried an anchor.
+ *
+ * The second field exists for `runNinaImageJob`'s deadline check and for nothing else: an anchored
+ * attempt needs 220 s + 20 s of wall clock and an unanchored one needs 170 s, and the loop cannot
+ * ask the claim itself — `claimNinaImageJob` is what has the args, and it is one layer down.
+ * Reserving the anchored figure for every job would silently delete the unanchored retry; reserving
+ * the unanchored figure for every job would start an anchored retry that gets killed at 240 s with
+ * the money spent.
+ */
+interface AttemptResult {
+  outcome: 'none' | 'ok' | 'retry' | 'gave-up'
+  anchored: boolean
+}
+
+/** One attempt: claim, call, store, finish. Returns what happened, and whether it was anchored. */
 async function attemptOnce(
   userId: string,
   jobId: string,
   opts: { queuedBefore?: Date | null; runningBefore?: Date | null },
-): Promise<'none' | 'ok' | 'retry' | 'gave-up'> {
+): Promise<AttemptResult> {
   const claim = await claimNinaImageJob(userId, jobId, opts)
-  if (claim == null) return 'none'
+  if (claim == null) return { outcome: 'none', anchored: false }
 
   const { args, attempts } = claim
-  console.info('[nina] image job claimed', { jobId, purpose: args.purpose, attempt: attempts })
+  /* The ONE sanctioned read of a jsonb field that may not be there. See `ninaImageReferenceUrl`. */
+  const referenceUrl = ninaImageReferenceUrl(args)
+  const anchored = referenceUrl != null
+  console.info('[nina] image job claimed', {
+    jobId,
+    purpose: args.purpose,
+    attempt: attempts,
+    anchored,
+  })
 
-  const outcome: NinaImageCallResult = await callNinaImageModel(args.prompt, args.seed)
-  if (!outcome.ok) return closeFailed(userId, jobId, args, attempts, outcome)
+  const outcome: NinaImageCallResult = await callNinaImageModel(
+    args.prompt,
+    args.seed,
+    referenceUrl,
+  )
+  if (!outcome.ok) {
+    return { outcome: await closeFailed(userId, jobId, args, attempts, outcome), anchored }
+  }
 
   /* The provider reported nothing, so the measured price stands in. ONE substitution point on this
    * path — `imagecall.ts` deliberately does not do it too. */
@@ -399,12 +429,15 @@ async function attemptOnce(
      * not keep it, which from the runner's side is "the photo did not come through" — and the
      * money is already spent, which is why it is still logged and still counted against the cap.
      */
-    return closeFailed(userId, jobId, args, attempts, {
-      kind: 'transport',
-      latencyMs: outcome.latencyMs,
-      costMicroUsd,
-      detail: `store: ${String(cause)}`,
-    })
+    return {
+      outcome: await closeFailed(userId, jobId, args, attempts, {
+        kind: 'transport',
+        latencyMs: outcome.latencyMs,
+        costMicroUsd,
+        detail: `store: ${String(cause)}`,
+      }),
+      anchored,
+    }
   }
 
   try {
@@ -419,12 +452,15 @@ async function attemptOnce(
      * outcome — no photograph is visible, so she should say so — and the blob is left behind, which
      * the `reap-orphaned-blobs` skill exists for.
      */
-    return closeFailed(userId, jobId, args, attempts, {
-      kind: 'transport',
-      latencyMs: outcome.latencyMs,
-      costMicroUsd,
-      detail: `finish: ${String(cause)}`,
-    })
+    return {
+      outcome: await closeFailed(userId, jobId, args, attempts, {
+        kind: 'transport',
+        latencyMs: outcome.latencyMs,
+        costMicroUsd,
+        detail: `finish: ${String(cause)}`,
+      }),
+      anchored,
+    }
   }
 
   console.info('[nina] image job done', {
@@ -433,8 +469,12 @@ async function attemptOnce(
     bytes: image.bytes,
     costMicroUsd,
     latencyMs: outcome.latencyMs,
+    /* Requested versus SENT. `anchored: true, sentAnchored: false` is a degraded generation, and
+     * the `console.warn` explaining why is immediately above it in the log. */
+    anchored,
+    sentAnchored: outcome.anchored,
   })
-  return 'ok'
+  return { outcome: 'ok', anchored }
 }
 
 /**
@@ -443,14 +483,21 @@ async function attemptOnce(
  * The retry loop is bounded twice, and both bounds matter:
  *   · `NINA_IMAGE_MAX_ATTEMPTS`, enforced inside `claimNinaImageJob`'s WHERE, so two runners
  *     cannot spend the same budget; and
- *   · the DEADLINE below, so a second attempt is started only when a whole `NINA_IMAGE_CALL_TIMEOUT_MS`
- *     plus the finish writes still fit. **A retry that would be killed halfway is worse than no
- *     retry**: it spends $0.04 and leaves a `running` row for a sweep to apologise for.
+ *   · the DEADLINE below, so a second attempt is started only when a whole call timeout plus the
+ *     finish writes still fit. **A retry that would be killed halfway is worse than no retry**: it
+ *     spends $0.04 and leaves a `running` row for a sweep to apologise for.
  *
  * That deadline is why a FAST failure (a 500 at five seconds) retries immediately and a SLOW one (a
- * 150 s timeout) does not. The slow case is left `queued` and picked up by
+ * timeout at the ceiling) does not. The slow case is left `queued` and picked up by
  * `reviveNinaImageJobs` on the next `/nina` render, which starts a fresh invocation with a fresh
  * 300 s.
+ *
+ * **THE DEADLINE IS SIZED BY THIS JOB'S CEILING, WHICH R10 MADE TWO.** An anchored attempt needs
+ * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS` = 240 s, which is the whole
+ * of `NINA_IMAGE_RUN_BUDGET_MS`, so **an anchored job gets exactly one attempt per invocation** and
+ * its second one comes from `reviveNinaImageJobs` on a fresh clock. Two 220 s attempts do not fit
+ * under a 300 s host ceiling by any arithmetic, so this is the answer and not a shortfall. An
+ * unanchored attempt needs 170 s and retries after any failure inside the first 70 s.
  */
 export async function runNinaImageJob(
   userId: string,
@@ -460,12 +507,15 @@ export async function runNinaImageJob(
   const deadlineAt = Date.now() + NINA_IMAGE_RUN_BUDGET_MS
 
   for (;;) {
-    const outcome = await attemptOnce(userId, jobId, opts)
-    if (outcome !== 'retry') return outcome
+    const attempt = await attemptOnce(userId, jobId, opts)
+    if (attempt.outcome !== 'retry') return attempt.outcome
 
-    if (Date.now() + NINA_IMAGE_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS > deadlineAt) {
+    const nextAttemptMs = ninaImageCallTimeoutMs(attempt.anchored) + NINA_IMAGE_FINISH_RESERVE_MS
+    if (Date.now() + nextAttemptMs > deadlineAt) {
       console.warn('[nina] retry left for the next host — not enough wall clock', {
         jobId,
+        anchored: attempt.anchored,
+        nextAttemptMs,
         remainingMs: deadlineAt - Date.now(),
       })
       return 'retry'

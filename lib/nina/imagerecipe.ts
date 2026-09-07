@@ -35,13 +35,46 @@
  *    a different one. `qwen/qwen-image-3-pro` is not listed in `/api/v1/models` — image models live
  *    at `/api/v1/images/models` — which is why it looks absent if anyone goes looking.
  *
- * ── THE FACT THAT IS NO LONGER HERE ───────────────────────────────────────────────────────────
+ * ── THE FACT THAT CAME BACK, AND WHAT IT COSTS (R10) ──────────────────────────────────────────
  * The third scar in `gen_badge_art.py` is that the reference image rides in `input_references` on
- * the same generations call. **RU-18 dropped the anchor**, so this phase sends no
- * `input_references` at all and `buildImageRequestBody` has no parameter for one. Do not add it
- * back "for consistency with the badge deck": it was measured at 148.9 s against 78.2 s, and the
- * user deferred face fidelity knowingly. The seed for a future consistent-face feature is
- * `assets/nina/_anchor.png`, committed by phase 1 and read by nothing.
+ * the same generations call. This block used to say RU-18 had dropped the anchor and *"do not add
+ * it back for consistency with the badge deck"*. **R10 reverses that ruling, and the user asked
+ * for it in as many words:** *"photo reference: user can select all photos in Nina's album and
+ * Chat photos … user can select one out of all these photos."* So `buildImageRequestBody` has an
+ * OPTIONAL reference parameter again, and `NinaImageJobArgs.referenceUrl` is how a job carries
+ * one.
+ *
+ * **RU-18's measurement was right and is not repealed — it is PAID FOR.** An anchored generation
+ * was measured at **148.9 s** against **78.2 s** unanchored, and the shipping in-platform ceiling
+ * was 150 s, so shipping R10 against that ceiling would have aborted about half of its own
+ * generations after the money was spent. That is why there is now a SECOND in-platform timeout —
+ * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS`, used only when a reference is present — and why
+ * `NINA_IMAGE_RUN_BUDGET_MS` moved from 200 s to 240 s. The threshold block below derives both.
+ *
+ * **WHAT `input_references` ACTUALLY DOES ON THIS MODEL, measured elsewhere in this repo and not
+ * to be re-learned at $0.04 a probe:** it *"behaves like a strong img2img, not a style reference:
+ * it transfers the SUBJECT hard and the cloth tone not at all"* — `docs/plans/F10-badge-art-skill.md:1087`
+ * (three graded attempts), restated at `docs/plans/F15-badge-master-aspect.md:79-88` and
+ * `docs/plans/F25-record-patch-art.md:322`. For a badge that was fatal, because a badge is being
+ * INVENTED. Here it is the point: the operator picks a photograph of the woman he wants back, and
+ * the subject transferring hard is the request. The honest caveat, which belongs on the picker and
+ * not in a prompt sentence: the chosen photograph's pose and composition come along with her face.
+ * The finding is not contradicted, it is used — exactly as F15 §2.2 used it.
+ *
+ * **ONLY `image/png` IS VERIFIED ON THIS ENDPOINT.** `gen_badge_art.py:349` hardcodes
+ * `data:image/png;base64,`. `NINA_IMAGE_REFERENCE_CONTENT_TYPES` also admits JPEG and WebP because
+ * that is what the album and the chat photos actually hold, and refusing them would leave R10 with
+ * almost nothing to point at. The first anchored generation is therefore also the probe — which is
+ * what R11's test button is for, and its verdict distinguishes a refusal from a timeout.
+ *
+ * **`assets/nina/_anchor.png` IS STILL READ BY NOTHING, and this phase did not change that.** It
+ * is written by `scripts/nina-profpic.mjs` (and the `update-nina-profpic` skill) as the committed
+ * face seed, it is 6.7 MB, and it is deliberately NOT the fallback for a reference that cannot be
+ * fetched: a committed asset is on the GitHub runner's disk and is not in the Vercel bundle unless
+ * something imports it, so a fallback built on it would work on one host and not the other, which
+ * is worse than no fallback. A reference that cannot be fetched degrades to an unanchored
+ * generation with a warning — the operator gets a picture without the anchor rather than an
+ * apology.
  *
  * ── THE SIDECAR CONVENTION, AT RUNTIME ────────────────────────────────────────────────────────
  * `gen_badge_art.py` writes a `.txt` beside every PNG holding the prompt, model and seed, because
@@ -141,13 +174,42 @@ export const NINA_HOST_MAX_DURATION_MS = 300_000
 export const NINA_TURN_SPENT_MS = 45_000
 
 /**
- * **The in-platform OpenRouter call's timeout.** 1.9x the measured 78.2 s.
+ * **The in-platform OpenRouter call's timeout, WITHOUT a reference.** 1.9x the measured 78.2 s.
  *
  * Not `NINA_WORKER_CALL_TIMEOUT_MS`: on a GitHub runner there is no ceiling to race, so 240 s is
  * free there and would be reckless here. 45 + 150 + 20 = 215 s inside a 300 s invocation, with
  * 85 s of slack for a cold start and a slow Blob write.
+ *
+ * **Read it through `ninaImageCallTimeoutMs(anchored)` rather than directly.** An anchored call has
+ * its own ceiling below, and a caller that hardcodes this one would abort about half of R10's
+ * generations at 150 s — the exact bug RU-18's measurement predicts.
  */
 export const NINA_IMAGE_CALL_TIMEOUT_MS = 150_000
+
+/**
+ * **The in-platform timeout WITH a reference, and the whole price of R10.** 1.5x the measured
+ * 148.9 s anchored generation (`gen_badge_art.py`'s own `urlopen` ceiling for the same shape is
+ * 300 s, and its comment says the ceiling "is doing real work rather than guarding a
+ * hypothetical").
+ *
+ *   NINA_TURN_SPENT_MS + this + NINA_IMAGE_FINISH_RESERVE_MS <= NINA_HOST_MAX_DURATION_MS
+ *   45 + 220 + 20 = 285 <= 300                                        ✔ 15 s of slack
+ *
+ * versus 215 <= 300 unanchored. **The slack fell from 85 s to 15 s and that is the cost of the
+ * anchor**, paid only on jobs that carry one. Worst case is reached only when all three worst
+ * cases coincide — a turn that really spent its measured 45 s high end, a provider that runs to
+ * the full ceiling, and finish writes that need their whole reserve — and the consequence is the
+ * invocation being killed with a `running` row, which `reviveNinaImageJobs` re-fires on the next
+ * `/nina` render and `sweepStaleNinaImageJobs` apologises for at twenty minutes. Three nets, all
+ * unchanged.
+ *
+ * **IT BOUNDS THE WHOLE OF `callNinaImageModel`, fetch included.** The reference is fetched from
+ * Blob inside that function, before the POST, and the POST's `AbortSignal` gets what is LEFT of
+ * this after the fetch. So this one number is the honest ceiling on the call and the arithmetic
+ * above needs no fourth term — `NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS` is a sub-bound inside it,
+ * not an addition to it.
+ */
+export const NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS = 220_000
 
 /** The Blob `put` plus three indexed writes, with slack. Reserved out of the run budget. */
 export const NINA_IMAGE_FINISH_RESERVE_MS = 20_000
@@ -157,10 +219,30 @@ export const NINA_IMAGE_FINISH_RESERVE_MS = 20_000
  * loop refuses to begin an attempt that would not fit inside what is left of this — a retry killed
  * halfway spends $0.04 and leaves a `running` row for a sweep to apologise for.
  *
- * `NINA_TURN_SPENT_MS + NINA_IMAGE_RUN_BUDGET_MS <= NINA_HOST_MAX_DURATION_MS` is the inequality
- * the whole in-platform design rests on. 45 + 200 = 245 <= 300.
+ * **Two inequalities pin it, and R10 moved it from 200 s to 240 s.**
+ *
+ *   1. It must hold ONE WHOLE ANCHORED ATTEMPT, or the loop refuses even the first one and the
+ *      reference feature generates nothing:
+ *        NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS <= this
+ *        220 + 20 = 240 <= 240                                              ✔ exactly
+ *   2. It must still fit under the host ceiling with a whole chat turn already spent — the
+ *      inequality the whole in-platform design rests on:
+ *        NINA_TURN_SPENT_MS + this <= NINA_HOST_MAX_DURATION_MS
+ *        45 + 240 = 285 <= 300                                              ✔ 15 s of slack
+ *
+ * The unanchored attempt is unchanged at 150 + 20 = 170 <= 240.
+ *
+ * **What (1) being EXACT means, said plainly: an anchored job gets one attempt per invocation.**
+ * After any anchored failure, `Date.now() - start` is already positive, so
+ * `elapsed + 220 + 20 > 240` and the loop declines the retry and returns `'retry'`. That is the
+ * correct answer rather than a limitation — two 220 s attempts cannot fit under a 300 s ceiling by
+ * any arithmetic — and the second attempt still happens: the row is left `queued`,
+ * `NINA_IMAGE_MAX_ATTEMPTS` is still 2, and `reviveNinaImageJobs` re-fires it on the next `/nina`
+ * render with a fresh 300 s. An unanchored job keeps its same-invocation retry and gets a more
+ * generous one than before: it now retries after any failure inside the first 70 s (240 - 170)
+ * where the old 200 s budget allowed 30 s.
  */
-export const NINA_IMAGE_RUN_BUDGET_MS = 200_000
+export const NINA_IMAGE_RUN_BUDGET_MS = 240_000
 
 /** The backstop worker's own OpenRouter timeout. 3x the measured 78.2 s; off Vercel, nothing to
  *  race. Unchanged by the migration, because that host's ceiling did not move. */
@@ -168,6 +250,117 @@ export const NINA_WORKER_CALL_TIMEOUT_MS = 240_000
 
 /** `timeout-minutes` on the backstop workflow's job. Must exceed the call timeout plus setup. */
 export const NINA_WORKER_TIMEOUT_MINUTES = 6
+
+/**
+ * **How long the reference fetch may take, out of the anchored allowance above.**
+ *
+ * A Blob object is on a public CDN in the same region, so ten seconds is generous for the 8 MiB
+ * worst case; the ordinary case is a ~1.2 MB generated PNG. It is a SUB-BOUND of
+ * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS`, not an addition to it — `callNinaImageModel` gives the
+ * POST whatever is left of the 220 s after the fetch — which is why the threshold arithmetic has
+ * three terms and not four.
+ *
+ * Missing this deadline costs an ANCHOR, never a job: the fetch degrades to an unanchored
+ * generation with a warning.
+ */
+export const NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS = 10_000
+
+/**
+ * **The largest reference this pipeline will put on the wire. 8 MiB.**
+ *
+ * Two reasons for that number and not a rounder one:
+ *
+ *   1. It is exactly `ADMIN_AVATAR_MAX_UPLOAD_BYTES` (`lib/admin/avatars.ts:46`), which is the
+ *      largest thing the picker can offer — that constant's own comment says *"a lightly-compressed
+ *      PNG portrait is ~7 MB"*. A cap below it would silently drop the anchor on album photographs
+ *      the operator can see and select, which is a control that does nothing. Chat photos are
+ *      smaller by construction (2 MiB admin-added, 900 KB from his side) and a generated 1K PNG is
+ *      ~1.2 MB.
+ *   2. An UNBOUNDED fetch into a JSON body on a serverless invocation is both a memory and a
+ *      latency problem. **Base64 inflates bytes by 4/3**: 8 MiB in becomes ~11.2 MB of `data:` URL,
+ *      and `JSON.stringify` makes another copy of it, so the transient peak is ~30 MB. That is
+ *      affordable at 8 MiB and is not at 80.
+ *
+ * It cannot IMPORT `ADMIN_AVATAR_MAX_UPLOAD_BYTES` — this module must stay zero-import for the
+ * Actions worker (see the header) — so `tests/nina.imagerecipe.test.ts` imports both and asserts
+ * they agree. Same mitigation shape as `ninaImagePathname` versus `NINA_BLOB_PREFIX` (RULING A6).
+ */
+export const NINA_IMAGE_REFERENCE_MAX_BYTES = 8 * 1024 * 1024
+
+/**
+ * What a reference `data:` URL may claim to be — read back from the Blob's own `content-type`
+ * header and allow-listed, never assumed.
+ *
+ * The same three as `ADMIN_AVATAR_CONTENT_TYPES` (`lib/admin/avatars.ts:38`) and
+ * `vision.ts`'s `DESCRIBABLE_MEDIA_TYPES`, and asserted against the former in the tests. Labelling
+ * JPEG bytes `image/png` in a data URI is a lie told to a vendor whose failure mode is "200 OK with
+ * invented content" (`vision.ts:275`'s ruling), so a served type outside this list DEGRADES to an
+ * unanchored generation rather than being guessed at.
+ *
+ * Only `image/png` is VERIFIED on this endpoint (`tools/gen_badge_art.py:349`). See the header.
+ */
+export const NINA_IMAGE_REFERENCE_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+
+export type NinaImageReferenceContentType = (typeof NINA_IMAGE_REFERENCE_CONTENT_TYPES)[number]
+
+/**
+ * **Which of the two in-platform ceilings this call gets.** One function so that neither host, nor
+ * `imagerun.ts`'s retry budget, can pick the wrong one — and so the choice is one grep away from
+ * both constants.
+ *
+ * `anchored` is a boolean rather than the URL because the two call sites mean different things by
+ * it: `imagerun.ts` asks "does this JOB request an anchor" (conservative — it must reserve the
+ * larger budget before the fetch is attempted) and `imagecall.ts` asks "is an anchor actually
+ * going on the wire" (precise — a reference that could not be fetched is an unanchored call and
+ * gets the unanchored ceiling).
+ */
+export function ninaImageCallTimeoutMs(anchored: boolean): number {
+  return anchored ? NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS : NINA_IMAGE_CALL_TIMEOUT_MS
+}
+
+/**
+ * **The one reader of `args.referenceUrl`, because `nina_turns.args` is jsonb and old rows exist.**
+ *
+ * Every row written before this phase has no `referenceUrl` key at all, and both hosts read those
+ * rows (`claimNinaImageJob` in `lib/nina/imagejobs.ts` and `claimJob` in
+ * `scripts/nina-image-worker.ts` both cast `row.args` straight to `NinaImageJobArgs`, with no
+ * validation and no migration of the blob). So the field is OPTIONAL in the interface and every
+ * read goes through this function, which normalises four things to one:
+ *
+ *   · absent          -> null   (every job written before this phase)
+ *   · null            -> null   (a job whose operator selected nothing)
+ *   · ''              -> null   (a form that round-tripped an empty string; a `data:`-less fetch
+ *                                of '' would be a transport failure inside the anchored branch)
+ *   · not a string    -> null   (jsonb holds whatever was written; nothing validates it on read)
+ *
+ * It also refuses anything that is not `https://`. The URL is resolved server-side from our own
+ * rows, so this is not the SSRF boundary — it is the assertion that it stays that way, cheap enough
+ * to keep even though nothing untrusted reaches it today.
+ */
+export function ninaImageReferenceUrl(
+  args: Partial<NinaImageJobArgs> | null | undefined,
+): string | null {
+  if (args == null) return null
+  const url = args.referenceUrl
+  if (typeof url !== 'string' || url.length === 0) return null
+  return url.startsWith('https://') ? url : null
+}
+
+/**
+ * `data:<type>;base64,<payload>` — the exact string `tools/gen_badge_art.py:349-351` builds, minus
+ * the file read.
+ *
+ * Returns null when the served content type is not one this pipeline will vouch for, which the
+ * callers turn into an unanchored generation. Building the URL is separated from FETCHING it
+ * because the fetch differs per host (`imagecall.ts` on Vercel, `fetchReference` on the runner) and
+ * this string must not: a payload built two ways is a payload that will one day be built two ways.
+ */
+export function buildImageReferenceDataUrl(contentType: string, base64: string): string | null {
+  const type = contentType.split(';')[0]?.trim().toLowerCase() ?? ''
+  if (!(NINA_IMAGE_REFERENCE_CONTENT_TYPES as readonly string[]).includes(type)) return null
+  if (base64.length === 0) return null
+  return `data:${type};base64,${base64}`
+}
 
 /**
  * How long a job nobody has started is left alone before ANOTHER host may pick it up.
@@ -277,14 +470,26 @@ export function ninaImagePathname(userId: string, purpose: NinaImagePurpose, id:
  * against it — which is the only way they can be asserted at all, since the worker's own `fetch` is
  * on a machine no test runs on.
  *
- * Exactly the body the unanchored probe sent and got 200 from:
+ * **WITHOUT a reference it is byte-identical to the body the unanchored probe got a 200 from**, and
+ * the test asserts that against a literal rather than against a re-derivation:
  *   { model, prompt, resolution, aspect_ratio, n, seed }
+ * The `input_references` key is ASSIGNED CONDITIONALLY and never set to `undefined`, so the
+ * unanchored `JSON.stringify` output is unchanged down to the byte and the key order still matches
+ * `gen_badge_art.py`'s (seed, then the references).
+ *
+ * **WITH one it adds exactly the shape `tools/gen_badge_art.py:349-354` verified** — one array, one
+ * entry, `{ type: 'image_url', image_url: { url } }`, where the url is a `data:` URL built by
+ * `buildImageReferenceDataUrl`. Not an `https://` URL: an image_url pointing at a host has never
+ * been probed against this endpoint, and `lib/nina/vision.ts:252-258` makes the same ruling for the
+ * same reason. Not `/images/edits` either — that route does not exist on this provider (fact 1).
  */
 export function buildImageRequestBody(input: {
   prompt: string
   seed: number
+  /** A `data:` URL from `buildImageReferenceDataUrl`. Absent or null = an unanchored generation. */
+  referenceDataUrl?: string | null
 }): Record<string, unknown> {
-  return {
+  const body: Record<string, unknown> = {
     model: NINA_IMAGE_MODEL,
     prompt: input.prompt,
     resolution: NINA_IMAGE_RESOLUTION,
@@ -292,6 +497,10 @@ export function buildImageRequestBody(input: {
     n: 1,
     seed: input.seed,
   }
+  if (input.referenceDataUrl != null && input.referenceDataUrl.length > 0) {
+    body.input_references = [{ type: 'image_url', image_url: { url: input.referenceDataUrl } }]
+  }
+  return body
 }
 
 /**
@@ -354,4 +563,21 @@ export interface NinaImageJobArgs {
   attempts: number
   /** The prompt-as-sent record; lands in `nina_message_images.prompt`. */
   sidecar: string
+  /**
+   * **The operator's chosen photograph (R10), as an absolute `https://` Blob URL.** Fetched and
+   * base64'd at call time by whichever host runs the job, and sent as `input_references`.
+   *
+   * ── WHY IT IS OPTIONAL AND NOT `string | null` ────────────────────────────────────────────────
+   * `nina_turns.args` is jsonb and is never migrated. Every row written before this phase has no
+   * `referenceUrl` key, and BOTH hosts read those rows by casting: `claimNinaImageJob`
+   * (`lib/nina/imagejobs.ts:342`) and the worker's `claimJob`
+   * (`scripts/nina-image-worker.ts:429`) each do `row.args as NinaImageJobArgs` with no validation.
+   * A required member would make that cast a lie about every historical row and every job phases 2
+   * and 6 open without one. Optional keeps the cast honest; `ninaImageReferenceUrl(args)` is the
+   * only sanctioned read and normalises absent, null, empty and non-string alike.
+   *
+   * A job whose reference cannot be fetched is generated WITHOUT it, with a warning. The operator
+   * gets a picture without the anchor rather than an apology.
+   */
+  referenceUrl?: string | null
 }

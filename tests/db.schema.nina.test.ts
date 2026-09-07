@@ -5,6 +5,7 @@ import type { PgTable } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 
 import * as schema from '@/lib/db/schema'
+import { NINA_IMAGE_FOCUS_KEYS, NINA_IMAGE_TEXT_KEYS } from '@/lib/nina/imageprefs'
 import { NINA_DIALS, NINA_TRAITS, NINA_TUNING_KEYS } from '@/lib/nina/tuning'
 
 /**
@@ -440,7 +441,7 @@ describe('nina_tuning', () => {
     expect(fkFor(schema.ninaTuning, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the thirty-nine columns phases 3, 4, 5 and R4 were written against', () => {
+  it('spells exactly the thirty-eight columns phases 3, 4, 5 and R4 were written against', () => {
     expect(names(schema.ninaTuning)).toEqual(
       [
         'user_id',
@@ -463,7 +464,6 @@ describe('nina_tuning', () => {
         'clinginess',
         'photo_eagerness',
         'verbosity',
-        'wardrobe',
         'notes',
         // R4 — one enable flag per parameter, in the same order.
         'relationship_enabled',
@@ -560,7 +560,6 @@ describe('nina_tuning', () => {
       'relationship',
       ...NINA_TRAITS,
       ...NINA_DIALS.map(snake),
-      'wardrobe',
       'notes',
       'revision',
     ]) {
@@ -580,6 +579,141 @@ describe('nina_tuning', () => {
 
   it('has no index at all, because the only read is a primary-key lookup', () => {
     expect(indexNames(schema.ninaTuning)).toEqual([])
+  })
+})
+
+/**
+ * `nina_tuning`'s sibling, and the second table in this file whose columns are a UI's controls.
+ * Every assertion here is one `nina_tuning` already makes, asked of the new table — except the two
+ * that are about the DIFFERENCES, which are the ones worth reading: the focus flags are `NOT NULL`
+ * where the enable flags are nullable, and the reference pair has no foreign key where every other
+ * pointer in this schema does.
+ */
+describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
+  it('is keyed by user_id and cascades from the account', () => {
+    expect(cfg(schema.ninaImagePrefs).name).toBe('nina_image_prefs')
+    expect(columns(schema.ninaImagePrefs).get('user_id')?.primary).toBe(true)
+    expect(fkFor(schema.ninaImagePrefs, 'user_id')?.onDelete).toBe('cascade')
+  })
+
+  it('spells exactly the fifteen columns phases 2, 3, 4 and 5 were written against', () => {
+    expect(names(schema.ninaImagePrefs)).toEqual(
+      [
+        'user_id',
+        // R4 — the slider, read through the five bands.
+        'prompt_length',
+        // R5 — the six emphasis flags, in the order the user wrote them.
+        'focus_face',
+        'focus_skin',
+        'focus_boobs',
+        'focus_butt',
+        'focus_thighs',
+        'focus_calves',
+        // R6-R9 — the four free-text fields. `time_of_day` and not `time`; see the table header.
+        'wardrobe',
+        'venue',
+        'time_of_day',
+        'notes',
+        // R10 — the chosen photograph, as a set plus an id. Never a blob URL.
+        'reference_source',
+        'reference_id',
+        'revision',
+        'updated_at',
+      ].sort(),
+    )
+  })
+
+  it('gives every focus option a boolean column, derived from NINA_IMAGE_FOCUS_KEYS (R5)', () => {
+    // DERIVED, never a literal six: a seventh option must arrive with its column or not at all.
+    const declared = new Set(names(schema.ninaImagePrefs))
+    for (const key of NINA_IMAGE_FOCUS_KEYS) {
+      expect(declared.has(`focus_${key}`), key).toBe(true)
+      expect(sqlType(schema.ninaImagePrefs, `focus_${key}`), key).toBe('boolean')
+    }
+    expect(new Set(NINA_IMAGE_FOCUS_KEYS).size).toBe(NINA_IMAGE_FOCUS_KEYS.length)
+  })
+
+  it('makes every focus flag NOT NULL — the OPPOSITE of nina_tuning *_enabled, on purpose', () => {
+    /* Those columns are nullable so that NULL can mean "a row written before the toggles existed",
+     * which is a backfill with no UPDATE behind it. There is no such row here: this table is created
+     * with all six columns present, so there is no history for NULL to describe — and NOT NULL makes
+     * drizzle's insert type refuse an `imagePrefsToColumns` that forgets one, which for a nullable
+     * column it cannot do. */
+    for (const key of NINA_IMAGE_FOCUS_KEYS) {
+      const column = columns(schema.ninaImagePrefs).get(`focus_${key}`)
+      expect(column?.notNull, key).toBe(true)
+      expect(column?.hasDefault, key).toBe(false)
+    }
+    expect(columns(schema.ninaTuning).get('flirty_enabled')?.notNull).toBe(false)
+  })
+
+  it('gives every free-text field a NOT NULL text column, with "" as the empty value', () => {
+    for (const key of NINA_IMAGE_TEXT_KEYS) {
+      // The one spelling difference in this table: the model key is `time`, the column is
+      // `time_of_day`, because a bare `time` column is a Postgres type name.
+      const column = key === 'time' ? 'time_of_day' : key
+      expect(sqlType(schema.ninaImagePrefs, column), key).toBe('text')
+      expect(columns(schema.ninaImagePrefs).get(column)?.notNull, key).toBe(true)
+    }
+  })
+
+  it('stores the slider and the revision as integers, never floats', () => {
+    for (const key of ['prompt_length', 'revision']) {
+      expect(sqlType(schema.ninaImagePrefs, key), key).toBe('integer')
+    }
+  })
+
+  it('carries NO SQL DEFAULT on any stored value — the defaults live in TypeScript', () => {
+    // `NINA_IMAGE_PREFS_DEFAULTS` is the one definition of "unset". A `DEFAULT 50` here would be a
+    // second copy of it in a second language, drifting silently. No row means the defaults, and
+    // `writeNinaImagePrefs` always supplies all of them because it takes a whole write value.
+    for (const key of [
+      'prompt_length',
+      ...NINA_IMAGE_FOCUS_KEYS.map((k) => `focus_${k}`),
+      'wardrobe',
+      'venue',
+      'time_of_day',
+      'notes',
+      'reference_source',
+      'reference_id',
+      'revision',
+    ]) {
+      expect(columns(schema.ninaImagePrefs).get(key)?.notNull, key).toBe(true)
+      expect(columns(schema.ninaImagePrefs).get(key)?.hasDefault, key).toBe(false)
+    }
+    // The one exception, and it is not part of the contract: a timestamp.
+    expect(columns(schema.ninaImagePrefs).get('updated_at')?.hasDefault).toBe(true)
+  })
+
+  it('has NO foreign key on the reference pair, because it has two possible parents', () => {
+    /* `'album'` is `nina_avatars`, `'chat'` is `nina_message_images`, and no single FK can point at
+     * one of two tables. Nor would one be wanted: a cascade would delete a whole preferences row
+     * because one photograph was deleted. A dangling id resolves to null in
+     * `resolveNinaPhotoReference` and the generation degrades to unanchored. */
+    expect(fkFor(schema.ninaImagePrefs, 'reference_id')).toBeUndefined()
+    expect(fkFor(schema.ninaImagePrefs, 'reference_source')).toBeUndefined()
+    expect(sqlType(schema.ninaImagePrefs, 'reference_source')).toBe('text')
+    expect(cfg(schema.ninaImagePrefs).checks.length).toBe(0)
+  })
+
+  it('has no index at all, because the only read is a primary-key lookup', () => {
+    expect(indexNames(schema.ninaImagePrefs)).toEqual([])
+  })
+
+  it('reads every focus column out of the row, which drizzle cannot check', () => {
+    /* The WRITE side is compile-checked: the columns are NOT NULL, so a forgotten one is a type
+     * error in `imagePrefsToColumns`. The READ side is not — a key forgotten in
+     * `imagePrefsFromRow` is `undefined`, which `coerceNinaImageFocus` reads as `false`: a checkbox
+     * that persists and then silently does nothing. This is the guard for that direction, the same
+     * shape as the `*_enabled` guard above. */
+    const source = readFileSync('lib/nina/queries.ts', 'utf8')
+    for (const key of NINA_IMAGE_FOCUS_KEYS) {
+      const pascal = key.charAt(0).toUpperCase() + key.slice(1)
+      expect(source, `${key} is not read out of the row`).toContain(`${key}: row.focus${pascal}`)
+      expect(source, `${key} is not written to the row`).toContain(
+        `focus${pascal}: prefs.focus.${key}`,
+      )
+    }
   })
 })
 

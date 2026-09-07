@@ -91,7 +91,8 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
-| `ninaTuning` | `nina_tuning` | Nina's per-user character: eleven trait dials, the relationship, the four extra dials, wardrobe and notes, plus a revision | PK `user_id` |
+| `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field, plus a revision | PK `user_id` |
+| `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, the chosen photo reference, plus a revision | PK `user_id` |
 | `pushSubscriptions` | `push_subscriptions` | Web Push subscription per browser endpoint | `push_subscriptions_endpoint_unq`, `push_subscriptions_user_idx` |
 
 #### Schema-wide conventions
@@ -128,19 +129,22 @@ TypeScript change and not a migration. The unions are exported alongside the tab
 `InsightScope`, `NinaTurnKind`, `NinaTurnStatus`, `NinaRole`, `NinaMessageSource`, `NinaImageKind`,
 `NinaMemorySource`, `NinaPromiseMetric`, `NinaFactCategory`, `NinaAvatarSource`,
 `NinaSessionTitleSource`. `badges.key`, `records.key`, `nina_turns.trigger`/`error_code`,
-`nina_shortcuts.kind` and
-`nina_tuning.relationship` are left as plain `text` pointing at an external catalog, for the same
-"adding a member is not a migration" reason taken one step further — `relationship`'s catalog is
-`NINA_RELATIONSHIPS` in `lib/nina/tuning.ts`, and a sixth relationship is a one-line edit there
-rather than a migration here. `nina_shortcuts.kind` is the same shape with a second, harder reason
-on top: its catalog is `NinaShortcutKind` in `lib/nina/shortcuts.ts`, a module that **must** stay
-importable from a `'use client'` component and from a `.mjs` script, so it cannot import this file —
-and `.$type<>()` here would mean either importing upward from `lib/db` into `lib/nina` or restating
-`'glyph' | 'word'` as a second definition. The narrowing happens on read in `lib/nina/queries.ts`
-instead, where an unrecognised value is re-derived rather than rejected. Its neighbours
-`nina_tuning.wardrobe` and `.notes` are not catalog
-pointers at all: they are free operator text, `NOT NULL` with `''` as the empty value, because
-"no override" and "not set" are the same fact.
+`nina_shortcuts.kind`, `nina_tuning.relationship` and `nina_image_prefs.reference_source` are left
+as plain `text` pointing at an external catalog, for the same "adding a member is not a migration"
+reason taken one step further — `relationship`'s catalog is `NINA_RELATIONSHIPS` in
+`lib/nina/tuning.ts`, and a sixth relationship is a one-line edit there rather than a migration
+here. The other two are the same shape with a second, harder reason on top: their catalogs live in
+modules that **must** stay importable from a `'use client'` component (and, for
+`NinaShortcutKind` in `lib/nina/shortcuts.ts`, from a `.mjs` script), so neither can import this
+file — and `.$type<>()` here would mean either importing upward from `lib/db` into `lib/nina` or
+restating the union as a second definition. `reference_source` is `'none' | 'album' | 'chat'`,
+catalogued as `NINA_IMAGE_REFERENCE_SOURCES` in `lib/nina/imageprefs.ts`. For `kind` the narrowing
+happens on read in `lib/nina/queries.ts`, where an unrecognised value is re-derived rather than
+rejected. Their neighbours `nina_tuning.notes` and `nina_image_prefs.wardrobe` / `.venue` /
+`.time_of_day` / `.notes` are not catalog pointers at all: they are free operator text, `NOT NULL`
+with `''` as the empty value, because "no override" and "not set" are the same fact.
+(`nina_tuning.wardrobe` was one of them until F41 R3 moved the wardrobe to `nina_image_prefs`,
+where it is free operator text on exactly the same terms.)
 
 **Cascade is the default for ownership FKs**, with three documented exceptions: `badges.run_id` is
 `set null` (R-22 — "a badge is a fact about the past; deleting the run that earned it must not
@@ -149,7 +153,12 @@ a deleted parent degrades a quote bubble or run card instead of deleting convers
 `nina_message_images.source_avatar_id` / `source_image_id` are `set null` so deleting the original
 photograph leaves the copy holding the picture rather than losing it (F37 — see the P1-DB-A003 note).
 `nina_messages.turn_id` carries **no** FK at all, because an audit pointer must not be able to block
-a delete. One cascade is not a default but a stated requirement: `nina_messages.session_id` →
+a delete, and `nina_image_prefs.reference_source` / `reference_id` carry none either — the chosen
+photograph lives in `nina_avatars` *or* `nina_message_images`, and no single foreign key can point
+at one of two tables. Nor would one be wanted: a cascade would delete a whole preferences row
+because one photograph was deleted. `resolveNinaPhotoReference` in `lib/nina/queries.ts` is where a
+dangling id becomes `null` and the generation degrades to unanchored. One cascade is not a default
+but a stated requirement: `nina_messages.session_id` →
 `nina_chat_sessions.id`, which chains through `nina_message_images.message_id` so removing a session
 takes its messages and their image rows in one `DELETE`.
 
@@ -182,15 +191,18 @@ place): `run_splits`, `run_zones`, `records`, `badges`, `nina_memory_slots`, `ni
 
 Every table re-exports its inferred types — `User`, `Profile`/`NewProfile`, `Run`/`NewRun`,
 `NinaAvatar`/`NewNinaAvatar`, `NinaFolder`/`NewNinaFolder`, and so on. Import these rather than
-re-deriving `$inferSelect` at a call site. Two naming carve-outs, both with a `Row` suffix. The push
+re-deriving `$inferSelect` at a call site. Four naming carve-outs, all `…Row`-suffixed. The push
 row is `PushSubscriptionRow`, not `PushSubscription`, because the latter is a DOM lib global that
-client code uses by that exact name. `NinaShortcutRow` / `NewNinaShortcutRow` carry the suffix for
-`NinaTuningRow`'s reason instead — the raw row is not the shape callers want, because `kind` is bare
-`string` here. That table has **three** names across three layers and no duplication:
-`NinaShortcutRow` (this file, the drizzle row), `NinaShortcutRecord` (`lib/nina/queries.ts`, the
-same fields with `kind` narrowed to the union), and `NinaShortcutMatchable`
-(`lib/nina/shortcuts.ts`, the structural minimum the matcher needs — a subset the record satisfies
-with no mapping step).
+client code uses by that exact name. `NinaTuningRow` and `NinaImagePrefsRow` are suffixed because
+`NinaTuning` and `NinaImagePrefs` are the *model* types in `lib/nina/tuning.ts` and
+`lib/nina/imageprefs.ts` — nested and coerced, and what every consumer actually holds; the flat,
+unvalidated storage shapes should be named only by `lib/nina/queries.ts`. `NinaShortcutRow` /
+`NewNinaShortcutRow` carry the suffix for the same reason — the raw row is not the shape callers
+want, because `kind` is bare `string` here. That table has **three** names across three layers and
+no duplication: `NinaShortcutRow` (this file, the drizzle row), `NinaShortcutRecord`
+(`lib/nina/queries.ts`, the same fields with `kind` narrowed to the union), and
+`NinaShortcutMatchable` (`lib/nina/shortcuts.ts`, the structural minimum the matcher needs — a
+subset the record satisfies with no mapping step).
 
 ### `queries.ts` — every run-domain read and write
 
@@ -299,8 +311,9 @@ import of it anywhere. 54 are source files, 14 are tests.
 
 - **`lib/nina/queries.ts`** — the heaviest consumer in the repo, and architecturally the most
   important: it imports `db` itself plus eleven tables and ten union types, and it is the **only**
-  production file that imports `ninaAvatars`, `ninaFolders`, `ninaChatSessions` or `ninaShortcuts`.
-  It is the choke point for all avatar, folder, session and shortcut access — the session statements are its §4a, and the pure
+  production file that imports `ninaAvatars`, `ninaFolders`, `ninaChatSessions`, `ninaShortcuts` or
+  `ninaImagePrefs`. It is the choke point for all avatar, folder, session, shortcut and
+  image-prefs access — the session statements are its §4a, and the pure
   ordering rules they feed are `lib/nina/sessions.ts`, which imports nothing from this package at
   all. Every other avatar-touching file
   (`lib/admin/ninaAlbumActions.ts`, `app/admin/page.tsx`, `lib/nina/album.ts`, `avatargen.ts`,
@@ -478,8 +491,13 @@ clean.
 
 `0009_nina_message_photo_only.sql` and `0010_nina_image_provenance.sql` follow the same arrangement
 for the other reason a backfill is needed — a new *nullable* column whose meaning is retroactive, so
-production's existing rows have to be marked. Both keep the generated `ALTER TABLE`s at the top and
-put the hand-written statements below a `--> statement-breakpoint` under a banner saying so, because
+production's existing rows have to be marked. `0011_natural_nico_minoru.sql` is the third reason: a
+brand-new table whose data step **moves** a column out of another table (`nina_tuning.wardrobe` →
+`nina_image_prefs.wardrobe`), and the copy has to live in the migration that creates the destination
+rather than in the later one that drops the source — on a fresh database the files replay in order,
+so a copy written later would read a column an earlier-numbered migration had already removed. All
+three keep the generated DDL at the top and put the hand-written statements below a
+`--> statement-breakpoint` under a banner saying so, because
 **`npm run db:generate` will silently drop them if the file is regenerated**: diff the old file
 against the new one and re-append before deleting anything. A backfill also states its rule inline
 rather than importing it — a migration is a historical record and must not follow later edits to the
@@ -530,6 +548,16 @@ TypeScript that once matched it.
   derived from `trigger` by one private helper in `lib/nina/queries.ts`, and the input types have no
   field for either — a caller *cannot* mislabel a row. Adding one would give the unique index a
   second, un-normalised spelling of the same trigger to consider distinct.
+- **A photo reference is a `{ source, id }` pair, never a URL.** `nina_image_prefs` stores
+  `reference_source` + `reference_id` because `updateNinaChatPhotoBlob` swaps a chat photo's
+  `blob_url` while keeping its `id`: a stored URL would silently go stale or point at bytes that
+  have since been replaced. Resolve it at read time (`resolveNinaPhotoReference`); a deleted
+  photograph yields `null` rather than an error, because there is no FK that could enforce it.
+- **`nina_image_prefs` has no SQL defaults, and that is the point.** `NINA_IMAGE_PREFS_DEFAULTS` in
+  `lib/nina/imageprefs.ts` is the one definition of "unset"; a `DEFAULT 50` here would be a second
+  copy of it in a second language, drifting silently. No row means the defaults (`revision: 0`), and
+  `revision >= 1` is the proof that the operator actually saved something. `updated_at` is the one
+  exception, because a timestamp is not part of the contract.
 - **Auth.js tables are verbatim.** Singular names and camelCase columns are the adapter's
   convention, which is why `drizzle()` is built *without* `casing: 'snake_case'` and every app
   table spells its snake_case names out explicitly.
@@ -616,6 +644,75 @@ on an `import` line), which is what keeps it safe for the browser bundle *and* i
 for phase 4's `.mjs` importer to load it under `--experimental-strip-types` and compute `match_key`
 with literally the same function. That is why `NinaShortcutMatchable` is declared there as a plain
 interface instead of being imported from this file.
+Phase 1 of 7 of the `nina-image-generation-tab` plan set — the Image Generation tab in
+`/admin/personality`. Within this package the task touched `schema.ts` and `drizzle/` only, purely
+additively; the vocabulary it stores lives in the new `lib/nina/imageprefs.ts` and the four queries
+that read and write it in `lib/nina/queries.ts`. **`nina_tuning` was deliberately not touched** —
+phase 7 owns retiring `nina_tuning.wardrobe`.
+
+**New table `nina_image_prefs`** — one row per user, sixteen columns, `user_id` as the sole primary
+key with a cascading FK to `user`, **no secondary index and no CHECK constraint**. It is
+`nina_tuning`'s sibling and not its extension, and the split is the plan's: `nina_tuning` is *who
+she is* and reaches the system prompt on every turn; this is *how she is photographed* and reaches
+the image prompt only when a generation happens.
+
+| Column | Meaning |
+|---|---|
+| `prompt_length` | `integer`, 0-100, 50 unset — the slider, read through the repo's five bands |
+| `focus_face` … `focus_calves` | six `boolean NOT NULL` emphasis flags (`face`, `skin`, `boobs`, `butt`, `thighs`, `calves`), all false unset |
+| `wardrobe`, `venue`, `time_of_day`, `notes` | free operator text, `NOT NULL` with `''` as the empty value |
+| `reference_source` + `reference_id` | the chosen photograph, as a `{ source, id }` pair — no FK |
+| `revision` | bumped **in SQL** by the upsert; `0` means no row has ever been written |
+| `updated_at` | the one column that is *not* part of the contract, and the one with a `DEFAULT` |
+
+Four shape decisions, each asserted by `tests/db.schema.nina.test.ts`:
+
+- **Columns, not one `jsonb` blob.** `nina_tuning`'s argument applies word for word, with its first
+  clause biting hardest here: a misspelt key in a blob is indistinguishable from an unset one, the
+  coercer reads an unset focus key as `false`, so the failure mode would be *a checkbox that
+  silently does nothing* — the one failure a control panel cannot survive. `focus_bobs` fails at
+  `db:generate`.
+- **The six flags are `NOT NULL`, the opposite of `nina_tuning`'s `*_enabled`.** Those are nullable
+  because NULL there means "a row written before the toggles existed"; no such row can exist here,
+  since the table arrives with all six columns in one migration.
+- **No SQL defaults** except `updated_at` — see the gotcha above. "No row means the defaults" is
+  what makes every downstream caller unconditional.
+- **`reference_source` / `reference_id` have no foreign key and cannot have one.** Two possible
+  parents (`nina_avatars` for `'album'`, `nina_message_images` for `'chat'`), and the pair is a
+  `{ source, id }` rather than a `blob_url` because `updateNinaChatPhotoBlob` replaces a chat
+  photo's bytes while keeping its id.
+
+`NinaImagePrefsRow` / `NewNinaImagePrefsRow` are the row types; the `…Row` suffix is load-bearing,
+because `NinaImagePrefs` is the nested, coerced model type in `lib/nina/imageprefs.ts`.
+
+**Migration `drizzle/0011_natural_nico_minoru.sql`** plus its snapshot and journal entry
+(`idx: 11`) — generated by `npm run db:generate`, never hand-named and never renamed. The generated
+half is the `CREATE TABLE` and the FK. Below a `--> statement-breakpoint`, under the same banner
+`0009` and `0010` carry, is a **hand-written one-statement data step**: it copies every non-empty
+`nina_tuning.wardrobe` into a new prefs row at `revision = 1`, and every other value is
+`NINA_IMAGE_PREFS_DEFAULTS` transcribed as a SQL literal. Two details are deliberate — a user whose
+wardrobe is `''` gets **no** row, because a row of pure defaults would claim `revision = 1` for
+someone who never saved anything; and `tests/nina.imageprefs.test.ts` reads this file and asserts
+every transcribed literal against the TypeScript constant, so the copy is checked rather than
+trusted. `ON CONFLICT DO NOTHING` cannot fire on replay but makes the statement re-runnable by hand.
+
+Four functions landed in `lib/nina/queries.ts` against this table:
+`readNinaImagePrefs` (returns `NINA_IMAGE_PREFS_DEFAULTS` with `revision: 0` when the user has no
+row), `writeNinaImagePrefs` (a single `ON CONFLICT DO UPDATE` on `user_id` with `revision + 1`
+computed SQL-side, so no caller can send a revision a stale tab could move backwards),
+`listNinaPhotoReferences` (the bounded, newest-first union that feeds the picker — album rows plus
+**original** `kind='generated'` chat rows) and `resolveNinaPhotoReference`.
+
+One cross-package invariant is worth knowing from here (plan invariant 13): **the picker union
+contains no reference row**, so no photograph appears in it twice. The chat half of that union must
+call `generatedChatPhotoScope`, which already carries the `isOriginalPhoto()` conjunct, rather than
+spelling an `eq(kind, 'generated')` comparison of its own; a source-level test in
+`tests/nina.imageprefs.test.ts` enforces it, because inlining the predicate is the one edit that
+would reintroduce the F37 duplicate through a different door.
+
+> **`npm run db:check` is clean, but NOT applied to production.** Applying `0011` is an open deploy
+> action (`npm run db:migrate`) — a manual step, as with `0010`, because the file carries a data
+> migration over live rows.
 
 ### Recent changes — P1-DB-A003 (2026-09-07)
 
@@ -827,8 +924,9 @@ Within this package the phase touched `schema.ts` only; the reads and writes liv
 **New table `nina_tuning`** — one row per user, primary-keyed on `user_id` with a cascading FK to
 `user`, holding Nina's whole character: the eleven trait dials as `0-100` integers, the relationship
 as a text column over five values, the four extra dials the request's *"among other things (you can
-define more comprehensively)"* asked for, a wardrobe line, a free-text notes field, a revision
-integer and an `updated_at`.
+define more comprehensively)"* asked for, a free-text notes field, a revision integer and an
+`updated_at`. (It also held a one-line `wardrobe` until F41 R3, which dropped the column after
+copying every value into `nina_image_prefs.wardrobe`.)
 
 **The dials are flat columns, not a JSON blob.** Twenty named `integer NOT NULL` columns rather than
 one `jsonb`, so the column list *is* the vocabulary: a dial that does not exist cannot be written,

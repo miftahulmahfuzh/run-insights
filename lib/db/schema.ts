@@ -1902,9 +1902,9 @@ export const ninaFoldersRelations = relations(ninaFolders, ({ one }) => ({
  * ==========================================================================*/
 
 /**
- * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Eleven trait
- * intensities, a relationship, four behaviour dials, sixteen enable flags, a wardrobe line and a
- * notes field — fifteen integers, sixteen booleans and three strings. `lib/nina/tuning.ts` owns the
+ * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Twelve trait
+ * intensities, a relationship, four behaviour dials, seventeen enable flags and a notes field —
+ * seventeen integers, seventeen booleans and two strings. `lib/nina/tuning.ts` owns the
  * vocabulary, the domains and the defaults; this table stores one row of it per user and nothing
  * else.
  *
@@ -2011,16 +2011,20 @@ export const ninaTuning = pgTable('nina_tuning', {
   verbosity: integer('verbosity').notNull(),
 
   /**
-   * One line describing what she is wearing, baked into the image prompt at dispatch time
-   * (`NINA_WARDROBE_MAX` = 200). `''` means "no override" and phase 4 falls back to
-   * `NINA_APPEARANCE`'s heather-grey tank — which is what makes the empty default reproduce
-   * today's photographs exactly. NOT NULL with `''` as the empty value rather than NULL, because
-   * "no override" and "not set" are the same fact and two spellings for one fact is one too many.
-   */
-  wardrobe: text('wardrobe').notNull(),
-  /**
    * Free text appended verbatim to the system prompt (`NINA_NOTES_MAX` = 2000). The escape hatch
    * for something the operator wants that no dial expresses. `''` = nothing appended.
+   *
+   * ── THERE WAS A `wardrobe` COLUMN HERE, AND F41 R3 DROPPED IT ───────────────────────────────
+   * *"remove Wardrobe field in /admin/personality (this new feature is more detailed version of
+   * it)."* One line of operator text describing what she is wearing lived beside `notes` here,
+   * baked into the image prompt at dispatch time. It is `nina_image_prefs.wardrobe` now, beside the
+   * venue, the time, the prompt length and the focus set — every other parameter of the same
+   * photograph. `notes` stayed because it is a SYSTEM-PROMPT field and always was: the two were
+   * neighbours in this table but never on the same side of the camera.
+   *
+   * The drop was safe rather than lucky: the migration that created `nina_image_prefs` copied every
+   * non-empty `nina_tuning.wardrobe` into it BEFORE this column was dropped, so the value survives
+   * the schema change. Restoring it is re-adding the column and copying back.
    */
   notes: text('notes').notNull(),
 
@@ -2089,6 +2093,162 @@ export const ninaShortcutsRelations = relations(ninaShortcuts, ({ one }) => ({
 }))
 
 /* ============================================================================
+ * The image-generation preferences. ONE ROW PER USER, and the second table in
+ * this file whose columns are a UI's controls rather than a domain's facts.
+ * ==========================================================================*/
+
+/**
+ * **How she is photographed, as data the operator can change without a commit (R4-R10).** One
+ * slider, six emphasis flags, four lines of free text and one chosen photograph.
+ * `lib/nina/imageprefs.ts` owns the vocabulary, the domains and the defaults; this table stores one
+ * row of it per user and nothing else.
+ *
+ * It is `nina_tuning`'s sibling and NOT its extension, and the split is the plan's own decision:
+ * `nina_tuning` is WHO SHE IS and reaches the system prompt on every turn; this is HOW SHE IS
+ * PHOTOGRAPHED and reaches the image prompt only when a generation happens. `nina_tuning.wardrobe`
+ * moves here (phase 7 drops the column) because two wardrobes silently competing is the one outcome
+ * *"remove Wardrobe field in /admin/personality"* cannot mean.
+ *
+ * ── WHY COLUMNS AND NOT ONE `jsonb` BLOB ──────────────────────────────────────────────────────
+ * `nina_tuning`'s header argues it at length and every word of it applies here, with the first
+ * argument biting hardest: **a misspelt key in a blob is indistinguishable from an unset one**,
+ * `coerceNinaImageFocus` reads an unset key as `false`, and the failure mode would therefore be *a
+ * checkbox that silently does nothing* — the one failure a control panel cannot survive. A column
+ * named `focus_bobs` fails at `db:generate`.
+ *
+ * ── THE FOCUS FLAGS ARE `NOT NULL`, WHICH IS THE OPPOSITE OF `nina_tuning`'s `*_enabled` ──────
+ * Those columns are nullable with no default because NULL there means one thing only — *a row
+ * written before the toggles existed* — and `coerceNinaEnabled` turns that into "on" with no data
+ * step behind it. **There is no such row here.** This table is created in one migration with all six
+ * columns present, so there is no history for NULL to describe, and `writeNinaImagePrefs` supplies
+ * all six on every save. `NOT NULL` also makes drizzle's insert type refuse a mapper that forgets
+ * one, which for a nullable column it cannot do. The one data step that inserts rows (see step 3)
+ * supplies all six explicitly.
+ *
+ * ── NO SQL DEFAULTS, AND THAT IS THE POINT ────────────────────────────────────────────────────
+ * `NINA_IMAGE_PREFS_DEFAULTS` in `lib/nina/imageprefs.ts` is the one definition of "unset", and a
+ * `DEFAULT 50` here would be a second copy of it in a second language, drifting silently. Instead:
+ *
+ *   · **no row means the defaults.** `readNinaImagePrefs` returns `NINA_IMAGE_PREFS_DEFAULTS` for a
+ *     user with no row, which is what makes every downstream caller unconditional.
+ *   · `writeNinaImagePrefs` is the only writer and always supplies every column, because it takes a
+ *     whole `NinaImagePrefsWrite`. One save, not fifteen (plan invariant 7).
+ *
+ * The one exception is `updated_at`, which is a timestamp and not part of the contract — exactly the
+ * exception `nina_tuning` carves out and `tests/db.schema.nina.test.ts` already asserts.
+ *
+ * ── `reference_source` / `reference_id` HAVE NO FOREIGN KEY, AND CANNOT HAVE ONE ──────────────
+ * The chosen photograph lives in `nina_avatars` (`'album'`) or in `nina_message_images`
+ * (`'chat'`), and no single foreign key can point at one of two tables. Nor would one be wanted: a
+ * cascade would delete a whole preferences row because one photograph was deleted, and a `SET NULL`
+ * would need a nullable column and still could not name its parent. So the pair is untyped `text`,
+ * `resolveNinaPhotoReference` in `lib/nina/queries.ts` is where a dangling id becomes `null`, and a
+ * generation with an unresolvable reference degrades to unanchored. `reference_source` is plain
+ * `text` with no `.$type<>()` for `nina_turns.trigger`'s reason — and for the stronger one
+ * `nina_tuning.relationship` records: `lib/nina/imageprefs.ts` must stay importable from a
+ * `'use client'` file, so it cannot import this module, and typing the column would mean either
+ * importing UPWARD from `lib/db` into `lib/nina` or restating the three-value union here as a
+ * second definition.
+ *
+ * ── `time_of_day` IS THE ONE SPELLING DIFFERENCE ──────────────────────────────────────────────
+ * The model key is `time`, which is the user's own label for the field. The column is
+ * `time_of_day`, because a bare `time` column is a Postgres type name that every hand-written
+ * statement would have to quote — including the data step in this table's own migration.
+ * `photo_eagerness` versus `photoEagerness` is the precedent for one spelling difference, and
+ * `lib/nina/queries.ts` is the one place the two meet.
+ *
+ * ── `user_id` IS THE PRIMARY KEY ──────────────────────────────────────────────────────────────
+ * One row per user, so `user_id` alone is the natural key. It is also what lets
+ * `writeNinaImagePrefs` be a single `ON CONFLICT DO UPDATE` that bumps `revision` in SQL, instead of
+ * a read-then-write that is correct until two tabs race.
+ */
+export const ninaImagePrefs = pgTable('nina_image_prefs', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+
+  /**
+   * R4. *"prompt length (sliding bar): the longer the prompt, the more detailed the prompt would
+   * be"*. An integer percent 0-100, read through the repo's five bands; each band selects a rung of
+   * `NINA_PROMPT_LENGTH_RUNGS`. The domain is enforced by `clampNinaImageScore`, not by a CHECK —
+   * `nina_tuning`'s argument: a CHECK would make widening the scale a migration, and a value outside
+   * it is a bug in one writer rather than a state the reader cannot survive.
+   */
+  promptLength: integer('prompt_length').notNull(),
+
+  /* R5's six, in the order the user wrote them: *"focus on (select multi options): face, skin, big
+   * boobs, bubble butt, big thighs, very long calves"*. EMPHASIS, never inclusion — the body canon
+   * is unconditional prompt text (plan invariant 4), so all six false is the default and a prompt
+   * built from it still names all four body facts. `lib/nina/imageprefs.ts`'s
+   * `NINA_IMAGE_FOCUS_KEYS` owns the vocabulary; these are the six booleans behind it. */
+  /** Her face. The one the user said he does not care about — kept because he may change his mind. */
+  focusFace: boolean('focus_face').notNull(),
+  /** Skin texture, sheen, sweat. */
+  focusSkin: boolean('focus_skin').notNull(),
+  /** *"big boobs"*. */
+  focusBoobs: boolean('focus_boobs').notNull(),
+  /** *"bubble butt"*. */
+  focusButt: boolean('focus_butt').notNull(),
+  /** *"big thighs"*. */
+  focusThighs: boolean('focus_thighs').notNull(),
+  /** *"very long calves"*. */
+  focusCalves: boolean('focus_calves').notNull(),
+
+  /**
+   * R6. One line describing what she is wearing (`NINA_IMAGE_WARDROBE_MAX` = 200). **This is
+   * `nina_tuning.wardrobe`'s new home** and this migration's data step copies every existing value
+   * into it; phase 7 drops the old column afterwards. `''` means "no override" and the canon's own
+   * outfit is used. NOT NULL with `''` as the empty value rather than NULL, because "no override"
+   * and "not set" are the same fact.
+   */
+  wardrobe: text('wardrobe').notNull(),
+  /** R7. Where (`NINA_IMAGE_VENUE_MAX` = 200). *"Kuta streets in Bali"*. `''` = the canon's own. */
+  venue: text('venue').notNull(),
+  /**
+   * R8. When, and what the weather is doing (`NINA_IMAGE_TIME_MAX` = 120). *"sunny day, rainy
+   * night, cold afternoon"*. Named `time_of_day` and not `time`; see the header. `''` = nothing said.
+   */
+  timeOfDay: text('time_of_day').notNull(),
+  /**
+   * R9. The escape hatch (`NINA_IMAGE_NOTES_MAX` = 600). *"nina is full of sweat"*. A different
+   * field from `nina_tuning.notes`, which is a SYSTEM-prompt field and stays exactly where it is;
+   * this one reaches the image prompt only. `''` = nothing appended.
+   */
+  notes: text('notes').notNull(),
+
+  /**
+   * R10, the storage half. Which set the chosen photograph came from — `'none' | 'album' | 'chat'`
+   * from `lib/nina/imageprefs.ts`. `'none'` is the empty value; there is no NULL. Untyped `text`
+   * and no FK; see the header.
+   */
+  referenceSource: text('reference_source').notNull(),
+  /**
+   * The chosen photograph's id in that set: `nina_avatars.id` for `'album'`,
+   * `nina_message_images.id` for `'chat'`. `''` exactly when `reference_source = 'none'`. **No
+   * foreign key** — two possible parents, and see the header for why a cascade would be wrong even
+   * if one were expressible. A deleted photograph leaves an id that
+   * `resolveNinaPhotoReference` reads as `null`, and the generation degrades to unanchored.
+   */
+  referenceId: text('reference_id').notNull(),
+
+  /**
+   * **Bumped by the database on every save.** A stored row always has `revision >= 1`; `0` is
+   * `NINA_IMAGE_PREFS_DEFAULTS.revision` and means no row has ever been written.
+   * `writeNinaImagePrefs` computes it as `revision + 1` inside the upsert, so no caller can send
+   * one — a revision the client supplies is a revision a stale tab can move backwards. No `DEFAULT`
+   * here for the same reason as every column above: the one writer always supplies it.
+   */
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+})
+export const ninaImagePrefsRelations = relations(ninaImagePrefs, ({ one }) => ({
+  user: one(users, { fields: [ninaImagePrefs.userId], references: [users.id] }),
+}))
+
+/* ============================================================================
  * Row types. Import these instead of re-deriving $inferSelect at call sites.
  * ==========================================================================*/
 
@@ -2148,6 +2308,14 @@ export type NewNinaChatSession = typeof ninaChatSessions.$inferInsert
  */
 export type NinaTuningRow = typeof ninaTuning.$inferSelect
 export type NewNinaTuningRow = typeof ninaTuning.$inferInsert
+/**
+ * `NinaImagePrefsRow`, not `NinaImagePrefs` — the latter is the MODEL type in
+ * `lib/nina/imageprefs.ts`, which is what every consumer actually holds (a nested `focus` record, a
+ * nested `reference`, coerced). The row is the flat, unvalidated storage shape and only
+ * `lib/nina/queries.ts` should ever name it. Same suffix, same reason, as `NinaTuningRow`.
+ */
+export type NinaImagePrefsRow = typeof ninaImagePrefs.$inferSelect
+export type NewNinaImagePrefsRow = typeof ninaImagePrefs.$inferInsert
 /**
  * `PushSubscriptionRow`, not `PushSubscription` — the latter is a DOM lib global that phase 11's
  * client code uses by that exact name, and shadowing it in a module that also talks to the

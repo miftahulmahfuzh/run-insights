@@ -5,7 +5,7 @@ import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
 import { SEED_MAX } from './imagerecipe'
-import { readNinaTuning } from './queries'
+import { readNinaImagePrefs, readNinaTuning } from './queries'
 
 /**
  * **The avatar-generation entry point. Phases 13, 14 and 15 all call this and nothing else.**
@@ -84,16 +84,18 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
   const mood = request.mood?.trim() ?? null
   const seed = Math.floor(Math.random() * SEED_MAX)
   /*
-   * Phase 4. Read live, no cache — same as the chat selfie, and for the same reason: a wardrobe
-   * saved on /admin/nina is in the next photograph with no invalidation step at all.
+   * Read live, no cache, BOTH rows — same as the chat selfie and for the same reason: a wardrobe or
+   * a venue saved on /admin/image-generation is in the next photograph with no invalidation step.
    *
-   * `NinaAvatarRequest` is deliberately NOT given a `tuning` field. Reading it here is what lets
-   * the `set_avatar` chat tool (`avatartools.ts`) and the admin album's Generate button both get
-   * the operator's wardrobe without either file being edited — and neither of those files belongs
-   * to this phase.
+   * `NinaAvatarRequest` is deliberately NOT given a `tuning` or a `prefs` field. VERIFIED, not
+   * assumed: `lib/nina/avatartools.ts:85-89` calls this function with exactly
+   * `{ userId, scene, source }`, so reading both rows here is what lets the `set_avatar` chat tool
+   * and the admin album's Generate button pick up every new preference with those files unopened.
+   * That property is why the wardrobe landed with zero edits to `avatartools.ts` when F34 R5
+   * shipped, and it is preserved here on purpose rather than by luck.
    */
-  const tuning = await readNinaTuning(userId)
-  const prompt = buildNinaImagePrompt({ purpose: 'avatar', scene, mood, tuning })
+  const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
+  const prompt = buildNinaImagePrompt({ purpose: 'avatar', scene, mood, tuning, prefs })
 
   const jobId = await openNinaImageJob(userId, {
     purpose: 'avatar',

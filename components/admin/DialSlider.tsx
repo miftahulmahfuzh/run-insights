@@ -55,9 +55,8 @@ import { cn } from '@/lib/cn'
  *
  * ── THE TOGGLE IS OPTIONAL, AND ABSENT MEANS "NO TOGGLE" ────────────────────────────────────
  * `onEnabledChange` is what renders the checkbox. A caller with a parameter that has no off switch
- * — there is none today, but `wardrobe` and `notes` are exactly that shape — passes neither prop
- * and gets the control as it was before R4, rather than a checkbox that is always on and does
- * nothing.
+ * — there is none today, but `notes` is exactly that shape — passes neither prop and gets the
+ * control as it was before R4, rather than a checkbox that is always on and does nothing.
  *
  * ── TOUCH (INHERITED FROM THE RESPONSIVE PHASE — DO NOT UNDO) ───────────────────────────────
  * `h-11` on the track, `TOUCH_TARGET` on the reset and `TOUCH_ICON` around the checkbox are the

@@ -53,9 +53,10 @@ Zero imports, plain data and types, client-importable. Declares:
   canon.
 - **Four dials** (`NINA_DIALS`: profanity, clinginess, photoEagerness, verbosity), each naming a real
   code path.
-- **`NinaTuning`** — `{ traits, relationship, dials, enabled, wardrobe, notes, revision }`, all
-  readonly. `enabled` is R4's per-parameter on/off map (see below). `wardrobe` and `notes` are
-  `string` and never null; `''` is the one empty value. `revision` is the database's to assign, and
+- **`NinaTuning`** — `{ traits, relationship, dials, enabled, notes, revision }`, all readonly.
+  `enabled` is R4's per-parameter on/off map (see below). `notes` is `string` and never null; `''`
+  is the one empty value. (`wardrobe` was a seventh member until F41 R3 moved it to
+  `NinaImagePrefs`.) `revision` is the database's to assign, and
   `0` means *no row has ever been written*.
 - **`NINA_TUNING_DEFAULTS`** — frozen, and the setting that reproduces today's Nina exactly.
 - **`coerceNinaTuning`** — total, never throws, always returns a fresh unfrozen object. An
@@ -99,13 +100,14 @@ disabled-value paragraph". Zero.
   a hand-built `NinaTuning` with no `enabled` at all (a fixture, a `psql` round trip, an
   `as NinaTuning` cast) degrades to "everything on" instead of throwing mid-turn.
 
-**`relationship` has a toggle; `wardrobe` and `notes` deliberately do not.** `nobody` is not an off
-switch — `NINA_RELATIONSHIP_BLOCKS.nobody` is four sentences of *active* instruction and the coldest
-setting on the axis, so choosing it to "exclude" the parameter makes the prompt longer and changes
-her behaviour. Disabling the relationship therefore means `NINA_DEFAULT_RELATIONSHIP`, whose blocks
-*are* today's `NINA_IDENTITY`. `wardrobe` and `notes` are the mirror image: `''` genuinely is their
-absence and already costs zero bytes, so a toggle would be a second spelling for a state the field
-already has.
+**`relationship` has a toggle; `notes` deliberately does not.** `nobody` is not an off switch —
+`NINA_RELATIONSHIP_BLOCKS.nobody` is four sentences of *active* instruction and the coldest setting
+on the axis, so choosing it to "exclude" the parameter makes the prompt longer and changes her
+behaviour. Disabling the relationship therefore means `NINA_DEFAULT_RELATIONSHIP`, whose blocks
+*are* today's `NINA_IDENTITY`. `notes` is the mirror image: `''` genuinely is its absence and
+already costs zero bytes, so a toggle would be a second spelling for a state the field already has.
+This sentence used to name two such fields; `wardrobe` was the other, and F41 R3 moved it to
+`nina_image_prefs` rather than giving it a toggle.
 
 #### The gate lives at the score seam, and only there
 
@@ -292,9 +294,10 @@ function ninaEffectiveVerbosity(tuning: NinaTuning): number      // R3, max(own 
 
 - `ninaIdentity` — paragraph 1 is the relationship's, 2 and 3 are fixed, paragraph 4's last clause is
   the `funny` dial's, and the last paragraph is the relationship's `history`.
-- `ninaAppearance` — the **wardrobe seam phase 4 will use**. Returns `NINA_APPEARANCE` when
-  `tuning.wardrobe` is empty, otherwise swaps the outfit paragraph while keeping the face and the
-  home ground. This never reaches the system prompt; `system.ts` does not import it.
+- `ninaAppearance` — the **wardrobe seam**. Returns `NINA_APPEARANCE` when the wardrobe is empty,
+  otherwise swaps the outfit paragraph while keeping the face and the home ground. The wardrobe it
+  reads is `nina_image_prefs.wardrobe` since F41 R3, not `nina_tuning`'s. This never reaches the
+  system prompt; `system.ts` does not import it.
 - `ninaTraitsBlock` — traits first, then dials, `\n\n`-joined. **Returns `''` at
   `NINA_TUNING_DEFAULTS`**, which is the contract phase 3 relies on: an empty block means no section
   header is emitted.
@@ -457,7 +460,7 @@ for each version lives as a comment above the constant in `prompts/index.ts`.
 
 **R5.** `buildNinaImagePrompt` takes an optional `NinaTuning`; absent or at `NINA_TUNING_DEFAULTS` it
 renders the prompt that shipped, byte for byte, and `tests/nina.imagerecipe.test.ts` asserts both
-ends of that. A non-empty `wardrobe` replaces the canon outfit through `persona.ts`'s
+ends of that. A non-empty image-prefs `wardrobe` replaces the canon outfit through `persona.ts`'s
 `ninaAppearance`, and `steamy` / `flirty` at band `high` add a `POSE AND PRESENCE:` block — `steamy`
 to the selfie only, because the avatar is a head-and-shoulders crop. `selfiegen.ts` is the
 chat-selfie entry point, the mirror of `avatargen.ts`; both read the tuning themselves, which is why

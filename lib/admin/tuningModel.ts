@@ -40,14 +40,14 @@ import {
  * no real entry below — the fallback is a safety net for a running page, never a licence to ship
  * an unlabelled dial. An unlabelled slider is a dial the operator cannot report back.
  *
- * ── THE TWO LENGTH BOUNDS ARE PHASE 1'S, AND ARE NOT RE-DECLARED HERE ────────────────────────
- * The draft of this file carried `ADMIN_TUNING_WARDROBE_MAX = 240` and
- * `ADMIN_TUNING_NOTES_MAX = 1000` against phase 1's 200 and 2000. Both were cut in reconciliation
- * and every caller imports `NINA_WARDROBE_MAX` / `NINA_NOTES_MAX` from `@/lib/nina/tuning`
+ * ── THE LENGTH BOUND IS PHASE 1'S, AND IS NOT RE-DECLARED HERE ───────────────────────────────
+ * The draft of this file carried an `ADMIN_TUNING_NOTES_MAX = 1000` against phase 1's 2000 (and a
+ * second bound for the wardrobe, which is no longer this file's field at all — F41 R3). Both were
+ * cut in reconciliation and every caller imports `NINA_NOTES_MAX` from `@/lib/nina/tuning`
  * directly. A Zod bound STRICTER than the model's coercion is the worse of the two failures: the
- * panel would refuse 210 characters of wardrobe that `coerceNinaWardrobe` would happily have
- * stored. `lib/admin/avatars.ts`'s rule, which `lib/admin/schema.ts` quotes approvingly: *"a
- * constant that is agreed rather than shared is a constant that will one day disagree."*
+ * panel would refuse 1200 characters of notes that `coerceNinaNotes` would happily have stored.
+ * `lib/admin/avatars.ts`'s rule, which `lib/admin/schema.ts` quotes approvingly: *"a constant that
+ * is agreed rather than shared is a constant that will one day disagree."*
  */
 
 /** What a browser edits: phase 1's row, minus the revision the database mints. */
@@ -62,7 +62,6 @@ export interface TuningDraft {
    */
   enabled: Record<string, boolean>
   relationship: string
-  wardrobe: string
   notes: string
 }
 
@@ -201,14 +200,13 @@ export function toTuningDraft(tuning: NinaTuning): TuningDraft {
      * draft that aliased it would throw on the first checkbox. */
     enabled: { ...tuning.enabled },
     relationship: tuning.relationship,
-    wardrobe: tuning.wardrobe,
     notes: tuning.notes,
   }
 }
 
 /**
  * Which fields differ, as stable dotted paths (`traits.anger`, `dials.photoEagerness`,
- * `enabled.flirty`, `relationship`, `wardrobe`, `notes`).
+ * `enabled.flirty`, `relationship`, `notes`).
  *
  * One function serves three jobs, which is why it returns names instead of a boolean: the summary
  * line counts them, each control asks whether its own path is in the set, and `tuningDraftEquals`
@@ -230,7 +228,6 @@ export function changedTuningFields(next: TuningDraft, saved: TuningDraft): stri
     if (next.dials[key] !== saved.dials[key]) changed.push(`dials.${key}`)
   }
   if (next.relationship !== saved.relationship) changed.push('relationship')
-  if (next.wardrobe !== saved.wardrobe) changed.push('wardrobe')
   if (next.notes !== saved.notes) changed.push('notes')
 
   /* `?? true` on BOTH sides: an absent key means "on" everywhere in this feature, so a draft that

@@ -2,12 +2,20 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import {
+  focusOnKeys,
+  promptLengthCopy,
+  referenceKey,
+  toImageGenDraft,
+} from '@/lib/admin/imageGenModel'
 import { loudestDials, relationshipCopy, toTuningDraft, tuningCopy } from '@/lib/admin/tuningModel'
 import { getAdminUser } from '@/lib/admin/users'
+import { NINA_IMAGE_FOCUS_KEYS } from '@/lib/nina/imageprefs'
 import {
   countNinaAvatars,
   countNinaChatPhotos,
   getCurrentNinaAvatar,
+  readNinaImagePrefs,
   readNinaTuning,
 } from '@/lib/nina/queries'
 import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
@@ -33,7 +41,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminHomePage() {
   const { userId, email } = await requireAdmin()
-  const [albumCount, current, me, chatPhotoCount, tuning] = await Promise.all([
+  const [albumCount, current, me, chatPhotoCount, tuning, imagePrefs] = await Promise.all([
     /*
      * A COUNT, not the album. This page renders `albumCount` and nothing else about the rows, and
      * F34 R1 makes the album *"hundreds of profile pics"* — so `listNinaAvatars(userId)` here was
@@ -55,6 +63,12 @@ export default async function AdminHomePage() {
      * than adding a further sequential await, and it is a single indexed read of one row.
      */
     readNinaTuning(userId),
+    /*
+     * The image-generation prefs, for the card below. It joins the existing `Promise.all` rather
+     * than adding a further sequential await, and it is a single indexed read of one row — the
+     * same trade the tuning read above makes.
+     */
+    readNinaImagePrefs(userId),
   ])
 
   /*
@@ -63,6 +77,11 @@ export default async function AdminHomePage() {
    * moved and hide the one that changed her.
    */
   const loud = loudestDials(toTuningDraft(tuning), toTuningDraft(NINA_TUNING_DEFAULTS))
+
+  /* The two facts the image card prints. `focusOnKeys` is phase 1's declared order, so the count
+   * is over the six options the user named and not over whatever keys the row happens to hold. */
+  const imageDraft = toImageGenDraft(imagePrefs)
+  const focused = focusOnKeys(imageDraft)
 
   return (
     <div>
@@ -74,7 +93,7 @@ export default async function AdminHomePage() {
       </header>
 
       {/* `min-h-11` on each card's link is `docs/design-brief.md`'s 44 pt minimum, spelled where
-          it is easiest to lose: a 13 px line of text is a 18 px target, and these four links are
+          it is easiest to lose: a 13 px line of text is a 18 px target, and these five links are
           the only navigation on this page that is not the nav bar. `mb-3` rather than `mb-4`
           above them, so the taller control does not make every card 26 px longer. */}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -151,6 +170,24 @@ export default async function AdminHomePage() {
             className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
           >
             Tune her character &rarr;
+          </Link>
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Image generation</h2>
+          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
+            Prompt length {promptLengthCopy(imagePrefs.promptLength).band}
+            {focused.length === 0
+              ? ', nothing emphasised'
+              : `, ${focused.length} of ${NINA_IMAGE_FOCUS_KEYS.length} emphasised`}
+            {referenceKey(imageDraft.reference) === '' ? ', no reference' : ', one photo reference'}
+            . Revision {imagePrefs.revision}.
+          </p>
+          <Link
+            href="/admin/image-generation"
+            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
+          >
+            Set how she is photographed &rarr;
           </Link>
         </Card>
       </div>
