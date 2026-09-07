@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 17
+- Completed: 18
 
 ---
 
@@ -20,17 +20,23 @@
 
 ### [P1] High
 
-- [ ] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
+- [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns `'instructor'` appended to `NINA_RELATIONSHIPS`; `NINA_ADDRESS.instructor`; `NINA_RELATIONSHIP_BLOCKS.instructor`; `RELATIONSHIP_NOTE.instructor`; `RELATIONSHIP_GLOSS.instructor`; the prose address list at `distill.ts:105`; **`NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6)**; the `nina_tuning.relationship` docstring; the grid's equal-height cells in `CharacterPanel.tsx`; and the test files that count or enumerate the levels. Exit: six cards render three-across two-down with equal-height cells at `xl` via `sm:auto-rows-fr` and **no `h-full`** on the cards; all four `Record<NinaRelationship, ...>` sites and all four prose sites filled; `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests **including the frozen snapshot, unregenerated**; `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` byte-identical; `NINA_PROMPT_VERSION === 4` still and `NINA_DISTILL_PROMPT_VERSION === 3`.
-  - **Status**: pending
+  - **Status**: completed
   - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 1 of 3)
   - **Satisfies**: R1 — "to make it a nice 3 columns x 2 rows"; R2 — "add a new character: Instructor", a professional and knowledgeable instructor whose primary objective is to improve the performance of miftah's running
   - **Depends on**: —
   - **Plan**: `.workflows/plan/nina-instructor-character/phase-1.md`
   - **Method**: /implement (swarm wave 0, concurrent with phase 2)
   - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/admin/tuningModel.ts, lib/nina/prompts/distill.ts, lib/db/schema.ts, components/admin/CharacterPanel.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/nina.prompts.test.ts
+  - **Completed**: 2026-09-07 12:35
+  - **Commit**: `f1bdbc7`
+  - **Verification**: 145 test files / 2845 tests green, run after phase 2 had landed. `tsc --noEmit` clean, prettier clean. Frozen snapshot byte-identical to base `f839116`, never regenerated; the `it()` title at `:220` untouched, `instructor` excluded in the loop body only. `NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6, its bump alone); `NINA_PROMPT_VERSION` untouched at 4. R1 measured on a local production build (port 3457) driven with Playwright at `/admin/personality`: 3x2 with all six cards 93px at 1440px, 2x3 at 1024/800, one content-sized column at 420px. Counterfactual run: removing `sm:auto-rows-fr` returns rows to 77/93, so the fix is load-bearing and the plan's row-to-row diagnosis was right.
+  - **Decisions**: 15 `PageProps`/`LayoutProps` tsc errors are absent Next-generated types cleared by one `next build`, none in its nine files — pre-existing, not drift (rung 6) · Did NOT run the plan's manual select-Instructor-and-Save step: `.env.local` points at the production Neon database, so saving would have flipped Nina's live relationship for real users. The prompt content is asserted by tests instead (tie-break: reversibility, narrower blast radius). Coordinator concurs — a live production write is not a phase's side effect.
+  - **Drift**: none — every anchor the plan quoted matched.
+  - **Handoff to phase 3**: locate insertion points in `lib/nina/persona.ts` and `tests/nina.prompts.test.ts` by ANCHOR TEXT, not line number — this phase shifted `persona.ts` by ~+13 inside `NINA_RELATIONSHIP_BLOCKS` and `tests/nina.prompts.test.ts` by ~+50 below `:220`.
 
 - [x] **P1-NIN-A017** Phase 2: A schedule she can keep
   - **Difficulty**: NORMAL
