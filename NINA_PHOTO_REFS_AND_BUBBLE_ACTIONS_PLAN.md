@@ -117,10 +117,16 @@ Every phase holds all of these. A phase that cannot is a phase whose plan is wro
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | A re-attached photo is a reference, not a copy | R1, R3 | `lib/db`, `drizzle`, `lib/nina` | 10 | — | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md` | — | — |
-| 2 | "What she can see in it", editable | R2 | `lib/admin`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md` | — | — |
-| 3 | Tap a bubble to edit or delete it | R4 | `lib/nina`, `components/nina` | 3 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md` | — | — |
-| 4 | Resend a message that was never answered | R5 | `lib/nina`, `components/nina` | 6 | 3 | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md` | — | — |
+| 1 | A re-attached photo is a reference, not a copy | R1, R3 | `lib/db`, `drizzle`, `lib/nina` | 10 | — | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md` | — | `miftahulmahfuzh/run-insights#129` |
+| 2 | "What she can see in it", editable | R2 | `lib/admin`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md` | — | `miftahulmahfuzh/run-insights#130` |
+| 3 | Tap a bubble to edit or delete it | R4 | `lib/nina`, `components/nina` | 3 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md` | — | `miftahulmahfuzh/run-insights#131` |
+| 4 | Resend a message that was never answered | R5 | `lib/nina`, `components/nina` | 6 | 3 | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md` | — | `miftahulmahfuzh/run-insights#132` |
+
+**Board.** Parent card `miftahulmahfuzh/run-insights#128` owns the pull request; the four
+cards above are its sub-issues, in phase order, and each completes on its own commit
+(`task_gh.py finish <n> --child-of 128 --commit <sha>`). One parent for the whole set rather
+than one per requirement, because phase 1 serves R1 and R3 together and so cannot hang off
+either one alone.
 
 **Concurrency, after reconciliation.** The only edge in the set is **4 → 3**. Phases **1, 2 and 3
 start together**; phase 4 starts when 3 lands. Three file-sharing pairs were checked line by line
