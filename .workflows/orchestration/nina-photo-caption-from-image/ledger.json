@@ -4,6 +4,16 @@
   "coordinator": "orch-nina-photo-caption-from-image",
   "coordinator_session_id": "a34549c2-ef73-40b7-ace8-5b9ce442731a",
   "created": "2026-09-07T02:40:06+00:00",
+  "decisions": [
+    {
+      "by": "orch-nina-photo-caption-from-image",
+      "chosen": "Corrected the index (tracked copy) with a dated update note; LEFT phase-2.md unchanged.",
+      "consequence": "phase-2.md stands as the historical record of what was planned. The index carries the unconditional version, and this ledger carries the reason.",
+      "fork": "The stale 'nina-job-redo-and-soft-delete is in flight' premise appears in the plan index's Rollback section AND in phase-2.md Step 1. Correct both, or only the index?",
+      "rung": "The orchestrator's own Step 2 rule -- phase plans are copied unchanged, because 'a plan that gets touched on the way through is a plan whose reconciliation no longer holds'. Reinforced by p2 being a live reader of that plan's worktree twin right now: editing a plan under its own implementer is the shared-file hazard I declined for the index. The instruction in phase-2.md is correct as written; only its conditional is stale, and the operative correction belongs in the one document the lander reads.",
+      "when": "2026-09-07"
+    }
+  ],
   "parent_card": "miftahulmahfuzh/run-insights#113",
   "phases": [
     {
