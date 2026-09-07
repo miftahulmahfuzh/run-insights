@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#105",
-      "commit": null,
+      "commit": "bbde7b3",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "Redo landed as written, no ladder decisions; code 07df20b + docs bbde7b3. Seams p2 needs are in place: reopenNinaImageJob is the 8th read for Step 3k, NinaJobActionResult is {ok, reason: NinaJobRefusal|null} with no next, run() takes ONE arg and the prop is item, the slot gate is {withActions && <NinaJobActions item={item}/>} so delete lands on every row with no NinaJobList edit, and tests/nina.jobActions.test.ts mocks only edges (queries factory must stay at exactly 7 names).",
       "package": "lib/nina` + `components/nina` + `app/nina/jobs",
       "plan": ".workflows/plan/nina-job-redo-and-soft-delete/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T02:00:36+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A013",
       "title": "Redo: reopen a failed job from its own args"
     },
     {
@@ -44,6 +44,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-job-redo-and-soft-delete/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-job-redo-and-soft-delete",
-  "updated": "2026-09-07T01:46:28+00:00",
+  "updated": "2026-09-07T02:00:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-job-redo-and-soft-delete"
 }
