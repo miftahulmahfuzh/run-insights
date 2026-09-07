@@ -30,14 +30,14 @@
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "ALIVE, do not re-spawn. Hit the account session usage limit at 09:44 mid-phase (reads as idle to a notify_when_idle subscription); waited it out and resumed itself. Work is uncommitted in the worktree: 4 modified + 6 new PNGs, exactly its Owns list. Byte-for-byte guard PASSED -- app deck reproduced all seven committed PNGs exactly, so no Pillow encoder drift and no regression from the tool refactor. Decided on the ladder: PWA_ICONS is 'as const' so new Set(...) infers a literal-union Set whose .has() rejects an admin path; widened the type rather than relaxing the assertion, because invariant 2 (rung 1, typecheck green) outranks the plan's code block (rung 3).",
       "package": "tools` + `app/admin` + `public/icons",
       "plan": ".workflows/plan/admin-home-screen-shortcut/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T05:12:09+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": null,
       "title": "A tile you can tell apart: the admin icon set"
     }
@@ -45,6 +45,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-home-screen-shortcut/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-home-screen-shortcut",
-  "updated": "2026-09-07T02:39:49+00:00",
+  "updated": "2026-09-07T05:12:09+00:00",
+  "verified_at": "2026-09-07T02:44:49+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-home-screen-shortcut"
 }
