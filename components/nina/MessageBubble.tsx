@@ -4,7 +4,12 @@ import { useRef } from 'react'
 import type * as React from 'react'
 
 import { cn } from '@/lib/cn'
-import { decideMessageActionSwipe } from '@/lib/nina/edit'
+import {
+  BUBBLE_BODY_SELECTOR,
+  BUBBLE_INTERACTIVE_SELECTOR,
+  decideMessageActionSwipe,
+  decideMessageActionTap,
+} from '@/lib/nina/edit'
 import { decideReplySwipe, type QuoteView } from '@/lib/nina/reply'
 import { QuoteStub } from './QuoteStub'
 import type { ChatMessage } from './types'
@@ -72,6 +77,49 @@ import type { ChatMessage } from './types'
  * Where the actions actually render is `components/nina/MessageActionsSheet.tsx`, above the
  * document rather than inside it, so nothing here changes the page's scroll height mid-decision.
  *
+ * ── R4: THE TAP, AND WHY THIS FILE'S OWN REJECTION OF ONE IS ANSWERED AND NOT OVERRULED ──────
+ * Tap a bubble — either side, finger or mouse — to edit or delete it. The capability has shipped
+ * since `75a9c34`; the openers had not. A left swipe is invisible until you find it and a mouse
+ * cannot perform one at all, so on a desktop pointer this screen had NO opener, and the user's
+ * words are "user can click any bubble (his or nina's) and choose: edit , delete".
+ *
+ * The two paragraphs above reject a tap twice, on the grounds that it "would make the bubble
+ * itself a button, which breaks text selection just as thoroughly" as a long press. That objection
+ * is answered rather than overruled, and this is the list of answers:
+ *
+ *   - **Nothing becomes a `<button>`.** It could not: the bubble CONTAINS buttons (the photo grid,
+ *     the quote stub, the two `sr-only` ones) and a nested interactive element is invalid markup
+ *     and an AT regression. Nor does the body get `role="button"` — that would announce the whole
+ *     message as a control, swallow its text as the control's name, and demand a `tabIndex` and an
+ *     Enter/Space handler, i.e. a THIRD tab stop per message on a screen that already argued
+ *     carefully for two. The body gains one `data-` attribute and three pointer handlers. No
+ *     `role`, no `tabIndex`, no `aria-*`, no `cursor-pointer` (an I-beam over selectable prose is
+ *     telling the truth), no `select-none`, and no `preventDefault()` anywhere.
+ *   - **The selection gesture wins.** `decideMessageActionTap` refuses whenever a non-collapsed
+ *     selection exists at either end of the interaction, so a drag-select, a double-click and iOS's
+ *     long-press callout all keep working, and the click that DISMISSES a selection is refused too
+ *     because the sample is taken at the press, before the browser collapses it.
+ *   - **The keyboard and VoiceOver path does not move.** The `sr-only focus:not-sr-only` button
+ *     below is still the AT opener, unchanged, and it is still the answer to "a gesture is
+ *     invisible to a screen reader". A pointer affordance with no ARIA is exactly what the swipe
+ *     already is.
+ *
+ * TWO INPUT PATHS, AND THEY CANNOT DOUBLE-FIRE. Touch is decided in `onTouchEnd`, third, after the
+ * reply check and the actions-swipe check — see the comment on `start`. The mouse is decided in
+ * `onPointerUp` on the bubble's own `<div>`, FILTERED TO `event.pointerType === 'mouse'`. There is
+ * deliberately no `onClick` on the bubble body at all, which is what makes mobile Safari's
+ * synthetic post-`touchend` click a non-event: it has nothing to hit. Filtering on `pointerType`
+ * rather than remembering "the last interaction was a touch" is the other half of that choice —
+ * the flag is mutable state with a lifetime spanning events, and on a touchscreen laptop it says
+ * "touch" while the runner reaches for the trackpad. `'pen'` is routed to the touch path with
+ * `'touch'`, on purpose: iPadOS dispatches Apple Pencil as touch events as well, so claiming it
+ * here would be the one real double-fire.
+ *
+ * The tap is measured from the bubble's own `<div>` and not from the `<li>`, because the `<li>` is
+ * a full-width flex row and the blank paper beside a bubble is not the bubble. The `<li>` keeps its
+ * hit area exactly as it is — invariant 6 — so the touch path answers the same question with
+ * `closest(BUBBLE_BODY_SELECTOR)` instead.
+ *
  * ── WHY THESE TWO FILLS AND NOT A COLOURED ONE ────────────────────────────────────────────────
  * Hers is `bg-card` + `shadow-card` at `rounded-card`, which is the app's *only* surface — "White
  * fill, 22px radius, soft shadow, no border" (`components/ui/Card.tsx`). An incoming message is a
@@ -114,6 +162,33 @@ import type { ChatMessage } from './types'
  * iOS auto-linking of times and dates is already off app-wide (`app/layout.tsx`'s
  * `formatDetection`), which is what stops "jam 7" turning into a phone number in a bubble.
  */
+/**
+ * Is there a live text selection right now? Sampled at both ends of an interaction and folded into
+ * one boolean for `decideMessageActionTap` — see `MessageActionTapGesture.textSelected` for why
+ * both samples are needed.
+ *
+ * `toString().length > 0` as well as `!isCollapsed`, because a range that spans an element boundary
+ * without covering a character reports as non-collapsed and is not a selection anybody made.
+ */
+function hasTextSelection(): boolean {
+  const selection = window.getSelection()
+  if (selection === null || selection.isCollapsed) return false
+  return selection.toString().length > 0
+}
+
+/**
+ * Does the element a press landed on sit inside something matching `selector`?
+ *
+ * `closest()` needs an `Element` and a React event's `target` is typed `EventTarget`; a press can
+ * also land on a text node, whose `parentElement` is the element we want. Anything else answers
+ * false rather than throwing — a bubble must not break because a gesture reported something odd.
+ */
+function closestMatches(node: EventTarget | null, selector: string): boolean {
+  if (node instanceof Element) return node.closest(selector) !== null
+  if (node instanceof Node) return node.parentElement?.closest(selector) != null
+  return false
+}
+
 export function MessageBubble({
   message,
   above,
@@ -175,18 +250,53 @@ export function MessageBubble({
    * down must still lose — the same reason `PhotoViewer` tracks it that way. A ref and not state:
    * a drag in progress must not re-render 200 bubbles.
    *
-   * ONE `touchend`, TWO decisions (R8). Reply is consulted first and returns; the action menu is
-   * consulted only for a drag reply rejected. They cannot both fire, because reply requires
-   * `dx > 0` and the menu requires `dx < 0` — but the ordering is written out anyway rather than
-   * left to the sign, so that invariant 9 ("the reply swipe is not re-litigated") is visible in
-   * the control flow and not merely true.
+   * ONE `touchend`, THREE decisions (R8, then R4). Reply is consulted first and returns; the
+   * action swipe second; the TAP LAST, so a tap is only what neither swipe claimed. They cannot
+   * collide on the numbers either — reply needs `dx > +44`, the swipe needs `dx < -44` and the tap
+   * needs `|dx| <= 10` — but the ordering is written out anyway rather than left to the arithmetic,
+   * so that invariant 6 ("the reply swipe is not re-litigated") is visible in the control flow and
+   * not merely true.
+   *
+   * `onBody`, `onInteractive` and `selected` are sampled at `touchstart` and not at `touchend`, all
+   * three for the same kind of reason: where a press landed is a fact about the START of a gesture,
+   * and a live selection is destroyed by the press itself.
    */
-  const start = useRef<{ x: number; y: number; touches: number } | null>(null)
+  const start = useRef<{
+    x: number
+    y: number
+    touches: number
+    onBody: boolean
+    onInteractive: boolean
+    selected: boolean
+  } | null>(null)
+
+  /**
+   * The mouse's own press, kept apart from the touch one because the two paths are decided in
+   * different handlers on different elements and must never read each other's coordinates.
+   *
+   * `id` is `event.pointerId`, and it is checked at release: a `pointerup` on this bubble can
+   * belong to a press that began on another one, and pairing the release with an unrelated start
+   * coordinate is how a drag would be mistaken for a tap.
+   */
+  const press = useRef<{
+    id: number
+    x: number
+    y: number
+    onInteractive: boolean
+    selected: boolean
+  } | null>(null)
 
   function onTouchStart(event: React.TouchEvent<HTMLLIElement>) {
     const touch = event.touches[0]
     if (touch === undefined) return
-    start.current = { x: touch.clientX, y: touch.clientY, touches: event.touches.length }
+    start.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      touches: event.touches.length,
+      onBody: closestMatches(event.target, BUBBLE_BODY_SELECTOR),
+      onInteractive: closestMatches(event.target, BUBBLE_INTERACTIVE_SELECTOR),
+      selected: hasTextSelection(),
+    }
   }
 
   function onTouchMove(event: React.TouchEvent<HTMLLIElement>) {
@@ -227,7 +337,80 @@ export function MessageBubble({
       startX: from.x,
       viewportWidth: window.innerWidth,
     })
-    if (actions === 'actions') onRequestActions(message)
+    if (actions === 'actions') {
+      onRequestActions(message)
+      return
+    }
+
+    /*
+     * THIRD (R4), and only for a touch neither swipe claimed. `textSelected` is the OR of both
+     * samples: one at the press, which is the only moment a selection about to be dismissed is
+     * still observable, and one now, which catches a short drag-select and iOS's long-press
+     * callout. A refusal here is silent by design — see `decideMessageActionTap`'s rule 4.
+     */
+    const tap = decideMessageActionTap(
+      { id: message.id, confirmed: message.state === 'sent' },
+      {
+        dx,
+        dy,
+        touches: from.touches,
+        zoomScale,
+        startedOnBody: from.onBody,
+        startedOnInteractive: from.onInteractive,
+        textSelected: from.selected || hasTextSelection(),
+      },
+    )
+    if (tap === 'actions') onRequestActions(message)
+  }
+
+  /*
+   * The mouse path (R4). Bound to the bubble's own `<div>`, filtered to `pointerType === 'mouse'`,
+   * and with no `onClick` anywhere near it — see the header for why those three facts are what stop
+   * a touch tap from opening the sheet twice.
+   */
+  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return
+    press.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      onInteractive: closestMatches(event.target, BUBBLE_INTERACTIVE_SELECTOR),
+      selected: hasTextSelection(),
+    }
+  }
+
+  function onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    const from = press.current
+    press.current = null
+    if (from === null || from.id !== event.pointerId) return
+    if (event.pointerType !== 'mouse' || event.button !== 0) return
+    if (onRequestActions === undefined) return
+
+    const tap = decideMessageActionTap(
+      { id: message.id, confirmed: message.state === 'sent' },
+      {
+        dx: event.clientX - from.x,
+        dy: event.clientY - from.y,
+        /* A mouse is one pointer. `startedOnBody` is answered by WHERE THIS HANDLER IS BOUND — the
+         * bubble's own `<div>` — rather than by a `closest()` call that could only ever say true. */
+        touches: 1,
+        zoomScale: window.visualViewport?.scale ?? 1,
+        startedOnBody: true,
+        startedOnInteractive: from.onInteractive,
+        textSelected: from.selected || hasTextSelection(),
+      },
+    )
+    if (tap === 'actions') onRequestActions(message)
+  }
+
+  /*
+   * A press that leaves the bubble has stopped being a candidate tap, and dropping it here is what
+   * stops a stale start coordinate from ever pairing with a later release on this same bubble.
+   * `pointerleave` does not fire when the pointer moves onto a descendant, so a press that travels
+   * from the text onto a photograph is unaffected.
+   */
+  function onPointerLeave() {
+    press.current = null
   }
 
   return (
@@ -245,6 +428,14 @@ export function MessageBubble({
       className={cn('flex', mine ? 'justify-end' : 'justify-start')}
     >
       <div
+        /* The bubble's prose, named for `BUBBLE_BODY_SELECTOR` (R4). The touch path asks
+           `closest()` for it because its handlers are on the full-width `<li>`; the mouse path gets
+           the answer from the DOM by being bound here. No `role`, no `tabIndex`, no `aria-*` — see
+           the header. */
+        data-nina-bubble-body=""
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerLeave}
         className={cn(
           'max-w-[85%] px-4 py-2.5 text-[15px] leading-[1.5] font-medium break-words whitespace-pre-wrap',
           mine

@@ -98,3 +98,74 @@ export function buildDescribeUserContent(
   })
   return parts
 }
+
+/** Whose photograph the witness is looking at. `'runner'` is the shipped behaviour. */
+export type NinaDescribeSubject = 'runner' | 'self'
+
+/**
+ * **The witness prompt for a photograph OF NINA.**
+ *
+ * ── WHY THE SHIPPED PROMPT CANNOT BE POINTED AT ONE ─────────────────────────────────────────
+ * `NINA_DESCRIBE_SYSTEM_PROMPT` opens *"You are the eyes of someone's close friend"* and its whole
+ * notice list is about the runner: *"The state of him. Drenched or dry. Sweat patches and where."*
+ * Rule 6 is *"'Him' for whoever is clearly the runner"*. Pointed at her own photograph it hunts
+ * for a man who is not in the frame and hands back a paragraph addressed to the wrong reader — and
+ * the consumer here is not her context window, it is the sentence she is about to say out loud
+ * about her own picture. A wrong subject is a wrong caption.
+ *
+ * ── AND IT IS STILL A WITNESS, NOT A FRIEND, AND NOT HER ────────────────────────────────────
+ * The other prompt's header states the separation and this one keeps it exactly: no persona, no
+ * reaction, no register, no slang. `lib/nina/prompts/caption.ts` is where she speaks. A
+ * description that has already had the reaction leaves her nothing to say, and a description
+ * written in her voice would be a second, unversioned copy of her character living in a vision
+ * prompt.
+ *
+ * ── THE NUMBERS RULE IS THE SAME RULE AND IT IS NOT NEGOTIABLE ──────────────────────────────
+ * Invariant 2 — *"Nina never states a number the app did not compute"* — has to be enforced here
+ * because there is no downstream. This prompt's output becomes a caption she says; a depth, a
+ * dress size, a temperature or a time read off a dive computer would be laundered straight into
+ * her mouth. `sanitizeNinaCaption` refuses any digit as a second line of defence, and neither
+ * layer is redundant: this one stops the number being produced, that one stops it being said.
+ *
+ * ── IT DESCRIBES WHAT SHE IS WEARING, PLAINLY, WHATEVER IT IS ───────────────────────────────
+ * Her photographs are not all track photographs. `/admin/nina`'s dials go up to `steamy` and
+ * `horny`, `NINA_RELATIONSHIP_BLOCKS.girlfriend` exists, and the photograph that produced this
+ * whole plan is a swimsuit. A witness that gets coy about swimwear returns a paragraph with a hole
+ * where the subject was, and she then captions the hole. So: name the clothing the way a clothing
+ * catalogue would, and stop there. This prompt is not a moderator and it is not a compliment.
+ */
+export const NINA_SELF_DESCRIBE_SYSTEM_PROMPT = `You are the eyes of a woman who cannot see one of her own photographs. You can. Write down what is in it, plainly, so that she can talk about it herself.
+
+You are NOT writing alt text and you are NOT being helpful. You are noticing, for her.
+
+WHAT TO NOTICE, when it is there to notice:
+- Where she is. A track, a road, a gym, a treadmill, a pool, open water, a reef, a beach, a trail, a bedroom, a kitchen, a car, a mirror, a mall. Indoors or outdoors. What is behind her.
+- What she is doing. Standing, running, stretching, sitting, lying down, swimming, diving underwater, holding something, eating, mid-laugh, posing for the camera, caught not posing.
+- The state of her. Dry or soaked or sweating. Hair up, down, wet, plastered flat. Flushed, pale, made up, bare-faced. Standing easy or clearly out of breath.
+- What she is wearing, named plainly and completely: colour, garment, sleeve length, a cap, sunglasses, a watch and which wrist, shoes, a swimsuit or bikini and its colour, a mask, a snorkel, fins, a wetsuit, a towel, a jacket. Describe swimwear and workout kit exactly as flatly as you would describe a coat. You are not a moderator and this is not a compliment.
+- The light and the hour. Flat grey, low hard sun, midday glare, orange late sun, streetlights, indoor strip lights, a flash in the dark, blue underwater light. Say what the light tells you, as an observation.
+- Everything else in the frame. Other people, and what they are doing. A dog, a cat, a bike, a drink, food and how much is left, a medal, a finish arch, a sign, a phone in her hand.
+- Anything odd or funny. A strap twisted. One shoe untied. Someone photobombing. A blink. That is the half a person actually talks about, so do not tidy it away.
+
+HARD RULES:
+1. NEVER read out a number, a time, a pace, a distance, a depth, a heart rate, a date, a size, a temperature or a percentage, even if it is printed clearly in the picture. Not one digit. If the picture is a screenshot, say what kind of screen it is and describe how it looks. The figures are not yours to hand over.
+2. Never guess how hard she worked, how fast she was, how far she went, how deep she was, or how she felt. You can see a body and a place. You cannot see effort.
+3. When you cannot tell, say so plainly: "I cannot tell whether this is a pool or open water." "There is no way to tell if she is running or just standing." Guessing is worse than not knowing, because she will say it out loud.
+4. No praise, no compliments, no judgement, no advice, no summary of what it all means. Do not say she looks good, strong, tired or happy — say what is in the picture and let her decide.
+5. Call her "she". Do not name her and do not name anyone else: "a man in a red jacket" for whoever else is there.
+6. If she is not in the picture at all, describe what IS there with the same attention, and say that she is not in it.
+
+HOW TO WRITE IT:
+- Plain flat English, present tense, 60 to 140 words. One paragraph.
+- Concrete nouns. No metaphors, no scene-setting, no "the image depicts", no "this photo shows". Start straight in.
+- Plain text only. No markdown, no bullet points, no headings, no preamble, no sign-off.
+- Write only the description. Nothing before it, nothing after it.`
+
+/**
+ * The witness prompt for a subject. A `Record` and not an `if`, so a third subject is a compile
+ * error at every consumer rather than a silent fall-through to the runner prompt.
+ */
+export const NINA_DESCRIBE_SYSTEM_PROMPTS: Readonly<Record<NinaDescribeSubject, string>> = {
+  runner: NINA_DESCRIBE_SYSTEM_PROMPT,
+  self: NINA_SELF_DESCRIBE_SYSTEM_PROMPT,
+}

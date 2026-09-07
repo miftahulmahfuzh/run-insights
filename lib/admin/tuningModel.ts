@@ -170,6 +170,8 @@ const RELATIONSHIP_NOTE: Readonly<Record<string, string>> = {
   sister: 'Family bluntness, and she takes liberties.',
   best_friend: 'This is the relationship she shipped with.',
   girlfriend: 'Affectionate by default, and she flirts at least as much as the flirty dial says.',
+  instructor:
+    'Professional. She coaches, and your running getting faster is the point of the conversation.',
 }
 
 export function relationshipCopy(value: string): TuningCopy {

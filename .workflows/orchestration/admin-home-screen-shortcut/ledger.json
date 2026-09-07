@@ -3,6 +3,12 @@
   "coordinator": "orch-admin-home-screen-shortcut",
   "coordinator_session_id": "a882c59d-aa61-4f0b-ae81-081bff0b398f",
   "created": "2026-09-07T02:24:37+00:00",
+  "landed": {
+    "at": "2026-09-07T05:24:00+00:00",
+    "base": "main",
+    "commit": "2ed4937c808ce5769e79296c717e9f270310efea",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#109",
@@ -10,7 +16,7 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": "No drift, no ladder decisions; plan matched the tree and all edits were pure appends. Route ships importing PWA_ICONS as planned -- phase 2's one-line swap to ADMIN_PWA_ICONS is untouched. scope stays '/' per invariant 4. Verified on a local prod server: manifest 200 application/manifest+json, start_url=/admin id=/admin scope=/ display=standalone orientation=any; /admin head has exactly one manifest link (the admin one), / unchanged. NOTE port 3000 on this box is a foreign service that 302s all paths to /login -- probe on another port. Plan-index tick is edited but NOT committed in the main checkout: it is dirty with a peer's work, so that commit is yours to make.",
+      "note": "No drift, no ladder decisions; plan matched the tree and all edits were pure appends. Route ships importing PWA_ICONS as planned -- phase 2's one-line swap to ADMIN_PWA_ICONS is untouched. scope stays '/' per invariant 4. Verified on a local prod server: manifest 200 application/manifest+json, start_url=/admin id=/admin scope=/ display=standalone orientation=any; /admin head has exactly one manifest link (the admin one), / unchanged. NOTE port 3000 on this box is a foreign service that 302s all paths to /login -- probe on another port. Plan-index tick is edited but NOT committed in the main checkout: it is dirty with a peer's work, so that commit is yours to make. TASKID RENUMBERED AT MERGE: P1-RI-A019 -> P1-RI-A021. nina-chat-avatar-profile phase 1 had also minted P1-RI-A019 and landed on main first, so this set -- merging second -- renumbered. A020 was left free rather than taken. The landed todos.md and plan copies use P1-RI-A021; P1-RI-A019 on main belongs to the other set.",
       "package": "app/admin` + `lib",
       "plan": ".workflows/plan/admin-home-screen-shortcut/phase-1.md",
       "reported_at": "2026-09-07T02:39:49+00:00",
@@ -19,33 +25,33 @@
         "R2"
       ],
       "status": "done",
-      "task_id": "P1-RI-A019",
+      "task_id": "P1-RI-A021",
       "title": "The second manifest: `/admin` starts at `/admin"
     },
     {
       "card": "miftahulmahfuzh/run-insights#110",
-      "commit": "701aed57",
+      "commit": "701aed5f080266e8bb56182f4d50eaaca51d7910",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": "Byte-for-byte guard PASSED on Pillow 12.3.0 -- --deck app reproduced all seven committed runner PNGs exactly, so no encoder drift to disambiguate and no regression from the two-deck refactor. Ladder decision: PWA_ICONS is 'as const' so new Set(PWA_ICONS.map(i=>i.src)) inferred a literal-union Set and .has(adminSrc) was a compile error -- widened to new Set<string>(...) rather than weakening the assertion, on invariant 2 (rung 1) over the plan's code block (rung 3). Bookkeeping left to the coordinator per the phase plan's must-not-do list; done at 6335f18.",
+      "note": "Byte-for-byte guard PASSED on Pillow 12.3.0 -- --deck app reproduced all seven committed runner PNGs exactly, so no encoder drift to disambiguate and no regression from the two-deck refactor. Ladder decision: PWA_ICONS is 'as const' so new Set(PWA_ICONS.map(i=>i.src)) inferred a literal-union Set and .has(adminSrc) was a compile error -- widened to new Set<string>(...) rather than weakening the assertion, on invariant 2 (rung 1) over the plan's code block (rung 3). Bookkeeping left to the coordinator per the phase plan's must-not-do list; done at 6335f18. Full sha re-recorded: an abbreviated commit made reap refuse to close the window. TASKID RENUMBERED AT MERGE: P1-RI-A020 -> P1-RI-A022. nina-chat-avatar-profile phase 1 had also minted P1-RI-A019 and landed on main first, so this set -- merging second -- renumbered. A020 was left free rather than taken. The landed todos.md and plan copies use P1-RI-A022; P1-RI-A020 on main belongs to the other set.",
       "package": "tools` + `app/admin` + `public/icons",
       "plan": ".workflows/plan/admin-home-screen-shortcut/phase-2.md",
-      "reported_at": "2026-09-07T05:18:04+00:00",
+      "reported_at": "2026-09-07T05:19:42+00:00",
       "satisfies": [
         "R1"
       ],
       "status": "done",
-      "task_id": "P1-RI-A020",
+      "task_id": "P1-RI-A022",
       "title": "A tile you can tell apart: the admin icon set"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-home-screen-shortcut/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-home-screen-shortcut",
-  "updated": "2026-09-07T05:18:04+00:00",
+  "updated": "2026-09-07T05:24:00+00:00",
   "verified_at": "2026-09-07T02:44:49+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-home-screen-shortcut"
 }

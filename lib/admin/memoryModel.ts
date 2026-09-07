@@ -58,10 +58,10 @@ export type AdminFactCategory = (typeof ADMIN_FACT_CATEGORIES)[number]
 /* ── the vocabulary's two readings ──────────────────────────────────────────────────────────── */
 
 /**
- * `'text'`       — the eight prose/scalar slots. Editable, canonicalised on save.
+ * `'text'`       — the nine prose/scalar slots. Editable, canonicalised on save.
  * `'structured'` — a `merge`-policy slot (`pending_promises`). Its ENTRIES become rows of their
  *                  own; the key itself is never rendered as a row.
- * `'orphaned'`   — a key outside phase 5's nine. Deletable, never editable.
+ * `'orphaned'`   — a key outside phase 5's ten. Deletable, never editable.
  */
 export type SlotEditKind = 'text' | 'structured' | 'orphaned'
 

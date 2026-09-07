@@ -101,8 +101,12 @@ describe('the copy is complete for phase 1s vocabulary', () => {
     }
   })
 
-  it('names the address form for all five relationships', () => {
-    expect(NINA_RELATIONSHIPS).toHaveLength(5)
+  it('names the address form for all six relationships', () => {
+    /* Six since the instructor landed. `RELATIONSHIP_NOTE` is `Record<string, string>` and is
+     * therefore the ONE relationship site the compiler does not enforce, so this literal count
+     * plus the non-empty hint below is the whole safety net for it. Keep the literal a literal:
+     * `NINA_RELATIONSHIPS.length` would be a tautology. */
+    expect(NINA_RELATIONSHIPS).toHaveLength(6)
     for (const value of NINA_RELATIONSHIPS) {
       expect(hasRelationshipCopy(value), `no copy for relationship ${value}`).toBe(true)
       expect(relationshipCopy(value).hint.length).toBeGreaterThan(0)

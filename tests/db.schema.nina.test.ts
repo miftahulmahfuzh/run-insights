@@ -102,6 +102,9 @@ describe('nina_messages', () => {
         'role',
         'text',
         'source',
+        /* The carrier marker. `isNinaPhotoCarrierMessage` reads it instead of reading the caption
+         * text, which is what lets the caption become a sentence about the photograph. */
+        'photo_only',
         'turn_id',
         'reply_to_id',
         'run_id',
@@ -110,6 +113,15 @@ describe('nina_messages', () => {
         'read_at',
       ].sort(),
     )
+  })
+
+  it('photo_only is NOT NULL DEFAULT false, so no reader needs a null branch', () => {
+    // Additive and defaulted on purpose: a revert of the code leaves a column nothing consults,
+    // and every row that predates migration 0008 reads `false` rather than `null`.
+    expect(sqlType(schema.ninaMessages, 'photo_only')).toBe('boolean')
+    expect(columns(schema.ninaMessages).get('photo_only')?.notNull).toBe(true)
+    expect(columns(schema.ninaMessages).get('photo_only')?.hasDefault).toBe(true)
+    expect(columns(schema.ninaMessages).get('photo_only')?.default).toBe(false)
   })
 
   it('seq is a bigserial — the emission order phase 4 cannot solve for itself', () => {
@@ -147,6 +159,45 @@ describe('nina_message_images', () => {
     expect(sqlType(schema.ninaMessageImages, 'description')).toBe('text')
     expect(columns(schema.ninaMessageImages).get('description')?.notNull).toBe(false)
     expect(fkFor(schema.ninaMessageImages, 'message_id')?.onDelete).toBe('cascade')
+  })
+
+  it('carries F37 provenance: two nullable pointers, so a reference is representable', () => {
+    for (const column of ['source_avatar_id', 'source_image_id']) {
+      expect(sqlType(schema.ninaMessageImages, column), column).toBe('text')
+      expect(columns(schema.ninaMessageImages).get(column)?.notNull, column).toBe(false)
+      /* NULLABLE is what let these be added to a populated table with no backfill of their own —
+       * `nina_avatars.source_key`'s recorded property, and the reason drizzle/0010 rewrites no
+       * rows. It is also the DEFINITION: both NULL means "these bytes are this row's own". */
+      expect(columns(schema.ninaMessageImages).get(column)?.hasDefault, column).toBe(false)
+    }
+  })
+
+  it('points source_avatar_id at the album and source_image_id at itself', () => {
+    const avatarFk = fkFor(schema.ninaMessageImages, 'source_avatar_id')
+    const imageFk = fkFor(schema.ninaMessageImages, 'source_image_id')
+    expect(cfg(avatarFk!.reference().foreignTable).name).toBe('nina_avatars')
+    /* Self-referencing, on nina_messages.reply_to_id's precedent — the repo's other nullable
+     * pointer from a row to an earlier row of the same table. */
+    expect(cfg(imageFk!.reference().foreignTable).name).toBe('nina_message_images')
+  })
+
+  it('SETS NULL on both, so deleting an original keeps the picture instead of losing it', () => {
+    /* THE decision of phase 1, and the one a "consistency" edit would get wrong. CASCADE here
+     * would delete a photograph out of a live conversation because an unrelated row was tidied
+     * away — the exact data loss `isBlobPathnameReferenced` exists to prevent. SET NULL instead
+     * demotes the copy to an original, which is honest: the bytes are still there and are now
+     * nobody else's. */
+    expect(fkFor(schema.ninaMessageImages, 'source_avatar_id')?.onDelete).toBe('set null')
+    expect(fkFor(schema.ninaMessageImages, 'source_image_id')?.onDelete).toBe('set null')
+  })
+
+  it('adds no index for them — they are residual predicates, like kind', () => {
+    // `generatedChatPhotoScope` argues this in full for `kind` at the same table size. An index
+    // asserted as an ABSENCE so that adding one is a decision somebody makes on purpose.
+    expect(indexNames(schema.ninaMessageImages)).toEqual([
+      'nina_message_images_message_idx',
+      'nina_message_images_user_created_idx',
+    ])
   })
 })
 

@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-chat-avatar-profile`
 **Branch:** `feature/nina-chat-avatar-profile` (base: `origin/main` @ `414f5b2`)
 **Phases:** 1
-**Status:** planned
-**Coordinator:** —
+**Status:** landed — 1/1 phases merged to `main` as `b1763fe`
+**Coordinator:** `orch-nina-chat-avatar-profile`
 
 ---
 

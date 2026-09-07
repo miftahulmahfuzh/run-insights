@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-instructor-character",
   "coordinator_session_id": "5f9d2895-72ec-4f8f-91b8-d817e415f5ff",
   "created": "2026-09-07T02:39:38+00:00",
+  "landed": {
+    "at": "2026-09-07T05:33:09+00:00",
+    "base": "main",
+    "commit": "04dda1a7d398337ac6c504451c7dd89c5d4aad0e",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -41,21 +47,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "a18e6e8",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": "live in tmux @52 (pane %61), spawned into an exclusive worktree -- phases 1 and 2 both landed, so no concurrent writer this wave. Derived 'pending' is the live-process blind spot, NOT abandonment; do not re-spawn. Cross-set id check run per orch-nina-photo-caption-from-image's report: P1-NIN-A018 has exactly one checkbox line repo-wide and it is mine and open, so task_state() cannot derive a false 'done' for this phase from a foreign set's closed id.",
+      "note": "Verified from the branch: a18e6e8 ancestor of origin, exactly 4 files (persona.ts +126, prompts/system.ts +66, prompts/index.ts +18/-3, tests/nina.prompts.test.ts +201). 145 test files / 2857 tests green (2845 -> 2857; file count held at 145). NINA_PROMPT_VERSION === 5 on disk, bumped once by this phase alone; NINA_DISTILL_PROMPT_VERSION still 3 (phase 1's). Frozen snapshot byte-identical to base f839116, never regenerated. Guardrails verified untouched at the tip: patterns.ts, proactive.ts, context.ts all absent from the branch diff; NINA_NOT_A_DOCTOR and NEVER_SAY have no removed lines, only a new comment referencing them. DECISION 1 rung 3: the plan's prose said 'eleven new cases' while its own Step 7 code block held TWELVE it() blocks -- applied the code block verbatim, so the count is 2857 not 2856 (code blocks are complete by construction, surrounding prose is commentary). DECISION 2 rung 1 + coordinator brief item 5: declined the plan's manual save at /admin/personality because .env.local points at the production Neon database; verified read-only instead by rendering buildNinaSystemPrompt in-process -- all four manual-check items confirmed, prompt grows 14203 -> 21597 chars at instructor and 0 bytes at the default. DECISION 3: training_plan named only inside the gated block per D7; buildContextGuide contains it at no level, asserted. Anchors: persona.ts insertion at 717 (plan said 703), test describe at 692 (plan said 647) -- located by anchor text as briefed, no anchor failed, so no drift. NO MIGRATION: branch touches no drizzle/ file, confirmed against the merge base.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-instructor-character/phase-3.md",
-      "reported_at": "2026-09-07T05:22:30+00:00",
+      "reported_at": "2026-09-07T05:30:22+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "running",
+      "status": "done",
       "task_id": "P1-NIN-A018",
       "title": "The coaching register and the insight path"
     }
@@ -63,6 +69,6 @@
   "plan": "/home/miftah/.worktrees/run-insights/nina-instructor-character/NINA_INSTRUCTOR_CHARACTER_PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-instructor-character",
-  "updated": "2026-09-07T05:22:30+00:00",
+  "updated": "2026-09-07T05:33:09+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-instructor-character"
 }

@@ -7,7 +7,13 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
-import { pollNinaReply, sendNinaMessage, type SentBubble } from '@/lib/nina/actions'
+import {
+  pollNinaReply,
+  resendNinaMessage,
+  sendNinaMessage,
+  type NinaResendRefusal,
+  type SentBubble,
+} from '@/lib/nina/actions'
 import {
   ATTACH_PARAM,
   PHOTO_PARAM,
@@ -42,7 +48,7 @@ import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
-import type { ChatMessage } from './types'
+import type { ChatAvatar, ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
 
 /**
@@ -140,6 +146,31 @@ const NOTICE_TEXT: Record<Notice, string> = {
 }
 
 /**
+ * R5's five refusals, in the runner's language.
+ *
+ * ── WHY THIS IS NOT A `Notice` ────────────────────────────────────────────────────────────────
+ * `Notice` gains no member, and that is a decision rather than an omission. Every sentence here is
+ * read while the actions sheet is covering the screen, and the notice strip renders underneath it —
+ * a notice raised from a sheet interaction is a sentence delivered to nobody until the sheet
+ * closes. So these go back to the sheet, through `handleResendMessage`'s return value, and land in
+ * the `refusal` line the sheet already had for locally-decided refusals.
+ *
+ * The COPY lives here rather than in the sheet for the reason `NOTICE_TEXT` lives here: the sheet
+ * must not learn the action's vocabulary, and this file already owns every sentence this screen
+ * says.
+ *
+ * 'turn-live' is the one that is not a failure, and its wording says so: nothing went wrong, and
+ * the message he is looking at is going to be answered without him doing anything else.
+ */
+const RESEND_REFUSAL_TEXT: Record<NinaResendRefusal, string> = {
+  'not-found': 'That message isn’t on the server any more, so there’s nothing to resend.',
+  'not-mine': 'Only your own messages can be resent.',
+  empty: 'There’s nothing left in that message for her to answer.',
+  'turn-live': 'She’s already working on this chat — that one is next, give her a moment.',
+  failed: 'That couldn’t be resent just now. Try it again in a moment.',
+}
+
+/**
  * The chrome the composer sits above: the bar's **outer** height — its 58 px grid plus the 1 px
  * `border-t` the grid sits under, which is the bar's actual top edge.
  *
@@ -164,6 +195,7 @@ export function ChatScreen({
   pending,
   pendingPhoto,
   flight,
+  avatar,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -243,6 +275,29 @@ export function ChatScreen({
    * into a chat that silently never polled.
    */
   flight: NinaFlightView
+  /**
+   * **R1. Her face as the profile settings currently have it** — the current album row's blob URL,
+   * its natural size, and its saved crop triple; or the committed `/nina/avatar-001.png` with a
+   * null crop when there is no album row.
+   *
+   * Resolved on the server by `ninaAvatarView(getCurrentNinaAvatar(userId))` — the SAME call whose
+   * result `app/nina/page.tsx` hands to `<NinaSidebar>`, which is the whole point: the 28 px
+   * circle beside the typing dots and the 44 px circle in the sidebar read one row and therefore
+   * cannot show two different faces or two different framings.
+   *
+   * This screen renders no avatar itself. The prop exists to reach `TypingIndicator` through
+   * `MessageList`, and it stops there.
+   *
+   * `description` is NOT part of the shape (`ChatAvatar` omits it) and the call site destructures
+   * field by field, so `glm-4.6v`'s private prose cannot ride into a client component — invariant
+   * 5, the same care `pendingPhoto` takes above.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit and for the reason `sessionId`,
+   * `pendingPhoto` and `flight` are: `app/nina/page.tsx` is the one caller and `tsc` should be what
+   * notices if it stops passing it. An optional prop defaulting to the fallback is exactly how the
+   * typing row came to ignore the album for as long as it did.
+   */
+  avatar: ChatAvatar
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   /** Mid-reveal: the pause between two of her bubbles. Distinct from `awaiting`; see the render. */
@@ -369,11 +424,7 @@ export function ChatScreen({
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (
-      !params.has(ATTACH_PARAM) &&
-      !params.has(PHOTO_PARAM) &&
-      !params.has(JOB_JUMP_PARAM)
-    ) {
+    if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM) && !params.has(JOB_JUMP_PARAM)) {
       return
     }
     params.delete(ATTACH_PARAM)
@@ -798,6 +849,56 @@ export function ChatScreen({
   }, [])
 
   /**
+   * R5, resending. Resolves `null` when the turn was claimed — the sheet's cue to close — and
+   * otherwise the sentence for the sheet to show.
+   *
+   * ── IT PRODUCES THE SAME AWAITING STATE A SEND PRODUCES, AND THAT IS THE WHOLE UI ─────────────
+   * `handleSend`'s last three lines are `setLiveSessionId` / `cursorRef.current = result.cursor` /
+   * `setAwaiting(true)`, and everything after that is machinery this phase reuses untouched: the
+   * arrival loop starts on `awaiting`, `showTyping` raises the indicator, and `revealBubbles` runs
+   * `planReveal` on whatever the poll returns. So a resend adds no poll, no timer and no second
+   * rhythm — it just tells the shipped one that something is coming.
+   *
+   * `liveSessionId` is deliberately NOT adopted from the result: the message being resent is on
+   * this screen, so it is in the conversation this screen is already polling. A resend cannot
+   * create a session the way a first send can.
+   *
+   * ── THE CURSOR IS TAKEN AS A MAXIMUM ─────────────────────────────────────────────────────────
+   * `result.cursor` is the newest `seq` the server saw when it accepted the resend, which is `>=`
+   * every row this screen holds — so resuming there asks for exactly the rows the resent turn
+   * produces and cannot re-deliver a bubble of hers that is already on screen. `Math.max` covers
+   * the two ways it could still arrive stale: the action degrades to the resent row's own `seq` if
+   * its cursor read fails, and a poll may legitimately land between the server's read and this
+   * assignment, because `awaiting` can be true while a resend is accepted.
+   *
+   * `setNotice(null)` matters more here than it looks: the notice on screen when he taps Resend is
+   * almost always 'no-reply', which is exactly the sentence that sent him here. Leaving it up while
+   * she is answering again would contradict the indicator.
+   */
+  const handleResendMessage = useCallback(async (id: string): Promise<string | null> => {
+    let result: Awaited<ReturnType<typeof resendNinaMessage>> | null = null
+    try {
+      result = await resendNinaMessage({ messageId: id })
+    } catch {
+      result = null
+    }
+    if (!alive.current) return null
+
+    if (result === null || !result.ok) {
+      /* A thrown action has no reason to report, and 'failed' is what it means: the row is
+       * untouched and one more tap is the whole recovery. */
+      return RESEND_REFUSAL_TEXT[result?.reason ?? 'failed']
+    }
+
+    setNotice(null)
+    if (result.cursor !== null) {
+      cursorRef.current = Math.max(cursorRef.current, result.cursor)
+    }
+    setAwaiting(true)
+    return null
+  }, [])
+
+  /**
    * RU-5's staggered reveal, lifted verbatim out of `handleSend` so the SEND path and the POLL path
    * cannot drift into two different rhythms. It is the only writer of `typing` besides the poll's
    * own start and stop.
@@ -1122,6 +1223,7 @@ export function ChatScreen({
           keyboardOverlapPx={overlap}
           restoreMark={mark}
           flashId={flashId}
+          avatar={avatar}
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}
           onRequestActions={handleRequestActions}
@@ -1185,6 +1287,7 @@ export function ChatScreen({
         onClose={() => setActing(null)}
         onSubmitEdit={handleEditMessage}
         onConfirmDelete={handleDeleteMessage}
+        onResend={handleResendMessage}
       />
 
       {/*

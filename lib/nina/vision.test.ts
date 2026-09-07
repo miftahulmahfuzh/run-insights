@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { NINA_DESCRIBE_SYSTEM_PROMPT } from './prompts/describe'
+import {
+  NINA_DESCRIBE_SYSTEM_PROMPT,
+  NINA_SELF_DESCRIBE_SYSTEM_PROMPT,
+} from './prompts/describe'
 import {
   NINA_TOKEN_FLOOR_PER_IMAGE,
   NinaVisionTokenFloorError,
@@ -131,5 +134,57 @@ describe('describeNinaImagesWithFetch', () => {
 describe('the describe prompt', () => {
   it('forbids reading out numbers — invariant 2 at the vision boundary', () => {
     expect(NINA_DESCRIBE_SYSTEM_PROMPT).toMatch(/NEVER read out a number/)
+  })
+})
+
+describe('which witness is sent', () => {
+  /** The envelope-reading idiom this file already uses, named once. */
+  const bodyOf = (fetchImpl: typeof fetch) => {
+    const [, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit]
+    return JSON.parse(String(init.body))
+  }
+
+  const ok = () =>
+    respond({
+      usage: { prompt_tokens: 2_800, completion_tokens: 100 },
+      choices: [{ message: { content: 'ok' } }],
+    })
+
+  it('sends the runner witness prompt by default, byte for byte', async () => {
+    const fetchImpl = ok()
+    await describeNinaImagesWithFetch(fetchImpl, [IMAGE])
+    expect(bodyOf(fetchImpl).messages[0].content).toBe(NINA_DESCRIBE_SYSTEM_PROMPT)
+  })
+
+  it('sends the self witness prompt for subject: self', async () => {
+    const fetchImpl = ok()
+    await describeNinaImagesWithFetch(fetchImpl, [IMAGE], { subject: 'self' })
+    const content = bodyOf(fetchImpl).messages[0].content
+    expect(content).toBe(NINA_SELF_DESCRIBE_SYSTEM_PROMPT)
+    // The subject is the whole point of the second prompt: it looks for her, not for him.
+    expect(content).toContain('Call her "she"')
+  })
+
+  it('still trips the floor on the measured drop signature with the self prompt', async () => {
+    // The floor is TEXT-AWARE, so a LONGER prompt RAISES it. That is the direction the module
+    // header calls correct, and this case must keep tripping rather than start passing.
+    const fetchImpl = respond({
+      usage: { prompt_tokens: 141, completion_tokens: 40 },
+      choices: [{ message: { content: 'She is underwater over a reef.' } }],
+    })
+    await expect(
+      describeNinaImagesWithFetch(fetchImpl, [IMAGE], { subject: 'self' }),
+    ).rejects.toBeInstanceOf(NinaVisionTokenFloorError)
+  })
+})
+
+describe('the self describe prompt', () => {
+  it('forbids reading out numbers — invariant 2, with no downstream to catch it', () => {
+    expect(NINA_SELF_DESCRIBE_SYSTEM_PROMPT).toMatch(/NEVER read out a number/)
+  })
+
+  it('names swimwear as flatly as a coat, so she does not caption a hole', () => {
+    expect(NINA_SELF_DESCRIBE_SYSTEM_PROMPT).toContain('You are not a moderator')
   })
 })

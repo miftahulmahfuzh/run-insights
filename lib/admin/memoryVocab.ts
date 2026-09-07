@@ -25,6 +25,7 @@ const SLOT_LABELS: Readonly<Record<NinaSlotKey, string>> = {
   name: 'Full name',
   nickname: 'Nickname',
   running_days: 'Usual running days',
+  training_plan: 'Training plan',
   work_hours: 'Work hours',
   goals: 'Current goal',
   injuries: 'Injuries',
@@ -49,6 +50,9 @@ const SLOT_REFUSALS: Readonly<Record<NinaSlotKey, string>> = {
   running_days:
     'No weekday could be read out of that. Write day names: "Selasa, Kamis, Sabtu". This has to ' +
     'parse back, because the evening cron reads this slot to ask whether he skipped his usual day.',
+  training_plan:
+    'Cannot be empty. Nothing parses this one — it is prose she reads back, so any wording of the ' +
+    'week is accepted. To clear it, delete the row — the key comes back as a blank one.',
   work_hours: 'Write two clock times, like "08:00-17:00".',
   goals: 'A goal cannot be empty.',
   injuries: 'Cannot be empty. To clear it, delete the row — the key comes back as a blank one.',
@@ -60,7 +64,7 @@ const SLOT_REFUSALS: Readonly<Record<NinaSlotKey, string>> = {
 }
 
 const ORPHAN_HINT =
-  'Not one of the nine keys Nina understands. Nothing in the app reads it deliberately — but ' +
+  'Not one of the ten keys Nina understands. Nothing in the app reads it deliberately — but ' +
   'every slot row goes into her prompt on every turn, so it IS being read, by her. Delete it.'
 
 const ORPHAN_NOTE = 'orphan — no rule reads this key, but she does'
@@ -113,7 +117,7 @@ export function canonicaliseSlotValue(key: string, raw: string): SlotCanonicalis
     return {
       ok: false,
       reason:
-        `"${key}" is not one of the nine keys Nina understands, so writing to it would put a ` +
+        `"${key}" is not one of the ten keys Nina understands, so writing to it would put a ` +
         'value in her prompt that no rule governs. Delete the row instead.',
     }
   }
@@ -197,17 +201,17 @@ function describePromise(promise: MemoryPromiseInputRow): string {
  * **R1's *"all the memory … as one simple table"*, made literal.** Three shapes across two tables
  * become one ordered list of rows:
  *
- *   1. one row per closed-vocabulary slot key that is NOT structured — eight of the nine — whether
+ *   1. one row per closed-vocabulary slot key that is NOT structured — nine of the ten — whether
  *      or not a database row exists. An empty row is how a slot is inserted by hand, and it is
  *      also what a deleted slot key looks like a moment later (`reappears`).
- *   2. one row per ORPHANED key, after the eight, alphabetically. Never editable: every save would
+ *   2. one row per ORPHANED key, after the nine, alphabetically. Never editable: every save would
  *      be refused by `canonicaliseSlotValue`, and offering a control that always fails is worse
  *      than offering none.
  *   3. one row per PENDING PROMISE. The `pending_promises` KEY is excluded from (1) structurally,
  *      by its `merge` policy rather than by its name, and its entries appear here instead.
  *   4. one row per LEDGER row, newest first — `adminReadFacts` already returns them that way.
  *
- * There is deliberately no way to create a TENTH slot key from this page: the vocabulary is closed,
+ * There is deliberately no way to create a NEW slot key from this page: the vocabulary is closed,
  * and a free-text key field would manufacture exactly the orphans (2) exists to clean up.
  */
 export function buildMemoryRows(input: {
