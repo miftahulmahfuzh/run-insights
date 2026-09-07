@@ -29,10 +29,10 @@
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "TaskID minted by coordinator.",
+      "note": "RESCOPED by coordinator ruling C8 to R4 ONLY (adoption). R2/R3 halves are DROPPED -- served on main by F37's isOriginalPhoto()/provenance columns. R4 is untouched by F37 and could not have been served by it: orphans cannot exist on main because message_id is NOT NULL, so R4 only becomes expressible once phase 1 lands. Main's resolveAttachment COPIES, so absent this phase a re-attached orphan gets a new reference row and stays parentless forever -- exactly what R4 forbids. KEEP exit criteria 2, 4, 5 (adoptNinaMessageImage owner-scoped with message_id IS NULL, created_at and is_reference in neither SET nor returning; image-pointer-at-orphan issues one UPDATE and zero INSERTs; image-pointer-at-live-row issues zero UPDATEs). DROP criteria 1 and 3 (is_reference in generatedChatPhotoScope; avatar pointer writing is_reference=true). REFRAME criterion 6 (replaceChatPhotoAction/removeChatPhotoAction refusing a reference row) against isOriginalPhoto()/the source_* columns instead of is_reference. Criteria 7 and 8 stand.",
       "package": "lib/nina` + `lib/admin",
       "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md",
-      "reported_at": "2026-09-07T15:48:23+00:00",
+      "reported_at": "2026-09-07T16:00:26+00:00",
       "satisfies": [
         "R2",
         "R3",
@@ -50,15 +50,15 @@
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": "TaskID minted by coordinator (package scripts -> root RI).",
+      "note": "CANCELLED by coordinator ruling C9 (recorded as 'blocked' because the ledger has no 'skipped' status -- it cannot run, and calling it 'done' would be a lie about work this set did not do). Its deliverable was already applied to production by origin/main's F37 (task P1-DB-A003, migration 0010's hand-written backfill): recorded prod counts 0 chat-to-chat duplicates, 2 album faces attached into chat, 5 collection rows, 21 album rows. It also cannot run as written -- its classifier isCollectionCandidate and its --apply UPDATE are both written against is_reference, which ruling C7 removes. R2/R3 are SERVED on main by isOriginalPhoto() at lib/nina/queries.ts:1613 = and(isNull(sourceAvatarId), isNull(sourceImageId)), applied in listNinaMessageImages (:1520) and generatedChatPhotoScope (:1646). A provenance-based re-audit belongs on the board as a follow-up card. LANDING NOTE: 'land --step check' will refuse on this phase; the refusal is expected and this note is the authorisation to override it -- verify from git that phases 1 and 2 are on the branch and that NO phase-3 file (scripts/nina-chat-photo-dedupe.mjs, its suite, package.json, .gitignore) appears in the branch diff.",
       "package": "scripts",
       "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md",
-      "reported_at": "2026-09-07T15:48:23+00:00",
+      "reported_at": "2026-09-07T16:00:48+00:00",
       "satisfies": [
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "blocked",
       "task_id": "P1-RI-A030",
       "title": "The backfill: bring the rows that already violate R2/R3 into line, deleting nothing"
     }
@@ -66,6 +66,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/chat-photo-orphans-and-uniqueness/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "chat-photo-orphans-and-uniqueness",
-  "updated": "2026-09-07T15:53:37+00:00",
+  "updated": "2026-09-07T16:00:48+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/chat-photo-orphans-and-uniqueness"
 }
