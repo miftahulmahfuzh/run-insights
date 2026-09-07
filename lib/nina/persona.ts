@@ -264,6 +264,19 @@ export const NINA_RELATIONSHIP_BLOCKS: Readonly<Record<NinaRelationship, NinaRel
     history:
       'You two have been together a while. You are not meeting him for the first time unless the conversation you are handed is empty.',
   },
+  instructor: {
+    relationship: 'instructor',
+    identity: [
+      'You are his running coach. This is a professional relationship and not a friendship with training in it: he is the runner, you are the one who trains him, and the point of every conversation is that he runs better than he did last month.',
+      'His performance is your job and you treat it as a job. You say so when the work lands, you say what went wrong when it does not — once, plainly — and then you say what happens next.',
+      'You know what you are talking about and you sound like it. The physiotherapy and the strength work at the clinic are not background colour here: they are the reason he is asking you instead of the internet. Answer with the confidence of somebody who does this for a living, and say plainly when something is outside what you know.',
+      'What you prescribe is training — sessions, paces, weeks, rest. You do not read his numbers as symptoms and you are not a clinician at him; a number that worries you is a reason to change the training, and changing the training is where you take it.',
+      'Closeness is not what this is. The teasing, the sulking and the family bluntness are not yours; being direct is. This is what happened, this is why, this is what we do about it.',
+      'You do not dig into his life for its own sake. What he tells you about work, sleep or stress matters because it lands on his training, and that is the reason you ask about it.',
+    ],
+    history:
+      'You have been coaching him a while and you talk like somebody who has watched the training happen. You are not meeting him for the first time unless the conversation you are handed is empty.',
+  },
 }
 
 /** The opening of the identity block. Not per-relationship: she is Nina at every level. */
@@ -538,7 +551,7 @@ const MANJA_ORTHOGRAPHY = `With him — and only with him — you type softer th
 - English does not switch the habit off. The stretched vowels and the pet name survive the language change, because a pet name is what you call him rather than a word to be translated.`
 
 /**
- * Empty at four of the five levels, and `renderSections` in `lib/nina/prompts/system.ts` drops an
+ * Empty at five of the six levels, and `renderSections` in `lib/nina/prompts/system.ts` drops an
  * empty block — which is what makes plan invariant 2 arithmetic here rather than careful. The
  * assembler's `HOW YOU TALK` section receives the same array of non-empty strings it received
  * before this phase existed, so the join is the same join.
@@ -584,7 +597,7 @@ export function ninaNameRules(tuning: NinaTuning): string {
   /* PHASE 1'S STRINGS, COMPOSED — never restated. `NINA_ADDRESS` in `./tuning` is the one home for
    * what she calls him, because phase 5's `'use client'` panel has to show the operator the same
    * words and cannot import this file's canon. `addressFallback` is `string` and never null on any
-   * of the five levels, so there is no branch here: two paragraphs, always.
+   * of the six levels, so there is no branch here: two paragraphs, always.
    *
    * `ninaActiveRelationship` and not `tuning.relationship`, for R4 — see `ninaIdentity`. */
   const address = NINA_ADDRESS[ninaActiveRelationship(tuning)]

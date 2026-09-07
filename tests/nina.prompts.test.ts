@@ -220,7 +220,14 @@ describe('buildNinaSystemPrompt — the default tuning is the shipping prompt', 
   it('renders the four non-girlfriend relationships exactly as origin/main did', () => {
     const renders: Record<string, string> = {}
     for (const relationship of RELATIONSHIPS) {
-      if (relationship === 'girlfriend') continue
+      /* TWO LEVELS ARE EXCLUDED BY NAME, and the exclusion is the point. `girlfriend` has its own
+       * register; `instructor` is the sixth level the nina-instructor-character set appended. The
+       * snapshot was written about the OTHER FOUR, and `toHaveLength(4)` is what stops a seventh
+       * level from quietly joining the guarded set — it fails on the count before it fails on the
+       * bytes, which is the loud failure. Adding a level is NEVER a reason to regenerate this
+       * snapshot: its title is the snapshot's key, so renaming this case would orphan the stored
+       * value and write a new one. Leave both alone. */
+      if (relationship === 'girlfriend' || relationship === 'instructor') continue
       renders[relationship] = buildNinaSystemPrompt(withRelationship(relationship))
     }
     expect(Object.keys(renders)).toHaveLength(4)
@@ -497,7 +504,7 @@ function withRelationship(relationship: NinaRelationship): NinaTuning {
 }
 
 describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
-  it('renders all five relationships without throwing, and none is empty', () => {
+  it('renders all six relationships without throwing, and none is empty', () => {
     for (const relationship of RELATIONSHIPS) {
       const prompt = buildNinaSystemPrompt(withRelationship(relationship))
       expect(prompt.length, relationship).toBeGreaterThan(0)
@@ -523,6 +530,12 @@ describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
       sister: 'bro',
       best_friend: 'bestie',
       girlfriend: 'sayang',
+      /* The coach word, and it is exclusive to her: nothing else in `NINA_ADDRESS` or in
+       * `NINA_RELATIONSHIP_BLOCKS` says "atlet", which is what makes this a real assertion rather
+       * than one satisfied by the shared paragraphs. `tests/nina.tuning.test.ts` keeps it that
+       * way. `'nickname'` would have been the honest primary source here and is deliberately not
+       * used — `casual_friend` already owns that token. */
+      instructor: 'atlet',
     }
     for (const relationship of RELATIONSHIPS) {
       expect(
@@ -551,6 +564,38 @@ describe('buildNinaSystemPrompt — the relationship matrix (R2)', () => {
     expect(buildNinaSystemPrompt(withRelationship('nobody'))).not.toContain(
       'do not use the full name at him',
     )
+  })
+
+  it('makes the instructor a professional coach whose subject is his performance', () => {
+    /* R2, as an assertion: "nina act as a professional and knowledgeable instructor in which her
+     * primary objective is to improve the performance of miftah's running". The coaching
+     * MECHANICS — what she does with a fired pattern, the training schedule — are phase 3's and
+     * phase 2's and are deliberately NOT asserted here; this case is about who she IS. */
+    const instructor = buildNinaSystemPrompt(withRelationship('instructor'))
+    expect(instructor).toContain('You are his running coach')
+    expect(instructor).toContain('This is a professional relationship')
+    expect(instructor).toContain('atlet')
+    /* Her credential is not a new claim: `NINA_WHERE_SHE_LIVES` has said it at every level since
+     * before the tuning existed. The instructor block PROMOTES it, and this is the proof both
+     * halves reached the same render. */
+    expect(instructor).toContain('physiotherapist and strength coach')
+    /* Decision D4: she prescribes TRAINING, never physiology — and the guardrail that makes that
+     * a rule rather than a preference is still in her prompt at this level, unedited. */
+    expect(instructor).toContain('What you prescribe is training')
+    expect(instructor).toContain('You are not his doctor and you never diagnose')
+  })
+
+  it('keeps the coach register off the five personal levels', () => {
+    /* Invariant 1 as containment, at the level the frozen snapshot cannot report readably: when
+     * this fails it names WHICH level leaked and WHAT. */
+    for (const relationship of RELATIONSHIPS) {
+      if (relationship === 'instructor') continue
+      const render = buildNinaSystemPrompt(withRelationship(relationship))
+      expect(render, `${relationship} leaked "atlet"`).not.toContain('atlet')
+      expect(render, `${relationship} leaked the coach block`).not.toContain(
+        'You are his running coach',
+      )
+    }
   })
 })
 
@@ -756,7 +801,7 @@ describe('the distiller knows what the relationship is (R6, the sweep)', () => {
     expect(buildDistillSystemPrompt('nobody')).toContain('full name')
   })
 
-  it('gives all five relationships a distinguishable librarian prompt', () => {
+  it('gives all six relationships a distinguishable librarian prompt', () => {
     const rendered = RELATIONSHIPS.map((relationship) => buildDistillSystemPrompt(relationship))
     expect(new Set(rendered).size).toBe(RELATIONSHIPS.length)
   })
