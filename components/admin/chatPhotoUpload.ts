@@ -101,8 +101,9 @@ export async function encodeChatPhotoJpeg(
  * Encode, then PUT straight to Blob through the admin handshake.
  *
  * `adminChatPhotoPathname` is what the client may ASK for; Blob rewrites it with a random suffix and
- * the STORED pathname is whatever `upload` returned — which is why `ADMIN_CHAT_PHOTO_ID_RE` admits
- * 12-24 symbols and why the actions re-validate the returned pathname rather than the requested one.
+ * the STORED pathname is whatever `upload` returned — 43 symbols in the id segment, not 12 — which is
+ * why `lib/admin/chatPhotos.ts` carries a SECOND pattern, `ADMIN_CHAT_PHOTO_STORED_ID_RE`, and why
+ * the actions re-validate the returned pathname rather than the requested one.
  *
  * `handleUploadUrl` is the ADMIN route and not `/api/upload`: that route mints tokens for a
  * merely-signed-in session and knows nothing about this pathname shape.

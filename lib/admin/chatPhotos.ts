@@ -43,14 +43,46 @@ import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
  *      which is where invariant 7 permits the distinction to be visible.
  *
  * ── ONE PREDICATE, TWO WINDOWS ──────────────────────────────────────────────────────────────
- * `addRandomSuffix: true` means Blob rewrites the pathname it was asked for, so the REQUESTED form
- * carries a 12-symbol id and the STORED form carries more. `ADMIN_CHAT_PHOTO_ID_RE` admits 12-24
- * and `isAdminChatPhotoPathname` is used for both — at mint time (where it is slightly loose: a
- * client could ask for a 24-symbol id, which is harmless, since the id is a name inside the
- * caller's own folder and not a credential) and at action time (where the loose window is exactly
- * right). `lib/nina/images.ts`'s `NINA_CHAT_ID_RE` made the same call for the same reason, and the
- * alternative — two predicates that must stay in step — is the drift it avoided. The unit suite
- * pins the REQUESTED form against `NINA_IMAGE_PATHNAME_RE`'s stricter `{12}`.
+ * `addRandomSuffix: true` means Blob REWRITES the pathname it was asked for, so this module is
+ * shown two different shapes and `isAdminChatPhotoPathname` is the only predicate for both:
+ *
+ *   · REQUESTED — `nina/<userId>/selfie-<12>.jpg`, at the token mint
+ *     (`app/api/admin/nina/upload/route.ts:153`)
+ *   · STORED — `nina/<userId>/selfie-<12>-<30>.jpg`, at action time
+ *     (`lib/admin/chatPhotoActions.ts:113` and `:182`)
+ *
+ * The numbers are MEASURED, not intended. From the prod store `ptezanncca27s5kn`:
+ * `selfie-Q8lWbmk0LG7W-yUFwuTN7o1ZNWvKU9FonuesJQKHQcQ.jpg` — a 12-symbol `newId()`, a `-`, and
+ * Vercel's 30-symbol suffix, so the id segment is **12 + 1 + 30 = 43**.
+ *
+ * This window used to be a single range, `{12,24}`, and 43 is outside it: every upload reached the
+ * store and then had its row refused with *"That file did not land in her photo folder."* — one
+ * orphaned object per click, in a paid store, with the error message pointing at the one thing that
+ * had actually succeeded. `{12,24}` was the arithmetic somebody expected, never an object somebody
+ * looked at, and the unit fixture that should have caught it had invented a 7-symbol suffix.
+ *
+ * So the suffix gets ITS OWN GROUP, which is the shape `lib/extract/constants.ts:103-107` already
+ * uses and already argues for: `SHOT_STORED_PATHNAME_RE` bounds the suffix `{16,64}` and says why —
+ * *"the bound is deliberately loose rather than pinned at the 30 currently observed — this regex's
+ * job is our prefix and alphabet, not an internal of Vercel's we do not control."* Two groups
+ * rather than one widened range, for two reasons: a single `{12,48}` would ALSO admit a 30-symbol
+ * REQUESTED id at mint time, and it would drift again the day Vercel changes the suffix length.
+ *
+ * The requested half is now `{12}` exactly rather than `{12,24}` — the length `newId()` emits, and
+ * the same bound `NINA_IMAGE_PATHNAME_RE` (`lib/nina/imagerecipe.ts:96`) and `lib/admin/avatars.ts`
+ * already use. The mint therefore gets TIGHTER here, not looser: 13-24 was always more than
+ * `newId()` could produce and no caller in the repo ever asked for it.
+ *
+ * A 12-symbol `newId()` may itself contain and END with `-` — its alphabet is the 64 URL-safe
+ * symbols (`lib/id.ts:11`), and the real object
+ * `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg` has the doubled `--` to prove it. That is
+ * why the stored pattern anchors the first 12 symbols POSITIONALLY, with a fixed `{12}` quantifier,
+ * instead of splitting the id on `-`.
+ *
+ * `lib/nina/images.ts`'s `NINA_CHAT_ID_RE` had the identical defect from the identical reasoning and
+ * is fixed here in the identical shape: the runner's camera upload was failing one screen over as
+ * *"Nina could not take this one."* The unit suite pins the REQUESTED form against
+ * `NINA_IMAGE_PATHNAME_RE`'s `{12}`, which is now the same number rather than a stricter one.
  */
 
 /**
@@ -73,10 +105,34 @@ export const ADMIN_CHAT_PHOTO_EXT = 'jpg'
 export const ADMIN_CHAT_PHOTO_CONTENT_TYPE = 'image/jpeg'
 
 /**
- * 12 requested, up to 24 stored once Blob has appended its random suffix. See the header's
- * "one predicate, two windows".
+ * What the client may ASK for: a `newId()`, and nothing longer. `lib/id.ts`'s `ID_LENGTH` is 12,
+ * `components/admin/chatPhotoUpload.ts:112` is the only caller and it passes a bare `newId()`, so
+ * `{12}` exactly — the same bound `NINA_IMAGE_PATHNAME_RE` (`lib/nina/imagerecipe.ts:96`) and
+ * `lib/admin/avatars.ts` already use for their own request-only shapes.
+ *
+ * This used to read `{12,24}` and try to cover the stored form with the same range. It could not:
+ * see `ADMIN_CHAT_PHOTO_STORED_ID_RE` and the header's "one predicate, two windows".
  */
-export const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12,24}$/
+export const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12}$/
+
+/**
+ * What Blob actually STORED, which is what `lib/admin/chatPhotoActions.ts` re-validates: the
+ * requested 12 symbols, a `-`, and Vercel's random suffix. 43 symbols in every object measured in
+ * the prod store, of which 30 are the suffix — 12 + 1 + 30.
+ *
+ * The suffix is bounded `{16,64}` rather than pinned at 30 because it is an internal of Vercel's we
+ * do not control; that bound and that argument are `SHOT_STORED_PATHNAME_RE`'s, verbatim
+ * (`lib/extract/constants.ts:103-107`), and this is deliberately the fourth copy of a number rather
+ * than a fifth shared module — RULING A6 keeps `lib/nina/images.ts` zero-import, and
+ * `lib/extract/constants.ts` already keeps its own.
+ *
+ * The leading `{12}` is a FIXED quantifier on purpose. A `newId()` draws from the 64 URL-safe
+ * symbols (`lib/id.ts:11`), so it may itself contain and end with `-` — real object
+ * `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg`. The separator is therefore found by
+ * POSITION and never by splitting on `-`, and the first group cannot be greedy enough to swallow
+ * part of the suffix.
+ */
+export const ADMIN_CHAT_PHOTO_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
 
 /**
  * 2 MB, and it is a FOURTH number on purpose — none of the three in the store was inherited.
@@ -117,6 +173,9 @@ export function adminChatPhotoPathname(userId: string, id: string): string {
  *
  * The user id is INTERPOLATED FROM THE SESSION by the route and by every action, never taken from
  * the request, so a client cannot write into another user's folder even though there is one user.
+ *
+ * The id segment is checked against BOTH windows, because this one predicate is called with the
+ * requested pathname at mint time and with the stored one at action time. See the header.
  */
 export function isAdminChatPhotoPathname(pathname: string, userId: string): boolean {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId)) return false
@@ -134,7 +193,11 @@ export function isAdminChatPhotoPathname(pathname: string, userId: string): bool
   const tail = `.${ADMIN_CHAT_PHOTO_EXT}`
   if (!file.startsWith(head) || !file.endsWith(tail)) return false
 
-  return ADMIN_CHAT_PHOTO_ID_RE.test(file.slice(head.length, -tail.length))
+  // TWO WINDOWS, one predicate — see the header. The mint hands us the requested form, the two
+  // Server Actions hand us the form Blob stored; either is a legitimate answer of `true` and
+  // neither is expressible as a widening of the other's range.
+  const id = file.slice(head.length, -tail.length)
+  return ADMIN_CHAT_PHOTO_ID_RE.test(id) || ADMIN_CHAT_PHOTO_STORED_ID_RE.test(id)
 }
 
 /**

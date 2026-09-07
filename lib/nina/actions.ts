@@ -1232,7 +1232,9 @@ export async function describeNinaImage(
    * already checked it: this action's own INSERT-shaped claims (pathname, blobUrl) are about to be
    * signed, and signing something unvalidated is how a signature becomes a laundering service.
    * The stored pathname carries Vercel's random suffix, so the id segment is longer than the
-   * requested one — which `NINA_CHAT_ID_RE`'s 12..24 bound already admits.
+   * requested one — 12 + 1 + 30 = 43, measured — which `NINA_CHAT_STORED_ID_RE` admits as its own
+   * group. `NINA_CHAT_ID_RE` is the requested half only and is `{12}` exactly; a single range
+   * covering both is what refused every upload this route ever saw.
    */
   if (!isNinaChatRequestPathname(pathname, userId) || !blobUrl.startsWith('https://')) {
     return { ok: false, ticket: null, reason: 'rejected' }
