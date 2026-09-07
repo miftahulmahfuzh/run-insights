@@ -59,14 +59,43 @@ import { listNinaPhotoReferences, readNinaImagePrefs, readNinaTuning } from '@/l
  * tuning would be a preview missing a paragraph the real path has. Three indexed reads of three
  * rows, in one `Promise.all` so they do not run in sequence.
  *
- * ── PHASE 6 ADDS `maxDuration` TO THIS FILE ─────────────────────────────────────────────────
- * A Server Action's timeout is the page segment's, and phase 6's test dispatch opens an image job.
- * That constant is deliberately NOT declared here: this phase awaits nothing longer than three
- * indexed reads, and a `maxDuration` with no expensive call under it is a number nobody can justify
- * when they find it.
+ * ── AND WHY `maxDuration` NOW SITS BESIDE IT ────────────────────────────────────────────────
+ * Phase 4 deliberately left it off: this page's own render awaits nothing longer than three
+ * indexed reads. Phase 6 added it, because the segment now hosts `runNinaImageTestAction` — see
+ * that export's own note below.
  */
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * **300, and it must be a literal.** Segment config exports are statically analysed at build time,
+ * so `export const maxDuration = NINA_HOST_MAX_DURATION_MS / 1000` is not a value the analyser can
+ * see — it would compile, ship, and leave this route on the platform default. `app/nina/page.tsx`
+ * and `app/api/cron/nina/route.ts` spell the same number the same way for the same reason.
+ *
+ * ── WHY A FORM PAGE NEEDS A FIVE-MINUTE CEILING ──────────────────────────────────────────────
+ * `runNinaImageTestAction` calls `fireNinaImageGeneration`, which schedules the generation in
+ * `after()` — and `after()` inherits the ROUTE SEGMENT's `maxDuration`, not the action's own
+ * wishes. A Server Action POSTed to this segment therefore runs the generation under this number.
+ * At the platform default the call would be killed mid-flight, the row would be left `running`,
+ * and the operator would be told "timeout" about a prompt the provider never finished looking at
+ * — the one wrong answer this feature exists to avoid.
+ *
+ * 300 is `NINA_HOST_MAX_DURATION_MS`, and the threshold chain (plan invariant 3) is what fixes it:
+ * `NINA_TURN_SPENT_MS (45) + phase 3's anchored call ceiling (220) +
+ * NINA_IMAGE_FINISH_RESERVE_MS (20) = 285 <= 300`.
+ *
+ * `app/nina/jobs/page.tsx` is the precedent line for line — it carries this export for the
+ * identical reason (`NinaJobActions` calls `redoNinaImageJob`, which registers a generation in
+ * `after()`), and `lib/nina/imagerun.ts` predicted this one: *"`app/nina/page.tsx` and
+ * `app/api/cron/nina/route.ts` are the two segments that can start a generation, and a third
+ * caller would need the same line."* `/nina/jobs` was the third. **This is the fourth, and the
+ * first under `/admin` — no other `/admin/*` route declares `maxDuration` today.**
+ *
+ * It is declared BESIDE `dynamic`, not instead of it: they answer different questions, and the
+ * pair is what `app/nina/jobs/page.tsx` ships.
+ */
+export const maxDuration = 300
 
 export default async function AdminImageGenerationPage() {
   const { userId } = await requireAdmin()

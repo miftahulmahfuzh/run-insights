@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 import { DialSlider } from '@/components/admin/DialSlider'
+import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
 import { Button, CONTROL_CLASS } from '@/components/ui'
@@ -410,41 +411,20 @@ export function ImageGenPanel({
           </pre>
         </details>
 
-        {/*
-         * ── SEAM — PHASE 6: the test-prompt button and its verdict ────────────────────────────
+        {/* R11 / R12, phase 4's seam filled. Propless on purpose: the panel reads the live
+         * quota and the saved-prefs prompt preview through its own Server Action, so this line
+         * depends on none of this form's state and could not conflict with the picker mount
+         * above it.
          *
-         * **THE MARKER STRING IS `SEAM — PHASE 6`, EXACTLY.** Phase 6 greps for it and its test
-         * asserts `expect(source).not.toContain('SEAM — PHASE 6')`. See the phase 5 seam above for
-         * why this spelling won.
+         * `dirty` is this panel's own `unsaved.size > 0`. The test runs the SAVED row, so an
+         * operator with unsaved edits is warned rather than handed a verdict on a prompt he is
+         * not looking at.
          *
-         * Phase 6 replaces the `<p>` below with exactly this, plus one import:
-         *
-         *     <ImageGenTestPanel dirty={dirty} />
-         *
-         * **RECONCILED: `dirty` only.** Phase 4's draft predicted
-         * `<ImageGenTestPanel userId={userId} dirty={dirty} revision={revision} />`, but phase 6
-         * owns that component and declares its props as `{ dirty?: boolean }` — no `userId`
-         * (`runNinaImageTestAction` takes no arguments and reads `requireAdmin()` server-side, so a
-         * client-supplied user id would be a payload to forge) and no `revision` (the panel polls a
-         * Server Action rather than re-rendering this page, so it needs nothing from the form's
-         * render). The component that declares a prop list owns it. Passing `dirty` also closes
-         * phase 6's Handoff 4, which left the flag optional so neither phase would block the other.
-         *
-         * `dirty` is in scope here as `unsaved.size > 0`, declared beside `unsaved` above.
-         *
-         * It goes HERE — after the assembled prompt, before the Save
-         * row — for two reasons. The verdict is about the prompt printed immediately above it, so
-         * the two read as one block; and the button spends money against
-         * `NINA_IMAGE_DAILY_CAP`, so it must not sit where a hand aiming for Save can land on it.
-         *
-         * `dirty` is passed because the test runs the SAVED row, not the draft: a test fired with
-         * unsaved edits would return a verdict on a prompt the operator is not looking at, and the
-         * panel has to be able to say so.
-         */}
-        <p className="mb-6 max-w-[70ch] text-[12px] font-medium text-ink-3">
-          The test-prompt button lands here: it runs the prompt above at the provider and reports
-          whether it was refused.
-        </p>
+         * It sits after the assembled prompt and before the Save row for two reasons: the
+         * verdict is about the prompt printed immediately above it, so the two read as one
+         * block; and the button spends money against `NINA_IMAGE_DAILY_CAP`, so it must not sit
+         * where a hand aiming for Save can land on it. */}
+        <ImageGenTestPanel dirty={dirty} />
 
         {result?.ok === false && (
           <p className="mb-3 text-[12px] font-semibold text-red">{result.error}</p>

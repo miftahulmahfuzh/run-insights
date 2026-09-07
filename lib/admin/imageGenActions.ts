@@ -2,14 +2,25 @@
 
 import { revalidatePath } from 'next/cache'
 
+import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
+import { imageTestVerdict, type NinaImageTestJobView } from '@/lib/admin/imageGenTestView'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import {
   ninaImagePrefsResetSchema,
   ninaImagePrefsWriteSchema,
   type NinaImagePrefsWriteInput,
 } from '@/lib/admin/schema'
+import { isValidId } from '@/lib/id'
+import { getNinaImageJobDetail, ninaImageQuotaLeft } from '@/lib/nina/imagejobs'
 import { NINA_IMAGE_PREFS_DEFAULTS, type NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
-import { writeNinaImagePrefs } from '@/lib/nina/queries'
+import { NINA_IMAGE_DAILY_CAP } from '@/lib/nina/imagerecipe'
+import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/imagetest'
+import {
+  readNinaImagePrefs,
+  readNinaTuning,
+  resolveNinaPhotoReference,
+  writeNinaImagePrefs,
+} from '@/lib/nina/queries'
 
 /**
  * `/admin/image-generation`'s panel, write side — R4 through R9, and R10's selection.
@@ -187,4 +198,143 @@ export async function resetNinaImagePrefsAction(input: {
   } catch (cause) {
     return failed('reset', cause)
   }
+}
+
+/* ── R11 / R12: the prompt test ──────────────────────────────────────────────────────────────
+ *
+ * Two actions, and the split is the whole design: one SPENDS a generation and returns without
+ * waiting for it, and one READS what happened. The index's Decisions table settles why they are not
+ * one action that blocks — a Server Action's timeout is the page segment's, and 78-220 s inside a
+ * browser POST is precisely what `after()` exists to avoid.
+ *
+ * NEITHER TAKES A PAYLOAD WORTH VALIDATING, and that is deliberate rather than lazy.
+ * `runNinaImageTestAction` takes NO arguments at all: everything it needs is the saved row and the
+ * id `requireAdmin()` returns, so there is no shape to forge and no Zod schema to keep in step with
+ * `lib/admin/schema.ts`. `readNinaImageTestAction` takes one job id, which is a CLAIM and is turned
+ * into a fact by `isValidId` (shape) plus `getNinaImageJobDetail`'s owner-scoped `WHERE` (identity)
+ * — `parseNinaJumpParam` and `/nina/jobs/[id]` are the precedent for exactly that pair.
+ */
+
+export type NinaImageTestDispatchResult =
+  { ok: true; jobId: string; quotaLeft: number } | { ok: false; message: string }
+
+export interface NinaImageTestReadResult {
+  /** Live, because a chat selfie can spend it between renders. Shown BEFORE the click. */
+  quotaLeft: number
+  /** The prompt the button would send right now, from the SAVED prefs. Pure assembly, no model. */
+  promptPreview: string
+  /** The saved photo reference, so the panel can say whether this test is anchored. */
+  referenceUrl: string | null
+  /** `null` until a test has been dispatched, or when the id names nothing of ours. */
+  job: NinaImageTestJobView | null
+}
+
+/**
+ * Spend one generation to find out whether the provider will draw the saved prompt.
+ *
+ * The order is the cap, then the row, then the handoff — `dispatchNinaImageTest` owns all
+ * three and states why. This action's only job is to turn its three outcomes into a sentence and a
+ * job id.
+ *
+ * **No `revalidatePath` here.** Nothing has landed: the photograph does not exist for another
+ * 78-220 s. The quota HAS changed, and the panel gets the new number in this very result rather
+ * than by re-rendering a page.
+ */
+export async function runNinaImageTestAction(): Promise<NinaImageTestDispatchResult> {
+  const { userId } = await requireAdmin()
+
+  const dispatched = await dispatchNinaImageTest(userId)
+
+  if (!dispatched.ok) {
+    if (dispatched.kind === 'capped') {
+      return {
+        ok: false,
+        message:
+          `Today’s ${NINA_IMAGE_DAILY_CAP} generations are spent, so nothing was sent and ` +
+          'nothing was billed. The cap counts failed generations too, and it rolls over at ' +
+          'midnight in Jakarta.',
+      }
+    }
+    return {
+      ok: false,
+      message:
+        'The job could not be opened, so nothing was sent and nothing was billed. This is not a ' +
+        'refusal — see the server log and try again.',
+    }
+  }
+
+  return { ok: true, jobId: dispatched.jobId, quotaLeft: await ninaImageQuotaLeft(userId) }
+}
+
+/**
+ * The read behind the panel: the quota, the prompt as it would be sent, and — once a test has
+ * been dispatched — the job's state.
+ *
+ * `jobId === null` is the mount case and is not an error: there is a quota to show and a prompt to
+ * preview before anything has been spent.
+ *
+ * ── THE `source !== 'admin'` FILTER ──────────────────────────────────────────────────────────
+ * `getNinaImageJobDetail` already proves the job is this user's. This adds that it is one of HIS
+ * PROMPT TESTS: a chat selfie's id polled here would otherwise be reported as "your prompt test",
+ * which is a true row described by a false sentence. `source: 'admin'` is stamped by
+ * `dispatchNinaImageTest` and is the value `NinaImageJobArgs` already carries for this purpose.
+ *
+ * ── WHY THE PREVIEW MAY BE AWAITED HERE ──────────────────────────────────────────────────────
+ * `assembleNinaImageTestPrompt` is a PURE string join over two indexed reads. No model call is
+ * awaited, which is what `ci:llm-payload-guard` Rule 2 and plan invariant 5 forbid — the same
+ * standing `buildNinaSystemPrompt` has on `/admin/personality`.
+ *
+ * ── AND WHY `referenceUrl` IS RESOLVED RATHER THAN READ ──────────────────────────────────────
+ * **RECONCILED.** The prefs row stores `reference: { source, id }` and NOT a Blob URL — phase 1's
+ * `NinaImagePrefs` has no `referenceUrl` member, by the same argument this phase's Step 1 makes:
+ * `updateNinaChatPhotoBlob` changes a chat photograph's `blob_url` and keeps its `id`, so a stored
+ * URL would point at a deleted object. `resolveNinaPhotoReference` is owner-scoped and returns
+ * `null` both for "none selected" and for "the photograph was deleted", which are the same two
+ * words on screen: this generation is unanchored.
+ */
+export async function readNinaImageTestAction(
+  jobId: string | null,
+): Promise<NinaImageTestReadResult> {
+  const { userId } = await requireAdmin()
+
+  const [quotaLeft, tuning, prefs] = await Promise.all([
+    ninaImageQuotaLeft(userId),
+    readNinaTuning(userId),
+    readNinaImagePrefs(userId),
+  ])
+
+  const base = {
+    quotaLeft,
+    promptPreview: assembleNinaImageTestPrompt({ tuning, prefs }),
+    referenceUrl: (await resolveNinaPhotoReference(userId, prefs.reference))?.blobUrl ?? null,
+  }
+
+  if (!isValidId(jobId)) return { ...base, job: null }
+
+  const detail = await getNinaImageJobDetail(userId, jobId)
+  if (detail == null || detail.source !== 'admin') return { ...base, job: null }
+
+  const job: NinaImageTestJobView = {
+    jobId: detail.id,
+    status: detail.status,
+    errorCode: detail.errorCode,
+    attempts: detail.attempts,
+    latencyMs: detail.latencyMs,
+    costMicroUsd: detail.costMicroUsd,
+    prompt: detail.prompt,
+    /* Epoch milliseconds, not a `Date`: the one shape a client and a server cannot disagree about.
+     * `toNinaJobListItems` makes the same conversion for the same reason. */
+    createdAtMs: detail.createdAt.getTime(),
+  }
+
+  /*
+   * R12's "automatically", made literal. The photograph is written by the selfie finisher on a
+   * background invocation that has no idea `/admin/photos` exists, so its cached render would keep
+   * showing the old collection until something invalidated it. Doing it HERE — once, on the
+   * poll that first sees `status='ok'` — costs nothing and means the operator finds the
+   * picture already there.
+   */
+  if (imageTestVerdict(job) === 'allowed') revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
+
+  return { ...base, job }
 }
