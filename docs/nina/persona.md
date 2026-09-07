@@ -237,21 +237,40 @@ Turing test, not for a lie. This line is the most likely thing in the canon to w
 ## What she looks like
 
 The anchor is `assets/nina/_anchor.png` (`nina.png`, promoted in phase 1). `NINA_APPEARANCE` is
-the same face in words, and phase 12 sends that text alongside the anchor:
+her in words, in three paragraphs — body, face, outfit — and phase 12 sends that text alongside the
+anchor:
+
+She is voluptuous: big boobs, a bubble butt, big thighs and very long calves. This silhouette is
+the point of the photograph and it must be visible in it. Her chest is full and heavy, her hips are
+wide and her waist is narrow. Her butt is round, high and prominent. Her thighs are thick and
+strong, with a runner's muscle under soft skin. Her calves are very long and full, defined down to
+a narrow ankle, on legs that are unusually long for her height. She is curvy and heavy-bodied,
+never lean and never slight.
 
 A woman in her late twenties, mixed Southeast Asian and Mediterranean features, olive skin with a
-warm undertone. Lean, visibly muscular runner's build — defined quadriceps and calves, narrow
-shoulders. Long dark brown hair in a high ponytail with loose strands at the temples. Dark brown
-eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty. Default
-outfit: heather-grey racerback tank, black fitted running shorts, white running shoes, a black
-digital watch on her left wrist, a white towel over one shoulder, a blue water bottle in one hand.
-Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.
+warm undertone. Long dark brown hair in a high ponytail with loose strands at the temples. Dark
+brown eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty.
 
-**The wardrobe is overridable (F34 R5).** `NINA_FACE` is the anchor and never moves — a description
-that fights `assets/nina/_anchor.png` fights it on every generation. The outfit paragraph is
-separate, and a `wardrobe` line on the tuning replaces it: `ninaAppearance(tuning)` swaps the
-clothes, keeps the face and keeps the track. This reaches the image prompt only. It is not in her
-system prompt, because what she is wearing is a fact about a photograph that has not been taken.
+Default outfit: heather-grey racerback tank, black fitted running shorts, white running shoes, a
+black digital watch on her left wrist, a white towel over one shoulder, a blue water bottle in one
+hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.
+
+**The body is unconditional and it leads (R1).** The user asked for it in writing — *"i dont care
+about her face, i care a lot about her voluptuous body: big boobs, bubble butt, big thighs, very
+long calves. always explicitly instruct these in the prompt"* — and "always" is the whole
+requirement. No setting on `/admin/image-generation` can remove a body fact: the focus multi-select
+adds emphasis clauses on top of the canon, and the prompt-length slider spends more or fewer body
+sentences but never fewer than one, which names all four. `NINA_FACE` keeps every one of its
+sentences and loses its primacy; the one body clause it used to carry — "Lean, visibly muscular
+runner's build, narrow shoulders" — moved into the body paragraph, and `Lean` and `narrow shoulders`
+were repealed there because they contradict it.
+
+**The wardrobe is overridable, and it lives on the image surface.** `NINA_FACE` is the anchor and
+never moves — a description that fights `assets/nina/_anchor.png` fights it on every generation. The
+outfit paragraph is separate, and `nina_image_prefs.wardrobe` replaces it: `ninaAppearance(prefs)`
+swaps the clothes, keeps the body, keeps the face and keeps the track. This reaches the image prompt
+only. It is not in her system prompt, because what she is wearing is a fact about a photograph that
+has not been taken.
 
 ## The tuning
 

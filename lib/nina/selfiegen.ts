@@ -5,7 +5,7 @@ import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
 import { SEED_MAX } from './imagerecipe'
-import { readNinaTuning } from './queries'
+import { readNinaImagePrefs, readNinaTuning } from './queries'
 
 /**
  * **The chat-selfie entry point.** The `generate_image` tool calls this, and so does the promise
@@ -38,6 +38,11 @@ import { readNinaTuning } from './queries'
  * built in `lib/nina/turn.ts` — another phase's file — and which would still have left the promise
  * sweep to fetch the row itself. Reading it here means every caller is dressed without being
  * changed.
+ *
+ * The same argument now covers `nina_image_prefs`, and it is why `NinaSelfieRequest` gained no
+ * `prefs` field: reading both rows here is what lets `imagetools.ts` and `promises.ts` get the
+ * operator's wardrobe, venue, time, notes, focus set and prompt length without either file being
+ * edited. Neither belongs to this phase, and neither was touched.
  */
 export interface NinaSelfieRequest {
   userId: string
@@ -75,9 +80,17 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
   const replyToId = request.replyToId ?? null
   const seed = Math.floor(Math.random() * SEED_MAX)
 
-  /* Read live, no cache. A wardrobe saved on /admin/nina thirty seconds ago is in this prompt. */
-  const tuning = await readNinaTuning(userId)
-  const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood, tuning })
+  /*
+   * Read live, no cache, BOTH rows — the habit this file already had, extended to the second
+   * surface. A wardrobe or a venue saved on /admin/image-generation thirty seconds ago is in this
+   * prompt, with no invalidation step anywhere.
+   *
+   * Two indexed primary-key reads, issued together rather than in series, on a path that already
+   * did one (`ninaImageQuotaLeft`) and is about to spend eighty seconds at OpenRouter. Neither can
+   * fail independently in a way the other could recover from, so `Promise.all` is the honest shape.
+   */
+  const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
+  const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood, tuning, prefs })
 
   const jobId = await openNinaImageJob(userId, {
     purpose: 'selfie',
