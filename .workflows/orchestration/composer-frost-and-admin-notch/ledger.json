@@ -1,0 +1,49 @@
+{
+  "branch": "feature/composer-frost-and-admin-notch",
+  "coordinator": "orch-composer-frost-and-admin-notch",
+  "coordinator_session_id": "ad96c883-bc36-4407-9254-d8950531c634",
+  "created": "2026-09-07T13:12:47+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#133",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "components/nina` + `lib/nina` + `components/ui` + `tests",
+      "plan": ".workflows/plan/composer-frost-and-admin-notch/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The composer: paint to the edge, take less room, frost the glass"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#134",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "app/admin` + `lib` + `tests",
+      "plan": ".workflows/plan/composer-frost-and-admin-notch/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The `/admin` install's own status-bar tint"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/composer-frost-and-admin-notch/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "composer-frost-and-admin-notch",
+  "updated": "2026-09-07T13:12:47+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/composer-frost-and-admin-notch"
+}
