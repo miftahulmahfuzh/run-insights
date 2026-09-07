@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-personality-tab`
 **Branch:** `feature/nina-personality-tab` (base: `origin/main` @ `3902c58`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete — 1/1 phases complete (1); a phase is complete when its row in the Phases table is ticked ✅; the single-phase set is reviewed and merged as a whole
 **Coordinator:** —
 
 ---
@@ -89,7 +89,7 @@ sentence stop applying: nothing shares the page, so nothing has to be pushed bel
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | The Personality tab | R1 | `app/admin` · `components/admin` · `lib/admin` | 10 | — | NORMAL | `.workflows/plan/nina-personality-tab/phase-1.md` | — | miftahulmahfuzh/run-insights#103 |
+| 1 ✅ | The Personality tab | R1 | `app/admin` · `components/admin` · `lib/admin` | 10 | — | NORMAL | `.workflows/plan/nina-personality-tab/phase-1.md` | P2-CA-A002 | miftahulmahfuzh/run-insights#103 |
 
 ### Phase 1 — The Personality tab
 

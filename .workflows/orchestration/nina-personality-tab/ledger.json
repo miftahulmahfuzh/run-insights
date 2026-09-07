@@ -17,7 +17,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The Personality tab"
     }
@@ -25,6 +25,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-personality-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-personality-tab",
-  "updated": "2026-09-07T00:30:25+00:00",
+  "updated": "2026-09-07T00:31:09+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-personality-tab"
 }
