@@ -105,7 +105,7 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "f9d2a8a45209eb57cefde49d28ef25c82f6428a0",
       "depends_on": [
         2,
         3,
@@ -113,42 +113,42 @@
       ],
       "difficulty": "HARD",
       "n": 6,
-      "note": null,
+      "note": "R11+R12 landed. Decisions: readNinaImageTestAction's referenceUrl resolved via resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl (plan said prefs.referenceUrl, which phase 1's NinaImagePrefs has no member for) per rung 3; dispatch emits the resolveNinaPhotoReference statement the plan left inside a comment; mount read armed through setTimeout to satisfy react-hooks/set-state-in-effect (code fixed, check not relaxed); test's guarded-symbol list 8 -> 9 per D6 (captionNinaPhoto). Plan index NOT ticked - coordinator owns the phase table, as phases 1-5 recorded. readme-updater skipped per coordinator. No db command run.",
       "package": "lib/nina`, `lib/admin`, `components/admin",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-6.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T20:32:52+00:00",
       "satisfies": [
         "R11",
         "R12"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A027",
       "title": "Test prompt, its verdict, and the photo in Chat photos"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b7a1233",
       "depends_on": [
         2,
         4
       ],
       "difficulty": "NORMAL",
       "n": 7,
-      "note": null,
+      "note": "R3. nina_tuning.wardrobe retired in every layer: the /admin/personality control and its wrapper, the save payload, TuningDraft/toTuningDraft/changedTuningFields, toTuningWrite/action param/reset default, ninaTuningWriteSchema, NinaTuning.wardrobe/NinaTuningInput.wardrobe/default/coerceNinaTuning line/NINA_WARDROBE_MAX/coerceNinaWardrobe, both row mappers, the schema.ts column, and prose in DialSlider, personality/page, persona.ts, docs/nina/persona.md, CHANGELOG and four package readmes. 25 files, parent d728643. VERIFIED: typecheck clean, npm test 157 files / 3260 tests 0 failures, build green, db:check fine, four ci:* guards OK, eslint 0 over its 14 code files. NinaTuning members now exactly traits/relationship/dials/enabled/notes/revision; zero live NINA_WARDROBE_MAX or coerceNinaWardrobe anywhere. COORDINATOR VERIFIED FROM GIT: on branch and origin, --stat is exactly 25 paths with NONE of phase 6's four, migration body is exactly one statement, and CRITICALLY the migration is NOT applied -- its sha256 08914b5db367 is absent from __drizzle_migrations (14 rows) and nina_tuning.wardrobe is still present in the live database. All three standing instructions honoured: no db:migrate, no asserted migration number, wardrobe count treated as a stale plan prediction not drift. Precondition D re-measured read-only: tuning_set=1, prefs_set=1, uncopied=0. DECISIONS: took 12 for the journal tag count where the plan says 9, 10 and 12 in three places (rung 2, measured 12); edited tests/nina.imagerecipe.test.ts despite the Interface Contract listing it as phase 2's, because it fails typecheck otherwise and phase 2 planted an explicit 'PHASE 7: delete the tuning: line' directive there (rung 1, invariant 1) -- deleted only that line plus four now-false comment lines, every assertion kept; did the four package_readme wardrobe passages by hand since they are in its own Files table and describe a column this commit drops, scoped strictly to wardrobe prose so the coordinator's wave-1 readme backlog and phase 2's 234-line draft patch are untouched; minted A029 because mint returns a stale A023 (spent on origin/main) and A027 is phase 6's -- lib/nina watermark after wave 2 is A029. Its commit also publishes phase 6's P1-NIN-A027 todos entry on the 5e70918 precedent; phase 6 told not to re-add.",
       "package": "lib/nina`, `lib/admin`, `components/admin`, `lib/db",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-7.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T20:33:08+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A029",
       "title": "Retire `nina_tuning.wardrobe"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T20:15:06+00:00",
+  "updated": "2026-09-07T20:33:08+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
