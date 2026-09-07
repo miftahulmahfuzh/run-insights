@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import { isValidId } from '@/lib/id'
 
-import { reopenNinaImageJob } from './imagejobs'
+import { reopenNinaImageJob, softDeleteNinaImageJob } from './imagejobs'
 import { fireNinaImageGeneration } from './imagerun'
 import { NINA_JOBS_HREF, type NinaJobRefusal } from './jobview'
 
@@ -117,6 +117,52 @@ export async function redoNinaImageJob(input: { jobId: string }): Promise<NinaJo
     purpose: reopened.purpose,
     replyToId: reopened.replyToId,
   })
+
+  revalidatePath(NINA_JOBS_HREF)
+  return { ok: true, reason: null }
+}
+
+/**
+ * **R2, and the whole of it: one tap, no dialog, and the row leaves the list.**
+ *
+ * ── WHY THERE IS NO CONFIRMATION, AND WHY `SessionRow`'s PRECEDENT DOES NOT TRANSFER ──────────
+ * The runner asked for this by name — *"we dont need confirmation message to execute them"* — but
+ * it survives on its merits, which matters because `components/nina/SessionRow.tsx` builds a
+ * three-tap confirmation panel for its delete and argues for it at length. Read that argument and
+ * it turns entirely on ONE premise: *"There is no archive flag and therefore no undo, so the
+ * confirmation is the only thing between a mis-tap and a lost conversation."* R11 hard-deletes a
+ * conversation and, through two cascades, its photographs' rows.
+ *
+ * That premise is absent here, deliberately. This writes a nullable column. A mis-tap costs the
+ * runner one row on one screen; `update nina_turns set deleted_at = null where id = '…'` puts it
+ * back exactly, the ledger never moved, the photograph is still in the chat and still in Blob, and
+ * an in-flight generation still finishes and still delivers. A confirmation panel guarding a
+ * reversible flag is friction people learn to tap through — which `SessionRow` also says, about
+ * the typed-phrase alternative it rejected.
+ *
+ * ── WHAT THE CALLER GETS, AND WHAT IT DOES NOT ───────────────────────────────────────────────
+ * `ok: false` is the whole refusal — `NinaJobActionResult` carries no error prose, on
+ * `NinaSessionActionResult`'s rule that the component supplies the sentence in his language. A
+ * malformed id, a job that is not his, a job that never existed and a job already hidden are one
+ * answer, because distinguishing them would be an ownership oracle.
+ *
+ * `revalidatePath` runs only when a row was actually flagged. Nothing written, nothing to
+ * invalidate — `removeNinaChatSession`'s rule. And only `NINA_JOBS_HREF`: that is the surface the
+ * tap happened on. `/nina/about` renders the same jobs and will show one fewer, but it is
+ * dynamically rendered behind `requireUserId()` and re-reads on its next request anyway; naming it
+ * here would be this phase reaching into a screen it promised not to touch.
+ *
+ * No `redirect()` and no `next` URL: he is already standing on the list he is tidying, and the
+ * revalidate re-renders it under him. Navigating would be a bug.
+ */
+export async function deleteNinaImageJob(input: { jobId: string }): Promise<NinaJobActionResult> {
+  const userId = await requireUserId()
+  /* Line one is the auth call, ABOVE the shape check — `app/actions/share.ts`'s asserted property,
+   * so a signed-out caller is bounced to sign-in rather than told their id was malformed. */
+  if (!isValidId(input?.jobId)) return { ok: false, reason: 'not-found' }
+
+  const deleted = await softDeleteNinaImageJob(userId, input.jobId)
+  if (!deleted) return { ok: false, reason: 'not-found' }
 
   revalidatePath(NINA_JOBS_HREF)
   return { ok: true, reason: null }

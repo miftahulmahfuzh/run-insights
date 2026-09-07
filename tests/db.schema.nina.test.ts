@@ -607,3 +607,43 @@ describe('deleting or editing a nina message: what the database does on its own 
     }
   })
 })
+
+/**
+ * R2's one schema change. The column is additive, nullable and default-less, and each of those
+ * three properties is doing a job: additive so no row moves, nullable so NULL means "visible" for
+ * every row written before the feature existed, default-less so the migration IS the backfill —
+ * `tuning_revision`'s idiom and the `*_enabled` columns', asserted the same way they are.
+ */
+describe('nina_turns.deleted_at — the soft delete (R2)', () => {
+  it('is a nullable timestamptz with NO default, so every pre-R2 row reads "visible"', () => {
+    expect(sqlType(schema.ninaTurns, 'deleted_at')).toBe('timestamp with time zone')
+    expect(columns(schema.ninaTurns).get('deleted_at')?.notNull).toBe(false)
+    expect(columns(schema.ninaTurns).get('deleted_at')?.hasDefault).toBe(false)
+  })
+
+  it('is a TIMESTAMP and not an is_deleted boolean, because "when" is free and answers more', () => {
+    // `nina_chat_sessions.pinned_at` made the same call for the same reason (R4). A boolean would
+    // hold strictly less and cost exactly the same.
+    const turnColumns = names(schema.ninaTurns)
+    expect(turnColumns).toContain('deleted_at')
+    expect(turnColumns).not.toContain('is_deleted')
+    expect(turnColumns).not.toContain('deleted')
+  })
+
+  it('is not an archive: there is no trash view, no restored_at and no deleted_by', () => {
+    // Nobody asked for an undo screen. What the nullable column buys is `set deleted_at = null`
+    // in psql — a recoverable mistake, not a feature surface.
+    const turnColumns = names(schema.ninaTurns)
+    expect(turnColumns).not.toContain('restored_at')
+    expect(turnColumns).not.toContain('deleted_by')
+  })
+
+  it('adds NO index — nina_turns still has exactly the one it shipped with', () => {
+    /* The arithmetic is in `lib/db/schema.ts` and this is what keeps it honest: the daily cap is
+     * six image rows per user, the list read is LIMIT 60 over `(user_id, created_at desc)`, and
+     * `deleted_at IS NULL` is a heap predicate on tuples `kind = 'image'` had already fetched. A
+     * partial index would cost a write on every turn Nina ever takes to save microseconds on a
+     * page opened by hand. */
+    expect(indexNames(schema.ninaTurns)).toEqual(['nina_turns_user_created_idx'])
+  })
+})

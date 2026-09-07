@@ -411,3 +411,93 @@ describe('when the chat is gone, the photograph still lands', () => {
     expect(insertNinaMessageImages).toHaveBeenCalledOnce()
   })
 })
+
+/* ── R2's delete ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * **R2's refusals, and the one thing the action is not allowed to be clever about.**
+ *
+ * The delete is a one-tap mutation with no confirmation, so `requireUserId()` plus an owner-scoped
+ * write is the ENTIRE boundary — `tests/share.actions.test.ts` says why that makes "line one is
+ * the auth call" a property worth asserting rather than reviewing.
+ *
+ * The second property is the absence of an oracle: a bad id, a foreign job, a job that never
+ * existed and a job already hidden all come back `{ ok: false, reason: 'not-found' }`, and none of
+ * them can be told apart by a caller counting round trips or reading a sentence.
+ *
+ * These cases run the REAL `softDeleteNinaImageJob` against the fake `db` at the top of this file:
+ * `dbRows.update` is what its `.returning()` resolves to, so a row there is a flag that landed and
+ * an empty array is a flag that did not. The SQL those statements build is
+ * `tests/nina.softDelete.test.ts`'s question, not this file's.
+ */
+describe('deleteNinaImageJob authenticates first and refuses without writing', () => {
+  it('bounces a malformed job id before it reaches the database', async () => {
+    /* The db is ARMED TO SUCCEED and the action refuses anyway, which proves the statement was
+     * never issued rather than merely that it matched nothing. */
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await actions.deleteNinaImageJob({ jobId: 'nope' })
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    /* requireUserId still ran — it is line one, ABOVE the shape check, so a signed-out caller is
+     * bounced to sign-in rather than told their id was malformed. */
+    expect(requireUserId).toHaveBeenCalledOnce()
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('reports a foreign job exactly as it reports one that never existed', async () => {
+    dbRows.update = []
+
+    const result = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
+
+    expect(result).toEqual({ ok: false, reason: 'not-found' })
+    /* Nothing was written, so nothing is invalidated — `removeNinaChatSession`'s rule. */
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('gives an ALREADY-hidden job the identical answer, so a double-tap is a silent no-op', async () => {
+    /* `softDeleteNinaImageJob`'s WHERE carries `isNull(deletedAt)`, so a second tap flags nothing
+     * and `returning` comes back empty — the same empty answer a foreign id gets. The timestamp
+     * cannot move, and the runner cannot tell the two apart. */
+    dbRows.update = []
+
+    const first = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
+    const second = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
+
+    expect(second).toEqual(first)
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('never opens a job and never schedules one — a delete is not a redo', async () => {
+    /* The two features share a module, a component and a result type; they must not share a write.
+     * Hiding a row spends nothing, so there is no cap check, no INSERT and no `after()`. */
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
+
+    expect(insertNinaTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+})
+
+describe('a successful delete refreshes the list he is standing on, and nothing else', () => {
+  it('revalidates /nina/jobs and returns ok', async () => {
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    const result = await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
+
+    expect(result).toEqual({ ok: true, reason: null })
+    expect(revalidatePath).toHaveBeenCalledWith('/nina/jobs')
+  })
+
+  it('revalidates exactly one path — /nina/about is not this phase to reach into', async () => {
+    /* `/nina/about` renders the same jobs and will show one fewer, but it is dynamically rendered
+     * behind `requireUserId()` and re-reads on its next request anyway. Naming it here would be
+     * this phase reaching into a screen it promised not to touch. */
+    dbRows.update = [{ id: FAILED_JOB }]
+
+    await actions.deleteNinaImageJob({ jobId: FAILED_JOB })
+
+    expect(revalidatePath).toHaveBeenCalledOnce()
+  })
+})

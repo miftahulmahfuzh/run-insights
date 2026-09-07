@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
 import { ninaTurns } from '@/lib/db/schema'
@@ -194,7 +194,16 @@ export async function reopenNinaImageJob(
   const [row] = await db
     .select({ status: ninaTurns.status, args: ninaTurns.args })
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.kind, 'image')))
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        // R2: a redo is a START, and a job he hid must not be redoable from a stale tab. The empty
+        // read makes this `'not-found'` for free — no new member of `NinaJobRefusal`.
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
 
   if (row == null) return { ok: false, reason: 'not-found' }
 
@@ -318,6 +327,8 @@ export async function claimNinaImageJob(
         eq(ninaTurns.id, jobId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        // R2: a claim is a START, and the flag's rule is that nothing new starts for a hidden job.
+        isNull(ninaTurns.deletedAt),
         isNotNull(ninaTurns.args),
         sql`coalesce((${ninaTurns.args} ->> 'attempts')::int, 0) < ${NINA_IMAGE_MAX_ATTEMPTS}`,
         phasePredicate,
@@ -430,6 +441,8 @@ export async function listRevivableNinaImageJobs(
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        // R2: never revive a job he hid — reviving is exactly "start something new for it".
+        isNull(ninaTurns.deletedAt),
         isNotNull(ninaTurns.args),
         sql`coalesce((${ninaTurns.args} ->> 'attempts')::int, 0) < ${NINA_IMAGE_MAX_ATTEMPTS}`,
         or(
@@ -639,6 +652,10 @@ export async function sweepStaleNinaImageJobs(
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        /* R2: never APOLOGISE in the chat for a job he hid. The sweep's whole visible output is
+         * `postNinaApologyMessage`, and a sentence from Nina about a row that is no longer on any
+         * screen is the one thing tidying the list must not produce. */
+        isNull(ninaTurns.deletedAt),
         lt(ninaTurns.createdAt, olderThan),
       ),
     )
@@ -660,6 +677,11 @@ export async function sweepStaleNinaImageJobs(
             eq(ninaTurns.userId, userId),
             eq(ninaTurns.id, row.id),
             eq(ninaTurns.status, 'pending'),
+            /* R2, and the same race the `status` guard above covers: he may have hidden the row
+             * between the SELECT and this statement. `returning` length 0 then means "somebody
+             * else closed it OR he hid it", and both want the same answer — skip, apologise for
+             * nothing. */
+            isNull(ninaTurns.deletedAt),
           ),
         )
         .returning({ id: ninaTurns.id })
@@ -709,6 +731,9 @@ export async function listOpenNinaImageJobs(userId: string): Promise<NinaImageJo
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
+        // R2: `/nina`'s in-flight strip is a LIST, so a hidden job leaves it. The generation it
+        // describes keeps running; only the row is gone.
+        isNull(ninaTurns.deletedAt),
       ),
     )
     .orderBy(asc(ninaTurns.createdAt))
@@ -729,7 +754,16 @@ export async function getNinaImageJob(
       createdAt: ninaTurns.createdAt,
     })
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.kind, 'image')))
+    // R2: a poll on a hidden job answers "no such job" — which is what a poller should do with a
+    // row that has left every screen it could report into.
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
   return row == null ? null : toJobRow(row)
 }
 
@@ -902,7 +936,17 @@ export async function listNinaImageJobs(
   const rows = await db
     .select(JOB_COLUMNS)
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.kind, 'image')))
+    /* R2, and this is the read the feature is FOR. It also serves `/nina/about`'s "Pembuatan
+     * foto" section, so a job hidden on one surface is hidden on both — which is correct: he
+     * hid the JOB, not the row on one screen. `/nina/about`'s markup and controls are untouched;
+     * only its contents shrink. */
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
     .orderBy(desc(ninaTurns.createdAt))
     .limit(opts.limit ?? NINA_JOB_LIST_LIMIT)
 
@@ -936,7 +980,17 @@ export async function getNinaImageJobDetail(
   const [row] = await db
     .select(JOB_COLUMNS)
     .from(ninaTurns)
-    .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId), eq(ninaTurns.kind, 'image')))
+    /* R2: a hidden job 404s at `/nina/jobs/[id]`. `null` here already means "not yours OR never
+     * existed", stated in this function's own header as an anti-oracle property; "hidden" joins
+     * that set rather than getting a third, distinguishable answer. */
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
 
   if (row == null) return null
 
@@ -945,4 +999,48 @@ export async function getNinaImageJobDetail(
 
   const [message] = await getNinaMessagesByIds(userId, [record.replyToId])
   return { ...record, replySessionId: message?.sessionId ?? null }
+}
+
+/**
+ * **R2's only write, and it is a flag.** The runner tapped the trash icon on `/nina/jobs`; this
+ * stamps `deleted_at` and returns whether a row was actually flagged.
+ *
+ * ── WHY IT IS AN UPDATE AND NOT A DELETE, ONE MORE TIME ───────────────────────────────────────
+ * His words: *"delete job icon … (but just soft delete in neon db)"*. `nina_turns` is the money
+ * ledger and the audit trail at once, and this row carries a `cost_micro_usd` that was really
+ * billed. Nothing in the SET touches `status`, `error_code`, `cost_micro_usd` or `latency_ms` —
+ * tidying a list may not rewrite what a generation cost or how it ended.
+ *
+ * ── OWNERSHIP IS PROVED IN SQL, AND SO IS IDEMPOTENCE ─────────────────────────────────────────
+ * Invariant 3: `userId` is first and it is in the `WHERE`, so a job id from a browser is a claim
+ * that this statement turns into a fact. `kind = 'image'` is load-bearing for the reason the
+ * block above `listNinaImageJobs` gives — since phase 3 this table also holds pending `kind='chat'`
+ * turns, and this column has no meaning on one. `isNull(deletedAt)` makes a second tap a no-op
+ * rather than a re-stamp, so a double-tap cannot move the timestamp and `false` means exactly one
+ * thing to the caller: **nothing changed.** Not his, never existed, not an image row, or already
+ * hidden — four causes, one answer, deliberately, so the return value cannot be used to probe
+ * which job ids exist.
+ *
+ * `now()` and not `new Date()`: the database's clock, so `deleted_at` can never precede the
+ * `created_at` it sits beside because a serverless host's clock drifted. Same instinct as
+ * `created_at`'s `defaultNow()`.
+ *
+ * **This does not cancel anything.** A `pending` job that is already claimed keeps drawing and its
+ * photograph still arrives in the chat. See `nina_turns.deleted_at`'s docstring, point 2.
+ */
+export async function softDeleteNinaImageJob(userId: string, jobId: string): Promise<boolean> {
+  const flagged = await db
+    .update(ninaTurns)
+    .set({ deletedAt: sql`now()` })
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, jobId),
+        eq(ninaTurns.kind, 'image'),
+        isNull(ninaTurns.deletedAt),
+      ),
+    )
+    .returning({ id: ninaTurns.id })
+
+  return flagged.length > 0
 }

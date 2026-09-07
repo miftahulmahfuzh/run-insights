@@ -2,7 +2,11 @@
 
 import * as React from 'react'
 
-import { redoNinaImageJob, type NinaJobActionResult } from '@/lib/nina/jobActions'
+import {
+  deleteNinaImageJob,
+  redoNinaImageJob,
+  type NinaJobActionResult,
+} from '@/lib/nina/jobActions'
 import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/nina/jobview'
 
 /**
@@ -111,6 +115,34 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
             <RedoIcon />
           </button>
         )}
+        {/*
+          R2's control, and it renders on EVERY row — a done job, a queued job and a failed job all
+          get it, because "so i can keep the job list tidy and pristine" is about the whole list.
+          Redo is failed-only and gated above; this one is not gated at all.
+
+          A SIBLING of the row's <Link>, never a child: `SessionRow` records the rule ("a <button>
+          inside an <a> is invalid and breaks the link's hit testing"), and phase 1's slot is where
+          that separation already lives.
+
+          `size-11` is 44px — `Button.tsx`'s `md`, "the iOS minimum tap target, never less" — which
+          matters more here than anywhere else on the screen: this is a one-tap mutation sitting in
+          a vertically-scrolling list, so the target has to be big enough that a scroll never ends
+          on it by accident. That is the safeguard the confirmation dialog would have been, spent on
+          the input instead of on a second screen.
+
+          No `window.confirm`, no panel, no second tap. See `deleteNinaImageJob`'s header for why
+          `SessionRow`'s R11 confirmation is the right call there and the wrong one here.
+        */}
+        <button
+          type="button"
+          aria-label={`Hapus ${title} dari daftar`}
+          aria-busy={pending}
+          disabled={pending}
+          onClick={() => run(() => deleteNinaImageJob({ jobId: item.id }))}
+          className="grid size-11 shrink-0 place-items-center rounded-pill text-ink-3 transition-colors hover:text-red disabled:opacity-40"
+        >
+          <TrashIcon />
+        </button>
       </span>
 
       {note !== null && (
@@ -151,6 +183,38 @@ function RedoIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+/**
+ * A trash can at 18px. Hand-written SVG for `SessionRow`'s `PinIcon` reason, quoted from `TabBar`:
+ * *"four glyphs is not worth a package, and an icon font would be a second webfont on a page whose
+ * first is already Poppins."* `aria-hidden`, because the button above already carries the
+ * accessible name and a labelled glyph inside a labelled button reads the label twice.
+ *
+ * `currentColor` throughout, so the button's own `text-ink-3` → `hover:text-red` is the only place
+ * the colour is decided.
+ */
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" aria-hidden="true">
+      <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6.5 7.5 7.2 18a2 2 0 0 0 2 1.9h5.6a2 2 0 0 0 2-1.9L17.5 7.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10.5 11v5M13.5 11v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }

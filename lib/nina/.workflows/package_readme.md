@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A013`, phase 1 of 2 of the nina-job-redo-and-soft-delete set — R1, a redo control on every failed `/nina/jobs` row)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A014`, phase 2 of 2 of the nina-job-redo-and-soft-delete set — R2, a per-row soft delete on `/nina/jobs`)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -497,7 +497,8 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 
 ### Images
 `imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
-`imagejobs.ts` (job row lifecycle and quota), `imagecall.ts` (the OpenRouter image call),
+`imagejobs.ts` (job row lifecycle, quota, and — since R2 — the `deleted_at` predicate on every
+image-row read plus `softDeleteNinaImageJob`), `imagecall.ts` (the OpenRouter image call),
 `imagerun.ts` (claim → generate → store → finish, inside `after()`),
 `imagefail.ts` (classify a failure, pick what she says), `imagetools.ts` / `avatartools.ts` (the two
 tool handlers and the tool sets), `avatargen.ts`, `jobview.ts` *(T)* (the pure tracking-screen
@@ -528,7 +529,8 @@ after R4 and R3 that is **thirty-eight** snake_case columns against `traits.ange
 thirty-ninth being `updated_at`, which nothing maps. The toggles are **seventeen nullable `boolean`
 columns** (`relationship_enabled`, then one per trait and per dial). Sixteen of them arrived with
 `drizzle/0006_chubby_wild_child.sql` (journal index 6, sixteen `ADD COLUMN`); phase 5's
-`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` now ends at `0007`**) adds the
+`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` now ends at `0008`, whose one
+statement is R2's `nina_turns.deleted_at` and which is generated but NOT yet applied**) adds the
 seventeenth alongside the score column, in three statements: `ADD COLUMN "horny" integer NOT NULL
 DEFAULT 0`, then `ALTER COLUMN "horny" DROP DEFAULT`, then `ADD COLUMN "horny_enabled" boolean`. The
 temporary default is drizzle's own way to add a `NOT NULL` column to a populated table and it is
@@ -678,7 +680,8 @@ the `?jump=` grammar, `planJobJump`'s four outcomes, and (since the job-redo set
 **`npm run build` is the only gate that enforces that**, since no guard script inspects imports.
 
 The two reads it feeds — `listNinaImageJobs` and `getNinaImageJobDetail` — are owner-scoped, filter
-`kind='image'`, and **write nothing**. Both properties are load-bearing:
+`kind='image'`, skip a soft-deleted row (`deleted_at IS NULL`, since R2), and **write nothing**.
+Every property is load-bearing:
 
 - **The `kind='image'` filter became newly essential in phase 3**, which put `kind='chat'` rows into
   `status='pending'` on the same table. A dropped filter would not error; it would list every
@@ -819,6 +822,124 @@ link's hit testing, which is `SessionRow`'s recorded rule one list over. Its acc
 the row (`Coba lagi sore di kos`, not `Coba lagi`), built from the same `ninaJobTitle` that renders
 the visible title so the two cannot drift, because six rows of "Coba lagi" is a list a screen
 reader cannot navigate.
+
+## Hiding a job from the list — a soft delete (R2 of the job-redo set)
+
+Every row on `/nina/jobs` — not just the failed ones — carries a trash icon beside phase 1's redo
+icon. Tapping it hides the row. **Nothing is deleted**: `nina_turns.deleted_at` goes from NULL to
+`now()` and the row stays byte for byte in Neon, with its spend, its `error_code` and its
+`latency_ms` intact. The runner's words were *"delete job icon … (but just soft delete in neon db).
+so i can keep the job list tidy and pristine"*, and the parenthesis is the specification: this table
+is the money ledger **and** the audit trail, so a `DELETE` here would erase a billed generation in
+order to tidy a list.
+
+### The column
+
+`lib/db/schema.ts` adds `deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' })`
+to `nina_turns` — **nullable, no default, and no backfill script**. Every row written before the
+column reads NULL and is therefore visible, which is `tuning_revision`'s idiom and the
+`*_enabled` columns' idiom one table over: **the migration IS the backfill**, because the absent
+value already spells the right answer.
+
+**`nina_turns` still keeps exactly one index, and that is a decision with arithmetic behind it.** A
+partial index `(user_id, created_at desc) where kind = 'image' and deleted_at is null` was
+considered and declined: the list read is one `LIMIT 60` walk of `nina_turns_user_created_idx`,
+which already applies `kind = 'image'` as a heap filter on tuples it has fetched anyway, so
+`deleted_at IS NULL` is one more null check on those same tuples. The set it filters is bounded by
+`NINA_IMAGE_DAILY_CAP` — six image rows per user per day — so sixty rows is ten days of flat-out
+use. The index would cost a write on **every turn Nina ever takes**, chat rows included, to save
+microseconds on a page opened by hand. `tests/db.schema.nina.test.ts` pins the single index, the
+nullability and the absent default.
+
+### Four things the flag is not, each written down because somebody will otherwise re-open it
+
+1. **NOT A REFUND.** `countNinaTurnsSince` — the daily image cap — does **not** filter this column,
+   deliberately and permanently, and its docstring is the only edit R2 made to `queries.ts`.
+   `selfiegen.ts` calls that cap *"a money cap and not a feature cap"*: $0.04 that has been spent is
+   still spent after the row is hidden. A version of this count that respected the flag would turn
+   one tap on a tidy-up icon into a quota refund — an unmetered image budget wearing a trash can as
+   a hat. `tests/nina.softDelete.test.ts` asserts the **absence** of the predicate rather than
+   trusting it.
+2. **NOT A CANCEL.** Hiding a `pending` job does not stop the invocation already drawing it. That
+   generation finishes, `completeNinaImageJob` closes the row it was handed, and **the photograph
+   still lands in the chat** — the right outcome, because he asked for it and the money is already
+   committed. What the flag stops is anything NEW starting. A true cancel would have to race the
+   claim, and losing that race means spending the money and then telling him it did not happen.
+3. **NOT A DELETE, AND NOT AN ARCHIVE WITH A SCREEN.** No statement anywhere removes a `nina_turns`
+   row, and `tests/nina.softDelete.test.ts` asserts that against `imagejobs.ts`'s own source. There
+   is no trash view and no undo button because nobody asked for one; what the nullable column buys
+   is that `update nina_turns set deleted_at = null where id = '…'` restores a row exactly, by hand,
+   in SQL.
+4. **NOT A PER-KIND CONCEPT.** Only `kind = 'image'` rows are ever flagged — `/nina/jobs` is the
+   only screen that lists turns and it lists only image jobs. Every writer carries `kind = 'image'`
+   in its `WHERE`. `lib/nina/chatturn.ts` does not read this column and must not start.
+
+### One predicate, nine `WHERE`s, eight functions
+
+`imagejobs.ts` is where the feature actually lives, and it is a **filter added to every read of an
+image row**, not a filter added to the screen. `isNull(ninaTurns.deletedAt)` now sits in:
+`listNinaImageJobs`, `getNinaImageJobDetail`, `listOpenNinaImageJobs`, `getNinaImageJob`,
+`listRevivableNinaImageJobs`, `sweepStaleNinaImageJobs` (**twice** — the SELECT and the guarded
+UPDATE, which is the ninth `WHERE`), `claimNinaImageJob`, and phase 1's `reopenNinaImageJob`.
+
+The three schedulers in that list are the load-bearing half. A hidden job that `claimNinaImageJob`,
+`listRevivableNinaImageJobs` or `sweepStaleNinaImageJobs` could still see would be re-fired or
+apologised for **after** the runner tidied it away — a row that comes back, or a bubble from Nina
+about a job he had already dismissed. Hiding must therefore reach the *scheduler* predicates and not
+only the list query. `reopenNinaImageJob` carrying it is the same rule at the other end: a hidden
+failure is not redoable.
+
+**The one scheduler R2 does not reach is `scripts/nina-image-worker.ts`, and it was left untouched
+deliberately.** The GitHub-Actions backstop owns its own hand-written `select id from nina_turns`
+claim rather than calling `claimNinaImageJob`, so it does not know this column exists: a manual
+drain or a `schedule:` tick **could still pick up a job the runner hid**. That is accepted rather
+than overlooked — the workflow is the demoted backstop and the historical drain, it runs only when
+an operator asks or when the app's own three nets have all failed, and the outcome is one extra
+photograph he had asked for rather than a corrupted ledger. Anyone re-promoting that worker to a
+primary generator must add the predicate to its claim in the same commit.
+
+The write is `softDeleteNinaImageJob(userId, jobId)` — one `UPDATE … set deleted_at = now()` whose
+`WHERE` is `userId`, `id`, `kind = 'image'` and `isNull(deletedAt)`, with `.returning({ id })` and a
+`boolean` for whether it hit anything. It is **a flag write and never a `DELETE`**, and the `isNull`
+clause in its own predicate makes a second tap a no-op rather than a re-stamp, so the timestamp
+records when the runner *first* hid the row.
+
+### The action and the button
+
+`jobActions.ts` gains `deleteNinaImageJob({ jobId })`, appended beside `redoNinaImageJob` and
+returning the same `NinaJobActionResult`. `requireUserId` is line one, **above** the shape check, so
+a signed-out caller is bounced to sign-in rather than told their id was malformed. **All four
+failure causes collapse to `'not-found'`** — the row does not exist, it is another runner's, it is a
+`kind='chat'` turn, or it was already hidden — so R2 adds **no new `NinaJobRefusal` member**. That
+is not laziness: *"the row is not there any more"* is what the runner needs to know in all four
+cases, and an `'already-deleted'` code would leak the existence of a row he does not own by
+distinguishing it from one that never existed.
+
+`components/nina/NinaJobActions.tsx` puts a `TrashIcon` `<button>` into the same icon cluster phase 1
+built, reusing that file's `run()` helper and its `Record<NinaJobRefusal, string>` sentences
+unchanged. Two differences from the redo button, both deliberate:
+
+- **It is on EVERY row, not only the failed ones.** There is no `jobCanDelete` in `jobview.ts` and
+  there must not be one — tidying a *succeeded* job is the normal case for a list the runner wants
+  pristine, so the rule would be `() => true`, and a rule that is always true is a rule that only
+  makes the next reader look for the case where it is false.
+- **Its accessible name is `Hapus {title} dari daftar`** — *from the list*, because the row is not
+  being destroyed and a screen reader must not say it is. It names the row through the same
+  `ninaJobTitle` that renders the visible title, and carries `aria-busy={pending}`.
+
+**No confirmation dialog**, per the requirement phase 1 already records — and here the argument is
+stronger rather than weaker: `SessionRow`'s three-tap confirm exists precisely because *"there is no
+archive flag and therefore no undo"*, and this feature **is** that archive flag.
+
+### The migration is generated, NOT applied
+
+`drizzle/0008_thankful_cardiac.sql` is a single statement —
+`ALTER TABLE "nina_turns" ADD COLUMN "deleted_at" timestamp with time zone;` — with its
+`0008_snapshot.json` and its journal entry at `idx: 8`. **`npm run db:migrate` was deliberately not
+run.** Applying `0008` is the operator's post-merge step, and until it runs, production carries the
+code but not the column: **every read that names `deleted_at` errors** — the list, the detail, the
+claim, the revive and the sweep. That is the whole of `/nina/jobs` plus the generation pipeline
+behind it, so this migration is not an optional tidy-up to schedule later.
 
 ## Deleting a chat session takes what it taught her (R8)
 
@@ -1005,6 +1126,25 @@ are worth knowing:
   is deliberately not the precedent — it destroys a conversation, these controls do not.
 - **Never let a redo touch the failed row.** It is the audit trail: the spend, the `error_code` and
   the `latency_ms` are why the runner opened the page. A redo INSERTs; it does not `UPDATE`.
+- **Never make `countNinaTurnsSince` filter `deleted_at`.** It is the daily image cap, it is a money
+  cap, and a spend is not un-spent by hiding its row — a filter there turns the trash icon into a
+  quota refund. It is the one reader of a `kind='image'` row that deliberately ignores the flag, and
+  `tests/nina.softDelete.test.ts` asserts the predicate's **absence** so the "consistency" edit
+  fails loudly.
+- **A new read of an image row must carry `isNull(ninaTurns.deletedAt)` itself.** There is no shared
+  helper and no base query: the predicate is written out in nine `WHERE`s across eight functions in
+  `imagejobs.ts`, and `tests/nina.softDelete.test.ts` names all eight. Forgetting it in a *list*
+  read shows a hidden row; forgetting it in `claimNinaImageJob`, `listRevivableNinaImageJobs` or
+  `sweepStaleNinaImageJobs` is worse — a dismissed job gets re-fired, or Nina apologises for one the
+  runner already tidied away.
+- **Never `DELETE` a `nina_turns` row.** It is the money ledger and the audit trail; the icon writes
+  a flag. `tests/nina.softDelete.test.ts` reads `imagejobs.ts`'s source and fails on a `DELETE`. And
+  the flag is **not a cancel** — a hidden `pending` job still finishes and still delivers its
+  photograph, on purpose.
+- **`drizzle/0008_thankful_cardiac.sql` is generated but not applied.** `npm run db:migrate` is the
+  operator's post-merge step. Deploying the code without it leaves production without the column,
+  and then every read naming `deleted_at` errors — the list, the detail, the claim, the revive and
+  the sweep.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -1070,6 +1210,32 @@ failed row never rewritten, the generation scheduled for the NEW id — and an e
 proving a redo of a job whose chat session is gone still produces a photograph, delivered into his
 most recent session.
 
+**R2's soft delete is tested as SQL rather than as behaviour, because that is where it can fail
+silently.** `tests/nina.softDelete.test.ts` (92 assertions across three files with the two below)
+compiles each query and reads the emitted statement:
+
+- **One case per read**, all eight named — `listNinaImageJobs`, `getNinaImageJobDetail`,
+  `getNinaImageJob`, `listOpenNinaImageJobs`, `listRevivableNinaImageJobs`,
+  `sweepStaleNinaImageJobs`, `claimNinaImageJob` and `reopenNinaImageJob` — each asserting the
+  predicate reached that statement. A per-function case rather than one loop, because the failure
+  they exist to catch is a *ninth* function added later without it, and each case's name says what
+  the runner would see (*"she never apologises in the chat for a job he hid"*).
+- **`countNinaTurnsSince` carries NO `deleted_at` predicate**, asserted as an absence, plus the
+  consequence: a runner who generated six and hid all six has nothing left today.
+- **`softDeleteNinaImageJob` is a flag** — an `UPDATE` stamping the *database* clock, ownership and
+  `kind='image'` proved in the same statement, `isNull` making a double-tap unable to move the
+  timestamp, `false` for a foreign, missing and already-hidden id alike, and nothing but the flag
+  written — not `status`, not `error_code`, not the money.
+- **A source-level assertion**, in the shape `tests/nina.prompts.test.ts` established: `imagejobs.ts`
+  and `jobActions.ts` are read as text and must issue no `DELETE` against `nina_turns` anywhere.
+
+`tests/nina.jobActions.test.ts` adds the action's own two describe blocks — a malformed id bounced
+before the database, a foreign job answering exactly as one that never existed, an **already-hidden**
+job answering identically so a double-tap is a silent no-op, no job opened and no generation
+scheduled (*"a delete is not a redo"*), and exactly one path revalidated: `/nina/jobs` and not
+`/nina/about`. `tests/db.schema.nina.test.ts` holds the column — nullable `timestamp with time zone`
+with no default, present on the table, and `nina_turns` still carrying exactly one index.
+
 ## Notes
 
 Phase 2 of 6 of `NINA_CHARACTER_TUNING_PLAN.md`. Phase 1 (`lib/nina/tuning.ts` and the `nina_tuning`
@@ -1102,16 +1268,32 @@ it. Its whole footprint outside this package is a migration, a schema pair and p
 
 ---
 
-**`NINA_JOB_REDO_AND_SOFT_DELETE_PLAN.md` is the set in flight.** Phase 1 (`P1-NIN-A013`) landed R1
+**`NINA_JOB_REDO_AND_SOFT_DELETE_PLAN.md` is complete — both phases have landed.** Phase 1
+(`P1-NIN-A013`) landed R1
 — `jobCanRedo` and `NinaJobListItem.canRedo` in `jobview.ts`, `reopenNinaImageJob` in
 `imagejobs.ts`, the new `jobActions.ts` and `components/nina/NinaJobActions.tsx`, `NinaJobList`'s
 `actions` prop, and `maxDuration = 300` on `app/nina/jobs/page.tsx`. No migration, no schema change
 and no new provider call.
 
-Phase 2 (`P1-NIN-A014`) is R2 — a soft delete. It adds a nullable `nina_turns.deleted_at`, a trash
-icon beside the redo one, and a filter that hides the row from every screen and every scheduler
-that would restart it while the row itself stays byte-for-byte in Neon and keeps counting against
-the daily image cap. It appends `deleteNinaImageJob` to `jobActions.ts` and a second `<button>` to
-the same cluster in `NinaJobActions.tsx`, and it needs **no new `NinaJobRefusal` member**: a delete
-is refused only when the row is not his, which is `'not-found'`. Plans for the set are
-`lib/nina/.workflows/plan/P1-NIN-A013.md` and `P1-NIN-A014.md`.
+**Phase 2 (`P1-NIN-A014`) landed R2**, the soft delete — the nullable `nina_turns.deleted_at`
+column, `isNull(ninaTurns.deletedAt)` in nine `WHERE`s across eight functions in `imagejobs.ts`,
+`softDeleteNinaImageJob`, `deleteNinaImageJob` appended to `jobActions.ts`, and a `TrashIcon` button
+in `NinaJobActions.tsx`'s existing cluster. It needed **no new `NinaJobRefusal` member** — all four
+refusal causes are `'not-found'` — and no new module, no new provider call and no
+`NINA_PROMPT_VERSION` bump. Its footprint outside this package is one migration
+(`drizzle/0008_thankful_cardiac.sql` plus snapshot and journal), one schema column, one component
+and three test files.
+
+Phase 2 collected on phase 1 the way phase 5 of the tuning set collected on phase 4: the cluster,
+the `run()` helper, the `NinaJobActionResult` shape and the refusal-to-sentence `Record` were all
+already there, so the second button is a button and not a surface. **Deliberately untouched by
+phase 2**, and each for a stated reason: `jobview.ts` (there is no `jobCanDelete` rule to hold),
+`components/nina/NinaJobList.tsx` and `app/nina/jobs/page.tsx` (phase 1's `actions` prop and
+`maxDuration = 300` already carry it), `components/nina/NinaAboutScreen.tsx` (a read-only summary
+gets no mutation), `lib/nina/imagerun.ts` (a claimed job finishes — hiding is not cancelling), and
+`scripts/nina-image-worker.ts` (the backstop's own SQL claim, per the note in the R2 section above).
+
+Plans for the set are `lib/nina/.workflows/plan/P1-NIN-A013.md` and `P1-NIN-A014.md`.
+
+> **The one open operator step:** `npm run db:migrate` to apply `0008`. It was deliberately not run
+> during the task, and the code does not work without it.
