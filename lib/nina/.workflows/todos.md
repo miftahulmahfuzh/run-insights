@@ -3,11 +3,11 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 1
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -19,6 +19,16 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A023** Phase 2: Firing a shortcut into the turn
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/turn.ts` — an **optional** `shortcuts?: readonly NinaShortcutMatchable[]` and `recentRunnerTexts?: readonly string[]` on `NinaTurnInput`, a **required** `firedShortcutIds: readonly string[]` on `NinaTurnResult`, the module-private `shortcutHits` / `shortcutBlock` helpers, the second parameter on the module-private `userTurnText(input, hits)`, and the fired-shortcut block pushed **after** the attached-run block and **immediately before** `'HE JUST SAID:'`; the matcher runs **exactly once per turn**, in `runNinaTurnWith`, feeding both the block and `firedShortcutIds`. Also `lib/nina/actions.ts` — a fourth entry in the `Promise.all` at `actions.ts:781` (`listNinaShortcuts(userId, { onlyEnabled: true })`, its rejection swallowed), the `recentRunnerTexts` derivation from the already-loaded `loadedContext.conversation.window` (runner turns only, newest `NINA_SHORTCUT_LOOKBACK`, excluding the message being answered — **no new query**), the two new arguments at the `runNinaTurn` call at `actions.ts:821`, and a best-effort `bumpNinaShortcutUses` after the turn returns, wrapped so a rejection is logged and swallowed; `lib/nina/prompts/index.ts` — `NINA_PROMPT_VERSION` 5 → 6, the set's single bump, with the reason in the existing numbered-comment format; `lib/nina/turn.test.ts`; and three lines in `tests/nina.resend.test.ts` (two entries in the `@/lib/nina/queries` mock **factory**, plus `firedShortcutIds: []` on the `runNinaTurn` mock the drained background turn reads). Five files. Does not touch `prompts/system.ts`, `context.ts`, `load.ts`, `gateway.ts`, `lib/db/schema.ts`, `queries.ts`, `shortcuts.ts`, or anything under `lib/admin/`, `components/`, `app/` or `scripts/`; the prompt snapshot is **not** regenerated and `tests/nina.prompts.test.ts` is **not** touched. Exit: a turn whose text contains `🍑` puts that whole expansion in `userTurnText`, after the attached-run block and before `HE JUST SAID:`, with `firedShortcutIds === ['<that id>']`; a turn matching **neither** `runnerText` nor `recentRunnerTexts` produces a `userTurnText` byte-identical to today's; a turn matching only `recentRunnerTexts` DOES carry the block, under its STILL IN PLAY header, with `firedShortcutIds` still `[]`; `NINA_PROMPT_VERSION === 6`; the snapshot unmodified in `git status`; `npm test` green.
+  - **Status**: pending
+  - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R2 — Typing a single emoji character in the chat makes Nina understand the whole long context that emoji stands for
+  - **Depends on**: `P1-DB-A004`
+  - **Plan**: `.workflows/plan/P1-NIN-A023.md`
 
 - [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
   - **Difficulty**: NORMAL

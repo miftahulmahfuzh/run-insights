@@ -1,7 +1,8 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; previously `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`, `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-07 (task `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts`
+plus five functions in `queries.ts`, both **unwired**; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; previously `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`, `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -499,7 +500,9 @@ how a schema change quietly rewrites her character.
 ### Memory, promises, nags, patterns
 `memory.ts` (slot vocabulary and all pure memory logic), `distill.ts` (post-turn background
 distillation), `promise.ts` *(T)* / `promises.ts` (the pure and impure halves of "did she keep her
-promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern detection).
+promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern detection),
+`shortcuts.ts` *(T)* (the whole of "did he type a code, and which" — see below; **no reader on the
+turn path yet**).
 
 ### Proactive
 `proactive.ts` — `evaluateAndEmitForUser` (the cron path) and `emitRunCommitted` (fired by
@@ -544,7 +547,9 @@ his-bubbles-only gate for the sheet's third item).
 
 ### Persistence
 `queries.ts` — every Drizzle query for the `nina_*` tables, including `readNinaTuning` /
-`writeNinaTuning`.
+`writeNinaTuning`, and — since `P1-DB-A004` — the five `nina_shortcuts` statements
+(`listNinaShortcuts`, `insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`,
+`bumpNinaShortcutUses`) described below.
 
 `tuningFromRow` / `tuningToColumns` are **the one place the flat row and the nested model meet**, and
 after R4 and R3 that is **thirty-eight** snake_case columns against `traits.anger` /
@@ -552,8 +557,9 @@ after R4 and R3 that is **thirty-eight** snake_case columns against `traits.ange
 thirty-ninth being `updated_at`, which nothing maps. The toggles are **seventeen nullable `boolean`
 columns** (`relationship_enabled`, then one per trait and per dial). Sixteen of them arrived with
 `drizzle/0006_chubby_wild_child.sql` (journal index 6, sixteen `ADD COLUMN`); phase 5's
-`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` now ends at `0008`, whose one
-statement is R2's `nina_turns.deleted_at` and which is generated but NOT yet applied**) adds the
+`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` ended at `0008` then, whose one
+statement is R2's `nina_turns.deleted_at` and which is generated but NOT yet applied; it now ends at
+`0012_nina_shortcuts`**) adds the
 seventeenth alongside the score column, in three statements: `ADD COLUMN "horny" integer NOT NULL
 DEFAULT 0`, then `ALTER COLUMN "horny" DROP DEFAULT`, then `ADD COLUMN "horny_enabled" boolean`. The
 temporary default is drizzle's own way to add a `NOT NULL` column to a populated table and it is
@@ -1488,6 +1494,169 @@ second rhythm. `liveSessionId` is deliberately not adopted from the result, beca
 resent is already in the conversation this screen is polling; a resend cannot create a session the
 way a first send can.
 
+## Shortcuts — one code stands for a directive he wrote once (F36, `P1-DB-A004`, phase 1 of 4)
+
+He types `🍑` and means four sentences he wrote months ago. Phase 1 shipped the **table, the matcher
+and the queries, and wired none of them** — no route, no component, no prompt change, and typing an
+emoji in the chat still does exactly what it did yesterday. Phase 2 reads it on the turn path, phase
+3 is the admin registry, phase 4 lifts the existing codes out of the memory ledger. The table itself
+is `nina_shortcuts`; `lib/db/.workflows/package_readme.md` carries its columns, its two indexes and
+why it is a table rather than more `nina_memory_facts` rows.
+
+### `shortcuts.ts` is zero-import, and that is a load-bearing invariant
+
+**No value import, no type import, no `server-only`, nothing from `@/lib/db/*`.** It is
+`tuning.ts`'s and `images.ts`'s rule, and here it pays for **two** consumers rather than one:
+
+- phase 3's `'use client'` table needs `NINA_TRIGGER_MAX`, `NINA_SHORTCUT_LABEL_MAX` and
+  `NINA_SHORTCUT_EXPANSION_MAX` in the browser to size and cap its inputs;
+- phase 4's `scripts/nina-shortcuts-import.mjs` **imports this module directly** under
+  `--experimental-strip-types`, so the importer's `match_key` is computed by literally the same
+  function the matcher compares against — no second implementation for the two sides to disagree
+  about.
+
+So a value import added here does not merely fatten a bundle: **it stops phase 4's script booting at
+all.** `scripts/nina-memory-reap.mjs`'s header records the one case where a `.mjs` cannot import a
+`.ts` — a module whose own imports are runtime values (drizzle) rather than `import type` — and zero
+imports is exactly the condition that keeps this file out of it. `shortcuts.test.ts` reads this
+file's own source and fails on an `import` line, so the property is checked rather than intended.
+That is also why `NinaShortcutMatchable` is declared here as a plain interface instead of imported
+from `lib/db/schema.ts`.
+
+### Normalisation is five operations, in this order
+
+`normalizeNinaTrigger` folds both the trigger and the message it is looked for in: **NFC**, then
+**remove every `U+FE0F`**, then collapse whitespace runs to one space, then trim, then lowercase. It
+is idempotent, so calling it on a stored `match_key` is free.
+
+The `U+FE0F` line is the highest-value one in the file and the one a "simplification" deletes first:
+`✌️` in the ledger is `U+270C U+FE0F` while the same emoji from an iOS keyboard may arrive as bare
+`U+270C`, and folding the variation selector out of *both* sides is what makes those one shortcut.
+**`U+200D` (zero-width joiner) is deliberately kept** — stripping it would merge `👩‍❤️‍👨` into the three
+glyphs it is built from and collide two distinct shortcuts on one `match_key`. `NINA_TRIGGER_MAX =
+16` exists to leave room for exactly that (the longest real trigger, `nom nom`, is 7 UTF-16 units).
+
+### A glyph and a word need different boundary rules
+
+`classifyNinaTrigger` returns `'word'` for a trigger containing any letter or digit and `'glyph'`
+otherwise — deliberately **not** an emoji regex, because the question is not "is this an emoji" but
+"can this be confused with a fragment of a word". A `'glyph'` matches anywhere (`ini🍑dong` contains
+the peach and means it); a `'word'` matches only when it touches neither a letter nor a digit on
+either side (`yumm` inside `yummy` is him saying a word, not using the code). Five of the
+twenty-four production triggers are Latin tokens, so this is not hypothetical.
+
+The word rule is `(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])` and **not `\b`**, which is an ASCII word
+boundary: it would put a boundary in the middle of `plak!` and none at all around an accented
+letter. The lookbehind is the one construction a runtime could refuse, so it is wrapped in a
+`try` — a refusal degrades that one shortcut to "did not fire" instead of failing the turn.
+
+### Exported API
+
+```ts
+const NINA_TRIGGER_MAX = 16                 // UTF-16 units, i.e. what zod's .max() measures
+const NINA_SHORTCUT_LABEL_MAX = 80
+const NINA_SHORTCUT_EXPANSION_MAX = 2000
+const NINA_SHORTCUT_MAX_FIRED = 4           // fired PLUS in-play, combined
+const NINA_SHORTCUT_LOOKBACK = 6            // earlier RUNNER messages scanned
+const NINA_SHORTCUT_BLOCK_MAX_CHARS = 5000
+
+function normalizeNinaTrigger(raw: string): string
+function classifyNinaTrigger(normalized: string): NinaShortcutKind      // 'glyph' | 'word'
+function matchNinaShortcuts(input: {
+  shortcuts: readonly NinaShortcutMatchable[]
+  current: string | null
+  recent?: readonly string[]
+}): NinaShortcutHits                                                    // { fired, inPlay }
+function renderNinaShortcutBlock(hits: NinaShortcutHits | null | undefined): string | null
+```
+
+`current` is his message this turn — **nullable rather than optional**, because a proactive turn has
+none. `recent` is **earlier runner messages only**, newest first: phase 2 slices it out of
+`loadedContext.conversation.window` with no new query, and **Nina's own bubbles are never passed**,
+because an expansion she echoed would re-fire itself forever.
+
+`fired` is ordered by where each trigger first occurs in `current`, so the block reads in the order
+he typed them; ties go to the longer key then the lower id, so the result is total and reproducible.
+`inPlay` is by how recent the message was, then by offset within it. A shortcut is never in both —
+`fired` wins, because the strongest signal is that he just used it. `fired` fills
+`NINA_SHORTCUT_MAX_FIRED` first and `inPlay` gets what is left, which may be nothing: four codes in
+one message means no still-in-play context at all, and what he just said outranks what he said three
+messages ago.
+
+### `renderNinaShortcutBlock` returns `null` only when BOTH lists are empty
+
+Not an empty string, not a header with no body. Plan invariant 2 is that a turn in which nothing
+fired carries **zero** shortcut bytes, and `null` is what lets phase 2's integration be one
+`if (block != null)`.
+
+**An in-play-only hit still renders a block**, under a `STILL IN PLAY` header — that is the whole
+point of `inPlay`: one production shortcut (`🫦`) opens a mode that runs until he says `💦`, and the
+instruction has to still be legible on the turn where he only says *"terusin"*. So `null` means both
+lists are empty, never merely that `fired` is.
+
+The two headers are the **only** instruction text this feature adds anywhere. There is deliberately
+no section in `prompts/system.ts` telling her what a shortcut is: every word she needs travels with
+the shortcut, adjacent to the expansion it governs, and costs nothing on the turns where nothing
+fired. `NINA_PROMPT_VERSION` is therefore untouched by this phase — there is no assembler change and
+no reader yet.
+
+The 5000-character ceiling is enforced by **dropping whole entries from the end**, not by cutting
+text, because half a directive can invert a directive (`…jangan` and `…jangan berhenti` are
+opposites). Four maximal expansions are 8000 characters against a 5000 ceiling, so this path is
+reachable in practice. Mid-sentence truncation survives only as the last resort for a *single* entry
+over the ceiling on its own, where the alternative is a header with nothing under it.
+
+### Nothing here throws (plan invariant 7)
+
+Every entry point tolerates `null`, `undefined`, a wrong-typed field, a duplicate id and a
+`match_key` that folds to nothing, and degrades to "nothing fired". A turn that dies because a
+trigger was malformed is a turn lost to a feature that is meant to be purely additive.
+`shortcuts.test.ts` is 32 tests, table-driven over **the twenty-four real production triggers**
+rather than invented ones — one case walks every single one of them and asserts it fires when he
+sends it alone, so a normalisation change cannot pass by breaking a trigger nobody thought to name.
+
+### The five queries, and where `match_key` comes from
+
+`listNinaShortcuts(userId, { onlyEnabled? })` is the registry: bare it returns every row including
+the disabled ones (a disabled code must be visible to be re-enabled), and with `{ onlyEnabled: true }`
+it is phase 2's every-turn read against `nina_shortcuts_user_enabled_idx`. It orders by `match_key`
+then `id` — a registry is scanned by trigger, and `(user_id, match_key)` is UNIQUE, so that ordering
+is total and the read is an index scan rather than a sort.
+
+`insertNinaShortcut` **throws on a duplicate trigger, and that is the design**: Postgres `23505`
+from the unique index is the authority on "this code already exists", where a pre-flight `SELECT`
+would be correct until two tabs raced. The caller turns the violation into a sentence. Phase 4's
+importer wants the opposite behaviour on a re-run and gets it with its own `onConflictDoNothing`,
+which is why this function bakes none in.
+
+`updateNinaShortcut` returns the **row**, not a boolean, because `match_key`, `kind` and
+`updated_at` are all derived server-side and an admin table re-renders the values it did not
+compute. An empty patch is a no-op returning the row unchanged rather than `null`, so "nothing to
+save" and "no such shortcut" stay distinguishable. `deleteNinaShortcut` is a hard delete with no
+tombstone — a deleted directive that still exists somewhere is the failure this table was built to
+end — and `false` means already gone *or* never his, which are the same outcome in this file.
+
+`bumpNinaShortcutUses(userId, ids)` is one statement, `uses = uses + 1` and `last_used_at = now()`
+for every id at once. **Phase 2 calls it fire-and-forget after the turn has already returned, and
+the caller must `.catch()`**: nothing reads `uses` on the turn path, and this is telemetry rather
+than bookkeeping the conversation depends on. The increment is in SQL rather than read-then-written
+because a background turn and a proactive sweep are a real concurrent pair — `upsertNinaNag`'s
+`count` is the precedent.
+
+**`match_key` and `kind` are derived inside the query layer by one private `derivedTrigger` helper,
+and `NinaShortcutInsert` / `NinaShortcutPatch` have no field for either.** That is not a convention
+a reviewer has to enforce: a caller *cannot* mislabel a row, and the unique index can never see an
+underived key. `toShortcutRecord` is the mirror on the read side — `nina_shortcuts.kind` is untyped
+`text`, so an unrecognised value is **re-derived** through `classifyNinaTrigger` rather than
+rejected, invariant 7 at the one boundary where a hand-edited `'Glyph'` would first be noticed.
+
+Three names across three layers, no duplication: `NinaShortcutRow` (the raw drizzle row in
+`lib/db/schema.ts`, `kind` as bare `string`), `NinaShortcutRecord` (`queries.ts`, the same fields
+with `kind` narrowed), and `NinaShortcutMatchable` (`shortcuts.ts`, the structural minimum the
+matcher needs). The record is a **superset** of the matchable, deliberately: phase 2 hands the array
+straight to `matchNinaShortcuts` and phase 3's table renders the extra fields, so neither needs a
+mapping step.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
@@ -1740,10 +1909,26 @@ are worth knowing:
   `lib/` decides. An `Element` or a `Selection` in one of these signatures is how the whole gesture
   layer stops being testable, and a rendered-scenario test would prove one gesture where these
   prove the gate.
+- **`shortcuts.ts` may not import anything, and it is not a style preference.** Adding an import
+  stops phase 4's `.mjs` importer booting under `--experimental-strip-types` and drags the module
+  out of the browser bundle phase 3's `'use client'` table needs it in. `shortcuts.test.ts` reads
+  the file's own source and fails on an `import` line. Corollary: `NinaShortcutMatchable` stays a
+  plain interface declared there and is never replaced with an import from `lib/db/schema.ts`.
+- **Do not delete the `U+FE0F` strip from `normalizeNinaTrigger`, and do not "also strip `U+200D`
+  while you are there."** The first is what makes `✌️` and `✌` one shortcut; the second would merge a
+  ZWJ emoji sequence into its component glyphs and collide two distinct shortcuts on one
+  `match_key`. The two look like the same tidy-up and are opposites.
+- **A caller may never supply `match_key` or `kind`.** They are derived from `trigger` by
+  `queries.ts`'s one private helper, and the input types have no field for them — keep it that way,
+  because an underived key is a key the unique index treats as a different trigger.
+- **`bumpNinaShortcutUses` is telemetry: the caller must `.catch()` it.** It runs after the turn has
+  returned and nothing reads `uses` on the turn path, so a rejected bump must never fail a turn.
 
 ## Tests
 
-In-package: 26 colocated `*.test.ts` files over the pure modules. Repo-level: 30 `tests/nina.*` files,
+In-package: 27 colocated `*.test.ts` files over the pure modules — the twenty-seventh is
+`shortcuts.test.ts`, which also carries the zero-import structural guard described above.
+Repo-level: 30 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*

@@ -87,6 +87,7 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from | `nina_message_images_message_idx`, `nina_message_images_user_created_idx` |
 | `ninaMemorySlots` | `nina_memory_slots` | Upserted "current fact" memory slot | PK `(user_id, key)` |
 | `ninaMemoryFacts` | `nina_memory_facts` | Append-only "what he has told me" ledger | `nina_memory_facts_user_created_idx` |
+| `ninaShortcuts` | `nina_shortcuts` | The trigger registry — one emoji or short token standing for a long directive he wrote once | `nina_shortcuts_user_match_unq`, `nina_shortcuts_user_enabled_idx` |
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
@@ -126,11 +127,18 @@ TypeScript change and not a migration. The unions are exported alongside the tab
 `AdapterAccountType`, `Sex`, `ExtractionStatus`, `PhotoKind`, `RunIntent`, `RunSource`,
 `InsightScope`, `NinaTurnKind`, `NinaTurnStatus`, `NinaRole`, `NinaMessageSource`, `NinaImageKind`,
 `NinaMemorySource`, `NinaPromiseMetric`, `NinaFactCategory`, `NinaAvatarSource`,
-`NinaSessionTitleSource`. `badges.key`, `records.key`, `nina_turns.trigger`/`error_code` and
+`NinaSessionTitleSource`. `badges.key`, `records.key`, `nina_turns.trigger`/`error_code`,
+`nina_shortcuts.kind` and
 `nina_tuning.relationship` are left as plain `text` pointing at an external catalog, for the same
 "adding a member is not a migration" reason taken one step further — `relationship`'s catalog is
 `NINA_RELATIONSHIPS` in `lib/nina/tuning.ts`, and a sixth relationship is a one-line edit there
-rather than a migration here. Its neighbours `nina_tuning.wardrobe` and `.notes` are not catalog
+rather than a migration here. `nina_shortcuts.kind` is the same shape with a second, harder reason
+on top: its catalog is `NinaShortcutKind` in `lib/nina/shortcuts.ts`, a module that **must** stay
+importable from a `'use client'` component and from a `.mjs` script, so it cannot import this file —
+and `.$type<>()` here would mean either importing upward from `lib/db` into `lib/nina` or restating
+`'glyph' | 'word'` as a second definition. The narrowing happens on read in `lib/nina/queries.ts`
+instead, where an unrecognised value is re-derived rather than rejected. Its neighbours
+`nina_tuning.wardrobe` and `.notes` are not catalog
 pointers at all: they are free operator text, `NOT NULL` with `''` as the empty value, because
 "no override" and "not set" are the same fact.
 
@@ -156,6 +164,7 @@ constraint is a read-then-compare that is correct until two writers race.
 | `shares_run_id_active_unq` | `shares` | `run_id` | yes — `where revoked_at is null` |
 | `nina_avatars_user_current_unq` | `nina_avatars` | `user_id` | yes — `where is_current` |
 | `nina_avatars_user_source_key_unq` | `nina_avatars` | `user_id, source_key` | no — relies on NULLs being distinct |
+| `nina_shortcuts_user_match_unq` | `nina_shortcuts` | `user_id, match_key` | no — the key is `NOT NULL` and derived, so there is no NULL to be distinct |
 | `push_subscriptions_endpoint_unq` | `push_subscriptions` | `endpoint` | no |
 
 **Composite natural keys instead of a surrogate id**, where the key is also the whole access
@@ -173,9 +182,15 @@ place): `run_splits`, `run_zones`, `records`, `badges`, `nina_memory_slots`, `ni
 
 Every table re-exports its inferred types — `User`, `Profile`/`NewProfile`, `Run`/`NewRun`,
 `NinaAvatar`/`NewNinaAvatar`, `NinaFolder`/`NewNinaFolder`, and so on. Import these rather than
-re-deriving `$inferSelect` at a call site. One naming carve-out: the push row is
-`PushSubscriptionRow`, not `PushSubscription`, because the latter is a DOM lib global that client
-code uses by that exact name.
+re-deriving `$inferSelect` at a call site. Two naming carve-outs, both with a `Row` suffix. The push
+row is `PushSubscriptionRow`, not `PushSubscription`, because the latter is a DOM lib global that
+client code uses by that exact name. `NinaShortcutRow` / `NewNinaShortcutRow` carry the suffix for
+`NinaTuningRow`'s reason instead — the raw row is not the shape callers want, because `kind` is bare
+`string` here. That table has **three** names across three layers and no duplication:
+`NinaShortcutRow` (this file, the drizzle row), `NinaShortcutRecord` (`lib/nina/queries.ts`, the
+same fields with `kind` narrowed to the union), and `NinaShortcutMatchable`
+(`lib/nina/shortcuts.ts`, the structural minimum the matcher needs — a subset the record satisfies
+with no mapping step).
 
 ### `queries.ts` — every run-domain read and write
 
@@ -283,9 +298,9 @@ import of it anywhere. 54 are source files, 14 are tests.
 ### Primary consumers
 
 - **`lib/nina/queries.ts`** — the heaviest consumer in the repo, and architecturally the most
-  important: it imports `db` itself plus ten tables and ten union types, and it is the **only**
-  production file that imports `ninaAvatars`, `ninaFolders` or `ninaChatSessions`. It is the choke
-  point for all avatar, folder and session access — the session statements are its §4a, and the pure
+  important: it imports `db` itself plus eleven tables and ten union types, and it is the **only**
+  production file that imports `ninaAvatars`, `ninaFolders`, `ninaChatSessions` or `ninaShortcuts`.
+  It is the choke point for all avatar, folder, session and shortcut access — the session statements are its §4a, and the pure
   ordering rules they feed are `lib/nina/sessions.ts`, which imports nothing from this package at
   all. Every other avatar-touching file
   (`lib/admin/ninaAlbumActions.ts`, `app/admin/page.tsx`, `lib/nina/album.ts`, `avatargen.ts`,
@@ -338,8 +353,8 @@ it names `'./lib/db/schema.ts'` as a config string. **A schema change is therefo
 reflected in a script**, and a script writing a `nina_*` table is writing raw SQL that no type
 checks.
 
-`NinaAvatar`, `NewNinaAvatar`, `NinaFolder`, `NewNinaFolder`, `NinaChatSession` and
-`NewNinaChatSession` currently have **no importers** —
+`NinaAvatar`, `NewNinaAvatar`, `NinaFolder`, `NewNinaFolder`, `NinaChatSession`,
+`NewNinaChatSession`, `NinaShortcutRow` and `NewNinaShortcutRow` currently have **no importers** —
 callers pass around the shapes `lib/nina/queries.ts` returns instead. (The string `NinaAvatar` also
 names an unrelated React component, `components/nina/NinaAvatar.tsx`; that is a coincidence, not an
 import of the row type.)
@@ -507,6 +522,14 @@ TypeScript that once matched it.
 - **A session's `title` and `title_source` travel together.** Both NULL means nobody has named it
   yet, which is the only state an automatic titler may write into; `'backfill'` is not `'manual'`
   but must be treated as if it were.
+- **`nina_shortcuts.updated_at` means "the row last changed", never "the admin last edited it".**
+  `$onUpdate` fires on every drizzle UPDATE of the table, and `bumpNinaShortcutUses` is an UPDATE,
+  so a code that merely *fired* has a fresh `updated_at`. `last_used_at` is the telemetry column;
+  NULL there means the code has never fired, which is a real answer and not a missing one.
+- **Nothing may write `nina_shortcuts.match_key` or `kind` from outside the query layer.** Both are
+  derived from `trigger` by one private helper in `lib/nina/queries.ts`, and the input types have no
+  field for either — a caller *cannot* mislabel a row. Adding one would give the unique index a
+  second, un-normalised spelling of the same trigger to consider distinct.
 - **Auth.js tables are verbatim.** Singular names and camelCase columns are the adapter's
   convention, which is why `drizzle()` is built *without* `casing: 'snake_case'` and every app
   table spells its snake_case names out explicitly.
@@ -518,6 +541,81 @@ TypeScript that once matched it.
 Initial creation, prompted by task **P1-DB-A000** — phase 1 of 7 in
 `ADMIN_ALBUM_FILE_MANAGER_PLAN.md`, the plan set that turns `/admin/nina` into a file manager
 (F34 R1).
+
+### Recent changes — P1-DB-A004 (2026-09-07)
+
+Phase 1 of 4 in `NINA_EMOJI_SHORTCUTS_PLAN.md` (F36) — *"the table and the matcher"*. **Nothing
+user-visible ships in this phase**: no route, no component, no prompt change, and typing an emoji in
+the chat still does exactly what it did yesterday. Phases 2, 3 and 4 (the turn-path read, the admin
+registry, the ledger importer) build on the contract laid down here.
+
+Within this package the task touched `schema.ts` and `drizzle/` only. The matcher that decides
+whether a trigger fired is `lib/nina/shortcuts.ts` and every read and write is
+`lib/nina/queries.ts`.
+
+**New table `nina_shortcuts`**, placed beside `ninaMemoryFacts` — twelve columns: `id`, `user_id`
+(cascading FK to `user`), `trigger`, `match_key`, `kind`, `label`, `expansion`, `enabled`, `uses`,
+`last_used_at`, `created_at`, `updated_at`. Plus `ninaShortcutsRelations` and the row types
+`NinaShortcutRow` / `NewNinaShortcutRow`.
+
+The point of a **separate table** rather than more `nina_memory_facts` rows is that a shortcut is a
+*directive she must act on*, and the ledger is framed to her as colour rather than structure. Four
+things go wrong when the ledger holds one, and all four were live: `MEMORY_FACT_LIMIT = 60` ages the
+oldest shortcut out of the prompt, every expansion travels on every turn whether or not it fired,
+`ADMIN_FACT_TEXT_MAX = 400` already truncates the longest triggers' expansions, and the framing is
+wrong for a directive. The part no other arrangement achieves: a separate table makes a shortcut
+**structurally unreachable by `lib/nina/distill.ts`**, which writes facts. The distiller cannot
+rewrite what it has no query for. `removeNinaSession`'s memory purge is out of reach for the same
+structural reason — it matches on `source_message_id`, and this table deliberately has no such
+column.
+
+**`trigger` and `match_key` are two columns and the second one is the key.** `trigger` is what the
+admin typed and what a table renders (`✌️`, `Plak!`, `nom nom`); `match_key` is
+`normalizeNinaTrigger(trigger)` and is what matching and the unique index compare. Storing only the
+raw trigger would mean normalising on every read of every turn *and* would let `✌️` and `✌` be two
+rows; storing only the key would show him a peace sign stripped of its variation selector in his own
+table.
+
+**Three absences and one presence are decisions**, each asserted by the seven new cases in
+`tests/db.schema.nina.test.ts`:
+
+- **No `source_message_id`, no `source`, no `confidence`.** Every shortcut is authored by a human or
+  lifted from the ledger by phase 4's importer. There is no distilled shortcut and there never will
+  be, so a provenance discriminator would be a column with one value.
+- **`kind` is plain `text` with no `.$type<>()`** — see the `pgEnum` note above for the two reasons.
+- **`uses` and `last_used_at` are telemetry, not state.** Nothing reads them on the turn path; they
+  exist so an admin screen can show a dead code as dead. `uses` is incremented in SQL, never
+  read-then-written, because two turns in flight are a real pair.
+- **`enabled` is a real column and not a delete.** A disabled code stays visible so it can be
+  re-enabled, which is why the registry read and the turn read are two different calls.
+
+**Two indexes:**
+
+- `nina_shortcuts_user_match_unq` on `(user_id, match_key)` — **UNIQUE**, and it is the authority on
+  "this trigger already exists". `shares_run_id_active_unq`'s argument: the alternative is a
+  check-then-write that is correct until two tabs race. It is *also* the total order the registry
+  read sorts by, so that read is an index scan and not a sort.
+- `nina_shortcuts_user_enabled_idx` on `(user_id, enabled)` — it exists for **phase 2's every-turn
+  read**, `listNinaShortcuts(userId, { onlyEnabled: true })` → `WHERE user_id = $1 AND enabled`.
+  This is the one index in the table that is not paying for a constraint, and the read it serves runs
+  on every single turn.
+
+**Migration `drizzle/0012_nina_shortcuts.sql`** plus its meta snapshot and journal entry (`idx: 12`,
+tag `0012_nina_shortcuts`). Purely generated, additive only — one `CREATE TABLE`, one FK constraint,
+one `CREATE UNIQUE INDEX`, one `CREATE INDEX`. Nothing drops, renames, retypes or narrows anything,
+and there is no data-migration statement, so it applies to a populated database without a rewrite
+and reverting the code leaves an unread empty table, which is inert.
+
+> **`npm run db:check` is clean, but NOT applied to any database.** Applying `0012` is an open
+> deploy action (`npm run db:migrate`). Nothing in the app reads or writes the table yet, so an
+> unapplied migration is invisible until phase 2 lands.
+
+The half of the contract that lives outside this package, and is worth knowing from here: the
+matcher `lib/nina/shortcuts.ts` is **zero-import by rule** (its own test reads its source and fails
+on an `import` line), which is what keeps it safe for the browser bundle *and* is the precondition
+for phase 4's `.mjs` importer to load it under `--experimental-strip-types` and compute `match_key`
+with literally the same function. That is why `NinaShortcutMatchable` is declared there as a plain
+interface instead of being imported from this file.
 
 ### Recent changes — P1-DB-A003 (2026-09-07)
 
