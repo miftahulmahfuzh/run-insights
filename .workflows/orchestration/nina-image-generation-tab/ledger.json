@@ -70,10 +70,10 @@
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": "route+nav+form landed; carries phase 5's picker mount (it committed first, its test forced it); ninaImageReferenceSchema.id dropped .min(1).nullable() per phase 1's ''-is-empty id, else no unselected reference validated; readme-updater skipped, phase 7 owns both readmes",
+      "note": "R2 + R4-R9 UI + R10 save. /admin/image-generation, ImageGenPanel (DialSlider, six focus checkboxes, four free-text fields, one save, one reset, dirty state, pure buildNinaImagePrompt preview), imageGenModel.ts (draft, referenceKey/parseReferenceKey, ADMIN_IMAGE_PREVIEW_SCENE), imageGenActions.ts (save+reset, both gated), prefs Zod appended to lib/admin/schema.ts, sixth nav cell as 3x2 h-28 phone grid with layout reserve 5rem->8rem, fifth hub card. 12 files, +5094/-66, parent 5e70918. VERIFIED GREEN: typecheck clean, lint 0 errors, npm test 156 files / 3232 tests 0 failures, npm run build succeeds with /admin/image-generation dynamic, all four ci:* guards OK. CARRIES PHASE 5's STEP 3: verified from git that 684e787 contains the PhotoReferencePicker mount (2 refs), 'SEAM \u2014 PHASE 5' is gone (0) and 'SEAM \u2014 PHASE 6' remains (3); confirmed 684e787 swept NONE of phase 2's four files. PLAN DEFECT FIXED (rung 3): ninaImageReferenceSchema.id was specified .min(1).nullable() while its own refine reads '' as the empty id, so NO unselected reference validated -- default state and reset both rejected at the boundary. Now z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX), refine unchanged, so {album,''} and {none,'av_1'} stay refused. PHASE 6 MUST CODE AGAINST '' AND NEVER null. Phase 6 also: replace SEAM \u2014 PHASE 6 with <ImageGenTestPanel dirty={dirty} />, dirty already in scope; leave tests/admin.imagegen.test.ts alone (allowlist already names both phase 6 actions and the requireAdmin loop covers unwritten exports); import ADMIN_IMAGE_PREVIEW_SCENE rather than minting a constant; maxDuration is deliberately absent from the page and is phase 6's to add. readme-updater NOT dispatched by design -- lib/admin and components/admin readmes are the coordinator's end-of-set pass; phase 2 left phase-2-readme-draft.patch in the orchestration dir for it.",
       "package": "app/admin`, `components/admin`, `lib/admin",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-4.md",
-      "reported_at": "2026-09-07T16:04:12+00:00",
+      "reported_at": "2026-09-07T16:05:55+00:00",
       "satisfies": [
         "R2",
         "R4",
@@ -149,6 +149,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T16:04:12+00:00",
+  "updated": "2026-09-07T16:05:55+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
