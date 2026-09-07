@@ -25,6 +25,20 @@
       "when": "2026-09-07"
     }
   ],
+  "landing_plan": {
+    "board": "Close cards #114-#117 against parent #113 via `finish <n> --child-of 113 --commit <sha>`. #113 owns the pull request. Derivation is authoritative; the board is the mirror.",
+    "credentials": "drizzle.config.ts loads .env.local from CWD via dotenv and requires DATABASE_URL_UNPOOLED -- the DIRECT Neon string. It throws if the host contains '-pooler'. Do not invent a connection string; use the repo's own .env.local.",
+    "land_worktree_prereqs": [
+      "COPY .env.local into the land worktree: it is gitignored and exists only in /home/miftah/run-insights, and drizzle.config.ts reads it from cwd. Without it drizzle-kit throws before touching the DB.",
+      "npm install in the land worktree: node_modules is gitignored and `git worktree add` does not populate it, so drizzle-kit is simply not on PATH. MEASURED this run -- it blocked both wave-0 phases until phase 2 claimed the install."
+    ],
+    "migration_collision": {
+      "confirmed": "main idx 8 = 0008_thankful_cardiac @ when 1788746668774; branch idx 8 = 0008_nina_message_photo_only @ when 1788748985300. Filenames differ so git flags NOTHING -- the clash is on idx inside drizzle/meta/_journal.json.",
+      "repair": "Keep main's _journal.json and 0008 snapshot. DELETE the branch's drizzle/0008_nina_message_photo_only.sql and its meta/0008_snapshot.json, then `npm run db:generate -- --name nina_message_photo_only` against the MERGED schema.ts so it re-emits as 0009 with a fresh `when` above the applied watermark. NEVER rename: `when` is the ordering key, a renamed entry falls below the watermark and db:migrate exits 0 with the column never created.",
+      "verify": "Query the database for nina_messages.photo_only existing and NOT NULL DEFAULT false, and check drizzle.__drizzle_migrations for the new row. Never trust the migrator's exit code."
+    },
+    "migrator": "npm run db:generate (drizzle-kit generate) to regenerate; npm run db:migrate (drizzle-kit migrate) to apply. Found from package.json scripts, not guessed."
+  },
   "parent_card": "miftahulmahfuzh/run-insights#113",
   "phases": [
     {
@@ -85,21 +99,21 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#117",
-      "commit": null,
+      "commit": "b4f1004",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "finishSelfie captions from args.scene via captionNinaPhoto(seenKind:'requested'); no vision call, ninaImageCaption(jobId) is now the fallback. DECIDED: readNinaTuning wrapped alone -> NINA_TUNING_DEFAULTS, since it only dresses the caption and a caption problem must never cost the photograph (rung 2, exit criterion 5); the three reads above it stay bare. DECIDED: 'no vision call' asserted against imagerun.ts SOURCE not a spy, since a spy on a never-imported module always passes (rung 6). DECIDED: dropped a passing test that asserted a THROWN captionNinaPhoto fails the job -- it encoded wrong behaviour as correct; captionNinaPhoto is contractually non-throwing (rung 3). New suite tests/nina.imagerun.test.ts (8 cases) drives the private finishSelfie through runNinaImageJob; tests/nina.imageworker.test.ts covers the WORKER's same-named function, not this one. Worker comment from P2 already states the canned caption is permanent -- nothing to place. 147 files / 2910 tests green.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-photo-caption-from-image/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T05:40:01+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A020",
       "title": "Generated selfies caption from the scene she asked for"
     }
@@ -107,7 +121,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-caption-from-image",
-  "updated": "2026-09-07T05:38:49+00:00",
+  "updated": "2026-09-07T05:40:01+00:00",
   "verified_at": "2026-09-07T05:17:14+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
 }
