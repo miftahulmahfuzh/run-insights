@@ -6,10 +6,9 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/chat-photo-orphans-and-uniqueness`
 **Branch:** `feature/chat-photo-orphans-and-uniqueness` (base: `HEAD` @ `b0e492a`)
 **Phases:** 3
-**Status:** planned
-**Cards:** parent `miftahulmahfuzh/run-insights#139`; phases #140, #141, #142 (sub-issues 1-3, in phase order)
+**Status:** code-complete — phases 1 and 2 landed on the branch; phase 3 cancelled (ruling C9)
 **Reconciled:** round 1 — 8 conflicts found, 8 resolved; see the Reconciliation Log
-**Coordinator:** —
+**Coordinator:** `orch-chat-photo-orphans-and-uniqueness`
 
 ---
 
@@ -121,9 +120,9 @@ it bites** — see the Reconciliation Log, rows 1 and 5.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Orphan-able photographs: the FK, the migration, and every reader that assumed a message | R1 | `lib/db` + `lib/nina` + `components` | 17 | — | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md` | — | miftahulmahfuzh/run-insights#140 |
-| 2 | One photograph per collection row: the reference marker and adopt-or-reference | R2, R3, R4 | `lib/nina` + `lib/admin` | 5 | 1 | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md` | — | miftahulmahfuzh/run-insights#141 |
-| 3 | The backfill: bring the rows that already violate R2/R3 into line, deleting nothing | R2, R3 | `scripts` | 5 | 2 | NORMAL | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md` | — | miftahulmahfuzh/run-insights#142 |
+| 1 | Orphan-able photographs: the FK, the migration, and every reader that assumed a message | R1 | `lib/db` + `lib/nina` + `components` | 17 | — | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md` | P1-NIN-A030 ✅ `86891a9` | — |
+| 2 | Re-parent an orphaned chat photograph instead of copying it (**rescoped to R4 only**, ruling C8) | R4 | `lib/nina` + `lib/admin` | 5 | 1 | HARD | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md` | P1-NIN-A031 ✅ `5a07dc5` | — |
+| 3 | ~~The backfill~~ **CANCELLED** (ruling C9) — already applied to production by `origin/main`'s F37 | — | `scripts` | 0 | 2 | NORMAL | `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md` | P1-RI-A030 ⛔ unspent | — |
 
 **Files** is the count of distinct paths in each plan's own Files table, not the number of table rows
 (phase 2's table has eleven rows across five files, because `lib/nina/queries.ts` and
@@ -320,6 +319,80 @@ input → **6** the surrounding code's convention.
 | **(Reconciler)** Does `removeChatPhotoAction`'s docstring say the image row goes by `message_id`'s `ON DELETE CASCADE` (phase 2's quoted text) or by an explicit statement inside `deleteNinaMessage` (phase 1's rewrite)? Both were in the plan set, in the same paragraph of the same file. | **The explicit statement.** Phase 1's rewrite stands; phase 2 appends its paragraph after phase 1's and touches nothing above it. | 3: **the plans' code blocks.** Phase 1's `lib/db/schema.ts` block declares `onDelete: 'set null'`, which makes phase 2's quoted sentence factually false the moment phase 1 lands — a doc that describes an FK the schema no longer has. Nothing about the observable behaviour is in dispute (the photographs still go with a deleted bubble, Decisions row 1); only the mechanism sentence was, and only one of the two spellings survives the schema. |
 | **(Reconciler)** Does the backfill restate the collection predicate in three places (including `readImages`' SELECT) or in two? Phase 3's prose said three and "enforced twice in the SQL that reads"; phase 3's own code has no WHERE in that SELECT. | **Two** — `isCollectionCandidate` and the `--apply` UPDATE's WHERE. The SELECT stays predicate-free. | 3: **the plans' code blocks.** The code is right and the prose was wrong, and the code is right for a reason the prose had forgotten: the report's `not candidates` count and the stated `candidates === carryOvers + duplicates + keepers` invariant both require the rows the predicate REJECTS to arrive. A WHERE in `readImages` would zero the first and make the second vacuous. Reading the whole table once from a laptop, at single-digit thousands of rows, costs nothing. |
 | **(Reconciler)** Should the runner's session-delete confirmation keep promising that the photographs go? No phase owned the string, so both answers were live by omission. | **No — the copy changes with the behaviour**, in phase 1, and it names what stays as well as what goes. | 5: **the user's raw input.** *"don't delete existing photos, if user delete a chat session, just let the photos be"* is the whole request; a confirmation that still threatens the photographs would leave the fix invisible to the person who asked for it and would keep deterring the delete R1 exists to make safe. Confirmed against rung 4 — the index's Why says a photograph *"becomes a durable object with an OPTIONAL parent"* — and bounded by invariant 8: a MESSAGE delete's copy in `MessageActionsSheet` is deliberately NOT touched, because that behaviour did not change. |
+
+## Coordinator Decisions (added while driving; not part of the reconciled plan)
+
+These were decided by `orch-chat-photo-orphans-and-uniqueness` after the plan was written, on the
+same ladder the phases use. They are **binding on every phase** and no phase may re-open one. A
+resume on another machine inherits them from here.
+
+| # | Fork | Chosen | Rung |
+|---|---|---|---|
+| C1 | The branch was cut from a base whose drizzle journal ends at `0008`; `origin/main` ends at `0011`. `db:generate` on that base mints a **second `0009`** against main's already-applied `0009_nina_message_photo_only` — MEASURED: phase 1 produced `0009_nina_photo_orphans` and `npm run db:check` reported *"Everything's fine"*. Regenerate at landing, or move the base now? | **Move the base now** — `origin/main` merged into `feature/chat-photo-orphans-and-uniqueness` at `8c64efe`, before any phase code existed. | 1: invariant 3 — *"One migration, and phase 1 owns it… a renamed migration is skipped silently."* Regeneration-at-landing was disqualified on measurement, not preference: main's `0009` **and** `0010` both carry hand-written backfill SQL, and regeneration drops hand-written backfills with no warning and no conflict. Reinforced at rung 4 — main was +788 lines across the four files this set owns, so the alternative deferred the whole reconciliation to Step 5. |
+| C2 | Phase 1's exit criterion says *"Exactly one new migration, `0009`"*. After C1 the generated number is `0012`. Is the criterion violated? | **No. `0009` was a plan-time measurement, not the requirement.** The requirement is *exactly one new migration, touching only `nina_message_images`, with no `DROP COLUMN`, no `DELETE`, no `TRUNCATE`*. Take whatever number `db:generate` gives you and **never rename a migration file.** | 3: the plan's own code blocks and invariant 3's stated reason. A rename keeps the stale timestamp and the stale snapshot chain, which is the silent skip. |
+| C3 | Every line number in all three plans was measured at base `f03a3bc`. | **Locate every edit by SYMBOL NAME.** Line numbers are a sanity check only. | 6 + the plans' own precedent: Reconciliation Log rows 1 and 2 already imposed exactly this on phase 2, and both phases declare `Renames: none`, which is what makes symbol lookup safe. |
+| C4 | `origin/main`'s `0010` added `source_avatar_id` and `source_image_id` to `nina_message_images` — provenance columns, `ON DELETE set null`, on the table this set changes. Does that displace `is_reference`? | **No. Decisions row 2 stands unchanged: the collection marker is the boolean.** The two provenance columns belong to another set, are named by no `R` here, and are left entirely alone. Widen only what a plan names. | 1: Decisions row 2 is binding and states *"Provenance is not a requirement of any R."* |
+| C5 | The plans quote a baseline of 145 test files / ~2834 tests. | **The baseline is 153 files / 3094 tests**, measured on the merged tree at `8c64efe` (typecheck clean). Report final numbers as deltas from that. | 2: the exit criteria mean "green, and up by your own additions"; the absolute figures were measured pre-merge. |
+| C6 | `/implement` Step 3 mints TaskIDs and fills the index's TaskID column for the **whole set** from whichever phase reaches it first. | **Embargoed for every phase.** The coordinator is the single writer for `todos.md`, `package_readme.md` and this index. TaskIDs are already minted: phase 1 `P1-NIN-A030`, phase 2 `P1-NIN-A031`, phase 3 `P1-RI-A030` — verified unspent against `git log --all -S`, every `todos.md` and all 18 ledgers. Phases dispatch `pusher` directly and send their entry text in the report. | 6: no invariant or exit criterion mentions task bookkeeping, and `todos.py mint` is measurably unreliable here — it returned `P1-NIN-A019`, already spent, and two live sets are both sitting on `P1-DB-A004`. **Exception:** where a phase's own Files table names a file with a line and a step, that assignment beats this embargo (phase 3 owns `lib/nina/.workflows/package_readme.md`). |
+
+| C7 | `origin/main` shipped **F37** (task `P1-DB-A003`, migration `0010`) after this plan was written, and it implements **R2 and R3 in full** by the mechanism Decisions row 2 examined and rejected: `source_avatar_id` / `source_image_id` on `nina_message_images`, with the collection predicate `isOriginalPhoto()` = `and(isNull(sourceAvatarId), isNull(sourceImageId))` at `lib/nina/queries.ts:1613`, applied in `listNinaMessageImages` (`:1520`) and `generatedChatPhotoScope` (`:1646`). Declare `is_reference` anyway, or drop it? | **DROP it.** Phase 1 declares no `is_reference` column. Its migration is `message_id` only — FK drop, `ALTER COLUMN "message_id" DROP NOT NULL`, FK re-add with `ON DELETE set null`. Three statements, not four. | 5: the user's raw input. He asked for four things; the album-carry-over and duplicate halves are **served on main already**, with a backfill applied to production. `is_reference` was the mechanism the Requirements table named, and a mechanism is rung-4 detail, not the requirement. **Decisions row 2's grounds are void, not merely its conclusion:** it rejected a provenance FK because `ON DELETE SET NULL` "would put the row back INTO the collection… resurrecting the duplicate R3 forbids", and main closed that exact hole differently — `ninaPhotoProvenance()` flattens (`sourceImageId ?? row.id`), so a copy of a copy points at the original and deleting the middle row resurrects nothing. Declaring it would put a column in production that nothing reads or writes and give one table **two vocabularies for "reference"** with only one wired up. Phase 1's exit criterion naming `is_reference` is **superseded**, not unmet. |
+| C8 | Given C7, does phase 2 still have work? | **Yes — rescoped to R4 only.** Keep exit criteria 2, 4, 5 (`adoptNinaMessageImage`, owner-scoped, `message_id IS NULL` in the WHERE; an `image` pointer at an orphan issues one UPDATE and zero INSERTs; at a live row, zero UPDATEs). **Drop** criteria 1 and 3 (the `is_reference` predicate; the avatar branch writing `is_reference: true`). **Reframe** criterion 6 against `isOriginalPhoto()`/the `source_*` columns. Criteria 7 and 8 stand. | 5: R4 is a verbatim second user message — *"make sure these orphaned photos got parent chat session again if user attach a photo to another chat session"* — and F37 **cannot** have served it: orphans cannot exist on main, because `message_id` is `NOT NULL`. R4 only becomes expressible once phase 1 lands. And main's `resolveAttachment` **copies**, so absent this phase a re-attached orphan gets a new reference row and stays parentless forever — exactly what R4 forbids. Phase 1 creates the condition that makes phase 2 necessary. |
+| C9 | Does phase 3's backfill still have anything to do? | **No — cancelled.** | 5 + measurement: F37's `0010` carried a hand-written backfill that marked production's existing carry-overs, with the counts recorded in `lib/db/.workflows/todos.md:50` — **0 chat-to-chat duplicates, 2 album faces attached into chat**, 5 collection rows, 21 album rows, the 2 being "exactly the duplicates reported in prod admin." It also cannot run as written: its `isCollectionCandidate` and its `--apply` UPDATE are both built on `is_reference`, which C7 removes. A provenance-based re-audit goes on the board as a follow-up card. |
+
+**What this set now delivers: R1 and R4.** R2 and R3 are served on `origin/main` by F37 and are struck
+from this set's scope — the requirements are met, by another mechanism, with the backfill applied.
+R1 is entirely open and unaffected by F37: `message_id` is still `.notNull()` with
+`onDelete: 'cascade'` at `lib/db/schema.ts:1082-1084`, under the comment *"Cascade: an image with no
+message is nothing."* F37 sharpened the bug rather than fixing it — it spent a migration and a
+backfill curating a collection that one session delete still empties.
+
+Also carried into the Step 5 notes: main's `lib/db/schema.ts:1091` docstring independently states
+this plan's invariant 9 — *"The row is NOT dropped and must never be"* — and names the four
+bubble/context/reaper reads that must never carry the collection filter
+(`getNinaMessageImagesForMessages`, `getNinaMessageImage`, `dbNinaSourceGateway.readMessageWindow`,
+`isBlobPathnameReferenced`), asserted by `tests/nina.photoRefs.test.ts`. No phase of this set touches
+those reads or that test.
+
+| C10 | `nina-emoji-shortcuts` landed while phase 1 was building, so `origin/main`'s journal now ends at **idx 12 = `0012_messy_carlie_cooper`** (`when` 1788796969236, 2026-09-07T16:02:49.236Z) and this branch carries **idx 12 = `0012_nina_photo_orphans`** (`when` 1788796980501, 2026-09-07T16:03:00.501Z). Two different `0012`s, **11.3 seconds apart.** | **Keep the base's migration and REGENERATE this set's from the merged schema at landing. Never rename it.** The regeneration is safe here and that is measured, not assumed: `drizzle/0012_nina_photo_orphans.sql` is **3 lines of pure generated DDL** — FK drop, `ALTER COLUMN "message_id" DROP NOT NULL`, FK re-add with `ON DELETE set null` — with no `UPDATE`, no `INSERT`, no backfill and no hand-appended tail, so nothing can be silently dropped. (Contrast main's `0009` and `0010`, which each carry hand-written backfills; that asymmetry is why C1 merged rather than regenerated.) | 1: invariant 3. **And be precise about WHY, because the obvious reason is the wrong one.** The `when` is *not* what forces this: 1788796980501 > 1788796969236, so this file would apply as-is. Two other things force it, and neither is reported by any tool. (a) **Duplicate `idx` 12** — `npm run db:check` said *"Everything's fine"* over the earlier duplicate `0009`, so the absence of a complaint is not evidence. (b) **A forked snapshot lineage**, verified from the files: `drizzle/meta/0012_snapshot.json` on this branch has `prevId 81e07f7d-3d60-4f84-b3c7-32e7511815d4`, and `origin/main`'s `0012_snapshot.json` has *the same* `prevId` — both are `0011_rare_blockbuster`'s snapshot id. Two siblings claiming one parent; the chain is wrong independent of any timestamp. A lucky timestamp is exactly what would argue for a rename, and a rename leaves both (a) and (b) broken while looking fixed. |
+
+**The regeneration must not name a number, and the ORDER is the whole fix.** Merge `origin/main`
+first, generate second. Then both the number and the snapshot's `prevId` are *derived* from whatever
+main actually ends with at that moment, and a set that lands in between costs this one nothing — no
+message between coordinators required, which is the same self-resolving property that settled the
+`P1-DB-A004` renumber. What breaks it is committing to a specific number anywhere the generation
+reads or a check asserts: a `--name`, a Precondition that says "mints 00NN", an exit criterion, or a
+plan line a phase session will honour literally. **MEASURED 2026-09-08: this coordinator and
+`orch-nina-image-generation-tab` independently both planned to "land as 0013", while that set's
+phase 7 was live** — the fourth instance of this pattern in one evening, between two sets that each
+already knew about the pattern. Naming the number recreates the collision at the moment it is
+hardest to see, because both sides believe they have already handled it. So: any number in this
+document is *measured when written*, never the requirement. The requirement is one migration, the
+right DDL, and a chain whose `prevId` points at whatever `origin/main` ends with at Step 5.
+
+**The `when`-ordering half, separately, because numbering and ordering are two different failures.**
+A merge fixes a journal's numbering and preserves each entry's original `when`, so an entry stamped
+below production's applied watermark is skipped even once the number is right. This set is immune to
+that **by construction rather than by luck**: phase 1's pre-merge `0009_nina_photo_orphans` was
+*discarded, not replayed and not renamed*, so its replacement was generated after the merge and
+stamped at generation time. The same property carries through the landing regeneration. The
+watermark's value is therefore not load-bearing for this set — which is what makes the property
+survive the watermark moving twice in one evening (13:10:34.959Z → 16:02:49.236Z).
+
+**Do not read that as "check the watermark" being the general test.** It is one of three independent
+ways a migration can be wrong on arrival, and here it is the one that happens *not* to fire. The
+durable lesson from the whole evening is narrower and harder: **a gate can pass clean on a question
+adjacent to the one you asked.** Measured instances, all tonight — `db:check` green over a duplicate
+`0009`; `land --step check` reporting `migrations.added: []` while the branch plainly added three
+drizzle artefacts; `db:migrate` exiting 0 on an entry it skipped; a `grep -c` over a path that may
+not exist returning the same `0` as a real no-match; a UNIQUE index answering *"can two rows
+coexist"* when the question was *"are the values I am about to insert distinct"*. Verify the object,
+not the exit code; read the file, not its provenance.
+
+Migration ordering, for the record: a merge fixes a journal's *numbering* and not its *ordering* —
+it preserves each entry's original `when`, so an entry stamped below production's applied watermark
+is skipped even after the number is right. That does not apply here, because phase 1's pre-merge
+`0009` was **discarded rather than replayed or renamed**, so the migration is generated fresh after
+the merge and stamped above main's `0011` (`1788786634959`) by construction.
 
 ## Open Questions
 
