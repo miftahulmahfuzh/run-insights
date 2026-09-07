@@ -64,7 +64,7 @@ Two sentences in there are specifications and are quoted again wherever they dec
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 ✅ | Redo: reopen a failed job from its own args | R1 | `lib/nina` + `components/nina` + `app/nina/jobs` | 8 | — | NORMAL | `.workflows/plan/nina-job-redo-and-soft-delete/phase-1.md` | `P1-NIN-A013` | `miftahulmahfuzh/run-insights#105` |
+| 1 ✅ | Redo: reopen a failed job from its own args | R1 | `lib/nina` + `components/nina` + `app/nina/jobs` | 8 | — | NORMAL | `.workflows/plan/nina-job-redo-and-soft-delete/phase-1.md` | `P1-NIN-A015` | `miftahulmahfuzh/run-insights#105` |
 | 2 ✅ | Soft delete: `nina_turns.deleted_at` and the tidy list | R2 | `lib/db` + `lib/nina` + `components/nina` | 8 (+3 generated) | 1 | NORMAL | `.workflows/plan/nina-job-redo-and-soft-delete/phase-2.md` | `P1-NIN-A014` | `miftahulmahfuzh/run-insights#106` |
 
 ### Phase 1 — Redo: reopen a failed job from its own args

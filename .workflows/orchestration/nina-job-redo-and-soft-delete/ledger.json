@@ -3,6 +3,16 @@
   "coordinator": "orch-nina-job-redo-and-soft-delete",
   "coordinator_session_id": "7b3a32ae-427b-402d-9067-98d1dd7807ca",
   "created": "2026-09-07T01:46:28+00:00",
+  "landed": {
+    "at": "2026-09-07T02:23:38+00:00",
+    "base": "main",
+    "commit": "fa1b7e30f114e7262fd663940eae7d87efa1b182",
+    "machine": "pc"
+  },
+  "notes": [
+    "merge fa1b7e3: TaskID collision with concurrent set blob-stored-pathname-window -- main already carried P1-NIN-A013 (landed 07:46). Phase 1 re-minted A013 -> P1-NIN-A015. Rung 6: ids are unique within lib/nina/.workflows/todos.md and the set landing second re-scans. Phase 2 keeps P1-NIN-A014 (no collision).",
+    "migration 0008_thankful_cardiac applied to production and verified: nina_turns.deleted_at timestamptz nullable no default; journal id 9 @ 1788746668774; no new index; 405 rows intact, cost_micro_usd sum unchanged at 120000."
+  ],
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#105",
@@ -11,6 +21,7 @@
       "difficulty": "NORMAL",
       "n": 1,
       "note": "Redo landed as written, no ladder decisions; code 07df20b + docs bbde7b3. Seams p2 needs are in place: reopenNinaImageJob is the 8th read for Step 3k, NinaJobActionResult is {ok, reason: NinaJobRefusal|null} with no next, run() takes ONE arg and the prop is item, the slot gate is {withActions && <NinaJobActions item={item}/>} so delete lands on every row with no NinaJobList edit, and tests/nina.jobActions.test.ts mocks only edges (queries factory must stay at exactly 7 names).",
+      "notes": [],
       "package": "lib/nina` + `components/nina` + `app/nina/jobs",
       "plan": ".workflows/plan/nina-job-redo-and-soft-delete/phase-1.md",
       "reported_at": "2026-09-07T02:00:36+00:00",
@@ -18,7 +29,7 @@
         "R1"
       ],
       "status": "done",
-      "task_id": "P1-NIN-A013",
+      "task_id": "P1-NIN-A015",
       "title": "Redo: reopen a failed job from its own args"
     },
     {
@@ -44,6 +55,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-job-redo-and-soft-delete/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-job-redo-and-soft-delete",
-  "updated": "2026-09-07T02:17:04+00:00",
+  "updated": "2026-09-07T02:23:38+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-job-redo-and-soft-delete"
 }
