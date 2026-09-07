@@ -6,25 +6,25 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#103",
-      "commit": null,
+      "commit": "2363785",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "Decision (rung 1, invariant 10 over the plan's own code blocks): phase plan Steps 3a/5b spelled the literal /admin/nina#character URL in comment prose, which invariant 10 forbids under app|components|lib|tests|docs. Invariant 10 won; both comments keep every claim without spelling the URL and cite invariant 10. Same edit on the task card Context line. Exit criterion 5 backs it - the invariant is about a live link, not a substring. Also: readme-updater correctly refused half the lib/admin handoff - :594 documents ninaAlbumActions' registerNinaAvatarsAction, which still revalidates /admin/nina legitimately; only :507 was false and only :507 changed. Not verified: the five-cell nav on a real 414px phone - the automated gate cannot make that claim.",
       "package": "app/admin` \u00b7 `components/admin` \u00b7 `lib/admin",
       "plan": ".workflows/plan/nina-personality-tab/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T00:46:30+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CA-A002",
       "title": "The Personality tab"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-personality-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-personality-tab",
-  "updated": "2026-09-07T00:31:09+00:00",
+  "updated": "2026-09-07T00:46:30+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-personality-tab"
 }
