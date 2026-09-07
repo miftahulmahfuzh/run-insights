@@ -1744,7 +1744,7 @@ export const ninaTuning = pgTable('nina_tuning', {
     .references(() => users.id, { onDelete: 'cascade' }),
   /**
    * `NinaRelationship` from `lib/nina/tuning.ts` — one of `'nobody' | 'casual_friend' | 'sister' |
-   * 'best_friend' | 'girlfriend'`. Untyped `text` on purpose; see the header.
+   * 'best_friend' | 'girlfriend' | 'instructor'`. Untyped `text` on purpose; see the header.
    */
   relationship: text('relationship').notNull(),
 

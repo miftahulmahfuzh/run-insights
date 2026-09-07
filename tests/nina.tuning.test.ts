@@ -154,14 +154,19 @@ describe("the twelve traits (R1, and R3's horny)", () => {
   })
 })
 
-describe('the five relationships and their address vocabulary (R2)', () => {
-  it('are exactly the five the user named, least to most intimate', () => {
+describe('the six relationships and their address vocabulary (R2)', () => {
+  it('are the five the user named, least to most intimate, plus the appended instructor', () => {
+    /* `'instructor'` is APPENDED, not inserted (index decision D1): a coach is not on the
+     * intimacy axis at all, so appending keeps all five existing indices stable and leaves the
+     * "in the order the user wrote them" story true of the five it was written about. The literal
+     * array stays a literal so that adding a seventh level is an explicit decision made here. */
     expect(NINA_RELATIONSHIPS).toEqual([
       'nobody',
       'casual_friend',
       'sister',
       'best_friend',
       'girlfriend',
+      'instructor',
     ])
   })
 
@@ -178,6 +183,11 @@ describe('the five relationships and their address vocabulary (R2)', () => {
     expect(NINA_ADDRESS.sister.words).toEqual(['bro'])
     expect(NINA_ADDRESS.best_friend.words).toEqual(['bestie'])
     expect(NINA_ADDRESS.girlfriend.words).toEqual(['my man', 'yang', 'sayang', 'beb', 'baby'])
+    /* The sixth is not one of the user's five, so its source is a design call rather than a
+     * transcription: a coach uses a NAME, so `nickname` — the full name is `nobody`'s whole
+     * definition and the pet names are `girlfriend`'s — plus one literal coach word. */
+    expect(NINA_ADDRESS.instructor.source).toBe('nickname')
+    expect(NINA_ADDRESS.instructor.words).toEqual(['atlet'])
   })
 
   it('states a fallback on EVERY level, because every rule leans on a nullable field', () => {
@@ -191,6 +201,7 @@ describe('the five relationships and their address vocabulary (R2)', () => {
     }
     expect(NINA_ADDRESS.nobody.addressFallback).toContain('nama lo siapa ya?')
     expect(NINA_ADDRESS.best_friend.addressFallback).toContain('nama lo siapa?')
+    expect(NINA_ADDRESS.instructor.addressFallback).toContain('gw catet lo sebagai siapa nih?')
   })
 
   it('gives every level a label, a source and an address rule, and no second character', () => {
@@ -216,6 +227,21 @@ describe('the five relationships and their address vocabulary (R2)', () => {
     expect(NINA_ADDRESS.best_friend.addressRule).toBe(
       `${NINA_ADDRESS.casual_friend.addressRule} Sometimes "bestie" instead of the nickname — you two are that close.`,
     )
+  })
+
+  it('keeps "atlet" exclusive to the instructor, because a shared token is not a test', () => {
+    /* `tests/nina.prompts.test.ts`'s token record asserts that each level's render NAMES its own
+     * address form, and that assertion is only worth anything if the token cannot come from
+     * somewhere else. `'atlet'` was chosen for the instructor for exactly that reason, and this
+     * is what stops a later edit from sprinkling it into another level's rule. */
+    expect(NINA_ADDRESS.instructor.words).toEqual(['atlet'])
+    for (const relationship of NINA_RELATIONSHIPS) {
+      if (relationship === 'instructor') continue
+      const vocabulary = NINA_ADDRESS[relationship]
+      expect(vocabulary.words, relationship).not.toContain('atlet')
+      expect(vocabulary.addressRule, relationship).not.toContain('atlet')
+      expect(vocabulary.addressFallback, relationship).not.toContain('atlet')
+    }
   })
 
   it('degrades an unknown relationship to the default and never throws', () => {
