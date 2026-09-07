@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-08 (tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -472,6 +472,93 @@ entry, so a dial that moves mid-flight cannot make the evaluator watch the wrong
 selfie settle test is an exact `nina_messages.turn_id` match rather than a same-day count —
 `generate_image` is a tool he can ask for six times a day, and a photo he asked for must never settle
 a promise he did not keep. A promise with no `reward` field is today's avatar promise, unchanged.
+
+## The camera is a function of the PREFS now (the `nina-image-generation-tab` set)
+
+`## The camera is a function of the tuning` above describes what shipped before this set. The
+picture is now driven by a second row, `nina_image_prefs`, and the tuning no longer supplies a
+wardrobe at all.
+
+### `imageprefs.ts` — the vocabulary (phase 1)
+
+Zero imports, by rule, exactly like `tuning.ts`: `NINA_IMAGE_PROMPT_LENGTH_MIN` / `_MAX` /
+`_DEFAULT` (50, the middle rung), the six focus keys `face|skin|boobs|butt|thighs|calves` with
+their `NinaImageFocusSpec.userSaid` copy, the free-text bounds, `NINA_IMAGE_REFERENCE_SOURCES`
+(`'none' | 'album' | 'chat'`), `NinaImageReference { source, id }` with `''` as the empty id,
+`NINA_IMAGE_PREFS_DEFAULTS`, the coercers and `NinaImagePrefs`.
+
+**This module is the set's authority on spelling.** `ninaPromptLengthRungFor` takes a **band
+index**, so callers also import `ninaBand` from `tuning.ts` — the band vocabulary is not copied
+here, and re-deriving it elsewhere is forbidden.
+
+`readNinaImagePrefs` / `writeNinaImagePrefs` / `listNinaPhotoReferences` /
+`resolveNinaPhotoReference` live in `queries.ts`. No row means the defaults at `revision: 0`;
+`revision >= 1` is the proof an operator actually saved something.
+
+**The reference union contains no duplicate photograph.** `listNinaPhotoReferences` returns
+`NinaPhotoRefPage { rows, total, offset, limit }` over `nina_avatars` plus **original**
+`kind='generated'` chat rows, newest first, one bounded page. The chat side goes through
+`generatedChatPhotoScope`, whose `isOriginalPhoto()` conjunct excludes any row with
+`source_avatar_id` or `source_image_id` set, and the count shares that scope so page and total
+cannot disagree. **Inlining `eq(kind, 'generated')` re-admits every reference row and fails a
+source-level test** — that is how one album face would otherwise appear twice, once as its avatar
+row and again as the chat row pointing at it.
+
+### `persona.ts` and `imagegen.ts` — the body canon and the ladder (phase 2)
+
+`NINA_BODY_SENTENCES` / `NINA_BODY` / `NINA_BODY_AVATAR` / `ninaBodyBlock`, and `NINA_APPEARANCE`
+reordered **body → face → outfit**. `NINA_FACE` lost the body clause it had been carrying, and
+`Lean` / `narrow shoulders` are repealed.
+
+**The body cannot be switched off.** It is unconditional text in the subject paragraph, not a focus
+option; deselecting every focus key still yields a prompt naming all four body facts, at every rung
+of the ladder. A property test proves it over the full combination space rather than by example.
+"Focus on" adds emphasis clauses *on top*.
+
+`buildNinaImagePrompt` implements a five-rung length ladder (`NINA_PROMPT_RUNGS`,
+`ninaPromptRung`, `NINA_PROMPT_LENGTH_FALLBACK`) keyed off `ninaBand`, the six focus clauses, and
+the `VENUE:` / `TIME:` / `NOTES:` blocks. **The face/outfit cut sits at or below rung 2**, because
+50 is what an operator who never opens the tab gets and a first-run prompt that dropped the face
+would be a downgrade on what shipped before.
+
+`ninaAppearance(prefs: NinaImagePrefs, detail?)` is **nominally** typed on the prefs, so a leftover
+`ninaAppearance(tuning)` is a compile error rather than a silent pass. `selfiegen.ts` and
+`avatargen.ts` read both rows in one `Promise.all`, which is why `avatartools.ts`, `imagetools.ts`
+and `promises.ts` needed no edits at all.
+
+### `imagerecipe.ts` / `imagecall.ts` — the reference on the wire (phase 3)
+
+`buildImageRequestBody` gained an optional reference and emits exactly one `input_references` entry,
+`{ type: 'image_url', image_url: { url } }`, in the shape the repo has a verified 200 for. **With no
+reference the payload is byte-identical to what it was** — asserted against a literal, not
+re-derived.
+
+The reference is fetched from Blob and sent as a `data:` URL; a fetch failure **degrades to an
+unanchored generation with a warning, never a crash**. `NinaImageJobArgs.referenceUrl` is read only
+through `ninaImageReferenceUrl`.
+
+**An anchored call costs a different timeout, and the arithmetic is asserted for both.**
+`NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS = 220_000` is selected by `ninaImageCallTimeoutMs(anchored)`,
+and `NINA_IMAGE_RUN_BUDGET_MS` moved `200_000 → 240_000` so an anchored attempt fits at all. The
+threshold chain holds on both paths: `45 + 150 + 20 = 215` and `45 + 220 + 20 = 285`, each within
+the 300 s host ceiling. A measured anchored generation took 148.9 s against the old 150 s ceiling,
+so without this the feature would have aborted about half its own work.
+
+`imagerecipe.ts` still **imports nothing** — the worker loads it by relative path under
+`--experimental-strip-types`.
+
+### `imagetest.ts` — the admin's test generation (phase 6)
+
+`selfiegen.ts`'s sibling: cap check first, seed, prompt assembled from the **saved** prefs,
+`source: 'admin'`, the reference threaded onto phase 3's `referenceUrl`, one job row, one
+`fireNinaImageGeneration`, and it returns without awaiting the picture.
+
+It uses `purpose: 'selfie'` deliberately, so `finishSelfie` writes the message + `kind: 'generated'`
+image pair exactly as a chat selfie does — which *is* the "test result lands in Chat photos"
+requirement, with no second writer of the invariant that a photograph always has a message. A test
+therefore puts a visible bubble in the runner's chat, and `photo_only: true` on the carrier makes it
+cleanly removable with the photograph. It spends one generation off `NINA_IMAGE_DAILY_CAP` **plus a
+caption call**, and the panel says so before the click.
 
 ## Module map
 

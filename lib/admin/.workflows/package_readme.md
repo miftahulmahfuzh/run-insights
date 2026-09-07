@@ -1,7 +1,7 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-07 (task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — R1: `/admin/shortcuts`, the trigger registry's admin surface)
+**Last Updated**: 2026-09-08 (task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s four actions, and the prefs Zod boundary in `schema.ts`; previously task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — R1: `/admin/shortcuts`, the trigger registry's admin surface)
 
 ## Overview
 
@@ -812,6 +812,48 @@ flat sentence.
 `revalidatePath` here is how the *page* re-renders and is **not** how the edit reaches Nina: nothing
 on the turn path caches a shortcut, so a committed row is live on her next matching message with no
 invalidation step at all.
+
+### `imageGenModel.ts` / `imageGenActions.ts` — `/admin/image-generation`
+
+`tuningModel.ts` / `tuningActions.ts`'s shape, for the Image Generation tab. Four Server Actions,
+each opening with `await requireAdmin()`: `saveNinaImagePrefsAction`, `resetNinaImagePrefsAction`,
+`runNinaImageTestAction`, `readNinaImageTestAction`.
+
+**One save, not eleven.** A slider, six focus checkboxes, four free-text fields and a photograph
+is eleven controls, and they travel as ONE object — plan invariant 7, and the same reason
+`tuningActions` batches: Next dispatches Server Actions one at a time per client, so eleven
+actions would be eleven serialised round trips and eleven chances to half-save.
+
+**`imageGenModel.ts` imports two modules and it has to.** `@/lib/nina/imageprefs` for the bounds
+and the vocabulary, and `@/lib/nina/tuning` for `ninaBand` — because `ninaPromptLengthRungFor`
+takes a *band index*, not a raw 0–100 score, and `imageprefs.ts` deliberately keeps no second copy
+of the band boundaries. Re-deriving the five bands locally is forbidden: a private scale is a
+slider the operator cannot predict. Both modules are zero-import and client-safe, on
+`tuningModel.ts`'s precedent.
+
+**The photo reference crosses the panel/picker seam as an opaque string.** `referenceKey({source,
+id})` produces `` `${source}:${id}` `` and `parseReferenceKey` decodes it, both here. The picker
+never parses it, and its tile type carries no `source` at all — which is what makes *"nothing in
+the grid announces which set a photograph came from"* structural. The stored form is the
+`{ source, id }` pair, never a Blob URL, because `updateNinaChatPhotoBlob` swaps a chat
+photograph's `blob_url` while keeping its `id`.
+
+**`reference.id` is `''` for none, never `null`.** Its Zod field is
+`z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX)` with a `refine` that rejects `{album,''}` and
+`{none,'av_1'}`. It was specified as `.min(1).nullable()` against that same refine, under which **no
+unselected reference validated at all** — the default state and the reset were both rejected at the
+boundary. Fixed when the tab landed; the `''` spelling is `lib/nina/imageprefs.ts`'s, and the
+declaring module owns it.
+
+**The test action reads the SAVED prefs, never the panel's state.** An operator who picks a
+photograph and hits Test prompt without saving would otherwise test the *previous* reference, so
+the dispatch resolves `resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null` from
+the row and the panel's dirty state is what tells them to save first. The verdict lookup lives in
+`imageGenTestView.ts`: `policy` is the only classification that renders as a provider refusal;
+`timeout` / `transport` / `stale` are inconclusive.
+
+**`schema.ts` gained the prefs boundary with every bound imported**, not restated — see its
+`nina-image-generation-tab phase 4` section.
 
 ## Internal Architecture
 

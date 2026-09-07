@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-07 (task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — `ShortcutTable` and `/admin/shortcuts`, and `AdminNav` grew a sixth cell)
+**Last Updated**: 2026-09-08 (tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar; previously task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — `ShortcutTable` and `/admin/shortcuts`, and `AdminNav` grew a sixth cell)
 
 ## Overview
 
@@ -94,8 +94,12 @@ and are unit-tested there.
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
 | `ChatPhotoGrid.tsx` | `'use client'` | `/admin/photos` — every photo Nina has put in the conversation, as one flat collection: one folder line, one grid, no tree. Borrows the breadcrumb look, imports nothing from `explorer/`. |
 | `ChatPhotoDetail.tsx` | `'use client'` | One chat photo in full. `SelectionPane`'s shape, not its content — and it *does* print `description` and `prompt`, which the album deliberately does not. |
-| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed six-cell bottom bar (`h-14`, `border-t`, `z-30`) below `lg`, the sticky left rail at `lg`. Overview · Album · Persona · Photos · Memory · Shortcut on a phone; the long labels at `lg`. No active-link highlighting, on purpose. |
+| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed **seven-cell** bottom bar below `lg` — a `grid-cols-4 grid-rows-2` grid at `h-28`, i.e. two rows of 56 px, so the cell keeps its height and gains width — and the sticky left rail at `lg`. Overview · Album · Persona · Images · Photos · Memory · Shortcut on a phone; the long labels at `lg`. It went multi-row because seven single-row cells are 59.1 px wide, whose content box is exactly the eight characters the label ceiling allows; `app/admin/layout.tsx`'s `pb-[calc(8rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. No active-link highlighting, on purpose. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — the trigger registry as one table. `MemoryTable`'s mechanics with different columns: blur-to-save cells, optimistic delete, no confirmation. |
+| `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` — the whole content of that route: the prompt-length `DialSlider`, six focus checkboxes, four free-text fields, the mounted photo-reference picker and test panel, and a **pure** prompt preview built by the real `buildNinaImagePrompt`. One `useTransition`, **one save for all eleven controls** (plan invariant 7), one reset, dirty state. |
+| `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: Nina's album and her chat photographs as one caption-less, gapless, square-tile collection in the iOS Photos idiom — no filename, no date, no set label on any tile. Single selection, `aria-pressed`, reveal-by-48, `loading="lazy"`. It cannot announce which set a tile came from, because `PhotoReferenceItem` carries no provenance field to announce. |
+| `photoReferenceModel.ts` | **no directive** | The picker's view model: four constants, six pure rules, and `PhotoReferenceItem` pinned at exactly three fields — which is what makes "no captions, no dates" structural rather than a promise. |
+| `ImageGenTestPanel.tsx` | `'use client'` | The test-prompt button and its verdict. Dispatches one generation off the **saved** prefs, returns without awaiting it, then polls: `queued` → `running` → `ok`/`failed`. `policy` is the only path that renders as *"the provider refused this prompt"*; `timeout` / `transport` / `stale` render as inconclusive. Shows the remaining daily quota before the click, and says *"one generation off today's cap, plus its caption"* because the caption is a second model call. |
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose rows are being edited. Plain links, selection in the URL. `basePath` (optional, defaults to `/admin/memory`) says which per-user route the pills navigate within. |
