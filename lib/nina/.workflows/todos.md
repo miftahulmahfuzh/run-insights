@@ -12,24 +12,13 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 21
+- Completed: 22
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-NIN-A022** Phase 4: Resend a message that was never answered
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns `resendNinaMessage` in `lib/nina/actions.ts` (sweep -> `openNinaChatTurn` -> `startNinaBackgroundTurn`, rebuilding `NinaBackgroundTurnInput` from the persisted row); the Resend item in `components/nina/MessageActionsSheet.tsx`; its handler in `components/nina/ChatScreen.tsx` (`awaiting`, `cursorRef`) — sole owner of both components; and `canResendMessage` in `lib/nina/edit.ts`, appended at the foot of the file after phase 3's `── the tap ──` block (D9). `startNinaBackgroundTurn` stays module-private and unmodified (D10) — nothing is exported to make this phase work. Does not touch `insertNinaMessages` (invariant 7), `pollNinaReply`, the turnflight cadence, `messageActions.ts`, or phase 1's columns. Exit: Resend appears only on his confirmed bubbles, never on hers; pressing it puts the screen into the same awaiting state a send does and her answer arrives through the existing poll; no second copy of his message appears; a resend while a turn is already running is refused with a reason rather than opening a second claim.
-  - **Status**: in_progress
-  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 4 of 4)
-  - **Satisfies**: R5 — "Resend, on his bubbles only, for a message left unanswered"
-  - **Depends on**: `P1-NIN-A021`
-  - **Plan**: `.workflows/plan/P1-NIN-A022.md`
-  - **Card**: `miftahulmahfuzh/run-insights#132`
 
 - [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
   - **Difficulty**: NORMAL
@@ -90,6 +79,29 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A022** Phase 4: Resend a message that was never answered
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `resendNinaMessage` in `lib/nina/actions.ts` (sweep -> `openNinaChatTurn` -> `startNinaBackgroundTurn`, rebuilding `NinaBackgroundTurnInput` from the persisted row); the Resend item in `components/nina/MessageActionsSheet.tsx`; its handler in `components/nina/ChatScreen.tsx` (`awaiting`, `cursorRef`) — sole owner of both components; and `canResendMessage` in `lib/nina/edit.ts`, appended at the foot of the file after phase 3's `── the tap ──` block (D9). `startNinaBackgroundTurn` stays module-private and unmodified (D10) — nothing is exported to make this phase work. Does not touch `insertNinaMessages` (invariant 7), `pollNinaReply`, the turnflight cadence, `messageActions.ts`, or phase 1's columns. Exit: Resend appears only on his confirmed bubbles, never on hers; pressing it puts the screen into the same awaiting state a send does and her answer arrives through the existing poll; no second copy of his message appears; a resend while a turn is already running is refused with a reason rather than opening a second claim.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R5 — "Resend, on his bubbles only, for a message left unanswered"
+  - **Depends on**: `P1-NIN-A021`
+  - **Plan**: `.workflows/plan/P1-NIN-A022.md`
+  - **Card**: `miftahulmahfuzh/run-insights#132`
+  - **Method**: /implement (swarm wave 1, the set's only gated phase — 4 -> 3)
+  - **Completed**: 2026-09-07 18:05
+  - **Commit**: `a6b9188` (pushed to `feature/nina-photo-refs-and-bubble-actions`)
+  - **Files**: lib/nina/actions.ts, lib/nina/edit.ts, lib/nina/edit.test.ts, components/nina/MessageActionsSheet.tsx, components/nina/ChatScreen.tsx, tests/nina.resend.test.ts, lib/nina/.workflows/plan/P1-NIN-A022.md, lib/nina/.workflows/todos.md
+  - **Drift**: `lib/nina/actions.ts` had grown from the plan's quoted 1341 lines to 1377, because phase 1 landed concurrently (`7a7d7e2`). Small drift, anticipated by the plan's reconciliation item 4: phase 1's `./attach` import at `:9` and its hunks at `:183-233` / `:562-576` are all far from this phase's insertion point. Anchored on quoted text rather than line numbers; the insertion landed at `:1061` (before `export interface NinaReplyPoll`) instead of the plan's `:1022`, which is the same seam.
+  - **Drift**: `components/nina/ChatScreen.tsx` carried an uncommitted whitespace-only reflow from phase 3's repo-wide `npm run format` (prettier collapsing a three-clause `if` at `:425`). Absorbed into this commit rather than reverse-applied.
+  - **Decided**: Phase 3's uncommitted whitespace reflow in `ChatScreen.tsx:425` -> absorbed into this phase's commit rather than reverse-applied (tie-break: reversible option + narrower blast radius; the file is this phase's outright per reconciliation item 9, and un-formatting it would leave the tree prettier-dirty for the merge).
+  - **Decided**: git staging -> built the commit inline with named paths (`git add <paths>` then `git commit -F msg -- <the same paths>`) instead of delegating `git add` to the pusher (rung 6, surrounding convention + tie-break narrower blast radius: peer p2 had `lib/admin/.workflows/package_readme.md` and `lib/admin/.workflows/todos.md` ALREADY STAGED in this shared worktree's index, and a bare commit would have published them under this sha; the pathspec kept the commit to exactly 8 files. This set's phase 2 recorded its commit as named-path-built for the same reason).
+  - **Decided**: TaskID mint -> `P1-NIN-A022`, verified free against the NIN counter (phase 3 advanced it to A021); minted rather than trusting the coordinator's reported string.
+  - **Decided**: Step 3 scope -> created ONLY phase 4's task inline, not all four phases', matching what p1/p2/p3 each did in their own packages (three sessions writing four entries into one todos.md collides by construction).
+  - **Verified**: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm run typecheck` clean; `npx vitest run` 153 files / 3078 tests passed (21 new: 5 in `lib/nina/edit.test.ts`, 16 in `tests/nina.resend.test.ts`); `npx vitest run tests/nina.resend.test.ts lib/nina/edit.test.ts` 85 passed; `npm run ci:llm-payload-guard` clean at 9 guarded symbols with NO new entry (invariant 5); `npm run db:check` clean and `drizzle/` untouched by this phase (invariant 8); `npx prettier --check` clean on all six source paths.
+  - **Shipped**: `resendNinaMessage` re-runs Nina's turn for a runner row already on the server — sweep, `openNinaChatTurn` against the same `runner_message_id` at depth 0, then `startNinaBackgroundTurn` with a `NinaBackgroundTurnInput` rebuilt field by field from the persisted row (his text, his photos' descriptions with the `NINA_DESCRIPTION_UNAVAILABLE` substitution, his quote, his attached run). It writes NO `nina_messages` row (invariant 7). Five refusals: `not-found`, `not-mine`, `empty`, `turn-live`, `failed` — `turn-live` is a refusal here, unlike the send path where a null `turnId` is the ordinary burst case. The cursor returned is the NEWEST persisted `seq`, not the resent row's own, and `ChatScreen` applies it as a `Math.max`. `canResendMessage` in `lib/nina/edit.ts` (appended at the foot, below phase 3's `── the tap ──` section, per D9) gates the sheet item to his confirmed bubbles. `MessageActionsSheet` gains a required `onResend` prop resolving `Promise<string | null>`; refusals render in the sheet, not as a `Notice` (D-f). Nothing was exported from `actions.ts` to make this work — `startNinaBackgroundTurn` stays module-private (D10).
 
 - [x] **P1-NIN-A021** Phase 3: Tap a bubble to edit or delete it
   - **Difficulty**: NORMAL

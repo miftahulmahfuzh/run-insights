@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; previously `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; previously `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`, `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -459,7 +459,7 @@ a promise he did not keep. A promise with no `reward` field is today's avatar pr
 ### Chat turn pipeline
 | File | Purpose |
 |---|---|
-| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`. The one entry point a user message goes through. |
+| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. |
 | `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. |
 | `tools.ts` *(T)* | Tool *dispatch*. Gateway-injected, so it tests with no DB. |
 | `schema.ts` *(T)* | Zod output contract for `SEND_TOOL` and the tool arg schemas. |
@@ -538,8 +538,9 @@ stores; zero imports by rule, because three hosts outside the package reach for 
 
 ### Chat UI logic (pure, node-testable)
 `chatview.ts` *(T)*, `reply.ts` *(T)*, `reveal.ts` *(T)*, `scroll.ts` *(T)*, `live.ts` *(T)*,
-`edit.ts` *(T)* (the edit/delete rules for one message, **and** all three bubble gestures —
-see *"Tapping a bubble opens the actions sheet"* below).
+`edit.ts` *(T)* (the edit/delete rules for one message, all three bubble gestures —
+see *"Tapping a bubble opens the actions sheet"* below — **and** `canResendMessage`, R5's
+his-bubbles-only gate for the sheet's third item).
 
 ### Persistence
 `queries.ts` — every Drizzle query for the `nina_*` tables, including `readNinaTuning` /
@@ -953,7 +954,8 @@ his own phone; and a push arrives as `router.refresh()`, landing all four bubble
 `lib/nina/chatturn.ts` owns the claim's lifecycle — open, read, record, close, sweep.
 `sweepStaleNinaChatTurns` closes a turn whose process died as `failed`/`stale`; it **never retries and
 never writes an apology bubble**, because app-authored prose in Nina's mouth is forbidden (invariant
-7). A turn whose session was deleted mid-flight abandons and closes as `'session-gone'` rather than
+7). The retry is the runner's to ask for, and since `P1-NIN-A022` he has a way to ask that does not
+retype his sentence — see *"Resending a message she never answered"* below. A turn whose session was deleted mid-flight abandons and closes as `'session-gone'` rather than
 re-creating the orphaned memory rows the session purge just removed — that guard is the other half of
 R8, and it lives here rather than in the purge because backgrounding the distillation is what
 stretched the orphan window from milliseconds to as much as 240 s.
@@ -1324,8 +1326,9 @@ platforms' own answer rather than a guess — Android's `ViewConfiguration` touc
 UIKit allows roughly 10pt — and `dx` is read as a **magnitude**, since a tap has no direction.
 `edit.test.ts` pins the inequality *and* asserts both directions of the disjointness (every drag the
 actions swipe accepts, the tap refuses, and the converse), which is how invariant 6 is enforced
-mechanically rather than by promise. That file now carries **64 cases, 20 of them this phase's**,
-including two that assert the two selectors against what `MessageBubble` actually renders.
+mechanically rather than by promise. That file carried **64 cases, 20 of them this phase's**,
+including two that assert the two selectors against what `MessageBubble` actually renders; R5 took it
+to **69** with `canResendMessage`'s five.
 
 ### `MessageBubble.tsx` answers its own header rather than overruling it
 
@@ -1356,6 +1359,135 @@ is restricted to the prose.
 `components/nina/ChatScreen.tsx` needed **zero lines**: the sheet, its state and the
 `edit-unavailable` notice were all already there.
 
+## Resending a message she never answered (R5, `P1-NIN-A022`)
+
+> *"sometimes, user chat message is left unanswered. add option to resend as well (just for user's
+> bubble)"*
+
+A background turn can die silently — the invocation is killed, the segment's ceiling cuts it off —
+and `sweepStaleNinaChatTurns` closes the claim ninety seconds later. What is left is a **persisted
+runner row with no answer**, and until this phase the only way to ask again was to retype the
+sentence, which writes a second copy of it into the 40-row window `getNinaMessageWindow` hands her
+as context on every later turn.
+
+### `resendNinaMessage` is `sendNinaMessage` from STEP 1c onward, and nothing above it
+
+```ts
+export async function resendNinaMessage(input: { messageId: string }): Promise<ResendNinaMessageResult>
+```
+
+Every step above STEP 1c on the send path exists to turn an untrusted request into a persisted row —
+validation, ticket verification, the reply target, the run, the session, the INSERT — and all of it
+has already happened for this message. So the action re-derives the turn's *input* from the row
+instead of from a request: `requireUserId` and `isValidId` first, one owner-scoped
+`getNinaMessagesByIds` read, `sweepStaleNinaChatTurns`, `openNinaChatTurn` against the **same**
+`runner_message_id` at `depth: 0`, then `startNinaBackgroundTurn` with a `NinaBackgroundTurnInput`
+spelled out field by field from the row — his text, his photos' descriptions, his quote, his
+attached run, `startedAtMs: Date.now()`.
+
+**`startNinaBackgroundTurn` stayed module-private.** Nothing was exported from `actions.ts` to make
+this work; the new action ships in the same module and reaches the helper directly, which is also
+what keeps the budget pairing inherited rather than re-argued — a Server Action's timeout is the
+invoking segment's, and `app/nina/page.tsx` carries `export const maxDuration = 300`.
+
+### Invariant 7: there is no `insertNinaMessages` here
+
+Not a conditional one, not a nearly-empty one. A second copy of his sentence on screen — and in the
+window she reads — is a failed feature and the one failure the runner notices immediately.
+`tests/nina.resend.test.ts` asserts both insert functions are never called — with `actions.ts` itself
+the real module and only the edges mocked, and **before** the deferred turn is drained, because her
+bubbles are the background turn's legitimate write and invariant 7 is about *this action's* body.
+
+**No model call is added** (invariant 5): the descriptions this hands her were paid for once, by
+`describeNinaImage` on the composer's upload path or by `describeNinaImages` in `after()`, so
+`scripts/check-llm-payload-boundary.mjs` gains no entry and stays at nine guarded symbols. **No
+DDL** (invariant 8) — phase 1 owns this set's one migration.
+
+### Five refusals, and why `turn-live` is one of them
+
+| `NinaResendRefusal` | When |
+|---|---|
+| `not-found` | malformed id, not his, or gone — "not his" and "not there" are one answer (invariant 4) |
+| `not-mine` | the row is one of HERS; the sheet never offers it, and a control is not a guard |
+| `empty` | no text, no photo, no run left to answer |
+| `turn-live` | `openNinaChatTurn` returned `null` — a turn already owns this conversation |
+| `failed` | the claim could not be opened; the row is untouched and one more tap is the recovery |
+
+**`turn-live` is where a resend and a send part company.** On the send path a null `turnId` is the
+ordinary burst case, and reporting it would mark a perfectly persisted message as failed. Here there
+is nothing new to persist, so a null is the *only* thing that happened, and saying so is the
+difference between a runner who waits and one who taps again.
+
+`empty` is reachable and not by any client bug: `removeChatPhotoAction` deletes only the image row
+when `isNinaPhotoCarrierMessage` is false, and that predicate is false for every runner row — so an
+operator removing the photo from a caption-less message of his leaves exactly that state. It is also
+the one case `canResendMessage` cannot see, because `EditTarget.hasImage` is computed off the URLs
+the bubble holds. One clause per authority.
+
+### The cursor is the NEWEST persisted `seq`, never the resent row's own
+
+`listNinaMessagesAfter`'s predicate is `seq > afterSeq` and `pollNinaReply` returns her rows from
+that set, so a cursor pointing at the resent message would re-deliver — and `planReveal` would
+re-stagger — every bubble of hers already sitting between it and the client's real position. The
+newest `seq` is `>=` everything the client can hold, and her answer to this resend is inserted
+strictly above it.
+
+It is read **after** the claim is open on purpose: from there to the end of the function nothing
+writes to `nina_messages`, because `startNinaBackgroundTurn` only registers the turn and `after()`
+does not run until the response has gone out. A failed read degrades to the resent row's own `seq`
+rather than refusing, and `ChatScreen` applies the value as `Math.max(cursorRef.current, cursor)` —
+which covers both that degradation and a poll landing between the server's read and the assignment,
+since `awaiting` can be true while a resend is accepted.
+
+### `imageDescriptions` is rebuilt from the row, not left `[]`
+
+`runNinaBackgroundTurn`'s own chain passes `imageDescriptions: []` and argues the photographs reach
+her through `loadNinaContext`. **They do not** — `lib/nina/gateway.ts:164` hardcodes
+`imageDescriptions: []` for every window row — so `[]` here would re-answer a photo message as if
+the photo were not there. This path therefore reads
+`getNinaMessageImagesForMessages` (ordered by `sort_order`, the order the bubble renders them) and
+substitutes `NINA_DESCRIPTION_UNAVAILABLE` for a null description, exactly as the send path does:
+text, never an image part. The underlying gateway gap is real, is recorded here, and is out of scope
+for this set — closing it changes what she knows in *every* conversation.
+
+### `canResendMessage`, and the clause it deliberately does not have
+
+```ts
+export function canResendMessage(target: EditTarget): boolean   // canActOnMessage(target) && target.mine
+```
+
+Appended at the **foot** of `edit.ts`, below phase 3's `── the tap ──` section rather than beside
+`canActOnMessage` where it reads better: R4's phase was rewriting that function's signature line in
+the same round, and two phases editing adjacent lines of one file is a merge conflict for no gain.
+`EditTarget` is still the parameter type, because this predicate reads `.mine`, which
+`ActionableMessage` does not carry.
+
+**There is no "was this answered" clause.** A client-side answered/unanswered test would be a second
+authority on turn state beside `nina_turns`, which `openNinaChatTurn` already owns. Resend is
+offered on every confirmed bubble of his, and the action refuses with `turn-live` when a claim is
+live — refusing at the action is honest; hiding the item on a guess is not.
+
+### The refusal is rendered in the sheet, never as a `Notice`
+
+`MessageActionsSheet` gains a **required** `onResend: (id: string) => Promise<string | null>` —
+`null` means the turn was claimed and is the cue to close, a string is the sentence to render inside
+the sheet. It is required rather than optional because an optional callback defaulting to a no-op is
+how a menu item comes to do nothing at all.
+
+A string rather than the boolean its two siblings use, because a resend has a refusal that is not a
+failure. And it lands in the sheet rather than in `ChatScreen`'s notice strip because that strip
+renders **behind** the sheet: a notice raised from a sheet interaction is a sentence delivered to
+nobody until the sheet closes. The copy still lives in `ChatScreen` (`RESEND_REFUSAL_TEXT`, beside
+`NOTICE_TEXT`), so the sheet imports no Server Action and never learns the refusal vocabulary — the
+same boundary `onSubmitEdit` and `onConfirmDelete` keep. The sheet's existing `pending` flag is
+shared, so an edit, a delete and a resend cannot overlap.
+
+`ChatScreen`'s `handleResendMessage` produces **the same awaiting state a send produces** — clear
+the notice, raise the cursor, `setAwaiting(true)` — and nothing else: no new poll, no timer, no
+second rhythm. `liveSessionId` is deliberately not adopted from the result, because the message being
+resent is already in the conversation this screen is polling; a resend cannot create a session the
+way a first send can.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
@@ -1374,6 +1506,13 @@ all — not the one the browser asked for. Then `ChatScreen.tsx` calls `sendNina
 6. `after(...)` schedules `runTurnDistillation` → `planMemoryWrites` → `applyMemoryPlan`.
 7. The client renders with `reveal.ts` timing, `chatview.ts` grouping, `reply.ts` quotes,
    `live.ts` merges, `scroll.ts` restore.
+
+**He resends a message she never answered (R5).** A tap on his own bubble opens the sheet
+(`decideMessageActionTap`), `canResendMessage` gates the item, and `resendNinaMessage` picks the send
+path up at step 4 with **nothing from steps 1–2 repeated**: owner-scoped row read →
+`getNinaMessageImagesForMessages` → `sweepStaleNinaChatTurns` → `openNinaChatTurn` on the same
+`runner_message_id` → newest-`seq` cursor → `startNinaBackgroundTurn`. No row is written; the client
+raises `cursorRef` by `Math.max` and re-enters the shipped awaiting/poll/reveal loop at step 7.
 
 **A proactive message.** `app/api/cron/nina/route.ts` per user calls `resolveNinaPromises`, then
 `evaluateAndEmitForUser` → `decideProactive` picks one candidate by `PROACTIVE_PRIORITY` →
@@ -1444,7 +1583,12 @@ are worth knowing:
   update, a restored backup, a future migration). The same rule `crop.ts`'s `resolveCrop` states:
   *a renderer that throws on bad data shows the user a broken page*.
 - Server Actions return typed result unions (`SendNinaMessageResult`, `NinaDescribeImageResult`,
-  `NinaAttachResult`) rather than throwing across the boundary.
+  `NinaAttachResult`, `ResendNinaMessageResult`) rather than throwing across the boundary.
+- **`resendNinaMessage` never throws and has one refusal shape.** `resendRefused(reason)` returns
+  `{ ok: false, turnId: null, cursor: null, reason }` for all five members of `NinaResendRefusal`, so
+  a caller has one branch and no `undefined`; the sweep and the cursor read are both `try`/`catch`ed
+  and degrade rather than losing a turn that is already claimed. `ChatScreen` treats a *thrown*
+  action as `'failed'`, which is what it means: the row is untouched.
 - `vision.ts` has two named error classes — `NinaVisionTokenFloorError`, `NinaVisionTransportError`.
 - `imagefail.ts` classifies generation failures into `NINA_IMAGE_FAILURES` and picks what she says
   about each; a failure is a message from Nina, not a stack trace.
@@ -1599,7 +1743,7 @@ are worth knowing:
 
 ## Tests
 
-In-package: 25 colocated `*.test.ts` files over the pure modules. Repo-level: 23 `tests/nina.*` files,
+In-package: 26 colocated `*.test.ts` files over the pure modules. Repo-level: 30 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*
@@ -1702,6 +1846,26 @@ compiles each query and reads the emitted statement:
   written — not `status`, not `error_code`, not the money.
 - **A source-level assertion**, in the shape `tests/nina.prompts.test.ts` established: `imagejobs.ts`
   and `jobActions.ts` are read as text and must issue no `DELETE` against `nina_turns` anywhere.
+
+**R5's resend is tested against the real `actions.ts`, with only the edges mocked.**
+`tests/nina.resend.test.ts` (16 cases in three blocks) mocks `next/server`, `requireUserId`,
+`queries` and `chatturn` — plus `load`, `gateway`, `turn`, `distill` and `autotitle` for the last
+block, which drains the deferred turn — and leaves the module under test real, the arrangement
+`tests/nina.jobActions.test.ts` established one feature over. Mocking the module under test would
+have made every property untestable. The blocks are: **the refusals** (`requireUserId` above the
+shape check, a foreign row answering exactly as one that never existed, one of hers refused although
+no button offers it, an operator-emptied row, an image-only message *accepted* because an image
+alone is a valid send, a live turn reported as its own outcome rather than opening a second claim,
+and a claim that could not be opened writing nothing); **the claim and the cursor** (no message row
+and no image row written, sweep-then-exactly-one-claim at the same `runner_message_id` and
+`depth: 0`, the claim still opening when the sweep throws, the newest `seq` returned rather than the
+resent row's own, the fallback to the row's own `seq` when the cursor read fails, and exactly one
+background turn deferred); and **the rebuilt input** (his text, his photos' descriptions with the
+`NINA_DESCRIPTION_UNAVAILABLE` substitution, his quote and his run; `runnerText` as `null` and not
+`''` for a photo-only message; and the claim closing when she answers with nothing, so the poll
+stops). `lib/nina/edit.test.ts` carries `canResendMessage`'s five, including the pinned *absence* of
+an answered/unanswered clause and a case walking four patches to prove it never diverges from
+`canActOnMessage` on one of his.
 
 `tests/nina.jobActions.test.ts` adds the action's own two describe blocks — a malformed id bounced
 before the database, a foreign job answering exactly as one that never existed, an **already-hidden**
