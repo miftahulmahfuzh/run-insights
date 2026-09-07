@@ -597,6 +597,8 @@ export const shortcutDeleteSchema = z.object({
   id: shortcutIdSchema,
 })
 export type ShortcutDelete = z.infer<typeof shortcutDeleteSchema>
+
+/* ============================================================================
  * nina-image-generation-tab phase 4 — ONE whole-prefs write.
  * Appended; nothing above this line changed.
  * ==========================================================================*/
