@@ -10,50 +10,50 @@
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": "Coordinator, pre-spawn: D12 stands as written in the index -- keep 0010, never rename. Before db:generate, re-read drizzle/meta/_journal.json on the merge base; if 0010 is taken, rm the sql+snapshot, drop the journal entry, regenerate, then DIFF the discarded file against the new one and re-apply the hand-written backfill by hand. Open Questions was empty at launch; nothing else inherited.",
+      "note": "Coordinator round 1: verify derived 'pending' (no commit yet); restored to running -- session alive and busy in ListAgents, and p3 observed both code-complete and mid-commit. Not re-spawned.",
       "package": "lib/db`, `drizzle`, `lib/nina",
       "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md",
-      "reported_at": "2026-09-07T10:43:09+00:00",
+      "reported_at": "2026-09-07T10:58:48+00:00",
       "satisfies": [
         "R1",
         "R3"
       ],
-      "status": "pending",
+      "status": "running",
       "task_id": null,
       "title": "A re-attached photo is a reference, not a copy"
     },
     {
       "card": "miftahulmahfuzh/run-insights#130",
-      "commit": null,
+      "commit": "f8f28c3cc9a545d8573197737ed08a0ce5ba918b",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "R2 shipped: nina_message_images.description hand-writable from /admin/photos. Empty save CLEARS to NULL and says so (D1). No DDL, no model call, no after(). Two decisions: created only phase 2's task, not all four, because peers run concurrently on the same todos.md (rung 6); and staged only phase 2's single lib/nina/queries.ts hunk via git apply --cached, because phase 1 has ten uncommitted hunks in that file (rung 4, one commit per phase). Commit built with a temp index + guarded update-ref -- a bare git commit publishes the whole index and would have REVERTED phase 3's 8be755f, and git commit -- <pathspec> takes worktree content, which for queries.ts would publish phase 1's WIP. Verified no revert: p3's five files byte-identical to my parent.",
       "package": "lib/admin`, `components/admin`, `lib/nina",
       "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T10:59:40+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-B130",
       "title": "\"What she can see in it\", editable"
     },
     {
       "card": "miftahulmahfuzh/run-insights#131",
-      "commit": null,
+      "commit": "8be755f",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "R4 shipped: decideMessageActionTap in lib/nina/edit.ts + pointer/touch opener in MessageBubble.tsx; ChatScreen.tsx zero lines (D9 honoured), both swipes untouched (invariant 6). canActOnMessage widened EditTarget->ActionableMessage, pure widening, caller at ChatScreen.tsx:743 unchanged -- phase 4 reads this from the commit. Decisions: (a) /implement Step 3 done inline for phase 3 only, not a subagent minting all 4 phases' TaskIDs, rung 6 + narrower blast radius, since p1/p2 share this worktree; TaskID P1-NIN-A021 from the NIN counter (p1 filed under lib/db, p2 under lib/admin, so no collision). (b) npm run format is repo-wide and reflowed 2 whitespace-only lines in peer files (ChatScreen.tsx:393, actions.ts:1021); left in place not reverse-applied (reversible/narrower blast radius), not staged, both peers warned -- p2 confirmed 2 of its files came back prettier-dirty and repaired them. In a shared worktree use npx prettier --write on owned paths only. (c) Committed with an explicit pathspec after p2 warned that a bare git commit takes the whole index -- it had a partial queries.ts hunk staged that would otherwise have landed in my sha.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T10:57:39+00:00",
       "satisfies": [
         "R4"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A021",
       "title": "Tap a bubble to edit or delete it"
     },
     {
@@ -71,7 +71,7 @@
       "satisfies": [
         "R5"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Resend a message that was never answered"
     }
@@ -79,6 +79,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-refs-and-bubble-actions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-refs-and-bubble-actions",
-  "updated": "2026-09-07T10:43:09+00:00",
+  "updated": "2026-09-07T10:59:40+00:00",
+  "verified_at": "2026-09-07T10:58:35+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions"
 }

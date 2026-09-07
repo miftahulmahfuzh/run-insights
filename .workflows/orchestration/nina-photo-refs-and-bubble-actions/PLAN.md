@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions`
 **Branch:** `feature/nina-photo-refs-and-bubble-actions` (base: `origin/main` @ `e6c68d6`)
 **Phases:** 4
-**Status:** planned  _(reconciled 2026-09-07; 1 round, 11 conflicts, 0 open questions)_
+**Status:** executing — phase 2 of 4 complete  _(reconciled 2026-09-07; 1 round, 11 conflicts, 0 open questions)_
 **Coordinator:** —
 
 ---
@@ -118,8 +118,8 @@ Every phase holds all of these. A phase that cannot is a phase whose plan is wro
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | A re-attached photo is a reference, not a copy | R1, R3 | `lib/db`, `drizzle`, `lib/nina` | 10 | — | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md` | — | `miftahulmahfuzh/run-insights#129` |
-| 2 | "What she can see in it", editable | R2 | `lib/admin`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md` | — | `miftahulmahfuzh/run-insights#130` |
-| 3 | Tap a bubble to edit or delete it | R4 | `lib/nina`, `components/nina` | 3 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md` | — | `miftahulmahfuzh/run-insights#131` |
+| 2 | "What she can see in it", editable | R2 | `lib/admin`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md` | P1-ADM-B130 | `miftahulmahfuzh/run-insights#130` |
+| 3 | Tap a bubble to edit or delete it | R4 | `lib/nina`, `components/nina` | 3 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md` | P1-NIN-A021 | `miftahulmahfuzh/run-insights#131` |
 | 4 | Resend a message that was never answered | R5 | `lib/nina`, `components/nina` | 6 | 3 | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md` | — | `miftahulmahfuzh/run-insights#132` |
 
 **Board.** Parent card `miftahulmahfuzh/run-insights#128` owns the pull request; the four
@@ -127,6 +127,10 @@ cards above are its sub-issues, in phase order, and each completes on its own co
 (`task_gh.py finish <n> --child-of 128 --commit <sha>`). One parent for the whole set rather
 than one per requirement, because phase 1 serves R1 and R3 together and so cannot hang off
 either one alone.
+
+**Landed.** One line per phase, appended by that phase's own session as it completes.
+
+- **Phase 2** — `P1-ADM-B130`, 2026-09-07 17:54. 10 files. Commit built by the coordinator (see `ledger.json` for the sha). `npm run lint` 0 errors, `npm run typecheck` clean, `npx vitest run` 152 files / 3057 tests, `check-llm-payload-boundary` clean. R2 satisfied.
 
 **Concurrency, after reconciliation.** The only edge in the set is **4 → 3**. Phases **1, 2 and 3
 start together**; phase 4 starts when 3 lands. Three file-sharing pairs were checked line by line
