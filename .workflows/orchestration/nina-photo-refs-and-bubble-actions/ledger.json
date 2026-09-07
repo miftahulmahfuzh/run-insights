@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-photo-refs-and-bubble-actions",
   "coordinator_session_id": "dbf97df1-37c4-4230-8c50-436b35d459f6",
   "created": "2026-09-07T10:41:45+00:00",
+  "landed": {
+    "at": "2026-09-07T11:15:50+00:00",
+    "base": "main",
+    "commit": "2c987d459831d63a0e3c2b0d18d6c65b438dcb18",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#129",
@@ -79,7 +85,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-refs-and-bubble-actions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-refs-and-bubble-actions",
-  "updated": "2026-09-07T11:07:02+00:00",
+  "updated": "2026-09-07T11:15:50+00:00",
   "verified_at": "2026-09-07T11:03:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions"
 }

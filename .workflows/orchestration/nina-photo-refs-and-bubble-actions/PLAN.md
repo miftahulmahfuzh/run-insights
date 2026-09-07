@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions`
 **Branch:** `feature/nina-photo-refs-and-bubble-actions` (base: `origin/main` @ `e6c68d6`)
 **Phases:** 4
-**Status:** complete — all 4 of 4 phases landed on `feature/nina-photo-refs-and-bubble-actions`  _(reconciled 2026-09-07; 1 round, 11 conflicts, 0 open questions)_
-**Coordinator:** —
+**Status:** LANDED — all 4 of 4 phases merged into `main` at `2c987d4`, migration `0010` applied and verified against production  _(reconciled 2026-09-07; 1 round, 11 conflicts, 0 open questions)_
+**Coordinator:** `orch-nina-photo-refs-and-bubble-actions`
 
 ---
 
@@ -117,7 +117,7 @@ Every phase holds all of these. A phase that cannot is a phase whose plan is wro
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | A re-attached photo is a reference, not a copy | R1, R3 | `lib/db`, `drizzle`, `lib/nina` | 10 | — | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md` | — | `miftahulmahfuzh/run-insights#129` |
+| 1 | A re-attached photo is a reference, not a copy | R1, R3 | `lib/db`, `drizzle`, `lib/nina` | 10 | — | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md` | P1-DB-A003 | `miftahulmahfuzh/run-insights#129` |
 | 2 | "What she can see in it", editable | R2 | `lib/admin`, `components/admin`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md` | P1-ADM-B130 | `miftahulmahfuzh/run-insights#130` |
 | 3 | Tap a bubble to edit or delete it | R4 | `lib/nina`, `components/nina` | 3 | — | NORMAL | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md` | P1-NIN-A021 | `miftahulmahfuzh/run-insights#131` |
 | 4 | Resend a message that was never answered | R5 | `lib/nina`, `components/nina` | 6 | 3 | HARD | `.workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md` | P1-NIN-A022 | `miftahulmahfuzh/run-insights#132` |
@@ -133,7 +133,37 @@ either one alone.
 - **Phase 2** — `P1-ADM-B130`, 2026-09-07 17:54. 10 files. Commit built by the coordinator (see `ledger.json` for the sha). `npm run lint` 0 errors, `npm run typecheck` clean, `npx vitest run` 152 files / 3057 tests, `check-llm-payload-boundary` clean. R2 satisfied.
 - **Phase 4** — `P1-NIN-A022`, 2026-09-07 18:05. 8 files, commit `a6b9188`, pushed. Commit built inline with named paths (`git commit -F msg -- <paths>`) because peer p2 had `lib/admin/.workflows/*` staged in this shared worktree's index. `npm run lint` 0 errors, `npm run typecheck` clean, `npx vitest run` 153 files / 3078 tests (21 new), `check-llm-payload-boundary` clean at 9 guarded symbols with no new entry, `npm run db:check` clean with `drizzle/` untouched. R5 satisfied.
 
-  Phases **1** and **3** landed as `7a7d7e2` and `8be755f` respectively; their sessions did not append lines here, so their verification is recorded in `lib/db/.workflows/todos.md` (`P1-DB-A003`) and `lib/nina/.workflows/todos.md` (`P1-NIN-A021`). With phase 4 in, every phase of the set is on the branch and it is ready to be reviewed and merged as a whole.
+- **Phase 1** — `P1-DB-A003`, commit `7a7d7e2` (code, 11 files) plus `751f96e` (docs, 2 files). Revert `7a7d7e2` to roll the phase back. R1 and R3 satisfied.
+- **Phase 3** — `P1-NIN-A021`, commit `8be755f`, 6 files. R4 satisfied.
+
+**Merged and migrated by the coordinator.** `feature/nina-photo-refs-and-bubble-actions` -> `main`
+as merge commit `2c987d4` (`--no-ff`, no conflicts), pushed. Gate run against the *merge result* in
+a clean checkout rather than any one phase's tree: `npm run db:check` clean, `npm run typecheck`
+clean, `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched by
+this set), `npx vitest run` **153 files / 3078 tests** all passing, and all six `ci:*` guards pass
+including `ci:llm-payload-guard` at 9 guarded symbols with no new entry (invariant 5).
+
+`drizzle/0010_nina_image_provenance` applied to production from the merge commit and **verified by
+querying for the objects**, not by the migrator's exit code:
+
+| Verified | Result |
+|---|---|
+| `source_avatar_id`, `source_image_id` on `nina_message_images` | both present, `text`, nullable |
+| both foreign keys | -> `nina_avatars` and self, both `ON DELETE SET NULL` |
+| `0010` applied rather than skipped | 11 applied rows, newest stamp `1788778074226` = `0010`'s own `when` |
+| the hand-written backfill wrote | 2 rows marked, both via `source_avatar_id` |
+| what `/admin/photos` now lists | **3** originals, 2 references hidden (was 5) |
+| invariant 2 — nothing deleted | `nina_message_images` still 5 rows, `nina_avatars` still 21 |
+
+**The user's two production duplicates were R3, not R1.** Measured before migrating: 0 chat-to-chat
+`blob_url` duplicates and 2 album faces attached into chat. So the duplication they saw came
+entirely from Nina's profile album leaking into Media — the second bullet of the request — and the
+attach path was never duplicating chat photos against each other. Phase 1's abort gate was assessed
+and judged not tripped on that basis, by the phase and independently by the coordinator.
+
+`drizzle/0010` did **not** collide: `origin/main`'s migrations stop at `0009`, so D12's contested
+number never materialised and no renumber was needed. Pre-migration snapshot of both tables is in
+`logs/pre-0010-snapshot.json`.
 
 **Concurrency, after reconciliation.** The only edge in the set is **4 → 3**. Phases **1, 2 and 3
 start together**; phase 4 starts when 3 lands. Three file-sharing pairs were checked line by line
