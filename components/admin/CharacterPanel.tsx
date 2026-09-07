@@ -31,20 +31,35 @@ import {
 
 /**
  * **Her character** — R1's *"full nina character tuning in /admin/nina page / make several sliding
- * bars"*, R2's relationship, R3's extra dials.
+ * bars"*, R2's relationship, R3's extra dials, now on a route of its own.
  *
- * ── WHY THIS IS COLLAPSED, AND WHY IT IS ON THIS PAGE AT ALL ────────────────────────────────
- * The user named `/admin/nina`, and the previous plan set rebuilt that page into a paginated
- * folder-scoped file manager for a stated reason: *"i will put hundreds of profile pics in there."*
- * The album is the page's working surface and must stay the first thing on it, so this panel is a
- * native `<details>`, shut on arrival. Seventeen sliders open by default would push the album below
- * the fold on every single visit, including the hundreds of visits that are about a photograph.
+ * ── WHY THIS IS NO LONGER A DISCLOSURE ──────────────────────────────────────────────────────
+ * This file used to open with an argument for being shut: *"the album is the page's working
+ * surface and must stay the first thing on it"*, because the panel shared `/admin/nina` with a
+ * file manager built for *"hundreds of profile pics"*, and seventeen sliders open by default would
+ * have pushed the album below the fold on every visit that was about a photograph.
  *
- * A native `<details>` rather than a `useState` toggle: it needs no JavaScript to open, it is
- * keyboard-operable for free, and its open state is DOM state — so it survives the re-render that
- * `revalidatePath` causes after a save, which a piece of React state in this component would also
- * survive but a piece of state in the page above it would not. `open` is deliberately NOT passed
- * as a prop; passing it would make React control the attribute and fight the user's click.
+ * The user repealed the premise — *"right now, 'Her character' is in Nina's album. move it as a
+ * new tab with name: Personality"* — and the panel now owns `/admin/personality`
+ * (`app/admin/personality/page.tsx`), which it is the whole content of. Nothing shares the page,
+ * so nothing has to be pushed below the fold, and the disclosure's only stated justification is
+ * gone with the page it was about.
+ *
+ * `<details open>` would have been the wrong way to keep it, not merely a redundant one: `open`
+ * was deliberately never a prop, because passing it would make React control the attribute and
+ * fight the user's click, and `revalidatePath` re-renders this component after every save. So the
+ * root is a plain `<section>`, and what the `<summary>` carried — the relationship, the loudest
+ * dials, how many parameters are off, and the revision — is carried by the section header, where
+ * it is the same one-line answer to "what is she set to" that the hub card gives.
+ *
+ * **`id="character"` survives on that section root**, and it is not decoration: for two plan sets
+ * the overview card deep-linked to this panel by that `#character` fragment on the album route.
+ * The card now points at `/admin/personality`, and a bookmark someone kept still lands on the
+ * panel rather than on a fragment that resolves to nothing. It costs one attribute.
+ *
+ * The old URL is deliberately not spelled out here: plan invariant 10 greps `app components lib
+ * tests docs` for it and must come back empty, so that even a mention in a comment cannot be
+ * mistaken for a live reference.
  *
  * ── `useTransition`, NOT `<form action={…}>` ────────────────────────────────────────────────
  * `MemorySlots.tsx` states the reason and it is unchanged here: phase 15's album manager set the
@@ -95,8 +110,8 @@ export interface CharacterPanelProps {
    *
    * It is not recomputed as the sliders move, and that is deliberate rather than a limitation: the
    * assembler reaches the whole persona, and shipping that into the browser to preview a string
-   * would put Nina's canon in a client bundle to save one round trip. The disclosure's own label
-   * says which revision it is showing.
+   * would put Nina's canon in a client bundle to save one round trip. The preview's own summary
+   * line — the one `<details>` this panel still has — says which revision it is showing.
    */
   promptPreview: string
 }
@@ -134,7 +149,7 @@ export function CharacterPanel({
   const unsaved = React.useMemo(() => new Set(changedTuningFields(draft, tuning)), [draft, tuning])
   const dirty = unsaved.size > 0
   const loud = loudestDials(draft, defaults)
-  /* How many parameters are excluded from her prompt entirely (R4). It goes on the closed summary
+  /* How many parameters are excluded from her prompt entirely (R4). It goes in the section header
    * because it is the one setting that cannot be inferred from the numbers underneath it. */
   const off = Object.values(draft.enabled).filter((value) => value === false).length
 
@@ -175,16 +190,26 @@ export function CharacterPanel({
   }
 
   return (
-    <details id="character" className="mb-8 rounded-card border border-rule bg-card px-5">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 [&::-webkit-details-marker]:hidden">
-        <span className="text-[15px] font-semibold text-ink">
+    <section id="character" className="mb-8 rounded-card border border-rule bg-card px-5">
+      {/*
+       * The old `<summary>`, minus the affordances a disclosure needed: no `cursor-pointer`, no
+       * `list-none`, no `[&::-webkit-details-marker]:hidden`. The CONTENT is unchanged, because it
+       * is still the one-line answer to "what is she set to" and it is still worth having above
+       * forty controls.
+       *
+       * `<h2>` and not a `<span>`: the page's `<h1>` is "Personality" and the two sections below
+       * are `<h3>`, so this is the level that was missing while the panel lived inside a
+       * `<summary>` that was not a heading at all.
+       */}
+      <div className="flex items-center justify-between gap-4 py-5">
+        <h2 className="text-[15px] font-semibold text-ink">
           Her character
           {dirty && (
             <span className="ml-2 text-[12px] font-semibold text-accent">
               {unsaved.size} unsaved
             </span>
           )}
-        </span>
+        </h2>
         <span className="text-right text-[12px] font-medium text-ink-3">
           {relationshipCopy(draft.relationship).label} &middot;{' '}
           {loud.length === 0
@@ -194,7 +219,7 @@ export function CharacterPanel({
                 .join(', ')}
           {off > 0 && ` · ${off} off`} &middot; revision {revision}
         </span>
-      </summary>
+      </div>
 
       <div className="pb-6">
         <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
@@ -464,6 +489,6 @@ export function CharacterPanel({
           </div>
         )}
       </div>
-    </details>
+    </section>
   )
 }

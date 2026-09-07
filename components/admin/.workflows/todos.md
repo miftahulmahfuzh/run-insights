@@ -2,7 +2,7 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-06
+**Last Updated**: 2026-09-07
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 2
+- Completed: 3
 
 ---
 
@@ -29,6 +29,23 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P2-CA-A002** Phase 1: The Personality tab
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns `app/admin/personality/page.tsx` (new), `app/admin/nina/page.tsx`, `components/admin/CharacterPanel.tsx`, `components/admin/AdminNav.tsx`, `app/admin/page.tsx`, `lib/admin/tuningActions.ts`, `tests/admin.shell.test.ts`, `tests/admin.tuning.test.ts`, `components/admin/.workflows/package_readme.md`, `docs/nina/persona.md`. Exit: `/admin/personality` renders the panel expanded and Save works there; `/admin/nina` is the album alone; `AdminNav` shows five cells (`grid-cols-5`, still `h-14`, Personality/Persona); `/admin` hub card links to `/admin/personality`; no dangling `#character` deep link on the album route; `npm run test && npm run typecheck && npm run lint && npm run build` green with nina.prompts snapshots unmodified.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PERSONALITY_TAB_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Move the "Her character" panel off `/admin/nina` (Nina's album) and onto a new tab named **Personality**
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P2-CA-A002.md`
+  - **Card**: miftahulmahfuzh/run-insights#103
+  - **Completed**: 2026-09-07 07:39
+  - **Method**: /do
+  - **Files**: app/admin/personality/page.tsx, app/admin/nina/page.tsx, components/admin/CharacterPanel.tsx, components/admin/AdminNav.tsx, app/admin/page.tsx, lib/admin/tuningActions.ts, tests/admin.shell.test.ts, tests/admin.tuning.test.ts, components/admin/.workflows/package_readme.md, docs/nina/persona.md
+  - **Drift**: No code drift. Every hunk the phase plan quoted matched the tree byte-for-byte and applied cleanly on the first attempt.
+  - **Decided**: The phase plan's own Step 3a and Step 5b comment prose spelled the old album fragment URL verbatim (the `#character` deep link), which invariant 10 forbids anywhere under `app components lib tests docs` outside `.workflows/plan/` — the plan's code blocks contradicted the plan's own invariant. -> Invariant 10 wins: both comments keep every claim they made but stop spelling that fragment URL, and each now names invariant 10 as the reason. (Rung 1: a stated invariant beats rung 3's code blocks; exit criterion 5's wording, "no dangling #character deep link", confirms the intent is a live link rather than a substring.)
+  - **Decided**: This card's own Context line, written from the exit criteria, also carried the verbatim fragment and tripped the same grep. -> Reworded to `no dangling #character deep link on the album route`. (Rung 1, same invariant; a one-line bookkeeping edit with no behavioural surface.)
 
 - [x] **P2-CA-A000** Phase 5: The panel on `/admin/nina`
   - **Difficulty**: NORMAL

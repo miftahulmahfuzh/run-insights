@@ -18,11 +18,15 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  *
  * Deliberately thin: a fact and a link, per card. Phase 16 added the memory card,
  * admin-memory-and-chat-photos phase 2 the chat-photos one, and nina-character-tuning phase 5 the
- * character one — which names the relationship and the dials
- * furthest from their defaults, so "what is she set to" is answered without a navigation. That is
- * also why this page gets a card rather than `AdminNav` getting a fourth row: the panel is a
- * section of `/admin/nina`, not a route, and two sidebar rows pointing at one URL is worse
- * navigation than one.
+ * character one — which names the relationship and the dials furthest from their defaults, so
+ * "what is she set to" is answered without a navigation.
+ *
+ * That card used to be the argument AGAINST a nav row for the panel: *"the panel is a section of
+ * `/admin/nina`, not a route, and two sidebar rows pointing at one URL is worse navigation than
+ * one."* The user repealed the premise — the panel is a route now, `/admin/personality`, and
+ * `AdminNav` carries it as a fifth cell. The card stays anyway, and for its own reason rather than
+ * that one: every card here answers a question without a navigation, and this one answers "what is
+ * she set to". The link below it is now just a link to a page, not a fragment into a disclosure.
  */
 
 export const dynamic = 'force-dynamic'
@@ -136,12 +140,14 @@ export default async function AdminHomePage() {
                   .join(', ')}.`}{' '}
             Revision {tuning.revision}.
           </p>
-          {/* The fragment targets the panel's own `<details id="character">`. It scrolls there in
-              every browser and opens the disclosure in the ones that implement fragment-targeted
-              details; where it does not, the panel is the first thing on the page and is one
-              click. A deep link is not worth a second copy of the panel on its own route. */}
+          {/* No fragment any more. This used to point at the album route plus a `#character`
+              fragment, aimed at the panel's own `<details id="character">` in the hope that the
+              browser would both scroll there and open the disclosure. The panel has a route now
+              and is the whole of it, so the route IS the deep link. The id survives on the panel's
+              section root so a bookmark kept from the old URL still lands on something real.
+              The old URL is not spelled out: plan invariant 10 greps for it. */}
           <Link
-            href="/admin/nina#character"
+            href="/admin/personality"
             className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
           >
             Tune her character &rarr;
