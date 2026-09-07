@@ -15,7 +15,7 @@ import {
   type RunAttachment,
 } from '@/lib/nina/attach'
 import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
-import { composerBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+import { composerBottomCss, composerPadBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
 import {
   applyMessageDeletion,
   applyMessageEdit,
@@ -153,8 +153,15 @@ const COMPOSER_CLEARANCE_PX = TAB_BAR_OUTER_HEIGHT_PX
  * Fallback for `obstructedBottomPx` if `#nina-composer` cannot be measured — the clearance plus
  * one composer row. Only reachable if the composer has not mounted, which it always has by the
  * time a quote is tappable.
+ *
+ * 60 is `COMPOSER_RESTING_PX` in `lib/nina/chrome.ts`, written again here because this module
+ * cannot import a `lib/nina/chrome` constant without pulling the chrome state machine into the
+ * screen's module graph for one number. It is one of four sites that hand-copy it — the markup in
+ * `Composer.tsx` (`py-2` + `min-h-11`), that constant, this literal, and `BOTTOM_GAP.chat` in
+ * `components/ui/AppShell.tsx` — and a change to any of them changes all four. It was 68, from
+ * `py-3`, until the repo owner asked for the query field to take less space.
  */
-const COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 68
+const COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60
 
 export function ChatScreen({
   initial,
@@ -393,11 +400,7 @@ export function ChatScreen({
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (
-      !params.has(ATTACH_PARAM) &&
-      !params.has(PHOTO_PARAM) &&
-      !params.has(JOB_JUMP_PARAM)
-    ) {
+    if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM) && !params.has(JOB_JUMP_PARAM)) {
       return
     }
     params.delete(ATTACH_PARAM)
@@ -1167,6 +1170,7 @@ export function ChatScreen({
         onSend={handleSend}
         busy={busy}
         bottomCss={composerBottomCss(overlap, COMPOSER_CLEARANCE_PX)}
+        padBottomCss={composerPadBottomCss(overlap)}
         userId={userId}
         reply={draftQuote}
         onCancelReply={() => setDraftQuote(null)}

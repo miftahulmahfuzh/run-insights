@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { NINA_BAR_VISIBLE_VAR } from './chatview'
 import {
   autoHideDelayMs,
   barToggleGlyph,
@@ -92,14 +93,19 @@ describe('barToggleGlyph', () => {
 })
 
 describe('controlBottomCss', () => {
-  it('clears a resting composer and the gap when the bar is hidden', () => {
+  /** The gated form: the inset cancels itself in whichever state does not need it. */
+  const GATED = `var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0)`
+
+  it('clears a measured resting composer and the gap when the bar is hidden', () => {
+    // 60 + 8. The inset term is present but multiplied by 0 in this state, because the composer's
+    // own `padding-bottom` is carrying it and the measurement therefore already contains it.
     expect(
       controlBottomCss({
         barState: 'hidden',
         barClearancePx: BAR_CLEARANCE,
         composerHeightPx: COMPOSER_RESTING_PX,
       }),
-    ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+    ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
   })
 
   it('ignores the clearance entirely while the bar is hidden', () => {
@@ -119,15 +125,30 @@ describe('controlBottomCss', () => {
 
   it("rises by the bar's outer height when the bar is shown", () => {
     // Outer, not the grid: the `border-t` is the bar's top edge, and the lane sits above the
-    // composer, which sits on that edge. R2's missing pixel was missing here too.
+    // composer, which sits on that edge. 59 + 60 + 8 = 127, and the inset is added on top by the
+    // gate — because in THIS state the composer's padding is 0 and the inset rides in its offset.
     expect(
       controlBottomCss({
         barState: 'shown',
         barClearancePx: BAR_CLEARANCE,
         composerHeightPx: COMPOSER_RESTING_PX,
       }),
-    ).toBe(
-      `calc(${BAR_CLEARANCE + COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`,
+    ).toBe(`calc(${BAR_CLEARANCE + COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
+  })
+
+  it('gates the inset on the same variable the composer does', () => {
+    // R1's invariant, from this side: the composer's `padding-bottom` adds the inset when the flag
+    // is 0 and this adds it when the flag is 1. Two complementary gates on ONE variable is what
+    // makes the inset appear exactly once. A literal `var(--safe-bottom)` added beside the length
+    // is what counting it twice looks like.
+    const measured = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: BAR_CLEARANCE,
+      composerHeightPx: COMPOSER_RESTING_PX,
+    })
+    expect(measured).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(measured).not.toBe(
+      `calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`,
     )
   })
 
@@ -141,10 +162,13 @@ describe('controlBottomCss', () => {
         barClearancePx: BAR_CLEARANCE,
         composerHeightPx: 190,
       }),
-    ).toBe(`calc(${190 + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+    ).toBe(`calc(${190 + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
   })
 
-  it('falls back to a resting composer before the first measurement', () => {
+  it('falls back to a resting composer before the first measurement, WITH the inset ungated', () => {
+    // The one branch that must not gate. `COMPOSER_RESTING_PX` is the content box and carries no
+    // inset, so the fallback supplies it — otherwise the server's HTML and the first paint put the
+    // two controls behind the composer's glass by exactly one home-indicator inset.
     for (const height of [0, -20, NaN, Number.POSITIVE_INFINITY]) {
       expect(
         controlBottomCss({
@@ -156,6 +180,24 @@ describe('controlBottomCss', () => {
     }
   })
 
+  it('emits a different shape measured than unmeasured, and that is the point', () => {
+    // Guards the two branches against being "simplified" back into one. They are the same length
+    // and a different inset term, which is the whole of the fallback argument.
+    const unmeasured = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: 0,
+      composerHeightPx: 0,
+    })
+    const measured = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: 0,
+      composerHeightPx: COMPOSER_RESTING_PX,
+    })
+    expect(unmeasured).not.toBe(measured)
+    expect(unmeasured).toContain(`${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px`)
+    expect(measured).toContain(`${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px`)
+  })
+
   it('treats an unmeasurable clearance as no clearance', () => {
     for (const clearance of [NaN, -1, Number.POSITIVE_INFINITY]) {
       expect(
@@ -164,24 +206,24 @@ describe('controlBottomCss', () => {
           barClearancePx: clearance,
           composerHeightPx: COMPOSER_RESTING_PX,
         }),
-      ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+      ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
     }
   })
 
   it('rounds a fractional measurement rather than emitting a fractional length', () => {
-    // `getBoundingClientRect().height` is a double. `calc(68.328125px + …)` is valid CSS and an
+    // `getBoundingClientRect().height` is a double. `calc(60.328125px + …)` is valid CSS and an
     // unreadable diff.
     expect(
-      controlBottomCss({ barState: 'hidden', barClearancePx: 0, composerHeightPx: 68.328125 }),
-    ).toBe(`calc(${68 + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+      controlBottomCss({ barState: 'hidden', barClearancePx: 0, composerHeightPx: 60.328125 }),
+    ).toBe(`calc(${60 + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
   })
 
   it('is total over the state union', () => {
     const states: NinaBarState[] = ['hidden', 'shown']
     for (const barState of states) {
       expect(
-        controlBottomCss({ barState, barClearancePx: BAR_CLEARANCE, composerHeightPx: 68 }),
-      ).toMatch(/^calc\(\d+px \+ var\(--safe-bottom\)\)$/)
+        controlBottomCss({ barState, barClearancePx: BAR_CLEARANCE, composerHeightPx: 60 }),
+      ).toMatch(/^calc\(\d+px \+ var\(--safe-bottom\) \* var\(--nina-bar-visible, 0\)\)$/)
     }
   })
 })

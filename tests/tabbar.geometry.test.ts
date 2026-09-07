@@ -186,12 +186,17 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
   })
 
   it('emits a composer bottom that lands exactly on the bar top border', () => {
-    // R2's exit criterion, joined end to end: the constant the components compose, through the
-    // pure function that turns it into CSS. 59px measured up from the viewport bottom IS the bar's
-    // top border, so the composer's bottom edge is ON it — no gap, and no overlap that would paint
-    // `bg-paper/90` over the bar's own rule (decision D7).
+    // The constant the components compose, joined end to end through the pure function that turns
+    // it into CSS. 59px measured up from the viewport bottom IS the bar's top border, so with the
+    // bar showing the composer's bottom edge is ON it — no gap, and no overlap that would paint
+    // the composer's glass over the bar's own rule.
+    //
+    // The inset is INSIDE the multiplication, which is R1: with the flag at 0 the whole offset
+    // collapses to nothing and the composer paints to the bottom of the screen, carrying the inset
+    // in its own `padding-bottom` instead (`composerPadBottomCss`). The old form added the inset
+    // outside the gate and left that strip unpainted at rest.
     expect(composerBottomCss(0, TAB_BAR_OUTER_HEIGHT_PX)).toBe(
-      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
   })
 })

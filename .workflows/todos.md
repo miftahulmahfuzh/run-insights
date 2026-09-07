@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 19
+- Completed: 20
 
 ---
 
@@ -63,6 +63,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A023** Phase 1: The composer: paint to the edge, take less room, frost the glass
+  - **Difficulty**: HARD
+  - **Type**: Update
+  - **Context**: Owns `lib/nina/chatview.ts` (`composerBottomCss` changes shape; a companion `composerPadBottomCss` is added beside it), `lib/nina/chatview.test.ts` (the `composerBottomCss` block — lines 218-256, the file's tail — asserts exact strings and must be rewritten, plus new cases for the companion), `components/nina/Composer.tsx` (**only lines 352-357** change: the fixed element's `bottom` + `padding-bottom` pair for R1, the inner `py-3` for R2, and the fill/blur/border for R3 — the reply strip, the tiles, the picker, the textarea and the send button are untouched), `lib/nina/chrome.ts` (`COMPOSER_RESTING_PX` 68 → 60, and `controlBottomCss`'s inset term gated on the bar variable, per Decisions D2), `lib/nina/chrome.test.ts` (`controlBottomCss`'s assertions follow), `components/nina/ChatScreen.tsx` (`COMPOSER_FALLBACK_PX`'s `68` literal → `60`, and it passes the new pad value to `Composer`), `components/ui/AppShell.tsx` (`BOTTOM_GAP.chat` `7.5rem` → `7rem`, with its arithmetic comment updated to the new sum), and `tests/tabbar.geometry.test.ts` (the file's last `it`, 188-196, asserts `composerBottomCss`'s exact return string, which D2 changes, so it goes red the moment Step 1 lands — one `expect` and one comment line; **added by the reconciler**, it was in neither phase's `Owns` list in the draft and phase 2 does not touch it). Does not touch `components/ui/TabBar.tsx`, `BOTTOM_GAP.tabs`, `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX`, `NINA_CHROME_CONTROL_CLASS` itself, anything under `app/admin`, or `lib/pwa.ts`. Exit criteria: with `--nina-bar-visible: 0` (the resting state) the composer's painted box reaches the bottom of the viewport — no unpainted `--safe-bottom` strip — and its content still sits above the home indicator; with `--nina-bar-visible: 1` the composer is still flush on the tab bar's top edge, no seam and no overlap; with the keyboard up, the composer sits on the keyboard's top edge with **no** extra inset padding; the floating `<` / `up` lane clears the composer's Send button in all three states; the composer's resting height is 60 px and all four sites in invariant 2 say so; the bar's fill, blur and saturation match `NINA_CHROME_CONTROL_CLASS`, and its top hairline reads at the same weight as the controls' ring; `npm run lint`, `npx tsc --noEmit`, `npx vitest run`, `npm run build` all pass.
+  - **Status**: completed
+  - **Plan Set**: `COMPOSER_FROST_AND_ADMIN_NOTCH_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1, R2, R3 — R1: Remove the gap between the chat query field and the bottom of the screen; R2: Make the query-field section take less vertical space; R3: Frosted-glass background, exactly like the small `<` and `up` buttons
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A023.md`
+  - **Card**: `miftahulmahfuzh/run-insights#133`
+  - **Completed**: 2026-09-07 22:13
+  - **Method**: /do (swarm phase 1/2)
+  - **Files**: lib/nina/chatview.ts, lib/nina/chatview.test.ts, lib/nina/chrome.ts, lib/nina/chrome.test.ts, components/nina/Composer.tsx, components/nina/ChatScreen.tsx, components/ui/AppShell.tsx, tests/tabbar.geometry.test.ts
+  - **Drift**: No code drift. Every line range and file length the plan quoted matched the tree exactly.
+  - **Drift**: `components/nina/ChatScreen.tsx` carries one hunk the plan never named: an `if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM) && !params.has(JOB_JUMP_PARAM))` at ~line 399 collapsed from 5 lines onto one 94-char line. It is a pre-existing prettier violation on `0d50b26`, fixed as a side effect of running `prettier --write` on the file to format this phase's own edits. Semantically identical — no behaviour change, no gate affected (exit criterion 7 lists lint/tsc/vitest/build, not `format:check`). Kept rather than hand-reverted: rung 6, the repo's own formatter is the convention, and the file is in this phase's Owns list. `lib/nina/chrome.test.ts`, the other file formatted, has no hunk outside the block the plan replaced.
+  - **Decided**: Step 3 in a live swarm: created phase 1's task only, not the whole set — the concurrent peer `impl-composer-frost-and-admin-notch-p2` mints its own. Tie-break: narrower blast radius; the two phases' packages are disjoint.
+  - **Decided**: Formatting: ran `npx prettier --write` on the two flagged files instead of the repo-wide `npm run format` — shared worktree with a live peer mid-edit. Tie-break: narrower blast radius.
+  - **Decided**: Unrelated pre-existing prettier collapse in `ChatScreen.tsx` (~399) — keep, not hand-revert (rung 6: the repo's formatter is the convention; the file is in this phase's Owns).
+  - **Verification**: `npx tsc --noEmit` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npx vitest run` 150 files / 3017 tests all passed; `npm run build` succeeded. By hand: all four sites of invariant 2 agree at 60px (`Composer.tsx` `px-5 py-2`, `COMPOSER_RESTING_PX = 60`, `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60`, `BOTTOM_GAP.chat` `pb-[calc(7rem+var(--safe-bottom))]`); all 14 emitted geometry strings executed and matched the plan's reference tables exactly.
 
 - [x] **P1-RI-A019** Phase 1: Thread the current avatar into the chat's typing row
   - **Difficulty**: EASY

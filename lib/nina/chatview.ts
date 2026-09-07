@@ -201,33 +201,50 @@ export function keyboardOverlapPx(viewport: {
 export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
 
 /**
- * The composer's `bottom`, as a CSS length.
+ * The composer's `bottom`, as a CSS length. Its partner is `composerPadBottomCss` below, and
+ * neither is correct without the other.
  *
  * With no keyboard it clears the fixed chrome below it — but only when there IS chrome below it.
- * On `/nina` the tab bar is hidden by default (R1), so `chromeClearancePx` is the clearance to
- * apply **while the bar is showing**, and it is multiplied by `NINA_BAR_VISIBLE_VAR`, which is `1`
- * only then. The terms are the bar's own grid, the 1 px `border-t` the grid sits under — the two
- * together are the bar's outer height, and the border is its real top edge — and the
+ * On `/nina` the tab bar is hidden by default, so `chromeClearancePx` is the clearance to apply
+ * **while the bar is showing**, and the whole term is multiplied by `NINA_BAR_VISIBLE_VAR`, which
+ * is `1` only then. The terms are the bar's own grid, the 1 px `border-t` the grid sits under —
+ * the two together are the bar's outer height, and the border is its real top edge — and the
  * home-indicator inset the bar pads itself by.
  *
- * The inset is honoured **here and not as the composer's own padding** — the composer sits above
- * chrome that already pads by `--safe-bottom`, so padding it a second time would open a gap. It is
- * outside the multiplication for the same reason it is outside the keyboard branch: the inset is
- * the phone's, not the bar's, and it is there whether or not the bar is.
+ * ── THE INSET IS INSIDE THE MULTIPLICATION NOW, AND THAT IS R1 ────────────────────────────────
+ * This used to read `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`: the clearance
+ * was gated on the flag and the inset was not, "because the inset is the phone's, not the bar's,
+ * and it is there whether or not the bar is". That is true of the phone and false of this
+ * element's offset. With the flag at 0 — the resting state of this very screen — the bar's bottom
+ * edge sat one inset ABOVE the bottom of the viewport and the conversation showed through the
+ * strip underneath it. That strip is the gap the repo owner reported: *"ada gap diantara chat
+ * query field dengan bagian bawah"* — the bottom of the screen, not the tab-bar seam.
  *
- * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind it.
- * That branch is unchanged by R1: a bar behind the keyboard clears nothing either way.
+ * So the inset moves inside the gate and out into the element's own `padding-bottom`, where
+ * `composerPadBottomCss` picks it up with the complementary gate. The two gates sum to exactly
+ * one inset in every state, which is the rule the old docstring was defending and the state it
+ * did not cover:
  *
- * The border term is R2, and it is worth saying why it was missing: a clearance of the grid alone
- * (58) puts this bar's bottom edge one pixel BELOW the bar's top border, so the conversation shows
- * through the seam. The caller passes the outer height (59) and the two are flush.
+ * | bar     | flag | `bottom`             | `padding-bottom` | inset counted |
+ * |---------|------|----------------------|------------------|---------------|
+ * | hidden  | 0    | `0`                  | `--safe-bottom`  | once, as padding |
+ * | shown   | 1    | `59px + safe-bottom` | `0`              | once, in the offset |
+ * | keyboard| —    | `<overlap>px`        | `0`              | not at all — it is behind the keyboard |
+ *
+ * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind
+ * it. A bar behind the keyboard clears nothing either way.
+ *
+ * The border term is worth saying why it was once missing: a clearance of the grid alone (58) puts
+ * this bar's bottom edge one pixel BELOW the bar's top border, so the conversation shows through
+ * the seam. The caller passes the outer height (59) and the two are flush.
  *
  * ── WHY A MULTIPLIER AND NOT A LENGTH ────────────────────────────────────────────────────────
  * `calc(<length> * <number>)` keeps the number 59 in this function, where the caller already
  * passes it, instead of moving it into whichever component writes the variable. The flag then says
  * one thing only — is the bar on screen — and cannot disagree with `TAB_BAR_OUTER_HEIGHT_PX` about
  * how tall the bar is. A `var(--nina-bar-clearance, 0px)` form would make this argument dead and
- * put the geometry in two places.
+ * put the geometry in two places. `calc((<length> + <length>) * <number>)` is the same rule with
+ * two lengths in the sum, and is valid CSS: a sum of lengths times a plain number is a length.
  *
  * Returns a string because that is what the style attribute takes, and because `var(--safe-bottom)`
  * cannot be resolved in JavaScript — `env(safe-area-inset-bottom)` is only readable to CSS.
@@ -235,5 +252,34 @@ export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
 export function composerBottomCss(overlapPx: number, chromeClearancePx: number): string {
   if (Number.isFinite(overlapPx) && overlapPx > 0) return `${Math.round(overlapPx)}px`
   const clearance = Number.isFinite(chromeClearancePx) ? Math.round(chromeClearancePx) : 0
-  return `calc(${clearance}px * var(${NINA_BAR_VISIBLE_VAR}, 0) + var(--safe-bottom))`
+  return `calc((${clearance}px + var(--safe-bottom)) * var(${NINA_BAR_VISIBLE_VAR}, 0))`
+}
+
+/**
+ * The composer's own `padding-bottom`, as a CSS length. The other half of `composerBottomCss`.
+ *
+ * It is the home-indicator inset in exactly the one state where this bar is the bottom-most
+ * painted thing on the screen — the tab bar hidden, no keyboard — and nothing in the other two.
+ * `1 - var(--nina-bar-visible, 0)` is the complement of the gate the offset uses, so the inset is
+ * added by precisely one of the two terms and the composer's painted box always reaches the bottom
+ * of whatever is beneath it without ever double-counting the phone's inset.
+ *
+ * ── WHY IT TAKES THE OVERLAP AND NOT JUST THE FLAG ───────────────────────────────────────────
+ * Because engaging the composer HIDES the bar (`nextBarState`'s `'composer-engaged'`), so the flag
+ * is 0 with the keyboard up and a flag-only rule would pad by the inset there. The keyboard is
+ * already the floor; the home indicator is behind it. Padding by the inset would lift the textarea
+ * ~34 px off the keyboard's top edge, which is the same class of mistake as the unpainted strip,
+ * one state over. The overlap is the only signal that tells the two apart, and `composerBottomCss`
+ * already takes it — one argument, same first parameter, same branch.
+ *
+ * `'0px'` rather than `'0'`: this is a length going into `style.paddingBottom`, and a unitless
+ * zero read back out of `getComputedStyle` is a different string than the one written in. The
+ * one place that reads this element's box is `ChatChrome`'s `ResizeObserver`, which measures
+ * pixels rather than parsing the declaration, but a length-typed function should return a length.
+ *
+ * A string, for the same two reasons `composerBottomCss` returns one.
+ */
+export function composerPadBottomCss(overlapPx: number): string {
+  if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
+  return `calc(var(--safe-bottom) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
 }
