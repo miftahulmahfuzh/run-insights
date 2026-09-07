@@ -1,0 +1,89 @@
+{
+  "branch": "feature/nina-emoji-shortcuts",
+  "coordinator": "orch-nina-emoji-shortcuts",
+  "coordinator_session_id": "e03670dd-8c98-49ef-bb1a-4acc553dc4d3",
+  "created": "2026-09-07T15:15:19+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/db`, `lib/nina",
+      "plan": ".workflows/plan/nina-emoji-shortcuts/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The table and the matcher"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-emoji-shortcuts/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Firing a shortcut into the turn"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": null,
+      "package": "lib/admin`, `components/admin`, `app/admin",
+      "plan": ".workflows/plan/nina-emoji-shortcuts/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "/admin/shortcuts"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "scripts",
+      "plan": ".workflows/plan/nina-emoji-shortcuts/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Import the ledger's shortcuts"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-emoji-shortcuts/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-emoji-shortcuts",
+  "updated": "2026-09-07T15:15:19+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-emoji-shortcuts"
+}

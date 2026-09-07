@@ -1,0 +1,1758 @@
+# Phase 1: The table and the matcher
+
+**Plan set:** `NINA_EMOJI_SHORTCUTS_PLAN.md`
+**Analysis:** `20260907-185401-SHRT_code_analyzer.md`
+**Satisfies:** R1, R2, R3 — the storage and the matching that the admin surface (R1), the turn
+injection (R2) and the ledger importer (R3) each build against. Nothing user-visible ships in this
+phase; every other phase is unbuildable without it.
+**Depends on:** none
+**Difficulty:** NORMAL
+**Package:** `lib/db`, `lib/nina`
+
+---
+
+## Goal
+
+After this phase `nina_shortcuts` exists in the schema and in a committed migration; a pure,
+zero-import `lib/nina/shortcuts.ts` can turn a runner's message plus a list of shortcut rows into
+the shortcuts that fired, in order, capped, and rendered as one directive block; and
+`lib/nina/queries.ts` can list, insert, update, delete and usage-bump those rows with `user_id`
+first in every `WHERE`. No prompt, no route, no component and no script changes — the tree builds
+and `npm test` is green with nothing yet calling any of it.
+
+## Interface Contract
+
+**Creates — `lib/db/schema.ts`:**
+
+- `schema.ninaShortcuts` (pgTable `nina_shortcuts`) — inserted at `lib/db/schema.ts:1329`,
+  immediately after `ninaMemoryFacts` closes at `:1328`
+- `schema.ninaShortcutsRelations` — inserted at `lib/db/schema.ts:1936`, immediately after
+  `ninaTuningRelations` closes at `:1935`
+- `type NinaShortcutRow = typeof ninaShortcuts.$inferSelect` — `lib/db/schema.ts:1972`
+- `type NewNinaShortcutRow = typeof ninaShortcuts.$inferInsert` — `lib/db/schema.ts:1973`
+
+**Creates — `lib/nina/shortcuts.ts` (new file, ZERO IMPORTS — plan invariant 4, and it is
+load-bearing TWICE: phase 3's `'use client'` table needs the bounds in the browser, and phase 4's
+`.mjs` importer imports this module directly under `--experimental-strip-types`, so a value import
+added here does not merely fatten a bundle — it stops that script BOOTING):**
+
+```ts
+export const NINA_TRIGGER_MAX = 16
+export const NINA_SHORTCUT_LABEL_MAX = 80
+export const NINA_SHORTCUT_EXPANSION_MAX = 2000
+export const NINA_SHORTCUT_MAX_FIRED = 4
+export const NINA_SHORTCUT_LOOKBACK = 6
+export const NINA_SHORTCUT_BLOCK_MAX_CHARS = 5000
+
+export type NinaShortcutKind = 'glyph' | 'word'
+
+export interface NinaShortcutMatchable {
+  id: string
+  trigger: string
+  matchKey: string
+  kind: NinaShortcutKind
+  label: string
+  expansion: string
+  enabled: boolean
+}
+
+export interface NinaShortcutHit {
+  id: string
+  trigger: string
+  label: string
+  expansion: string
+}
+
+export interface NinaShortcutHits {
+  fired: NinaShortcutHit[]
+  inPlay: NinaShortcutHit[]
+}
+
+export function normalizeNinaTrigger(raw: string): string
+export function classifyNinaTrigger(normalized: string): NinaShortcutKind
+export function matchNinaShortcuts(input: {
+  shortcuts: readonly NinaShortcutMatchable[]
+  current: string | null
+  recent?: readonly string[]
+}): NinaShortcutHits
+export function renderNinaShortcutBlock(hits: NinaShortcutHits | null | undefined): string | null
+```
+
+**Creates — `lib/nina/queries.ts`:**
+
+```ts
+export interface NinaShortcutRecord {
+  id: string
+  trigger: string
+  matchKey: string
+  kind: NinaShortcutKind
+  label: string
+  expansion: string
+  enabled: boolean
+  uses: number
+  lastUsedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+export interface NinaShortcutInsert {
+  trigger: string
+  label: string
+  expansion: string
+  enabled?: boolean
+}
+export interface NinaShortcutPatch {
+  trigger?: string
+  label?: string
+  expansion?: string
+  enabled?: boolean
+}
+
+export async function listNinaShortcuts(
+  userId: string,
+  opts?: { onlyEnabled?: boolean },
+): Promise<NinaShortcutRecord[]>
+export async function insertNinaShortcut(
+  userId: string,
+  input: NinaShortcutInsert,
+): Promise<NinaShortcutRecord>
+export async function updateNinaShortcut(
+  userId: string,
+  id: string,
+  patch: NinaShortcutPatch,
+): Promise<NinaShortcutRecord | null>
+export async function deleteNinaShortcut(userId: string, id: string): Promise<boolean>
+export async function bumpNinaShortcutUses(userId: string, ids: readonly string[]): Promise<void>
+```
+
+`NinaShortcutRecord` structurally satisfies `NinaShortcutMatchable` (it is a superset), so
+`listNinaShortcuts(...)` can be passed straight to `matchNinaShortcuts({ shortcuts: … })` with no
+mapping step. Phase 2 depends on that and phase 3 renders the extra four fields.
+
+**Creates — the migration (number NOT knowable at plan time; see the hazard in Step 2):**
+
+```sql
+CREATE TABLE "nina_shortcuts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
+	"trigger" text NOT NULL,
+	"match_key" text NOT NULL,
+	"kind" text NOT NULL,
+	"label" text NOT NULL,
+	"expansion" text NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"uses" integer DEFAULT 0 NOT NULL,
+	"last_used_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "nina_shortcuts" ADD CONSTRAINT "nina_shortcuts_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "nina_shortcuts_user_match_unq" ON "nina_shortcuts" USING btree ("user_id","match_key");--> statement-breakpoint
+CREATE INDEX "nina_shortcuts_user_enabled_idx" ON "nina_shortcuts" USING btree ("user_id","enabled");
+```
+
+**Deletes:** none.
+**Renames:** none.
+**Signature changes:** none. Every existing export keeps its shape.
+
+**Requires (from earlier phases):** nothing. This phase has no `depends_on`.
+
+**Leaves alone (owned by others):**
+
+- `lib/nina/turn.ts`, `lib/nina/actions.ts`, `lib/nina/prompts/*` (Phase 2)
+- `lib/admin/*`, `components/admin/*`, `app/admin/*`, `tests/admin.*` (Phase 3)
+- `scripts/*`, `package.json` (Phase 4)
+- `lib/nina/load.ts`, `lib/nina/gateway.ts`, `lib/nina/context.ts`, `lib/nina/distill.ts`,
+  `lib/nina/proactive.ts`, `components/nina/Composer.tsx` — out of scope for the whole plan set
+- `tests/__snapshots__/nina.prompts.test.ts.snap` — invariant 3; not regenerated by anyone
+
+**Three names for one concept, and none of them is a mistake** (write this down, because a later
+reader will want to "fix" it):
+
+| Name | Where | What it is |
+|---|---|---|
+| `NinaShortcutRow` / `NewNinaShortcutRow` | `lib/db/schema.ts` | the raw drizzle row — `kind` is `string`, `Date` columns are `Date`. Only `lib/nina/queries.ts` should ever name it. The `NinaTuningRow` / `PushSubscriptionRow` suffix rule. |
+| `NinaShortcutRecord` | `lib/nina/queries.ts` | the data-access DTO — same columns, `kind` narrowed to `NinaShortcutKind`. This is what every caller holds. |
+| `NinaShortcutMatchable` | `lib/nina/shortcuts.ts` | the structural minimum the matcher needs, declared there because that file may not import from `lib/db`. |
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/db/schema.ts` | modify | `ninaShortcuts` table + 2 indexes at `:1329`; `ninaShortcutsRelations` at `:1936`; two row types at `:1972` |
+| `drizzle/00NN_nina_shortcuts.sql` | create (generated) | `npm run db:generate` output — number unknown at plan time |
+| `drizzle/meta/00NN_snapshot.json` | create (generated) | generated beside it |
+| `drizzle/meta/_journal.json` | modify (generated) | one new entry, tag `00NN_nina_shortcuts` |
+| `lib/nina/shortcuts.ts` | create | the pure module — bounds, normalisation, classification, matcher, renderer. Zero imports. |
+| `lib/nina/queries.ts` | modify | 3 shapes at `:306`; 2 imports; `shortcutColumns` + 5 functions + 2 helpers at `:2186` |
+| `lib/nina/shortcuts.test.ts` | create | the matcher, driven by the 24 real production triggers, plus the zero-import self-read |
+| `tests/db.schema.nina.test.ts` | modify | a new `describe('nina_shortcuts …')` appended at the end of the file |
+
+---
+
+## Implementation Steps
+
+### Step 1: The table
+
+**File:** `lib/db/schema.ts:1329` — insert between `ninaMemoryFacts`' closing `)` (`:1328`) and the
+`/**` that opens `ninaNags`' header (`:1330`). Leave one blank line on each side.
+
+**Change:** add the `nina_shortcuts` table and its two indexes. `boolean`, `index`, `integer`,
+`pgTable`, `text`, `timestamp` and `uniqueIndex` are all already imported at `lib/db/schema.ts:2-17`
+— **no import line changes.**
+
+**Code:**
+
+```ts
+/**
+ * **The shortcut registry (F36 R1/R2/R3).** A trigger he types, and the whole situation it stands
+ * for. Nineteen emoji and five onomatopoeic tokens already live in `nina_memory_facts` in four
+ * prose grammars, because there was nowhere else to put them; this table is that somewhere, and
+ * phase 4's importer moves them. (Twenty-four at the time of the read. The ledger is LIVE and moved
+ * during the analysis — a fact was deleted mid-read — so no count is hard-coded anywhere in this
+ * plan set; phase 4 classifies at run time and reports what it found.)
+ *
+ * ── WHY THIS IS NOT A MEMORY FACT, AND WHY THAT IS STRUCTURAL RATHER THAN STYLISTIC ───────────
+ * A fact is something true about the runner that Nina may state. A shortcut is a STANDING
+ * DIRECTIVE she must act on. Four things go wrong when the ledger is asked to hold one, and all
+ * four are visible in production right now: `MEMORY_FACT_LIMIT = 60` silently ages the oldest
+ * shortcut out of every prompt; `prompts/system.ts` frames the ledger as *"colour, not
+ * structure"*, which is the wrong instruction for a directive; every expansion is in every turn
+ * whether or not it fired; and `ADMIN_FACT_TEXT_MAX = 400` already truncates the longest three.
+ * A separate table fixes all four at once, and — the part that cannot be achieved any other way —
+ * it makes a shortcut STRUCTURALLY UNREACHABLE by `lib/nina/distill.ts`, which writes facts. The
+ * distiller cannot rewrite what it has no query for.
+ *
+ * ── `trigger` AND `match_key` ARE TWO COLUMNS, AND THE SECOND ONE IS THE KEY ──────────────────
+ * `trigger` is what the admin typed and what `/admin/shortcuts` renders: `✌️`, `Plak!`, `nom nom`.
+ * `match_key` is `normalizeNinaTrigger(trigger)` — NFC, `U+FE0F` removed, whitespace collapsed,
+ * trimmed, lowercased — and it is what matching and the unique index use. Storing only the raw
+ * trigger would mean normalising on every read of every turn AND would let `✌️` and `✌` be two
+ * rows; storing only the key would show him a peace sign stripped of its variation selector in
+ * his own table. `lib/nina/queries.ts` derives the key on write, in one place, so the two cannot
+ * drift.
+ *
+ * ── `kind` IS PLAIN `text` WITH NO `.$type<>()` ───────────────────────────────────────────────
+ * `nina_tuning.relationship`'s argument, verbatim, and it bites for the same reason:
+ * `lib/nina/shortcuts.ts` MUST stay importable from a `'use client'` file, so it cannot import
+ * this module — and typing the column would mean either importing UPWARD from `lib/db` into
+ * `lib/nina` or restating `'glyph' | 'word'` here as a second definition. Untyped `text` costs
+ * neither: `lib/nina/queries.ts` narrows it on read and falls back to `classifyNinaTrigger` for a
+ * value it does not recognise, which is invariant 7 (nothing on the turn path throws for a
+ * shortcut problem) made concrete at the boundary where a bad value would first be noticed.
+ *
+ * ── `uses` AND `last_used_at` ARE TELEMETRY, NOT STATE ────────────────────────────────────────
+ * *"so the admin can see which codes actually fire"*. Nothing reads them on the turn path; they
+ * exist so `/admin/shortcuts` can show a dead code as dead. `uses` is incremented IN SQL by
+ * `bumpNinaShortcutUses`, never read-then-written, because the bump is fire-and-forget and two
+ * concurrent turns are a real pair. **A bump also moves `updated_at`** — `$onUpdate` fires on
+ * every drizzle UPDATE of this table — so `updated_at` means "the row last changed" and NOT "the
+ * admin last edited it". Phase 3 must render `last_used_at` for telemetry and must not label
+ * `updated_at` as "edited".
+ *
+ * ── NO `source_message_id`, NO `source`, NO `confidence` ──────────────────────────────────────
+ * Every shortcut is authored by a human on `/admin/shortcuts` or lifted from the ledger by phase
+ * 4's importer. There is no distilled shortcut and there never will be, so a provenance
+ * discriminator would be a column with one value. Its absence is also what keeps
+ * `removeNinaSession`'s memory purge (which matches on `source_message_id IN (…)`) structurally
+ * unable to reach this table.
+ *
+ * ── THE TWO INDEXES ───────────────────────────────────────────────────────────────────────────
+ *   · `nina_shortcuts_user_match_unq (user_id, match_key)` — UNIQUE, and it is the authority on
+ *     "this trigger already exists". Phase 3 lets the insert fail and reports the violation as a
+ *     sentence rather than running a check-then-write that is correct until two tabs race. The
+ *     `shares_run_id_active_unq` argument. It is also the total order `listNinaShortcuts` sorts
+ *     by, so the registry read is an index scan and not a sort.
+ *   · `nina_shortcuts_user_enabled_idx (user_id, enabled)` — phase 2's every-turn read,
+ *     `WHERE user_id = $1 AND enabled`.
+ */
+export const ninaShortcuts = pgTable(
+  'nina_shortcuts',
+  {
+    /** nanoid(12) — lib/id.ts newId(). */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** As the admin typed it. What the table renders; never what matching uses. */
+    trigger: text('trigger').notNull(),
+    /** `normalizeNinaTrigger(trigger)`. What matching and the unique index use. See the header. */
+    matchKey: text('match_key').notNull(),
+    /**
+     * `NinaShortcutKind` from `lib/nina/shortcuts.ts` — `'glyph' | 'word'`, and it decides the
+     * boundary rule: a glyph matches anywhere, a word only when not touching a letter or digit.
+     * Untyped `text` on purpose; see the header.
+     */
+    kind: text('kind').notNull(),
+    /** One line, what this code is for. `NINA_SHORTCUT_LABEL_MAX` = 80. */
+    label: text('label').notNull(),
+    /** The long context the trigger stands for. `NINA_SHORTCUT_EXPANSION_MAX` = 2000. */
+    expansion: text('expansion').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    /** Telemetry. Bumped in SQL, fire-and-forget, off the turn's critical path. */
+    uses: integer('uses').notNull().default(0),
+    /** NULL = this code has never fired. A real answer, and the one phase 3 shows as "never". */
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    /** Moves on ANY update, a usage bump included. See the header before reading it as "edited". */
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    /** Two rows for one code are impossible, not unlikely. The duplicate error IS the check. */
+    uniqueIndex('nina_shortcuts_user_match_unq').on(t.userId, t.matchKey),
+    /** Phase 2's every-turn read: `WHERE user_id = $1 AND enabled`. */
+    index('nina_shortcuts_user_enabled_idx').on(t.userId, t.enabled),
+  ],
+)
+```
+
+**Impact:** a new table in the drizzle schema object. Nothing reads it yet. `npm run typecheck`
+passes with it unreferenced.
+
+---
+
+### Step 2: The relation and the row types
+
+**File:** `lib/db/schema.ts:1936` (relation) and `lib/db/schema.ts:1972` (types).
+
+**Change:** the relation goes immediately after `ninaTuningRelations`' closing `}))` at `:1935`,
+before the `/* ==== Row types ==== */` banner at `:1937`. The two row types go immediately after
+`export type NewNinaMemoryFact = typeof ninaMemoryFacts.$inferInsert` at `:1971`, keeping the
+shortcut types next to the memory types exactly as the tables are next to each other.
+
+**Code — at `:1936`:**
+
+```ts
+export const ninaShortcutsRelations = relations(ninaShortcuts, ({ one }) => ({
+  user: one(users, { fields: [ninaShortcuts.userId], references: [users.id] }),
+}))
+```
+
+**Code — at `:1972`:**
+
+```ts
+/**
+ * `NinaShortcutRow`, not `NinaShortcut` — the same suffix, and the same reason, as
+ * `NinaTuningRow`. `kind` is bare `string` here because the column is untyped `text`; the narrowed
+ * DTO is `NinaShortcutRecord` in `lib/nina/queries.ts`, and the structural minimum the matcher
+ * needs is `NinaShortcutMatchable` in `lib/nina/shortcuts.ts`. Three names, three layers, no
+ * duplication — see the table's header.
+ */
+export type NinaShortcutRow = typeof ninaShortcuts.$inferSelect
+export type NewNinaShortcutRow = typeof ninaShortcuts.$inferInsert
+```
+
+**Then generate the migration:**
+
+```
+npm run db:generate
+npm run db:check
+```
+
+**MIGRATION HAZARD — read before running `db:generate`.** `drizzle/` in this worktree ends at
+`0010_nina_image_provenance.sql`, so the next free number *here* is `0011`. Peer worktrees are live
+on this repo and at least one may have minted `0011` already. If `main` has moved by the time this
+phase runs:
+
+1. `rm drizzle/00NN_nina_shortcuts.sql drizzle/meta/00NN_snapshot.json`
+2. `git checkout drizzle/meta/_journal.json`
+3. rebase onto the new `main`
+4. `npm run db:generate` again, then `npm run db:check`
+
+**Never rename a generated migration file.** `drizzle-kit migrate` keys on the journal's `tag`, and
+a renamed file is skipped in silence — the table would simply not exist in production while every
+test passed.
+
+Commit all three generated artefacts together: the `.sql`, the `meta/*_snapshot.json`, and the
+`meta/_journal.json` diff. Any two of the three without the third is a broken migration set.
+
+**Impact:** `npm run db:check` is the gate. Nothing runs `db:migrate` in this phase — production
+is written by the user, not by the implementing session.
+
+---
+
+### Step 3: `lib/nina/shortcuts.ts` — the pure module
+
+**File:** `lib/nina/shortcuts.ts` (new)
+
+**Change:** the whole file. **Zero imports** — no value import, no type import, no `server-only`,
+nothing from `@/lib/db/*`. `lib/nina/tuning.ts`'s rule, asserted in Step 5 by reading this file's
+own source.
+
+**Code:**
+
+```ts
+/**
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *  SHORTCUTS. He types `🍑` and means four sentences he wrote once, months ago. This module is
+ *  the whole of "did he type one, and which", and it knows nothing about a database.
+ * ════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ── THIS FILE MUST STAY IMPORTABLE FROM A `'use client'` COMPONENT, AND FROM A `.mjs` SCRIPT ──
+ * **Zero imports. No value import, no type import, no `server-only`, nothing from `@/lib/db/*`.**
+ * The `lib/nina/tuning.ts` rule, and it is load-bearing for TWO consumers rather than one:
+ *
+ *   · phase 3's `components/admin/ShortcutTable.tsx` is `'use client'` and needs
+ *     `NINA_TRIGGER_MAX`, `NINA_SHORTCUT_LABEL_MAX` and `NINA_SHORTCUT_EXPANSION_MAX` in the
+ *     browser to size and cap its inputs (it reaches them through
+ *     `lib/admin/shortcutModel.ts`'s re-export, but the property it rests on is this one);
+ *   · phase 4's `scripts/nina-shortcuts-import.mjs` IMPORTS THIS MODULE DIRECTLY under
+ *     `--experimental-strip-types`, so that the importer's `match_key` is computed by literally
+ *     the same function the matcher compares against. `scripts/nina-memory-reap.mjs`'s header
+ *     records the one case where a `.mjs` cannot import a `.ts`: a module whose own imports are
+ *     runtime values (drizzle) rather than `import type`. Zero imports is exactly the condition
+ *     that keeps this module out of that case.
+ *
+ * So a value import added here does not merely fatten a bundle — **it stops phase 4's script
+ * booting at all.** That is the correct failure (loud, immediate, at the top of the file), but it
+ * is a failure, and it is why this rule is an invariant rather than a preference.
+ * `lib/nina/shortcuts.test.ts` reads this file's own source and fails on an `import` line, so the
+ * property is checked rather than merely intended.
+ *
+ * That is also why `NinaShortcutMatchable` is declared HERE as a plain interface instead of being
+ * imported from `lib/db/schema.ts`. It is the structural minimum the matcher needs; the rows
+ * `lib/nina/queries.ts` returns are a superset of it and satisfy it without a mapping step.
+ *
+ * ── NORMALISATION IS FIVE OPERATIONS, IN THIS ORDER, AND PHASE 4 MUST REPRODUCE THEM ──────────
+ *   1. `NFC` — one canonical spelling of a composed character.
+ *   2. **remove every `U+FE0F`** (variation selector 16). `✌️` in the production ledger is
+ *      `U+270C U+FE0F`; the same emoji from an iOS keyboard may arrive as bare `U+270C`. Folding
+ *      it out of BOTH sides is what makes those the same shortcut. This is the single highest-value
+ *      line in the file and the one a "simplification" will delete first.
+ *   3. collapse internal whitespace runs to one space — `nom  nom` is `nom nom`.
+ *   4. trim.
+ *   5. lowercase — `Plak!` fires the `plak!` he defined.
+ *
+ * **`U+200D` (ZERO WIDTH JOINER) IS DELIBERATELY KEPT.** It is meaningful inside an emoji
+ * sequence: stripping it would merge `👩‍❤️‍👨` into the three separate glyphs it is built from, and
+ * two distinct shortcuts would collide on one `match_key`. `NINA_TRIGGER_MAX = 16` exists to leave
+ * room for exactly that.
+ *
+ * The same function normalises the trigger and the message it is looked for in. It is named for
+ * the trigger because that is the side that gets STORED (`nina_shortcuts.match_key`), but a
+ * haystack that is not folded the same way cannot be searched with a folded needle.
+ *
+ * ── A GLYPH AND A WORD NEED DIFFERENT BOUNDARY RULES ──────────────────────────────────────────
+ * An emoji is self-delimiting: `ini🍑dong` contains the peach and means it. A Latin token is not:
+ * `yumm` inside `yummy` is not him using the `yumm` code, it is him saying a word. So a `'glyph'`
+ * trigger matches anywhere in the haystack, and a `'word'` trigger matches only when it touches
+ * neither a letter nor a digit on either side. Five of the twenty-four production triggers are
+ * Latin tokens, so this is not a hypothetical.
+ *
+ * ── NOTHING HERE THROWS (plan invariant 7) ────────────────────────────────────────────────────
+ * Every entry point tolerates `null`, `undefined`, a wrong-typed field and a `match_key` that is
+ * empty after folding, and degrades to "nothing fired". The one construction that CAN throw —
+ * `new RegExp` with a lookbehind, on a runtime that does not support one — is caught, and the
+ * shortcut simply does not fire. A turn that dies because a trigger was malformed is a turn lost
+ * to a feature that is meant to be additive.
+ */
+
+/* ============================================================================
+ * §1 Bounds
+ * ==========================================================================*/
+
+/**
+ * The longest real trigger is `nom nom` (7 UTF-16 units). 16 leaves room for a ZWJ emoji sequence
+ * — `👩‍❤️‍👨` is 8 units before folding — with the same margin again on top.
+ *
+ * Measured in UTF-16 code units, i.e. `String.length`, because that is what zod's `.max()`
+ * measures and phase 3's schema is the only enforcer.
+ */
+export const NINA_TRIGGER_MAX = 16
+/** One line in a phone table cell. */
+export const NINA_SHORTCUT_LABEL_MAX = 80
+/** `NINA_NOTES_MAX`'s number. 5× `ADMIN_FACT_TEXT_MAX`, the cap that is binding in production. */
+export const NINA_SHORTCUT_EXPANSION_MAX = 2000
+/** Fired plus still-in-play, COMBINED. Fired takes every slot it needs first. */
+export const NINA_SHORTCUT_MAX_FIRED = 4
+/** How many earlier RUNNER messages are scanned for a still-in-play code. */
+export const NINA_SHORTCUT_LOOKBACK = 6
+/** Hard ceiling on the rendered block, applied after the count cap. */
+export const NINA_SHORTCUT_BLOCK_MAX_CHARS = 5000
+
+/* ============================================================================
+ * §2 Shapes
+ * ==========================================================================*/
+
+/** Which boundary rule a trigger gets. `nina_shortcuts.kind` stores this as untyped `text`. */
+export type NinaShortcutKind = 'glyph' | 'word'
+
+/**
+ * The structural minimum the matcher needs. `NinaShortcutRecord` from `lib/nina/queries.ts` is a
+ * superset and satisfies it with no mapping. Declared here rather than imported because this file
+ * has zero imports — see the header.
+ */
+export interface NinaShortcutMatchable {
+  id: string
+  /** As the admin typed it. Rendered in the block; never matched against. */
+  trigger: string
+  /** `normalizeNinaTrigger(trigger)`. What is matched against. */
+  matchKey: string
+  kind: NinaShortcutKind
+  label: string
+  expansion: string
+  enabled: boolean
+}
+
+/** One shortcut that matched, reduced to what the block prints. */
+export interface NinaShortcutHit {
+  id: string
+  trigger: string
+  label: string
+  expansion: string
+}
+
+/**
+ * `fired` — matched in THIS message, ordered by where it first occurs, so the block reads in the
+ * order he typed them. `inPlay` — matched in an earlier runner message and NOT in this one, newest
+ * first. A shortcut is never in both: `fired` wins, because the strongest signal is that he just
+ * used it.
+ */
+export interface NinaShortcutHits {
+  fired: NinaShortcutHit[]
+  inPlay: NinaShortcutHit[]
+}
+
+/* ============================================================================
+ * §3 Normalisation and classification
+ * ==========================================================================*/
+
+/**
+ * The five operations in the header, in that order. Idempotent, so calling it on a stored
+ * `match_key` is free and safe — which is what lets the matcher be defensive about a row written
+ * by something other than `lib/nina/queries.ts` (phase 4's importer is a `.mjs` that reimplements
+ * these rules in plain JS, and `tests/nina.shortcutsImport.test.ts` is what proves the two agree).
+ */
+export function normalizeNinaTrigger(raw: string): string {
+  if (typeof raw !== 'string') return ''
+  return raw
+    .normalize('NFC')
+    .replace(/\uFE0F/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/**
+ * A trigger containing any letter or digit is a WORD and gets the boundary rule; anything else is
+ * a GLYPH and matches anywhere.
+ *
+ * Deliberately not an emoji regex. Five of the twenty-four production triggers (`plak!`, `slurp!`,
+ * `yumm`, `nom nom`, `lick!`) are Latin, and the question this function answers is not "is this an
+ * emoji" but "can this be confused with a fragment of a word". `!` alone is not a letter, so
+ * `plak!` still classifies as a word on the strength of `plak`.
+ *
+ * Takes the NORMALISED form. Passing a raw trigger works — no code point that matters here is
+ * created or destroyed by folding — but the call sites all normalise first and the parameter name
+ * says so.
+ */
+export function classifyNinaTrigger(normalized: string): NinaShortcutKind {
+  return /[\p{L}\p{N}]/u.test(normalized) ? 'word' : 'glyph'
+}
+
+/* ============================================================================
+ * §4 Matching
+ * ==========================================================================*/
+
+/** The standard metacharacter set. Every escape below is legal in `u` mode. */
+function escapeForRegExp(raw: string): string {
+  return raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Where `key` first occurs in `haystack`, or `-1`. Both sides are already normalised.
+ *
+ * The word rule is `(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])` — not `\b`, which is ASCII-word-boundary
+ * and would put a boundary in the middle of `plak!` (between `k` and `!`) and none at all around
+ * an accented letter. The lookbehind is what a runtime could refuse, so the construction is
+ * wrapped: a refusal degrades that one shortcut to "did not fire" instead of failing the turn.
+ */
+function firstMatchIndex(haystack: string, key: string, kind: NinaShortcutKind): number {
+  if (key === '' || haystack === '') return -1
+  if (kind === 'glyph') return haystack.indexOf(key)
+  try {
+    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeForRegExp(key)}(?![\\p{L}\\p{N}])`, 'u')
+    const found = pattern.exec(haystack)
+    return found === null ? -1 : found.index
+  } catch {
+    return -1
+  }
+}
+
+interface LiveShortcut {
+  shortcut: NinaShortcutMatchable
+  key: string
+  kind: NinaShortcutKind
+}
+
+/**
+ * Disabled rows, duplicate ids and rows whose key folds to nothing are dropped here, once, before
+ * any matching happens. `kind` is re-derived when the stored value is not one of the two we know —
+ * invariant 7 at the only boundary where a bad `nina_shortcuts.kind` could be noticed.
+ */
+function liveShortcuts(shortcuts: readonly NinaShortcutMatchable[]): LiveShortcut[] {
+  const seen = new Set<string>()
+  const live: LiveShortcut[] = []
+  for (const shortcut of shortcuts) {
+    if (shortcut == null || shortcut.enabled !== true) continue
+    if (typeof shortcut.id !== 'string' || shortcut.id === '' || seen.has(shortcut.id)) continue
+    let key = normalizeNinaTrigger(shortcut.matchKey)
+    if (key === '') key = normalizeNinaTrigger(shortcut.trigger)
+    if (key === '') continue
+    const kind =
+      shortcut.kind === 'glyph' || shortcut.kind === 'word'
+        ? shortcut.kind
+        : classifyNinaTrigger(key)
+    seen.add(shortcut.id)
+    live.push({ shortcut, key, kind })
+  }
+  return live
+}
+
+function toHit(shortcut: NinaShortcutMatchable): NinaShortcutHit {
+  return {
+    id: shortcut.id,
+    trigger: typeof shortcut.trigger === 'string' ? shortcut.trigger : '',
+    label: typeof shortcut.label === 'string' ? shortcut.label : '',
+    expansion: typeof shortcut.expansion === 'string' ? shortcut.expansion : '',
+  }
+}
+
+/**
+ * The whole of "did he use a code, and which".
+ *
+ * `current` is the runner's message this turn — `null` on a proactive turn, which is why the
+ * parameter is nullable rather than optional. `recent` is EARLIER RUNNER MESSAGES ONLY, newest
+ * first, already excluding the one this turn is answering; phase 2 slices it out of
+ * `loadedContext.conversation.window` with no new query. **Nina's own bubbles are never passed**
+ * (assumption A3) — an expansion she echoed would re-fire itself forever.
+ *
+ * Ordering:
+ *   · `fired` — by first index of occurrence in `current`, so the block reads in the order he
+ *     typed them. Ties (one trigger a prefix of another at the same offset) go to the longer key,
+ *     then to the lower id, so the result is total and reproducible — the same property
+ *     `listNinaMemoryFacts`' `id DESC` tiebreak buys for the prompt.
+ *   · `inPlay` — by how recent the message was, then by offset within it.
+ *
+ * Capping: `fired` is filled to `NINA_SHORTCUT_MAX_FIRED` first and `inPlay` gets whatever is
+ * left, which may be nothing. Four codes in one message means no still-in-play context at all,
+ * and that is the right trade: what he just said outranks what he said three messages ago.
+ */
+export function matchNinaShortcuts(input: {
+  shortcuts: readonly NinaShortcutMatchable[]
+  current: string | null
+  recent?: readonly string[]
+}): NinaShortcutHits {
+  const live = liveShortcuts(input.shortcuts ?? [])
+  if (live.length === 0) return { fired: [], inPlay: [] }
+
+  const currentHaystack = normalizeNinaTrigger(input.current ?? '')
+  const firedRanked: { at: number; live: LiveShortcut }[] = []
+  const firedIds = new Set<string>()
+  for (const candidate of live) {
+    const at = firstMatchIndex(currentHaystack, candidate.key, candidate.kind)
+    if (at < 0) continue
+    firedRanked.push({ at, live: candidate })
+    firedIds.add(candidate.shortcut.id)
+  }
+  firedRanked.sort((a, b) => {
+    if (a.at !== b.at) return a.at - b.at
+    if (a.live.key.length !== b.live.key.length) return b.live.key.length - a.live.key.length
+    return a.live.shortcut.id < b.live.shortcut.id ? -1 : 1
+  })
+
+  const inPlayRanked: { at: number; live: LiveShortcut }[] = []
+  const inPlayIds = new Set<string>()
+  const recent = input.recent ?? []
+  const depthLimit = Math.min(recent.length, NINA_SHORTCUT_LOOKBACK)
+  for (let depth = 0; depth < depthLimit; depth++) {
+    const haystack = normalizeNinaTrigger(recent[depth] ?? '')
+    if (haystack === '') continue
+    const here: { at: number; live: LiveShortcut }[] = []
+    for (const candidate of live) {
+      if (firedIds.has(candidate.shortcut.id) || inPlayIds.has(candidate.shortcut.id)) continue
+      const at = firstMatchIndex(haystack, candidate.key, candidate.kind)
+      if (at < 0) continue
+      here.push({ at, live: candidate })
+    }
+    here.sort((a, b) => {
+      if (a.at !== b.at) return a.at - b.at
+      return a.live.shortcut.id < b.live.shortcut.id ? -1 : 1
+    })
+    for (const entry of here) {
+      inPlayIds.add(entry.live.shortcut.id)
+      inPlayRanked.push(entry)
+    }
+  }
+
+  const fired = firedRanked.slice(0, NINA_SHORTCUT_MAX_FIRED).map((e) => toHit(e.live.shortcut))
+  const room = NINA_SHORTCUT_MAX_FIRED - fired.length
+  const inPlay = room <= 0 ? [] : inPlayRanked.slice(0, room).map((e) => toHit(e.live.shortcut))
+  return { fired, inPlay }
+}
+
+/* ============================================================================
+ * §5 Rendering
+ * ==========================================================================*/
+
+/**
+ * The two headers are the ONLY instruction text this feature adds anywhere. There is deliberately
+ * no section in `lib/nina/prompts/system.ts` telling her what a shortcut is: every word she needs
+ * travels with the shortcut, adjacent to the expansion it governs, and costs nothing on the turns
+ * where nothing fired (plan invariant 2).
+ */
+const FIRED_HEADER =
+  'HE USED A SHORTCUT. Each code below is one HE defined, and typing it is how he says the whole ' +
+  'situation written under it. This is an instruction for THIS reply, not background colour: ' +
+  'answer as if he had written the whole thing out.'
+
+const IN_PLAY_HEADER =
+  'STILL IN PLAY. He used these in the last few messages but not in this one. They are still ' +
+  'running unless he has ended them.'
+
+function renderHit(hit: NinaShortcutHit): string {
+  const label = hit.label.trim()
+  const head = label === '' ? hit.trigger : `${hit.trigger} — ${label}`
+  return `${head}\n${hit.expansion.trim()}`
+}
+
+function clampHard(text: string): string {
+  return text.length <= NINA_SHORTCUT_BLOCK_MAX_CHARS
+    ? text
+    : `${text.slice(0, NINA_SHORTCUT_BLOCK_MAX_CHARS - 1)}…`
+}
+
+/**
+ * The block phase 2 pushes into `userTurnText`, immediately above `'HE JUST SAID:'`, or `null`.
+ *
+ * **`null` means "emit nothing at all"** — not an empty string, not a header with no body. Plan
+ * invariant 2 is that a turn in which nothing fired carries ZERO shortcut bytes, and returning
+ * `null` is what lets phase 2's `if (block != null) parts.push(block)` be the whole of the
+ * integration.
+ *
+ * **A still-in-play code renders even when nothing fired this turn.** That is the point of
+ * `inPlay`: one production shortcut (`🫦`) opens a mode that runs until he says `💦`, and the
+ * instruction has to still be legible on the turn where he only says *"terusin"*. `null` therefore
+ * means both lists are empty, not that `fired` is.
+ *
+ * The ceiling is enforced by DROPPING WHOLE ENTRIES from the end rather than by cutting the text,
+ * because half a directive can invert a directive — `…jangan` and `…jangan berhenti` are opposite
+ * instructions. Four maximal expansions are 8000 characters against a 5000 ceiling, so this path
+ * is reachable in practice and not merely theoretical. Truncation mid-sentence survives only as
+ * the last resort for a SINGLE entry that is over the ceiling on its own, where the alternative is
+ * a header with nothing under it.
+ */
+export function renderNinaShortcutBlock(hits: NinaShortcutHits | null | undefined): string | null {
+  const fired = hits?.fired ?? []
+  const firedIds = new Set(fired.map((hit) => hit.id))
+  const inPlay = (hits?.inPlay ?? []).filter((hit) => !firedIds.has(hit.id))
+  if (fired.length === 0 && inPlay.length === 0) return null
+
+  const parts: string[] = []
+  let used = 0
+  const push = (text: string): boolean => {
+    const cost = parts.length === 0 ? text.length : text.length + 2 // the '\n\n' join
+    if (used + cost > NINA_SHORTCUT_BLOCK_MAX_CHARS) return false
+    parts.push(text)
+    used += cost
+    return true
+  }
+
+  if (fired.length > 0) {
+    push(FIRED_HEADER)
+    let kept = 0
+    for (const hit of fired) {
+      if (!push(renderHit(hit))) break
+      kept++
+    }
+    if (kept === 0) return clampHard(`${FIRED_HEADER}\n\n${renderHit(fired[0]!)}`)
+  }
+
+  if (inPlay.length > 0) {
+    const before = parts.length
+    if (push(IN_PLAY_HEADER)) {
+      let kept = 0
+      for (const hit of inPlay) {
+        if (!push(renderHit(hit))) break
+        kept++
+      }
+      // A header with nothing under it is bytes that say nothing. Take it back out.
+      if (kept === 0) {
+        parts.length = before
+        if (before === 0) return clampHard(`${IN_PLAY_HEADER}\n\n${renderHit(inPlay[0]!)}`)
+      }
+    } else if (parts.length === 0) {
+      return clampHard(`${IN_PLAY_HEADER}\n\n${renderHit(inPlay[0]!)}`)
+    }
+  }
+
+  return clampHard(parts.join('\n\n'))
+}
+```
+
+**Impact:** a new module nothing imports yet. `npm run lint` and `npm run typecheck` must pass with
+it unreferenced.
+
+---
+
+### Step 4: `lib/nina/queries.ts` — five functions
+
+**File:** `lib/nina/queries.ts` — three edits.
+
+#### 4a. Imports
+
+**At `lib/nina/queries.ts:31`** — add `ninaShortcuts` to the `@/lib/db/schema` import list, between
+`ninaNags` (`:30`) and `ninaTuning` (`:31`), keeping the list alphabetical:
+
+```ts
+  ninaShortcuts,
+```
+
+**At `lib/nina/queries.ts:58`** — add a new import block between the `@/lib/nina/sessions` block
+(ends `:57`) and the `@/lib/nina/tuning` block (starts `:58`), keeping the module paths
+alphabetical:
+
+```ts
+import {
+  classifyNinaTrigger,
+  normalizeNinaTrigger,
+  type NinaShortcutKind,
+} from '@/lib/nina/shortcuts'
+```
+
+No cycle: `lib/nina/shortcuts.ts` imports nothing at all.
+
+#### 4b. Shapes
+
+**At `lib/nina/queries.ts:306`** — insert after `NinaFactInsert`'s closing `}` (`:305`) and before
+`export interface NinaNagRow` (`:307`), so the shortcut shapes sit with the memory shapes exactly
+as the tables and the functions do.
+
+**Code:**
+
+```ts
+/**
+ * A shortcut as every caller wants it: the row, with `kind` narrowed. **A superset of
+ * `NinaShortcutMatchable`**, deliberately — phase 2 hands the array straight to
+ * `matchNinaShortcuts` and phase 3's table renders the four extra fields, so neither needs a
+ * mapping step and there is no third shape to keep in step.
+ *
+ * `NinaShortcutRecord` and not `NinaShortcutRow`: the latter is the raw drizzle row in
+ * `lib/db/schema.ts`, where `kind` is bare `string` because the column is untyped `text`. See
+ * that table's header for why it is untyped.
+ */
+export interface NinaShortcutRecord {
+  id: string
+  /** As the admin typed it. */
+  trigger: string
+  /** `normalizeNinaTrigger(trigger)`. Derived on write; never supplied by a caller. */
+  matchKey: string
+  kind: NinaShortcutKind
+  label: string
+  expansion: string
+  enabled: boolean
+  uses: number
+  lastUsedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/**
+ * `matchKey` and `kind` are absent on purpose: they are DERIVED from `trigger` by
+ * `insertNinaShortcut`, so there is exactly one place in the app that can get the normalisation
+ * wrong, and the unique index can never see an underived key.
+ */
+export interface NinaShortcutInsert {
+  trigger: string
+  label: string
+  expansion: string
+  /** Defaults to true — an admin adding a code means to use it. */
+  enabled?: boolean
+}
+
+/** Every field optional; an absent field is left alone. `trigger` re-derives the pair. */
+export interface NinaShortcutPatch {
+  trigger?: string
+  label?: string
+  expansion?: string
+  enabled?: boolean
+}
+```
+
+#### 4c. The five functions
+
+**At `lib/nina/queries.ts:2186`** — insert after `deleteNinaMemoryFact`'s closing `}` (`:2185`) and
+before the `§7 Nags` banner (`:2187`). This is the end of the Nina-memory section, which is where
+the phase index puts them: a shortcut is memory-adjacent and nothing else in the file is.
+
+**Code:**
+
+```ts
+/* ---------------------------------------------------------------------------
+ * §6b Shortcuts — the trigger -> expansion registry (F36)
+ *
+ * Memory-adjacent and deliberately NOT memory: see `nina_shortcuts`' header in
+ * `lib/db/schema.ts`. Every statement below is `user_id`-scoped first, and `match_key` plus
+ * `kind` are derived here rather than by any caller, so the unique index
+ * `(user_id, match_key)` is guarding a key exactly one function knows how to spell.
+ * -------------------------------------------------------------------------*/
+
+const shortcutColumns = {
+  id: ninaShortcuts.id,
+  trigger: ninaShortcuts.trigger,
+  matchKey: ninaShortcuts.matchKey,
+  kind: ninaShortcuts.kind,
+  label: ninaShortcuts.label,
+  expansion: ninaShortcuts.expansion,
+  enabled: ninaShortcuts.enabled,
+  uses: ninaShortcuts.uses,
+  lastUsedAt: ninaShortcuts.lastUsedAt,
+  createdAt: ninaShortcuts.createdAt,
+  updatedAt: ninaShortcuts.updatedAt,
+}
+
+/**
+ * `nina_shortcuts.kind` is untyped `text` (the `nina_tuning.relationship` argument), so this is
+ * where the column becomes a union. An unrecognised value is RE-DERIVED rather than rejected:
+ * plan invariant 7 says nothing on the turn path throws for a shortcut problem, and a row hand-
+ * edited in `db:studio` to `'Glyph'` should behave, not explode.
+ */
+function toShortcutRecord(row: {
+  id: string
+  trigger: string
+  matchKey: string
+  kind: string
+  label: string
+  expansion: string
+  enabled: boolean
+  uses: number
+  lastUsedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}): NinaShortcutRecord {
+  const kind: NinaShortcutKind =
+    row.kind === 'glyph' || row.kind === 'word' ? row.kind : classifyNinaTrigger(row.matchKey)
+  return { ...row, kind }
+}
+
+/** `trigger` -> the derived `(match_key, kind)` pair, in the one place that derives it. */
+function derivedTrigger(trigger: string): { matchKey: string; kind: NinaShortcutKind } {
+  const matchKey = normalizeNinaTrigger(trigger)
+  return { matchKey, kind: classifyNinaTrigger(matchKey) }
+}
+
+/**
+ * The registry. **Phase 3's `/admin/shortcuts` calls it bare** and gets every row including the
+ * disabled ones, because a disabled code still has to be visible to be re-enabled. **Phase 2's
+ * turn path calls it with `{ onlyEnabled: true }`** and gets only what can fire, which is the
+ * `nina_shortcuts_user_enabled_idx` read.
+ *
+ * Ordered by `match_key` and not by `created_at DESC`: a registry is scanned by trigger, and
+ * `(user_id, match_key)` is UNIQUE, so that ordering is total on its own — the `id` tiebreak is
+ * belt-and-braces for the same reason `listNinaMemoryFacts` carries one, namely that a prompt and
+ * an admin table must both be reproducible.
+ */
+export async function listNinaShortcuts(
+  userId: string,
+  opts: { onlyEnabled?: boolean } = {},
+): Promise<NinaShortcutRecord[]> {
+  const where =
+    opts.onlyEnabled === true
+      ? and(eq(ninaShortcuts.userId, userId), eq(ninaShortcuts.enabled, true))
+      : eq(ninaShortcuts.userId, userId)
+
+  const rows = await db
+    .select(shortcutColumns)
+    .from(ninaShortcuts)
+    .where(where)
+    .orderBy(asc(ninaShortcuts.matchKey), asc(ninaShortcuts.id))
+
+  return rows.map(toShortcutRecord)
+}
+
+/**
+ * Phase 3's add row, and phase 4's importer.
+ *
+ * **A duplicate trigger THROWS, and that is the design.** `(user_id, match_key)` is the authority
+ * on "this code already exists"; a pre-flight `SELECT` would be correct until two tabs raced, so
+ * the caller catches the unique violation and turns it into a sentence instead. The
+ * `shares_run_id_active_unq` ruling, applied to a registry. Phase 4's importer wants the opposite
+ * behaviour on a re-run and gets it with its own `onConflictDoNothing`, which is why this function
+ * does not bake one in.
+ */
+export async function insertNinaShortcut(
+  userId: string,
+  input: NinaShortcutInsert,
+): Promise<NinaShortcutRecord> {
+  const { matchKey, kind } = derivedTrigger(input.trigger)
+
+  const inserted = await db
+    .insert(ninaShortcuts)
+    .values({
+      id: newId(),
+      userId,
+      trigger: input.trigger,
+      matchKey,
+      kind,
+      label: input.label,
+      expansion: input.expansion,
+      enabled: input.enabled ?? true,
+    })
+    .returning(shortcutColumns)
+
+  const row = inserted[0]
+  if (row === undefined) throw new Error('insertNinaShortcut wrote no row')
+  return toShortcutRecord(row)
+}
+
+/**
+ * Phase 3's blur-to-save and its on/off switch. Returns the row rather than a boolean — unlike
+ * `updateNinaMemoryFact`, whose caller only needs "did it exist" — because `match_key`, `kind` and
+ * `updated_at` are all derived server-side and the admin table re-renders the values it did not
+ * compute.
+ *
+ * An empty patch is a no-op that returns the row unchanged rather than `null`, so "nothing to
+ * save" and "no such shortcut" stay distinguishable at the call site.
+ *
+ * `updated_at` moves via `$onUpdate`. It is NOT written explicitly here: the explicit write in
+ * `upsertNinaMemorySlot` exists only because that statement has an INSERT path, and this one does
+ * not.
+ */
+export async function updateNinaShortcut(
+  userId: string,
+  id: string,
+  patch: NinaShortcutPatch,
+): Promise<NinaShortcutRecord | null> {
+  const derived = patch.trigger == null ? null : derivedTrigger(patch.trigger)
+  const set = {
+    ...(patch.trigger != null ? { trigger: patch.trigger } : {}),
+    ...(derived != null ? { matchKey: derived.matchKey, kind: derived.kind } : {}),
+    ...(patch.label != null ? { label: patch.label } : {}),
+    ...(patch.expansion != null ? { expansion: patch.expansion } : {}),
+    ...(patch.enabled != null ? { enabled: patch.enabled } : {}),
+  }
+
+  if (Object.keys(set).length === 0) {
+    const current = await db
+      .select(shortcutColumns)
+      .from(ninaShortcuts)
+      .where(and(eq(ninaShortcuts.userId, userId), eq(ninaShortcuts.id, id)))
+      .limit(1)
+    const row = current[0]
+    return row === undefined ? null : toShortcutRecord(row)
+  }
+
+  const updated = await db
+    .update(ninaShortcuts)
+    .set(set)
+    .where(and(eq(ninaShortcuts.userId, userId), eq(ninaShortcuts.id, id)))
+    .returning(shortcutColumns)
+
+  const row = updated[0]
+  return row === undefined ? null : toShortcutRecord(row)
+}
+
+/**
+ * Phase 3's ✕. A hard delete with no tombstone: a shortcut is a directive, and a deleted directive
+ * that still exists somewhere is the failure this whole table was built to end. `false` means it
+ * was already gone, or was never his — absent and forbidden are the same outcome in this file.
+ */
+export async function deleteNinaShortcut(userId: string, id: string): Promise<boolean> {
+  const deleted = await db
+    .delete(ninaShortcuts)
+    .where(and(eq(ninaShortcuts.userId, userId), eq(ninaShortcuts.id, id)))
+    .returning({ id: ninaShortcuts.id })
+  return deleted.length > 0
+}
+
+/**
+ * *"so the admin can see which codes actually fire"* — one statement, `uses = uses + 1` and
+ * `last_used_at = now()`, for every id in one go.
+ *
+ * **Phase 2 calls this FIRE-AND-FORGET after the turn has already returned, and a rejection must
+ * never fail a turn.** Plan invariant 7 lives at that call site — it is the caller that must
+ * `.catch()` — but it is written here so the next person to reach for this function knows it is
+ * telemetry and not bookkeeping the conversation depends on. Nothing reads `uses` on the turn
+ * path.
+ *
+ * `uses` is incremented IN SQL rather than read-then-written: two turns can be in flight at once
+ * (a background turn and a proactive sweep are a real pair) and a read-then-write loses one.
+ * `upsertNinaNag`'s `count` is the precedent.
+ *
+ * Note that this ALSO moves `updated_at`, because `$onUpdate` fires on every drizzle update of the
+ * table. See the schema header: `updated_at` is "the row last changed", never "the admin last
+ * edited it".
+ */
+export async function bumpNinaShortcutUses(userId: string, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return
+
+  await db
+    .update(ninaShortcuts)
+    .set({ uses: sql`${ninaShortcuts.uses} + 1`, lastUsedAt: new Date() })
+    .where(and(eq(ninaShortcuts.userId, userId), inArray(ninaShortcuts.id, [...ids])))
+}
+```
+
+`and`, `asc`, `eq`, `inArray` and `sql` are all already imported at `lib/nina/queries.ts:1-17`;
+`newId` at `:46`. **No further import changes.**
+
+**Impact:** five new exported functions that nothing calls yet. `npm run typecheck` passes.
+
+---
+
+### Step 5: `lib/nina/shortcuts.test.ts`
+
+**File:** `lib/nina/shortcuts.test.ts` (new). Colocated, because `lib/nina/` colocates the tests of
+its pure modules (`crop.test.ts`, `sessions.test.ts`, `album.test.ts`, …) and `vitest.config.ts`
+includes `lib/**/*.test.ts`.
+
+**Change:** the whole file.
+
+**Code:**
+
+```ts
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  classifyNinaTrigger,
+  matchNinaShortcuts,
+  NINA_SHORTCUT_BLOCK_MAX_CHARS,
+  NINA_SHORTCUT_EXPANSION_MAX,
+  NINA_SHORTCUT_LABEL_MAX,
+  NINA_SHORTCUT_LOOKBACK,
+  NINA_SHORTCUT_MAX_FIRED,
+  NINA_TRIGGER_MAX,
+  normalizeNinaTrigger,
+  renderNinaShortcutBlock,
+  type NinaShortcutMatchable,
+} from './shortcuts'
+
+/**
+ * The matcher, driven by the triggers that are ALREADY IN PRODUCTION rather than by invented ones.
+ * *"read Memory data from prod and you would understand what i meant"* was half the specification,
+ * and a fixture of made-up emoji would have tested a feature nobody asked for.
+ *
+ * Read from `nina_memory_facts` on 2026-09-07 and reproduced verbatim: nineteen emoji and five
+ * onomatopoeic Latin tokens, twenty-four triggers in all — **at the time of that read.** The table
+ * is live and moved during the analysis, so this list is a FIXTURE of what production held that
+ * afternoon and not a count anything may depend on. Nothing in `lib/nina/shortcuts.ts` knows how
+ * many rows exist, and phase 4's importer classifies at run time.
+ */
+const PROD_EMOJI = [
+  '🍑',
+  '💦',
+  '💋',
+  '🍆',
+  '🤤',
+  '🫦',
+  '🤏',
+  '🫴',
+  '✌️', // U+270C U+FE0F — the one production trigger carrying a variation selector
+  '🤲',
+  '👌',
+  '👐',
+  '🤝',
+  '🫶',
+  '🙌',
+  '👏',
+  '👍',
+  '👎',
+  '👊',
+] as const
+
+const PROD_WORDS = ['plak!', 'slurp!', 'yumm', 'nom nom', 'lick!'] as const
+
+const PROD_TRIGGERS = [...PROD_EMOJI, ...PROD_WORDS]
+
+/**
+ * `✌️` spelled out, because the difference between these two is invisible in an editor and is the
+ * single most important case in this file. `U+FE0F` is VARIATION SELECTOR-16.
+ */
+const PEACE_WITH_VS = '\u270C\uFE0F'
+const PEACE_BARE = '\u270C'
+
+/** A row exactly as `lib/nina/queries.ts` would return it, minus the four fields matching ignores. */
+function shortcut(
+  id: string,
+  trigger: string,
+  over: Partial<NinaShortcutMatchable> = {},
+): NinaShortcutMatchable {
+  const matchKey = normalizeNinaTrigger(trigger)
+  return {
+    id,
+    trigger,
+    matchKey,
+    kind: classifyNinaTrigger(matchKey),
+    label: `${id} label`,
+    expansion: `${id} expansion`,
+    enabled: true,
+    ...over,
+  }
+}
+
+describe('normalizeNinaTrigger', () => {
+  it('folds the variation selector out, which is what makes ✌️ and ✌ one shortcut', () => {
+    expect(PEACE_WITH_VS.length).toBe(2)
+    expect(PEACE_BARE.length).toBe(1)
+    expect(normalizeNinaTrigger(PEACE_WITH_VS)).toBe(PEACE_BARE)
+    expect(normalizeNinaTrigger(PEACE_BARE)).toBe(PEACE_BARE)
+  })
+
+  it('lowercases, trims, and collapses internal whitespace runs to one space', () => {
+    expect(normalizeNinaTrigger('  Plak!  ')).toBe('plak!')
+    expect(normalizeNinaTrigger('NOM   NOM')).toBe('nom nom')
+    expect(normalizeNinaTrigger('nom\tnom')).toBe('nom nom')
+  })
+
+  it('KEEPS the zero-width joiner, or two distinct emoji sequences collide on one match_key', () => {
+    const joined = '\u{1F469}\u200D\u2764\uFE0F\u200D\u{1F468}'
+    expect(normalizeNinaTrigger(joined)).toContain('\u200D')
+    expect(normalizeNinaTrigger(joined)).not.toContain('\uFE0F')
+  })
+
+  it('is idempotent, which is what lets the matcher re-fold a stored match_key for free', () => {
+    for (const trigger of PROD_TRIGGERS) {
+      const once = normalizeNinaTrigger(trigger)
+      expect(normalizeNinaTrigger(once), trigger).toBe(once)
+    }
+  })
+
+  it('survives a non-string without throwing — plan invariant 7', () => {
+    expect(normalizeNinaTrigger(null as unknown as string)).toBe('')
+    expect(normalizeNinaTrigger(undefined as unknown as string)).toBe('')
+    expect(normalizeNinaTrigger('   ')).toBe('')
+  })
+})
+
+describe('classifyNinaTrigger, over the real production set', () => {
+  it('calls every emoji in the fixture a glyph and every onomatopoeic token a word', () => {
+    for (const emoji of PROD_EMOJI) {
+      expect(classifyNinaTrigger(normalizeNinaTrigger(emoji)), emoji).toBe('glyph')
+    }
+    for (const word of PROD_WORDS) {
+      expect(classifyNinaTrigger(normalizeNinaTrigger(word)), word).toBe('word')
+    }
+  })
+
+  it('is not fooled by the trailing bang: plak! is a word on the strength of plak', () => {
+    expect(classifyNinaTrigger('!')).toBe('glyph')
+    expect(classifyNinaTrigger('plak!')).toBe('word')
+  })
+})
+
+describe('the bounds fit the data they were sized for', () => {
+  it('NINA_TRIGGER_MAX holds every real trigger with room for a ZWJ sequence', () => {
+    for (const trigger of PROD_TRIGGERS) {
+      expect(trigger.length, trigger).toBeLessThanOrEqual(NINA_TRIGGER_MAX)
+    }
+    // 👩‍❤️‍👨 — the shape the 16 was chosen for.
+    expect(
+      '\u{1F469}\u200D\u2764\uFE0F\u200D\u{1F468}'.length,
+    ).toBeLessThanOrEqual(NINA_TRIGGER_MAX)
+  })
+
+  it('gives an expansion five times the ledger cap that is binding in production today', () => {
+    // ADMIN_FACT_TEXT_MAX is 400 and the three longest production expansions sit within eight
+    // characters of it. That is the defect this table exists to remove.
+    expect(NINA_SHORTCUT_EXPANSION_MAX).toBe(2000)
+    expect(NINA_SHORTCUT_LABEL_MAX).toBe(80)
+    expect(NINA_SHORTCUT_MAX_FIRED).toBe(4)
+    expect(NINA_SHORTCUT_LOOKBACK).toBe(6)
+  })
+})
+
+describe('matchNinaShortcuts — the boundary rules', () => {
+  it('matches ✌️ in a message carrying bare ✌, and bare ✌ in a message carrying ✌️', () => {
+    const withVs = matchNinaShortcuts({
+      shortcuts: [shortcut('a', PEACE_WITH_VS)],
+      current: `oke ${PEACE_BARE} sayang`,
+    })
+    expect(withVs.fired.map((h) => h.id)).toEqual(['a'])
+
+    const bare = matchNinaShortcuts({
+      shortcuts: [shortcut('a', PEACE_BARE)],
+      current: `oke ${PEACE_WITH_VS} sayang`,
+    })
+    expect(bare.fired.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('fires a glyph anywhere, including with no space around it', () => {
+    const hits = matchNinaShortcuts({ shortcuts: [shortcut('a', '🍑')], current: 'ini🍑dong' })
+    expect(hits.fired.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('does NOT fire yumm inside yummy — the whole reason a word gets a different rule', () => {
+    const inside = matchNinaShortcuts({
+      shortcuts: [shortcut('a', 'yumm')],
+      current: 'yummy banget masakannya',
+    })
+    expect(inside.fired).toEqual([])
+
+    const alone = matchNinaShortcuts({ shortcuts: [shortcut('a', 'yumm')], current: 'yumm banget' })
+    expect(alone.fired.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('fires Plak! for the trigger plak!, because both sides are lowercased', () => {
+    const hits = matchNinaShortcuts({ shortcuts: [shortcut('a', 'plak!')], current: 'Plak! keras' })
+    expect(hits.fired.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('fires nom nom in "aku mau nom nom dong" but not in "nomnom"', () => {
+    const spaced = matchNinaShortcuts({
+      shortcuts: [shortcut('a', 'nom nom')],
+      current: 'aku mau nom nom dong',
+    })
+    expect(spaced.fired.map((h) => h.id)).toEqual(['a'])
+
+    const jammed = matchNinaShortcuts({ shortcuts: [shortcut('a', 'nom nom')], current: 'nomnom' })
+    expect(jammed.fired).toEqual([])
+
+    // And the whitespace collapse is what makes the double space still count.
+    const doubled = matchNinaShortcuts({
+      shortcuts: [shortcut('a', 'nom nom')],
+      current: 'aku mau nom  nom dong',
+    })
+    expect(doubled.fired.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('fires every one of the twenty-four real triggers when he sends it on its own', () => {
+    for (const trigger of PROD_TRIGGERS) {
+      const hits = matchNinaShortcuts({
+        shortcuts: [shortcut('a', trigger)],
+        current: trigger,
+      })
+      expect(hits.fired.map((h) => h.id), trigger).toEqual(['a'])
+    }
+  })
+
+  it('fires nothing for any of them when the message is about something else', () => {
+    const shortcuts = PROD_TRIGGERS.map((trigger, i) => shortcut(`s${i}`, trigger))
+    const hits = matchNinaShortcuts({
+      shortcuts,
+      current: 'tadi pagi lari 5k pace 6 menit, kaki agak pegal',
+    })
+    expect(hits.fired).toEqual([])
+    expect(hits.inPlay).toEqual([])
+  })
+})
+
+describe('matchNinaShortcuts — what does not fire', () => {
+  it('never fires a disabled row', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('a', '🍑', { enabled: false })],
+      current: 'ini 🍑 dong',
+    })
+    expect(hits.fired).toEqual([])
+    expect(hits.inPlay).toEqual([])
+  })
+
+  it('fires nothing for a null message and nothing for an empty one', () => {
+    const shortcuts = [shortcut('a', '🍑')]
+    for (const current of [null, '', '   ']) {
+      const hits = matchNinaShortcuts({ shortcuts, current })
+      expect(hits.fired, String(current)).toEqual([])
+      expect(renderNinaShortcutBlock(hits), String(current)).toBeNull()
+    }
+  })
+
+  it('degrades rather than throws on a row whose kind and match_key are junk', () => {
+    const broken = {
+      id: 'a',
+      trigger: '🍑',
+      matchKey: '',
+      kind: 'GLYPH' as unknown as NinaShortcutMatchable['kind'],
+      label: '',
+      expansion: 'x',
+      enabled: true,
+    }
+    // match_key is empty, so it falls back to the trigger; kind is unrecognised, so it is
+    // re-derived. Both paths are plan invariant 7.
+    const hits = matchNinaShortcuts({ shortcuts: [broken], current: 'ini 🍑' })
+    expect(hits.fired.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('counts a duplicated id once', () => {
+    const one = shortcut('a', '🍑')
+    const hits = matchNinaShortcuts({ shortcuts: [one, one], current: '🍑' })
+    expect(hits.fired).toHaveLength(1)
+  })
+})
+
+describe('matchNinaShortcuts — ordering, in-play and the cap', () => {
+  it('orders fired by where each trigger first occurs in the message', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('peach', '🍑'), shortcut('splash', '💦')],
+      current: 'dulu 💦 baru 🍑',
+    })
+    expect(hits.fired.map((h) => h.id)).toEqual(['splash', 'peach'])
+  })
+
+  it('puts a shortcut that matches BOTH current and recent in fired, exactly once', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('a', '🍑')],
+      current: 'ini 🍑',
+      recent: ['tadi 🍑 juga'],
+    })
+    expect(hits.fired.map((h) => h.id)).toEqual(['a'])
+    expect(hits.inPlay).toEqual([])
+  })
+
+  it('keeps an earlier code in play when this message does not carry it', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('a', '🫦')],
+      current: 'terusin',
+      recent: ['🫦'],
+    })
+    expect(hits.fired).toEqual([])
+    expect(hits.inPlay.map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('stops looking back after NINA_SHORTCUT_LOOKBACK messages', () => {
+    const recent = ['1', '2', '3', '4', '5', '6', 'tadi 🍑']
+    expect(recent.length).toBeGreaterThan(NINA_SHORTCUT_LOOKBACK)
+    const hits = matchNinaShortcuts({ shortcuts: [shortcut('a', '🍑')], current: 'hai', recent })
+    expect(hits.inPlay).toEqual([])
+  })
+
+  it('gives every slot to fired first, so four in one message leaves no room for in-play', () => {
+    const shortcuts = [
+      shortcut('a', '🍑'),
+      shortcut('b', '💦'),
+      shortcut('c', '💋'),
+      shortcut('d', '🍆'),
+      shortcut('e', '🤤'),
+    ]
+    const full = matchNinaShortcuts({ shortcuts, current: '🍑💦💋🍆', recent: ['🤤'] })
+    expect(full.fired).toHaveLength(NINA_SHORTCUT_MAX_FIRED)
+    expect(full.inPlay).toEqual([])
+
+    const partial = matchNinaShortcuts({ shortcuts, current: '🍑💦', recent: ['🤤 💋'] })
+    expect(partial.fired.map((h) => h.id)).toEqual(['a', 'b'])
+    expect(partial.inPlay.map((h) => h.id)).toEqual(['e', 'c'])
+    expect(partial.fired.length + partial.inPlay.length).toBe(NINA_SHORTCUT_MAX_FIRED)
+  })
+
+  it('drops a fifth fired shortcut rather than growing the block', () => {
+    const shortcuts = PROD_EMOJI.slice(0, 5).map((emoji, i) => shortcut(`s${i}`, emoji))
+    const hits = matchNinaShortcuts({ shortcuts, current: PROD_EMOJI.slice(0, 5).join(' ') })
+    expect(hits.fired.map((h) => h.id)).toEqual(['s0', 's1', 's2', 's3'])
+  })
+})
+
+describe('renderNinaShortcutBlock', () => {
+  it('is null when nothing fired and nothing is in play — plan invariant 2', () => {
+    expect(renderNinaShortcutBlock({ fired: [], inPlay: [] })).toBeNull()
+    expect(renderNinaShortcutBlock(null)).toBeNull()
+    expect(renderNinaShortcutBlock(undefined)).toBeNull()
+  })
+
+  it('prints the trigger, the label and the whole expansion, under a directive header', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('a', '🍑', { label: 'remes pantat', expansion: 'a'.repeat(600) })],
+      current: 'ini 🍑',
+    })
+    const block = renderNinaShortcutBlock(hits)
+    expect(block).not.toBeNull()
+    expect(block).toContain('HE USED A SHORTCUT')
+    expect(block).toContain('🍑 — remes pantat')
+    expect(block).toContain('a'.repeat(600))
+    // The expansion is NOT truncated at the ledger's 400 — that cap is what this table removed.
+    expect(block).not.toContain('…')
+  })
+
+  it('renders a still-in-play code under its own header even when nothing fired', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('a', '🫦')],
+      current: 'terusin',
+      recent: ['🫦'],
+    })
+    const block = renderNinaShortcutBlock(hits)
+    expect(block).toContain('STILL IN PLAY')
+    expect(block).not.toContain('HE USED A SHORTCUT')
+  })
+
+  it('never exceeds NINA_SHORTCUT_BLOCK_MAX_CHARS, and drops whole entries to stay under it', () => {
+    // Four maximal expansions are 8000 characters against a 5000 ceiling, so this is reachable.
+    const shortcuts = PROD_EMOJI.slice(0, 4).map((emoji, i) =>
+      shortcut(`s${i}`, emoji, { expansion: 'z'.repeat(NINA_SHORTCUT_EXPANSION_MAX) }),
+    )
+    const hits = matchNinaShortcuts({ shortcuts, current: PROD_EMOJI.slice(0, 4).join('') })
+    const block = renderNinaShortcutBlock(hits)
+    expect(block).not.toBeNull()
+    expect(block!.length).toBeLessThanOrEqual(NINA_SHORTCUT_BLOCK_MAX_CHARS)
+    // Whole entries, not half a directive: no expansion in the block is a partial one.
+    expect(block).not.toContain('…')
+    expect(block).toContain(PROD_EMOJI[0])
+  })
+
+  it('clamps a single over-ceiling expansion rather than emitting a headline with no body', () => {
+    const hits = matchNinaShortcuts({
+      shortcuts: [shortcut('a', '🍑', { expansion: 'q'.repeat(9000) })],
+      current: '🍑',
+    })
+    const block = renderNinaShortcutBlock(hits)
+    expect(block!.length).toBe(NINA_SHORTCUT_BLOCK_MAX_CHARS)
+    expect(block!.endsWith('…')).toBe(true)
+    expect(block).toContain('HE USED A SHORTCUT')
+  })
+})
+
+describe('the module stays importable from a client component', () => {
+  it('has no imports at all, and nothing server-only', () => {
+    // Phase 3's `components/admin/ShortcutTable.tsx` is `'use client'` and imports the three
+    // length bounds directly. The `lib/nina/tuning.ts` rule, verbatim, including the reason it is
+    // tested by READING rather than by importing: an import that works in Vitest proves nothing
+    // about the react-server condition.
+    const source = readFileSync(
+      fileURLToPath(new URL('./shortcuts.ts', import.meta.url)),
+      'utf8',
+    )
+    expect(source).not.toMatch(/^\s*import\s/m)
+    expect(source).not.toMatch(/^\s*export\s+.*\bfrom\s+'/m)
+    // Against the CODE with comments stripped, not the raw source: this module's header names
+    // `server-only` and `@/lib/db/*` in the very sentence that forbids them, and deleting the
+    // explanation to satisfy a substring search would delete the reason the rule exists.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    expect(code).not.toContain('server-only')
+    expect(code).not.toContain('@/lib/db')
+  })
+})
+```
+
+**Impact:** ~35 new cases. All of them are pure; none touches a database.
+
+---
+
+### Step 6: `tests/db.schema.nina.test.ts`
+
+**File:** `tests/db.schema.nina.test.ts` — append a new `describe` at the END of the file (after
+line 700). **Do not touch** the existing `describe('the eight table names')`: that suite is
+explicitly about F33's eight tables and the cascade loop inside it is that set's assertion, not a
+running total. The new table asserts its own cascade below.
+
+**No import changes** — `cfg`, `columns`, `sqlType`, `names`, `indexNames` and `fkFor` are already
+declared at `tests/db.schema.nina.test.ts:20-50`, and `schema` is already imported.
+
+**Code:**
+
+```ts
+describe('nina_shortcuts — the trigger registry (F36)', () => {
+  it('is a table with exactly the twelve columns phases 2, 3 and 4 were written against', () => {
+    expect(cfg(schema.ninaShortcuts).name).toBe('nina_shortcuts')
+    expect(names(schema.ninaShortcuts)).toEqual(
+      [
+        'id',
+        'user_id',
+        // Two columns for one trigger: what he typed, and what matching uses. See the header.
+        'trigger',
+        'match_key',
+        'kind',
+        'label',
+        'expansion',
+        'enabled',
+        // Telemetry — which codes actually fire. Nothing on the turn path reads them.
+        'uses',
+        'last_used_at',
+        'created_at',
+        'updated_at',
+      ].sort(),
+    )
+    expect(columns(schema.ninaShortcuts).get('id')?.primary).toBe(true)
+  })
+
+  it('cascades from users, so deleting the account takes the registry with it', () => {
+    expect(fkFor(schema.ninaShortcuts, 'user_id')?.onDelete).toBe('cascade')
+  })
+
+  it('carries NO source_message_id and NO source — there is no distilled shortcut', () => {
+    // Every row is authored by a human on /admin/shortcuts or lifted from the ledger by phase 4.
+    // Their absence is also what makes removeNinaSession's memory purge — which matches on
+    // `source_message_id IN (…)` — structurally unable to reach this table.
+    expect(names(schema.ninaShortcuts)).not.toContain('source_message_id')
+    expect(names(schema.ninaShortcuts)).not.toContain('source')
+    expect(names(schema.ninaShortcuts)).not.toContain('confidence')
+  })
+
+  it('has the unique key on (user_id, match_key), which is the duplicate check itself', () => {
+    expect(indexNames(schema.ninaShortcuts)).toEqual([
+      'nina_shortcuts_user_enabled_idx',
+      'nina_shortcuts_user_match_unq',
+    ])
+    const unq = cfg(schema.ninaShortcuts).indexes.find(
+      (i) => i.config.name === 'nina_shortcuts_user_match_unq',
+    )
+    expect(unq?.config.unique).toBe(true)
+    // NOT partial: every row claims a key, so there is nothing to exempt.
+    expect(unq?.config.where).toBeUndefined()
+    expect(unq?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
+      'user_id',
+      'match_key',
+    ])
+  })
+
+  it('indexes (user_id, enabled) for the every-turn read', () => {
+    const idx = cfg(schema.ninaShortcuts).indexes.find(
+      (i) => i.config.name === 'nina_shortcuts_user_enabled_idx',
+    )
+    expect(idx?.config.unique).toBe(false)
+  })
+
+  it('leaves kind as plain text with no CHECK, so lib/nina/shortcuts.ts owns the vocabulary', () => {
+    // The `nina_tuning.relationship` argument, and here it also buys the client-safety property:
+    // `lib/nina/shortcuts.ts` must stay importable from a 'use client' file, so it cannot import
+    // this module — and typing the column would mean importing UPWARD or restating the union.
+    expect(sqlType(schema.ninaShortcuts, 'kind')).toBe('text')
+    expect(cfg(schema.ninaShortcuts).checks.length).toBe(0)
+    expect(columns(schema.ninaShortcuts).get('match_key')?.notNull).toBe(true)
+    expect(columns(schema.ninaShortcuts).get('trigger')?.notNull).toBe(true)
+  })
+
+  it('is enabled by default, has never been used by default, and says so with NULL', () => {
+    expect(sqlType(schema.ninaShortcuts, 'enabled')).toBe('boolean')
+    expect(columns(schema.ninaShortcuts).get('enabled')?.notNull).toBe(true)
+    expect(columns(schema.ninaShortcuts).get('enabled')?.hasDefault).toBe(true)
+    expect(sqlType(schema.ninaShortcuts, 'uses')).toBe('integer')
+    expect(columns(schema.ninaShortcuts).get('uses')?.notNull).toBe(true)
+    expect(columns(schema.ninaShortcuts).get('uses')?.hasDefault).toBe(true)
+    // NULL = this code has never fired. A real answer, and the one phase 3 renders as "never".
+    expect(sqlType(schema.ninaShortcuts, 'last_used_at')).toBe('timestamp with time zone')
+    expect(columns(schema.ninaShortcuts).get('last_used_at')?.notNull).toBe(false)
+  })
+})
+```
+
+**Impact:** seven new structural cases. No existing assertion moves.
+
+---
+
+## Verification
+
+**Build:** `npm run lint && npm run typecheck && npm run build`
+**Migration:** `npm run db:generate && npm run db:check`
+**Tests:** `npm test`
+**Format:** `npm run format:check` — and if it fails, `npm run format` is repo-wide, so commit by
+pathspec, never `git commit -a`.
+
+**Manual check:**
+
+1. `git status --short drizzle/` shows exactly three paths: the new `.sql`, the new
+   `meta/*_snapshot.json`, and the modified `meta/_journal.json`. Any two without the third is a
+   broken set.
+2. `git diff --stat` names exactly the eight files in the table above and nothing else. In
+   particular `tests/__snapshots__/nina.prompts.test.ts.snap` must not appear (invariant 3) and no
+   file under `lib/admin/`, `components/`, `app/` or `scripts/` may appear.
+3. `grep -c '^import' lib/nina/shortcuts.ts` returns `0`. (The test asserts it; check it by hand
+   too, because a well-meaning auto-import is the likeliest way this breaks.)
+
+**Exit criteria:** `npm run db:check` passes against a freshly generated migration; the twenty-four
+real production triggers, the `✌️`/`✌` pair, `yummy`, `Plak!`, `nomnom`, the disabled row, the null
+message and the count cap all have a passing case in `lib/nina/shortcuts.test.ts`;
+`npm run lint && npm run typecheck && npm test` are green; and `git diff` touches nothing outside
+the eight files listed.
+
+## Handoffs
+
+**To Phase 2 (`lib/nina/turn.ts`, `lib/nina/actions.ts`):**
+
+- Call `listNinaShortcuts(userId, { onlyEnabled: true })` as the fourth entry in the `Promise.all`
+  at `lib/nina/actions.ts:781`. The bare call returns disabled rows too, which the turn does not
+  want on the wire.
+- `NinaShortcutRecord[]` is assignable to `readonly NinaShortcutMatchable[]` with no mapping.
+- **`renderNinaShortcutBlock` returns a non-null block when `inPlay` is non-empty even if `fired`
+  is empty.** That is deliberate — `🫦` opens a mode that runs until `💦`, and the instruction has
+  to survive the turn where he only says *"terusin"*. Two consequences phase 2 must carry, and both
+  are in its plan:
+  1. Every "byte-identical `userTurnText`" case must be built with **no matching recent message
+     either**, not merely with a non-matching `current`. A turn whose `current` misses but whose
+     `recentRunnerTexts` hits correctly emits a block, and a baseline case that let one through
+     would be asserting the opposite of this ruling.
+  2. Phase 2 must carry a **positive** case proving an in-play-only hit DOES reach `userTurnText`.
+     Without it, `firedShortcutIds === []` is the only thing asserted about that turn, and a
+     regression that dropped `inPlay` from the block entirely would keep the suite green.
+- The usage bump to report is `[...hits.fired, ...hits.inPlay].map((h) => h.id)` — or just
+  `hits.fired`, if the phase decides an in-play code should not count as a use. **Phase 2's call.**
+  `bumpNinaShortcutUses` is fire-and-forget and phase 2 owns the `.catch()`; invariant 7 lives at
+  that call site.
+- `NINA_SHORTCUT_LOOKBACK` is 6 and the matcher enforces it internally, so phase 2's slice of
+  `loadedContext.conversation.window` may be longer without changing the result. Slicing anyway is
+  cheaper.
+
+**To Phase 3 (`/admin/shortcuts`):**
+
+- The three length bounds (`NINA_TRIGGER_MAX`, `NINA_SHORTCUT_LABEL_MAX`,
+  `NINA_SHORTCUT_EXPANSION_MAX`) are importable from `lib/nina/shortcuts.ts` in a `'use client'`
+  file. That is what the zero-import rule is for.
+- **Do not pre-check for a duplicate trigger.** `insertNinaShortcut` throws the unique violation;
+  catch it in `lib/admin/shortcutActions.ts` and report the trigger by name. A check-then-write
+  races itself.
+- **Do not label `updated_at` as "last edited".** `$onUpdate` fires on the usage bump too. The
+  telemetry column is `last_used_at`.
+- `updateNinaShortcut` returns the saved record, so blur-to-save can render `match_key` and `kind`
+  without recomputing them client-side.
+- **`match_key` and `kind` are derived INSIDE this layer, from `trigger`, by `derivedTrigger`.**
+  `NinaShortcutInsert` and `NinaShortcutPatch` have no field for either, so phase 3's
+  *"a caller cannot mislabel a row because there is nowhere to put the label"* property is
+  satisfied at the TYPE level, one layer further down than phase 3 first planned it. Phase 3's
+  store must therefore **not** pass `matchKey` or `kind` to these functions — they will not
+  type-check — and must not compute `kind` at all.
+- **The admin read is `listNinaShortcuts(userId)` with no options**, which returns every row
+  including the disabled ones, with `uses`, `lastUsedAt`, `createdAt` and `updatedAt` on it.
+  There is no column `/admin/shortcuts` needs that this does not carry, so phase 3 does **not**
+  write its own `SELECT` against `ninaShortcuts`. The one thing it must do for itself is the
+  ORDERING: this function sorts by `match_key` because a registry is scanned by trigger, and
+  `/admin/shortcuts` wants newest-first so a row just added lands under the add row. That is a
+  cheap in-memory re-sort over tens of rows, and it is phase 3's.
+
+**To Phase 4 (`scripts/nina-shortcuts-import.mjs`):**
+
+- **The importer does NOT reimplement the normalisation. It imports it.** `scripts/nina-shortcuts-import.mjs`
+  imports `normalizeNinaTrigger` and `classifyNinaTrigger` from `../lib/nina/shortcuts.ts` directly,
+  under `--experimental-strip-types` — the `scripts/nina-profpic.mjs:151-153` and
+  `scripts/backfill-record-keys.mjs:85` convention, measured and confirmed by phase 4's planner.
+  This module's zero-import rule is what makes that legal (see the header), so a value import added
+  here breaks phase 4's script at BOOT and not merely at bundle time.
+  `tests/nina.shortcutsImport.test.ts` asserts **function identity** (`expect(scriptNormalize).toBe(normalizeNinaTrigger)`),
+  which is strictly stronger than a parity sweep: a copy cannot pass it. The five rules in
+  `normalizeNinaTrigger`'s header — **with `U+200D` kept** — therefore have exactly one
+  implementation in the tree, and there is nothing for the two sides to drift about.
+- Insert with raw SQL and `on conflict (user_id, match_key) do nothing` — the importer does not go
+  through `insertNinaShortcut`, which deliberately THROWS on a duplicate because phase 3 needs the
+  throw. Phase 4 wants the opposite behaviour on a re-run and writes its own statement for it.
+- `kind` comes from the same `classifyNinaTrigger` for the same reason: derive it, never guess it,
+  or the five Latin triggers land as glyphs and `yumm` starts firing inside `yummy`.
+
+**Found and deliberately left alone:**
+
+- The trigger count was miscounted three ways across the draft documents. **Settled at
+  reconciliation and now consistent everywhere: 24 shortcut-shaped rows at the time of the read —
+  19 emoji (one of them `✌️`, carrying `U+FE0F`) and 5 Latin tokens — 4 genuine facts, grammar
+  split 11 / 2 / 8 / 3.** The ledger is live and moved during the analysis (28 rows → 27, the user
+  deleting a fact mid-read), so **no phase hard-codes any of those numbers**: this phase's fixture
+  is a fixture, and phase 4 classifies at run time and reports what it found.
+- `lib/nina/gateway.ts`'s `readMemoryFacts` drops `category`, `confidence` and `source` at the
+  boundary, which is why the model cannot tell an admin-authored shortcut from a distilled
+  observation today. Out of scope for the whole plan set — the separate table makes it moot.
+- `MEMORY_FACT_LIMIT = 60` (`lib/nina/load.ts:99`) silently ages out old ledger rows. Not this
+  phase's, and phase 4's `--prune` shrinks the ledger enough that it stops mattering.
+
+## Rollback
+
+`git revert` the single commit. That takes the schema edit, the queries, the two test files and the
+migration artefacts together, which is the only safe granularity: reverting the code but keeping
+the migration in the journal would leave `drizzle-kit check` comparing a snapshot to a schema that
+no longer declares the table.
+
+The revert leaves an **empty, unreferenced `nina_shortcuts` table** in any database the migration
+has already reached. It is inert — nothing reads it once this phase's code is gone — and costs one
+catalog entry. Drop it with `drop table nina_shortcuts;` if that matters, and also remove the
+journal entry and the snapshot in the same commit if you do, or the next `db:generate` will try to
+recreate it.
+
+No existing column is altered and no existing row is touched, so no revert of this phase can strand
+data that predates it.
