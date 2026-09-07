@@ -6,8 +6,9 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image`
 **Branch:** `feature/nina-photo-caption-from-image` (base: `origin/main` @ `f839116`)
 **Phases:** 4
-**Status:** planned
-**Coordinator:** —
+**Status:** in_progress (phases 1, 2 landed; 3, 4 runnable)
+**Coordinator:** `orch-nina-photo-caption-from-image`
+**Parent card:** [#113](https://github.com/miftahulmahfuzh/run-insights/issues/113) — owns the pull request
 
 ---
 
@@ -108,10 +109,10 @@ Every phase holds all of these. A phase that cannot is a phase whose plan is wro
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Her eyes for her own photo, and her voice for the caption | R1, R2 | `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-1.md` | — | — |
-| 2 | The carrier marker: a photo bubble free text cannot hide | R1, R2 | `lib/db` + `lib/nina` + `lib/admin` + `scripts` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-2.md` | — | — |
-| 3 | The admin add path captions from the photograph | R1 | `lib/admin` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-3.md` | — | — |
-| 4 | Generated selfies caption from the scene she asked for | R2 | `lib/nina` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-4.md` | — | — |
+| 1 | Her eyes for her own photo, and her voice for the caption | R1, R2 | `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-1.md` | `P1-NIN-A019` | [#114](https://github.com/miftahulmahfuzh/run-insights/issues/114) |
+| 2 | The carrier marker: a photo bubble free text cannot hide | R1, R2 | `lib/db` + `lib/nina` + `lib/admin` + `scripts` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-2.md` | `P1-DB-A002` | [#115](https://github.com/miftahulmahfuzh/run-insights/issues/115) |
+| 3 | The admin add path captions from the photograph | R1 | `lib/admin` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-3.md` | `P1-ADM-A000` | [#116](https://github.com/miftahulmahfuzh/run-insights/issues/116) |
+| 4 | Generated selfies caption from the scene she asked for | R2 | `lib/nina` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-4.md` | `P1-NIN-A020` | [#117](https://github.com/miftahulmahfuzh/run-insights/issues/117) |
 
 Waves: **{1, 2}** then **{3, 4}**. Phases 1 and 2 share no file; phases 3 and 4 share no file.
 
@@ -251,10 +252,20 @@ choice where every branch is irreversible.
 destroyed by any phase: the migration only adds a defaulted column, and every caption write goes
 through `updateNinaMessage`, which changes `text` and nothing else.
 
-**THE MIGRATION IS THE ONE THING TO GET RIGHT AT MERGE TIME.** A second orchestrated set,
-`nina-job-redo-and-soft-delete`, is in flight on this repo from the same base `f839116`, and its
-phase 2 adds `nina_turns.deleted_at`. **Both sets will mint `0008`.** The repair belongs to whoever
-merges **second**, and it is not a rename:
+**THE MIGRATION IS THE ONE THING TO GET RIGHT AT MERGE TIME.**
+
+> **Updated 2026-09-07 by `orch-nina-photo-caption-from-image`, and the update removes the "if".**
+> When this plan was written, `nina-job-redo-and-soft-delete` was still in flight from the same
+> base `f839116`, so the repair below was addressed to *whoever merged second*. That set has
+> since **merged at `fa1b7e3` and been pruned at `4a622a3`**, both on `origin/main`, and its
+> `drizzle/0008_thankful_cardiac.sql` is applied. This branch is still cut from `f839116`, which
+> is 28 commits behind. **So this set merges second, certainly — the steps below are
+> unconditional, not contingent.** Verified independently by two sessions before being written
+> here.
+
+A second orchestrated set, `nina-job-redo-and-soft-delete`, was cut from the same base `f839116`,
+and its phase 2 adds `nina_turns.deleted_at`. **Both sets mint `0008`.** The repair is this set's,
+and it is not a rename:
 
 1. Diff `drizzle/meta/_journal.json` against `main` before merging. A shared `idx` is the signal.
 2. Keep `main`'s `_journal.json` and `0008_snapshot.json`. **Delete this branch's `0008_*.sql`** and

@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A014`, the caption engine — `caption.ts`, `prompts/caption.ts`, and the pool/set split in `imagefail.ts`)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A019`, the caption engine — `caption.ts`, `prompts/caption.ts`, and the pool/set split in `imagefail.ts`)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -472,7 +472,7 @@ a promise he did not keep. A promise with no `reward` field is today's avatar pr
 `index.ts` (public surface + `NINA_PROMPT_VERSION`), `system.ts` (`NINA_SYSTEM_PROMPT`,
 `NUMBERS_RULE`, `PROACTIVE_INSTRUCTIONS`), `tools.ts` (every tool schema as a constant),
 `distill.ts` (`buildDistillSystemPrompt(relationship)` + `NINA_DISTILL_PROMPT_VERSION`),
-`describe.ts` (**two** witness prompts — the runner's and, since `P1-NIN-A014`, hers — behind
+`describe.ts` (**two** witness prompts — the runner's and, since `P1-NIN-A019`, hers — behind
 `NINA_DESCRIBE_SYSTEM_PROMPTS`), `caption.ts` (`buildNinaCaptionSystemPrompt`,
 `NINA_CAPTION_TOOL`, `sanitizeNinaCaption` + `NINA_CAPTION_PROMPT_VERSION`). Pure text — no I/O —
 so tests can assert prompt shape without the loop.
@@ -509,7 +509,7 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 `imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
 `imagejobs.ts` (job row lifecycle and quota), `imagecall.ts` (the OpenRouter image call),
 `imagerun.ts` (claim → generate → store → finish, inside `after()`),
-`imagefail.ts` (classify a failure, pick what she says — and, since `P1-NIN-A014`, pick it from the
+`imagefail.ts` (classify a failure, pick what she says — and, since `P1-NIN-A019`, pick it from the
 scene-agnostic `NINA_IMAGE_CAPTION_POOL` rather than the historical set), `caption.ts` (the
 `glm-5.3` call that writes the real caption from what is in the picture), `imagetools.ts` /
 `avatartools.ts` (the two tool handlers and the tool sets), `avatargen.ts`.
@@ -699,7 +699,7 @@ dependency, no new env var, no user-visible copy change.
 > says so out loud, and renaming would churn `app/api/upload/route.ts` and `actions.ts` for no
 > behavioural gain.
 
-## The caption under a photograph of hers (P1-NIN-A014, phase 1 of 4)
+## The caption under a photograph of hers (P1-NIN-A019, phase 1 of 4)
 
 **The sentence the user reported was never a model output.** He uploaded a photograph of Nina
 underwater in a swimsuit and she captioned it *"ini gw abis lari tadi"* — element index 2 of a
@@ -1104,7 +1104,7 @@ are worth knowing:
   **That is correct and intended**: it is what makes phase 2 shippable alone, with the tree building,
   tests passing and behaviour byte-for-byte unchanged. Phase 3 replaces those references with
   `ninaXxx(tuning)`.
-- **`captionNinaPhoto` has no importer either, and for the same reason.** `P1-NIN-A014` shipped the
+- **`captionNinaPhoto` has no importer either, and for the same reason.** `P1-NIN-A019` shipped the
   engine unwired on purpose: phases 3 and 4 of that set run concurrently and both needed it
   unit-tested first. The payload-boundary guard already sanctions the two wiring modules that do not
   call it yet, so neither phase has to edit the guard and collide with the other.
@@ -1316,18 +1316,18 @@ twin, plus comment-only prose fixes in `lib/nina/actions.ts` and `components/adm
 that the change made factually false. See *"One predicate, two windows"* above. Its plan file is
 `lib/nina/.workflows/plan/P1-NIN-A013.md`.
 
-**`P1-NIN-A014` is phase 1 of 4 of `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md`** — *Nina's photo
+**`P1-NIN-A019` is phase 1 of 4 of `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md`** — *Nina's photo
 captions come from the photograph*, on `feature/nina-photo-caption-from-image` off `origin/main` @
 `f839116`. It satisfies R1 and R2 and ships **the caption engine with nothing wired to it**. Its
-plan file is `lib/nina/.workflows/plan/P1-NIN-A014.md`; see *"The caption under a photograph of
+plan file is `lib/nina/.workflows/plan/P1-NIN-A019.md`; see *"The caption under a photograph of
 hers"* above.
 
 | Phase | What | Package | Task |
 |---|---|---|---|
-| 1 | Her eyes for her own photo, and her voice for the caption | `lib/nina` | `P1-NIN-A014` *(this one)* |
+| 1 | Her eyes for her own photo, and her voice for the caption | `lib/nina` | `P1-NIN-A019` *(this one)* |
 | 2 | The carrier marker: a photo bubble free text cannot hide | `lib/db` + `lib/nina` + `lib/admin` + `scripts` | `P1-DB-A002` |
 | 3 | The admin add path captions from the photograph | `lib/admin` | `P1-ADM-A000` |
-| 4 | Generated selfies caption from the scene she asked for | `lib/nina` | `P1-NIN-A015` |
+| 4 | Generated selfies caption from the scene she asked for | `lib/nina` | `P1-NIN-A020` |
 
 Phases 3 and 4 both depend on 1 and 2 and run concurrently — which is exactly why phase 1 shipped
 unwired and why the payload-boundary guard's ninth entry already sanctions both wiring modules: two
