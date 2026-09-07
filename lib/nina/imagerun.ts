@@ -190,6 +190,8 @@ async function finishSelfie(
         source: 'chat',
         turnId: jobId,
         replyToId: quoted?.id ?? null,
+        /* Same fact as the admin path's: the row is the photograph. */
+        photoOnly: true,
       },
     ],
     sessionId,

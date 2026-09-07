@@ -216,6 +216,38 @@ describe('isNinaPhotoCarrierMessage — the empty-bubble rule', () => {
   })
 })
 
+describe('isNinaPhotoCarrierMessage — the marker', () => {
+  it('is true for a marked message whatever its text says', () => {
+    // This is the case phases 3 and 4 create and the whole reason the column exists.
+    expect(
+      isNinaPhotoCarrierMessage({
+        role: 'nina',
+        body: 'eh gw nyelam tadi, airnya bening banget',
+        photoOnly: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('is true for an unmarked legacy bubble carrying one of the five', () => {
+    for (const caption of NINA_IMAGE_CAPTIONS) {
+      expect(isNinaPhotoCarrierMessage({ role: 'nina', body: caption })).toBe(true)
+      expect(isNinaPhotoCarrierMessage({ role: 'nina', body: caption, photoOnly: false })).toBe(true)
+    }
+  })
+
+  it('is false for HIS message however it is marked', () => {
+    // The R26 re-attach path: a generated image row on a runner message that carries his words.
+    expect(isNinaPhotoCarrierMessage({ role: 'runner', body: 'nih', photoOnly: true })).toBe(false)
+    expect(isNinaPhotoCarrierMessage({ role: 'runner', body: NINA_IMAGE_CAPTIONS[0]! })).toBe(false)
+  })
+
+  it('is false for an unmarked nina message carrying her own sentence', () => {
+    expect(
+      isNinaPhotoCarrierMessage({ role: 'nina', body: 'eh gimana lutut lo hari ini' }),
+    ).toBe(false)
+  })
+})
+
 describe('chatPhotoAddSchema', () => {
   it('accepts what the uploader actually produces', () => {
     expect(chatPhotoAddSchema.safeParse(goodBlob).success).toBe(true)

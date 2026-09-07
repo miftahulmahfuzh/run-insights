@@ -78,9 +78,13 @@ import { describeNinaImages } from '@/lib/nina/vision'
  * visible data loss.
  *
  * ── WHAT THIS FILE DOES NOT DO ──────────────────────────────────────────────────────────────
- *  · It writes no new `kind`, no new `NinaMessageSource` and no admin column. A photograph added
- *    here is indistinguishable downstream from one `finishSelfie` wrote (invariant 7); the phase
- *    plan's D1 justifies every column value.
+ *  · It writes no new `kind` and no new `NinaMessageSource`. A photograph added here is
+ *    indistinguishable downstream from one `finishSelfie` wrote (invariant 7); the phase plan's D1
+ *    justifies every column value.
+ *  · It writes `nina_messages.photo_only`, and that is **not** an admin column. `finishSelfie` and
+ *    `scripts/nina-image-worker.ts` set it on exactly the same rows for exactly the same reason, so
+ *    it says "this bubble is a photograph" and never "an operator added this" — invariant 7 above
+ *    still holds. It is the marker `isNinaPhotoCarrierMessage` reads once a caption is free text.
  *  · It touches no runner-facing module. `photoSideOf`, `chatViewerPhotos`, `galleryPhotos` and the
  *    chat bubble renderer are unchanged and that is the proof, not the hope.
  *  · It writes no migration (invariant 10).
@@ -195,6 +199,9 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
         turnId: null,
         replyToId: null,
         runId: null,
+        /* This bubble is the photograph and nothing else. Remove deletes it with the last picture
+         * on it, and from this row forward that no longer depends on what its text says. */
+        photoOnly: true,
       },
     ],
     sessionId,

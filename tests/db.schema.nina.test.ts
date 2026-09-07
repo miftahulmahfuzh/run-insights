@@ -102,6 +102,9 @@ describe('nina_messages', () => {
         'role',
         'text',
         'source',
+        /* The carrier marker. `isNinaPhotoCarrierMessage` reads it instead of reading the caption
+         * text, which is what lets the caption become a sentence about the photograph. */
+        'photo_only',
         'turn_id',
         'reply_to_id',
         'run_id',
@@ -110,6 +113,15 @@ describe('nina_messages', () => {
         'read_at',
       ].sort(),
     )
+  })
+
+  it('photo_only is NOT NULL DEFAULT false, so no reader needs a null branch', () => {
+    // Additive and defaulted on purpose: a revert of the code leaves a column nothing consults,
+    // and every row that predates migration 0008 reads `false` rather than `null`.
+    expect(sqlType(schema.ninaMessages, 'photo_only')).toBe('boolean')
+    expect(columns(schema.ninaMessages).get('photo_only')?.notNull).toBe(true)
+    expect(columns(schema.ninaMessages).get('photo_only')?.hasDefault).toBe(true)
+    expect(columns(schema.ninaMessages).get('photo_only')?.default).toBe(false)
   })
 
   it('seq is a bigserial — the emission order phase 4 cannot solve for itself', () => {

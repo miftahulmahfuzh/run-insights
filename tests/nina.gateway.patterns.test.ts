@@ -218,6 +218,9 @@ describe('readMessageWindow — the session reaches the query (F35 phase 3, R2/A
           replyToId: null,
           runId: null,
           readAt: null,
+          /* A message of HIS, so never a photo carrier. Present because `NinaMessageRow` projects
+           * the column and this fixture is hand-written rather than inferred. */
+          photoOnly: false,
         },
       ],
       /* Messages of his that this window does not show — including everything in his OTHER
