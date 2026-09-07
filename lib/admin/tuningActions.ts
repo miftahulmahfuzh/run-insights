@@ -12,7 +12,7 @@ import { writeNinaTuning } from '@/lib/nina/queries'
 import { NINA_TUNING_DEFAULTS, type NinaTuningWrite } from '@/lib/nina/tuning'
 
 /**
- * `/admin/nina`'s character panel, write side — R1, R2, R3.
+ * `/admin/personality`'s character panel, write side — R1, R2, R3.
  *
  * Both actions follow `lib/admin/memoryActions.ts`'s four lines, in this order and for these
  * reasons:
@@ -121,7 +121,7 @@ export async function saveNinaTuningAction(input: {
      * contract. The row it hands back is what the database actually holds, already coerced, so
      * reading the revision off it is reading the truth rather than a hope. */
     const { revision } = await writeNinaTuning(parsed.data.userId, toTuningWrite(parsed.data))
-    revalidatePath('/admin/nina')
+    revalidatePath('/admin/personality')
     return {
       ok: true,
       revision,
@@ -169,7 +169,7 @@ export async function resetNinaTuningAction(input: { userId: string }): Promise<
 
   try {
     const { revision } = await writeNinaTuning(parsed.data.userId, defaults)
-    revalidatePath('/admin/nina')
+    revalidatePath('/admin/personality')
     return {
       ok: true,
       revision,

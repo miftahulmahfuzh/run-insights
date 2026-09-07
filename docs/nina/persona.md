@@ -4,7 +4,7 @@
 **Machine-readable half:** `lib/nina/persona.ts`, which is now half constants and half functions of
 a `NinaTuning` (`lib/nina/tuning.ts`). When this document and that file disagree, this document is
 the intent and that file is what ships — fix the file, then fix this document, in one commit.
-**Her settings live in the database**, per user, edited on `/admin/nina`. Everything below that says
+**Her settings live in the database**, per user, edited on `/admin/personality`. Everything below that says
 "by default" means: at `NINA_TUNING_DEFAULTS`, which is the Nina who shipped before F34.
 
 ---
@@ -255,7 +255,7 @@ system prompt, because what she is wearing is a fact about a photograph that has
 
 ## The tuning
 
-Her character is a stored row, per user, edited on `/admin/nina` and read live on every turn — no
+Her character is a stored row, per user, edited on `/admin/personality` and read live on every turn — no
 cache anywhere on that path, so a moved slider is in her next prompt with no invalidation step.
 `lib/nina/tuning.ts` is the model; `lib/nina/persona.ts` is the text; `buildNinaSystemPrompt` is the
 assembly.
@@ -334,8 +334,9 @@ relationship block is a rule that cancels a trait dial, which is the exact thing
 
 Nothing arbitrates between contradictory dials. `anger` 100 with `chill` 100 puts both paragraphs in
 the prompt and the model blends them. Sixteen dials is 120 pairwise rules, a spec nobody could
-review, and every one of those rules would quietly cancel a slider. `/admin/nina` renders the
-assembled prompt instead, so the operator reads the contradiction they wrote and moves a slider.
+review, and every one of those rules would quietly cancel a slider. `/admin/personality` renders
+the assembled prompt instead, so the operator reads the contradiction they wrote and moves a
+slider.
 That feedback loop is the arbitration.
 
 ## What F34 repealed, and on whose instruction
@@ -409,7 +410,7 @@ in the paragraph above.
 | The assembled system prompt | `buildNinaSystemPrompt`, `lib/nina/prompts/system.ts` |
 | The librarian's half — it is told the relationship, so the couple's register is not filed as biography | `buildDistillSystemPrompt`, `lib/nina/prompts/distill.ts` |
 | The wardrobe that reaches the camera | `lib/nina/imagegen.ts` |
-| The panel | `components/admin/CharacterPanel.tsx`, `lib/admin/tuningActions.ts`, `lib/admin/tuningModel.ts` |
+| The panel — `/admin/personality`, its own tab since the user asked for one | `app/admin/personality/page.tsx`, `components/admin/CharacterPanel.tsx`, `lib/admin/tuningActions.ts`, `lib/admin/tuningModel.ts` |
 
 Two constants move on their own schedules and must not be confused. `NINA_PROMPT_VERSION`
 (`lib/nina/prompts/index.ts`) covers Nina's own voice and her tool schemas and was bumped **once**
@@ -418,5 +419,5 @@ librarian, which is a different model call with a different system prompt, and w
 was told the relationship.
 
 **The behavioural rollback is cheaper than the code one.** Set every dial back to its default on
-`/admin/nina` and she is exactly the Nina who shipped before this set — that is what the defaults
+`/admin/personality` and she is exactly the Nina who shipped before this set — that is what the defaults
 contract, and the test behind it, are for.

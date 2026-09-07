@@ -100,22 +100,31 @@ describe('the admin shell', () => {
 describe('the admin nav', () => {
   it('points every entry at a route that exists', () => {
     const hrefs = [...adminNav.matchAll(/href: '(\/admin[^']*)'/g)].map((m) => m[1])
-    expect(hrefs).toEqual(['/admin', '/admin/nina', '/admin/photos', '/admin/memory'])
+    expect(hrefs).toEqual([
+      '/admin',
+      '/admin/nina',
+      '/admin/personality',
+      '/admin/photos',
+      '/admin/memory',
+    ])
     for (const href of hrefs) {
       expect(existsSync(`${ROOT}app${href}/page.tsx`), `${href} has no page.tsx`).toBe(true)
     }
   })
 
-  it('carries a phone label short enough for a 103px cell', () => {
-    // 414px / 4 cells = 103px. Past ~10 characters at text-[11px] the label wraps or clips, and a
-    // clipped nav label is worse than a shorter true one.
+  it('carries a phone label short enough for an 82px cell', () => {
+    // 414px / 5 cells = 82.8px, down from 103px at four. The ceiling tightened with the cell
+    // count: past ~8 characters at text-[11px] the label wraps or clips, and a clipped nav label
+    // is worse than a shorter true one. All five clear it — Overview 8, Album 5, Persona 7,
+    // Photos 6, Memory 6 — which is why "Personality" (11) has a short form and the label does
+    // not go on a phone.
     // `m[1]!` per `tests/tabbar.geometry.test.ts:86`, the sibling guard this file borrows its
     // shape from: a capture group that matched is a string, and `noUncheckedIndexedAccess`
     // cannot see that.
     const shorts = [...adminNav.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
-    expect(shorts).toHaveLength(4)
+    expect(shorts).toHaveLength(5)
     for (const short of shorts) {
-      expect(short.length, `"${short}" will not fit a nav cell`).toBeLessThanOrEqual(10)
+      expect(short.length, `"${short}" will not fit a nav cell`).toBeLessThanOrEqual(8)
     }
   })
 
@@ -157,15 +166,17 @@ describe('the bar and the padding that clears it', () => {
    *
    * The matched shape is `TabBar`'s own formatted row (`grid h-[58px] w-full max-w-[470px]
    * grid-cols-5`) with this bar's numbers in it, so the class sorter produces it rather than
-   * breaking it.
+   * breaking it. Since the Personality cell landed, the column count is the same as `TabBar`'s
+   * too — five — which is a coincidence and not a coupling: this bar carries the admin routes and
+   * may never carry the runner's.
    */
-  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-4/)
+  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-5/)
   const clearance = layoutClasses.match(/pb-\[calc\((\d+(?:\.\d+)?)rem\+var\(--safe-bottom\)\)\]/)
 
   it('spells both halves in the shape this case can read', () => {
     expect(
       bar,
-      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-4` row',
+      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-5` row',
     ).not.toBeNull()
     expect(clearance, 'the admin layout lost its --safe-bottom clearance on <main>').not.toBeNull()
   })

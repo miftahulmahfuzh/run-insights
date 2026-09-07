@@ -28,7 +28,7 @@ import {
 } from '@/lib/nina/tuning'
 
 /**
- * `/admin/nina`'s character panel — the testable surface.
+ * `/admin/personality`'s character panel — the testable surface.
  *
  * `vitest.config.ts` runs `environment: 'node'` and includes no `.tsx`, so there is no render
  * here. That is not a gap: everything about this panel that could be wrong in a way a human would
@@ -279,7 +279,12 @@ const ACTIONS = 'lib/admin/tuningActions.ts'
 const MODEL = 'lib/admin/tuningModel.ts'
 const PANEL = 'components/admin/CharacterPanel.tsx'
 const SLIDER = 'components/admin/DialSlider.tsx'
-const ALBUM_PAGE = 'app/admin/nina/page.tsx'
+/* The panel's one mount site. It was `app/admin/nina/page.tsx` for two plan sets; the user moved
+ * the panel onto a tab of its own and the structural cases moved with it, because what they assert
+ * — the gate above the read, the pure assembler in the render — is a property of the page that
+ * MOUNTS the panel, not of the album. `/admin/nina` no longer calls `readNinaTuning` at all, so
+ * pointing these cases at it would assert a substring that is not there. */
+const PERSONALITY_PAGE = 'app/admin/personality/page.tsx'
 
 /**
  * A source file with its block comments removed.
@@ -314,7 +319,7 @@ describe('the gate cannot be forgotten', () => {
   })
 
   it('gates the page before it reads the tuning', () => {
-    const source = readFileSync(ALBUM_PAGE, 'utf8')
+    const source = readFileSync(PERSONALITY_PAGE, 'utf8')
     expect(source.indexOf('await requireAdmin()')).toBeLessThan(source.indexOf('readNinaTuning('))
   })
 })
@@ -331,7 +336,10 @@ describe('one save, not sixteen — plan invariant 11', () => {
   it('writes through phase 1s query and revalidates this page', () => {
     const source = readFileSync(ACTIONS, 'utf8')
     expect(source).toContain('writeNinaTuning(')
-    expect(source).toContain("revalidatePath('/admin/nina')")
+    /* The route the PANEL is on, which since the Personality tab is no longer the album's. A save
+     * that revalidated `/admin/nina` would re-render a page the operator is not looking at and
+     * leave the panel showing a stale revision until a manual reload. */
+    expect(source).toContain("revalidatePath('/admin/personality')")
   })
 })
 
@@ -368,7 +376,7 @@ describe('the client half stays client-safe', () => {
 
 describe('the preview is an assembly, not a call — plan invariant 5', () => {
   it('assembles the prompt with the pure builder and awaits no model entry point', () => {
-    const source = codeOnly(ALBUM_PAGE)
+    const source = codeOnly(PERSONALITY_PAGE)
     expect(source).toContain('buildNinaSystemPrompt(')
     for (const guarded of [
       'runNinaTurn',
@@ -377,7 +385,7 @@ describe('the preview is an assembly, not a call — plan invariant 5', () => {
       'resolveNinaPromises',
       'getOrCreateInsight',
     ]) {
-      expect(source, `the album page names ${guarded}`).not.toContain(guarded)
+      expect(source, `the personality page names ${guarded}`).not.toContain(guarded)
     }
   })
 })

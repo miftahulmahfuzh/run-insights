@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A005`, phase 4 of the admin-responsive-nina-intimacy set — R4's per-parameter toggles on `CharacterPanel` / `DialSlider`)
+**Last Updated**: 2026-09-07 (task `P2-CA-A002`, phase 1 of the nina-personality-tab set — `CharacterPanel` moved off the album onto `/admin/personality`, and `AdminNav` grew a fifth cell)
 
 ## Overview
 
@@ -15,7 +15,7 @@ Most of it is `'use client'`, but **not all of it, and the exceptions are delibe
 highlighting, and `usePathname()` would make an entire sidebar client-rendered to bold one word — so
 selection is expressed in the URL instead. In `UserPicker` it is also conveyed with `aria-current`;
 `AdminNav` sets no such attribute, which is the honest reading of "no active-link highlighting" —
-it renders four plain links and marks none of them. `CircleFrame` holds no state and imports only
+it renders five plain links and marks none of them. `CircleFrame` holds no state and imports only
 pure modules, so it renders on the server *and* compiles into the client graph of whichever client
 component imports it.
 
@@ -34,7 +34,7 @@ is the rails-and-canvas layout it always was, at the same widths.
 There **is** a bottom bar below `lg`, and it is `AdminNav` — not `components/ui/TabBar.tsx`. The
 distinction is worth a sentence because the two now look alike and are not: `TabBar` is the
 runner's four-tab navigation inside `AppShell`'s 470 px column; `AdminNav` is this package's own
-four-cell `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
+five-cell `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
 active-link highlighting. There is no `AppShell` and no 470 px column here. Tokens are still
 borrowed from the app's design system rather than re-invented.
 
@@ -94,11 +94,11 @@ and are unit-tested there.
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
 | `ChatPhotoGrid.tsx` | `'use client'` | `/admin/photos` — every photo Nina has put in the conversation, as one flat collection: one folder line, one grid, no tree. Borrows the breadcrumb look, imports nothing from `explorer/`. |
 | `ChatPhotoDetail.tsx` | `'use client'` | One chat photo in full. `SelectionPane`'s shape, not its content — and it *does* print `description` and `prompt`, which the album deliberately does not. |
-| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed four-cell bottom bar (`h-14`, `border-t`, `z-30`) below `lg`, the sticky left rail at `lg`. No active-link highlighting, on purpose. |
+| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed five-cell bottom bar (`h-14`, `border-t`, `z-30`) below `lg`, the sticky left rail at `lg`. Overview · Album · Persona · Photos · Memory on a phone; the long labels at `lg`. No active-link highlighting, on purpose. |
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose memory is being edited. Plain links, selection in the URL. |
-| `CharacterPanel.tsx` | `'use client'` | `/admin/nina`'s character tuning: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Collapsed by default. |
+| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. |
 | `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Decides nothing. |
 
 ## The `/admin/nina` file manager
@@ -586,10 +586,24 @@ typing row — so "it looked right in the tool" and "it looks right in chat" can
 
 ## The character panel
 
-`/admin/nina` has two screens stacked on one route, and the order is deliberate: the album is the
-working surface — the previous plan set built it for *"hundreds of profile pics"* — so
-`CharacterPanel` renders **above** the explorer and **collapsed**, as a summary line the operator
-opens when they want to change who she is rather than what she looks like.
+`/admin/nina` used to be two screens stacked on one route, and the order was deliberate: the album
+is the working surface — the previous plan set built it for *"hundreds of profile pics"* — so
+`CharacterPanel` rendered **above** the explorer and **collapsed**, as a summary line the operator
+opened when they wanted to change who she is rather than what she looks like.
+
+That premise was repealed by the person it was written for: *"right now, 'Her character' is in
+Nina's album. move it as a new tab with name: Personality."* The panel is now the whole of
+`/admin/personality` and the album is the whole of `/admin/nina`. Two consequences worth writing
+down, because both look like details and neither is:
+
+- **The disclosure is gone, not defaulted open.** `open` was never a prop — passing it would make
+  React control the attribute and fight the operator's click, and `revalidatePath` re-renders this
+  component after every save. So the root is a plain `<section>`, and what the `<summary>` used to
+  hold is now the section header: relationship · loudest dials · *N* off · revision, the same
+  one-line answer to "what is she set to" that the hub card gives.
+- **`id="character"` stayed on that section root.** It was a live deep link from the overview card
+  for two plan sets. The card points at the route now, and the id costs one attribute and keeps a
+  kept bookmark from landing on nothing.
 
 ### One save, not sixteen
 
@@ -605,7 +619,7 @@ A checkbox edits `draft.enabled[key]` and nothing else; **switching a parameter 
 number it is parked at**, which is the point of a toggle as opposed to dragging the slider back to
 the default. One row therefore has two ways to be unsaved — its score and its toggle — and
 `rowUnsaved` folds them into the single existing dot, because two identical marks on one row is an
-operator wondering which meant what. The collapsed summary line gains an `N off` count, since the
+operator wondering which meant what. The section header line carries an `N off` count, since the
 number of excluded parameters is the one setting that cannot be inferred from the numbers beneath
 it. Both new checkboxes carry the 44 px rule: `DialSlider` wraps its box in `TOUCH_ICON`, and the
 relationship legend's label in `TOUCH_TARGET`, so a bare 16 px control never becomes the exception
@@ -630,8 +644,8 @@ Every slider's label and hint, every relationship's label, and every word she ca
 `NINA_DIAL_SPECS[key].label` / `.axis`, and `NINA_ADDRESS[rel].label` / `.words`. The panel is a
 renderer, and it does not read them directly: `lib/admin/tuningModel.ts` is the client-safe adapter
 that turns them into `TuningCopy`, because a Server Component cannot read a plain export out of a
-`'use client'` module and both `/admin/nina` and `/admin` need the same vocabulary. A local table of
-labels would drift invisibly: the hint would promise one behaviour while the prompt produced
+`'use client'` module and both `/admin/personality` and `/admin` need the same vocabulary. A local
+table of labels would drift invisibly: the hint would promise one behaviour while the prompt produced
 another, nothing would fail, and the operator would report the wrong bug. The only copy this
 package owns is one sentence per relationship about what choosing it changes *about the app*, which
 has no counterpart in `tuning.ts` and so cannot contradict it.
@@ -639,8 +653,8 @@ has no counterpart in `tuning.ts` and so cannot contradict it.
 ### The prompt preview is a string prop, and that is invariant 5
 
 The panel shows the operator the system prompt her current settings assemble to. It arrives as a
-**plain string prop** from `app/admin/nina/page.tsx`, which calls the pure assembler. It is never
-fetched, never streamed and never the result of a model call: `scripts/check-llm-payload-boundary.mjs`
+**plain string prop** from `app/admin/personality/page.tsx`, which calls the pure assembler. It is
+never fetched, never streamed and never the result of a model call: `scripts/check-llm-payload-boundary.mjs`
 Rule 2 forbids awaiting a model call from a page render, by function name, and a preview that called
 one would fail the build. The pure-function-versus-model-call distinction is the whole reason phase 3
 kept `buildNinaSystemPrompt` free of I/O.
@@ -815,6 +829,10 @@ was written to be — the origin is what cannot cross.
   `ExplorerPhoto`, and hands the result over. It also calls `shareOrigin()` — the only place that
   can — and passes the string down as a prop. `announcedAt`, `pathname`, `sourceKey` and
   `thumbPathname` deliberately never cross the serialization boundary.
+- `app/admin/personality/page.tsx` — `CharacterPanel`, and it is the ONLY mount site of it in the
+  repo. It gates with `requireAdmin()`, reads the tuning, calls the pure prompt assembler, and hands
+  the panel a `TuningDraft` plus the preview string. `app/admin/nina/page.tsx` no longer imports the
+  panel and no longer reads the tuning.
 - `app/admin/memory/page.tsx` — `MemoryLedger`, `MemorySlots`, `UserPicker`.
 
 ### Secondary consumers
@@ -1139,3 +1157,15 @@ preview down as a plain string. Every rule and every bound stayed in `lib/nina/t
 `lib/admin/schema.ts`, and the copy the panel renders comes from `lib/admin/tuningModel.ts`, the
 client-safe adapter over phase 1's specs; neither new component decides anything or imports `zod`,
 so this package still has no test files and that is still correct.
+
+2026-09-07 — updated following task **P2-CA-A002** (`nina-personality-tab` phase 1, R1: *"right now,
+'Her character' is in Nina's album. move it as a new tab with name: Personality."*). A placement
+change only — no control's behaviour, no bound, no label and no prompt moved with it.
+`CharacterPanel.tsx` stopped being a shut `<details>`/`<summary>` above the explorer and became an
+always-open `<section>` that is the whole content of the new `/admin/personality` route, keeping
+`id="character"` on its root so the old album fragment link still lands somewhere real; it remains
+`'use client'` and still imports nothing from `lib/nina` but `tuning.ts`. `AdminNav.tsx` gained a
+fifth cell (Personality at `lg`, Persona on a phone) and went `grid-cols-4` -> `grid-cols-5` at the
+same `h-14`, still with no `'use client'` and no `usePathname()`. `app/admin/page.tsx`'s "Tune her
+character" hub card now points at the route rather than a fragment. No component was added, deleted
+or renamed, and no prop signature changed.

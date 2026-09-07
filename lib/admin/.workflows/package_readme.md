@@ -1,15 +1,15 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-07 (task `P2-CA-A002`, phase 1 of the nina-personality-tab set — the character panel moved to its own route, so `tuningActions.ts` revalidates it)
 
 ## Overview
 
-`lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the two admin
-surfaces' Server Actions (`/admin/nina`, the album and file manager; `/admin/memory`, Nina's
-persistent memory), the Zod schemas that validate every byte those actions accept from a browser,
-and one zero-import pure library (`filetree.ts`) that the client half of the file manager shares
-verbatim with the server half.
+`lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the three admin
+surfaces' Server Actions (`/admin/nina`, the album and file manager; `/admin/personality`, the
+character panel; `/admin/memory`, Nina's persistent memory), the Zod schemas that validate every
+byte those actions accept from a browser, and one zero-import pure library (`filetree.ts`) that the
+client half of the file manager shares verbatim with the server half.
 
 It is a *boundary-plus-actions* package. Nothing in it is a general utility: every export exists
 because one admin screen needs it, and the package's organising rule is that a value with two
@@ -504,9 +504,11 @@ exception thrown.
 `/admin` nor `/api/*` (ruling D3), so these two calls are the entire gate between a signed-in
 stranger and Nina's personality.
 
-**`revalidatePath('/admin/nina')` is how the *panel* re-renders, and it is not how the edit reaches
-Nina.** `memoryActions.ts` under `lib/admin/` already records the general fact and it holds here
-without qualification: there is no cache anywhere on the turn path, the tuning is read live on every
+**`revalidatePath('/admin/personality')` is how the *panel* re-renders, and it is not how the edit
+reaches Nina.** (It was `/admin/nina` until the panel moved off the album onto its own route; the
+target is the page the panel is actually mounted on, so the two must be changed together.)
+`memoryActions.ts` under `lib/admin/` already records the general fact and it holds here without
+qualification: there is no cache anywhere on the turn path, the tuning is read live on every
 turn, and a committed row is in her next prompt with no invalidation step at all. Move a slider,
 save, and the very next thing she says is tuned.
 
@@ -517,11 +519,12 @@ prose. It gets its own table.
 
 ### `tuningModel.ts` — the panel's vocabulary, client-safe
 
-The same split `memoryModel.ts` established, for the same reason: `app/admin/nina/page.tsx` is a
-Server Component and `components/admin/CharacterPanel.tsx` is `'use client'`, and a Server Component
-cannot read a plain export out of a `'use client'` module. So the copy for every trait, dial and
-relationship, the `TuningDraft` shape the panel edits, the unsaved-field diff (`changedTuningFields`)
-and the summary line's `loudestDials` all live here rather than in the panel.
+The same split `memoryModel.ts` established, for the same reason: `app/admin/personality/page.tsx`
+is a Server Component and `components/admin/CharacterPanel.tsx` is `'use client'`, and a Server
+Component cannot read a plain export out of a `'use client'` module. So the copy for every trait,
+dial and relationship, the `TuningDraft` shape the panel edits, the unsaved-field diff
+(`changedTuningFields`) and the summary line's `loudestDials` all live here rather than in the
+panel.
 
 **It imports exactly one module — `@/lib/nina/tuning` — and a test asserts that.** Values as well as
 types, which is safe precisely because phase 1's `tuning.ts` has zero imports of its own and its own
@@ -658,6 +661,8 @@ handed to her, and then through `after()`.
 
 - `app/admin/layout.tsx`, `app/admin/page.tsx`, `app/admin/nina/page.tsx` — `requireAdmin`,
   `getAdminUser`.
+- `app/admin/personality/page.tsx` — `requireAdmin` and `toTuningDraft`; the only page that renders
+  `CharacterPanel`, and therefore the only correct `revalidatePath` target for `tuningActions.ts`.
 - `components/admin/UserPicker.tsx` — `AdminUserRow` as a type only.
 
 ### Test consumers
@@ -789,3 +794,11 @@ plus a reset to defaults, both `requireAdmin()` -> Zod -> write -> `revalidatePa
 `ninaTuningWriteSchema` / `ninaTuningResetSchema` to `schema.ts`, importing every bound from
 `lib/nina/tuning.ts` rather than re-spelling any. Nothing above the append changed, and no existing
 action, schema or export in this package was touched.
+
+2026-09-07 — updated following task **P2-CA-A002** (`nina-personality-tab` phase 1, R1: the
+character panel moved out of Nina's album onto a new `/admin/personality` route). Nothing in this
+package's logic changed except the two `revalidatePath` targets in `tuningActions.ts`, which now
+name `/admin/personality` — the page the panel is mounted on — instead of `/admin/nina`. The album's
+own actions in `ninaAlbumActions.ts` still revalidate `/admin/nina`, which is still where the album
+is; the two targets are now genuinely different pages rather than one shared screen. No action,
+schema, bound, or export was added, removed or renamed.
