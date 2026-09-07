@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A019`, the caption engine — `caption.ts`, `prompts/caption.ts`, and the pool/set split in `imagefail.ts`)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; previously `P1-NIN-A019`, the caption engine — `caption.ts`, `prompts/caption.ts`, and the pool/set split in `imagefail.ts`)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -508,7 +508,8 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 ### Images
 `imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
 `imagejobs.ts` (job row lifecycle and quota), `imagecall.ts` (the OpenRouter image call),
-`imagerun.ts` (claim → generate → store → finish, inside `after()`),
+`imagerun.ts` (claim → generate → store → finish, inside `after()` — and, since `P1-NIN-A020`,
+caption the selfie from the scene it was asked to draw),
 `imagefail.ts` (classify a failure, pick what she says — and, since `P1-NIN-A019`, pick it from the
 scene-agnostic `NINA_IMAGE_CAPTION_POOL` rather than the historical set), `caption.ts` (the
 `glm-5.3` call that writes the real caption from what is in the picture), `imagetools.ts` /
@@ -708,10 +709,11 @@ already existed and had already run on that photo: `describeNinaImages` posted i
 `after()` and wrote the answer to `nina_message_images.description`, **a column which on that path
 has no reader at all**. The one text the runner reads was the only text on the path no model writes.
 
-This phase is the **engine and nothing that uses it**. It lands deliberately **UNWIRED — nothing
-calls `captionNinaPhoto` yet**; phases 3 (`lib/admin`, the admin add path) and 4 (`lib/nina`,
-generated selfies) run concurrently and both needed the engine unit-tested first, and phase 2
-(`lib/db`) is the carrier marker underneath them.
+Phase 1 was the **engine and nothing that used it** — it landed deliberately UNWIRED, because
+phases 3 (`lib/admin`, the admin add path) and 4 (`lib/nina`, generated selfies) run concurrently
+and both needed the engine unit-tested first, with phase 2 (`lib/db`) the carrier marker underneath
+them. **Phase 4 has since wired the selfie path** (`P1-NIN-A020`, below); the admin path is
+phase 3's.
 
 ### The pick pool is not the historical set (`imagefail.ts`)
 
@@ -875,6 +877,50 @@ line, so the render never has anything to wait for.
 `prompts/index.ts` and `prompts/system.ts` are untouched and **`NINA_PROMPT_VERSION` is still `4`**.
 The caption prompt sits on `describe.ts`'s side of that line — a new surface, not an amendment to
 hers. No migration, no schema change, no new env var, no new dependency.
+
+## A generated selfie captions from the scene she asked for (P1-NIN-A020, phase 4 of 4)
+
+**Same bug as the reported one, on the other path that posts a photograph of hers.** `finishSelfie`
+(`imagerun.ts`) wrote `body: ninaImageCaption(jobId)` — a hash-picked draw — under a photograph
+whose content the app *already knew*. `args.scene` is the prose the `generate_image` tool was told
+to draw, and six lines below the caption it is written to `nina_message_images.description`. The
+truth about the picture was one field away from the caption, and the caption ignored it.
+
+The bubble's text now comes from that same scene, through
+`captionNinaPhoto({ seen: args.scene, seenKind: 'requested', tuning })`.
+
+**No vision call, ever, and that is not an omission.** `finishSelfie`'s own docstring settles it:
+*"we wrote the picture, so paying a vision call to be told back our own prompt would be absurd."*
+This is why `NinaCaptionSeenKind` has a `'requested'` member at all — the caption prompt is handed a
+REQUEST rather than a witness's observation, and it is told which it is holding. The one thing a
+witness could add is whether the generator obeyed the prompt, and this path has no budget for a
+second vision call in a segment that has already spent ~78 s generating. `tests/nina.imagerun.test.ts`
+asserts the absence against the **source** of `imagerun.ts` rather than against a spy: a spy on a
+module this file never imports can only ever pass, so the real guarantee is that `vision.ts` is
+absent from the import graph, which is a fact about the text.
+
+**The await is allowed here where the admin path's is not.** `runNinaImageJob` is already inside
+`after()` (see `fireNinaImageGeneration`) and has already spent ~78 s on the generation and a Blob
+write. Nobody is holding a response open — the runner was told "dispatched" a minute and a half ago
+— so a 4-8 s text call at the end is the cheapest thing in the function, and it is sequential with
+the insert because the insert consumes it.
+
+**`ninaImageCaption(jobId)` is the fallback and is unchanged.** Still deterministic in the job id,
+so a row read twice says the same thing, and since phase 1 it draws from `NINA_IMAGE_CAPTION_POOL`,
+which asserts nothing about the picture. That is what makes a caption failure harmless here: `null`
+leaves a *true* sentence rather than the wrong one. It is also, permanently, what
+`scripts/nina-image-worker.ts` says on this same path — no z.ai key, and `imagefail.ts` may import
+nothing — so the two hosts still agree whenever the model call does not land. The asymmetry stated
+plainly: a selfie posted by the server gets a caption about its scene, the rare one posted by the
+worker gets a scene-agnostic canned line, and both are true sentences about the photograph.
+
+**One read is wrapped, and only one.** `readNinaTuning` is a bare `db.select()` and exists in
+`finishSelfie` solely to dress the caption, so a connection fault there is a *caption* problem and
+degrades to `NINA_TUNING_DEFAULTS` rather than costing the photograph. The three reads above it
+(`getNinaMessagesByIds`, `resolveNinaWriteSession`, `insertNinaMessages`) stay bare deliberately:
+without a session or a quote target there is no correct row to write, and failing is the honest
+outcome. `finishSelfie`'s throw contract is unchanged — it still throws for exactly one thing,
+`insertNinaMessages` returning `[]`, and never for a caption problem.
 
 ## The chat turn is asynchronous (R6)
 

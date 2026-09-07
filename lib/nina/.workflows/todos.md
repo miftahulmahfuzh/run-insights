@@ -20,16 +20,6 @@
 
 ### [P1] High
 
-- [ ] **P1-NIN-A020** Phase 4: Generated selfies caption from the scene she asked for
-  - **Difficulty**: NORMAL
-  - **Type**: Bug
-  - **Context**: Owns `lib/nina/imagerun.ts` — `finishSelfie` captions from `args.scene` with **no vision call** (*"we wrote the picture, so paying a vision call to be told back our own prompt would be absurd"*) — plus its tests. Quotes `finishSelfie` as phase 2 leaves it (the insert already carrying `photoOnly: true`); the diff is the `body:` expression and one added import. Does not touch `lib/admin/*`, `scripts/nina-image-worker.ts` (the GitHub runner has no z.ai key and `lib/nina/imagefail.ts` may never import anything, so the worker keeps the canned line — a stated limit, not a surprise), or `lib/nina/caption.ts`. The caption fallback **is** `ninaImageCaption(jobId)`, so it degrades into phase 1's narrowed pool. Exit: a completed selfie job's bubble reads as a line about the scene she requested; a caption failure leaves the deterministic canned line, so the job still completes and the photograph still lands; `finishSelfie` still throws only for `insertNinaMessages` returning `[]`, never for a caption problem.
-  - **Status**: pending
-  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 4 of 4)
-  - **Satisfies**: R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
-  - **Depends on**: P1-NIN-A019, P1-DB-A002
-  - **Plan**: `.workflows/plan/P1-NIN-A020.md`
-
 ### [P2] Medium
 
 ### [P3] Low
@@ -41,6 +31,25 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A020** Phase 4: Generated selfies caption from the scene she asked for
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `lib/nina/imagerun.ts` — `finishSelfie` captions from `args.scene` with **no vision call** (*"we wrote the picture, so paying a vision call to be told back our own prompt would be absurd"*) — plus its tests. Quotes `finishSelfie` as phase 2 leaves it (the insert already carrying `photoOnly: true`); the diff is the `body:` expression and one added import. Does not touch `lib/admin/*`, `scripts/nina-image-worker.ts` (the GitHub runner has no z.ai key and `lib/nina/imagefail.ts` may never import anything, so the worker keeps the canned line — a stated limit, not a surprise), or `lib/nina/caption.ts`. The caption fallback **is** `ninaImageCaption(jobId)`, so it degrades into phase 1's narrowed pool. Exit: a completed selfie job's bubble reads as a line about the scene she requested; a caption failure leaves the deterministic canned line, so the job still completes and the photograph still lands; `finishSelfie` still throws only for `insertNinaMessages` returning `[]`, never for a caption problem.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_CAPTION_FROM_IMAGE_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R2 — "can we make llm understand multi modal?" — every path that posts a photo of hers captions it from what is in the picture, not only the admin one
+  - **Depends on**: P1-NIN-A019, P1-DB-A002
+  - **Plan**: `.workflows/plan/P1-NIN-A020.md`
+  - **Card**: `miftahulmahfuzh/run-insights#117`
+  - **Completed**: 2026-09-07 13:05
+  - **Method**: /implement (swarm phase 4 of 4)
+  - **Files**: lib/nina/imagerun.ts, tests/nina.imagerun.test.ts
+  - **Drift**: None in the source tree. The phase plan quoted `finishSelfie` exactly as phase 2 left it, `photoOnly: true` included. Two plan expectations resolved against the tree rather than as written: the suite the plan hoped to extend (`tests/nina.imageworker.test.ts`) covers the WORKER script's `finishSelfie(sql, job, image, result)`, a different function with a different signature, so a new `tests/nina.imagerun.test.ts` was created as the plan's own fallback instructed; and `tests/integration/**` is excluded from `npm test` by `vitest.config.ts`, so the integration suite could not be the home for these cases.
+  - **Decided**: `readNinaTuning` is wrapped in a `try` of its own, falling back to `NINA_TUNING_DEFAULTS`. It is a bare `db.select()` (`lib/nina/queries.ts:3098`) and can throw on a connection fault, and it is in `finishSelfie` ONLY to dress the caption — so its failure is a caption problem, and exit criterion 5 says a caption problem must never cost the photograph. The three reads above it are deliberately left bare: if the quote target or the session cannot be read there is no correct row to write, and failing is the honest outcome. Rung 2: the phase's exit criteria.
+  - **Decided**: "makes no vision call, ever" is asserted against the SOURCE of `lib/nina/imagerun.ts` (no `./vision` import, no `describeNinaImages` mention) rather than against a spy. A spy on a module this file never imports can only ever pass, so it would assert nothing; the real guarantee is that `lib/nina/vision.ts` is absent from the import graph, which is a fact about the text. `tests/nina.tuning.test.ts` reads its own subject's source for the same reason. Rung 6: surrounding convention, at the precedent file.
+  - **Decided**: Dropped a drafted test asserting that a THROWN `captionNinaPhoto` fails the job. It passed, but it would have encoded the wrong behaviour as correct — `captionNinaPhoto` is contractually non-throwing (its own top-level `try`), and the phase plan trusts that contract rather than defending against it, which is exactly why it says to wrap `readNinaTuning` *alone* rather than widen the function's failure surface. Rung 3: the phase plan's code blocks.
+  - **Notes**: Verified green at 147 files / 2910 tests, up from 146 / 2893 at 31a542e; 8 of the 17 new tests are this phase's and the other 9 are phase 3's uncommitted work, which shares this worktree. `npm run lint` reports 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched). The payload-boundary guard passes with `captionNinaPhoto` confined — phase 1 had already sanctioned `lib/nina/imagerun.ts` as a caller, so no guard edit was needed. Phase 2's INSERT comment in `scripts/nina-image-worker.ts` already states the canned caption is permanent on that host and why, so Step 3 needed nothing placed. `replaceChatPhotoAction` and `gateway.ts`'s empty `imageDescriptions` remain deliberately out of scope.
 
 - [x] **P1-NIN-A019** Phase 1: Her eyes for her own photo, and her voice for the caption
   - **Difficulty**: NORMAL

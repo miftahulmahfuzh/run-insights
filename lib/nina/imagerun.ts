@@ -6,6 +6,7 @@ import { after } from 'next/server'
 import { blobEnv } from '@/lib/env'
 import { newId } from '@/lib/id'
 
+import { captionNinaPhoto } from './caption'
 import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
 import { ninaImageCaption, type NinaImageFailure } from './imagefail'
 import {
@@ -37,8 +38,10 @@ import {
   insertNinaAvatarAsCurrent,
   insertNinaMessageImages,
   insertNinaMessages,
+  readNinaTuning,
 } from './queries'
 import { resolveNinaWriteSession } from './sessionResolve'
+import { NINA_TUNING_DEFAULTS } from './tuning'
 
 /**
  * **Nina's camera, back on the platform.** This file is what
@@ -162,7 +165,10 @@ async function storeNinaImage(
  *
  * `prompt` gets the sidecar (prompt as sent, model, seed) and `description` gets the scene prose.
  * No `glm-4.6v` describe pre-pass runs over a generated image: we wrote the picture, so paying a
- * vision call to be told back our own prompt would be absurd.
+ * vision call to be told back our own prompt would be absurd. **The bubble's own text is written
+ * from that same scene prose** by `captionNinaPhoto` — so what she says under the photograph is
+ * about the photograph — and `ninaImageCaption` is now the FALLBACK for that call rather than the
+ * caption itself.
  */
 async function finishSelfie(
   userId: string,
@@ -178,15 +184,64 @@ async function finishSelfie(
 
   const sessionId = quoted?.sessionId ?? (await resolveNinaWriteSession(userId))
 
+  /*
+   * ── THE CAPTION, FROM THE SCENE SHE ASKED FOR ────────────────────────────────────────────
+   * `args.scene` is what the `generate_image` tool was told to draw and is about to become this
+   * row's `description` a few lines below. So the picture's content is already in hand, in prose,
+   * with no vision call — which is exactly why `NinaCaptionSeenKind` distinguishes `'requested'`
+   * from `'described'`: the caption prompt is handed a REQUEST, not a witness's observation, and
+   * it is told so.
+   *
+   * NO `glm-4.6v` PRE-PASS, and this is not an omission: *"we wrote the picture, so paying a
+   * vision call to be told back our own prompt would be absurd"* (this function's docstring). The
+   * one thing a witness could add is whether the generator obeyed the prompt, and this path has no
+   * budget for a second vision call inside a segment that has already spent 78 s generating.
+   *
+   * ── WHY THE FALLBACK IS THE OLD EXPRESSION, UNCHANGED ────────────────────────────────────
+   * `ninaImageCaption(jobId)` is still deterministic in the job id, so a row read twice says the
+   * same thing — and it now draws from `NINA_IMAGE_CAPTION_POOL`, which asserts nothing about the
+   * picture. That is what makes a caption failure harmless here: `null` leaves a TRUE sentence
+   * rather than the wrong one. It is also, permanently, what `scripts/nina-image-worker.ts` says
+   * on this same path (it has no z.ai key and `imagefail.ts` may never import anything), so the
+   * two hosts still agree whenever the model call does not land.
+   *
+   * ── AND WHY THIS AWAIT IS ALLOWED ────────────────────────────────────────────────────────
+   * `runNinaImageJob` is ALREADY inside `after()` (see `fireNinaImageGeneration`) and has already
+   * spent ~78 s on the generation and a Blob write. Nobody is holding a response open: the runner
+   * was told "dispatched" a minute and a half ago. A 4-8 s text call at the end of that is the
+   * cheapest thing in the function, and it is sequential with the insert because the insert
+   * consumes it.
+   *
+   * ── THE TUNING READ IS THE ONE THING WRAPPED, AND ONLY IT ────────────────────────────────
+   * `readNinaTuning` is a bare `db.select()` (`queries.ts`), so a connection fault throws — and it
+   * is here ONLY to dress the caption. A caption problem must never cost the photograph, so it
+   * degrades to `NINA_TUNING_DEFAULTS` instead of widening this function's failure surface. The
+   * three reads above it are not wrapped and must not be: if the session or the quote target
+   * cannot be read, there is no correct row to write and failing IS the honest outcome.
+   */
+  let tuning = NINA_TUNING_DEFAULTS
+  try {
+    tuning = await readNinaTuning(userId)
+  } catch (cause) {
+    console.warn('[nina] tuning read failed; captioning as default Nina', {
+      jobId,
+      error: String(cause),
+    })
+  }
+  const caption =
+    (await captionNinaPhoto({ seen: args.scene, seenKind: 'requested', tuning })) ??
+    ninaImageCaption(jobId)
+
   const [message] = await insertNinaMessages(
     userId,
     [
       {
         role: 'nina',
         /* Never empty. `nina_messages.text` is notNull and would accept `''`, but an empty bubble
-         * is not a message. `ninaImageCaption` is deterministic in the job id, so a row read twice
-         * says the same thing. */
-        body: ninaImageCaption(jobId),
+         * is not a message. Either half of the expression above is a non-empty string:
+         * `sanitizeNinaCaption` refuses an empty answer, and the pool line is deterministic in the
+         * job id, so a row read twice says the same thing. */
+        body: caption,
         source: 'chat',
         turnId: jobId,
         replyToId: quoted?.id ?? null,
