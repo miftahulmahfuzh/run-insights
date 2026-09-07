@@ -2,17 +2,17 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-06
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-07
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 18
+- Completed: 19
 
 ---
 
@@ -21,6 +21,17 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [ ] **P1-RI-A020** Phase 2: A tile you can tell apart: the admin icon set
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `tools/make_icon_assets.py`'s new `--deck {app,admin}` flag (the admin deck is the same composition in the DARK scheme's tokens), the committed masters `assets/icon/master-admin.png` and `master-admin-maskable.png`, the three new `public/icons/admin-icon-{192,512,maskable-512}.png`, the new 180² `app/admin/apple-icon.png` Safari draws on install, an appended `ADMIN_PWA_ICONS` in `lib/pwa.ts`, the one-line `PWA_ICONS` → `ADMIN_PWA_ICONS` swap in `app/admin/manifest.webmanifest/route.ts`, and icon assertions added inside phase 1's admin `describe` blocks in `tests/pwa.install.test.ts`. Does not touch the runner's five icon files, `assets/icon/master.png`, `master-maskable.png`, `silhouette.png`, `app/manifest.ts`, `app/layout.tsx`, `next.config.ts` or `tools/gen_app_icon.py`. Exit criteria: `python3 tools/make_icon_assets.py --deck app` reproduces the five runner PNGs byte for byte (`git status` clean for them) as the refactor's regression guard; `--deck admin` writes the five admin files; `/admin`'s `<head>` carries exactly one `<link rel="apple-touch-icon">` resolving to `app/admin/apple-icon.png`; the admin manifest advertises three admin icons, all on disk, all opaque, all square, all the size they claim; lint, typecheck, test and build all green.
+  - **Status**: open
+  - **Plan Set**: `ADMIN_HOME_SCREEN_SHORTCUT_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R1 — A home-screen tile that opens on `/admin`
+  - **Depends on**: `P1-RI-A019`
+  - **Plan**: `.workflows/plan/P1-RI-A020.md`
+  - **Card**: `miftahulmahfuzh/run-insights#110`
 
 - [x] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
@@ -50,6 +61,24 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A019** Phase 1: The second manifest: `/admin` starts at `/admin`
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/pwa.ts` (appends `ADMIN_INSTALL` beside `INSTALL`, append-only), the new `app/admin/manifest.webmanifest/route.ts` — the manifest itself plus the docstring that answers R2 — `app/admin/layout.tsx`'s existing `metadata` export (adds `manifest` and `appleWebApp`), and two appended `describe` blocks in `tests/pwa.install.test.ts`. Does not touch `app/manifest.ts`, `app/layout.tsx`, anything under `public/`, `app/icon.png`, `app/apple-icon.png`, `tools/`, `next.config.ts`, `proxy.ts`, `AdminNav`, or any admin page. Exit criteria: `GET /admin/manifest.webmanifest` → `200`, `Content-Type: application/manifest+json`, `start_url: "/admin"`, `id: "/admin"`, `scope: "/"`, `display: "standalone"`; `/admin`'s `<head>` carries `<link rel="manifest" href="/admin/manifest.webmanifest">` and no link to `/manifest.webmanifest`; `/`'s `<head>` unchanged; `git diff --stat` names exactly those four files; lint, typecheck, test and build all green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_HOME_SCREEN_SHORTCUT_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1, R2 — A home-screen tile that opens on `/admin`; An answer to "should i buy a new domain, and put /admin into that new domain?"
+  - **Plan**: `.workflows/plan/P1-RI-A019.md`
+  - **Card**: `miftahulmahfuzh/run-insights#109`
+  - **Completed**: 2026-09-07 09:33
+  - **Method**: /do
+  - **Files**: lib/pwa.ts, app/admin/manifest.webmanifest/route.ts, app/admin/layout.tsx, tests/pwa.install.test.ts
+  - **Drift**: No code drift — every line of `lib/pwa.ts`, `app/admin/layout.tsx` and `tests/pwa.install.test.ts` quoted by the plan matched the tree exactly; all three edits are pure appends (`git diff` removes zero lines from `lib/pwa.ts`, and only the old metadata block's closing brace in `app/admin/layout.tsx`).
+    Environment, not drift: `node_modules` was absent in this fresh worktree, so `npm ci` ran before verification. `.env.local` was already present (written by /analyze for this worktree).
+    Environment, not drift: port 3000 on this machine is held by an unrelated service that 302s everything to `/login`. The first round of curl probes hit that stranger and was discarded; the real production server was started on `PORT=3457` and every exit criterion re-checked against it.
+    Expected, not a regression: `GET /admin` returns 500 against the placeholder `DATABASE_URL` because the admin page's `select count(*) from nina_avatars` cannot reach a Neon host. The admin LAYOUT still rendered its complete `<head>` — the only part this phase changes — so every head assertion was verifiable. `GET /` returns 200.
+  - **Verification**: `npm run lint` 0 errors (2 pre-existing warnings in the unrelated `scripts/capture/shoot.mjs`); `npm run typecheck` clean; `npm test -- tests/pwa.install.test.ts` 26 passed; full `npm test` 145 files / 2846 tests all passed; `npm run build` success with `/admin/manifest.webmanifest` prerendered as ○ (Static), matching `/manifest.webmanifest`. Against a real production server on `:3457`: `GET /admin/manifest.webmanifest` → 200, `content-type: application/manifest+json`, body `id=/admin start_url=/admin scope=/ display=standalone orientation=any short_name='RI Admin' background_color=#f1f7fb`; `/admin`'s head carries exactly one manifest link, `/admin/manifest.webmanifest`, and none to `/manifest.webmanifest`; `/admin` emits `apple-mobile-web-app-title=RI Admin` alongside BOTH `mobile-web-app-capable=yes` and `apple-mobile-web-app-capable=yes` plus `status-bar-style=default`, proving the `...APPLE_WEB_APP` spread preserved `capable` and `statusBarStyle`; `/`'s head unchanged. Invariant 1 checked mechanically: `git diff --name-only` over `app/manifest.ts`, `app/layout.tsx`, `public/`, `app/icon.png`, `app/apple-icon.png`, `tools/`, `next.config.ts` and `proxy.ts` is empty. Not machine-checkable, left to the phone: Add to Home Screen from `/admin` must launch `/admin` full-screen — it will wear the RUNNER’s icon under the label “RI Admin”, which is phase 1 working correctly; phase 2 changes the art. An older tile installed before this change must be deleted first, because iOS caches a manifest per install.
 
 - [x] **P1-RI-A018** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
   - **Difficulty**: NORMAL

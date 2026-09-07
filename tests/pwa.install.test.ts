@@ -2,8 +2,9 @@ import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+import { GET as adminManifestRoute } from '@/app/admin/manifest.webmanifest/route'
 import manifest from '@/app/manifest'
-import { APPLE_WEB_APP, INSTALL, PWA_ICONS } from '@/lib/pwa'
+import { ADMIN_INSTALL, APPLE_WEB_APP, INSTALL, PWA_ICONS } from '@/lib/pwa'
 
 /**
  * The regression guard for "Add to Home Screen gave me a bookmark with an 'R' on it".
@@ -169,5 +170,126 @@ describe('the root layout', () => {
      * un-updated device that Add to Home Screen still opens a browser tab.
      */
     expect(source).toMatch(/'apple-mobile-web-app-capable': 'yes'/)
+  })
+})
+
+/**
+ * F-admin-shortcut R1. The regression guard for *"the resulting shortcut only opens to
+ * runins.site/"*.
+ *
+ * Same argument as every other suite in this file: an install contract is invisible to a
+ * typecheck, a lint, and every test that renders a component, because the thing that decides the
+ * outcome is a phone reading a JSON document. Asserted here or not asserted at all.
+ *
+ * This calls the Route Handler directly rather than fetching it. There is no server in a unit
+ * test, and the handler reads nothing off a request — which is itself asserted by the fact that it
+ * takes no argument.
+ */
+describe('the admin web app manifest', () => {
+  it('starts at /admin, which is the whole point of the feature', async () => {
+    const body = await adminManifestRoute().json()
+    expect(body.start_url).toBe('/admin')
+  })
+
+  it('is a DIFFERENT app from the runner, by id and by start_url', async () => {
+    // Two manifests on one origin both claiming `id: '/'` is asking iOS to treat the second
+    // install as a re-install of the first, which loses whichever tile was added last.
+    const body = await adminManifestRoute().json()
+    const root = manifest()
+    expect(body.id).toBe('/admin')
+    expect(body.id).not.toBe(root.id)
+    expect(body.start_url).not.toBe(root.start_url)
+  })
+
+  it('still scopes the whole origin, so an expired session does not eject it to Safari', async () => {
+    /*
+     * NOT `/admin`, however tidy that would look. `lib/admin/requireAdmin.ts` answers a
+     * session-less request with `redirect('/')`, and a navigation outside scope opens in a browser
+     * tab instead of in the installed app. A narrower scope breaks the app on exactly the day the
+     * cookie expires.
+     */
+    const body = await adminManifestRoute().json()
+    expect(body.scope).toBe('/')
+  })
+
+  it('declares standalone display, so the tile is an app and not a bookmark', async () => {
+    const body = await adminManifestRoute().json()
+    expect(body.display).toBe('standalone')
+  })
+
+  it('allows landscape, because unlike the runner this surface has a layout for it', async () => {
+    // `app/admin/layout.tsx`: an XS Max in landscape is 896px, below `lg`, and keeps the phone
+    // layout deliberately. The root manifest's `portrait` is justified by the absence of one.
+    const body = await adminManifestRoute().json()
+    expect(body.orientation).toBe('any')
+  })
+
+  it('fits a label iOS will draw, and is not the runner’s label', async () => {
+    const body = await adminManifestRoute().json()
+    expect(body.short_name.length).toBeLessThanOrEqual(12)
+    expect(body.short_name).not.toBe(INSTALL.shortName)
+    expect(body.short_name).toBe(ADMIN_INSTALL.shortName)
+  })
+
+  it('tints the splash from the admin shell’s own ground, not the runner’s', async () => {
+    // --paper-2, light. `/admin`'s shell is `bg-paper-2`; the splash has to match the screen the
+    // app opens onto, which is the same argument `lib/pwa.ts` makes for `INSTALL.paper`.
+    const body = await adminManifestRoute().json()
+    expect(body.background_color).toBe('#f1f7fb')
+    expect(body.theme_color).toBe('#f1f7fb')
+  })
+
+  it('is served as a manifest and not as plain JSON', () => {
+    // Chrome warns on `application/json`. The registered type is `application/manifest+json`.
+    expect(adminManifestRoute().headers.get('content-type')).toBe('application/manifest+json')
+  })
+
+  it('advertises icons that exist on disk', async () => {
+    // Phase 1 ships the runner's three; phase 2 replaces them with the admin set. Either way the
+    // paths have to resolve, or the tile falls back to a screenshot of the page.
+    const body = await adminManifestRoute().json()
+    expect(body.icons.length).toBeGreaterThan(0)
+    for (const icon of body.icons) {
+      expect(existsSync(`${ROOT}public${icon.src}`), `manifest advertises ${icon.src}`).toBe(true)
+    }
+  })
+})
+
+describe('the admin layout', () => {
+  const source = readFileSync(`${ROOT}app/admin/layout.tsx`, 'utf8')
+  /*
+   * The `metadata` export only, not the whole file. This layout carries a long docstring that
+   * quotes the very things asserted below, and a whole-file matcher would pass or fail on the
+   * explanation rather than on the code — which is how a guard gets its explanation deleted
+   * instead of its bug caught. `tests/admin.shell.test.ts` reads only `className` literals for
+   * exactly this reason.
+   */
+  const metadataBlock = source.slice(
+    source.indexOf('export const metadata'),
+    source.indexOf('export default'),
+  )
+
+  it('links the admin manifest, which is what redirects the install', () => {
+    expect(metadataBlock).toMatch(/manifest: '\/admin\/manifest\.webmanifest'/)
+  })
+
+  it('spreads APPLE_WEB_APP rather than restating one field of it', () => {
+    /*
+     * `appleWebApp` is a nested metadata field and Next replaces those WHOLE. Writing
+     * `appleWebApp: { title: … }` would drop `capable: true` for every route under `/admin`, and
+     * that is the line that stops the install from being a bookmark. The spread is the fix and
+     * this is the assertion that keeps it.
+     */
+    expect(metadataBlock).toMatch(/\.\.\.APPLE_WEB_APP/)
+  })
+
+  it('does NOT set metadata.icons, which would delete the admin apple-touch-icon', () => {
+    /*
+     * `next/dist/lib/metadata/resolve-metadata.js` applies the file-convention icons collected
+     * from the leaf segment only `if (!resolvedMetadata.icons)`. So an `icons` key here silently
+     * removes `app/admin/apple-icon.png` from the head — the file phase 2 ships and the one Safari
+     * reads on install. There is no error and no warning; the tile just goes back to the runner's.
+     */
+    expect(metadataBlock).not.toMatch(/\bicons\s*:/)
   })
 })
