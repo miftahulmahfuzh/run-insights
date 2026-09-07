@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "af0cb0b",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "imageprefs.ts vocabulary is the set's authority: NINA_IMAGE_PROMPT_LENGTH_* (default 50), focus keys face|skin|boobs|butt|thighs|calves, NinaImageReference {source,id} with '' empty. Migration 0011_natural_nico_minoru; journal now 12 entries idx 11, so phase 7 mints 0012. COORDINATOR MUST TICK PLAN.md ITSELF: phase 1 = af0cb0b, TaskID P1-DB-A004 -- I did not write the shared tracked index, since 7 sessions share it and a concurrent read-modify-write clobbers.",
       "package": "lib/db`, `lib/nina",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:40:59+00:00",
       "satisfies": [
         "R4",
         "R10"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A004",
       "title": "nina_image_prefs` \u2014 the row, the vocabulary, the reads"
     },
     {
@@ -39,7 +39,7 @@
         "R4",
         "R9"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The prompt: body canon, length ladder, focus, venue, time, notes"
     },
@@ -58,7 +58,7 @@
       "satisfies": [
         "R10"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The reference image on the wire, and the timeout it costs"
     },
@@ -80,7 +80,7 @@
         "R9",
         "R10"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The route, the sixth nav cell, and the form"
     },
@@ -99,7 +99,7 @@
       "satisfies": [
         "R10"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The photo-reference picker"
     },
@@ -149,6 +149,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T15:22:37+00:00",
+  "updated": "2026-09-07T15:44:44+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }

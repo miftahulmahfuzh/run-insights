@@ -7,7 +7,7 @@
 **Branch:** `feature/nina-image-generation-tab` (base: `origin/main` merged at `4a7588e`)
 **Phases:** 7
 **Status:** reconciled
-**Coordinator:** —
+**Coordinator:** `orch-nina-image-generation-tab` (session `f3faf3b6`)
 
 ---
 
@@ -149,7 +149,7 @@ Every phase must hold all of these, and each is checkable:
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | `nina_image_prefs` — the row, the vocabulary, the reads | R4–R10 (storage) | `lib/db`, `lib/nina` | 7 | — | NORMAL | `.workflows/plan/nina-image-generation-tab/phase-1.md` | — | — |
+| 1 | `nina_image_prefs` — the row, the vocabulary, the reads | R4–R10 (storage) | `lib/db`, `lib/nina` | 7 | — | NORMAL | `.workflows/plan/nina-image-generation-tab/phase-1.md` | `P1-DB-A004` | **done `af0cb0b`** |
 | 2 | The prompt: body canon, length ladder, focus, venue, time, notes | R1, R4–R9 (prompt) | `lib/nina` | 6 | 1 | HARD | `.workflows/plan/nina-image-generation-tab/phase-2.md` | — | — |
 | 3 | The reference image on the wire, and the timeout it costs | R10 (backend) | `lib/nina`, `scripts` | 7 | 1 | HARD | `.workflows/plan/nina-image-generation-tab/phase-3.md` | — | — |
 | 4 | The route, the sixth nav cell, and the form | R2, R4–R9 (UI), R10 (the save) | `app/admin`, `components/admin`, `lib/admin` | 10 | 1 | HARD | `.workflows/plan/nina-image-generation-tab/phase-4.md` | — | — |
@@ -158,6 +158,36 @@ Every phase must hold all of these, and each is checkable:
 | 7 | Retire `nina_tuning.wardrobe` | R3 | `lib/nina`, `lib/admin`, `components/admin`, `lib/db` | 23 | 2, 4 | NORMAL | `.workflows/plan/nina-image-generation-tab/phase-7.md` | — | — |
 
 Waves the `Depends on` column implies: **{1}**, then **{2, 3, 4, 5}** concurrently, then **{6, 7}**.
+
+### Phase 1 landed — the vocabulary as built, which the rest of the set codes against
+
+`af0cb0b`, TaskID `P1-DB-A004`, on `feature/nina-image-generation-tab` and on `origin`. Typecheck,
+lint, `db:check` and `npm test` (154 files / 3126 tests) green; `schema.ts`, `queries.ts` and
+`tests/db.schema.nina.test.ts` purely additive, and `writeNinaTuning` / `readNinaTuning` /
+`tuningFromRow` / `tuningToColumns` byte-identical to their pre-phase state.
+
+**`lib/nina/imageprefs.ts` is the set's authority** — Decisions row *"Which side owns a name when two
+plans disagree"* says the declaring phase wins, so where a later phase's own prose disagrees with
+this list, **this list is right and that prose is pre-reconciliation**. Phase 4 in particular.
+
+| As built | Not | Consequence |
+|---|---|---|
+| `NINA_IMAGE_PROMPT_LENGTH_MIN` / `_MAX` / `_DEFAULT`, default `50` | `NINA_IMAGE_LENGTH_*` | conflict 9, already in Decisions |
+| `ninaPromptLengthRungFor(bandIndex)` — takes a **band index** | a raw 0–100 score | callers also import `ninaBand` from `@/lib/nina/tuning`; re-deriving the five bands locally is forbidden |
+| focus keys `face` `skin` `boobs` `butt` `thighs` `calves` | `bigBoobs` etc. | short forms throughout |
+| `NinaImageFocusSpec.userSaid` | `.axis` | |
+| `NinaImageReference { source, id }`, `id` a string with `''` for none; `NINA_IMAGE_REFERENCE_SOURCES = ['none','album','chat']` | `kind` | |
+| `listNinaPhotoReferences` returns `NinaPhotoRefPage { rows, total, offset, limit }` — the field is **`rows`** | `items` | **new fact, not in the pre-flight Decisions table.** `PhotoReferencePicker`'s prop stays `items` (phase 5 declares it), so **phase 4's seam maps `rows` -> `items`** |
+| invariant 13 held structurally: the chat set is reached via `generatedChatPhotoScope(userId)` and counted via `countNinaChatPhotos(userId)` | an inlined `eq(kind,'generated')` | inlining now **fails a source-level test** phase 1 added |
+
+Migration `0011_natural_nico_minoru` is generated, unrenamed, and carries its hand-appended wardrobe
+copy below the generated DDL. The branch's journal now holds **12** entries, newest `idx: 11` — so
+**phase 7's Preconditions C/D hold exactly as written and it mints `0012`.**
+
+**Phase 5, on the dev/live database as it stands:** 21 `nina_avatars` rows and **zero**
+`nina_message_images` rows with `kind='generated'`. The picker union therefore reads `total: 21`, all
+album. That is a truthful read, not a broken chat side — do not "fix" it.
+
 
 ### Phase 1 — `nina_image_prefs`: the row, the vocabulary, the reads
 **Satisfies:** R4, R5, R6, R7, R8, R9, R10 (storage only)
@@ -390,6 +420,9 @@ criteria, 3 = the plan's code blocks, 4 = this index's Why / Requirements, 5 = t
 | `imageGenModel.ts`'s import count | **Two modules, not one**: `@/lib/nina/imageprefs` and `@/lib/nina/tuning`. `ninaPromptLengthRungFor` takes a *band index* and `imageprefs.ts` deliberately keeps no second copy of the band vocabulary, so `ninaBand` must be imported. Re-deriving the five band boundaries locally is forbidden — a private scale is a slider the operator cannot predict. Both modules are zero-import and client-safe, on `lib/admin/tuningModel.ts`'s existing precedent. | 2 (phase 1's own Handoff: *"render the band caption via `ninaPromptLengthRungFor(ninaBand(value).index)` and never re-derive a band from a score"*) |
 | The two migration numbers, and what may be hand-written in one | Phase 1 is **`0011`**, phase 7 is **`0012`** — the watermark moved to `0010` in the merge. Phase 1's wardrobe copy is hand-appended **after** `db:generate`, under the banner comment `0009` and `0010` both carry, because regeneration destroys it silently. Never hand-name, never rename (a renamed file keeps its old `when`, drops below the watermark and is skipped in silence), and if ever regenerated, **diff old against new and re-append before deleting anything**. | 1 (invariant 10) + 6 (both landed migrations state the discipline in their own banners; the user's memory note records it measured twice) |
 | `sidecarText`'s `reference:  none (RU-18)` line, now false for an anchored generation | **Left wrong, deliberately, and filed as a follow-up card.** It is `lib/nina/imagegen.ts:171` — phase 2's file — expressing phase 3's fact, and both plans explicitly decline it (phase 3 keeps `tests/nina.imagerecipe.test.ts:98` asserting it). It is cosmetic: the sidecar lands in `nina_message_images.prompt` and only a human ever reads it. A third edit to `imagegen.ts` in the same wave as phase 2's rewrite buys a merge conflict in a file phase 6 merely displays the output of. **Not an Open Question — it is decided, and the decision is "not in this wave".** | 2 (both phases' exit criteria decline it) + 6 (one owner per file region) |
+
+| **Migration `0011` collides with a landed `0011`, and mine is already applied** — decided mid-run by the coordinator, 2026-09-07, on a peer's measured WARN | **Keep `0011_natural_nico_minoru` exactly as it is: its name, its hash and its `when`. Do not regenerate it, do not rename it, and re-create nothing.** `origin/main` gained `0011_rare_blockbuster` (task-135, `nina_memory_facts DROP COLUMN confidence`, `when` 13:10:34.959Z) after this branch was cut, so both files are `idx: 11` — different names, so not a file conflict on the `.sql`. The set's own `0011` was applied to the one live database by phase 1 at 15:26:42.027Z, which is **newer than everything else applied**, so the outcome the regenerate recipe exists to produce — an entry stamped after every applied row — this file already has. Regenerating it would instead give it a new hash, so the migrator would re-run its first statement `CREATE TABLE "nina_image_prefs"` (no `IF NOT EXISTS`) against a database that has the table, and would **silently drop the hand-appended wardrobe copy** below the generated DDL. The landing's job is therefore to make the merged journal agree with what the database already ran, not to re-run anything: at Step 5 the `_journal.json` / `meta/0011_snapshot.json` conflict is resolved so both entries survive with their own `when` intact, `db:check` is made to pass, and `db:migrate` must apply **only phase 7's `0012`**. A migration that will not apply stops the landing with `main` untouched. | 1: invariant 10 — *"generated by `db:generate`, never hand-named and **never renamed**"*, whose stated reason is that a stale `when` drops below the watermark; this file's `when` is above it |
+| **`0011_rare_blockbuster` is stranded, and this set does not un-strand it** | Reported, not fixed. It sits at 13:10:34.959Z, older than this set's applied 15:26:42.027Z row, so a migrator applying only entries newer than the last applied row will never reach it — `nina_memory_facts.confidence` stays in the database as `integer NOT NULL DEFAULT 100`. It is a **dead column, not a runtime break**: task-135's code no longer writes it and inserts still succeed on the default. Dropping it is a destructive step **no phase plan in this set asked for**, which is a stop rather than a decision, and it belongs to task-135. Verified again at Step 5 and named in the termination block. | 6: the plan's own rule that a destructive step no phase prescribed is not this set's to take + 4: Scope (`nina_memory_facts` is outside it) |
 
 ## Open Questions
 
