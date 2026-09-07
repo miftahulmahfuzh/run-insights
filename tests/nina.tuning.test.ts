@@ -10,7 +10,6 @@ import {
   coerceNinaNotes,
   coerceNinaRelationship,
   coerceNinaTuning,
-  coerceNinaWardrobe,
   isNinaDial,
   isNinaKeyEnabled,
   isNinaRelationship,
@@ -31,7 +30,6 @@ import {
   NINA_TRAITS,
   NINA_TUNING_DEFAULTS,
   NINA_TUNING_KEYS,
-  NINA_WARDROBE_MAX,
   ninaActiveRelationship,
   ninaBand,
   ninaDialScore,
@@ -353,7 +351,7 @@ describe('clamping and coercion never throw', () => {
       { traits: 'nope' },
       { traits: [] },
       { traits: { anger: {} }, dials: 7 },
-      { relationship: 42, wardrobe: [], notes: {}, revision: -9 },
+      { relationship: 42, notes: {}, revision: -9 },
       { traits: Object.create(null) },
     ]
     for (const input of hostile) {
@@ -380,19 +378,17 @@ describe('clamping and coercion never throw', () => {
       dials,
       enabled,
       relationship: 'girlfriend' as const,
-      wardrobe: 'a black cropped tank and shorts',
       notes: 'call him yang more often',
       revision: 4,
     }
     expect(coerceNinaTuning(input)).toEqual(input)
   })
 
-  it('squashes the wardrobe to one line and caps both free-text fields', () => {
-    // The wardrobe is ONE line: a newline inside an image prompt splits a sentence the provider
-    // then reads as two.
-    expect(coerceNinaWardrobe('  a grey  tank\nand shorts ')).toBe('a grey tank and shorts')
-    expect(coerceNinaWardrobe('x'.repeat(500)).length).toBe(NINA_WARDROBE_MAX)
-    expect(coerceNinaWardrobe(42)).toBe('')
+  it('normalises the notes and caps the one free-text field left', () => {
+    // Newlines SURVIVE here, which is the difference from the wardrobe line this module used to
+    // carry: notes is prose and paragraphs are how the operator writes it, so only CRLF is
+    // normalised and only a run of blank lines is collapsed. (The wardrobe's one-line squash moved
+    // to `lib/nina/imageprefs.ts` with the field itself — F41 R3.)
     expect(coerceNinaNotes('a\r\nb\n\n\n\nc')).toBe('a\nb\n\nc')
     expect(coerceNinaNotes('x'.repeat(9000)).length).toBe(NINA_NOTES_MAX)
     expect(coerceNinaNotes(null)).toBe('')
@@ -426,7 +422,6 @@ describe('NINA_TUNING_DEFAULTS is the Nina who ships today', () => {
       photoEagerness: 50,
       verbosity: 50,
     })
-    expect(NINA_TUNING_DEFAULTS.wardrobe).toBe('')
     expect(NINA_TUNING_DEFAULTS.notes).toBe('')
     expect(NINA_TUNING_DEFAULTS.revision).toBe(0)
   })
@@ -505,7 +500,6 @@ describe('the per-parameter enable map (R4)', () => {
 
   it('isNinaTuningKey admits every key and nothing else', () => {
     for (const key of NINA_TUNING_KEYS) expect(isNinaTuningKey(key), key).toBe(true)
-    expect(isNinaTuningKey('wardrobe')).toBe(false)
     expect(isNinaTuningKey('notes')).toBe(false)
     expect(isNinaTuningKey('')).toBe(false)
     expect(isNinaTuningKey('__proto__')).toBe(false)

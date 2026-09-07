@@ -90,7 +90,7 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaNags` | `nina_nags` | Escalation-ladder state per nag code | PK `(user_id, code)` |
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
-| `ninaTuning` | `nina_tuning` | Nina's per-user character: eleven trait dials, the relationship, the four extra dials, wardrobe and notes, plus a revision | PK `user_id` |
+| `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field, plus a revision | PK `user_id` |
 | `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, the chosen photo reference, plus a revision | PK `user_id` |
 | `pushSubscriptions` | `push_subscriptions` | Web Push subscription per browser endpoint | `push_subscriptions_endpoint_unq`, `push_subscriptions_user_idx` |
 
@@ -135,9 +135,11 @@ rather than a migration here. `reference_source` (`'none' | 'album' | 'chat'`, c
 `NINA_IMAGE_REFERENCE_SOURCES` in `lib/nina/imageprefs.ts`) has a second, stronger reason: that
 module must stay importable from a `'use client'` component, so it cannot import `lib/db`, and
 typing the column would mean either importing upward from here into `lib/nina` or restating the
-union as a second definition. Their neighbours `nina_tuning.wardrobe` / `.notes` and
-`nina_image_prefs.wardrobe` / `.venue` / `.time_of_day` / `.notes` are not catalog pointers at all: they are free operator text, `NOT NULL` with `''` as the empty value, because
-"no override" and "not set" are the same fact.
+union as a second definition. Their neighbours `nina_tuning.notes` and
+`nina_image_prefs.wardrobe` / `.venue` / `.time_of_day` / `.notes` are not catalog pointers at all:
+they are free operator text, `NOT NULL` with `''` as the empty value, because "no override" and
+"not set" are the same fact. (`nina_tuning.wardrobe` was one of them until F41 R3 moved the wardrobe
+to `nina_image_prefs`, where it is free operator text on exactly the same terms.)
 
 **Cascade is the default for ownership FKs**, with three documented exceptions: `badges.run_id` is
 `set null` (R-22 — "a badge is a fact about the past; deleting the run that earned it must not
@@ -829,8 +831,9 @@ Within this package the phase touched `schema.ts` only; the reads and writes liv
 **New table `nina_tuning`** — one row per user, primary-keyed on `user_id` with a cascading FK to
 `user`, holding Nina's whole character: the eleven trait dials as `0-100` integers, the relationship
 as a text column over five values, the four extra dials the request's *"among other things (you can
-define more comprehensively)"* asked for, a wardrobe line, a free-text notes field, a revision
-integer and an `updated_at`.
+define more comprehensively)"* asked for, a free-text notes field, a revision integer and an
+`updated_at`. (It also held a one-line `wardrobe` until F41 R3, which dropped the column after
+copying every value into `nina_image_prefs.wardrobe`.)
 
 **The dials are flat columns, not a JSON blob.** Twenty named `integer NOT NULL` columns rather than
 one `jsonb`, so the column list *is* the vocabulary: a dial that does not exist cannot be written,

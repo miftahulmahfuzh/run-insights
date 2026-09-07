@@ -85,6 +85,13 @@
       "when": 1788794802027,
       "tag": "0011_natural_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788812479478,
+      "tag": "0012_wealthy_madame_masque",
+      "breakpoints": true
     }
   ]
 }

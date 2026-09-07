@@ -223,8 +223,8 @@ The character tuning is validated as a single schema because it is saved as a si
 `tuningActions.ts`). It obeys this file's standing rule literally: **every bound is imported, none
 is re-spelled.** The `0-100` range (`NINA_SCORE_MIN` / `NINA_SCORE_MAX`), the eleven trait keys
 (`NINA_TRAITS`), the four dial keys (`NINA_DIALS`), the five relationship values
-(`NINA_RELATIONSHIPS`) and the two free-text lengths (`NINA_WARDROBE_MAX` = 200,
-`NINA_NOTES_MAX` = 2000) all come from `lib/nina/tuning.ts`, which is the same module the panel
+(`NINA_RELATIONSHIPS`) and the free-text length (`NINA_NOTES_MAX` = 2000) all come from
+`lib/nina/tuning.ts`, which is the same module the panel
 imports for its labels and the same one `buildNinaSystemPrompt` reads. A `z.enum` retyped here would
 be a second list of relationships, and the first thing to happen to a second list is that it falls
 behind. **A length bound retyped here would be worse than that**: a Zod cap stricter than the

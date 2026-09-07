@@ -33,7 +33,6 @@ import {
   NINA_SCORE_MIN,
   NINA_TRAITS,
   NINA_TUNING_KEYS,
-  NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
 import {
@@ -475,9 +474,14 @@ export const ninaTuningWriteSchema = z.object({
    */
   enabled: z.strictObject(enabledShape(NINA_TUNING_KEYS)),
   relationship: z.enum(NINA_RELATIONSHIPS),
-  /** Goes into an IMAGE prompt, not into her voice. Empty is valid and means "the anchor outfit". */
-  wardrobe: z.string().trim().max(NINA_WARDROBE_MAX),
-  /** Handed to her verbatim in the system prompt. Empty is valid and is the default. */
+  /**
+   * Handed to her verbatim in the system prompt. Empty is valid and is the default.
+   *
+   * The only free-text field this schema still bounds. `wardrobe` was the other one until F41 R3
+   * moved it to the image-prefs schema below, where its bound is imported from
+   * `lib/nina/imageprefs.ts` under the same standing rule: every bound is imported, none is
+   * re-spelled.
+   */
   notes: z.string().trim().max(NINA_NOTES_MAX),
 })
 export type NinaTuningWriteInput = z.infer<typeof ninaTuningWriteSchema>

@@ -1616,8 +1616,10 @@ export const NINA_TRAIT_BANDS: readonly NinaTraitBands[] = [
  *   · `verbosity`      — `SEND_TOOL.bubbles`' 1-4 cap and `OUTPUT_RULE`'s preference line. Phase 3
  *                        varies the PREFERENCE inside `OUTPUT_RULE`; no dial may move the cap.
  *
- * Two more R3 fields are not dials and are not here: `wardrobe`, which is `ninaAppearance`'s and
- * never reaches the system prompt, and `notes`, which is passed through verbatim below.
+ * One more R3 field is not a dial and is not here: `notes`, which is passed through verbatim below.
+ * There were two — `wardrobe` was the other, and F41 R3 moved it out of `nina_tuning` altogether
+ * (it is `nina_image_prefs.wardrobe` now, still `ninaAppearance`'s and still never in the system
+ * prompt, but no longer a field of the tuning this docblock is about).
  *
  * ── `profanity` COUNTERMANDS THE GLOSSES; IT DOES NOT REWRITE THEM ────────────────────────────
  * `JAKARTA_SLANG` and `JAKARTA_SLANG_BLOCK` survive verbatim at every setting (see "Survives

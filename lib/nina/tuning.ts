@@ -581,7 +581,7 @@ function pick(bag: unknown, key: string): unknown {
  * columns are the one place where sixteen is a fact rather than an assumption, because sixteen is
  * how many this phase's own migration creates.
  *
- * ── `relationship` IS IN HERE AND `wardrobe` / `notes` ARE NOT ────────────────────────────────
+ * ── `relationship` IS IN HERE AND `notes` IS NOT ──────────────────────────────────────────────
  * `nobody` is NOT an off switch for the relationship. Read `NINA_RELATIONSHIP_BLOCKS.nobody` in
  * `persona.ts`: it is four sentences of active instruction — *"You do not know him"*, *"you keep
  * your distance"*, *"you do not go first"* — the COLDEST setting on the axis, not the absent one.
@@ -591,11 +591,21 @@ function pick(bag: unknown, key: string): unknown {
  * teaches her to invent one. So disabling the relationship means what disabling anything else
  * means: `NINA_DEFAULT_RELATIONSHIP`, whose blocks ARE today's `NINA_IDENTITY`.
  *
- * `wardrobe` and `notes` are the mirror image and therefore have NO toggle. `''` genuinely is their
- * absence — `ninaOperatorNotesBlock` returns `''` and the whole STANDING INSTRUCTIONS section
- * disappears, `ninaAppearance` falls back to `NINA_DEFAULT_OUTFIT` — so both already contribute zero
- * bytes at their empty value, and a toggle would be a second spelling for a state the field already
- * has. Two spellings for one fact is one too many.
+ * `notes` is the mirror image and therefore has NO toggle. `''` genuinely is its absence —
+ * `ninaOperatorNotesBlock` returns `''` and the whole STANDING INSTRUCTIONS section disappears — so
+ * it already contributes zero bytes at its empty value, and a toggle would be a second spelling for
+ * a state the field already has. Two spellings for one fact is one too many.
+ *
+ * ── THERE USED TO BE A SECOND FIELD IN THAT PARAGRAPH ─────────────────────────────────────────
+ * `wardrobe` was a `nina_tuning` column, a `NinaTuning` member and a control on
+ * `/admin/personality` until F41 R3: *"remove Wardrobe field in /admin/personality (this new
+ * feature is more detailed version of it)"*. It lives on `nina_image_prefs.wardrobe` now, edited on
+ * `/admin/image-generation` beside the venue, the time, the prompt length and the focus set that
+ * dress the same photograph — because what she is wearing is a fact about a PHOTOGRAPH and not
+ * about who she is, and two surfaces both claiming to dress her is the one thing R3 cannot mean.
+ * It never had a toggle and still does not; it simply is not this module's field any more. This
+ * paragraph is here so the next reader does not re-add it: the sentence above about `notes` used to
+ * be about two fields, and a reader who found only one would reasonably wonder which was lost.
  */
 export const NINA_TUNING_RELATIONSHIP_KEY = 'relationship'
 
@@ -700,15 +710,8 @@ export function ninaActiveRelationship(tuning: NinaTuning): NinaRelationship {
 }
 
 /* ============================================================================
- * §6 The two free-text fields
+ * §6 The free-text field
  * ==========================================================================*/
-
-/**
- * One line. It is baked into an image prompt beside `NINA_SELFIE_STYLE` and `NINA_APPEARANCE`
- * (phase 4), where a paragraph fights the style block for the model's attention and loses money
- * doing it. 200 characters is a sentence about clothes.
- */
-export const NINA_WARDROBE_MAX = 200
 
 /**
  * Appended verbatim to a system prompt that is already about seven kilobytes. 2000 characters is
@@ -716,18 +719,6 @@ export const NINA_WARDROBE_MAX = 200
  * and small enough that it cannot drown the canon it is appended to.
  */
 export const NINA_NOTES_MAX = 2000
-
-/**
- * The wardrobe line, made safe. Whitespace collapsed to single spaces, because this is ONE line
- * and a newline inside an image prompt splits a sentence the provider then reads as two.
- *
- * `''` means "no override" — phase 4 falls back to `NINA_APPEARANCE`'s heather-grey tank, and that
- * is what makes the empty default reproduce today's photographs exactly.
- */
-export function coerceNinaWardrobe(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  return value.replace(/\s+/g, ' ').trim().slice(0, NINA_WARDROBE_MAX)
-}
 
 /**
  * The notes field, made safe. Newlines survive (it is prose, and paragraphs are how the operator
@@ -780,9 +771,13 @@ export interface NinaTuning {
    * makes `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` the prompt that ships.
    */
   readonly enabled: Readonly<Record<NinaTuningKey, boolean>>
-  /** `''` = no override; phase 4 uses `NINA_APPEARANCE`'s outfit. */
-  readonly wardrobe: string
-  /** `''` = nothing appended to the system prompt. */
+  /**
+   * `''` = nothing appended to the system prompt.
+   *
+   * The ONE free-text field left on this type. `wardrobe` sat beside it until F41 R3 moved the
+   * wardrobe to `nina_image_prefs`; `notes` stayed because it is a SYSTEM-PROMPT field — it is
+   * what the operator wants her to know, not what he wants her to be wearing.
+   */
   readonly notes: string
   /**
    * Bumped by the DATABASE on every save, so `nina_turns.tuning_revision` can date a voice change
@@ -812,7 +807,6 @@ export interface NinaTuningInput {
   readonly relationship?: unknown
   readonly dials?: unknown
   readonly enabled?: unknown
-  readonly wardrobe?: unknown
   readonly notes?: unknown
   readonly revision?: unknown
 }
@@ -850,7 +844,6 @@ export const NINA_TUNING_DEFAULTS: NinaTuning = Object.freeze({
   dials: defaultScores(NINA_DIALS, NINA_DIAL_SPECS),
   /* Frozen and shared like the two score records above, and ALL TRUE — see §5. */
   enabled: NINA_ENABLED_DEFAULTS,
-  wardrobe: '',
   notes: '',
   revision: 0,
 })
@@ -901,7 +894,6 @@ export function coerceNinaTuning(input: NinaTuningInput | null | undefined): Nin
      *    alternative is a deploy that silently mutes her personality. Only an explicit `false`
      *    disables. */
     enabled: coerceNinaEnabled(input?.enabled),
-    wardrobe: coerceNinaWardrobe(input?.wardrobe),
     notes: coerceNinaNotes(input?.notes),
     revision: coerceRevision(input?.revision),
   }

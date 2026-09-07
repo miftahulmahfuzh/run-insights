@@ -98,7 +98,7 @@ and are unit-tested there.
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose memory is being edited. Plain links, selection in the URL. |
-| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. |
+| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: twelve trait sliders, the five-way relationship selector, the four extra dials, the notes field, and the assembled prompt preview. One `useTransition`, one save. Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. (A Wardrobe input sat beside Notes until F41 R3 moved it to `ImageGenPanel.tsx`.) |
 | `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Decides nothing. |
 
 ## The `/admin/nina` file manager

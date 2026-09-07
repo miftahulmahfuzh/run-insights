@@ -3202,7 +3202,6 @@ function tuningFromRow(row: NinaTuningRow): NinaTuning {
       photoEagerness: row.photoEagernessEnabled,
       verbosity: row.verbosityEnabled,
     },
-    wardrobe: row.wardrobe,
     notes: row.notes,
     revision: row.revision,
   })
@@ -3252,7 +3251,6 @@ function tuningToColumns(tuning: NinaTuningWrite) {
     clinginessEnabled: tuning.enabled.clinginess,
     photoEagernessEnabled: tuning.enabled.photoEagerness,
     verbosityEnabled: tuning.enabled.verbosity,
-    wardrobe: tuning.wardrobe,
     notes: tuning.notes,
   }
 }

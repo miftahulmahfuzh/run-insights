@@ -373,7 +373,11 @@ describe('the prompt', () => {
       expect(atRung, `band floor ${promptLength}`).not.toContain('narrow shoulders')
     }
     expect(
-      buildNinaImagePrompt({ purpose: 'selfie', scene: 'x', prefs: prefsWith({ promptLength: 100 }) }),
+      buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'x',
+        prefs: prefsWith({ promptLength: 100 }),
+      }),
     ).toContain('never lean and never slight')
   })
 
@@ -572,16 +576,14 @@ describe('the prompt', () => {
   it('R6: the PREFS wardrobe reaches the photograph and the TUNING wardrobe does NOT', () => {
     /*
      * The index's Decisions table: *"two wardrobes silently competing is the one outcome R3 cannot
-     * mean"*. `nina_tuning.wardrobe` still EXISTS at this phase — phase 7 removes it — so this is
-     * the assertion that proves the camera has stopped READING it.
-     *
-     * PHASE 7: delete the `tuning:` line below when `NinaTuning.wardrobe` goes, and keep every
-     * other assertion in this test.
+     * mean"*. `nina_tuning.wardrobe` is GONE as of F41 R3 — phase 7 dropped the column — so the
+     * `tuning:` line this test used to pass is deleted rather than rewritten, exactly as the
+     * instruction left here said. Every other assertion stands unchanged: the prefs wardrobe still
+     * has to reach the photograph, and it still may not take the person or her home ground with it.
      */
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'on the track',
-      tuning: tuned({ wardrobe: 'a beige trench coat' }),
       prefs: prefsWith({ wardrobe: 'a black crop top and very short white running shorts' }),
     })
     expect(prompt).toContain('very short white running shorts')

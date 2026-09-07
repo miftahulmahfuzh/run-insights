@@ -422,7 +422,7 @@ describe('nina_tuning', () => {
     expect(fkFor(schema.ninaTuning, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the thirty-nine columns phases 3, 4, 5 and R4 were written against', () => {
+  it('spells exactly the thirty-eight columns phases 3, 4, 5 and R4 were written against', () => {
     expect(names(schema.ninaTuning)).toEqual(
       [
         'user_id',
@@ -445,7 +445,6 @@ describe('nina_tuning', () => {
         'clinginess',
         'photo_eagerness',
         'verbosity',
-        'wardrobe',
         'notes',
         // R4 — one enable flag per parameter, in the same order.
         'relationship_enabled',
@@ -542,7 +541,6 @@ describe('nina_tuning', () => {
       'relationship',
       ...NINA_TRAITS,
       ...NINA_DIALS.map(snake),
-      'wardrobe',
       'notes',
       'revision',
     ]) {

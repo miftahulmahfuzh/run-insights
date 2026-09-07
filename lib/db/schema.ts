@@ -1754,9 +1754,9 @@ export const ninaFoldersRelations = relations(ninaFolders, ({ one }) => ({
  * ==========================================================================*/
 
 /**
- * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Eleven trait
- * intensities, a relationship, four behaviour dials, sixteen enable flags, a wardrobe line and a
- * notes field — fifteen integers, sixteen booleans and three strings. `lib/nina/tuning.ts` owns the
+ * **Who Nina is, as data the operator can change without a commit (F35 R1/R2/R3).** Twelve trait
+ * intensities, a relationship, four behaviour dials, seventeen enable flags and a notes field —
+ * seventeen integers, seventeen booleans and two strings. `lib/nina/tuning.ts` owns the
  * vocabulary, the domains and the defaults; this table stores one row of it per user and nothing
  * else.
  *
@@ -1861,16 +1861,20 @@ export const ninaTuning = pgTable('nina_tuning', {
   verbosity: integer('verbosity').notNull(),
 
   /**
-   * One line describing what she is wearing, baked into the image prompt at dispatch time
-   * (`NINA_WARDROBE_MAX` = 200). `''` means "no override" and phase 4 falls back to
-   * `NINA_APPEARANCE`'s heather-grey tank — which is what makes the empty default reproduce
-   * today's photographs exactly. NOT NULL with `''` as the empty value rather than NULL, because
-   * "no override" and "not set" are the same fact and two spellings for one fact is one too many.
-   */
-  wardrobe: text('wardrobe').notNull(),
-  /**
    * Free text appended verbatim to the system prompt (`NINA_NOTES_MAX` = 2000). The escape hatch
    * for something the operator wants that no dial expresses. `''` = nothing appended.
+   *
+   * ── THERE WAS A `wardrobe` COLUMN HERE, AND F41 R3 DROPPED IT ───────────────────────────────
+   * *"remove Wardrobe field in /admin/personality (this new feature is more detailed version of
+   * it)."* One line of operator text describing what she is wearing lived beside `notes` here,
+   * baked into the image prompt at dispatch time. It is `nina_image_prefs.wardrobe` now, beside the
+   * venue, the time, the prompt length and the focus set — every other parameter of the same
+   * photograph. `notes` stayed because it is a SYSTEM-PROMPT field and always was: the two were
+   * neighbours in this table but never on the same side of the camera.
+   *
+   * The drop was safe rather than lucky: the migration that created `nina_image_prefs` copied every
+   * non-empty `nina_tuning.wardrobe` into it BEFORE this column was dropped, so the value survives
+   * the schema change. Restoring it is re-adding the column and copying back.
    */
   notes: text('notes').notNull(),
 

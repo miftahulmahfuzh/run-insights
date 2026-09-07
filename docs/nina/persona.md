@@ -348,8 +348,11 @@ relationship block is a rule that cancels a trait dial, which is the exact thing
 | `profanity` | how freely she swears — it lifts the `anjir` and `bego` fences. Default 30, so `low` is today |
 | `clinginess` | how soon she speaks first, and how often |
 | `photoEagerness` | how eagerly she reaches for `generate_image`, and how readily she offers a photo as a reward |
-| `wardrobe` | free text. Replaces the outfit paragraph in the IMAGE prompt only |
 | `notes` | free text, passed to her verbatim, and it **wins** where it disagrees with anything above |
+
+`wardrobe` was a seventh row in this table until F41 R3 took it off `/admin/personality` entirely.
+It is `nina_image_prefs.wardrobe` now, on `/admin/image-generation`, with the venue, the time and
+the focus set — a fact about a photograph rather than a fact about who she is.
 
 Nothing arbitrates between contradictory dials. `anger` 100 with `chill` 100 puts both paragraphs in
 the prompt and the model blends them. Sixteen dials is 120 pairwise rules, a spec nobody could
@@ -428,7 +431,7 @@ in the paragraph above.
 | The canon as a function of it | `lib/nina/persona.ts` |
 | The assembled system prompt | `buildNinaSystemPrompt`, `lib/nina/prompts/system.ts` |
 | The librarian's half — it is told the relationship, so the couple's register is not filed as biography | `buildDistillSystemPrompt`, `lib/nina/prompts/distill.ts` |
-| The wardrobe that reaches the camera | `lib/nina/imagegen.ts` |
+| The wardrobe that reaches the camera — no longer a tuning field (F41 R3) | `lib/nina/imageprefs.ts`, `/admin/image-generation` |
 | The panel — `/admin/personality`, its own tab since the user asked for one | `app/admin/personality/page.tsx`, `components/admin/CharacterPanel.tsx`, `lib/admin/tuningActions.ts`, `lib/admin/tuningModel.ts` |
 
 Two constants move on their own schedules and must not be confused. `NINA_PROMPT_VERSION`

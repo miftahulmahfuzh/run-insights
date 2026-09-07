@@ -1,0 +1,1 @@
+ALTER TABLE "nina_tuning" DROP COLUMN "wardrobe";

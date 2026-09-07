@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-07
+**Last Updated**: 2026-09-08
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 23
+- Completed: 24
 
 ---
 
@@ -79,6 +79,58 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A027** Phase 6: Test prompt, its verdict, and the photo in Chat photos
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/imagetest.ts` — `selfiegen.ts`'s sibling: cap check, seed, prompt assembled from the *saved* prefs, `source: 'admin'`, the reference threaded through, one job row, one `fireNinaImageGeneration`; the test action in `lib/admin/imageGenActions.ts` plus a read that reports the job's state and verdict; `components/admin/ImageGenTestPanel.tsx` — the button, the prompt-as-sent preview, the remaining quota, and the verdict line that distinguishes `policy` from `timeout` / `transport`; the `maxDuration` the route needs; the one edit to `ImageGenPanel.tsx` that fills phase 4's seam; `tests/admin.imagegenTest.test.ts`. Does not touch `finishSelfie` — it already writes the message + `kind: 'generated'` image pair, already sets `photo_only: true` on the carrier bubble, and already calls `captionNinaPhoto`; that pair *is* R12, and re-implementing it would be a second writer of invariant 12. Also does not touch prompt assembly (phase 2), the payload (phase 3), the prefs form (phase 4), or any of phase 4's test files — `tests/admin.imagegen.test.ts` already allowlists this phase's two actions. Exit criteria: the button dispatches one generation and returns without awaiting it; the panel reports `queued` → `running` → `ok`/`failed` and names the failure kind, with `policy` rendered as "the provider refused this prompt" and nothing else rendered as that; a successful test appears in `/admin/photos` with no further action, and its carrier bubble is removable through `removeChatPhotoAction` because `finishSelfie` already marked it `photo_only`; a capped operator is told so before a cent is spent, and the copy says *"one generation off today's cap, plus its caption"* rather than implying the image is the only model call; the route declares a literal `maxDuration` and no model call is awaited in the render; the reference reaches the job as `resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null`, never as a URL off a request body.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_GENERATION_TAB_PLAN.md` (phase 6 of 7)
+  - **Satisfies**: R11 — A test-prompt button that reports whether the provider's guardrails allowed it; R12 — The test result lands in Chat photos automatically
+  - **Depends on**: P1-NIN-A024, P1-NIN-A026, P1-ADM-C410
+  - **Plan**: `.workflows/plan/P1-NIN-A027.md`
+  - **Completed**: 2026-09-08 03:27
+  - **Method**: /do (swarm phase 6 of 7)
+  - **Files**: lib/nina/imagetest.ts, lib/admin/imageGenTestView.ts, lib/admin/imageGenActions.ts, components/admin/ImageGenTestPanel.tsx, components/admin/ImageGenPanel.tsx, app/admin/image-generation/page.tsx, tests/admin.imagegenTest.test.ts
+  - **Verified**: `npx vitest run tests/admin.imagegenTest.test.ts` = 28/28 pass; together with phase 4's `tests/admin.imagegen.test.ts` = 71/71. In a detached-HEAD checkout carrying only phase 6's seven files (to exclude the live peer's uncommitted phase-7 work): `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm test` = **157 files / 3260 tests, 0 failures**; `npm run build` green with `/admin/image-generation` a dynamic route. All four guards pass with `scripts/check-llm-payload-boundary.mjs` unedited: `ci:llm-payload-guard` (all 9 guarded symbols confined), `ci:openrouter-guard`, `ci:client-secret-guard`, `ci:data-layer-guard`. `npx prettier --check` clean on all seven files.
+  - **Drift**:
+    - Phase 7 is live in this shared worktree with uncommitted work. Its removal of `NinaTuning.wardrobe` from `lib/nina/tuning.ts` breaks `tests/nina.imagerecipe.test.ts:584` (`tuned({ wardrobe: ... })`) — that file is unmodified at HEAD and is phase 7's own to fix, exactly as the plan index's wave-1 correction table instructs (delete only the `tuning:` line). It is NOT phase 6 drift: verification was therefore run in a detached checkout at HEAD carrying only phase 6's seven files, where everything is green.
+    - The plan's Step 4 poll effect wrapped its body in an async `run()` that did nothing but arm a timer; flattened to the same timer with identical semantics.
+  - **Decided**:
+    - Step 3's `readNinaImageTestAction` sets `referenceUrl: prefs.referenceUrl`, but phase 1's `NinaImagePrefs` has no `referenceUrl` member -> resolved instead with `resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null` (rung 3: the phase's own Interface Contract, "RECONCILED: the prefs row holds `reference: { source, id }`, NOT a Blob URL", and Step 1's matching code block).
+    - Step 1's code block used `reference?.blobUrl` while declaring `const reference = await resolveNinaPhotoReference(...)` only inside a comment -> the statement is emitted as real code, after the cap check so the ordinary unanchored path still costs no round trip (rung 3: the code block).
+    - The plan's mount read `void load(null)` in an effect body failed `react-hooks/set-state-in-effect` with 1 lint error -> fixed the CODE, not the check: armed through `setTimeout(..., 0)` with a `clearTimeout` cleanup, which is `useExtractionStatus`'s own shape (its first poll is `setTimeout(run, pollDelayFor(0))`, never a bare call) (tie-break: a failing verification is never settled by relaxing the check, plus rung 6, the surrounding convention).
+    - The plan's test listed 8 guarded payload symbols; D6 of the same plan says NINE since the origin/main merge -> the ninth, `captionNinaPhoto`, was added to the assertion list (rung 3: D6 over the code block's stale list, and `ci:llm-payload-guard` confirms 9).
+    - Added one test to the plan's file asserting the reference is resolved server-side (`resolveNinaPhotoReference(userId, prefs.reference)` and `referenceUrl: reference?.blobUrl ?? null` in `lib/nina/imagetest.ts`), so the first decision above cannot silently regress.
+    - The shared plan index (`NINA_IMAGE_GENERATION_TAB_PLAN.md` / `.workflows/orchestration/nina-image-generation-tab/PLAN.md`) was NOT ticked here -> rung 2/3, the same decision phases 1-5 recorded. Seven concurrent sessions share that file and the coordinator `orch-nina-image-generation-tab` owns the phase table; a stray modification cannot be swept by a peer's pathspec commit. Reported over the swarm ledger instead.
+    - `readme-updater` is skipped -> by explicit instruction of the set's coordinator, every phase in this set skips it; the readmes are the coordinator's, done in one end-of-set pass.
+    - Committed by explicit nine-path pathspec rather than `git add -A` (rung 6, the shared-worktree rule): the peer's uncommitted phase-7 work in `lib/db/schema.ts`, `lib/nina/queries.ts`, `lib/nina/tuning.ts` and its three test files sits on disk in this same worktree and must not be staged.
+
+- [x] **P1-NIN-A029** Phase 7: Retire `nina_tuning.wardrobe`
+  - **Difficulty**: NORMAL
+  - **Type**: Refactor
+  - **Context**: Owns the Wardrobe `<input>` and its save payload out of `components/admin/CharacterPanel.tsx`; `wardrobe` out of `TuningDraft`, `toTuningDraft`, `changedTuningFields`, `toTuningWrite`, `saveNinaTuningAction`, `ninaTuningWriteSchema`; `NinaTuning.wardrobe`, `NINA_WARDROBE_MAX`, `coerceNinaWardrobe` and the default out of `lib/nina/tuning.ts`; the column out of `lib/db/schema.ts` with a generated drop migration; the header copy on `app/admin/personality/page.tsx`; `tests/admin.tuning.test.ts`, `tests/nina.tuning.test.ts`, `tests/db.schema.nina.test.ts`; `docs/nina/persona.md`, `CHANGELOG.md` and the two affected `package_readme.md` files. Does not touch `nina_image_prefs` or anything phase 1 built; `buildNinaImagePrompt` (phase 2 already stopped reading the tuning for the picture); or `notes` — that is a *system-prompt* field and stays exactly where it is. Exit criteria: `grep -rn wardrobe app components lib tests` returns hits only under the new image-prefs surface (historical records — landed plans, applied migrations `0005`–`0011` and their snapshots — are excluded and must keep the word); `/admin/personality` renders no Wardrobe control; the drop migration is generated as **`0012`**, unrenamed and applied, and contains exactly one `ALTER TABLE "nina_tuning" DROP COLUMN "wardrobe";`; **Precondition D's `uncopied` count is `0` against the live database before the drop is generated**; `readNinaTuning` on a pre-existing row still returns a valid `NinaTuning`; the whole suite is green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_GENERATION_TAB_PLAN.md` (phase 7 of 7)
+  - **Satisfies**: R3 — Remove the Wardrobe field from `/admin/personality`
+  - **Depends on**: P1-NIN-A024, P1-ADM-C410
+  - **Plan**: `.workflows/plan/P1-NIN-A029.md`
+  - **Completed**: 2026-09-08 03:27
+  - **Method**: /implement (swarm phase 7 of 7)
+  - **Files**: lib/nina/tuning.ts, lib/nina/queries.ts, lib/nina/persona.ts, lib/db/schema.ts, lib/admin/schema.ts, lib/admin/tuningActions.ts, lib/admin/tuningModel.ts, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, app/admin/personality/page.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/db.schema.nina.test.ts, tests/nina.imagerecipe.test.ts, drizzle/0012_wealthy_madame_masque.sql, drizzle/meta/0012_snapshot.json, drizzle/meta/_journal.json, docs/nina/persona.md, CHANGELOG.md, lib/nina/.workflows/package_readme.md, lib/db/.workflows/package_readme.md, lib/admin/.workflows/package_readme.md, components/admin/.workflows/package_readme.md
+  - **Verified**: `npm run typecheck` clean; `npx eslint` over all 14 changed code files 0 problems; full `npm test` = **157 files / 3260 tests, 0 failures**; `npx vitest run` on the four touched suites 213/213; `npm run build` green; `npm run format:check` flags none of this phase's paths; `npm run db:check` "Everything's fine"; `ci:data-layer-guard`, `ci:client-secret-guard`, `ci:llm-payload-guard`, `ci:openrouter-guard` all OK. `drizzle/0012_wealthy_madame_masque.sql` is exactly `ALTER TABLE "nina_tuning" DROP COLUMN "wardrobe";` — generated, unrenamed, and **deliberately not applied** (see Decided). Precondition D re-measured against the live database: `tuning_set=1, prefs_set=1, uncopied=0`.
+  - **Drift**:
+    - Step 4's inline `grep -c '"tag"' # MUST print 9` and Verification's `# 10` were stale pre-merge numbers; the journal is at 12 and now 13. Precondition C's 12 is the correct figure and it held.
+    - `tests/db.schema.nina.test.ts` carries FOUR `wardrobe` hits, not the two the plan predicts. Two (`:594`, `:654`) belong to phase 1's `nina_image_prefs` column lists and were correctly left alone; only the `nina_tuning` pair was edited.
+    - `lib/db/.workflows/package_readme.md` has drifted from the plan's quotes — phase 1 already rewrote several passages. Only the three that still described `nina_tuning.wardrobe` as a live column were edited; phase 1's migration/prefs prose was left intact.
+    - The plan's mechanical exit grep (expected to return empty over `lib/db/schema.ts` and `lib/nina/queries.ts`) cannot be empty on this tree: phase 1 put `nina_image_prefs.wardrobe` and its row mappers in both files. Re-derived the check sharply instead — zero live `coerceNinaWardrobe`/`NINA_WARDROBE_MAX` references anywhere, and `NinaTuning`'s members are now exactly traits, relationship, dials, enabled, notes, revision.
+    - `tests/nina.imagerecipe.test.ts` also picked up one incidental prettier reformat (a call at `:373` rewrapped) — the file was non-conforming before this phase and `npx prettier --write` on it fixed both that and the phase's hunk.
+  - **Decided**:
+    - Journal tag count: plan says 9 (Step 4) / 10 (Verification) / 12 (Precondition C) -> 12 before generate, 13 after. Rung 2: the reconciled Interface Contract and the index's phase-7 exit criteria both state the journal is at 12 and this phase mints `0012`; measured 12, and `db:generate` produced idx 12.
+    - Run `npm run db:migrate`? -> **NO.** Rung 1 + the index's Decisions row that explicitly overrides phase 7's exit criterion: `.env.local`'s `DATABASE_URL` is a single Neon database that production reads, and `origin/main`'s deployed `readNinaTuning` still selects `wardrobe`, so applying the drop from this session would take out the persona/chat path until the set merges. The apply moves to the coordinator's Step 5, after the push and the deploy. `db:check` (green) and Precondition D's read-only query were the gates instead.
+    - Migration number: took whatever `db:generate` produced (`0012_wealthy_madame_masque`) and asserted the DDL and the journal chain rather than the literal number, per the coordinator's standing instruction — `origin/main`'s journal has already moved past 0012 and the coordinator will regenerate at merge time (safe here: the file is unapplied and pure generated DDL).
+    - Edited `tests/nina.imagerecipe.test.ts`, which the plan's Interface Contract lists under "Leaves alone (phase 2)". Rung 1 (invariant 1: the tree must typecheck) — the file's own `PHASE 7:` directive that phase 2 planted there tells this phase to delete the `tuning:` line, and typecheck fails otherwise. Deleted ONLY that line plus its now-false comment sentence; every assertion kept.
+    - Edited the four `package_readme.md` files per the plan's Step 12, despite the coordinator saying readmes are a coordinator-owned end-of-set pass. Rung 2: these passages are in phase 7's own Files table and exit criteria, and they delete prose about a column this phase drops — leaving them would make the docs describe a column that no longer exists. Scoped strictly to the wardrobe passages; no new-symbol documentation was added, so the coordinator's wave-1 backlog pass is untouched. `readme-updater` was NOT dispatched.
 
 - [x] **P1-NIN-A026** Phase 3: The reference image on the wire, and the timeout it costs
   - **Difficulty**: HARD
