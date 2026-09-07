@@ -3,7 +3,16 @@
 import * as React from 'react'
 
 import { createShareLinkAction } from '@/app/actions/share'
-import { SHARE_ACTION, SHARE_COPIED, SHARE_COPY_FAILED } from '@/lib/share/copy'
+import { SHARE_COPIED, SHARE_COPY_FAILED, SHARE_TITLE } from '@/lib/share/copy'
+
+/**
+ * How long the checkmark stands in for the share glyph after a clipboard copy.
+ *
+ * The label used to say "Copied" forever, which was harmless for a word and is wrong for an icon:
+ * a permanently-ticked button has stopped reading as a share button. Long enough to be seen on a
+ * glance down at the phone, short enough that the row is itself again before the next tap.
+ */
+const COPIED_HOLD_MS = 2000
 
 /**
  * The header action on `/r/[id]`. One tap from "this is my run" to "the link is in WhatsApp".
@@ -29,6 +38,15 @@ import { SHARE_ACTION, SHARE_COPIED, SHARE_COPY_FAILED } from '@/lib/share/copy'
  * Dismissing the iOS share sheet rejects the promise with `AbortError`. That is a person changing
  * their mind, and it must produce **silence** — no toast, no "sharing failed", no fallback copy
  * they did not ask for. Every other rejection falls through to the clipboard.
+ *
+ * ── WHY IT IS A GLYPH AND NOT THE WORD "SHARE" ─────────────────────────────────────────────────
+ * Card #108: `/r/[id]`'s action row held two words and one icon, which reads as an unfinished row
+ * rather than as a deliberate mix. It is three glyphs now.
+ *
+ * That cost this component its cheapest affordance — the label WAS the confirmation, and on the
+ * clipboard path it was the only thing on screen that changed. So the tick below is not decoration:
+ * it is `SHARE_COPIED` in its other form, and the `sr-only` live region is the same sentence for a
+ * reader who cannot see it. Deleting either one silently un-fixes the copy path.
  */
 export function ShareButton({
   runId,
@@ -50,6 +68,17 @@ export function ShareButton({
   // The warmed mint. A ref, not state: starting it must not re-render, and the click handler needs
   // whatever the latest pointerdown produced, not a value captured at render time.
   const warming = React.useRef<Promise<string | null> | null>(null)
+
+  /*
+   * The checkmark's own clock. `'manual'` deliberately does NOT expire — that state is showing the
+   * runner a link to select by hand, and yanking it away mid-drag would be the rudest thing this
+   * component could do. Only the success tick reverts.
+   */
+  React.useEffect(() => {
+    if (status !== 'copied') return
+    const timer = window.setTimeout(() => setStatus('idle'), COPIED_HOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [status])
 
   const mint = React.useCallback(async (): Promise<string | null> => {
     const result = await createShareLinkAction(runId)
@@ -113,16 +142,78 @@ export function ShareButton({
         onClick={onClick}
         disabled={pending}
         aria-busy={pending}
-        className="text-[13px] font-semibold text-accent disabled:opacity-50"
+        aria-label={status === 'copied' ? SHARE_COPIED : SHARE_TITLE}
+        title={status === 'copied' ? SHARE_COPIED : SHARE_TITLE}
+        className="-m-1 inline-flex p-1 text-accent disabled:opacity-50"
       >
-        {status === 'copied' ? SHARE_COPIED : SHARE_ACTION}
+        {status === 'copied' ? <CheckIcon /> : <ShareIcon />}
       </button>
+
+      {/*
+        The confirmation the label used to be. Swapping this button's `aria-label` is not enough on
+        its own: a name change on an element that is not focused is not reliably announced, and the
+        runner who most needs to hear "Copied" is the one whose share sheet never opened. A live
+        region says it once, out of the layout, in the row that must stay three glyphs wide.
+      */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {status === 'copied' ? SHARE_COPIED : ''}
+      </span>
 
       {status === 'manual' && url && <ManualLink url={url} />}
       {status === 'manual' && !url && (
         <span className="text-[11px] font-medium text-red">{SHARE_COPY_FAILED}</span>
       )}
     </>
+  )
+}
+
+/**
+ * The platform share mark — a tray with an arrow leaving it. The one glyph an iPhone runner reads
+ * without being taught, which matters here because this button really does open the OS share sheet.
+ *
+ * `strokeWidth` 1.8 and `size-5`: the row's other two glyphs, not the 2/2.4 of Nina's filled pill
+ * buttons. This is thin accent-coloured line work on paper.
+ */
+function ShareIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+      <path
+        d="M12 3.5v11"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.2 7.3 12 3.5l3.8 3.8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.5 10.5H6a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5h-1.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** The `SHARE_COPIED` confirmation, for {@link COPIED_HOLD_MS}. Same box, so the row never shifts. */
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+      <path
+        d="m5 12.5 4.5 4.5L19 7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
