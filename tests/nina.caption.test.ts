@@ -74,9 +74,8 @@ describe('sanitizeNinaCaption', () => {
     )
   })
 
-  it.each(['', '   ', '​', '!!!', '...'])(
-    'refuses an empty or letterless answer: %s',
-    (line) => expect(sanitizeNinaCaption(line)).toBeNull(),
+  it.each(['', '   ', '​', '!!!', '...'])('refuses an empty or letterless answer: %s', (line) =>
+    expect(sanitizeNinaCaption(line)).toBeNull(),
   )
 })
 

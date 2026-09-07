@@ -39,7 +39,10 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
 
 vi.mock('next/server', () => ({ after: (task: () => unknown) => void task }))
 vi.mock('@vercel/blob', () => ({
-  put: vi.fn(async () => ({ url: 'https://blob.test/nina/u1/selfie-x.png', pathname: 'nina/u1/selfie-x.png' })),
+  put: vi.fn(async () => ({
+    url: 'https://blob.test/nina/u1/selfie-x.png',
+    pathname: 'nina/u1/selfie-x.png',
+  })),
 }))
 vi.mock('@/lib/env', () => ({ blobEnv: () => ({ BLOB_READ_WRITE_TOKEN: 'test-token' }) }))
 vi.mock('@/lib/nina/caption', () => ({ captionNinaPhoto: vi.fn() }))
@@ -203,9 +206,8 @@ describe('finishSelfie captions from the scene', () => {
     await runNinaImageJob(USER, JOB_ID)
 
     /* The caption is derived FROM it; it does not replace it. /admin's detail panel reads this. */
-    expect(insertImages).toHaveBeenCalledWith(
-      USER,
-      [expect.objectContaining({ description: SCENE, prompt: ARGS.sidecar })],
-    )
+    expect(insertImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({ description: SCENE, prompt: ARGS.sidecar }),
+    ])
   })
 })

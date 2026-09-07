@@ -205,7 +205,7 @@ const GUARDED_CALLS = [
     advice:
       'The photo captioner is a glm-5.3 call that turns what is in a photograph into one line in ' +
       'her voice. On the admin path it runs after a glm-4.6v describe in the SAME after() — two ' +
-      'model calls in one segment — and on the selfie path it runs inside runNinaImageJob\'s ' +
+      "model calls in one segment — and on the selfie path it runs inside runNinaImageJob's " +
       'after(). A render or an action that awaited it would make the operator wait 15-25 s per ' +
       'photo, in series, because Server Actions are dispatched one at a time per client. The pure ' +
       'rules are in lib/nina/prompts/caption.ts, which is client-safe — import from there.',

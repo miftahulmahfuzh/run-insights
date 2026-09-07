@@ -73,8 +73,8 @@ export default async function AdminPersonalityPage() {
       <header className="mb-5 lg:mb-6">
         <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Personality</h1>
         <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
-          Who she is, not what she looks like. Her relationship to you, every dial, the wardrobe
-          the camera reads and the notes she is handed verbatim. Her photographs stayed behind on
+          Who she is, not what she looks like. Her relationship to you, every dial, the wardrobe the
+          camera reads and the notes she is handed verbatim. Her photographs stayed behind on
           Nina&rsquo;s album; this page is the row her system prompt is assembled from.
         </p>
       </header>

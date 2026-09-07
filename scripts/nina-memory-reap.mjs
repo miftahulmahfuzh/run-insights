@@ -89,7 +89,9 @@ const slots = await sql`
 
 console.log(`\nnina_memory_slots — ${slots.length} orphaned row(s)`)
 for (const row of slots) {
-  console.log(`  -   ${String(row.key).padEnd(18)} ${String(row.source).padEnd(9)} ${JSON.stringify(row.value)}`)
+  console.log(
+    `  -   ${String(row.key).padEnd(18)} ${String(row.source).padEnd(9)} ${JSON.stringify(row.value)}`,
+  )
 }
 
 /* ── 3. pending_promises, per entry ─────────────────────────────────────────────────────────── *
@@ -122,9 +124,7 @@ const promiseRows = await sql`
    order by s.user_id
 `
 
-const promiseWork = promiseRows.filter(
-  (row) => row.pruned.promises.length < Number(row.before),
-)
+const promiseWork = promiseRows.filter((row) => row.pruned.promises.length < Number(row.before))
 
 console.log(`\n${PENDING_PROMISES} — ${promiseWork.length} slot row(s) with orphaned entries`)
 for (const row of promiseWork) {

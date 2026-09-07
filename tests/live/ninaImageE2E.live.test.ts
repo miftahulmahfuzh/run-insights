@@ -141,101 +141,97 @@ describe.skipIf(!enabled)('nina image pipeline, live', () => {
     await db.delete(s.users).where(eq(s.users.id, U1))
   }, 60_000)
 
-  it(
-    'live: she really calls set_avatar, the camera really runs, and the profpic really changes',
-    async () => {
-      const [asked] = await q.insertNinaMessages(U1, [{ role: 'runner', body: ASK }], sessionId)
-      expect(asked).toBeDefined()
+  it('live: she really calls set_avatar, the camera really runs, and the profpic really changes', async () => {
+    const [asked] = await q.insertNinaMessages(U1, [{ role: 'runner', body: ASK }], sessionId)
+    expect(asked).toBeDefined()
 
-      /* ── The REAL model, the REAL tool set, the REAL handler. ─────────────────────────────── */
-      const result = await turn.runNinaTurnWith(
-        fx.fakeTurnDeps(turn.ninaClient(), {
-          model: turn.ninaModel(),
-          toolSet: avatarTools.NINA_FULL_TOOL_SET,
-        }),
-        {
-          userId: U1,
-          context: fx.ninaContextFixture(),
-          tuning: fx.ninaTuningFixture(),
-          history: fx.runHistoryFixture(),
-          sourceMessageId: asked?.id ?? null,
-          runnerText: ASK,
-        },
-      )
-      expect(result.source).not.toBe('unavailable')
+    /* ── The REAL model, the REAL tool set, the REAL handler. ─────────────────────────────── */
+    const result = await turn.runNinaTurnWith(
+      fx.fakeTurnDeps(turn.ninaClient(), {
+        model: turn.ninaModel(),
+        toolSet: avatarTools.NINA_FULL_TOOL_SET,
+      }),
+      {
+        userId: U1,
+        context: fx.ninaContextFixture(),
+        tuning: fx.ninaTuningFixture(),
+        history: fx.runHistoryFixture(),
+        sourceMessageId: asked?.id ?? null,
+        runnerText: ASK,
+      },
+    )
+    expect(result.source).not.toBe('unavailable')
 
-      /*
-       * A failure HERE is a change at the endpoint or in the tool description, not a flake — the
-       * same framing `tests/live/nina.live.test.ts` uses for its own tool round trip. If she stops
-       * reaching for `set_avatar` on a request this direct, `SET_AVATAR_TOOL`'s description is the
-       * thing that regressed.
-       */
-      const [job] = await db
-        .select({
-          id: s.ninaTurns.id,
-          status: s.ninaTurns.status,
-          errorCode: s.ninaTurns.errorCode,
-          costMicroUsd: s.ninaTurns.costMicroUsd,
-          latencyMs: s.ninaTurns.latencyMs,
-          args: s.ninaTurns.args,
-        })
-        .from(s.ninaTurns)
-        .where(and(eq(s.ninaTurns.userId, U1), eq(s.ninaTurns.kind, 'image')))
-      expect(job, 'she did not call set_avatar').toBeDefined()
-      if (job == null) return
-
-      const args = job.args as NinaImageJobArgs
-      expect(args.purpose).toBe('avatar')
-      expect(args.source).toBe('generated')
-
-      /* ── The REAL camera. $0.040, ~78 s. `after()` is never drained, so the platform never
-       * starts a second generation against this row. */
-      expect(deferred.length).toBeGreaterThan(0)
-      expect(await imagerun.runNinaImageJob(U1, job.id)).toBe('ok')
-
-      const [closed] = await db
-        .select({
-          status: s.ninaTurns.status,
-          errorCode: s.ninaTurns.errorCode,
-          costMicroUsd: s.ninaTurns.costMicroUsd,
-          latencyMs: s.ninaTurns.latencyMs,
-        })
-        .from(s.ninaTurns)
-        .where(and(eq(s.ninaTurns.userId, U1), eq(s.ninaTurns.id, job.id)))
-      expect(closed?.status).toBe('ok')
-      expect(closed?.errorCode).toBeNull()
-      /* **Invariant 9, asserted by the test that spent the money.** */
-      expect(closed?.costMicroUsd).not.toBeNull()
-      console.info('[nina live] generation billed', {
-        jobId: job.id,
-        costMicroUsd: closed?.costMicroUsd,
-        latencyMs: closed?.latencyMs,
+    /*
+     * A failure HERE is a change at the endpoint or in the tool description, not a flake — the
+     * same framing `tests/live/nina.live.test.ts` uses for its own tool round trip. If she stops
+     * reaching for `set_avatar` on a request this direct, `SET_AVATAR_TOOL`'s description is the
+     * thing that regressed.
+     */
+    const [job] = await db
+      .select({
+        id: s.ninaTurns.id,
+        status: s.ninaTurns.status,
+        errorCode: s.ninaTurns.errorCode,
+        costMicroUsd: s.ninaTurns.costMicroUsd,
+        latencyMs: s.ninaTurns.latencyMs,
+        args: s.ninaTurns.args,
       })
+      .from(s.ninaTurns)
+      .where(and(eq(s.ninaTurns.userId, U1), eq(s.ninaTurns.kind, 'image')))
+    expect(job, 'she did not call set_avatar').toBeDefined()
+    if (job == null) return
 
-      /* ── The tail. ───────────────────────────────────────────────────────────────────────── */
-      const currents = await db
-        .select()
-        .from(s.ninaAvatars)
-        .where(and(eq(s.ninaAvatars.userId, U1), eq(s.ninaAvatars.isCurrent, true)))
-      expect(currents).toHaveLength(1)
-      const current = currents[0]
-      if (current == null) return
-      expect(current.id).not.toBe(seedAvatarId)
-      expect(current.source).toBe('generated')
-      expect(current.announcedAt).toBeNull()
-      expect(current.width).toBe(NINA_IMAGE_WIDTH)
-      expect(current.height).toBe(NINA_IMAGE_HEIGHT)
-      expect(current.bytes).toBeGreaterThan(1000)
-      blobUrls.push(current.blobUrl)
+    const args = job.args as NinaImageJobArgs
+    expect(args.purpose).toBe('avatar')
+    expect(args.source).toBe('generated')
 
-      /* The bytes are really there, at a URL a browser could load. */
-      const head = await fetch(current.blobUrl, { method: 'GET', cache: 'no-store' })
-      expect(head.ok).toBe(true)
-      expect(head.headers.get('content-type')).toContain('image/png')
+    /* ── The REAL camera. $0.040, ~78 s. `after()` is never drained, so the platform never
+     * starts a second generation against this row. */
+    expect(deferred.length).toBeGreaterThan(0)
+    expect(await imagerun.runNinaImageJob(U1, job.id)).toBe('ok')
 
-      const seen = await q.getCurrentNinaAvatar(U1)
-      expect(seen?.id).toBe(current.id)
-    },
-    300_000,
-  )
+    const [closed] = await db
+      .select({
+        status: s.ninaTurns.status,
+        errorCode: s.ninaTurns.errorCode,
+        costMicroUsd: s.ninaTurns.costMicroUsd,
+        latencyMs: s.ninaTurns.latencyMs,
+      })
+      .from(s.ninaTurns)
+      .where(and(eq(s.ninaTurns.userId, U1), eq(s.ninaTurns.id, job.id)))
+    expect(closed?.status).toBe('ok')
+    expect(closed?.errorCode).toBeNull()
+    /* **Invariant 9, asserted by the test that spent the money.** */
+    expect(closed?.costMicroUsd).not.toBeNull()
+    console.info('[nina live] generation billed', {
+      jobId: job.id,
+      costMicroUsd: closed?.costMicroUsd,
+      latencyMs: closed?.latencyMs,
+    })
+
+    /* ── The tail. ───────────────────────────────────────────────────────────────────────── */
+    const currents = await db
+      .select()
+      .from(s.ninaAvatars)
+      .where(and(eq(s.ninaAvatars.userId, U1), eq(s.ninaAvatars.isCurrent, true)))
+    expect(currents).toHaveLength(1)
+    const current = currents[0]
+    if (current == null) return
+    expect(current.id).not.toBe(seedAvatarId)
+    expect(current.source).toBe('generated')
+    expect(current.announcedAt).toBeNull()
+    expect(current.width).toBe(NINA_IMAGE_WIDTH)
+    expect(current.height).toBe(NINA_IMAGE_HEIGHT)
+    expect(current.bytes).toBeGreaterThan(1000)
+    blobUrls.push(current.blobUrl)
+
+    /* The bytes are really there, at a URL a browser could load. */
+    const head = await fetch(current.blobUrl, { method: 'GET', cache: 'no-store' })
+    expect(head.ok).toBe(true)
+    expect(head.headers.get('content-type')).toContain('image/png')
+
+    const seen = await q.getCurrentNinaAvatar(U1)
+    expect(seen?.id).toBe(current.id)
+  }, 300_000)
 })

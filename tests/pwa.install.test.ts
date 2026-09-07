@@ -248,11 +248,12 @@ describe('the admin web app manifest', () => {
     // The whole point of the deck: a home screen with two identical squircles is most of the value
     // of installing the second one gone.
     const body = await adminManifestRoute().json()
-    expect(body.icons.map((i: { src: string }) => i.src)).toEqual(
-      ADMIN_PWA_ICONS.map((i) => i.src),
-    )
+    expect(body.icons.map((i: { src: string }) => i.src)).toEqual(ADMIN_PWA_ICONS.map((i) => i.src))
     for (const icon of body.icons) {
-      expect(PWA_ICONS.some((r) => r.src === icon.src), `${icon.src} is a runner icon`).toBe(false)
+      expect(
+        PWA_ICONS.some((r) => r.src === icon.src),
+        `${icon.src} is a runner icon`,
+      ).toBe(false)
     }
   })
 
