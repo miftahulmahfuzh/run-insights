@@ -1,0 +1,1099 @@
+# Phase 1: The composer: paint to the edge, take less room, frost the glass
+
+**Plan set:** `COMPOSER_FROST_AND_ADMIN_NOTCH_PLAN.md`
+**Analysis:** `20260907-130500-CMPZ_code_analyzer.md`
+**Satisfies:** R1 (no gap under the composer), R2 (the bar takes less vertical space), R3 (frosted glass, exactly like the `<` and `up` buttons)
+**Depends on:** none
+**Difficulty:** HARD
+**Package:** `components/nina` + `lib/nina` + `components/ui`
+
+> **This is not the Next.js in your training data.** `AGENTS.md` says so at the repo root, and the
+> reference is `node_modules/next/dist/docs/` (resolved from `AGENTS.md`'s directory). Nothing in
+> this phase is framework behaviour — every change is CSS `calc()`, Tailwind classes and pure
+> functions in `lib/` — but if any question about rendering, metadata or the client boundary comes
+> up while applying it, read the doc, do not recall it.
+
+---
+
+## Goal
+
+The `/nina` composer stops leaving an unpainted strip of the home-indicator inset below itself in
+the resting (tab-bar-hidden) state: its fill reaches the bottom edge of the viewport while its
+content still clears the indicator. It gets 8 px shorter — resting height 60 px, not 68 — and all
+four places that hand-copy that number move together. And it wears the same glass the two floating
+`<` / `^` controls wear: `bg-card/40` over `backdrop-blur-md backdrop-saturate-150`, with a
+`border-rule/50` top hairline instead of a hard rule.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing.
+
+**Renames:** nothing.
+
+**Creates:**
+- `lib/nina/chatview.ts` → `export function composerPadBottomCss(overlapPx: number): string`
+  (new export, placed immediately after `composerBottomCss`, end of file)
+- `components/nina/Composer.tsx` → new **required** prop `padBottomCss: string` on `Composer`
+  (`Composer` has exactly one caller in the repo, `components/nina/ChatScreen.tsx:1166`)
+
+**Signature changes:** none. `composerBottomCss(overlapPx: number, chromeClearancePx: number):
+string` and `controlBottomCss(input: { barState; barClearancePx; composerHeightPx }): string` keep
+their signatures. **Their returned strings change**, and those strings are asserted verbatim in
+three test files (see Files).
+
+**Value changes (exported):**
+- `lib/nina/chrome.ts` → `COMPOSER_RESTING_PX` `68` -> `60`
+- `lib/nina/chatview.ts` → `composerBottomCss` no-keyboard branch:
+  `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`
+  -> `calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))`
+- `lib/nina/chrome.ts` → `controlBottomCss` measured branch:
+  `calc(<n>px + var(--safe-bottom))`
+  -> `calc(<n>px + var(--safe-bottom) * var(--nina-bar-visible, 0))`;
+  **unmeasured (fallback) branch keeps** `calc(<n>px + var(--safe-bottom))` — see Step 4's
+  argument, this is D2 applied per branch, not a departure from it.
+
+**New intra-`lib/nina` import:** `lib/nina/chrome.ts` gains
+`import { NINA_BAR_VISIBLE_VAR } from './chatview'` as its first line, above the module docstring
+(the placement `lib/nina/reply.ts:1` already uses). No cycle: `chatview.ts` has no imports at all
+and gains none.
+
+**Value changes (module-private):**
+- `components/nina/ChatScreen.tsx` → `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 68`
+  -> `+ 60`
+- `components/ui/AppShell.tsx` → `BOTTOM_GAP.chat`
+  `'pb-[calc(7.5rem+var(--safe-bottom))]'` -> `'pb-[calc(7rem+var(--safe-bottom))]'`
+
+**Requires (from earlier phases):** nothing. `depends_on` is empty; every file is quoted as it
+stands at `origin/main` @ `e6c68d6`.
+
+**Leaves alone (owned by others / out of scope):**
+- `lib/pwa.ts`, `app/admin/**`, `tests/pwa.install.test.ts` — **Phase 2 (R4)**. No file is shared.
+- `components/ui/TabBar.tsx`, `TAB_BAR_HEIGHT_PX`, `TAB_BAR_BORDER_PX`, `TAB_BAR_OUTER_HEIGHT_PX`
+  — read, never edited.
+- `BOTTOM_GAP.tabs` (`AppShell.tsx:58`), `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX`,
+  `NINA_CHROME_CONTROL_CLASS` — read, never edited.
+- `components/nina/ChatChrome.tsx` — **not edited.** It already calls `controlBottomCss` with
+  `barState`, `BAR_CLEARANCE_PX` and its `ResizeObserver` height (`ChatChrome.tsx:216-224`), and
+  the lane follows the shorter composer with no change. Its comment at line 99 stays true.
+- `components/nina/Composer.tsx`'s reply strip (357-378), tiles, notice, picker button, textarea
+  (`Composer.tsx:499`, `min-h-11`, `text-base`) and Send button (`Composer.tsx:511`, `size-11`) —
+  invariants 3 and 4.
+
+**Scope note, RATIFIED by the reconciler:** `tests/tabbar.geometry.test.ts:188-196` asserts
+`composerBottomCss`'s exact returned string, and it fails the moment Step 1 lands, which invariant 1
+forbids. It was in **neither** phase's `Owns` list in the draft index — a gap. Phase 1 keeps it, and
+the index's Phase 1 `Owns` list and `Files: 8` count now say so; the reconciler confirmed Phase 2
+neither edits nor reads that file (its three files are `lib/pwa.ts`, `app/admin/layout.tsx`,
+`tests/pwa.install.test.ts`), so there is no contention. Handled in Step 8b.
+
+`lib/nina/chrome.test.ts` was the same kind of gap one degree smaller — named in the index's Owns
+list but absent from the analysis's Impact Points, and absent from the draft's `Files: 6` count.
+Also Phase 1's, also in the count now.
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/nina/chatview.ts` | modify | `composerBottomCss` docstring + body (203-239); new `composerPadBottomCss` appended |
+| `lib/nina/chatview.test.ts` | modify | rewrite `describe('composerBottomCss')` (218-256); append `describe('composerPadBottomCss')` |
+| `lib/nina/chrome.ts` | modify | new import line 1; `COMPOSER_RESTING_PX` 68 -> 60 + docstring (108-115); `controlBottomCss` docstring + body (167-205) |
+| `lib/nina/chrome.test.ts` | modify | import `NINA_BAR_VISIBLE_VAR`; rewrite `describe('controlBottomCss')` (94-187) |
+| `components/nina/Composer.tsx` | modify | header geometry + skin paragraphs (33-44); `padBottomCss` prop (134, 154-156); container 351-356 |
+| `components/nina/ChatScreen.tsx` | modify | `COMPOSER_FALLBACK_PX` literal (152-157); `padBottomCss` prop at the `<Composer>` call (1166-1177) |
+| `components/ui/AppShell.tsx` | modify | `BOTTOM_GAP.chat` comment (59-80) + literal (81) |
+| `tests/tabbar.geometry.test.ts` | modify | the one `composerBottomCss` string assertion (188-196) |
+
+Eight files, and the index's Phase 1 row now says `Files: 8` — the draft said 6, and the reconciler
+corrected it. The two the draft had missed are `lib/nina/chrome.test.ts` (named in the index's Owns
+list but not counted) and `tests/tabbar.geometry.test.ts` (the scope note above, now also in that
+Owns list). No source file outside the index's list is touched, and none of the eight appears in
+Phase 2's three.
+
+---
+
+## Implementation Steps
+
+Apply in order. Steps 1-2 and 4-5 are the pure functions and their suites; 3, 6, 7, 8 are the
+consumers. The tree does not build green in the middle of the sequence (the tests assert the old
+strings until Step 2 and Step 5 land) — run the verification block only at the end.
+
+### Step 1: `composerBottomCss` moves the inset inside the multiplication, and gains a companion
+
+**File:** `lib/nina/chatview.ts:203-239` (the whole of the trailing docstring + function; the file
+is 239 lines and this is its tail)
+
+**Change:** Replace everything from line 203 (`/**`, the docstring that opens *"The composer's
+`bottom`, as a CSS length."*) to line 239 (the closing `}`) with the block below. The new
+`composerPadBottomCss` is appended in the same block, so the two gates are written and read
+together — which is the whole of invariant 5's enforcement.
+
+Why the shape changes (D1 + D2, both settled — do not re-derive):
+
+- Today: `bottom: calc(59px * visible + var(--safe-bottom))`. With `visible: 0` — `/nina`'s
+  resting state (`lib/nina/chrome.ts:41`) — the bar's bottom edge sits one home-indicator inset
+  **above** the screen and the conversation shows through. That is R1's gap (D1).
+- After: `bottom: calc((59px + var(--safe-bottom)) * visible)` and
+  `padding-bottom: calc(var(--safe-bottom) * (1 - visible))`. Hidden: offset 0, the fill reaches
+  the bottom edge, the inset is padding so the content still clears the indicator. Shown: offset
+  `59px + inset` (the tab bar's outer height plus the inset the bar pads itself by), padding 0
+  because the bar below already pads by it. The inset is in exactly one of the two terms in either
+  state — invariant 5 (D2).
+- Keyboard up: `bottom: <overlap>px` and `padding-bottom: 0px`. Exit criterion 3. The keyboard is
+  the floor; the home indicator is behind it, and padding by the inset there would push the
+  textarea up off the keyboard's top edge by ~34 px.
+
+**Code** (complete replacement for lines 203-239):
+
+```ts
+/**
+ * The composer's `bottom`, as a CSS length. Its partner is `composerPadBottomCss` below, and
+ * neither is correct without the other.
+ *
+ * With no keyboard it clears the fixed chrome below it — but only when there IS chrome below it.
+ * On `/nina` the tab bar is hidden by default, so `chromeClearancePx` is the clearance to apply
+ * **while the bar is showing**, and the whole term is multiplied by `NINA_BAR_VISIBLE_VAR`, which
+ * is `1` only then. The terms are the bar's own grid, the 1 px `border-t` the grid sits under —
+ * the two together are the bar's outer height, and the border is its real top edge — and the
+ * home-indicator inset the bar pads itself by.
+ *
+ * ── THE INSET IS INSIDE THE MULTIPLICATION NOW, AND THAT IS R1 ────────────────────────────────
+ * This used to read `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`: the clearance
+ * was gated on the flag and the inset was not, "because the inset is the phone's, not the bar's,
+ * and it is there whether or not the bar is". That is true of the phone and false of this
+ * element's offset. With the flag at 0 — the resting state of this very screen — the bar's bottom
+ * edge sat one inset ABOVE the bottom of the viewport and the conversation showed through the
+ * strip underneath it. That strip is the gap the repo owner reported: *"ada gap diantara chat
+ * query field dengan bagian bawah"* — the bottom of the screen, not the tab-bar seam.
+ *
+ * So the inset moves inside the gate and out into the element's own `padding-bottom`, where
+ * `composerPadBottomCss` picks it up with the complementary gate. The two gates sum to exactly
+ * one inset in every state, which is the rule the old docstring was defending and the state it
+ * did not cover:
+ *
+ * | bar     | flag | `bottom`             | `padding-bottom` | inset counted |
+ * |---------|------|----------------------|------------------|---------------|
+ * | hidden  | 0    | `0`                  | `--safe-bottom`  | once, as padding |
+ * | shown   | 1    | `59px + safe-bottom` | `0`              | once, in the offset |
+ * | keyboard| —    | `<overlap>px`        | `0`              | not at all — it is behind the keyboard |
+ *
+ * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind
+ * it. A bar behind the keyboard clears nothing either way.
+ *
+ * The border term is worth saying why it was once missing: a clearance of the grid alone (58) puts
+ * this bar's bottom edge one pixel BELOW the bar's top border, so the conversation shows through
+ * the seam. The caller passes the outer height (59) and the two are flush.
+ *
+ * ── WHY A MULTIPLIER AND NOT A LENGTH ────────────────────────────────────────────────────────
+ * `calc(<length> * <number>)` keeps the number 59 in this function, where the caller already
+ * passes it, instead of moving it into whichever component writes the variable. The flag then says
+ * one thing only — is the bar on screen — and cannot disagree with `TAB_BAR_OUTER_HEIGHT_PX` about
+ * how tall the bar is. A `var(--nina-bar-clearance, 0px)` form would make this argument dead and
+ * put the geometry in two places. `calc((<length> + <length>) * <number>)` is the same rule with
+ * two lengths in the sum, and is valid CSS: a sum of lengths times a plain number is a length.
+ *
+ * Returns a string because that is what the style attribute takes, and because `var(--safe-bottom)`
+ * cannot be resolved in JavaScript — `env(safe-area-inset-bottom)` is only readable to CSS.
+ */
+export function composerBottomCss(overlapPx: number, chromeClearancePx: number): string {
+  if (Number.isFinite(overlapPx) && overlapPx > 0) return `${Math.round(overlapPx)}px`
+  const clearance = Number.isFinite(chromeClearancePx) ? Math.round(chromeClearancePx) : 0
+  return `calc((${clearance}px + var(--safe-bottom)) * var(${NINA_BAR_VISIBLE_VAR}, 0))`
+}
+
+/**
+ * The composer's own `padding-bottom`, as a CSS length. The other half of `composerBottomCss`.
+ *
+ * It is the home-indicator inset in exactly the one state where this bar is the bottom-most
+ * painted thing on the screen — the tab bar hidden, no keyboard — and nothing in the other two.
+ * `1 - var(--nina-bar-visible, 0)` is the complement of the gate the offset uses, so the inset is
+ * added by precisely one of the two terms and the composer's painted box always reaches the bottom
+ * of whatever is beneath it without ever double-counting the phone's inset.
+ *
+ * ── WHY IT TAKES THE OVERLAP AND NOT JUST THE FLAG ───────────────────────────────────────────
+ * Because engaging the composer HIDES the bar (`nextBarState`'s `'composer-engaged'`), so the flag
+ * is 0 with the keyboard up and a flag-only rule would pad by the inset there. The keyboard is
+ * already the floor; the home indicator is behind it. Padding by the inset would lift the textarea
+ * ~34 px off the keyboard's top edge, which is the same class of mistake as the unpainted strip,
+ * one state over. The overlap is the only signal that tells the two apart, and `composerBottomCss`
+ * already takes it — one argument, same first parameter, same branch.
+ *
+ * `'0px'` rather than `'0'`: this is a length going into `style.paddingBottom`, and a unitless
+ * zero read back out of `getComputedStyle` is a different string than the one written in. The
+ * one place that reads this element's box is `ChatChrome`'s `ResizeObserver`, which measures
+ * pixels rather than parsing the declaration, but a length-typed function should return a length.
+ *
+ * A string, for the same two reasons `composerBottomCss` returns one.
+ */
+export function composerPadBottomCss(overlapPx: number): string {
+  if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
+  return `calc(var(--safe-bottom) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
+}
+```
+
+The exact strings this emits, for reference by every step below:
+
+| Call | Returns |
+|---|---|
+| `composerBottomCss(0, 59)` | `calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))` |
+| `composerBottomCss(NaN, 59)` | `calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))` |
+| `composerBottomCss(0, NaN)` | `calc((0px + var(--safe-bottom)) * var(--nina-bar-visible, 0))` |
+| `composerBottomCss(336, 59)` | `336px` |
+| `composerPadBottomCss(0)` | `calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))` |
+| `composerPadBottomCss(NaN)` | `calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))` |
+| `composerPadBottomCss(336)` | `0px` |
+
+**Impact:** `lib/nina/chatview.test.ts` and `tests/tabbar.geometry.test.ts` both fail until Steps 2
+and 8. Nothing else imports `composerBottomCss`.
+
+---
+
+### Step 2: rewrite the `composerBottomCss` suite and add the companion's
+
+**File:** `lib/nina/chatview.test.ts:218-256` (the whole `describe('composerBottomCss')` block —
+the file is 256 lines and this is its tail), plus the import list at `:3-11`.
+
+**Change:** add `composerPadBottomCss` to the named imports (alphabetical, after
+`composerBottomCss`), then replace lines 218-256 with the two blocks below.
+
+**Code** — the import list becomes exactly:
+
+```ts
+import {
+  composerBottomCss,
+  composerPadBottomCss,
+  decideAutoScroll,
+  groupIntoDays,
+  isNearBottom,
+  keyboardOverlapPx,
+  KEYBOARD_MIN_PX,
+  NINA_BAR_VISIBLE_VAR,
+  STICK_TO_BOTTOM_PX,
+} from './chatview'
+```
+
+**Code** — the replacement for lines 218-256 (`KEYBOARD_HEIGHT` is already defined at `:17`):
+
+```ts
+describe('composerBottomCss', () => {
+  // 59 is the tab bar's outer height: `TAB_BAR_HEIGHT_PX` (58) + `TAB_BAR_BORDER_PX` (1). The
+  // border is the bar's top edge, so a composer clearing 58 floats a pixel above it.
+  // `tests/tabbar.geometry.test.ts` is what ties this literal back to those two constants.
+
+  it('sits flat on the bottom of the viewport while the bar is hidden', () => {
+    // R1. `/nina`'s resting state: the flag is absent, `var()` substitutes 0, the WHOLE sum is
+    // multiplied by it, and the offset collapses to nothing — so the bar's fill reaches the bottom
+    // edge and there is no strip of conversation under it. The inset is not missing, it moved:
+    // `composerPadBottomCss` carries it in this state. This is also the SSR and pre-hydration
+    // answer, which is why the default is the hidden geometry and not the showing one.
+    expect(composerBottomCss(0, 59)).toBe(
+      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+  })
+
+  it('puts the inset INSIDE the gate, not beside it', () => {
+    // The regression this phase fixes, stated as the shape rather than as a pixel. An inset added
+    // outside the multiplication is an inset that survives the flag going to 0, which is exactly
+    // the unpainted strip: `calc(59px * var(…, 0) + var(--safe-bottom))`.
+    expect(composerBottomCss(0, 59)).not.toContain(') + var(--safe-bottom)')
+    expect(composerBottomCss(0, 59)).toContain('(59px + var(--safe-bottom)) *')
+  })
+
+  it('names the variable the chrome writes', () => {
+    // Spelled once, in `chatview.ts`, and read by `ChatChrome`. If the constant and the emission
+    // ever disagree the composer stops following the bar and nothing else notices.
+    expect(composerBottomCss(0, 59)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+  })
+
+  it('sits on the keyboard when there is one', () => {
+    // Every term of the idle clearance is behind the keyboard, so none of it is added — and that
+    // is true whether or not the bar is showing, and true of the inset too, which is why this
+    // branch is the one thing R1 did not change.
+    expect(composerBottomCss(KEYBOARD_HEIGHT, 59)).toBe('336px')
+  })
+
+  it('treats unmeasurable input as no keyboard', () => {
+    expect(composerBottomCss(NaN, 59)).toBe(
+      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+  })
+
+  it('treats an unmeasurable clearance as no clearance', () => {
+    // The inset stays in the sum: a caller who cannot say how much chrome is below still gets a
+    // bar that pads correctly once the flag goes to 1.
+    expect(composerBottomCss(0, NaN)).toBe(
+      'calc((0px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+  })
+})
+
+describe('composerPadBottomCss', () => {
+  it('carries the home-indicator inset, gated as the complement of the offset', () => {
+    // Invariant 5, as arithmetic: the offset multiplies its inset by `f`, this multiplies its
+    // inset by `1 - f`, and `f` is 0 or 1. One inset in the stack, in every state, always.
+    expect(composerPadBottomCss(0)).toBe(
+      'calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))',
+    )
+  })
+
+  it('is the complement of the gate `composerBottomCss` uses, by the same variable', () => {
+    // The two functions must read the SAME custom property or the complement is meaningless — a
+    // padding gated on a variable nobody writes is a padding that is always on.
+    expect(composerPadBottomCss(0)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerBottomCss(0, 59)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerPadBottomCss(0)).toContain('(1 - var(')
+  })
+
+  it('adds nothing at all when the keyboard is up', () => {
+    // Exit criterion 3. Engaging the composer HIDES the bar, so the flag is 0 here and a flag-only
+    // rule would pad by the inset — lifting the textarea a thumb's width off the keyboard's top
+    // edge. The keyboard is the floor; the home indicator is behind it.
+    expect(composerPadBottomCss(KEYBOARD_HEIGHT)).toBe('0px')
+  })
+
+  it('returns a LENGTH for zero, not a bare 0', () => {
+    // It goes into `style.paddingBottom`. A length-typed function returns a length.
+    expect(composerPadBottomCss(KEYBOARD_HEIGHT)).toBe('0px')
+    expect(composerPadBottomCss(KEYBOARD_HEIGHT)).not.toBe('0')
+  })
+
+  it('treats unmeasurable overlap as no keyboard', () => {
+    // Same degradation as `composerBottomCss`: unmeasurable means "no keyboard", because the
+    // resting screen is the common case and a NaN must not decide geometry.
+    for (const overlap of [NaN, 0, -1, Number.POSITIVE_INFINITY]) {
+      expect(composerPadBottomCss(overlap)).toBe(
+        'calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))',
+      )
+    }
+  })
+})
+```
+
+Note the `Number.POSITIVE_INFINITY` row: `Number.isFinite(Infinity)` is `false`, so it takes the
+no-keyboard branch — the same degradation `composerBottomCss(Infinity, 59)` already had. Asserted
+rather than assumed.
+
+**Impact:** `lib/nina/chatview.test.ts` green again. `tests/tabbar.geometry.test.ts` still red
+until Step 8.
+
+---
+
+### Step 3: `COMPOSER_RESTING_PX` 68 -> 60
+
+**File:** `lib/nina/chrome.ts:108-115`
+
+**Change:** replace the docstring and the constant. `py-2` is 8 px top + 8 px bottom = 16, plus the
+`min-h-11` textarea's 44 = 60 (D3). Note what the number does and does not include — Step 4
+depends on it.
+
+**Code** (replacement for lines 108-115):
+
+```ts
+/**
+ * The composer with nothing armed: `py-2` (16) + `min-h-11` (44).
+ *
+ * The same 60 that `ChatScreen`'s `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60` already
+ * spells, and the same 60 that opens `BOTTOM_GAP.chat`'s sum in `components/ui/AppShell.tsx`.
+ * Four sites, one number; a change to any one of them changes all four.
+ *
+ * WAS 68, from `py-3` (24). The repo owner asked for the query field to *"lebih kecil jadi lebih
+ * makan lesser space"*, and the 24 px of vertical padding was the only reclaimable dimension: the
+ * textarea's `min-h-11` and every round control in that bar are the 44 px iOS tap floor, and the
+ * 16 px font is forced by `app/globals.css` because Safari zooms the viewport on focus below it.
+ * So the reduction comes out of padding alone — the same trade `CHROME_CONTROL_PX` above made when
+ * the same voice asked for the two floating controls to be "much smaller".
+ *
+ * ── IT IS THE CONTENT BOX, AND IT DOES NOT INCLUDE THE HOME-INDICATOR INSET ──────────────────
+ * The composer's `padding-bottom` is `var(--safe-bottom)` while the tab bar is hidden and 0 while
+ * it is showing (`composerPadBottomCss`), so the element's MEASURED height is 60 in the showing
+ * state and 60 + the inset in the hidden one. This constant is neither of those: it is the 60,
+ * because an inset is `env(safe-area-inset-bottom)` and no number in TypeScript can stand for it.
+ * `controlBottomCss` is the one reader that has to care, and it does — see its fallback branch.
+ *
+ * Used only when `#nina-composer` cannot be measured, which is the frame before the observer's
+ * first callback (and the server's HTML, where there is no element at all).
+ */
+export const COMPOSER_RESTING_PX = 60
+```
+
+**Impact:** `controlBottomCss`'s fallback output changes; `lib/nina/chrome.test.ts` computes its
+expectations from this symbol, so most of that suite follows automatically — but Step 4 changes the
+emitted *shape* too, so the suite is rewritten in Step 5 regardless.
+
+---
+
+### Step 4: `controlBottomCss` gates its inset term on the bar variable
+
+**File:** `lib/nina/chrome.ts:1` (new import) and `lib/nina/chrome.ts:167-205` (the whole
+docstring + function; the file is 205 lines and this is its tail)
+
+**Change (a):** insert as line 1 of the file, above the module docstring, with one blank line after
+— the placement `lib/nina/reply.ts:1` uses:
+
+```ts
+import { NINA_BAR_VISIBLE_VAR } from './chatview'
+```
+
+No cycle is possible: `lib/nina/chatview.ts` has zero imports and Step 1 adds none.
+
+**Change (b):** replace lines 167-205 with the block below.
+
+Why (D2, settled): with the inset now inside the composer's own `padding-bottom`, the composer's
+**measured** height already contains it in the hidden state. The lane is positioned at
+`measured + gap` above the composer's bottom edge, so adding `var(--safe-bottom)` on top would
+count the phone's inset twice and float the `<` / `^` pair one inset too high — exactly the failure
+`Composer.tsx:39-41` names, in the state it did not cover. Gate it on the same variable, and it
+cancels precisely where the padding appears.
+
+And why the fallback branch keeps the inset ungated — this is D2 applied per branch, not a
+departure from it. D2's reason is *"with the inset inside the measured element"*; the fallback is
+the branch where there is no measured element. `COMPOSER_RESTING_PX` is the content box and never
+includes the inset (Step 3's docstring says so), so the fallback has to supply it itself. Run the
+arithmetic in all four combinations, with `SB` for the resolved inset:
+
+| branch | bar | what `composerHeightPx` is | composer's real top edge | lane `bottom` emits | gap |
+|---|---|---|---|---|---|
+| measured | hidden | `M = 60 + SB` — the padding is inside the box | `0 + M` | `calc((M + 8)px + SB*0)` = `M + 8` | 8 ✓ |
+| measured | shown | `M = 60` — padding is 0, the inset rides in the offset | `(59 + SB) + 60` | `calc(127px + SB*1)` = `127 + SB` | 8 ✓ |
+| fallback | hidden | not measured -> `COMPOSER_RESTING_PX` = 60, inset-free | `0 + (60 + SB)` | `calc(68px + SB)` | 8 ✓ |
+| fallback | shown | not measured -> `COMPOSER_RESTING_PX` = 60, inset-free | `(59 + SB) + 60` | `calc(127px + SB)` | 8 ✓ |
+
+Read row 1 carefully, because it is what makes the gate load-bearing rather than decorative: in the
+hidden state the `ResizeObserver` measures `60 + SB`, so the inset is already inside `M` and a second
+`var(--safe-bottom)` added beside it would be the double count invariant 5 forbids. The gate is what
+takes it back out. (`lib/nina/chrome.test.ts` feeds `COMPOSER_RESTING_PX` as the measured height,
+which is the *showing* state's box — that is a unit test of the branch, not of the runtime pairing,
+and Step 5's cases are written that way on purpose.)
+
+Ungating the fallback is not cosmetic. `composerHeightPx` starts at `0` in `ChatChrome`
+(`ChatChrome.tsx:87`) and the measurement happens in a passive `useEffect`, so the fallback is what
+the server's HTML and the first paint use. A gated fallback would put the lane at `68px` while the
+composer's top edge is at `60 + SB` — the two controls behind the composer's own `z-40` glass on
+every first load of `/nina`, until hydration. That is a visible artefact, and it costs one `boolean`
+to not have.
+
+**Code** (replacement for lines 167-205):
+
+```ts
+/**
+ * The control lane's `bottom`, as a CSS length.
+ *
+ * Entirely above the composer: the bar's clearance when the bar is showing, plus the composer's
+ * measured height, plus the gap. That is what keeps the lane clear of the composer's Send button
+ * at every composer height, and clear of the tab bar itself — the bar's OUTER height is the whole
+ * of what it has to rise past, because no part of the bar paints above its own top border: the
+ * raised centre FAB that used to overhang it by 20 px is now an ordinary tab cell, and the bar
+ * occupies exactly its own border box.
+ *
+ * ── THE HOME-INDICATOR INSET, AND WHY IT IS NOW GATED ON THE BAR ─────────────────────────────
+ * This used to add `var(--safe-bottom)` unconditionally, for the reason `composerBottomCss` used
+ * to give: everything in this stack sits above chrome that already pads by it. That stopped being
+ * true when the composer took the inset into its own `padding-bottom` in the bar-hidden state
+ * (`composerPadBottomCss`, R1). The inset is now INSIDE the element this function measures, so
+ * adding it again here would count the phone's inset twice and float the pair one inset too
+ * high — the failure `components/nina/Composer.tsx` names, one state over.
+ *
+ * So the term is multiplied by the same flag the composer's offset uses. It contributes the inset
+ * when the bar is showing (where the composer's padding is 0 and the inset rides in its offset
+ * instead) and nothing when the bar is hidden (where the measurement already carries it). One
+ * inset in the stack, in either state — and the same variable in both files, so the two cannot
+ * drift apart.
+ *
+ * ── EXCEPT IN THE FALLBACK BRANCH, WHERE THERE IS NOTHING MEASURED TO CARRY IT ───────────────
+ * `COMPOSER_RESTING_PX` is the composer's CONTENT box: 60, with no inset in it, because an inset
+ * is `env(safe-area-inset-bottom)` and no TypeScript number can stand for one. So when the
+ * measurement is unavailable the inset has to come from here, ungated — otherwise the lane is
+ * emitted at 68 px while the composer's real top edge is at 60 px + inset, and the two controls
+ * spend the server's HTML and the first paint sitting BEHIND the composer's `z-40` glass. That is
+ * not a hypothetical frame: `ChatChrome` seeds `composerHeightPx` at 0 and measures in a passive
+ * effect, so the fallback is what renders on the server and on the first client paint of every
+ * conversation.
+ *
+ * A string, because that is what the style attribute takes and because `var(--safe-bottom)` is
+ * `env(safe-area-inset-bottom)`, which is readable only to CSS.
+ *
+ * Degenerate input is the resting screen, not an error: a non-finite or non-positive composer
+ * height means "not measured yet" and falls back to `COMPOSER_RESTING_PX` with the ungated inset;
+ * a non-finite or negative clearance contributes nothing. A hidden bar contributes no clearance
+ * whatever the argument says.
+ */
+export function controlBottomCss(input: {
+  barState: NinaBarState
+  /** `TAB_BAR_OUTER_HEIGHT_PX`, passed in — `lib/` never imports `components/`. */
+  barClearancePx: number
+  /** `#nina-composer`'s measured height, or 0 before the first measurement. */
+  composerHeightPx: number
+}): string {
+  const { barState, barClearancePx, composerHeightPx } = input
+  const clearance =
+    barState === 'shown' && Number.isFinite(barClearancePx) && barClearancePx > 0
+      ? Math.round(barClearancePx)
+      : 0
+  const measured = Number.isFinite(composerHeightPx) && composerHeightPx > 0
+  const composer = measured ? Math.round(composerHeightPx) : COMPOSER_RESTING_PX
+  const inset = measured
+    ? `var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0)`
+    : 'var(--safe-bottom)'
+  return `calc(${clearance + composer + CHROME_CONTROL_GAP_PX}px + ${inset})`
+}
+```
+
+The exact strings this emits, with `BAR_CLEARANCE = 59`, `COMPOSER_RESTING_PX = 60`,
+`CHROME_CONTROL_GAP_PX = 8`:
+
+| Call | Returns |
+|---|---|
+| `{ hidden, 59, 60 }` | `calc(68px + var(--safe-bottom) * var(--nina-bar-visible, 0))` |
+| `{ shown, 59, 60 }` | `calc(127px + var(--safe-bottom) * var(--nina-bar-visible, 0))` |
+| `{ hidden, 59, 190 }` | `calc(198px + var(--safe-bottom) * var(--nina-bar-visible, 0))` |
+| `{ hidden, 59, 60.328125 }` | `calc(68px + var(--safe-bottom) * var(--nina-bar-visible, 0))` |
+| `{ hidden, 59, 0 }` | `calc(68px + var(--safe-bottom))` |
+| `{ shown, 59, NaN }` | `calc(127px + var(--safe-bottom))` |
+| `{ shown, NaN, 60 }` | `calc(68px + var(--safe-bottom) * var(--nina-bar-visible, 0))` |
+
+**Impact:** `components/nina/ChatChrome.tsx` needs no edit — it already passes all three arguments
+(`ChatChrome.tsx:216-224`) and its comment at line 99 (*"`controlBottomCss` composes the clearance
+itself"*) stays true. `lib/nina/chrome.test.ts` fails until Step 5.
+
+---
+
+### Step 5: rewrite the `controlBottomCss` suite
+
+**File:** `lib/nina/chrome.test.ts:1-16` (imports) and `lib/nina/chrome.test.ts:94-187` (the whole
+`describe('controlBottomCss')` block)
+
+**Change (a):** add a second import block for the variable name, after the `./chrome` block, so the
+test asserts the gate by the same constant the source spells:
+
+```ts
+import {
+  autoHideDelayMs,
+  barToggleGlyph,
+  CHROME_AUTOHIDE_MS,
+  CHROME_CONTROL_GAP_PX,
+  COMPOSER_RESTING_PX,
+  controlBottomCss,
+  isControlVisible,
+  nextBarState,
+  type NinaBarState,
+} from './chrome'
+import { NINA_BAR_VISIBLE_VAR } from './chatview'
+```
+
+(`./chatview` sorts after `./chrome`? No — alphabetically `chatview` < `chrome`, so if the repo's
+formatter enforces an order, put the `./chatview` line **first**. `npm run lint` and
+`npm run format` are the arbiters; move the line if either objects. Nothing else about this step
+depends on the order.)
+
+**Change (b):** replace lines 94-187 with the block below. `BAR_CLEARANCE = 59` is already defined
+at `:23`.
+
+**Code:**
+
+```ts
+describe('controlBottomCss', () => {
+  /** The gated form: the inset cancels itself in whichever state does not need it. */
+  const GATED = `var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0)`
+
+  it('clears a measured resting composer and the gap when the bar is hidden', () => {
+    // 60 + 8. The inset term is present but multiplied by 0 in this state, because the composer's
+    // own `padding-bottom` is carrying it and the measurement therefore already contains it.
+    expect(
+      controlBottomCss({
+        barState: 'hidden',
+        barClearancePx: BAR_CLEARANCE,
+        composerHeightPx: COMPOSER_RESTING_PX,
+      }),
+    ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
+  })
+
+  it('ignores the clearance entirely while the bar is hidden', () => {
+    // The clearance is an argument, not a state. A hidden bar occupies nothing, whatever it says.
+    const hidden = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: BAR_CLEARANCE,
+      composerHeightPx: COMPOSER_RESTING_PX,
+    })
+    const noBarAtAll = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: 0,
+      composerHeightPx: COMPOSER_RESTING_PX,
+    })
+    expect(hidden).toBe(noBarAtAll)
+  })
+
+  it("rises by the bar's outer height when the bar is shown", () => {
+    // Outer, not the grid: the `border-t` is the bar's top edge, and the lane sits above the
+    // composer, which sits on that edge. 59 + 60 + 8 = 127, and the inset is added on top by the
+    // gate — because in THIS state the composer's padding is 0 and the inset rides in its offset.
+    expect(
+      controlBottomCss({
+        barState: 'shown',
+        barClearancePx: BAR_CLEARANCE,
+        composerHeightPx: COMPOSER_RESTING_PX,
+      }),
+    ).toBe(
+      `calc(${BAR_CLEARANCE + COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${GATED})`,
+    )
+  })
+
+  it('gates the inset on the same variable the composer does', () => {
+    // R1's invariant, from this side: the composer's `padding-bottom` adds the inset when the flag
+    // is 0 and this adds it when the flag is 1. Two complementary gates on ONE variable is what
+    // makes the inset appear exactly once. A literal `var(--safe-bottom)` added beside the length
+    // is what counting it twice looks like.
+    const measured = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: BAR_CLEARANCE,
+      composerHeightPx: COMPOSER_RESTING_PX,
+    })
+    expect(measured).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(measured).not.toBe(
+      `calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`,
+    )
+  })
+
+  it('rides up with a composer that has grown', () => {
+    // A reply strip, a run chip, a photo chip and a tile row all make the composer taller. The lane
+    // is measured off it rather than assumed, which is the only version that cannot end up behind
+    // the composer's `z-40` background.
+    expect(
+      controlBottomCss({
+        barState: 'hidden',
+        barClearancePx: BAR_CLEARANCE,
+        composerHeightPx: 190,
+      }),
+    ).toBe(`calc(${190 + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
+  })
+
+  it('falls back to a resting composer before the first measurement, WITH the inset ungated', () => {
+    // The one branch that must not gate. `COMPOSER_RESTING_PX` is the content box and carries no
+    // inset, so the fallback supplies it — otherwise the server's HTML and the first paint put the
+    // two controls behind the composer's glass by exactly one home-indicator inset.
+    for (const height of [0, -20, NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        controlBottomCss({
+          barState: 'hidden',
+          barClearancePx: BAR_CLEARANCE,
+          composerHeightPx: height,
+        }),
+      ).toBe(
+        `calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`,
+      )
+    }
+  })
+
+  it('emits a different shape measured than unmeasured, and that is the point', () => {
+    // Guards the two branches against being "simplified" back into one. They are the same length
+    // and a different inset term, which is the whole of the fallback argument.
+    const unmeasured = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: 0,
+      composerHeightPx: 0,
+    })
+    const measured = controlBottomCss({
+      barState: 'hidden',
+      barClearancePx: 0,
+      composerHeightPx: COMPOSER_RESTING_PX,
+    })
+    expect(unmeasured).not.toBe(measured)
+    expect(unmeasured).toContain(`${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px`)
+    expect(measured).toContain(`${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px`)
+  })
+
+  it('treats an unmeasurable clearance as no clearance', () => {
+    for (const clearance of [NaN, -1, Number.POSITIVE_INFINITY]) {
+      expect(
+        controlBottomCss({
+          barState: 'shown',
+          barClearancePx: clearance,
+          composerHeightPx: COMPOSER_RESTING_PX,
+        }),
+      ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
+    }
+  })
+
+  it('rounds a fractional measurement rather than emitting a fractional length', () => {
+    // `getBoundingClientRect().height` is a double. `calc(60.328125px + …)` is valid CSS and an
+    // unreadable diff.
+    expect(
+      controlBottomCss({ barState: 'hidden', barClearancePx: 0, composerHeightPx: 60.328125 }),
+    ).toBe(`calc(${60 + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
+  })
+
+  it('is total over the state union', () => {
+    const states: NinaBarState[] = ['hidden', 'shown']
+    for (const barState of states) {
+      expect(
+        controlBottomCss({ barState, barClearancePx: BAR_CLEARANCE, composerHeightPx: 60 }),
+      ).toMatch(
+        /^calc\(\d+px \+ var\(--safe-bottom\) \* var\(--nina-bar-visible, 0\)\)$/,
+      )
+    }
+  })
+})
+```
+
+The `describe('the reveal is a transition with a reduced-motion escape')` block that follows
+(`chrome.test.ts:189-220`, reading `components/ui/TabBar.tsx` as text) is **untouched** — this phase
+does not edit `TabBar.tsx`, and none of its three assertions is about the composer.
+
+**Impact:** `lib/nina/chrome.test.ts` green.
+
+---
+
+### Step 6: the composer's markup — offset + padding (R1), `py-2` (R2), glass (R3)
+
+**File:** `components/nina/Composer.tsx` — three separate edits: `:33-44` (header), `:134` +
+`:154-156` (prop), `:351-356` (the container).
+
+**Change (a) — the header's geometry and skin paragraphs.** Replace lines 33-44 (from
+`* ── THE FIXED BAR'S GEOMETRY ──…` through the `bg-paper/90 backdrop-blur-md` sentence) with:
+
+```
+ * ── THE FIXED BAR'S GEOMETRY: TWO PROPS, AND THE INSET IS IN EXACTLY ONE OF THEM ─────────────
+ * `bottomCss` is computed by `composerBottomCss` in `lib/nina/chatview.ts` and clears 59 px of
+ * chrome: the tab bar's OUTER height, which is its 58 px grid plus the 1 px `border-t` the grid
+ * sits under. The border is not a rounding error — it is the bar's top edge, so a clearance of 58
+ * leaves this bar floating one pixel above the bar below it with the conversation visible through
+ * the seam. 59 is what makes the two flush.
+ *
+ * `padBottomCss` is its partner, from `composerPadBottomCss` in the same file, and the pair is
+ * what makes this bar paint to the bottom of the screen. The home-indicator inset USED to ride in
+ * the offset alone, "because the tab bar below already pads by it and counting it twice would open
+ * a gap" — which is true while the bar is showing and is exactly what left the inset UNPAINTED
+ * when it is not. `/nina`'s resting state is a hidden bar (`lib/nina/chrome.ts`), so at rest the
+ * bar's bottom edge sat one inset above the bottom of the viewport with the conversation showing
+ * through underneath. That was the reported gap.
+ *
+ * So the inset moved into this element's own `padding-bottom`, gated on the same
+ * `--nina-bar-visible` flag as the offset and by its complement: the offset carries the inset when
+ * the bar is showing, the padding carries it when it is not, the keyboard branch carries it in
+ * neither because the indicator is behind the keyboard. The inset appears exactly once in every
+ * state — the rule the old comment was defending, in the state it did not cover. Both functions
+ * are pure and both are asserted in `lib/nina/chatview.test.ts`; do not compute either here.
+ *
+ * One consequence to know before touching `ChatChrome`: this element's MEASURED height now
+ * includes the inset while the bar is hidden. `controlBottomCss` gates its own inset term on the
+ * same flag for that reason, and its docstring carries the arithmetic.
+ *
+ * `z-40` matches `ReviewClient`'s sticky action bar, the app's only other second fixed bar, and
+ * leaves `Sheet` (`z-50`) and `PhotoViewer` (`z-60`) covering it.
+ *
+ * ── THE GLASS IS THE FLOATING CONTROLS' GLASS, VERBATIM ──────────────────────────────────────
+ * `bg-card/40 backdrop-blur-md backdrop-saturate-150`, which is `NINA_CHROME_CONTROL_CLASS`'s
+ * fill, blur and saturation exactly — asked for in those words: *"bikin backgroundnya frosted
+ * glass, persis kaya small buttons < and up"*. It was `bg-paper/90 backdrop-blur-md`, and that
+ * file's own argument applies here unchanged: at 90 % opacity the blur is decorative, since almost
+ * nothing shows through it. `backdrop-saturate-150` is what keeps the conversation's colour from
+ * going grey behind the glass, which is the difference between frosted and merely dim.
+ *
+ * A HAIRLINE AND NOT A RING, which is the one place this deliberately departs from the discs.
+ * `border-t border-rule/50` rather than `ring-1 ring-rule/50`: the controls are free-floating and
+ * need an edge on all sides, while this bar spans the viewport and has exactly one exposed edge.
+ * A ring would draw a hairline down both screen edges and across the bottom, where there is
+ * nothing on the other side of it. The `/50` weight is carried over so the pair still reads as one
+ * system, and `border-rule` at full weight — what this had — reads as chrome rather than as glass.
+```
+
+**Change (b) — the prop.** At line 134, the destructuring becomes:
+
+```tsx
+export function Composer({
+  onSend,
+  busy,
+  bottomCss,
+  padBottomCss,
+  userId,
+  reply = null,
+  onCancelReply,
+  attachment = null,
+  onClearAttachment,
+  photo = null,
+  onClearPhoto,
+}: {
+```
+
+and at lines 154-155 the `bottomCss` prop doc gains its partner immediately after it:
+
+```tsx
+  /** From `composerBottomCss`. A CSS length, because `var(--safe-bottom)` is CSS-only. */
+  bottomCss: string
+  /**
+   * From `composerPadBottomCss`, and NOT optional: it is the other half of `bottomCss`. Together
+   * they add the home-indicator inset exactly once — see the geometry section of the header. A
+   * caller that passes one and not the other either leaves an unpainted strip under this bar or
+   * pads it twice, and both are the bug R1 fixed.
+   */
+  padBottomCss: string
+```
+
+Required rather than defaulted on purpose: `Composer` has exactly one caller in the repo
+(`components/nina/ChatScreen.tsx:1166`), and a default of `'0px'` would make the R1 regression
+compile silently.
+
+**Change (c) — the container.** Replace lines 351-356 with:
+
+```tsx
+    <div
+      id="nina-composer"
+      className="fixed inset-x-0 z-40 border-t border-rule/50 bg-card/40 backdrop-blur-md backdrop-saturate-150"
+      style={{ bottom: bottomCss, paddingBottom: padBottomCss }}
+    >
+      <div className="mx-auto max-w-[470px] px-5 py-2">
+```
+
+That is the whole of the change to this file's markup. `py-3` -> `py-2` is D3: 24 px of vertical
+padding -> 16, resting height 68 -> 60. Everything inside — the reply strip at 357, the attachment
+and photo chips, the tile row, the notice, the picker button, the `min-h-11 text-base` textarea at
+499 and the `size-11` Send button at 511 — is untouched (invariants 3 and 4).
+
+Two things to expect visually and NOT to "fix": the textarea keeps its opaque `bg-card` fill
+(`Composer.tsx:499`), so it reads as a solid pill on frosted glass — which is precisely how the
+`<` and `^` discs read against the conversation, and is the point of the request. And the padding
+below the row now belongs to the outer element rather than the inner one in the resting state, so
+the glass reaches the screen edge while the row does not.
+
+**Impact:** `tsc` fails on `ChatScreen.tsx` (missing required prop) until Step 7. No test reads
+this file as text — `tests/tabbar.geometry.test.ts` reads only `ChatChrome.tsx` and
+`ChatScreen.tsx`, and `lib/nina/chrome.test.ts`'s text assertions read only `TabBar.tsx`.
+
+---
+
+### Step 7: `ChatScreen` follows the height and passes the pad
+
+**File:** `components/nina/ChatScreen.tsx:18` (import), `:152-157` (the fallback), `:1166-1177`
+(the call)
+
+**Change (a) — the import at line 18** becomes:
+
+```tsx
+import { composerBottomCss, composerPadBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+```
+
+**Change (b) — the fallback.** Replace lines 152-157 with:
+
+```tsx
+/**
+ * Fallback for `obstructedBottomPx` if `#nina-composer` cannot be measured — the clearance plus
+ * one composer row. Only reachable if the composer has not mounted, which it always has by the
+ * time a quote is tappable.
+ *
+ * 60 is `COMPOSER_RESTING_PX` in `lib/nina/chrome.ts`, written again here because this module
+ * cannot import a `lib/nina/chrome` constant without pulling the chrome state machine into the
+ * screen's module graph for one number. It is one of four sites that hand-copy it — the markup in
+ * `Composer.tsx` (`py-2` + `min-h-11`), that constant, this literal, and `BOTTOM_GAP.chat` in
+ * `components/ui/AppShell.tsx` — and a change to any of them changes all four. It was 68, from
+ * `py-3`, until the repo owner asked for the query field to take less space.
+ */
+const COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60
+```
+
+**Change (c) — the call.** Replace lines 1166-1177 with:
+
+```tsx
+      <Composer
+        onSend={handleSend}
+        busy={busy}
+        bottomCss={composerBottomCss(overlap, COMPOSER_CLEARANCE_PX)}
+        padBottomCss={composerPadBottomCss(overlap)}
+        userId={userId}
+        reply={draftQuote}
+        onCancelReply={() => setDraftQuote(null)}
+        attachment={attachment}
+        onClearAttachment={() => setAttachment(null)}
+        photo={photo}
+        onClearPhoto={() => setPhoto(null)}
+      />
+```
+
+Both functions read the same `overlap` — the value `keyboardOverlapPx` already produced for this
+render — so the offset's keyboard branch and the padding's keyboard branch cannot disagree about
+whether there is a keyboard. That is why `composerPadBottomCss` takes the overlap rather than
+being derived from `bottomCss`.
+
+**Impact:** `tsc` green again. `measureQuoteScroll` (`ChatScreen.tsx:606-613`) needs no change: it
+measures `getBoundingClientRect().top` on the live element, which now includes the padding — the
+composer's real obstruction — and that is more correct than before, not less.
+
+---
+
+### Step 8: `AppShell`'s hand arithmetic, and the one stale test assertion
+
+**File:** `components/ui/AppShell.tsx:59-81`, then `tests/tabbar.geometry.test.ts:188-196`
+
+**Change (a).** Replace lines 59-81 (the `chat` comment and its literal) with:
+
+```tsx
+  /*
+   * NO BAR: the composer's own 60px (a 44px control in a py-2 bar), the 8px gap above it, the
+   * floating control's 32px tap target, and 12px so the newest bubble is not flush against it.
+   * 60 + 8 + 32 + 12 = 112, which is exactly `7rem` — no rounding needed.
+   *
+   * WAS `7.5rem` (120px), from a `py-3` composer. The repo owner asked for the query field to be
+   * "lebih kecil jadi lebih makan lesser space", `COMPOSER_RESTING_PX` went 68 -> 60, and this
+   * literal has to follow or the screen keeps reserving 8px of padding for a bar that no longer
+   * occupies it. Before that it was `8.5rem` (136px), from a 44px floating control, and the same
+   * miss was available then: a stale literal here reads as a gap under the conversation rather
+   * than as a bug, and so would have survived review. Twice now.
+   *
+   * Those numbers are `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX` and `COMPOSER_RESTING_PX` in
+   * `lib/nina/chrome.ts`, plus `Composer`'s own geometry; Tailwind cannot read a constant, so a
+   * change to any of them changes this literal. `TAB_BAR_HEIGHT_PX` is deliberately NOT in this
+   * sum — the bar is not below the composer on this screen.
+   *
+   * The composer's home-indicator padding is NOT in this sum either, and must not be added: it is
+   * the `var(--safe-bottom)` term this class already carries, which is why the whole thing is
+   * `calc(7rem+var(--safe-bottom))` rather than `pb-28`. The composer pads by that inset in the
+   * bar-hidden state (`composerPadBottomCss`) and the document reserves it here; one is the bar's
+   * own box and the other is the scroll container's, and they are the same length by construction.
+   *
+   * FIXED, not dynamic. This padding is the document's height: making it follow the reveal would
+   * move the scroll position every time the bar toggles, and `MessageList`'s auto-scroll would
+   * chase it. So while the bar is showing, the composer rises by the bar's clearance and the last
+   * bubble sits behind it for those five seconds — which is the right trade, because a runner who
+   * pulls up the bar is on his way to another tab, not re-reading the last line.
+   */
+  chat: 'pb-[calc(7rem+var(--safe-bottom))]',
+```
+
+`BOTTOM_GAP.tabs` at line 58 and its comment at 44-57 are **not** touched (index scope, and
+invariant 7 — those four screens must not move).
+
+**Change (b).** Replace `tests/tabbar.geometry.test.ts:188-196` — the last `it` in the file — with:
+
+```ts
+  it('emits a composer bottom that lands exactly on the bar top border', () => {
+    // The constant the components compose, joined end to end through the pure function that turns
+    // it into CSS. 59px measured up from the viewport bottom IS the bar's top border, so with the
+    // bar showing the composer's bottom edge is ON it — no gap, and no overlap that would paint
+    // the composer's glass over the bar's own rule.
+    //
+    // The inset is INSIDE the multiplication, which is R1: with the flag at 0 the whole offset
+    // collapses to nothing and the composer paints to the bottom of the screen, carrying the inset
+    // in its own `padding-bottom` instead (`composerPadBottomCss`). The old form added the inset
+    // outside the gate and left that strip unpainted at rest.
+    expect(composerBottomCss(0, TAB_BAR_OUTER_HEIGHT_PX)).toBe(
+      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+  })
+```
+
+The other four `it`s in that `describe` (`:174-186`) read `ChatChrome.tsx` and `ChatScreen.tsx` as
+text and assert `TAB_BAR_OUTER_HEIGHT_PX` is present and `TAB_BAR_BORDER_PX` is not. Neither Step 7
+nor anything else in this phase adds `TAB_BAR_BORDER_PX` to either file, so all four keep passing —
+worth checking rather than assuming, because Step 7 edits `ChatScreen.tsx`.
+
+**Impact:** the whole suite green. This is the last step.
+
+---
+
+## Verification
+
+**Build:** `npm run build`
+**Lint:** `npm run lint`
+**Types:** `npx tsc --noEmit`
+**Tests:** `npx vitest run`
+
+Run all four, in that order of cheapness — `npx tsc --noEmit`, `npm run lint`, `npx vitest run`,
+`npm run build`. Invariant 1 requires all four green at the end of this phase.
+
+**Fresh-worktree prerequisite.** This worktree needs `.env.local` and `npm install` before any of
+the four will run: `lib/env.ts` validates its variables at module load, and a fresh worktree has no
+`node_modules`. Copy `.env.local` from the primary checkout and run `npm install` first if
+`npx tsc --noEmit` dies on a missing module or an env error.
+
+**Targeted test runs while iterating:**
+
+```
+npx vitest run lib/nina/chatview.test.ts
+npx vitest run lib/nina/chrome.test.ts
+npx vitest run tests/tabbar.geometry.test.ts
+```
+
+**Manual check** — `/nina` on an iPhone-XS-Max-sized viewport with a non-zero
+`env(safe-area-inset-bottom)` (a real device, or DevTools' iPhone preset, which reports the inset):
+
+1. At rest (tab bar hidden): the composer's frosted fill runs to the very bottom edge of the
+   screen — no band of conversation below it — and the textarea still sits clear of the home
+   indicator. Scroll the conversation and confirm nothing appears in the strip under the bar.
+2. Press `^`: the tab bar reveals and the composer sits exactly on its top border. No seam, no
+   overlap over the bar's own rule.
+3. Tap the textarea: the bar lifts onto the keyboard's top edge with the row flush against it —
+   no ~34 px of dead space between the composer and the keyboard.
+4. In all three states, the `<` and `^` discs sit 8 px above the composer's top edge and clear the
+   Send button. Reload the page and watch the first paint: the discs must be visible immediately,
+   not fade in from behind the glass.
+5. Hold the two discs and the bar side by side: same fill, same blur, same saturation; the bar's
+   top hairline reads at the same weight as the discs' ring. Check both colour schemes — `--card`
+   is `#ffffff` light and `#1c3040` dark.
+6. Confirm the newest bubble is not hidden under the composer when scrolled to the bottom
+   (`BOTTOM_GAP.chat`), and that `/`, `/runs`, `/upload`, `/badges` are visually unchanged
+   (invariant 7 — `BOTTOM_GAP.tabs` was not touched).
+
+**Exit criteria** (from the index's Phase 1 section, verbatim):
+
+1. With `--nina-bar-visible: 0` (the resting state) the composer's painted box reaches the bottom
+   of the viewport — no unpainted `--safe-bottom` strip — and its content still sits above the
+   home indicator.
+2. With `--nina-bar-visible: 1` the composer is still flush on the tab bar's top edge: no seam,
+   no overlap.
+3. With the keyboard up, the composer sits on the keyboard's top edge with **no** extra inset
+   padding.
+4. The floating `<` / `up` lane clears the composer's Send button in all three states.
+5. The composer's resting height is 60 px and all four sites in invariant 2 say so.
+6. The bar's fill, blur and saturation match `NINA_CHROME_CONTROL_CLASS`; its top hairline reads
+   at the same weight as the controls' ring.
+7. `npm run lint`, `npx tsc --noEmit`, `npx vitest run`, `npm run build` all pass.
+
+**The four sites of invariant 2, to check by grep before calling this done:**
+
+```
+components/nina/Composer.tsx      py-2  + min-h-11        (Step 6c, Step 6 leaves 499 alone)
+lib/nina/chrome.ts                COMPOSER_RESTING_PX = 60          (Step 3)
+components/nina/ChatScreen.tsx    COMPOSER_CLEARANCE_PX + 60        (Step 7b)
+components/ui/AppShell.tsx        pb-[calc(7rem+var(--safe-bottom))]  (Step 8a)
+```
+
+No fifth site is introduced. `grep -rn "68" lib/nina/chrome.ts components/nina/ChatScreen.tsx
+components/ui/AppShell.tsx` should return no composer-height hit after this phase.
+
+## Handoffs
+
+- **R4 and everything it touches is Phase 2's.** `lib/pwa.ts`, `app/admin/layout.tsx`,
+  `tests/pwa.install.test.ts`. This phase does not read or write any of them, and shares no file
+  with that phase.
+- **`ReviewClient`'s sticky action bar still wears `bg-paper/90 backdrop-blur-md`** — the recipe
+  this composer just left. `Composer.tsx`'s old header called it *"that file's recipe too"*, so the
+  two bars now differ. The user asked for the chat query field specifically
+  (*"bikin backgroundnya frosted glass"*), so nothing here changes it. If the frosted treatment
+  should spread to the app's other fixed bar, that is a new requirement and a new phase — not a
+  drive-by, and not something a reconciler should fold in.
+- **`APPLE_WEB_APP.statusBarStyle` stays `'default'`** (D8, index Out of scope). Not this phase's
+  and not phase 2's.
+- **`TAB_BAR_OUTER_HEIGHT_PX` and the 59 px clearance are untouched.** The tab-bar seam is already
+  flush and nobody reported it; R1 is the region below the composer when the bar is hidden (D1).
+- **The `lib/nina` package README** (`lib/nina/.workflows/package_readme.md`) mentions
+  `Composer.tsx` and the chat geometry. Updating it is the `readme-updater` subagent's job after
+  the phase lands, not a step here.
+
+## Rollback
+
+`git revert` the phase commit. All eight files are presentation and pure geometry — nothing is
+persisted, no migration, no schema change, no network call (invariant 8), so there is nothing to
+reconcile.
+
+Partial rollbacks, if only one of the three Rs turns out unwanted:
+
+- **R2's sizing only.** Revert the four sites of invariant 2 together — `py-2` -> `py-3`,
+  `COMPOSER_RESTING_PX` 60 -> 68, `COMPOSER_FALLBACK_PX`'s `+ 60` -> `+ 68`, `BOTTOM_GAP.chat`
+  `7rem` -> `7.5rem` — plus the two `chrome.test.ts` cases that spell 60 and 60.328125 literally.
+  R1's and R3's changes stand on their own and need no edit.
+- **R3's skin only.** Revert the container's `className` at `Composer.tsx:353` to
+  `"fixed inset-x-0 z-40 border-t border-rule bg-paper/90 backdrop-blur-md"` and the header's glass
+  paragraph. Nothing else references it; no test asserts it.
+- **R1's geometry only.** Revert Steps 1, 2, 4, 5, 7a, 7c and 8b together — they are one mechanism.
+  `padBottomCss` must come off `Composer`'s props in the same edit or `tsc` fails, and
+  `controlBottomCss`'s inset must be ungated again in the same edit or the lane floats one inset
+  too high. This is the one part of the phase that cannot be reverted in pieces.

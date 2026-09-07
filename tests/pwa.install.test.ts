@@ -161,6 +161,18 @@ describe('the root layout', () => {
     expect(source).toMatch(/viewportFit: 'cover'/)
   })
 
+  it('keeps the runner’s own themeColor pair, so a non-/admin route still tints #c9e9fb', () => {
+    /*
+     * The other half of R4. `/admin` now carries its own `themeColor`
+     * (`app/admin/layout.tsx`), and every route that is NOT under `/admin` has to keep resolving
+     * to this pair. The way that breaks is someone "unifying" the two by pointing the root at the
+     * admin constants, so both names AND the absence of the admin one are the assertion.
+     */
+    expect(source).toMatch(/color: INSTALL\.paper\b/)
+    expect(source).toMatch(/color: INSTALL\.paperDark\b/)
+    expect(source).not.toMatch(/ADMIN_INSTALL/)
+  })
+
   it('emits the legacy apple capability meta as well as the standard one', () => {
     /*
      * Next 16 renders `appleWebApp.capable` as the standardised `mobile-web-app-capable` and does
@@ -248,11 +260,12 @@ describe('the admin web app manifest', () => {
     // The whole point of the deck: a home screen with two identical squircles is most of the value
     // of installing the second one gone.
     const body = await adminManifestRoute().json()
-    expect(body.icons.map((i: { src: string }) => i.src)).toEqual(
-      ADMIN_PWA_ICONS.map((i) => i.src),
-    )
+    expect(body.icons.map((i: { src: string }) => i.src)).toEqual(ADMIN_PWA_ICONS.map((i) => i.src))
     for (const icon of body.icons) {
-      expect(PWA_ICONS.some((r) => r.src === icon.src), `${icon.src} is a runner icon`).toBe(false)
+      expect(
+        PWA_ICONS.some((r) => r.src === icon.src),
+        `${icon.src} is a runner icon`,
+      ).toBe(false)
     }
   })
 
@@ -271,19 +284,85 @@ describe('the admin web app manifest', () => {
   })
 })
 
+/**
+ * R4. The `/admin` install's own status-bar tint — *"make sure batas atas di xs max top notch is
+ * white, so it is kind of blend in with the UI"*.
+ *
+ * ── WHY THIS IS ASSERTED ON CONSTANTS AND ON SOURCE, NOT ON A RENDERED `<head>` ────────────
+ * The tag that decides the outcome is `<meta name="theme-color" media="...">`, and Next emits it
+ * from the viewport resolved across the WHOLE segment tree — the root merged with `/admin` — inside
+ * a request render. This suite runs in `environment: 'node'` with no Next server; the resolver
+ * itself (`next/dist/lib/metadata/resolve-metadata.js`) opens with `require('server-only')` and
+ * reads an async work store, and it exports only tree-shaped entry points. There is nothing here
+ * to render with and nothing to render into, and standing up a fake loader tree would be asserting
+ * against a mock of the framework rather than against the framework.
+ *
+ * So the two halves that ARE reachable are asserted: the colours, which live in a plain module,
+ * and the fact that the layout wires those colours in and states nothing else, which lives in its
+ * source text. The rendered head is this phase's MANUAL check, against a local production build —
+ * `/admin` cannot be probed on a Vercel preview at all, because `ADMIN_EMAILS` and `AUTH_URL` are
+ * Production-scope only.
+ */
+describe('the admin status-bar tint', () => {
+  it('is the admin shell’s own ground in both colour schemes', () => {
+    // --paper-2: app/globals.css:24 (light) and :81 (dark), mirrored in docs/design/tokens.css.
+    expect(ADMIN_INSTALL.paper).toBe('#f1f7fb')
+    expect(ADMIN_INSTALL.paperDark).toBe('#162834')
+  })
+
+  it('is NOT #ffffff, however literally the report said “white”', () => {
+    /*
+     * The request carries its own purpose clause — "so it is kind of blend in with the UI" — and
+     * pure white satisfies the adjective while failing the purpose: the shell under the band IS
+     * #f1f7fb, so #ffffff would replace one visible band with a fainter one. This case is the
+     * reminder of that, for whoever reads the word "white" and reaches for the literal.
+     */
+    expect(ADMIN_INSTALL.paper).not.toBe('#ffffff')
+    expect(ADMIN_INSTALL.paperDark).not.toBe('#ffffff')
+  })
+
+  it('differs from the runner’s pair in both schemes, which is the whole of the bug', () => {
+    // Before this phase `/admin` exported no `viewport`, so the ROOT pair won and the notch band
+    // was #c9e9fb over an #f1f7fb page. Equality here is that bug, restored.
+    expect(ADMIN_INSTALL.paper).not.toBe(INSTALL.paper)
+    expect(ADMIN_INSTALL.paperDark).not.toBe(INSTALL.paperDark)
+  })
+
+  it('spends the light half on the manifest, which can only carry one', async () => {
+    /*
+     * A manifest has a single `theme_color`, so the splash gets the light value and the dark one is
+     * reachable only through the layout's media-matched pair. The suite above asserts the literal;
+     * this ties the served manifest to the same constant, so the splash and the light band cannot
+     * drift apart.
+     */
+    const body = await adminManifestRoute().json()
+    expect(body.theme_color).toBe(ADMIN_INSTALL.paper)
+    expect(body.background_color).toBe(ADMIN_INSTALL.paper)
+    expect(body.theme_color).not.toBe(ADMIN_INSTALL.paperDark)
+  })
+})
+
 describe('the admin layout', () => {
   const source = readFileSync(`${ROOT}app/admin/layout.tsx`, 'utf8')
   /*
-   * The `metadata` export only, not the whole file. This layout carries a long docstring that
-   * quotes the very things asserted below, and a whole-file matcher would pass or fail on the
-   * explanation rather than on the code — which is how a guard gets its explanation deleted
-   * instead of its bug caught. `tests/admin.shell.test.ts` reads only `className` literals for
+   * ONE export at a time, and no prose in either block. This layout carries a long docstring above
+   * each export that quotes the very things asserted below, so a matcher that could see the
+   * explanation would pass or fail on the explanation rather than on the code — which is how a
+   * guard gets its docstring deleted instead of its bug caught. Each block therefore runs from its
+   * own `export const` to its own closing brace at column 0, which excludes the neighbouring
+   * docstring in both directions. `tests/admin.shell.test.ts` reads only `className` literals for
    * exactly this reason.
    */
-  const metadataBlock = source.slice(
-    source.indexOf('export const metadata'),
-    source.indexOf('export default'),
-  )
+  const blockOf = (name: 'metadata' | 'viewport') => {
+    const start = source.indexOf(`export const ${name}`)
+    const end = source.indexOf('\n}\n', start)
+    if (start < 0 || end < 0) {
+      throw new Error(`app/admin/layout.tsx: no \`export const ${name}\` block found`)
+    }
+    return source.slice(start, end + 2)
+  }
+  const metadataBlock = blockOf('metadata')
+  const viewportBlock = blockOf('viewport')
 
   it('links the admin manifest, which is what redirects the install', () => {
     expect(metadataBlock).toMatch(/manifest: '\/admin\/manifest\.webmanifest'/)
@@ -307,6 +386,51 @@ describe('the admin layout', () => {
      * reads on install. There is no error and no warning; the tile just goes back to the runner's.
      */
     expect(metadataBlock).not.toMatch(/\bicons\s*:/)
+  })
+
+  it('tints its own status bar from ADMIN_INSTALL, in both schemes', () => {
+    /*
+     * R4. This export is the whole fix: without it the root layout's pair is the resolved
+     * `themeColor` for `/admin` too and the notch band is the runner's #c9e9fb. Both halves of the
+     * media-matched pair are asserted, and asserted as CONSTANT NAMES — a hex literal in this file
+     * would be a second copy of a value `lib/pwa.ts` already owns, which is the drift the last
+     * assertion here forbids outright.
+     */
+    expect(viewportBlock).toMatch(/themeColor:\s*\[/)
+    expect(viewportBlock).toMatch(/prefers-color-scheme: light/)
+    expect(viewportBlock).toMatch(/prefers-color-scheme: dark/)
+    expect(viewportBlock).toMatch(/light\)', color: ADMIN_INSTALL\.paper\b/)
+    expect(viewportBlock).toMatch(/dark\)', color: ADMIN_INSTALL\.paperDark\b/)
+    expect(viewportBlock).not.toMatch(/#[0-9a-fA-F]{3}/)
+  })
+
+  it('exports themeColor and NOTHING else, so viewportFit: cover stays inherited', () => {
+    /*
+     * The load-bearing assertion of this phase, and the one whose failure is invisible until a
+     * phone is in your hand. `resolve-metadata.js`'s `mergeViewport` (line 315) `structuredClone`s
+     * the already-resolved PARENT viewport and then walks `for (const key_ in viewport)`: a key
+     * this object omits is inherited untouched, a key it names is overwritten. `/admin` therefore
+     * keeps the root's `viewportFit: 'cover'` — which is what makes every `env(safe-area-inset-*)`
+     * in that shell non-inert — precisely BECAUSE it is not restated here. A well-meaning copy is
+     * a second source of truth that can drift, and the drift is silent: the four insets simply
+     * stop working.
+     *
+     * The object literal carries no comments (its docstring says so and says why), so both halves
+     * of this read code only. The key count is indentation-based and Prettier keeps the
+     * indentation: a top-level key of this object is the only thing at exactly two spaces.
+     */
+    const keys = viewportBlock.match(/^ {2}[A-Za-z]+:/gm) ?? []
+    expect(keys).toEqual(['  themeColor:'])
+    for (const inherited of ['viewportFit', 'initialScale', 'width', 'colorScheme']) {
+      expect(viewportBlock.includes(inherited), `${inherited} is restated here`).toBe(false)
+    }
+  })
+
+  it('types the export, so a misspelled viewport key is a build error', () => {
+    // `Viewport` is what turns `themeColour:` — or a stray `viewportFit` typo — into a typecheck
+    // failure instead of a key Next silently ignores.
+    expect(source).toMatch(/import type \{ Metadata, Viewport \} from 'next'/)
+    expect(viewportBlock).toMatch(/^export const viewport: Viewport = \{/)
   })
 })
 
