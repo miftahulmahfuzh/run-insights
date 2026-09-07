@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/admin-home-screen-shortcut`
 **Branch:** `feature/admin-home-screen-shortcut` (base: `origin/main` @ `f839116`)
 **Phases:** 2
-**Status:** planned
-**Coordinator:** —
+**Status:** complete — 2/2 phases landed on `feature/admin-home-screen-shortcut`; a phase is complete when its row in the Phases table is ticked ✅
+**Coordinator:** `orch-admin-home-screen-shortcut`
 **Parent card:** `miftahulmahfuzh/run-insights#107`
 
 ---
@@ -99,8 +99,8 @@ callback origin, a cross-origin session cookie that `auth.config.ts` does not is
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | The second manifest: `/admin` starts at `/admin` | R1, R2 | `app/admin` + `lib` | 4 | — | NORMAL | `.workflows/plan/admin-home-screen-shortcut/phase-1.md` | — | `miftahulmahfuzh/run-insights#109` |
-| 2 | A tile you can tell apart: the admin icon set | R1 | `tools` + `app/admin` + `public/icons` | 10 | 1 | NORMAL | `.workflows/plan/admin-home-screen-shortcut/phase-2.md` | — | `miftahulmahfuzh/run-insights#110` |
+| 1 ✅ | The second manifest: `/admin` starts at `/admin` | R1, R2 | `app/admin` + `lib` | 4 | — | NORMAL | `.workflows/plan/admin-home-screen-shortcut/phase-1.md` | `P1-RI-A019` | `miftahulmahfuzh/run-insights#109` |
+| 2 ✅ | A tile you can tell apart: the admin icon set | R1 | `tools` + `app/admin` + `public/icons` | 10 | 1 | NORMAL | `.workflows/plan/admin-home-screen-shortcut/phase-2.md` | `P1-RI-A020` | `miftahulmahfuzh/run-insights#110` |
 
 ### Phase 1 — The second manifest: `/admin` starts at `/admin`
 

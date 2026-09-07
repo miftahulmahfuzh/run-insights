@@ -22,16 +22,18 @@
 
 ### [P1] High
 
-- [ ] **P1-RI-A020** Phase 2: A tile you can tell apart: the admin icon set
+- [x] **P1-RI-A020** Phase 2: A tile you can tell apart: the admin icon set
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns `tools/make_icon_assets.py`'s new `--deck {app,admin}` flag (the admin deck is the same composition in the DARK scheme's tokens), the committed masters `assets/icon/master-admin.png` and `master-admin-maskable.png`, the three new `public/icons/admin-icon-{192,512,maskable-512}.png`, the new 180² `app/admin/apple-icon.png` Safari draws on install, an appended `ADMIN_PWA_ICONS` in `lib/pwa.ts`, the one-line `PWA_ICONS` → `ADMIN_PWA_ICONS` swap in `app/admin/manifest.webmanifest/route.ts`, and icon assertions added inside phase 1's admin `describe` blocks in `tests/pwa.install.test.ts`. Does not touch the runner's five icon files, `assets/icon/master.png`, `master-maskable.png`, `silhouette.png`, `app/manifest.ts`, `app/layout.tsx`, `next.config.ts` or `tools/gen_app_icon.py`. Exit criteria: `python3 tools/make_icon_assets.py --deck app` reproduces the five runner PNGs byte for byte (`git status` clean for them) as the refactor's regression guard; `--deck admin` writes the five admin files; `/admin`'s `<head>` carries exactly one `<link rel="apple-touch-icon">` resolving to `app/admin/apple-icon.png`; the admin manifest advertises three admin icons, all on disk, all opaque, all square, all the size they claim; lint, typecheck, test and build all green.
-  - **Status**: open
+  - **Status**: completed
   - **Plan Set**: `ADMIN_HOME_SCREEN_SHORTCUT_PLAN.md` (phase 2 of 2)
   - **Satisfies**: R1 — A home-screen tile that opens on `/admin`
   - **Depends on**: `P1-RI-A019`
   - **Plan**: `.workflows/plan/P1-RI-A020.md`
   - **Card**: `miftahulmahfuzh/run-insights#110`
+  - **Completed**: 2026-09-07 12:20
+  - **Method**: /implement (swarm phase 2/2)
 
 - [x] **P1-RI-A012** Phase 8: The unread dot clears itself on the newest session
   - **Difficulty**: EASY
