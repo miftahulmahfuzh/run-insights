@@ -1,0 +1,71 @@
+{
+  "branch": "feature/chat-photo-orphans-and-uniqueness",
+  "coordinator": "orch-chat-photo-orphans-and-uniqueness",
+  "coordinator_session_id": "8f5c05e2-02c4-4aa0-8ae3-563266ad36a7",
+  "created": "2026-09-07T15:46:06+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": "TaskID minted by coordinator (single writer, hazard 7); /implement Step 3 embargoed for every phase in this set. Set-level Decisions and Open Questions already resolved by the reconciler -- 8 rows in the plan index, Open Questions: None.",
+      "package": "lib/db` + `lib/nina` + `components",
+      "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md",
+      "reported_at": "2026-09-07T15:48:23+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": "P1-NIN-A030",
+      "title": "Orphan-able photographs: the FK, the migration, and every reader that assumed a message"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": "TaskID minted by coordinator.",
+      "package": "lib/nina` + `lib/admin",
+      "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md",
+      "reported_at": "2026-09-07T15:48:23+00:00",
+      "satisfies": [
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": "P1-NIN-A031",
+      "title": "One photograph per collection row: the reference marker and adopt-or-reference"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": "TaskID minted by coordinator (package scripts -> root RI).",
+      "package": "scripts",
+      "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md",
+      "reported_at": "2026-09-07T15:48:23+00:00",
+      "satisfies": [
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": "P1-RI-A030",
+      "title": "The backfill: bring the rows that already violate R2/R3 into line, deleting nothing"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/chat-photo-orphans-and-uniqueness/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "chat-photo-orphans-and-uniqueness",
+  "updated": "2026-09-07T15:48:23+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/chat-photo-orphans-and-uniqueness"
+}
