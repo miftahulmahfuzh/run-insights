@@ -2,7 +2,7 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-06
+**Last Updated**: 2026-09-07
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 18
+- Completed: 19
 
 ---
 
@@ -50,6 +50,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A019** Phase 1: Thread the current avatar into the chat's typing row
+  - **Difficulty**: EASY
+  - **Type**: Bug
+  - **Context**: Owns `components/nina/types.ts` (new `ChatAvatar` type), `components/nina/ChatScreen.tsx`, `components/nina/MessageList.tsx`, `components/nina/TypingIndicator.tsx`, `app/nina/page.tsx` (the `<ChatScreen>` call only), and the new `tests/nina.chatAvatar.test.ts`. Does not touch `components/nina/NinaAvatar.tsx`, `components/nina/NinaSidebar.tsx`, `components/nina/NinaAboutScreen.tsx`, `lib/nina/crop.ts`, `lib/nina/album.ts`, `lib/nina/queries.ts`, any schema or migration. Exit criteria: `TypingIndicator` renders `<NinaAvatar size="sm" src={…} natural={…} crop={…} />`; the triple originates at `ninaAvatarView(avatarRow)` in `app/nina/page.tsx` — the same call the sidebar already reads, so the 28 px circle and the 44 px circle cannot disagree; the prop is REQUIRED at every hop (`ChatScreen`, `MessageList`), so a future caller that forgets it is a type error and not a silent regression to the fallback; `tests/nina.chatAvatar.test.ts` passes and would fail if any hop were removed; `npx tsc --noEmit && npm run lint && npm test && npm run build` all green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_CHAT_AVATAR_PROFILE_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — The small circular avatar in chat must render the profile settings actually in force — the current album photo and its saved crop framing — not a hardcoded picture
+  - **Plan**: `.workflows/plan/P1-RI-A019.md`
+  - **Card**: `miftahulmahfuzh/run-insights#111`
+  - **Files**: components/nina/types.ts, components/nina/TypingIndicator.tsx, components/nina/MessageList.tsx, components/nina/ChatScreen.tsx, app/nina/page.tsx, tests/nina.chatAvatar.test.ts
+  - **Completed**: 2026-09-07 11:42
+  - **Method**: /implement (plan set phase 1 of 1, worktree `nina-chat-avatar-profile`)
+  - **Verification**: `npm run typecheck` exit 0; `npm run lint` 0 errors (the only 2 warnings are pre-existing in `scripts/capture/shoot.mjs`); `npm test` 148 files / 2884 tests passed; `npm run build` exit 0. All four run in this worktree.
+  - **VERIFIED BY MUTATION, not just by passing**: deleting `avatar={avatar}` from `MessageList`'s `<TypingIndicator>` call makes `tests/nina.chatAvatar.test.ts` fail 1/5; restoring it passes 5/5. That is exit criterion 4 — the suite would fail if any hop were removed — demonstrated rather than asserted.
+  - **What it fixes (R1)**: the 28 px circle beside the typing dots was `<NinaAvatar size="sm" />` with no `src`, no `natural`, no `crop`, so it always rendered the committed `public/nina/avatar-001.png` through `NinaAvatar`'s `isFallback` branch and `ninaCropStyle` was never called for it. It ignored both the current album photo and the framing saved in the crop studio, while the 44 px sidebar circle honoured both.
+  - **The fix**: thread the already-resolved `{ src, natural, crop }` triple four hops — `app/nina/page.tsx:259`'s existing `const avatar = ninaAvatarView(avatarRow)`, the same value `<NinaSidebar>` reads, into `ChatScreen` -> `MessageList` -> `TypingIndicator` -> `NinaAvatar`. New exported `ChatAvatar` interface in `components/nina/types.ts`; required at `ChatScreen` and `MessageList`, optional at `TypingIndicator` which is `aria-hidden` decoration. No new query and no new await (invariant 1); `description` never crosses into a client component, the call site destructures field by field (invariants 2 and 5); the no-album case still renders `/nina/avatar-001.png` centred cover unchanged (invariant 3).
+  - **Decided**: the plan's Step 2 docstring quotes the defect verbatim (`<NinaAvatar size="sm" />`) while its Step 6 test forbids that exact string anywhere in the file — two rung-3 code blocks contradicting each other. Kept both: a `jsxOf()` helper in the test strips block comments before the two `not.toMatch` JSX-shape assertions. Resolved at rung 2, the phase's exit criteria: the test must pass AND still fail if a hop is removed.
+  - **Drift**: no code drift — every anchor the phase plan quoted matched the tree byte for byte.
+  - **Drift**: the worktree had no `node_modules`; `npm ci` was run so the plan's verification block could execute. `.env.local` was already present.
 
 - [x] **P1-RI-A018** Phase 7: End-to-end: chat → `set_avatar` → generation → the profpic really changes
   - **Difficulty**: NORMAL

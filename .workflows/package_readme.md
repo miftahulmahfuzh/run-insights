@@ -1,7 +1,8 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-05
+**Last Updated**: 2026-09-07 (task `P1-RI-A019`, R1 of `NINA_CHAT_AVATAR_PROFILE_PLAN.md` — the
+typing row's face)
 
 ## Overview
 
@@ -598,7 +599,10 @@ own four-cell `AdminNav` — and `FileExplorer` is still desktop-shaped),
 the shell across a client boundary for one empty state).
 
 `/nina` deliberately does not use `ScreenHeader` either: a conversation's identity is a face and a
-name, not a title and a link, so that screen builds its own header row out of `NinaAvatar`.
+name, not a title and a link. Since F35 R7 the screen has no header row at all — her face appears
+in `NinaSidebar`'s 44 px circle and in the 28 px circle beside the typing dots, and since
+`P1-RI-A019` both are fed from the **same** `ninaAvatarView(...)` value that `app/nina/page.tsx`
+resolves once (see the recent-changes note below).
 
 ### Geometry-constant consumers
 
@@ -744,9 +748,54 @@ auth edge and the repo-wide configuration. The persistence layer is documented i
 The product contracts this file defers to, in precedence order: `RECONCILIATION_v0.1.0.md` (the
 `R-n` rulings, which supersede any individual plan and amend the roadmap), then
 `ROADMAP_v0.1.0.md` (§4.1 env-var names, §4.2 formatting, §4.3 schema, §4.8 routes), then the
-per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` is the
-current branch's plan set; `R1` (the `New` tab) and `R2` (the composer seam) are its two
-requirements, landed as `P1-RI-A015` and `P1-RI-A016`.
+per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` holds `R1`
+(the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
+`NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
+`P1-RI-A019`.
+
+### Recent changes — P1-RI-A019 (2026-09-07)
+
+*R1 of `NINA_CHAT_AVATAR_PROFILE_PLAN.md`: the typing row's 28 px circle now honours the profile
+avatar.*
+
+The circle beside the typing dots was `<NinaAvatar size="sm" />` with no `src`, `natural` or
+`crop`, so it always took `NinaAvatar`'s `isFallback` branch and rendered the committed
+`public/nina/avatar-001.png` — `ninaCropStyle` was never called for it. It therefore ignored both
+the current album photo and the crop-studio framing while the 44 px sidebar circle honoured both,
+and the two faces on one screen could disagree. The fix threads the already-resolved
+`{ src, natural, crop }` triple four hops: `app/nina/page.tsx`'s existing
+`const avatar = ninaAvatarView(avatarRow)` — the *same* value `<NinaSidebar>` reads — into
+`ChatScreen` → `MessageList` → `TypingIndicator` → `NinaAvatar`.
+
+**New:**
+
+- `ChatAvatar` in `components/nina/types.ts` — `ninaAvatarView`'s three *render* fields and
+  nothing else. Structurally identical to `NinaSidebarAvatar` and deliberately a separate
+  declaration: `ChatScreen` importing a type out of `NinaSidebar.tsx` would contradict the boundary
+  `ChatChrome.tsx` states, to save one interface.
+- `tests/nina.chatAvatar.test.ts` — a source-text suite (vitest is `environment: 'node'`; there is
+  no jsdom to render a circle in) that fails if any hop is removed, and that asserts the page still
+  calls `ninaAvatarView` exactly once.
+
+**Changed:**
+
+- `components/nina/ChatScreen.tsx` and `components/nina/MessageList.tsx` — a **required**
+  `avatar: ChatAvatar` prop on each. Required rather than optional on purpose: each has exactly one
+  caller, so a caller that forgets it must be a `tsc` error and not a silent regression to the
+  fallback. An optional prop all the way up is how the bug happened. Neither component renders an
+  avatar itself; the prop exists only to reach `TypingIndicator`.
+- `components/nina/TypingIndicator.tsx` — `avatar` is **optional** here, the one deliberate
+  asymmetry: the row is `aria-hidden` decoration whose worst case should be the committed face, so
+  it keeps `NinaAvatar`'s own defaults.
+- `app/nina/page.tsx` — one prop on the existing `<ChatScreen>` call, destructured field by field
+  rather than spread, so `ninaAvatarView`'s `description` (`glm-4.6v`'s private prose, invariant 5)
+  cannot ride into a client component. The same care the `<NinaSidebar>` call beside it already
+  took.
+
+**Unchanged, and checked:** no new query and no new `await` on `/nina` — the row was already being
+read. `NinaAvatar.tsx`, `NinaSidebar.tsx` and `NinaAboutScreen.tsx` were not touched, and
+`NinaSidebarAvatar` was left as its own type rather than refactored onto `ChatAvatar`. The
+no-album case still renders `/nina/avatar-001.png` centred `cover`, exactly as before.
 
 ### Recent changes — P1-RI-A015 and P1-RI-A016 (2026-09-05)
 

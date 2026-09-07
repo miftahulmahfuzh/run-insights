@@ -483,6 +483,14 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
         local state is not a workaround — it is the correct semantics. `'none'` covers the
         no-sessions case so the key is never `undefined`.
       */}
+        {/*
+          R1. `avatar` is destructured field by field, NOT spread — `ninaAvatarView`'s
+          `description` is `glm-4.6v`'s private prose (invariant 5) and must not cross into a
+          client component. Identical care to the `<NinaSidebar>` call below, and identical
+          VALUE: both circles render the row `getCurrentNinaAvatar` returned, so the 28 px face
+          beside the typing dots and the 44 px face in the sidebar cannot disagree about which
+          photo is current or where it is cropped.
+        */}
         <ChatScreen
           key={activeSessionId ?? 'none'}
           initial={initial}
@@ -492,6 +500,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
           pending={pending}
           pendingPhoto={pendingPhoto}
           flight={flight}
+          avatar={{ src: avatar.src, natural: avatar.natural, crop: avatar.crop }}
         />
 
         {/*

@@ -42,7 +42,7 @@ import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
-import type { ChatMessage } from './types'
+import type { ChatAvatar, ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
 
 /**
@@ -164,6 +164,7 @@ export function ChatScreen({
   pending,
   pendingPhoto,
   flight,
+  avatar,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -243,6 +244,29 @@ export function ChatScreen({
    * into a chat that silently never polled.
    */
   flight: NinaFlightView
+  /**
+   * **R1. Her face as the profile settings currently have it** — the current album row's blob URL,
+   * its natural size, and its saved crop triple; or the committed `/nina/avatar-001.png` with a
+   * null crop when there is no album row.
+   *
+   * Resolved on the server by `ninaAvatarView(getCurrentNinaAvatar(userId))` — the SAME call whose
+   * result `app/nina/page.tsx` hands to `<NinaSidebar>`, which is the whole point: the 28 px
+   * circle beside the typing dots and the 44 px circle in the sidebar read one row and therefore
+   * cannot show two different faces or two different framings.
+   *
+   * This screen renders no avatar itself. The prop exists to reach `TypingIndicator` through
+   * `MessageList`, and it stops there.
+   *
+   * `description` is NOT part of the shape (`ChatAvatar` omits it) and the call site destructures
+   * field by field, so `glm-4.6v`'s private prose cannot ride into a client component — invariant
+   * 5, the same care `pendingPhoto` takes above.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit and for the reason `sessionId`,
+   * `pendingPhoto` and `flight` are: `app/nina/page.tsx` is the one caller and `tsc` should be what
+   * notices if it stops passing it. An optional prop defaulting to the fallback is exactly how the
+   * typing row came to ignore the album for as long as it did.
+   */
+  avatar: ChatAvatar
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   /** Mid-reveal: the pause between two of her bubbles. Distinct from `awaiting`; see the render. */
@@ -1122,6 +1146,7 @@ export function ChatScreen({
           keyboardOverlapPx={overlap}
           restoreMark={mark}
           flashId={flashId}
+          avatar={avatar}
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}
           onRequestActions={handleRequestActions}
