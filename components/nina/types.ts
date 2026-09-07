@@ -10,6 +10,7 @@
  */
 
 import type { RunAttachment } from '@/lib/nina/attach'
+import type { NinaCropInput } from '@/lib/nina/crop'
 
 export type ChatRole = 'user' | 'nina'
 
@@ -118,4 +119,28 @@ export interface ChatMessage {
    * edit.
    */
   attachment?: RunAttachment | null
+}
+
+/**
+ * Her face, as the chat surface needs it — R1.
+ *
+ * The three RENDER fields of `ninaAvatarView` and nothing else. **Deliberately not its
+ * `description`**: that is `glm-4.6v`'s private prose, Nina's prompt is its only consumer, and
+ * invariant 5 says it must never reach a client component. `app/nina/page.tsx` therefore builds
+ * this field by field rather than spreading the view — the same care the `<NinaSidebar>` call
+ * beside it already takes.
+ *
+ * `src` is a Blob URL for an album row and the committed `/nina/avatar-001.png` when there is no
+ * album row; `crop` is null in the second case, which is what makes `NinaAvatar` take its
+ * `next/image` branch and render exactly what it rendered before this type existed.
+ *
+ * Structurally identical to `NinaSidebarAvatar`, and deliberately a separate declaration: the
+ * sidebar is a sibling of `<main>` rendered by `AppShell`, not part of the conversation, and
+ * `ChatScreen` importing from `NinaSidebar.tsx` would contradict `ChatChrome.tsx`'s stated
+ * boundary to save one interface.
+ */
+export interface ChatAvatar {
+  src: string
+  natural: { width: number | null; height: number | null }
+  crop: NinaCropInput | null
 }
