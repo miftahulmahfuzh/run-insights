@@ -86,21 +86,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b691af8",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 5,
-      "note": null,
+      "note": "Seam mount at 'SEAM \u2014 PHASE 5' is applied on disk but NOT in b691af8 -- it lands inside phase 4's commit of components/admin/ImageGenPanel.tsx. Phase 5's own test asserts not.toContain('SEAM \u2014 PHASE 5') and went red the moment phase 4 wrote the panel, so invariant 1 forced the mount before phase 4 committed. Consequence: phase boundary != commit boundary here, so a revert of b691af8 alone leaves the mount, and land --step check must not read the absence of ImageGenPanel.tsx from b691af8 as phase 5 being incomplete. Two plan test assertions were contradicted by the plan's own docstrings (headers quote 'use client' and next/image to explain why the property holds); fixed by asserting the real property over codeLines() plus startsWith, which is strictly stronger. readme-updater skipped per Handoff H6: components/admin/.workflows/package_readme.md owes phase 5's two files and phases 4 and 6 add more -- ONE end-of-set pass, coordinator-owned.",
       "package": "components/admin",
       "plan": ".workflows/plan/nina-image-generation-tab/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:59:42+00:00",
       "satisfies": [
         "R10"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CA-A003",
       "title": "The photo-reference picker"
     },
     {
@@ -149,6 +149,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-image-generation-tab",
-  "updated": "2026-09-07T15:44:44+00:00",
+  "updated": "2026-09-07T15:59:42+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
 }
