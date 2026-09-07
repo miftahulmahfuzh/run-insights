@@ -1,5 +1,6 @@
 {
   "board_outstanding": {
+    "ancestry_gotcha": "task_gh.py finish checks `merge-base --is-ancestor <sha> HEAD` from the repo root, and the shared main checkout's local `main` lags origin/main (work here happens in worktrees). Run the commands from a detached worktree cut at origin/main -- `git worktree add --detach <tmp> origin/main` -- or the check rejects all four commits even though they are on main.",
     "authority": "The derivation is authoritative and the board is the mirror -- every phase is verified done from git and the merge is on main at 27bfaa6. A stale board column is a wrong claim about work that is provably finished, not unfinished work.",
     "rerun": [
       "Run from a checkout whose HEAD contains the merge -- task_gh.py finish checks `merge-base --is-ancestor <sha> HEAD`, so the stale local `main` in the shared checkout rejects all four:",
@@ -10,7 +11,8 @@
       "then close the parent #113, which owns the pull request."
     ],
     "state": "The four phase cards #114-#117 and the parent #113 are still open and in Todo on the board. Everything else in the landing is complete.",
-    "why": "GitHub Projects v2 SECONDARY rate limit: `gh project item-list 1 --owner @me` fails with 'API rate limit exceeded for user ID 9016951' while the documented limits report 5000/5000 remaining for both graphql and core. Same class of limit that blocked this set's card CREATION earlier today. Retried once, still refused; not hammered further."
+    "verified_blocked_at": "2026-09-07T05:52Z",
+    "why": "GitHub's GraphQL API is exhausted ACCOUNT-WIDE on a secondary limit, not just Projects v2: `gh issue view 113` fails with 'API rate limit already exceeded for user ID 9016951' exactly like `gh project item-list`. The documented resources report 5000/5000 for graphql and core, so this is the undocumented secondary/abuse limit -- the same class that blocked this set's card CREATION earlier today. Many concurrent orchestrators shared this account today. Probed at --limit 1/50/100/200/500: all refused, so it is not query cost and not fixable by paging. Retried across several minutes; not hammered further."
   },
   "branch": "feature/nina-photo-caption-from-image",
   "card_note": "parent #113 owns the pull request; each phase completes on its commit via `finish <n> --child-of 113 --commit <sha>`. Minted by analyze-nina-photo-caption after GitHub's secondary content-creation limit cleared, verified subIssues total 4.",
