@@ -1,8 +1,11 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts`
-plus five functions in `queries.ts`, both **unwired**; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; previously `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`, `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` /
+`shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump
+in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its
+queries — `shortcuts.ts`
+plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; previously `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`, `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -421,7 +424,8 @@ turn is always one character. `nina_turns.tuning_revision` records which setting
 turn; `prompt_version` identifies the assembler, the revision identifies what it assembled, and only
 the pair answers "what was she set to when she said that".
 
-**`NINA_PROMPT_VERSION` is `4`.** The `3 -> 4` bump is R2: `HOW YOU TALK` gained
+**`NINA_PROMPT_VERSION` was `4` for the whole admin-responsive-nina-intimacy set; it is `6` today.**
+The `3 -> 4` bump is R2: `HOW YOU TALK` gained
 `ninaManjaRegisterBlock(tuning)` directly under `JAKARTA_REGISTER` — an amendment two paragraphs from
 its rule is an amendment the model may not connect — and `EXACTLY HOW YOU SOUND` gained
 `ninaGirlfriendVoiceBlock(tuning)` as a second entry after `VOICE_EXAMPLES_BLOCK`, whose lead-in reads
@@ -435,7 +439,20 @@ it either, and the reason is the same shape**: `horny` adds a twelfth entry to `
 band-keyed clause to `proactiveTuningSuffix` and a floor under `verbosity` — every one of them
 silent at the trait's default of 0, so `NINA_TUNING_DEFAULTS` still renders version 4's exact bytes.
 No section moved, no tool schema moved, and `NINA_SECTION_TITLES` is still ten. **`NINA_PROMPT_VERSION`
-is therefore `4` for the whole admin-responsive-nina-intimacy set, bumped once, by R2.** The changelog
+is therefore `4` for the whole admin-responsive-nina-intimacy set, bumped once, by R2.**
+
+**Two bumps have landed since, each the single bump of its own set.** `4 -> 5` is the
+nina-instructor-character set's sixth relationship and its coaching mechanics (that set's phase 3;
+see *"The Instructor character"* below). **`5 -> 6` is `P1-NIN-A023`, the shortcut block — and it is
+the first bump in this package's history that moved NO SYSTEM TEXT AT ALL.** `prompts/system.ts` and
+`prompts/tools.ts` were not opened, `buildNinaSystemPrompt` renders version 5's exact bytes at every
+tuning, and `tests/__snapshots__/nina.prompts.test.ts.snap` was deliberately **not** regenerated
+because it still passes. What changed is the **assembler**: `userTurnText` in `turn.ts` gained one
+conditional block fed by two new optional `NinaTurnInput` fields. The bump is still right, and this
+file's own line above says why in as many words — *`NINA_PROMPT_VERSION` identifies the ASSEMBLER,
+not the output*. A turn that can be sent a two-kilobyte standing directive it could never have been
+sent before is exactly the kind of behaviour change `nina_turns` has to be able to date, so those
+turns must be distinguishable from version 5's. The changelog
 for each version lives as a comment above the constant in `prompts/index.ts`.
 
 ## The camera is a function of the tuning
@@ -460,8 +477,8 @@ a promise he did not keep. A promise with no `reward` field is today's avatar pr
 ### Chat turn pipeline
 | File | Purpose |
 |---|---|
-| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. |
-| `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. |
+| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. Since `P1-NIN-A023` it also reads the live shortcut table (fourth entry in the turn's `Promise.all`) and bumps the fired rows fire-and-forget. |
+| `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. Also the **one** place shortcuts are matched (`shortcutHits`, once per turn) and rendered into the user turn (`shortcutBlock`). |
 | `tools.ts` *(T)* | Tool *dispatch*. Gateway-injected, so it tests with no DB. |
 | `schema.ts` *(T)* | Zod output contract for `SEND_TOOL` and the tool arg schemas. |
 | `gateway.ts` | Production DB-backed implementations of the three injected ports. |
@@ -501,8 +518,8 @@ how a schema change quietly rewrites her character.
 `memory.ts` (slot vocabulary and all pure memory logic), `distill.ts` (post-turn background
 distillation), `promise.ts` *(T)* / `promises.ts` (the pure and impure halves of "did she keep her
 promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern detection),
-`shortcuts.ts` *(T)* (the whole of "did he type a code, and which" — see below; **no reader on the
-turn path yet**).
+`shortcuts.ts` *(T)* (the whole of "did he type a code, and which" — see below; **read on every chat
+turn by `turn.ts` since `P1-NIN-A023`**).
 
 ### Proactive
 `proactive.ts` — `evaluateAndEmitForUser` (the cron path) and `emitRunCommitted` (fired by
@@ -1494,11 +1511,13 @@ second rhythm. `liveSessionId` is deliberately not adopted from the result, beca
 resent is already in the conversation this screen is polling; a resend cannot create a session the
 way a first send can.
 
-## Shortcuts — one code stands for a directive he wrote once (F36, `P1-DB-A004`, phase 1 of 4)
+## Shortcuts — one code stands for a directive he wrote once (F36, `P1-DB-A004` + `P1-NIN-A023`, phases 1-2 of 4)
 
 He types `🍑` and means four sentences he wrote months ago. Phase 1 shipped the **table, the matcher
-and the queries, and wired none of them** — no route, no component, no prompt change, and typing an
-emoji in the chat still does exactly what it did yesterday. Phase 2 reads it on the turn path, phase
+and the queries, and wired none of them** — no route, no component, no prompt change. **Phase 2
+(`P1-NIN-A023`) is the wiring**: a trigger in his message now carries that shortcut's whole
+expansion into the user turn as an explicit directive, immediately above `HE JUST SAID:` — see
+*"Phase 2 — the turn fires it"* at the end of this section. Phase
 3 is the admin registry, phase 4 lifts the existing codes out of the memory ledger. The table itself
 is `nina_shortcuts`; `lib/db/.workflows/package_readme.md` carries its columns, its two indexes and
 why it is a table rather than more `nina_memory_facts` rows.
@@ -1597,8 +1616,10 @@ lists are empty, never merely that `fired` is.
 The two headers are the **only** instruction text this feature adds anywhere. There is deliberately
 no section in `prompts/system.ts` telling her what a shortcut is: every word she needs travels with
 the shortcut, adjacent to the expansion it governs, and costs nothing on the turns where nothing
-fired. `NINA_PROMPT_VERSION` is therefore untouched by this phase — there is no assembler change and
-no reader yet.
+fired. That is also why phase 2's `NINA_PROMPT_VERSION` bump (5 → 6) moved **no system text at
+all**: `buildNinaSystemPrompt` is byte-identical to version 5's at every tuning and
+`tests/__snapshots__/nina.prompts.test.ts.snap` passes unregenerated. What changed is the
+*assembler* — `userTurnText` — and the constant identifies the assembler.
 
 The 5000-character ceiling is enforced by **dropping whole entries from the end**, not by cutting
 text, because half a directive can invert a directive (`…jangan` and `…jangan berhenti` are
@@ -1637,8 +1658,9 @@ tombstone — a deleted directive that still exists somewhere is the failure thi
 end — and `false` means already gone *or* never his, which are the same outcome in this file.
 
 `bumpNinaShortcutUses(userId, ids)` is one statement, `uses = uses + 1` and `last_used_at = now()`
-for every id at once. **Phase 2 calls it fire-and-forget after the turn has already returned, and
-the caller must `.catch()`**: nothing reads `uses` on the turn path, and this is telemetry rather
+for every id at once. **`sendNinaMessage` calls it fire-and-forget once the turn has returned, and
+the caller must `.catch()`** — that call site landed with `P1-NIN-A023`: nothing reads `uses` on the
+turn path, and this is telemetry rather
 than bookkeeping the conversation depends on. The increment is in SQL rather than read-then-written
 because a background turn and a proactive sweep are a real concurrent pair — `upsertNinaNag`'s
 `count` is the precedent.
@@ -1657,6 +1679,95 @@ matcher needs). The record is a **superset** of the matchable, deliberately: pha
 straight to `matchNinaShortcuts` and phase 3's table renders the extra fields, so neither needs a
 mapping step.
 
+### Phase 2 — the turn fires it (`P1-NIN-A023`)
+
+The whole integration is **two optional input fields, one required result field, and one conditional
+`parts.push`**. No new module, no new query, no new provider call, no migration.
+
+```ts
+interface NinaTurnInput {
+  shortcuts?: readonly NinaShortcutMatchable[]   // what listNinaShortcuts(userId, {onlyEnabled:true}) returns
+  recentRunnerTexts?: readonly string[]          // HIS earlier messages, newest first, already sliced
+}
+interface NinaTurnResult {
+  firedShortcutIds: readonly string[]            // REQUIRED. [] on most turns.
+}
+
+function shortcutHits(input: NinaTurnInput): NinaShortcutHits   // module-private
+function shortcutBlock(hits: NinaShortcutHits): string | null   // module-private
+function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string  // second parameter is new
+```
+
+**The matcher runs exactly ONCE per turn, and the place is `runNinaTurnWith`** — beside
+`buildNinaSystemPrompt`, before the first model call, for the same reason: everything that defines a
+turn must be fixed before the up-to-four calls it may make. The single `NinaShortcutHits` feeds
+**both** `userTurnText` (which renders the block) and `firedShortcutIds` (which `actions.ts` bumps),
+so the block the model was actually sent and the rows whose counter moves can never disagree. A
+second match inside the action would take its own view of the window and its own idea of which
+message is current, and the bug that produces — *"`/admin/shortcuts` says 🍑 fired and the prompt did
+not contain it"* — is unfalsifiable from the outside. That is why the ids ride on the **result** and
+are not recomputed by the caller, and why they are **not** on `NinaTurnTrace`: `nina_turns` has no
+column for them, and this is a value the caller acts on rather than an audit field.
+
+**Where the block goes, and why there.** After the attached-run block and **immediately before
+`HE JUST SAID:`** — R12's rule applied to a different object. A run he attached is the *subject* of
+the message; a fired shortcut is the *register* the message is in, and it is the standing
+instruction his next sentence has to be read under, so she reads it before the sentence rather than
+after it. `turn.test.ts` pins the three offsets in order.
+
+**A turn that fired nothing carries ZERO shortcut bytes (invariant 2)** — no header, no empty block,
+not one byte, so its user turn is byte-identical to the one this repo produced before the feature
+existed. That is enforced twice: `shortcutBlock` short-circuits on empty hits in *this* file rather
+than trusting a renderer in another one, and `renderNinaShortcutBlock` returns `null` rather than
+`''`. It is the whole reason this is a user-turn block and not a system-prompt section — two dozen
+expansions would otherwise cost several kilobytes on every turn, including all the ones where he used
+none of them. `turn.test.ts` asserts it three ways: field absent, `[]`, and rows present that do not
+match.
+
+**An in-play-only hit DOES render a block** — under the `STILL IN PLAY` header — while
+`firedShortcutIds` stays `[]`. Both halves are deliberate: the `🫦` mode has to still be legible on
+the turn where he only says *"terusin"*, and counting it again on that turn would make
+`nina_shortcuts.uses` a measure of how RECENTLY he used a code rather than how OFTEN.
+
+**Both helpers are wrapped in `try` (invariant 7).** A malformed trigger is a row an admin typed on
+his phone, not a programming error; the matcher is a pure zero-import function that is not supposed
+to throw either, and this is belt to that brace. A refusal degrades to "nothing fired" with a
+`console.warn`, never to a lost reply — `turn.test.ts` drives a regex-metacharacter trigger (`(([`)
+through the real loop and asserts `source: 'llm'`.
+
+**The two new fields are OPTIONAL, and that is a decision.** Contrast `tuning`, which is required
+because a forgotten call site would silently ship the default character. Nothing of the kind applies
+here: `proactive.ts` has no runner text at all, and the `tests/live/` and `tests/integration/`
+builders exercise no shortcut — "this turn carried none" is the correct behaviour on every one of
+them, so a required field would only force fixture rewrites. Absent, `[]`, and "present but nothing
+matched" are the same turn.
+
+**The action's side (`actions.ts`).** `listNinaShortcuts(userId, { onlyEnabled: true })` is a
+**fourth entry in the existing three-way `Promise.all`** — one `(user_id, enabled)`-indexed read of
+a table holding tens of rows, on a connection the turn is already opening, so it costs no wall clock
+the turn was not already spending, and a row added on `/admin/shortcuts` fires on his very next
+message with no invalidation step. **Its rejection is swallowed** (`.catch(() => [])`, invariant 7):
+it is the one entry of the four that is garnish — a tuning that will not load is the wrong Nina and
+a context that will not load is no turn, but a shortcut table that will not load is a turn with no
+shortcut in it, which is what most turns are anyway. `recentRunnerTexts` is **derived from the
+already-loaded conversation window with no new query** — three array operations over ~40 objects in
+memory: filter to `role === 'runner'`, drop the message this turn is answering (a trigger in it
+FIRED, and letting it also count as carried-over would bump one shortcut twice for one send),
+`reverse()` to newest-first, `slice(0, NINA_SHORTCUT_LOOKBACK)`. Hers are excluded (A3) because an
+expansion she echoed back would re-fire itself for as long as it stayed in the window.
+
+The usage bump sits **above all four exits** of the send path (`session-gone`, the null payload, the
+happy path, a throw), so one call site covers them: a shortcut fired the moment its expansion went
+into the payload the model was billed for, and counting only the turns that survived to a bubble
+would make the column a measure of Nina's uptime rather than of his habits. It is `void … .catch()`
+rather than `await`, and deliberately **not** `after()` — we are already inside one, and
+`tests/nina.resend.test.ts` drains that queue by hand and asserts its length, so a second entry
+would change what that suite measures.
+
+**`NINA_PROMPT_VERSION` 5 → 6 is this set's single bump, and phase 2 owns it.** No later phase may
+touch the constant; two bumps would date two commits to one change. The reason it is a bump at all
+despite no system text moving is in *"The prompt is a function of the tuning"* above.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
@@ -1667,11 +1778,16 @@ all — not the one the browser asked for. Then `ChatScreen.tsx` calls `sendNina
 
 1. `requireUserId`, then validate body / `replyToId` / tickets.
 2. Persist the user's message.
-3. `loadNinaContext` → `buildNinaContext`, pulling memory, patterns and nags.
-4. `runNinaTurn` with `NINA_FULL_TOOL_SET` and the prompts. Tool rounds go through
-   `dispatchNinaTool`; `generate_image` opens a job row and fires the GH-Actions worker.
+3. One `Promise.all`: `loadNinaContext` → `buildNinaContext` (memory, patterns, nags),
+   `loadRunHistory`, `readNinaTuning`, and `listNinaShortcuts(userId, { onlyEnabled: true })` — the
+   last one's rejection swallowed. `recentRunnerTexts` is then sliced out of the loaded window with
+   no new query.
+4. `runNinaTurn` with `NINA_FULL_TOOL_SET` and the prompts. `shortcutHits` matches **once**, before
+   the first model call, and feeds both the user-turn block and `firedShortcutIds`. Tool rounds go
+   through `dispatchNinaTool`; `generate_image` opens a job row and fires the GH-Actions worker.
 5. The `send` payload is validated by `NinaSendPayloadSchema`; bubbles are written; the turn is
-   recorded.
+   recorded; `bumpNinaShortcutUses(userId, result.firedShortcutIds)` runs fire-and-forget above all
+   four exits.
 6. `after(...)` schedules `runTurnDistillation` → `planMemoryWrites` → `applyMemoryPlan`.
 7. The client renders with `reveal.ts` timing, `chatview.ts` grouping, `reply.ts` quotes,
    `live.ts` merges, `scroll.ts` restore.
@@ -1923,11 +2039,30 @@ are worth knowing:
   because an underived key is a key the unique index treats as a different trigger.
 - **`bumpNinaShortcutUses` is telemetry: the caller must `.catch()` it.** It runs after the turn has
   returned and nothing reads `uses` on the turn path, so a rejected bump must never fail a turn.
+- **`matchNinaShortcuts` runs ONCE per turn, in `runNinaTurnWith`, and nothing may run it again.**
+  `actions.ts` reads `NinaTurnResult.firedShortcutIds` instead of re-matching, because a second run
+  would see a slightly different window and could disagree with the block the model was sent — and
+  "`/admin/shortcuts` says 🍑 fired but the prompt did not contain it" cannot be falsified from the
+  outside. For the same reason the ids stay off `NinaTurnTrace`: they are acted on, not audited.
+- **A turn that fired nothing must stay byte-identical to a pre-feature turn (invariant 2).** Keep
+  the empty-hits short circuit in `turn.ts`'s `shortcutBlock` even though `renderNinaShortcutBlock`
+  already returns `null` — the invariant is asserted against `turn.ts` and must not depend on what
+  another file does with an empty argument. Do not "promote" the block into `prompts/system.ts`:
+  every turn would then pay for two dozen expansions he did not use.
 
 ## Tests
 
 In-package: 27 colocated `*.test.ts` files over the pure modules — the twenty-seventh is
 `shortcuts.test.ts`, which also carries the zero-import structural guard described above.
+`turn.test.ts` adds two describe blocks for `P1-NIN-A023` — *"`userTurnText` — the fired shortcut"*
+(invariant 2 three ways, the in-play-only block, the full expansion, the three offsets around
+`HE JUST SAID:`, a disabled row dropped at the input boundary, `recentRunnerTexts` as the only route
+to history, and invariant 7 driven through the real loop with a `(([` trigger) and
+*"`NinaTurnResult.firedShortcutIds`"* (`[]` with no shortcuts, only the id he typed, `[]` for
+in-play-only, and the id still carried by an `unavailable` turn — the action bumps before it checks
+whether she answered). `tests/nina.resend.test.ts` needed one
+line: its `runNinaTurn` mock now returns `firedShortcutIds: []`, because the field is required and
+the action reads its length.
 Repo-level: 30 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
@@ -2232,3 +2367,28 @@ Phases 3 and 4 both depend on 1 and 2 and run concurrently — which is exactly 
 unwired and why the payload-boundary guard's ninth entry already sanctions both wiring modules: two
 phases each appending to one guard is two merge conflicts, and a window in each of them where the
 new call is unguarded.
+
+---
+
+**`P1-NIN-A023` is phase 2 of 4 of the `nina-emoji-shortcuts` set** — *firing a shortcut into the
+turn*, satisfying R2. It is the wiring phase for `P1-DB-A004`'s table, matcher and queries: five
+files, no new module, no migration, no new query, no new provider call, and the set's **single**
+`NINA_PROMPT_VERSION` bump (5 → 6). See *"Phase 2 — the turn fires it"* above.
+
+| Phase | What | Package | Task |
+|---|---|---|---|
+| 1 | The table, the matcher and the queries, unwired | `lib/db` + `lib/nina` | `P1-DB-A004` |
+| 2 | Firing a shortcut into the turn | `lib/nina` | `P1-NIN-A023` *(this one)* |
+| 3 | The admin registry at `/admin/shortcuts` | `lib/admin`, `components/admin`, `app/admin` | — |
+| 4 | Lifting the existing codes out of the memory ledger | `scripts` | — |
+
+Phase 2 collected on phase 1 exactly as intended and added nothing structural of its own: the
+matcher, the renderer, the two headers, the caps and the counter statement were all already there
+and unit-tested, so the integration is two optional input fields, one required result field and one
+conditional `parts.push`. **Deliberately untouched**, each for a stated reason:
+`lib/nina/shortcuts.ts` (phase 1's surface needed no widening — `matchNinaShortcuts` already took
+`current` plus `recent`), `prompts/system.ts` and `prompts/tools.ts` (the instruction text travels
+with the expansion, so there is no section to add), `lib/nina/proactive.ts` (a proactive turn has no
+runner text, so nothing there could ever fire), and
+`tests/__snapshots__/nina.prompts.test.ts.snap` (byte-identical at every tuning — regenerating it
+would have hidden that fact rather than proved it).

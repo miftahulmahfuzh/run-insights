@@ -49,7 +49,26 @@
  * `PatternCode`, no new proactive trigger, **NO SECTION AND NO TOOL SCHEMA MOVED.** This is the
  * SINGLE bump for the whole set: phase 3 owns it and no other phase touches this constant, because
  * two bumps would date two commits to one change. */
-export const NINA_PROMPT_VERSION = 5
+/* 6 — the nina-emoji-shortcuts set, R2. **NO SYSTEM TEXT MOVED AND NO TOOL SCHEMA MOVED.**
+ * `./system.ts` and `./tools.ts` were not opened; `buildNinaSystemPrompt` is byte-identical to
+ * version 5's at every tuning and `tests/__snapshots__/nina.prompts.test.ts.snap` passes
+ * UNREGENERATED. What changed is the ASSEMBLER. `userTurnText` in `lib/nina/turn.ts` gained one
+ * conditional block — a fired shortcut's full expansion, rendered by `renderNinaShortcutBlock` and
+ * pushed after the attached-run block and immediately before `'HE JUST SAID:'` — fed by two new
+ * OPTIONAL fields on `NinaTurnInput`, `shortcuts` and `recentRunnerTexts`. A turn in which no
+ * trigger fired pushes nothing at all and is byte-for-byte version 5's user turn, which
+ * `lib/nina/turn.test.ts` asserts three ways (field absent, `[]`, and rows present that do not
+ * match).
+ *
+ * **The bump is still correct, and this file's own sibling says why in as many words.**
+ * `lib/nina/turn.ts:186`: *"`NINA_PROMPT_VERSION` now identifies the ASSEMBLER, not the output"* —
+ * two turns on one version have been able to carry different bytes since the per-user tuning
+ * landed at 3, and what the constant buys is that a change in her behaviour can be dated to the
+ * commit that caused it. A turn that answers a two-kilobyte standing directive it could never have
+ * been sent before is such a change, so `nina_turns` has to be able to tell those turns from
+ * version 5's. This is the SINGLE bump for the whole set: phase 2 owns it and no other phase
+ * touches this constant, because two bumps would date two commits to one change. */
+export const NINA_PROMPT_VERSION = 6
 
 export {
   LANGUAGE_RULE,

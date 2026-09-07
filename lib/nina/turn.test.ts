@@ -16,6 +16,7 @@ import {
 import { describe, expect, it } from 'vitest'
 
 import { LOOKUP_RUNS_TOOL, NINA_SYSTEM_PROMPT, SEND_TOOL, buildNinaSystemPrompt } from './prompts'
+import { normalizeNinaTrigger, type NinaShortcutMatchable } from './shortcuts'
 import {
   MAX_TOOL_ROUNDS,
   NINA_MAX_TOKENS,
@@ -52,6 +53,43 @@ function tunedInput(overrides: Partial<NinaTurnInput> = {}): NinaTurnInput {
 }
 
 const GOOD = { bubbles: ['lumayan sih', 'tapi hr lo ketinggian'] }
+
+/**
+ * One of the real production expansions, lightly shortened. Long on purpose: the ledger's
+ * `ADMIN_FACT_TEXT_MAX = 400` truncation is half of what R2 exists to escape, so a fixture short
+ * enough to fit under it would test the wrong thing.
+ */
+const PEACH =
+  'kalo dia remes pantat nina, nina bilang ahh sayang enak banget jangan berhenti dong, ' +
+  'terus sampe nina lemes'
+
+/**
+ * A shortcut row shaped exactly as `listNinaShortcuts` returns one.
+ *
+ * `matchKey` is DERIVED through phase 1's own `normalizeNinaTrigger` rather than typed out by hand:
+ * a hand-written key is a second implementation of the normalisation rule (NFC, drop `U+FE0F`,
+ * collapse whitespace, trim, lowercase) and it would drift from the real one in silence.
+ */
+function shortcut(over: Partial<NinaShortcutMatchable> = {}): NinaShortcutMatchable {
+  const trigger = over.trigger ?? '🍑'
+  return {
+    id: 'sc0000000001',
+    kind: 'glyph',
+    label: 'remes pantat',
+    expansion: PEACH,
+    enabled: true,
+    ...over,
+    trigger,
+    matchKey: normalizeNinaTrigger(trigger),
+  }
+}
+
+/** The assembled user turn for one input — the string the endpoint was actually sent. */
+async function userTurnOf(turnInput: NinaTurnInput): Promise<string> {
+  const client = scriptedClient([sendMessage(GOOD)])
+  await runNinaTurnWith(fakeTurnDeps(client), turnInput)
+  return client.calls[0]!.messages[0]!.content as string
+}
 
 describe('runNinaTurnWith — the happy path', () => {
   it('returns the bubbles from a single send call and makes no tool round', async () => {
@@ -582,5 +620,179 @@ describe('runNinaTurn — the log', () => {
     }
     const result = await runNinaTurn(input(), fakeTurnDeps(client, { store }))
     expect(result.payload?.bubbles).toEqual(GOOD.bubbles)
+  })
+})
+
+/* ============================================================================
+ * R2 — the fired shortcut. `lib/nina/shortcuts.ts` owns the MATCHER and its own suite proves it
+ * against every real production trigger; this block proves the WIRING: that the hits reach the
+ * user turn, in the right position, exactly once, and that a turn which fired nothing is untouched.
+ * ========================================================================= */
+
+describe('userTurnText — the fired shortcut (R2)', () => {
+  it('carries ZERO shortcut bytes when nothing fired — INVARIANT 2, three ways', async () => {
+    /*
+     * The baseline is the turn as this file built it before the feature existed: the fields are
+     * ABSENT from the object entirely, which is still what every call site in `tests/live/`,
+     * `tests/integration/` and `lib/nina/proactive.ts` passes.
+     *
+     * ── EVERY CASE BELOW MUST MISS ON `recent` AS WELL AS ON `current` ─────────────────────────
+     * "Nothing fired" is NOT the same condition as "the block is empty". Phase 1's
+     * `renderNinaShortcutBlock` returns a NON-NULL block whenever `inPlay` is non-empty even if
+     * `fired` is empty — that is deliberate and load-bearing (`🫦` opens a mode that runs until
+     * `💦`, and the instruction has to survive the turn where he only says "terusin"). A case that
+     * varied only `current` while leaving a MATCHING message in `recentRunnerTexts` would
+     * correctly emit a block, and asserting byte-identity against the baseline there would be
+     * asserting the opposite of that ruling. So each case below is built so that neither the
+     * current message nor any recent one carries a live trigger. The positive counterpart — an
+     * in-play-only hit that DOES emit a block — is the case immediately after this one.
+     */
+    const baseline = await userTurnOf(input())
+
+    /* (1) An empty list — what `listNinaShortcuts` returns for a runner who has defined none. No
+     * rows, so no recent message can match either. */
+    expect(await userTurnOf(input({ shortcuts: [], recentRunnerTexts: [] }))).toBe(baseline)
+
+    /* (2) Explicitly `undefined`, which is what a caller building the object conditionally
+     * produces, and is not the same code path as absent. */
+    expect(await userTurnOf(input({ shortcuts: undefined, recentRunnerTexts: undefined }))).toBe(
+      baseline,
+    )
+
+    /* (3) The case that actually happens all day: shortcuts exist and he used none of them —
+     * NOT IN THIS MESSAGE AND NOT IN THE LAST FEW EITHER. The default `runnerText` fixture
+     * contains neither `🍑` nor `plak!`, and the recent message is deliberately about running so
+     * that it misses both as well. */
+    expect(
+      await userTurnOf(
+        input({
+          shortcuts: [shortcut(), shortcut({ id: 'sc0000000002', trigger: 'plak!', kind: 'word' })],
+          recentRunnerTexts: ['gw lari 5k tadi pagi'],
+        }),
+      ),
+    ).toBe(baseline)
+  })
+
+  it('DOES carry the block when a code is only still in play — the 🫦 case', async () => {
+    /*
+     * The positive counterpart to the case above, and the reason that one has to be built the way
+     * it is. Nothing fired in THIS message; `🍑` fired two messages ago and phase 1's matcher puts
+     * it in `inPlay`, so `renderNinaShortcutBlock` returns a block under its STILL IN PLAY header
+     * and `userTurnText` pushes it. Without this case, "nothing fired" and "no block" would be
+     * indistinguishable in this suite, and a regression that dropped `inPlay` from the rendered
+     * block entirely would keep every assertion above green while quietly breaking the one
+     * production shortcut whose expansion says it runs "sampe miftah bilang 💦".
+     */
+    const userTurn = await userTurnOf(
+      input({ runnerText: 'terusin', shortcuts: [shortcut()], recentRunnerTexts: ['pengen 🍑'] }),
+    )
+    expect(userTurn).toContain(PEACH)
+    expect(userTurn).toContain('STILL IN PLAY')
+    expect(userTurn).not.toContain('HE USED A SHORTCUT')
+    /* And it is still byte-different from the same turn with no history — the point of the case. */
+    expect(userTurn).not.toBe(await userTurnOf(input({ runnerText: 'terusin' })))
+  })
+
+  it('puts the FULL expansion in the user turn when he types the trigger', async () => {
+    const userTurn = await userTurnOf(
+      input({ runnerText: 'pengen 🍑 dong', shortcuts: [shortcut()] }),
+    )
+    /* The whole expansion, not a 400-character truncation of it — the ledger cap this feature
+     * exists to escape. */
+    expect(userTurn).toContain(PEACH)
+    expect(userTurn).toContain('pengen 🍑 dong')
+  })
+
+  it('puts the block AFTER the attached run and IMMEDIATELY BEFORE `HE JUST SAID:`', async () => {
+    const history = runHistoryFixture()
+    const attached = history.runs[0]!
+    const userTurn = await userTurnOf(
+      input({
+        history,
+        attachedRunId: attached.runId,
+        runnerText: 'abis ini 🍑 ya',
+        shortcuts: [shortcut()],
+      }),
+    )
+    const run = userTurn.indexOf('HE ATTACHED THIS RUN TO HIS MESSAGE')
+    const block = userTurn.indexOf(PEACH)
+    const said = userTurn.indexOf('HE JUST SAID:')
+    expect(run).toBeGreaterThanOrEqual(0)
+    expect(block).toBeGreaterThan(run)
+    expect(said).toBeGreaterThan(block)
+  })
+
+  it('hands DISABLED rows to the matcher and lets it drop them', async () => {
+    /* The turn path's query already asks for `{ onlyEnabled: true }`, so a disabled row does not
+     * normally reach here at all — and the matcher filters on `enabled` anyway, which is what
+     * makes "live" have ONE definition regardless of who calls it. This case asserts that
+     * guarantee at the `NinaTurnInput` boundary, where a test, a future path, or a stale cache
+     * could still hand one in. Compared against the same message with no rows at all rather than
+     * against `baseline`, so the only difference under test is the row. */
+    const without = await userTurnOf(input({ runnerText: 'pengen 🍑 dong' }))
+    const withDisabled = await userTurnOf(
+      input({ runnerText: 'pengen 🍑 dong', shortcuts: [shortcut({ enabled: false })] }),
+    )
+    expect(withDisabled).toBe(without)
+  })
+
+  it('reads only `recentRunnerTexts` for history — assumption A3', async () => {
+    /* This file has no other route to an earlier message: `context.conversation.window` holds both
+     * roles and is never scanned here. An expansion she echoed therefore cannot reach the matcher
+     * at all, which is what stops a shortcut re-firing itself off her own bubble. */
+    const baseline = await userTurnOf(input())
+    expect(await userTurnOf(input({ shortcuts: [shortcut()], recentRunnerTexts: [] }))).toBe(
+      baseline,
+    )
+  })
+
+  it('never lets a shortcut problem cost a reply — INVARIANT 7', async () => {
+    /* A row whose trigger is regex-metacharacter soup — an unclosed group, which is what an admin
+     * typing on a phone eventually produces. Whatever phase 1's matcher makes of it, the turn
+     * answers: `shortcutHits` catches and degrades to "nothing fired". */
+    const hostile = shortcut({ id: 'sc0000000003', trigger: '(([', kind: 'word' })
+    const result = await runNinaTurnWith(
+      fakeTurnDeps(scriptedClient([sendMessage(GOOD)])),
+      input({ shortcuts: [hostile] }),
+    )
+    expect(result.source).toBe('llm')
+    expect(result.payload?.bubbles).toEqual(GOOD.bubbles)
+  })
+})
+
+describe('NinaTurnResult.firedShortcutIds — what the usage bump reads', () => {
+  it('is [] on a turn with no shortcuts at all', async () => {
+    const result = await runNinaTurnWith(fakeTurnDeps(scriptedClient([sendMessage(GOOD)])), input())
+    expect(result.firedShortcutIds).toEqual([])
+  })
+
+  it('names the shortcut he typed, and only that one', async () => {
+    const result = await runNinaTurnWith(
+      fakeTurnDeps(scriptedClient([sendMessage(GOOD)])),
+      input({
+        runnerText: 'pengen 🍑 dong',
+        shortcuts: [shortcut(), shortcut({ id: 'sc0000000002', trigger: '💦' })],
+      }),
+    )
+    expect(result.firedShortcutIds).toEqual(['sc0000000001'])
+  })
+
+  it('is [] for a shortcut that is only STILL IN PLAY — it was counted when it fired', async () => {
+    const result = await runNinaTurnWith(
+      fakeTurnDeps(scriptedClient([sendMessage(GOOD)])),
+      input({ runnerText: 'terusin', shortcuts: [shortcut()], recentRunnerTexts: ['pengen 🍑'] }),
+    )
+    expect(result.firedShortcutIds).toEqual([])
+  })
+
+  it('is present even on a turn that produced no reply at all', async () => {
+    /* `lib/nina/actions.ts` bumps BEFORE it checks whether the session still exists or whether she
+     * answered, so an `unavailable` result still has to carry the ids. */
+    const result = await runNinaTurnWith(
+      fakeTurnDeps(scriptedClient([new Error('502 upstream')])),
+      input({ runnerText: 'pengen 🍑 dong', shortcuts: [shortcut()] }),
+    )
+    expect(result.source).toBe('unavailable')
+    expect(result.firedShortcutIds).toEqual(['sc0000000001'])
   })
 })

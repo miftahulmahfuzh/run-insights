@@ -25,6 +25,7 @@ import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
+  bumpNinaShortcutUses,
   getNinaAvatar,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
@@ -34,6 +35,7 @@ import {
   insertNinaMessages,
   listNinaMessages,
   listNinaMessagesAfter,
+  listNinaShortcuts,
   readNinaTuning,
 } from './queries'
 import type { NinaMessageRow } from './queries'
@@ -41,6 +43,7 @@ import { resolveNinaWriteSession } from './sessionResolve'
 import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
+import { NINA_SHORTCUT_LOOKBACK } from './shortcuts'
 import {
   NINA_BACKGROUND_BUDGET_MS,
   NINA_TURN_CHAIN_MAX,
@@ -778,13 +781,39 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
      *
      * **This runs AFTER his row is committed and that has not changed** — see STEP 1c's note.
      */
-    const [loadedContext, history, tuning] = await Promise.all([
+    const [loadedContext, history, tuning, shortcuts] = await Promise.all([
       loadNinaContext(userId, sessionId, dbNinaSourceGateway),
       dbNinaToolGateway.loadRunHistory(userId),
       /* THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
        * `/admin/nina` immediate. Third in an existing `Promise.all` on purpose: one indexed
        * single-row read against a connection this turn is opening anyway. */
       readNinaTuning(userId),
+      /* THE SHORTCUTS, read LIVE on every turn with no cache for the same reason and by the same
+       * arithmetic — which is what makes a row added on `/admin/shortcuts` fire on his very next
+       * message, with no invalidation step anywhere on this path. Fourth in the same `Promise.all`:
+       * one `(user_id, enabled)`-indexed read of a table that holds tens of rows, against a
+       * connection this turn is opening anyway, so it costs no wall clock the turn was not already
+       * spending.
+       *
+       * **`{ onlyEnabled: true }`, which is the read `nina_shortcuts_user_enabled_idx` exists for.**
+       * The bare call returns the disabled rows too, and `/admin/shortcuts` wants those — a
+       * disabled code is still a row he edits and re-enables. A turn does not: a disabled row can
+       * never fire, so putting it on the wire is bytes for nothing. `matchNinaShortcuts` filters on
+       * `enabled` regardless, so "live" still has exactly one definition; this narrows what is
+       * fetched, not what counts.
+       *
+       * **Its rejection is swallowed and the turn continues — INVARIANT 7.** This is the one entry
+       * of the four that is garnish. A tuning that will not load is a Nina with the wrong
+       * character, and a context that will not load is no turn at all; a shortcut table that will
+       * not load is a turn with no shortcut in it, which is what most turns are anyway. Letting it
+       * reject would let one unreadable row cost him a reply. */
+      listNinaShortcuts(userId, { onlyEnabled: true }).catch((cause) => {
+        console.warn('[nina] could not read shortcuts; this turn carries none', {
+          turnId,
+          error: String(cause),
+        })
+        return []
+      }),
     ])
 
     /*
@@ -805,6 +834,28 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
               loadedContext.conversation.window.find((turn) => turn.id === target.id)
                 ?.sentAtLabel ?? null,
           }
+
+    /*
+     * R2. The last few things HE said, newest first, so a shortcut that is still IN PLAY survives
+     * the turn that opened it — the `🫦` case in the production ledger, whose expansion reads
+     * "…selama miftah bilang terusin … sampe miftah bilang 💦" and is therefore useless if it falls
+     * out of the payload the moment he answers it.
+     *
+     * **No new query.** `loadNinaContext` has already loaded the window, and it is OLDEST FIRST
+     * with both roles in it (`ConversationFacts.window`, `lib/nina/context.ts:286`), so this is
+     * three array operations over ~40 objects already in memory.
+     *
+     * Filtered to `role === 'runner'` because an expansion SHE quoted back would otherwise re-fire
+     * itself every turn it stayed in the window (assumption A3). `runnerMessageId` is dropped
+     * because that message is `input.runnerText`: a trigger in it FIRED, and letting it also count
+     * as carried-over would bump one shortcut twice for one send. `reverse()` is safe — `map` has
+     * already produced a fresh array, so the window itself is not mutated.
+     */
+    const recentRunnerTexts = loadedContext.conversation.window
+      .filter((turn) => turn.role === 'runner' && turn.id !== runnerMessageId)
+      .map((turn) => turn.text)
+      .reverse()
+      .slice(0, NINA_SHORTCUT_LOOKBACK)
 
     /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
      *
@@ -829,10 +880,41 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
         imageDescriptions: input.imageDescriptions,
         quoted,
         attachedRunId: input.attachedRunId,
+        shortcuts,
+        recentRunnerTexts,
       },
       { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
     )
     source = result.source
+
+    /*
+     * ── R2'S TELEMETRY, AND IT LANDS ABOVE THE EARLY RETURNS ON PURPOSE ──────────────────────
+     * `nina_shortcuts.uses` and `last_used_at` answer ONE question on `/admin/shortcuts`: which of
+     * these codes does he actually use? A shortcut fired the moment its trigger was in his message
+     * and its expansion went into the payload the model was billed for. Deleting the conversation
+     * afterwards does not un-fire it, and a reply she failed to produce does not un-fire it either
+     * — so counting only the turns that survived to a bubble would make the column a measure of
+     * Nina's uptime rather than of his habits, and would under-count exactly the turns that are
+     * most annoying to lose. Placing it here also means ONE call site covers all four exits below
+     * (`session-gone`, the null payload, the happy path, and a throw) instead of three copies that
+     * will drift apart the first time someone edits one of them.
+     *
+     * **`hits.fired` only, never `inPlay`.** A still-in-play shortcut was counted on the turn it
+     * fired; counting it again on every follow-up would make `uses` measure recency, not habit.
+     * `runNinaTurn` enforces that split — see `NinaTurnResult.firedShortcutIds`.
+     *
+     * ── FIRE AND FORGET, AND IT CANNOT REJECT INTO THE TURN. INVARIANT 7. ────────────────────
+     * `void` with its own `.catch`, not an `await`. A usage counter is not worth one round trip of
+     * wall clock on a path that has just spent 13-45 s, and it is certainly not worth failing a
+     * turn for. `after()` was the other candidate and was declined: we are already inside one, and
+     * `tests/nina.resend.test.ts` drains `after`'s queue by hand and asserts its length, so a
+     * second entry would change what that suite measures.
+     */
+    if (result.firedShortcutIds.length > 0) {
+      void bumpNinaShortcutUses(userId, result.firedShortcutIds).catch((cause) => {
+        console.warn('[nina] shortcut usage bump failed', { turnId, error: String(cause) })
+      })
+    }
 
     /*
      * ── THE SESSION MAY HAVE BEEN DELETED WHILE SHE WAS THINKING (phase 6's handoff) ──────────

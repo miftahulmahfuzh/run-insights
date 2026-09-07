@@ -63,6 +63,7 @@ vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: () => requireUserId(
 /* Every name `lib/nina/actions.ts` imports from `./queries`. A factory replaces the whole module,
  * so a missing one is an import error rather than an undefined at call time. */
 vi.mock('@/lib/nina/queries', () => ({
+  bumpNinaShortcutUses: vi.fn(),
   getNinaAvatar: vi.fn(),
   getNinaMessageImage: vi.fn(),
   getNinaMessageImagesForMessages: (...a: unknown[]) => getNinaMessageImagesForMessages(...a),
@@ -72,6 +73,9 @@ vi.mock('@/lib/nina/queries', () => ({
   insertNinaMessages: (...a: unknown[]) => insertNinaMessages(...a),
   listNinaMessages: (...a: unknown[]) => listNinaMessages(...a),
   listNinaMessagesAfter: vi.fn(),
+  /* Resolves `[]` rather than `undefined`: `runNinaBackgroundTurn` awaits it in a `Promise.all`
+   * and hands the answer straight to `runNinaTurn`. */
+  listNinaShortcuts: vi.fn(async () => []),
   readNinaTuning: (...a: unknown[]) => readNinaTuning(...a),
 }))
 
@@ -159,7 +163,10 @@ beforeEach(async () => {
   ninaSessionExists.mockResolvedValue(true)
   readNinaTuning.mockResolvedValue({ relationship: 'friend' })
   loadNinaContext.mockResolvedValue({ conversation: { window: [] } })
-  runNinaTurn.mockResolvedValue({ source: 'unavailable', payload: null })
+  /* `firedShortcutIds` is REQUIRED on `NinaTurnResult` and the action reads its length before it
+   * checks anything else, so the fake has to carry it. `[]` is the honest value here: the fake
+   * `loadNinaContext` returns an empty window and no shortcut row exists. */
+  runNinaTurn.mockResolvedValue({ source: 'unavailable', payload: null, firedShortcutIds: [] })
 
   actions = await import('@/lib/nina/actions')
 })
