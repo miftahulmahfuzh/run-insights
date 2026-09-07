@@ -1,0 +1,84 @@
+{
+  "branch": "feature/nina-photo-refs-and-bubble-actions",
+  "coordinator": "orch-nina-photo-refs-and-bubble-actions",
+  "coordinator_session_id": "dbf97df1-37c4-4230-8c50-436b35d459f6",
+  "created": "2026-09-07T10:41:45+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#129",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": "Coordinator, pre-spawn: D12 stands as written in the index -- keep 0010, never rename. Before db:generate, re-read drizzle/meta/_journal.json on the merge base; if 0010 is taken, rm the sql+snapshot, drop the journal entry, regenerate, then DIFF the discarded file against the new one and re-apply the hand-written backfill by hand. Open Questions was empty at launch; nothing else inherited.",
+      "package": "lib/db`, `drizzle`, `lib/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md",
+      "reported_at": "2026-09-07T10:43:09+00:00",
+      "satisfies": [
+        "R1",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "A re-attached photo is a reference, not a copy"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#130",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/admin`, `components/admin`, `lib/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "\"What she can see in it\", editable"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#131",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Tap a bubble to edit or delete it"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#132",
+      "commit": null,
+      "depends_on": [
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": null,
+      "package": "lib/nina`, `components/nina",
+      "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R5"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Resend a message that was never answered"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-refs-and-bubble-actions/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-photo-refs-and-bubble-actions",
+  "updated": "2026-09-07T10:43:09+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions"
+}
