@@ -25,40 +25,40 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "76e42f3",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": "LIVE -- do not re-spawn. Code-complete and fully verified per its own report (typecheck/build/lint clean, npm test 3228/3228, prompt snapshot untouched, NINA_PROMPT_VERSION===6, all 11 R2 cases green incl D6's positive in-play-only case, D2 applied as {onlyEnabled:true}); waiting on its completion-handler/pusher for the commit sha. verify --apply downgraded this to pending at 15:5x because no commit exists yet; that derivation is correct about git and wrong about the session, which ListAgents shows busy. Ran no db:* command at any point.",
+      "note": "Turn path fires shortcuts; matcher runs once in runNinaTurnWith, feeds both block and firedShortcutIds. D2 applied as inherited (onlyEnabled: true); D6 asserted positively (in-play-only renders under STILL IN PLAY, firedShortcutIds stays []). NINA_PROMPT_VERSION 5->6, set's single bump; prompt snapshot unregenerated. No drift in the five files. Committed by pathspec, 7 paths, peer work untouched. Ran no db:* command.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-emoji-shortcuts/phase-2.md",
-      "reported_at": "2026-09-07T15:48:40+00:00",
+      "reported_at": "2026-09-07T15:56:19+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A023",
       "title": "Firing a shortcut into the turn"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "00e2d0c",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": "LIVE -- do not re-spawn. Still implementing /admin/shortcuts (10 files). verify --apply downgraded this to pending because no commit exists yet; ListAgents shows the session busy. Carries the wave's shared-worktree commit discipline and the db:migrate bar.",
+      "note": "/admin/shortcuts landed: 10 files, six-cell nav, UserPicker basePath. Decision: plan's ShortcutTable docstring spelled literals its own test bans (@/lib/nina/, window.confirm, <dialog, showModal, <colgroup) -> reworded the prose, guards unchanged, rung 2. Lint/typecheck/build/3256 tests green, prompt snapshot untouched. Manual browser checks NOT run - no nina_shortcuts table, db:migrate barred.",
       "package": "lib/admin`, `components/admin`, `app/admin",
       "plan": ".workflows/plan/nina-emoji-shortcuts/phase-3.md",
-      "reported_at": "2026-09-07T15:48:40+00:00",
+      "reported_at": "2026-09-07T15:57:53+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-A001",
       "title": "/admin/shortcuts"
     },
     {
@@ -84,7 +84,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-emoji-shortcuts/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-emoji-shortcuts",
-  "updated": "2026-09-07T15:48:40+00:00",
-  "verified_at": "2026-09-07T15:48:15+00:00",
+  "updated": "2026-09-07T15:57:53+00:00",
+  "verified_at": "2026-09-07T15:57:23+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-emoji-shortcuts"
 }
