@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/composer-frost-and-admin-notch`
 **Branch:** `feature/composer-frost-and-admin-notch` (base: `origin/main` @ `e6c68d6`)
 **Phases:** 2
-**Status:** phase 1/2 complete — phase 1 landed on `feature/composer-frost-and-admin-notch`; a phase is complete when its row in the Phases table is ticked ✅
-**Coordinator:** —
+**Status:** code-complete — both phases landed on `feature/composer-frost-and-admin-notch` (phase 1 `7f8435d`, phase 2 `c93bf52`); a phase is complete when its row in the Phases table is ticked ✅
+**Coordinator:** `orch-composer-frost-and-admin-notch` (swarm; ledger at `.workflows/orchestration/composer-frost-and-admin-notch/ledger.json`)
 
 ---
 
@@ -102,7 +102,7 @@ R4 shares no file with them, so phase 2 declares no dependency and the two run c
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | The composer: paint to the edge, take less room, frost the glass | R1, R2, R3 | `components/nina` + `lib/nina` + `components/ui` + `tests` | 8 | — | HARD | `.workflows/plan/composer-frost-and-admin-notch/phase-1.md` | `P1-RI-A023` | miftahulmahfuzh/run-insights#133 |
-| 2 | The `/admin` install's own status-bar tint | R4 | `app/admin` + `lib` + `tests` | 3 | — | NORMAL | `.workflows/plan/composer-frost-and-admin-notch/phase-2.md` | — | miftahulmahfuzh/run-insights#134 |
+| 2 ✅ | The `/admin` install's own status-bar tint | R4 | `app/admin` + `lib` + `tests` | 3 | — | NORMAL | `.workflows/plan/composer-frost-and-admin-notch/phase-2.md` | `P1-RI-A024` | miftahulmahfuzh/run-insights#134 |
 
 ### Phase 1 — The composer: paint to the edge, take less room, frost the glass
 

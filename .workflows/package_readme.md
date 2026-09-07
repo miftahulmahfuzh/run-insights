@@ -542,7 +542,7 @@ a FAB is now true of a caption, and a grid cell needs no `left-1/2 -translate-x-
 An install contract is invisible to lint, typecheck and build; only a phone can see it. So the
 facts are stated once in **`lib/pwa.ts`** — names, colours, and the `PWA_ICONS` list — and read
 from the three places that cannot see each other: the manifests, the layouts' `metadata`, and
-`tests/pwa.install.test.ts` (26 cases).
+`tests/pwa.install.test.ts` (40 cases).
 
 There are **two** manifests, because a manifest describes one app and `start_url` is a single
 value. Safari launches an installed home-screen tile from the `start_url` of whatever manifest the
@@ -557,6 +557,7 @@ page linked — **not** from the URL that was on screen. Every page linking the 
 | `id` / `start_url` | `/` | `/admin` |
 | `orientation` | `portrait` — no landscape layout to rotate into | `any` — the admin shell has one |
 | splash / theme | `--paper` `#c9e9fb` | `--paper-2` `#f1f7fb`, matching `/admin`'s `bg-paper-2` |
+| notch band (`theme-color`) | `#c9e9fb` light / `#0e1b26` dark, from the root `viewport` | `#f1f7fb` light / `#162834` dark, from `app/admin/layout.tsx`'s own `viewport` |
 | `shortName` | `Run Insights` (12 chars, the iOS ceiling) | `RI Admin` (8; no room to suffix the above) |
 
 Both set `scope: '/'`, and for the admin one that is **load-bearing rather than copied**: anything
@@ -574,6 +575,27 @@ iOS draws under the icon differs. `statusBarStyle` stays `'default'` on the runn
 once from the root). There is deliberately **no `icons` key** in either layout: an explicit
 `metadata.icons` suppresses the file-convention icons, which would silently delete the
 apple-touch-icon Safari actually reads on install.
+
+**`viewport` merges by key, and that is a different rule from `metadata`'s** — which is why
+`/admin` can own its notch band without owning anything else. `app/admin/layout.tsx` exports a
+`viewport` carrying `themeColor` and **nothing else**: a media-matched `ADMIN_INSTALL.paper` /
+`ADMIN_INSTALL.paperDark` pair (`--paper-2`, `#f1f7fb` / `#162834`), so an installed admin tile's
+status-bar band matches the shell it sits on instead of showing the runner's sky blue. Read from
+the framework's source rather than assumed: `mergeViewport`
+(`node_modules/next/dist/lib/metadata/resolve-metadata.js:315`) `structuredClone`s the *resolved
+parent* and then iterates `for (const key_ in viewport)`, so a key the child omits is inherited
+untouched. That is what keeps **`viewportFit: 'cover'` arriving from the root**, and with it all
+four `env(safe-area-inset-*)` paddings in the admin shell. Restating `viewportFit` there would
+create a second source of truth for the one value that must not drift — and it drifts silently,
+because an inert inset renders as a layout that is merely slightly wrong. Next's own
+`generate-viewport.md` documents no merge rule at all, so the source is the only authority.
+`statusBarStyle` is unaffected and stays `'default'`: a tint on an opaque bar needs none of
+translucency's prerequisites.
+
+A useful consequence when probing this: metadata and `viewport` resolve from the segment tree
+independently of what the page component *does*, so a session-less `curl` of `/admin` — a `307`
+with an empty body, since `requireAdmin` redirects — still carries the complete resolved `<head>`.
+Reading the served tags needs neither an auth cookie nor a live database.
 
 Two things a reader will ask. **A second domain does not fix this** — the launch URL comes from
 `start_url`, not the hostname, so `admin.example.com` would need the same field anyway, plus a DNS

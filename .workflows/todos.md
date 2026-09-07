@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 20
+- Completed: 21
 
 ---
 
@@ -83,6 +83,26 @@
   - **Decided**: Formatting: ran `npx prettier --write` on the two flagged files instead of the repo-wide `npm run format` — shared worktree with a live peer mid-edit. Tie-break: narrower blast radius.
   - **Decided**: Unrelated pre-existing prettier collapse in `ChatScreen.tsx` (~399) — keep, not hand-revert (rung 6: the repo's formatter is the convention; the file is in this phase's Owns).
   - **Verification**: `npx tsc --noEmit` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npx vitest run` 150 files / 3017 tests all passed; `npm run build` succeeded. By hand: all four sites of invariant 2 agree at 60px (`Composer.tsx` `px-5 py-2`, `COMPOSER_RESTING_PX = 60`, `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60`, `BOTTOM_GAP.chat` `pb-[calc(7rem+var(--safe-bottom))]`); all 14 emitted geometry strings executed and matched the plan's reference tables exactly.
+
+- [x] **P1-RI-A024** Phase 2: The `/admin` install's own status-bar tint
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns `lib/pwa.ts` (`ADMIN_INSTALL` gains `paperDark: '#162834'` — `--paper-2` dark, from `app/globals.css:81`; appends only, `INSTALL`, `APPLE_WEB_APP` and `ADMIN_PWA_ICONS` are not edited), `app/admin/layout.tsx` (a new `export const viewport: Viewport` carrying **only** `themeColor`, beside the existing `metadata` export, with the docstring that explains why only that one key — Decisions D7), and `tests/pwa.install.test.ts` (cases asserting the admin pair's two colours, that they differ from the root pair, and that `ADMIN_INSTALL.paper` still equals the admin manifest's `theme_color`). Does not touch the root `app/layout.tsx`, `app/manifest.ts`, `INSTALL`, `APPLE_WEB_APP.statusBarStyle`, `app/admin/manifest.webmanifest/route.ts`, or any file under `components/`. Exit criteria: `app/admin/layout.tsx` exports `viewport: Viewport` whose `themeColor` is a media-matched pair of `ADMIN_INSTALL.paper` (light) and `ADMIN_INSTALL.paperDark` (dark), written as constant names and not hex literals; that export has exactly one key, with `viewportFit`, `width`, `initialScale` and `colorScheme` absent from the object literal and no comments inside it, so `viewportFit: 'cover'` stays resolved for `/admin` by inheritance (invariant 6, D7); `ADMIN_INSTALL.paperDark === '#162834'`, `ADMIN_INSTALL.paper === '#f1f7fb'`, neither is `#ffffff` (D6), and both differ from the corresponding `INSTALL` value; the served admin manifest's `theme_color` and `background_color` are still `ADMIN_INSTALL.paper`; observed in a rendered head from a local production build, `/admin` carries two `theme-color` tags (`#f1f7fb` light, `#162834` dark) and zero carrying `#c9e9fb`, `/` still carries `#c9e9fb` and `#0e1b26`, and `/admin`'s `viewport` meta still ends in `viewport-fit=cover`; `APPLE_WEB_APP.statusBarStyle` is still `'default'` (D8); `npm run lint`, `npx tsc --noEmit`, `npx vitest run` and `npm run build` all pass.
+  - **Status**: completed
+  - **Plan Set**: `COMPOSER_FROST_AND_ADMIN_NOTCH_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R4 — On the `/admin` home-screen shortcut, the top notch band blends with the UI
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A024.md`
+  - **Card**: `miftahulmahfuzh/run-insights#134`
+  - **Completed**: 2026-09-07 22:11
+  - **Method**: /implement (swarm phase 2/2)
+  - **Files**: lib/pwa.ts, app/admin/layout.tsx, tests/pwa.install.test.ts
+  - **Drift**: `tests/pwa.install.test.ts` was already prettier-dirty at `0d50b26` in a slice this phase's steps never touch; that hunk is fixed as a side effect of formatting this phase's own edits. No code drift otherwise.
+  - **Decided**: This entry and the TaskID were written by the coordinator, not by the phase session. `/implement` Step 3 is a set-level act — it mints ids and fills the index's TaskID column for every phase — and phase 1 was concurrent in the same worktree, so a phase session doing it would author identifiers for a sibling it cannot see and race it on `todos.md`. Rung 6.
+  - **Decided**: TaskID is `P1-RI-A024`, **not** the `P1-RI-A020` that `todos.py mint RI` returns. `mint` fills the lowest hole rather than returning highest+1, and `A020` was spent by the `admin-home-screen-shortcut` set then pruned from `todos.md` when it landed — absent from the file, present in five commits under `git log -S`. Confirmed `A024` unspent across all history, every `todos.md` in the tree, and every live orchestration ledger before writing. Rung 6.
+  - **Decided**: `format:check` scoped to this phase's three files rather than repo-wide. Exit criterion 7 names it, but invariant 1 enumerates the gates as lint / `tsc --noEmit` / `vitest run` / build, and `prettier --check .` is red on `main` for 15 pre-existing files — two of them phase 1's live ones. Rung 1 (invariant over exit criterion); a repo-wide `npm run format` would have rewritten a peer's files mid-flight.
+  - **Decided**: `"white"` → `#f1f7fb`, not `#ffffff` (D6, unchanged). The request carries its own purpose clause — *"so it is kind of blend in with the UI"* — and pure white satisfies the adjective while failing the purpose: the admin shell's ground already is `#f1f7fb`.
+  - **Verification**: `npx vitest run tests/pwa.install.test.ts` — 40 passed (32 → 40, eight new cases). Full suite 149/150 files green at the time, the one red being `tests/tabbar.geometry.test.ts`, which is phase 1's by reconciliation row 1 and red exactly as its plan predicts. `npm run lint` 0 errors. Because the shared worktree carried phase 1's mid-sequence `tsc` error, typecheck and `npm run build` were verified green in an isolated worktree holding only these three files. Exit criterion 5 observed in a real rendered head from that isolated production build: `/admin` serves exactly two `theme-color` tags, `#f1f7fb` light and `#162834` dark, and zero carrying `#c9e9fb`; `/` still serves `#c9e9fb` and `#0e1b26`; `/admin`'s `viewport` meta still ends in `viewport-fit=cover`.
 
 - [x] **P1-RI-A019** Phase 1: Thread the current avatar into the chat's typing row
   - **Difficulty**: EASY
