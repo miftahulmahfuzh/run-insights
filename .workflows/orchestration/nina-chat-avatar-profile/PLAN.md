@@ -77,7 +77,7 @@ missed this one. The value it needs is already in hand on the server —
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Thread the current avatar into the chat's typing row | R1 | `components/nina`, `app/nina` | 5 | — | EASY | `.workflows/plan/nina-chat-avatar-profile/phase-1.md` | — | `miftahulmahfuzh/run-insights#111` |
+| 1 | Thread the current avatar into the chat's typing row | R1 | `components/nina`, `app/nina` | 5 | — | EASY | `.workflows/plan/nina-chat-avatar-profile/phase-1.md` | `P1-RI-A019` | `miftahulmahfuzh/run-insights#111` |
 
 ### Phase 1 — Thread the current avatar into the chat's typing row
 **Satisfies:** R1

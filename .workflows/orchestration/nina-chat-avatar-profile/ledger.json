@@ -6,25 +6,26 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#111",
-      "commit": null,
+      "commit": "4c2ad55",
       "depends_on": [],
       "difficulty": "EASY",
       "n": 1,
-      "note": null,
+      "note": "typing-row avatar now takes {src,natural,crop} from the same ninaAvatarView call the sidebar reads; required prop at ChatScreen+MessageList, optional at TypingIndicator. Decided: test's jsxOf() strips block comments so the docstring may quote the defect verbatim (rung 2, exit criteria). No new query.",
       "package": "components/nina`, `app/nina",
       "plan": ".workflows/plan/nina-chat-avatar-profile/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T05:12:19+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A019",
       "title": "Thread the current avatar into the chat's typing row"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-chat-avatar-profile/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-chat-avatar-profile",
-  "updated": "2026-09-07T02:35:07+00:00",
+  "updated": "2026-09-07T05:12:19+00:00",
+  "verified_at": "2026-09-07T05:11:30+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-chat-avatar-profile"
 }
