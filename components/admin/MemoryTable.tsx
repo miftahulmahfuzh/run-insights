@@ -92,13 +92,17 @@ const CELL = 'border-t border-rule px-2 py-2 align-top'
 /**
  * Origin and When, below `lg`, are not there.
  *
- * Six columns need 940 px and a phone offers 318 of them inside `Card`'s padding, so the table
- * scrolls — which is correct and is what `overflow-x-auto` is for — but 620 px of hidden width is
+ * Five columns need 854 px and a phone offers 318 of them inside `Card`'s padding, so the table
+ * scrolls — which is correct and is what `overflow-x-auto` is for — but 536 px of hidden width is
  * a table nobody can edit with a thumb. These two columns are the ones to spend: **When** is a
  * date the operator does not act on, and **Origin** is a badge that says `admin` or `distilled`,
- * which the `What` column's own label already implies for slots and promises. The four that stay —
- * what it is, what it says, how confident, and delete — are the four R1 asked for: *"i can easily
- * edit, add or remove one row easily"*.
+ * which the `What` column's own label already implies for slots and promises. The three that stay
+ * — what it is, what it says, and delete — are what R1 asked for: *"i can easily edit, add or
+ * remove one row easily"*.
+ *
+ * It was six columns and four survivors until task #135 retired `Conf.`, and that was a field
+ * removal rather than a column removal: `nina_memory_facts.confidence` is gone from the database,
+ * so there is nothing left for a cell to show.
  *
  * ── WHY THE `<colgroup>` HAD TO GO ──────────────────────────────────────────────────────────
  * A `<col>` maps to a column by POSITION among the cells that are actually rendered. Hiding two
@@ -232,7 +236,7 @@ export function MemoryTable({
         remaining horizontal scroll to the page, and on iOS a horizontal overscroll at the left
         edge is the back-swipe gesture — so scrolling a table would navigate away from it. */
     <Card className="mt-8 overflow-x-auto overscroll-x-contain">
-      <table className="w-full min-w-[420px] border-collapse text-left lg:min-w-[940px]">
+      <table className="w-full min-w-[348px] border-collapse text-left lg:min-w-[854px]">
         <caption className="sr-only">
           Every memory Nina holds for this account: her eight slots, her pending promises, and the
           ledger. A cell saves when you leave it. The delete control removes a row on the first
@@ -249,9 +253,6 @@ export function MemoryTable({
             </th>
             <th scope="col" className={HEAD_CELL}>
               Value
-            </th>
-            <th scope="col" className={cn(HEAD_CELL, 'w-[72px] lg:w-[86px]')}>
-              Conf.
             </th>
             <th scope="col" className={cn(HEAD_CELL_WIDE_ONLY, 'lg:w-[250px]')}>
               Origin
@@ -274,7 +275,7 @@ export function MemoryTable({
           return (
             <tbody key={group.kind}>
               <tr>
-                <th scope="colgroup" colSpan={6} className="border-t border-rule px-2 pt-6 pb-2">
+                <th scope="colgroup" colSpan={5} className="border-t border-rule px-2 pt-6 pb-2">
                   <span className="block text-[13px] font-semibold text-ink">{group.title}</span>
                   <span className="mt-0.5 block max-w-[86ch] text-[11px] font-medium text-ink-3">
                     {group.blurb}
@@ -333,7 +334,6 @@ function Row({
 }) {
   const [text, setText] = React.useState(row.text)
   const [category, setCategory] = React.useState(row.category)
-  const [confidence, setConfidence] = React.useState(row.confidence)
 
   /*
    * Each draft follows its prop, adjusted DURING RENDER rather than in an effect — React's own
@@ -355,11 +355,6 @@ function Row({
     setLastCategory(row.category)
     setCategory(row.category)
   }
-  const [lastConfidence, setLastConfidence] = React.useState(row.confidence)
-  if (row.confidence !== lastConfidence) {
-    setLastConfidence(row.confidence)
-    setConfidence(row.confidence)
-  }
 
   function commitSlot() {
     if (text === row.text) return
@@ -377,33 +372,20 @@ function Row({
     onRun(row.rowId, () => saveSlotAction({ userId, key: row.target, value: text }))
   }
 
-  function commitFact(patch: { category?: AdminFactCategory; text?: string; confidence?: number }) {
+  function commitFact(patch: { category?: AdminFactCategory; text?: string }) {
     // The patch carries the value a control just produced, because `setState` has not landed yet
     // when its own `onChange` runs.
     const nextCategory = patch.category ?? category ?? 'other'
     const nextText = patch.text ?? text
-    const nextConfidence = patch.confidence ?? confidence ?? 100
 
-    if (
-      nextCategory === row.category &&
-      nextText === row.text &&
-      nextConfidence === row.confidence
-    ) {
-      return
-    }
+    if (nextCategory === row.category && nextText === row.text) return
     if (nextText.trim().length === 0) {
       setText(row.text)
       onReport(row.rowId, { ok: false, error: 'A ledger row cannot be empty. Delete it instead.' })
       return
     }
     onRun(row.rowId, () =>
-      editFactAction({
-        userId,
-        id: row.target,
-        category: nextCategory,
-        text: nextText,
-        confidence: nextConfidence,
-      }),
+      editFactAction({ userId, id: row.target, category: nextCategory, text: nextText }),
     )
   }
 
@@ -482,31 +464,6 @@ function Row({
         )}
       </td>
 
-      <td className={CELL}>
-        {row.kind === 'fact' ? (
-          <input
-            aria-label="Confidence"
-            className={cn(CELL_CONTROL, 'tabular-nums')}
-            type="number"
-            min={0}
-            max={100}
-            step={1}
-            value={confidence ?? 100}
-            onChange={(event) => setConfidence(Number(event.target.value))}
-            onBlur={() => {
-              const raw = confidence ?? 100
-              const clamped = Number.isFinite(raw)
-                ? Math.min(100, Math.max(0, Math.round(raw)))
-                : (row.confidence ?? 100)
-              setConfidence(clamped)
-              commitFact({ confidence: clamped })
-            }}
-          />
-        ) : (
-          <span className="px-2 text-[13px] font-medium text-ink-3">&mdash;</span>
-        )}
-      </td>
-
       <td className={CELL_WIDE_ONLY}>
         <span
           className={cn(
@@ -555,8 +512,8 @@ function Row({
  * It sits at the TOP of the ledger group, because the ledger is newest-first and up to 200 rows is
  * a long scroll to a form. `Enter` in the text cell and the `+` button both commit; that is the
  * FIRST click of a create, not a second click on anything, which is what R1 rules out. The
- * category and confidence survive a successful add, so three `training` rows are three sentences
- * and three `Enter`s.
+ * category survives a successful add, so three `training` rows are three sentences and three
+ * `Enter`s.
  *
  * An `<input>` rather than a `<textarea>`, so `Enter` means "add" instead of "newline". A ledger
  * row is one sentence — the ledger's own shape, and its 400-character cap.
@@ -572,13 +529,12 @@ function AddRow({
 }) {
   const [category, setCategory] = React.useState<AdminFactCategory>('person')
   const [text, setText] = React.useState('')
-  const [confidence, setConfidence] = React.useState(100)
   const [pending, startTransition] = React.useTransition()
 
   function add() {
     if (text.trim().length === 0) return
     startTransition(async () => {
-      const next = await insertFactAction({ userId, category, text, confidence })
+      const next = await insertFactAction({ userId, category, text })
       onResult(next)
       if (next.ok) setText('')
     })
@@ -627,20 +583,6 @@ function AddRow({
         {result?.ok === true && result.note !== undefined && (
           <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
         )}
-      </td>
-
-      <td className={CELL}>
-        <input
-          aria-label="Confidence for the new row"
-          className={cn(CELL_CONTROL, 'tabular-nums')}
-          type="number"
-          min={0}
-          max={100}
-          step={1}
-          value={confidence}
-          disabled={pending}
-          onChange={(event) => setConfidence(Number(event.target.value))}
-        />
       </td>
 
       <td className={cn(CELL_WIDE_ONLY, 'text-[11px] font-medium text-ink-3')} colSpan={2}>

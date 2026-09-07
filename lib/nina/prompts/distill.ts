@@ -5,7 +5,6 @@ import {
   NINA_FACT_CATEGORIES,
   NINA_SLOT_KEYS,
   NINA_SLOT_SPECS,
-  SLOT_CONFIDENCE_FLOOR,
 } from '../memory'
 import { NINA_TUNING_DEFAULTS, type NinaRelationship } from '../tuning'
 
@@ -93,10 +92,9 @@ WHAT TO RECORD
 Every single thing he said about himself, however small: his name, his job, his hours, his family, his body, what hurts, what he eats, what he is training for, what he owns, what he fears, what he finds funny, what he complains about. One fact per entry, one sentence each, in the language HE used. Be exhaustive — up to ${String(MAX_DISTILLED_CANDIDATES)} entries. A detail you drop is gone from her memory of him.
 
 THE QUOTE IS NOT OPTIONAL
-Every entry carries "quote": a VERBATIM SPAN OF HIS OWN MESSAGE, copied character for character. Not a paraphrase, not your summary, not something Nina said. An entry whose quote is not really in his message is recorded at low confidence and can never become a standing fact, so a fabricated quote costs you the entry.
+Every entry carries "quote": a VERBATIM SPAN OF HIS OWN MESSAGE, copied character for character. Not a paraphrase, not your summary, not something Nina said. THE QUOTE IS THE ONLY THING CHECKED, so it is the only thing standing between her and a memory he never gave her. An entry whose quote is not really in his message can never become a standing fact, so a fabricated quote costs you the entry.
 
-CONFIDENCE
-An integer percent. 100 means he stated it outright. Drop below ${String(SLOT_CONFIDENCE_FLOOR)} for anything you inferred, implied or read between the lines. Do not round an inference up to look useful — an inferred fact that becomes a standing memory is a lie she will repeat to him for months.
+And the quote has to hold up the "text" you wrote beside it. Do not quote something he really said and then write down a conclusion he did not draw: "sepatu gw udah tipis banget" is a fact about worn-out shoes, not evidence of which brand he runs in. Record what he said. An inference that becomes a standing memory is a lie she will repeat to him for months.
 
 CATEGORIES
 ${NINA_FACT_CATEGORIES.join(', ')}.
@@ -138,7 +136,7 @@ export const DISTILL_TOOL: Anthropic.Tool = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['text', 'category', 'confidence', 'quote'],
+          required: ['text', 'category', 'quote'],
           properties: {
             text: {
               type: 'string',
@@ -148,12 +146,6 @@ export const DISTILL_TOOL: Anthropic.Tool = {
               type: 'string',
               enum: [...NINA_FACT_CATEGORIES],
               description: 'REQUIRED. Which kind of fact this is.',
-            },
-            confidence: {
-              type: 'integer',
-              minimum: 0,
-              maximum: 100,
-              description: 'REQUIRED. 100 = he said it outright. Below 80 = you inferred it.',
             },
             quote: {
               type: 'string',

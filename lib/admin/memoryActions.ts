@@ -126,7 +126,6 @@ export async function insertFactAction(input: {
   userId: string
   category: string
   text: string
-  confidence: number
 }): Promise<AdminMemoryResult> {
   await requireAdmin()
 
@@ -134,10 +133,10 @@ export async function insertFactAction(input: {
   if (!parsed.success) {
     return { ok: false, error: 'Pick a category and write something under 400 characters.' }
   }
-  const { userId, category, text, confidence } = parsed.data
+  const { userId, category, text } = parsed.data
 
   try {
-    const row = await adminAppendFact(userId, { category, text, confidence })
+    const row = await adminAppendFact(userId, { category, text })
     if (row == null) return { ok: false, error: 'The ledger did not accept it. Nothing changed.' }
   } catch (cause) {
     return failed('insertFact', cause)
@@ -168,16 +167,15 @@ export async function editFactAction(input: {
   id: string
   category: string
   text: string
-  confidence: number
 }): Promise<AdminMemoryResult> {
   await requireAdmin()
 
   const parsed = factEditSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'That is not an edit this page can make.' }
-  const { userId, id, category, text, confidence } = parsed.data
+  const { userId, id, category, text } = parsed.data
 
   try {
-    const updated = await adminUpdateFact(userId, id, { category, text, confidence })
+    const updated = await adminUpdateFact(userId, id, { category, text })
     if (!updated) return { ok: false, error: 'That row is no longer in the ledger.' }
   } catch (cause) {
     return failed('editFact', cause)

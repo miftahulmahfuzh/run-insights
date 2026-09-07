@@ -237,8 +237,15 @@ describe('memory: the slots, the ledger, and R26 hand-editing', () => {
     expect(columns(schema.ninaMemoryFacts).get('source')?.notNull).toBe(true)
   })
 
-  it('confidence is an integer percent, not a float probability', () => {
-    expect(sqlType(schema.ninaMemoryFacts, 'confidence')).toBe('integer')
+  // This replaces "confidence is an integer percent, not a float probability". Task #135 dropped
+  // that column (`drizzle/0011`), and the column list is asserted WHOLE rather than the removal
+  // being asserted as one absence — same reasoning as `ninaMessageImages`'s index assertion
+  // above: re-adding `confidence`, or any other column, becomes a decision somebody makes on
+  // purpose instead of a diff nobody notices.
+  it('carries exactly the seven columns the ledger needs, and no confidence', () => {
+    expect(names(schema.ninaMemoryFacts)).toEqual(
+      ['id', 'user_id', 'category', 'text', 'source', 'source_message_id', 'created_at'].sort(),
+    )
   })
 })
 

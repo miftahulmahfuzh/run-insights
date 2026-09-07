@@ -1295,8 +1295,10 @@ export type NinaFactCategory =
  * statement REPLACES the slot and leaves both ledger rows, which is what lets her say "lo bilang
  * benci lari pagi bulan lalu" three months after the slot moved on.
  *
- * `confidence` is an INTEGER PERCENT, 0–100 — the smallest-sensible-unit rule applied to a
- * probability, so that summing or thresholding it never drifts. 100 is "he said it outright".
+ * **There was a `confidence` column and task #135 dropped it** (`drizzle/0011`), on the user's
+ * explicit instruction to make the pipeline carry no confidence at all. What promotes a statement
+ * to a standing slot is now `lib/nina/memory.ts`'s quote gate alone — the fact's own text had to
+ * be a verbatim span of his message — which was always the load-bearing half of the pair.
  *
  * `source_message_id` is nullable for the same reason as the slots table, and `source`
  * distinguishes a distilled row from one the admin typed (R26, phase 16). Phase 16 is the only
@@ -1314,8 +1316,6 @@ export const ninaMemoryFacts = pgTable(
     category: text('category').$type<NinaFactCategory>().notNull(),
     /** One fact, one sentence, in the language he said it in. */
     text: text('text').notNull(),
-    /** Integer percent 0–100. See the header. */
-    confidence: integer('confidence').notNull().default(100),
     source: text('source').$type<NinaMemorySource>().notNull().default('distilled'),
     /** `nina_messages.id`, unenforced. NULL = the admin typed it, not the chat. */
     sourceMessageId: text('source_message_id'),
@@ -1814,8 +1814,10 @@ export const ninaTuning = pgTable('nina_tuning', {
 
   /* The twelve traits — R1's eleven plus R3's `horny` — in the order the user wrote them.
    * Integer percent, 0-100, the
-   * smallest-sensible-unit rule (roadmap D5) applied to an intensity — `nina_memory_facts.
-   * confidence` is the precedent. The domain is enforced by `clampNinaScore`, not by a CHECK: a
+   * smallest-sensible-unit rule (roadmap D5) applied to an intensity —
+   * `nina_model_calls.cost_micro_usd` is the precedent (it was `nina_memory_facts.confidence`
+   * until task #135 dropped that column). The domain is enforced by `clampNinaScore`, not by a
+   * CHECK: a
    * CHECK would make widening the scale a migration, and a value outside it is a bug in one
    * writer rather than a state the reader cannot survive. */
   /** 0 = the nag ladder is untouched. Above 0 = the lowest rung she may occupy. */

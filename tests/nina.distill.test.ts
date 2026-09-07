@@ -41,16 +41,25 @@ const GOOD_PAYLOAD = {
     {
       text: 'Dia biasanya lari Selasa, Kamis, Sabtu dan Minggu.',
       category: 'training',
-      confidence: 100,
       quote: 'gw biasanya lari selasa, kamis, sabtu sama minggu',
       slotKey: 'running_days',
     },
   ],
 }
 
-/** `confidence` as a string is the shape the schema rejects and the repair turn is asked to fix. */
+/**
+ * **A fact with no `quote` is the shape the schema rejects and the repair turn is asked to fix.**
+ *
+ * It used to be `confidence: 'high'` — a number field carrying a string. Task #135 removed
+ * `confidence` from the candidate schema, and that made the old fixture actively dangerous rather
+ * than merely stale: a Zod object STRIPS unknown keys, so `{text, category, confidence: 'high'}`
+ * parses clean and the repair round-trip below would have gone green while asserting nothing.
+ *
+ * `quote` is the right replacement. It is required, and since #135 it is the pipeline's only gate,
+ * so "the model forgot the quote" is the malformation most worth exercising.
+ */
 const BAD_PAYLOAD = {
-  facts: [{ text: 'x', category: 'training', confidence: 'high', quote: 'gw biasanya lari' }],
+  facts: [{ text: 'x', category: 'training' }],
 }
 
 function recordMessage(input: unknown) {
@@ -92,7 +101,7 @@ describe('distillWith', () => {
     expect(messages[1]).toEqual({ role: 'assistant', content: JSON.stringify(BAD_PAYLOAD) })
     expect(messages[2]!.role).toBe('user')
     expect(String(messages[2]!.content)).toContain(DISTILL_REPAIR_PREAMBLE.trim())
-    expect(String(messages[2]!.content)).toContain('facts.0.confidence')
+    expect(String(messages[2]!.content)).toContain('facts.0.quote')
   })
 
   it('degrades rather than throwing when the repair is malformed too', async () => {
@@ -150,7 +159,7 @@ type Call = { kind: 'fact' | 'slot'; key: string }
 
 interface RecordingGateway extends NinaMemoryGateway {
   calls: Call[]
-  facts: Array<{ text: string; category?: NinaFactCategory; confidence?: number }>
+  facts: Array<{ text: string; category?: NinaFactCategory }>
   slots: Array<{ key: string; value: NinaSlotValue; source?: NinaMemorySource }>
 }
 
@@ -175,7 +184,7 @@ function recordingGateway(
       const index = factIndex++
       if (options.failFactAt === index) throw new Error('fact insert failed')
       calls.push({ kind: 'fact', key: row.text })
-      facts.push({ text: row.text, category: row.category, confidence: row.confidence })
+      facts.push({ text: row.text, category: row.category })
     },
     async saveMemorySlot(_userId, row) {
       const index = slotIndex++
@@ -194,8 +203,8 @@ function recordingGateway(
 
 const PLAN: MemoryPlan = {
   facts: [
-    { category: 'training', text: 'fact one', confidence: 100, sourceMessageId: 'm1' },
-    { category: 'goal', text: 'fact two', confidence: 90, sourceMessageId: 'm1' },
+    { category: 'training', text: 'fact one', sourceMessageId: 'm1' },
+    { category: 'goal', text: 'fact two', sourceMessageId: 'm1' },
   ],
   slots: [
     { key: 'running_days', value: 'Selasa', source: 'distilled', sourceMessageId: 'm1' },
@@ -213,7 +222,7 @@ describe('applyMemoryPlan', () => {
     const firstSlot = gateway.calls.findIndex((call) => call.kind === 'slot')
     expect(lastFact).toBeLessThan(firstSlot)
     expect(gateway.facts.map((fact) => fact.text)).toEqual(['fact one', 'fact two'])
-    expect(gateway.facts[1]!.confidence).toBe(90)
+    expect(gateway.facts[1]!.category).toBe('goal')
   })
 
   it('a rejected fact costs one fact — the rest of the ledger and every slot still land', async () => {

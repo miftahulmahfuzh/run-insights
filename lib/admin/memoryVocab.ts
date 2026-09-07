@@ -146,7 +146,6 @@ export interface MemoryFactInputRow {
   id: string
   category: AdminFactCategory
   text: string
-  confidence: number
   source: NinaMemorySource
   sourceMessageId: string | null
   createdAt: Date
@@ -237,7 +236,6 @@ export function buildMemoryRows(input: {
       text: row?.value ?? '',
       editable: true,
       category: null,
-      confidence: null,
       origin,
       at: row?.updatedAt.toISOString() ?? null,
       deletable: row != null,
@@ -260,7 +258,6 @@ export function buildMemoryRows(input: {
       text: row.value,
       editable: false,
       category: null,
-      confidence: null,
       origin: row.source,
       at: row.updatedAt.toISOString(),
       deletable: true,
@@ -278,7 +275,6 @@ export function buildMemoryRows(input: {
     text: promise.text,
     editable: false,
     category: null,
-    confidence: null,
     origin: null,
     at: promise.promisedOn,
     deletable: true,
@@ -296,7 +292,6 @@ export function buildMemoryRows(input: {
     text: fact.text,
     editable: true,
     category: fact.category,
-    confidence: fact.confidence,
     origin: fact.source,
     at: fact.createdAt.toISOString(),
     deletable: true,

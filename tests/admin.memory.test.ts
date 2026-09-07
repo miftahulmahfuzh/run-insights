@@ -226,7 +226,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f1',
           category: 'training',
           text: 'he only runs on weekends',
-          confidence: 80,
           source: 'distilled',
           sourceMessageId: 'msg_9',
           createdAt: new Date('2026-09-03T10:00:00Z'),
@@ -235,7 +234,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f2',
           category: 'person',
           text: 'his sister is called Nadia',
-          confidence: 100,
           source: 'admin',
           sourceMessageId: null,
           createdAt: new Date('2026-09-02T10:00:00Z'),
@@ -246,7 +244,6 @@ describe('buildMemoryRows — R1s one table', () => {
     const distilled = rows.find((row) => row.target === 'f1')
     expect(distilled?.editable).toBe(true)
     expect(distilled?.category).toBe('training')
-    expect(distilled?.confidence).toBe(80)
     expect(distilled?.reappears).toBe(false)
     // The re-label rule is DESCRIBED on the row. There is no permission predicate any more, so
     // this sentence is the only place the operator learns what an edit does.
@@ -287,7 +284,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f1',
           category: 'other',
           text: 'a fact',
-          confidence: 100,
           source: 'admin',
           sourceMessageId: null,
           createdAt: new Date('2026-09-03T10:00:00Z'),
@@ -313,7 +309,6 @@ describe('buildMemoryRows — R1s one table', () => {
           id: 'f1',
           category: 'other',
           text: 'a',
-          confidence: 100,
           source: 'admin',
           sourceMessageId: null,
           createdAt: new Date('2026-09-03T10:00:00Z'),
