@@ -1,0 +1,154 @@
+{
+  "branch": "feature/nina-image-generation-tab",
+  "coordinator": "orch-nina-image-generation-tab",
+  "coordinator_session_id": "f3faf3b6-6161-4972-9577-8c5f4eb1e23a",
+  "created": "2026-09-07T15:22:37+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/db`, `lib/nina",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R4",
+        "R10"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "nina_image_prefs` \u2014 the row, the vocabulary, the reads"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R4",
+        "R9"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The prompt: body canon, length ladder, focus, venue, time, notes"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina`, `scripts",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R10"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The reference image on the wire, and the timeout it costs"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": null,
+      "package": "app/admin`, `components/admin`, `lib/admin",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2",
+        "R4",
+        "R9",
+        "R10"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The route, the sixth nav cell, and the form"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 5,
+      "note": null,
+      "package": "components/admin",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-5.md",
+      "reported_at": null,
+      "satisfies": [
+        "R10"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The photo-reference picker"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        2,
+        3,
+        4
+      ],
+      "difficulty": "HARD",
+      "n": 6,
+      "note": null,
+      "package": "lib/nina`, `lib/admin`, `components/admin",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-6.md",
+      "reported_at": null,
+      "satisfies": [
+        "R11",
+        "R12"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Test prompt, its verdict, and the photo in Chat photos"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        2,
+        4
+      ],
+      "difficulty": "NORMAL",
+      "n": 7,
+      "note": null,
+      "package": "lib/nina`, `lib/admin`, `components/admin`, `lib/db",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-7.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Retire `nina_tuning.wardrobe"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-image-generation-tab",
+  "updated": "2026-09-07T15:22:37+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
+}
