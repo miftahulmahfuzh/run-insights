@@ -8,6 +8,7 @@
 **Phases:** 1
 **Status:** planned
 **Coordinator:** —
+**Card:** [miftahulmahfuzh/run-insights#104](https://github.com/miftahulmahfuzh/run-insights/issues/104)
 
 ---
 
@@ -98,7 +99,7 @@ deleted. Phase 1 re-runs the same probe after the fix, as its exit criterion.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one | R1, R2 | `lib/admin`, `lib/nina`, `tests` | 4 + 2 | — | NORMAL | `.workflows/plan/blob-stored-pathname-window/phase-1.md` | — | — |
+| 1 | Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one | R1, R2 | `lib/admin`, `lib/nina`, `tests` | 4 + 2 | — | NORMAL | `.workflows/plan/blob-stored-pathname-window/phase-1.md` | — | `miftahulmahfuzh/run-insights#104` |
 
 ### Phase 1 — Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
 
