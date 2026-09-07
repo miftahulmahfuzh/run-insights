@@ -145,7 +145,7 @@ unowned.
 | 1 ✅ | The table and the matcher | R1, R2, R3 | `lib/db`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-emoji-shortcuts/phase-1.md` | `P1-DB-A004` | — |
 | 2 ✅ | Firing a shortcut into the turn | R2 | `lib/nina` | 5 | 1 | HARD | `.workflows/plan/nina-emoji-shortcuts/phase-2.md` | `P1-NIN-A023` | — |
 | 3 ✅ | `/admin/shortcuts` | R1 | `lib/admin`, `components/admin`, `app/admin` | 10 | 1 | HARD | `.workflows/plan/nina-emoji-shortcuts/phase-3.md` | `P1-ADM-A001` | — |
-| 4 | Import the ledger's shortcuts | R3 | `scripts` | 3 | 1 | NORMAL | `.workflows/plan/nina-emoji-shortcuts/phase-4.md` | `P1-SC-A000` | — |
+| 4 ✅ | Import the ledger's shortcuts | R3 | `scripts` | 3 | 1 | NORMAL | `.workflows/plan/nina-emoji-shortcuts/phase-4.md` | `P1-SC-A000` | — |
 
 Phase 1's 8 include the three generated `drizzle/` artefacts — the `.sql`, the `meta/*_snapshot.json`
 and the `meta/_journal.json` diff — which are committed together or not at all.

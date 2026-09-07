@@ -40,7 +40,7 @@
   - **Plan Set**: `NINA_EMOJI_SHORTCUTS_PLAN.md` (phase 3 of 4)
   - **Satisfies**: R1 — An explicit shortcuts mechanism, separate from memory: an admin surface to add, edit, disable and remove shortcuts, each standing for a situation or for something Miftah and Nina were doing
   - **Depends on**: `P1-DB-A004`
-  - **Plan**: `.workflows/plan/P1-ADM-A001.md`
+  - **Plan**: `.workflows/plan/nina-emoji-shortcuts/phase-3.md`
   - **Completed**: 2026-09-07 22:49
   - **Method**: /do
   - **Files**: lib/admin/shortcutModel.ts, lib/admin/shortcutStore.ts, lib/admin/shortcutActions.ts, lib/admin/schema.ts, components/admin/ShortcutTable.tsx, app/admin/shortcuts/page.tsx, components/admin/AdminNav.tsx, components/admin/UserPicker.tsx, tests/admin.shell.test.ts, tests/admin.shortcuts.test.ts
