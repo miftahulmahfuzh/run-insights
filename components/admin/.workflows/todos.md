@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 3
+- Completed: 4
 
 ---
 
@@ -29,6 +29,24 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-CA-A003** Phase 5: The photo-reference picker
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/PhotoReferencePicker.tsx` — a caption-less, gapless, square-tile, single-selection grid over both of Nina's photo sets (album + `kind='generated'` chat photos), in the iOS Photos idiom; its pure view model `components/admin/photoReferenceModel.ts`; the one edit to `ImageGenPanel.tsx` that replaces phase 4's `SEAM — PHASE 5` with the mounted picker; `tests/admin.photoReference.test.ts`. Does not touch the page, the save action, the schema or the nav (phase 4 owns all four), nor the generation path. Exit: album and chat photographs in one grid, newest first, no caption/filename/date on any tile; no photograph appears twice (plan invariant 13 — phase 1's structural guarantee, not re-implemented here); exactly one tile selectable and the selection round-trips through phase 4's save as `{ source, id }` carried across the seam as the opaque `referenceKey(...)` string; tiles are `loading="lazy"` and use `thumbUrl` when present; nothing in the grid announces which set a photo came from.
+  - **Status**: completed
+  - **Plan Set**: `NINA_IMAGE_GENERATION_TAB_PLAN.md` (phase 5 of 7)
+  - **Satisfies**: R10 — photo reference: a caption-less iOS-album-style grid over Nina's album and Chat photos, single selection
+  - **Depends on**: P1-DB-A004 (phase 1, complete at `af0cb0b`)
+  - **Plan**: `.workflows/plan/P1-CA-A003.md`
+  - **Completed**: 2026-09-07 22:52
+  - **Method**: /implement
+  - **Files**: components/admin/photoReferenceModel.ts, components/admin/PhotoReferencePicker.tsx, tests/admin.photoReference.test.ts
+  - **Drift**: Step 3 (the mount at phase 4's `SEAM — PHASE 5`) is NOT applied: `components/admin/ImageGenPanel.tsx` does not exist yet. Phase 4 is running concurrently in this same worktree and has landed only `lib/admin/imageGenModel.ts` + `imageGenActions.ts` so far, both untracked. The phase plan anticipates exactly this ("Until phase 4 lands, the mount is the only thing this phase leaves unlanded, and its test assertion is written to be green either way"), and the test's mount case returns early via `existsSync`. The mount is still phase 5's edit to make.
+  - **Drift**: The tree is currently RED from a live peer, not from this phase: `lib/nina/imagegen.ts:195` references an undefined `NINA_APPEARANCE` (phase 2's in-flight seam), which is 2 typecheck errors and 6 test failures in `tests/nina.imagerecipe.test.ts`. Zero typecheck errors, zero lint errors and zero test failures are attributable to phase 5's files.
+  - **Decided**: Two of the plan's own test assertions contradicted the plan's own source docstrings — `expect(model).not.toContain("'use client'")` and `expect(picker).not.toContain('next/image')`, where both headers deliberately QUOTE those literals to explain why the property holds. -> Fixed by asserting the actual property instead of relaxing it: over `codeLines(...)` (the test file's own helper, written for exactly this and documented in its header) plus `model.startsWith("'use client'") === false`, which together are strictly stronger than the whole-file substring they replace. (Rung 3: the phase plan's code blocks, resolved internally by the test file's own stated rule.)
+  - **Decided**: `npm run format` was NOT run; `npx prettier --write` was run on the three owned paths only. -> Rung: narrower blast radius — format is repo-wide, this repo has files committed prettier-dirty, and a repo-wide reflow in a shared worktree is indistinguishable from a peer editing your logic. All three owned files are prettier-clean, Tailwind class order included.
+  - **Decided**: `readme-updater` is SKIPPED, per the phase plan's Handoff H6: "components/admin/.workflows/package_readme.md gains two files and does not know it. The readme-updater pass at the end of the set covers it; nothing in this phase edits documentation." It is also a file phases 4 and 6 would concurrently write. (Rung 2/3: the phase plan's own Handoffs.)
 
 - [x] **P2-CA-A002** Phase 1: The Personality tab
   - **Difficulty**: NORMAL
