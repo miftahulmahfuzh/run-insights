@@ -37,12 +37,56 @@ import { describe, expect, it } from 'vitest'
 describe('the slot vocabulary is closed and agrees with phase 1', () => {
   it('contains phase 1’s one declared key, and every spec is keyed by its own key', () => {
     expect(NINA_SLOT_KEYS).toContain(NINA_SLOT_PENDING_PROMISES)
-    expect(NINA_SLOT_KEYS).toHaveLength(9)
+    expect(NINA_SLOT_KEYS).toHaveLength(10)
     for (const key of NINA_SLOT_KEYS) {
       expect(NINA_SLOT_SPECS[key].key).toBe(key)
       expect(isNinaSlotKey(key)).toBe(true)
     }
     expect(isNinaSlotKey('favourite_colour')).toBe(false)
+  })
+
+  it('keeps the training plan next to the days it is not, in the order both readers use', () => {
+    /* The order IS the librarian's list order and `/admin/memory`'s row order. These two keys are
+     * the pair a writer confuses, so they are adjacent deliberately rather than incidentally. */
+    const days = NINA_SLOT_KEYS.indexOf('running_days')
+    expect(NINA_SLOT_KEYS[days + 1]).toBe('training_plan')
+    expect(NINA_SLOT_KEYS[NINA_SLOT_KEYS.length - 1]).toBe('pending_promises')
+  })
+})
+
+describe('NINA_SLOT_SPECS.training_plan — R3\u2019s "set up schedules", stored', () => {
+  const spec = NINA_SLOT_SPECS.training_plan
+
+  it('is a replace-policy training slot, which is what makes it an editable admin row', () => {
+    /* `merge` would make it structured (`slotEditKind`), and `buildMemoryRows` excludes structured
+     * keys from the row list — so this assertion is the admin page's exit criterion, upstream. */
+    expect(spec.policy).toBe('replace')
+    expect(spec.category).toBe('training')
+  })
+
+  it('stores a week of sessions, collapsed onto one line', () => {
+    expect(spec.canonicalise('Senin easy 5k\nRabu interval 6x400\n  Sabtu tempo 8k ')).toBe(
+      'Senin easy 5k Rabu interval 6x400 Sabtu tempo 8k',
+    )
+  })
+
+  it('caps at the 400 characters both writers are already capped at', () => {
+    const stored = spec.canonicalise('x'.repeat(500))
+    expect(stored).not.toBeNull()
+    expect(stored).toHaveLength(400)
+  })
+
+  it('refuses a value with nothing in it, which §7 turns into a ledger fact', () => {
+    expect(spec.canonicalise('   ')).toBeNull()
+    expect(spec.canonicalise('')).toBeNull()
+  })
+
+  it('is not running_days: the sessions survive here and would not survive there', () => {
+    const raw = 'Senin easy 5k, Rabu interval 6x400'
+    expect(spec.canonicalise(raw)).toBe(raw)
+    /* Whatever `parseRunningDays` makes of that sentence, it is not that sentence — the weekday
+     * canonicaliser keeps the days and throws the work away. That is the hole this slot fills. */
+    expect(NINA_SLOT_SPECS.running_days.canonicalise(raw)).not.toBe(raw)
   })
 })
 

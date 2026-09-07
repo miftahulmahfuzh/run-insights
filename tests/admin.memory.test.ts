@@ -69,6 +69,20 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
     expect(formatWorkHours(parsed)).toBe(result.value)
   })
 
+  it('accepts a training plan verbatim, because nothing parses this slot', () => {
+    const result = canonicaliseSlotValue('training_plan', 'Senin easy 5k, Rabu interval 6x400')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value).toBe('Senin easy 5k, Rabu interval 6x400')
+  })
+
+  it('refuses an empty training plan and points at the delete control', () => {
+    const result = canonicaliseSlotValue('training_plan', '   ')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toMatch(/delete/i)
+  })
+
   it('stores a nickname as a bare string, because getNinaIdentity typeof-checks it', () => {
     const result = canonicaliseSlotValue('nickname', 'Miftah')
     expect(result.ok).toBe(true)
@@ -81,7 +95,7 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
     expect(result.ok).toBe(false)
   })
 
-  it('refuses a key outside the nine, and points at the delete control', () => {
+  it('refuses a key outside the vocabulary, and points at the delete control', () => {
     const result = canonicaliseSlotValue('favourite_shoe', 'Novablast 4')
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -100,6 +114,7 @@ describe('canonicaliseSlotValue — phase 5s round trip, on the admins keystroke
 describe('the slot vocabulary readings the row builder uses', () => {
   it('classifies the edit kind from phase 5s write policy, not from a key literal', () => {
     expect(slotEditKind('goals')).toBe('text')
+    expect(slotEditKind('training_plan')).toBe('text')
     expect(slotEditKind('pending_promises')).toBe('structured')
     expect(slotEditKind('favourite_shoe')).toBe('orphaned')
   })

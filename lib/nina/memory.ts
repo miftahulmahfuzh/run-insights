@@ -620,7 +620,7 @@ export function nameSlotValue(input: NameSlotInput): string | null {
 }
 
 /* ============================================================================
- * §5 The vocabulary — nine keys, and what each one may contain
+ * §5 The vocabulary — ten keys, and what each one may contain
  * ==========================================================================*/
 
 /**
@@ -630,11 +630,18 @@ export function nameSlotValue(input: NameSlotInput): string | null {
  *
  * `'pending_promises'` must stay identical to phase 1's `NINA_SLOT_PENDING_PROMISES`, which
  * `tests/nina.memory.test.ts` asserts rather than trusting.
+ *
+ * `'training_plan'` is the tenth, and it sits directly after `'running_days'` because that is the
+ * pair a writer confuses: `running_days` holds WHICH days he runs and is read back through
+ * `parseRunningDays` by the evening cron; `training_plan` holds WHAT HE DOES on them and is read
+ * by nobody but her. `goals` is neither — it is what he is training FOR. The three are adjacent
+ * in the librarian's list on purpose.
  */
 export const NINA_SLOT_KEYS = [
   'name',
   'nickname',
   'running_days',
+  'training_plan',
   'work_hours',
   'goals',
   'injuries',
@@ -712,6 +719,34 @@ export const NINA_SLOT_SPECS: Readonly<Record<NinaSlotKey, SlotSpec>> = {
     },
     prompt:
       'running_days — the days he usually runs. Write them as day names: "Selasa, Kamis, Sabtu, Minggu". Only when he says it about his habit, not about one particular week.',
+  },
+  training_plan: {
+    key: 'training_plan',
+    policy: 'replace',
+    category: 'training',
+    /*
+     * **Prose, deliberately, and this is the one slot where that is a decision rather than a
+     * default.** `running_days` above composes `formatRunningDays(parseRunningDays(raw))` because
+     * something READS it back: the evening cron and `MISSED_USUAL_DAY` act on the weekday set, so
+     * text that does not parse must be refused to a ledger fact rather than stored as a slot the
+     * cron would act on wrongly. Nothing reads THIS field. No cron, no pattern, no trigger — the
+     * only consumer is Nina, reading the value verbatim out of `memory.slots` on the next turn.
+     * A parser with no consumer would buy nothing and cost real plans: every phrasing it failed
+     * to read would be thrown away in exchange for a guarantee nobody uses. `goals` is the
+     * precedent and the shape.
+     *
+     * **The 400 is a floor-to-ceiling match, not a second opinion.** Both writers are already
+     * capped there — `NinaMemoryWriteSchema.text` for her own slot writes and
+     * `ADMIN_SLOT_VALUE_MAX` for the admin editor — so this slice can never truncate a legal
+     * write. `goals`' 240 would cut a five-session week in half.
+     *
+     * If a later set ever wants to CHECK a session against a real run, it writes the parser then
+     * and inherits rows that may not parse; the honest path is to canonicalise on the next write,
+     * not to backfill.
+     */
+    canonicalise: (raw) => prose(raw, 400),
+    prompt:
+      'training_plan — the training week he AGREED to: what he does on each day, like "Senin easy 5k, Rabu interval 6x400, Sabtu tempo 8k, Minggu long run 15k". Only when he agrees to it or states it himself, and the quote is his own agreement — a plan he never answered is not one. Which days he runs is running_days; what he is training FOR is goals.',
   },
   work_hours: {
     key: 'work_hours',

@@ -104,7 +104,7 @@ export type AvatarRegister = z.infer<typeof avatarRegisterSchema>
  */
 export const userIdSchema = z.string().trim().min(1).max(64)
 
-/** A slot key. Membership in phase 5's nine is checked by `canonicaliseSlotValue`, not here. */
+/** A slot key. Membership in phase 5's ten is checked by `canonicaliseSlotValue`, not here. */
 export const slotKeySchema = z
   .string()
   .trim()
