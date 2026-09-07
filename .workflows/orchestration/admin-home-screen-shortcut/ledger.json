@@ -1,0 +1,50 @@
+{
+  "branch": "feature/admin-home-screen-shortcut",
+  "coordinator": "orch-admin-home-screen-shortcut",
+  "coordinator_session_id": "a882c59d-aa61-4f0b-ae81-081bff0b398f",
+  "created": "2026-09-07T02:24:37+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#109",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "app/admin` + `lib",
+      "plan": ".workflows/plan/admin-home-screen-shortcut/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The second manifest: `/admin` starts at `/admin"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#110",
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "tools` + `app/admin` + `public/icons",
+      "plan": ".workflows/plan/admin-home-screen-shortcut/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "A tile you can tell apart: the admin icon set"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-home-screen-shortcut/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "admin-home-screen-shortcut",
+  "updated": "2026-09-07T02:24:37+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/admin-home-screen-shortcut"
+}
