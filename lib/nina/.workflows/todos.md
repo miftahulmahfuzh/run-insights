@@ -3,11 +3,11 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 0
+**Total Active Tasks**: 3
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 3
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -19,6 +19,42 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `'instructor'` appended to `NINA_RELATIONSHIPS`; `NINA_ADDRESS.instructor`; `NINA_RELATIONSHIP_BLOCKS.instructor`; `RELATIONSHIP_NOTE.instructor`; `RELATIONSHIP_GLOSS.instructor`; the prose address list at `distill.ts:105`; **`NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6)**; the `nina_tuning.relationship` docstring; the grid's equal-height cells in `CharacterPanel.tsx`; and the test files that count or enumerate the levels. Exit: six cards render three-across two-down with equal-height cells at `xl` via `sm:auto-rows-fr` and **no `h-full`** on the cards; all four `Record<NinaRelationship, ...>` sites and all four prose sites filled; `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests **including the frozen snapshot, unregenerated**; `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` byte-identical; `NINA_PROMPT_VERSION === 4` still and `NINA_DISTILL_PROMPT_VERSION === 3`.
+  - **Status**: pending
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — "to make it a nice 3 columns x 2 rows"; R2 — "add a new character: Instructor", a professional and knowledgeable instructor whose primary objective is to improve the performance of miftah's running
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-1.md`
+  - **Method**: /implement (swarm wave 0, concurrent with phase 2)
+  - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/admin/tuningModel.ts, lib/nina/prompts/distill.ts, lib/db/schema.ts, components/admin/CharacterPanel.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/nina.prompts.test.ts
+
+- [ ] **P1-NIN-A017** Phase 2: A schedule she can keep
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the tenth `NINA_SLOT_KEYS` member for the training plan — spelled **`training_plan`**, at index 3 immediately after `running_days` — its `NINA_SLOT_SPECS` entry (`policy: 'replace'`, `category: 'training'`, `canonicalise: prose(raw, 400)`, `prompt`), its `SLOT_LABELS` entry and refusal reason in `lib/admin/memoryVocab.ts`, the slot-count prose in `lib/admin/memoryModel.ts` and `lib/admin/schema.ts` (comments only), and the two slot-count test files. Exit: `NINA_SLOT_KEYS` has ten members with `training_plan` fourth and `pending_promises` last; the slot round-trips through `canonicalise`, refuses an empty value to a ledger fact rather than storing it, appears at `/admin/memory` with a label, hint and editable value, and is described to the distiller by **exactly one** rendered line from `SLOT_VOCABULARY_BLOCK`. **Neither `lib/nina/prompts/system.ts` nor `lib/nina/prompts/distill.ts` appears in `git diff --name-only`.** `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests; frozen snapshot byte-identical.
+  - **Status**: pending
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R3 (the "set up schedules" half) — "she will set up schedules"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-2.md`
+  - **Method**: /implement (swarm wave 0, concurrent with phase 1)
+  - **Files**: lib/nina/memory.ts, lib/admin/memoryVocab.ts, lib/admin/memoryModel.ts, lib/admin/schema.ts, tests/nina.memory.test.ts, tests/admin.memory.test.ts
+
+- [ ] **P1-NIN-A018** Phase 3: The coaching register and the insight path
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns the instructor's coaching block in `lib/nina/persona.ts` (`isInstructor`, `INSTRUCTOR_COACHING`, `ninaInstructorCoachingBlock`), gated on the relationship; all three edits to `lib/nina/prompts/system.ts` (the `"patterns"` paragraph of `buildContextGuide` `:247`, the `WHAT YOU ARE READING` section `:485`, and `proactiveTuningSuffix` `:594`); `NINA_PROMPT_VERSION` 4 -> 5 in `lib/nina/prompts/index.ts` (`:36`); and the gated prose naming of phase 2's `training_plan` slot key (D7). Exit: under `instructor` the prompt prescribes against `REPEATED_HIGH_AVG_HR` and `PACE_REGRESSION` in training terms — a day, an effort, a duration and a field to re-read; the gate is `ninaActiveRelationship(tuning) === 'instructor'` and **never** `tuning.relationship`; the coaching block, the `"patterns"` clause, the proactive line and the slot key are **absent** from all five other levels, asserted per level; `buildContextGuide` never contains `training_plan` at any level; frozen snapshot passes unregenerated; the anger ladder renders identically at all six relationships; `NINA_PROMPT_VERSION === 5`; `npx vitest run` green at **145 test files** and >= 2834 tests.
+  - **Status**: pending
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R3 (the "monitor and give insights" half) — "she will proactively monitor his performance and give insights into what should he do"
+  - **Depends on**: `P1-NIN-A016`, `P1-NIN-A017`
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-3.md`
+  - **Method**: /implement (swarm wave 1)
+  - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
 
 ### [P2] Medium
 
