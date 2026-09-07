@@ -143,8 +143,11 @@ export async function editNinaMessage(input: {
  * line she never said. Four taps for four bubbles is a fair price for not choosing on his behalf.
  *
  * ── THE IMAGE ROWS ARE READ BEFORE THE DELETE, AND THE ORDER IS THE WHOLE POINT ───────────────
- * `nina_message_images.message_id` cascades, so after the delete those rows do not exist and their
- * `pathname`s — the reaper's future handle, per that column's own note — are unrecoverable. The
+ * `deleteNinaMessage` deletes this message's `nina_message_images` rows in its own transaction (it
+ * used to be `message_id`'s cascade; R1 made the column `ON DELETE SET NULL` so a deleted SESSION
+ * stops taking the photographs, and that function's header argues the split). Either way, after
+ * the delete those rows do not exist and their `pathname`s — the reaper's future handle, per that
+ * column's own note — are unrecoverable. The
  * Blob bytes are left behind (assumption A5, accepted and out of scope: `reap-orphaned-blobs` does
  * not cover `nina/` yet, and extending it is its own card). Logging the pathnames costs one indexed
  * read on a rare destructive action and turns silent orphans into findable ones. It is not a

@@ -60,7 +60,7 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  * `maxLength` and the server's clamp are one number.
  *
  * ── R11's CONFIRMATION IS THE ONE GENUINELY DANGEROUS CONTROL IN THIS SET ─────────────────────
- * Removing a chat hard-deletes its messages and, through the cascades, their photo rows. There is
+ * Removing a chat hard-deletes its messages. There is
  * no archive flag and therefore no undo, so the confirmation is the only thing between a mis-tap
  * and a lost conversation. Four properties, each doing a job:
  *
@@ -295,8 +295,20 @@ export function SessionRow({
       {mode === 'remove' && (
         <div className="mt-2 rounded-card border border-red/40 bg-paper-2 p-3.5">
           <p className="max-w-[54ch] text-[13px] leading-[1.5] font-semibold text-red">
-            Hapus “{session.title}”? Semua pesan di chat ini dan semua foto di dalamnya ikut
-            terhapus, permanen — tidak bisa dibatalkan.
+            Hapus “{session.title}”? Semua pesan di chat ini ikut terhapus, permanen — tidak bisa
+            dibatalkan.
+          </p>
+          {/* R1. This used to read "…dan semua foto di dalamnya ikut terhapus", and that sentence
+              was the bug as the runner experienced it: the copy threatened the photographs and the
+              cascade then took them. `nina_message_images.message_id` is `ON DELETE SET NULL` now,
+              so the photographs outlive the conversation. Saying so here, in the panel he is
+              reading while he decides, is the difference between a fix and a fix nobody can see —
+              and it stays a SEPARATE, non-red paragraph so the red text keeps naming only what is
+              actually lost. "Chat photos" is the name `/admin/photos` uses for the collection
+              (`CHAT_PHOTO_COLLECTION_LABEL`), which is where he goes looking for them. */}
+          <p className="mt-2 max-w-[54ch] text-[12px] leading-[1.5] font-medium text-ink-2">
+            Fotonya tidak ikut terhapus — semua foto di chat ini tetap tersimpan di koleksi Chat
+            photos.
           </p>
           {active && (
             <p className="mt-2 max-w-[54ch] text-[12px] leading-[1.5] font-medium text-ink-2">

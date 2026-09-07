@@ -17,11 +17,19 @@ import type { NinaPhotoSide } from '@/lib/nina/album'
 export interface ChatPhoto {
   id: string
   /**
-   * The message this photograph hangs off. `nina_message_images.message_id` is `NOT NULL` with
-   * `ON DELETE CASCADE` and the column's own comment says why — *"an image with no message is
-   * nothing"* — so this is never absent, and it is the field phase 3's "add" has to mint a row for.
+   * The message this photograph hangs off, or NULL because it no longer hangs off one.
+   *
+   * This doc used to read *"`nina_message_images.message_id` is `NOT NULL` with `ON DELETE CASCADE`
+   * and the column's own comment says why — 'an image with no message is nothing' — so this is
+   * never absent"*. R1 reversed exactly that: the column is nullable with `ON DELETE SET NULL`, so
+   * deleting a chat session leaves the photograph in this collection with no bubble behind it. An
+   * ORPHAN is a first-class member of the Chat photos collection and the rail says so in words
+   * rather than printing an empty cell.
+   *
+   * Still non-null for everything phase 3's "add" mints, because `addChatPhotoAction` writes a
+   * carrier message first and `NinaImageInsert.messageId` is required.
    */
-  messageId: string
+  messageId: string | null
   /** The ORIGINAL blob. There is no thumbnail on this table; see `NINA_CHAT_PHOTO_PAGE_SIZE`. */
   url: string
   /** Always `'generated'` on this surface — the listing's predicate. Rendered, not assumed. */
