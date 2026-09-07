@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A006`, phase 5 of 5 of the admin-responsive-nina-intimacy set — R3, `horny` as a twelfth trait)
+**Last Updated**: 2026-09-07 (task `P1-NIN-A013`, phase 1 of 2 of the nina-job-redo-and-soft-delete set — R1, a redo control on every failed `/nina/jobs` row)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -500,7 +500,8 @@ promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern de
 `imagejobs.ts` (job row lifecycle and quota), `imagecall.ts` (the OpenRouter image call),
 `imagerun.ts` (claim → generate → store → finish, inside `after()`),
 `imagefail.ts` (classify a failure, pick what she says), `imagetools.ts` / `avatartools.ts` (the two
-tool handlers and the tool sets), `avatargen.ts`.
+tool handlers and the tool sets), `avatargen.ts`, `jobview.ts` *(T)* (the pure tracking-screen
+vocabulary), `jobActions.ts` (the `'use server'` mutations `/nina/jobs`'s rows call).
 
 The generation runs **in-platform**, on the app's own invocation, inside `after()` — Vercel Hobby +
 Fluid compute is a 300 s ceiling, measured on this deployment 2026-09-06. `.github/workflows/nina-image.yml`
@@ -671,7 +672,8 @@ Every `nina_turns` row with `kind='image'` is visible at `/nina/jobs`, and one j
 `cost_micro_usd` as a per-job total ("Biaya total").
 
 `jobview.ts` is the **pure half** — the stage and error vocabulary, the elapsed and money formatting,
-the `?jump=` grammar, and `planJobJump`'s four outcomes. It holds no value import from any
+the `?jump=` grammar, `planJobJump`'s four outcomes, and (since the job-redo set) the redo rule
+`jobCanRedo` and the `NinaJobRefusal` vocabulary. It holds no value import from any
 `server-only` module, which is what lets three client components and a bare node suite load it alike;
 **`npm run build` is the only gate that enforces that**, since no guard script inspects imports.
 
@@ -780,7 +782,8 @@ step.
 
 **External:** `@anthropic-ai/sdk` (type-only at all five sites; the client comes from
 `@/lib/llm/client`), `zod` (payload and arg validation), `drizzle-orm` (`queries.ts`,
-`imagejobs.ts`), `next/server`'s `after()`, `server-only` (a side-effect guard in 13 server modules),
+`imagejobs.ts`), `next/server`'s `after()`, `next/cache`'s `revalidatePath` (`jobActions.ts` only),
+`server-only` (a side-effect guard in 13 server modules),
 `node:crypto` (`createHmac`/`timingSafeEqual` for the image ticket).
 
 **Internal:** `@/lib/db` and `@/lib/db/schema` (heaviest), `@/lib/date/ranges` (the Jakarta-timezone
