@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#109",
-      "commit": null,
+      "commit": "dd78bb430ed968c42f62cfa3350317ee5a07e051",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "No drift, no ladder decisions; plan matched the tree and all edits were pure appends. Route ships importing PWA_ICONS as planned -- phase 2's one-line swap to ADMIN_PWA_ICONS is untouched. scope stays '/' per invariant 4. Verified on a local prod server: manifest 200 application/manifest+json, start_url=/admin id=/admin scope=/ display=standalone orientation=any; /admin head has exactly one manifest link (the admin one), / unchanged. NOTE port 3000 on this box is a foreign service that 302s all paths to /login -- probe on another port. Plan-index tick is edited but NOT committed in the main checkout: it is dirty with a peer's work, so that commit is yours to make.",
       "package": "app/admin` + `lib",
       "plan": ".workflows/plan/admin-home-screen-shortcut/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T02:39:49+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A019",
       "title": "The second manifest: `/admin` starts at `/admin"
     },
     {
@@ -45,6 +45,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-home-screen-shortcut/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-home-screen-shortcut",
-  "updated": "2026-09-07T02:24:37+00:00",
+  "updated": "2026-09-07T02:39:49+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-home-screen-shortcut"
 }
