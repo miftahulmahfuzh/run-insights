@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AdminNav } from '@/components/admin/AdminNav'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { ADMIN_INSTALL, APPLE_WEB_APP } from '@/lib/pwa'
 
 /**
  * **The app's first deliberately-desktop layout.** F33 R23: *"in fact, i am thinking about a whole
@@ -68,6 +69,36 @@ export const metadata: Metadata = {
   title: 'Admin — Run Insights',
   // Belt to the 404's braces: an admin surface has no business in an index.
   robots: { index: false, follow: false },
+  /*
+   * ── THE SECOND INSTALL CONTRACT ────────────────────────────────────────────────────────────
+   * This is what makes Add to Home Screen from `/admin` produce a tile that opens `/admin`
+   * instead of `/`. Metadata is resolved root → nested and duplicate keys are REPLACED, so this
+   * line wins over `app/layout.tsx`'s `manifest: '/manifest.webmanifest'` for this segment and
+   * everything under it, and for nothing else. The runner's contract does not move.
+   *
+   * `app/admin/manifest.webmanifest/route.ts` carries the full argument, including why a second
+   * domain was not the answer.
+   */
+  manifest: '/admin/manifest.webmanifest',
+  /*
+   * ── THE SPREAD IS LOAD-BEARING, NOT TIDINESS ──────────────────────────────────────────────
+   * `appleWebApp` is a NESTED metadata field, and Next replaces those WHOLE rather than merging
+   * them key by key (`generate-metadata.md` §Merging). Writing `appleWebApp: { title: … }` would
+   * therefore drop `capable: true` and `statusBarStyle: 'default'` for every route under `/admin`
+   * — and `capable` is the single line that stops the install from being a Safari bookmark.
+   *
+   * Only `title` differs, and only because it is the label iOS draws under the icon: two tiles on
+   * one home screen both reading "Run Insights" is the failure this whole plan set exists to
+   * avoid. `statusBarStyle` stays `'default'` on the runner's terms — `lib/pwa.ts` gates
+   * translucency on the RUNNER's screens padding `--safe-top`, this meta tag is emitted once from
+   * the root, and flipping it here would flip it there.
+   *
+   * NOTE what is deliberately absent: `icons`. Next applies the file-convention icons only when
+   * no explicit `metadata.icons` was set (`next/dist/lib/metadata/resolve-metadata.js`), so an
+   * `icons` key here would silently delete `app/admin/apple-icon.png` — the file phase 2 ships and
+   * the one Safari actually reads on install. Do not add it.
+   */
+  appleWebApp: { ...APPLE_WEB_APP, title: ADMIN_INSTALL.shortName },
 }
 
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
