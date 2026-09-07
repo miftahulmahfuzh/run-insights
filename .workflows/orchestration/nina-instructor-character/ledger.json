@@ -18,7 +18,7 @@
         "R1",
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A016",
       "title": "The sixth character, and the 3x2 grid"
     },
@@ -35,7 +35,7 @@
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A017",
       "title": "A schedule she can keep"
     },
@@ -63,6 +63,6 @@
   "plan": "/home/miftah/.worktrees/run-insights/nina-instructor-character/NINA_INSTRUCTOR_CHARACTER_PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-instructor-character",
-  "updated": "2026-09-07T02:41:33+00:00",
+  "updated": "2026-09-07T02:42:34+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-instructor-character"
 }
