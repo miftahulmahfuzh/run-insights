@@ -24,28 +24,28 @@
     },
     {
       "card": "miftahulmahfuzh/run-insights#110",
-      "commit": null,
+      "commit": "701aed57",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": "ALIVE, do not re-spawn. Hit the account session usage limit at 09:44 mid-phase (reads as idle to a notify_when_idle subscription); waited it out and resumed itself. Work is uncommitted in the worktree: 4 modified + 6 new PNGs, exactly its Owns list. Byte-for-byte guard PASSED -- app deck reproduced all seven committed PNGs exactly, so no Pillow encoder drift and no regression from the tool refactor. Decided on the ladder: PWA_ICONS is 'as const' so new Set(...) infers a literal-union Set whose .has() rejects an admin path; widened the type rather than relaxing the assertion, because invariant 2 (rung 1, typecheck green) outranks the plan's code block (rung 3).",
+      "note": "Byte-for-byte guard PASSED on Pillow 12.3.0 -- --deck app reproduced all seven committed runner PNGs exactly, so no encoder drift to disambiguate and no regression from the two-deck refactor. Ladder decision: PWA_ICONS is 'as const' so new Set(PWA_ICONS.map(i=>i.src)) inferred a literal-union Set and .has(adminSrc) was a compile error -- widened to new Set<string>(...) rather than weakening the assertion, on invariant 2 (rung 1) over the plan's code block (rung 3). Bookkeeping left to the coordinator per the phase plan's must-not-do list; done at 6335f18.",
       "package": "tools` + `app/admin` + `public/icons",
       "plan": ".workflows/plan/admin-home-screen-shortcut/phase-2.md",
-      "reported_at": "2026-09-07T05:12:09+00:00",
+      "reported_at": "2026-09-07T05:18:04+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A020",
       "title": "A tile you can tell apart: the admin icon set"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-home-screen-shortcut/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-home-screen-shortcut",
-  "updated": "2026-09-07T05:12:09+00:00",
+  "updated": "2026-09-07T05:18:04+00:00",
   "verified_at": "2026-09-07T02:44:49+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-home-screen-shortcut"
 }
