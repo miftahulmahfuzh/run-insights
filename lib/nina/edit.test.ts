@@ -11,6 +11,7 @@ import {
   applyMessageDeletion,
   applyMessageEdit,
   canActOnMessage,
+  canResendMessage,
   decideMessageActionSwipe,
   decideMessageActionTap,
   describeMessageDeletion,
@@ -472,6 +473,41 @@ describe('decideMessageActionTap', () => {
      * the generic clauses rather than by a later bug report. */
     for (const selector of ['a', 'button', '[role="button"]', '[role="link"]']) {
       expect(BUBBLE_INTERACTIVE_SELECTOR.split(',')).toContain(selector)
+    }
+  })
+})
+
+/* ── canResendMessage ─────────────────────────────────────────────────────────────────────── */
+
+describe('canResendMessage', () => {
+  it('accepts a confirmed message of his', () => {
+    expect(canResendMessage(target())).toBe(true)
+  })
+
+  /* R5's own words: "just for user's bubble". */
+  it('refuses one of Nina’s, however confirmed it is', () => {
+    expect(canResendMessage(target({ mine: false }))).toBe(false)
+  })
+
+  it('inherits both of canActOnMessage’s exclusions', () => {
+    expect(canResendMessage(target({ id: 'local-6f0c1d2e-aaaa' }))).toBe(false)
+    expect(canResendMessage(target({ confirmed: false }))).toBe(false)
+  })
+
+  /*
+   * The DECISION, pinned so nobody reintroduces it: there is no "was this answered" clause. A
+   * client-side answered/unanswered test would be a second authority on turn state beside
+   * `nina_turns`; `resendNinaMessage` refuses with 'turn-live' instead.
+   */
+  it('offers a resend on every confirmed bubble of his, answered or not', () => {
+    expect(canResendMessage(target({ body: 'ini udah dijawab' }))).toBe(true)
+    expect(canResendMessage(target({ body: '', hasImage: true }))).toBe(true)
+  })
+
+  it('never diverges from canActOnMessage on one of his', () => {
+    for (const patch of [{}, { confirmed: false }, { id: '' }, { hasRun: true }]) {
+      const his = target({ ...patch, mine: true })
+      expect(canResendMessage(his)).toBe(canActOnMessage(his))
     }
   })
 })

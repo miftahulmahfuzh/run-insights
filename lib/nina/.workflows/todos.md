@@ -3,11 +3,11 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 0
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -19,6 +19,17 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A022** Phase 4: Resend a message that was never answered
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `resendNinaMessage` in `lib/nina/actions.ts` (sweep -> `openNinaChatTurn` -> `startNinaBackgroundTurn`, rebuilding `NinaBackgroundTurnInput` from the persisted row); the Resend item in `components/nina/MessageActionsSheet.tsx`; its handler in `components/nina/ChatScreen.tsx` (`awaiting`, `cursorRef`) — sole owner of both components; and `canResendMessage` in `lib/nina/edit.ts`, appended at the foot of the file after phase 3's `── the tap ──` block (D9). `startNinaBackgroundTurn` stays module-private and unmodified (D10) — nothing is exported to make this phase work. Does not touch `insertNinaMessages` (invariant 7), `pollNinaReply`, the turnflight cadence, `messageActions.ts`, or phase 1's columns. Exit: Resend appears only on his confirmed bubbles, never on hers; pressing it puts the screen into the same awaiting state a send does and her answer arrives through the existing poll; no second copy of his message appears; a resend while a turn is already running is refused with a reason rather than opening a second claim.
+  - **Status**: in_progress
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R5 — "Resend, on his bubbles only, for a message left unanswered"
+  - **Depends on**: `P1-NIN-A021`
+  - **Plan**: `.workflows/plan/P1-NIN-A022.md`
+  - **Card**: `miftahulmahfuzh/run-insights#132`
 
 - [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
   - **Difficulty**: NORMAL

@@ -530,3 +530,38 @@ export function decideMessageActionTap(
   if (Math.abs(dy) > MESSAGE_ACTION_TAP_SLOP_PX) return 'none'
   return 'actions'
 }
+
+/* ── the resend gate ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Whether this message may be RESENT — R5, and his bubbles only.
+ *
+ * ── WHY IT IS DOWN HERE AND NOT BESIDE `canActOnMessage` ──────────────────────────────────────
+ * It composes with that gate and would read better next to it, and it is here anyway: R4's phase
+ * rewrites `canActOnMessage`'s signature line and inserts `ActionableMessage` just above it, and
+ * two phases editing adjacent lines of one file is a merge conflict for no gain. `EditTarget` is
+ * still the parameter type — this predicate reads `.mine`, which `ActionableMessage` does not
+ * carry — and `canActOnMessage` accepts it structurally.
+ *
+ * ── WHY THIS IS A FUNCTION AND NOT `picked.mine &&` IN THE SHEET ──────────────────────────────
+ * Because it is the second rule in this file with two clauses that come from different places, and
+ * because the sheet is the one surface that must never be the authority on it. `canActOnMessage`
+ * carries the two exclusions this screen produces — a client-minted `local-…` id and a row whose
+ * send threw — and `mine` carries the user's own words: *"add option to resend as well (just for
+ * user's bubble)"*. Written here, both are asserted in node; written in markup, neither is.
+ *
+ * ── THERE IS DELIBERATELY NO "WAS THIS ANSWERED" CLAUSE ───────────────────────────────────────
+ * The plan index settled it: a client-side answered/unanswered test would be a second authority on
+ * turn state beside `nina_turns`, which `openNinaChatTurn` already owns. Resend is offered on every
+ * confirmed bubble of his, and `resendNinaMessage` refuses with `'turn-live'` when a claim is
+ * already live. Refusing at the action is honest; hiding the item on a guess is not.
+ *
+ * Note what this does NOT exclude: a message that carries no text at all. An image-only message is
+ * a legitimate send (`sendNinaMessage`'s R10 floor) and therefore a legitimate resend. The one
+ * genuinely empty case — a runner row whose only photo an operator removed — is not visible from
+ * `EditTarget` (`hasImage` is computed off the URLs the bubble holds, which is the right shape for
+ * every other rule here), so the ACTION refuses it with `'empty'`. One clause per authority.
+ */
+export function canResendMessage(target: EditTarget): boolean {
+  return canActOnMessage(target) && target.mine
+}
