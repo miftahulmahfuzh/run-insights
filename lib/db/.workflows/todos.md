@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 2
+- Completed: 3
 
 ---
 
@@ -34,6 +34,27 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-DB-A003** Phase 1: A re-attached photo is a reference, not a copy
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns `ninaMessageImages`'s two new provenance columns (`source_avatar_id` -> `nina_avatars(id)`, `source_image_id` -> `nina_message_images(id)`, both nullable, `ON DELETE SET NULL`) and `drizzle/0010_*` (generated `ALTER TABLE` plus a hand-written backfill, on `0009`'s precedent); `imageColumns`; `NinaImageInsert`; `insertNinaMessageImages`; `resolveAttachment`'s return type and the attach INSERT in `sendNinaMessage`; the reference filter in `listNinaMessageImages`, `generatedChatPhotoScope` and `countNinaChatPhotos`. Does not touch any message read used to render a bubble (invariant 2), `components/nina/`, `lib/admin/chatPhotoActions.ts`, `components/admin/ChatPhotoDetail.tsx`, `components/admin/chatPhotoModel.ts`, `app/admin/photos/page.tsx` (all phase 2's, per D8), or anything in phases 3 and 4. Exit: attaching an album face or re-attaching a chat photo leaves `countNinaChatPhotos` unchanged and adds nothing to `galleryPhotos`'s input, while the photo still renders in the bubble and its description still reaches the turn; the backfill marks production's existing duplicates; `npm run db:generate` produces exactly one new file and the meta journal matches it. Hazard D12: `drizzle/0010` is also claimed by the concurrent `nina-image-generation-tab` set - keep `0010`, and whichever set lands second REGENERATES rather than renames (a renamed migration keeps the old `when`, drops below the applied watermark and is skipped in silence), then diffs the discarded file against the new one and re-applies the hand-written backfill by hand.
+  - **Status**: completed
+  - **Plan Set**: `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — a re-attached photo must not appear as a duplicate in admin Chat photos; R3 — a photo attached from Nina's profile-picture album must not be added to Media
+  - **Plan**: `.workflows/plan/P1-DB-A003.md`
+  - **Card**: `miftahulmahfuzh/run-insights#129`
+  - **Completed**: 2026-09-07 17:59
+  - **Method**: /do (swarm phase 1 of 4)
+  - **Files**: lib/db/schema.ts, drizzle/0010_nina_image_provenance.sql, drizzle/meta/0010_snapshot.json, drizzle/meta/_journal.json, lib/nina/attach.ts, lib/nina/queries.ts, lib/nina/actions.ts, tests/nina.photoRefs.test.ts, tests/nina.attach.test.ts, tests/db.schema.nina.test.ts
+  - **Notes**: Migration `0010` generated first, then a two-statement hand-written backfill appended below a `--> statement-breakpoint` (on `0009_nina_message_photo_only`'s precedent) to mark production's existing duplicates. `npm run db:check` reports "Everything's fine". `ON DELETE SET NULL` on both FKs is deliberate: when the original is deleted the copy stops being a copy and the collection keeps the picture rather than losing it. `ninaPhotoProvenance()` flattens, so a copy of a copy points at the *original* and deleting the middle row cannot resurrect a duplicate. The reference filter `isOriginalPhoto()` has **two call sites covering three reads** — the WHERE of `listNinaMessageImages` and the `and(...)` of `generatedChatPhotoScope`, which `listNinaChatPhotos` and `countNinaChatPhotos` both inherit and which are therefore not edited. `tests/nina.photoRefs.test.ts` asserts against generated SQL that the four bubble/context/reaper reads (`getNinaMessageImagesForMessages`, `getNinaMessageImage`, the gateway reads, `isBlobPathnameReferenced`) do **not** carry the filter — an absence assertion, because a later "consistency" cleanup adding it there would blank a photograph inside a live conversation. Verified: `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched), `npm run typecheck` clean, `npx vitest run` 152 files / 3057 tests passing, `npm run db:check` clean, all phase-1 paths `prettier --check` clean. Production read-only counts taken before any migrate: 0 chat-to-chat duplicates, **2** album faces attached into chat, 5 rows in the collection, 21 album rows — the 2 are exactly the duplicates reported in prod admin.
+  - **Decided**:
+    - Step 3's task creation was limited to phase 1 alone: peers p2/p3 were live and minting from the same package counters would collide silently.
+    - The TaskID was **not** written back into the tracked orchestration `PLAN.md` — it is reported to the coordinator over the swarm ledger instead, because that index is shared by three concurrent sessions and read-modify-write from all three stalls one.
+    - `lib/nina/queries.ts` carries phase 1's ten hunks only; phase 2's `updateNinaChatPhotoDescription` in the same file is phase 2's to commit. Per-phase revert is a published property of this plan set's Rollback section.
+    - The plan's pre-migrate abort gate ("stop if the R3 count is anywhere near the collection total") was assessed and **not** tripped: 2 of 5 looks like a large fraction only because the table is tiny, the gate's stated failure mode is a *bulk* `blob_url` collision, and 0 chat-to-chat duplicates contradicts that reading. The 2 rows are precisely the defect the user reported.
+    - `npm run db:migrate` was deliberately **not** run. Applying a migration with an irreversible hand-written backfill to production is outside what implementing a phase authorises, and the plan files those checks under "Manual check".
+
 
 - [x] **P1-DB-A001** Phase 1: Session data layer: schema, migration, backfill, scoped queries
   - **Difficulty**: HARD
