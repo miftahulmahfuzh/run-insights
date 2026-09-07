@@ -355,6 +355,20 @@ those reads or that test.
 
 | C10 | `nina-emoji-shortcuts` landed while phase 1 was building, so `origin/main`'s journal now ends at **idx 12 = `0012_messy_carlie_cooper`** (`when` 1788796969236, 2026-09-07T16:02:49.236Z) and this branch carries **idx 12 = `0012_nina_photo_orphans`** (`when` 1788796980501, 2026-09-07T16:03:00.501Z). Two different `0012`s, **11.3 seconds apart.** | **Keep the base's migration and REGENERATE this set's from the merged schema at landing. Never rename it.** The regeneration is safe here and that is measured, not assumed: `drizzle/0012_nina_photo_orphans.sql` is **3 lines of pure generated DDL** — FK drop, `ALTER COLUMN "message_id" DROP NOT NULL`, FK re-add with `ON DELETE set null` — with no `UPDATE`, no `INSERT`, no backfill and no hand-appended tail, so nothing can be silently dropped. (Contrast main's `0009` and `0010`, which each carry hand-written backfills; that asymmetry is why C1 merged rather than regenerated.) | 1: invariant 3. **And be precise about WHY, because the obvious reason is the wrong one.** The `when` is *not* what forces this: 1788796980501 > 1788796969236, so this file would apply as-is. Two other things force it, and neither is reported by any tool. (a) **Duplicate `idx` 12** — `npm run db:check` said *"Everything's fine"* over the earlier duplicate `0009`, so the absence of a complaint is not evidence. (b) **A forked snapshot lineage**, verified from the files: `drizzle/meta/0012_snapshot.json` on this branch has `prevId 81e07f7d-3d60-4f84-b3c7-32e7511815d4`, and `origin/main`'s `0012_snapshot.json` has *the same* `prevId` — both are `0011_rare_blockbuster`'s snapshot id. Two siblings claiming one parent; the chain is wrong independent of any timestamp. A lucky timestamp is exactly what would argue for a rename, and a rename leaves both (a) and (b) broken while looking fixed. |
 
+**The regeneration must not name a number, and the ORDER is the whole fix.** Merge `origin/main`
+first, generate second. Then both the number and the snapshot's `prevId` are *derived* from whatever
+main actually ends with at that moment, and a set that lands in between costs this one nothing — no
+message between coordinators required, which is the same self-resolving property that settled the
+`P1-DB-A004` renumber. What breaks it is committing to a specific number anywhere the generation
+reads or a check asserts: a `--name`, a Precondition that says "mints 00NN", an exit criterion, or a
+plan line a phase session will honour literally. **MEASURED 2026-09-08: this coordinator and
+`orch-nina-image-generation-tab` independently both planned to "land as 0013", while that set's
+phase 7 was live** — the fourth instance of this pattern in one evening, between two sets that each
+already knew about the pattern. Naming the number recreates the collision at the moment it is
+hardest to see, because both sides believe they have already handled it. So: any number in this
+document is *measured when written*, never the requirement. The requirement is one migration, the
+right DDL, and a chain whose `prevId` points at whatever `origin/main` ends with at Step 5.
+
 **The `when`-ordering half, separately, because numbering and ordering are two different failures.**
 A merge fixes a journal's numbering and preserves each entry's original `when`, so an entry stamped
 below production's applied watermark is skipped even once the number is right. This set is immune to
