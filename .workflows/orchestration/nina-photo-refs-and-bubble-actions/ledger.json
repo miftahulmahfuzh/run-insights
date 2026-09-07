@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#129",
-      "commit": null,
+      "commit": "7a7d7e21f50b92c8e73002669615463133eeaef5",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": "Coordinator round 1: verify derived 'pending' (no commit yet); restored to running -- session alive and busy in ListAgents, and p3 observed both code-complete and mid-commit. Not re-spawned.",
+      "note": "R1+R3 shipped. Two commits: 7a7d7e2 code (11 paths, drizzle/0010 + provenance columns + isOriginalPhoto filter), 751f96e docs-only (2 paths). Revert 7a7d7e2 to roll the phase back. MIGRATION 0010 IS COMMITTED AND NOT APPLIED -- coordinator applies and verifies it from the merge commit at landing; hand-written backfill sits below the --> statement-breakpoint and db:generate would silently drop it. Prod counts measured pre-commit: 0 chat-to-chat blob_url duplicates, 2 album faces attached into chat, 5 collection rows (all kind=generated), 21 album rows -- so the user's 2 prod duplicates are R3, not R1. Abort gate assessed and judged NOT tripped (rung 4+2): the gate's failure mode is bulk blob_url sharing, contradicted by the 0 chat-to-chat result; 2-of-5 is a tiny-table artefact against prose assuming single-digit thousands. Coordinator re-measures before migrating. D12 self-resolved: journal ended at 0009, so 0010 was uncontested at generate time.",
       "package": "lib/db`, `drizzle`, `lib/nina",
       "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-1.md",
-      "reported_at": "2026-09-07T10:58:48+00:00",
+      "reported_at": "2026-09-07T11:03:41+00:00",
       "satisfies": [
         "R1",
         "R3"
       ],
-      "status": "running",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A003",
       "title": "A re-attached photo is a reference, not a copy"
     },
     {
@@ -64,14 +64,14 @@
       ],
       "difficulty": "HARD",
       "n": 4,
-      "note": null,
+      "note": "Coordinator round 2: verify derived 'pending' from absence of a commit; restored to running -- session busy in ListAgents. Not re-spawned.",
       "package": "lib/nina`, `components/nina",
       "plan": ".workflows/plan/nina-photo-refs-and-bubble-actions/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T11:03:41+00:00",
       "satisfies": [
         "R5"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": null,
       "title": "Resend a message that was never answered"
     }
@@ -79,7 +79,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-refs-and-bubble-actions/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-refs-and-bubble-actions",
-  "updated": "2026-09-07T10:59:40+00:00",
-  "verified_at": "2026-09-07T10:58:35+00:00",
+  "updated": "2026-09-07T11:03:41+00:00",
+  "verified_at": "2026-09-07T11:03:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-refs-and-bubble-actions"
 }
