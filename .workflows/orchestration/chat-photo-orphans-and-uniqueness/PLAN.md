@@ -353,6 +353,17 @@ bubble/context/reaper reads that must never carry the collection filter
 `isBlobPathnameReferenced`), asserted by `tests/nina.photoRefs.test.ts`. No phase of this set touches
 those reads or that test.
 
+| C10 | `nina-emoji-shortcuts` landed while phase 1 was building, so `origin/main`'s journal now ends at **idx 12 = `0012_messy_carlie_cooper`** (`when` 1788796969236, 2026-09-07T16:02:49.236Z) and this branch carries **idx 12 = `0012_nina_photo_orphans`** (`when` 1788796980501, 2026-09-07T16:03:00.501Z). Two different `0012`s, **11.3 seconds apart.** | **Keep the base's migration and REGENERATE this set's from the merged schema at landing. Never rename it.** The regeneration is safe here and that is measured, not assumed: `drizzle/0012_nina_photo_orphans.sql` is **3 lines of pure generated DDL** — FK drop, `ALTER COLUMN "message_id" DROP NOT NULL`, FK re-add with `ON DELETE set null` — with no `UPDATE`, no `INSERT`, no backfill and no hand-appended tail, so nothing can be silently dropped. (Contrast main's `0009` and `0010`, which each carry hand-written backfills; that asymmetry is why C1 merged rather than regenerated.) | 1: invariant 3 — a renamed migration keeps the stale timestamp and the stale snapshot chain, and is skipped silently. |
+
+**The `when`-ordering half, separately, because numbering and ordering are two different failures.**
+A merge fixes a journal's numbering and preserves each entry's original `when`, so an entry stamped
+below production's applied watermark is skipped even once the number is right. This set is immune to
+that **by construction rather than by luck**: phase 1's pre-merge `0009_nina_photo_orphans` was
+*discarded, not replayed and not renamed*, so its replacement was generated after the merge and
+stamped at generation time. The same property carries through the landing regeneration. The
+watermark's value is therefore not load-bearing for this set — which is what makes the property
+survive the watermark moving twice in one evening (13:10:34.959Z → 16:02:49.236Z).
+
 Migration ordering, for the record: a merge fixes a journal's *numbering* and not its *ordering* —
 it preserves each entry's original `when`, so an entry stamped below production's applied watermark
 is skipped even after the number is right. That does not apply here, because phase 1's pre-merge

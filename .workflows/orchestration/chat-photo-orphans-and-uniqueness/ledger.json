@@ -6,18 +6,18 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "86891a9",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": "COORDINATOR DECISION (rung 1, invariant 3 'one migration... a renamed migration is skipped silently'; reinforced rung 4): branch base moved forward by merging origin/main into feature/chat-photo-orphans-and-uniqueness BEFORE any phase code existed. Measured: branch journal ended 0008, origin/main ends 0011 -- db:generate would have minted a second 0009 against main's applied 0009_nina_message_photo_only, and main's 0009+0010 carry hand-written backfill SQL that regeneration-at-landing silently drops. Also main was +788 lines across the four files this set owns (actions.ts +275, chatPhotoActions.ts +266, queries.ts +190, schema.ts +80) and main's 0010 already added source_avatar_id/source_image_id to nina_message_images. Consequences for all phases: locate edits by SYMBOL NAME not the plan's line numbers (base f03a3bc); phase 1's migration is 0012 not the plan's stated 0009 (the number was measured at plan time, the requirement is 'exactly one, nina_message_images only, no DROP/DELETE/TRUNCATE'); Decisions row 2 unchanged -- is_reference is the collection marker, the new provenance columns are not ours and stay untouched.",
+      "note": "R1 done: message_id nullable + ON DELETE SET NULL, deleteNinaMessage deletes images explicitly (images FIRST, one batch), every reader degrades to string|null, SessionRow delete confirmation no longer threatens the photographs. Migration 0012_nina_photo_orphans (when 1788796980501), 3 statements, nina_message_images only. DECISIONS: (1) is_reference NOT declared -- coordinator ruling C7, rung 5: main's F37 already serves R2/R3 via source_avatar_id/source_image_id + isOriginalPhoto(); phase 1's exit criterion naming the column is SUPERSEDED, not unmet. (2) NinaImageRow + schema test edited surgically not block-replaced, preserving F37's provenance fields and its test -- rung 3 + drift rule. (3) main's F36 scheduleChatPhotoCaption gained an orphan guard (no bubble = no caption; returns before a paid model call) -- rung 6, the file's own early-return idiom; this code postdates the plan. (4) exit-criteria greps still match, deliberately: every hit is the old text quoted INSIDE the correction that replaced it, which the plan's own code blocks mandate; intent (no surface claims a session delete takes the photographs) is met. Verified 154 files/3104 tests (+1/+10 over 153/3094), typecheck+db:check clean, lint 0 errors, all 17 paths prettier-clean. DO NOT run db:migrate. Phase 3 cancelled (C9), phase 2 rescoped to R4 (C8) -- R4 only becomes expressible now that orphans can exist, and main's resolveAttachment COPIES, so re-attaching an orphan currently leaves it parentless forever.",
       "package": "lib/db` + `lib/nina` + `components",
       "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md",
-      "reported_at": "2026-09-07T15:53:37+00:00",
+      "reported_at": "2026-09-07T16:06:53+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "running",
+      "status": "done",
       "task_id": "P1-NIN-A030",
       "title": "Orphan-able photographs: the FK, the migration, and every reader that assumed a message"
     },
@@ -38,7 +38,7 @@
         "R3",
         "R4"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": "P1-NIN-A031",
       "title": "One photograph per collection row: the reference marker and adopt-or-reference"
     },
@@ -50,10 +50,10 @@
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": "CANCELLED by coordinator ruling C9 (recorded as 'blocked' because the ledger has no 'skipped' status -- it cannot run, and calling it 'done' would be a lie about work this set did not do). Its deliverable was already applied to production by origin/main's F37 (task P1-DB-A003, migration 0010's hand-written backfill): recorded prod counts 0 chat-to-chat duplicates, 2 album faces attached into chat, 5 collection rows, 21 album rows. It also cannot run as written -- its classifier isCollectionCandidate and its --apply UPDATE are both written against is_reference, which ruling C7 removes. R2/R3 are SERVED on main by isOriginalPhoto() at lib/nina/queries.ts:1613 = and(isNull(sourceAvatarId), isNull(sourceImageId)), applied in listNinaMessageImages (:1520) and generatedChatPhotoScope (:1646). A provenance-based re-audit belongs on the board as a follow-up card. LANDING NOTE: 'land --step check' will refuse on this phase; the refusal is expected and this note is the authorisation to override it -- verify from git that phases 1 and 2 are on the branch and that NO phase-3 file (scripts/nina-chat-photo-dedupe.mjs, its suite, package.json, .gitignore) appears in the branch diff.",
+      "note": "CANCELLED by coordinator ruling C9 -- RESTORED after 'verify --apply' derived 'pending' and overwrote it (the known blind spot: derivation cannot see a deliberate cancellation, and the never-downgrade-on-absence protection covers only 'done'). DO NOT re-spawn this phase and DO NOT trust it appearing in runnable_now. Deliverable already applied to production by origin/main's F37 (P1-DB-A003, migration 0010's hand-written backfill): prod counts 0 chat-to-chat duplicates, 2 album faces attached into chat, 5 collection rows, 21 album rows. Cannot run as written: isCollectionCandidate and the --apply UPDATE are both built on is_reference, removed by ruling C7. R2/R3 SERVED on main by isOriginalPhoto() at lib/nina/queries.ts:1613. A provenance-based re-audit belongs on the board as a follow-up card. LANDING: 'land --step check' will refuse on this phase; that refusal is expected and this note authorises the override -- confirm from git that phases 1 and 2 are on the branch and that no phase-3 path (scripts/nina-chat-photo-dedupe.mjs, its suite, package.json, .gitignore) is in the branch diff.",
       "package": "scripts",
       "plan": ".workflows/plan/chat-photo-orphans-and-uniqueness/phase-3.md",
-      "reported_at": "2026-09-07T16:00:48+00:00",
+      "reported_at": "2026-09-07T20:12:14+00:00",
       "satisfies": [
         "R2",
         "R3"
@@ -66,6 +66,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/chat-photo-orphans-and-uniqueness/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "chat-photo-orphans-and-uniqueness",
-  "updated": "2026-09-07T16:00:48+00:00",
+  "updated": "2026-09-07T20:12:23+00:00",
+  "verified_at": "2026-09-07T20:12:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/chat-photo-orphans-and-uniqueness"
 }
