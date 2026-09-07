@@ -1,0 +1,30 @@
+{
+  "branch": "feature/nina-personality-tab",
+  "coordinator": "orch-nina-personality-tab",
+  "coordinator_session_id": "f60771cf-764a-40a6-87e2-2058b95f88a5",
+  "created": "2026-09-07T00:30:25+00:00",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#103",
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "app/admin` \u00b7 `components/admin` \u00b7 `lib/admin",
+      "plan": ".workflows/plan/nina-personality-tab/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The Personality tab"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-personality-tab/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-personality-tab",
+  "updated": "2026-09-07T00:30:25+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-personality-tab"
+}
