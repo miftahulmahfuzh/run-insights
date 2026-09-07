@@ -37,10 +37,18 @@ import type { NinaMemoryWrite } from './schema'
  *      difference between a memory and a summary.
  *
  *  ── AND THE ONE RULE THAT KEEPS IT HONEST ───────────────────────────────────────────────────
- *  A slot is written only when he ACTUALLY SAID the thing (§6's quote gate, and
- *  SLOT_CONFIDENCE_FLOOR). An inferred slot is a fabricated memory she will then confidently act
- *  on for months. Confidence lives on the ledger row and nowhere else; a low-confidence fact is
- *  recorded and never promoted.
+ *  A slot is written only when he ACTUALLY SAID the thing — §6's quote gate, which since task
+ *  #135 is the WHOLE gate. An inferred slot is a fabricated memory she will then confidently act
+ *  on for months, so the quote must be a verbatim span of his own message; a reading whose quote
+ *  does not check out is recorded as a fact and never promoted.
+ *
+ *  **There was a second gate and it is gone.** `confidence` — an integer percent on the candidate
+ *  and on the ledger row, with a floor of 80 for promotion — was removed on the user's explicit
+ *  instruction: *"make the whole process has no confidence. just extract some important
+ *  information during interaction, with no confidence."* The cost is recorded rather than
+ *  forgotten: a reading whose quote is genuinely verbatim but whose `text` is an INFERENCE drawn
+ *  from it is now promoted, where the floor used to catch it. See
+ *  `.workflows/plan/task-135-remove-confidence.md` and the test that asserts the new behaviour.
  *
  *  ── WHY THIS FILE IS PURE ───────────────────────────────────────────────────────────────────
  *  No `server-only`, no database import, no clock, no model. Invariant 6: everything worth
@@ -836,22 +844,14 @@ export const FACT_TEXT_MAX = 400
 /** Twelve is generous for one exchange and still a bound. Enforced by the schema, not by a slice. */
 export const MAX_DISTILLED_CANDIDATES = 12
 
-/** Below this a statement is recorded but never promoted to a slot. Ruling (d). */
-export const SLOT_CONFIDENCE_FLOOR = 80
-
-/** The ceiling a claim whose quote does not check out is capped to. Ruling (d). */
-export const UNVERIFIED_CONFIDENCE_CEILING = 40
-
 export const DistilledCandidateSchema = z.object({
   /** The fact, one sentence, in the language he said it in. */
   text: z.string().trim().min(1).max(FACT_TEXT_MAX),
   category: z.enum(NINA_FACT_CATEGORIES),
-  /** Integer percent. 100 is "he said it outright". */
-  confidence: z.number().int().min(0).max(100),
   /**
    * **The span of HIS OWN message this came from.** Not a paraphrase — a substring. This is the
-   * whole quote gate: `verifyQuote` checks it really is one, and a claim that fails cannot become
-   * a slot no matter what confidence it declared.
+   * quote gate, and since task #135 it is the only gate: `verifyQuote` checks it really is one,
+   * and a claim that fails cannot become a slot.
    */
   quote: z.string().trim().min(1).max(FACT_TEXT_MAX),
   /** One of `NINA_SLOT_KEYS`, when this is standing truth and not just colour. */
@@ -1055,8 +1055,6 @@ export function mergePendingPromises(
 export interface PlannedFact {
   category: NinaFactCategory
   text: string
-  /** Integer percent 0-100. Already capped by the quote gate where that applied. */
-  confidence: number
   sourceMessageId: string | null
 }
 
@@ -1082,12 +1080,7 @@ export interface DeferredSlot {
 /** A slot write that became a ledger fact instead. Nothing is ever dropped; this says why. */
 export interface DemotedWrite {
   key: string
-  reason:
-    | 'unknown-key'
-    | 'unparseable-value'
-    | 'low-confidence'
-    | 'unverified-quote'
-    | 'bad-promise-shape'
+  reason: 'unknown-key' | 'unparseable-value' | 'unverified-quote' | 'bad-promise-shape'
 }
 
 export interface MemoryPlan {
@@ -1138,7 +1131,7 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
   const deferred: DeferredSlot[] = []
   const demoted: DemotedWrite[] = []
 
-  const addFact = (category: NinaFactCategory, text: string, confidence: number): void => {
+  const addFact = (category: NinaFactCategory, text: string): void => {
     if (facts.length >= MAX_PLANNED_FACTS) return
     const value = text.replace(/\s+/g, ' ').trim().slice(0, FACT_TEXT_MAX)
     if (value.length === 0) return
@@ -1147,20 +1140,10 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
     const dedupeKey = normaliseForQuote(value)
     if (factKeys.has(dedupeKey)) return
     factKeys.add(dedupeKey)
-    facts.push({
-      category,
-      text: value,
-      confidence: Math.max(0, Math.min(100, Math.round(confidence))),
-      sourceMessageId: input.sourceMessageId,
-    })
+    facts.push({ category, text: value, sourceMessageId: input.sourceMessageId })
   }
 
-  const proposeSlot = (
-    key: NinaSlotKey,
-    raw: string,
-    verified: boolean,
-    confidence: number,
-  ): void => {
+  const proposeSlot = (key: NinaSlotKey, raw: string, verified: boolean): void => {
     const spec = NINA_SLOT_SPECS[key]
     if (spec.policy !== 'replace') {
       demoted.push({ key, reason: 'unparseable-value' })
@@ -1168,10 +1151,6 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
     }
     if (!verified) {
       demoted.push({ key, reason: 'unverified-quote' })
-      return
-    }
-    if (confidence < SLOT_CONFIDENCE_FLOOR) {
-      demoted.push({ key, reason: 'low-confidence' })
       return
     }
     const value = spec.canonicalise(raw)
@@ -1186,29 +1165,25 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
   for (const write of input.memoryWrites) {
     const key = write.kind === 'slot' ? write.slotKey : undefined
     if (key != null && isNinaSlotKey(key)) {
-      addFact(NINA_SLOT_SPECS[key].category, write.text, 100)
+      addFact(NINA_SLOT_SPECS[key].category, write.text)
       /* `verified: true` — she asserted it through a tool schema, which is the trust level phase 3
        * already granted her; the quote gate exists for the DISTILLER's readings. */
-      proposeSlot(key, write.text, true, 100)
+      proposeSlot(key, write.text, true)
       continue
     }
     if (key != null) demoted.push({ key, reason: 'unknown-key' })
-    addFact('other', write.text, 100)
+    addFact('other', write.text)
   }
 
   /* ── 2. the distillation ───────────────────────────────────────────────────────────────────── */
   for (const candidate of input.distilled?.facts ?? []) {
     const verified = verifyQuote(candidate.quote, input.runnerText)
-    const confidence = verified
-      ? candidate.confidence
-      : Math.min(candidate.confidence, UNVERIFIED_CONFIDENCE_CEILING)
 
     const key = candidate.slotKey
     const known = key !== undefined && isNinaSlotKey(key)
     addFact(
       known ? NINA_SLOT_SPECS[key as NinaSlotKey].category : candidate.category,
       candidate.text,
-      confidence,
     )
 
     if (key === undefined) continue
@@ -1216,7 +1191,7 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
       demoted.push({ key, reason: 'unknown-key' })
       continue
     }
-    proposeSlot(key as NinaSlotKey, candidate.text, verified, confidence)
+    proposeSlot(key as NinaSlotKey, candidate.text, verified)
   }
 
   /* ── 3. the nickname (R7) ──────────────────────────────────────────────────────────────────── */
@@ -1226,7 +1201,7 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
     /* It has to be IN his message. She may not report a nickname he did not type, because from
      * then on she uses it in every single bubble. */
     if (nickname !== null && verifyQuote(nickname, input.runnerText)) {
-      addFact('person', `Dia mau dipanggil "${nickname}".`, 100)
+      addFact('person', `Dia mau dipanggil "${nickname}".`)
       slots.set('nickname', {
         key: 'nickname',
         value: nickname,
@@ -1248,14 +1223,14 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
   for (const candidate of input.distilled?.promises ?? []) {
     if (!verifyQuote(candidate.quote, input.runnerText)) {
       demoted.push({ key: 'pending_promises', reason: 'unverified-quote' })
-      addFact('other', candidate.text, UNVERIFIED_CONFIDENCE_CEILING)
+      addFact('other', candidate.text)
     }
   }
   if (promiseCandidates.length > 0) {
     const merged = mergePendingPromises(input.currentPromises, promiseCandidates, input.promiseCtx)
     for (const candidate of merged.rejected) {
       demoted.push({ key: 'pending_promises', reason: 'bad-promise-shape' })
-      addFact('other', `${candidate.text} (${candidate.condition})`, 100)
+      addFact('other', `${candidate.text} (${candidate.condition})`)
     }
     if (merged.slot.promises.length > (input.currentPromises?.promises.length ?? 0)) {
       slots.set('pending_promises', {
@@ -1265,7 +1240,7 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
         sourceMessageId: input.sourceMessageId,
       })
       for (const candidate of promiseCandidates) {
-        addFact('other', `Nina janji: ${candidate.text} — kalau ${candidate.condition}.`, 100)
+        addFact('other', `Nina janji: ${candidate.text} — kalau ${candidate.condition}.`)
       }
     }
   }

@@ -110,18 +110,13 @@ export interface NinaToolGateway {
   /**
    * The append-only ledger (RU-6). `sourceMessageId` is the runner message this turn answers.
    *
-   * **Widened by phase 5, additively.** `category` and `confidence` are phase 1's own columns and
-   * phase 5's distiller supplies both; omitted, they take the row's defaults (`'other'` and 100),
-   * which is exactly what `save_memory` wants.
+   * **Widened by phase 5, additively.** `category` is phase 1's own column and phase 5's
+   * distiller supplies it; omitted, it takes the row's default (`'other'`), which is exactly what
+   * `save_memory` wants. (It was two columns until task #135 retired `confidence`.)
    */
   appendMemoryFact(
     userId: string,
-    row: {
-      text: string
-      sourceMessageId: string | null
-      category?: NinaFactCategory
-      confidence?: number
-    },
+    row: { text: string; sourceMessageId: string | null; category?: NinaFactCategory },
   ): Promise<void>
 }
 

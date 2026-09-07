@@ -288,7 +288,6 @@ export interface NinaFactRow {
   id: string
   category: NinaFactCategory
   text: string
-  confidence: number
   source: NinaMemorySource
   sourceMessageId: string | null
   createdAt: Date
@@ -297,8 +296,6 @@ export interface NinaFactRow {
 export interface NinaFactInsert {
   category: NinaFactCategory
   text: string
-  /** Integer percent 0–100. Defaults to 100. */
-  confidence?: number
   source?: NinaMemorySource
   sourceMessageId?: string | null
 }
@@ -2108,7 +2105,6 @@ export async function listNinaMemoryFacts(
       id: ninaMemoryFacts.id,
       category: ninaMemoryFacts.category,
       text: ninaMemoryFacts.text,
-      confidence: ninaMemoryFacts.confidence,
       source: ninaMemoryFacts.source,
       sourceMessageId: ninaMemoryFacts.sourceMessageId,
       createdAt: ninaMemoryFacts.createdAt,
@@ -2137,7 +2133,6 @@ export async function appendNinaMemoryFacts(
         userId,
         category: row.category,
         text: row.text,
-        confidence: row.confidence ?? 100,
         source: row.source ?? 'distilled',
         sourceMessageId: row.sourceMessageId ?? null,
       })),
@@ -2146,7 +2141,6 @@ export async function appendNinaMemoryFacts(
       id: ninaMemoryFacts.id,
       category: ninaMemoryFacts.category,
       text: ninaMemoryFacts.text,
-      confidence: ninaMemoryFacts.confidence,
       source: ninaMemoryFacts.source,
       sourceMessageId: ninaMemoryFacts.sourceMessageId,
       createdAt: ninaMemoryFacts.createdAt,
@@ -2161,16 +2155,15 @@ export async function appendNinaMemoryFacts(
 export async function updateNinaMemoryFact(
   userId: string,
   id: string,
-  patch: { category?: NinaFactCategory; text?: string; confidence?: number },
+  patch: { category?: NinaFactCategory; text?: string },
 ): Promise<boolean> {
-  if (patch.category == null && patch.text == null && patch.confidence == null) return false
+  if (patch.category == null && patch.text == null) return false
 
   const updated = await db
     .update(ninaMemoryFacts)
     .set({
       ...(patch.category != null ? { category: patch.category } : {}),
       ...(patch.text != null ? { text: patch.text } : {}),
-      ...(patch.confidence != null ? { confidence: patch.confidence } : {}),
     })
     .where(and(eq(ninaMemoryFacts.userId, userId), eq(ninaMemoryFacts.id, id)))
     .returning({ id: ninaMemoryFacts.id })

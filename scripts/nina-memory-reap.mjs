@@ -60,7 +60,7 @@ console.log(`${apply ? 'APPLY' : 'DRY RUN'} — reaping memory rows whose source
 /* ── 1. the append-only ledger ──────────────────────────────────────────────────────────────── */
 
 const facts = await sql`
-  select f.id, f.user_id, f.category, f.text, f.confidence, f.source,
+  select f.id, f.user_id, f.category, f.text, f.source,
          f.source_message_id, f.created_at
     from nina_memory_facts f
    where f.source_message_id is not null

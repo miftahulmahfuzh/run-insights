@@ -64,8 +64,6 @@ import {
 export interface AdminFactDraft {
   category: NinaFactCategory
   text: string
-  /** Integer percent 0–100. Phase 1 defaults it to 100; every caller here passes it explicitly. */
-  confidence: number
 }
 
 /** A slot write. `value` is already canonicalised by `canonicaliseSlotValue`. */
@@ -105,13 +103,7 @@ export async function adminAppendFact(
   draft: AdminFactDraft,
 ): Promise<NinaFactRow | null> {
   const rows = await appendNinaMemoryFacts(userId, [
-    {
-      category: draft.category,
-      text: draft.text,
-      confidence: draft.confidence,
-      source: 'admin',
-      sourceMessageId: null,
-    },
+    { category: draft.category, text: draft.text, source: 'admin', sourceMessageId: null },
   ])
   return rows[0] ?? null
 }
@@ -125,14 +117,13 @@ export async function adminAppendFact(
 export async function adminUpdateFact(
   userId: string,
   id: string,
-  patch: { category: NinaFactCategory; text: string; confidence: number },
+  patch: { category: NinaFactCategory; text: string },
 ): Promise<boolean> {
   const updated = await db
     .update(ninaMemoryFacts)
     .set({
       category: patch.category,
       text: patch.text,
-      confidence: patch.confidence,
       source: 'admin',
       sourceMessageId: null,
     })

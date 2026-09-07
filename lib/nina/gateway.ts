@@ -359,7 +359,6 @@ export const dbNinaToolGateway: NinaToolGateway & NinaMemoryGateway = {
       {
         category: row.category ?? 'other',
         text: row.text,
-        confidence: row.confidence,
         sourceMessageId: row.sourceMessageId,
       },
     ])
