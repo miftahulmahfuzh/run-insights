@@ -18,7 +18,7 @@
         "R1",
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one"
     }
@@ -26,6 +26,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/blob-stored-pathname-window/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "blob-stored-pathname-window",
-  "updated": "2026-09-07T00:40:09+00:00",
+  "updated": "2026-09-07T00:41:00+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/blob-stored-pathname-window"
 }
