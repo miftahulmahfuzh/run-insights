@@ -10,32 +10,32 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "live in tmux @48 (pane %56), mid tests/nina.prompts.test.ts; nine files edited uncommitted in the worktree. Derived 'pending' is the live-process blind spot -- a running session leaves no trace in git or todos.md -- NOT an abandoned phase. Do not re-spawn: a second session on these nine files is the shared-index hazard with both writers believing they own them.",
       "package": "lib/nina`, `lib/admin`, `components/admin`, `lib/db",
       "plan": ".workflows/plan/nina-instructor-character/phase-1.md",
-      "reported_at": "2026-09-07T02:41:33+00:00",
+      "reported_at": "2026-09-07T05:16:20+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "spawned",
+      "status": "running",
       "task_id": "P1-NIN-A016",
       "title": "The sixth character, and the 3x2 grid"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "814fe8a",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "Verified: 814fe8a ancestor of local branch and origin/feature/nina-instructor-character. 145 test files / 2845 tests green (+8 its own; +3 residual from phase 1's in-flight worktree edits). Frozen snapshot unregenerated. Exit criteria all met, checked scoped to its six paths: prompts/system.ts and prompts/distill.ts absent from its diff; 'instructor' and 'relationship' grep 0; SLOT_VOCABULARY_BLOCK renders 10 lines with training_plan 4th, verified at RUNTIME via a throwaway test then deleted with no residue. DECISION rung 4: also corrected buildMemoryRows docstring item 2 'after the eight' -> 'after the nine' -- a fourth slot-count sentence the plan's Step 6 did not enumerate, comment-only, inside this phase's stated Owns. DRIFT: none, every quoted anchor present as quoted. OUTSTANDING (not blocking): the manual /admin/memory browser check was deliberately not run -- a prod build of the shared worktree would compile phase 1's in-flight edits, so the result would be attributable to neither phase. Do after the wave lands.",
       "package": "lib/nina`, `lib/admin",
       "plan": ".workflows/plan/nina-instructor-character/phase-2.md",
-      "reported_at": "2026-09-07T02:41:33+00:00",
+      "reported_at": "2026-09-07T05:16:27+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
+      "status": "done",
       "task_id": "P1-NIN-A017",
       "title": "A schedule she can keep"
     },
@@ -63,6 +63,6 @@
   "plan": "/home/miftah/.worktrees/run-insights/nina-instructor-character/NINA_INSTRUCTOR_CHARACTER_PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-instructor-character",
-  "updated": "2026-09-07T02:42:34+00:00",
+  "updated": "2026-09-07T05:16:27+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-instructor-character"
 }
