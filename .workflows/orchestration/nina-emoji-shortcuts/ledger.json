@@ -6,21 +6,21 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "f9cd5ee",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "migration is 0012_nina_shortcuts, NOT 0011: origin/main had already minted 0011_rare_blockbuster, so the branch was rebased onto origin/main (d792c86->3f0bbd8) per phase-1 Step 2's hazard recipe, then regenerated -- never renamed. Pushed with --force-with-lease. task-135 removed nina_memory_facts.confidence, so all plan line anchors in schema.ts/queries.ts shifted; insertions re-applied by content anchor, bytes still verbatim. MERGE TARGET IS origin/main -- local main is stale/divergent (8f1a10d) and lacks this set's own base. normalizeNinaTrigger's docstring claimed phase 4 reimplements normalisation in plain JS; corrected to 'imports it' per invariant 4 + D5 (phase 4: import the module, assert function identity). shortcuts.test.ts is 32 cases.",
       "package": "lib/db`, `lib/nina",
       "plan": ".workflows/plan/nina-emoji-shortcuts/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:37:17+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A004",
       "title": "The table and the matcher"
     },
     {
@@ -38,7 +38,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Firing a shortcut into the turn"
     },
@@ -57,7 +57,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "/admin/shortcuts"
     },
@@ -76,7 +76,7 @@
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Import the ledger's shortcuts"
     }
@@ -84,6 +84,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-emoji-shortcuts/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-emoji-shortcuts",
-  "updated": "2026-09-07T15:15:19+00:00",
+  "updated": "2026-09-07T15:38:07+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-emoji-shortcuts"
 }
