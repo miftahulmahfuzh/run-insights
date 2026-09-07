@@ -12,11 +12,20 @@
 
 export const SHARE_TITLE = 'Share this run'
 
-/** The button, before a link exists and after. Same verb; the panel below it carries the state. */
-export const SHARE_ACTION = 'Share'
+/*
+ * There is no `SHARE_ACTION` any more. The header button used to carry the word "Share" and used
+ * its own label as the copied-confirmation; card #108 made it a glyph, so the word it printed is
+ * `ShareButton`'s `<ShareIcon />` and the confirmation is `SHARE_COPIED` in two forms — a tick, and
+ * the `sr-only` live region that says it out loud.
+ */
 
 export const SHARE_LINK_LIVE = 'This run has a live link.'
-export const SHARE_LINK_NONE = 'Not shared. Tap Share to create a link.'
+/*
+ * "the share icon", not "Share" — the button this sentence points at is a glyph in the header
+ * above this panel (card #108), and copy that names a label the screen does not show is copy that
+ * sends the runner looking for a button that is not there.
+ */
+export const SHARE_LINK_NONE = 'Not shared. Tap the share icon above to create a link.'
 
 export const SHARE_COPY_LINK = 'Copy link'
 export const SHARE_COPIED = 'Copied'
