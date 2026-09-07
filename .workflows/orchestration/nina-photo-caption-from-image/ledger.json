@@ -1,0 +1,113 @@
+{
+  "branch": "feature/nina-photo-caption-from-image",
+  "card_note": "parent #113 owns the pull request; each phase completes on its commit via `finish <n> --child-of 113 --commit <sha>`. Minted by analyze-nina-photo-caption after GitHub's secondary content-creation limit cleared, verified subIssues total 4.",
+  "coordinator": "orch-nina-photo-caption-from-image",
+  "coordinator_session_id": "a34549c2-ef73-40b7-ace8-5b9ce442731a",
+  "created": "2026-09-07T02:40:06+00:00",
+  "decisions": [
+    {
+      "by": "orch-nina-photo-caption-from-image",
+      "chosen": "Corrected the index (tracked copy) with a dated update note; LEFT phase-2.md unchanged.",
+      "consequence": "phase-2.md stands as the historical record of what was planned. The index carries the unconditional version, and this ledger carries the reason.",
+      "fork": "The stale 'nina-job-redo-and-soft-delete is in flight' premise appears in the plan index's Rollback section AND in phase-2.md Step 1. Correct both, or only the index?",
+      "rung": "The orchestrator's own Step 2 rule -- phase plans are copied unchanged, because 'a plan that gets touched on the way through is a plan whose reconciliation no longer holds'. Reinforced by p2 being a live reader of that plan's worktree twin right now: editing a plan under its own implementer is the shared-file hazard I declined for the index. The instruction in phase-2.md is correct as written; only its conditional is stale, and the operative correction belongs in the one document the lander reads.",
+      "when": "2026-09-07"
+    },
+    {
+      "also": "P1-DB-A002 (phase 2) and P1-ADM-A000 (phase 3) were checked and are free -- no rename needed.",
+      "applied": "2026-09-07: applied on the branch. A014->A019 and A015->A020 across lib/nina/.workflows/todos.md, lib/admin/.workflows/todos.md, lib/nina/.workflows/package_readme.md, both plan index copies, and git mv of lib/nina/.workflows/plan/P1-NIN-A014.md -> P1-NIN-A019.md. One sed pass, not sequential, since neither target id existed. Zero residual references.",
+      "by": "orch-nina-photo-caption-from-image",
+      "chosen": "OURS MOVE: phase 1 P1-NIN-A014 -> P1-NIN-A019, phase 4 P1-NIN-A015 -> P1-NIN-A020. A016-A018 are claimed by the live nina-instructor-character set, so A019/A020 are the first unclaimed pair.",
+      "consequence": "A false 'done' on phases 1 and 4 would have (a) spawned wave 1 against a caption engine that does not exist yet, and (b) marked phase 4 complete without any work. Renaming is deferred until phase 1 commits, because lib/nina/.workflows/todos.md holds BOTH ids and impl-...-p1 is writing that file right now. Phase 4 cannot spawn before phase 1 lands anyway, so the ordering is naturally safe.",
+      "fork": "Our phase 1 minted P1-NIN-A014 and phase 4 minted P1-NIN-A015. Both ids are ALREADY TAKEN on origin/main by nina-job-redo-and-soft-delete (its phase 2 and phase 1), which landed at fa1b7e3 -- and both are marked [x] complete there. Whose ids move?",
+      "how_found": "swarm.py verify derived phase 1 as 'done' with evidence 'todos.md: P1-NIN-A014 complete' while phase 1 was demonstrably still running its test suite and had no commit. task_state() greps every todos.md for the id and returns 'complete' on an [x] anywhere in the hits -- so it was reading the OTHER set's finished task. swarm.py was correct; the duplicate id was the defect.",
+      "rung": "6: surrounding convention. The other set's ids are already committed to main and its tasks are closed; a landed, completed id is not renameable without rewriting history that other documents cite. Ours are still only in an uncommitted worktree file, so ours are the cheap side to move.",
+      "when": "2026-09-07"
+    }
+  ],
+  "parent_card": "miftahulmahfuzh/run-insights#113",
+  "phases": [
+    {
+      "card": "miftahulmahfuzh/run-insights#114",
+      "commit": "31a542e",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "landed 31a542e, verified an ancestor of origin/feature. TaskID RENAMED P1-NIN-A014 -> P1-NIN-A019 (collided with nina-job-redo-and-soft-delete's landed phase 2). p1's own decisions: (1) real plan defect -- sanitizeNinaCaption stripped quotes before markdown edges so the plan's own test input failed; fixed to a fixed point via stripEdgeDecoration, rung 3, RELEVANT TO PHASE 4 which degrades into that module. (2) \\u escapes without eslint-disable per title.ts:98, rung 6.",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-1.md",
+      "reported_at": "2026-09-07T05:27:09+00:00",
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A019",
+      "title": "Her eyes for her own photo, and her voice for the caption"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#115",
+      "commit": "7fb7f90497a7e0d81208bc8c095722d87b4d2c7f",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": "photo_only column + generated 0008 (with backfill); predicate reads marker, legacy caption clause kept; all 3 writers set it. DECISIONS: skipped /implement Step 3 (set-level TaskID mint from a phase session) -- you had already minted P1-DB-A002, rung 6; added photoOnly to 2 hand-written fixtures outside my Files table (tests/nina.gateway.patterns.test.ts, tests/db.schema.nina.test.ts column manifest) rather than making NinaMessageRow.photoOnly optional -- rung 1, invariant 1. NO caption text changed. Verified: db:check, lint 0 err, typecheck, 2850/2850 tests. NOTE: worktree had NO node_modules -- I ran npm install (blocked p1 too). MERGE: 0008 collides with nina-job-redo-and-soft-delete; second merger regenerates, never renames.",
+      "package": "lib/db` + `lib/nina` + `lib/admin` + `scripts",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-2.md",
+      "reported_at": "2026-09-07T05:16:26+00:00",
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-DB-A002",
+      "title": "The carrier marker: a photo bubble free text cannot hide"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#116",
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "lib/admin",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "The admin add path captions from the photograph"
+    },
+    {
+      "card": "miftahulmahfuzh/run-insights#117",
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "spawned",
+      "task_id": "P1-NIN-A020",
+      "title": "Generated selfies caption from the scene she asked for"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-photo-caption-from-image",
+  "updated": "2026-09-07T05:29:04+00:00",
+  "verified_at": "2026-09-07T05:17:14+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
+}

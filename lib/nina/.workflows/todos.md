@@ -3,22 +3,70 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-07
-**Total Active Tasks**: 0
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 14
+- Completed: 18
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `'instructor'` appended to `NINA_RELATIONSHIPS`; `NINA_ADDRESS.instructor`; `NINA_RELATIONSHIP_BLOCKS.instructor`; `RELATIONSHIP_NOTE.instructor`; `RELATIONSHIP_GLOSS.instructor`; the prose address list at `distill.ts:105`; **`NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6)**; the `nina_tuning.relationship` docstring; the grid's equal-height cells in `CharacterPanel.tsx`; and the test files that count or enumerate the levels. Exit: six cards render three-across two-down with equal-height cells at `xl` via `sm:auto-rows-fr` and **no `h-full`** on the cards; all four `Record<NinaRelationship, ...>` sites and all four prose sites filled; `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests **including the frozen snapshot, unregenerated**; `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` byte-identical; `NINA_PROMPT_VERSION === 4` still and `NINA_DISTILL_PROMPT_VERSION === 3`.
+  - **Status**: completed
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — "to make it a nice 3 columns x 2 rows"; R2 — "add a new character: Instructor", a professional and knowledgeable instructor whose primary objective is to improve the performance of miftah's running
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-1.md`
+  - **Method**: /implement (swarm wave 0, concurrent with phase 2)
+  - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/admin/tuningModel.ts, lib/nina/prompts/distill.ts, lib/db/schema.ts, components/admin/CharacterPanel.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/nina.prompts.test.ts
+  - **Completed**: 2026-09-07 12:35
+  - **Commit**: `f1bdbc7`
+  - **Verification**: 145 test files / 2845 tests green, run after phase 2 had landed. `tsc --noEmit` clean, prettier clean. Frozen snapshot byte-identical to base `f839116`, never regenerated; the `it()` title at `:220` untouched, `instructor` excluded in the loop body only. `NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6, its bump alone); `NINA_PROMPT_VERSION` untouched at 4. R1 measured on a local production build (port 3457) driven with Playwright at `/admin/personality`: 3x2 with all six cards 93px at 1440px, 2x3 at 1024/800, one content-sized column at 420px. Counterfactual run: removing `sm:auto-rows-fr` returns rows to 77/93, so the fix is load-bearing and the plan's row-to-row diagnosis was right.
+  - **Decisions**: 15 `PageProps`/`LayoutProps` tsc errors are absent Next-generated types cleared by one `next build`, none in its nine files — pre-existing, not drift (rung 6) · Did NOT run the plan's manual select-Instructor-and-Save step: `.env.local` points at the production Neon database, so saving would have flipped Nina's live relationship for real users. The prompt content is asserted by tests instead (tie-break: reversibility, narrower blast radius). Coordinator concurs — a live production write is not a phase's side effect.
+  - **Drift**: none — every anchor the plan quoted matched.
+  - **Handoff to phase 3**: locate insertion points in `lib/nina/persona.ts` and `tests/nina.prompts.test.ts` by ANCHOR TEXT, not line number — this phase shifted `persona.ts` by ~+13 inside `NINA_RELATIONSHIP_BLOCKS` and `tests/nina.prompts.test.ts` by ~+50 below `:220`.
+
+- [x] **P1-NIN-A017** Phase 2: A schedule she can keep
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the tenth `NINA_SLOT_KEYS` member for the training plan — spelled **`training_plan`**, at index 3 immediately after `running_days` — its `NINA_SLOT_SPECS` entry (`policy: 'replace'`, `category: 'training'`, `canonicalise: prose(raw, 400)`, `prompt`), its `SLOT_LABELS` entry and refusal reason in `lib/admin/memoryVocab.ts`, the slot-count prose in `lib/admin/memoryModel.ts` and `lib/admin/schema.ts` (comments only), and the two slot-count test files. Exit: `NINA_SLOT_KEYS` has ten members with `training_plan` fourth and `pending_promises` last; the slot round-trips through `canonicalise`, refuses an empty value to a ledger fact rather than storing it, appears at `/admin/memory` with a label, hint and editable value, and is described to the distiller by **exactly one** rendered line from `SLOT_VOCABULARY_BLOCK`. **Neither `lib/nina/prompts/system.ts` nor `lib/nina/prompts/distill.ts` appears in `git diff --name-only`.** `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests; frozen snapshot byte-identical.
+  - **Status**: completed
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R3 (the "set up schedules" half) — "she will set up schedules"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-2.md`
+  - **Method**: /implement (swarm wave 0, concurrent with phase 1)
+  - **Files**: lib/nina/memory.ts, lib/admin/memoryVocab.ts, lib/admin/memoryModel.ts, lib/admin/schema.ts, tests/nina.memory.test.ts, tests/admin.memory.test.ts
+  - **Completed**: 2026-09-07 12:14
+  - **Commit**: `814fe8a`
+  - **Verification**: 145 test files / 2845 tests green (baseline 145/2834; +8 its own, +3 residual from phase 1's concurrent in-flight edits). Frozen snapshot unregenerated. `lib/nina/prompts/system.ts` and `lib/nina/prompts/distill.ts` both absent from its diff; `instructor` and `relationship` grep 0 across its six paths. `SLOT_VOCABULARY_BLOCK` verified at runtime to render exactly 10 lines with `training_plan —` fourth. prettier and eslint clean on all six.
+  - **Decisions**: `buildMemoryRows` docstring item 2 read "after the eight" — a fourth slot-count sentence the plan's Step 6 did not enumerate, two lines below one it does correct. Corrected to "after the nine" (rung 4, the deliverable: false the moment `NINA_SLOT_KEYS` grows, comment-only, inside this phase's stated Owns for slot-count prose in that file).
+  - **Drift**: none — every anchor the plan quoted was present as quoted.
+  - **Outstanding**: the manual `/admin/memory` browser check (plan's Manual check 1-4) was deliberately not run — a production build of the shared worktree would compile phase 1's in-flight edits, making the result attributable to neither phase. Every automated criterion is met; do the browser confirmation once the wave has landed.
+
+- [ ] **P1-NIN-A018** Phase 3: The coaching register and the insight path
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns the instructor's coaching block in `lib/nina/persona.ts` (`isInstructor`, `INSTRUCTOR_COACHING`, `ninaInstructorCoachingBlock`), gated on the relationship; all three edits to `lib/nina/prompts/system.ts` (the `"patterns"` paragraph of `buildContextGuide` `:247`, the `WHAT YOU ARE READING` section `:485`, and `proactiveTuningSuffix` `:594`); `NINA_PROMPT_VERSION` 4 -> 5 in `lib/nina/prompts/index.ts` (`:36`); and the gated prose naming of phase 2's `training_plan` slot key (D7). Exit: under `instructor` the prompt prescribes against `REPEATED_HIGH_AVG_HR` and `PACE_REGRESSION` in training terms — a day, an effort, a duration and a field to re-read; the gate is `ninaActiveRelationship(tuning) === 'instructor'` and **never** `tuning.relationship`; the coaching block, the `"patterns"` clause, the proactive line and the slot key are **absent** from all five other levels, asserted per level; `buildContextGuide` never contains `training_plan` at any level; frozen snapshot passes unregenerated; the anger ladder renders identically at all six relationships; `NINA_PROMPT_VERSION === 5`; `npx vitest run` green at **145 test files** and >= 2834 tests.
+  - **Status**: pending
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R3 (the "monitor and give insights" half) — "she will proactively monitor his performance and give insights into what should he do"
+  - **Depends on**: `P1-NIN-A016`, `P1-NIN-A017`
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-3.md`
+  - **Method**: /implement (swarm wave 1)
+  - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
 
 ### [P2] Medium
 
@@ -49,6 +97,39 @@
   - **Verification**: `npx vitest run tests/admin.chatPhotos.test.ts lib/nina/images.test.ts` 44 passed; regression proof with only `lib/admin/chatPhotos.ts` and `lib/nina/images.ts` stashed to base 8 failed / 36 passed (all six rows the plan predicted, plus two more); `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in untouched `scripts/capture/shoot.mjs`); `npm test` 145 files, 2834 tests, all passed.
   - **Outstanding**: exit criterion 6, the post-deploy prod probe (upload `enina5.png` through `/admin/photos` on the deployed branch and confirm a `nina_message_images` row), is NOT done and is run by the main context after this push.
   - **Note**: the prod Blob store (`ptezanncca27s5kn`) still holds 15 orphaned objects, ~7.6 MB — 8 are this bug's direct residue, one per refused click; 7 are `.png` selfies whose rows were cascade-deleted by the merged "a deleted session is really deleted" work. Sweeping them is out of scope here; it belongs to the `reap-orphaned-blobs` skill.
+- [x] **P1-NIN-A014** Phase 2: Soft delete: `nina_turns.deleted_at` and the tidy list
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/db/schema.ts`'s `deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' })` on `nina_turns` — nullable, no default, with the docstring saying what it means per `kind` — plus `drizzle/0008_*.sql` **generated by `npm run db:generate`, never hand-written and never renamed**. Adds `softDeleteNinaImageJob(userId, jobId)` and `isNull(ninaTurns.deletedAt)` to **eight** functions / **nine** `WHERE`s in `lib/nina/imagejobs.ts`: `listNinaImageJobs`, `getNinaImageJobDetail`, `listOpenNinaImageJobs`, `getNinaImageJob`, `listRevivableNinaImageJobs`, `sweepStaleNinaImageJobs` (SELECT **and** guarded UPDATE), `claimNinaImageJob`, and **`reopenNinaImageJob`** (phase 1's new read, so a stale tab cannot resurrect a hidden job) — and **deliberately not** `countNinaTurnsSince`, because the daily cap is a money cap and hiding a row does not un-spend it (D7). Appends `deleteNinaImageJob({ jobId })` to phase 1's `lib/nina/jobActions.ts` and the delete icon button to phase 1's `NinaJobActions.tsx` (`aria-label` naming the row, `aria-busy={pending}`). Invents **no** new `NinaJobRefusal` member — all four delete causes collapse to `'not-found'` — so `lib/nina/jobview.ts`, `NinaJobList.tsx`, `app/nina/jobs/page.tsx`, `NinaAboutScreen.tsx`, `scripts/nina-image-worker.ts` and `lib/nina/imagerun.ts` stay untouched. Three test files, split because `installFakeDb()` and `vi.mock('@/lib/db', …)` cannot both own `@/lib/db` in one file. Exit: tapping delete removes the row on the next paint with no dialog; the row still exists in Neon with `deleted_at` set and `cost_micro_usd` unchanged; `/nina/jobs/<id>` 404s; the in-flight strip, the revival read and the stale sweep all skip it; a redo fired at a hidden job is refused `'not-found'`; the daily cap still counts it; `db:generate` produced exactly one migration and `db:check` is clean; `npm run lint && npm run typecheck && npm run test` green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_JOB_REDO_AND_SOFT_DELETE_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — A **delete** icon button on each item, firing immediately with no confirmation, that **soft**-deletes the row in Neon so the job list stays tidy
+  - **Depends on**: `P1-NIN-A015`
+  - **Plan**: `.workflows/plan/P1-NIN-A014.md`
+  - **Card**: `miftahulmahfuzh/run-insights#106`
+  - **Completed**: 2026-09-07 09:10
+  - **Method**: /do
+  - **Files**: lib/db/schema.ts, drizzle/0008_thankful_cardiac.sql, drizzle/meta/0008_snapshot.json, drizzle/meta/_journal.json, lib/nina/imagejobs.ts, lib/nina/queries.ts, lib/nina/jobActions.ts, components/nina/NinaJobActions.tsx, tests/db.schema.nina.test.ts, tests/nina.jobActions.test.ts, tests/nina.softDelete.test.ts
+  - **Drift**: No code drift. Every anchor the plan quoted was present verbatim on the branch: the `args: jsonb('args')` / `createdAt` pair in lib/db/schema.ts, all nine target WHERE blocks in lib/nina/imagejobs.ts (including phase 1's reopenNinaImageJob, the eighth read, at its documented position), countNinaTurnsSince's docstring in lib/nina/queries.ts, phase 1's `import { reopenNinaImageJob } from './imagejobs'` line and NinaJobActionResult shape, NinaJobActions.tsx's one-argument run() / `item` prop / `pending` flag / `const title = ninaJobTitle(item)`, the sqlType/columns/names/indexNames helpers in tests/db.schema.nina.test.ts, and every binding Step 10 depends on in tests/nina.jobActions.test.ts (actions, requireUserId, revalidatePath, dbRows, deferred, insertNinaTurn, FAILED_JOB). All four of the plan's reconciled F1-F6 statements about phase 1's shapes matched the branch exactly, so no adaptation was performed.
+  - **Drift**: The plan's reconciliation was correct that components/nina/NinaJobList.tsx, lib/nina/jobview.ts and app/nina/jobs/page.tsx needed no edit: `git diff HEAD` on those three is empty. Steps 6 and 10a were correctly pre-deleted by the reconciler and had nothing to do.
+  - **Drift**: Cosmetic only: the TrashIcon's two single-attribute `<path>` elements (`M4 7h16` and `M10.5 11v5M13.5 11v5`) are written on one line each rather than the plan's multi-line form. Prettier formats them that way because they fit in the print width; `npm run lint` is clean either way. No attribute differs from the plan.
+  - **Drift**: Bookkeeping, not code: the plan index's TaskID column held an em dash for both phases (Step 3 was skipped as a re-run, so it had never been written back). Filled it in with P1-NIN-A015 and P1-NIN-A014 in /home/miftah/run-insights/.workflows/orchestration/nina-job-redo-and-soft-delete/PLAN.md.
+  - **Drift**: Migration generated, NOT applied: `npm run db:migrate` was deliberately not run — the plan forbids it and names applying `0008` as the operator's post-merge step. Until the operator applies it, production would have the code and not the column, and every read naming `deleted_at` would error.
+
+- [x] **P1-NIN-A015** Phase 1: Redo: reopen a failed job from its own args
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/jobview.ts` (`jobCanRedo(stage)` pure + `NinaJobListItem.canRedo`), `lib/nina/imagejobs.ts` (`reopenNinaImageJob(userId, jobId)` — owner-scoped read of the failed row, refusal of anything not `status='failed'` or with null `args`, `ninaImageQuotaLeft` check, then `openNinaImageJob` with the SAME `args` and `attempts: 0`), a **new** `'use server'` `lib/nina/jobActions.ts` (`redoNinaImageJob({ jobId })` → `fireNinaImageGeneration` → `revalidatePath(NINA_JOBS_HREF)`, returning `NinaJobActionResult`), a **new** `'use client'` `components/nina/NinaJobActions.tsx` (redo icon button, pending state, refusal sentence), the `NinaJobList.tsx` row becoming a flex line with an opt-in `actions` control slot, `app/nina/jobs/page.tsx` (passes `actions`, **exports `maxDuration = 300`**), and two test files. A redo is an INSERT of a new row — the failed row keeps its `status`, `error_code` and `cost_micro_usd` (invariant 2). Does not touch `lib/db/schema.ts`, `drizzle/`, `NinaAboutScreen.tsx`, `app/nina/jobs/[id]/page.tsx`, `lib/nina/imagerun.ts`, `lib/nina/selfiegen.ts`, `scripts/`. Exit: tapping redo on a failed row starts a generation and the list refreshes with **no dialog at any point**; redo is absent on a non-`failed` row and `redoNinaImageJob` refuses one anyway; the original failed row is untouched; a redo whose stored `replyToId` names a deleted message still delivers into `ensureNinaSession`'s most recent session (asserted by test); `/nina/about` renders identically (no `actions` prop → no control slot); `npm run lint && npm run typecheck && npm run test` green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_JOB_REDO_AND_SOFT_DELETE_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — A **redo** icon button on each item of `/nina/jobs`, firing immediately with no confirmation, that re-runs the failed job — and when the triggering chat message is gone, still delivers the photograph, into the most recent chat session
+  - **Plan**: `.workflows/plan/P1-NIN-A015.md`
+  - **Card**: `miftahulmahfuzh/run-insights#105`
+  - **Completed**: 2026-09-07 08:55
+  - **Method**: /do
+  - **Files**: lib/nina/jobview.ts, lib/nina/imagejobs.ts, lib/nina/jobActions.ts, components/nina/NinaJobActions.tsx, components/nina/NinaJobList.tsx, app/nina/jobs/page.tsx, tests/nina.jobview.test.ts, tests/nina.jobActions.test.ts
+  - **Drift**: No code drift. Every anchor the plan quoted (jobIsOpen at :135, NinaJobListItem, toNinaJobListItems, openNinaImageJob/NinaImageClaim boundary in imagejobs.ts, NinaJobList's row body, the 'NO maxDuration' docstring block, the toNinaJobListItems describe in tests/nina.jobview.test.ts) was present verbatim; all eight files applied as written.
+  - **Drift**: Environment, not code: this worktree had no node_modules, so `npm ci` was run before verification could execute. Nothing in package.json or package-lock.json changed.
 
 - [x] **P1-NIN-A007** Phase 1: Unblock the camera: the three measured defects
   - **Difficulty**: HARD

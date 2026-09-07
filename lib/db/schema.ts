@@ -661,6 +661,67 @@ export const ninaTurns = pgTable(
      * argument as `trigger` above.
      */
     args: jsonb('args'),
+    /**
+     * **The runner hid this job row from `/nina/jobs`. That is the whole feature (R2).**
+     *
+     * NULL means "not hidden". A timestamp means "hidden, then". Nullable, no default, and **no
+     * backfill script** — every row written before this column reads NULL and is therefore
+     * visible, which is `tuning_revision`'s idiom and the `*_enabled` columns' idiom one table
+     * over: the migration IS the backfill, because the absent value already spells the right
+     * answer.
+     *
+     * The runner's words were *"delete job icon … (but just soft delete in neon db). so i can
+     * keep the job list tidy and pristine"*, and the parenthesis is a specification. This table
+     * is the money ledger AND the audit trail (see the header), so a `DELETE` here would erase a
+     * billed generation from the record in order to tidy a list.
+     *
+     * ── FOUR THINGS IT IS NOT, EACH OF WHICH SOMEBODY WILL OTHERWISE RE-OPEN ──────────────────
+     *
+     *   1. **NOT A REFUND.** `countNinaTurnsSince` — the daily image cap — does NOT filter on
+     *      this column, deliberately and permanently. `lib/nina/selfiegen.ts` calls that cap *"a
+     *      money cap and not a feature cap"*, and $0.04 that has been spent is still spent after
+     *      the row is hidden. Six generations a day is six generations a day whether or not he
+     *      tidied the list afterwards. A version of this column that refunded the quota would be
+     *      an unmetered image budget with one extra tap in front of it.
+     *
+     *   2. **NOT A CANCEL.** Hiding a `status = 'pending'` job does not stop the invocation that
+     *      is already drawing it. That generation finishes, `completeNinaImageJob` closes the row
+     *      it was handed, and **the photograph still lands in the chat.** That is a real,
+     *      reachable, user-visible outcome and it is the right one — he asked for that
+     *      photograph, and the money is already committed. What the flag DOES stop is anything
+     *      NEW starting: `claimNinaImageJob`, `listRevivableNinaImageJobs` and
+     *      `sweepStaleNinaImageJobs` all skip a flagged row, so a hidden job is never re-fired
+     *      and never apologised for. A true cancel would have to race the claim, and losing that
+     *      race means spending the money and then telling him it did not happen.
+     *
+     *   3. **NOT A DELETE, AND NOT AN ARCHIVE WITH A SCREEN.** No statement anywhere removes a
+     *      `nina_turns` row; `tests/nina.softDelete.test.ts` asserts that against this module's
+     *      source. There is also no trash view and no undo button, because nobody asked for one —
+     *      what the nullable column buys is that `update nina_turns set deleted_at = null where
+     *      id = '…'` restores a row exactly, in SQL, by hand. That recoverability is also why the
+     *      control that writes this needs no confirmation dialog: `SessionRow`'s R11 confirmation
+     *      exists because *"there is no archive flag and therefore no undo"*, and here there is.
+     *
+     *   4. **NOT A PER-KIND CONCEPT.** Only `kind = 'image'` rows are ever flagged, because
+     *      `/nina/jobs` is the only screen that lists turns and it lists only image jobs. Every
+     *      writer of this column carries `kind = 'image'` in its `WHERE`. A `kind = 'chat'` turn
+     *      has no list to be tidied out of; `lib/nina/chatturn.ts` does not read this column and
+     *      must not start.
+     *
+     * ── NO INDEX, AND HERE IS THE ARITHMETIC ──────────────────────────────────────────────────
+     * A partial index — `(user_id, created_at desc) where kind = 'image' and deleted_at is null`
+     * — was considered and declined, and the numbers are small enough to write down. The list
+     * read is one `LIMIT 60` walk of `nina_turns_user_created_idx`, which ALREADY carries
+     * `kind = 'image'` as a heap filter on tuples it has fetched anyway; `deleted_at IS NULL` is a
+     * second predicate on those same fetched tuples and costs one null check each. The set it
+     * filters is bounded by `NINA_IMAGE_DAILY_CAP` — six image rows per user per day — so sixty
+     * rows is ten days of flat-out use, and the worst case for a runner who hides everything is
+     * that the walk passes a few extra tuples before it fills the limit. The index would cost a
+     * write on every turn Nina ever takes, chat rows included, to save microseconds on a page
+     * opened by hand. `nina_turns` keeps exactly one index, and
+     * `tests/db.schema.nina.test.ts` pins that.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (t) => [

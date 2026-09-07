@@ -134,6 +134,77 @@ export function jobIsOpen(stage: NinaJobStage): boolean {
   return stage === 'queued' || stage === 'dispatched' || stage === 'running'
 }
 
+/* ── the per-row controls ─────────────────────────────────────────────────────────────────── */
+
+/**
+ * **R1's redo, as a rule rather than as a `&&` inside a component.**
+ *
+ * `vitest.config.ts` is `environment: 'node'`, so a condition written inside
+ * `components/nina/NinaJobActions.tsx` is a condition nothing in this repo can assert — the same
+ * reason `jobIsOpen` and `planJobJump` live here rather than in `NinaJobList`. This function is one
+ * comparison, and it is here because the plan set's invariant 6 says a rule a screen obeys is a
+ * rule a test reaches.
+ *
+ * ── WHY `failed` AND NOTHING ELSE (plan index, *Decisions*, rung 5) ───────────────────────────
+ * The user's own words are *"clicking this will redo the **failed** job"*, and each of the other
+ * four stages has its own reason to be refused:
+ *
+ *   · `queued` / `dispatched` / `running` — the job is ALREADY being retried. `reviveNinaImageJobs`
+ *     re-fires a `queued` row on the next `/nina` render and `claimNinaImageJob` bounds the whole
+ *     thing at `NINA_IMAGE_MAX_ATTEMPTS`. A redo here would open a SECOND row for one photograph
+ *     and bill twice for it.
+ *   · `done` — the photograph exists and is in the chat. Re-rolling it is a different feature
+ *     nobody asked for, and it costs one of six generations a day.
+ *
+ * ── AND WHY THE SERVER CHECKS IT AGAIN ANYWAY ─────────────────────────────────────────────────
+ * **A control is not a guard.** This function decides whether a button is DRAWN; `redoNinaImageJob`
+ * refuses a non-failed job independently, from the row it read under the runner's own `userId`,
+ * because a `jobId` arriving from a browser is a claim and never a fact (plan invariant 3).
+ *
+ * Purpose is deliberately NOT part of the rule. A failed AVATAR job is redoable too: it re-runs
+ * through `finishAvatar`, writes `nina_avatars`, and leaves `announced_at` NULL so the next cron
+ * tick makes her mention it — which is exactly what a redo of that job should do.
+ */
+export function jobCanRedo(stage: NinaJobStage): boolean {
+  return stage === 'failed'
+}
+
+/**
+ * **Why a per-row action refuses, as a CODE and never as a sentence.**
+ *
+ * `NinaSessionActionResult` is `{ ok, next }` and carries no error prose: the server decides, the
+ * calling component supplies the words, and `SessionRow`'s header records why ("there is exactly
+ * one place a rule lives"). That arrangement is kept — and widened by exactly one field, because a
+ * bare `ok: false` cannot distinguish "your daily photo budget is spent" from "that job is not
+ * yours", and those two deserve different sentences in a language the server has no business
+ * writing.
+ *
+ * So the wire carries a DISCRIMINANT, not copy — `NINA_JOB_JUMP_NOTE` below is the same shape one
+ * screen over, and `components/nina/NinaJobActions.tsx` owns the `Record<NinaJobRefusal, string>`
+ * that turns it into Indonesian.
+ *
+ * ── WHY IT LIVES IN THIS FILE AND NOT IN `lib/nina/jobActions.ts` ─────────────────────────────
+ * Three modules need to agree about these four strings: `lib/nina/imagejobs.ts` (`server-only`,
+ * produces them), `lib/nina/jobActions.ts` (`'use server'`, forwards them) and a `'use client'`
+ * button (renders them). This module is the only one all three can import — it is pure, it is
+ * already imported by three client components, and it imports nothing but `lib/format` and
+ * `lib/id`. Declaring the union in `imagejobs.ts` would put a `server-only` import in a browser
+ * bundle's type graph; declaring it in `jobActions.ts` would make a `server-only` module import a
+ * `'use server'` one, which is backwards.
+ *
+ *   · `not-found`  — no such job of his. Covers a malformed id, another runner's id, and an id
+ *                    that never existed: one answer, so nothing leaks which ids are real.
+ *   · `not-failed` — the row is `pending`, `ok` or `repaired`. See `jobCanRedo`.
+ *   · `no-args`    — the row cannot be redone FROM. `lib/db/schema.ts` says it in as many words:
+ *                    *"a job whose args were only ever in the dispatch payload is a job that can
+ *                    never be retried"*, and three production rows predate the column.
+ *   · `capped`     — `ninaImageQuotaLeft` is 0. A money cap, not a feature cap.
+ *
+ * PHASE 2's delete action reuses this union and needs no new member: a delete is refused only when
+ * the row is not his, which is `'not-found'`.
+ */
+export type NinaJobRefusal = 'not-found' | 'not-failed' | 'no-args' | 'capped'
+
 /**
  * `'Nunggu worker'` rather than `'Dijadwalkan'` for `dispatched`, and that one word is the whole of
  * this phase's Branch A adjustment (plan index, Branch A consequences: *"phase 4 renders
@@ -208,6 +279,33 @@ export interface NinaJobListItem {
   latencyMs: number | null
   /** Whether a live clock is honest for this row. See D4. */
   open: boolean
+  /**
+   * Whether R1's redo control is drawn on this row — `jobCanRedo(stage)`, resolved HERE so the
+   * only surface that draws it cannot disagree with the only test that asserts it.
+   *
+   * REQUIRED and not optional, deliberately. Both callers of `toNinaJobListItems` go through that
+   * one function, so there is no third construction site for an optional field to be forgotten at,
+   * and `tsc` is the right thing to notice if one ever appears. `/nina/about` receives the field
+   * and ignores it: the controls are opt-in per SURFACE (`NinaJobList`'s `actions` prop), not per
+   * item, so a read-only surface simply never looks at it.
+   */
+  canRedo: boolean
+}
+
+/**
+ * What a row is CALLED — the scene if it has one, otherwise what kind of photograph it was.
+ *
+ * It exists because R1's control needs an accessible name and **an icon button's accessible name
+ * must be the visible label of the thing it acts on**, or a screen reader announces "Coba lagi" six
+ * times in a list of six rows. `NinaJobList` renders this expression as the row's title and
+ * `NinaJobActions` renders it inside `aria-label`; two copies of it would drift the first time the
+ * fallback wording changed, and the drift would be invisible to everyone who can see the screen.
+ *
+ * `Pick`-shaped rather than taking a whole `NinaJobListItem`, on `planJobJump`'s precedent: the
+ * function needs two fields and a test should be able to hand it two fields.
+ */
+export function ninaJobTitle(item: Pick<NinaJobListItem, 'scene' | 'purpose'>): string {
+  return item.scene ?? (item.purpose === 'avatar' ? 'Foto profil' : 'Selfie')
 }
 
 export function toNinaJobListItems(rows: readonly JobLike[]): NinaJobListItem[] {
@@ -225,6 +323,7 @@ export function toNinaJobListItems(rows: readonly JobLike[]): NinaJobListItem[] 
       errorLabel: stage === 'failed' ? jobErrorLabel(row.errorCode) : null,
       latencyMs: row.latencyMs,
       open: jobIsOpen(stage),
+      canRedo: jobCanRedo(stage),
     }
   })
 }

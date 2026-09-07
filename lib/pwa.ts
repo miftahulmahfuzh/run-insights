@@ -68,6 +68,77 @@ export const INSTALL = {
 } as const
 
 /**
+ * The SECOND install contract: `/admin`, installed as its own home-screen app.
+ *
+ * ── WHY A SECOND ONE AND NOT A FIELD ON THE FIRST ──────────────────────────────────────────────
+ * Because a manifest describes ONE app. `start_url` is a single value, and it is the value Safari
+ * launches an installed tile from — so an app that starts at `/` and an app that starts at
+ * `/admin` are two manifests or they are one app. See `app/admin/manifest.webmanifest/route.ts`,
+ * which is the whole of the second one.
+ *
+ * ── WHAT DIFFERS FROM `INSTALL`, AND WHY EACH ONE DIFFERS ──────────────────────────────────────
+ * `shortName` is 8 characters and not a suffix of "Run Insights", because that string is already
+ * exactly the ~12-character ceiling iOS truncates at (see `INSTALL`) and there is no room to add
+ * to it. Two tiles whose labels both read "Run Insigh…" would be a worse outcome than no second
+ * tile at all.
+ *
+ * `paper` is `--paper-2` and not `--paper`: it becomes the admin manifest's `background_color`,
+ * which paints the launch splash, and `/admin`'s shell is `bg-paper-2` (`app/admin/layout.tsx`).
+ * `INSTALL`'s note applies unchanged — this is the APP's ground colour, not the icon's background,
+ * so it has to match the screen the app opens onto. **Phase 2's admin TILE is drawn on the dark
+ * scheme's `--paper` and that is not a contradiction**: the tile is the thing you tap, the splash
+ * is the frame you land in, and they are answering different questions.
+ *
+ * ── NO `paperDark` HERE, DELIBERATELY ──────────────────────────────────────────────────────────
+ * `INSTALL.paperDark` exists for the media-matched `themeColor` pair in `app/layout.tsx`'s
+ * `viewport` export — the only place a scheme-varying status-bar tint can live. Giving `/admin` its
+ * own tint would mean exporting `viewport` from `app/admin/layout.tsx`, and whether a nested
+ * `viewport` export replaces the whole object or merges key by key has NOT been verified here. If
+ * it replaces, `/admin` silently loses `viewportFit: 'cover'` — and every `env(safe-area-inset-*)`
+ * in that shell, all four of which `admin-responsive-nina-intimacy` phase 1 put there on purpose,
+ * goes inert. A status-bar tint is not worth that bet. Verify it first if you want the tint.
+ */
+export const ADMIN_INSTALL = {
+  name: 'Run Insights Admin',
+  /** 8 characters. iOS truncates past ~12; see `INSTALL.shortName`. */
+  shortName: 'RI Admin',
+  description: "Nina's album, her personality, the chat photos and the memory store.",
+  /** --paper-2, light. The admin shell's ground, so the splash matches the first screen. */
+  paper: '#f1f7fb',
+} as const
+
+/**
+ * The admin app's icon entries. Same shape as `PWA_ICONS`, same three purposes, different files.
+ *
+ * These are the app's icon in the DARK scheme — the same committed silhouette and the same five
+ * zone colours as the runner's, drawn on `--paper` dark with the figure in `--ink` dark. That is
+ * not decoration: two identically-tiled squircles on one home screen is most of the value of
+ * installing the second one gone, and a light tile against a dark tile is the discriminator that
+ * survives being 40px wide in peripheral vision. `tools/make_icon_assets.py`'s `GROUND_DARK` note
+ * carries the measured contrast table.
+ *
+ * The HOME-SCREEN icon is not here: `app/admin/apple-icon.png` is a Next file convention, valid at
+ * any segment depth, and Next replaces the root's `apple-touch-icon` link with it for `/admin` and
+ * everything under it. A manifest alone does not give iOS a home-screen icon — the same sentence
+ * `app/layout.tsx` carries about the runner's tile, and the same file convention is the fix.
+ */
+export const ADMIN_PWA_ICONS = [
+  { src: '/icons/admin-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+  { src: '/icons/admin-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+  {
+    src: '/icons/admin-icon-maskable-512.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'maskable',
+  },
+] as const satisfies readonly {
+  src: string
+  sizes: string
+  type: string
+  purpose: 'any' | 'maskable'
+}[]
+
+/**
  * `metadata.appleWebApp`, spread into the root layout.
  *
  * ── `statusBarStyle: 'default'`, AND WHY IT IS NOT 'black-translucent' ─────────────────────────

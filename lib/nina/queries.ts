@@ -2098,6 +2098,14 @@ export async function insertNinaTurn(userId: string, input: NinaTurnInsert): Pro
  * Phase 12's daily cap, and phase 10's "have I already spoken today". Counts by `kind` since an
  * instant, and counts FAILED turns too — a cap that only counts successes is a cap an unlucky
  * afternoon can spend ten times over.
+ *
+ * **AND IT DOES NOT FILTER `deleted_at`, WHICH IS A DECISION AND NOT AN OVERSIGHT (R2).** Every
+ * other reader of a `kind='image'` row skips a row the runner hid from `/nina/jobs`; this one
+ * keeps counting it, for the same reason it counts failures. `lib/nina/selfiegen.ts` calls this
+ * cap *"a money cap and not a feature cap"* — the $0.04 was spent, and hiding the row does not
+ * un-spend it. A version of this count that respected the flag would turn one tap on a tidy-up
+ * icon into a quota refund, which is an unmetered image budget wearing a trash can as a hat.
+ * `tests/nina.softDelete.test.ts` asserts the absence of the predicate rather than trusting it.
  */
 export async function countNinaTurnsSince(
   userId: string,
