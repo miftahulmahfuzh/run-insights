@@ -1,0 +1,89 @@
+{
+  "branch": "feature/nina-photo-caption-from-image",
+  "coordinator": "orch-nina-photo-caption-from-image",
+  "coordinator_session_id": "a34549c2-ef73-40b7-ace8-5b9ce442731a",
+  "created": "2026-09-07T02:40:06+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Her eyes for her own photo, and her voice for the caption"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/db` + `lib/nina` + `lib/admin` + `scripts",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "The carrier marker: a photo bubble free text cannot hide"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "lib/admin",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The admin add path captions from the photograph"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-photo-caption-from-image/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Generated selfies caption from the scene she asked for"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-photo-caption-from-image",
+  "updated": "2026-09-07T02:41:00+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
+}
