@@ -15,6 +15,7 @@
     },
     {
       "also": "P1-DB-A002 (phase 2) and P1-ADM-A000 (phase 3) were checked and are free -- no rename needed.",
+      "applied": "2026-09-07: applied on the branch. A014->A019 and A015->A020 across lib/nina/.workflows/todos.md, lib/admin/.workflows/todos.md, lib/nina/.workflows/package_readme.md, both plan index copies, and git mv of lib/nina/.workflows/plan/P1-NIN-A014.md -> P1-NIN-A019.md. One sed pass, not sequential, since neither target id existed. Zero residual references.",
       "by": "orch-nina-photo-caption-from-image",
       "chosen": "OURS MOVE: phase 1 P1-NIN-A014 -> P1-NIN-A019, phase 4 P1-NIN-A015 -> P1-NIN-A020. A016-A018 are claimed by the live nina-instructor-character set, so A019/A020 are the first unclaimed pair.",
       "consequence": "A false 'done' on phases 1 and 4 would have (a) spawned wave 1 against a caption engine that does not exist yet, and (b) marked phase 4 complete without any work. Renaming is deferred until phase 1 commits, because lib/nina/.workflows/todos.md holds BOTH ids and impl-...-p1 is writing that file right now. Phase 4 cannot spawn before phase 1 lands anyway, so the ordering is naturally safe.",
@@ -28,20 +29,20 @@
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#114",
-      "commit": null,
+      "commit": "31a542e",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": "CORRECTED BACK FROM A DERIVED 'done'. verify --apply promoted phase 1 to done on todos.md evidence alone (P1-NIN-A014 complete) with commit=null, but nothing is on the branch: origin/feature/... holds only 7fb7f90 (phase 2) and 0f67f03 (plan). Pane %53 shows p1 still running lint+guard+full suite. Bookkeeping marks the task complete BEFORE the commit exists, so a todos-only 'done' is not proof of landing. Wave 1 (3,4) NOT spawned -- both need phase 1's captionNinaPhoto.",
+      "note": "landed 31a542e, verified an ancestor of origin/feature. TaskID RENAMED P1-NIN-A014 -> P1-NIN-A019 (collided with nina-job-redo-and-soft-delete's landed phase 2). p1's own decisions: (1) real plan defect -- sanitizeNinaCaption stripped quotes before markdown edges so the plan's own test input failed; fixed to a fixed point via stripEdgeDecoration, rung 3, RELEVANT TO PHASE 4 which degrades into that module. (2) \\u escapes without eslint-disable per title.ts:98, rung 6.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-photo-caption-from-image/phase-1.md",
-      "reported_at": "2026-09-07T05:17:40+00:00",
+      "reported_at": "2026-09-07T05:27:09+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "running",
-      "task_id": "P1-NIN-A014",
+      "status": "done",
+      "task_id": "P1-NIN-A019",
       "title": "Her eyes for her own photo, and her voice for the caption"
     },
     {
@@ -99,14 +100,14 @@
         "R2"
       ],
       "status": "pending",
-      "task_id": null,
+      "task_id": "P1-NIN-A020",
       "title": "Generated selfies caption from the scene she asked for"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-photo-caption-from-image/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-photo-caption-from-image",
-  "updated": "2026-09-07T05:17:40+00:00",
+  "updated": "2026-09-07T05:27:09+00:00",
   "verified_at": "2026-09-07T05:17:14+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image"
 }

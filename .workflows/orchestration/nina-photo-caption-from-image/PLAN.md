@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-photo-caption-from-image`
 **Branch:** `feature/nina-photo-caption-from-image` (base: `origin/main` @ `f839116`)
 **Phases:** 4
-**Status:** planned
+**Status:** in_progress (phases 1, 2 landed; 3, 4 runnable)
 **Coordinator:** `orch-nina-photo-caption-from-image`
 **Parent card:** [#113](https://github.com/miftahulmahfuzh/run-insights/issues/113) — owns the pull request
 
@@ -109,10 +109,10 @@ Every phase holds all of these. A phase that cannot is a phase whose plan is wro
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Her eyes for her own photo, and her voice for the caption | R1, R2 | `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-1.md` | `P1-NIN-A014` | [#114](https://github.com/miftahulmahfuzh/run-insights/issues/114) |
+| 1 | Her eyes for her own photo, and her voice for the caption | R1, R2 | `lib/nina` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-1.md` | `P1-NIN-A019` | [#114](https://github.com/miftahulmahfuzh/run-insights/issues/114) |
 | 2 | The carrier marker: a photo bubble free text cannot hide | R1, R2 | `lib/db` + `lib/nina` + `lib/admin` + `scripts` | 8 | — | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-2.md` | `P1-DB-A002` | [#115](https://github.com/miftahulmahfuzh/run-insights/issues/115) |
 | 3 | The admin add path captions from the photograph | R1 | `lib/admin` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-3.md` | `P1-ADM-A000` | [#116](https://github.com/miftahulmahfuzh/run-insights/issues/116) |
-| 4 | Generated selfies caption from the scene she asked for | R2 | `lib/nina` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-4.md` | `P1-NIN-A015` | [#117](https://github.com/miftahulmahfuzh/run-insights/issues/117) |
+| 4 | Generated selfies caption from the scene she asked for | R2 | `lib/nina` | 3 | 1, 2 | NORMAL | `.workflows/plan/nina-photo-caption-from-image/phase-4.md` | `P1-NIN-A020` | [#117](https://github.com/miftahulmahfuzh/run-insights/issues/117) |
 
 Waves: **{1, 2}** then **{3, 4}**. Phases 1 and 2 share no file; phases 3 and 4 share no file.
 
