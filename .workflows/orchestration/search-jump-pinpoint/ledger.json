@@ -10,7 +10,7 @@
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": "gates green (typecheck, lint, vitest 2880/2880); pushed ad4e22c..c713b3d. decision: tests/nina.chatPhoto.test.ts (outside Files table) asserted ONE replaceState in ChatScreen and failed against the watcher -- updated to the sanctioned-two-writers rule (never two writers in ONE commit), rung 1: index Decisions row 4. standing caveat: manual browser smoke checklist not run (needs authenticated session); automated coverage is the pure guard + href suites, per plan.",
+      "note": "gates green (typecheck, lint, vitest 2880/2880); pushed ad4e22c..c713b3d. decision: tests/nina.chatPhoto.test.ts (outside Files table) asserted ONE replaceState in ChatScreen and failed against the watcher -- updated to the sanctioned-two-writers rule (never two writers in ONE commit), rung 1: index Decisions row 4. standing caveat: manual browser smoke checklist not run (needs authenticated session); automated coverage is the pure guard + href suites, per plan. LANDED: merge 5f7639d resolved 15 conflicts -- origin side for 12 (branch residue superseded by origin evolution, rung 6); ChatScreen = origin base + phase delta, applied clean; todos.md/package_readme = union. Gates: typecheck+lint clean, vitest 3477/3481 -- the 4 failures are PRE-EXISTING on origin/main @18b0c58 (same file, same tests, proven by probe worktree; solo run 19/19 green).",
       "package": "lib/nina",
       "plan": ".workflows/plan/search-jump-pinpoint/phase-1.md",
       "reported_at": "2026-09-08T08:11:02+00:00",
@@ -28,5 +28,6 @@
   "slug": "search-jump-pinpoint",
   "updated": "2026-09-08T08:11:02+00:00",
   "verified_at": "2026-09-08T08:09:25+00:00",
-  "worktree": "/home/miftah/.worktrees/run-insights/search-jump-pinpoint"
+  "worktree": "/home/miftah/.worktrees/run-insights/search-jump-pinpoint",
+  "landed": "5f7639d"
 }
