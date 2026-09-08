@@ -22,7 +22,12 @@ import {
   type RunAttachment,
 } from '@/lib/nina/attach'
 import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
-import { composerBottomCss, composerPadBottomCss, keyboardOverlapPx } from '@/lib/nina/chatview'
+import {
+  composerBottomCss,
+  composerPadBottomCss,
+  keyboardOverlapPx,
+  NINA_KEYBOARD_OVERLAP_VAR,
+} from '@/lib/nina/chatview'
 import {
   applyMessageDeletion,
   applyMessageEdit,
@@ -594,6 +599,29 @@ export function ChatScreen({
       vv.removeEventListener('scroll', sync)
     }
   }, [])
+
+  /*
+   * The keyboard's one broadcast, and the reason it is a custom property: the sidebar panel needs
+   * the same overlap this screen already measures, but it is a SIBLING — rendered by the page
+   * beside this component, not under it — so a prop cannot cross and a second `visualViewport`
+   * subscription is the thing `ChatChrome`'s docstring forbids. `:root` is the nearest thing both
+   * inherit from; `NINA_BAR_VISIBLE_VAR` is the precedent for exactly this gap, and
+   * `NINA_KEYBOARD_OVERLAP_VAR`'s own docstring says what the panel does with the number.
+   *
+   * Removed — not zeroed — whenever the overlap is zero, and on unmount, so the resting geometry
+   * (`inset-0`) is what an unread var falls back to and nothing survives navigation off `/nina`.
+   */
+  useEffect(() => {
+    const root = document.documentElement
+    if (overlap > 0) {
+      root.style.setProperty(NINA_KEYBOARD_OVERLAP_VAR, `${overlap}px`)
+    } else {
+      root.style.removeProperty(NINA_KEYBOARD_OVERLAP_VAR)
+    }
+    return () => {
+      root.style.removeProperty(NINA_KEYBOARD_OVERLAP_VAR)
+    }
+  }, [overlap])
 
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {

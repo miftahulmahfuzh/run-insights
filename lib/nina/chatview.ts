@@ -201,6 +201,31 @@ export function keyboardOverlapPx(viewport: {
 export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
 
 /**
+ * The CSS custom property carrying the software keyboard's current overlap in px — the same number
+ * `keyboardOverlapPx` hands the composer — published on `document.documentElement` by
+ * `components/nina/ChatScreen.tsx`, whose `visualViewport` subscription is the ONE on this screen
+ * (`ChatChrome`'s docstring records why there must not be a second). The reader is the one fixed
+ * overlay that is neither ChatScreen's descendant nor the composer's: `NinaSidebar`'s panel, which
+ * sets its `bottom` to `var(--nina-kb-overlap, 0px)` so the panel ENDS at the keyboard's top edge.
+ *
+ * **Absent is the resting geometry**, on `NINA_BAR_VISIBLE_VAR`'s exact reasoning. The keyboard-less
+ * state must be what the server's HTML and the first client frame already say (`inset-0`), so the
+ * property is removed the moment the overlap reads zero and on unmount, and a reader that has not
+ * heard from the subscription substitutes `0px` — no settle, no flash, and nothing leaks onto
+ * another route. Android never sets it at all: `keyboardOverlapPx` returns 0 there because the
+ * layout viewport really does shrink, and the panel needs no help.
+ *
+ * Why the panel needs it: iOS does not resize the layout viewport when the keyboard opens, so a
+ * `fixed inset-0` panel runs on behind it, and Safari's focus reveal answers by lifting the whole
+ * fixed overlay — the search field exits the top of the glass while the keyboard holds the bottom,
+ * which is the bug the repo owner reported as the keyboard "mengangkat UI keatas". Ending the panel
+ * at the keyboard's top edge puts the field inside the visible region, which is the same fix the
+ * composer already ships: move the fixed chrome by the measured overlap, never trust Safari to
+ * scroll it into view.
+ */
+export const NINA_KEYBOARD_OVERLAP_VAR = '--nina-kb-overlap'
+
+/**
  * The composer's `bottom`, as a CSS length. Its partner is `composerPadBottomCss` below, and
  * neither is correct without the other.
  *
