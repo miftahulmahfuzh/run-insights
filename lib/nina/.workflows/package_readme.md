@@ -1634,7 +1634,7 @@ the required `padBottomCss` prop on `Composer`:
 
 | bar state | flag | `bottom` | `padding-bottom` | where the inset is counted |
 |---|---|---|---|---|
-| hidden (resting, and SSR) | 0 | collapses to `0` | the 30% floor (R4 below) | once, as the element's own padding |
+| hidden (resting, and SSR) | 0 | collapses to `0` | the resting floor (R4 below) | once, as the element's own padding |
 | showing | 1 | `59px + safe-bottom` | `0` | once, in the offset |
 | keyboard up | — | `<overlap>px` | `0` | not at all — the indicator is behind the keyboard |
 
@@ -1721,23 +1721,36 @@ floor, which puts both floating discs **behind** the composer's `z-40` glass for
 The two branches emit the same length and a different inset term, on purpose; `chrome.test.ts`
 asserts they differ so nobody folds them into one.
 
-### R4 — the resting floor at 30%, and the tab bar's captions with it
+### R4 — the resting floor at 30% (+1 px), and the tab bar's captions at 50%
 
 The repo owner looked at an XS Max and asked for two gaps to be "just 30% of the original": the
 gap under the **chat query field's bottom line** (`py-2` + the whole inset = 42 px), and — on the
 main tab bar, the same complaint one screen over — the height of the **captions' bottom line**
-above the glass (33 px, after the content drop). Two numbers, two owners:
+above the glass. Two numbers, two owners:
 
-- `composerPadBottomCss` carries `max(0px, inset * 0.3 - 5.6px)` — 30% of the old gap minus the
-  8 px of `py-2` the bar keeps (the top of the bar and the keyboard state share that padding), so
-  12.6 px under the field on an XS Max. The `max()` floor keeps R1's own rule intact: the padding
-  cannot go negative, the painted box still reaches the viewport's bottom edge, and glass without
-  an inset keeps the bare 8 px it always had — the reported gap never existed there.
-- `TAB_BAR_CONTENT_DROP_CSS` (in `components/ui/TabBar.tsx`) goes `/ 2` -> `* 1.6` on the same
-  `(inset - 13px)` term: the drop that lands a caption's bottom line at 9.9 px — 30% of 33 — is
-  34 + 9.5 - 9.9 = 33.6 px, which is exactly 1.6 x 21. The equalisation the `/ 2` encoded (air
-  split around the stack) is superseded, not corrected; the air now sits above the icons, and the
-  drop still collapses to nothing on glass with no inset.
+- `composerPadBottomCss` carries `max(0px, inset * 0.3 - 4.6px)` — 30% of the old gap minus the
+  8 px of `py-2` the bar keeps (the top of the bar and the keyboard state share that padding),
+  plus one pixel: 13.6 px under the field on an XS Max. The first cut landed at 12.6 px and the
+  owner, looking at the phone, asked to raise it "sedikit (mungkin 1px)" — too tight against the
+  glass. The `max()` floor keeps R1's own rule intact: the padding cannot go negative, the
+  painted box still reaches the viewport's bottom edge, and glass without an inset keeps the bare
+  8 px it always had — the reported gap never existed there, and the raise lives inside the
+  reduction, not on top of the 8.
+- `TAB_BAR_CONTENT_DROP_CSS` (in `components/ui/TabBar.tsx`) is `0 calc(min(inset, inset / 2 +
+  4.75px))` — see below for how it got there.
+
+**The tab bar's 30 % attempt never rendered vertically, and the follow-up found it.** `translate`'s
+single-value form is the **X axis**, so both of the drop's spellings — the `/ 2` equalisation,
+then `* 1.6` for the 30 % ask — moved the five stacks sideways: 10.5 px, then 33.6 px of
+rightward drift, which the owner reported as *"bergeser ke kanan"* with a request to take the
+change back. The vertical arithmetic those docstrings derived was real and never rendered. The
+follow-up ask was a **50 % reduction**: a centred caption's bottom line sits `inset + 9.5` px
+above the glass (43.5 px on an XS Max), half of that is 21.75, so the drop is `inset / 2 +
+4.75 px` — half the inset plus half the overhang — now spelled on the Y axis explicitly, with X
+pinned to `0` so the stacks stay at their cells' centres. The `min()` keeps inset-less glass at a
+0 drop (no gap to halve, and the translated tap target never leaves the nav's border box). The
+home-indicator geometry constant (`HOME_INDICATOR_TOP_PX`, 13 px) is deleted with the
+`(inset - 13px)` formula it served — nothing measures to the pill any more.
 
 One consumer needed the floor's *formula* rather than its old value — the fallback branch covered
 above — and one consumer deliberately did not: `BOTTOM_GAP.chat` keeps its full

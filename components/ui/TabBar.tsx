@@ -92,48 +92,46 @@ export const TAB_BAR_BORDER_PX = 1
 export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
 
 /**
- * The home-indicator pill's TOP edge above the physical glass: 8 px of gap plus a 5 px pill, the
- * same on every notched iPhone Apple has shipped.
+ * How far each tab's stack drops below the grid's centre: **half the caption's former height
+ * above the glass**, on the vertical axis only — the leading `0` pins X, so the stack stays at
+ * its cell's centre horizontally.
  *
- * Declared here and nowhere else — `composerBottomCss`'s resting floor used to need it too, but
- * COMPOSER_FROST's R1 moved that element's inset into its own `padding-bottom`, so the tab bar's
- * content drop is the only thing that measures to the pill. `tests/tabbar.geometry.test.ts` pins
- * the value.
- */
-export const HOME_INDICATOR_TOP_PX = 13
-
-/**
- * How far each tab's stack drops below the grid's centre: **1.6×** the distance the indicator
- * pill sits below the safe area's top line, and nothing at all without an inset.
+ * MEASURED (the owner's XS Max): a centred stack's caption bottom line sits `inset + 9.5` px
+ * above the glass — 43.5 px on an XS Max, being 34 px of inset plus the 9.5 px by which a 39 px
+ * stack (a 20 px glyph, the 4 px `gap-1`, and a 15 px caption line box) overhangs the grid's
+ * bottom edge when centred in 58. The follow-up ask was "kurangi distance nya sebesar 50%":
+ * 21.75 px. The drop that lands there is `inset / 2 + 4.75` — half the inset plus half the
+ * overhang — and the caption still clears the home-indicator pill (whose top edge is 13 px up)
+ * by 8.75 px.
  *
- * MEASURED (the repo owner's request, which SUPERSEDES the equalisation this constant used to
- * encode): after the `/ 2` drop below, the captions' bottom line sat 33 px above the glass on an
- * XS Max — 34 px of inset plus the 9.5 px a centred stack overhangs the grid's bottom edge (the
- * stack is 39 px: a 20 px glyph, the 4 px `gap-1`, and a 15 px caption line box, 10 px of type at
- * the preflight's `1.5`), less the 10.5 px that drop moved it. The ask was "just 30% of the
- * original": 9.9 px above the glass. The drop that lands the caption's bottom line there is
- * 34 + 9.5 - 9.9 = 33.6 px, which is exactly 1.6 × (34 - 13) — so the multiplier rides the same
- * `(inset - pill-top)` term the equalisation rode, and `HOME_INDICATOR_TOP_PX` stays in the
- * formula for the same reason it entered it.
+ * ── THE AXIS IS SPELLED OUT, BECAUSE THE AXIS WAS THE BUG ────────────────────────────────────
+ * `translate`'s single-value form is X: `translate: 33.6px` moves a tab RIGHT, not down. Both of
+ * this constant's earlier spellings were single-valued — the `/ 2` equalisation, then the `* 1.6`
+ * that tried to answer the same 30 % ask the composer's floor answered — so neither ever moved a
+ * glyph vertically. What they moved was horizontal: 10.5 px, then 33.6 px of rightward drift,
+ * the second glaring enough that the owner reported the bar as "bergeser ke kanan" and asked for
+ * the change back. The vertical geometry those docstrings derived was real arithmetic that never
+ * rendered. The `0 ` prefix is both the fix and the headstone — and it is why
+ * `HOME_INDICATOR_TOP_PX` (13, the pill's top edge) is deleted with the `(inset - 13px)` formula
+ * it served: nothing measures to the pill any more, and a number with no reader is a number that
+ * lies.
  *
- * The equalisation deserves its epitaph, because the geometry it claimed was measured and true:
- * centre-of-grid plus half the below-space is the midpoint between the bar's top line and the
- * pill by algebra, whatever the caption's line-height turns out to be. The owner has since looked
- * at that bar and asked for the captions at 30% of their former height above the glass — the
- * same bottom-heavy ask the composer's resting floor answered in `composerPadBottomCss` — so the
- * air now sits above the icons (44 px from the bar's top line to the glyph on an XS Max) rather
- * than split around the stack. On a device with no inset the drop is 0 and the stack stays
- * centred in the grid, which is still the right answer when there is no pill to measure to.
+ * The `min()` is two rules in one term. It keeps the drop at 0 on glass with no inset — a
+ * desktop window has no gap to halve, and the stack stays centred exactly as it has always been —
+ * and it bounds the drop by the inset itself, so the translated 58 px tap target cannot reach
+ * past the nav's own safe-area padding into pixels below the bar's border box. At an XS Max's
+ * 34 px the clamp is slack (21.75 < 34); it bites only under a 9.5 px inset, which no shipped
+ * glass has.
  *
  * A `translate` and not padding, because the grid's `h-[58px]` is pinned by
  * `tests/tabbar.geometry.test.ts` and mirrored by `TAB_BAR_HEIGHT_PX`: padding would shrink the
  * content box inside a fixed height and squeeze the stack, while a visual translate moves the
  * glyphs and their tap targets down into the nav's own safe-area padding — space the bar already
- * owns and paints; at 1.6× the translated 58 px tap target's bottom edge lands 0.4 px above the
+ * owns and paints; at this drop the translated tap target's bottom edge lands 12.25 px above the
  * glass on an XS Max, still inside the nav's border box, so nothing paints outside the bar and
  * the nav's own hide transform — a different element — is still a plain `100%`.
  */
-export const TAB_BAR_CONTENT_DROP_CSS = `calc(max(0px, var(--safe-bottom) - ${HOME_INDICATOR_TOP_PX}px) * 1.6)`
+export const TAB_BAR_CONTENT_DROP_CSS = `0 calc(min(var(--safe-bottom), var(--safe-bottom) / 2 + 4.75px))`
 
 /**
  * Five entries for a five-column grid, consumed positionally below. `/upload` is the THIRD
@@ -282,8 +280,8 @@ function Tab({
         'flex h-full flex-col items-center justify-center gap-1 text-[10px] font-semibold',
         accent ? 'text-z5' : active ? 'text-ink' : 'text-ink-3',
       )}
-      /* The owner's equalisation, applied: each stack sits centred between the bar's top line and
-         the home-indicator pill rather than in the grid alone. See TAB_BAR_CONTENT_DROP_CSS. */
+      /* The owner's follow-up, applied: each stack drops half its former height above the glass,
+         on the Y axis only — the leading `0` pins X. See TAB_BAR_CONTENT_DROP_CSS. */
       style={{ translate: TAB_BAR_CONTENT_DROP_CSS }}
     >
       <span className="relative grid size-5 place-items-center">

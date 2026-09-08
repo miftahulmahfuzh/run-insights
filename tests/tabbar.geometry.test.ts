@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  HOME_INDICATOR_TOP_PX,
   TAB_BAR_BORDER_PX,
   TAB_BAR_CONTENT_DROP_CSS,
   TAB_BAR_HEIGHT_PX,
@@ -204,40 +203,38 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
 })
 
 /*
- * ── THE CONTENT DROP: THE CAPTIONS AT 30% OF THEIR FORMER HEIGHT ABOVE THE GLASS ───────────────
+ * ── THE CONTENT DROP: THE CAPTIONS AT 50% OF THEIR FORMER HEIGHT ABOVE THE GLASS ──────────────
  *
- * MEASURED (the repo owner's request, superseding the equalisation): after the `/ 2` drop, the
- * captions' bottom line sat 33 px above the glass on an XS Max — 34 px of inset, plus the 9.5 px
- * a centred 39 px stack overhangs the grid's bottom edge, less the 10.5 px drop. The ask was 30%
- * of that: 9.9 px, which the `* 1.6` multiplier on `(inset - 13px)` lands exactly —
- * 34 + 9.5 - 9.9 = 33.6 = 1.6 × 21 — while collapsing to nothing on glass with no inset. The
- * rules live in `TabBar.tsx`'s own header; this block pins them.
+ * MEASURED: a centred stack's caption bottom line sits `inset + 9.5` px above the glass — 43.5 px
+ * on an XS Max (34 of inset plus the 9.5 px overhang of a 39 px stack centred in a 58 px grid).
+ * The owner asked for 30 % first, then saw the bar drift right on the phone — "bergeser ke
+ * kanan" — asked for that change back, and asked for a 50 % reduction instead. The drift WAS the
+ * finding: `translate`'s single-value form is the X axis, so every drop this bar ever shipped
+ * rendered sideways while its docstrings described vertical arithmetic. The corrected constant
+ * spells the axis. The rules live in `TabBar.tsx`'s own header; this block pins them.
  */
 
-describe('each tab drops 1.6x the pill distance below the safe line', () => {
-  it('pins the pill geometry: 13 px from the safe line to the pill top', () => {
-    // 8 px of gap plus a 5 px pill, the same on every notched iPhone Apple has shipped. The value
-    // is measured, not derived, so the test's job is to fail loudly when someone "simplifies" it:
-    // the drop is exact only against this number, and a silent edit to 12 or 14 would shift every
-    // tab's vertical centre without a single type noticing.
-    expect(HOME_INDICATOR_TOP_PX).toBe(13)
+describe('each tab drops half its former height above the glass, on the Y axis only', () => {
+  it('pins the drop: axis-spelled, halved, clamped', () => {
+    // Three properties in one string. The leading `0 ` is the axis pin — `translate`'s
+    // single-value form is X, which is how two shipped "drops" rendered as rightward drift while
+    // their docstrings derived vertical geometry. The `var(--safe-bottom) / 2 + 4.75px` is the
+    // 50 % ask: half the inset plus half the 9.5 px overhang, which halves the centred 43.5 px of
+    // caption height above the glass to 21.75 px. The `min()` keeps inset-less glass at a 0 drop
+    // — no gap to halve there — and bounds the drop by the inset, so the tap target never leaves
+    // the nav's border box.
+    expect(TAB_BAR_CONTENT_DROP_CSS).toBe(
+      '0 calc(min(var(--safe-bottom), var(--safe-bottom) / 2 + 4.75px))',
+    )
   })
 
-  it('declares the pill geometry in exactly one file', () => {
-    // COMPOSER_FROST's R1 moved the composer's resting floor into its own `padding-bottom`, which
-    // removed `chatview.ts`'s last reason to know where the pill is. Before that the same 13 was
-    // spelled in two files; a second spelling is how the drop and some future floor drift apart
-    // by a pixel nobody can attribute, so this pins the single declaration.
-    expect(readRepoCode('lib/nina/chatview.ts')).not.toContain('HOME_INDICATOR_TOP_PX')
-  })
-
-  it('drops by 1.6x the pill distance, floored at zero', () => {
-    // The `max(0px, …)` is the no-notch case: a desktop window has no inset and no pill, so the
-    // drop collapses to 0 and the stack stays centred in the grid — the correct answer when there
-    // is nothing to measure to. The `* 1.6` IS the request: the captions' bottom line at 30% of
-    // its former height above the glass on an XS Max, where the former height was 33 px and
-    // 34 + 9.5 - 9.9 = 33.6 px of drop is exactly 1.6 × (34 - 13).
-    expect(TAB_BAR_CONTENT_DROP_CSS).toBe('calc(max(0px, var(--safe-bottom) - 13px) * 1.6)')
+  it('spells both axes, so the drop can never render sideways again', () => {
+    // `translate: <single value>` is X-only, and both of this constant's earlier forms were
+    // single-valued — the "vertical" equalisation and the 30 % ask both rendered as rightward
+    // drift the owner could see on the phone. The exact pin above is the value; this is the
+    // shape. A future edit that drops the leading `0 ` fails HERE first, with a message about
+    // the axis rather than a bare string diff.
+    expect(TAB_BAR_CONTENT_DROP_CSS.startsWith('0 ')).toBe(true)
   })
 
   it('wires the drop onto each tab through the constant, not a literal', () => {

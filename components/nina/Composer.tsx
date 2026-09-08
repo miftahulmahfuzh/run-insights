@@ -54,9 +54,9 @@ import { QuoteStub } from './QuoteStub'
  *
  * The floor's SIZE is a later owner ask and the pair's second number worth knowing here: the gap
  * under the field's bottom line was `py-2` (8 px) plus the whole inset — 42 px on an XS Max — and
- * the ask was "just 30% of the original". `composerPadBottomCss` carries the arithmetic; the
- * `py-2` on the row below is untouched, because the top of this bar and the keyboard state's
- * floor share it.
+ * the ask was "just 30% of the original", then — after the owner saw it on the phone and called
+ * it too tight — one pixel back. `composerPadBottomCss` carries the arithmetic; the `py-2` on the
+ * row below is untouched, because the top of this bar and the keyboard state's floor share it.
  *
  * One consequence to know before touching `ChatChrome`: this element's MEASURED height now
  * includes the inset while the bar is hidden. `controlBottomCss` gates its own inset term on the

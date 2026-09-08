@@ -76,7 +76,8 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
    * The composer's home-indicator floor is NOT in this sum either, and must not be added: it is
    * the `var(--safe-bottom)` term this class already carries, which is why the whole thing is
    * `calc(7rem+var(--safe-bottom))` rather than `pb-28`. The composer's own floor is 30% of the
-   * former gap now (`composerPadBottomCss`, the XS Max ask), so this reservation is deliberately
+   * former gap plus a pixel now (`composerPadBottomCss`, the XS Max ask and its follow-up), so
+   * this reservation is deliberately
    * the more generous of the two: one is the bar's own box and the other is the scroll
    * container's, and the difference is breathing room under the last bubble — a thing nobody
    * asked to shrink, on a screen whose reported gap was under the field and not under the tail.
