@@ -177,7 +177,7 @@ const RESEND_REFUSAL_TEXT: Record<NinaResendRefusal, string> = {
 }
 
 /**
- * The chrome the composer sits above: the bar's **outer** height — its 58 px grid plus the 1 px
+ * The chrome the composer sits above: the bar's **outer** height — its 39 px grid plus the 1 px
  * `border-t` the grid sits under, which is the bar's actual top edge.
  *
  * MEASURED (R2): the border was never in this sum, so the composer's bottom edge landed a pixel

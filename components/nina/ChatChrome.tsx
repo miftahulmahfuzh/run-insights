@@ -69,7 +69,7 @@ import { NinaSidebarTrigger } from './NinaSidebar'
 const COMPOSER_ID = 'nina-composer'
 
 /**
- * What the bar occupies when it is showing: its **outer** height — the 58 px grid plus the 1 px
+ * What the bar occupies when it is showing: its **outer** height — the 39 px grid plus the 1 px
  * `border-t` the grid sits under, which is the bar's actual top edge. The same constant
  * `ChatScreen`'s `COMPOSER_CLEARANCE_PX` reads, because both are positioning against the same bar.
  *

@@ -186,7 +186,7 @@ export function keyboardOverlapPx(viewport: {
  * resting state is a hidden bar, so the default has to be the hidden geometry: an absent variable
  * substitutes `0`, the composer paints on the home-indicator inset, and there is no reposition
  * between the server's HTML and the first client frame. Setting the variable on *hide* instead
- * would put a 59 px settle into the first paint of every conversation.
+ * would put a 40 px settle into the first paint of every conversation.
  *
  * Set by `components/nina/ChatChrome.tsx` on `document.documentElement`, and removed by that
  * effect's cleanup — so hiding the bar and navigating off `/nina` both restore the default and
@@ -254,15 +254,15 @@ export const NINA_KEYBOARD_OVERLAP_VAR = '--nina-kb-overlap'
  * | bar     | flag | `bottom`             | `padding-bottom`  | inset counted |
  * |---------|------|----------------------|-------------------|---------------|
  * | hidden  | 0    | `0`                  | the resting floor | once, as padding |
- * | shown   | 1    | `59px + safe-bottom` | `0`               | once, in the offset |
+ * | shown   | 1    | `40px + safe-bottom` | `0`               | once, in the offset |
  * | keyboard| —    | `<overlap>px`        | `0`               | not at all — it is behind the keyboard |
  *
  * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind
  * it. A bar behind the keyboard clears nothing either way.
  *
- * The border term is worth saying why it was once missing: a clearance of the grid alone (58) puts
+ * The border term is worth saying why it was once missing: a clearance of the grid alone (39) puts
  * this bar's bottom edge one pixel BELOW the bar's top border, so the conversation shows through
- * the seam. The caller passes the outer height (59) and the two are flush.
+ * the seam. The caller passes the outer height (40) and the two are flush.
  *
  * ── WHY A MULTIPLIER AND NOT A LENGTH ────────────────────────────────────────────────────────
  * `calc(<length> * <number>)` keeps the number 59 in this function, where the caller already
@@ -290,18 +290,19 @@ export function composerBottomCss(overlapPx: number, chromeClearancePx: number):
  * the floor is added by precisely one of the two terms and the composer's painted box always
  * reaches the bottom of whatever is beneath it without ever double-counting the phone's inset.
  *
- * ── THE FLOOR IS 30% OF THE GAP IT USED TO BE, PLUS ONE PIXEL THE OWNER ASKED BACK ───────────
+ * ── THE FLOOR IS THE TAB CAPTIONS' FLOOR, VERBATIM ───────────────────────────────────────────
  * The gap under the field's bottom line used to be this bar's own `py-2` (8 px) plus the whole
  * home-indicator inset — 42 px on an XS Max, most of it frosted glass with nothing in it. The
- * repo owner asked for "just 30% of the original": 12.6 px — then looked at the phone and asked
- * to "naikkan sedikit (mungkin 1px)": 13.6. The `py-2` is shared with the top of the bar and
- * with the keyboard state's floor, so the whole reduction — and the pixel handed back — comes
- * out of this padding: `0.3 × (8px + inset) - 8px + 1px = inset × 0.3 - 4.6px`, floored at zero.
- * On glass with no inset (a desktop window, a home-button phone) the floor was already the bare
- * 8 px of `py-2` and it stays exactly that — the reported gap never existed there, and the raise
- * lives inside the reduction, not on top of the 8. The `max()` is also what keeps R1's own rule
- * intact: the padding can never go negative, so the painted box still reaches the bottom of the
- * viewport and no strip of conversation reopens underneath.
+ * owner cut it to "just 30% of the original", asked for a pixel back, and then — with the tab
+ * bar's captions settled at a distance he had just called right — asked for "the same value that
+ * no 1 use": the captions' 21.75 px. That number is `inset / 2 + 4.75` (R4's halving, in
+ * `components/ui/TabBar.tsx`), so with the 8 px of `py-2` staying — the top of this bar and the
+ * keyboard state's floor share it — the padding carries `inset / 2 + 4.75px - 8px = inset / 2 -
+ * 3.25px`, floored at zero. On glass with no inset (a desktop window, a home-button phone) the
+ * floor was already the bare 8 px of `py-2` and it stays exactly that — the reported gap never
+ * existed there. The `max()` is also what keeps R1's own rule intact: the padding can never go
+ * negative, so the painted box still reaches the bottom of the viewport and no strip of
+ * conversation reopens underneath.
  *
  * ── WHY IT TAKES THE OVERLAP AND NOT JUST THE FLAG ───────────────────────────────────────────
  * Because engaging the composer HIDES the bar (`nextBarState`'s `'composer-engaged'`), so the flag
@@ -320,5 +321,5 @@ export function composerBottomCss(overlapPx: number, chromeClearancePx: number):
  */
 export function composerPadBottomCss(overlapPx: number): string {
   if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
-  return `calc(max(0px, var(--safe-bottom) * 0.3 - 4.6px) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
+  return `calc(max(0px, var(--safe-bottom) / 2 - 3.25px) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
 }

@@ -31,11 +31,11 @@ import { QuoteStub } from './QuoteStub'
  * this component is never given a `key` that changes, and `onSend` is a `useCallback` upstream.
  *
  * ── THE FIXED BAR'S GEOMETRY: TWO PROPS, AND THE INSET IS IN EXACTLY ONE OF THEM ─────────────
- * `bottomCss` is computed by `composerBottomCss` in `lib/nina/chatview.ts` and clears 59 px of
- * chrome: the tab bar's OUTER height, which is its 58 px grid plus the 1 px `border-t` the grid
- * sits under. The border is not a rounding error — it is the bar's top edge, so a clearance of 58
+ * `bottomCss` is computed by `composerBottomCss` in `lib/nina/chatview.ts` and clears 40 px of
+ * chrome: the tab bar's OUTER height, which is its 39 px grid plus the 1 px `border-t` the grid
+ * sits under. The border is not a rounding error — it is the bar's top edge, so a clearance of 39
  * leaves this bar floating one pixel above the bar below it with the conversation visible through
- * the seam. 59 is what makes the two flush.
+ * the seam. 40 is what makes the two flush.
  *
  * `padBottomCss` is its partner, from `composerPadBottomCss` in the same file, and the pair is
  * what makes this bar paint to the bottom of the screen. The home-indicator inset USED to ride in
@@ -54,9 +54,10 @@ import { QuoteStub } from './QuoteStub'
  *
  * The floor's SIZE is a later owner ask and the pair's second number worth knowing here: the gap
  * under the field's bottom line was `py-2` (8 px) plus the whole inset — 42 px on an XS Max — and
- * the ask was "just 30% of the original", then — after the owner saw it on the phone and called
- * it too tight — one pixel back. `composerPadBottomCss` carries the arithmetic; the `py-2` on the
- * row below is untouched, because the top of this bar and the keyboard state's floor share it.
+ * after "just 30% of the original" and a pixel back, the owner anchored it to the tab bar's
+ * captions: the same distance he had just called right. `composerPadBottomCss` carries the
+ * arithmetic; the `py-2` on the row below is untouched, because the top of this bar and the
+ * keyboard state's floor share it.
  *
  * One consequence to know before touching `ChatChrome`: this element's MEASURED height now
  * includes the inset while the bar is hidden. `controlBottomCss` gates its own inset term on the

@@ -62,7 +62,7 @@ describe('the tab bar paints nothing above its own border box', () => {
     // glyph, and it is inside a cell. What must not come back is `relative` on the grid itself,
     // which is what the FAB's `absolute` was resolved against.
     const code = readRepoCode(BAR)
-    expect(code).toContain('mx-auto grid h-[58px]')
+    expect(code).toContain('mx-auto grid h-[39px]')
     expect(code).not.toContain('relative mx-auto')
   })
 
@@ -146,9 +146,9 @@ describe("the tab bar's outer height is the grid plus its border", () => {
     expect(TAB_BAR_BORDER_PX).toBe(1)
   })
 
-  it('is the sum of the grid and the border, and is 59', () => {
+  it('is the sum of the grid and the border, and is 40', () => {
     expect(TAB_BAR_OUTER_HEIGHT_PX).toBe(TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX)
-    expect(TAB_BAR_OUTER_HEIGHT_PX).toBe(59)
+    expect(TAB_BAR_OUTER_HEIGHT_PX).toBe(40)
   })
 
   it('mirrors two classes the bar actually carries', () => {
@@ -156,7 +156,7 @@ describe("the tab bar's outer height is the grid plus its border", () => {
     // mirrors is edited away the constant becomes a lie and every clearance built on it is wrong
     // by exactly that much. This is the cheapest possible alarm for that.
     const bar = readRepoCode(BAR)
-    expect(bar).toContain('h-[58px]')
+    expect(bar).toContain('h-[39px]')
     expect(bar).toContain('border-t')
   })
 })
@@ -188,7 +188,7 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
 
   it('emits a composer bottom that lands exactly on the bar top border', () => {
     // The constant the components compose, joined end to end through the pure function that turns
-    // it into CSS. 59px measured up from the viewport bottom IS the bar's top border, so with the
+    // it into CSS. 40px measured up from the viewport bottom IS the bar's top border, so with the
     // bar showing the composer's bottom edge is ON it — no gap, and no overlap that would paint
     // the composer's glass over the bar's own rule.
     //
@@ -197,35 +197,33 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
     // in its own `padding-bottom` instead (`composerPadBottomCss`). The old form added the inset
     // outside the gate and left that strip unpainted at rest.
     expect(composerBottomCss(0, TAB_BAR_OUTER_HEIGHT_PX)).toBe(
-      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+      'calc((40px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
   })
 })
 
 /*
- * ── THE CONTENT DROP: THE CAPTIONS AT 50% OF THEIR FORMER HEIGHT ABOVE THE GLASS ──────────────
+ * ── R5: THE COMPACT BAR — THE GRID IS THE STACK ───────────────────────────────────────────────
  *
- * MEASURED: a centred stack's caption bottom line sits `inset + 9.5` px above the glass — 43.5 px
- * on an XS Max (34 of inset plus the 9.5 px overhang of a 39 px stack centred in a 58 px grid).
- * The owner asked for 30 % first, then saw the bar drift right on the phone — "bergeser ke
- * kanan" — asked for that change back, and asked for a 50 % reduction instead. The drift WAS the
- * finding: `translate`'s single-value form is the X axis, so every drop this bar ever shipped
- * rendered sideways while its docstrings described vertical arithmetic. The corrected constant
- * spells the axis. The rules live in `TabBar.tsx`'s own header; this block pins them.
+ * MEASURED: the owner called the captions' 21.75 px right, then asked for the bar's top line to
+ * come down to the icons, matching the gap the previous commit had — 9.5 px, a centred 39 px
+ * stack in the 58 px grid. Holding both numbers pins the grid at 36.25 px, shorter than the
+ * stack itself, which paints glyph above the bar's top border on inset-less glass — so the grid
+ * became the stack: 58 -> 39, outer 59 -> 40, and the drop re-expressed from the stack's own
+ * flush edge. The icons end with 12.25 px of air (13.25 to the line) instead of the old 9.5
+ * (10.5): the 2.75 px is the price of the stack never painting outside the bar. The rules live
+ * in `TabBar.tsx`'s own header; this block pins them.
  */
 
-describe('each tab drops half its former height above the glass, on the Y axis only', () => {
-  it('pins the drop: axis-spelled, halved, clamped', () => {
+describe("each tab drops into the nav's own safe-area padding, on the Y axis only", () => {
+  it("pins the drop: axis-spelled, from the stack's flush seat, floored", () => {
     // Three properties in one string. The leading `0 ` is the axis pin — `translate`'s
     // single-value form is X, which is how two shipped "drops" rendered as rightward drift while
-    // their docstrings derived vertical geometry. The `var(--safe-bottom) / 2 + 4.75px` is the
-    // 50 % ask: half the inset plus half the 9.5 px overhang, which halves the centred 43.5 px of
-    // caption height above the glass to 21.75 px. The `min()` keeps inset-less glass at a 0 drop
-    // — no gap to halve there — and bounds the drop by the inset, so the tap target never leaves
-    // the nav's border box.
-    expect(TAB_BAR_CONTENT_DROP_CSS).toBe(
-      '0 calc(min(var(--safe-bottom), var(--safe-bottom) / 2 + 4.75px))',
-    )
+    // their docstrings derived vertical geometry. The `var(--safe-bottom) / 2 - 4.75px` is the
+    // caption's 21.75 px target (`inset / 2 + 4.75`) expressed as a drop from the flush seat the
+    // grid-is-the-stack height gives: 34 - 21.75 = 12.25 px on an XS Max. The `max(0px, …)`
+    // keeps inset-less glass at a 0 drop — nothing to halve there, and the stack sits flush.
+    expect(TAB_BAR_CONTENT_DROP_CSS).toBe('0 calc(max(0px, var(--safe-bottom) / 2 - 4.75px))')
   })
 
   it('spells both axes, so the drop can never render sideways again', () => {

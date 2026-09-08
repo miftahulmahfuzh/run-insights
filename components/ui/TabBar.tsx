@@ -42,7 +42,7 @@ import { cn } from '@/lib/cn'
  * ── WHY THE HIDE TRANSFORM IS A PLAIN `100%` ──────────────────────────────────────────────────
  * Nothing paints above the nav's border box any more, so translating the nav by its own height
  * moves all of it off screen. It used to need `calc(100% + 20px)` from a `TAB_BAR_FAB_OVERHANG_PX`
- * constant: measuring up from the viewport bottom, `100%` is 1 px of `border-t` plus the 58 px grid
+ * constant: measuring up from the viewport bottom, `100%` is 1 px of `border-t` plus the 39 px grid
  * plus the nav's own `--safe-bottom` padding, while the FAB's `size-14` box reached `safe + 78`, so
  * `100%` was 19 px short and 20 px of coral circle stayed on screen with the bar supposedly hidden.
  * That constant is deleted with the FAB. If anything is ever positioned out of this nav's flow
@@ -56,8 +56,16 @@ import { cn } from '@/lib/cn'
  */
 
 /**
- * The **grid's** own height, matching `h-[58px]` below. **If the class changes, change this with
+ * The **grid's** own height, matching `h-[39px]` below. **If the class changes, change this with
  * it** — Tailwind cannot read a TypeScript constant, so the number is spelled twice by necessity.
+ *
+ * MEASURED (R5): the grid is the stack — a 20 px glyph, the 4 px `gap-1`, and a 15 px caption
+ * line box (10 px of type at the preflight's `1.5`) sum to exactly 39 — so a resting stack sits
+ * flush at both of the grid's edges and it is the content drop that moves the stack, never
+ * centring slack. It was 58 before R5, which centred 39 px of stack under 9.5 px of air per side;
+ * the owner asked for the bar's top line to come down to the icons, and 39 is where it lands with
+ * the stack still inside the nav on every device — a shorter grid cannot contain the stack on
+ * inset-less glass at all.
  *
  * This is the grid and not the bar: the nav's border box is this plus `TAB_BAR_BORDER_PX`, and the
  * bar's top *edge* is therefore `TAB_BAR_OUTER_HEIGHT_PX` up. Anything positioning itself against
@@ -67,7 +75,7 @@ import { cn } from '@/lib/cn'
  * from it, and because `components/ui/AppShell.tsx` and `components/ui/PhotoViewer.tsx` cite it by
  * name when they explain their own Tailwind literals.
  */
-export const TAB_BAR_HEIGHT_PX = 58
+export const TAB_BAR_HEIGHT_PX = 39
 
 /**
  * The bar's `border-t`, in px — 1, matching the `border-t` on the `<nav>` above. Spelled as a
@@ -79,7 +87,7 @@ export const TAB_BAR_HEIGHT_PX = 58
 export const TAB_BAR_BORDER_PX = 1
 
 /**
- * The bar's **outer** height — 59 px: the grid plus the `border-t` the grid sits under. This, and
+ * The bar's **outer** height — 40 px: the grid plus the `border-t` the grid sits under. This, and
  * not `TAB_BAR_HEIGHT_PX`, is what a fixed bar stacked above the tab bar must clear, because the
  * border is part of the nav's border box and the bar's top border IS its top edge.
  *
@@ -92,17 +100,32 @@ export const TAB_BAR_BORDER_PX = 1
 export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
 
 /**
- * How far each tab's stack drops below the grid's centre: **half the caption's former height
- * above the glass**, on the vertical axis only — the leading `0` pins X, so the stack stays at
- * its cell's centre horizontally.
+ * How far each tab's stack drops below its flush seat at the bottom of the grid: **into the
+ * nav's own safe-area padding**, on the vertical axis only — the leading `0` pins X, so the
+ * stack stays at its cell's centre horizontally.
  *
- * MEASURED (the owner's XS Max): a centred stack's caption bottom line sits `inset + 9.5` px
- * above the glass — 43.5 px on an XS Max, being 34 px of inset plus the 9.5 px by which a 39 px
- * stack (a 20 px glyph, the 4 px `gap-1`, and a 15 px caption line box) overhangs the grid's
- * bottom edge when centred in 58. The follow-up ask was "kurangi distance nya sebesar 50%":
- * 21.75 px. The drop that lands there is `inset / 2 + 4.75` — half the inset plus half the
- * overhang — and the caption still clears the home-indicator pill (whose top edge is 13 px up)
- * by 8.75 px.
+ * MEASURED (the owner's XS Max, and the compact bar's own arithmetic): the grid is the stack now
+ * — 39 px, a 20 px glyph, the 4 px `gap-1`, and a 15 px caption line box — so a resting stack
+ * sits flush at both edges and the caption's bottom line starts `inset` px above the glass. The
+ * owner's number for it is 21.75 px — half of the 43.5 px the old 58 px grid held the captions
+ * at, the distance he looked at and called right — which makes the drop `inset / 2 - 4.75`: the
+ * same halving, expressed from the stack's own edge. The icons keep their place in space and the
+ * top line comes down to meet them, leaving 12.25 px of air above the glyph at an XS Max's 34 px
+ * inset.
+ *
+ * ── WHY NOT THE PREVIOUS COMMIT'S 9.5 PX OF AIR, EXACTLY ────────────────────────────────────
+ * The owner asked for the top line's gap to the icons to match the commit before R5, when a
+ * centred stack in the 58 px grid had (58 - 39) / 2 = 9.5 px of air above it. Holding BOTH that
+ * gap and the caption's 21.75 px pins the grid at 36.25 px — shorter than the 39 px stack itself
+ * — and a grid shorter than its stack paints 1.375 px of glyph above the bar's top border on
+ * glass with no inset: the FAB's defect in miniature. The grid-is-the-stack height is the
+ * closest containment: 12.25 px of air instead of 9.5, the captions exactly where the owner set
+ * them, and nothing outside the bar on any device.
+ *
+ * The `max(0px, …)` is the no-inset case: nothing to halve, so the stack stays flush in the grid
+ * and the drop is 0. The `min()` clamp R4 carried is deleted with the tall grid — the translated
+ * tap target's bottom edge now lands `inset / 2 + 4.75` px above the glass (21.75 on an XS Max),
+ * which is above the glass at every inset, so there is nothing left to clamp.
  *
  * ── THE AXIS IS SPELLED OUT, BECAUSE THE AXIS WAS THE BUG ────────────────────────────────────
  * `translate`'s single-value form is X: `translate: 33.6px` moves a tab RIGHT, not down. Both of
@@ -112,26 +135,19 @@ export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
  * the second glaring enough that the owner reported the bar as "bergeser ke kanan" and asked for
  * the change back. The vertical geometry those docstrings derived was real arithmetic that never
  * rendered. The `0 ` prefix is both the fix and the headstone — and it is why
- * `HOME_INDICATOR_TOP_PX` (13, the pill's top edge) is deleted with the `(inset - 13px)` formula
+ * `HOME_INDICATOR_TOP_PX` (13, the pill's top edge) was deleted with the `(inset - 13px)` formula
  * it served: nothing measures to the pill any more, and a number with no reader is a number that
  * lies.
  *
- * The `min()` is two rules in one term. It keeps the drop at 0 on glass with no inset — a
- * desktop window has no gap to halve, and the stack stays centred exactly as it has always been —
- * and it bounds the drop by the inset itself, so the translated 58 px tap target cannot reach
- * past the nav's own safe-area padding into pixels below the bar's border box. At an XS Max's
- * 34 px the clamp is slack (21.75 < 34); it bites only under a 9.5 px inset, which no shipped
- * glass has.
- *
- * A `translate` and not padding, because the grid's `h-[58px]` is pinned by
+ * A `translate` and not padding, because the grid's `h-[39px]` is pinned by
  * `tests/tabbar.geometry.test.ts` and mirrored by `TAB_BAR_HEIGHT_PX`: padding would shrink the
  * content box inside a fixed height and squeeze the stack, while a visual translate moves the
  * glyphs and their tap targets down into the nav's own safe-area padding — space the bar already
- * owns and paints; at this drop the translated tap target's bottom edge lands 12.25 px above the
- * glass on an XS Max, still inside the nav's border box, so nothing paints outside the bar and
- * the nav's own hide transform — a different element — is still a plain `100%`.
+ * owns and paints; at this drop the translated tap target's bottom edge lands 21.75 px above the
+ * glass on an XS Max, inside the nav's border box, so nothing paints outside the bar and the
+ * nav's own hide transform — a different element — is still a plain `100%`.
  */
-export const TAB_BAR_CONTENT_DROP_CSS = `0 calc(min(var(--safe-bottom), var(--safe-bottom) / 2 + 4.75px))`
+export const TAB_BAR_CONTENT_DROP_CSS = `0 calc(max(0px, var(--safe-bottom) / 2 - 4.75px))`
 
 /**
  * Five entries for a five-column grid, consumed positionally below. `/upload` is the THIRD
@@ -207,7 +223,7 @@ export function TabBar({
          *
          * `motion-reduce:transition-none` while `Chip`, `KindSelector` and `Button` correctly have
          * no escape: `app/globals.css` draws that line — colour is not motion, and a 1.5 % press
-         * held under a finger is discrete tap feedback. A 58 px bar travelling its own height
+         * held under a finger is discrete tap feedback. A 39 px bar travelling its own height
          * across the bottom of the screen is on the other side of it. With the escape the bar is
          * simply where it is going, in one frame; the destination never changes, only the journey.
          */
@@ -224,7 +240,7 @@ export function TabBar({
     >
       {/* No `relative`: nothing is positioned against this grid any more. `Tab`'s badge span
           carries its own `relative`, which is what pins Nina's unread dot to her glyph. */}
-      <div className="mx-auto grid h-[58px] w-full max-w-[470px] grid-cols-5 items-center">
+      <div className="mx-auto grid h-[39px] w-full max-w-[470px] grid-cols-5 items-center">
         <Tab {...TABS[0]} active={isActive(TABS[0].href)} />
         {/* F33 phase 10: the unread dot, rendered on the server and handed down as a node. */}
         <Tab {...TABS[1]} active={isActive(TABS[1].href)} badge={ninaBadge} />
@@ -280,7 +296,7 @@ function Tab({
         'flex h-full flex-col items-center justify-center gap-1 text-[10px] font-semibold',
         accent ? 'text-z5' : active ? 'text-ink' : 'text-ink-3',
       )}
-      /* The owner's follow-up, applied: each stack drops half its former height above the glass,
+      /* The owner's follow-up, applied: each stack drops into the nav's own safe-area padding,
          on the Y axis only — the leading `0` pins X. See TAB_BAR_CONTENT_DROP_CSS. */
       style={{ translate: TAB_BAR_CONTENT_DROP_CSS }}
     >

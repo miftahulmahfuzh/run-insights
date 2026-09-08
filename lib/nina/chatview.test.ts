@@ -217,8 +217,8 @@ describe('keyboardOverlapPx', () => {
 })
 
 describe('composerBottomCss', () => {
-  // 59 is the tab bar's outer height: `TAB_BAR_HEIGHT_PX` (58) + `TAB_BAR_BORDER_PX` (1). The
-  // border is the bar's top edge, so a composer clearing 58 floats a pixel above it.
+  // 40 is the tab bar's outer height: `TAB_BAR_HEIGHT_PX` (39) + `TAB_BAR_BORDER_PX` (1). The
+  // border is the bar's top edge, so a composer clearing 39 floats a pixel above it.
   // `tests/tabbar.geometry.test.ts` is what ties this literal back to those two constants.
 
   it('sits flat on the bottom of the viewport while the bar is hidden', () => {
@@ -227,35 +227,35 @@ describe('composerBottomCss', () => {
     // edge and there is no strip of conversation under it. The floor is not missing, it moved:
     // `composerPadBottomCss` carries it in this state. This is also the SSR and pre-hydration
     // answer, which is why the default is the hidden geometry and not the showing one.
-    expect(composerBottomCss(0, 59)).toBe(
-      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    expect(composerBottomCss(0, 40)).toBe(
+      'calc((40px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
   })
 
   it('puts the inset INSIDE the gate, not beside it', () => {
     // The regression this phase fixes, stated as the shape rather than as a pixel. An inset added
     // outside the multiplication is an inset that survives the flag going to 0, which is exactly
-    // the unpainted strip: `calc(59px * var(…, 0) + var(--safe-bottom))`.
-    expect(composerBottomCss(0, 59)).not.toContain(') + var(--safe-bottom)')
-    expect(composerBottomCss(0, 59)).toContain('(59px + var(--safe-bottom)) *')
+    // the unpainted strip: `calc(40px * var(…, 0) + var(--safe-bottom))`.
+    expect(composerBottomCss(0, 40)).not.toContain(') + var(--safe-bottom)')
+    expect(composerBottomCss(0, 40)).toContain('(40px + var(--safe-bottom)) *')
   })
 
   it('names the variable the chrome writes', () => {
     // Spelled once, in `chatview.ts`, and read by `ChatChrome`. If the constant and the emission
     // ever disagree the composer stops following the bar and nothing else notices.
-    expect(composerBottomCss(0, 59)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+    expect(composerBottomCss(0, 40)).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
   })
 
   it('sits on the keyboard when there is one', () => {
     // Every term of the idle clearance is behind the keyboard, so none of it is added — and that
     // is true whether or not the bar is showing, and true of the inset too, which is why this
     // branch is the one thing R1 did not change.
-    expect(composerBottomCss(KEYBOARD_HEIGHT, 59)).toBe('336px')
+    expect(composerBottomCss(KEYBOARD_HEIGHT, 40)).toBe('336px')
   })
 
   it('treats unmeasurable input as no keyboard', () => {
-    expect(composerBottomCss(NaN, 59)).toBe(
-      'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    expect(composerBottomCss(NaN, 40)).toBe(
+      'calc((40px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
   })
 
@@ -272,13 +272,13 @@ describe('composerPadBottomCss', () => {
   it('carries the resting floor, gated as the complement of the offset', () => {
     // Invariant 5, as arithmetic: the offset multiplies its clearance by `f`, this multiplies its
     // floor by `1 - f`, and `f` is 0 or 1. One floor in the stack, in every state, always. The
-    // floor's own value is 30% of the gap `py-2` + inset used to be, plus the one pixel the owner
-    // asked back after seeing it on the phone ("terlalu rapat… naikkan sedikit"): with the 8 px
-    // of `py-2` staying put, that is `inset * 0.3 - 4.6px`, floored at zero so glass without an
-    // inset keeps the bare 8 px it always had and the painted box still reaches the viewport's
-    // bottom edge.
+    // floor's own value is the tab captions' distance — the owner's anchor was "the same value
+    // that no 1 use", the distance he had already called right: its `inset / 2 + 4.75px`, minus
+    // the 8 px of `py-2` the row below carries, is `inset / 2 - 3.25px`, floored at zero so glass
+    // without an inset keeps the bare 8 px it always had and the painted box still reaches the
+    // viewport's bottom edge.
     expect(composerPadBottomCss(0)).toBe(
-      'calc(max(0px, var(--safe-bottom) * 0.3 - 4.6px) * (1 - var(--nina-bar-visible, 0)))',
+      'calc(max(0px, var(--safe-bottom) / 2 - 3.25px) * (1 - var(--nina-bar-visible, 0)))',
     )
   })
 
@@ -308,7 +308,7 @@ describe('composerPadBottomCss', () => {
     // resting screen is the common case and a NaN must not decide geometry.
     for (const overlap of [NaN, 0, -1, Number.POSITIVE_INFINITY]) {
       expect(composerPadBottomCss(overlap)).toBe(
-        'calc(max(0px, var(--safe-bottom) * 0.3 - 4.6px) * (1 - var(--nina-bar-visible, 0)))',
+        'calc(max(0px, var(--safe-bottom) / 2 - 3.25px) * (1 - var(--nina-bar-visible, 0)))',
       )
     }
   })

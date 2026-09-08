@@ -17,11 +17,11 @@ import {
 } from './chrome'
 
 /**
- * `TAB_BAR_OUTER_HEIGHT_PX`: the bar's 58 px grid plus the 1 px `border-t` the grid sits under.
- * Spelled here so the test names its own input, and 59 rather than 58 because the border is part of
+ * `TAB_BAR_OUTER_HEIGHT_PX`: the bar's 39 px grid plus the 1 px `border-t` the grid sits under.
+ * Spelled here so the test names its own input, and 40 rather than 39 because the border is part of
  * the nav's border box — a lane that clears only the grid clears one pixel too little.
  */
-const BAR_CLEARANCE = 59
+const BAR_CLEARANCE = 40
 
 describe('CHROME_AUTOHIDE_MS', () => {
   it('is exactly the five seconds the requirement asks for', () => {

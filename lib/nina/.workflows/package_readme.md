@@ -1756,6 +1756,34 @@ One consumer needed the floor's *formula* rather than its old value — the fall
 above — and one consumer deliberately did not: `BOTTOM_GAP.chat` keeps its full
 `var(--safe-bottom)` reservation, because the difference is breathing room under the last bubble
 and the ask was about the gap under the field, not the conversation's tail.
+
+### R5 — the compact bar: the grid is the stack, and one floor for both bars
+
+The owner's follow-up, on the XS Max: the captions' distance was right, but the bar above them
+was too tall — "check the previous commit's gap between the icons and the top line, and lower the
+top line to match". That gap was 9.5 px (a centred 39 px stack in the 58 px grid, (58 - 39) / 2;
+10.5 to the line with the border). Holding it AND the captions' 21.75 px pins the grid at
+36.25 px — shorter than the 39 px stack itself — which paints glyph above the bar's top border on
+inset-less glass, the FAB's defect in miniature. So the grid became the stack itself:
+
+- `TAB_BAR_HEIGHT_PX` 58 -> 39, `TAB_BAR_OUTER_HEIGHT_PX` 59 -> 40. Every clearance that names
+  the outer height — the composer's `bottom`, the chrome lane's `BAR_CLEARANCE_PX`,
+  `ChatScreen`'s `COMPOSER_CLEARANCE_PX` — follows by import; the spellings that hardcode the
+  number (`chatview.test.ts`, `chrome.test.ts`, `tabbar.geometry.test.ts`, `Composer.tsx`'s
+  docstring) moved with it. `BOTTOM_GAP.tabs` keeps its 6rem deliberately (its comment's rule:
+  four screens nobody complained about), and `PhotoViewer`'s 3.25rem never counted the bar — its
+  arithmetic is the pager band's.
+- `TAB_BAR_CONTENT_DROP_CSS` becomes `0 calc(max(0px, inset / 2 - 4.75px))`: with the grid equal
+  to the stack the caption starts `inset` px up, and the same 21.75 px target is expressed as a
+  drop from the stack's own flush seat. The `min()` clamp R4 carried is deleted — the translated
+  tap target's bottom lands `inset / 2 + 4.75` px up, above the glass at every inset. The icons
+  end with 12.25 px of air (13.25 to the line) instead of the old 9.5 (10.5): the 2.75 px is the
+  price of the stack never painting outside the bar.
+- `composerPadBottomCss` becomes `max(0px, inset / 2 - 3.25px)` — the captions' floor verbatim,
+  which is what the owner asked: *"use the same value of the distance that no 1 use, karena saat
+  ini jarak antara icons' text ke xsmax bottom screen sudah tepat"*. 21.75 px under the field on
+  an XS Max (13.6 before); the keyboard and bar-shown states still carry nothing, and inset-less
+  glass keeps its bare 8 px of `py-2`.
 ## Shortcuts — one code stands for a directive he wrote once (F36, `P1-DB-A004` + `P1-NIN-A023`, phases 1-2 of 4)
 
 He types `🍑` and means four sentences he wrote months ago. Phase 1 shipped the **table, the matcher
