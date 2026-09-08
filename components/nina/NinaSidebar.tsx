@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
 import { cn } from '@/lib/cn'
+import { NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
 import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
 import { NINA_JOBS_HREF } from '@/lib/nina/jobview'
 import type { NinaCropInput } from '@/lib/nina/crop'
@@ -309,6 +310,29 @@ export function NinaSidebar({
         'transition-transform duration-200 ease-out motion-reduce:transition-none',
         open ? 'translate-x-0' : '-translate-x-full',
       )}
+      style={{
+        /*
+         * The keyboard's edge. `inset-0` pins this panel to the LAYOUT viewport, and iOS does not
+         * shrink that when the software keyboard opens — so a full-height panel runs on behind the
+         * keys and Safari's focus reveal answers by lifting the whole fixed overlay off the top of
+         * the glass ("mengangkat UI keatas", the owner's report): the search field this panel is
+         * typed into exits the screen while the keyboard holds the bottom. Ending the panel at the
+         * keyboard's measured top edge instead puts the field inside the visible region — the same
+         * fix `Composer` ships as `composerBottomCss(overlap, …)`, reached here as a `:root`
+         * custom property because the subscription that measures it lives in `ChatScreen`, this
+         * panel's sibling, not its ancestor (`NINA_BAR_VISIBLE_VAR`'s seam; the var's own docstring
+         * in `lib/nina/chatview.ts` carries the rest).
+         *
+         * An inline style rather than a Tailwind arbitrary value, because it must beat `inset-0`'s
+         * `bottom: 0` in the cascade without depending on utility sort order. The string is
+         * CONSTANT — it never re-renders, whatever the keyboard does; the var underneath it is what
+         * moves. Absent (no keyboard, Android, pre-hydration, off `/nina`) it substitutes `0px`,
+         * which is exactly `inset-0`, so the resting panel and the server's HTML never differ. And
+         * `transition-transform` is transform-only, so the edge SNAPS with the keyboard rather than
+         * lagging a transition behind it.
+         */
+        bottom: `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+      }}
     >
       {/* The app's column, so the panel is not a full-bleed sheet of paper on a wide viewport.
           `--safe-top` is the notch inset; `PhotoViewer` is the precedent for a full-screen overlay

@@ -156,6 +156,24 @@ export function NinaSearchField({ onNavigate }: NinaSearchFieldProps) {
             autoCorrect="off"
             spellCheck={false}
             enterKeyHint="search"
+            onKeyDown={(event) => {
+              /*
+               * The keyboard's blue SEARCH key (and desktop Enter, which is the same commit)
+               * releases the field — the owner's ask, and `Composer`'s send handler is the
+               * precedent word for word: "can you automatically hide the keyboard after user press
+               * send? right now i have to manually click Done everytime to hide this stupid
+               * keyboard". Blurring whatever holds focus folds the keyboard in the same frame.
+               *
+               * `isComposing` first, for `Composer`'s exact reason: an IME's Enter commits a
+               * candidate, and must not fold the keyboard mid-word. And nothing needs flushing on
+               * the way out — the search runs on its own debounce as the runner types, and the
+               * field keeps its text and its results through the blur.
+               */
+              if (event.key !== 'Enter') return
+              if (event.nativeEvent.isComposing) return
+              event.preventDefault()
+              event.currentTarget.blur()
+            }}
             /* `CONTROL_CLASS` carries the `text-base` that stops Safari zooming the viewport on
                focus — an iOS rule `components/ui/Field.tsx` says beats the design. */
             className={cn(CONTROL_CLASS, 'h-11')}
@@ -177,12 +195,11 @@ export function NinaSearchField({ onNavigate }: NinaSearchFieldProps) {
           onClick={() => setSemantic(!semantic)}
           title="Rank results by meaning, using the language model"
           className={cn(
-            'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-pill px-3.5',
+            'inline-flex h-11 shrink-0 items-center rounded-pill px-3.5',
             'text-[13px] font-semibold transition-colors',
             semantic ? 'bg-ink text-card' : 'bg-paper-2 text-ink-2',
           )}
         >
-          <span aria-hidden="true">✨</span>
           <span>AI</span>
         </button>
       </div>
