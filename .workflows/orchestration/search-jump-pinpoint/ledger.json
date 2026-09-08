@@ -6,26 +6,27 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "c713b3dac4d91ade20f1736f32160bd073da183a",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": "durability: set metadata rides feature/search-jump-pinpoint (pushed per round), NOT local main -- local main is diverged from origin/main (20 ahead / 151 behind, non-FF), while origin/main is where other machines publish orch metadata; live ledger stays in main checkout, synced to the branch copy after every verify. merge scope: branch base 9db3113 carries exactly 2 commits with no content-twin on origin (5377e35, 9db3113 nina-chat fixes; the other 18 local-ahead are twins) -- landing this set publishes them. requirement verified NOT shipped on origin/main: lib/nina/search.ts identical at base, ChatScreen jump landing intact but no search-side wiring. no Open Questions to inherit (empty at init).",
+      "note": "gates green (typecheck, lint, vitest 2880/2880); pushed ad4e22c..c713b3d. decision: tests/nina.chatPhoto.test.ts (outside Files table) asserted ONE replaceState in ChatScreen and failed against the watcher -- updated to the sanctioned-two-writers rule (never two writers in ONE commit), rung 1: index Decisions row 4. standing caveat: manual browser smoke checklist not run (needs authenticated session); automated coverage is the pure guard + href suites, per plan.",
       "package": "lib/nina",
       "plan": ".workflows/plan/search-jump-pinpoint/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-08T08:11:02+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A025",
       "title": "Search hits deep-link through `?jump=` and the landing survives a same-session soft nav"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/search-jump-pinpoint/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "search-jump-pinpoint",
-  "updated": "2026-09-08T07:40:23+00:00",
+  "updated": "2026-09-08T08:11:02+00:00",
+  "verified_at": "2026-09-08T08:09:25+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/search-jump-pinpoint"
 }
