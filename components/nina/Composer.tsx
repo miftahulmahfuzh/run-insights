@@ -35,9 +35,12 @@ import { QuoteStub } from './QuoteStub'
  * chrome: the tab bar's OUTER height, which is its 58 px grid plus the 1 px `border-t` the grid
  * sits under. The border is not a rounding error — it is the bar's top edge, so a clearance of 58
  * leaves this bar floating one pixel above the bar below it with the conversation visible through
- * the seam. That was R2's reported gap, and 59 is what makes the two flush. The home-indicator
- * inset rides in that same offset rather than in this element's padding, because the tab bar below
- * already pads by it and counting it twice would open a gap.
+ * the seam. That was R2's reported gap, and 59 is what makes the two flush. At rest — the bar
+ * hidden, `/nina`'s default — the same offset lands this bar's bottom edge on the home-indicator
+ * pill's top line rather than on the safe area's top line, which is what makes the 12 px of `py-3`
+ * below the field equal the 12 px above it; `composerBottomCss`'s own docstring carries the
+ * arithmetic. Either way the inset rides in the offset and never in this element's padding,
+ * because whatever is below already pads by it and counting it twice would open a gap.
  *
  * `z-40` matches `ReviewClient`'s sticky action bar, the app's only other second fixed bar, and
  * leaves `Sheet` (`z-50`) and `PhotoViewer` (`z-60`) covering it. `bg-paper/90 backdrop-blur-md` is
@@ -102,6 +105,23 @@ import { QuoteStub } from './QuoteStub'
 
 /** Roughly five lines at 16px, after which the textarea scrolls instead of growing. */
 const TEXTAREA_MAX_PX = 132
+
+/**
+ * Whether the return key in question is a phone's: `(pointer: coarse)`, resolved once on first
+ * use. Never at module scope — a `'use client'` component still renders on the server for the
+ * initial HTML, and `matchMedia` does not exist there.
+ *
+ * The pointer type and not a user-agent string, because it is the honest question: the rule below
+ * is about WHICH RETURN KEY THE USER HAS, not about which browser shipped the device. A laptop
+ * with a touchscreen reports a fine primary pointer and keeps Enter-to-send, which is right.
+ */
+let phoneReturn: boolean | null = null
+function isPhoneReturn(): boolean {
+  if (phoneReturn === null) {
+    phoneReturn = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  }
+  return phoneReturn
+}
 
 type TileState = 'compressing' | 'uploading' | 'describing' | 'ready' | 'error'
 
@@ -342,8 +362,22 @@ export function Composer({
     const el = ref.current
     if (el != null) {
       el.style.height = 'auto'
-      // Keep the keyboard up. He is going to type again — that is what a conversation is.
-      el.focus()
+      /*
+       * Then RELEASE the composer, on the repo owner's explicit ask: "can you automatically hide
+       * the keyboard after user press send? right now i have to manually click Done everytime to
+       * hide this stupid keyboard". The line here used to keep focus — "he is going to type again —
+       * that is what a conversation is" — and keeping it had a second cost the owner had already
+       * reported as a bug: `ChatChrome` hides the floating `>` and `^` while focus is anywhere
+       * inside this bar, so a send that left focus behind (Enter leaves it in the textarea; a
+       * click leaves it on the Send button) also left the conversation without its controls until
+       * something else was tapped — and on desktop Chrome, reading her reply taps nothing. Blurring
+       * whatever INSIDE this bar holds focus folds the keyboard and puts the controls back in the
+       * same frame. The reply-arming effect above still focuses the box, because arming a reply is
+       * the start of typing, which is a different moment than the end of sending one.
+       */
+      const host = el.closest('#nina-composer')
+      const active = document.activeElement
+      if (host != null && active instanceof HTMLElement && host.contains(active)) active.blur()
     }
   }
 
@@ -476,17 +510,29 @@ export function Composer({
             }}
             onKeyDown={(event) => {
               /*
-               * Enter sends; Shift+Enter is a newline. `enterKeyHint="send"` relabels the iOS
-               * return key so the phone agrees with the behaviour. `isComposing` is the guard that
-               * keeps an IME's own Enter — committing a candidate — from firing the message
-               * half-typed.
+               * WhatsApp's split, asked for by name ("can you change the keyboard, so it has a
+               * Return button? whatsapp keyboard has it"): on a phone, the return key makes a
+               * NEW LINE and the send button sends — so Enter falls through to the browser's
+               * default insertion rather than calling `submit()`. On a desktop keyboard Enter
+               * still sends and Shift+Enter is a newline, unchanged, because that is also
+               * WhatsApp's split and the ask was about the phone's keyboard, not the desktop's.
+               * `isComposing` stays the guard it was: an IME's own Enter commits a candidate, and
+               * must not fire the message half-typed — which on a phone now means it must not
+               * insert a newline either, hence its position above the coarse-pointer check.
                */
               if (event.key !== 'Enter' || event.shiftKey) return
               if (event.nativeEvent.isComposing) return
+              if (isPhoneReturn()) return
               event.preventDefault()
               submit()
             }}
-            enterKeyHint="send"
+            /* NO `enterKeyHint`: the attribute was `"send"`, which relabels the return key (the
+               owner read it as the DONE key he "had to manually click everytime to hide this
+               stupid keyboard") and makes the key send. With no hint at all the key is iOS's
+               default RETURN, which makes a newline (see `onKeyDown` above). There is no
+               `"return"` value in the spec's enum, so the only way to ask for the Return key is
+               not to ask. */
+
             /* The placeholder carries the hint; the accessible NAME stays "Message Nina" so the
                field is not renamed under the runner mid-message. With something pinned it becomes
                the requirement's own words — "user can input additional text question / comment

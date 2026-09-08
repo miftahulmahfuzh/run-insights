@@ -201,33 +201,53 @@ export function keyboardOverlapPx(viewport: {
 export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
 
 /**
+ * How far above the physical glass the home-indicator pill's TOP edge sits: 8 px of gap plus a
+ * 5 px pill, the same on every notched iPhone Apple has shipped.
+ *
+ * Both bottom-of-the-screen gaps the repo owner asked to be equalised are measured TO THE PILL,
+ * not to the safe area's top line — and the two are 21 px apart on a 34 px inset, which is the
+ * whole of both mismatches. This constant is what lets CSS measure to the pill at all: the inset
+ * is readable (`env(safe-area-inset-bottom)`) but the pill's position within it is not, so the
+ * pill's edge is carried as the physical constant it is.
+ *
+ * **ONE VOCABULARY, TWO DECLARATIONS.** `components/ui/TabBar.tsx` declares its own
+ * `HOME_INDICATOR_TOP_PX` for the tab bar's content drop, because `lib/` never imports from
+ * `components/`. `tests/tabbar.geometry.test.ts` pins the two spellings together — the same
+ * device `lib/nina/edit.ts` uses for `EDIT_MAX_CHARS_MINE` and `MAX_RUNNER_MESSAGE_CHARS`.
+ */
+export const HOME_INDICATOR_TOP_PX = 13
+
+/**
  * The composer's `bottom`, as a CSS length.
  *
- * With no keyboard it clears the fixed chrome below it — but only when there IS chrome below it.
- * On `/nina` the tab bar is hidden by default (R1), so `chromeClearancePx` is the clearance to
- * apply **while the bar is showing**, and it is multiplied by `NINA_BAR_VISIBLE_VAR`, which is `1`
- * only then. The terms are the bar's own grid, the 1 px `border-t` the grid sits under — the two
- * together are the bar's outer height, and the border is its real top edge — and the
- * home-indicator inset the bar pads itself by.
+ * With no keyboard there are two floors, and the flag decides between them. While the bar is
+ * showing, the composer sits on the bar's top edge: the clearance is the bar's own grid, the 1 px
+ * `border-t` the grid sits under — the two together are its outer height, and the border is its
+ * real top edge — plus the home-indicator inset the bar pads itself by. That is R2's sum, and
+ * landing anywhere else paints `bg-paper/90` over the bar or opens the seam under it.
  *
- * The inset is honoured **here and not as the composer's own padding** — the composer sits above
- * chrome that already pads by `--safe-bottom`, so padding it a second time would open a gap. It is
- * outside the multiplication for the same reason it is outside the keyboard branch: the inset is
- * the phone's, not the bar's, and it is there whether or not the bar is.
+ * At rest — `/nina`'s default, the bar hidden (R1) — the floor is the home-indicator pill's top
+ * line, `min(var(--safe-bottom), 13px)`. The owner asked for the two gaps around the query field
+ * to be equal: the top line of the field to the top line of the bar (the 12 px of `py-3`) and the
+ * bottom line of the field to the pill. Resting the bar's own bottom edge ON the pill's top is
+ * what makes the second gap the same 12 px — the old floor, the inset's top line, left a 21 px
+ * band of raw page under the bar that the pill floated in. The `min()` half is for everything
+ * that is not a notched iPhone: with no inset both floors are 0 and the geometry is the old one
+ * (which was already balanced, desktop having no pill to measure to), and with a shallow inset
+ * the inset itself is the honest floor — no device's composer may sit inside its system inset.
  *
  * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind it.
  * That branch is unchanged by R1: a bar behind the keyboard clears nothing either way.
- *
- * The border term is R2, and it is worth saying why it was missing: a clearance of the grid alone
- * (58) puts this bar's bottom edge one pixel BELOW the bar's top border, so the conversation shows
- * through the seam. The caller passes the outer height (59) and the two are flush.
  *
  * ── WHY A MULTIPLIER AND NOT A LENGTH ────────────────────────────────────────────────────────
  * `calc(<length> * <number>)` keeps the number 59 in this function, where the caller already
  * passes it, instead of moving it into whichever component writes the variable. The flag then says
  * one thing only — is the bar on screen — and cannot disagree with `TAB_BAR_OUTER_HEIGHT_PX` about
  * how tall the bar is. A `var(--nina-bar-clearance, 0px)` form would make this argument dead and
- * put the geometry in two places.
+ * put the geometry in two places. The rest-state floor rides inside the same multiplication,
+ * weighted by the flag's complement, because the composer cannot be told the bar state — the CSS
+ * variable is its only channel (see `NINA_BAR_VISIBLE_VAR`) — and a second `bottom` rule in the
+ * component would be exactly the second spelling of one position this function exists to prevent.
  *
  * Returns a string because that is what the style attribute takes, and because `var(--safe-bottom)`
  * cannot be resolved in JavaScript — `env(safe-area-inset-bottom)` is only readable to CSS.
@@ -235,5 +255,8 @@ export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
 export function composerBottomCss(overlapPx: number, chromeClearancePx: number): string {
   if (Number.isFinite(overlapPx) && overlapPx > 0) return `${Math.round(overlapPx)}px`
   const clearance = Number.isFinite(chromeClearancePx) ? Math.round(chromeClearancePx) : 0
-  return `calc(${clearance}px * var(${NINA_BAR_VISIBLE_VAR}, 0) + var(--safe-bottom))`
+  return (
+    `calc(var(${NINA_BAR_VISIBLE_VAR}, 0) * (${clearance}px + var(--safe-bottom)) + ` +
+    `(1 - var(${NINA_BAR_VISIBLE_VAR}, 0)) * min(var(--safe-bottom), ${HOME_INDICATOR_TOP_PX}px))`
+  )
 }

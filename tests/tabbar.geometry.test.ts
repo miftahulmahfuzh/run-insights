@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  HOME_INDICATOR_TOP_PX as TAB_BAR_HOME_INDICATOR_TOP_PX,
   TAB_BAR_BORDER_PX,
+  TAB_BAR_CONTENT_DROP_CSS,
   TAB_BAR_HEIGHT_PX,
   TAB_BAR_OUTER_HEIGHT_PX,
 } from '@/components/ui/TabBar'
-import { composerBottomCss } from '@/lib/nina/chatview'
+import { composerBottomCss, HOME_INDICATOR_TOP_PX } from '@/lib/nina/chatview'
 
 import { readRepoCode } from './support/importGraph'
 
@@ -187,11 +189,31 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
 
   it('emits a composer bottom that lands exactly on the bar top border', () => {
     // R2's exit criterion, joined end to end: the constant the components compose, through the
-    // pure function that turns it into CSS. 59px measured up from the viewport bottom IS the bar's
-    // top border, so the composer's bottom edge is ON it — no gap, and no overlap that would paint
-    // `bg-paper/90` over the bar's own rule (decision D7).
+    // pure function that turns it into CSS. With the flag at 1, 59px + the inset measured up from
+    // the viewport bottom IS the bar's top border, so the composer's bottom edge is ON it — no
+    // gap, and no overlap that would paint `bg-paper/90` over the bar's own rule (decision D7).
     expect(composerBottomCss(0, TAB_BAR_OUTER_HEIGHT_PX)).toBe(
-      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc(var(--nina-bar-visible, 0) * (59px + var(--safe-bottom)) + ' +
+        '(1 - var(--nina-bar-visible, 0)) * min(var(--safe-bottom), 13px))',
     )
+  })
+})
+
+describe('the home-indicator pill, spelled once per side of the lib/components line', () => {
+  it('declares the same pill top line from both modules', () => {
+    // ONE VOCABULARY, TWO DECLARATIONS: `lib/` never imports `components/`, so the pill's top edge
+    // (8 px gap + 5 px pill, constant on every notched iPhone) is declared in both `chatview.ts`
+    // and `TabBar.tsx`. This is the pin that notices them drifting — the same device
+    // `lib/nina/edit.ts`'s cap constants are pinned by. A one-pixel disagreement here puts the
+    // composer's floor and the tab bar's content drop on different devices silently.
+    expect(TAB_BAR_HOME_INDICATOR_TOP_PX).toBe(HOME_INDICATOR_TOP_PX)
+    expect(HOME_INDICATOR_TOP_PX).toBe(13)
+  })
+
+  it('derives the content drop from it, not from a second constant', () => {
+    // The owner's second equalisation: each tab stack sits centred between the bar's top line and
+    // the pill, which is "grid centre + half the pill's distance below the safe line". Spelled as
+    // CSS so no re-derivation in the component can disagree with the rule.
+    expect(TAB_BAR_CONTENT_DROP_CSS).toBe('calc(max(0px, var(--safe-bottom) - 13px) / 2)')
   })
 })

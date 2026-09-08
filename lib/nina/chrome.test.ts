@@ -14,6 +14,7 @@ import {
   nextBarState,
   type NinaBarState,
 } from './chrome'
+import { HOME_INDICATOR_TOP_PX } from './chatview'
 
 /**
  * `TAB_BAR_OUTER_HEIGHT_PX`: the bar's 58 px grid plus the 1 px `border-t` the grid sits under.
@@ -93,13 +94,18 @@ describe('barToggleGlyph', () => {
 
 describe('controlBottomCss', () => {
   it('clears a resting composer and the gap when the bar is hidden', () => {
+    // The floor is the composer's own new resting floor — the home-indicator pill's top line —
+    // because the lane sits directly above the composer and must share its floor or float clear
+    // of nothing (the owner's equalisation moved that floor 21 px down on a notched phone).
     expect(
       controlBottomCss({
         barState: 'hidden',
         barClearancePx: BAR_CLEARANCE,
         composerHeightPx: COMPOSER_RESTING_PX,
       }),
-    ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+    ).toBe(
+      `calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + min(var(--safe-bottom), ${HOME_INDICATOR_TOP_PX}px))`,
+    )
   })
 
   it('ignores the clearance entirely while the bar is hidden', () => {
@@ -141,7 +147,9 @@ describe('controlBottomCss', () => {
         barClearancePx: BAR_CLEARANCE,
         composerHeightPx: 190,
       }),
-    ).toBe(`calc(${190 + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+    ).toBe(
+      `calc(${190 + CHROME_CONTROL_GAP_PX}px + min(var(--safe-bottom), ${HOME_INDICATOR_TOP_PX}px))`,
+    )
   })
 
   it('falls back to a resting composer before the first measurement', () => {
@@ -152,7 +160,9 @@ describe('controlBottomCss', () => {
           barClearancePx: BAR_CLEARANCE,
           composerHeightPx: height,
         }),
-      ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+      ).toBe(
+        `calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + min(var(--safe-bottom), ${HOME_INDICATOR_TOP_PX}px))`,
+      )
     }
   })
 
@@ -173,7 +183,9 @@ describe('controlBottomCss', () => {
     // unreadable diff.
     expect(
       controlBottomCss({ barState: 'hidden', barClearancePx: 0, composerHeightPx: 68.328125 }),
-    ).toBe(`calc(${68 + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+    ).toBe(
+      `calc(${68 + CHROME_CONTROL_GAP_PX}px + min(var(--safe-bottom), ${HOME_INDICATOR_TOP_PX}px))`,
+    )
   })
 
   it('is total over the state union', () => {
@@ -181,7 +193,7 @@ describe('controlBottomCss', () => {
     for (const barState of states) {
       expect(
         controlBottomCss({ barState, barClearancePx: BAR_CLEARANCE, composerHeightPx: 68 }),
-      ).toMatch(/^calc\(\d+px \+ var\(--safe-bottom\)\)$/)
+      ).toMatch(/^calc\(\d+px \+ (var\(--safe-bottom\)|min\(var\(--safe-bottom\), \d+px\))\)$/)
     }
   })
 })

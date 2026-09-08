@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
 import { todayInJakarta } from '@/lib/date/ranges'
+import { isValidId } from '@/lib/id'
 import { pollNinaReply, sendNinaMessage, type SentBubble } from '@/lib/nina/actions'
 import {
   ATTACH_PARAM,
@@ -369,11 +370,7 @@ export function ChatScreen({
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (
-      !params.has(ATTACH_PARAM) &&
-      !params.has(PHOTO_PARAM) &&
-      !params.has(JOB_JUMP_PARAM)
-    ) {
+    if (!params.has(ATTACH_PARAM) && !params.has(PHOTO_PARAM) && !params.has(JOB_JUMP_PARAM)) {
       return
     }
     params.delete(ATTACH_PARAM)
@@ -708,6 +705,17 @@ export function ChatScreen({
    * gesture that does nothing reads as a broken screen.
    */
   const handleRequestActions = useCallback((message: ChatMessage) => {
+    /* A FAILED own row opens the sheet as a retry surface rather than being refused. The gate
+     * below lumps it with 'sending' rows (neither is confirmed), and the notice it answers with —
+     * "nothing to edit until Nina has it" — is true of EDIT and false of RETRY, which is the
+     * thing the owner was actually reaching for on a red-outlined bubble. A row still in
+     * 'sending' keeps the notice: its send is in flight, and offering a retry of an in-flight
+     * send is how two sends of one message happen. */
+    if (message.role === 'user' && message.state === 'failed') {
+      setNotice(null)
+      setActing(message)
+      return
+    }
     const target: EditTarget = {
       id: message.id,
       mine: message.role === 'user',
@@ -772,6 +780,18 @@ export function ChatScreen({
    * which `resolveQuote` documents as the designed outcome and which is this phase's exit test.
    */
   const handleDeleteMessage = useCallback(async (id: string): Promise<boolean> => {
+    /* A client-minted `local-` id names a row the server has never heard of — a failed send, or
+     * one still in flight. There is nothing to call: `removeNinaMessage` would refuse the id, and
+     * the honest outcome of deleting a message that was never delivered is that it stops being on
+     * screen. Local state only, same cleanup as the confirmed path. */
+    if (!isValidId(id)) {
+      setNotice(null)
+      setMessages((current) => applyMessageDeletion(current, id) as ChatMessage[])
+      setDraftQuote((current) => (current?.targetId === id ? null : current))
+      setFlashId((current) => (current === id ? null : current))
+      return true
+    }
+
     let result: Awaited<ReturnType<typeof removeNinaMessage>> | null = null
     try {
       result = await removeNinaMessage({ messageId: id })
@@ -944,85 +964,94 @@ export function ChatScreen({
     }
   }, [awaiting, liveSessionId, revealBubbles])
 
-  const handleSend = useCallback(
-    async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
-      if (busy) return
-      /* R13's floor, and the client half of RULING B1's ONE refusal rule: a message with no words,
-       * no photo, no run and no pinned album photo is a mis-tap. `canSend` already refuses it; this
-       * is the guard that means the action can trust its own input. The four disjuncts here are the
-       * same four `sendNinaMessage` checks at `lib/nina/actions.ts:277`, in the same order, and
-       * they must stay that way — a fifth on one side only is an enabled Send button that silently
-       * refuses. */
+  /*
+   * The send itself: optimistic row, busy window, failure marking, id adoption. Factored out of
+   * `handleSend` so a RETRY of a failed row runs byte-for-byte the same path a typed send does
+   * rather than a second copy of it drifting — the failure marking and the id adoption are the
+   * halves a copy would get subtly wrong, and both are what makes a retried row behave identically
+   * to a fresh one afterwards (the poll, a quote, the actions sheet).
+   *
+   * What it deliberately does NOT own is the composer's armed state. Unpinning a reply chip, a run
+   * chip or a pinned album photo is right for a typed send — the optimistic row now carries them —
+   * and wrong for a retry, which must leave whatever is armed NOW alone: a runner can be mid-draft
+   * on his next message while he retries the last one.
+   */
+  const sendAndTrack = useCallback(
+    async (input: {
+      body: string
+      images: readonly ComposerDraftImage[]
+      replyToMessageId: string | null
+      runAttachment: RunAttachment | null
+      existingPhoto: NinaExistingPhoto | null
+      /**
+       * The failed row a retry replaces, IN PLACE — a retried message keeps its position in the
+       * conversation and its day divider, because it is the same message tried again, not a new
+       * one at the bottom of a conversation that has moved on. Null appends, which is what a
+       * typed send is.
+       */
+      replacesId: string | null
+      dayISO: string
+    }): Promise<boolean> => {
+      /*
+       * The client half of RULING B1's ONE refusal rule, restated against the resolved input — the
+       * same four disjuncts `sendNinaMessage` checks, in the same order. A retry re-runs it because
+       * a failed row can legitimately be run-only (R13: a run with no words is a message) and this
+       * guard must not be the thing that refuses it.
+       */
       if (
-        draft.body.length === 0 &&
-        draft.images.length === 0 &&
-        attachment === null &&
-        photo === null
+        input.body.length === 0 &&
+        input.images.length === 0 &&
+        input.runAttachment === null &&
+        input.existingPhoto === null
       ) {
-        return
+        return false
       }
 
-      const body = draft.body
-      const imageUrls = draft.images.map((image) => image.url)
-      /* Read once, then unpinned below — the same shape `draftQuote` uses, and for the same
-       * reason: the optimistic row has to carry what the action will persist. */
-      const sending = attachment
-      const sendingPhoto = photo
+      const body = input.body
       const localId = `local-${crypto.randomUUID()}`
-      const dayISO = todayInJakarta()
-      /* Read once and cleared immediately: the strip must disappear the moment the message is in
-       * the log, and the optimistic row has to carry the same pointer the action will persist. */
-      const replyToMessageId = draftQuote?.targetId ?? null
-      setDraftQuote(null)
-      /*
-       * Unpinned the moment it joins the conversation, even though the send may still fail. The
-       * failed bubble keeps its card — that is where the run is now — and showing the chip as well
-       * would put the same run on screen twice and invite a second send of it.
-       */
-      setAttachment(null)
-      /* The same argument, and it is stronger here: the photo is in the album either way, so a
-       * chip left armed after a failed send is an invitation to attach it twice. */
-      setPhoto(null)
       setNotice(null)
       /*
        * The already-owned photo goes AFTER anything he picked, because that is where the server
-       * puts it: `lib/nina/actions.ts:451` inserts its row at `sortOrder: images.length`. One
-       * array, so the optimistic bubble and every later server render of the same message agree
-       * about the order inside it.
+       * puts it: `lib/nina/actions.ts` inserts its row at `sortOrder: images.length`. One array, so
+       * the optimistic bubble and every later server render of the same message agree about the
+       * order inside it. Already on the CDN in every case — the describe pre-pass uploaded the
+       * picked ones before send was possible, and the pinned one has been in Blob since the album
+       * did — so there is no object URL to revoke and no flicker when the real row lands.
        */
-      const optimisticUrls = sendingPhoto === null ? imageUrls : [...imageUrls, sendingPhoto.url]
-      setMessages((current) => [
-        ...current,
-        {
+      const pickedUrls = input.images.map((image) => image.url)
+      const optimisticUrls =
+        input.existingPhoto === null ? pickedUrls : [...pickedUrls, input.existingPhoto.url]
+      setMessages((current) => {
+        const row: ChatMessage = {
           id: localId,
           role: 'user',
           body,
-          dayISO,
+          dayISO: input.dayISO,
           state: 'sending',
-          replyToId: replyToMessageId,
-          /* Already on the CDN — the describe pre-pass uploaded the picked ones before send was
-           * possible, and the pinned one has been in Blob since it was uploaded to the album — so
-           * the optimistic row shows the same URLs the server row will carry. No object URL to
-           * revoke, and no flicker when the real row lands. */
+          replyToId: input.replyToMessageId,
           imageUrls: optimisticUrls.length > 0 ? optimisticUrls : undefined,
           /* R13. The card renders from client state on this row and from `nina_messages.run_id` on
            * every later load; both go through the same `RunAttachment`, so there is no lag and no
            * second shape. */
-          attachment: sending,
-        },
-      ])
-      /* No `setTyping(true)` here any more (F36 R6): `awaiting` drives the indicator from the
-       * moment the action RETURNS, and raising it before the round trip would show Nina typing in
-       * response to a message that had not been accepted yet. */
+          attachment: input.runAttachment,
+        }
+        if (input.replacesId !== null) {
+          return current.map((m) => (m.id === input.replacesId ? row : m))
+        }
+        return [...current, row]
+      })
+      /* No `setTyping(true)` here (F36 R6): `awaiting` drives the indicator from the moment the
+       * action RETURNS, and raising it before the round trip would show Nina typing in response to
+       * a message that had not been accepted yet. */
       setBusy(true)
 
       let result: Awaited<ReturnType<typeof sendNinaMessage>> | null = null
       try {
         result = await sendNinaMessage({
           body,
-          imageTickets: draft.images.map((image) => image.ticket),
-          replyToMessageId,
-          runId: sending?.runId ?? null,
+          imageTickets: input.images.map((image) => image.ticket),
+          replyToMessageId: input.replyToMessageId,
+          runId: input.runAttachment?.runId ?? null,
           /*
            * F34 R2, and the whole of "we dont actually reupload the photo into the chat, but just
            * some kind of pointer to the existing file". An id and a kind, never a URL: the field
@@ -1032,23 +1061,22 @@ export function ChatScreen({
            * it is not sent, and a tampered one buys nothing.
            */
           attachExisting:
-            sendingPhoto === null ? null : { kind: sendingPhoto.kind, id: sendingPhoto.id },
+            input.existingPhoto === null
+              ? null
+              : { kind: input.existingPhoto.kind, id: input.existingPhoto.id },
           /*
            * F35 R2. The conversation this message joins. Read from the prop rather than from the
            * URL, because the server already proved this session is his — re-reading `?s=` here
-           * would re-introduce an untrusted claim the page has already resolved.
-           *
-           * `null` is passed through deliberately: it means he has no sessions, and the action
-           * resolves-or-creates. Refusing on the client instead would leave the composer enabled
-           * with nowhere to send, which is the "enabled Send button that silently refuses" the
-           * refusal-parity comment above warns about.
+           * would re-introduce an untrusted claim the page has already resolved. `null` passes
+           * through deliberately: it means he has no sessions, and the action resolves-or-creates;
+           * refusing on the client instead would leave the composer enabled with nowhere to send.
            */
           sessionId,
         })
       } catch {
         result = null
       }
-      if (!alive.current) return
+      if (!alive.current) return false
 
       /*
        * **`busy` is released HERE (F36 R6).** It used to be held for the whole 13-45 s turn, and
@@ -1066,7 +1094,7 @@ export function ChatScreen({
           current.map((m) => (m.id === localId ? { ...m, state: 'failed' } : m)),
         )
         setNotice('send-failed')
-        return
+        return false
       }
 
       // Adopt the server's id for the runner's own row, so a quote can name it and the actions
@@ -1091,9 +1119,83 @@ export function ChatScreen({
       if (result.sessionId !== null) setLiveSessionId(result.sessionId)
       if (result.cursor !== null) cursorRef.current = result.cursor
       setAwaiting(true)
+      return true
     },
-    [busy, draftQuote, attachment, photo, sessionId],
+    [sessionId],
   )
+
+  const handleSend = useCallback(
+    async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
+      if (busy) return
+      /* R13's floor, and the client half of RULING B1's ONE refusal rule: a message with no words,
+       * no photo, no run and no pinned album photo is a mis-tap. `canSend` already refuses it; this
+       * is the guard that means the action can trust its own input. The four disjuncts here are the
+       * same four `sendNinaMessage` checks, in the same order, and they must stay that way — a
+       * fifth on one side only is an enabled Send button that silently refuses. */
+      if (
+        draft.body.length === 0 &&
+        draft.images.length === 0 &&
+        attachment === null &&
+        photo === null
+      ) {
+        return
+      }
+
+      /* Read once, then unpinned below — the same shape `draftQuote` uses, and for the same
+       * reason: the optimistic row has to carry what the action will persist. */
+      const replyToMessageId = draftQuote?.targetId ?? null
+      setDraftQuote(null)
+      /*
+       * Unpinned the moment it joins the conversation, even though the send may still fail. The
+       * failed bubble keeps its card — that is where the run is now — and showing the chip as well
+       * would put the same run on screen twice and invite a second send of it.
+       */
+      setAttachment(null)
+      /* The same argument, and it is stronger here: the photo is in the album either way, so a
+       * chip left armed after a failed send is an invitation to attach it twice. */
+      setPhoto(null)
+      await sendAndTrack({
+        body: draft.body,
+        images: draft.images,
+        replyToMessageId,
+        runAttachment: attachment,
+        existingPhoto: photo,
+        replacesId: null,
+        dayISO: todayInJakarta(),
+      })
+    },
+    [busy, draftQuote, attachment, photo, sendAndTrack],
+  )
+
+  /*
+   * The retry of a failed send. The owner's report: a typed message failed (the red hairline),
+   * and the actions sheet answered "there is nothing to edit until Nina has it" — which was true
+   * of EDIT and false of RETRY, the thing he actually wanted.
+   *
+   * What a retry can honestly carry: the body, the reply pointer and the run card, because all
+   * three are still on the row. What it cannot: the PHOTOS. Their tickets were signed server-side
+   * by `describeNinaImage`, held in `Composer`'s tiles, and spent or lost the moment `submit()`
+   * cleared them; a Blob URL is neither a ticket nor a re-attachable pointer — `attachExisting`
+   * needs a `nina_message_images` id, and a failed send never wrote one. So a failed row with
+   * photos is offered no retry at all rather than one that silently drops them, and the sheet says
+   * so in words.
+   */
+  const handleResendMessage = useCallback(async (): Promise<boolean> => {
+    const row = acting
+    if (row == null) return false
+    if (busy) return false
+    if (row.role !== 'user' || row.state !== 'failed') return false
+    if ((row.imageUrls?.length ?? 0) > 0) return false
+    return sendAndTrack({
+      body: row.body,
+      images: [],
+      replyToMessageId: row.replyToId,
+      runAttachment: row.attachment ?? null,
+      existingPhoto: null,
+      replacesId: row.id,
+      dayISO: row.dayISO,
+    })
+  }, [acting, busy, sendAndTrack])
 
   /*
    * F36 R6. The indicator is up while the SERVER owes an answer (`awaiting`) and between two of her
@@ -1162,10 +1264,10 @@ export function ChatScreen({
         message must reset that draft. Remounting on the id is how. It is the deliberate inverse of
         `Composer`'s "never given a `key` that changes", where a reset would have been the bug.
 
-        `photoCount` comes off the row this component already holds, so the confirmation can
-        disclose that the photos go with the message (`nina_message_images` cascades) without a
-        query. The URLs are not passed — the sheet shows no thumbnails, and phase 9 owns anything
-        that renders a chat photo.
+        `retryable` is the failed-own-row case `handleRequestActions` now opens the sheet for: the
+        row is red-outlined, unconfirmed, and — crucially — carries no photos, because photo
+        tickets do not survive a failed send (see `handleResendMessage`). Everything else goes in
+        as a plain `target` and gets the confirmed menu.
       */}
       <MessageActionsSheet
         key={acting?.id ?? 'none'}
@@ -1181,10 +1283,16 @@ export function ChatScreen({
                 confirmed: acting.state === 'sent',
               }
         }
-        photoCount={acting?.imageUrls?.length ?? 0}
+        retryable={
+          acting != null &&
+          acting.role === 'user' &&
+          acting.state === 'failed' &&
+          (acting.imageUrls?.length ?? 0) === 0
+        }
+        onRetry={handleResendMessage}
         onClose={() => setActing(null)}
         onSubmitEdit={handleEditMessage}
-        onConfirmDelete={handleDeleteMessage}
+        onDelete={handleDeleteMessage}
       />
 
       {/*

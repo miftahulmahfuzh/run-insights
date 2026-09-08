@@ -37,6 +37,8 @@
  * the textarea is the app overruling a decision he made with the toggle.
  */
 
+import { HOME_INDICATOR_TOP_PX } from './chatview'
+
 /** Whether the tab bar is on screen. `'hidden'` is `/nina`'s resting state. */
 export type NinaBarState = 'hidden' | 'shown'
 
@@ -168,15 +170,21 @@ export function barToggleGlyph(state: NinaBarState): 'up' | 'down' {
  * The control lane's `bottom`, as a CSS length.
  *
  * Entirely above the composer: the bar's clearance when the bar is showing, plus the composer's
- * measured height, plus the gap, plus the home-indicator inset. That is what keeps the lane clear
- * of the composer's Send button at every composer height, and clear of the tab bar itself — the
- * bar's OUTER height is the whole of what it has to rise past, because no part of the bar paints
- * above its own top border: the raised centre FAB that used to overhang it by 20 px is now an
- * ordinary tab cell, and the bar occupies exactly its own border box.
+ * measured height, plus the gap, plus whatever floor the composer itself rests on. That is what
+ * keeps the lane clear of the composer's Send button at every composer height, and clear of the
+ * tab bar itself — the bar's OUTER height is the whole of what it has to rise past, because no
+ * part of the bar paints above its own top border: the raised centre FAB that used to overhang it
+ * by 20 px is now an ordinary tab cell, and the bar occupies exactly its own border box.
  *
- * The inset is honoured here and not as the lane's own padding, for the reason
- * `composerBottomCss` gives: everything in this stack sits above chrome that already pads by
- * `--safe-bottom`, so padding twice opens a gap.
+ * The floor is the composer's own, term for term: the full `--safe-bottom` while the bar is
+ * showing (the composer sits on the bar, which pads the inset itself) and the home-indicator
+ * pill's top line at rest — `composerBottomCss`'s new resting floor, which the lane MUST share.
+ * The composer's bottom edge dropped 21 px on a notched phone when it stopped resting on the
+ * safe area's top line, and a lane that still measured from the old floor would float that
+ * 21 px above the composer's new top edge, its whole "clear of the Send button" premise gone.
+ * `barState` is an argument here rather than a CSS variable the way it is for the composer, so
+ * the two floors are an `if` and not a `(1 - var())` weight — same rule, spelled in the grammar
+ * each caller can see.
  *
  * A string, because that is what the style attribute takes and because `var(--safe-bottom)` is
  * `env(safe-area-inset-bottom)`, which is readable only to CSS.
@@ -201,5 +209,8 @@ export function controlBottomCss(input: {
     Number.isFinite(composerHeightPx) && composerHeightPx > 0
       ? Math.round(composerHeightPx)
       : COMPOSER_RESTING_PX
-  return `calc(${clearance + composer + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`
+  if (barState === 'shown') {
+    return `calc(${clearance + composer + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`
+  }
+  return `calc(${composer + CHROME_CONTROL_GAP_PX}px + min(var(--safe-bottom), ${HOME_INDICATOR_TOP_PX}px))`
 }

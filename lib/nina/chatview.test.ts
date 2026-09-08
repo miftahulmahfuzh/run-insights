@@ -220,12 +220,15 @@ describe('composerBottomCss', () => {
   // border is the bar's top edge, so a composer clearing 58 floats a pixel above it — R2's gap.
   // `tests/tabbar.geometry.test.ts` is what ties this literal back to those two constants.
 
-  it('clears nothing but the home-indicator inset while the bar is hidden', () => {
-    // R1: `/nina`'s resting state. The flag is absent, `var()` substitutes 0, and the composer sits
-    // on the inset. This is also the SSR and pre-hydration answer, which is why the default is the
-    // hidden geometry and not the showing one.
+  it('clears nothing but the home-indicator pill while the bar is hidden', () => {
+    // R1: `/nina`'s resting state. The flag is absent, `var()` substitutes 0, and the composer's
+    // bottom edge lands on the pill's top line — `min(var(--safe-bottom), 13px)` — so the 12 px of
+    // `py-3` below the field equals the 12 px above it (the owner's equalisation). This is also the
+    // SSR and pre-hydration answer, which is why the default is the hidden geometry and not the
+    // showing one.
     expect(composerBottomCss(0, 59)).toBe(
-      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc(var(--nina-bar-visible, 0) * (59px + var(--safe-bottom)) + ' +
+        '(1 - var(--nina-bar-visible, 0)) * min(var(--safe-bottom), 13px))',
     )
   })
 
@@ -244,13 +247,15 @@ describe('composerBottomCss', () => {
 
   it('treats unmeasurable input as no keyboard', () => {
     expect(composerBottomCss(NaN, 59)).toBe(
-      'calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc(var(--nina-bar-visible, 0) * (59px + var(--safe-bottom)) + ' +
+        '(1 - var(--nina-bar-visible, 0)) * min(var(--safe-bottom), 13px))',
     )
   })
 
   it('treats an unmeasurable clearance as no clearance', () => {
     expect(composerBottomCss(0, NaN)).toBe(
-      'calc(0px * var(--nina-bar-visible, 0) + var(--safe-bottom))',
+      'calc(var(--nina-bar-visible, 0) * (0px + var(--safe-bottom)) + ' +
+        '(1 - var(--nina-bar-visible, 0)) * min(var(--safe-bottom), 13px))',
     )
   })
 })

@@ -157,33 +157,13 @@ export function planMessageEdit(target: EditTarget, next: string): MessageEditPl
 
 /* ── what a delete means ───────────────────────────────────────────────────────────────────── */
 
-/**
- * The sentence the confirmation shows, and it is a RULE rather than copy: what a destructive
- * action must disclose is exactly the kind of thing that drifts when it lives in a component.
- *
- * It discloses three things, because all three are true and only one of them is obvious: whose
- * message it is, that the photos go with it (`nina_message_images.message_id` cascades — assumption
- * A5), and that Nina stops seeing it — which is the whole point of R8 and the thing the runner
- * came here for.
- *
- * **This is not the invariant-4 case.** That invariant is about a *formatted instant or number*
- * reaching a component and producing a hydration mismatch; `dayISO` is its example and this app
- * says so in three places. A photo count is an integer the client already holds, pluralised in
- * `lib/` with a unit test, and it is deterministic on both sides of hydration.
- *
- * **What it deliberately does NOT say** is anything about a whole turn. See the plan's Decision 7:
- * a delete takes exactly one message.
+/*
+ * The DELETE CONFIRMATION and its sentence lived here until the repo owner overruled it: "remove
+ * the confirmation message when user delete nina's message, and also when user delete his own
+ * message in the chat". `describeMessageDeletion` (whose message, that the photos cascade with
+ * it, that she stops seeing it, that it cannot be undone) was deleted with the step that showed
+ * it — nothing renders it. It is in git history if the overrule is ever reversed.
  */
-export function describeMessageDeletion(target: EditTarget, photoCount: number): string {
-  const count = Number.isFinite(photoCount) ? Math.max(0, Math.trunc(photoCount)) : 0
-  const whose = target.mine ? 'your message' : 'Nina’s message'
-  if (count === 0) {
-    return `Delete ${whose}? She stops seeing it in the conversation, and this cannot be undone.`
-  }
-  const noun = count === 1 ? 'its photo' : `its ${count} photos`
-  const verb = count === 1 ? 'that photo goes' : 'those photos go'
-  return `Delete ${whose} and ${noun}? She stops seeing it in the conversation, ${verb} with it, and this cannot be undone.`
-}
 
 /* ── applying either one to the list on screen ─────────────────────────────────────────────── */
 
