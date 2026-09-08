@@ -14,18 +14,19 @@ import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/n
  *
  * ── ONE TAP, AND THE PRECEDENT IT OVERRIDES ON PURPOSE ────────────────────────────────────────
  * `components/nina/SessionRow.tsx` used to guard its remove behind `⋯` → Hapus → Hapus chat, and
- * its header argued why at length: that control hard-deletes a conversation and, through two
- * cascades, its photographs — permanently, with no undo. **None of that transferred here**, and the
- * user said so first: *"we dont need confirmation message to execute them"*. A redo opens one row
- * and spends one of six generations a day, and what it produces is a photograph he asked for. So:
- * no menu, no panel, no second tap, and no `window.confirm` — which `RetryExtraction` already
- * refuses on iOS grounds anyway ("a system dialog that reads as an error").
+ * its header argued why at length: that control hard-deletes a conversation and its messages — its
+ * photographs survive it since R1 — permanently, with no undo. **None of that transferred here**,
+ * and the user said so first: *"we dont need confirmation message to execute them"*. A redo opens
+ * one row and spends one of six generations a day, and what it produces is a photograph he asked
+ * for. So: no menu, no panel, no second tap, and no `window.confirm` — which `RetryExtraction`
+ * already refuses on iOS grounds anyway ("a system dialog that reads as an error").
  *
  * Task #136 then applied that same instruction to `SessionRow` itself, so the panel this file
  * argued past no longer exists — that row is `⋯` → Hapus and deletes on the tap. The STAKES still
  * differ, and `deleteNinaImageJob`'s header keeps that reasoning because it is what would have
- * justified a divergence: a session removal is irreversible, and this writes a nullable column.
- * What is gone is the divergence, not the argument.
+ * justified a divergence: a session removal destroys the conversation irreversibly (its
+ * photographs excepted, since R1), and this writes a nullable column. What is gone is the
+ * divergence, not the argument.
  *
  * The mis-tap protection that IS here is the one that costs nothing: `disabled={pending}`, so a
  * double-tap cannot open two jobs. After the list refreshes he can tap again, and that is a second

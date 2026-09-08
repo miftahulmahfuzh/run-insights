@@ -96,7 +96,16 @@ const ARGS = {
 beforeEach(() => {
   vi.clearAllMocks()
   claim.mockResolvedValue({ args: ARGS, attempts: 1 } as never)
-  call.mockResolvedValue({ ok: true, b64: 'AAAA', costMicroUsd: 1200, latencyMs: 78_200 })
+  /* `anchored: false` — this suite's jobs carry no `args.referenceUrl`, so R10's reference never
+   * goes on the wire. The field is required on the `ok: true` branch, not optional, so that a
+   * caller cannot silently forget to log whether the anchor was actually sent. */
+  call.mockResolvedValue({
+    ok: true,
+    b64: 'AAAA',
+    costMicroUsd: 1200,
+    latencyMs: 78_200,
+    anchored: false,
+  })
   quotedRows.mockResolvedValue([] as never)
   writeSession.mockResolvedValue(SESSION as never)
   tuning.mockResolvedValue(NINA_TUNING_DEFAULTS)

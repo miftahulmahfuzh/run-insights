@@ -144,6 +144,17 @@ describe('galleryPhotos', () => {
     expect(galleryPhotos([image({ messageId: 'ms1' })])[0]!.messageId).toBe('ms1')
   })
 
+  it('passes an ORPHAN through with a null messageId, so nothing can deep-link into a deleted session (R1)', () => {
+    // A session delete now orphans its photographs instead of destroying them. The photograph still
+    // belongs in the gallery and still knows whose side it is on; what it has lost is the bubble to
+    // jump to, and whoever builds that affordance must get the null rather than a plausible id.
+    const [orphan] = galleryPhotos([image({ id: 'i9', kind: 'generated', messageId: null })])
+    expect(orphan!.messageId).toBeNull()
+    expect(orphan!.id).toBe('i9')
+    expect(orphan!.side).toBe('hers')
+    expect(orphan!.label).toBe('Foto Nina')
+  })
+
   it('caps at NINA_GALLERY_LIMIT', () => {
     const rows = Array.from({ length: NINA_GALLERY_LIMIT + 5 }, (_, i) => image({ id: `i${i}` }))
     expect(galleryPhotos(rows)).toHaveLength(NINA_GALLERY_LIMIT)

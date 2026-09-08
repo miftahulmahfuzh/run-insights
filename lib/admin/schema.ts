@@ -18,6 +18,12 @@ import {
 } from '@/lib/admin/memoryModel'
 
 import {
+  NINA_SHORTCUT_EXPANSION_MAX,
+  NINA_SHORTCUT_LABEL_MAX,
+  NINA_TRIGGER_MAX,
+} from '@/lib/admin/shortcutModel'
+
+import {
   ADMIN_AVATAR_CONTENT_TYPES,
   ADMIN_AVATAR_ID_RE,
   ADMIN_AVATAR_MAX_EDGE_PX,
@@ -33,8 +39,19 @@ import {
   NINA_SCORE_MIN,
   NINA_TRAITS,
   NINA_TUNING_KEYS,
-  NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
+
+import {
+  NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_PROMPT_LENGTH_MAX,
+  NINA_IMAGE_PROMPT_LENGTH_MIN,
+  NINA_IMAGE_NOTES_MAX,
+  NINA_IMAGE_REFERENCE_ID_MAX,
+  NINA_IMAGE_REFERENCE_SOURCES,
+  NINA_IMAGE_TIME_MAX,
+  NINA_IMAGE_VENUE_MAX,
+  NINA_IMAGE_WARDROBE_MAX,
+} from '@/lib/nina/imageprefs'
 
 /**
  * Everything `/admin/nina` accepts from a browser, validated at the boundary. F33 R23.
@@ -462,9 +479,14 @@ export const ninaTuningWriteSchema = z.object({
    */
   enabled: z.strictObject(enabledShape(NINA_TUNING_KEYS)),
   relationship: z.enum(NINA_RELATIONSHIPS),
-  /** Goes into an IMAGE prompt, not into her voice. Empty is valid and means "the anchor outfit". */
-  wardrobe: z.string().trim().max(NINA_WARDROBE_MAX),
-  /** Handed to her verbatim in the system prompt. Empty is valid and is the default. */
+  /**
+   * Handed to her verbatim in the system prompt. Empty is valid and is the default.
+   *
+   * The only free-text field this schema still bounds. `wardrobe` was the other one until F41 R3
+   * moved it to the image-prefs schema below, where its bound is imported from
+   * `lib/nina/imageprefs.ts` under the same standing rule: every bound is imported, none is
+   * re-spelled.
+   */
   notes: z.string().trim().max(NINA_NOTES_MAX),
 })
 export type NinaTuningWriteInput = z.infer<typeof ninaTuningWriteSchema>
@@ -478,3 +500,216 @@ export const ninaTuningResetSchema = z.object({
   userId: userIdSchema,
 })
 export type NinaTuningResetInput = z.infer<typeof ninaTuningResetSchema>
+
+/* ============================================================================
+ * nina-emoji-shortcuts phase 3 — /admin/shortcuts. Appended; nothing above
+ * this line changed.
+ * ==========================================================================*/
+
+/**
+ * The four shortcut actions' input bounds. Same home and same reason as the memory four above:
+ * *"two homes for one concern is worse than one additive edit to a landed file."*
+ *
+ * ── NEITHER DERIVED COLUMN APPEARS ANYWHERE IN THIS SECTION, AND THAT IS THE POINT ──────────
+ * A shortcut row has two columns that are computed rather than typed — the folded key the matcher
+ * compares against, and the glyph/word classification that picks the boundary rule.
+ * `lib/admin/shortcutStore.ts` computes both from the trigger on every insert and every trigger
+ * edit. If either were a FIELD here, a forged POST could hand the matcher a key that does not
+ * belong to the trigger the table renders, and the row would fire on something nobody can see.
+ * They are absent from every schema below, so the payload has nowhere to put them.
+ * `tests/admin.shortcuts.test.ts` reads this section and asserts it.
+ *
+ * ── AND NOTHING HERE NORMALISES ─────────────────────────────────────────────────────────────
+ * `trim()` yes, fold no. Unicode normalisation is `normalizeNinaTrigger`'s, in the store, on the
+ * server, once. Running it here as well would put the fold in two places, and the day they
+ * disagree is the day a row's key stops matching its own trigger.
+ */
+
+/** A `nina_shortcuts.id` — `newId()`, a nanoid. Same shape and same bound as `memoryIdSchema`. */
+const shortcutIdSchema = z.string().trim().min(1).max(64)
+
+/** As typed, trimmed, and no longer than phase 1's ceiling. */
+const shortcutTriggerSchema = z.string().trim().min(1).max(NINA_TRIGGER_MAX)
+
+/** One line in a phone table cell. */
+const shortcutLabelSchema = z.string().trim().min(1).max(NINA_SHORTCUT_LABEL_MAX)
+
+/** The long context. Five times the ledger cap that is currently binding on these same sentences. */
+const shortcutExpansionSchema = z.string().trim().min(1).max(NINA_SHORTCUT_EXPANSION_MAX)
+
+/**
+ * The add row. All three at once, because a shortcut with no expansion is not a shortcut — there is
+ * nothing for it to stand in for — and a shortcut with no label is a row the operator cannot scan.
+ */
+export const shortcutInsertSchema = z.object({
+  userId: userIdSchema,
+  trigger: shortcutTriggerSchema,
+  label: shortcutLabelSchema,
+  expansion: shortcutExpansionSchema,
+})
+export type ShortcutInsert = z.infer<typeof shortcutInsertSchema>
+
+/**
+ * **One cell.** A discriminated union rather than three optional strings, for the reason
+ * `memoryDeleteSchema` gives: there is one control per cell, the cell knows which field it is, and
+ * the three fields have three different caps. A flat `{ field: string; value: string }` would have
+ * to check the longest cap for all three, so a 900-character trigger would pass validation and be
+ * refused by the column instead — a 500 where a sentence belongs.
+ *
+ * Unlike the ledger's cell save this sends ONE field and not the whole row, because the three are
+ * genuinely independent here: a shortcut's label has no bearing on its expansion, and the trigger
+ * edit is the only one that can be refused. Sending all three would make every label typo a
+ * candidate for a duplicate-trigger error.
+ */
+export const shortcutCellSchema = z.discriminatedUnion('field', [
+  z.object({
+    field: z.literal('trigger'),
+    userId: userIdSchema,
+    id: shortcutIdSchema,
+    value: shortcutTriggerSchema,
+  }),
+  z.object({
+    field: z.literal('label'),
+    userId: userIdSchema,
+    id: shortcutIdSchema,
+    value: shortcutLabelSchema,
+  }),
+  z.object({
+    field: z.literal('expansion'),
+    userId: userIdSchema,
+    id: shortcutIdSchema,
+    value: shortcutExpansionSchema,
+  }),
+])
+export type ShortcutCell = z.infer<typeof shortcutCellSchema>
+
+/** On or off. A boolean and not a toggle-what-it-is-not: the client sends the state it wants. */
+export const shortcutToggleSchema = z.object({
+  userId: userIdSchema,
+  id: shortcutIdSchema,
+  enabled: z.boolean(),
+})
+export type ShortcutToggle = z.infer<typeof shortcutToggleSchema>
+
+/** The one destructive action, and it takes an id and nothing else. No `confirm` field. */
+export const shortcutDeleteSchema = z.object({
+  userId: userIdSchema,
+  id: shortcutIdSchema,
+})
+export type ShortcutDelete = z.infer<typeof shortcutDeleteSchema>
+
+/* ============================================================================
+ * nina-image-generation-tab phase 4 — ONE whole-prefs write.
+ * Appended; nothing above this line changed.
+ * ==========================================================================*/
+
+/**
+ * What `/admin/image-generation`'s panel may write. R4 through R9 — and R10's *selection* — arrive
+ * as **one object**, and that is plan invariant 7 rather than a preference.
+ *
+ * ── ONE SAVE, NOT ELEVEN ────────────────────────────────────────────────────────────────────
+ * A slider, six checkboxes, four text fields and a photograph is eleven controls. Next dispatches
+ * Server Actions ONE AT A TIME PER CLIENT — the fact `avatarBatchRegisterSchema` above is built
+ * around and `ninaTuningWriteSchema` restates — so eleven actions is not a design, it is a stall.
+ * The whole prefs object is well under a kilobyte against a 1 MB action body cap
+ * (`next.config.ts` sets no `serverActions.bodySizeLimit`), so there is nothing to batch and
+ * nothing to chunk: it is one write of one row.
+ *
+ * ── TWO LAYERS OF BOUNDS, THE SAME DIVISION AS `cropWriteSchema` ────────────────────────────
+ * This schema enforces the SHAPE — an integer inside phase 1's advertised range, a focus key that
+ * exists, strings under a length that cannot crowd out the canon they sit beside, a reference whose
+ * source and id agree. Phase 1's coercion (inside `writeNinaImagePrefs`) is what GUARANTEES the
+ * range, because it is on every path into the row and this schema is only on the path from a
+ * browser.
+ *
+ * ── STRICT, AND THEREFORE REFUSE-DON'T-REPAIR ───────────────────────────────────────────────
+ * `z.strictObject` on the focus map, so an unknown or misspelled focus key FAILS rather than being
+ * silently stripped — `ninaTuningWriteSchema`'s argument verbatim: a stripped `bigThighss` would
+ * save five options and report success, and the operator would watch one checkbox refuse to take.
+ *
+ * Every bound is IMPORTED. `lib/admin/avatars.ts`'s rule holds here too: *"a constant that is
+ * agreed rather than shared is a constant that will one day disagree."*
+ */
+const promptLengthSchema = z
+  .number()
+  .int()
+  .min(NINA_IMAGE_PROMPT_LENGTH_MIN)
+  .max(NINA_IMAGE_PROMPT_LENGTH_MAX)
+
+/** R5's option. A boolean and nothing else — no `"true"`, no `1`. The browser we wrote sends one. */
+const focusValueSchema = z.boolean()
+
+/**
+ * One `focusValueSchema` per key phase 1 declares, built from the array rather than spelled out.
+ * Spelling the six keys here would put the user's own vocabulary in a second place, and a seventh
+ * option would then pass typecheck and fail validation.
+ */
+function focusShape<K extends string>(keys: readonly K[]): Record<K, typeof focusValueSchema> {
+  const shape = {} as Record<K, typeof focusValueSchema>
+  for (const key of keys) shape[key] = focusValueSchema
+  return shape
+}
+
+/**
+ * R10's selection as the row holds it: a table discriminator and an id.
+ *
+ * The `refine` is the whole value of this schema and it refuses exactly the two shapes that would
+ * fail invisibly: `{ source: 'album', id: '' }`, which is a reference that names a set and no
+ * photograph, and `{ source: 'none', id: 'av_1' }`, which is an unselected reference still carrying
+ * one. Either would round-trip through the panel looking fine and then hand phase 6 a job it cannot
+ * anchor. The URL is deliberately NOT stored — a Blob URL can be re-minted, and the id is what
+ * survives it.
+ *
+ * **`id` is a plain bounded string with no `.min(1)` and no `.nullable()`, and that is phase 1's
+ * contract rather than a relaxation of this one.** `NinaImageReference.id` is `string`, with `''`
+ * EXACTLY when `source === 'none'` (`lib/nina/imageprefs.ts` §4), so `''` is the *only*
+ * representation of "nothing selected" that reaches this boundary — the panel's draft carries it
+ * and `NINA_IMAGE_PREFS_DEFAULTS` is built from it. A `.min(1)` here would reject the default
+ * state, so no unselected reference could ever be saved and the reset would fail too; a `.nullable()`
+ * would admit a second empty value the row cannot store. The pairing this schema exists to enforce
+ * is not weakened by either removal: the `refine` below is what rejects a half-selection, in both
+ * directions.
+ */
+const ninaImageReferenceSchema = z
+  .object({
+    source: z.enum(NINA_IMAGE_REFERENCE_SOURCES),
+    id: z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX),
+  })
+  .refine(
+    /* `''` is the empty id, not `null` — phase 1's `NinaImageReference.id` is `string`. */
+    (reference) => (reference.id === '') === (reference.source === 'none'),
+    'A reference names a photograph, or it names nothing at all',
+  )
+
+export const ninaImagePrefsWriteSchema = z.object({
+  userId: userIdSchema,
+  /** R4. */
+  promptLength: promptLengthSchema,
+  /**
+   * R5. `strictObject` like the tuning's toggles and for the same reason. Every key is REQUIRED —
+   * the panel always sends a complete map, and an absent key here would be an ambiguity between
+   * "off" and "the client is old".
+   */
+  focus: z.strictObject(focusShape(NINA_IMAGE_FOCUS_KEYS)),
+  /** R6. Empty is valid and means "the anchor outfit". */
+  wardrobe: z.string().trim().max(NINA_IMAGE_WARDROBE_MAX),
+  /** R7. Empty is valid and means "wherever the scene puts her". */
+  venue: z.string().trim().max(NINA_IMAGE_VENUE_MAX),
+  /** R8. Empty is valid. */
+  time: z.string().trim().max(NINA_IMAGE_TIME_MAX),
+  /** R9. Empty is valid. Free text, handed to the camera verbatim. */
+  notes: z.string().trim().max(NINA_IMAGE_NOTES_MAX),
+  /** R10's selection. Phase 5 supplies the grid; the round trip is already here. */
+  reference: ninaImageReferenceSchema,
+})
+export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
+
+/**
+ * The reset takes no prefs at all — deliberately, for `ninaTuningResetSchema`'s reason: the
+ * defaults it writes are phase 1's module constant, so accepting them from the client would be
+ * accepting a client's opinion of what "default" means.
+ */
+export const ninaImagePrefsResetSchema = z.object({
+  userId: userIdSchema,
+})
+export type NinaImagePrefsResetInput = z.infer<typeof ninaImagePrefsResetSchema>

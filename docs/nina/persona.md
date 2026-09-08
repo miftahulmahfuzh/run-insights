@@ -237,21 +237,40 @@ Turing test, not for a lie. This line is the most likely thing in the canon to w
 ## What she looks like
 
 The anchor is `assets/nina/_anchor.png` (`nina.png`, promoted in phase 1). `NINA_APPEARANCE` is
-the same face in words, and phase 12 sends that text alongside the anchor:
+her in words, in three paragraphs — body, face, outfit — and phase 12 sends that text alongside the
+anchor:
+
+She is voluptuous: big boobs, a bubble butt, big thighs and very long calves. This silhouette is
+the point of the photograph and it must be visible in it. Her chest is full and heavy, her hips are
+wide and her waist is narrow. Her butt is round, high and prominent. Her thighs are thick and
+strong, with a runner's muscle under soft skin. Her calves are very long and full, defined down to
+a narrow ankle, on legs that are unusually long for her height. She is curvy and heavy-bodied,
+never lean and never slight.
 
 A woman in her late twenties, mixed Southeast Asian and Mediterranean features, olive skin with a
-warm undertone. Lean, visibly muscular runner's build — defined quadriceps and calves, narrow
-shoulders. Long dark brown hair in a high ponytail with loose strands at the temples. Dark brown
-eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty. Default
-outfit: heather-grey racerback tank, black fitted running shorts, white running shoes, a black
-digital watch on her left wrist, a white towel over one shoulder, a blue water bottle in one hand.
-Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.
+warm undertone. Long dark brown hair in a high ponytail with loose strands at the temples. Dark
+brown eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty.
 
-**The wardrobe is overridable (F34 R5).** `NINA_FACE` is the anchor and never moves — a description
-that fights `assets/nina/_anchor.png` fights it on every generation. The outfit paragraph is
-separate, and a `wardrobe` line on the tuning replaces it: `ninaAppearance(tuning)` swaps the
-clothes, keeps the face and keeps the track. This reaches the image prompt only. It is not in her
-system prompt, because what she is wearing is a fact about a photograph that has not been taken.
+Default outfit: heather-grey racerback tank, black fitted running shorts, white running shoes, a
+black digital watch on her left wrist, a white towel over one shoulder, a blue water bottle in one
+hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.
+
+**The body is unconditional and it leads (R1).** The user asked for it in writing — *"i dont care
+about her face, i care a lot about her voluptuous body: big boobs, bubble butt, big thighs, very
+long calves. always explicitly instruct these in the prompt"* — and "always" is the whole
+requirement. No setting on `/admin/image-generation` can remove a body fact: the focus multi-select
+adds emphasis clauses on top of the canon, and the prompt-length slider spends more or fewer body
+sentences but never fewer than one, which names all four. `NINA_FACE` keeps every one of its
+sentences and loses its primacy; the one body clause it used to carry — "Lean, visibly muscular
+runner's build, narrow shoulders" — moved into the body paragraph, and `Lean` and `narrow shoulders`
+were repealed there because they contradict it.
+
+**The wardrobe is overridable, and it lives on the image surface.** `NINA_FACE` is the anchor and
+never moves — a description that fights `assets/nina/_anchor.png` fights it on every generation. The
+outfit paragraph is separate, and `nina_image_prefs.wardrobe` replaces it: `ninaAppearance(prefs)`
+swaps the clothes, keeps the body, keeps the face and keeps the track. This reaches the image prompt
+only. It is not in her system prompt, because what she is wearing is a fact about a photograph that
+has not been taken.
 
 ## The tuning
 
@@ -329,8 +348,11 @@ relationship block is a rule that cancels a trait dial, which is the exact thing
 | `profanity` | how freely she swears — it lifts the `anjir` and `bego` fences. Default 30, so `low` is today |
 | `clinginess` | how soon she speaks first, and how often |
 | `photoEagerness` | how eagerly she reaches for `generate_image`, and how readily she offers a photo as a reward |
-| `wardrobe` | free text. Replaces the outfit paragraph in the IMAGE prompt only |
 | `notes` | free text, passed to her verbatim, and it **wins** where it disagrees with anything above |
+
+`wardrobe` was a seventh row in this table until F41 R3 took it off `/admin/personality` entirely.
+It is `nina_image_prefs.wardrobe` now, on `/admin/image-generation`, with the venue, the time and
+the focus set — a fact about a photograph rather than a fact about who she is.
 
 Nothing arbitrates between contradictory dials. `anger` 100 with `chill` 100 puts both paragraphs in
 the prompt and the model blends them. Sixteen dials is 120 pairwise rules, a spec nobody could
@@ -409,7 +431,7 @@ in the paragraph above.
 | The canon as a function of it | `lib/nina/persona.ts` |
 | The assembled system prompt | `buildNinaSystemPrompt`, `lib/nina/prompts/system.ts` |
 | The librarian's half — it is told the relationship, so the couple's register is not filed as biography | `buildDistillSystemPrompt`, `lib/nina/prompts/distill.ts` |
-| The wardrobe that reaches the camera | `lib/nina/imagegen.ts` |
+| The wardrobe that reaches the camera — no longer a tuning field (F41 R3) | `lib/nina/imageprefs.ts`, `/admin/image-generation` |
 | The panel — `/admin/personality`, its own tab since the user asked for one | `app/admin/personality/page.tsx`, `components/admin/CharacterPanel.tsx`, `lib/admin/tuningActions.ts`, `lib/admin/tuningModel.ts` |
 
 Two constants move on their own schedules and must not be confused. `NINA_PROMPT_VERSION`

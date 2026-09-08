@@ -3,24 +3,30 @@
   "coordinator": "orch-composer-frost-and-admin-notch",
   "coordinator_session_id": "ad96c883-bc36-4407-9254-d8950531c634",
   "created": "2026-09-07T13:12:47+00:00",
+  "landed": {
+    "at": "2026-09-07T15:30:20+00:00",
+    "base": "main",
+    "commit": "80ea3ffe1d3ef6d094a124552c21fdb5e45737bb",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": "miftahulmahfuzh/run-insights#133",
-      "commit": null,
+      "commit": "7f8435d",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "R1+R2+R3 landed. Inset moved from the composer's bottom offset into its own padding-bottom, gated by the complement of the offset's gate (counted exactly once in all 3 states); py-3->py-2, 68->60 across all four hand-copied sites; bg-card/40 + backdrop-blur-md + backdrop-saturate-150 with a border-t border-rule/50 hairline. controlBottomCss's inset gated to match EXCEPT the unmeasured fallback branch, which stays ungated on purpose (per reconciliation row 3) or the two discs render behind the composer's z-40 glass in the server HTML and every first paint -- do not 'simplify' the two branches into one. Gates: tsc/lint/vitest(150 files, 3017 tests)/build all green. DECISIONS: (1) /implement Step 3 scoped to phase 1 ONLY -- minted P1-RI-A023 by grepping the highest live id, not 'todos.py mint RI' (which returns the A020 hole p2 warned about); phase 2's bookkeeping is NOT done, p2 delegated it to you with A024. (2) prettier --write scoped to my 2 flagged files, never repo-wide npm run format, because the worktree was shared with p2 mid-edit. (3) One unrelated hunk in ChatScreen.tsx (~399): a pre-existing prettier violation collapsed 5 lines->1, kept not hand-reverted (rung 6); no behaviour change, and format:check is not in invariant 1. HEADS-UP: lib/nina package_readme had ZERO mentions of the chat geometry (chrome.ts absent from the module map since 44ee18a), so readme-updater created that section (+165/-3) rather than revising it. Also P1-RI-A022 and P1-RI-A012 are [x]/completed but still sit under Active Tasks from earlier sessions, so root Quick Stats 'P1 High: 2' counts stale blocks, not live work.",
       "package": "components/nina` + `lib/nina` + `components/ui` + `tests",
       "plan": ".workflows/plan/composer-frost-and-admin-notch/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-07T15:21:16+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A023",
       "title": "The composer: paint to the edge, take less room, frost the glass"
     },
     {
@@ -44,6 +50,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/composer-frost-and-admin-notch/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "composer-frost-and-admin-notch",
-  "updated": "2026-09-07T15:12:03+00:00",
+  "updated": "2026-09-07T15:30:20+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/composer-frost-and-admin-notch"
 }

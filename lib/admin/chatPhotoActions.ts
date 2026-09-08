@@ -35,6 +35,8 @@ import {
   updateNinaChatPhotoBlob,
   updateNinaChatPhotoDescription,
   updateNinaMessage,
+  type NinaImageRow,
+  type NinaMessageRow,
 } from '@/lib/nina/queries'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
@@ -83,6 +85,14 @@ import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision
  * orphaned blobs) yields to that: an orphan costs storage, a deleted-but-referenced object is
  * visible data loss.
  *
+ * ── A CHAT PHOTOGRAPH MAY HAVE NO MESSAGE (R1) ──────────────────────────────────────────────
+ * `nina_message_images.message_id` is nullable with `ON DELETE SET NULL`, so deleting a chat
+ * session orphans its photographs instead of destroying them — including the ones the operator
+ * replaced through this file, which is the specific loss the runner reported. Every action here
+ * works on an orphan: Replace addresses the row by `(user_id, id)` and never reads `message_id`;
+ * Add always mints a carrier message, so it cannot produce one; Remove asks whether there is a
+ * carrier at all before it asks whether it may delete it.
+ *
  * ── WHAT THIS FILE DOES NOT DO ──────────────────────────────────────────────────────────────
  *  · It writes no new `kind` and no new `NinaMessageSource`. A photograph added here is
  *    indistinguishable downstream from one `finishSelfie` wrote (invariant 7); the phase plan's D1
@@ -112,6 +122,16 @@ import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision
  * The `existing.pathname !== pathname` guard is not paranoia: `addRandomSuffix` makes a collision
  * impossible in practice, and deleting the object the row now points at would be unrecoverable, so
  * the one comparison that rules it out is worth making.
+ *
+ * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REPLACEABLE ───────────────────────────────
+ * F37's `source_avatar_id` / `source_image_id` mark a row that RE-SHOWS a photograph which already
+ * exists elsewhere — an album row (F34 R2's share) or another chat row. `isOriginalPhoto()` is
+ * inside `generatedChatPhotoScope`, so such a row is not on `/admin/photos` at all and an id for one
+ * is a stale link or a hand-typed claim. `getNinaMessageImage` above deliberately does NOT filter
+ * references (it is the bubble/viewer read too), so the refusal has to be here. Replacing a
+ * reference's bytes would change what one bubble shows while the photograph it re-shows stayed as it
+ * was: two pictures where the operator asked for one, and no way to see the second one from this
+ * screen. The refusal is a sentence, in the same shape as the `kind` refusal above it.
  */
 export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -128,6 +148,12 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
   if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
   if (existing.kind !== 'generated') {
     return { ok: false, error: 'That one is his upload, not hers.' }
+  }
+  if (isChatPhotoReference(existing)) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Replace the original instead.',
+    }
   }
 
   const updated = await updateNinaChatPhotoBlob(userId, id, {
@@ -171,9 +197,12 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
  * user)"* — a literal specification of the storage shape, and this writes exactly the pair
  * `finishSelfie` writes (`scripts/nina-image-worker.ts:427`).
  *
- * `nina_message_images.message_id` is `NOT NULL` and the column's own comment says why — *"an image
- * with no message is nothing"* — so there is no floating chat photo and "add a photo" is
- * unavoidably "add a message with a photo on it". No third shape is invented.
+ * `message_id` is NULLABLE since R1, so a floating chat photo is now representable — but ADD does
+ * not make one, and that is a decision rather than a leftover. NULL is the residue of a delete: the
+ * conversation that held the photograph is gone. A photograph the operator adds on purpose has
+ * never been in a conversation, and putting it straight into the orphan state would make it
+ * invisible in the chat forever with no way back. So "add a photo" is still "add a message with a
+ * photo on it", `NinaImageInsert.messageId` is still required, and no third shape is invented.
  *
  * ── THE FOUR VALUES THAT HAVE NO JOB TO TAKE THEM FROM ──────────────────────────────────────
  *   · `text` — `ninaImageCaption(newId())`. The SAME function, seeded with a fresh nanoid(12)
@@ -274,13 +303,22 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
  * ── THE EMPTY BUBBLE, RESOLVED ──────────────────────────────────────────────────────────────
  * `finishSelfie`'s message exists ONLY to carry the photograph, so removing its last image would
  * leave a caption bubble with no picture in the runner's chat, forever. When this is the last image
- * on such a message, the MESSAGE is deleted and `nina_message_images.message_id`'s
- * `ON DELETE CASCADE` takes the image row with it — one statement, and the order is Postgres's
- * rather than two statements with a crash window between them.
+ * on such a message, the MESSAGE is deleted and `deleteNinaMessage` removes the image row in the
+ * same transaction. (That used to be `message_id`'s `ON DELETE CASCADE` doing the work; since R1
+ * the column is `ON DELETE SET NULL` and `deleteNinaMessage` deletes its own image rows explicitly.
+ * Same one transaction, same outcome, and the reason for the change is in that function's header:
+ * a deleted SESSION must not take the photographs, and one FK cannot tell the two paths apart.)
  *
  * It must NOT delete a RUNNER message that merely carried her re-attached photograph
  * (`lib/nina/actions.ts:518-530`, the R26 path): that message is his and carries his text. Both
  * clauses of that rule live in `isNinaPhotoCarrierMessage` and are argued at its definition.
+ *
+ * ── AND THE PHOTOGRAPH MAY HAVE NO MESSAGE AT ALL (R1) ──────────────────────────────────────
+ * An orphan's `row.messageId` is NULL. There is no carrier to look up, nothing to protect from an
+ * empty bubble, and no `getNinaMessagesByIds(userId, [null])` to write — so `loadPhotoCarrier`
+ * short-circuits to `{ message: null, siblings: [] }` and Remove takes the plain
+ * `deleteNinaMessageImage` branch. This is the case the collection is now FULL of: every photograph
+ * from every conversation the runner has deleted.
  *
  * ── ROW FIRST, BLOB SECOND, AND ONLY IF NOTHING ELSE POINTS AT IT ───────────────────────────
  * The same R26 path that produced the runner-message case also produced the SHARED-OBJECT case: it
@@ -288,6 +326,20 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
  * another chat row or a `nina_avatars` row — possibly her current profile picture.
  * `releaseChatPhotoBlob` asks first. Deleting the row before asking is what makes the question
  * answerable without an exclusion parameter.
+ *
+ * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REMOVABLE FROM HERE ───────────────────────
+ * F37's `source_avatar_id` / `source_image_id` mark a row that re-shows a photograph which already
+ * exists elsewhere. `generatedChatPhotoScope` excludes it, so it never appears on `/admin/photos`
+ * and an id for one is a stale link or a hand-typed claim. Acting on it would be worse than useless:
+ * the photograph the operator can SEE on the screen would still be there afterwards, and
+ * `releaseChatPhotoBlob` would be asked about an object the original member still points at. The
+ * refusal is first, above every read and every delete, and it is a sentence rather than the generic
+ * miss so the operator knows the id was real and the answer was still no. Removing a re-share from a
+ * bubble is the runner's own message-edit path, not this screen's.
+ *
+ * It sits ABOVE `loadPhotoCarrier` for a reason worth one line: an ORPHANED reference row would
+ * otherwise take the `{ message: null, siblings: [] }` short-circuit straight into
+ * `deleteNinaMessageImage`, which is exactly the delete this paragraph forbids.
  */
 export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -298,15 +350,18 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
 
   const row = await getNinaMessageImage(userId, id)
   if (row == null) return { ok: false, error: 'That photo is not in the collection.' }
+  if (isChatPhotoReference(row)) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Remove the original instead.',
+    }
+  }
 
-  const [message, siblings] = await Promise.all([
-    getNinaMessagesByIds(userId, [row.messageId]).then((rows) => rows[0] ?? null),
-    getNinaMessageImagesForMessages(userId, [row.messageId]),
-  ])
-  const isLastImage = siblings.every((sibling) => sibling.id === id)
+  const carrier = await loadPhotoCarrier(userId, row.messageId)
+  const isLastImage = carrier.siblings.every((sibling) => sibling.id === id)
 
-  if (isLastImage && message != null && isNinaPhotoCarrierMessage(message)) {
-    const gone = await deleteNinaMessage(userId, message.id)
+  if (isLastImage && carrier.message != null && isNinaPhotoCarrierMessage(carrier.message)) {
+    const gone = await deleteNinaMessage(userId, carrier.message.id)
     if (gone == null) return { ok: false, error: 'That photo is not in the collection.' }
   } else {
     const gone = await deleteNinaMessageImage(userId, id)
@@ -408,6 +463,66 @@ export async function editChatPhotoDescriptionAction(
 }
 
 /* ── The two helpers ─────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The bubble a photograph sits in, and the photographs beside it — or neither, when there is no
+ * bubble.
+ *
+ * Two reads or none. Since R1 a chat photograph's `message_id` may be NULL, which means the
+ * conversation that held it was deleted and the row was orphaned rather than destroyed. In that
+ * case there is nothing to look up: an orphan has no carrier message to protect from an empty
+ * bubble and no siblings inside a bubble it is not in. Returning the empty answer here rather than
+ * branching at the call site is what keeps `removeChatPhotoAction`'s decision — carrier or plain
+ * row — one expression, and what makes it impossible to pass a `null` id into an owner-scoped
+ * query that would then look like it had refused.
+ *
+ * `siblings` is EVERY image on that message, including this one; the caller's `isLastImage` test is
+ * "they are all me". `getNinaMessagesByIds` and `getNinaMessageImagesForMessages` are both
+ * owner-scoped, so a `message_id` read off a row we already proved is his cannot widen anything.
+ */
+/**
+ * **Is this row a re-share rather than a photograph of its own?** The row-level reading of
+ * `isOriginalPhoto()` (`lib/nina/queries.ts`), which is the SQL half of the same rule.
+ *
+ * Written here rather than exported out of `lib/nina/` because this is the only place that needs
+ * the question answered about a row already in hand: the three collection reads ask it in their
+ * WHERE, and `getNinaMessageImage` — the bubble, viewer and admin read — deliberately never asks it
+ * at all. A shared export would invite a fourth caller to filter a read that must not be filtered
+ * (`lib/db/schema.ts`'s own note on the four reads, asserted as an absence by
+ * `tests/nina.photoRefs.test.ts`).
+ *
+ * Either column being non-null is enough: `ninaPhotoProvenance` sets exactly one of the two, and
+ * both FKs are `ON DELETE SET NULL`, so a row whose origin was deleted stops being a re-share and
+ * becomes replaceable and removable again — which is correct, because by then it is the only copy
+ * left.
+ *
+ * `!= null` and not `!== null`, deliberately: the loose comparison answers "is there an origin id
+ * here" for an ABSENT field as well as a NULL one, and absent has to mean the same thing as null.
+ * The column is `string | null` so a live row cannot be `undefined` — but a caller holding a row
+ * shaped before F37 added the pair can be, and the strict form would then read a missing field as
+ * "this is a re-share" and refuse an ordinary photograph the operator can see on the screen. The
+ * safe direction for a REFUSAL is to fire only on evidence, which is the same widening
+ * `isOriginalPhoto()` gets for free from `IS NULL` in SQL.
+ */
+function isChatPhotoReference(
+  row: Pick<NinaImageRow, 'sourceAvatarId' | 'sourceImageId'>,
+): boolean {
+  return row.sourceAvatarId != null || row.sourceImageId != null
+}
+
+async function loadPhotoCarrier(
+  userId: string,
+  messageId: string | null,
+): Promise<{ message: NinaMessageRow | null; siblings: NinaImageRow[] }> {
+  if (messageId === null) return { message: null, siblings: [] }
+
+  const [messages, siblings] = await Promise.all([
+    getNinaMessagesByIds(userId, [messageId]),
+    getNinaMessageImagesForMessages(userId, [messageId]),
+  ])
+
+  return { message: messages[0] ?? null, siblings }
+}
 
 /**
  * **Delete a Blob object we have just stopped pointing at — but only if nothing else points at
@@ -567,6 +682,21 @@ function scheduleChatPhotoCaption(userId: string, id: string): void {
        * `captionNinaPhoto` never throws and returns `null` for every refusal — a digit, alt-text
        * narration, an over-long line, the sanctioned empty answer, a timeout. `null` means the
        * placeholder was the better sentence, so nothing is written. */
+      /* R1: an ORPHAN has no bubble to caption. `message_id` is nullable since a session delete
+       * started orphaning photographs instead of destroying them, and this half writes into
+       * `nina_messages.text` — there is no row to write to. HALF ONE above has already stored the
+       * description on the photograph itself, which is the half that still means something for a
+       * photograph outside every conversation. Returning here rather than at `updateNinaMessage`
+       * below is deliberate: it also skips a tuning read and a paid `glm-5.3` call whose output
+       * could not be written anywhere. Reachable from Replace on an orphaned row; Add always mints
+       * a carrier message first, so it never lands here. */
+      if (row.messageId == null) {
+        console.info('[f36] the photo has no bubble to caption; its description still landed', {
+          id,
+        })
+        return
+      }
+
       const tuning = await readNinaTuning(userId)
       const caption = await captionNinaPhoto({ seen: description, seenKind: 'described', tuning })
       if (caption == null) {

@@ -63,6 +63,7 @@ import { newId } from '../lib/id.ts'
 import { classifyImageFailure, ninaImageApology, ninaImageCaption } from '../lib/nina/imagefail.ts'
 import type { NinaImageFailure } from '../lib/nina/imagefail.ts'
 import {
+  buildImageReferenceDataUrl,
   buildImageRequestBody,
   NINA_IMAGE_CACHE_MAX_AGE,
   NINA_IMAGE_CONTENT_TYPE,
@@ -71,10 +72,13 @@ import {
   NINA_IMAGE_HEIGHT,
   NINA_IMAGE_MAX_ATTEMPTS,
   NINA_IMAGE_RECLAIM_MS,
+  NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS,
+  NINA_IMAGE_REFERENCE_MAX_BYTES,
   NINA_IMAGE_SWEEP_BUDGET,
   NINA_IMAGE_WIDTH,
   NINA_WORKER_CALL_TIMEOUT_MS,
   ninaImagePathname,
+  ninaImageReferenceUrl,
   OPENROUTER_IMAGE_URL,
   readReportedCostMicroUsd,
 } from '../lib/nina/imagerecipe.ts'
@@ -443,6 +447,88 @@ export type WorkerOutcome =
   | { ok: false; kind: NinaImageFailure; latencyMs: number; detail: string }
 
 /**
+ * **The anchor, off Blob, on the runner.** A near-copy of `fetchNinaImageReference` in
+ * `lib/nina/imagecall.ts`, and the duplication is stated rather than hidden — the same trade this
+ * file's header makes about column names, and for the same reason: `imagecall.ts` opens with
+ * `import 'server-only'` and reaches `@/lib/env`, neither of which survives
+ * `--experimental-strip-types`.
+ *
+ * **What is NOT duplicated is everything that could disagree**: the byte bound, the fetch deadline,
+ * the allow-list and the `data:` URL construction all come from `imagerecipe.ts`, which both hosts
+ * import. What is duplicated is fifteen lines of `fetch` plumbing.
+ *
+ * A plain `fetch` of the public Blob URL, not `@vercel/blob`: this file can only reach that package
+ * through `createRequire` (see `put`, above) and its reader half has no `require()`-able shape here.
+ * A public Blob object is an HTTPS GET on both hosts, so the app side uses the same `fetch` — one
+ * mechanism, two copies, rather than two mechanisms.
+ */
+export async function fetchReference(url: string): Promise<string | null> {
+  const startedAt = Date.now()
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS),
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      console.warn('[nina-worker] image reference dropped — blob fetch failed', {
+        url,
+        status: res.status,
+      })
+      return null
+    }
+
+    const declared = res.headers.get('content-length')
+    const declaredBytes = declared == null ? null : Number.parseInt(declared, 10)
+    if (
+      declaredBytes != null &&
+      Number.isFinite(declaredBytes) &&
+      declaredBytes > NINA_IMAGE_REFERENCE_MAX_BYTES
+    ) {
+      console.warn('[nina-worker] image reference dropped — declared too large', {
+        url,
+        declaredBytes,
+        maxBytes: NINA_IMAGE_REFERENCE_MAX_BYTES,
+      })
+      return null
+    }
+
+    const bytes = Buffer.from(await res.arrayBuffer())
+    if (bytes.byteLength === 0 || bytes.byteLength > NINA_IMAGE_REFERENCE_MAX_BYTES) {
+      console.warn('[nina-worker] image reference dropped — bad size', {
+        url,
+        bytes: bytes.byteLength,
+        maxBytes: NINA_IMAGE_REFERENCE_MAX_BYTES,
+      })
+      return null
+    }
+
+    const served = res.headers.get('content-type') ?? ''
+    const dataUrl = buildImageReferenceDataUrl(served, bytes.toString('base64'))
+    if (dataUrl == null) {
+      console.warn('[nina-worker] image reference dropped — content type not vouched for', {
+        url,
+        served,
+      })
+      return null
+    }
+
+    console.info('[nina-worker] image reference attached', {
+      bytes: bytes.byteLength,
+      contentType: served,
+      fetchMs: Date.now() - startedAt,
+    })
+    return dataUrl
+  } catch (cause) {
+    console.warn('[nina-worker] image reference dropped — fetch threw', {
+      url,
+      cause: String(cause),
+    })
+    return null
+  }
+}
+
+/**
  * One OpenRouter call. **It never throws** — every failure comes back as a `NinaImageFailure`,
  * because the caller's whole job is to turn that into one of her sentences, and a `catch` that has
  * to re-derive which of four things happened is a `catch` that will get it wrong.
@@ -451,13 +537,31 @@ export type WorkerOutcome =
  * the app uses, imported, not paraphrased.** That is the whole reason `imagefail.ts` is forbidden
  * from having imports.
  *
- * The timeout is `NINA_WORKER_CALL_TIMEOUT_MS` (240 s), three times the measured 78.2 s. Off Vercel
- * there is no ceiling to race, and a timeout that fires on a merely slow day throws away $0.04 and
- * a photograph.
+ * ── ONE TIMEOUT HERE, TWO ON VERCEL, AND THAT ASYMMETRY IS DELIBERATE ─────────────────────────
+ * `NINA_WORKER_CALL_TIMEOUT_MS` (240 s) covers BOTH the anchored and the unanchored call on this
+ * host: three times the measured 78.2 s unanchored, 1.6x the measured 148.9 s anchored. The app
+ * needs a second, larger constant because it is racing a 300 s invocation ceiling; this host is
+ * racing `timeout-minutes: 6` (360 s), and raising the call timeout above 240 s would mean raising
+ * that ceiling too — which would mean re-deriving `NINA_IMAGE_RECLAIM_MS` (420 s, chosen to exceed
+ * BOTH host ceilings) and editing the workflow. That is a large blast radius for a backstop that
+ * the normal path never reaches, so the residual is accepted and named: an anchored generation
+ * slower than 240 s fails here as `timeout` — the same failure the app would have had before R10,
+ * and one `reviveNinaImageJobs` retries.
+ *
+ * The reference is fetched before the POST and inside the same 240 s wall, which is bounded by
+ * `NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS` (10 s) and degrades to unanchored on any failure.
  */
-export async function generate(prompt: string, seed: number): Promise<WorkerOutcome> {
+export async function generate(
+  prompt: string,
+  seed: number,
+  /** The job's `args.referenceUrl`, already normalised by `ninaImageReferenceUrl`. */
+  referenceUrl: string | null = null,
+): Promise<WorkerOutcome> {
   const startedAt = Date.now()
   const apiKey = process.env.OPENROUTER_API_KEY as string
+
+  const referenceDataUrl =
+    referenceUrl == null || referenceUrl.length === 0 ? null : await fetchReference(referenceUrl)
 
   let res: Response
   try {
@@ -467,8 +571,12 @@ export async function generate(prompt: string, seed: number): Promise<WorkerOutc
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildImageRequestBody({ prompt, seed })),
-      signal: AbortSignal.timeout(NINA_WORKER_CALL_TIMEOUT_MS),
+      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl })),
+      /* What is left of the 240 s after the reference fetch, floored so a slow fetch cannot hand
+       * `AbortSignal.timeout` a zero. */
+      signal: AbortSignal.timeout(
+        Math.max(1_000, NINA_WORKER_CALL_TIMEOUT_MS - (Date.now() - startedAt)),
+      ),
       cache: 'no-store',
     })
   } catch (cause) {
@@ -879,7 +987,7 @@ export async function runOneJob(
     attempt: job.attempts,
   })
 
-  const outcome = await generate(job.args.prompt, job.args.seed)
+  const outcome = await generate(job.args.prompt, job.args.seed, ninaImageReferenceUrl(job.args))
   if (!outcome.ok) {
     return closeFailed(sql, job, {
       kind: outcome.kind,

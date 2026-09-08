@@ -24,7 +24,6 @@ import {
   NINA_TRAITS,
   NINA_TUNING_DEFAULTS,
   NINA_TUNING_KEYS,
-  NINA_WARDROBE_MAX,
 } from '@/lib/nina/tuning'
 
 /**
@@ -39,9 +38,10 @@ import {
  * `tests/admin.memory.test.ts` uses for the same reason: *a structural guarantee that is only a
  * comment decays.*
  *
- * `NINA_WARDROBE_MAX` and `NINA_NOTES_MAX` are imported from `@/lib/nina/tuning` rather than from
- * the admin model. The draft of this phase declared a second pair (240 / 1000) against phase 1's
- * 200 / 2000; reconciliation cut them, so there is one home for each bound and this file reads it.
+ * `NINA_NOTES_MAX` is imported from `@/lib/nina/tuning` rather than from the admin model. The draft
+ * of this phase declared its own (1000, against phase 1's 2000, alongside a second bound for the
+ * wardrobe this page no longer carries); reconciliation cut them, so there is one home for the
+ * bound and this file reads it.
  */
 
 const DEFAULTS: TuningDraft = toTuningDraft(NINA_TUNING_DEFAULTS)
@@ -60,7 +60,6 @@ describe('toTuningDraft — the read-side seam', () => {
       expect(DEFAULTS.dials[key]).toBe(NINA_TUNING_DEFAULTS.dials[key])
     }
     expect(DEFAULTS.relationship).toBe(NINA_TUNING_DEFAULTS.relationship)
-    expect(DEFAULTS.wardrobe).toBe(NINA_TUNING_DEFAULTS.wardrobe)
     expect(DEFAULTS.notes).toBe(NINA_TUNING_DEFAULTS.notes)
   })
 
@@ -150,14 +149,13 @@ describe('changedTuningFields — what the operator sees as unsaved', () => {
     expect(tuningDraftEquals(moved, DEFAULTS)).toBe(false)
   })
 
-  it('names the three non-numeric fields', () => {
+  it('names the two non-numeric fields', () => {
     const edited: TuningDraft = {
       ...DEFAULTS,
       relationship: 'something_else',
-      wardrobe: 'short pants',
       notes: 'she knows about the half marathon',
     }
-    expect(changedTuningFields(edited, DEFAULTS)).toEqual(['relationship', 'wardrobe', 'notes'])
+    expect(changedTuningFields(edited, DEFAULTS)).toEqual(['relationship', 'notes'])
   })
 
   it('counts a key that exists on one side only', () => {
@@ -245,12 +243,8 @@ describe('ninaTuningWriteSchema — the boundary', () => {
     expect(ninaTuningWriteSchema.safeParse(payload({ relationship: 'wife' })).success).toBe(false)
   })
 
-  it('bounds the wardrobe and the notes, and accepts both empty', () => {
-    expect(ninaTuningWriteSchema.safeParse(payload({ wardrobe: '', notes: '' })).success).toBe(true)
-    expect(
-      ninaTuningWriteSchema.safeParse(payload({ wardrobe: 'x'.repeat(NINA_WARDROBE_MAX + 1) }))
-        .success,
-    ).toBe(false)
+  it('bounds the notes, and accepts it empty', () => {
+    expect(ninaTuningWriteSchema.safeParse(payload({ notes: '' })).success).toBe(true)
     expect(
       ninaTuningWriteSchema.safeParse(payload({ notes: 'x'.repeat(NINA_NOTES_MAX + 1) })).success,
     ).toBe(false)
@@ -260,11 +254,11 @@ describe('ninaTuningWriteSchema — the boundary', () => {
    * The panel's `maxLength` and this schema must be the SAME number, or the textarea refuses a
    * keystroke the action would have accepted (or, worse, the other way round). One home, two
    * readers — so assert that the bound this file imports is the bound phase 1 declares.
+   *
+   * There were two bounds here until F41 R3. The wardrobe's cap left with the field, and its
+   * equivalent assertion belongs to the image-prefs schema's own suite.
    */
-  it('accepts a value at exactly each bound', () => {
-    expect(
-      ninaTuningWriteSchema.safeParse(payload({ wardrobe: 'x'.repeat(NINA_WARDROBE_MAX) })).success,
-    ).toBe(true)
+  it('accepts a value at exactly the bound', () => {
     expect(
       ninaTuningWriteSchema.safeParse(payload({ notes: 'x'.repeat(NINA_NOTES_MAX) })).success,
     ).toBe(true)

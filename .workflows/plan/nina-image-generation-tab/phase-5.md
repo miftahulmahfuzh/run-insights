@@ -1,0 +1,1226 @@
+# Phase 5: The photo-reference picker
+
+**Plan set:** `NINA_IMAGE_GENERATION_TAB_PLAN.md`
+**Analysis:** `20260907-124015-IMGN_code_analyzer.md`
+**Satisfies:** R10 (the UI half) — *"photo reference: user can select all photos in Nina's album and
+Chat photos. can you make something like a simple photos grid without any captions (just like ios
+album app). user can select one out of all these photos."*
+**Depends on:** Phase 1 (the bounded union read that feeds the grid, and the vocabulary the
+selection is stored in)
+**Difficulty:** NORMAL
+**Package:** `components/admin`
+
+> ### ⚠ THE BASE MOVED AFTER THIS PLAN WAS WRITTEN — READ THIS FIRST
+>
+> This plan was written against `b0e492a`, which was local `main` and **30 commits behind
+> `origin/main`**. `origin/main` has since been merged into the branch and the worktree is now at
+> **`4a7588e`**. That is the tree this plan must be applied to.
+>
+> Two feature sets landed in that merge and both changed facts this plan set depends on:
+> **`nina-photo-caption-from-image`** (migration `0009_nina_message_photo_only.sql` — `nina_messages.photo_only`)
+> and **`nina-photo-refs-and-bubble-actions`** (migration `0010_nina_image_provenance.sql` —
+> `nina_message_images.source_avatar_id` / `source_image_id`).
+>
+> **Consequences for every plan in this set:**
+>
+> 1. **The migration watermark is `0010`**, not `0008`. The journal has eleven entries (`idx` 0-10).
+>    Phase 1 generates **`0011`**; phase 7 generates **`0012`**. No other phase generates one.
+> 2. **Hand-written backfill SQL is appended AFTER `npm run db:generate`, and regeneration silently
+>    drops it.** Both landed migrations say so in banner comments. Never hand-name, never rename, and
+>    if a migration is ever regenerated, diff the old file against the new one and re-append before
+>    deleting anything.
+> 3. **A row in `nina_message_images` is a *reference* when `source_avatar_id` OR `source_image_id`
+>    is non-null** — see plan invariant 13. The three collection reads already exclude them through
+>    `isOriginalPhoto()` (`lib/nina/queries.ts:1616-1618`).
+> 4. **`lib/nina/prompts/` now exists** (`caption.ts`, `describe.ts`, `distill.ts`, `index.ts`,
+>    `system.ts`, `tools.ts`) and `lib/nina/persona.ts` gained the Instructor character
+>    (`isInstructor` :730, `INSTRUCTOR_COACHING` :813, `ninaInstructorCoachingBlock` :839).
+>    **Image-prompt assembly did NOT move** — `buildNinaImagePrompt` and `sidecarText` are still in
+>    `lib/nina/imagegen.ts`, and `ninaAppearance` / `NINA_FACE` / `NINA_APPEARANCE` are still in
+>    `persona.ts`. Nothing under `lib/nina/prompts/` imports any of them.
+> 5. **`scripts/check-llm-payload-boundary.mjs` now guards NINE symbols, not eight** — the ninth is
+>    `captionNinaPhoto`, sanctioned in `lib/nina/caption.ts`, `lib/admin/chatPhotoActions.ts` and
+>    `lib/nina/imagerun.ts`. Three of the nine are image symbols (`runNinaImageJob`,
+>    `describeNinaImage`, `captionNinaPhoto`). The guard is a name allowlist over `app/`, `lib/`,
+>    `components/`; `buildNinaImagePrompt` is not in it, so a pure preview in a render still passes
+>    (plan invariant 5 re-verified against the guard as it now stands).
+> 6. **EVERY `file:line` CITATION BELOW IS ADVISORY.** Line numbers shifted in `persona.ts` (+~13 to
+>    +139), `queries.ts` (+~130), `tuning.ts` (+~22), `schema.ts` (+~64), `CharacterPanel.tsx` (+13),
+>    `app/admin/layout.tsx` (+31) and `imagegen.ts` (-7). The reconciler corrected the load-bearing
+>    ones in place; **grep for the symbol before editing, never `sed -n` a line range.**
+
+---
+
+## Goal
+
+`/admin/image-generation` gains a caption-less, near-gapless, square-tile grid over **both** of
+Nina's photo sets — her album (`nina_avatars`) and her chat photographs
+(`nina_message_images`, `kind = 'generated'`) — in which exactly one photograph can be selected, or
+none. After this phase the operator can point a generation at a reference picture by tapping it, and
+the selection round-trips through phase 4's existing save with no action, no route and no schema of
+this phase's own. Every rule about what is selected, which tile is revealed, and what happens when
+the saved selection is no longer in the list lives in a pure, unit-tested module; the component holds
+no rules.
+
+---
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing. No symbol, no file, no config key.
+
+**Renames:** nothing.
+
+**Creates:**
+
+- `components/admin/photoReferenceModel.ts` *(new file)* — runtime module, **no `'use client'`**:
+  - types `PhotoReferenceItem`, `PhotoReferenceTile`, `PhotoReferenceView`
+  - constants `PHOTO_REFERENCE_NONE` (`''`), `PHOTO_REFERENCE_TILE_LABEL` (`'Nina photo'`),
+    `PHOTO_REFERENCE_REVEAL_STEP` (`48`), `PHOTO_REFERENCE_MIN_TILE_PX` (`92`)
+  - functions `photoReferenceTileSrc`, `photoReferenceLabel`, `photoReferenceIndex`,
+    `nextPhotoReferenceValue`, `photoReferenceReveal`, `photoReferenceView`
+- `components/admin/PhotoReferencePicker.tsx` *(new file)* — `'use client'`, exports
+  `PhotoReferencePicker`
+- `tests/admin.photoReference.test.ts` *(new file)*
+
+**Signature changes:** none to any existing symbol.
+
+**Requires (from earlier and concurrent phases):**
+
+1. **Phase 1** — `listNinaPhotoReferences(userId, opts?): Promise<NinaPhotoRefPage>`: a bounded
+   union read over `nina_avatars` + `nina_message_images(kind='generated')`, newest first, one page,
+   yielding per row a `source`, an `id`, a `blobUrl`, a nullable `thumbUrl`, `width`, `height` and
+   `createdAt`, plus `total` / `offset` / `limit`. **RECONCILED: the name is
+   `listNinaPhotoReferences`, not `listNinaImageReferences`** — phase 4's Assumptions said the
+   latter and phase 1 owns the spelling. This phase still does **not** call it; phase 4's page does,
+   and maps its rows to `ImageReferenceOption` before they reach this component.
+   **The page contains no reference rows and therefore no duplicate photograph** — plan invariant
+   13, guaranteed by phase 1 through `generatedChatPhotoScope`. See exit criterion 1b.
+2. **Phase 1** — the stored shape of the selection. **RECONCILED: it is
+   `{ source: NinaImageReferenceSource; id: string }`** where `source` is `'none' | 'album' | 'chat'`
+   and `id` is `''` exactly when `source === 'none'` (phase 1's `NinaImageReference`,
+   `NINA_IMAGE_REFERENCE_NONE`). This phase remains **agnostic**: `PhotoReferenceItem.key` is
+   *"the exact string phase 4's save persists for this photograph"* — concretely
+   `` `${source}:${id}` ``, produced by phase 4's `referenceKey` and decoded by its
+   `parseReferenceKey` — built on the server, and the picker **never parses it**. `''` is the
+   no-reference key, which is already this phase's convention.
+3. **Phase 4** — `components/admin/ImageGenPanel.tsx` exists and carries a comment containing the
+   literal `SEAM — PHASE 5`, a draft field for the reference, and the two props the picker needs
+   threaded from the page. **RECONCILED — this is phase 4's declared prop list, not an assumed one**
+   (this phase does not edit the panel's prop list or its page):
+
+   ```tsx
+   export function ImageGenPanel({
+     userId,
+     prefs,
+     defaults,
+     revision,
+     promptPreview,
+     references,
+     photoTotal,
+   }: ImageGenPanelProps) {
+   ```
+
+   with, from `lib/admin/imageGenModel.ts`:
+
+   ```ts
+   /** Phase 1's `NinaPhotoRefPage.rows`, mapped to plain serializable tiles on the server. */
+   export interface ImageReferenceOption {
+     key: string
+     url: string
+     thumbUrl: string | null
+   }
+   ```
+
+   — **structurally identical to this phase's `PhotoReferenceItem`**, which is why `items={references}`
+   compiles with no cross-phase import in either direction, and why `photoTotal` (the union's full
+   `total`, not `references.length`) is on phase 4's list rather than this one.
+
+   The draft member is `reference: { source: string; id: string }`, and this phase's one edit reaches
+   it as `referenceKey(draft.reference)` / `setDraft({ ...draft, reference: parseReferenceKey(next) })`
+   — both functions phase 4's, both already imported by the panel.
+4. **Phase 4** — `disabled`/`pending` while the save transition runs. The mount passes `pending`.
+
+**No unreconciled assumption remains in this section.** The `referenceUrl: string | null`
+alternative this plan originally flagged is **deleted**: phase 1 stores an id and a set, never a URL
+(`updateNinaChatPhotoBlob` changes a chat photograph's `blob_url` and keeps its `id`, so a stored
+URL would point at a deleted Blob object while the picker still drew the chosen tile). Phase 3's
+`NinaImageJobArgs.referenceUrl` is a *different* field, filled at dispatch time by phase 6 from
+`resolveNinaPhotoReference(...).blobUrl`. The `''`-is-empty convention survives and is now shared by
+all three phases: phase 1's `NINA_IMAGE_REFERENCE_NONE` (`{ source: 'none', id: '' }`), phase 4's
+`referenceKey` (returns `''`), and this phase's `PHOTO_REFERENCE_NONE` (`''`) — which is
+`nina_tuning.wardrobe`'s convention, and `nina_image_prefs` is that table's sibling.
+
+**Leaves alone (owned by others):**
+
+- `app/admin/image-generation/page.tsx`, `lib/admin/imageGenActions.ts`, `lib/admin/imageGenModel.ts`,
+  `lib/admin/schema.ts`, `components/admin/AdminNav.tsx`, `app/admin/layout.tsx`,
+  `app/admin/page.tsx` — **Phase 4**
+- `components/admin/ImageGenTestPanel.tsx` and phase 4's other seam — **Phase 6**
+- `lib/nina/*` (every file), `lib/db/*`, `drizzle/*` — **Phases 1, 2, 3, 7**
+- `components/admin/ChatPhotoGrid.tsx`, `components/admin/chatPhotoModel.ts`,
+  `components/admin/explorer/*`, `components/nina/NinaPhotoGrid.tsx` — read as precedent, **not
+  edited, not refactored, not shared with**. See Handoffs H1 for why no tile component is extracted.
+- `components/ui/*` — nothing joins the barrel. `DialSlider.tsx`'s and `touch.ts`'s recorded rule:
+  an operator-only concern does not enter a load-bearing bundle boundary on the strength of one
+  phase.
+- `components/admin/ImageGenPanel.tsx` — **one file, one region** (two import lines plus the seam
+  replacement, described in Step 3). Nothing else in that file is touched: not the prop list, not
+  the save, not the reset, not the dirty state, not phase 6's `SEAM — PHASE 6`.
+
+---
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `components/admin/photoReferenceModel.ts` | create | the view model: item/tile/view types, the four constants, and the six pure rules (thumbnail fallback, accessible name, which tile is selected, the toggle, the reveal clamp, the whole view) |
+| `components/admin/PhotoReferencePicker.tsx` | create | `'use client'` — the dense square grid, the check badge, the clear control, the reveal control, the two prose lines, the empty state |
+| `components/admin/ImageGenPanel.tsx` | modify | **one region**: replace phase 4's `SEAM — PHASE 5` comment *and the placeholder `<section>` under it* with the mounted picker; add `import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'`; add `parseReferenceKey` to the panel's existing `@/lib/admin/imageGenModel` import. Line reference: whatever line phase 4's seam lands on — **grep `SEAM — PHASE 5`**, never a line range |
+| `tests/admin.photoReference.test.ts` | create | the pure rules, the caption-absence assertions over the tile markup and over `PhotoReferenceItem`'s field list, the geometry assertions, and the guarded mount assertion |
+
+---
+
+## Decisions (settled here, with their reasons, because a reviewer will ask)
+
+| Fork | Chosen | Why |
+|---|---|---|
+| What the tile knows | `PhotoReferenceItem` carries **exactly three fields**: `key`, `url`, `thumbUrl`. No `createdAt`, no `filename`, no `description`, no `folder`, no `kind`, no `side`, no `prompt`. | `lib/nina/chatphotos.ts:13-17`'s invariant 5 — *"There is no caption field here and there must never be one"* — enforced structurally rather than by discipline. A tile that has no date **cannot** render `photo.createdAt.slice(0, 10)`, which is exactly what `ChatPhotoGrid` does and exactly what R10 forbids. The test asserts the field list. |
+| The accessible name | `Nina photo 1`, `Nina photo 2`, … — position within the grid, from `photoReferenceLabel(index)`. | A `<button>` with no visible text needs a non-visual name, and `NINA_SIDE_LABEL`'s **principle** is the right one: say *whose* photograph it is, never what is in it. Its **string** is not, on this screen: `NINA_SIDE_LABEL` is Indonesian (`'Foto Nina'`), the whole of `components/admin/` is English (`ChatPhotoDetail.tsx:121` renders `Hers` / `His`), and importing the runner's phrase would put the only Indonesian string in `/admin` into a screen-reader announcement. Position is the one honest differentiator between 48 identical-by-name buttons. It is **identical for both sets**, so the accessible name announces no provenance either — the exit criterion holds for a screen reader as well as for an eye. |
+| `aria-pressed` vs a radio group | `aria-pressed` on a plain `<button>` per tile. | R10 needs *one, or none*, and **un-checking a radio is not a gesture ARIA has**: a native radio group cannot return to "nothing chosen" once a choice is made, so the deselect-on-re-click behaviour the operator needs would be a lie told in radio semantics. A toggle button whose pressed state the model keeps single is what the interaction actually is. It is also the repo's existing answer for a single-selection admin grid — `explorer/PhotoGrid.tsx` and `ChatPhotoGrid.tsx` both use `aria-pressed` for exactly this — and a second pattern for the same interaction is how two grids drift. The weaker part of `aria-pressed` (nothing announces "3 of 168") is paid for explicitly: a status line beside the heading names the current selection, and a **Clear reference** button makes "none" reachable without knowing that re-tapping works. |
+| iOS idiom: what is borrowed | `aspect-square`, `object-cover`, `bg-ink-3/20` under the image, a `<button>` per cell, `alt=""` with the name on the button, `loading="lazy"`, `thumbUrl ?? url` — from `NinaPhotoGrid.tsx:44-60` and `explorer/PhotoGrid.tsx:79-105`. | These are the parts both existing grids already agree on, and they are what makes a photo grid a photo grid. |
+| iOS idiom: what is **not** borrowed | `ChatPhotoGrid`'s tile is `aspect-[3/4]` inside `rounded-chip border p-1` with `gap-2` and a date line under it, and the selected state is `border-accent bg-accent-soft` — **none of that is reused**. This grid is `gap-[3px]`, no per-tile border, no padding, no card, no radius per tile, no text node anywhere in the tile, and the selection is a check badge plus a `scale-[0.9]` inset. | The user asked for *"a simple photos grid without any captions (just like ios album app)"*. iOS Photos is a sheet of touching squares; a padded bordered card with a caption is a file manager, which is what `/admin/photos` correctly is and what this correctly is not. `3px` sits in the 2–4 px band, and the whole `<ul>` takes one `overflow-hidden rounded-field` so the sheet's outer edge is intentional while no tile has a radius of its own. |
+| Selected-state colour | badge is `bg-ink text-card`, not `bg-accent text-card`. | `components/ui/Button.tsx:46-54` measured it: *"white type on [the cyan accent] lands near 2:1, well under WCAG's 4.5:1. Ink-on-card is ~14:1 and inverts correctly in dark mode."* The badge carries a glyph, so it is type. |
+| Touch targets on a dense grid | `grid-cols-[repeat(auto-fill,minmax(92px,1fr))]`, so **92 px is the floor a tile can ever reach** — 2.1× `docs/design-brief.md`'s 44 pt minimum. At 414 px the shell leaves 382 px of content (`app/admin/layout.tsx:109`, `pl/pr` of `1rem`); inside phase 4's `px-5` section that is 342 px, which `auto-fill` resolves to **3 columns at 112 px**; at the panel's root width it resolves to **4 columns at 93 px**. Either way every tile is more than double the minimum, and at `lg` (~1100 px of main column) it draws about eleven across at ~97 px. | The 44 pt rule and the iOS idiom do not actually conflict here, and the reason is arithmetic: an iPhone-width column divided three or four ways is ~100 px, not ~60 px. `minmax(92px, 1fr)` is what makes that a guarantee instead of a coincidence — the browser drops a column before it lets a tile go under 92 px. The test ties `PHOTO_REFERENCE_MIN_TILE_PX` to the class literal so a later "let's fit more in" cannot quietly cross 44. |
+| Bounded, and how much is in the DOM | Phase 1 hands one bounded page; the picker renders it **in reveals of `PHOTO_REFERENCE_REVEAL_STEP = 48`** with a **Show more** button, and never reads anything itself. | 48 is `NINA_CHAT_PHOTO_PAGE_SIZE`'s number and for its recorded reason (`lib/nina/album.ts:78-102`): **the chat half of this union has no thumbnail column**, so those tiles load 768×1024 PNGs of about a megabyte each. If phase 1's page is 48 the button never appears; it exists for the 120-row case, where 120 originals *"is not a page, it is a download"*. The reveal is client-only — no fetch, no action, no navigation. |
+| Why not a `?refPage=` link pager | Not built. The footer states the truth instead: *"Showing 48 of 48 (94 older not on this page)"*. | A pager link **navigates**, and this grid lives inside phase 4's unsaved draft: a click would throw away the operator's slider, wardrobe, venue, time and notes edits to go looking at older photographs. `ChatPhotoGrid`'s pager is safe because that page holds no draft. Reaching beyond the newest page is filed as **H2** for whoever wants it, with the two shapes that would be safe. |
+| The saved selection points at a row that is gone | The model reports `missing: true`; **no tile is drawn selected**, one sentence says the saved reference is not in the grid and offers the two ways out, and the picker **does not** call `onChange` to self-heal. | `viewerIndex`'s docstring (`lib/nina/chatphotos.ts:64-78`) is the precedent — *"Clamping rather than closing … the friendlier answer"*, and never crash on a list that changed underneath. Self-healing in an effect is refused for a concrete reason: it would mutate the operator's draft on mount, and phase 4's dirty state would then report an unsaved change the operator never made — a save button that lights up by itself. `/admin/photos` can remove a chat photo and the album manager can delete an album row, so this state is reachable, and it is *also* reachable with nothing deleted at all (the photograph is simply older than this page), which is why the sentence names both causes. |
+| Where the model lives | `components/admin/photoReferenceModel.ts`, **not** `lib/nina/`. | `lib/nina/chatphotos.ts` is *runner* photo rules; this is an operator control's view model, and `lib/nina/*` is owned by phases 1–3 and 7 this wave. The precedent for a testable pure module beside its admin component is `components/admin/chatPhotoUpload.ts` (`tests/admin.chatPhotos.test.ts:3` imports it) and `components/admin/touch.ts`. No `'use client'`, for `touch.ts`'s stated reason: the module then compiles into whichever graph imports it, so phase 4's **Server Component** page can `import type { PhotoReferenceItem }` when it maps phase 1's rows. |
+
+---
+
+## Implementation Steps
+
+### Step 1: The view model
+
+**File:** `components/admin/photoReferenceModel.ts` *(new file, whole contents below)*
+**Change:** the picker's types, its four constants and its six rules. Pure; no React, no import at
+all, no `'use client'`.
+**Code:**
+
+```ts
+/**
+ * The photo-reference picker's rules, as pure functions — R10's UI half.
+ *
+ * `lib/nina/chatphotos.ts`'s carve-out applied to an operator control: the grid that uses these
+ * holds no rules of its own, so every one of them is reachable from `environment: 'node'` vitest
+ * with no DOM. `components/admin/chatPhotoUpload.ts` is the precedent for such a module living
+ * beside its component rather than in `lib/`, and the reason it is not in `lib/nina/` is
+ * ownership: that directory is the image pipeline's, and this is a control's view model.
+ *
+ * ── NO `'use client'`, DELIBERATELY ─────────────────────────────────────────────────────────────
+ * `components/admin/touch.ts`'s rule: nothing here is a hook or an effect, so the module compiles
+ * into whichever graph imports it. The picker is a client component and imports the functions; the
+ * Server Component that maps the union read into `PhotoReferenceItem[]` imports only the type, and
+ * a type erases.
+ *
+ * ── INVARIANT 5, STRUCTURALLY ───────────────────────────────────────────────────────────────────
+ * `lib/nina/chatphotos.ts:13-17` says of its own shape: *"There is no caption field here and there
+ * must never be one."* The same sentence governs this file, and here it is load-bearing rather than
+ * decorative, because R10 is *"a simple photos grid without any captions"* in the user's own words.
+ * `PhotoReferenceItem` therefore carries three fields and no fourth: a tile that never receives a
+ * date cannot render one. `ChatPhotoGrid`'s tile renders `photo.createdAt.slice(0, 10)` under the
+ * image — that is precisely the line this shape makes unwritable, and
+ * `tests/admin.photoReference.test.ts` asserts the field list so a later edit cannot add it back.
+ *
+ * ── THE SELECTION IS AN OPAQUE STRING, AND THAT IS THE POINT ────────────────────────────────────
+ * Phase 1 owns how a chosen reference is stored — a composite of id and source set, or the blob URL
+ * itself. Nothing here parses `key`, compares it to a pattern, splits it or builds it. The server
+ * computes the same string for a row that it persists for a selection, and the picker's whole
+ * contract is `item.key === value`. That keeps this file correct under either of phase 1's choices
+ * and keeps the storage vocabulary in the phase that owns it.
+ */
+
+/**
+ * One photograph, as a tile needs it, and nothing more.
+ *
+ * Three fields. Do not add a fourth without re-reading the invariant above: every plausible
+ * addition — `createdAt`, `filename`, `description`, `folder`, `kind` — is a caption waiting for a
+ * `<span>`, and two of them would also announce which set the photograph came from, which R10
+ * forbids.
+ */
+export interface PhotoReferenceItem {
+  /**
+   * The exact string phase 4's save persists for this photograph, computed on the server from
+   * phase 1's storage vocabulary. Opaque here: never parsed, never built, only compared.
+   */
+  key: string
+  /** The original blob. Rendered only when there is no thumbnail. */
+  url: string
+  /**
+   * The album's 256 px derived JPEG, or `null`.
+   *
+   * **`null` is the common case, not an edge case.** `nina_avatars` has `thumb_url`;
+   * `nina_message_images` has no such column at all (`lib/nina/album.ts:80-84`), so every chat
+   * photograph in this union arrives with `null` here and renders its original. An empty string is
+   * treated as absent too — see `photoReferenceTileSrc`.
+   */
+  thumbUrl: string | null
+}
+
+/** What the grid draws. Built by `photoReferenceView`; the component adds no field to it. */
+export interface PhotoReferenceTile {
+  key: string
+  /** `thumbUrl` when the row has one, the original when it does not. */
+  src: string
+  /** The button's accessible name. There is no visible text on a tile. */
+  label: string
+  selected: boolean
+}
+
+/** Everything the component needs to render, derived in one pass. */
+export interface PhotoReferenceView {
+  tiles: PhotoReferenceTile[]
+  /** Index into the **items**, not into `tiles`. `null` when nothing is selected. */
+  selectedIndex: number | null
+  /** The selected tile's accessible name, for the status line. `null` when nothing is selected. */
+  selectedLabel: string | null
+  /** How many tiles are in the DOM. Equal to `tiles.length`; named so the caller can read intent. */
+  revealed: number
+  /** How many photographs the union holds beyond this page. `0` when the page is the whole set. */
+  hidden: number
+  /**
+   * The saved selection matches no photograph in the list — it was deleted, or it is older than
+   * this page. The grid draws nothing as selected and says so; it does **not** self-heal.
+   */
+  missing: boolean
+}
+
+/**
+ * The stored value that means *no reference*.
+ *
+ * `''` and not `null`, because `nina_tuning.wardrobe` already made this call for this table's
+ * sibling — *"`''` is the one empty value, never null"* — and one empty value cannot be confused
+ * with the other.
+ */
+export const PHOTO_REFERENCE_NONE = ''
+
+/**
+ * The accessible-name stem, spelled once.
+ *
+ * `NINA_SIDE_LABEL`'s principle and not its string. The principle is that a photograph's
+ * accessible name says *whose* it is and nothing about what is in it
+ * (`lib/nina/chatphotos.ts:16-17`). The string is Indonesian and runner-facing, and every other
+ * word on `/admin` is English — `ChatPhotoDetail.tsx:121` renders `Hers` / `His` — so importing it
+ * would put the one Indonesian phrase in the admin shell into a screen-reader announcement.
+ *
+ * It is deliberately the SAME for both sets. Album photograph or chat photograph, the tile
+ * announces "Nina photo N": nothing in this grid, visible or announced, says which set a
+ * photograph came from.
+ */
+export const PHOTO_REFERENCE_TILE_LABEL = 'Nina photo'
+
+/**
+ * How many tiles enter the DOM at once, and how many each **Show more** adds.
+ *
+ * `NINA_CHAT_PHOTO_PAGE_SIZE`'s number, for `lib/nina/album.ts:80-102`'s recorded reason: the chat
+ * half of this union has no thumbnail column, so those tiles fetch ~1 MB originals. 48 of them is
+ * a page; 120 of them *"is not a page, it is a download"*. If phase 1's union page is itself 48
+ * this constant never shows a button — it exists for the larger page, and it is a reveal over rows
+ * already in hand, never a read.
+ */
+export const PHOTO_REFERENCE_REVEAL_STEP = 48
+
+/**
+ * The narrowest a tile may ever be, in CSS pixels — the `minmax()` floor in the grid template.
+ *
+ * This is how a dense iOS-style grid and `docs/design-brief.md`'s 44 pt minimum are reconciled:
+ * `auto-fill` drops a column rather than let a tile go under this number, so 92 px is a floor and
+ * not an average. At 414 px the admin shell leaves 382 px of content (`app/admin/layout.tsx:109`),
+ * which resolves to three or four columns at 112 px or 93 px depending on the panel's own padding —
+ * both more than double the minimum. `tests/admin.photoReference.test.ts` asserts both that this
+ * number clears 44 and that the class literal is built from it.
+ */
+export const PHOTO_REFERENCE_MIN_TILE_PX = 92
+
+/**
+ * What a tile actually loads.
+ *
+ * `explorer/PhotoGrid.tsx:22-28`'s expression, with an empty-string guard added because this union
+ * crosses a serialization boundary and a column that is `''` rather than `NULL` would otherwise
+ * render as a broken image. The fallback half is not defensive padding: every chat photograph in
+ * this union has no thumbnail at all.
+ */
+export function photoReferenceTileSrc(item: PhotoReferenceItem): string {
+  const thumb = item.thumbUrl
+  return typeof thumb === 'string' && thumb.length > 0 ? thumb : item.url
+}
+
+/** The tile's accessible name. 1-based, because it is spoken to a person. */
+export function photoReferenceLabel(index: number): string {
+  return `${PHOTO_REFERENCE_TILE_LABEL} ${index + 1}`
+}
+
+/**
+ * Which photograph the stored value points at, or `null`.
+ *
+ * `null` has two meanings and the caller distinguishes them with `PHOTO_REFERENCE_NONE`: nothing
+ * was ever chosen, or what was chosen is not in this list. See `PhotoReferenceView.missing`.
+ */
+export function photoReferenceIndex(
+  items: readonly PhotoReferenceItem[],
+  value: string,
+): number | null {
+  if (value === PHOTO_REFERENCE_NONE) return null
+  const at = items.findIndex((item) => item.key === value)
+  return at < 0 ? null : at
+}
+
+/**
+ * What tapping a tile means: choose it, or — if it is already the choice — choose nothing.
+ *
+ * *"user can select one out of all these photos"* implies one, and an operator who wants no
+ * reference at all must have a way back. This is that way, and the **Clear reference** button is
+ * the discoverable one beside it.
+ */
+export function nextPhotoReferenceValue(current: string, key: string): string {
+  return current === key ? PHOTO_REFERENCE_NONE : key
+}
+
+/**
+ * How many tiles to draw: what was asked for, never more than there are, and never so few that the
+ * selected photograph is off the end.
+ *
+ * The clamp-up is the rule that keeps the check badge visible. Without it a saved selection at
+ * index 60 of a 120-row page would be invisible until the operator pressed **Show more**, and the
+ * grid would look as though nothing were chosen while the form said otherwise. `viewerIndex`
+ * (`lib/nina/chatphotos.ts:79-83`) is the precedent for clamping a window rather than trusting it.
+ */
+export function photoReferenceReveal(
+  reveal: number,
+  count: number,
+  selectedIndex: number | null,
+): number {
+  if (!Number.isFinite(count) || count <= 0) return 0
+  const asked = Number.isFinite(reveal) ? Math.trunc(reveal) : PHOTO_REFERENCE_REVEAL_STEP
+  const floor = selectedIndex === null ? 0 : selectedIndex + 1
+  return Math.min(count, Math.max(asked, floor, 1))
+}
+
+/**
+ * The whole render, derived in one pass so the component branches on data and not on rules.
+ *
+ * `total` is the union's full count and may legitimately exceed `items.length` — phase 1 hands one
+ * bounded page of *"hundreds of profile pics"*. A `total` smaller than the page in hand is
+ * nonsense (a concurrent delete between the count and the page, or a caller passing the wrong
+ * number), so it is floored at `items.length` rather than allowed to make `hidden` negative.
+ */
+export function photoReferenceView({
+  items,
+  value,
+  reveal,
+  total,
+}: {
+  items: readonly PhotoReferenceItem[]
+  value: string
+  reveal: number
+  total: number
+}): PhotoReferenceView {
+  const selectedIndex = photoReferenceIndex(items, value)
+  const revealed = photoReferenceReveal(reveal, items.length, selectedIndex)
+  const tiles = items.slice(0, revealed).map((item, index) => ({
+    key: item.key,
+    src: photoReferenceTileSrc(item),
+    label: photoReferenceLabel(index),
+    selected: index === selectedIndex,
+  }))
+  const counted = Number.isFinite(total)
+    ? Math.max(Math.trunc(total), items.length)
+    : items.length
+
+  return {
+    tiles,
+    selectedIndex,
+    selectedLabel: selectedIndex === null ? null : photoReferenceLabel(selectedIndex),
+    revealed,
+    hidden: counted - items.length,
+    missing: value !== PHOTO_REFERENCE_NONE && selectedIndex === null,
+  }
+}
+```
+
+**Impact:** nothing imports this yet; the file is inert until Step 2. No existing symbol changes, so
+the tree still builds and every existing test still passes with only this step applied.
+
+---
+
+### Step 2: The grid
+
+**File:** `components/admin/PhotoReferencePicker.tsx` *(new file, whole contents below)*
+**Change:** the caption-less square grid, its selection affordances and its two prose lines.
+**Code:**
+
+```tsx
+'use client'
+
+import * as React from 'react'
+
+import { Button, EmptyState } from '@/components/ui'
+import { cn } from '@/lib/cn'
+
+import {
+  nextPhotoReferenceValue,
+  PHOTO_REFERENCE_NONE,
+  PHOTO_REFERENCE_REVEAL_STEP,
+  photoReferenceView,
+} from './photoReferenceModel'
+import type { PhotoReferenceItem } from './photoReferenceModel'
+
+/**
+ * R10's grid: *"photo reference: user can select all photos in Nina's album and Chat photos. can
+ * you make something like a simple photos grid without any captions (just like ios album app).
+ * user can select one out of all these photos."*
+ *
+ * ── "WITHOUT ANY CAPTIONS" IS LITERAL, AND THE SHAPE ENFORCES IT ────────────────────────────────
+ * There is no text node inside a tile. No filename, no date, no description, no folder, and no
+ * badge naming which set the photograph came from. `PhotoReferenceItem` carries three fields for
+ * that reason — see its docstring, and `lib/nina/chatphotos.ts:13-17`, whose invariant 5 is the
+ * repo's precedent for enforcing exactly this: *"There is no caption field here and there must
+ * never be one."* `ChatPhotoGrid`'s tile renders `photo.createdAt.slice(0, 10)` under the image;
+ * that is the line R10 rules out, and the props here cannot express it.
+ *
+ * ── WHAT THIS BORROWS FROM THE TWO EXISTING GRIDS, AND WHAT IT REFUSES ──────────────────────────
+ * Borrowed from `components/nina/NinaPhotoGrid.tsx:44-60` and
+ * `components/admin/explorer/PhotoGrid.tsx:79-105`: `aspect-square` with `object-cover`, a
+ * `bg-ink-3/20` bed under the image (a mid-grey in both schemes, which `NinaPhotoGrid` settled
+ * after three phases argued it), one `<button>` per cell, `alt=""` with the accessible name on the
+ * button, `loading="lazy"`, and `thumbUrl ?? url`.
+ *
+ * Refused, on purpose: `ChatPhotoGrid`'s `aspect-[3/4]` tile inside a `rounded-chip border p-1`
+ * card with `gap-2`, its date line, and its `border-accent bg-accent-soft` selected state. That is
+ * a file manager's tile and `/admin/photos` is right to have one; the user asked for the iOS
+ * Photos idiom, which is a sheet of touching squares. So: `gap-[3px]`, no border, no padding, no
+ * per-tile radius, one `overflow-hidden rounded-field` on the whole sheet, and a selection drawn as
+ * a check badge plus a slight inset rather than as a coloured frame around a padded card.
+ *
+ * ── A PLAIN `<img>`, FOR THE REASON THIS REPO HAS ALREADY RULED ─────────────────────────────────
+ * `components/nina/NinaPhotoGrid.tsx:56-58` rejects `next/image` for Blob-hosted photographs
+ * outright — it re-optimises finished files on a paid transform quota — and
+ * `explorer/PhotoGrid.tsx:31-34` and `ChatPhotoGrid.tsx:26-33` both reaffirm it. This follows that
+ * precedent rather than re-opening it. The album half of this union has a derived `thumb_url` and
+ * uses it; the chat half has no such column at all, so those tiles load originals, and
+ * `loading="lazy"` plus a bounded page plus `PHOTO_REFERENCE_REVEAL_STEP` is the whole mitigation.
+ * It is a known cost, not an oversight.
+ *
+ * ── `aria-pressed` AND NOT A RADIO GROUP ────────────────────────────────────────────────────────
+ * A radio group cannot express *one, or none*: un-checking a radio is not a gesture ARIA has, so
+ * the deselect-on-re-tap behaviour R10 needs would be a lie told in radio semantics. A toggle whose
+ * pressed state the model keeps single is what this interaction is, and it is what both existing
+ * single-selection admin grids already use. What `aria-pressed` does NOT give — an announced "3 of
+ * 168" — is paid for deliberately: the status line beside the heading names the current selection,
+ * and **Clear reference** makes "none" reachable without knowing that re-tapping works.
+ *
+ * ── TOUCH TARGETS ON A DENSE GRID ───────────────────────────────────────────────────────────────
+ * `PHOTO_REFERENCE_MIN_TILE_PX` is the `minmax()` floor, so `auto-fill` drops a column before it
+ * lets a tile go under 92 px — 2.1x `docs/design-brief.md`'s 44 pt minimum. At 414 px this
+ * resolves to three columns at ~112 px inside a padded panel, or four at ~93 px without it.
+ *
+ * ── IT READS NOTHING AND WRITES NOTHING ─────────────────────────────────────────────────────────
+ * No Server Action is imported, no fetch is made, and there is no database read here or anywhere
+ * downstream of here. The rows arrive as plain serializable props from the page that owns the read
+ * (phase 1's union, mapped on the server by phase 4's page), and the selection leaves through
+ * `onChange` into phase 4's draft, which phase 4's one save persists. Invariant 9: no drizzle type
+ * and no Zod schema crosses this boundary.
+ */
+export function PhotoReferencePicker({
+  items,
+  total,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  /**
+   * One bounded page of the union — album rows and `kind = 'generated'` chat rows together, newest
+   * first. **Not reordered here**: the order is the read's, and this component carries no date to
+   * sort by even if it wanted to.
+   */
+  items: readonly PhotoReferenceItem[]
+  /** How many photographs the union holds in total, so the footer can be honest about the rest. */
+  total: number
+  /** The saved (or drafted) selection. `PHOTO_REFERENCE_NONE` (`''`) means no reference. */
+  value: string
+  /** Called with the next value — a `key`, or `PHOTO_REFERENCE_NONE` to clear. */
+  onChange: (next: string) => void
+  /** True while phase 4's save transition runs. */
+  disabled?: boolean
+}) {
+  const headingId = React.useId()
+
+  /*
+   * How many tiles are in the DOM. The only state here, and `photoReferenceReveal` clamps it on
+   * every render — up to include the selected photograph, down to the number of rows in hand — so
+   * a page change from the server cannot leave this pointing past the end.
+   *
+   * `DialSlider.tsx`'s `useId` is the precedent for the id above; the reason there is no optimistic
+   * copy of `items` is `ChatPhotoGrid.tsx:63-70`'s, unchanged: the rows arrive from the server and
+   * there is nothing to keep in sync.
+   */
+  const [reveal, setReveal] = React.useState(PHOTO_REFERENCE_REVEAL_STEP)
+
+  const view = photoReferenceView({ items, value, reveal, total })
+
+  return (
+    <section aria-labelledby={headingId} className="mb-6">
+      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 id={headingId} className="text-[13px] font-semibold text-ink">
+          Photo reference
+        </h3>
+        {/*
+         * The status line `aria-pressed` alone cannot give. No `aria-live`: each tile already
+         * announces its own pressed state on activation, and a live region would say it twice.
+         */}
+        <p className="text-[12px] font-semibold text-ink-3">
+          {view.selectedLabel === null ? 'No reference' : `${view.selectedLabel} selected`}
+        </p>
+      </div>
+
+      <p className="mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
+        One photograph to anchor the generation on. Her profile album and her chat photographs are
+        one grid here, newest first and unlabelled &mdash; tap a photo to choose it, tap it again
+        for no reference.
+      </p>
+
+      {view.missing && (
+        /*
+         * The saved reference is not in this list. Two causes, both real and indistinguishable
+         * from here: the row was deleted (`/admin/photos` can remove a chat photograph and the
+         * album manager can delete an album row), or it is simply older than this page. Nothing is
+         * drawn as selected, and `onChange` is deliberately NOT called — see the file's Decisions
+         * entry: self-healing in an effect would mark the operator's draft dirty on mount.
+         */
+        <p className="mb-2 max-w-[70ch] text-[13px] font-medium text-ink-2">
+          The saved reference is not in this grid &mdash; it was deleted, or it is older than the
+          photographs shown here. Choose another photo, or clear it.
+        </p>
+      )}
+
+      {items.length === 0 ? (
+        <EmptyState
+          title="No photos to choose from"
+          description="Her profile album and her chat photographs are both empty. Add a photo to her album or let her generate one, and it will appear here."
+        />
+      ) : (
+        <>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-[3px] overflow-hidden rounded-field">
+            {view.tiles.map((tile) => (
+              <li key={tile.key} className="relative aspect-square bg-ink-3/20">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onChange(nextPhotoReferenceValue(value, tile.key))}
+                  aria-pressed={tile.selected}
+                  aria-label={tile.label}
+                  className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset disabled:opacity-50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted,
+                   * deliberately un-transformed, and the chat half of this union has no thumbnail
+                   * column at all; see the header. */}
+                  <img
+                    src={tile.src}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                    className={cn(
+                      'size-full object-cover transition-transform',
+                      tile.selected && 'scale-[0.9]',
+                    )}
+                  />
+                  {tile.selected && (
+                    /*
+                     * `bg-ink text-card` and not `bg-accent`: `components/ui/Button.tsx:46-54`
+                     * measured white type on the cyan accent at near 2:1, well under WCAG's 4.5:1,
+                     * where ink-on-card is ~14:1 and inverts correctly in dark mode. The badge
+                     * carries a glyph, so it is type. `aria-hidden` because `aria-pressed` on the
+                     * button is already the announced state.
+                     */
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-pill bg-ink text-[11px] font-bold text-card"
+                    >
+                      &#10003;
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[12px] font-medium text-ink-3 tabular-nums">
+              Showing {view.revealed} of {items.length}
+              {view.hidden > 0 ? ` (${view.hidden} older not on this page)` : ''}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {view.revealed < items.length && (
+                <Button
+                  type="button"
+                  size="md"
+                  variant="secondary"
+                  disabled={disabled}
+                  onClick={() => setReveal(view.revealed + PHOTO_REFERENCE_REVEAL_STEP)}
+                >
+                  Show more
+                </Button>
+              )}
+              {value !== PHOTO_REFERENCE_NONE && (
+                <Button
+                  type="button"
+                  size="md"
+                  variant="ghost"
+                  disabled={disabled}
+                  onClick={() => onChange(PHOTO_REFERENCE_NONE)}
+                >
+                  Clear reference
+                </Button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+```
+
+**Impact:** a new client component with no call site yet. It compiles on its own (it imports only
+the barrel, `cn`, and its own model), and it changes nothing that exists. Note the two `Button`s are
+`size="md"` — `h-11`, the 44 px minimum, per `components/ui/Button.tsx:13`.
+
+**Note on the JSX comment inside the `<button>`:** every continuation line starts with `*`. That is
+required twice over — `scripts/check-client-secret-boundary.mjs`'s `isComment` only recognises a
+line beginning `//`, `*` or `/*`, and this phase's own test strips comment lines by the same rule
+before asserting that no caption field name appears in the tile markup. A continuation line without
+its `*` is read as code by both.
+
+---
+
+### Step 3: Mount it at phase 4's seam
+
+**File:** `components/admin/ImageGenPanel.tsx` — **grep `SEAM — PHASE 5`** for the line; phase 4
+owns the file and its line numbers are not knowable from here.
+**Change:** one file, one edit, in two contiguous parts — the import, and the seam replacement.
+Nothing else in the file is touched: not the prop list, not the save, not the reset, not the
+dirty-state, not phase 6's seam.
+
+**Part A — the imports, two lines.** Add to the `@/components/…` group, in the alphabetical position
+the file's existing group implies:
+
+```tsx
+import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
+```
+
+and add **one member** to the panel's existing `@/lib/admin/imageGenModel` import — the file already
+pulls `referenceKey` from it, and Part B needs the decode half beside it:
+
+```tsx
+  parseReferenceKey,
+```
+
+That is the only edit this phase makes to another phase's import list, and it is one identifier
+inside a brace list phase 4 already wrote. Everything else the mount needs (`references`,
+`photoTotal`, `draft.reference`, `pending`, `setDraft`, `referenceKey`) is already in scope.
+
+**Part B — replace phase 4's seam comment AND the placeholder `<section>` it introduces (the whole
+`{/* ── SEAM — PHASE 5 … */}` block plus the `<section className="mb-6">…</section>` under it)
+with:**
+
+```tsx
+      <PhotoReferencePicker
+        items={references}
+        total={photoTotal}
+        value={referenceKey(draft.reference)}
+        onChange={(next) => setDraft({ ...draft, reference: parseReferenceKey(next) })}
+        disabled={pending}
+      />
+```
+
+**RECONCILED — this is the settled mount and there is no longer a second candidate.** Three things
+about it were open when this plan was written and all three are now decided against phase 4's plan
+as it stands:
+
+1. **The prop names are `references` and `photoTotal`**, not `photos` / `photoTotal`. Phase 4 owns
+   the panel's prop list and declares `references: ImageReferenceOption[]` and
+   `photoTotal: number`. `ImageReferenceOption` is `{ key, url, thumbUrl }` — **structurally
+   identical to this phase's `PhotoReferenceItem`** — so `items={references}` typechecks without
+   this phase importing anything from phase 4 or phase 4 importing anything from this phase. That
+   symmetry is deliberate: phase 4 cannot import from a module phase 5 has not created yet.
+2. **The draft member is `reference: { source: string; id: string }`**, not `referenceKey: string`
+   and not `referenceUrl: string | null`. Phase 1 stores `{ source, id }` (an id and a set, never a
+   URL — `updateNinaChatPhotoBlob` changes a chat photograph's `blob_url` and keeps its `id`), and
+   phase 4's Zod boundary narrows `source` to `NINA_IMAGE_REFERENCE_SOURCES`. **The
+   `referenceUrl: string | null` alternative in this plan's draft is deleted, not merely
+   outranked** — it was the shape phase 3's `NinaImageJobArgs.referenceUrl` made plausible, but that
+   field is filled at *dispatch* time by phase 6 from `resolveNinaPhotoReference(...).blobUrl`, and
+   is not what the prefs row holds.
+3. **`referenceKey` and `parseReferenceKey` both live in `lib/admin/imageGenModel.ts`** (phase 4's
+   adaptation seam) and are imported by the panel, which already imports `referenceKey`. This phase
+   adds neither. The picker's `value` / `onChange` currency stays an opaque `string` where `''`
+   means *no reference* — exactly this phase's `PHOTO_REFERENCE_NONE` — so the picker still never
+   parses a key and still cannot know what a set is.
+
+**If `ImageGenPanel` does not yet receive `references` / `photoTotal`,** stop: that is phase 4's prop
+list and this phase does not edit it. Both props are named in phase 4's `ImageGenPanelProps` and in
+its Handoffs. Until phase 4 lands, the mount is the only thing this phase leaves unlanded, and its
+test assertion is written to be green either way (see Step 4).
+
+**Impact:** the picker becomes visible on `/admin/image-generation` and its selection enters phase
+4's draft, so phase 4's existing single save persists it and phase 4's existing dirty-state covers
+it. No new action, no new route, no new schema. Phase 6 reads the **saved** selection, not this
+component's state, so the operator must save before testing — which phase 4's dirty-state already
+communicates; nothing here needs to say it twice.
+
+---
+
+### Step 4: The test
+
+**File:** `tests/admin.photoReference.test.ts` *(new file, whole contents below)*
+**Change:** the pure rules exhaustively, the caption absence structurally, the geometry, and the
+mount (guarded, because phase 4 lands concurrently).
+**Code:**
+
+```ts
+import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  nextPhotoReferenceValue,
+  PHOTO_REFERENCE_MIN_TILE_PX,
+  PHOTO_REFERENCE_NONE,
+  PHOTO_REFERENCE_REVEAL_STEP,
+  PHOTO_REFERENCE_TILE_LABEL,
+  photoReferenceIndex,
+  photoReferenceLabel,
+  photoReferenceReveal,
+  photoReferenceTileSrc,
+  photoReferenceView,
+} from '@/components/admin/photoReferenceModel'
+import type { PhotoReferenceItem } from '@/components/admin/photoReferenceModel'
+
+/**
+ * R10's UI half: the picker's rules, and the two properties of its markup that no type and no lint
+ * rule can see — that a tile carries no caption, and that a tile is never smaller than the app's
+ * minimum tap target.
+ *
+ * `tests/admin.shell.test.ts` is the precedent for asserting a component's markup as text and
+ * states the reason: a media query and an absent `<span>` are invisible to `tsc` and to `eslint`,
+ * vitest runs `environment: 'node'` with no jsdom, and so it is asserted here or not at all. It is
+ * also the precedent for reading only the parts of a source that are code: this file's components
+ * carry docstrings that QUOTE the very field names they must not render, and a whole-file
+ * `not.toContain` would fail on the explanation of the property it is asserting.
+ */
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const read = (path: string) => readFileSync(`${ROOT}${path}`, 'utf8')
+
+const model = read('components/admin/photoReferenceModel.ts')
+const picker = read('components/admin/PhotoReferencePicker.tsx')
+
+/**
+ * Executable lines only. The rule is `scripts/check-client-secret-boundary.mjs`'s `isComment`, plus
+ * `{/*` for a JSX comment's opening line — which is why every continuation line inside a JSX
+ * comment in this component starts with `*`.
+ */
+function codeLines(source: string): string {
+  return source
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim()
+      return !(
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('{/*')
+      )
+    })
+    .join('\n')
+}
+
+/**
+ * Every class this component asks for: the `className="…"` literals and the string literals inside
+ * `className={cn(…)}`. Class ORDER is never asserted — `prettier-plugin-tailwindcss` owns it and a
+ * test that fights the formatter is a test that gets deleted (`tests/admin.shell.test.ts:20-27`).
+ */
+function classNames(source: string): string {
+  const attrs = [...source.matchAll(/className="([^"]*)"/g)].map((m) => m[1] ?? '')
+  const dynamic = [...source.matchAll(/className=\{cn\(([\s\S]*?)\)\}/g)].map((m) => m[1] ?? '')
+  return [...attrs, ...dynamic].join(' ')
+}
+
+/**
+ * The tile: one `<li>`, which is the whole of what R10 says must carry no caption.
+ *
+ * Two forms on purpose. `tileRaw` is what is written, and is what the two assertions ABOUT a
+ * comment read (`eslint-disable-next-line` is itself a comment, so stripping comments would strip
+ * the thing being asserted). `tile` is the executable half, and is what every "must not name a
+ * caption field" assertion reads — the docstrings above deliberately quote those field names in
+ * order to forbid them, and `tests/admin.shell.test.ts:36-46` records what happens to a guard that
+ * fails on its own explanation.
+ */
+const tileRaw = picker.slice(picker.indexOf('<li key={tile.key}'), picker.indexOf('</li>'))
+const tile = codeLines(tileRaw)
+
+const items: PhotoReferenceItem[] = [
+  { key: 'album:a1', url: 'https://blob/a1.png', thumbUrl: 'https://blob/a1-thumb.jpg' },
+  { key: 'chat:c1', url: 'https://blob/c1.png', thumbUrl: null },
+  { key: 'chat:c2', url: 'https://blob/c2.png', thumbUrl: '' },
+]
+
+describe('photoReferenceTileSrc — the album has thumbnails and the chat set has none', () => {
+  it('prefers the derived thumbnail when the row has one', () => {
+    expect(photoReferenceTileSrc(items[0]!)).toBe('https://blob/a1-thumb.jpg')
+  })
+
+  it('falls back to the original for a chat photograph, which never has one', () => {
+    expect(photoReferenceTileSrc(items[1]!)).toBe('https://blob/c1.png')
+  })
+
+  it('treats an empty string as absent, not as a URL', () => {
+    // A `''` column crossing the serialization boundary would otherwise render a broken image.
+    expect(photoReferenceTileSrc(items[2]!)).toBe('https://blob/c2.png')
+  })
+})
+
+describe('photoReferenceIndex / nextPhotoReferenceValue — one, or none', () => {
+  it('finds the stored selection by key and never parses it', () => {
+    expect(photoReferenceIndex(items, 'chat:c1')).toBe(1)
+  })
+
+  it('reads the empty value as nothing chosen', () => {
+    expect(PHOTO_REFERENCE_NONE).toBe('')
+    expect(photoReferenceIndex(items, PHOTO_REFERENCE_NONE)).toBeNull()
+  })
+
+  it('reads a key that is not in the list as nothing chosen', () => {
+    expect(photoReferenceIndex(items, 'album:deleted')).toBeNull()
+  })
+
+  it('selects on the first tap and clears on the second', () => {
+    expect(nextPhotoReferenceValue(PHOTO_REFERENCE_NONE, 'chat:c1')).toBe('chat:c1')
+    expect(nextPhotoReferenceValue('chat:c1', 'chat:c1')).toBe(PHOTO_REFERENCE_NONE)
+  })
+
+  it('switches rather than accumulates — selection is single', () => {
+    expect(nextPhotoReferenceValue('chat:c1', 'album:a1')).toBe('album:a1')
+  })
+})
+
+describe('photoReferenceReveal — bounded, and never hiding the selection', () => {
+  it('never draws more tiles than there are rows', () => {
+    expect(photoReferenceReveal(PHOTO_REFERENCE_REVEAL_STEP, 3, null)).toBe(3)
+  })
+
+  it('clamps UP so the selected photograph is always on screen', () => {
+    // The bug this prevents: a saved selection at index 60 of a 120-row page would be invisible
+    // until "Show more", and the grid would look unset while the form said otherwise.
+    expect(photoReferenceReveal(10, 120, 60)).toBe(61)
+  })
+
+  it('grows by a step and stops at the end', () => {
+    expect(photoReferenceReveal(PHOTO_REFERENCE_REVEAL_STEP * 2, 60, null)).toBe(60)
+  })
+
+  it('answers 0 for an empty list and survives garbage', () => {
+    expect(photoReferenceReveal(PHOTO_REFERENCE_REVEAL_STEP, 0, null)).toBe(0)
+    expect(photoReferenceReveal(Number.NaN, 10, null)).toBe(10)
+    expect(photoReferenceReveal(-5, 10, null)).toBe(1)
+  })
+})
+
+describe('photoReferenceView', () => {
+  it('labels tiles 1-based and marks exactly one selected', () => {
+    const view = photoReferenceView({ items, value: 'chat:c1', reveal: 48, total: 3 })
+    expect(view.tiles.map((t) => t.label)).toEqual([
+      `${PHOTO_REFERENCE_TILE_LABEL} 1`,
+      `${PHOTO_REFERENCE_TILE_LABEL} 2`,
+      `${PHOTO_REFERENCE_TILE_LABEL} 3`,
+    ])
+    expect(view.tiles.filter((t) => t.selected)).toHaveLength(1)
+    expect(view.selectedIndex).toBe(1)
+    expect(view.selectedLabel).toBe(photoReferenceLabel(1))
+    expect(view.missing).toBe(false)
+  })
+
+  it('says nothing is selected, and says nothing is missing, when nothing was chosen', () => {
+    const view = photoReferenceView({ items, value: PHOTO_REFERENCE_NONE, reveal: 48, total: 3 })
+    expect(view.selectedIndex).toBeNull()
+    expect(view.selectedLabel).toBeNull()
+    expect(view.missing).toBe(false)
+    expect(view.tiles.some((t) => t.selected)).toBe(false)
+  })
+
+  it('reports a saved selection that is no longer in the list, and selects nothing', () => {
+    // `/admin/photos` can remove a chat photograph and the album manager can delete an album row;
+    // the same state also occurs with nothing deleted, when the photograph is older than this page.
+    const view = photoReferenceView({ items, value: 'chat:gone', reveal: 48, total: 3 })
+    expect(view.missing).toBe(true)
+    expect(view.selectedIndex).toBeNull()
+    expect(view.tiles.some((t) => t.selected)).toBe(false)
+  })
+
+  it('counts what the union holds beyond this page, and never goes negative', () => {
+    expect(photoReferenceView({ items, value: '', reveal: 48, total: 300 }).hidden).toBe(297)
+    expect(photoReferenceView({ items, value: '', reveal: 48, total: 0 }).hidden).toBe(0)
+    expect(photoReferenceView({ items, value: '', reveal: 48, total: Number.NaN }).hidden).toBe(0)
+  })
+
+  it('carries the thumbnail-or-original decision into the tile', () => {
+    const view = photoReferenceView({ items, value: '', reveal: 48, total: 3 })
+    expect(view.tiles.map((t) => t.src)).toEqual([
+      'https://blob/a1-thumb.jpg',
+      'https://blob/c1.png',
+      'https://blob/c2.png',
+    ])
+  })
+
+  it('renders an empty list as an empty view rather than throwing', () => {
+    const view = photoReferenceView({ items: [], value: 'chat:c1', reveal: 48, total: 0 })
+    expect(view.tiles).toEqual([])
+    expect(view.revealed).toBe(0)
+    expect(view.missing).toBe(true)
+  })
+})
+
+describe('invariant 5 — "without any captions", enforced by the shape', () => {
+  it('gives PhotoReferenceItem exactly three fields', () => {
+    // The rule `lib/nina/chatphotos.ts:13-17` states for its own type: there is no caption field
+    // here and there must never be one. A tile that never receives a date cannot render one.
+    const body = /export interface PhotoReferenceItem \{([\s\S]*?)\n\}/.exec(model)?.[1] ?? ''
+    const fields = [...codeLines(body).matchAll(/^\s*(\w+)\??:/gm)].map((m) => m[1])
+    expect(fields).toEqual(['key', 'url', 'thumbUrl'])
+  })
+
+  it('names no caption field anywhere in the tile markup', () => {
+    for (const forbidden of [
+      'createdAt',
+      'filename',
+      'description',
+      'folder',
+      'pathname',
+      'prompt',
+      'sortOrder',
+      'isCurrent',
+      'side',
+    ]) {
+      expect(tile, `the tile must not reach for ${forbidden}`).not.toContain(forbidden)
+    }
+  })
+
+  it('renders no text and no provenance badge in the tile — only the check glyph', () => {
+    // `ChatPhotoGrid`'s tile ends with `{photo.createdAt.slice(0, 10)}`; this one has no text node
+    // at all beyond the aria-hidden check, and nothing says "album" or "chat" or "hers".
+    expect(tile).not.toContain('slice(0, 10)')
+    expect(tile).not.toContain('Hers')
+    for (const word of ['album', 'Album', 'chat', 'Chat']) {
+      expect(tile, `the tile must not announce the set (${word})`).not.toContain(word)
+    }
+    expect(tile).toContain('alt=""')
+  })
+
+  it('names the tile without describing it, and announces its pressed state', () => {
+    expect(tile).toContain('aria-label={tile.label}')
+    expect(tile).toContain('aria-pressed={tile.selected}')
+    expect(PHOTO_REFERENCE_TILE_LABEL).toBe('Nina photo')
+    // The same phrase for both sets, so the announcement carries no provenance either.
+    expect(photoReferenceLabel(0)).toBe('Nina photo 1')
+  })
+})
+
+describe('the grid is the iOS idiom, and it is bounded', () => {
+  const classes = classNames(picker)
+
+  it('is a client component whose model is not', () => {
+    expect(picker.startsWith("'use client'")).toBe(true)
+    // No directive on the model, so a Server Component can import its type while mapping rows.
+    expect(model).not.toContain("'use client'")
+  })
+
+  it('draws square tiles with no card chrome and near-zero gutters', () => {
+    expect(classes).toContain('aspect-square')
+    expect(classes).toContain('object-cover')
+    expect(classes).toContain('gap-[3px]')
+    // No per-tile border and no padded card — `ChatPhotoGrid`'s tile is deliberately not reused.
+    expect(classes).not.toContain('border')
+    expect(classes).not.toContain('bg-accent-soft')
+  })
+
+  it('cannot draw a tile below the app minimum tap target', () => {
+    // `docs/design-brief.md`'s 44 pt floor, on a grid that is dense by requirement: `auto-fill`
+    // drops a column rather than shrink a tile past this number.
+    expect(PHOTO_REFERENCE_MIN_TILE_PX).toBeGreaterThanOrEqual(44)
+    expect(classes).toContain(`minmax(${PHOTO_REFERENCE_MIN_TILE_PX}px,1fr)`)
+  })
+
+  it('loads lazily and un-optimised, as this repo has already ruled for Blob photos', () => {
+    expect(tile).toContain('loading="lazy"')
+    // `tileRaw`, not `tile`: the disable IS a comment, and the reason must travel with it.
+    expect(tileRaw).toContain('eslint-disable-next-line @next/next/no-img-element')
+    expect(tileRaw).toContain('no thumbnail')
+    expect(picker).not.toContain('next/image')
+  })
+
+  it('reads nothing and writes nothing', () => {
+    const code = codeLines(picker)
+    expect(code).not.toContain('@/lib/db')
+    expect(code).not.toContain('@/lib/nina/queries')
+    expect(code).not.toContain("'use server'")
+    expect(code).not.toContain('Action(')
+    expect(code).not.toContain('useEffect')
+  })
+})
+
+describe('the mount at phase 4 seam', () => {
+  it('replaces the seam with the picker once ImageGenPanel exists', () => {
+    /*
+     * Phases 4 and 5 run in the same wave, so this file may be read before the panel exists. The
+     * guard is the concurrency, not the requirement: when the panel is there it must mount the
+     * picker and must no longer carry this phase's seam marker. Once phase 4 has landed the
+     * reconciler may drop the `existsSync` and assert unconditionally.
+     */
+    const path = 'components/admin/ImageGenPanel.tsx'
+    if (!existsSync(`${ROOT}${path}`)) return
+    const panel = read(path)
+    expect(panel).toContain('<PhotoReferencePicker')
+    expect(panel).toContain("from '@/components/admin/PhotoReferencePicker'")
+    expect(panel).not.toContain('SEAM — PHASE 5')
+  })
+})
+```
+
+**Impact:** `npm test` gains one suite. It passes with Steps 1–2 applied and phase 4 absent (the
+mount case returns early), and it passes with Step 3 applied and phase 4 present.
+
+---
+
+## Verification
+
+**Precondition:** this worktree has **no `node_modules`**. `.env.local` is already present, so the
+one setup step is:
+
+```
+npm install
+```
+
+**Build:** `npm run typecheck` then `npm run build`
+(`typecheck` is `next typegen && tsc --noEmit`; a bare `tsc --noEmit` does not prove a page in this
+repo, per `app/admin/photos/page.tsx:26-34`. If phase 4 has not landed, `build` will fail on *its*
+missing route, not on this phase — in that case `npm run typecheck` plus the tests are this phase's
+gate and the build is re-run after the wave merges.)
+
+**Lint / format:** `npm run lint` and `npm run format` (prettier owns Tailwind class order — run it
+rather than hand-sorting the class strings above, and never assert their order).
+
+**Guards:** `npm run ci:client-secret-guard` and `npm run ci:llm-payload-guard` — the first because
+this phase adds a `'use client'` module and a JSX comment (every continuation line starts with `*`),
+the second because a picker must not cause a model call in a render (it does not, and asserts so).
+
+**Tests:** `npm test` — the whole suite, and `npx vitest run tests/admin.photoReference.test.ts`
+for this phase alone.
+
+**Manual check** (needs phase 4's route, so it is the wave's check rather than this phase's):
+`/admin/image-generation` at a 414 px viewport and at desktop width.
+
+- Tiles are touching squares, three or four across on the phone, no date, no filename, no border,
+  no badge naming a set.
+- Tapping one shrinks it slightly and drops a check into its corner; tapping it again clears it;
+  tapping a second one moves the check rather than adding a second.
+- **Clear reference** appears only while something is selected.
+- Save, reload: the same tile is still checked. Then delete that photograph from `/admin/photos` and
+  reload: nothing is checked and one sentence explains why.
+- Tab reaches each tile and the focus ring is visible inside the tile's edge.
+
+**Exit criteria:**
+
+1. The grid shows album photographs and chat photographs together, newest first, and **no tile
+   renders a caption, filename, date, description, folder or set badge** — asserted, not intended.
+1b. **No photograph appears twice in the grid** (plan invariant 13). This is phase 1's guarantee and
+   this phase must not re-implement it: `listNinaPhotoReferences` reaches the chat set through
+   `generatedChatPhotoScope`, whose `isOriginalPhoto()` conjunct
+   (`lib/nina/queries.ts:1616-1618`) excludes every row with a non-null `source_avatar_id` or
+   `source_image_id` — a *reference* row, i.e. a real photograph in a real bubble whose bytes are
+   already in the collection under another id. Without that filter this grid would draw an album
+   face once as its `nina_avatars` row and again as the chat row that merely points at it, which is
+   precisely the duplication the `nina-photo-refs-and-bubble-actions` set removed and the user
+   complained about. **Do not add a client-side de-duplication by `url`**: it would mask a
+   regression in the read rather than prevent one, and it would break the one legitimate case where
+   two rows share bytes (two separate uploads of the same photograph, which the F37 plan's Scope
+   rules are two photographs). `PhotoReferenceItem` carries no `kind` and no `source`, so this
+   phase could not filter on provenance even if it wanted to — which is the point.
+2. Exactly one tile can be selected; re-tapping it, or **Clear reference**, returns to none.
+3. The selection round-trips through phase 4's existing save, with no action, route or schema added
+   by this phase.
+4. Every tile is `loading="lazy"`, uses `thumbUrl` when the row has one, and is never narrower than
+   `PHOTO_REFERENCE_MIN_TILE_PX` = 92 px, which is above the 44 pt minimum.
+5. A saved selection that is not in the list draws nothing as selected, says so, and does not
+   silently rewrite the draft.
+6. `npm test`, `npm run lint` and `npm run typecheck` are green.
+
+---
+
+## Handoffs
+
+**H1 — no shared tile component was extracted, and that is a decision, not an omission.** There are
+now three photo grids in `components/` (`NinaPhotoGrid`, `explorer/PhotoGrid`, `ChatPhotoGrid`) and
+this is a fourth. They agree on six lines of `<img>` attributes and disagree on everything that
+matters — aspect ratio, chrome, caption, selection affordance, page mechanism — and
+`NinaPhotoGrid.tsx:8-13` already argues the general case both ways. Collapsing them is a
+`components/` refactor of its own with four call sites and three test files, and it belongs to
+nobody in this plan set. Whoever takes it should start from that docstring.
+
+**H2 — reaching photographs older than phase 1's page.** The album is *"hundreds of profile pics"*
+and this picker can only select from the newest page, which the footer states plainly. Deliberately
+not solved here: a `?refPage=` link pager would navigate and discard the operator's unsaved draft,
+and a "load more" that actually reads would be a Server Action, which this phase's scope forbids.
+The two safe shapes, for whoever wants it: (a) phase 4's page accepts `?refPage=` **and** phase 4's
+panel restores its draft from the URL, or (b) a dedicated read action in
+`lib/admin/imageGenActions.ts` that appends a page of `PhotoReferenceItem[]` to the picker's props —
+the picker already takes `items` and `total` and needs only an `onLoadMore`. Prefer (b): it keeps
+the draft.
+
+**H3 — `ImageGenPanel`'s prop list belongs to phase 4.** If the panel does not receive `photos` and
+`photoTotal`, Step 3 cannot land as written. The exact declaration is in the Interface Contract's
+**Requires** item 3; the reconciler assigns it to phase 4, whose page already performs phase 1's
+reads. This phase does not edit that prop list.
+
+**H4 — phase 6 reads the SAVED selection.** `ImageGenTestPanel` (phase 6) resolves the reference
+from the persisted prefs row, not from this component's state, so an operator who picks a photograph
+and immediately presses **Test prompt** without saving would test the previous reference. Phase 4's
+dirty state is the existing mechanism that tells them so, and it needs no help from the picker —
+recorded here so phase 6 does not conclude the picker should notify it.
+
+**H5 — no preview of the selected photograph at full size.** The check badge plus the inset is the
+whole feedback. A lightbox would mean `PhotoViewer` in the admin bundle for a decision the tile
+already answers.
+
+**H6 — `components/admin/.workflows/package_readme.md`** gains two files and does not know it. The
+`readme-updater` pass at the end of the set covers it; nothing in this phase edits documentation.
+
+---
+
+## Rollback
+
+Delete the two new files and the test file:
+
+```
+git rm components/admin/PhotoReferencePicker.tsx components/admin/photoReferenceModel.ts tests/admin.photoReference.test.ts
+```
+
+then revert Step 3's single edit to `components/admin/ImageGenPanel.tsx` — restore phase 4's
+`SEAM — PHASE 5` comment and drop the import. Nothing else in the repo references any symbol this
+phase created, no table, column, migration, route, action or Blob object is involved, and no data is
+written, so `git revert <this phase's commit>` is complete on its own. The stored reference value in
+`nina_image_prefs` is phase 1's column and survives; with the picker gone it is simply unreachable
+from the UI, and phase 3 keeps honouring it on the wire.

@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-07 (task `P2-CA-A002`, phase 1 of the nina-personality-tab set — `CharacterPanel` moved off the album onto `/admin/personality`, and `AdminNav` grew a fifth cell)
+**Last Updated**: 2026-09-08 (tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar; previously task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — `ShortcutTable` and `/admin/shortcuts`, and `AdminNav` grew a sixth cell)
 
 ## Overview
 
@@ -15,7 +15,7 @@ Most of it is `'use client'`, but **not all of it, and the exceptions are delibe
 highlighting, and `usePathname()` would make an entire sidebar client-rendered to bold one word — so
 selection is expressed in the URL instead. In `UserPicker` it is also conveyed with `aria-current`;
 `AdminNav` sets no such attribute, which is the honest reading of "no active-link highlighting" —
-it renders five plain links and marks none of them. `CircleFrame` holds no state and imports only
+it renders six plain links and marks none of them. `CircleFrame` holds no state and imports only
 pure modules, so it renders on the server *and* compiles into the client graph of whichever client
 component imports it.
 
@@ -34,7 +34,7 @@ is the rails-and-canvas layout it always was, at the same widths.
 There **is** a bottom bar below `lg`, and it is `AdminNav` — not `components/ui/TabBar.tsx`. The
 distinction is worth a sentence because the two now look alike and are not: `TabBar` is the
 runner's four-tab navigation inside `AppShell`'s 470 px column; `AdminNav` is this package's own
-five-cell `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
+six-cell `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
 active-link highlighting. There is no `AppShell` and no 470 px column here. Tokens are still
 borrowed from the app's design system rather than re-invented.
 
@@ -94,11 +94,16 @@ and are unit-tested there.
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
 | `ChatPhotoGrid.tsx` | `'use client'` | `/admin/photos` — every photo Nina has put in the conversation, as one flat collection: one folder line, one grid, no tree. Borrows the breadcrumb look, imports nothing from `explorer/`. |
 | `ChatPhotoDetail.tsx` | `'use client'` | One chat photo in full. `SelectionPane`'s shape, not its content — and it *does* print `description` and `prompt`, which the album deliberately does not. |
-| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed five-cell bottom bar (`h-14`, `border-t`, `z-30`) below `lg`, the sticky left rail at `lg`. Overview · Album · Persona · Photos · Memory on a phone; the long labels at `lg`. No active-link highlighting, on purpose. |
+| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed **seven-cell** bottom bar below `lg` — a `grid-cols-4 grid-rows-2` grid at `h-28`, i.e. two rows of 56 px, so the cell keeps its height and gains width — and the sticky left rail at `lg`. Overview · Album · Persona · Images · Photos · Memory · Shortcut on a phone; the long labels at `lg`. It went multi-row because seven single-row cells are 59.1 px wide, whose content box is exactly the eight characters the label ceiling allows; `app/admin/layout.tsx`'s `pb-[calc(8rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. No active-link highlighting, on purpose. |
+| `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — the trigger registry as one table. `MemoryTable`'s mechanics with different columns: blur-to-save cells, optimistic delete, no confirmation. |
+| `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` — the whole content of that route: the prompt-length `DialSlider`, six focus checkboxes, four free-text fields, the mounted photo-reference picker and test panel, and a **pure** prompt preview built by the real `buildNinaImagePrompt`. One `useTransition`, **one save for all eleven controls** (plan invariant 7), one reset, dirty state. |
+| `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: Nina's album and her chat photographs as one caption-less, gapless, square-tile collection in the iOS Photos idiom — no filename, no date, no set label on any tile. Single selection, `aria-pressed`, reveal-by-48, `loading="lazy"`. It cannot announce which set a tile came from, because `PhotoReferenceItem` carries no provenance field to announce. |
+| `photoReferenceModel.ts` | **no directive** | The picker's view model: four constants, six pure rules, and `PhotoReferenceItem` pinned at exactly three fields — which is what makes "no captions, no dates" structural rather than a promise. |
+| `ImageGenTestPanel.tsx` | `'use client'` | The test-prompt button and its verdict. Dispatches one generation off the **saved** prefs, returns without awaiting it, then polls: `queued` → `running` → `ok`/`failed`. `policy` is the only path that renders as *"the provider refused this prompt"*; `timeout` / `transport` / `stale` render as inconclusive. Shows the remaining daily quota before the click, and says *"one generation off today's cap, plus its caption"* because the caption is a second model call. |
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
-| `UserPicker.tsx` | **no directive** | Whose memory is being edited. Plain links, selection in the URL. |
-| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: eleven trait sliders, the five-way relationship selector, the four extra dials, wardrobe and notes, and the assembled prompt preview. One `useTransition`, one save. Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. |
+| `UserPicker.tsx` | **no directive** | Whose rows are being edited. Plain links, selection in the URL. `basePath` (optional, defaults to `/admin/memory`) says which per-user route the pills navigate within. |
+| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: twelve trait sliders, the five-way relationship selector, the four extra dials, the notes field, and the assembled prompt preview. One `useTransition`, one save. Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. (A Wardrobe input sat beside Notes until F41 R3 moved it to `ImageGenPanel.tsx`.) |
 | `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Decides nothing. |
 
 ## The `/admin/nina` file manager
@@ -754,6 +759,85 @@ The promises panel is read-only text plus per-entry removal, which has to exist 
 merge policy means nothing in the runtime can ever drop an entry. `removePendingPromiseAction`
 deliberately writes no ledger row.
 
+## `/admin/shortcuts`
+
+`ShortcutTable` is the whole content of the route, mounted by `app/admin/shortcuts/page.tsx` under a
+`UserPicker` with `basePath="/admin/shortcuts"`. It is **`MemoryTable.tsx` with different columns**,
+and that is deliberate rather than lazy: the two pages are operated in the same session by the same
+thumb, and a second set of table mechanics would be a second set of ways to lose an edit.
+`CELL_CONTROL`, `CELL`, `CELL_WIDE_ONLY`, `HEAD_CELL` and `HEAD_CELL_WIDE_ONLY` are that file's
+tokens verbatim — `text-base` below `lg` for the iOS 16 px rule, `min-h-11` for the 44 px target,
+13 px density back at `lg` — and the `overflow-x-auto overscroll-x-contain` box is its box.
+
+Six columns: **trigger · label · expansion · on/off · fired · ✕**. `Fired` is the only one that goes
+below `lg` (`hidden lg:table-cell`), and the reason is `MemoryTable`'s own for dropping Origin and
+When: five of the six are things the operator *acts* on, while `Fired` is telemetry he *reads* — a
+count and a date, both answers to "is this code dead?", which is a question asked at a desk. It is
+done with table-cell utilities and **not a `<col>`**, for the reason already written down under
+`/admin/memory`: a `<col>` maps to a column by position among the cells actually rendered, so hiding
+a `<td>` slides every later column into the wrong one. The widths live on the `<th>`s.
+
+**The add row is a row of the table, at the top**, not a card above it — the table is newest-first,
+so the row just created appears directly under the form that made it. `Enter` commits from either
+single-line cell; the expansion is a `<textarea>` (up to 2000 characters of scene, with paragraphs
+in it) so `Enter` there means newline and `Cmd`/`Ctrl+Enter` is the chord. That is the **first**
+click of a create, not a second click on anything.
+
+**Blur saves, one field at a time.** Each of the three text cells holds a draft that follows its
+prop *adjusted during render* — `MemorySlots`'s pattern and the same reason it is not an effect —
+and the comparison is against the VALUE, never the row object: `revalidatePath` hands every row a
+fresh object on every write, so comparing identity would wipe a draft in a cell nobody had touched
+each time any other cell saved. `Escape` reverts a cell, `Cmd`/`Ctrl+Enter` commits without leaving
+it, and an emptied cell is **refused rather than treated as a delete** — a stray select-all-and-tab
+would otherwise destroy a shortcut silently, and the one-click delete is four columns away.
+
+**Only the delete is optimistic**, exactly as on `/admin/memory`. `useOptimistic` here is a plain
+filter rather than the ledger's blank-row substitute, because a shortcut has no closed vocabulary:
+the row is gone and nothing manufactures it again. `row.enabled` deliberately has **no draft** — the
+`<select>` renders the prop and the server's answer is what changes it, so a refused toggle never
+flashes "on". It is a `<select>` and not a checkbox for two reasons from this directory:
+`CELL_CONTROL` gives it the 44 px target and the 16 px font for free, and "on"/"off" are two words
+that cannot be misread where `docs/design-brief.md` calls an icon a guess. It saves on **change**,
+because a select's change IS the finished edit.
+
+**There is no confirmation anywhere.** The `✕` deletes on the first click. Invariant 6 and the
+owner's own sentence, and `tests/admin.shortcuts.test.ts` asserts the absence of every dialog and
+second-click API *by name* — which is why the component's docstring is careful never to spell those
+names while explaining them, the same trap `tests/admin.shell.test.ts`'s `classNames()` helper
+exists for.
+
+**This file names no `@/lib/nina/` specifier at all**, and a test asserts it. The three `maxLength`
+caps come through `@/lib/admin/shortcutModel`, which re-exports them from the pure matcher module;
+that module's header carries the argument for the indirection, and the short version is that the
+boundary should be one file wide rather than resting on a property of a file in another directory
+that a `'use client'` component now names.
+
+Under the trigger cell the table prints two read-only lines the operator cannot get anywhere else:
+the **folded `matchKey`**, because `✌️` and `✌` are the same shortcut and nothing else on the page
+says so, and `describeKind(row.kind)`, because "fires anywhere" versus "never inside a longer word"
+is the one thing about the classification that surprises people. Neither is editable — both are
+derived server-side.
+
+### `AdminNav`'s sixth cell, and `UserPicker`'s one new prop
+
+`AdminNav` gained `{ href: '/admin/shortcuts', label: 'Shortcuts', short: 'Shortcut' }` **last** in
+`LINKS` — newest surface, and adjacent to Memory because that is the page it grew out of — and went
+`grid-cols-5` -> `grid-cols-6` at the same `h-14`. More cells make the row narrower per cell, not
+shorter, which is why the height did not move for the fifth cell either. The 8-character `short`
+ceiling in `tests/admin.shell.test.ts` was **not loosened**: 414 px over six cells is 69 px, a
+61 px content box, and eight characters of Poppins semibold at 11 px measure ≈ 51 px. `Shortcut` is
+the singular on purpose — the plural is nine characters — and it is the only pair here whose two
+strings differ by grammatical number rather than by word. A seventh route is 59 px a cell and does
+not fit eight characters; that is what the next person to add one is spending.
+
+`UserPicker` gained exactly one optional, defaulted prop, `basePath = '/admin/memory'`, and no
+existing call site was edited. It is a prop and not a `usePathname()` read for the rule this package
+already carries: going client to fix an href is the same trade as going client to bold a word, for
+less. The counts in each pill stay MEMORY counts — `AdminUserRow` is `lib/admin/users.ts`'s shape,
+and on `/admin/shortcuts` "N slots · N facts" is still a true statement about the account, just not
+about this page; a shortcut count would mean widening `listAdminUsers` and `getAdminUser`, which
+belong to `/admin/memory`.
+
 ## Dependencies
 
 ### External
@@ -798,6 +882,14 @@ deliberately writes no ledger row.
   `retireSlotAction`, `removePendingPromiseAction`, and `AdminMemoryResult`.
 - `@/lib/admin/memoryModel` — `FactCard`, `SlotCard`, `ADMIN_FACT_CATEGORIES`,
   `ADMIN_FACT_TEXT_MAX`, `ADMIN_SLOT_VALUE_MAX`, `ADMIN_PURGE_CONFIRMATION`.
+- `@/lib/admin/shortcutActions` — `/admin/shortcuts`'s four writes: `addShortcutAction`,
+  `saveShortcutCellAction`, `toggleShortcutAction`, `deleteShortcutAction`, and
+  `AdminShortcutResult`.
+- `@/lib/admin/shortcutModel` — `NINA_TRIGGER_MAX`, `NINA_SHORTCUT_LABEL_MAX`,
+  `NINA_SHORTCUT_EXPANSION_MAX`, `ADMIN_SHORTCUT_PAGE`, `describeKind`, `formatFired`, and the
+  `ShortcutField` / `ShortcutRow` types. **This is the only module `ShortcutTable.tsx` takes its
+  bounds from**, and the point of the indirection is that the file then names no `@/lib/nina/`
+  specifier — a test asserts it.
 - `@/lib/admin/users` — `AdminUserRow`, **as a type only**.
 - `@/lib/db/schema` — `NinaPendingPromise`, **as a type only**, so no drizzle table module reaches
   the browser bundle.
@@ -834,6 +926,11 @@ was written to be — the origin is what cannot cross.
   the panel a `TuningDraft` plus the preview string. `app/admin/nina/page.tsx` no longer imports the
   panel and no longer reads the tuning.
 - `app/admin/memory/page.tsx` — `MemoryLedger`, `MemorySlots`, `UserPicker`.
+- `app/admin/shortcuts/page.tsx` — `ShortcutTable` and `UserPicker`, and it is the ONLY mount site
+  of the table. `force-dynamic`, `requireAdmin()` on line 1, `?user=` defaulting to the signed-in
+  admin, and every row built server-side by `buildShortcutRows` so the table receives plain strings,
+  numbers and booleans. It passes `basePath="/admin/shortcuts"` to the picker — the second call site
+  of that component, and the reason the prop exists.
 
 ### Secondary consumers
 
@@ -855,9 +952,20 @@ was written to be — the origin is what cannot cross.
 
 ### Test consumers
 
-None, and by design. vitest is `environment: 'node'` with no jsdom, so nothing in this directory is
-reachable from a test; everything it *decides* was moved to `lib/` to be tested there. A new pure
-judgement belongs in `lib/admin/filetree.ts` or `lib/nina/crop.ts`, not here.
+None that IMPORT anything here, and by design. vitest is `environment: 'node'` with no jsdom, so
+nothing in this directory is reachable from a test; everything it *decides* was moved to `lib/` to be
+tested there. A new pure judgement belongs in `lib/admin/filetree.ts` or `lib/nina/crop.ts`, not
+here.
+
+What two suites do instead is read a file in this directory **as text**, to hold a property no pure
+function can carry. `tests/admin.shell.test.ts` reads `AdminNav.tsx` for the bottom bar's
+`grid h-14 w-full max-w-[470px] grid-cols-6` row, the `h-14`/layout-padding pair, and the
+8-character `short` ceiling. `tests/admin.shortcuts.test.ts` reads `ShortcutTable.tsx` for two
+absences: that it names no `@/lib/nina/` and no `server-only` specifier, and that no dialog or
+second-click API appears anywhere in it. Both are guards against a future edit rather than tests of
+behaviour — which is why the docstrings in those two files are written never to *spell* the
+specifiers and API names they explain: a text guard cannot tell an explanation from a
+reintroduction.
 
 `ShareToNinaItem` is the worked example. The component itself is untested and untestable — it is
 `window.open`, `useTransition` and a click — but the one thing about it that can be *wrong on
@@ -1071,7 +1179,22 @@ down the string.
   rejects it. A `key`-based remount is also wrong — it discards the success note.
 - **Do not add active-link highlighting to `AdminNav` or `UserPicker`.** `usePathname()` would turn a
   static nav into a Client Component to bold one word. `aria-current` already carries the state, to
-  assistive tech as well as to the eye.
+  assistive tech as well as to the eye. `UserPicker`'s `basePath` prop is the same rule applied to
+  the href: both callers are Server Components and both already know their own route.
+- **Do not import from `@/lib/nina/` in `ShortcutTable.tsx`.** The three caps come through
+  `@/lib/admin/shortcutModel`, which re-exports them; a test asserts the absence. The next specifier
+  copied in from that directory is the one that reaches zod and `lib/db/schema.ts`.
+- **Do not add a confirmation to the shortcut table.** The `✕` deletes on the first click, and the
+  test names every dialog and second-click API it forbids. For the same reason, do not *spell* those
+  names in a comment in that file — the guard reads the source and cannot tell the two apart.
+- **Do not make an emptied shortcut cell delete its row.** It is refused and reverted on purpose: a
+  stray select-all-and-tab must not destroy a shortcut when the delete control is four columns away.
+- **Do not make the on/off `<select>` optimistic.** Only the delete is. A draft on `row.enabled`
+  would show "on" for a row the write is about to refuse.
+- **Do not loosen the 8-character `short` ceiling to fit a seventh nav route.** Six cells is 69 px
+  and a 61 px content box; a seventh is 59 px and does not fit eight characters. The height is not
+  the lever — more cells make the row narrower, not shorter — and `h-14` is paired with
+  `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` in a test.
 
 ## Notes
 
@@ -1169,3 +1292,33 @@ fifth cell (Personality at `lg`, Persona on a phone) and went `grid-cols-4` -> `
 same `h-14`, still with no `'use client'` and no `usePathname()`. `app/admin/page.tsx`'s "Tune her
 character" hub card now points at the route rather than a fragment. No component was added, deleted
 or renamed, and no prop signature changed.
+
+2026-09-07 — updated following task **P1-ADM-A001** (`nina-emoji-shortcuts` phase 3 of 4, R1: *"i
+want a mechanism that is more explicit, that is shortcuts. in shortcuts admin can add shortcuts that
+entails some situations or what miftah and nina were doing."*). One new component and two additive
+edits; nothing was deleted, renamed, or changed in behaviour.
+
+`ShortcutTable.tsx` is `MemoryTable.tsx`'s mechanics with different columns — the same
+`CELL_CONTROL` / `CELL` / `HEAD_CELL` tokens verbatim, blur-to-save cells with a draft adjusted
+during render, an optimistic delete and nothing else optimistic, the add row at the TOP of a
+newest-first table, and no confirmation anywhere. Its six columns are trigger · label · expansion ·
+on/off · fired · ✕, with `Fired` the one `hidden lg:table-cell` because it is the one column the
+operator reads rather than acts on. It takes its three `maxLength` caps through
+`@/lib/admin/shortcutModel` rather than from `@/lib/nina/shortcuts` directly, so the file names no
+`@/lib/nina/` specifier at all; `tests/admin.shortcuts.test.ts` asserts that, and asserts the
+absence of every second-click API by name.
+
+`AdminNav.tsx` gained a sixth `LINKS` entry — `{ href: '/admin/shortcuts', label: 'Shortcuts',
+short: 'Shortcut' }`, placed last because Memory is the page this surface grew out of — and went
+`grid-cols-5` -> `grid-cols-6` at the same `h-14`. The 8-character `short` ceiling in
+`tests/admin.shell.test.ts` was deliberately NOT loosened, and the three assertions there that
+encode the cell count moved from five to six. `UserPicker.tsx` gained one optional, defaulted
+`basePath = '/admin/memory'` prop so the pills can navigate within `/admin/shortcuts`; no existing
+call site was edited and the pill counts remain memory counts, which are still true of the account
+if not of that page.
+
+Refreshed here: the overview's two "five-cell" sentences, three module-map rows, a new
+`/admin/shortcuts` section covering the table and the two additive edits, two dependency bullets,
+one primary consumer, the test-consumer section (which now names the two suites that read a file in
+this directory as text, and why that is not an import), and six gotchas. This package still has no
+test file of its own, and that is still correct.

@@ -25,6 +25,8 @@ import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from
 import { loadNinaContext } from './load'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
+  adoptNinaMessageImage,
+  bumpNinaShortcutUses,
   getNinaAvatar,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
@@ -34,6 +36,7 @@ import {
   insertNinaMessages,
   listNinaMessages,
   listNinaMessagesAfter,
+  listNinaShortcuts,
   readNinaTuning,
 } from './queries'
 import type { NinaMessageRow } from './queries'
@@ -41,6 +44,7 @@ import { resolveNinaWriteSession } from './sessionResolve'
 import type { NinaImageKind } from '@/lib/db/schema'
 import type { QuotedMessageInput } from './reply'
 import { MAX_RUNNER_MESSAGE_CHARS, type NinaMemoryWrite } from './schema'
+import { NINA_SHORTCUT_LOOKBACK } from './shortcuts'
 import {
   NINA_BACKGROUND_BUDGET_MS,
   NINA_TURN_CHAIN_MAX,
@@ -198,6 +202,26 @@ async function resolveAttachment(
    */
   sourceAvatarId: string | null
   sourceImageId: string | null
+  /**
+   * **R4.** The `nina_message_images.id` to RE-PARENT onto the new message, or null to write a
+   * reference row the way this function always has.
+   *
+   *   · an `image` pointer at a row of his with **no message** -> `row.id`. The caller adopts THAT
+   *     row (R4) and inserts nothing, so a photograph the runner puts back into a conversation
+   *     stops being an orphan instead of gaining a second, permanently parentless row.
+   *   · an `image` pointer at a row that **still has** a message -> `null`. Moving it would empty
+   *     a bubble the runner never touched (plan Decisions, row 5), so the caller writes a reference
+   *     row and the original bubble is untouched.
+   *   · every `avatar` pointer -> `null`, always. An album photograph is a `nina_avatars` row;
+   *     there is no `nina_message_images` row here to adopt, and F37's `source_avatar_id` is what
+   *     keeps the share out of the collection.
+   *
+   * A **candidate, not a promise**. `message_id IS NULL` is in the adopting UPDATE's own WHERE, so a
+   * row that gains a message between this read and that statement is not adopted and the caller
+   * falls back to the reference row. This function reads; it decides nothing the statement cannot
+   * re-check.
+   */
+  adoptableId: string | null
 } | null> {
   if (attach.kind === 'avatar') {
     /*
@@ -227,6 +251,8 @@ async function resolveAttachment(
        * property the foreign key can then rely on rather than one a reader has to reconstruct.
        */
       ...ninaPhotoProvenance({ kind: 'avatar', id: row.id }),
+      /* An album row is not a chat row. There is nothing to adopt, ever. */
+      adoptableId: null,
     }
   }
 
@@ -256,6 +282,10 @@ async function resolveAttachment(
       sourceAvatarId: row.sourceAvatarId,
       sourceImageId: row.sourceImageId,
     }),
+    /* R4. A row with no message is an orphan, and an orphan is the ONLY thing adoption may move —
+     * `message_id IS NULL` is re-asserted inside the UPDATE, so this is a candidate and not a
+     * decision. A row that still has a message is left exactly where it is. */
+    adoptableId: row.messageId === null ? row.id : null,
   }
 }
 
@@ -578,37 +608,75 @@ export async function sendNinaMessage(input: {
   }
 
   /*
-   * R26's row. Same table, same shape, same reasons as the block above — it is an ordinary chat
-   * photo that happens to point at a blob we already had, which is the whole design: no new
-   * attachment kind, no new renderer, no second send path.
+   * R26's row — now **ADOPT-OR-REFERENCE** (R4).
    *
-   * `sortOrder: images.length` puts it after anything he picked in the same message. Today the
-   * album sends exactly one photo and no tickets, so that is 0; spelling it as the count rather
-   * than as 0 keeps the two blocks composable if a later card ever lets him do both.
+   * Same table, same shape, same reasons as the block above: it is an ordinary chat photo that
+   * happens to point at a blob we already had, which is the whole design — no new attachment kind,
+   * no new renderer, no second send path. What changed is that an INSERT is no longer the only
+   * outcome, because since R1 an `image` pointer can name a photograph that has no bubble at all.
+   *
+   * ── WHY AN UNCONDITIONAL INSERT BECAME WRONG ────────────────────────────────────────────────
+   * F37 made this row a REFERENCE rather than a duplicate, which fixed the collection. It cannot
+   * fix an ORPHAN: re-attaching one wrote a reference pointing at a row that has no message and
+   * would never get one, so the photograph the runner had just put back into a conversation was
+   * still parentless — *"make sure these 'orphaned' photos got 'parent' chat session again"*, R4,
+   * unserved. Nothing about the BUBBLE changes here (plan invariant 8), only which row the
+   * conversation shows the photograph through.
+   *
+   *   · `attached.adoptableId != null` -> the pointer named an ORPHANED row of his, so that row is
+   *     RE-PARENTED onto this message. Same id, same `created_at` (invariant 6), same Blob object,
+   *     same provenance — and no row written, so no row can be a duplicate.
+   *   · adoption came back `null` -> the row gained a message between the read and the UPDATE, or it
+   *     was not his after all. Fall through to the reference row: the photograph is in the
+   *     conversation either way, and the collection is unharmed either way. Every branch of that
+   *     race has an honest outcome, which is the reason the check lives in the statement's WHERE.
+   *   · anything else — every album share, and every re-attach of a photograph that still has a
+   *     bubble — -> ONE reference row, exactly as before this phase.
+   *
+   * `sortOrder: images.length` puts it after anything he picked in the same message, in BOTH arms,
+   * so the adopted row and the reference row land in the same place. Today the album sends exactly
+   * one photo and no tickets, so that is 0; spelling it as the count rather than as 0 keeps the two
+   * blocks composable if a later card ever lets him do both.
+   *
+   * ── THE FAILURE DISCIPLINE IS UNCHANGED, AND DELIBERATELY ───────────────────────────────────
+   * Warned and swallowed, as before. The message and the reply are worth more than a gallery row,
+   * and `imageDescriptions` below is built from `attached.description` rather than from either
+   * statement's return value — so the turn she takes is identical whichever arm ran, and identical
+   * if both failed.
    */
   if (attached !== null) {
     try {
-      await insertNinaMessageImages(userId, [
-        {
-          messageId: runnerMessageId,
-          kind: attached.kind,
-          blobUrl: attached.blobUrl,
-          pathname: attached.pathname,
-          description: attached.description,
-          sortOrder: images.length,
-          /*
-           * F37 R1/R3. **The two fields that make this row a reference rather than a duplicate.**
-           * `resolveAttachment` filled them in from the row it proved he owns, so the collection
-           * listings skip this row while the bubble, the viewer, the download control and Nina's
-           * prompt all still find it by `message_id`.
-           *
-           * The upload block twenty lines up sets NEITHER, and must not: those bytes arrived from
-           * his camera and the row is an original.
-           */
-          sourceAvatarId: attached.sourceAvatarId,
-          sourceImageId: attached.sourceImageId,
-        },
-      ])
+      const adopted =
+        attached.adoptableId === null
+          ? null
+          : await adoptNinaMessageImage(userId, attached.adoptableId, {
+              messageId: runnerMessageId,
+              sortOrder: images.length,
+            })
+
+      if (adopted === null) {
+        await insertNinaMessageImages(userId, [
+          {
+            messageId: runnerMessageId,
+            kind: attached.kind,
+            blobUrl: attached.blobUrl,
+            pathname: attached.pathname,
+            description: attached.description,
+            sortOrder: images.length,
+            /*
+             * F37 R1/R3. **The two fields that make this row a reference rather than a duplicate.**
+             * `resolveAttachment` filled them in from the row it proved he owns, so the collection
+             * listings skip this row while the bubble, the viewer, the download control and Nina's
+             * prompt all still find it by `message_id`.
+             *
+             * The upload block twenty lines up sets NEITHER, and must not: those bytes arrived from
+             * his camera and the row is an original.
+             */
+            sourceAvatarId: attached.sourceAvatarId,
+            sourceImageId: attached.sourceImageId,
+          },
+        ])
+      }
     } catch (cause) {
       console.warn('[nina] could not persist the attached photo', { error: String(cause) })
     }
@@ -778,13 +846,39 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
      *
      * **This runs AFTER his row is committed and that has not changed** — see STEP 1c's note.
      */
-    const [loadedContext, history, tuning] = await Promise.all([
+    const [loadedContext, history, tuning, shortcuts] = await Promise.all([
       loadNinaContext(userId, sessionId, dbNinaSourceGateway),
       dbNinaToolGateway.loadRunHistory(userId),
       /* THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
        * `/admin/nina` immediate. Third in an existing `Promise.all` on purpose: one indexed
        * single-row read against a connection this turn is opening anyway. */
       readNinaTuning(userId),
+      /* THE SHORTCUTS, read LIVE on every turn with no cache for the same reason and by the same
+       * arithmetic — which is what makes a row added on `/admin/shortcuts` fire on his very next
+       * message, with no invalidation step anywhere on this path. Fourth in the same `Promise.all`:
+       * one `(user_id, enabled)`-indexed read of a table that holds tens of rows, against a
+       * connection this turn is opening anyway, so it costs no wall clock the turn was not already
+       * spending.
+       *
+       * **`{ onlyEnabled: true }`, which is the read `nina_shortcuts_user_enabled_idx` exists for.**
+       * The bare call returns the disabled rows too, and `/admin/shortcuts` wants those — a
+       * disabled code is still a row he edits and re-enables. A turn does not: a disabled row can
+       * never fire, so putting it on the wire is bytes for nothing. `matchNinaShortcuts` filters on
+       * `enabled` regardless, so "live" still has exactly one definition; this narrows what is
+       * fetched, not what counts.
+       *
+       * **Its rejection is swallowed and the turn continues — INVARIANT 7.** This is the one entry
+       * of the four that is garnish. A tuning that will not load is a Nina with the wrong
+       * character, and a context that will not load is no turn at all; a shortcut table that will
+       * not load is a turn with no shortcut in it, which is what most turns are anyway. Letting it
+       * reject would let one unreadable row cost him a reply. */
+      listNinaShortcuts(userId, { onlyEnabled: true }).catch((cause) => {
+        console.warn('[nina] could not read shortcuts; this turn carries none', {
+          turnId,
+          error: String(cause),
+        })
+        return []
+      }),
     ])
 
     /*
@@ -805,6 +899,28 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
               loadedContext.conversation.window.find((turn) => turn.id === target.id)
                 ?.sentAtLabel ?? null,
           }
+
+    /*
+     * R2. The last few things HE said, newest first, so a shortcut that is still IN PLAY survives
+     * the turn that opened it — the `🫦` case in the production ledger, whose expansion reads
+     * "…selama miftah bilang terusin … sampe miftah bilang 💦" and is therefore useless if it falls
+     * out of the payload the moment he answers it.
+     *
+     * **No new query.** `loadNinaContext` has already loaded the window, and it is OLDEST FIRST
+     * with both roles in it (`ConversationFacts.window`, `lib/nina/context.ts:286`), so this is
+     * three array operations over ~40 objects already in memory.
+     *
+     * Filtered to `role === 'runner'` because an expansion SHE quoted back would otherwise re-fire
+     * itself every turn it stayed in the window (assumption A3). `runnerMessageId` is dropped
+     * because that message is `input.runnerText`: a trigger in it FIRED, and letting it also count
+     * as carried-over would bump one shortcut twice for one send. `reverse()` is safe — `map` has
+     * already produced a fresh array, so the window itself is not mutated.
+     */
+    const recentRunnerTexts = loadedContext.conversation.window
+      .filter((turn) => turn.role === 'runner' && turn.id !== runnerMessageId)
+      .map((turn) => turn.text)
+      .reverse()
+      .slice(0, NINA_SHORTCUT_LOOKBACK)
 
     /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
      *
@@ -829,10 +945,41 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
         imageDescriptions: input.imageDescriptions,
         quoted,
         attachedRunId: input.attachedRunId,
+        shortcuts,
+        recentRunnerTexts,
       },
       { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
     )
     source = result.source
+
+    /*
+     * ── R2'S TELEMETRY, AND IT LANDS ABOVE THE EARLY RETURNS ON PURPOSE ──────────────────────
+     * `nina_shortcuts.uses` and `last_used_at` answer ONE question on `/admin/shortcuts`: which of
+     * these codes does he actually use? A shortcut fired the moment its trigger was in his message
+     * and its expansion went into the payload the model was billed for. Deleting the conversation
+     * afterwards does not un-fire it, and a reply she failed to produce does not un-fire it either
+     * — so counting only the turns that survived to a bubble would make the column a measure of
+     * Nina's uptime rather than of his habits, and would under-count exactly the turns that are
+     * most annoying to lose. Placing it here also means ONE call site covers all four exits below
+     * (`session-gone`, the null payload, the happy path, and a throw) instead of three copies that
+     * will drift apart the first time someone edits one of them.
+     *
+     * **`hits.fired` only, never `inPlay`.** A still-in-play shortcut was counted on the turn it
+     * fired; counting it again on every follow-up would make `uses` measure recency, not habit.
+     * `runNinaTurn` enforces that split — see `NinaTurnResult.firedShortcutIds`.
+     *
+     * ── FIRE AND FORGET, AND IT CANNOT REJECT INTO THE TURN. INVARIANT 7. ────────────────────
+     * `void` with its own `.catch`, not an `await`. A usage counter is not worth one round trip of
+     * wall clock on a path that has just spent 13-45 s, and it is certainly not worth failing a
+     * turn for. `after()` was the other candidate and was declined: we are already inside one, and
+     * `tests/nina.resend.test.ts` drains `after`'s queue by hand and asserts its length, so a
+     * second entry would change what that suite measures.
+     */
+    if (result.firedShortcutIds.length > 0) {
+      void bumpNinaShortcutUses(userId, result.firedShortcutIds).catch((cause) => {
+        console.warn('[nina] shortcut usage bump failed', { turnId, error: String(cause) })
+      })
+    }
 
     /*
      * ── THE SESSION MAY HAVE BEEN DELETED WHILE SHE WAS THINKING (phase 6's handoff) ──────────

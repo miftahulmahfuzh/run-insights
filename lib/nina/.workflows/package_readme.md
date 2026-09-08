@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-07 (task `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; previously `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`, `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`, and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-08 (tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -24,7 +24,9 @@ modules into `'use client'` components.
   one line she says under a photograph of herself (`caption.ts`, written from what is actually in
   the picture rather than drawn from a canned array).
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
-  timing, scroll restore, reply quotes), kept out of the components so they can be tested.
+  timing, scroll restore, reply quotes, and the full-screen chrome's geometry — where the composer
+  and the two floating controls sit, as CSS lengths), kept out of the components so they can be
+  tested.
 - **Persistence** — `queries.ts` is the single home for every `nina_*` table access.
 
 ## The character layer
@@ -51,9 +53,10 @@ Zero imports, plain data and types, client-importable. Declares:
   canon.
 - **Four dials** (`NINA_DIALS`: profanity, clinginess, photoEagerness, verbosity), each naming a real
   code path.
-- **`NinaTuning`** — `{ traits, relationship, dials, enabled, wardrobe, notes, revision }`, all
-  readonly. `enabled` is R4's per-parameter on/off map (see below). `wardrobe` and `notes` are
-  `string` and never null; `''` is the one empty value. `revision` is the database's to assign, and
+- **`NinaTuning`** — `{ traits, relationship, dials, enabled, notes, revision }`, all readonly.
+  `enabled` is R4's per-parameter on/off map (see below). `notes` is `string` and never null; `''`
+  is the one empty value. (`wardrobe` was a seventh member until F41 R3 moved it to
+  `NinaImagePrefs`.) `revision` is the database's to assign, and
   `0` means *no row has ever been written*.
 - **`NINA_TUNING_DEFAULTS`** — frozen, and the setting that reproduces today's Nina exactly.
 - **`coerceNinaTuning`** — total, never throws, always returns a fresh unfrozen object. An
@@ -97,13 +100,14 @@ disabled-value paragraph". Zero.
   a hand-built `NinaTuning` with no `enabled` at all (a fixture, a `psql` round trip, an
   `as NinaTuning` cast) degrades to "everything on" instead of throwing mid-turn.
 
-**`relationship` has a toggle; `wardrobe` and `notes` deliberately do not.** `nobody` is not an off
-switch — `NINA_RELATIONSHIP_BLOCKS.nobody` is four sentences of *active* instruction and the coldest
-setting on the axis, so choosing it to "exclude" the parameter makes the prompt longer and changes
-her behaviour. Disabling the relationship therefore means `NINA_DEFAULT_RELATIONSHIP`, whose blocks
-*are* today's `NINA_IDENTITY`. `wardrobe` and `notes` are the mirror image: `''` genuinely is their
-absence and already costs zero bytes, so a toggle would be a second spelling for a state the field
-already has.
+**`relationship` has a toggle; `notes` deliberately does not.** `nobody` is not an off switch —
+`NINA_RELATIONSHIP_BLOCKS.nobody` is four sentences of *active* instruction and the coldest setting
+on the axis, so choosing it to "exclude" the parameter makes the prompt longer and changes her
+behaviour. Disabling the relationship therefore means `NINA_DEFAULT_RELATIONSHIP`, whose blocks
+*are* today's `NINA_IDENTITY`. `notes` is the mirror image: `''` genuinely is its absence and
+already costs zero bytes, so a toggle would be a second spelling for a state the field already has.
+This sentence used to name two such fields; `wardrobe` was the other, and F41 R3 moved it to
+`nina_image_prefs` rather than giving it a toggle.
 
 #### The gate lives at the score seam, and only there
 
@@ -290,9 +294,10 @@ function ninaEffectiveVerbosity(tuning: NinaTuning): number      // R3, max(own 
 
 - `ninaIdentity` — paragraph 1 is the relationship's, 2 and 3 are fixed, paragraph 4's last clause is
   the `funny` dial's, and the last paragraph is the relationship's `history`.
-- `ninaAppearance` — the **wardrobe seam phase 4 will use**. Returns `NINA_APPEARANCE` when
-  `tuning.wardrobe` is empty, otherwise swaps the outfit paragraph while keeping the face and the
-  home ground. This never reaches the system prompt; `system.ts` does not import it.
+- `ninaAppearance` — the **wardrobe seam**. Returns `NINA_APPEARANCE` when the wardrobe is empty,
+  otherwise swaps the outfit paragraph while keeping the face and the home ground. The wardrobe it
+  reads is `nina_image_prefs.wardrobe` since F41 R3, not `nina_tuning`'s. This never reaches the
+  system prompt; `system.ts` does not import it.
 - `ninaTraitsBlock` — traits first, then dials, `\n\n`-joined. **Returns `''` at
   `NINA_TUNING_DEFAULTS`**, which is the contract phase 3 relies on: an empty block means no section
   header is emitted.
@@ -420,7 +425,8 @@ turn is always one character. `nina_turns.tuning_revision` records which setting
 turn; `prompt_version` identifies the assembler, the revision identifies what it assembled, and only
 the pair answers "what was she set to when she said that".
 
-**`NINA_PROMPT_VERSION` is `4`.** The `3 -> 4` bump is R2: `HOW YOU TALK` gained
+**`NINA_PROMPT_VERSION` was `4` for the whole admin-responsive-nina-intimacy set; it is `6` today.**
+The `3 -> 4` bump is R2: `HOW YOU TALK` gained
 `ninaManjaRegisterBlock(tuning)` directly under `JAKARTA_REGISTER` — an amendment two paragraphs from
 its rule is an amendment the model may not connect — and `EXACTLY HOW YOU SOUND` gained
 `ninaGirlfriendVoiceBlock(tuning)` as a second entry after `VOICE_EXAMPLES_BLOCK`, whose lead-in reads
@@ -434,14 +440,27 @@ it either, and the reason is the same shape**: `horny` adds a twelfth entry to `
 band-keyed clause to `proactiveTuningSuffix` and a floor under `verbosity` — every one of them
 silent at the trait's default of 0, so `NINA_TUNING_DEFAULTS` still renders version 4's exact bytes.
 No section moved, no tool schema moved, and `NINA_SECTION_TITLES` is still ten. **`NINA_PROMPT_VERSION`
-is therefore `4` for the whole admin-responsive-nina-intimacy set, bumped once, by R2.** The changelog
+is therefore `4` for the whole admin-responsive-nina-intimacy set, bumped once, by R2.**
+
+**Two bumps have landed since, each the single bump of its own set.** `4 -> 5` is the
+nina-instructor-character set's sixth relationship and its coaching mechanics (that set's phase 3;
+see *"The Instructor character"* below). **`5 -> 6` is `P1-NIN-A023`, the shortcut block — and it is
+the first bump in this package's history that moved NO SYSTEM TEXT AT ALL.** `prompts/system.ts` and
+`prompts/tools.ts` were not opened, `buildNinaSystemPrompt` renders version 5's exact bytes at every
+tuning, and `tests/__snapshots__/nina.prompts.test.ts.snap` was deliberately **not** regenerated
+because it still passes. What changed is the **assembler**: `userTurnText` in `turn.ts` gained one
+conditional block fed by two new optional `NinaTurnInput` fields. The bump is still right, and this
+file's own line above says why in as many words — *`NINA_PROMPT_VERSION` identifies the ASSEMBLER,
+not the output*. A turn that can be sent a two-kilobyte standing directive it could never have been
+sent before is exactly the kind of behaviour change `nina_turns` has to be able to date, so those
+turns must be distinguishable from version 5's. The changelog
 for each version lives as a comment above the constant in `prompts/index.ts`.
 
 ## The camera is a function of the tuning
 
 **R5.** `buildNinaImagePrompt` takes an optional `NinaTuning`; absent or at `NINA_TUNING_DEFAULTS` it
 renders the prompt that shipped, byte for byte, and `tests/nina.imagerecipe.test.ts` asserts both
-ends of that. A non-empty `wardrobe` replaces the canon outfit through `persona.ts`'s
+ends of that. A non-empty image-prefs `wardrobe` replaces the canon outfit through `persona.ts`'s
 `ninaAppearance`, and `steamy` / `flirty` at band `high` add a `POSE AND PRESENCE:` block — `steamy`
 to the selfie only, because the avatar is a head-and-shoulders crop. `selfiegen.ts` is the
 chat-selfie entry point, the mirror of `avatargen.ts`; both read the tuning themselves, which is why
@@ -454,13 +473,100 @@ selfie settle test is an exact `nina_messages.turn_id` match rather than a same-
 `generate_image` is a tool he can ask for six times a day, and a photo he asked for must never settle
 a promise he did not keep. A promise with no `reward` field is today's avatar promise, unchanged.
 
+## The camera is a function of the PREFS now (the `nina-image-generation-tab` set)
+
+`## The camera is a function of the tuning` above describes what shipped before this set. The
+picture is now driven by a second row, `nina_image_prefs`, and the tuning no longer supplies a
+wardrobe at all.
+
+### `imageprefs.ts` — the vocabulary (phase 1)
+
+Zero imports, by rule, exactly like `tuning.ts`: `NINA_IMAGE_PROMPT_LENGTH_MIN` / `_MAX` /
+`_DEFAULT` (50, the middle rung), the six focus keys `face|skin|boobs|butt|thighs|calves` with
+their `NinaImageFocusSpec.userSaid` copy, the free-text bounds, `NINA_IMAGE_REFERENCE_SOURCES`
+(`'none' | 'album' | 'chat'`), `NinaImageReference { source, id }` with `''` as the empty id,
+`NINA_IMAGE_PREFS_DEFAULTS`, the coercers and `NinaImagePrefs`.
+
+**This module is the set's authority on spelling.** `ninaPromptLengthRungFor` takes a **band
+index**, so callers also import `ninaBand` from `tuning.ts` — the band vocabulary is not copied
+here, and re-deriving it elsewhere is forbidden.
+
+`readNinaImagePrefs` / `writeNinaImagePrefs` / `listNinaPhotoReferences` /
+`resolveNinaPhotoReference` live in `queries.ts`. No row means the defaults at `revision: 0`;
+`revision >= 1` is the proof an operator actually saved something.
+
+**The reference union contains no duplicate photograph.** `listNinaPhotoReferences` returns
+`NinaPhotoRefPage { rows, total, offset, limit }` over `nina_avatars` plus **original**
+`kind='generated'` chat rows, newest first, one bounded page. The chat side goes through
+`generatedChatPhotoScope`, whose `isOriginalPhoto()` conjunct excludes any row with
+`source_avatar_id` or `source_image_id` set, and the count shares that scope so page and total
+cannot disagree. **Inlining `eq(kind, 'generated')` re-admits every reference row and fails a
+source-level test** — that is how one album face would otherwise appear twice, once as its avatar
+row and again as the chat row pointing at it.
+
+### `persona.ts` and `imagegen.ts` — the body canon and the ladder (phase 2)
+
+`NINA_BODY_SENTENCES` / `NINA_BODY` / `NINA_BODY_AVATAR` / `ninaBodyBlock`, and `NINA_APPEARANCE`
+reordered **body → face → outfit**. `NINA_FACE` lost the body clause it had been carrying, and
+`Lean` / `narrow shoulders` are repealed.
+
+**The body cannot be switched off.** It is unconditional text in the subject paragraph, not a focus
+option; deselecting every focus key still yields a prompt naming all four body facts, at every rung
+of the ladder. A property test proves it over the full combination space rather than by example.
+"Focus on" adds emphasis clauses *on top*.
+
+`buildNinaImagePrompt` implements a five-rung length ladder (`NINA_PROMPT_RUNGS`,
+`ninaPromptRung`, `NINA_PROMPT_LENGTH_FALLBACK`) keyed off `ninaBand`, the six focus clauses, and
+the `VENUE:` / `TIME:` / `NOTES:` blocks. **The face/outfit cut sits at or below rung 2**, because
+50 is what an operator who never opens the tab gets and a first-run prompt that dropped the face
+would be a downgrade on what shipped before.
+
+`ninaAppearance(prefs: NinaImagePrefs, detail?)` is **nominally** typed on the prefs, so a leftover
+`ninaAppearance(tuning)` is a compile error rather than a silent pass. `selfiegen.ts` and
+`avatargen.ts` read both rows in one `Promise.all`, which is why `avatartools.ts`, `imagetools.ts`
+and `promises.ts` needed no edits at all.
+
+### `imagerecipe.ts` / `imagecall.ts` — the reference on the wire (phase 3)
+
+`buildImageRequestBody` gained an optional reference and emits exactly one `input_references` entry,
+`{ type: 'image_url', image_url: { url } }`, in the shape the repo has a verified 200 for. **With no
+reference the payload is byte-identical to what it was** — asserted against a literal, not
+re-derived.
+
+The reference is fetched from Blob and sent as a `data:` URL; a fetch failure **degrades to an
+unanchored generation with a warning, never a crash**. `NinaImageJobArgs.referenceUrl` is read only
+through `ninaImageReferenceUrl`.
+
+**An anchored call costs a different timeout, and the arithmetic is asserted for both.**
+`NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS = 220_000` is selected by `ninaImageCallTimeoutMs(anchored)`,
+and `NINA_IMAGE_RUN_BUDGET_MS` moved `200_000 → 240_000` so an anchored attempt fits at all. The
+threshold chain holds on both paths: `45 + 150 + 20 = 215` and `45 + 220 + 20 = 285`, each within
+the 300 s host ceiling. A measured anchored generation took 148.9 s against the old 150 s ceiling,
+so without this the feature would have aborted about half its own work.
+
+`imagerecipe.ts` still **imports nothing** — the worker loads it by relative path under
+`--experimental-strip-types`.
+
+### `imagetest.ts` — the admin's test generation (phase 6)
+
+`selfiegen.ts`'s sibling: cap check first, seed, prompt assembled from the **saved** prefs,
+`source: 'admin'`, the reference threaded onto phase 3's `referenceUrl`, one job row, one
+`fireNinaImageGeneration`, and it returns without awaiting the picture.
+
+It uses `purpose: 'selfie'` deliberately, so `finishSelfie` writes the message + `kind: 'generated'`
+image pair exactly as a chat selfie does — which *is* the "test result lands in Chat photos"
+requirement, with no second writer of the invariant that a photograph always has a message. A test
+therefore puts a visible bubble in the runner's chat, and `photo_only: true` on the carrier makes it
+cleanly removable with the photograph. It spends one generation off `NINA_IMAGE_DAILY_CAP` **plus a
+caption call**, and the panel says so before the click.
+
 ## Module map
 
 ### Chat turn pipeline
 | File | Purpose |
 |---|---|
-| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. |
-| `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. |
+| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. Since `P1-NIN-A023` it also reads the live shortcut table (fourth entry in the turn's `Promise.all`) and bumps the fired rows fire-and-forget. |
+| `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. Also the **one** place shortcuts are matched (`shortcutHits`, once per turn) and rendered into the user turn (`shortcutBlock`). |
 | `tools.ts` *(T)* | Tool *dispatch*. Gateway-injected, so it tests with no DB. |
 | `schema.ts` *(T)* | Zod output contract for `SEND_TOOL` and the tool arg schemas. |
 | `gateway.ts` | Production DB-backed implementations of the three injected ports. |
@@ -499,7 +605,9 @@ how a schema change quietly rewrites her character.
 ### Memory, promises, nags, patterns
 `memory.ts` (slot vocabulary and all pure memory logic), `distill.ts` (post-turn background
 distillation), `promise.ts` *(T)* / `promises.ts` (the pure and impure halves of "did she keep her
-promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern detection).
+promise?"), `nags.ts` (escalation and decay), `patterns.ts` (training-pattern detection),
+`shortcuts.ts` *(T)* (the whole of "did he type a code, and which" — see below; **read on every chat
+turn by `turn.ts` since `P1-NIN-A023`**).
 
 ### Proactive
 `proactive.ts` — `evaluateAndEmitForUser` (the cron path) and `emitRunCommitted` (fired by
@@ -540,11 +648,25 @@ stores; zero imports by rule, because three hosts outside the package reach for 
 `chatview.ts` *(T)*, `reply.ts` *(T)*, `reveal.ts` *(T)*, `scroll.ts` *(T)*, `live.ts` *(T)*,
 `edit.ts` *(T)* (the edit/delete rules for one message, all three bubble gestures —
 see *"Tapping a bubble opens the actions sheet"* below — **and** `canResendMessage`, R5's
-his-bubbles-only gate for the sheet's third item).
+his-bubbles-only gate for the sheet's third item), `chrome.ts` *(T)*.
+
+**Two of those own `/nina`'s geometry, and they own it as strings.** `chatview.ts` carries the
+composer's own box — `keyboardOverlapPx`, then the pair `composerBottomCss` (its `bottom`) and
+`composerPadBottomCss` (its `padding-bottom`), which are correct only together. `chrome.ts` carries
+the full-screen chrome around it: the `NinaBarState` machine (`nextBarState`, `autoHideDelayMs`,
+`barToggleGlyph`), the sizing constants `CHROME_CONTROL_PX` / `CHROME_CONTROL_GAP_PX` /
+`COMPOSER_RESTING_PX`, the shared `NINA_CHROME_CONTROL_CLASS`, and `controlBottomCss` for the two
+floating `<`/`^` discs. They return **CSS strings rather than numbers** because every one of them
+has to add `var(--safe-bottom)` — which is `env(safe-area-inset-bottom)`, readable to CSS and to
+nothing else — so the arithmetic cannot be finished in JavaScript. `chrome.ts` imports
+`NINA_BAR_VISIBLE_VAR` from `chatview.ts` so the two files gate on one spelling of one variable;
+see the composer section below for why that single spelling is load-bearing.
 
 ### Persistence
 `queries.ts` — every Drizzle query for the `nina_*` tables, including `readNinaTuning` /
-`writeNinaTuning`.
+`writeNinaTuning`, and — since `P1-DB-A004` — the five `nina_shortcuts` statements
+(`listNinaShortcuts`, `insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`,
+`bumpNinaShortcutUses`) described below.
 
 `tuningFromRow` / `tuningToColumns` are **the one place the flat row and the nested model meet**, and
 after R4 and R3 that is **thirty-eight** snake_case columns against `traits.anger` /
@@ -552,8 +674,9 @@ after R4 and R3 that is **thirty-eight** snake_case columns against `traits.ange
 thirty-ninth being `updated_at`, which nothing maps. The toggles are **seventeen nullable `boolean`
 columns** (`relationship_enabled`, then one per trait and per dial). Sixteen of them arrived with
 `drizzle/0006_chubby_wild_child.sql` (journal index 6, sixteen `ADD COLUMN`); phase 5's
-`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` now ends at `0008`, whose one
-statement is R2's `nina_turns.deleted_at` and which is generated but NOT yet applied**) adds the
+`drizzle/0007_graceful_mercury.sql` (journal index 7 — **`drizzle/` ended at `0008` then, whose one
+statement is R2's `nina_turns.deleted_at` and which is generated but NOT yet applied; it now ends at
+`0012_nina_shortcuts`**) adds the
 seventeenth alongside the score column, in three statements: `ADD COLUMN "horny" integer NOT NULL
 DEFAULT 0`, then `ALTER COLUMN "horny" DROP DEFAULT`, then `ADD COLUMN "horny_enabled" boolean`. The
 temporary default is drizzle's own way to add a `NOT NULL` column to a populated table and it is
@@ -1488,6 +1611,369 @@ second rhythm. `liveSessionId` is deliberately not adopted from the result, beca
 resent is already in the conversation this screen is polling; a resend cannot create a session the
 way a first send can.
 
+## The composer paints to the bottom edge (`P1-RI-A023`, phase 1 of 2)
+
+Three changes to the same bar, all of them geometry or paint, none of them touching a turn, a prompt
+or a query. `/nina`'s resting state is a **hidden** tab bar, and all three defects lived in that
+state — which is why they survived: the showing state was the one being reasoned about.
+
+### R1 — the unpainted strip, and the two gates that close it
+
+The reported bug was *"ada gap diantara chat query field dengan bagian bawah"* — a gap between the
+composer and the **bottom of the screen**, not the tab-bar seam that an earlier fix had already
+closed. The cause was one term on the wrong side of a multiplication. `composerBottomCss` used to
+emit `calc(59px * var(--nina-bar-visible, 0) + var(--safe-bottom))`: the bar clearance was gated on
+the flag and the home-indicator inset was **not**, on the reasoning that "the inset is the phone's,
+not the bar's, and it is there whether or not the bar is". That is true of the phone and false of
+this element's offset. With the flag at 0 the offset collapsed to one inset, so the bar's bottom
+edge floated an inset above the viewport and the conversation showed through the strip underneath.
+
+The fix moves the inset **inside** the gate and gives the element a second, complementary term of
+its own — `composerPadBottomCss`, a new export beside the first, wired through `ChatScreen.tsx` as
+the required `padBottomCss` prop on `Composer`:
+
+| bar state | flag | `bottom` | `padding-bottom` | where the inset is counted |
+|---|---|---|---|---|
+| hidden (resting, and SSR) | 0 | collapses to `0` | `var(--safe-bottom)` | once, as the element's own padding |
+| showing | 1 | `59px + safe-bottom` | `0` | once, in the offset |
+| keyboard up | — | `<overlap>px` | `0` | not at all — the indicator is behind the keyboard |
+
+`1 - var(--nina-bar-visible, 0)` is the complement of the gate the offset uses, so the inset is
+contributed by **exactly one** of the two terms in every state. That was the invariant the old
+comment was defending; it simply did not cover the state this screen rests in.
+
+**`composerPadBottomCss` takes the overlap, not just the flag**, and that is not redundancy.
+Engaging the composer *hides* the bar (`nextBarState`'s `'composer-engaged'`), so the flag is 0 with
+the keyboard up and a flag-only rule would pad by the inset there — lifting the textarea a thumb's
+width off the keyboard's top edge, the same class of mistake as the unpainted strip, one state over.
+The overlap is the only signal that separates "resting with no bar" from "keyboard up with no bar".
+
+`calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))` is valid CSS: a sum of lengths
+times a plain number is a length. The multiplier form is kept for the reason it was chosen — it
+holds the number 59 in the function the caller already passes it to, so the flag says one thing only
+(*is the bar on screen*) and cannot disagree with `TAB_BAR_OUTER_HEIGHT_PX` about how tall the bar
+is.
+
+### R2 — 8 px shorter, across four hand-copied sites
+
+The repo owner asked for the query field to be *"lebih kecil jadi lebih makan lesser space"*.
+Vertical padding was the **only** reclaimable dimension: the textarea's `min-h-11` and every round
+control in that bar are the 44 px iOS tap floor, and the 16 px font is forced by `app/globals.css`
+because Safari zooms the viewport on focus below it. So `py-3` -> `py-2` and the resting height goes
+68 -> 60 — the same trade `CHROME_CONTROL_PX` made when the same voice asked for the floating
+controls to be "much smaller".
+
+That number is written in **four places, and a change to any one of them changes all four**:
+
+| Site | Form |
+|---|---|
+| `components/nina/Composer.tsx` | the markup — `px-5 py-2` over a `min-h-11` textarea |
+| `lib/nina/chrome.ts` | `COMPOSER_RESTING_PX = 60` |
+| `components/nina/ChatScreen.tsx` | `COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60` |
+| `components/ui/AppShell.tsx` | `BOTTOM_GAP.chat` = `pb-[calc(7rem+var(--safe-bottom))]` (60 + 8 + 32 + 12 = 112) |
+
+They are hand-copied rather than imported because Tailwind cannot read a constant, and because
+`ChatScreen.tsx` would otherwise pull the chrome state machine into its module graph for one number.
+A stale literal in the shell is the dangerous one: it reads as *a gap under the conversation* rather
+than as a bug, and has now survived review twice — once when the floating control went 44 -> 32 and
+once here.
+
+**`COMPOSER_RESTING_PX` is the content box and carries no inset.** The element's *measured* height
+is 60 while the bar is showing and 60 + the inset while it is hidden, and the constant is neither of
+those, because an inset is `env(safe-area-inset-bottom)` and no TypeScript number can stand for one.
+That distinction is the whole of the fallback argument below.
+
+### R3 — the floating controls' glass, verbatim
+
+Asked for in those words: *"bikin backgroundnya frosted glass, persis kaya small buttons < and up"*.
+The bar now wears `bg-card/40 backdrop-blur-md backdrop-saturate-150`, which is
+`NINA_CHROME_CONTROL_CLASS`'s fill, blur and saturation exactly, in place of `bg-paper/90
+backdrop-blur-md`. At 90 % opacity the blur was decorative — almost nothing showed through it — and
+`backdrop-saturate-150` is what keeps the conversation's colour from going grey behind the glass,
+which is the difference between frosted and merely dim.
+
+**A hairline and not a ring**, which is the one place this departs from the discs on purpose:
+`border-t border-rule/50` rather than `ring-1 ring-rule/50`. The controls are free-floating and need
+an edge on all sides; this bar spans the viewport and has exactly **one** exposed edge, so a ring
+would draw a hairline down both screen edges and across the bottom where there is nothing on the
+other side of it. The `/50` weight carries over so the pair still reads as one system —
+`border-rule` at full weight, what this had, reads as chrome rather than as glass.
+
+### `controlBottomCss` gates its inset too — except in the fallback, deliberately
+
+Because the inset is now *inside* the element `controlBottomCss` measures, adding it again there
+would count the phone's inset twice and float the two discs one inset too high. So its inset term is
+multiplied by the same `NINA_BAR_VISIBLE_VAR` — contributing when the bar is showing (where the
+composer's padding is 0 and the inset rides in its offset) and nothing when the bar is hidden (where
+the measurement already carries it). Same variable, same file-crossing import, so the two cannot
+drift apart.
+
+**The unmeasured branch stays ungated, and that asymmetry must not be "simplified" away.**
+`ChatChrome` seeds `composerHeightPx` at `0` and measures in a passive effect, so the fallback is
+what renders in the **server's HTML and on the first client paint of every conversation** — not a
+hypothetical frame. There is no measurement to carry the inset there, and `COMPOSER_RESTING_PX` is
+the content box, so the fallback has to supply it itself. Gate that branch and the lane is emitted
+at 68 px while the composer's real top edge is at 60 px + inset, which puts both floating discs
+**behind** the composer's `z-40` glass for that first paint. The two branches emit the same length
+and a different inset term, on purpose; `chrome.test.ts` asserts they differ so nobody folds them
+into one.
+## Shortcuts — one code stands for a directive he wrote once (F36, `P1-DB-A004` + `P1-NIN-A023`, phases 1-2 of 4)
+
+He types `🍑` and means four sentences he wrote months ago. Phase 1 shipped the **table, the matcher
+and the queries, and wired none of them** — no route, no component, no prompt change. **Phase 2
+(`P1-NIN-A023`) is the wiring**: a trigger in his message now carries that shortcut's whole
+expansion into the user turn as an explicit directive, immediately above `HE JUST SAID:` — see
+*"Phase 2 — the turn fires it"* at the end of this section. Phase
+3 is the admin registry, phase 4 lifts the existing codes out of the memory ledger. The table itself
+is `nina_shortcuts`; `lib/db/.workflows/package_readme.md` carries its columns, its two indexes and
+why it is a table rather than more `nina_memory_facts` rows.
+
+### `shortcuts.ts` is zero-import, and that is a load-bearing invariant
+
+**No value import, no type import, no `server-only`, nothing from `@/lib/db/*`.** It is
+`tuning.ts`'s and `images.ts`'s rule, and here it pays for **two** consumers rather than one:
+
+- phase 3's `'use client'` table needs `NINA_TRIGGER_MAX`, `NINA_SHORTCUT_LABEL_MAX` and
+  `NINA_SHORTCUT_EXPANSION_MAX` in the browser to size and cap its inputs;
+- phase 4's `scripts/nina-shortcuts-import.mjs` **imports this module directly** under
+  `--experimental-strip-types`, so the importer's `match_key` is computed by literally the same
+  function the matcher compares against — no second implementation for the two sides to disagree
+  about.
+
+So a value import added here does not merely fatten a bundle: **it stops phase 4's script booting at
+all.** `scripts/nina-memory-reap.mjs`'s header records the one case where a `.mjs` cannot import a
+`.ts` — a module whose own imports are runtime values (drizzle) rather than `import type` — and zero
+imports is exactly the condition that keeps this file out of it. `shortcuts.test.ts` reads this
+file's own source and fails on an `import` line, so the property is checked rather than intended.
+That is also why `NinaShortcutMatchable` is declared here as a plain interface instead of imported
+from `lib/db/schema.ts`.
+
+### Normalisation is five operations, in this order
+
+`normalizeNinaTrigger` folds both the trigger and the message it is looked for in: **NFC**, then
+**remove every `U+FE0F`**, then collapse whitespace runs to one space, then trim, then lowercase. It
+is idempotent, so calling it on a stored `match_key` is free.
+
+The `U+FE0F` line is the highest-value one in the file and the one a "simplification" deletes first:
+`✌️` in the ledger is `U+270C U+FE0F` while the same emoji from an iOS keyboard may arrive as bare
+`U+270C`, and folding the variation selector out of *both* sides is what makes those one shortcut.
+**`U+200D` (zero-width joiner) is deliberately kept** — stripping it would merge `👩‍❤️‍👨` into the three
+glyphs it is built from and collide two distinct shortcuts on one `match_key`. `NINA_TRIGGER_MAX =
+16` exists to leave room for exactly that (the longest real trigger, `nom nom`, is 7 UTF-16 units).
+
+### A glyph and a word need different boundary rules
+
+`classifyNinaTrigger` returns `'word'` for a trigger containing any letter or digit and `'glyph'`
+otherwise — deliberately **not** an emoji regex, because the question is not "is this an emoji" but
+"can this be confused with a fragment of a word". A `'glyph'` matches anywhere (`ini🍑dong` contains
+the peach and means it); a `'word'` matches only when it touches neither a letter nor a digit on
+either side (`yumm` inside `yummy` is him saying a word, not using the code). Five of the
+twenty-four production triggers are Latin tokens, so this is not hypothetical.
+
+The word rule is `(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])` and **not `\b`**, which is an ASCII word
+boundary: it would put a boundary in the middle of `plak!` and none at all around an accented
+letter. The lookbehind is the one construction a runtime could refuse, so it is wrapped in a
+`try` — a refusal degrades that one shortcut to "did not fire" instead of failing the turn.
+
+### Exported API
+
+```ts
+const NINA_TRIGGER_MAX = 16                 // UTF-16 units, i.e. what zod's .max() measures
+const NINA_SHORTCUT_LABEL_MAX = 80
+const NINA_SHORTCUT_EXPANSION_MAX = 2000
+const NINA_SHORTCUT_MAX_FIRED = 4           // fired PLUS in-play, combined
+const NINA_SHORTCUT_LOOKBACK = 6            // earlier RUNNER messages scanned
+const NINA_SHORTCUT_BLOCK_MAX_CHARS = 5000
+
+function normalizeNinaTrigger(raw: string): string
+function classifyNinaTrigger(normalized: string): NinaShortcutKind      // 'glyph' | 'word'
+function matchNinaShortcuts(input: {
+  shortcuts: readonly NinaShortcutMatchable[]
+  current: string | null
+  recent?: readonly string[]
+}): NinaShortcutHits                                                    // { fired, inPlay }
+function renderNinaShortcutBlock(hits: NinaShortcutHits | null | undefined): string | null
+```
+
+`current` is his message this turn — **nullable rather than optional**, because a proactive turn has
+none. `recent` is **earlier runner messages only**, newest first: phase 2 slices it out of
+`loadedContext.conversation.window` with no new query, and **Nina's own bubbles are never passed**,
+because an expansion she echoed would re-fire itself forever.
+
+`fired` is ordered by where each trigger first occurs in `current`, so the block reads in the order
+he typed them; ties go to the longer key then the lower id, so the result is total and reproducible.
+`inPlay` is by how recent the message was, then by offset within it. A shortcut is never in both —
+`fired` wins, because the strongest signal is that he just used it. `fired` fills
+`NINA_SHORTCUT_MAX_FIRED` first and `inPlay` gets what is left, which may be nothing: four codes in
+one message means no still-in-play context at all, and what he just said outranks what he said three
+messages ago.
+
+### `renderNinaShortcutBlock` returns `null` only when BOTH lists are empty
+
+Not an empty string, not a header with no body. Plan invariant 2 is that a turn in which nothing
+fired carries **zero** shortcut bytes, and `null` is what lets phase 2's integration be one
+`if (block != null)`.
+
+**An in-play-only hit still renders a block**, under a `STILL IN PLAY` header — that is the whole
+point of `inPlay`: one production shortcut (`🫦`) opens a mode that runs until he says `💦`, and the
+instruction has to still be legible on the turn where he only says *"terusin"*. So `null` means both
+lists are empty, never merely that `fired` is.
+
+The two headers are the **only** instruction text this feature adds anywhere. There is deliberately
+no section in `prompts/system.ts` telling her what a shortcut is: every word she needs travels with
+the shortcut, adjacent to the expansion it governs, and costs nothing on the turns where nothing
+fired. That is also why phase 2's `NINA_PROMPT_VERSION` bump (5 → 6) moved **no system text at
+all**: `buildNinaSystemPrompt` is byte-identical to version 5's at every tuning and
+`tests/__snapshots__/nina.prompts.test.ts.snap` passes unregenerated. What changed is the
+*assembler* — `userTurnText` — and the constant identifies the assembler.
+
+The 5000-character ceiling is enforced by **dropping whole entries from the end**, not by cutting
+text, because half a directive can invert a directive (`…jangan` and `…jangan berhenti` are
+opposites). Four maximal expansions are 8000 characters against a 5000 ceiling, so this path is
+reachable in practice. Mid-sentence truncation survives only as the last resort for a *single* entry
+over the ceiling on its own, where the alternative is a header with nothing under it.
+
+### Nothing here throws (plan invariant 7)
+
+Every entry point tolerates `null`, `undefined`, a wrong-typed field, a duplicate id and a
+`match_key` that folds to nothing, and degrades to "nothing fired". A turn that dies because a
+trigger was malformed is a turn lost to a feature that is meant to be purely additive.
+`shortcuts.test.ts` is 32 tests, table-driven over **the twenty-four real production triggers**
+rather than invented ones — one case walks every single one of them and asserts it fires when he
+sends it alone, so a normalisation change cannot pass by breaking a trigger nobody thought to name.
+
+### The five queries, and where `match_key` comes from
+
+`listNinaShortcuts(userId, { onlyEnabled? })` is the registry: bare it returns every row including
+the disabled ones (a disabled code must be visible to be re-enabled), and with `{ onlyEnabled: true }`
+it is phase 2's every-turn read against `nina_shortcuts_user_enabled_idx`. It orders by `match_key`
+then `id` — a registry is scanned by trigger, and `(user_id, match_key)` is UNIQUE, so that ordering
+is total and the read is an index scan rather than a sort.
+
+`insertNinaShortcut` **throws on a duplicate trigger, and that is the design**: Postgres `23505`
+from the unique index is the authority on "this code already exists", where a pre-flight `SELECT`
+would be correct until two tabs raced. The caller turns the violation into a sentence. Phase 4's
+importer wants the opposite behaviour on a re-run and gets it with its own `onConflictDoNothing`,
+which is why this function bakes none in.
+
+`updateNinaShortcut` returns the **row**, not a boolean, because `match_key`, `kind` and
+`updated_at` are all derived server-side and an admin table re-renders the values it did not
+compute. An empty patch is a no-op returning the row unchanged rather than `null`, so "nothing to
+save" and "no such shortcut" stay distinguishable. `deleteNinaShortcut` is a hard delete with no
+tombstone — a deleted directive that still exists somewhere is the failure this table was built to
+end — and `false` means already gone *or* never his, which are the same outcome in this file.
+
+`bumpNinaShortcutUses(userId, ids)` is one statement, `uses = uses + 1` and `last_used_at = now()`
+for every id at once. **`sendNinaMessage` calls it fire-and-forget once the turn has returned, and
+the caller must `.catch()`** — that call site landed with `P1-NIN-A023`: nothing reads `uses` on the
+turn path, and this is telemetry rather
+than bookkeeping the conversation depends on. The increment is in SQL rather than read-then-written
+because a background turn and a proactive sweep are a real concurrent pair — `upsertNinaNag`'s
+`count` is the precedent.
+
+**`match_key` and `kind` are derived inside the query layer by one private `derivedTrigger` helper,
+and `NinaShortcutInsert` / `NinaShortcutPatch` have no field for either.** That is not a convention
+a reviewer has to enforce: a caller *cannot* mislabel a row, and the unique index can never see an
+underived key. `toShortcutRecord` is the mirror on the read side — `nina_shortcuts.kind` is untyped
+`text`, so an unrecognised value is **re-derived** through `classifyNinaTrigger` rather than
+rejected, invariant 7 at the one boundary where a hand-edited `'Glyph'` would first be noticed.
+
+Three names across three layers, no duplication: `NinaShortcutRow` (the raw drizzle row in
+`lib/db/schema.ts`, `kind` as bare `string`), `NinaShortcutRecord` (`queries.ts`, the same fields
+with `kind` narrowed), and `NinaShortcutMatchable` (`shortcuts.ts`, the structural minimum the
+matcher needs). The record is a **superset** of the matchable, deliberately: phase 2 hands the array
+straight to `matchNinaShortcuts` and phase 3's table renders the extra fields, so neither needs a
+mapping step.
+
+### Phase 2 — the turn fires it (`P1-NIN-A023`)
+
+The whole integration is **two optional input fields, one required result field, and one conditional
+`parts.push`**. No new module, no new query, no new provider call, no migration.
+
+```ts
+interface NinaTurnInput {
+  shortcuts?: readonly NinaShortcutMatchable[]   // what listNinaShortcuts(userId, {onlyEnabled:true}) returns
+  recentRunnerTexts?: readonly string[]          // HIS earlier messages, newest first, already sliced
+}
+interface NinaTurnResult {
+  firedShortcutIds: readonly string[]            // REQUIRED. [] on most turns.
+}
+
+function shortcutHits(input: NinaTurnInput): NinaShortcutHits   // module-private
+function shortcutBlock(hits: NinaShortcutHits): string | null   // module-private
+function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string  // second parameter is new
+```
+
+**The matcher runs exactly ONCE per turn, and the place is `runNinaTurnWith`** — beside
+`buildNinaSystemPrompt`, before the first model call, for the same reason: everything that defines a
+turn must be fixed before the up-to-four calls it may make. The single `NinaShortcutHits` feeds
+**both** `userTurnText` (which renders the block) and `firedShortcutIds` (which `actions.ts` bumps),
+so the block the model was actually sent and the rows whose counter moves can never disagree. A
+second match inside the action would take its own view of the window and its own idea of which
+message is current, and the bug that produces — *"`/admin/shortcuts` says 🍑 fired and the prompt did
+not contain it"* — is unfalsifiable from the outside. That is why the ids ride on the **result** and
+are not recomputed by the caller, and why they are **not** on `NinaTurnTrace`: `nina_turns` has no
+column for them, and this is a value the caller acts on rather than an audit field.
+
+**Where the block goes, and why there.** After the attached-run block and **immediately before
+`HE JUST SAID:`** — R12's rule applied to a different object. A run he attached is the *subject* of
+the message; a fired shortcut is the *register* the message is in, and it is the standing
+instruction his next sentence has to be read under, so she reads it before the sentence rather than
+after it. `turn.test.ts` pins the three offsets in order.
+
+**A turn that fired nothing carries ZERO shortcut bytes (invariant 2)** — no header, no empty block,
+not one byte, so its user turn is byte-identical to the one this repo produced before the feature
+existed. That is enforced twice: `shortcutBlock` short-circuits on empty hits in *this* file rather
+than trusting a renderer in another one, and `renderNinaShortcutBlock` returns `null` rather than
+`''`. It is the whole reason this is a user-turn block and not a system-prompt section — two dozen
+expansions would otherwise cost several kilobytes on every turn, including all the ones where he used
+none of them. `turn.test.ts` asserts it three ways: field absent, `[]`, and rows present that do not
+match.
+
+**An in-play-only hit DOES render a block** — under the `STILL IN PLAY` header — while
+`firedShortcutIds` stays `[]`. Both halves are deliberate: the `🫦` mode has to still be legible on
+the turn where he only says *"terusin"*, and counting it again on that turn would make
+`nina_shortcuts.uses` a measure of how RECENTLY he used a code rather than how OFTEN.
+
+**Both helpers are wrapped in `try` (invariant 7).** A malformed trigger is a row an admin typed on
+his phone, not a programming error; the matcher is a pure zero-import function that is not supposed
+to throw either, and this is belt to that brace. A refusal degrades to "nothing fired" with a
+`console.warn`, never to a lost reply — `turn.test.ts` drives a regex-metacharacter trigger (`(([`)
+through the real loop and asserts `source: 'llm'`.
+
+**The two new fields are OPTIONAL, and that is a decision.** Contrast `tuning`, which is required
+because a forgotten call site would silently ship the default character. Nothing of the kind applies
+here: `proactive.ts` has no runner text at all, and the `tests/live/` and `tests/integration/`
+builders exercise no shortcut — "this turn carried none" is the correct behaviour on every one of
+them, so a required field would only force fixture rewrites. Absent, `[]`, and "present but nothing
+matched" are the same turn.
+
+**The action's side (`actions.ts`).** `listNinaShortcuts(userId, { onlyEnabled: true })` is a
+**fourth entry in the existing three-way `Promise.all`** — one `(user_id, enabled)`-indexed read of
+a table holding tens of rows, on a connection the turn is already opening, so it costs no wall clock
+the turn was not already spending, and a row added on `/admin/shortcuts` fires on his very next
+message with no invalidation step. **Its rejection is swallowed** (`.catch(() => [])`, invariant 7):
+it is the one entry of the four that is garnish — a tuning that will not load is the wrong Nina and
+a context that will not load is no turn, but a shortcut table that will not load is a turn with no
+shortcut in it, which is what most turns are anyway. `recentRunnerTexts` is **derived from the
+already-loaded conversation window with no new query** — three array operations over ~40 objects in
+memory: filter to `role === 'runner'`, drop the message this turn is answering (a trigger in it
+FIRED, and letting it also count as carried-over would bump one shortcut twice for one send),
+`reverse()` to newest-first, `slice(0, NINA_SHORTCUT_LOOKBACK)`. Hers are excluded (A3) because an
+expansion she echoed back would re-fire itself for as long as it stayed in the window.
+
+The usage bump sits **above all four exits** of the send path (`session-gone`, the null payload, the
+happy path, a throw), so one call site covers them: a shortcut fired the moment its expansion went
+into the payload the model was billed for, and counting only the turns that survived to a bubble
+would make the column a measure of Nina's uptime rather than of his habits. It is `void … .catch()`
+rather than `await`, and deliberately **not** `after()` — we are already inside one, and
+`tests/nina.resend.test.ts` drains that queue by hand and asserts its length, so a second entry
+would change what that suite measures.
+
+**`NINA_PROMPT_VERSION` 5 → 6 is this set's single bump, and phase 2 owns it.** No later phase may
+touch the constant; two bumps would date two commits to one change. The reason it is a bump at all
+despite no system text moving is in *"The prompt is a function of the tuning"* above.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
@@ -1498,11 +1984,16 @@ all — not the one the browser asked for. Then `ChatScreen.tsx` calls `sendNina
 
 1. `requireUserId`, then validate body / `replyToId` / tickets.
 2. Persist the user's message.
-3. `loadNinaContext` → `buildNinaContext`, pulling memory, patterns and nags.
-4. `runNinaTurn` with `NINA_FULL_TOOL_SET` and the prompts. Tool rounds go through
-   `dispatchNinaTool`; `generate_image` opens a job row and fires the GH-Actions worker.
+3. One `Promise.all`: `loadNinaContext` → `buildNinaContext` (memory, patterns, nags),
+   `loadRunHistory`, `readNinaTuning`, and `listNinaShortcuts(userId, { onlyEnabled: true })` — the
+   last one's rejection swallowed. `recentRunnerTexts` is then sliced out of the loaded window with
+   no new query.
+4. `runNinaTurn` with `NINA_FULL_TOOL_SET` and the prompts. `shortcutHits` matches **once**, before
+   the first model call, and feeds both the user-turn block and `firedShortcutIds`. Tool rounds go
+   through `dispatchNinaTool`; `generate_image` opens a job row and fires the GH-Actions worker.
 5. The `send` payload is validated by `NinaSendPayloadSchema`; bubbles are written; the turn is
-   recorded.
+   recorded; `bumpNinaShortcutUses(userId, result.firedShortcutIds)` runs fire-and-forget above all
+   four exits.
 6. `after(...)` schedules `runTurnDistillation` → `planMemoryWrites` → `applyMemoryPlan`.
 7. The client renders with `reveal.ts` timing, `chatview.ts` grouping, `reply.ts` quotes,
    `live.ts` merges, `scroll.ts` restore.
@@ -1724,6 +2215,30 @@ are worth knowing:
   reorder the `Record`. It is what keeps the composer pre-pass, both avatar paths and the chat-photo
   describe byte-identical. And never move the token floor to compute before the prompt is chosen:
   it is text-aware, and the longer self prompt is *supposed* to raise it.
+- **`composerBottomCss` and `composerPadBottomCss` ship as a pair.** A caller that passes one and
+  not the other either leaves an unpainted strip under the composer or pads it twice, so
+  `padBottomCss` is a **required** prop on `Composer` rather than an optional one. The rule they
+  jointly enforce: the home-indicator inset is contributed by exactly one term in every state,
+  because the offset gates on `var(--nina-bar-visible, 0)` and the padding gates on its complement
+  `1 - var(--nina-bar-visible, 0)`. Both must read the **same** custom property — a padding gated on
+  a variable nobody writes is a padding that is always on.
+- **Never add `var(--safe-bottom)` outside the gate.** That is the exact shape of the bug `P1-RI-A023`
+  fixed: an inset added beside the multiplication survives the flag going to 0, which is the state
+  `/nina` rests in. `chatview.test.ts` asserts the *shape* (`not.toContain(') + var(--safe-bottom)')`)
+  rather than a pixel, because the pixel is unknowable in Node.
+- **`controlBottomCss`'s two branches are asymmetric on purpose.** The measured branch gates its
+  inset on the bar flag; the unmeasured fallback adds it **ungated**, because `COMPOSER_RESTING_PX`
+  is the content box and carries no inset of its own. That fallback is what the server renders and
+  what the first client paint uses (`ChatChrome` seeds the height at 0 and measures in a passive
+  effect), so gating it puts the two floating discs behind the composer's `z-40` glass. A test
+  asserts the branches emit different strings so the pair cannot be folded into one.
+- **60 is written in four places, none of which can import the others.** `Composer.tsx`'s `py-2`,
+  `COMPOSER_RESTING_PX`, `ChatScreen.tsx`'s `COMPOSER_FALLBACK_PX`, and `BOTTOM_GAP.chat`'s
+  `7rem` in `components/ui/AppShell.tsx`. Tailwind cannot read a constant. A stale literal in the
+  shell reads as a gap under the conversation rather than as a bug — it has survived review twice.
+  The composer's home-indicator padding is **not** in that sum and must not be added: it is the
+  `var(--safe-bottom)` term the class already carries, which is why the whole thing is
+  `calc(7rem+var(--safe-bottom))` and not `pb-28`.
 - **No barrel.** Import the submodule, not the package.
 - **`persona.ts` must stay free of `server-only` and free of I/O.** Adding either breaks the
   `/admin/nina` preview and the tests that assert rule text without a client.
@@ -1740,10 +2255,45 @@ are worth knowing:
   `lib/` decides. An `Element` or a `Selection` in one of these signatures is how the whole gesture
   layer stops being testable, and a rendered-scenario test would prove one gesture where these
   prove the gate.
+- **`shortcuts.ts` may not import anything, and it is not a style preference.** Adding an import
+  stops phase 4's `.mjs` importer booting under `--experimental-strip-types` and drags the module
+  out of the browser bundle phase 3's `'use client'` table needs it in. `shortcuts.test.ts` reads
+  the file's own source and fails on an `import` line. Corollary: `NinaShortcutMatchable` stays a
+  plain interface declared there and is never replaced with an import from `lib/db/schema.ts`.
+- **Do not delete the `U+FE0F` strip from `normalizeNinaTrigger`, and do not "also strip `U+200D`
+  while you are there."** The first is what makes `✌️` and `✌` one shortcut; the second would merge a
+  ZWJ emoji sequence into its component glyphs and collide two distinct shortcuts on one
+  `match_key`. The two look like the same tidy-up and are opposites.
+- **A caller may never supply `match_key` or `kind`.** They are derived from `trigger` by
+  `queries.ts`'s one private helper, and the input types have no field for them — keep it that way,
+  because an underived key is a key the unique index treats as a different trigger.
+- **`bumpNinaShortcutUses` is telemetry: the caller must `.catch()` it.** It runs after the turn has
+  returned and nothing reads `uses` on the turn path, so a rejected bump must never fail a turn.
+- **`matchNinaShortcuts` runs ONCE per turn, in `runNinaTurnWith`, and nothing may run it again.**
+  `actions.ts` reads `NinaTurnResult.firedShortcutIds` instead of re-matching, because a second run
+  would see a slightly different window and could disagree with the block the model was sent — and
+  "`/admin/shortcuts` says 🍑 fired but the prompt did not contain it" cannot be falsified from the
+  outside. For the same reason the ids stay off `NinaTurnTrace`: they are acted on, not audited.
+- **A turn that fired nothing must stay byte-identical to a pre-feature turn (invariant 2).** Keep
+  the empty-hits short circuit in `turn.ts`'s `shortcutBlock` even though `renderNinaShortcutBlock`
+  already returns `null` — the invariant is asserted against `turn.ts` and must not depend on what
+  another file does with an empty argument. Do not "promote" the block into `prompts/system.ts`:
+  every turn would then pay for two dozen expansions he did not use.
 
 ## Tests
 
-In-package: 26 colocated `*.test.ts` files over the pure modules. Repo-level: 30 `tests/nina.*` files,
+In-package: 27 colocated `*.test.ts` files over the pure modules — the twenty-seventh is
+`shortcuts.test.ts`, which also carries the zero-import structural guard described above.
+`turn.test.ts` adds two describe blocks for `P1-NIN-A023` — *"`userTurnText` — the fired shortcut"*
+(invariant 2 three ways, the in-play-only block, the full expansion, the three offsets around
+`HE JUST SAID:`, a disabled row dropped at the input boundary, `recentRunnerTexts` as the only route
+to history, and invariant 7 driven through the real loop with a `(([` trigger) and
+*"`NinaTurnResult.firedShortcutIds`"* (`[]` with no shortcuts, only the id he typed, `[]` for
+in-play-only, and the id still carried by an `unavailable` turn — the action bumps before it checks
+whether she answered). `tests/nina.resend.test.ts` needed one
+line: its `runNinaTurn` mock now returns `firedShortcutIds: []`, because the field is required and
+the action reads its length.
+Repo-level: 30 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*
@@ -1806,6 +2356,22 @@ hashes to. It also proves every pool member is still reachable, so nothing was s
 `lib/nina/vision.test.ts` asserts the runner prompt is sent **byte for byte by default** and that
 the self prompt **still trips** the token floor on the measured drop signature — that case must keep
 failing rather than start passing, since a longer prompt raises a text-aware floor.
+
+**The composer's geometry is tested as CSS strings, in three files that never open a browser**
+(70 assertions, all passing as of `P1-RI-A023`). `lib/nina/chatview.test.ts` covers the pair:
+the hidden state collapsing the whole offset to nothing, the keyboard branch as the one thing R1 did
+not change, the complement gate reading the *same* variable as the offset, `'0px'` rather than a bare
+`'0'` because the value goes into `style.paddingBottom`, and NaN / negative / `Infinity` overlaps all
+degrading to "no keyboard" because the resting screen is the common case. `lib/nina/chrome.test.ts`
+covers `controlBottomCss` in both branches — the gated inset in each bar state, a fractional
+`getBoundingClientRect()` height rounded rather than emitted as `calc(60.328125px + …)`, the
+fallback's **ungated** inset, and a case asserting measured and unmeasured emit *different* strings
+so the asymmetry cannot be tidied into one branch. `tests/tabbar.geometry.test.ts` is the one that
+ties the literal 59 back to `TAB_BAR_HEIGHT_PX` + `TAB_BAR_BORDER_PX`, end to end through the pure
+function, so the composer's offset and the bar's real top edge cannot drift apart. Every one of these
+asserts a **shape** rather than a rendered pixel — `var(--safe-bottom)` resolves only in a real
+viewport, so the string is the whole of what is checkable in Node, and it is also exactly where the
+bug lived.
 
 **The pathname windows are tested by measurement, not by arithmetic** (`images.test.ts`, and
 `tests/admin.chatPhotos.test.ts` for the admin twin). The stored fixture carries a real 30-symbol
@@ -2047,3 +2613,28 @@ Phases 3 and 4 both depend on 1 and 2 and run concurrently — which is exactly 
 unwired and why the payload-boundary guard's ninth entry already sanctions both wiring modules: two
 phases each appending to one guard is two merge conflicts, and a window in each of them where the
 new call is unguarded.
+
+---
+
+**`P1-NIN-A023` is phase 2 of 4 of the `nina-emoji-shortcuts` set** — *firing a shortcut into the
+turn*, satisfying R2. It is the wiring phase for `P1-DB-A004`'s table, matcher and queries: five
+files, no new module, no migration, no new query, no new provider call, and the set's **single**
+`NINA_PROMPT_VERSION` bump (5 → 6). See *"Phase 2 — the turn fires it"* above.
+
+| Phase | What | Package | Task |
+|---|---|---|---|
+| 1 | The table, the matcher and the queries, unwired | `lib/db` + `lib/nina` | `P1-DB-A004` |
+| 2 | Firing a shortcut into the turn | `lib/nina` | `P1-NIN-A023` *(this one)* |
+| 3 | The admin registry at `/admin/shortcuts` | `lib/admin`, `components/admin`, `app/admin` | — |
+| 4 | Lifting the existing codes out of the memory ledger | `scripts` | — |
+
+Phase 2 collected on phase 1 exactly as intended and added nothing structural of its own: the
+matcher, the renderer, the two headers, the caps and the counter statement were all already there
+and unit-tested, so the integration is two optional input fields, one required result field and one
+conditional `parts.push`. **Deliberately untouched**, each for a stated reason:
+`lib/nina/shortcuts.ts` (phase 1's surface needed no widening — `matchNinaShortcuts` already took
+`current` plus `recent`), `prompts/system.ts` and `prompts/tools.ts` (the instruction text travels
+with the expansion, so there is no section to add), `lib/nina/proactive.ts` (a proactive turn has no
+runner text, so nothing there could ever fire), and
+`tests/__snapshots__/nina.prompts.test.ts.snap` (byte-identical at every tuning — regenerating it
+would have hidden that fact rather than proved it).

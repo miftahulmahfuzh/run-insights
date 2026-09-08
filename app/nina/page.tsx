@@ -339,6 +339,16 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   )
   const photosByMessage = new Map<string, { urls: string[]; ids: string[]; kinds: string[] }>()
   for (const image of images) {
+    /*
+     * `message_id` is nullable since R1 (a deleted session orphans its photographs instead of
+     * destroying them), but this list came out of
+     * `getNinaMessageImagesForMessages(userId, rows.map(...))`, whose WHERE is
+     * `message_id IN (…)` — so every row here matched one of those ids and cannot be an orphan.
+     * The guard is for the type system, not for a case that happens: it is what keeps the Map
+     * keyed by `string` instead of widening the bubble grouping to accept a photograph that
+     * belongs to no bubble.
+     */
+    if (image.messageId === null) continue
     const group = photosByMessage.get(image.messageId)
     if (group == null) {
       photosByMessage.set(image.messageId, {

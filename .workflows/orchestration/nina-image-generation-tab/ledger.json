@@ -1,0 +1,160 @@
+{
+  "branch": "feature/nina-image-generation-tab",
+  "coordinator": "orch-nina-image-generation-tab",
+  "coordinator_session_id": "f3faf3b6-6161-4972-9577-8c5f4eb1e23a",
+  "created": "2026-09-07T15:22:37+00:00",
+  "landed": {
+    "at": "2026-09-07T20:46:33+00:00",
+    "base": "main",
+    "commit": "aae3b96e9b4c8321d7bd0797e0cb705dd4377ac3",
+    "machine": "pc"
+  },
+  "phases": [
+    {
+      "card": null,
+      "commit": "af0cb0b",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "imageprefs.ts vocabulary is the set's authority: NINA_IMAGE_PROMPT_LENGTH_* (default 50), focus keys face|skin|boobs|butt|thighs|calves, NinaImageReference {source,id} with '' empty. Migration 0011_natural_nico_minoru; journal now 12 entries idx 11, so phase 7 mints 0012. COORDINATOR MUST TICK PLAN.md ITSELF: phase 1 = af0cb0b, TaskID P1-DB-A004 -- I did not write the shared tracked index, since 7 sessions share it and a concurrent read-modify-write clobbers.",
+      "package": "lib/db`, `lib/nina",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-1.md",
+      "reported_at": "2026-09-07T15:40:59+00:00",
+      "satisfies": [
+        "R4",
+        "R10"
+      ],
+      "status": "done",
+      "task_id": "P1-DB-A004",
+      "title": "nina_image_prefs` \u2014 the row, the vocabulary, the reads"
+    },
+    {
+      "card": null,
+      "commit": "7c12c54",
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": "R1 + R4-R9 prompt half. persona.ts gains NINA_BODY_SENTENCES/NINA_BODY/NINA_BODY_AVATAR/ninaBodyBlock; NINA_APPEARANCE reordered body->face->outfit; NINA_FACE loses the body clause it wrongly carried and Lean/narrow shoulders are repealed; ninaAppearance re-pointed at NinaImagePrefs NOMINALLY so a leftover ninaAppearance(tuning) is a compile error. imagegen.ts gains the five-rung ladder (NINA_PROMPT_RUNGS, ninaPromptRung, NINA_PROMPT_LENGTH_FALLBACK=70) keyed off ninaBand, six focus clauses, VENUE:/TIME:/NOTES:. selfiegen/avatargen read both rows in one Promise.all, which is why avatartools/imagetools/promises needed zero edits. VERIFIED at 684e787: typecheck clean, lint 0, three CI guards pass, nina.imagerecipe+nina.prompts 153/153, property test green over 1280 combinations, buildNinaSystemPrompt snapshot unmoved. Commit carries only 6 paths, no peer file; did NOT re-add the A024 todos entry nor stage tests/nina.imagerecipe.test.ts (phase 3 published both in 5e70918) -- coordinator verified A024 appears exactly twice in 7c12c54, same as 5e70918, so no duplicate. IT WENT IDLE BEFORE SENDING ITS MESSAGE; coordinator derived done from git first and the report arrived after. TWO LADDER DECISIONS (rung 3, code blocks over the plan's prose): Step 6 asserted 'never lean and never slight' on the no-prefs render but that clause is body sentence 5 and the fallback (70 -> band high) renders four -- three code blocks agreed and only the test disagreed, so both negations now run across all five band floors (up from one render) and the positive repeal asserts at band max, one assertion MORE than the plan wrote; Step 2's header-repeal block ships self-delimited because nesting it inside the existing block comment as the prose says is a syntax error (rung 1, invariant 1). FOR PHASE 7: tuning.ts carries 7 wardrobe grep hits, NOT the 4 its exit criterion 3 predicts -- phase 2 never touched that file, so the 4 is a stale plan prediction and the gate must expect 7. In test 'R6: the PREFS wardrobe reaches the photograph and the TUNING wardrobe does NOT' delete ONLY the tuning: line. README: readme-updater had already run before the skip reached it; file reverted, accurate 234-line draft saved to phase-2-readme-draft.patch for the coordinator's end-of-set pass.",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-2.md",
+      "reported_at": "2026-09-07T20:14:53+00:00",
+      "satisfies": [
+        "R1",
+        "R4",
+        "R9"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A024",
+      "title": "The prompt: body canon, length ladder, focus, venue, time, notes"
+    },
+    {
+      "card": null,
+      "commit": "5e70918",
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": "R10 backend. buildImageRequestBody gains optional referenceDataUrl emitting one input_references entry; unanchored payload byte-identical, asserted against a literal not a re-derivation. NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS=220_000 via ninaImageCallTimeoutMs(anchored); NINA_IMAGE_RUN_BUDGET_MS 200_000->240_000 so an anchored attempt (220+20) fits at all. Invariant 3 asserted for BOTH paths: 45+150+20=215 and 45+220+20=285, each <=300. Invariant 2 intact (imagerecipe.ts imports nothing; worker still loads under --experimental-strip-types). Reference degrades to unanchored on all four fetch failure modes. TaskID is A026 not A023: A023 is spent on live feature/nina-emoji-shortcuts, committed there but not on main, so a local counter read calls it free. DELIBERATE PEER PUBLISH: 5e70918 carries p2's uncommitted prompt hunks in tests/nina.imagerecipe.test.ts (shared by design per conflict warning 1 -- p2 owns describe('the prompt'), p3 the payload/threshold blocks) and p2's P1-NIN-A024 todos entry, both byte-unaltered, file measured green (137 tests) immediately before commit; excluding it would have left phase 3 without the assertions its own exit criteria require. p2 warned explicitly not to re-add A024. Parent is b691af8 not 3a95d37 -- phase 5 landed mid-run, fast-forward, no conflict. 5 suite failures are all tests/admin.shell.test.ts, phase 4's remaining step, not a phase 3 regression.",
+      "package": "lib/nina`, `scripts",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-3.md",
+      "reported_at": "2026-09-07T16:04:08+00:00",
+      "satisfies": [
+        "R10"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A026",
+      "title": "The reference image on the wire, and the timeout it costs"
+    },
+    {
+      "card": null,
+      "commit": "684e787",
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 4,
+      "note": "R2 + R4-R9 UI + R10 save. /admin/image-generation, ImageGenPanel (DialSlider, six focus checkboxes, four free-text fields, one save, one reset, dirty state, pure buildNinaImagePrompt preview), imageGenModel.ts (draft, referenceKey/parseReferenceKey, ADMIN_IMAGE_PREVIEW_SCENE), imageGenActions.ts (save+reset, both gated), prefs Zod appended to lib/admin/schema.ts, sixth nav cell as 3x2 h-28 phone grid with layout reserve 5rem->8rem, fifth hub card. 12 files, +5094/-66, parent 5e70918. VERIFIED GREEN: typecheck clean, lint 0 errors, npm test 156 files / 3232 tests 0 failures, npm run build succeeds with /admin/image-generation dynamic, all four ci:* guards OK. CARRIES PHASE 5's STEP 3: verified from git that 684e787 contains the PhotoReferencePicker mount (2 refs), 'SEAM \u2014 PHASE 5' is gone (0) and 'SEAM \u2014 PHASE 6' remains (3); confirmed 684e787 swept NONE of phase 2's four files. PLAN DEFECT FIXED (rung 3): ninaImageReferenceSchema.id was specified .min(1).nullable() while its own refine reads '' as the empty id, so NO unselected reference validated -- default state and reset both rejected at the boundary. Now z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX), refine unchanged, so {album,''} and {none,'av_1'} stay refused. PHASE 6 MUST CODE AGAINST '' AND NEVER null. Phase 6 also: replace SEAM \u2014 PHASE 6 with <ImageGenTestPanel dirty={dirty} />, dirty already in scope; leave tests/admin.imagegen.test.ts alone (allowlist already names both phase 6 actions and the requireAdmin loop covers unwritten exports); import ADMIN_IMAGE_PREVIEW_SCENE rather than minting a constant; maxDuration is deliberately absent from the page and is phase 6's to add. readme-updater NOT dispatched by design -- lib/admin and components/admin readmes are the coordinator's end-of-set pass; phase 2 left phase-2-readme-draft.patch in the orchestration dir for it.",
+      "package": "app/admin`, `components/admin`, `lib/admin",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-4.md",
+      "reported_at": "2026-09-07T16:05:55+00:00",
+      "satisfies": [
+        "R2",
+        "R4",
+        "R9",
+        "R10"
+      ],
+      "status": "done",
+      "task_id": "P1-ADM-C410",
+      "title": "The route, the sixth nav cell, and the form"
+    },
+    {
+      "card": null,
+      "commit": "b691af8",
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 5,
+      "note": "Seam mount at 'SEAM \u2014 PHASE 5' is applied on disk but NOT in b691af8 -- it lands inside phase 4's commit of components/admin/ImageGenPanel.tsx. Phase 5's own test asserts not.toContain('SEAM \u2014 PHASE 5') and went red the moment phase 4 wrote the panel, so invariant 1 forced the mount before phase 4 committed. Consequence: phase boundary != commit boundary here, so a revert of b691af8 alone leaves the mount, and land --step check must not read the absence of ImageGenPanel.tsx from b691af8 as phase 5 being incomplete. Two plan test assertions were contradicted by the plan's own docstrings (headers quote 'use client' and next/image to explain why the property holds); fixed by asserting the real property over codeLines() plus startsWith, which is strictly stronger. readme-updater skipped per Handoff H6: components/admin/.workflows/package_readme.md owes phase 5's two files and phases 4 and 6 add more -- ONE end-of-set pass, coordinator-owned.",
+      "package": "components/admin",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-5.md",
+      "reported_at": "2026-09-07T15:59:42+00:00",
+      "satisfies": [
+        "R10"
+      ],
+      "status": "done",
+      "task_id": "P1-CA-A003",
+      "title": "The photo-reference picker"
+    },
+    {
+      "card": null,
+      "commit": "f9d2a8a",
+      "depends_on": [
+        2,
+        3,
+        4
+      ],
+      "difficulty": "HARD",
+      "n": 6,
+      "note": "R11 + R12. lib/nina/imagetest.ts (pure assembleNinaImageTestPrompt + dispatchNinaImageTest: cap first, SAVED prefs, reference resolved owner-scoped onto phase 3's referenceUrl, one job, one fire, purpose:'selfie' + source:'admin' so the existing selfie finisher writes the Chat-photos pair -- R12 needs no new writer, no second writer of invariant 12); lib/admin/imageGenTestView.ts (seven-verdict lookup, policy the ONLY path to refused, timeout/transport/stale inconclusive, escalating poll, derived 480s give-up); two actions appended to imageGenActions.ts each opening with await requireAdmin(); ImageGenTestPanel.tsx; SEAM -- PHASE 6 filled; literal maxDuration = 300. 8 paths, parent b7a1233. COORDINATOR VERIFIED FROM GIT: on branch and origin, seam count 0 and ImageGenTestPanel referenced twice, maxDuration = 300 present, and none of phase 7's files (schema.ts, drizzle/, CharacterPanel) in it. DECISIONS (all rung 3 except #3): Step 3's readNinaImageTestAction referenced prefs.referenceUrl which phase 1's NinaImagePrefs has no member for -- resolved to resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null per its own Interface Contract ('the prefs row holds { source, id }, NOT a Blob URL') and added a test so it cannot silently regress; Step 1's block declared the resolve call only inside a comment -- emitted as real code, after the cap check so the unanchored path still costs no round trip; the plan's mount used void load(null) which fails react-hooks/set-state-in-effect -- fixed the CODE not the check, armed via setTimeout(...,0) with clearTimeout cleanup, useExtractionStatus's own shape; guarded-symbol list 8 -> 9 adding captionNinaPhoto (D6 over the code block's stale list). No database command run by phase 6 -- it adds no column and no migration. Verified on the combined 1-7 tip: typecheck clean, lint 0 errors, npm test 157 files / 3260 tests 0 failures; build green with the route dynamic and ci:llm-payload-guard confining all 9 symbols with the guard script unedited.",
+      "package": "lib/nina`, `lib/admin`, `components/admin",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-6.md",
+      "reported_at": "2026-09-07T20:33:51+00:00",
+      "satisfies": [
+        "R11",
+        "R12"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A027",
+      "title": "Test prompt, its verdict, and the photo in Chat photos"
+    },
+    {
+      "card": null,
+      "commit": "b7a1233",
+      "depends_on": [
+        2,
+        4
+      ],
+      "difficulty": "NORMAL",
+      "n": 7,
+      "note": "R3. nina_tuning.wardrobe retired in every layer: the /admin/personality control and its wrapper, the save payload, TuningDraft/toTuningDraft/changedTuningFields, toTuningWrite/action param/reset default, ninaTuningWriteSchema, NinaTuning.wardrobe/NinaTuningInput.wardrobe/default/coerceNinaTuning line/NINA_WARDROBE_MAX/coerceNinaWardrobe, both row mappers, the schema.ts column, and prose in DialSlider, personality/page, persona.ts, docs/nina/persona.md, CHANGELOG and four package readmes. 25 files, parent d728643. VERIFIED: typecheck clean, npm test 157 files / 3260 tests 0 failures, build green, db:check fine, four ci:* guards OK, eslint 0 over its 14 code files. NinaTuning members now exactly traits/relationship/dials/enabled/notes/revision; zero live NINA_WARDROBE_MAX or coerceNinaWardrobe anywhere. COORDINATOR VERIFIED FROM GIT: on branch and origin, --stat is exactly 25 paths with NONE of phase 6's four, migration body is exactly one statement, and CRITICALLY the migration is NOT applied -- its sha256 08914b5db367 is absent from __drizzle_migrations (14 rows) and nina_tuning.wardrobe is still present in the live database. All three standing instructions honoured: no db:migrate, no asserted migration number, wardrobe count treated as a stale plan prediction not drift. Precondition D re-measured read-only: tuning_set=1, prefs_set=1, uncopied=0. DECISIONS: took 12 for the journal tag count where the plan says 9, 10 and 12 in three places (rung 2, measured 12); edited tests/nina.imagerecipe.test.ts despite the Interface Contract listing it as phase 2's, because it fails typecheck otherwise and phase 2 planted an explicit 'PHASE 7: delete the tuning: line' directive there (rung 1, invariant 1) -- deleted only that line plus four now-false comment lines, every assertion kept; did the four package_readme wardrobe passages by hand since they are in its own Files table and describe a column this commit drops, scoped strictly to wardrobe prose so the coordinator's wave-1 readme backlog and phase 2's 234-line draft patch are untouched; minted A029 because mint returns a stale A023 (spent on origin/main) and A027 is phase 6's -- lib/nina watermark after wave 2 is A029. Its commit also publishes phase 6's P1-NIN-A027 todos entry on the 5e70918 precedent; phase 6 told not to re-add.",
+      "package": "lib/nina`, `lib/admin`, `components/admin`, `lib/db",
+      "plan": ".workflows/plan/nina-image-generation-tab/phase-7.md",
+      "reported_at": "2026-09-07T20:33:08+00:00",
+      "satisfies": [
+        "R3"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A029",
+      "title": "Retire `nina_tuning.wardrobe"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-image-generation-tab/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-image-generation-tab",
+  "updated": "2026-09-07T20:46:33+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-image-generation-tab"
+}

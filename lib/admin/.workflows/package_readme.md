@@ -1,15 +1,16 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-07 (task `P1-ADM-B130`, phase 2 of the nina-photo-refs-and-bubble-actions set — R2: `nina_message_images.description` became hand-writable from `/admin/photos`)
+**Last Updated**: 2026-09-08 (task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s four actions, and the prefs Zod boundary in `schema.ts`; previously task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — R1: `/admin/shortcuts`, the trigger registry's admin surface)
 
 ## Overview
 
-`lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the three admin
-surfaces' Server Actions (`/admin/nina`, the album and file manager; `/admin/personality`, the
-character panel; `/admin/memory`, Nina's persistent memory), the Zod schemas that validate every
-byte those actions accept from a browser, and one zero-import pure library (`filetree.ts`) that the
-client half of the file manager shares verbatim with the server half.
+`lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the admin surfaces'
+Server Actions (`/admin/nina`, the album and file manager; `/admin/personality`, the character
+panel; `/admin/photos`, the chat-photo collection; `/admin/memory`, Nina's persistent memory;
+`/admin/shortcuts`, the trigger registry), the Zod schemas that validate every byte those actions
+accept from a browser, and one zero-import pure library (`filetree.ts`) that the client half of the
+file manager shares verbatim with the server half.
 
 It is a *boundary-plus-actions* package. Nothing in it is a general utility: every export exists
 because one admin screen needs it, and the package's organising rule is that a value with two
@@ -28,6 +29,8 @@ readers has exactly one definition — `lib/admin/avatars.ts`'s header states it
   dropped folder.
 - Own `/admin/memory`'s write side, and make it structurally impossible to write a memory row
   without the `admin` source label.
+- Own `/admin/shortcuts`'s write side, and make it structurally impossible for a caller — or a
+  forged POST — to supply a `match_key` or a `kind` that disagrees with its own trigger.
 - Decide a folder upload — walk, classify, refuse, diff against the manifest — in one pure,
   import-free module that a `'use client'` explorer can import.
 
@@ -50,6 +53,9 @@ readers has exactly one definition — `lib/admin/avatars.ts`'s header states it
 | `chatPhotos.ts` | pure (two constant imports) | `/admin/photos`'s vocabulary: the blob pathname shape and its session-binding predicate, the four size ceilings, the id regexes, the empty-bubble rule, `ChatPhotoActionResult`. |
 | `chatPhotoSchema.ts` | pure | Every Zod schema `/admin/photos` accepts. Separate from `schema.ts`, which is scoped to `/admin/nina` and a different table. |
 | `chatPhotoActions.ts` | `'use server'` | The chat-photo collection's four write actions: add, replace, remove, and the hand-written description edit. |
+| `shortcutModel.ts` | **no directive** | `/admin/shortcuts`'s client-safe half: the row model, the page ceiling, the field tuple, the two formatters — and the one re-export of phase 1's three caps. |
+| `shortcutStore.ts` | `server-only` | The only `lib/admin` module that writes a shortcut. Owns the duplicate catch, the empty-trigger refusal, and the admin read's ordering and ceiling. |
+| `shortcutActions.ts` | `'use server'` | The four shortcut Server Actions: add, save one cell, toggle `enabled`, delete. |
 
 ## Exported API
 
@@ -209,6 +215,12 @@ export const sourceKeySchema
 export const avatarBatchRecordSchema    // type AvatarBatchRecord
 export const avatarBatchRegisterSchema  // type AvatarBatchRegister
 export const albumManifestSchema        // type AlbumManifestRequest
+
+// /admin/shortcuts — appended after ninaTuningResetSchema, nothing above it touched
+export const shortcutInsertSchema       // type ShortcutInsert
+export const shortcutCellSchema         // type ShortcutCell — a discriminated union on `field`
+export const shortcutToggleSchema       // type ShortcutToggle
+export const shortcutDeleteSchema       // type ShortcutDelete
 ```
 
 **Every bound here is imported, none is declared.** `NINA_FOLDER_MAX_PATH_CHARS`,
@@ -223,8 +235,8 @@ The character tuning is validated as a single schema because it is saved as a si
 `tuningActions.ts`). It obeys this file's standing rule literally: **every bound is imported, none
 is re-spelled.** The `0-100` range (`NINA_SCORE_MIN` / `NINA_SCORE_MAX`), the eleven trait keys
 (`NINA_TRAITS`), the four dial keys (`NINA_DIALS`), the five relationship values
-(`NINA_RELATIONSHIPS`) and the two free-text lengths (`NINA_WARDROBE_MAX` = 200,
-`NINA_NOTES_MAX` = 2000) all come from `lib/nina/tuning.ts`, which is the same module the panel
+(`NINA_RELATIONSHIPS`) and the free-text length (`NINA_NOTES_MAX` = 2000) all come from
+`lib/nina/tuning.ts`, which is the same module the panel
 imports for its labels and the same one `buildNinaSystemPrompt` reads. A `z.enum` retyped here would
 be a second list of relationships, and the first thing to happen to a second list is that it falls
 behind. **A length bound retyped here would be worse than that**: a Zod cap stricter than the
@@ -239,6 +251,26 @@ coercion. The two jobs coexist on purpose: this layer refuses a bad *request*, a
 
 `ninaTuningResetSchema` beside it is the userId-only shape the reset action takes, for the same
 reason the reset is an action at all: the defaults are server-side.
+
+#### The four shortcut schemas — and the two columns they deliberately cannot carry
+
+Appended after `ninaTuningResetSchema`; nothing above them changed. `NINA_TRIGGER_MAX` (16),
+`NINA_SHORTCUT_LABEL_MAX` (80) and `NINA_SHORTCUT_EXPANSION_MAX` (2000) are imported through
+`shortcutModel.ts` rather than re-spelled, per this file's standing rule. The four private field
+schemas (`shortcutIdSchema`, `shortcutTriggerSchema`, `shortcutLabelSchema`,
+`shortcutExpansionSchema`) are not exported: they exist to be composed here.
+
+**`match_key` and `kind` are absent from every one of the four**, and that absence is the guarantee
+the whole page rests on. Both are derived inside `lib/nina/queries.ts`'s write statements, so a
+forged POST has nowhere to put a folded key that disagrees with its own trigger.
+`tests/admin.shortcuts.test.ts` reads this section and asserts it.
+
+`shortcutCellSchema` is a **discriminated union on `field`** and not three optional strings, because
+the three cells have three different caps: a flat `{ field, value }` would have to allow the longest
+of them, and a 900-character trigger would pass validation only to be refused by the column as a
+500. It also sends ONE field rather than the whole row — the three are independent, and only the
+trigger edit can be refused, so sending all three would make every label typo a candidate for a
+duplicate-trigger error.
 
 #### Two layers of bounds, and why both
 
@@ -658,6 +690,171 @@ statements that are not in one transaction, and **the append comes first, always
 contains the original text verbatim, so a crash between the two leaves a recoverable duplicate
 rather than a hole.
 
+### `shortcutModel.ts` / `shortcutStore.ts` / `shortcutActions.ts` — `/admin/shortcuts`
+
+```ts
+// shortcutModel.ts — no directive, client-safe
+export { NINA_SHORTCUT_EXPANSION_MAX, NINA_SHORTCUT_LABEL_MAX, NINA_TRIGGER_MAX }
+  from '@/lib/nina/shortcuts'          // the ONE value import in the file
+export const ADMIN_SHORTCUT_PAGE = 200
+export const SHORTCUT_FIELDS = ['trigger', 'label', 'expansion'] as const
+export type ShortcutField = (typeof SHORTCUT_FIELDS)[number]
+export type AdminShortcutKind = NinaShortcutMatchable['kind']   // 'glyph' | 'word', a TYPE read
+export interface ShortcutRow      { id, trigger, matchKey, kind, label, expansion,
+                                    enabled, uses, lastUsedAt: string | null, createdAt: string }
+export interface ShortcutSource   { …the same columns, with Date }
+export function buildShortcutRows(sources: readonly ShortcutSource[]): ShortcutRow[]
+export function formatFired(uses: number, lastUsedAt: string | null): string
+export function describeKind(kind: AdminShortcutKind): string
+
+// shortcutStore.ts — 'server-only'
+export interface AdminShortcutDraft { trigger: string; label: string; expansion: string }
+export type AdminShortcutWrite = 'ok' | 'duplicate' | 'missing' | 'empty'
+export async function adminCreateShortcut(userId, draft): Promise<AdminShortcutWrite>
+export async function adminSaveShortcutField(userId, id, field, value): Promise<AdminShortcutWrite>
+export async function adminSetShortcutEnabled(userId, id, enabled): Promise<'ok' | 'missing'>
+export async function adminDeleteShortcut(userId, id): Promise<'ok' | 'missing'>
+export async function adminReadShortcuts(userId, limit): Promise<ShortcutSource[]>
+
+// shortcutActions.ts — 'use server'
+export interface AdminShortcutResult { ok: boolean; error?: string; note?: string }
+export async function addShortcutAction(input): Promise<AdminShortcutResult>
+export async function saveShortcutCellAction(input): Promise<AdminShortcutResult>
+export async function toggleShortcutAction(input): Promise<AdminShortcutResult>
+export async function deleteShortcutAction(input): Promise<AdminShortcutResult>
+```
+
+#### `shortcutModel.ts` is the one door, and the door is one file wide
+
+It is `memoryModel.ts`'s split with `memoryModel.ts`'s value-import ban — and **one argued
+exception**. The table needs three NUMBERS in the browser, the caps `maxLength` is set from, and
+they live in `lib/nina/shortcuts.ts`. That module is held to zero imports and is therefore
+client-safe, so `ShortcutTable.tsx` could have imported them directly; it deliberately does not.
+Under a direct import the safety rests on a property of a file in another directory that a
+`'use client'` component now names, and the next person who wants "something else from `lib/nina`"
+in an admin table copies that import line straight into `lib/nina/memory.ts`, which reaches zod and
+`lib/db/schema.ts`. So this module re-exports them and **`ShortcutTable.tsx` names no `@/lib/nina/`
+specifier at all** — a boundary `tests/admin.shortcuts.test.ts` asserts three ways: the table names
+no such specifier, the re-export is the only non-type import here, and `lib/nina/shortcuts.ts` still
+has zero imports of its own.
+
+`AdminShortcutKind` is indexed off phase 1's `NinaShortcutMatchable['kind']` rather than retyped.
+`memoryModel.ts` had to retype its seven categories because `NinaFactCategory` has no const tuple
+behind it; this one does not need to, and a pure type read cannot drift and cannot put a value in
+the bundle.
+
+`buildShortcutRows` is the whole boundary transform, and it is exactly one conversion: `Date` to ISO
+string, the same one `MemoryRow` makes and for the same reason — nothing about serialization then
+depends on how the RSC boundary treats `Date` today. It is declared here rather than in the store so
+that a test can drive it without a database.
+
+`formatFired` says `'never'` and not `'0'`, because zero is the answer to a question the operator is
+not asking: what he wants at a glance is which codes are dead. `describeKind` explains the one thing
+about `kind` that surprises people — `yumm` does not fire inside `yummy`, `🍑` fires anywhere.
+
+#### `shortcutStore.ts` — the only writer, and it reaches no table
+
+It names no drizzle table and holds no `db` handle: every statement is `lib/nina/queries.ts`'s
+(`insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`, `listNinaShortcuts`). It derives
+nothing either — `match_key` and `kind` are computed inside those writes, and
+`NinaShortcutInsert` / `NinaShortcutPatch` have no field for either. That is
+`memoryStore.ts`'s property enforced by a type rather than by this module remembering two function
+calls: *a caller cannot mislabel a row because there is nowhere to put the label.*
+`classifyNinaTrigger` is not imported at all.
+
+The one `normalizeNinaTrigger` call here is a **question, not a derivation**: *does what he typed
+survive folding?* A trigger of nothing but whitespace or variation selectors is a row that can never
+match anything, and the operator gets `'empty'` and a sentence rather than a mystery.
+
+**A duplicate is caught, never checked for.** `(user_id, match_key)` is a unique index and phase 1
+lets the 23505 throw on purpose, because a pre-flight `SELECT` races itself — two dispatches both
+read "free", both insert, and the loser gets a 500 where it should have got a sentence. So
+`isUniqueViolation` (from `lib/db/queries.ts`) turns it into `'duplicate'`, and
+`violatedConstraint` walks `.constraint` through `.cause` / `.sourceError` the same way. When the
+Neon HTTP driver hands back no constraint name the answer is still yes: `nina_shortcuts_user_match_unq`
+is the only constraint a form on this page can reach, and the primary key reported as *"that trigger
+is taken"* would send the operator hunting for a row that does not exist.
+
+**The read is `listNinaShortcuts(userId)`, bare** — every row, disabled included, which is exactly
+this page's question: a disabled shortcut is still a row the operator edits and re-enables, and
+hiding it would make "off" look like "deleted". `{ onlyEnabled: true }` is the turn path's narrowing
+and this page does not pass it. The record already carries `uses` and `lastUsedAt`, so there is no
+second `SELECT` here and no second `WHERE` to keep `user_id`-first. What *is* this page's is the
+**ordering and the ceiling, done in memory**: `listNinaShortcuts` sorts by folded key because a
+registry is scanned by trigger, while this page wants `createdAt DESC, id DESC` so a row lands
+directly under the add form that made it — the same tiebreak `listNinaMemoryFacts` uses, arbitrary
+but stable, which is all a re-render needs to stop rows swapping under a cursor. The sort runs on a
+fresh `[...rows]`, then `.slice(0, limit)`.
+
+A write's returned record is discarded on purpose: `revalidatePath` re-renders the page from
+`adminReadShortcuts` in the same response, so what is on screen has one source.
+
+#### `shortcutActions.ts` — four actions, and no fifth
+
+Add, save a cell, toggle, delete. Every one is this package's same four lines in the same order:
+`requireAdmin()` first (a Server Action is a POST endpoint whether or not a button exists, and
+`proxy.ts` does not match `/admin`), Zod second, the write through `shortcutStore.ts` only, and
+`revalidatePath('/admin/shortcuts')` last.
+
+**There is no confirmation anywhere** — no typed word, no panel, no dialog. That is the standing
+ruling of this admin surface, carried in `memoryActions.ts`'s header in the owner's words, and
+`tests/admin.shortcuts.test.ts` asserts the absence of every second-click API by name, because "no
+second step" is a property a future edit can quietly reintroduce. A successful delete returns no
+`note`: the row being gone is the message, and a sentence under a row that no longer exists has
+nowhere to render.
+
+`refusal()` turns the store's four-state union into one sentence, and the `'duplicate'` sentence
+**quotes the trigger** and says the folding out loud — `✌️` and `✌` fold to the same key, which is
+the point of the design and also the most confusing five seconds this page can produce. Anything
+that is not one of the four states is a real fault: `failed()` logs it under `[f36]` and returns one
+flat sentence.
+
+`revalidatePath` here is how the *page* re-renders and is **not** how the edit reaches Nina: nothing
+on the turn path caches a shortcut, so a committed row is live on her next matching message with no
+invalidation step at all.
+
+### `imageGenModel.ts` / `imageGenActions.ts` — `/admin/image-generation`
+
+`tuningModel.ts` / `tuningActions.ts`'s shape, for the Image Generation tab. Four Server Actions,
+each opening with `await requireAdmin()`: `saveNinaImagePrefsAction`, `resetNinaImagePrefsAction`,
+`runNinaImageTestAction`, `readNinaImageTestAction`.
+
+**One save, not eleven.** A slider, six focus checkboxes, four free-text fields and a photograph
+is eleven controls, and they travel as ONE object — plan invariant 7, and the same reason
+`tuningActions` batches: Next dispatches Server Actions one at a time per client, so eleven
+actions would be eleven serialised round trips and eleven chances to half-save.
+
+**`imageGenModel.ts` imports two modules and it has to.** `@/lib/nina/imageprefs` for the bounds
+and the vocabulary, and `@/lib/nina/tuning` for `ninaBand` — because `ninaPromptLengthRungFor`
+takes a *band index*, not a raw 0–100 score, and `imageprefs.ts` deliberately keeps no second copy
+of the band boundaries. Re-deriving the five bands locally is forbidden: a private scale is a
+slider the operator cannot predict. Both modules are zero-import and client-safe, on
+`tuningModel.ts`'s precedent.
+
+**The photo reference crosses the panel/picker seam as an opaque string.** `referenceKey({source,
+id})` produces `` `${source}:${id}` `` and `parseReferenceKey` decodes it, both here. The picker
+never parses it, and its tile type carries no `source` at all — which is what makes *"nothing in
+the grid announces which set a photograph came from"* structural. The stored form is the
+`{ source, id }` pair, never a Blob URL, because `updateNinaChatPhotoBlob` swaps a chat
+photograph's `blob_url` while keeping its `id`.
+
+**`reference.id` is `''` for none, never `null`.** Its Zod field is
+`z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX)` with a `refine` that rejects `{album,''}` and
+`{none,'av_1'}`. It was specified as `.min(1).nullable()` against that same refine, under which **no
+unselected reference validated at all** — the default state and the reset were both rejected at the
+boundary. Fixed when the tab landed; the `''` spelling is `lib/nina/imageprefs.ts`'s, and the
+declaring module owns it.
+
+**The test action reads the SAVED prefs, never the panel's state.** An operator who picks a
+photograph and hits Test prompt without saving would otherwise test the *previous* reference, so
+the dispatch resolves `resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null` from
+the row and the panel's dirty state is what tells them to save first. The verdict lookup lives in
+`imageGenTestView.ts`: `policy` is the only classification that renders as a provider refusal;
+`timeout` / `transport` / `stale` are inconclusive.
+
+**`schema.ts` gained the prefs boundary with every bound imported**, not restated — see its
+`nina-image-generation-tab phase 4` section.
+
 ## Internal Architecture
 
 ### Data flow — a folder upload, end to end
@@ -719,7 +916,10 @@ handed to her, and then through `after()`.
 
 - `@/auth`, `@/lib/env` (`isAdminEmail`, `blobEnv` at the route) — the boundary's inputs.
 - `@/lib/auth/requireUserId` — `UnauthorizedError`, imported rather than redefined.
-- `@/lib/nina/queries` — every album, chat-photo and memory read/write. `chatPhotoActions.ts`'s
+- `@/lib/nina/queries` — every album, chat-photo, memory and shortcut read/write. The shortcut four
+  (`insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`, `listNinaShortcuts`) are named
+  in `shortcutStore.ts` and nowhere else under `lib/admin`, which a test asserts.
+  `chatPhotoActions.ts`'s
   description edit goes through `updateNinaChatPhotoDescription(userId, id, description | null)`,
   whose `WHERE` carries `user_id`, `id` **and** `kind = 'generated'` and which returns the updated
   row or `null`, so "not yours", "not there" and "his upload, not hers" collapse into one branch the
@@ -737,6 +937,12 @@ handed to her, and then through `after()`.
   that turns a description into one line in her voice. It never throws and returns `null` for
   every refusal, which is what lets every failure branch simply keep the canned line.
 - `@/lib/nina/memory` — read-only, from `memoryVocab.ts` alone.
+- `@/lib/nina/shortcuts` — phase 1's pure matcher module, reached from exactly two places:
+  `shortcutModel.ts` re-exports its three caps (the only value import in that file) and type-imports
+  `NinaShortcutMatchable`; `shortcutStore.ts` calls `normalizeNinaTrigger` as a question. Nothing
+  here imports `classifyNinaTrigger` — the classification is the query layer's.
+- `@/lib/db/queries` — `isUniqueViolation`, from `shortcutStore.ts`, which is how a 23505 on
+  `(user_id, match_key)` becomes a sentence instead of a 500.
 - `@/lib/db`, `@/lib/db/schema` — `users.ts` and the memory type imports.
 
 `filetree.ts` imports **nothing**.
@@ -764,6 +970,13 @@ handed to her, and then through `after()`.
   `key={photo.id}` by `ChatPhotoDetail.tsx`, which itself imports no Server Action.
 - `components/admin/ChatPhotoAdd.tsx` / `ChatPhotoControls.tsx` — the other three chat-photo
   actions plus the `chatPhotos.ts` pathname helpers and ceilings.
+- `app/admin/shortcuts/page.tsx` — `requireAdmin`, `users` (`listAdminUsers` / `getAdminUser`),
+  `adminReadShortcuts`, and `buildShortcutRows` + `ADMIN_SHORTCUT_PAGE`. It is `force-dynamic`,
+  defaults `?user=` to the signed-in admin, and builds every row server-side so the table gets plain
+  serializable props.
+- `components/admin/ShortcutTable.tsx` — the four shortcut actions and `AdminShortcutResult`, plus
+  `shortcutModel.ts`'s three caps, `ADMIN_SHORTCUT_PAGE`, `describeKind`, `formatFired` and the
+  `ShortcutField` / `ShortcutRow` types. It imports **no other** `lib/` module in either directory.
 
 ### Secondary consumers
 
@@ -782,6 +995,10 @@ handed to her, and then through `after()`.
   harness, `chatPhotoActions.ts` (54 tests).
 - `tests/nina.chatPhotoDescription.test.ts` — `updateNinaChatPhotoDescription`'s owner and `kind`
   scoping, from the query side.
+- `tests/admin.shortcuts.test.ts` — `shortcutModel.ts`'s pure half by call, and the three structural
+  properties by reading source: that `shortcutStore.ts` is the only `lib/admin` module naming a
+  shortcut write, that no schema or draft carries `match_key` or `kind`, and that
+  `ShortcutTable.tsx` names no `@/lib/nina/` specifier (28 tests).
 
 ## Concurrency
 
@@ -868,6 +1085,20 @@ export default async function Page() {
   thumbnail exists; its stored pathname is not derivable.
 - **`declareNinaFolders` goes before the insert**, and once per batch. Reversing the order leaves
   photographs in a folder nothing declared.
+- **Do not derive `match_key` or `kind` in `shortcutStore.ts`.** Both are computed inside
+  `lib/nina/queries.ts`'s write statements, and the patch types have no field for either. A row
+  whose folded key disagrees with its trigger renders one thing and fires on another — invisible
+  until the operator wonders why his emoji stopped working.
+- **Do not add a pre-flight `SELECT` before inserting a shortcut.** `(user_id, match_key)` is the
+  authority on "this code already exists"; a check-then-write races itself across two tabs. Catch
+  the 23505 through `isUniqueViolation`.
+- **Do not narrow the shortcut read to enabled rows.** `/admin/shortcuts` wants every row —
+  a disabled shortcut is one the operator edits and re-enables, and hiding it makes "off" look like
+  "deleted". `{ onlyEnabled: true }` belongs to the turn path.
+- **Do not add a value import to `shortcutModel.ts`.** The single re-export of phase 1's three caps
+  is the whole door, and it is what keeps `ShortcutTable.tsx` from naming a `lib/nina` specifier.
+- **Do not add a confirmation step to any shortcut action.** The `✕` deletes on the first click; the
+  test asserts the absence of every second-click API by name.
 - **Do not reintroduce a singular register action.** `registerNinaAvatarAction` existed to land one
   file at a time and wrote no `folder` and no `source_key`, which made its rows invisible to the
   manifest diff; phase 5 deleted it with its last caller. `registerNinaAvatarsAction` handles a
@@ -985,3 +1216,31 @@ section for `/admin/photos` covering the cap, the schema, the action and D1, the
 schema, bound or export in this package was renamed or removed. `tests/admin.chatPhotos.test.ts` grew
 14 cases, 40 -> 54 (6 on the schema, 8 on the action), and `tests/nina.chatPhotoDescription.test.ts`
 is new, with 4 on the query's scoping.
+
+2026-09-07 — updated following task **P1-ADM-A001** (`nina-emoji-shortcuts` phase 3 of 4, R1: *"i
+want a mechanism that is more explicit, that is shortcuts. in shortcuts admin can add shortcuts that
+entails some situations or what miftah and nina were doing."*).
+
+Three new modules and one appended schema section, and no existing action, schema, bound or export
+in this package was renamed, removed or reordered. `shortcutModel.ts` is the client-safe half — the
+`ShortcutRow` / `ShortcutSource` pair, `buildShortcutRows`, `formatFired`, `describeKind`,
+`SHORTCUT_FIELDS`, `ADMIN_SHORTCUT_PAGE`, and the single re-export of phase 1's three caps that lets
+`components/admin/ShortcutTable.tsx` name no `@/lib/nina/` specifier at all. `shortcutStore.ts` is
+`server-only` and is the only module here that writes a shortcut; it reaches no drizzle table and no
+`db` handle, derives neither `match_key` nor `kind` (both are computed inside
+`lib/nina/queries.ts`'s writes, which have no field for either), and owns the duplicate catch via
+`isUniqueViolation`, the empty-trigger refusal, and the admin read's newest-first ordering and
+ceiling over a bare `listNinaShortcuts(userId)`. `shortcutActions.ts` adds four actions — add, save
+one cell, toggle `enabled`, delete — each `requireAdmin()` -> Zod -> store -> `revalidatePath`, with
+no confirmation anywhere.
+
+`schema.ts` gained four zod schemas appended after `ninaTuningResetSchema`, importing every bound
+through `shortcutModel.ts`; `shortcutCellSchema` is a discriminated union on `field` because the
+three cells have three different caps. Deliberately absent from all four: any field for `match_key`
+or `kind`, so a forged POST cannot supply a folded key that disagrees with its own trigger.
+
+Refreshed here: the overview's surface list, a new key responsibility, three module-map rows, the
+`schema.ts` export block and a new subsection under it, a new Exported API section for the trio, the
+`@/lib/nina/queries` and two new dependency bullets, two reverse-dependency entries, the
+test-consumer list, and five gotchas. `tests/admin.shortcuts.test.ts` is new, with 28 cases — the
+pure half by call, and the module boundaries by reading source.

@@ -11,7 +11,11 @@ import {
   resolveWorkerSessionId,
 } from '../scripts/nina-image-worker.ts'
 import type { ClaimedJob, SchemaColumn } from '../scripts/nina-image-worker.ts'
-import { NINA_IMAGE_COST_MICRO_USD, NINA_IMAGE_DISPATCH_GRACE_MS } from '../lib/nina/imagerecipe.ts'
+import {
+  NINA_IMAGE_COST_MICRO_USD,
+  NINA_IMAGE_DISPATCH_GRACE_MS,
+  OPENROUTER_IMAGE_URL,
+} from '../lib/nina/imagerecipe.ts'
 
 /**
  * The worker's two pure decisions: how it reads its argv, and how it turns an OpenRouter response
@@ -157,7 +161,7 @@ describe('generate', () => {
     }
   })
 
-  it('sends exactly the recipe body, and no reference image', async () => {
+  it('sends exactly the recipe body, and no reference image when the job has none', async () => {
     process.env.OPENROUTER_API_KEY = 'test-key'
     const fn = stubFetch(
       new Response(JSON.stringify({ data: [{ b64_json: PNG_B64 }] }), { status: 200 }),
@@ -167,6 +171,50 @@ describe('generate', () => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>
     expect(body.resolution).toBe('1K')
     expect(body.aspect_ratio).toBe('3:4')
+    expect(body.input_references).toBeUndefined()
+  })
+
+  it('R10: the second host sends the same anchored payload as the first', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-key'
+    const fn = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith(OPENROUTER_IMAGE_URL)) {
+        return new Response(JSON.stringify({ data: [{ b64_json: PNG_B64 }] }), { status: 200 })
+      }
+      return new Response(Buffer.alloc(4, 1), {
+        status: 200,
+        headers: { 'content-type': 'image/png', 'content-length': '4' },
+      })
+    })
+    vi.stubGlobal('fetch', fn)
+
+    const outcome = await generate('a photograph', 42, 'https://blob.test/nina/a.png')
+
+    expect(outcome.ok).toBe(true)
+    const init = fn.mock.calls[1]?.[1]
+    const body = JSON.parse(String(init?.body)) as {
+      input_references?: Array<{ image_url: { url: string } }>
+    }
+    expect(body.input_references?.length).toBe(1)
+    expect(body.input_references?.[0]?.image_url.url.startsWith('data:image/png;base64,')).toBe(
+      true,
+    )
+  })
+
+  it('R10: a broken reference degrades to unanchored here too, not to a failed job', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-key'
+    const fn = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).startsWith(OPENROUTER_IMAGE_URL)) {
+        return new Response(JSON.stringify({ data: [{ b64_json: PNG_B64 }] }), { status: 200 })
+      }
+      return new Response('nope', { status: 403 })
+    })
+    vi.stubGlobal('fetch', fn)
+
+    const outcome = await generate('a photograph', 42, 'https://blob.test/nina/a.png')
+
+    expect(outcome.ok).toBe(true)
+    const init = fn.mock.calls[1]?.[1]
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>
     expect(body.input_references).toBeUndefined()
   })
 

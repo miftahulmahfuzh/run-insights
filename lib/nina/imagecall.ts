@@ -4,8 +4,11 @@ import { ninaEnv } from '@/lib/env'
 
 import { classifyImageFailure, type NinaImageFailure } from './imagefail'
 import {
+  buildImageReferenceDataUrl,
   buildImageRequestBody,
-  NINA_IMAGE_CALL_TIMEOUT_MS,
+  NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS,
+  NINA_IMAGE_REFERENCE_MAX_BYTES,
+  ninaImageCallTimeoutMs,
   OPENROUTER_IMAGE_URL,
   readReportedCostMicroUsd,
 } from './imagerecipe'
@@ -52,14 +55,40 @@ import {
  *   · a number on success — `usage.cost` when the provider reports it, the constant when it does
  *              not. `readReportedCostMicroUsd` owns that preference.
  *
- * ── THE TIMEOUT IS NOT THE WORKER'S ───────────────────────────────────────────────────────────
+ * ── THE TIMEOUTS ARE NOT THE WORKER'S, AND THERE ARE TWO OF THEM ──────────────────────────────
  * `NINA_WORKER_CALL_TIMEOUT_MS` is 240 s because a GitHub runner has six hours and no ceiling to
- * race. Here there IS a ceiling — the route segment's `maxDuration` — so the timeout is
- * `NINA_IMAGE_CALL_TIMEOUT_MS` (150 s), derived in `imagerecipe.ts`'s threshold block and asserted
- * in `tests/nina.imagerecipe.test.ts`. Two hosts, two ceilings, two constants, one payload.
+ * race. Here there IS a ceiling — the route segment's `maxDuration` — so the timeout comes from
+ * `ninaImageCallTimeoutMs(anchored)`: **150 s unanchored, 220 s with a reference**, because RU-18
+ * measured an anchored generation at 148.9 s against 78.2 s and a 150 s ceiling would have aborted
+ * about half of R10's own generations. Both are derived in `imagerecipe.ts`'s threshold block and
+ * asserted in `tests/nina.imagerecipe.test.ts`. Two hosts, three ceilings, one payload.
+ *
+ * **THE CHOSEN CEILING BOUNDS THIS WHOLE FUNCTION, NOT JUST THE POST.** The reference is fetched
+ * from Blob here, before the request, and the POST's `AbortSignal` gets what is left of the
+ * allowance afterwards. So `callNinaImageModel` cannot outlive one constant, and the threshold
+ * arithmetic needs no term for the fetch.
+ *
+ * ── A REFERENCE THAT CANNOT BE FETCHED IS NOT A FAILED JOB ────────────────────────────────────
+ * `fetchNinaImageReference` returns null on every failure — a non-200 from Blob, an oversized
+ * object, a content type this pipeline will not vouch for, a timeout, a thrown anything — and logs
+ * one `console.warn`. The generation then proceeds UNANCHORED and the result carries
+ * `anchored: false`, which `imagerun.ts` logs beside the bytes and the cost. The operator gets a
+ * picture without the anchor rather than an apology, which is the trade R10 is worth: the alternative
+ * is spending a day's quota on an apology for a CDN hiccup.
  */
 export type NinaImageCallResult =
-  | { ok: true; b64: string; costMicroUsd: number; latencyMs: number }
+  | {
+      ok: true
+      b64: string
+      costMicroUsd: number
+      latencyMs: number
+      /**
+       * Whether a reference actually went on the wire. `false` for an unanchored job AND for a job
+       * whose reference could not be fetched — the caller logs it, so a degraded generation is
+       * visible in the log rather than inferred from a missing warning.
+       */
+      anchored: boolean
+    }
   | {
       ok: false
       kind: NinaImageFailure
@@ -70,9 +99,95 @@ export type NinaImageCallResult =
       detail: string
     }
 
+/**
+ * **The anchor, off Blob and into a `data:` URL. It never throws and it never blocks a job.**
+ *
+ * Modelled on `lib/nina/vision.ts`'s `toDataUri` (`:253-286`) — a `data:` URL rather than the
+ * hosted URL, and the media type READ BACK from the object's own `content-type` and allow-listed
+ * rather than assumed — with two differences that matter here:
+ *
+ *   1. **It returns null instead of throwing.** `vision.ts` throws because a description with no
+ *      image is worthless; a photograph with no anchor is still a photograph.
+ *   2. **It is BOUNDED.** `vision.ts` fetches chat photos, which are ≤ 900 KB by construction.
+ *      This fetches whatever the operator picked out of the album, which is ≤ 8 MiB by
+ *      construction — so `NINA_IMAGE_REFERENCE_MAX_BYTES` is a belt-and-braces guard on a set that
+ *      every writer already bounds, checked twice: once against the declared `content-length`
+ *      (cheap, and Vercel Blob serves one) and once against the bytes actually read.
+ */
+export async function fetchNinaImageReference(url: string): Promise<string | null> {
+  const startedAt = Date.now()
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS),
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      console.warn('[nina] image reference dropped — blob fetch failed', {
+        url,
+        status: res.status,
+      })
+      return null
+    }
+
+    const declared = res.headers.get('content-length')
+    const declaredBytes = declared == null ? null : Number.parseInt(declared, 10)
+    if (
+      declaredBytes != null &&
+      Number.isFinite(declaredBytes) &&
+      declaredBytes > NINA_IMAGE_REFERENCE_MAX_BYTES
+    ) {
+      console.warn('[nina] image reference dropped — declared too large', {
+        url,
+        declaredBytes,
+        maxBytes: NINA_IMAGE_REFERENCE_MAX_BYTES,
+      })
+      return null
+    }
+
+    const bytes = Buffer.from(await res.arrayBuffer())
+    if (bytes.byteLength === 0 || bytes.byteLength > NINA_IMAGE_REFERENCE_MAX_BYTES) {
+      console.warn('[nina] image reference dropped — bad size', {
+        url,
+        bytes: bytes.byteLength,
+        maxBytes: NINA_IMAGE_REFERENCE_MAX_BYTES,
+      })
+      return null
+    }
+
+    const served = res.headers.get('content-type') ?? ''
+    const dataUrl = buildImageReferenceDataUrl(served, bytes.toString('base64'))
+    if (dataUrl == null) {
+      console.warn('[nina] image reference dropped — content type not vouched for', {
+        url,
+        served,
+      })
+      return null
+    }
+
+    console.info('[nina] image reference attached', {
+      bytes: bytes.byteLength,
+      contentType: served,
+      fetchMs: Date.now() - startedAt,
+    })
+    return dataUrl
+  } catch (cause) {
+    /* A timeout, a DNS failure, a truncated body — all of them cost the anchor and none of them
+     * costs the job. */
+    console.warn('[nina] image reference dropped — fetch threw', { url, cause: String(cause) })
+    return null
+  }
+}
+
 export async function callNinaImageModel(
   prompt: string,
   seed: number,
+  /**
+   * The job's `args.referenceUrl`, already normalised by `ninaImageReferenceUrl`. Optional and
+   * defaulted so every existing caller — and `tests/nina.imagecall.test.ts`'s four positional
+   * calls — is unchanged.
+   */
+  referenceUrl: string | null = null,
 ): Promise<NinaImageCallResult> {
   const startedAt = Date.now()
 
@@ -100,6 +215,24 @@ export async function callNinaImageModel(
     }
   }
 
+  /* The anchor, if this job asked for one. BEFORE the key check would have been wrong: a job with
+   * no key must not spend ten seconds pulling bytes it will never send. */
+  const referenceDataUrl =
+    referenceUrl == null || referenceUrl.length === 0
+      ? null
+      : await fetchNinaImageReference(referenceUrl)
+
+  /*
+   * The ceiling for what is ACTUALLY being sent — a reference that could not be fetched is an
+   * unanchored call and gets the unanchored 150 s. Minus what the fetch already spent, so the
+   * chosen constant bounds this whole function and not merely the POST. Floored at one second so a
+   * pathologically slow fetch cannot hand `AbortSignal.timeout` a zero or a negative.
+   */
+  const postTimeoutMs = Math.max(
+    1_000,
+    ninaImageCallTimeoutMs(referenceDataUrl != null) - (Date.now() - startedAt),
+  )
+
   let res: Response
   try {
     res = await fetch(OPENROUTER_IMAGE_URL, {
@@ -108,8 +241,8 @@ export async function callNinaImageModel(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildImageRequestBody({ prompt, seed })),
-      signal: AbortSignal.timeout(NINA_IMAGE_CALL_TIMEOUT_MS),
+      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl })),
+      signal: AbortSignal.timeout(postTimeoutMs),
       cache: 'no-store',
     })
   } catch (cause) {
@@ -117,8 +250,8 @@ export async function callNinaImageModel(
       ok: false,
       kind: classifyImageFailure({ cause }),
       latencyMs: Date.now() - startedAt,
-      /* The request left the building. A generation that was aborted at 150 s was very probably
-       * billed, so this is `null` ("unknown, guess high") and not `0`. */
+      /* The request left the building. A generation that was aborted at its ceiling was very
+       * probably billed, so this is `null` ("unknown, guess high") and not `0`. */
       costMicroUsd: null,
       detail: String(cause),
     }
@@ -167,5 +300,6 @@ export async function callNinaImageModel(
     /* `null` here means the provider said nothing; `imagerun.ts` substitutes the constant. */
     costMicroUsd: reportedCost ?? 0,
     latencyMs: Date.now() - startedAt,
+    anchored: referenceDataUrl != null,
   }
 }

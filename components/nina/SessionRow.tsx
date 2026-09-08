@@ -66,12 +66,20 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  * `lib/nina/jobActions.ts`. This file used to be the precedent that instruction overrode; the
  * set is now one shape.
  *
- * **What that did NOT change is the stake.** Removing a chat is still a hard delete of the
- * session, its messages and, through the cascades, their photo rows. There is still no archive
- * flag and therefore still no undo — unlike `nina_turns.deleted_at`, where a mis-tap is one
- * `update … set deleted_at = null` away from being reversed. So the asymmetry between this
- * control and the job list's is real and stays on the record; what changed is the judgement about
- * what is worth spending on it, and it is the runner's own chats he made that call about.
+ * **What that did NOT change is the stake — and R1 has since narrowed it.** Removing a chat is
+ * still a hard delete of the session and its messages, with no archive flag and therefore no undo
+ * — unlike `nina_turns.deleted_at`, where a mis-tap is one `update … set deleted_at = null` away
+ * from being reversed. The PHOTOGRAPHS are no longer part of that loss:
+ * `nina_message_images.message_id` is `ON DELETE SET NULL` since R1, so they outlive the
+ * conversation and stay in the Chat photos collection. So the asymmetry between this control and
+ * the job list's is real and stays on the record; what changed is the judgement about what is
+ * worth spending on it, and it is the runner's own chats he made that call about.
+ *
+ * **R1 also put a sentence in the panel saying the photographs survive, and that sentence went out
+ * with the panel.** None of the GUARANTEE went with it — that lives in the foreign key, which is
+ * where R1 deliberately put it (*"`removeNinaSession` did not change to get this — the FK did"*).
+ * What is gone is the reassurance at the moment of the tap, which is the price of the panel going;
+ * `/admin/photos` is where the photographs are still found.
  *
  * What guards it now — all of it cheap, none of it a second screen:
  *

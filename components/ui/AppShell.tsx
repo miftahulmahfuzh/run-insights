@@ -57,20 +57,27 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
    */
   tabs: 'pb-[calc(6rem+var(--safe-bottom))]',
   /*
-   * R1. NO BAR: the composer's own 68px (a 44px control in a py-3 bar), the 8px gap above it, the
+   * NO BAR: the composer's own 60px (a 44px control in a py-2 bar), the 8px gap above it, the
    * floating control's 32px tap target, and 12px so the newest bubble is not flush against it.
-   * 68 + 8 + 32 + 12 = 120, which is exactly `7.5rem` — no rounding needed, where the pre-R1
-   * literal `10.5rem` (168px) rounded up from 78 + 68 + 16 = 162.
+   * 60 + 8 + 32 + 12 = 112, which is exactly `7rem` — no rounding needed.
    *
-   * WAS `8.5rem` (136px), from a 44px control. The repo owner asked for the two floating controls
-   * to be "much smaller", `CHROME_CONTROL_PX` went 44 -> 32, and this literal has to follow or the
-   * screen keeps reserving 12px of padding for a control that no longer occupies it — which reads
-   * as a gap under the conversation rather than as a bug, and so would have survived review.
+   * WAS `7.5rem` (120px), from a `py-3` composer. The repo owner asked for the query field to be
+   * "lebih kecil jadi lebih makan lesser space", `COMPOSER_RESTING_PX` went 68 -> 60, and this
+   * literal has to follow or the screen keeps reserving 8px of padding for a bar that no longer
+   * occupies it. Before that it was `8.5rem` (136px), from a 44px floating control, and the same
+   * miss was available then: a stale literal here reads as a gap under the conversation rather
+   * than as a bug, and so would have survived review. Twice now.
    *
    * Those numbers are `CHROME_CONTROL_PX`, `CHROME_CONTROL_GAP_PX` and `COMPOSER_RESTING_PX` in
    * `lib/nina/chrome.ts`, plus `Composer`'s own geometry; Tailwind cannot read a constant, so a
    * change to any of them changes this literal. `TAB_BAR_HEIGHT_PX` is deliberately NOT in this
    * sum — the bar is not below the composer on this screen.
+   *
+   * The composer's home-indicator padding is NOT in this sum either, and must not be added: it is
+   * the `var(--safe-bottom)` term this class already carries, which is why the whole thing is
+   * `calc(7rem+var(--safe-bottom))` rather than `pb-28`. The composer pads by that inset in the
+   * bar-hidden state (`composerPadBottomCss`) and the document reserves it here; one is the bar's
+   * own box and the other is the scroll container's, and they are the same length by construction.
    *
    * FIXED, not dynamic. This padding is the document's height: making it follow the reveal would
    * move the scroll position every time the bar toggles, and `MessageList`'s auto-scroll would
@@ -78,7 +85,7 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
    * bubble sits behind it for those five seconds — which is the right trade, because a runner who
    * pulls up the bar is on his way to another tab, not re-reading the last line.
    */
-  chat: 'pb-[calc(7.5rem+var(--safe-bottom))]',
+  chat: 'pb-[calc(7rem+var(--safe-bottom))]',
 }
 
 export function AppShell({

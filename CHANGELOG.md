@@ -16,7 +16,7 @@ individual plan file.
   chill, sad, flirty, steamy, wise, annoying, funny, happy, anxious, concerned — plus a
   relationship setting (nobody / casual friend / sister / best friend / girlfriend) that decides
   what she calls him and how she behaves, four further dials (profanity, clinginess, photo
-  eagerness, verbosity), a wardrobe line that reaches the camera, and a free-text note. Her system
+  eagerness, verbosity) and a free-text note. Her system
   prompt used to be one frozen `const`; it is now a pure function of a stored row, read live on
   every turn with no cache anywhere on that path, so moving a slider changes the very next thing
   she says. **The defaults reproduce the prompt that shipped before this, character for character,

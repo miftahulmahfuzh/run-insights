@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 
 import { AdminNav } from '@/components/admin/AdminNav'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
@@ -39,12 +39,13 @@ import { ADMIN_INSTALL, APPLE_WEB_APP } from '@/lib/pwa'
  *   2. **Every gutter carries its own inset.** `pt`/`pl`/`pr` are `calc(<gutter> + var(--safe-*))`
  *      rather than a flat `p-6`. All four insets are 0 px on a desktop and in portrait, so this
  *      costs nothing where it is not needed and is the whole fix where it is.
- *   3. **`<main>` reserves `calc(5rem + var(--safe-bottom))` below `lg`.** `AdminNav` is `fixed`
+ *   3. **`<main>` reserves `calc(8rem + var(--safe-bottom))` below `lg`.** `AdminNav` is `fixed`
  *      there, so it is out of flow and contributes no grid row; without this the last card of
- *      every page sits under the bar. 80 px against the bar's 57 px border box (56 px row plus
- *      `border-t`) leaves 23 px of breathing room, the same shape as `AppShell`'s `BOTTOM_GAP`.
- *      **The two numbers are spelled in two files** — see `AdminNav`'s `h-14` comment — and
- *      `tests/admin.shell.test.ts` is what keeps them in step.
+ *      every page sits under the bar. The number moved from `5rem` to `8rem` with the sixth admin
+ *      route, which turned the bar from one 56 px row into two: 128 px against the bar's 113 px
+ *      border box (112 px of rows plus `border-t`) leaves 15 px of breathing room, the same shape
+ *      as `AppShell`'s `BOTTOM_GAP`. **The two numbers are spelled in two files** — see
+ *      `AdminNav`'s `h-28` comment — and `tests/admin.shell.test.ts` is what keeps them in step.
  *
  * `min-h-dvh` was already here and was CHECKED rather than assumed: `dvh` is the DYNAMIC viewport
  * unit, so the column grows and shrinks with Safari's retracting toolbar. `svh` would leave a
@@ -101,12 +102,70 @@ export const metadata: Metadata = {
   appleWebApp: { ...APPLE_WEB_APP, title: ADMIN_INSTALL.shortName },
 }
 
+/**
+ * The `/admin` install's own status-bar tint. R4: *"make sure batas atas di xs max top notch is
+ * white, so it is kind of blend in with the UI"*.
+ *
+ * Without this export the ROOT layout's `themeColor` pair is the resolved value for `/admin` too,
+ * so an installed tile opened with the runner's sky blue (`#c9e9fb`) as a band across the notch,
+ * sitting on the `bg-paper-2` shell below. Now the band and the page are the same colour.
+ *
+ * ── WHY THIS EXPORT HAS EXACTLY ONE KEY ────────────────────────────────────────────────────
+ * Because a nested `viewport` MERGES key by key: every key it does not name is inherited from the
+ * root, and re-stating one would create a second source of truth for a value that must not drift.
+ * Read in the framework rather than assumed —
+ * `node_modules/next/dist/lib/metadata/resolve-metadata.js:315`:
+ *
+ *     function mergeViewport({ resolvedViewport, viewport }) {
+ *         const newResolvedViewport = structuredClone(resolvedViewport);
+ *         if (viewport) {
+ *             for(const key_ in viewport){
+ *
+ * (the real line 315 opens with the close of the preceding JSDoc; it cannot be reproduced inside
+ * this comment, which is the only edit made to the quotation.)
+ *
+ * It clones the ALREADY-RESOLVED parent and overwrites only the keys present in this object, then
+ * `accumulateViewport` folds that root -> leaf over the segment tree. `width`, `initialScale` and
+ * — the one that matters — `viewportFit: 'cover'` therefore keep arriving from `app/layout.tsx`.
+ *
+ * **Do not add `viewportFit` here.** That value is what makes `env(safe-area-inset-*)` non-inert,
+ * and all four insets in the shell below depend on it. A copy that agrees today is a copy that can
+ * disagree tomorrow, and the failure mode is silent: no error, no warning, the padding just stops
+ * working. Next's `generate-viewport.md` documents no merge rule at all, which is why the source
+ * is quoted above instead of cited. The `metadata` export overhead above is the other half of the
+ * same lesson, for the nested field that REPLACES rather than merges.
+ *
+ * ── WHY A PAIR, AND WHY BOTH VALUES ARE `--paper-2` ────────────────────────────────────────
+ * A `<meta name="theme-color" media="...">` pair is the only surface here that can follow the
+ * colour scheme — a manifest carries one `theme_color`, and `manifest.webmanifest/route.ts` spends
+ * it on the light value — and it is what Safari actually reads to tint an installed app's status
+ * bar. Both halves are `--paper-2` because the shell below is `bg-paper-2`: the band has to match
+ * the screen it sits on. NOT `#ffffff`, however literally the report said "white" — `lib/pwa.ts`'s
+ * `ADMIN_INSTALL` carries that argument.
+ *
+ * `APPLE_WEB_APP.statusBarStyle` stays `'default'` and this change does not need it. Translucent
+ * would draw the page UNDER the status bar, and `lib/pwa.ts` gates that on the RUNNER's screens
+ * padding `--safe-top` — still half done. A tint on an opaque bar has no such prerequisite.
+ *
+ * ── NO COMMENTS INSIDE THE OBJECT LITERAL, DELIBERATELY ────────────────────────────────────
+ * `tests/pwa.install.test.ts` slices this export out of the source and asserts that `viewportFit`
+ * and its neighbours do NOT appear inside it. A guard that a comment can satisfy or break is a
+ * guard that gets its explanation deleted instead of its bug caught, so all of the explanation
+ * lives up here and the object stays code only.
+ */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: ADMIN_INSTALL.paper },
+    { media: '(prefers-color-scheme: dark)', color: ADMIN_INSTALL.paperDark },
+  ],
+}
+
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   await requireAdmin()
 
   return (
     <div className="min-h-dvh bg-paper-2">
-      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-6 pt-[calc(1rem+var(--safe-top))] pr-[calc(1rem+var(--safe-right))] pb-[calc(5rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))] lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8 lg:pt-[calc(2rem+var(--safe-top))] lg:pr-[calc(2rem+var(--safe-right))] lg:pb-8 lg:pl-[calc(2rem+var(--safe-left))]">
+      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-6 pt-[calc(1rem+var(--safe-top))] pr-[calc(1rem+var(--safe-right))] pb-[calc(8rem+var(--safe-bottom))] pl-[calc(1rem+var(--safe-left))] lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8 lg:pt-[calc(2rem+var(--safe-top))] lg:pr-[calc(2rem+var(--safe-right))] lg:pb-8 lg:pl-[calc(2rem+var(--safe-left))]">
         <AdminNav />
         {/* `min-w-0` is load-bearing: without it a wide album grid blows out the grid track
             instead of scrolling inside it. */}
