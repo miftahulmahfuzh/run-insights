@@ -187,10 +187,7 @@ function isRedoableArgs(value: unknown): value is NinaImageJobArgs {
   return typeof args.prompt === 'string' && args.prompt !== '' && typeof args.seed === 'number'
 }
 
-export async function reopenNinaImageJob(
-  userId: string,
-  jobId: string,
-): Promise<NinaImageReopen> {
+export async function reopenNinaImageJob(userId: string, jobId: string): Promise<NinaImageReopen> {
   const [row] = await db
     .select({ status: ninaTurns.status, args: ninaTurns.args })
     .from(ninaTurns)
@@ -941,11 +938,7 @@ export async function listNinaImageJobs(
      * hid the JOB, not the row on one screen. `/nina/about`'s markup and controls are untouched;
      * only its contents shrink. */
     .where(
-      and(
-        eq(ninaTurns.userId, userId),
-        eq(ninaTurns.kind, 'image'),
-        isNull(ninaTurns.deletedAt),
-      ),
+      and(eq(ninaTurns.userId, userId), eq(ninaTurns.kind, 'image'), isNull(ninaTurns.deletedAt)),
     )
     .orderBy(desc(ninaTurns.createdAt))
     .limit(opts.limit ?? NINA_JOB_LIST_LIMIT)

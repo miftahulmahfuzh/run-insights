@@ -365,7 +365,11 @@ async function scriptedTurn(input: {
  * 1's session-resolution fix — leaves the suite GREEN. With it, that mutation fails cases 2 and 3.
  */
 async function makeCFallbackWin(): Promise<void> {
-  await q.insertNinaMessages(U1, [{ role: 'runner', body: 'eh btw, ngobrol di sini dulu' }], sessionC)
+  await q.insertNinaMessages(
+    U1,
+    [{ role: 'runner', body: 'eh btw, ngobrol di sini dulu' }],
+    sessionC,
+  )
 }
 
 /* ── The suite ─────────────────────────────────────────────────────────────────────────────── */
@@ -383,7 +387,9 @@ describe.skipIf(!enabled)('nina image pipeline, end to end, against a real datab
 
     installFetchRouter()
 
-    await db.insert(s.users).values([{ id: U1, name: 'Fixture Runner', email: `${U1}@example.test` }])
+    await db
+      .insert(s.users)
+      .values([{ id: U1, name: 'Fixture Runner', email: `${U1}@example.test` }])
 
     /*
      * The face she already has. `source: 'admin'` matters twice: it is what production actually

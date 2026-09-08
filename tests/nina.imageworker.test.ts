@@ -496,7 +496,9 @@ describe('claimJob — Finding 2, as the statement actually sent', () => {
 })
 
 describe('findSchemaDrift — Finding 1 as a CLASS', () => {
-  function column(overrides: Partial<SchemaColumn> & Pick<SchemaColumn, 'table_name' | 'column_name'>): SchemaColumn {
+  function column(
+    overrides: Partial<SchemaColumn> & Pick<SchemaColumn, 'table_name' | 'column_name'>,
+  ): SchemaColumn {
     return {
       is_nullable: 'YES',
       column_default: null,
@@ -526,7 +528,13 @@ describe('findSchemaDrift — Finding 1 as a CLASS', () => {
 
   it('reports a column the worker names and the database does not have (a rename)', () => {
     expect(
-      findSchemaDrift([column({ table_name: 'widget', column_name: 'id' }), column({ table_name: 'ledger', column_name: 'id' })], spec),
+      findSchemaDrift(
+        [
+          column({ table_name: 'widget', column_name: 'id' }),
+          column({ table_name: 'ledger', column_name: 'id' }),
+        ],
+        spec,
+      ),
     ).toContain('widget.user_id is missing')
   })
 
@@ -555,9 +563,19 @@ describe('findSchemaDrift — Finding 1 as a CLASS', () => {
         [
           column({ table_name: 'widget', column_name: 'id', is_nullable: 'NO' }),
           column({ table_name: 'widget', column_name: 'user_id', is_nullable: 'NO' }),
-          column({ table_name: 'widget', column_name: 'seq', is_nullable: 'NO', column_default: "nextval('widget_seq_seq'::regclass)" }),
+          column({
+            table_name: 'widget',
+            column_name: 'seq',
+            is_nullable: 'NO',
+            column_default: "nextval('widget_seq_seq'::regclass)",
+          }),
           column({ table_name: 'widget', column_name: 'n', is_nullable: 'NO', is_identity: 'YES' }),
-          column({ table_name: 'widget', column_name: 'g', is_nullable: 'NO', is_generated: 'ALWAYS' }),
+          column({
+            table_name: 'widget',
+            column_name: 'g',
+            is_nullable: 'NO',
+            is_generated: 'ALWAYS',
+          }),
           column({ table_name: 'ledger', column_name: 'id', is_nullable: 'NO' }),
         ],
         spec,

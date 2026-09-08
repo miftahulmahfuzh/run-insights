@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  NINA_DESCRIBE_SYSTEM_PROMPT,
-  NINA_SELF_DESCRIBE_SYSTEM_PROMPT,
-} from './prompts/describe'
+import { NINA_DESCRIBE_SYSTEM_PROMPT, NINA_SELF_DESCRIBE_SYSTEM_PROMPT } from './prompts/describe'
 import {
   NINA_TOKEN_FLOOR_PER_IMAGE,
   NinaVisionTokenFloorError,

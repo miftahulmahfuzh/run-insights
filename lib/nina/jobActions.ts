@@ -37,11 +37,15 @@ import { NINA_JOBS_HREF, type NinaJobRefusal } from './jobview'
  * the same line"* — and this file is that third caller. `app/nina/jobs/page.tsx` carries it.
  *
  * ── NO CONFIRMATION, AND THAT IS AN R-LEVEL DECISION ──────────────────────────────────────────
- * The user's words are *"we dont need confirmation message to execute them"*. This deliberately
- * OVERRIDES `components/nina/SessionRow.tsx`'s three-tap confirm, and the override is principled
- * rather than lazy: that control hard-deletes a conversation and its photographs with no undo,
- * whereas a redo costs one generation of a six-a-day cap and produces a photograph the runner
- * asked for. There is nothing here to protect him from.
+ * The user's words are *"we dont need confirmation message to execute them"*. When this was
+ * written it deliberately OVERRODE `components/nina/SessionRow.tsx`'s three-tap confirm, and the
+ * override was principled rather than lazy: that control hard-deletes a conversation with no undo
+ * (its photographs survive it since R1), whereas a redo costs one generation of a six-a-day cap
+ * and produces a photograph the runner asked for. There is nothing here to protect him from.
+ *
+ * Task #136 has since taken the confirm out of `SessionRow` too, on this same instruction, so it
+ * now holds across the whole set. The difference in stakes did not go with it — see
+ * `deleteNinaImageJob` below, which is where that reasoning lives.
  *
  * ── THE RESULT CARRIES A CODE, NEVER A SENTENCE ───────────────────────────────────────────────
  * `NinaSessionActionResult` is `{ ok, next }` with no prose, and `SessionRow` supplies the words.
@@ -125,13 +129,20 @@ export async function redoNinaImageJob(input: { jobId: string }): Promise<NinaJo
 /**
  * **R2, and the whole of it: one tap, no dialog, and the row leaves the list.**
  *
- * ── WHY THERE IS NO CONFIRMATION, AND WHY `SessionRow`'s PRECEDENT DOES NOT TRANSFER ──────────
+ * ── WHY THERE IS NO CONFIRMATION, AND WHY `SessionRow`'s PREMISE NEVER TRANSFERRED ────────────
  * The runner asked for this by name — *"we dont need confirmation message to execute them"* — but
- * it survives on its merits, which matters because `components/nina/SessionRow.tsx` builds a
- * three-tap confirmation panel for its delete and argues for it at length. Read that argument and
- * it turns entirely on ONE premise: *"There is no archive flag and therefore no undo, so the
+ * it survives on its merits, which matters because `components/nina/SessionRow.tsx` once built a
+ * three-tap confirmation panel for its delete and argued for it at length. Read that argument and
+ * it turned entirely on ONE premise: *"There is no archive flag and therefore no undo, so the
  * confirmation is the only thing between a mis-tap and a lost conversation."* R11 hard-deletes a
- * conversation and, through two cascades, its photographs' rows.
+ * conversation and its messages. (Its photographs' rows used to go too; R1 made
+ * `nina_message_images.message_id` `ON DELETE SET NULL`, so they now outlive it. The conversation
+ * itself is still gone for good, which is the half the premise turns on.)
+ *
+ * Task #136 removed that panel, and it is worth being precise about what that did and did not
+ * settle: it did NOT refute the premise — R11 is still irreversible — it decided the panel was not
+ * worth its cost on the runner's own chats. The premise is still the reason the two controls COULD
+ * have differed, and still the reason this one never needed a dialog to begin with.
  *
  * That premise is absent here, deliberately. This writes a nullable column. A mis-tap costs the
  * runner one row on one screen; `update nina_turns set deleted_at = null where id = '…'` puts it

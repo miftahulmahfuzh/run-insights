@@ -700,7 +700,10 @@ export const ninaTurns = pgTable(
      *      what the nullable column buys is that `update nina_turns set deleted_at = null where
      *      id = '…'` restores a row exactly, in SQL, by hand. That recoverability is also why the
      *      control that writes this needs no confirmation dialog: `SessionRow`'s R11 confirmation
-     *      exists because *"there is no archive flag and therefore no undo"*, and here there is.
+     *      existed because *"there is no archive flag and therefore no undo"*. Task #136 has since
+     *      removed that panel too, but the asymmetry it named is still the one that matters here —
+     *      this column is what makes a mis-tap on THIS control cost nothing, and R11 still has no
+     *      equivalent.
      *
      *   4. **NOT A PER-KIND CONCEPT.** Only `kind = 'image'` rows are ever flagged, because
      *      `/nina/jobs` is the only screen that lists turns and it lists only image jobs. Every

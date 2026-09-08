@@ -96,7 +96,11 @@ export async function getPendingNinaChatTurn(
     })
     .from(ninaTurns)
     .where(
-      and(eq(ninaTurns.userId, userId), eq(ninaTurns.kind, 'chat'), eq(ninaTurns.status, 'pending')),
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.kind, 'chat'),
+        eq(ninaTurns.status, 'pending'),
+      ),
     )
     .orderBy(desc(ninaTurns.createdAt))
     .limit(8)

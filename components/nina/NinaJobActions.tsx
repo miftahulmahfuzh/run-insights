@@ -13,14 +13,20 @@ import { ninaJobTitle, type NinaJobListItem, type NinaJobRefusal } from '@/lib/n
  * **R1's redo control — one tap, no dialog — and the slot phase 2 puts its delete button in.**
  *
  * ── ONE TAP, AND THE PRECEDENT IT OVERRIDES ON PURPOSE ────────────────────────────────────────
- * `components/nina/SessionRow.tsx` guards its remove behind `⋯` → Hapus → Hapus chat, and its
- * header explains why at length: that control hard-deletes a conversation and its messages — its
- * photographs survive it since R1 — permanently, with no undo. **None of that transfers here**, and
- * the
- * user said so first: *"we dont need confirmation message to execute them"*. A redo opens one row
- * and spends one of six generations a day, and what it produces is a photograph he asked for. So:
- * no menu, no panel, no second tap, and no `window.confirm` — which `RetryExtraction` already
- * refuses on iOS grounds anyway ("a system dialog that reads as an error").
+ * `components/nina/SessionRow.tsx` used to guard its remove behind `⋯` → Hapus → Hapus chat, and
+ * its header argued why at length: that control hard-deletes a conversation and its messages — its
+ * photographs survive it since R1 — permanently, with no undo. **None of that transferred here**,
+ * and the user said so first: *"we dont need confirmation message to execute them"*. A redo opens
+ * one row and spends one of six generations a day, and what it produces is a photograph he asked
+ * for. So: no menu, no panel, no second tap, and no `window.confirm` — which `RetryExtraction`
+ * already refuses on iOS grounds anyway ("a system dialog that reads as an error").
+ *
+ * Task #136 then applied that same instruction to `SessionRow` itself, so the panel this file
+ * argued past no longer exists — that row is `⋯` → Hapus and deletes on the tap. The STAKES still
+ * differ, and `deleteNinaImageJob`'s header keeps that reasoning because it is what would have
+ * justified a divergence: a session removal destroys the conversation irreversibly (its
+ * photographs excepted, since R1), and this writes a nullable column. What is gone is the
+ * divergence, not the argument.
  *
  * The mis-tap protection that IS here is the one that costs nothing: `disabled={pending}`, so a
  * double-tap cannot open two jobs. After the list refreshes he can tap again, and that is a second
@@ -131,8 +137,9 @@ export function NinaJobActions({ item }: { item: NinaJobListItem }) {
           on it by accident. That is the safeguard the confirmation dialog would have been, spent on
           the input instead of on a second screen.
 
-          No `window.confirm`, no panel, no second tap. See `deleteNinaImageJob`'s header for why
-          `SessionRow`'s R11 confirmation is the right call there and the wrong one here.
+          No `window.confirm`, no panel, no second tap. `SessionRow`'s R11 lost its confirmation to
+          #136 and now does the same; see `deleteNinaImageJob`'s header for the stakes that still
+          separate the two controls.
         */}
         <button
           type="button"

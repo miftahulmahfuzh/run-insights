@@ -446,8 +446,10 @@ export function buildNinaImagePrompt(input: {
   prefs?: NinaImagePrefs | null
 }): string {
   const tuning = input.tuning ?? null
-  const prefs: NinaImagePrefs =
-    input.prefs ?? { ...NINA_IMAGE_PREFS_DEFAULTS, promptLength: NINA_PROMPT_LENGTH_FALLBACK }
+  const prefs: NinaImagePrefs = input.prefs ?? {
+    ...NINA_IMAGE_PREFS_DEFAULTS,
+    promptLength: NINA_PROMPT_LENGTH_FALLBACK,
+  }
   const rung = ninaPromptRung(prefs.promptLength)
   const isAvatar = input.purpose === 'avatar'
 
