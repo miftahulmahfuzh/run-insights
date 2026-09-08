@@ -1,0 +1,31 @@
+{
+  "branch": "feature/search-jump-pinpoint",
+  "coordinator": "orch-search-jump-pinpoint",
+  "coordinator_session_id": "a7e6412a-e403-4195-86e4-10e5114fceca",
+  "created": "2026-09-08T07:40:23+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "durability: set metadata rides feature/search-jump-pinpoint (pushed per round), NOT local main -- local main is diverged from origin/main (20 ahead / 151 behind, non-FF), while origin/main is where other machines publish orch metadata; live ledger stays in main checkout, synced to the branch copy after every verify. merge scope: branch base 9db3113 carries exactly 2 commits with no content-twin on origin (5377e35, 9db3113 nina-chat fixes; the other 18 local-ahead are twins) -- landing this set publishes them. requirement verified NOT shipped on origin/main: lib/nina/search.ts identical at base, ChatScreen jump landing intact but no search-side wiring. no Open Questions to inherit (empty at init).",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/search-jump-pinpoint/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Search hits deep-link through `?jump=` and the landing survives a same-session soft nav"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/search-jump-pinpoint/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "search-jump-pinpoint",
+  "updated": "2026-09-08T07:40:23+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/search-jump-pinpoint"
+}
