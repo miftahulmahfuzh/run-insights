@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-07
+**Last Updated**: 2026-09-08
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 18
+- Completed: 19
 
 ---
 
@@ -79,6 +79,22 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A025** Phase 1: Search hits deep-link through `?jump=` and the landing survives a same-session soft nav
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/search.ts` (`searchHitHref` + doc), `lib/nina/search.test.ts` (href suite), `lib/nina/jobview.ts` (the soft-nav one-shot guard, appended), `tests/nina.jobview.test.ts` (guard tests, appended), `components/nina/ChatScreen.tsx` (landing extraction + watcher). Exit criteria: a message hit's href is `/nina?s=<sid>&jump=<mid>` (session hit: `/nina?s=<sid>`), produced by `ninaJumpHref`; a jump arriving on a soft nav (no remount) scrolls instantly and flashes exactly as the mount path does, once, and strips itself from the entry; the mount path's behaviour is unchanged; all gates green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_JUMP_PINPOINT_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Klik item di search result → masuk ke chat session terkait → auto-scroll ke bubble yang direferensikan; R2 — Outline biru pada bubble yang direferensikan, efek yang sama dengan klik kotak reply-to
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A025.md`
+  - **Completed**: 2026-09-08 14:59
+  - **Method**: /do
+  - **Files**: lib/nina/jobview.ts, lib/nina/search.ts, lib/nina/search.test.ts, tests/nina.jobview.test.ts, components/nina/ChatScreen.tsx, tests/nina.chatPhoto.test.ts
+  - **Drift**: `tests/nina.chatPhoto.test.ts` was not in the plan's Files table: its "adds no second writer of the query string" source-contract test asserted exactly ONE `replaceState` in ChatScreen and failed against the watcher's sanctioned strip (expected 1, received 2). Updated to assert the decided rule — two sanctioned writers, exactly one per commit — with the comment restating that rule; the guard against a third writer is intact.
+  - **Drift**: The plan's manual smoke checklist (dev server on :3100, browser taps) was not run — it needs an authenticated browser session and asserts visual scroll/flash behaviour; the plan itself assigns the watcher's automated coverage to the pure guard tests, which pass.
+  - **Decided**: chatPhoto replaceState count 1→2 → test updated to the sanctioned-two-writers rule, not deleted or loosened (Rung 1: plan index Decisions row 4 — "the watcher's strip is a sanctioned second writer; the header's real rule is never two writers in ONE commit")
 
 - [x] **P1-NIN-A013** Phase 1: Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
   - **Difficulty**: NORMAL

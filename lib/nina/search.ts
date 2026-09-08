@@ -23,6 +23,7 @@
  */
 
 import { SESSION_PARAM } from './active'
+import { ninaJumpHref } from './jobview'
 
 /* ── the persisted toggle ──────────────────────────────────────────────────────────────────── */
 
@@ -324,22 +325,27 @@ export function isDegradedSearch(response: NinaSearchResponse | null): boolean {
 }
 
 /**
- * Where a hit goes: **phase 3's `?s=` and `lib/nina/scroll.ts`'s `?at=`, and no third grammar.**
+ * Where a hit goes: **`lib/nina/active.ts`'s `?s=` and `lib/nina/jobview.ts`'s `?jump=`, and no
+ * third grammar.**
  *
- * `decodeChatScrollMark` accepts `<messageId>~<offset>` with the id matching
- * `^[A-Za-z0-9_-]{1,64}$` and the offset `^-?\d{1,6}$`, and `resolveRestoreTop` returns
- * `anchorTop - offset` clamped into the document. So `~0` means "this message's top edge at the top
- * of the viewport", which is exactly a jump to it, and `components/nina/MessageList.tsx` already
- * consumes the mark. Deep-linking to the message therefore costs one function and no new parameter.
+ * The message arm DELEGATES to `ninaJumpHref`, so a search tap and `/nina/jobs/[id]`'s "Buka
+ * chat-nya" button build the same URL and land through the same code in `ChatScreen`: instant
+ * scroll into the band the composer leaves over, then the blue ring for `QUOTE_FLASH_MS`. That is
+ * the ask in one sentence — "the same effect as clicking the reply-to box" — and the four reasons
+ * `jobview.ts` documents for `jump` ≠ `at` all hold for a search box too: different arithmetic,
+ * no offset to give (a search field never measured this conversation), opposite lifetimes, and
+ * the two must coexist on one entry.
  *
- * `encodeURIComponent` rather than `URLSearchParams`: the latter percent-encodes `~` to `%7E`,
- * which round-trips fine through `useSearchParams().get('at')` but throws away the reason
- * `scroll.ts` chose `~` in the first place ("unreserved in a query string, so no percent-encoding").
- * Ids are `[0-9A-Za-z_-]{12}` so the call is a no-op in practice and correct hygiene anyway.
+ * The session arm keeps its hand-built `encodeURIComponent` form, byte-for-byte as it was: one
+ * key, no `~` anywhere, so `scroll.ts`'s unreserved-tilde argument is out of scope and there is
+ * nothing to migrate. Ids are `[0-9A-Za-z_-]{12}`, so `URLSearchParams` inside `ninaJumpHref`
+ * encodes nothing — correct hygiene without a second spelling of `?s=`.
  *
- * **A message older than `CHAT_HISTORY_LIMIT` inside its own session degrades**: the anchor is not
- * in the document, `resolveRestoreTop` returns `null`, and the screen opens where it normally
- * would. That is `scroll.ts`'s documented behaviour, not a new failure mode.
+ * **A message older than `CHAT_HISTORY_LIMIT` inside its own session degrades to the
+ * `'quote-missing'` notice** — the landing's own degradation in `ChatScreen`, which is already the
+ * right sentence — rather than this function's old behaviour of a `?at=` that silently failed to
+ * restore. The hit's message is real (the SQL read it); it is simply not among the rows the screen
+ * renders, and a sentence beats a tap that looks broken.
  *
  * **RECONCILED: the parameter's name is imported, not spelled.** Phase 3 exports
  * `SESSION_PARAM = 's'` from `lib/nina/active.ts`, which is pure and client-safe (its cap comes
@@ -347,13 +353,20 @@ export function isDegradedSearch(response: NinaSearchResponse | null): boolean {
  * `lib/nina/autotitle.ts`, so nothing `server-only` is reachable from it). This module is imported
  * by the `'use client'` `NinaSearchField`, so that matters — and it is the very path phase 4's D1
  * cites when it argues for keeping `active.ts` pure. Phase 5's session hrefs import the same
- * constant, so `?s=` has exactly one spelling in the set.
+ * constant, so `?s=` has exactly one spelling in the set. The `./jobview` import is safe for the
+ * same reason twice over: `jobview.ts` imports nothing but `lib/format` and `lib/id`, and the
+ * `'use server'` `lib/nina/jobActions.ts` already imports it beside this module's other consumer,
+ * the Server Action `searchActions.ts`.
  */
 export function searchHitHref(hit: { sessionId: string; messageId: string | null }): string {
-  const session = encodeURIComponent(hit.sessionId)
-  const base = `/nina?${SESSION_PARAM}=${session}`
-  if (hit.messageId === null) return base
-  return `${base}&at=${encodeURIComponent(hit.messageId)}~0`
+  if (hit.messageId === null) {
+    return `/nina?${SESSION_PARAM}=${encodeURIComponent(hit.sessionId)}`
+  }
+  return ninaJumpHref({
+    sessionId: hit.sessionId,
+    messageId: hit.messageId,
+    sessionParam: SESSION_PARAM,
+  })
 }
 
 export function toSearchHit(

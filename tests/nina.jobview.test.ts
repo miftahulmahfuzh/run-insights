@@ -17,6 +17,7 @@ import {
   ninaJobHref,
   ninaJobTitle,
   ninaJumpHref,
+  nextSoftNavJump,
   parseNinaJumpParam,
   planJobJump,
   toNinaJobListItems,
@@ -291,5 +292,40 @@ describe('the numbers', () => {
   it('renders latency as a duration and a miss as the missing marker', () => {
     expect(formatJobLatency(73_925)).toBe('1:14')
     expect(formatJobLatency(null)).not.toMatch(/\d/)
+  })
+})
+
+describe('nextSoftNavJump is the one-shot rule for a jump that does not remount', () => {
+  it('lands a value it has not seen, from no prev and from a different one', () => {
+    expect(nextSoftNavJump(null, 'bbbbbbbbbbbb')).toBe('bbbbbbbbbbbb')
+    expect(nextSoftNavJump('aaaaaaaaaaaa', 'bbbbbbbbbbbb')).toBe('bbbbbbbbbbbb')
+  })
+
+  it('does not land the value it was initialised to — mount is the ref path’s job', () => {
+    /* The caller’s ref starts at the first render’s raw value, so the mount render answers
+     * "already seen" and the jumpRef path owns the landing. */
+    expect(nextSoftNavJump('bbbbbbbbbbbb', 'bbbbbbbbbbbb')).toBeNull()
+  })
+
+  it('after the strip (null resets prev), the same value is new again', () => {
+    /* Mount: seen = raw, nothing to do. The landing strips the param, the next render sees null,
+     * the caller resets prev — so a second tap of the SAME hit re-lands. */
+    let prev: string | null = 'bbbbbbbbbbbb'
+    expect(nextSoftNavJump(prev, 'bbbbbbbbbbbb')).toBeNull()
+    prev = 'bbbbbbbbbbbb'
+    const stripped: string | null = null
+    expect(nextSoftNavJump(prev, stripped)).toBeNull()
+    prev = stripped
+    expect(nextSoftNavJump(prev, 'bbbbbbbbbbbb')).toBe('bbbbbbbbbbbb')
+  })
+
+  it('refuses anything that cannot be one of our ids', () => {
+    expect(nextSoftNavJump(null, 'short')).toBeNull()
+    expect(nextSoftNavJump('aaaaaaaaaaaa', 'not-an-id-!!')).toBeNull()
+  })
+
+  it('has nothing to say when nothing arrived', () => {
+    expect(nextSoftNavJump('bbbbbbbbbbbb', null)).toBeNull()
+    expect(nextSoftNavJump(null, null)).toBeNull()
   })
 })

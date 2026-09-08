@@ -445,3 +445,39 @@ export const NINA_JOB_JUMP_NOTE: Record<Exclude<NinaJobJump['kind'], 'ready'>, s
   'no-message': 'Job ini nggak nyimpen pesan pemicunya, jadi nggak ada bubble yang bisa dituju.',
   gone: 'Pesan yang minta foto ini sudah nggak ada — kehapus, atau chatnya dihapus.',
 }
+
+/* ── the soft-navigation guard ────────────────────────────────────────────────────────────── */
+
+/**
+ * **The one-shot rule for a `?jump=` that arrives WITHOUT a remount, as a function rather than as
+ * a `useRef` comparison buried inside `ChatScreen`.**
+ *
+ * `app/nina/page.tsx` keys `ChatScreen` by the session id, so a `?jump=` naming a DIFFERENT
+ * conversation remounts the screen and the mount path delivers it: `jumpRef`'s initialiser runs on
+ * the first render and nowhere else, which is already one-shot by construction. But a `?jump=`
+ * naming the session already on screen — a search hit tapped while its own conversation is open —
+ * is a soft navigation: same key, no remount, that initialiser never runs. Somebody has to notice
+ * the NEW arrival without also firing on the mount value, and this is that rule.
+ *
+ * `prev` is the last RAW value the caller saw on a render (its ref is initialised to the first
+ * render's value, so the mount case answers "already seen" and never double-lands beside the
+ * `jumpRef` path); `raw` is the value on THIS render. Three answers:
+ *
+ *   - `raw === null` — nothing arrived. `null`, and the caller resets `prev` to `null`, which is
+ *     what makes a repeat GENUINE: the landing strips the parameter from the entry, so a later
+ *     arrival of the same id is a second tap the runner meant, not a repeat render.
+ *   - `raw === prev` — this render's value has been handled (or is the mount value). `null`.
+ *   - anything else — a new arrival: `parseNinaJumpParam(raw)`, which is `null` when the value
+ *     cannot be one of our ids. The caller records `raw` as `prev` regardless, so a malformed
+ *     value is not retried on every render.
+ *
+ * It lives beside `JOB_JUMP_PARAM` for the same reason `parseNinaJumpParam` does: this is that
+ * parameter's rule, and `vitest` runs `environment: 'node'` with no jsdom — a comparison written
+ * inside a `'use client'` component is a comparison nothing in this repo can assert. The caller's
+ * obligations after calling are one line: assign the raw value it was handed onto the ref.
+ */
+export function nextSoftNavJump(prev: string | null, raw: string | null): string | null {
+  if (raw === null) return null
+  if (raw === prev) return null
+  return parseNinaJumpParam(raw)
+}
