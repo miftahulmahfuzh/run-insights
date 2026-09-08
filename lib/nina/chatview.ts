@@ -223,13 +223,14 @@ export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
  * So the inset moves inside the gate and out into the element's own `padding-bottom`, where
  * `composerPadBottomCss` picks it up with the complementary gate. The two gates sum to exactly
  * one inset in every state, which is the rule the old docstring was defending and the state it
- * did not cover:
+ * did not cover — though the hidden state's padding is the 30% floor now, not the bare inset:
+ * see `composerPadBottomCss` for that number's own history.
  *
- * | bar     | flag | `bottom`             | `padding-bottom` | inset counted |
- * |---------|------|----------------------|------------------|---------------|
- * | hidden  | 0    | `0`                  | `--safe-bottom`  | once, as padding |
- * | shown   | 1    | `59px + safe-bottom` | `0`              | once, in the offset |
- * | keyboard| —    | `<overlap>px`        | `0`              | not at all — it is behind the keyboard |
+ * | bar     | flag | `bottom`             | `padding-bottom`  | inset counted |
+ * |---------|------|----------------------|-------------------|---------------|
+ * | hidden  | 0    | `0`                  | the 30% floor     | once, as padding |
+ * | shown   | 1    | `59px + safe-bottom` | `0`               | once, in the offset |
+ * | keyboard| —    | `<overlap>px`        | `0`               | not at all — it is behind the keyboard |
  *
  * With a keyboard, the keyboard's top edge is the floor and every one of those terms is behind
  * it. A bar behind the keyboard clears nothing either way.
@@ -258,11 +259,22 @@ export function composerBottomCss(overlapPx: number, chromeClearancePx: number):
 /**
  * The composer's own `padding-bottom`, as a CSS length. The other half of `composerBottomCss`.
  *
- * It is the home-indicator inset in exactly the one state where this bar is the bottom-most
- * painted thing on the screen — the tab bar hidden, no keyboard — and nothing in the other two.
- * `1 - var(--nina-bar-visible, 0)` is the complement of the gate the offset uses, so the inset is
- * added by precisely one of the two terms and the composer's painted box always reaches the bottom
- * of whatever is beneath it without ever double-counting the phone's inset.
+ * It is the resting floor under the input row in exactly the one state where this bar is the
+ * bottom-most painted thing on the screen — the tab bar hidden, no keyboard — and nothing in the
+ * other two. `1 - var(--nina-bar-visible, 0)` is the complement of the gate the offset uses, so
+ * the floor is added by precisely one of the two terms and the composer's painted box always
+ * reaches the bottom of whatever is beneath it without ever double-counting the phone's inset.
+ *
+ * ── THE FLOOR IS 30% OF THE GAP IT USED TO BE, AND THAT IS THE OWNER'S NUMBER ─────────────────
+ * The gap under the field's bottom line used to be this bar's own `py-2` (8 px) plus the whole
+ * home-indicator inset — 42 px on an XS Max, most of it frosted glass with nothing in it. The
+ * repo owner asked for "just 30% of the original": 12.6 px. The `py-2` is shared with the top of
+ * the bar and with the keyboard state's floor, so the whole reduction comes out of this padding:
+ * `0.3 × (8px + inset) - 8px = inset × 0.3 - 5.6px`, floored at zero. On glass with no inset (a
+ * desktop window, a home-button phone) the floor was already the bare 8 px of `py-2` and it stays
+ * exactly that — the reported gap never existed there. The `max()` is also what keeps R1's own
+ * rule intact: the padding can never go negative, so the painted box still reaches the bottom of
+ * the viewport and no strip of conversation reopens underneath.
  *
  * ── WHY IT TAKES THE OVERLAP AND NOT JUST THE FLAG ───────────────────────────────────────────
  * Because engaging the composer HIDES the bar (`nextBarState`'s `'composer-engaged'`), so the flag
@@ -281,5 +293,5 @@ export function composerBottomCss(overlapPx: number, chromeClearancePx: number):
  */
 export function composerPadBottomCss(overlapPx: number): string {
   if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
-  return `calc(var(--safe-bottom) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
+  return `calc(max(0px, var(--safe-bottom) * 0.3 - 5.6px) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
 }

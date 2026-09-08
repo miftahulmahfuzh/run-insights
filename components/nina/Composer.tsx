@@ -52,6 +52,12 @@ import { QuoteStub } from './QuoteStub'
  * state — the rule the old comment was defending, in the state it did not cover. Both functions
  * are pure and both are asserted in `lib/nina/chatview.test.ts`; do not compute either here.
  *
+ * The floor's SIZE is a later owner ask and the pair's second number worth knowing here: the gap
+ * under the field's bottom line was `py-2` (8 px) plus the whole inset — 42 px on an XS Max — and
+ * the ask was "just 30% of the original". `composerPadBottomCss` carries the arithmetic; the
+ * `py-2` on the row below is untouched, because the top of this bar and the keyboard state's
+ * floor share it.
+ *
  * One consequence to know before touching `ChatChrome`: this element's MEASURED height now
  * includes the inset while the bar is hidden. `controlBottomCss` gates its own inset term on the
  * same flag for that reason, and its docstring carries the arithmetic.

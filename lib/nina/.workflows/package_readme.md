@@ -1634,7 +1634,7 @@ the required `padBottomCss` prop on `Composer`:
 
 | bar state | flag | `bottom` | `padding-bottom` | where the inset is counted |
 |---|---|---|---|---|
-| hidden (resting, and SSR) | 0 | collapses to `0` | `var(--safe-bottom)` | once, as the element's own padding |
+| hidden (resting, and SSR) | 0 | collapses to `0` | the 30% floor (R4 below) | once, as the element's own padding |
 | showing | 1 | `59px + safe-bottom` | `0` | once, in the offset |
 | keyboard up | — | `<overlap>px` | `0` | not at all — the indicator is behind the keyboard |
 
@@ -1679,9 +1679,10 @@ than as a bug, and has now survived review twice — once when the floating cont
 once here.
 
 **`COMPOSER_RESTING_PX` is the content box and carries no inset.** The element's *measured* height
-is 60 while the bar is showing and 60 + the inset while it is hidden, and the constant is neither of
-those, because an inset is `env(safe-area-inset-bottom)` and no TypeScript number can stand for one.
-That distinction is the whole of the fallback argument below.
+is 60 while the bar is showing and 60 + the resting floor (R4 below) while it is hidden, and the
+constant is neither of those, because the floor is a `calc()` over `env(safe-area-inset-bottom)`
+and no TypeScript number can stand for one. That distinction is the whole of the fallback argument
+below.
 
 ### R3 — the floating controls' glass, verbatim
 
@@ -1711,12 +1712,37 @@ drift apart.
 **The unmeasured branch stays ungated, and that asymmetry must not be "simplified" away.**
 `ChatChrome` seeds `composerHeightPx` at `0` and measures in a passive effect, so the fallback is
 what renders in the **server's HTML and on the first client paint of every conversation** — not a
-hypothetical frame. There is no measurement to carry the inset there, and `COMPOSER_RESTING_PX` is
-the content box, so the fallback has to supply it itself. Gate that branch and the lane is emitted
-at 68 px while the composer's real top edge is at 60 px + inset, which puts both floating discs
-**behind** the composer's `z-40` glass for that first paint. The two branches emit the same length
-and a different inset term, on purpose; `chrome.test.ts` asserts they differ so nobody folds them
-into one.
+hypothetical frame. There is no measurement to carry the floor there, and `COMPOSER_RESTING_PX` is
+the content box, so the fallback has to supply it itself — and since R4 it supplies
+`composerPadBottomCss(0)` verbatim rather than a bare `var(--safe-bottom)`, so the branch tracks
+the floor's formula instead of holding a second spelling of a number this package already owns.
+Gate that branch and the lane is emitted at 68 px while the composer's real top edge is at 60 px +
+floor, which puts both floating discs **behind** the composer's `z-40` glass for that first paint.
+The two branches emit the same length and a different inset term, on purpose; `chrome.test.ts`
+asserts they differ so nobody folds them into one.
+
+### R4 — the resting floor at 30%, and the tab bar's captions with it
+
+The repo owner looked at an XS Max and asked for two gaps to be "just 30% of the original": the
+gap under the **chat query field's bottom line** (`py-2` + the whole inset = 42 px), and — on the
+main tab bar, the same complaint one screen over — the height of the **captions' bottom line**
+above the glass (33 px, after the content drop). Two numbers, two owners:
+
+- `composerPadBottomCss` carries `max(0px, inset * 0.3 - 5.6px)` — 30% of the old gap minus the
+  8 px of `py-2` the bar keeps (the top of the bar and the keyboard state share that padding), so
+  12.6 px under the field on an XS Max. The `max()` floor keeps R1's own rule intact: the padding
+  cannot go negative, the painted box still reaches the viewport's bottom edge, and glass without
+  an inset keeps the bare 8 px it always had — the reported gap never existed there.
+- `TAB_BAR_CONTENT_DROP_CSS` (in `components/ui/TabBar.tsx`) goes `/ 2` -> `* 1.6` on the same
+  `(inset - 13px)` term: the drop that lands a caption's bottom line at 9.9 px — 30% of 33 — is
+  34 + 9.5 - 9.9 = 33.6 px, which is exactly 1.6 x 21. The equalisation the `/ 2` encoded (air
+  split around the stack) is superseded, not corrected; the air now sits above the icons, and the
+  drop still collapses to nothing on glass with no inset.
+
+One consumer needed the floor's *formula* rather than its old value — the fallback branch covered
+above — and one consumer deliberately did not: `BOTTOM_GAP.chat` keeps its full
+`var(--safe-bottom)` reservation, because the difference is breathing room under the last bubble
+and the ask was about the gap under the field, not the conversation's tail.
 ## Shortcuts — one code stands for a directive he wrote once (F36, `P1-DB-A004` + `P1-NIN-A023`, phases 1-2 of 4)
 
 He types `🍑` and means four sentences he wrote months ago. Phase 1 shipped the **table, the matcher

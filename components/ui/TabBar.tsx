@@ -103,26 +103,37 @@ export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
 export const HOME_INDICATOR_TOP_PX = 13
 
 /**
- * How far each tab's stack drops below the grid's centre: **half** the distance the indicator
+ * How far each tab's stack drops below the grid's centre: **1.6×** the distance the indicator
  * pill sits below the safe area's top line, and nothing at all without an inset.
  *
- * MEASURED (the repo owner's request): with the stack centred in the 58 px grid, the icons sat
- * ~9 px under the bar's top line while the captions sat ~30 px above the pill — the same
- * top-heavy mismatch the composer had before COMPOSER_FROST. Dropping the stack by half the
- * pill's distance below the safe line centres it BETWEEN the bar's top line and the pill itself,
- * and it does so exactly whatever the caption's line-height turns out to be: centre-of-grid plus
- * half the below-space is the midpoint of the two edges by algebra, not by a measured constant.
- * On a device with no inset the drop is 0 and the stack stays centred in the grid, which is the
- * right answer when there is no pill to measure to.
+ * MEASURED (the repo owner's request, which SUPERSEDES the equalisation this constant used to
+ * encode): after the `/ 2` drop below, the captions' bottom line sat 33 px above the glass on an
+ * XS Max — 34 px of inset plus the 9.5 px a centred stack overhangs the grid's bottom edge (the
+ * stack is 39 px: a 20 px glyph, the 4 px `gap-1`, and a 15 px caption line box, 10 px of type at
+ * the preflight's `1.5`), less the 10.5 px that drop moved it. The ask was "just 30% of the
+ * original": 9.9 px above the glass. The drop that lands the caption's bottom line there is
+ * 34 + 9.5 - 9.9 = 33.6 px, which is exactly 1.6 × (34 - 13) — so the multiplier rides the same
+ * `(inset - pill-top)` term the equalisation rode, and `HOME_INDICATOR_TOP_PX` stays in the
+ * formula for the same reason it entered it.
+ *
+ * The equalisation deserves its epitaph, because the geometry it claimed was measured and true:
+ * centre-of-grid plus half the below-space is the midpoint between the bar's top line and the
+ * pill by algebra, whatever the caption's line-height turns out to be. The owner has since looked
+ * at that bar and asked for the captions at 30% of their former height above the glass — the
+ * same bottom-heavy ask the composer's resting floor answered in `composerPadBottomCss` — so the
+ * air now sits above the icons (44 px from the bar's top line to the glyph on an XS Max) rather
+ * than split around the stack. On a device with no inset the drop is 0 and the stack stays
+ * centred in the grid, which is still the right answer when there is no pill to measure to.
  *
  * A `translate` and not padding, because the grid's `h-[58px]` is pinned by
  * `tests/tabbar.geometry.test.ts` and mirrored by `TAB_BAR_HEIGHT_PX`: padding would shrink the
  * content box inside a fixed height and squeeze the stack, while a visual translate moves the
  * glyphs and their tap targets down into the nav's own safe-area padding — space the bar already
- * owns and paints — without disturbing one cell's layout or the nav's own hide transform, which
- * is a different element and still a plain `100%`.
+ * owns and paints; at 1.6× the translated 58 px tap target's bottom edge lands 0.4 px above the
+ * glass on an XS Max, still inside the nav's border box, so nothing paints outside the bar and
+ * the nav's own hide transform — a different element — is still a plain `100%`.
  */
-export const TAB_BAR_CONTENT_DROP_CSS = `calc(max(0px, var(--safe-bottom) - ${HOME_INDICATOR_TOP_PX}px) / 2)`
+export const TAB_BAR_CONTENT_DROP_CSS = `calc(max(0px, var(--safe-bottom) - ${HOME_INDICATOR_TOP_PX}px) * 1.6)`
 
 /**
  * Five entries for a five-column grid, consumed positionally below. `/upload` is the THIRD

@@ -204,17 +204,17 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
 })
 
 /*
- * ── THE CONTENT DROP: EQUAL AIR ABOVE THE ICONS AND BELOW THE CAPTIONS ─────────────────────────
+ * ── THE CONTENT DROP: THE CAPTIONS AT 30% OF THEIR FORMER HEIGHT ABOVE THE GLASS ───────────────
  *
- * MEASURED (the repo owner's request): with the stack centred in the 58 px grid, the icons sat
- * ~9 px under the bar's top line while the captions sat ~30 px above the home-indicator pill —
- * the same top-heavy mismatch the composer carried before COMPOSER_FROST. The drop is half the
- * pill's distance below the safe line, which is the midpoint between the bar's top line and the
- * pill by algebra rather than by a tuned constant, and collapses to nothing on glass with no
- * inset. The rules live in `TabBar.tsx`'s own header; this block pins them.
+ * MEASURED (the repo owner's request, superseding the equalisation): after the `/ 2` drop, the
+ * captions' bottom line sat 33 px above the glass on an XS Max — 34 px of inset, plus the 9.5 px
+ * a centred 39 px stack overhangs the grid's bottom edge, less the 10.5 px drop. The ask was 30%
+ * of that: 9.9 px, which the `* 1.6` multiplier on `(inset - 13px)` lands exactly —
+ * 34 + 9.5 - 9.9 = 33.6 = 1.6 × 21 — while collapsing to nothing on glass with no inset. The
+ * rules live in `TabBar.tsx`'s own header; this block pins them.
  */
 
-describe('each tab drops half the pill distance below the safe line', () => {
+describe('each tab drops 1.6x the pill distance below the safe line', () => {
   it('pins the pill geometry: 13 px from the safe line to the pill top', () => {
     // 8 px of gap plus a 5 px pill, the same on every notched iPhone Apple has shipped. The value
     // is measured, not derived, so the test's job is to fail loudly when someone "simplifies" it:
@@ -231,12 +231,13 @@ describe('each tab drops half the pill distance below the safe line', () => {
     expect(readRepoCode('lib/nina/chatview.ts')).not.toContain('HOME_INDICATOR_TOP_PX')
   })
 
-  it('drops by half the pill distance, floored at zero', () => {
+  it('drops by 1.6x the pill distance, floored at zero', () => {
     // The `max(0px, …)` is the no-notch case: a desktop window has no inset and no pill, so the
     // drop collapses to 0 and the stack stays centred in the grid — the correct answer when there
-    // is nothing to measure to. The `/ 2` IS the request: equal air above the icons and below the
-    // captions, whatever the caption's line-height turns out to be.
-    expect(TAB_BAR_CONTENT_DROP_CSS).toBe('calc(max(0px, var(--safe-bottom) - 13px) / 2)')
+    // is nothing to measure to. The `* 1.6` IS the request: the captions' bottom line at 30% of
+    // its former height above the glass on an XS Max, where the former height was 33 px and
+    // 34 + 9.5 - 9.9 = 33.6 px of drop is exactly 1.6 × (34 - 13).
+    expect(TAB_BAR_CONTENT_DROP_CSS).toBe('calc(max(0px, var(--safe-bottom) - 13px) * 1.6)')
   })
 
   it('wires the drop onto each tab through the constant, not a literal', () => {

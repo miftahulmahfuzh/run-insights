@@ -1,4 +1,4 @@
-import { NINA_BAR_VISIBLE_VAR } from './chatview'
+import { composerPadBottomCss, NINA_BAR_VISIBLE_VAR } from './chatview'
 
 /**
  * `/nina`'s chrome, as pure rules (R1).
@@ -121,12 +121,13 @@ export const NINA_CHROME_CONTROL_CLASS =
  * So the reduction comes out of padding alone — the same trade `CHROME_CONTROL_PX` above made when
  * the same voice asked for the two floating controls to be "much smaller".
  *
- * ── IT IS THE CONTENT BOX, AND IT DOES NOT INCLUDE THE HOME-INDICATOR INSET ──────────────────
- * The composer's `padding-bottom` is `var(--safe-bottom)` while the tab bar is hidden and 0 while
- * it is showing (`composerPadBottomCss`), so the element's MEASURED height is 60 in the showing
- * state and 60 + the inset in the hidden one. This constant is neither of those: it is the 60,
- * because an inset is `env(safe-area-inset-bottom)` and no number in TypeScript can stand for it.
- * `controlBottomCss` is the one reader that has to care, and it does — see its fallback branch.
+ * ── IT IS THE CONTENT BOX, AND IT DOES NOT INCLUDE THE RESTING FLOOR ─────────────────────────
+ * The composer's `padding-bottom` is the 30% floor while the tab bar is hidden and 0 while it is
+ * showing (`composerPadBottomCss`), so the element's MEASURED height is 60 in the showing state
+ * and 60 + that floor in the hidden one. This constant is neither of those: it is the 60, because
+ * the floor is a `calc()` over `env(safe-area-inset-bottom)` and no number in TypeScript can
+ * stand for it. `controlBottomCss` is the one reader that has to care, and it does — see its
+ * fallback branch.
  *
  * Used only when `#nina-composer` cannot be measured, which is the frame before the observer's
  * first callback (and the server's HTML, where there is no element at all).
@@ -208,14 +209,21 @@ export function barToggleGlyph(state: NinaBarState): 'up' | 'down' {
  * drift apart.
  *
  * ── EXCEPT IN THE FALLBACK BRANCH, WHERE THERE IS NOTHING MEASURED TO CARRY IT ───────────────
- * `COMPOSER_RESTING_PX` is the composer's CONTENT box: 60, with no inset in it, because an inset
- * is `env(safe-area-inset-bottom)` and no TypeScript number can stand for one. So when the
- * measurement is unavailable the inset has to come from here, ungated — otherwise the lane is
- * emitted at 68 px while the composer's real top edge is at 60 px + inset, and the two controls
- * spend the server's HTML and the first paint sitting BEHIND the composer's `z-40` glass. That is
- * not a hypothetical frame: `ChatChrome` seeds `composerHeightPx` at 0 and measures in a passive
- * effect, so the fallback is what renders on the server and on the first client paint of every
- * conversation.
+ * `COMPOSER_RESTING_PX` is the composer's CONTENT box: 60, with no floor in it, because the
+ * resting floor is a `calc()` over `env(safe-area-inset-bottom)` and no TypeScript number can
+ * stand for one. So when the measurement is unavailable the floor has to come from here — and
+ * not as a second spelling of the arithmetic: the term IS `composerPadBottomCss(0)`, the very
+ * string the element itself carries at rest, so this branch and the real geometry cannot drift
+ * apart when the floor's formula changes again (it already has once, 34 px of inset becoming the
+ * 30% floor). The gated inset rides beside it for the showing state, where the composer's padding
+ * is 0 and the inset rides in its offset instead — one floor or one inset, never both, the same
+ * once-only rule the measured branch follows.
+ *
+ * Otherwise the lane is emitted at 68 px while the composer's real top edge is at 60 px + floor,
+ * and the two controls spend the server's HTML and the first paint sitting BEHIND the composer's
+ * `z-40` glass. That is not a hypothetical frame: `ChatChrome` seeds `composerHeightPx` at 0 and
+ * measures in a passive effect, so the fallback is what renders on the server and on the first
+ * client paint of every conversation.
  *
  * A string, because that is what the style attribute takes and because `var(--safe-bottom)` is
  * `env(safe-area-inset-bottom)`, which is readable only to CSS.
@@ -239,8 +247,11 @@ export function controlBottomCss(input: {
       : 0
   const measured = Number.isFinite(composerHeightPx) && composerHeightPx > 0
   const composer = measured ? Math.round(composerHeightPx) : COMPOSER_RESTING_PX
+  /* Unmeasured, the term is `composerPadBottomCss(0)` itself — the floor the resting element
+     really carries, spelled by its one owner — plus the gated inset for the showing state. See
+     the fallback section of this function's docstring. */
   const inset = measured
     ? `var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0)`
-    : 'var(--safe-bottom)'
+    : `${composerPadBottomCss(0)} + var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0)`
   return `calc(${clearance + composer + CHROME_CONTROL_GAP_PX}px + ${inset})`
 }

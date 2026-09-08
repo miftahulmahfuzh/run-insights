@@ -224,7 +224,7 @@ describe('composerBottomCss', () => {
   it('sits flat on the bottom of the viewport while the bar is hidden', () => {
     // R1. `/nina`'s resting state: the flag is absent, `var()` substitutes 0, the WHOLE sum is
     // multiplied by it, and the offset collapses to nothing — so the bar's fill reaches the bottom
-    // edge and there is no strip of conversation under it. The inset is not missing, it moved:
+    // edge and there is no strip of conversation under it. The floor is not missing, it moved:
     // `composerPadBottomCss` carries it in this state. This is also the SSR and pre-hydration
     // answer, which is why the default is the hidden geometry and not the showing one.
     expect(composerBottomCss(0, 59)).toBe(
@@ -269,11 +269,15 @@ describe('composerBottomCss', () => {
 })
 
 describe('composerPadBottomCss', () => {
-  it('carries the home-indicator inset, gated as the complement of the offset', () => {
-    // Invariant 5, as arithmetic: the offset multiplies its inset by `f`, this multiplies its
-    // inset by `1 - f`, and `f` is 0 or 1. One inset in the stack, in every state, always.
+  it('carries the resting floor, gated as the complement of the offset', () => {
+    // Invariant 5, as arithmetic: the offset multiplies its clearance by `f`, this multiplies its
+    // floor by `1 - f`, and `f` is 0 or 1. One floor in the stack, in every state, always. The
+    // floor's own value is 30% of the gap `py-2` + inset used to be (the XS Max ask): with the
+    // 8 px of `py-2` staying put, that is `inset * 0.3 - 5.6px`, floored at zero so glass without
+    // an inset keeps the bare 8 px it always had and the painted box still reaches the viewport's
+    // bottom edge.
     expect(composerPadBottomCss(0)).toBe(
-      'calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))',
+      'calc(max(0px, var(--safe-bottom) * 0.3 - 5.6px) * (1 - var(--nina-bar-visible, 0)))',
     )
   })
 
@@ -303,7 +307,7 @@ describe('composerPadBottomCss', () => {
     // resting screen is the common case and a NaN must not decide geometry.
     for (const overlap of [NaN, 0, -1, Number.POSITIVE_INFINITY]) {
       expect(composerPadBottomCss(overlap)).toBe(
-        'calc(var(--safe-bottom) * (1 - var(--nina-bar-visible, 0)))',
+        'calc(max(0px, var(--safe-bottom) * 0.3 - 5.6px) * (1 - var(--nina-bar-visible, 0)))',
       )
     }
   })

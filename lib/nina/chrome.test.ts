@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { NINA_BAR_VISIBLE_VAR } from './chatview'
+import { composerPadBottomCss, NINA_BAR_VISIBLE_VAR } from './chatview'
 import {
   autoHideDelayMs,
   barToggleGlyph,
@@ -165,10 +165,14 @@ describe('controlBottomCss', () => {
     ).toBe(`calc(${190 + CHROME_CONTROL_GAP_PX}px + ${GATED})`)
   })
 
-  it('falls back to a resting composer before the first measurement, WITH the inset ungated', () => {
+  it('falls back to a resting composer before the first measurement, WITH the floor ungated', () => {
     // The one branch that must not gate. `COMPOSER_RESTING_PX` is the content box and carries no
-    // inset, so the fallback supplies it — otherwise the server's HTML and the first paint put the
-    // two controls behind the composer's glass by exactly one home-indicator inset.
+    // floor, so the fallback supplies it — and supplies it AS `composerPadBottomCss(0)`, the same
+    // string the element itself carries at rest, so this branch tracks the floor's formula rather
+    // than a second spelling of it (the floor has already changed once: 34 px of inset became the
+    // 30% floor). The gated inset rides beside it for the showing state. Without the floor the
+    // server's HTML and the first paint put the two controls behind the composer's glass by
+    // exactly its height.
     for (const height of [0, -20, NaN, Number.POSITIVE_INFINITY]) {
       expect(
         controlBottomCss({
@@ -176,7 +180,9 @@ describe('controlBottomCss', () => {
           barClearancePx: BAR_CLEARANCE,
           composerHeightPx: height,
         }),
-      ).toBe(`calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + var(--safe-bottom))`)
+      ).toBe(
+        `calc(${COMPOSER_RESTING_PX + CHROME_CONTROL_GAP_PX}px + ${composerPadBottomCss(0)} + var(--safe-bottom) * var(${NINA_BAR_VISIBLE_VAR}, 0))`,
+      )
     }
   })
 
