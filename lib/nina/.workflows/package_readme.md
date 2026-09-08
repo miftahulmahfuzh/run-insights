@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-08 (tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-08 (task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -1096,8 +1096,9 @@ Every `nina_turns` row with `kind='image'` is visible at `/nina/jobs`, and one j
 `cost_micro_usd` as a per-job total ("Biaya total").
 
 `jobview.ts` is the **pure half** — the stage and error vocabulary, the elapsed and money formatting,
-the `?jump=` grammar, `planJobJump`'s four outcomes, and (since the job-redo set) the redo rule
-`jobCanRedo` and the `NinaJobRefusal` vocabulary. It holds no value import from any
+the `?jump=` grammar, `planJobJump`'s four outcomes, (since the job-redo set) the redo rule
+`jobCanRedo` and the `NinaJobRefusal` vocabulary, and (since the search-jump set) `nextSoftNavJump`,
+the one-shot rule for a `?jump=` that arrives without a remount. It holds no value import from any
 `server-only` module, which is what lets three client components and a bare node suite load it alike;
 **`npm run build` is the only gate that enforces that**, since no guard script inspects imports.
 
@@ -1116,6 +1117,23 @@ The deep link back into the chat is **`?jump=<messageId>`** beside `?s=`, delibe
 `lib/nina/scroll.ts`'s `?at=`. They have opposite lifetimes — `at` must survive a back-swipe, `jump`
 must be consumed on arrival or the bubble re-flashes — and `jump` has no offset to carry. It reuses
 `planQuoteScroll` + `QUOTE_FLASH_MS` rather than growing a second scroll-and-flash.
+
+**Since the search-jump set: two builders of that URL, two arrivals, one landing.**
+`searchHitHref` (`search.ts`) delegates its message arm to `ninaJumpHref` — a sidebar search tap and
+`/nina/jobs/[id]`'s "Buka chat-nya" button produce byte-identical hrefs, and a test pins the
+equality, because two spellings of one grammar is how one landing breaks while the other keeps
+working. In `ChatScreen` one `landOn` callback (extracted beside `measureQuoteScroll`, same
+precedent) serves both arrivals: the **mount** — a cross-session search hit or the job-page button,
+delivered through `jumpRef`, one-shot by construction — and a **same-session soft navigation**, where
+`app/nina/page.tsx`'s session key does not change, nothing remounts, and a watcher on
+`searchParams.get(JOB_JUMP_PARAM)` must notice the NEW value without firing on the mount value.
+`nextSoftNavJump(prev, raw)` is that rule as a pure function; the watcher's ref is initialised to
+the first render's raw value, so a deep-linked mount answers "already seen" and never double-lands
+beside the `jumpRef` path. Both arrivals strip `jump` from the entry BY NAME, so `?s=` and `?at=`
+survive — and the strip is what makes a repeat tap of the same hit GENUINE: the `null` render it
+produces re-arms the guard. A hit whose message is older than `CHAT_HISTORY_LIMIT` degrades to the
+`'quote-missing'` notice rather than the pre-search behaviour of a `?at=` mark silently failing to
+restore.
 
 `planJobJump` keeps `'gone'` and the session-removed case as **separate** outcomes, and there is a
 test named *does not tell the runner a live session was removed* holding that line. The distinction is
@@ -2229,7 +2247,15 @@ are worth knowing:
   `after()`'s. `app/nina/page.tsx` and `app/api/cron/nina/route.ts` are the other two.
 - **A rule a screen obeys is a rule a test reaches.** `jobCanRedo` is one comparison and it still
   lives in `jobview.ts`, because `vitest` runs in `environment: 'node'` and cannot see a condition
-  written inside a `.tsx` file. Same reason `jobIsOpen` and `planJobJump` are there.
+  written inside a `.tsx` file. Same reason `jobIsOpen`, `planJobJump` and the soft-nav one-shot
+  `nextSoftNavJump` are there.
+- **`ChatScreen` has exactly TWO sanctioned `replaceState` writers, and never two in one commit.**
+  The mount-path strip effect (deps `[]`) and the soft-nav `?jump=` watcher are the pair; two
+  writers in one commit would race to decide which URL survives, and the watcher writes only in the
+  commit where the navigation arrived — a commit the mount effect does not run in. A new query
+  parameter belongs in the mount effect's by-name `delete` list, never in a new effect, and
+  `tests/nina.chatPhoto.test.ts` counts the writers in `ChatScreen`'s source so an unsanctioned
+  third fails the suite.
 - **Never add a confirmation to a `/nina/jobs` row control.** *"we dont need confirmation message to
   execute them"* is the user's requirement, not an oversight, and `SessionRow`'s three-tap confirm
   is deliberately not the precedent — it destroys a conversation, these controls do not.
@@ -2507,6 +2533,15 @@ scheduled (*"a delete is not a redo"*), and exactly one path revalidated: `/nina
 `/nina/about`. `tests/db.schema.nina.test.ts` holds the column — nullable `timestamp with time zone`
 with no default, present on the table, and `nina_turns` still carrying exactly one index.
 
+**The search-jump set is tested at the seams that can silently drift.** `lib/nina/search.test.ts`
+asserts `searchHitHref`'s message arm IS `ninaJumpHref`'s output — one builder, not a second
+spelling — and that it writes no `?at=` mark, so `saveMark` keeps its single writer.
+`tests/nina.jobview.test.ts` walks `nextSoftNavJump`'s one-shot rule: an unseen value lands, the
+initialised mount value does not, a `null` raw re-arms (a repeat tap is genuine, a repeat render is
+not), and a value that cannot be one of our ids is refused without being retried. And
+`tests/nina.chatPhoto.test.ts` counts `replaceState` in `ChatScreen`'s source — exactly two, the
+sanctioned pair.
+
 ## Notes
 
 Phase 2 of 6 of `NINA_CHARACTER_TUNING_PLAN.md`. Phase 1 (`lib/nina/tuning.ts` and the `nina_tuning`
@@ -2705,3 +2740,18 @@ with the expansion, so there is no section to add), `lib/nina/proactive.ts` (a p
 runner text, so nothing there could ever fire), and
 `tests/__snapshots__/nina.prompts.test.ts.snap` (byte-identical at every tuning — regenerating it
 would have hidden that fact rather than proved it).
+
+---
+
+**`SEARCH_JUMP_PINPOINT_PLAN.md` is complete — phase 1 of 1 landed as `P1-NIN-A025`.** Search hits
+deep-link through the existing `?jump=` pinpoint rather than a grammar of their own:
+`searchHitHref`'s message arm delegates to `ninaJumpHref` (`/nina?s=<sid>&jump=<mid>`; a
+session-title hit stays `/nina?s=<sid>`), and `ChatScreen` gained the soft-nav watcher so a `?jump=`
+naming the session already on screen — same key, no remount — scrolls instantly, flashes the
+reply-to blue ring, and strips `jump` by name so `?s=` and `?at=` survive. `nextSoftNavJump` is the
+pure one-shot guard, appended to `jobview.ts`; the landing itself was extracted into one `landOn`
+callback reused by both arrivals, so `measureQuoteScroll` / `flashMessage` are shared rather than
+duplicated and `handleJumpToQuote`'s reply-to contract is untouched. No migration, no schema
+change, no new module, no `NINA_PROMPT_VERSION` bump. The plan is
+`.workflows/plan/search-jump-pinpoint/phase-1.md`; the footprint outside this package is
+`components/nina/ChatScreen.tsx` and two test files.

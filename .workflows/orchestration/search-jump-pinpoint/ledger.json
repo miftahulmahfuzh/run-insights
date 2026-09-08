@@ -1,0 +1,32 @@
+{
+  "branch": "feature/search-jump-pinpoint",
+  "coordinator": "orch-search-jump-pinpoint",
+  "coordinator_session_id": "a7e6412a-e403-4195-86e4-10e5114fceca",
+  "created": "2026-09-08T07:40:23+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "c713b3dac4d91ade20f1736f32160bd073da183a",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "gates green (typecheck, lint, vitest 2880/2880); pushed ad4e22c..c713b3d. decision: tests/nina.chatPhoto.test.ts (outside Files table) asserted ONE replaceState in ChatScreen and failed against the watcher -- updated to the sanctioned-two-writers rule (never two writers in ONE commit), rung 1: index Decisions row 4. standing caveat: manual browser smoke checklist not run (needs authenticated session); automated coverage is the pure guard + href suites, per plan.",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/search-jump-pinpoint/phase-1.md",
+      "reported_at": "2026-09-08T08:11:02+00:00",
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A025",
+      "title": "Search hits deep-link through `?jump=` and the landing survives a same-session soft nav"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/search-jump-pinpoint/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "search-jump-pinpoint",
+  "updated": "2026-09-08T08:11:02+00:00",
+  "verified_at": "2026-09-08T08:09:25+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/search-jump-pinpoint"
+}

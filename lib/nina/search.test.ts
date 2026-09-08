@@ -37,6 +37,10 @@ import {
   type NinaSearchCandidate,
 } from './search'
 
+import { SESSION_PARAM } from './active'
+import { ninaJumpHref } from './jobview'
+import { CHAT_SCROLL_PARAM } from './scroll'
+
 /* ── fixtures ──────────────────────────────────────────────────────────────────────────────── */
 
 function message(over: Partial<NinaSearchCandidate> = {}): NinaSearchCandidate {
@@ -258,16 +262,25 @@ describe('snippetAround', () => {
 /* ── the href: no third URL grammar ────────────────────────────────────────────────────────── */
 
 describe('searchHitHref', () => {
-  it('deep-links to the message through phase 3 s ?s= and scroll.ts s ?at=', () => {
+  it('deep-links to the message through active.ts s ?s= and jobview.ts s ?jump=', () => {
     expect(searchHitHref({ sessionId: 'sess00000001', messageId: 'msg000000001' })).toBe(
-      '/nina?s=sess00000001&at=msg000000001~0',
+      '/nina?s=sess00000001&jump=msg000000001',
     )
   })
 
-  it('leaves the ~ unencoded, which is why scroll.ts chose it', () => {
-    const href = searchHitHref({ sessionId: 's1', messageId: 'm1' })
-    expect(href).toContain('~0')
-    expect(href).not.toContain('%7E')
+  it('is the href the job pages button builds — one builder, not a second spelling', () => {
+    /* The pin in `ninaJumpHref`. If a search tap and a "Buka chat-nya" tap ever disagreed about
+     * the grammar, one of the two landings would break while the other kept working. */
+    const input = { sessionId: 'aaaaaaaaaaaa', messageId: 'bbbbbbbbbbbb' }
+    expect(searchHitHref(input)).toBe(ninaJumpHref({ ...input, sessionParam: SESSION_PARAM }))
+  })
+
+  it('writes no scroll mark — at keeps saveMark as its only writer', () => {
+    const url = new URL(
+      searchHitHref({ sessionId: 'sess00000001', messageId: 'msg000000001' }),
+      'https://example.test',
+    )
+    expect(url.searchParams.has(CHAT_SCROLL_PARAM)).toBe(false)
   })
 
   it('opens the session with no mark when the hit is a title', () => {

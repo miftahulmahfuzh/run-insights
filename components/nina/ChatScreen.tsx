@@ -36,7 +36,7 @@ import {
 } from '@/lib/nina/edit'
 import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
-import { JOB_JUMP_PARAM, parseNinaJumpParam } from '@/lib/nina/jobview'
+import { JOB_JUMP_PARAM, nextSoftNavJump, parseNinaJumpParam } from '@/lib/nina/jobview'
 import {
   QUOTE_FLASH_MS,
   buildQuote,
@@ -434,6 +434,14 @@ export function ChatScreen({
    * general form of the rule the two paragraphs above state about `?s=` in particular. Phase 4
    * added a `delete`, not a `replaceState`, and that is precisely why its change went inside this
    * effect rather than beside it.
+   *
+   * ── AND THE ONE SANCTIONED SECOND WRITER: THE SOFT-NAV WATCHER BELOW ────────────────────────
+   * "Do not add a third `replaceState`" keeps its exact meaning: never TWO writers in ONE commit,
+   * because two writers in one commit race to decide which URL survives. The watcher that lands a
+   * same-session `?jump=` (search hit for the open conversation — see its own header) also deletes
+   * the key by name, but in the commit where the navigation arrived, a commit this effect does not
+   * run in (its deps are `[]`), and in which the only other writer of the URL was the navigation
+   * itself. Same idiom, same by-name rule, still one writer per commit.
    */
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -724,7 +732,14 @@ export function ChatScreen({
   )
 
   /**
-   * **R1's landing: a job page said "this bubble", so pinpoint it.**
+   * **The landing: something said "this bubble", so pinpoint it.** One callback so the two ways a
+   * `?jump=` can arrive — a MOUNT (`/nina/jobs/[id]`'s "Buka chat-nya", or a search hit for a
+   * different conversation) and a same-session SOFT NAVIGATION (a search hit for the conversation
+   * already on screen, handled by the watcher below) — cannot drift into two
+   * scroll-and-flash arithmetics. The extraction follows `measureQuoteScroll`'s own precedent one
+   * position up: that one was pulled out of `handleJumpToQuote` so the mount landing would reuse
+   * the quote tap's arithmetic rather than invent a second one, and this callback now sits under
+   * both arrivals for the same reason.
    *
    * ── WHY IT REUSES `planQuoteScroll` ───────────────────────────────────────────────────────
    * The user asked for it in those words — "just like how we can click and directly pinpoint
@@ -734,36 +749,30 @@ export function ChatScreen({
    * ── WHY `'instant'`, OVERRIDING THE PLAN'S OWN `behavior` ─────────────────────────────────
    * `planQuoteScroll` chooses `'smooth'` because a quote tap is a movement WITHIN a screen the
    * runner is already reading, and watching the page travel is what tells them they went backwards.
-   * This is an ARRIVAL: the runner navigated here from another route and has not seen this
-   * conversation yet, so there is no "from" to animate out of — smooth-scrolling a screen that just
-   * painted only shows them the bottom of the chat on the way past. `MessageList`'s R14 restore
-   * takes `'instant'` for the same reason and says so.
+   * This is an ARRIVAL: the runner navigated here from elsewhere and has not seen this
+   * conversation yet, so there is no "from" to animate out of — smooth-scrolling a screen that
+   * just painted only shows them the bottom of the chat on the way past. `MessageList`'s R14
+   * restore takes `'instant'` for the same reason and says so. (`handleJumpToQuote` keeps the
+   * plan's `'smooth'` on purpose: it is the within-screen case.)
    *
    * ── WHY AN ANIMATION FRAME, AND WHY TWICE ─────────────────────────────────────────────────
-   * Child effects run before parent effects, so `MessageList`'s mount jump-to-newest has already
-   * happened by the time this effect runs; one frame later, layout is settled and this wins. The
-   * second application is `MessageList`'s restore idiom, verbatim and for its reason: a web font
+   * The callers schedule this inside one `requestAnimationFrame` so layout has settled; the second
+   * application below is `MessageList`'s restore idiom, verbatim and for its reason: a web font
    * settling or an image finishing decode moves the target after the first measurement, and
    * re-deriving the same pure number from the element's new position is cheap. When nothing moved,
    * `planQuoteScroll` returns `'none'` under its 8px tolerance and the second call is a no-op.
    *
    * ── IT MUST NOT CALL `revealBubbles` ──────────────────────────────────────────────────────
    * That callback is phase 3's staggered reveal of rows Nina has just sent, and it is the SOLE
-   * appender of her bubbles. This effect appends nothing: every row it can land on was already in
-   * the server render. Scrolling is not arriving.
+   * appender of her bubbles. This callback appends nothing: every row it can land on was already
+   * rendered. Scrolling is not arriving.
    *
    * A missing element is the `'quote-missing'` notice, which is already the right sentence: the
-   * message is real (the job page resolved it against the database) but it is not among the
-   * `CHAT_HISTORY_LIMIT` rows this screen renders.
+   * message is real (the job page resolved it against the database; the search SQL read it) but it
+   * is not among the `CHAT_HISTORY_LIMIT` rows this screen renders.
    */
-  useEffect(() => {
-    if (jumpRef.current === null) return
-
-    const frame = window.requestAnimationFrame(() => {
-      const targetId = jumpRef.current
-      if (targetId === null || !alive.current) return
-      jumpRef.current = null
-
+  const landOn = useCallback(
+    (targetId: string) => {
       const plan = measureQuoteScroll(targetId)
       if (plan === null) {
         setNotice('quote-missing')
@@ -779,10 +788,82 @@ export function ChatScreen({
           window.scrollTo({ top: again.top, behavior: 'instant' })
         }
       })
+    },
+    [measureQuoteScroll, flashMessage],
+  )
+
+  /* R1's mount landing. `jumpRef`'s block above states the one-shot reasoning; the short version:
+   * the ref is cleared inside the frame rather than the effect body so StrictMode's first,
+   * immediately torn-down run leaves the target for the second run, and the frame is cancelled on
+   * cleanup so a navigation away mid-flight lands on nothing. The landing itself is `landOn`'s —
+   * this effect only decides WHEN, never HOW. */
+  useEffect(() => {
+    if (jumpRef.current === null) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const targetId = jumpRef.current
+      if (targetId === null || !alive.current) return
+      jumpRef.current = null
+      landOn(targetId)
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [measureQuoteScroll, flashMessage])
+  }, [landOn])
+
+  /*
+   * ── R1's OTHER ARRIVAL: A `?jump=` THAT DOES NOT REMOUNT ─────────────────────────────────
+   * `app/nina/page.tsx` keys this component by the session id, so a jump naming a DIFFERENT
+   * conversation remounts and the effect above delivers it. A jump naming the one already open —
+   * a search hit tapped while its own session is on screen — is a soft navigation: same key, no
+   * remount, `jumpRef`'s initialiser never runs, and the strip effect at the top of this file
+   * (deps `[]`) never re-runs. Before search switched onto `?jump=`, `?at=` covered this case
+   * through `MessageList`'s restore, so leaving it unhandled would be a regression, not a gap.
+   *
+   * ── WHY THE GUARD REF IS INITIALISED TO THE MOUNT VALUE ────────────────────────────────────
+   * On a mount that CARRIES a `?jump=`, this effect's first run sees the same raw string its ref
+   * was initialised to, `nextSoftNavJump` answers "already seen", and the landing belongs to the
+   * mount path above. Without the initialised ref, a deep-linked mount would scroll and flash
+   * TWICE. `nextSoftNavJump` (in `lib/nina/jobview.ts`, tested there because `vitest` has no
+   * jsdom) owns the rest of the rule: the ref records the raw value after every run, and a `null`
+   * raw resets it — so once the strip has consumed the parameter, a FRESH navigation to the same
+   * id still counts as new (a genuine second tap on the same hit lands again).
+   *
+   * ── WHY THE STRIP RUNS BEFORE THE FRAME ───────────────────────────────────────────────────
+   * The landing reads the DOM (`measureQuoteScroll` → `getElementById`), never the URL, so
+   * removing the parameter first cannot starve it — and stripping in the same tick closes the
+   * re-arm window a frame earlier. It deletes BY NAME on a `URLSearchParams` copy of
+   * `window.location.search`, the idiom of the mount-time strip above, so `?s=` and `?at=`
+   * survive; it reads `window.location.search` rather than the `searchParams` snapshot for the
+   * reason `saveMark` states ("the write has to be against whatever the URL is at the moment");
+   * and it skips itself when the key is already gone, which is the case where the mount-time
+   * strip won the race on a freshly mounted screen. `replaceState`, not a navigation, for the
+   * reason that header gives — this entry is where we already are — and Next 16 patches it so
+   * `useSearchParams` stays in sync afterwards, which is what delivers the `null` render that
+   * resets the guard.
+   *
+   * RESIDUAL EDGE, accepted: a second tap of the SAME hit re-navigates to a byte-identical URL,
+   * which the router may deduplicate into no render at all — no re-land. The first tap landed,
+   * so nothing is lost; telling a repeat tap from a repeat render is not worth a nonce in the URL.
+   */
+  const jumpRaw = searchParams.get(JOB_JUMP_PARAM)
+  const softNavSeen = useRef<string | null>(jumpRaw)
+  useEffect(() => {
+    const targetId = nextSoftNavJump(softNavSeen.current, jumpRaw)
+    softNavSeen.current = jumpRaw
+    if (targetId === null) return
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.has(JOB_JUMP_PARAM)) {
+      params.delete(JOB_JUMP_PARAM)
+      const query = params.toString()
+      window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (alive.current) landOn(targetId)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [jumpRaw, landOn])
 
   /**
    * R8, arming. The gesture (or the focus-revealed button) picked a message; decide whether it can

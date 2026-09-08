@@ -85,10 +85,14 @@ describe('attaching reuses the machinery instead of re-uploading', () => {
     expect(source).toMatch(/setPhoto\(\{\s*kind: 'image',/)
   })
 
-  it('adds no second writer of the query string', () => {
-    // ChatScreen's one useLayoutEffect deletes ?attach= and ?photo= together, because two
-    // independent replaceState calls in one commit would race. R10 must not add a third caller.
-    expect(source.match(/replaceState/g)?.length).toBe(1)
+  it('adds no unsanctioned writer of the query string', () => {
+    // ChatScreen's mount-time useLayoutEffect (deps `[]`) deletes ?attach=, ?photo= and ?jump=
+    // together, because two independent replaceState calls in one commit would race. R10 must not
+    // add a third caller. The ONE sanctioned second writer is the soft-nav watcher's strip: it
+    // deletes ?jump= by name in the commit where the navigation arrived — a commit the mount-time
+    // effect (deps `[]`) does not run in — so there is still exactly one writer per commit. See
+    // the strip effect's header in ChatScreen, which states the same rule.
+    expect(source.match(/replaceState/g)?.length).toBe(2)
     expect(source).not.toContain('router.push')
     expect(source).not.toContain('photo=image:')
   })
