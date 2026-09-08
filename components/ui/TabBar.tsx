@@ -92,6 +92,39 @@ export const TAB_BAR_BORDER_PX = 1
 export const TAB_BAR_OUTER_HEIGHT_PX = TAB_BAR_HEIGHT_PX + TAB_BAR_BORDER_PX
 
 /**
+ * The home-indicator pill's TOP edge above the physical glass: 8 px of gap plus a 5 px pill, the
+ * same on every notched iPhone Apple has shipped.
+ *
+ * Declared here and nowhere else — `composerBottomCss`'s resting floor used to need it too, but
+ * COMPOSER_FROST's R1 moved that element's inset into its own `padding-bottom`, so the tab bar's
+ * content drop is the only thing that measures to the pill. `tests/tabbar.geometry.test.ts` pins
+ * the value.
+ */
+export const HOME_INDICATOR_TOP_PX = 13
+
+/**
+ * How far each tab's stack drops below the grid's centre: **half** the distance the indicator
+ * pill sits below the safe area's top line, and nothing at all without an inset.
+ *
+ * MEASURED (the repo owner's request): with the stack centred in the 58 px grid, the icons sat
+ * ~9 px under the bar's top line while the captions sat ~30 px above the pill — the same
+ * top-heavy mismatch the composer had before COMPOSER_FROST. Dropping the stack by half the
+ * pill's distance below the safe line centres it BETWEEN the bar's top line and the pill itself,
+ * and it does so exactly whatever the caption's line-height turns out to be: centre-of-grid plus
+ * half the below-space is the midpoint of the two edges by algebra, not by a measured constant.
+ * On a device with no inset the drop is 0 and the stack stays centred in the grid, which is the
+ * right answer when there is no pill to measure to.
+ *
+ * A `translate` and not padding, because the grid's `h-[58px]` is pinned by
+ * `tests/tabbar.geometry.test.ts` and mirrored by `TAB_BAR_HEIGHT_PX`: padding would shrink the
+ * content box inside a fixed height and squeeze the stack, while a visual translate moves the
+ * glyphs and their tap targets down into the nav's own safe-area padding — space the bar already
+ * owns and paints — without disturbing one cell's layout or the nav's own hide transform, which
+ * is a different element and still a plain `100%`.
+ */
+export const TAB_BAR_CONTENT_DROP_CSS = `calc(max(0px, var(--safe-bottom) - ${HOME_INDICATOR_TOP_PX}px) / 2)`
+
+/**
  * Five entries for a five-column grid, consumed positionally below. `/upload` is the THIRD
  * deliberately: `(2 + 0.5) / 5` is exactly the middle of the bar, and appending it to the end would
  * move it to 90 % of the bar's width while every type still checked. See the header.
@@ -238,6 +271,9 @@ function Tab({
         'flex h-full flex-col items-center justify-center gap-1 text-[10px] font-semibold',
         accent ? 'text-z5' : active ? 'text-ink' : 'text-ink-3',
       )}
+      /* The owner's equalisation, applied: each stack sits centred between the bar's top line and
+         the home-indicator pill rather than in the grid alone. See TAB_BAR_CONTENT_DROP_CSS. */
+      style={{ translate: TAB_BAR_CONTENT_DROP_CSS }}
     >
       <span className="relative grid size-5 place-items-center">
         <Icon className="size-5" />

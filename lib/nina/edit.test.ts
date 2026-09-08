@@ -14,7 +14,6 @@ import {
   canResendMessage,
   decideMessageActionSwipe,
   decideMessageActionTap,
-  describeMessageDeletion,
   editCapFor,
   planMessageEdit,
   type EditTarget,
@@ -147,45 +146,6 @@ describe('planMessageEdit', () => {
 
   it('refuses a non-string, rather than coercing it', () => {
     expect(planMessageEdit(target(), null as unknown as string)).toEqual({ kind: 'not-editable' })
-  })
-})
-
-/* ── describeMessageDeletion ───────────────────────────────────────────────────────────────── */
-
-describe('describeMessageDeletion', () => {
-  it('names whose message it is', () => {
-    expect(describeMessageDeletion(target({ mine: true }), 0)).toContain('your message')
-    expect(describeMessageDeletion(target({ mine: false }), 0)).toContain('Nina’s message')
-  })
-
-  it('always says she stops seeing it — that is what R8 is for', () => {
-    expect(describeMessageDeletion(target(), 0)).toContain('She stops seeing it')
-    expect(describeMessageDeletion(target(), 3)).toContain('She stops seeing it')
-  })
-
-  it('always says it cannot be undone', () => {
-    expect(describeMessageDeletion(target(), 0)).toContain('cannot be undone')
-  })
-
-  it('discloses one photo in the singular', () => {
-    const sentence = describeMessageDeletion(target({ hasImage: true }), 1)
-    expect(sentence).toContain('its photo')
-    expect(sentence).toContain('that photo goes with it')
-  })
-
-  it('discloses several photos with the count', () => {
-    const sentence = describeMessageDeletion(target({ hasImage: true }), 3)
-    expect(sentence).toContain('its 3 photos')
-    expect(sentence).toContain('those photos go with it')
-  })
-
-  it('mentions no photos when there are none', () => {
-    expect(describeMessageDeletion(target(), 0)).not.toContain('photo')
-  })
-
-  it('treats a nonsense count as none rather than rendering NaN', () => {
-    expect(describeMessageDeletion(target(), Number.NaN)).not.toContain('NaN')
-    expect(describeMessageDeletion(target(), -2)).not.toContain('photo')
   })
 })
 

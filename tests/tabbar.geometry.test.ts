@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  HOME_INDICATOR_TOP_PX,
   TAB_BAR_BORDER_PX,
+  TAB_BAR_CONTENT_DROP_CSS,
   TAB_BAR_HEIGHT_PX,
   TAB_BAR_OUTER_HEIGHT_PX,
 } from '@/components/ui/TabBar'
@@ -198,5 +200,52 @@ describe("both of /nina's clearances are the bar's OUTER height", () => {
     expect(composerBottomCss(0, TAB_BAR_OUTER_HEIGHT_PX)).toBe(
       'calc((59px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
     )
+  })
+})
+
+/*
+ * ── THE CONTENT DROP: EQUAL AIR ABOVE THE ICONS AND BELOW THE CAPTIONS ─────────────────────────
+ *
+ * MEASURED (the repo owner's request): with the stack centred in the 58 px grid, the icons sat
+ * ~9 px under the bar's top line while the captions sat ~30 px above the home-indicator pill —
+ * the same top-heavy mismatch the composer carried before COMPOSER_FROST. The drop is half the
+ * pill's distance below the safe line, which is the midpoint between the bar's top line and the
+ * pill by algebra rather than by a tuned constant, and collapses to nothing on glass with no
+ * inset. The rules live in `TabBar.tsx`'s own header; this block pins them.
+ */
+
+describe('each tab drops half the pill distance below the safe line', () => {
+  it('pins the pill geometry: 13 px from the safe line to the pill top', () => {
+    // 8 px of gap plus a 5 px pill, the same on every notched iPhone Apple has shipped. The value
+    // is measured, not derived, so the test's job is to fail loudly when someone "simplifies" it:
+    // the drop is exact only against this number, and a silent edit to 12 or 14 would shift every
+    // tab's vertical centre without a single type noticing.
+    expect(HOME_INDICATOR_TOP_PX).toBe(13)
+  })
+
+  it('declares the pill geometry in exactly one file', () => {
+    // COMPOSER_FROST's R1 moved the composer's resting floor into its own `padding-bottom`, which
+    // removed `chatview.ts`'s last reason to know where the pill is. Before that the same 13 was
+    // spelled in two files; a second spelling is how the drop and some future floor drift apart
+    // by a pixel nobody can attribute, so this pins the single declaration.
+    expect(readRepoCode('lib/nina/chatview.ts')).not.toContain('HOME_INDICATOR_TOP_PX')
+  })
+
+  it('drops by half the pill distance, floored at zero', () => {
+    // The `max(0px, …)` is the no-notch case: a desktop window has no inset and no pill, so the
+    // drop collapses to 0 and the stack stays centred in the grid — the correct answer when there
+    // is nothing to measure to. The `/ 2` IS the request: equal air above the icons and below the
+    // captions, whatever the caption's line-height turns out to be.
+    expect(TAB_BAR_CONTENT_DROP_CSS).toBe('calc(max(0px, var(--safe-bottom) - 13px) / 2)')
+  })
+
+  it('wires the drop onto each tab through the constant, not a literal', () => {
+    // The hide transform is guarded above with `not.toMatch(/translate:[^\n]*calc/)` — a `calc`
+    // inlined beside a `translate:` reads as the FAB overhang come back. The drop clears that
+    // guard BY DESIGN, not by luck: its `calc` lives in the exported constant, and this line is
+    // what proves the element references it rather than spelling its own arithmetic — a revert to
+    // an inline calc here would fire the guard above instead of this, either way loudly.
+    const bar = readRepoCode(BAR)
+    expect(bar).toContain('style={{ translate: TAB_BAR_CONTENT_DROP_CSS }}')
   })
 })
