@@ -377,8 +377,9 @@ function Row({
          * A `<select>` and not a checkbox, for two reasons that both come from files in this
          * directory. `CELL_CONTROL` gives it the 44 px target and the 16 px font for free, where a
          * checkbox would need both bolted on; and "on" and "off" are two words that cannot be
-         * misread. `AdminNav`'s phone bar went icon-only in `admin-bottom-bar-icons` — seven cells
-         * on 414 px stopped fitting words — which is the inverse of this cell: two words fit, and
+         * misread. The admin phone bar — `AdminNavLinks` since the shell/leaf split — went
+         * icon-only in `admin-bottom-bar-icons` — seven cells on 414 px stopped fitting words —
+         * which is the inverse of this cell: two words fit, and
          * a glyph here would be the guess. It saves on CHANGE, because a select's change IS the
          * finished edit.
          */}

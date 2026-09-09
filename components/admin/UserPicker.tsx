@@ -6,8 +6,10 @@ import { cn } from '@/lib/cn'
 
 /**
  * Which user's memory. Server-rendered plain links, no `'use client'` and no `usePathname()` — the
- * same argument phase 15's `AdminNav` makes for not going client to bold one word, and the same
- * "a plain-text link, never an icon button" stance from `docs/design-brief.md`.
+ * package readme still binds this picker to that by name, and where `AdminNav` grew a client leaf
+ * for its active cell (`AdminNavLinks.tsx`, the owner's own order), this picker's callers already
+ * know their route, so the client trade buys nothing here. The same "a plain-text link, never an
+ * icon button" stance from `docs/design-brief.md`.
  *
  * It renders even when there is one account, because the page is per-user by contract (invariant
  * 7) and hiding the picker would make that invisible. One row is a fine list.
@@ -25,9 +27,11 @@ export function UserPicker({
    *
    * It is a PROP and not a `usePathname()` read, because
    * `components/admin/.workflows/package_readme.md` names this component in the rule: *"Do not add
-   * active-link highlighting to `AdminNav` or `UserPicker`. `usePathname()` would turn a static nav
-   * into a Client Component to bold one word."* Going client to fix a href would be the same trade
-   * for less. Both callers are Server Components and both already know their own route.
+   * active-link highlighting to `UserPicker`, and do not read the pathname anywhere in this
+   * package but `AdminNavLinks.tsx`'s leaf"* — the `AdminNav` half of the old sentence was
+   * overruled by the owner's own order for that nav's active cell (`admin-bottom-bar-active-tab`).
+   * Going client to fix a href would be the same trade for less. Both callers are Server
+   * Components and both already know their own route.
    *
    * The counts in each pill stay MEMORY counts — `AdminUserRow` is `lib/admin/users.ts`'s shape and
    * says how many slots and ledger rows an account has. On `/admin/shortcuts` that is still a true

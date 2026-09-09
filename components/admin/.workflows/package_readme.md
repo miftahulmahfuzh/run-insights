@@ -11,13 +11,22 @@ There is no data access, no validation and no vendor call in this directory. Rea
 from a Server Component; writes leave through a Server Action in `lib/admin`.
 
 Most of it is `'use client'`, but **not all of it, and the exceptions are deliberate**. `AdminNav`,
-`UserPicker` and `CircleFrame` carry no directive. The first two could only need one for active-link
-highlighting, and `usePathname()` would make an entire sidebar client-rendered to bold one word — so
-selection is expressed in the URL instead. In `UserPicker` it is also conveyed with `aria-current`;
-`AdminNav` sets no such attribute, which is the honest reading of "no active-link highlighting" —
-it renders seven plain links and marks none of them. `CircleFrame` holds no state and imports only
+`UserPicker` and `CircleFrame` carry no directive. `CircleFrame` holds no state and imports only
 pure modules, so it renders on the server *and* compiles into the client graph of whichever client
-component imports it.
+component imports it. `UserPicker` could only need a directive for active-link highlighting, and
+`usePathname()` would make it client-rendered to bold one word — so selection is expressed in the
+URL instead, conveyed with `aria-current` and a `basePath` prop from callers that already know
+their route.
+
+`AdminNav` used to be named in that same rule, until the owner's own sentence ordered the phone
+bar's active cell highlighted — *"pastikan kita menghighlight tab yang aktif dengan mewarnai icon
+nya dengan warna biru (gunakan warna biru yang sama dengan text 'Manage the album')"*
+(`admin-bottom-bar-active-tab`). What the ruling kept of the rule is its arithmetic: the nav did not
+go wholly client. `AdminNav` is still a directive-free Server Component — the `<nav>` shell, the
+eyebrow, the footer — and the one subtree that reads the route, the list row with the glyphs, is
+`AdminNavLinks.tsx`, the shell's client leaf: `'use client'`, `usePathname()`, the active glyph
+painted `text-accent` with `aria-current="page"` on its link. That leaf is still server-rendered
+into the initial HTML of every route, so the bar works before hydration exactly as it did.
 
 `touch.ts` is the third file with no directive, and for a different reason again: it exports two
 class strings and nothing else, so it compiles into whichever graph imports it — the Server
@@ -34,9 +43,10 @@ is the rails-and-canvas layout it always was, at the same widths.
 There **is** a bottom bar below `lg`, and it is `AdminNav` — not `components/ui/TabBar.tsx`. The
 distinction is worth a sentence because the two now look alike and are not: `TabBar` is the
 runner's five-tab navigation inside `AppShell`'s 470 px column; `AdminNav` is this package's own
-seven-cell icon-only `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
-active-link highlighting. There is no `AppShell` and no 470 px column here. Tokens are still
-borrowed from the app's design system rather than re-invented.
+seven-cell icon-only `fixed bottom-0 h-14 z-30 border-t` bar — a Server Component shell over the
+`AdminNavLinks` client leaf, whose active cell is painted `text-accent` since the owner asked for
+it (`admin-bottom-bar-active-tab`). There is no `AppShell` and no 470 px column here. Tokens are
+still borrowed from the app's design system rather than re-invented.
 
 **Anything in this package that a thumb has to hit is at least 44 px on its smaller axis**, and
 that number is spelled once, in `touch.ts`: `TOUCH_TARGET` (`min-h-11`) for a control that is
@@ -94,7 +104,8 @@ and are unit-tested there.
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
 | `ChatPhotoGrid.tsx` | `'use client'` | `/admin/photos` — every photo Nina has put in the conversation, as one flat collection: one folder line, one grid, no tree. Borrows the breadcrumb look, imports nothing from `explorer/`. |
 | `ChatPhotoDetail.tsx` | `'use client'` | One chat photo in full. `SelectionPane`'s shape, not its content — and it *does* print `description` and `prompt`, which the album deliberately does not. |
-| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed **seven-cell** bottom bar below `lg` — `grid-cols-7` at `h-14`, one row of seven 56 px-tall icon cells — and the sticky left text rail at `lg`. Seven inlined Lucide glyphs (`layout-dashboard` · `images` · `smile` · `wand-sparkles` · `camera` · `brain` · `zap`) on a phone, each link named by its sr-only `short` string; the long labels at `lg`. It went icon-only because the owner asked for it (*"replace semua text pada bottom bar menjadi icon"*), overturning the plain-text stance this row used to carry — seven label cells at 59.1 px never fit one row, seven 24 px glyphs do; `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. No active-link highlighting, on purpose. |
+| `AdminNav.tsx` | **no directive** | The `/admin` nav's shell: the `<nav>` element, the desktop eyebrow and footer paragraph, and the breakpoint mechanics — `fixed bottom-0` below `lg` with `pb-[calc(var(--safe-bottom)/2)]` (the home-indicator pad halved by the owner's order, `admin-bottom-bar-active-tab`), `lg:sticky lg:top-8` above it. The list itself — links, glyphs, sidebar labels — is `AdminNavLinks.tsx`, the one client leaf. |
+| `AdminNavLinks.tsx` | `'use client'` | The nav's LIST, both renditions from one markup: `grid-cols-7` at `h-14` below `lg` — one row of seven 56 px-tall icon cells, each a 24 px inlined Lucide glyph (`layout-dashboard` · `images` · `smile` · `wand-sparkles` · `camera` · `brain` · `zap`) named by its sr-only `short` string — and the sticky text rail's long labels at `lg`. It exists because the owner ordered the active tab's icon highlighted in the album link's blue (*"mewarnai icon nya dengan warna biru yang sama dengan text 'Manage the album'"*): `usePathname()` finds the active cell, paints its glyph `text-accent` (scoped by the glyph's `lg:hidden`, so the sidebar labels stay `text-ink-2`) and sets `aria-current="page"`. `px-[7px]` on the row is the owner's *"kurangi saja padding nya by 1px"* dial — one pixel off each glyph's side-air, cluster still centred; `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — the trigger registry as one table. `MemoryTable`'s mechanics with different columns: blur-to-save cells, optimistic delete, no confirmation. |
 | `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` — the whole content of that route: the prompt-length `DialSlider`, six focus checkboxes, four free-text fields, the mounted photo-reference picker and test panel, and a **pure** prompt preview built by the real `buildNinaImagePrompt`. One `useTransition`, **one save for all eleven controls** (plan invariant 7), one reset, dirty state. |
 | `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: Nina's album and her chat photographs as one caption-less, gapless, square-tile collection in the iOS Photos idiom — no filename, no date, no set label on any tile. Single selection, `aria-pressed`, reveal-by-48, `loading="lazy"`. It cannot announce which set a tile came from, because `PhotoReferenceItem` carries no provenance field to announce. |
@@ -1181,10 +1192,17 @@ down the string.
 - **Do not "fix" `MemorySlots`'s render-time `setDraft` into an effect.** The render-phase adjustment
   is the correct React pattern here; an effect paints the stale draft for a frame and the lint rule
   rejects it. A `key`-based remount is also wrong — it discards the success note.
-- **Do not add active-link highlighting to `AdminNav` or `UserPicker`.** `usePathname()` would turn a
-  static nav into a Client Component to bold one word. `aria-current` already carries the state, to
-  assistive tech as well as to the eye. `UserPicker`'s `basePath` prop is the same rule applied to
-  the href: both callers are Server Components and both already know their own route.
+- **Do not add active-link highlighting to `UserPicker`, and do not read the pathname anywhere in
+  this package but `AdminNavLinks.tsx`.** This rule used to name `AdminNav` too — *"Do not add
+  active-link highlighting to `AdminNav` or `UserPicker`. `usePathname()` would turn a static nav
+  into a Client Component to bold one word."* — until the owner's own order for the active cell's
+  blue icon (`admin-bottom-bar-active-tab`) overruled the `AdminNav` half. What survives, and what
+  this bullet now holds, is the rule's arithmetic: a `usePathname()` read costs a client boundary,
+  so it is paid once, in the smallest subtree that needs it — the nav's list leaf — and nowhere
+  else. `AdminNav.tsx` stays a Server Component (`tests/admin.shell.test.ts` pins both sides). In
+  `UserPicker` the trade still buys nothing: `aria-current` already carries the state to assistive
+  tech, and its `basePath` prop is the same rule applied to the href — both callers are Server
+  Components and both already know their own route.
 - **Do not import from `@/lib/nina/` in `ShortcutTable.tsx`.** The three caps come through
   `@/lib/admin/shortcutModel`, which re-exports them; a test asserts the absence. The next specifier
   copied in from that directory is the one that reaches zod and `lib/db/schema.ts`.

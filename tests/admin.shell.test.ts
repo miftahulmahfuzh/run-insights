@@ -31,14 +31,21 @@ const read = (path: string) => readFileSync(`${ROOT}${path}`, 'utf8')
 const globals = read('app/globals.css')
 const adminLayout = read('app/admin/layout.tsx')
 const adminNav = read('components/admin/AdminNav.tsx')
+/*
+ * `admin-bottom-bar-active-tab` split the nav in two: `AdminNav.tsx` is the server shell (`<nav>`,
+ * eyebrow, footer) and `AdminNavLinks.tsx` is the client leaf that reads the pathname (LINKS, the
+ * row, the glyphs). Row-level assertions read the LEAF; nav-level assertions read the SHELL; the
+ * split itself is pinned in its own `it` below.
+ */
+const adminNavLinks = read('components/admin/AdminNavLinks.tsx')
 
 /**
  * Every `className="…"` literal in a `.tsx` source, joined.
  *
  * **Reading the class literals and not the whole file is load-bearing, not tidy.** Both of these
  * files carry long docstrings that QUOTE the utilities they are explaining — `app/admin/layout.tsx`
- * says out loud that it sets no `overflow-x` clip, and `components/admin/AdminNav.tsx` quotes the
- * package readme's `usePathname()` rule verbatim. A whole-file `not.toContain` would fail on the
+ * says out loud that it sets no `overflow-x` clip, and `components/admin/AdminNavLinks.tsx` quotes
+ * the package readme's `usePathname()` rule verbatim. A whole-file `not.toContain` would fail on the
  * explanation of the very property it is asserting, which is how a guard gets its explanation
  * deleted rather than its bug caught. (`tests/motion.reducedMotion.test.ts` strips comments first
  * for the same reason, in CSS, where stripping is easy.)
@@ -49,6 +56,7 @@ function classNames(source: string): string {
 
 const layoutClasses = classNames(adminLayout)
 const navClasses = classNames(adminNav)
+const rowClasses = classNames(adminNavLinks)
 
 describe('the safe-area tokens', () => {
   it('defines all four insets, so a shell can pad any edge it reaches', () => {
@@ -99,7 +107,7 @@ describe('the admin shell', () => {
 
 describe('the admin nav', () => {
   it('points every entry at a route that exists', () => {
-    const hrefs = [...adminNav.matchAll(/href: '(\/admin[^']*)'/g)].map((m) => m[1])
+    const hrefs = [...adminNavLinks.matchAll(/href: '(\/admin[^']*)'/g)].map((m) => m[1])
     expect(hrefs).toEqual([
       '/admin',
       '/admin/nina',
@@ -129,7 +137,7 @@ describe('the admin nav', () => {
      * shape from: a capture group that matched is a string, and `noUncheckedIndexedAccess`
      * cannot see that.
      */
-    const shorts = [...adminNav.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
+    const shorts = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
     expect(shorts).toHaveLength(7)
     for (const short of shorts) {
       expect(short.length, `"${short}" is an empty accessible name`).toBeGreaterThan(0)
@@ -150,13 +158,13 @@ describe('the admin nav', () => {
      * above. `toHaveLength(1)` is therefore the exact-fit form here: two spans would mean a
      * second cell template somewhere, zero means the bar lost its names.
      */
-    const svgTags = [...adminNav.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
+    const svgTags = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
     expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(7)
     for (const tag of svgTags) {
       expect(tag, 'a glyph is not aria-hidden decor').toContain('aria-hidden="true"')
     }
     const names = [
-      ...adminNav.matchAll(/<span className="sr-only lg:hidden">\{link\.short\}<\/span>/g),
+      ...adminNavLinks.matchAll(/<span className="sr-only lg:hidden">\{link\.short\}<\/span>/g),
     ]
     expect(names, 'the cell template lost its sr-only accessible-name span').toHaveLength(1)
   })
@@ -170,13 +178,19 @@ describe('the admin nav', () => {
      * that were) are three different silhouettes; this holds the line, because a copy-pasted
      * glyph body would pass the count above and fail here.
      */
-    const glyphs = [...adminNav.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
+    const glyphs = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
     expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(7)
   })
 
-  it('pins itself to the bottom of the phone viewport and pads the home indicator', () => {
+  it('pins itself to the bottom of the phone viewport and pads HALF the home indicator', () => {
+    /*
+     * `admin-bottom-bar-active-tab`: R1 padded the row by the full `--safe-bottom`; the owner
+     * asked for the icons nearer the screen's bottom edge — *"reduce the current distance value
+     * by half"* — so the pad is now the inset over two. The horizontal pair keeps its full inset
+     * (the notch, in landscape): only the bottom was ordered closer.
+     */
     expect(navClasses).toContain('fixed inset-x-0 bottom-0')
-    expect(navClasses).toContain('pb-[var(--safe-bottom)]')
+    expect(navClasses).toContain('pb-[calc(var(--safe-bottom)/2)]')
     expect(navClasses).toContain('pl-[var(--safe-left)]')
     expect(navClasses).toContain('pr-[var(--safe-right)]')
   })
@@ -187,17 +201,37 @@ describe('the admin nav', () => {
     expect(navClasses).toMatch(/lg:self-start/)
   })
 
-  it('stays a Server Component, per the package readme rule', () => {
+  it('keeps the shell a Server Component and the pathname quarantined in one client leaf', () => {
     /*
      * "Do not add active-link highlighting to AdminNav or UserPicker. usePathname() would turn a
      * static nav into a Client Component to bold one word."
      * (`components/admin/.workflows/package_readme.md`)
      *
-     * The file's own docstring QUOTES that sentence, so this asserts on the directive and the
-     * import graph rather than on the text — see `classNames` for the same trap in the layout.
+     * `admin-bottom-bar-active-tab` overruled the AdminNav half of that rule — the owner's own
+     * sentence ordered the active tab's icon painted blue — but NOT its arithmetic: the nav did
+     * not go wholly client. The boundary is pinned from BOTH sides: the shell carries no
+     * directive and no router import, and the leaf carries exactly the one directive and the one
+     * import that justify its existence. Both docstrings narrate the rule, so these assert on
+     * the directive lines and the import graph rather than on prose — see `classNames` for the
+     * same trap in the layout. The UserPicker half of the rule still binds.
      */
     expect(adminNav).not.toMatch(/^'use client'/m)
     expect(adminNav).not.toMatch(/from 'next\/navigation'/)
+    expect(adminNavLinks).toMatch(/^'use client'/m)
+    expect(adminNavLinks).toMatch(/import \{ usePathname \} from 'next\/navigation'/)
+  })
+
+  it('paints the active cell accent and names it with aria-current', () => {
+    /*
+     * `admin-bottom-bar-active-tab`: the owner's order, spelled — the active tab's icon in the
+     * same blue as the *"Manage the album"* link (`text-accent`, `app/admin/page.tsx`). The
+     * accent sits on the GLYPH's conditional — where its `lg:hidden` scopes it to the phone bar
+     * — and not on the link's own class string, so the `lg` sidebar's labels cannot inherit it;
+     * `aria-current` is the accessible half, `UserPicker`'s precedent. Asserted on the source
+     * because both live in JSX expressions, which `classNames()` does not join.
+     */
+    expect(adminNavLinks).toContain("'size-6 text-accent lg:hidden'")
+    expect(adminNavLinks).toContain("aria-current={active ? 'page' : undefined}")
   })
 })
 
@@ -217,10 +251,19 @@ describe('the bar and the padding that clears it', () => {
    * in it, so the class sorter produces it rather than breaking it -- verified against
    * `prettier-plugin-tailwindcss` 0.8.1 / `tailwindcss` 4.3.3, which sorted `grid-rows-*`
    * immediately after `grid-cols-*`; deleting it leaves every surviving family where it was.
+   * `admin-bottom-bar-active-tab` added `px-[<n>px]` to that row and the sorter placed it after
+   * `grid-cols-*` and before the `lg:` block, so the matched prefix is unchanged.
    */
-  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-(\d+)/)
+  const bar = rowClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-(\d+)/)
   const clearance = layoutClasses.match(/pb-\[calc\((\d+(?:\.\d+)?)rem\+var\(--safe-bottom\)\)\]/)
-  const cellCount = [...adminNav.matchAll(/short: '([^']*)'/g)].length
+  const cellCount = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].length
+  /*
+   * The row's own horizontal padding, both sides -- `admin-bottom-bar-active-tab`'s *"kurangi saja
+   * padding nya by 1px"* dial (`px-[7px]` narrows every glyph's side-air by exactly one pixel).
+   * Read rather than hardcoded so the tap-target arithmetic below stays true when the owner dials
+   * it again after seeing it in prod; 0 when the row goes back to unpadded.
+   */
+  const rowPad = Number(rowClasses.match(/px-\[(\d+(?:\.\d+)?)px\]/)?.[1] ?? 0) * 2
 
   it('spells both halves in the shape this case can read', () => {
     expect(
@@ -245,8 +288,8 @@ describe('the bar and the padding that clears it', () => {
      * cells" would pass while the last card sat under the bar.
      */
     expect(Number(bar![2]), 'the grid does not have a cell per route').toBe(cellCount)
-    expect(navClasses, 'the bar grew a second row back').not.toMatch(/grid-rows/)
-    expect(navClasses).not.toContain('h-28')
+    expect(rowClasses, 'the bar grew a second row back').not.toMatch(/grid-rows/)
+    expect(rowClasses).not.toContain('h-28')
   })
 
   it('reserves more room than the bar occupies', () => {
@@ -268,8 +311,9 @@ describe('the bar and the padding that clears it', () => {
     // docs/design-brief.md:175 — "Minimum 44 × 44pt tap targets", and the iOS constraints win over
     // any conflicting design output (line 18). The bar is one row (no `grid-rows`, asserted
     // above), so a cell's height is the bar's height; a column is 414px -- the XS Max portrait
-    // width -- over its column count.
+    // width -- minus the row's own `px` dial (see `rowPad`) over its column count: 57.1px at
+    // `px-[7px]`, still past the minimum with 13px to spare.
     expect(Number(bar![1]) * 4).toBeGreaterThanOrEqual(44)
-    expect(414 / Number(bar![2])).toBeGreaterThanOrEqual(44)
+    expect((414 - rowPad) / Number(bar![2])).toBeGreaterThanOrEqual(44)
   })
 })
