@@ -75,7 +75,7 @@ export interface ShortcutRow {
   id: string
   /** As the admin typed it. This is what the cell renders and what an error message quotes. */
   trigger: string
-  /** `normalizeNinaTrigger(trigger)` — what matching actually uses. Read-only, shown under the cell. */
+  /** `normalizeNinaTrigger(trigger)` — what matching actually uses. Carried, rendered nowhere. */
   matchKey: string
   kind: AdminShortcutKind
   label: string
@@ -144,8 +144,10 @@ export function formatFired(uses: number, lastUsedAt: string | null): string {
 }
 
 /*
- * `kind` is carried on every row and rendered nowhere: the explainer sentence that used to sit
- * under the trigger cell (`describeKind`) folded the table's narrowest column into five lines on a
- * phone and was removed on the owner's request. The field stays — the ledger has it, and the next
- * surface that needs the glyph/word split reads it from here rather than re-deriving it.
+ * Two columns are carried on every row and rendered nowhere, both read-only lines that used to sit
+ * under the trigger cell and were removed at the owner's request on 2026-09-09: `describeKind`'s
+ * explainer sentence folded the table's narrowest column into five lines on a phone, and the folded
+ * `matchKey` duplicated the trigger the operator had just typed above it. The fields stay — the
+ * ledger has them, and the next surface that needs either reads it from here rather than
+ * re-deriving it.
  */

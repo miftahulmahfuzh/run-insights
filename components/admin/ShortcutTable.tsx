@@ -323,11 +323,6 @@ function Row({
           onBlur={() => commit('trigger', trigger, row.trigger, revertTrigger)}
           onKeyDown={(event) => keys(event, revertTrigger)}
         />
-        {/* The folded key, which is what matching actually compares against. It is shown and not
-            hidden because `✌️` and `✌` are the same shortcut and nothing else on the page says so. */}
-        <code className="mt-1 block px-2 text-[11px] font-medium break-all text-ink-3">
-          {row.matchKey}
-        </code>
       </td>
 
       <td className={CELL}>

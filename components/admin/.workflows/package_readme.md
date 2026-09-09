@@ -909,12 +909,11 @@ that module's header carries the argument for the indirection, and the short ver
 boundary should be one file wide rather than resting on a property of a file in another directory
 that a `'use client'` component now names.
 
-Under the trigger cell the table prints one read-only line the operator cannot get anywhere else:
-the **folded `matchKey`**, because `✌️` and `✌` are the same shortcut and nothing else on the page
-says so. The `kind` explainer sentence that used to sit under it (`describeKind` — "fires anywhere"
-versus "never inside a longer word") was removed on 2026-09-09 at the owner's request: it wrapped
-the table's narrowest column into five lines on a phone. `kind` is still carried on every row and
-rendered nowhere.
+The trigger cell is just the field. The two read-only lines that used to sit under it are both gone,
+removed on 2026-09-09 at the owner's request so a row stays one line on a phone: `describeKind`'s
+kind explainer, which wrapped the table's narrowest column into five lines, and the folded
+`matchKey`, which duplicated the trigger the operator had just typed. `matchKey` and `kind` are
+still carried on every row and rendered nowhere.
 
 ### `AdminNav`'s sixth cell, and `UserPicker`'s one new prop
 
