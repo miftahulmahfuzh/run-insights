@@ -41,8 +41,9 @@ import { ninaBand } from '@/lib/nina/tuning'
  * There is no copy table in this file, for `tuningModel.ts`'s three recorded reasons, and the
  * third is the one that decides it here: **the six focus options are the user's own words** — face,
  * skin, big boobs, bubble butt, big thighs, very long calves. They are prompt text, not copy. They
- * live in `NINA_IMAGE_FOCUS_SPECS[key].label`, the prompt composes from the same specs, and this
- * file only reads them, so the panel cannot promise an emphasis the prompt does not add. A label
+ * live in `NINA_IMAGE_FOCUS_SPECS[key].label`, the prompt's emphasis terms are keyed by the same
+ * `NinaImageFocusKey` (`NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts`), and this file only reads
+ * them, so the panel cannot promise an emphasis the prompt does not add. A label
  * typed into the JSX would be a second source of truth for a vocabulary the user dictated.
  *
  * What IS local is genuinely local: `LENGTH_BAND_NOTE` below is editorial about the SURFACE
@@ -271,22 +272,26 @@ export function hasImageFocusCopy(key: string): boolean {
 }
 
 /**
- * Copy for one of the six focus options, **read off phase 1's specs.**
+ * The label for one of the six focus options, **read off phase 1's specs** — and, since the
+ * image-prefs simplify set, the ONLY copy a focus card has. The hint this function used to return
+ * rendered the spec's `userSaid` under each option, which repeated the label back in lower case
+ * ("face" under Face); the user asked for that line gone, and with it went `userSaid`, whose one
+ * reader was this return value.
+ *
+ * A plain string, not `ImageGenCopy`, for the same rung: `band` was already always `''` here (a
+ * checkbox has no scale), and a `hint` that must stay empty is an absence pinned by its own test.
+ * `promptLengthCopy` keeps the `ImageGenCopy` shape because its hint and band are genuinely
+ * rendered.
  *
  * The fallback exists so a running page degrades to a readable label rather than crashing on a key
  * phase 1 adds, and `tests/admin.imagegen.test.ts` fails on any key in `NINA_IMAGE_FOCUS_KEYS`
  * that reaches it — the net is for a running page, never a licence to ship an unlabelled checkbox.
  */
-export function imageFocusCopy(key: string): ImageGenCopy {
+export function imageFocusCopy(key: string): string {
   if (hasImageFocusCopy(key)) {
-    const spec = NINA_IMAGE_FOCUS_SPECS[key as keyof typeof NINA_IMAGE_FOCUS_SPECS]
-    /* `userSaid`, not `axis` — phase 1's `NinaImageFocusSpec` is `{ key, label, userSaid }`, and
-     * `userSaid` is the user's own fragment verbatim and lower case ("big boobs", "bubble butt").
-     * Rendering it as the hint is the honest thing: the checkbox promises exactly the words the
-     * prompt will emphasise, and nothing in this file may rephrase them (phase 1's own rule). */
-    return { label: spec.label, hint: spec.userSaid, band: '' }
+    return NINA_IMAGE_FOCUS_SPECS[key as keyof typeof NINA_IMAGE_FOCUS_SPECS].label
   }
-  return { label: prettifyFocusKey(key), hint: '', band: '' }
+  return prettifyFocusKey(key)
 }
 
 /**

@@ -454,6 +454,14 @@ export function ImageGenPanel({
            * These six are ADDITIVE. R1's four body facts are in every prompt whatever is ticked
            * here — plan invariant 4 — so clearing all six shortens the emphasis and does not
            * undress the subject paragraph. The sentence below says so, and the preview proves it.
+           *
+           * Each card is the label and nothing else: the line this set removed rendered the
+           * lowercased label back at the operator — "face" under Face — which was the copy reading
+           * itself. The words the prompt actually spends live in `NINA_FOCUS_EMPHASIS`
+           * (`lib/nina/imagegen.ts`), a paragraph cannot carry them, and the assembled prompt
+           * below is where an operator reads what a tick adds. Personality's option cards still
+           * carry hints; these deliberately do not, because Personality's hints say something the
+           * control's label cannot.
            */}
           <p className="mb-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
             These add emphasis on top of the prompt. They cannot take anything out of it: her body
@@ -462,7 +470,6 @@ export function ImageGenPanel({
           </p>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {NINA_IMAGE_FOCUS_KEYS.map((key) => {
-              const copy = imageFocusCopy(key)
               const ticked = isOn(key)
               return (
                 <label
@@ -479,14 +486,11 @@ export function ImageGenPanel({
                     onChange={(event) => setFocus(key, event.target.checked)}
                     className="mt-0.5 size-4 shrink-0 accent-accent"
                   />
-                  <span>
-                    <span className="block text-[13px] font-semibold text-ink">
-                      {copy.label}
-                      {pendingFields.has(`focus.${key}`) && (
-                        <span className="ml-2 text-[11px] font-semibold text-accent">unsaved</span>
-                      )}
-                    </span>
-                    <span className="block text-[11px] font-medium text-ink-3">{copy.hint}</span>
+                  <span className="text-[13px] font-semibold text-ink">
+                    {imageFocusCopy(key)}
+                    {pendingFields.has(`focus.${key}`) && (
+                      <span className="ml-2 text-[11px] font-semibold text-accent">unsaved</span>
+                    )}
                   </span>
                 </label>
               )

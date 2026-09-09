@@ -185,7 +185,7 @@ export function coerceNinaImagePromptLength(value: unknown): number {
  * **The six, in the user's own order**, which is the panel's order and the prompt's order.
  *
  * The keys are short because they become column names (`focus_boobs`) and object keys read by a
- * client panel; the user's words are in `label` and `userSaid`, where nothing may tidy them.
+ * client panel; the user's words are in `label`, where nothing may tidy them.
  */
 export const NINA_IMAGE_FOCUS_KEYS = ['face', 'skin', 'boobs', 'butt', 'thighs', 'calves'] as const
 
@@ -199,31 +199,28 @@ export function isNinaImageFocusKey(key: string): key is NinaImageFocusKey {
  * One focus option, fully described. The `NINA_TRAIT_SPECS` idiom: a key array for the order, a
  * spec record for everything about each key.
  *
- * `userSaid` is **the user's own words, verbatim** — his list was *"face, skin, big boobs, bubble
- * butt, big thighs, very long calves"*. Phase 2 may quote them into prompt text; nothing may
- * rephrase them, because the whole complaint that produced this feature was that the prompt did not
- * say them.
+ * `label` is **the user's own words, sentence-cased** — his list was *"face, skin, big boobs,
+ * bubble butt, big thighs, very long calves"*, and the image-prefs simplify set made the label the
+ * one home for those words on this record by deleting `userSaid`, whose only reader was the
+ * redundant hint the same set removed from the panel. Nothing may rephrase the label, because the
+ * whole complaint that produced this feature was that the prompt did not say these words. The
+ * prompt's emphasis vocabulary itself lives in `NINA_FOCUS_EMPHASIS` (`lib/nina/imagegen.ts`),
+ * which is keyed by `NinaImageFocusKey` and has never read this record.
  */
 export interface NinaImageFocusSpec {
   readonly key: NinaImageFocusKey
   /** The checkbox's label. Sentence case. */
   readonly label: string
-  /** The user's own fragment, verbatim and lower case, as he typed it. */
-  readonly userSaid: string
 }
 
 export const NINA_IMAGE_FOCUS_SPECS: Readonly<Record<NinaImageFocusKey, NinaImageFocusSpec>> =
   Object.freeze({
-    face: Object.freeze({ key: 'face', label: 'Face', userSaid: 'face' }),
-    skin: Object.freeze({ key: 'skin', label: 'Skin', userSaid: 'skin' }),
-    boobs: Object.freeze({ key: 'boobs', label: 'Big boobs', userSaid: 'big boobs' }),
-    butt: Object.freeze({ key: 'butt', label: 'Bubble butt', userSaid: 'bubble butt' }),
-    thighs: Object.freeze({ key: 'thighs', label: 'Big thighs', userSaid: 'big thighs' }),
-    calves: Object.freeze({
-      key: 'calves',
-      label: 'Very long calves',
-      userSaid: 'very long calves',
-    }),
+    face: Object.freeze({ key: 'face', label: 'Face' }),
+    skin: Object.freeze({ key: 'skin', label: 'Skin' }),
+    boobs: Object.freeze({ key: 'boobs', label: 'Big boobs' }),
+    butt: Object.freeze({ key: 'butt', label: 'Bubble butt' }),
+    thighs: Object.freeze({ key: 'thighs', label: 'Big thighs' }),
+    calves: Object.freeze({ key: 'calves', label: 'Very long calves' }),
   })
 
 function allFocusOff(): Record<NinaImageFocusKey, boolean> {

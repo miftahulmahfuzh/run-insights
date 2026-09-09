@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-09 (task `P1-RI-A029`, `admin-imagegen-simplify` phase 2 of 3 — the image-prefs revision purge: `ImageGenPanel` takes no `revision` prop and prints no "revision N" copy anywhere, and the column leaves `nina_image_prefs` in `drizzle/0017_retire_imageprefs_revision.sql` (committed, NOT applied — the post-deploy `npm run db:migrate`); previously task `P1-RI-A028`, phase 1 of the same set — `ImageGenPanel` adopted the Personality auto-save pipeline and its Save/Discard/Reset row went with the reset action; before that, task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
+**Last Updated**: 2026-09-09 (task `P1-RI-A031`, `admin-imagegen-simplify` phase 3 of 3 — the focus-card hint purge: each of the six "Focus on" cards is now its label and nothing else — the hint `<span>` under the checkbox is gone, and the card's single span still carries the "unsaved" marker; previously task `P1-RI-A029`, `admin-imagegen-simplify` phase 2 of 3 — the image-prefs revision purge: `ImageGenPanel` takes no `revision` prop and prints no "revision N" copy anywhere, and the column leaves `nina_image_prefs` in `drizzle/0017_retire_imageprefs_revision.sql` (committed, NOT applied — the post-deploy `npm run db:migrate`); previously task `P1-RI-A028`, phase 1 of the same set — `ImageGenPanel` adopted the Personality auto-save pipeline and its Save/Discard/Reset row went with the reset action; before that, task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
 
 ## Overview
 
@@ -1520,3 +1520,12 @@ or commit moment moved — the auto-save pipeline phase 1 landed stands as it le
 post-deploy `npm run db:migrate`. Refreshed here: the `Last Updated` line and the
 `ImageGenPanel.tsx` / `DialSlider.tsx` module-map rows, which still described the staged-commit
 save model, the reset and the dirty state that phases 1 and 2 deleted.
+
+2026-09-09 — updated following task **P1-RI-A031** (`admin-imagegen-simplify` phase 3 of 3, the
+focus-card hint purge). `ImageGenPanel.tsx`'s six "Focus on" cards lost the hint line under each
+checkbox — it rendered the focus spec's `userSaid`, which repeated the label back in lower case
+("face" under Face) — so each card is now one label span carrying the "unsaved" marker. The
+module-map row above never described that line, so nothing here went stale; only the
+`Last Updated` line needed the phase. The member the hint read is deleted from
+`NINA_IMAGE_FOCUS_SPECS` in `lib/nina/imageprefs.ts`, and `imageFocusCopy` returns the label as a
+plain string (`lib/admin/imageGenModel.ts`).

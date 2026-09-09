@@ -168,16 +168,20 @@ describe('the six focus options are the six the user named (R5)', () => {
     for (const key of NINA_IMAGE_FOCUS_KEYS) expect(NINA_IMAGE_FOCUS_SPECS[key].key).toBe(key)
   })
 
-  it('carries his own words, verbatim and untidied', () => {
+  it('carries his own words, verbatim and untidied, in the labels', () => {
     // "focus on (select multi options): face, skin, big boobs, bubble butt, big thighs, very long
-    // calves". The list is the specification, so it is stored rather than paraphrased.
-    expect(NINA_IMAGE_FOCUS_KEYS.map((k) => NINA_IMAGE_FOCUS_SPECS[k].userSaid)).toEqual([
-      'face',
-      'skin',
-      'big boobs',
-      'bubble butt',
-      'big thighs',
-      'very long calves',
+    // calves". The list is the specification, so it is stored rather than paraphrased. The
+    // simplify set made `label` the one home for these words on the spec when it deleted
+    // `userSaid` — whose only reader was the redundant hint under each option. Order and spelling
+    // are both his; the prompt's emphasis terms (`NINA_FOCUS_EMPHASIS`, lib/nina/imagegen.ts) are
+    // keyed by the same keys and say the same words in prompt register.
+    expect(NINA_IMAGE_FOCUS_KEYS.map((k) => NINA_IMAGE_FOCUS_SPECS[k].label)).toEqual([
+      'Face',
+      'Skin',
+      'Big boobs',
+      'Bubble butt',
+      'Big thighs',
+      'Very long calves',
     ])
   })
 

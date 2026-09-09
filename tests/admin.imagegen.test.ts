@@ -83,11 +83,10 @@ describe('the vocabulary is phase 1s, and is complete', () => {
     expect(NINA_IMAGE_FOCUS_KEYS).toHaveLength(6)
   })
 
-  it('has a real label and hint for every one of them', () => {
+  it('has a real label for every one of them', () => {
     for (const key of NINA_IMAGE_FOCUS_KEYS) {
       expect(hasImageFocusCopy(key), `no copy for focus option ${key}`).toBe(true)
-      expect(imageFocusCopy(key).label.length).toBeGreaterThan(0)
-      expect(imageFocusCopy(key).hint.length).toBeGreaterThan(0)
+      expect(imageFocusCopy(key).length).toBeGreaterThan(0)
     }
   })
 
@@ -100,7 +99,7 @@ describe('the vocabulary is phase 1s, and is complete', () => {
    * restating them here would be a second source of truth for the same requirement.
    */
   it('has not sanitised the option names into clinical synonyms', () => {
-    const labels = NINA_IMAGE_FOCUS_KEYS.map((key) => imageFocusCopy(key).label)
+    const labels = NINA_IMAGE_FOCUS_KEYS.map((key) => imageFocusCopy(key))
       .join(' ')
       .toLowerCase()
     for (const clinical of ['mammary', 'gluteal', 'gluteus', 'adipose', 'posterior', 'bust']) {
@@ -130,12 +129,11 @@ describe('the vocabulary is phase 1s, and is complete', () => {
 
   it('falls back to a readable label for a key it has never heard of', () => {
     expect(hasImageFocusCopy('some_new_option')).toBe(false)
-    expect(imageFocusCopy('some_new_option').label).toBe('Some new option')
-    expect(imageFocusCopy('some_new_option').hint).toBe('')
+    expect(imageFocusCopy('some_new_option')).toBe('Some new option')
     /* And a key phase 1 DOES declare keeps its declared label rather than the prettified key:
      * `prettifyFocusKey('butt')` is "Butt", and the user's word is "bubble butt". */
     expect(prettifyFocusKey('butt')).toBe('Butt')
-    expect(imageFocusCopy('butt').label).toBe('Bubble butt')
+    expect(imageFocusCopy('butt')).toBe('Bubble butt')
   })
 
   it('spells the none-reference source with a value phase 1 still declares', () => {

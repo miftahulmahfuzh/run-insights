@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-09
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 28
+- Completed: 29
 
 ---
 
@@ -22,15 +22,6 @@
 
 ### [P1] High
 
-- [ ] **P1-RI-A031** Phase 3: Focus on: the redundant hint under each option
-  - **Difficulty**: EASY
-  - **Type**: Update
-  - **Context**: Owns the six focus cards rendering their label only — the hint span gone from `ImageGenPanel.tsx` and `imageFocusCopy` simplified accordingly; `NinaImageFocusSpec.userSaid` removed from `lib/nina/imageprefs.ts` (its only reader was the hint; the prompt's vocabulary lives in `NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts:319-344`, which never reads it); test pins updated (`hint.length`, the fallback hint, the `userSaid` array — the clinical-synonym negative test stays, now pinning labels alone). Does not touch the fieldset's "These add emphasis on top…" paragraph (it explains emphasis-vs-inclusion — not redundant), the ring/selected styling, `NINA_FOCUS_EMPHASIS`, or the `DialSlider` and text-field hints. Exit criteria: the six cards show one line each; the census grep (code forms `userSaid:` / `userSaid?:` / `.userSaid`) shows no `userSaid` in the image-focus specs; `npx vitest run` green.
-  - **Status**: open
-  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 3 of 3)
-  - **Satisfies**: R3 — Focus on section: remove the redundant description under each option ("face" under Face, "skin" under Skin, …)
-  - **Depends on**: `P1-RI-A029`
-  - **Plan**: `.workflows/plan/P1-RI-A031.md`
 - [x] **P1-RI-A022** Phase 2: A tile you can tell apart: the admin icon set
   - **Difficulty**: NORMAL
   - **Type**: Feature
@@ -72,6 +63,23 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A031** Phase 3: Focus on: the redundant hint under each option
+  - **Difficulty**: EASY
+  - **Type**: Update
+  - **Context**: Owns the six focus cards rendering their label only — the hint span gone from `ImageGenPanel.tsx` and `imageFocusCopy` simplified accordingly; `NinaImageFocusSpec.userSaid` removed from `lib/nina/imageprefs.ts` (its only reader was the hint; the prompt's vocabulary lives in `NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts:319-344`, which never reads it); test pins updated (`hint.length`, the fallback hint, the `userSaid` array — the clinical-synonym negative test stays, now pinning labels alone). Does not touch the fieldset's "These add emphasis on top…" paragraph (it explains emphasis-vs-inclusion — not redundant), the ring/selected styling, `NINA_FOCUS_EMPHASIS`, or the `DialSlider` and text-field hints. Exit criteria: the six cards show one line each; the census grep (code forms `userSaid:` / `userSaid?:` / `.userSaid`) shows no `userSaid` in the image-focus specs; `npx vitest run` green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R3 — Focus on section: remove the redundant description under each option ("face" under Face, "skin" under Skin, …)
+  - **Depends on**: `P1-RI-A029`
+  - **Plan**: `.workflows/plan/P1-RI-A031.md`
+  - **Completed**: 2026-09-09 18:15
+  - **Method**: /do
+  - **Files**: lib/nina/imageprefs.ts, lib/admin/imageGenModel.ts, components/admin/ImageGenPanel.tsx, tests/admin.imagegen.test.ts, tests/nina.imageprefs.test.ts
+  - **Drift**: Plan's census grep was written whole-file over `lib/nina/imageprefs.ts` and over-matches `NinaImageTextSpec.userSaid` (imageprefs.ts:315-357) — a DIFFERENT spec record (wardrobe/venue/time/notes) no phase of this set schedules for editing. Gate scoped to the exit criterion's own words ("no `userSaid` in the image-focus specs") — focus-spec region verified clean; the text-spec member is untouched.
+  - **Drift**: Follow-up material (NOT this phase's work): `NinaImageTextSpec.userSaid` has no reader anywhere (panel and tests read only label/placeholder/max) — the same dead-member shape this set purged from the focus spec. Out of R3's scope (R3 names the Focus on section only); left in place.
+  - **Drift**: The plan's manual browser check (open /admin/image-generation on a non-3000 port) was NOT run — the page is auth-gated and no headless session was minted. Covered instead by: `npm run typecheck`, `npm run lint` (exit 0; 2 PRE-EXISTING warnings in `scripts/capture/shoot.mjs`, untouched by this phase), `npx vitest run` (164 files / 3546 tests green), `npm run build` (all routes compile), and the scoped census. The UI change is a span removal in JSX quoted verbatim from the plan.
+  - **Decided**: Census gate over-matches `NinaImageTextSpec.userSaid` homonym in the same file → scoped the gate to the exit criterion's own words ("no `userSaid` in the image-focus specs"), text-spec record untouched (rung 2: phase exit criteria + never-widen-scope tie-break)
 
 - [x] **P1-RI-A029** Phase 2: Revision purge: the counter leaves frontend, backend, and database
   - **Difficulty**: NORMAL

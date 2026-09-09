@@ -1,7 +1,11 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-09 (task `P1-RI-A025`, phase 1 of 2 of the simplify-personality-settings
+**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set
+— the focus-card hint purge: the six "Focus on" cards render their label and nothing else,
+`imageFocusCopy` in `lib/admin/imageGenModel.ts` returns the label as a plain string, and
+`NinaImageFocusSpec.userSaid` leaves `lib/nina/imageprefs.ts`; the free-text spec's `userSaid`
+stays; previously task `P1-RI-A025`, phase 1 of 2 of the simplify-personality-settings
 set — the tuning revision mechanism purged stack-wide; its migration committed but deliberately not
 yet applied)
 
@@ -837,6 +841,28 @@ per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEA
 (the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
 `NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
 `P1-RI-A019`.
+
+### Recent changes — P1-RI-A031 (2026-09-09)
+
+*Phase 3 of 3 of the `admin-imagegen-simplify` set (R4): the six "Focus on" cards render their
+label and nothing else.*
+
+Each focus card used to carry a hint line copied from the focus spec's `userSaid` — the user's own
+words repeated back in lower case ("face" under Face), the copy reading itself. Phase 3 deletes the
+hint span, `imageFocusCopy`'s hint return, and the `userSaid` member with its six literal values
+from `NINA_IMAGE_FOCUS_SPECS`, leaving the spec's `label` the one home for the user's focus words;
+`NINA_FOCUS_EMPHASIS` (`lib/nina/imagegen.ts`), which never read the member, keeps the prompt's
+emphasis vocabulary. The free-text `NinaImageTextSpec` keeps its own `userSaid` — a different
+record, deliberately untouched. No control, commit moment or saved field moved.
+
+**Changed:** `components/admin/ImageGenPanel.tsx` (the hint `<span>` is gone; the card is one label
+span that also carries the "unsaved" marker), `lib/admin/imageGenModel.ts` (`imageFocusCopy(key)`
+now returns a plain string — the `ImageGenCopy` wrapper whose `band` was always `''` and whose
+`hint` had to stay empty is gone; `promptLengthCopy` keeps that shape because its hint and band are
+genuinely rendered), `lib/nina/imageprefs.ts` (`NinaImageFocusSpec` is `{ key, label }`), and the
+pins in `tests/admin.imagegen.test.ts` / `tests/nina.imageprefs.test.ts` — the root-owned slice of
+this phase. The sub-package readmes (`components/admin`, `lib/admin`, `lib/nina`) record the same
+phase one slice each.
 
 ### Recent changes — P1-RI-A025 (2026-09-09)
 
