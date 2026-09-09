@@ -37,8 +37,8 @@ import { cn } from '@/lib/cn'
  *
  * ── THE NUMBER IS NOT DECORATION ────────────────────────────────────────────────────────────
  * An unlabelled slider is a dial the operator cannot report back: "flirty is quite high" is not a
- * bug report and cannot be compared against `nina_turns`' recorded revision. So the value renders
- * as an `<output>` tied to the input, and it is the number that is actually stored.
+ * bug report and cannot be checked against the row the panel stores. So the value renders as an
+ * `<output>` tied to the input, and it is the number that is actually stored.
  *
  * ── THREE DIFFERENT KINDS OF "CHANGED", ALL VISIBLE ─────────────────────────────────────────
  * `defaultValue` is the SHIPPING default, so accent type means *this is no longer the Nina who
@@ -50,8 +50,9 @@ import { cn } from '@/lib/cn'
  * and on that axis she IS the Nina who shipped. The "default N" button still appears, because the
  * operator may want to clear a parked value without turning the parameter back on to do it.
  *
- * Clicking "default N" is the per-dial undo. It writes the default into the draft rather than
- * saving anything, so it is still one Save for the whole tuning (plan invariant 11).
+ * Clicking "default N" is the per-dial undo, and since the simplify set it is also the surviving
+ * route back to defaults: it writes the default into the draft through `onChange`, and the panel
+ * commits it with the whole tuning when the settle debounce fires (plan invariant 11).
  *
  * ── THE TOGGLE IS OPTIONAL, AND ABSENT MEANS "NO TOGGLE" ────────────────────────────────────
  * `onEnabledChange` is what renders the checkbox. A caller with a parameter that has no off switch

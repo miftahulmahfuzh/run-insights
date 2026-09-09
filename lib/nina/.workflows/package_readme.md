@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-08 (task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-09 (task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -53,11 +53,11 @@ Zero imports, plain data and types, client-importable. Declares:
   canon.
 - **Four dials** (`NINA_DIALS`: profanity, clinginess, photoEagerness, verbosity), each naming a real
   code path.
-- **`NinaTuning`** — `{ traits, relationship, dials, enabled, notes, revision }`, all readonly.
+- **`NinaTuning`** — `{ traits, relationship, dials, enabled, notes }`, all readonly.
   `enabled` is R4's per-parameter on/off map (see below). `notes` is `string` and never null; `''`
   is the one empty value. (`wardrobe` was a seventh member until F41 R3 moved it to
-  `NinaImagePrefs`.) `revision` is the database's to assign, and
-  `0` means *no row has ever been written*.
+  `NinaImagePrefs`; a `revision` member sat beside them until the `simplify-personality-settings`
+  set purged the prompt-revision mechanism — `drizzle/0016_retire_tuning_revision.sql`.)
 - **`NINA_TUNING_DEFAULTS`** — frozen, and the setting that reproduces today's Nina exactly.
 - **`coerceNinaTuning`** — total, never throws, always returns a fresh unfrozen object. An
   unreadable key falls back to *that key's own default*, not to zero; an unknown relationship
@@ -421,9 +421,10 @@ she could quote back, which collides with `NUMBERS_RULE`. It is read live on eve
 cache — in `actions.ts`'s three-way `Promise.all` for chat, and at both `loadNinaContext` sites in
 `proactive.ts` for the cron — so a slider on `/admin/nina` is immediate. The assembled string is
 built ONCE per turn in `runNinaTurnWith` and passed to every model call including the repair, so one
-turn is always one character. `nina_turns.tuning_revision` records which settings produced each
-turn; `prompt_version` identifies the assembler, the revision identifies what it assembled, and only
-the pair answers "what was she set to when she said that".
+turn is always one character. `prompt_version` identifies the assembler that rendered the turn;
+`nina_turns.tuning_revision`, which used to name the settings it assembled so the pair could answer
+"what was she set to when she said that", is gone — the `simplify-personality-settings` set purged
+the prompt-revision mechanism and `drizzle/0016_retire_tuning_revision.sql` drops the column.
 
 **`NINA_PROMPT_VERSION` was `4` for the whole admin-responsive-nina-intimacy set; it is `6` today.**
 The `3 -> 4` bump is R2: `HOW YOU TALK` gained
@@ -682,7 +683,7 @@ DEFAULT 0`, then `ALTER COLUMN "horny" DROP DEFAULT`, then `ADD COLUMN "horny_en
 temporary default is drizzle's own way to add a `NOT NULL` column to a populated table and it is
 dropped in the next statement, so the table keeps this package's rule that **no stored value carries
 a SQL default** — the defaults live in `NINA_TUNING_DEFAULTS` and nowhere else. `horny_enabled` is
-nullable with no default, which is the `nina_turns.tuning_revision` idiom repeated: NULL means one
+nullable with no default: NULL means one
 thing only, *a row written before that toggle existed*, and `coerceNinaEnabled` reads it as enabled,
 so every existing production row is all-on the moment the migration lands, with no `UPDATE` behind
 it. `writeNinaTuning` supplies all
@@ -1277,7 +1278,7 @@ order to tidy a list.
 
 `lib/db/schema.ts` adds `deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' })`
 to `nina_turns` — **nullable, no default, and no backfill script**. Every row written before the
-column reads NULL and is therefore visible, which is `tuning_revision`'s idiom and the
+column reads NULL and is therefore visible, which is the
 `*_enabled` columns' idiom one table over: **the migration IS the backfill**, because the absent
 value already spells the right answer.
 

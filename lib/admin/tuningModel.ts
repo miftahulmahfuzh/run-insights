@@ -50,7 +50,7 @@ import {
  * is agreed rather than shared is a constant that will one day disagree."*
  */
 
-/** What a browser edits: phase 1's row, minus the revision the database mints. */
+/** What a browser edits: phase 1's row, with its records loosened to string keys — see each field. */
 export interface TuningDraft {
   traits: Record<string, number>
   dials: Record<string, number>
@@ -243,6 +243,89 @@ export function changedTuningFields(next: TuningDraft, saved: TuningDraft): stri
 
 export function tuningDraftEquals(a: TuningDraft, b: TuningDraft): boolean {
   return changedTuningFields(a, b).length === 0
+}
+
+/**
+ * How long a dial waits after its last change before it commits — the settle window of the
+ * auto-save panel (the simplify set's R2).
+ *
+ * A native `<input type="range">` fires `change` on every pointer move of a drag and on every
+ * arrow keypress, and it KEEPS FOCUS after the thumb is released — so `MemoryTable.tsx`'s
+ * measured "blur is the commit moment" rule ("HOW A CELL SAVES, AND WHY IT IS BLUR AND NOT A
+ * DEBOUNCE") cannot transfer to a slider: there is no blur event that means "this edit is
+ * finished". The debounce IS the settle detector. 600 ms sits above the tens-of-milliseconds
+ * gaps between change events inside one continuous drag (so one drag is one save) and below the
+ * time it takes to wonder whether the edit landed (so the "Saved" flip still arrives while the
+ * operator is looking at the control). The timer it names is cleared on re-arm, on unmount, and
+ * whenever an immediate commit has already carried everything pending — the hygiene
+ * `components/admin/ImageGenTestPanel.tsx` records for its own `setTimeout` handles.
+ *
+ * Named here rather than in the component for the same reason every bound in this file is
+ * imported rather than re-declared: one home, and a test can pin it.
+ */
+export const TUNING_DIAL_COMMIT_DEBOUNCE_MS = 600
+
+/**
+ * One record of a draft, merged field by field after a save lands.
+ *
+ * The rule is one line per key: **adopt the stored value only where the operator has not touched
+ * the field since dispatch** — `current` still holds exactly what was `sent`. A field that has
+ * moved on keeps the newer local value and stays pending; the next commit carries it.
+ *
+ * Generic and private because `TuningDraft` carries three records of different value types and
+ * the rule is identical for all three. Keys are taken from the union of all three sides, so a
+ * key present on one side only is decided rather than dropped.
+ */
+function mergeRecord<T>(
+  current: Record<string, T>,
+  sent: Record<string, T>,
+  canonical: Record<string, T>,
+): Record<string, T> {
+  const merged: Record<string, T> = {}
+  for (const key of Object.keys({ ...sent, ...canonical, ...current })) {
+    if (current[key] !== sent[key] && current[key] !== undefined) {
+      merged[key] = current[key]
+    } else if (canonical[key] !== undefined) {
+      merged[key] = canonical[key]
+    } else if (sent[key] !== undefined) {
+      merged[key] = sent[key]
+    }
+    /* All three undefined: the key is in nobody's draft — leave it out of the merge too. */
+  }
+  return merged
+}
+
+/**
+ * The post-save canonical merge — what the auto-save panel does when a save comes back.
+ *
+ * `writeNinaTuning` coerces before it writes, and `coerceNinaNotes` trims and collapses blank
+ * runs, so the stored row can differ cosmetically from what was typed ("  hello  \n\n\n\n world  "
+ * is stored as "hello\n\n world"). The panel cannot keep showing the pre-coercion text after the
+ * row that holds the canonical form has landed — the operator would watch the textarea "not take"
+ * — but it also cannot adopt the stored row wholesale, because the operator may have kept editing
+ * while the save was in flight, and a wholesale adoption would write the older stored value over
+ * the newer local one. That is the one failure this merge exists to prevent.
+ *
+ * So: for each field, if `current` still equals what was `sent`, the field was untouched since
+ * dispatch and takes the canonical value (a coerced notes appears; a clamped dial snaps to what
+ * was stored); otherwise the field keeps the newer local value and remains pending — it rides the
+ * next commit. `changedTuningFields` is the same per-field comparison in boolean form, which is
+ * why the merge and the pending dots always agree.
+ */
+export function mergeTuningAfterSave(
+  current: TuningDraft,
+  sent: TuningDraft,
+  canonical: TuningDraft,
+): TuningDraft {
+  return {
+    traits: mergeRecord(current.traits, sent.traits, canonical.traits),
+    dials: mergeRecord(current.dials, sent.dials, canonical.dials),
+    enabled: mergeRecord(current.enabled, sent.enabled, canonical.enabled),
+    /* The two scalars are the record rule with no loop: untouched since dispatch -> canonical. */
+    relationship:
+      current.relationship === sent.relationship ? canonical.relationship : current.relationship,
+    notes: current.notes === sent.notes ? canonical.notes : current.notes,
+  }
 }
 
 export interface LoudDial {

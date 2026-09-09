@@ -474,7 +474,7 @@ function renderSections(sections: readonly PromptSection[]): string {
  *                         The one field whose whole job is "override the above" goes at the bottom.
  *
  * ── WHAT IS *NOT* IN HERE ──────────────────────────────────────────────────────────────
- * No dial, no slider value, no revision number, no band name. **The tuning never enters the
+ * No dial, no slider value, no band name. **The tuning never enters the
  * context JSON, and the same argument bites twice:** a number in either one is a number she can
  * quote back at him ("gw disetel 87 flirty"), and `NUMBERS_RULE` three sections up says every
  * number she says appears in the JSON below. The tuning reaches her as BEHAVIOUR, in words, and

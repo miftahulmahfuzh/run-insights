@@ -618,7 +618,7 @@ Two actions, both the same four-line shape every action in this package has: `re
 Zod second, one write third, `revalidatePath` last, and a result object returned rather than an
 exception thrown.
 
-- **`saveNinaTuningAction`** — validates the whole tuning, writes one row, bumps its revision.
+- **`saveNinaTuningAction`** — validates the whole tuning, writes one row.
 - **`resetNinaTuningAction`** — writes `NINA_TUNING_DEFAULTS` back over the row. Server-side,
   because the defaults are defined in `lib/nina/tuning.ts` and a client that re-implements them is a
   second definition.
@@ -1244,3 +1244,15 @@ Refreshed here: the overview's surface list, a new key responsibility, three mod
 `@/lib/nina/queries` and two new dependency bullets, two reverse-dependency entries, the
 test-consumer list, and five gotchas. `tests/admin.shortcuts.test.ts` is new, with 28 cases — the
 pure half by call, and the module boundaries by reading source.
+
+2026-09-09 — updated following task **P1-RI-A025** (`simplify-personality-settings` phase 1 of 2,
+the prompt-revision purge). `saveNinaTuningAction` no longer reads a revision off
+`writeNinaTuning`'s returned row and no longer returns one — `AdminTuningResult.revision` is
+deleted and the success note no longer names one — and `toTuningWrite` returns `NinaTuning`
+rather than `NinaTuningWrite`, because `lib/nina/tuning.ts` deleted the alias this file imported.
+Nothing else here moved: the two actions, the four-line shape and `ninaTuningWriteSchema` (which
+never carried a revision field) are untouched, and phase 2 of the set owns replacing the
+Save/Discard/Reset button model. Migration `drizzle/0016_retire_tuning_revision.sql` (dropping
+`nina_tuning.revision` and `nina_turns.tuning_revision`) is committed but NOT applied — applying it
+is the post-deploy `npm run db:migrate`. Refreshed here: one clause of the `tuningActions.ts`
+action list.

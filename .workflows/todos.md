@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 24
+- Completed: 26
 
 ---
 
@@ -117,6 +117,41 @@
   - **Drift**: npm test: 3484/3488 pass; 4 failures on first run, 3 on an isolated re-run — all 5000ms TIMEOUTS in tests/nina.jobActions.test.ts. Pre-existing and load-sensitive, not this phase's: that test file has NO import path to SessionRow.tsx (grep-verified across lib/ and tests/), none of its files were modified by this phase or by the concurrent phase-1 session, and the failure count fluctuates between runs. typecheck, npm run build, and targeted prettier are all green.
   - **Drift**: PEER FORK (needs coordinator reconciliation): the concurrent phase-1 session (impl-search-clear-and-sidebar-icons-p1) ran its own task creation under package NIN — entries in lib/nina/.workflows/todos.md and adopted plans lib/nina/.workflows/plan/P1-NIN-A03{2,3,4}.md — and briefly wrote P1-NIN ids into both plan-index copies' TaskID cells. The authoritative bookkeeping for this set is the ROOT file .workflows/todos.md with ids P1-RI-A025 (phase 1) / P1-RI-A026 (phase 2) / P1-RI-A027 (phase 3); both index copies' cells carry the RI ids as of 09:15. Do NOT delete the peer's NIN artifacts (its session may still re-clobber); just record the fork.
   - **Decided**: Task bookkeeping location → root .workflows/todos.md (package code RI) rather than a components/nina or lib/nina package file → rung 6 (surrounding convention: recent components/nina UI plan sets — nina-chat-sessions, nina-chat-avatar-profile, composer-frost — are all tracked in the root file). The mint command's suggestion P1-RI-A020 was REJECTED as already spent by the landed admin-home-screen-shortcut set (git log -S); A025/A026/A027 were each verified unspent.
+- [x] **P1-RI-A026** Phase 2: Auto-save the Personality panel
+  - **Difficulty**: HARD
+  - **Type**: Refactor
+  - **Context**: Owns the `CharacterPanel` rewrite — delete Save/Discard/Reset and `confirmingReset`; sliders debounced-commit, toggles/radios immediate-commit, notes blur-commit; "Saving…/Saved" status surface replacing the "N unsaved" counter (per-row dots may remain as pending indicators); post-save canonical merge that adopts the stored row without clobbering newer local edits; delete `resetNinaTuningAction` and `ninaTuningResetSchema` (+ their tests, incl. the "exactly two actions" structural test → one); `AdminTuningResult` re-shaped for auto-save; and every prose citation that named the deleted symbols. Exit criteria: no Save/Discard/Reset control renders; every control commits by itself on its MemoryTable-rule moment through ONE whole-tuning action; the reset action, its schema and every citation that named them are gone from code; a failed save shows a sentence and the pending state; typecheck, lint, tests green.
+  - **Status**: completed
+  - **Plan Set**: `SIMPLIFY_PERSONALITY_SETTINGS_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — Remove the "Discard changes" and "Reset to defaults" buttons; Personality auto-saves every time a change is made.
+  - **Depends on**: `P1-RI-A025`
+  - **Plan**: `.workflows/plan/P1-RI-A026-simplify-personality-settings.md`
+  - **Completed**: 2026-09-09 10:54
+  - **Method**: /do
+  - **Files**: lib/admin/tuningModel.ts, lib/admin/tuningActions.ts, lib/admin/schema.ts, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, app/admin/personality/page.tsx, lib/admin/imageGenActions.ts, tests/admin.tuning.test.ts
+  - **Drift**: Prettier reformatted `components/admin/CharacterPanel.tsx` after transcription (formatting only); all 48 structural substring tests re-verified green afterwards.
+  - **Drift**: `tests/nina.jobActions.test.ts` intermittently exceeds vitest's default 5s test timeout (3-4 DB-touching cases, varying set). Measured pre-existing: fails identically on the clean base commit `155a2dc`, zero import overlap with this phase's diff, and the full suite passes 3495/3495 across 163 files at `--testTimeout=30000`. Not this phase's regression; left untouched (out of the phase's Files).
+  - **Drift**: The plan's manual browser check (drag a dial -> Saving... -> Saved; failure surface with a broken DATABASE_URL) was NOT performed: an unattended session would need an admin login against the one production database. Every behaviour it would confirm is asserted by the structural suite (commit moments, tri-state status line, failure sentence rendering, no disabled controls).
+  - **Verification**: `npm run typecheck` clean; `npm run lint` clean; full vitest 3495/3495 across 163 files at `--testTimeout=30000`; the phase plan's exit-criteria greps clean (no Save/Discard/Reset control, one whole-tuning action, the reset action/schema and every citation that named them gone); all 48 structural substring tests green after the final prettier reformat.
+
+- [x] **P1-RI-A025** Phase 1: Purge the tuning revision mechanism everywhere
+  - **Difficulty**: NORMAL
+  - **Type**: Refactor
+  - **Context**: Owns `NinaTuning.revision` (type, defaults, coercion, `NinaTuningWrite`), `nina_tuning.revision` and `nina_turns.tuning_revision` (schema + generated migration 0016, committed not applied), the turn-path field (`NinaTurnTrace`/`NinaTurnRow`/`NinaTurnInsert`, `gateway.ts`, `chatturn.ts`, `turn.ts`, `queries.ts`), revision strings in `tuningActions` notes/copy, the panel's `revision` prop + header/preview strings + the revision-keyed draft resync (re-keyed on content via `tuningDraftEquals`), `/admin` hub card sentence, DialSlider/system/tuningModel comment tweaks, and the affected tests. Exit criteria: no `revision`/`tuningRevision` reference to the tuning mechanism remains in `app components lib tests` (the image-prefs revision excepted); `drizzle/0016_*.sql` exists with exactly the two DROP COLUMN statements and `npm run db:check` is clean; typecheck, lint, tests green; the panel still saves via the Save button with a revision-free note.
+  - **Status**: completed
+  - **Plan Set**: `SIMPLIFY_PERSONALITY_SETTINGS_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — Purge the prompt-revision-tracking mechanism for Personality — frontend, backend, and database — because Personality settings are configuration tuning, not versioned prompt updates.
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A025-simplify-personality-settings.md`
+  - **Completed**: 2026-09-09 09:58
+  - **Method**: /do
+  - **Files**: lib/nina/tuning.ts, lib/db/schema.ts, drizzle/0016_retire_tuning_revision.sql, drizzle/meta/0016_snapshot.json, drizzle/meta/_journal.json, lib/nina/queries.ts, lib/nina/turn.ts, lib/nina/gateway.ts, lib/nina/chatturn.ts, lib/admin/tuningActions.ts, lib/admin/tuningModel.ts, lib/nina/prompts/system.ts, app/admin/personality/page.tsx, app/admin/page.tsx, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, tests/nina.tuning.test.ts, tests/db.schema.nina.test.ts, lib/nina/turn.test.ts, tests/nina.imagerun.test.ts, tests/admin.tuning.test.ts
+  - **Drift**: Plan line numbers had drifted up to ~20 lines in `lib/db/schema.ts` and a few lines elsewhere (the plan was written against the same content; edits applied by content, all quotes matched).
+  - **Drift**: grep B residue is 13 lines, not the 9 the exit criterion enumerated: those 9 lib lines plus 4 pre-existing `nina_image_prefs` assertion lines in `tests/db.schema.nina.test.ts` whose path contains no 'image', so the `-vi image` filter cannot discharge them (see the first Decided).
+  - **Drift**: `npm test` reports 4 failures in `tests/nina.jobActions.test.ts` (the 'when the chat is gone, the photograph still lands' describe block, each failing at ~5000ms = vitest timeout). Verified pre-existing: with this phase's edits stashed the same file fails 4 at the base commit, and the base is code-identical to HEAD for lib/tests/app/components/drizzle (empty diff `557a05c..HEAD`). Out of this phase's scope, not relaxed, not fixed.
+  - **Decided**: grep B's exit criterion said 'exactly 9 lines and nothing else; a hit in any test is a failure', but its own edit list leaves `tests/db.schema.nina.test.ts`'s `nina_image_prefs` revision assertions in place, and 4 such lines survive the `-vi image` filter because the path spells no 'image'. Kept them — editing them would delete live coverage of a mechanism the plan scopes out — so the sweep passes as: only image-prefs-mechanism lines survive (9 enumerated lib lines + 4 enumerated test lines), zero tuning-mechanism revision references. Rung 2: the exit criterion's own source, the index's '(the image-prefs revision excepted)'.
+  - **Decided**: Pre-existing `tests/nina.jobActions.test.ts` timeout failures left as-is: measured failing at the base commit via `git stash`, untouched by this phase; fixing them would widen scope beyond the exit criteria. All 5 test files the phase touches pass 214/214.
+  - **Verification**: `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm test` 3478 passed / 4 failed, all 4 the pre-existing `tests/nina.jobActions.test.ts` timeouts above; `npm run db:check` clean; purge sweep grep A (`tuning_revision|tuningRevision` over app/components/lib/tests) empty; the 5 touched test files pass 214/214. `drizzle/0016_retire_tuning_revision.sql` carries exactly the two DROP COLUMN statements and `npm run db:generate` reported 'No schema changes' (the snapshot matches `schema.ts`). **The migration is committed but NEVER applied — `db:migrate` was not run and must not run until after deploy** (set invariant 4, the `0015_retire_nina_tuning_wardrobe` precedent).
 
 - [x] **P1-RI-A023** Phase 1: The composer: paint to the edge, take less room, frost the glass
   - **Difficulty**: HARD

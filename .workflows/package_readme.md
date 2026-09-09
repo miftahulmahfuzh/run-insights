@@ -1,8 +1,9 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-07 (task `P1-RI-A019`, R1 of `NINA_CHAT_AVATAR_PROFILE_PLAN.md` — the
-typing row's face)
+**Last Updated**: 2026-09-09 (task `P1-RI-A025`, phase 1 of 2 of the simplify-personality-settings
+set — the tuning revision mechanism purged stack-wide; its migration committed but deliberately not
+yet applied)
 
 ## Overview
 
@@ -489,7 +490,7 @@ neither of which contributes a URL segment.
 | `/nina` | `app/nina/page.tsx` | **`AppShell` (chat)** | `maxDuration = 60`; the only `screen` call site |
 | `/nina/about` | `app/nina/about/page.tsx` | `AppShell` (tabs) | a pushed screen that keeps the bar |
 | `/onboarding` | `app/onboarding/page.tsx` | none | standalone |
-| `/admin`, `/admin/nina`, `/admin/photos`, `/admin/memory` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (fixed four-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; the shell caps at `max-w-[1400px]`; its layout also carries the **second install contract** below |
+| `/admin`, `/admin/nina`, `/admin/personality`, `/admin/photos`, `/admin/image-generation`, `/admin/shortcuts`, `/admin/memory` | `app/admin/**` | none — `app/admin/layout.tsx` | a phone shell below `lg` (fixed four-cell `AdminNav`, all four safe-area insets) and the unchanged desktop rail at `lg`; the shell caps at `max-w-[1400px]`; its layout also carries the **second install contract** below |
 | `/s/[token]` | `app/(public)/s/[token]/page.tsx` | none — own layout | public share; `force-dynamic`, plus `not-found.tsx` |
 
 Route handlers, all `runtime = 'nodejs'`: `/api/auth/*` (re-exports Auth.js `handlers`),
@@ -1040,6 +1041,62 @@ is now a pair, described under *The install contract* above.
 Untouched by invariant: `app/manifest.ts`, `app/layout.tsx`, `public/**`, `app/icon.png`,
 `app/apple-icon.png`, `tools/**`, `next.config.ts`, `proxy.ts`. Both tiles therefore still draw the
 runner's art; phase 2 (`P1-RI-A022`) ships `ADMIN_PWA_ICONS` and `app/admin/apple-icon.png`.
+
+### Recent changes — P1-RI-A025 (2026-09-09)
+
+*Phase 1 of 2 of the simplify-personality-settings set: the tuning revision mechanism is purged,
+everywhere it existed.*
+
+Saving a Personality tuning used to carry an integer `revision` the whole way — a column on
+`nina_tuning`, mirrored onto every turn as `nina_turns.tuning_revision`, a field on `NinaTuning` and
+its write alias, a prop on the character panel, a sentence on the admin hub. Phase 1 deletes the
+entire chain. Phase 2 of the set replaces the Save-button model with auto-save; nothing here
+anticipates that.
+
+**New:**
+
+- `drizzle/0016_retire_tuning_revision.sql` — two `DROP COLUMN`s, `nina_tuning.revision` and
+  `nina_turns.tuning_revision`; with it `drizzle/meta/0016_snapshot.json` and the `idx: 16` entry in
+  `drizzle/meta/_journal.json`. **Committed but not applied, on purpose**: this one is destructive,
+  so it rides the post-deploy migration (`db:migrate` runs after the branch is deployed) rather than
+  before the push. The window is safe in both directions — the deployed code no longer names either
+  column anywhere, and drizzle can only emit columns its TS schema declares, so before the migrate
+  the columns sit unread and after it no query reaches for one.
+
+**Changed:**
+
+- `app/admin/personality/page.tsx` — `<CharacterPanel>` loses its `revision` prop; the page hands it
+  the draft, the defaults and the prompt preview, and nothing else.
+- `app/admin/page.tsx` — the hub card's character summary no longer ends with "Revision N." The
+  image card beside it still reads `imagePrefs.revision`; that surface is not this set's to touch.
+- `tests/nina.tuning.test.ts` — the hostile-input and defaults cases stop asserting a `revision`
+  field exists, clamps, or sits at `0`.
+- `tests/admin.tuning.test.ts` — the "draft does not carry the revision" case is deleted rather than
+  inverted: there is nothing left to assert about a field that no longer exists in the type. The
+  one-save comment says "stale row" where it said "stale revision".
+- `tests/db.schema.nina.test.ts` — `nina_tuning` is now exactly thirty-seven columns (`revision` out
+  of the enumerated list), and the comments citing revision-in-SQL and the
+  `nina_turns.tuning_revision` NULL idiom are reworded to survive both drops.
+- `tests/nina.imagerun.test.ts` — the "live tuning, not a cached or default one" fixture marks its
+  tuning with distinctive `notes` instead of `revision: 9`.
+
+**Changed in packages with readmes of their own** — the same phase, one slice each (`lib/nina/`,
+`lib/admin/`, `components/admin/`, and the tables in `lib/db/`):
+
+- `lib/nina/tuning.ts` — `NinaTuning` loses `revision` and the `NinaTuningWrite` alias is deleted;
+  the module is still zero-import and client-importable. The turn path stops carrying the column:
+  `turn.ts`, `gateway.ts`, `chatturn.ts` and `queries.ts` (`NinaTurnTrace` / `NinaTurnRow` /
+  `NinaTurnInsert`), plus `turn.test.ts` and a comment in `prompts/system.ts`.
+- `lib/admin/tuningActions.ts` / `tuningModel.ts` — revision strings out of the notes and copy;
+  `AdminTuningResult` carries no revision.
+- `components/admin/CharacterPanel.tsx` — the revision-keyed draft resync is now keyed on content
+  through `tuningDraftEquals`, and the header/preview revision strings are gone; `DialSlider.tsx` is
+  comments only.
+
+**Unchanged, and checked:** the Save / Discard / Reset buttons all still stand — they go with phase
+2, not with this phase. `nina_image_prefs.revision` and the whole image-generation surface,
+`nina_turns.prompt_version` / `NINA_PROMPT_VERSION`, and prompt assembly (`buildNinaSystemPrompt`)
+are untouched.
 
 ### Recent changes — P1-RI-A015 and P1-RI-A016 (2026-09-05)
 

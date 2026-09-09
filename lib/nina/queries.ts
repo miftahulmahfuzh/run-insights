@@ -78,7 +78,6 @@ import {
   coerceNinaTuning,
   NINA_TUNING_DEFAULTS,
   type NinaTuning,
-  type NinaTuningWrite,
 } from '@/lib/nina/tuning'
 
 /**
@@ -398,12 +397,6 @@ export interface NinaTurnInsert {
   status: NinaTurnStatus
   trigger?: string | null
   promptVersion?: number | null
-  /**
-   * `nina_tuning.revision` at call time (F35). Optional, and omitting it writes NULL — which is
-   * exactly right for a caller that has no tuning in hand. `prompt_version` dates the assembler;
-   * this dates the setting. See the column's docstring.
-   */
-  tuningRevision?: number | null
   inputTokens?: number | null
   outputTokens?: number | null
   /**
@@ -2659,7 +2652,6 @@ export async function insertNinaTurn(userId: string, input: NinaTurnInsert): Pro
     trigger: input.trigger ?? null,
     model: input.model,
     promptVersion: input.promptVersion ?? null,
-    tuningRevision: input.tuningRevision ?? null,
     inputTokens: input.inputTokens ?? null,
     outputTokens: input.outputTokens ?? null,
     toolCalls: input.toolCalls ?? '',
@@ -3539,10 +3531,11 @@ export async function deleteNinaFolderSubtree(userId: string, folder: string): P
  * ==========================================================================*/
 
 /**
- * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells **thirty-eight**
- * snake_case columns; `lib/nina/tuning.ts` spells `traits.anger` and `dials.photoEagerness`. The
- * three-layer boundary this file's own header describes for `nina_messages.text` -> `body`, one
- * table over: two spellings, ONE translation point, reviewable in one diff.
+ * **The one place the flat row and the nested model meet.** `lib/db/schema.ts` spells
+ * **thirty-seven** snake_case columns; `lib/nina/tuning.ts` spells `traits.anger` and
+ * `dials.photoEagerness`. The three-layer boundary this file's own header describes for
+ * `nina_messages.text` -> `body`, one table over: two spellings, ONE translation point, reviewable
+ * in one diff.
  *
  * It ends in `coerceNinaTuning`, so a row hand-edited in `psql` to `anger = 900` reaches the prompt
  * as 100 rather than as a band index of 45.
@@ -3593,15 +3586,15 @@ function tuningFromRow(row: NinaTuningRow): NinaTuning {
       verbosity: row.verbosityEnabled,
     },
     notes: row.notes,
-    revision: row.revision,
   })
 }
 
 /**
- * The other direction. `revision` is absent on purpose — the database computes it (see
- * `writeNinaTuning`), so it must not appear in a `set` clause a caller can influence.
+ * The other direction: the nested model back into the flat columns. The SAME object is both the
+ * INSERT values and the `ON CONFLICT` set, so a save writes every column whether the row is new or
+ * not — there is no partial row to write and none to smuggle in.
  */
-function tuningToColumns(tuning: NinaTuningWrite) {
+function tuningToColumns(tuning: NinaTuning) {
   return {
     relationship: tuning.relationship,
     anger: tuning.traits.anger,
@@ -3671,19 +3664,9 @@ export async function readNinaTuning(userId: string): Promise<NinaTuning> {
 }
 
 /**
- * **One save, not seventeen** (plan invariant 11). Upsert on `user_id` and return what was stored.
- *
- * ── THE REVISION IS COMPUTED IN SQL, AND THE CALLER CANNOT SEND ONE ───────────────────────────
- * `NinaTuningWrite` is `Omit<NinaTuning, 'revision'>`, and the `ON CONFLICT DO UPDATE` sets
- * `revision = nina_tuning.revision + 1`. Two reasons, and the second is the load-bearing one:
- *
- *   1. A revision the client supplies is a revision a stale tab can move backwards, and
- *      `nina_turns.tuning_revision` would then date two different characters to one number.
- *   2. It is one statement. A read-then-write is correct until two tabs race, which is the same
- *      argument `nina_avatars`' partial unique index makes for its own writers.
- *
- * A brand-new row starts at `1`, so a stored row always has `revision >= 1` and `0` unambiguously
- * means `NINA_TUNING_DEFAULTS` — nothing has ever been saved.
+ * **One save, not seventeen** (plan invariant 11). Upsert on `user_id` and return what was stored
+ * — one statement, so two tabs racing is last-write-wins on whole rows rather than a read-then-write
+ * that can lose the newer one.
  *
  * ── IT COERCES BEFORE IT WRITES ───────────────────────────────────────────────────────────────
  * `coerceNinaTuning` runs here as well as in phase 5's Zod boundary, on purpose. Zod's job is a
@@ -3692,22 +3675,21 @@ export async function readNinaTuning(userId: string): Promise<NinaTuning> {
  * valid `NinaTuning` never gets written in the first place.
  *
  * ── RESETTING TO DEFAULTS IS A WRITE, NOT A DELETE ────────────────────────────────────────────
- * Phase 5's "reset" calls this with the defaults, which bumps the revision. Deleting the row would
- * take `revision` back to 0 and erase the fact that the operator did something on that date.
+ * Phase 5's "reset" calls this with the defaults, and a row of defaults and NO row read identically
+ * (`readNinaTuning` returns `NINA_TUNING_DEFAULTS` for a user with no row, and `coerceNinaTuning`
+ * maps a defaults row back to those same values), so deleting would be a second code path answering
+ * a question this one write already answers with the one writer this table has.
  */
-export async function writeNinaTuning(
-  userId: string,
-  tuning: NinaTuningWrite,
-): Promise<NinaTuning> {
-  const safe = coerceNinaTuning({ ...tuning, revision: 0 })
+export async function writeNinaTuning(userId: string, tuning: NinaTuning): Promise<NinaTuning> {
+  const safe = coerceNinaTuning(tuning)
   const columns = tuningToColumns(safe)
 
   const rows = await db
     .insert(ninaTuning)
-    .values({ userId, ...columns, revision: 1 })
+    .values({ userId, ...columns })
     .onConflictDoUpdate({
       target: ninaTuning.userId,
-      set: { ...columns, revision: sql`${ninaTuning.revision} + 1`, updatedAt: new Date() },
+      set: { ...columns, updatedAt: new Date() },
     })
     .returning()
 

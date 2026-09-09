@@ -39,8 +39,8 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  * as it can. Neither is the reason this is declared.
  *
  * The reason is `app/admin/nina/page.tsx`'s, verbatim: the tuning is per-request state that must
- * reflect the action that just ran, and `revalidatePath('/admin/personality')` in both actions is
- * what makes that immediate. `requireAdmin()` awaits `auth()`, which reads a cookie and would opt
+ * reflect the action that just ran, and `revalidatePath('/admin/personality')` in the save action
+ * is what makes that immediate. `requireAdmin()` awaits `auth()`, which reads a cookie and would opt
  * this route in implicitly — but a route's caching decided by the internals of a module three
  * levels down is a route that loses it the day that module is refactored. It is declared here.
  *
@@ -94,7 +94,6 @@ export default async function AdminPersonalityPage() {
         userId={userId}
         tuning={toTuningDraft(tuning)}
         defaults={toTuningDraft(NINA_TUNING_DEFAULTS)}
-        revision={tuning.revision}
         promptPreview={buildNinaSystemPrompt(tuning)}
       />
     </div>

@@ -434,14 +434,14 @@ describe('nina_tuning', () => {
   it('is one row per user, keyed by user_id alone, cascading from the account', () => {
     // One row per user, so there is no second fact to hang a surrogate id on — the `nina_nags` /
     // `nina_folders` natural-key idiom with one column instead of two. It is also what lets
-    // `writeNinaTuning` be a single ON CONFLICT DO UPDATE that bumps `revision` in SQL.
+    // `writeNinaTuning` be a single ON CONFLICT DO UPDATE upsert of the whole row.
     expect(cfg(schema.ninaTuning).name).toBe('nina_tuning')
     expect(columns(schema.ninaTuning).get('user_id')?.primary).toBe(true)
     expect(cfg(schema.ninaTuning).primaryKeys.length).toBe(0)
     expect(fkFor(schema.ninaTuning, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the thirty-eight columns phases 3, 4, 5 and R4 were written against', () => {
+  it('spells exactly the thirty-seven columns phases 3, 4, 5 and R4 were written against', () => {
     expect(names(schema.ninaTuning)).toEqual(
       [
         'user_id',
@@ -483,7 +483,6 @@ describe('nina_tuning', () => {
         'clinginess_enabled',
         'photo_eagerness_enabled',
         'verbosity_enabled',
-        'revision',
         'updated_at',
       ].sort(),
     )
@@ -504,11 +503,10 @@ describe('nina_tuning', () => {
   })
 
   it('leaves every enable column NULLABLE with no default, which IS the backfill (R4)', () => {
-    /* The `nina_turns.tuning_revision` idiom: NULL means one thing only — a row written before the
-     * toggles existed. `coerceNinaEnabled` reads anything that is not literally `false` as ON, so
-     * an existing production row is all-enabled the moment the migration lands, with no UPDATE
-     * behind it. A `DEFAULT true` would be `NINA_ENABLED_DEFAULTS` restated in SQL, which this
-     * table's own header forbids. */
+    /* NULL means one thing only — a row written before the toggles existed. `coerceNinaEnabled`
+     * reads anything that is not literally `false` as ON, so an existing production row is
+     * all-enabled the moment the migration lands, with no UPDATE behind it. A `DEFAULT true` would
+     * be `NINA_ENABLED_DEFAULTS` restated in SQL, which this table's own header forbids. */
     for (const key of NINA_TUNING_KEYS) {
       const column = columns(schema.ninaTuning).get(`${snake(key)}_enabled`)
       expect(column?.notNull, key).toBe(false)
@@ -546,7 +544,7 @@ describe('nina_tuning', () => {
   })
 
   it('stores every intensity as an integer percent, never a float', () => {
-    for (const key of [...NINA_TRAITS, ...NINA_DIALS.map(snake), 'revision']) {
+    for (const key of [...NINA_TRAITS, ...NINA_DIALS.map(snake)]) {
       expect(sqlType(schema.ninaTuning, key), key).toBe('integer')
     }
   })
@@ -561,7 +559,6 @@ describe('nina_tuning', () => {
       ...NINA_TRAITS,
       ...NINA_DIALS.map(snake),
       'notes',
-      'revision',
     ]) {
       expect(columns(schema.ninaTuning).get(key)?.notNull, key).toBe(true)
       expect(columns(schema.ninaTuning).get(key)?.hasDefault, key).toBe(false)
@@ -756,19 +753,6 @@ describe('nina_nags and nina_turns', () => {
     expect(sqlType(schema.ninaTurns, 'status')).toBe('text')
     expect(columns(schema.ninaTurns).get('status')?.notNull).toBe(true)
   })
-
-  it('records the tuning revision beside the prompt version, nullable and with no default', () => {
-    // `prompt_version` dates the ASSEMBLER; `tuning_revision` dates the SETTING it assembled. With
-    // a per-user character the first is no longer sufficient on its own. NULL means "a turn from
-    // before the tuning existed" — distinct from 0, which means "she was on the shipping
-    // character", so the two must not be spelled the same way.
-    expect(sqlType(schema.ninaTurns, 'tuning_revision')).toBe('integer')
-    expect(columns(schema.ninaTurns).get('tuning_revision')?.notNull).toBe(false)
-    expect(columns(schema.ninaTurns).get('tuning_revision')?.hasDefault).toBe(false)
-    // No FK: `nina_tuning` holds one CURRENT row per user, not a history, so there is nothing for
-    // revision 7 to point at once 8 is saved. An audit pointer must not block a write.
-    expect(fkFor(schema.ninaTurns, 'tuning_revision')).toBeUndefined()
-  })
 })
 
 describe('push_subscriptions', () => {
@@ -816,7 +800,7 @@ describe('deleting or editing a nina message: what the database does on its own 
  * R2's one schema change. The column is additive, nullable and default-less, and each of those
  * three properties is doing a job: additive so no row moves, nullable so NULL means "visible" for
  * every row written before the feature existed, default-less so the migration IS the backfill —
- * `tuning_revision`'s idiom and the `*_enabled` columns', asserted the same way they are.
+ * the `*_enabled` columns' idiom, asserted the same way they are.
  */
 describe('nina_turns.deleted_at — the soft delete (R2)', () => {
   it('is a nullable timestamptz with NO default, so every pre-R2 row reads "visible"', () => {

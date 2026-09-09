@@ -781,20 +781,7 @@ export interface NinaTuning {
    * what the operator wants her to know, not what he wants her to be wearing.
    */
   readonly notes: string
-  /**
-   * Bumped by the DATABASE on every save, so `nina_turns.tuning_revision` can date a voice change
-   * to a SETTING rather than only to a commit.
-   *
-   * **`0` means no row has ever been written**, i.e. she is on the shipping defaults. A stored row
-   * always has `revision >= 1`, which is why the write below computes it in SQL and why
-   * `NinaTuningWrite` cannot supply one: a revision the client sends is a revision a stale tab can
-   * move backwards.
-   */
-  readonly revision: number
 }
-
-/** What a caller supplies to `writeNinaTuning`. The revision is the database's to assign. */
-export type NinaTuningWrite = Omit<NinaTuning, 'revision'>
 
 /**
  * What `coerceNinaTuning` accepts: the shape of a tuning, with every field `unknown`.
@@ -810,7 +797,6 @@ export interface NinaTuningInput {
   readonly dials?: unknown
   readonly enabled?: unknown
   readonly notes?: unknown
-  readonly revision?: unknown
 }
 
 /* `pick` moved to §5, where `coerceNinaEnabled` also needs it. One reader, one trust boundary. */
@@ -847,14 +833,7 @@ export const NINA_TUNING_DEFAULTS: NinaTuning = Object.freeze({
   /* Frozen and shared like the two score records above, and ALL TRUE — see §5. */
   enabled: NINA_ENABLED_DEFAULTS,
   notes: '',
-  revision: 0,
 })
-
-/** A revision, made safe. Integer, never negative, and 0 is the "never written" sentinel. */
-function coerceRevision(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
-  return Math.max(0, Math.floor(value))
-}
 
 /**
  * **Anything at all, made into a usable `NinaTuning`. This function never throws.**
@@ -897,6 +876,5 @@ export function coerceNinaTuning(input: NinaTuningInput | null | undefined): Nin
      *    disables. */
     enabled: coerceNinaEnabled(input?.enabled),
     notes: coerceNinaNotes(input?.notes),
-    revision: coerceRevision(input?.revision),
   }
 }

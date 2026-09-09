@@ -156,8 +156,7 @@ export default async function AdminHomePage() {
               ? ', every dial at its default.'
               : `, loudest: ${loud
                   .map((dial) => `${tuningCopy(dial.key).label.toLowerCase()} ${dial.value}`)
-                  .join(', ')}.`}{' '}
-            Revision {tuning.revision}.
+                  .join(', ')}.`}
           </p>
           {/* No fragment any more. This used to point at the album route plus a `#character`
               fragment, aimed at the panel's own `<details id="character">` in the hope that the

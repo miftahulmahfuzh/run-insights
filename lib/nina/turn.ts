@@ -187,16 +187,6 @@ export interface NinaTurnUsage {
 export interface NinaTurnTrace {
   model: string
   promptVersion: number
-  /**
-   * `NinaTuning.revision` at call time. **Beside `promptVersion` because neither answers the
-   * question alone.** `NINA_PROMPT_VERSION` now identifies the ASSEMBLER, not the output: with a
-   * per-user tuning, two turns on version 3 can have been produced by two different Ninas. This is
-   * what lets "what was she set to when she said that" be answered from the audit table.
-   *
-   * Nullable because `lib/nina/queries.ts`'s column is, and it is nullable there because rows
-   * written before the tuning existed must not claim a revision they never had.
-   */
-  tuningRevision: number | null
   /** Tool rounds actually completed. 0 for a turn she answered straight away. */
   rounds: number
   /** Every tool name dispatched, in order. A dropped sibling call is prefixed `dropped:`. */
@@ -245,8 +235,6 @@ export interface NinaTurnResult {
 export interface NinaTurnRow {
   model: string
   promptVersion: number
-  /** `NinaTuning.revision` at call time. See `NinaTurnTrace`'s note. */
-  tuningRevision: number | null
   /** Which mechanism produced the reply. NOT the `status` column — see `dbNinaTurnStore`. */
   source: NinaTurnSource
   /**
@@ -736,7 +724,6 @@ export async function runNinaTurnWith(
   const trace: NinaTurnTrace = {
     model: deps.model,
     promptVersion: input.context.promptVersion,
-    tuningRevision: input.tuning.revision,
     rounds: 0,
     toolCalls: [],
     latencyMs: 0,
@@ -1032,7 +1019,6 @@ export async function runNinaTurn(
       await deps.store.record(input.userId, {
         model: result.trace.model,
         promptVersion: result.trace.promptVersion,
-        tuningRevision: result.trace.tuningRevision,
         source: result.source,
         toolCalls: result.trace.toolCalls.join(','),
         inputTokens: result.usage.inputTokens,

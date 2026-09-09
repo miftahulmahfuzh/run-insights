@@ -132,7 +132,7 @@ describe('finishSelfie captions from the scene', () => {
   })
 
   it('hands the caption the live tuning, not a cached or default one', async () => {
-    const loud = { ...NINA_TUNING_DEFAULTS, revision: 9 }
+    const loud = { ...NINA_TUNING_DEFAULTS, notes: 'fotonya di taman, pagi ini' }
     tuning.mockResolvedValue(loud)
 
     await runNinaImageJob(USER, JOB_ID)

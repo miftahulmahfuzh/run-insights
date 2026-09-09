@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-09 (task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
+**Last Updated**: 2026-09-09 (task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
 
 ## Overview
 
@@ -107,15 +107,15 @@ and are unit-tested there.
 | `AdminNav.tsx` | **no directive** | The `/admin` nav's shell: the `<nav>` element, the desktop eyebrow and footer paragraph, and the breakpoint mechanics — `fixed bottom-0` below `lg` with `pb-[calc(var(--safe-bottom)/2)]` (the home-indicator pad halved by the owner's order, `admin-bottom-bar-active-tab`), `lg:sticky lg:top-8` above it. The list itself — links, glyphs, sidebar labels — is `AdminNavLinks.tsx`, the one client leaf. |
 | `AdminNavLinks.tsx` | `'use client'` | The nav's LIST, both renditions from one markup: `grid-cols-7` at `h-14` below `lg` — one row of seven 56 px-tall icon cells, each a 24 px inlined Lucide glyph (`layout-dashboard` · `images` · `smile` · `wand-sparkles` · `camera` · `brain` · `zap`) named by its sr-only `short` string — and the sticky text rail's long labels at `lg`. It exists because the owner ordered the active tab's icon highlighted in the album link's blue (*"mewarnai icon nya dengan warna biru yang sama dengan text 'Manage the album'"*): `usePathname()` finds the active cell, paints its glyph `text-accent` (scoped by the glyph's `lg:hidden`, so the sidebar labels stay `text-ink-2`) and sets `aria-current="page"`. `px-[7px]` on the row is the owner's *"kurangi saja padding nya by 1px"* dial — one pixel off each glyph's side-air, cluster still centred; `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — the trigger registry as one table. `MemoryTable`'s mechanics with different columns: blur-to-save cells, optimistic delete, no confirmation. |
-| `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` — the whole content of that route: the prompt-length `DialSlider`, six focus checkboxes, four free-text fields, the mounted photo-reference picker and test panel, and a **pure** prompt preview built by the real `buildNinaImagePrompt`. One `useTransition`, **one save for all eleven controls** (plan invariant 7), one reset, dirty state. |
+| `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` — the whole content of that route: the prompt-length `DialSlider`, six focus checkboxes, four free-text fields, the mounted photo-reference picker and test panel, and a **pure** prompt preview built by the real `buildNinaImagePrompt`. One `useTransition`, **one save for all eleven controls** (plan invariant 7), one reset, dirty state — the staged-commit save model the personality panel's auto-save retired. |
 | `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: Nina's album and her chat photographs as one caption-less, gapless, square-tile collection in the iOS Photos idiom — no filename, no date, no set label on any tile. Single selection, `aria-pressed`, reveal-by-48, `loading="lazy"`. It cannot announce which set a tile came from, because `PhotoReferenceItem` carries no provenance field to announce. |
 | `photoReferenceModel.ts` | **no directive** | The picker's view model: four constants, six pure rules, and `PhotoReferenceItem` pinned at exactly three fields — which is what makes "no captions, no dates" structural rather than a promise. |
 | `ImageGenTestPanel.tsx` | `'use client'` | The test-prompt button and its verdict. Dispatches one generation off the **saved** prefs, returns without awaiting it, then polls: `queued` → `running` → `ok`/`failed`. `policy` is the only path that renders as *"the provider refused this prompt"*; `timeout` / `transport` / `stale` render as inconclusive. Shows the remaining daily quota before the click, and says *"one generation off today's cap, plus its caption"* because the caption is a second model call. |
 | `MemoryLedger.tsx` | `'use client'` | `/admin/memory`'s fact ledger: insert, edit, retract, purge. |
 | `MemorySlots.tsx` | `'use client'` | `/admin/memory`'s slot editor, plus the pending-promises panel. |
 | `UserPicker.tsx` | **no directive** | Whose rows are being edited. Plain links, selection in the URL. `basePath` (optional, defaults to `/admin/memory`) says which per-user route the pills navigate within. |
-| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: twelve trait sliders, the five-way relationship selector, the four extra dials, the notes field, and the assembled prompt preview. One `useTransition`, one save. Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. (A Wardrobe input sat beside Notes until F41 R3 moved it to `ImageGenPanel.tsx`.) |
-| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Decides nothing. |
+| `CharacterPanel.tsx` | `'use client'` | `/admin/personality`'s character tuning — the whole content of that route: twelve trait sliders, the five-way relationship selector, the four extra dials, the notes field, and the assembled prompt preview. One `useTransition` and one action, and since the simplify set **no Save button**: the panel auto-saves, every control committing at the moment its edit is finished (dials debounced ~600 ms, toggles and radios on change, notes on blur). Always open; `id="character"` on the section root, so the old album-route `#character` bookmark still lands somewhere real. (A Wardrobe input sat beside Notes until F41 R3 moved it to `ImageGenPanel.tsx`.) |
+| `DialSlider.tsx` | `'use client'` | The range primitive `components/ui` does not have. Label, hint, value, `0-100`, an unsaved dot, click-to-default, and an optional per-parameter on/off checkbox (`enabled` + `onEnabledChange`; omit both and no checkbox renders). Props unchanged by the personality panel's auto-save — `ImageGenPanel`'s staged-commit save still shares the primitive — and its per-dial "default *N*" chip is now that panel's only route back to defaults, writing through `onChange` so the commit rides the same settle debounce as a drag. Decides nothing. |
 
 ## The `/admin/nina` file manager
 
@@ -615,35 +615,117 @@ down, because both look like details and neither is:
 - **The disclosure is gone, not defaulted open.** `open` was never a prop — passing it would make
   React control the attribute and fight the operator's click, and `revalidatePath` re-renders this
   component after every save. So the root is a plain `<section>`, and what the `<summary>` used to
-  hold is now the section header: relationship · loudest dials · *N* off · revision, the same
+  hold is now the section header: relationship · loudest dials · *N* off, the same
   one-line answer to "what is she set to" that the hub card gives.
 - **`id="character"` stayed on that section root.** It was a live deep link from the overview card
   for two plan sets. The card points at the route now, and the id costs one attribute and keeps a
   kept bookmark from landing on nothing.
 
-### One save, not sixteen
+### One save, not sixteen — and now it is literally one
 
 There are close to forty controls on this panel — R4 put an on/off checkbox beside every one of the
 sixteen parameters — and exactly one Server Action behind all of them. That is not tidiness, it is a
 platform constraint: **Server Actions dispatch one at a time per client**, so sixteen sliders each
 firing their own save would queue sixteen round trips and the panel would appear to hang on a drag,
-and the toggles are in the same boat for the same reason. The panel holds the whole tuning in
-`useState` — scores, relationship *and* `enabled` map — and the save posts one object, comfortably
-inside the 1 MB body cap, which `next.config.ts` leaves at its default.
+and the toggles are in the same boat for the same reason. The simplify set made the count exact:
+`resetNinaTuningAction` and `ninaTuningResetSchema` are deleted (`lib/admin/tuningActions.ts` and
+`lib/admin/schema.ts`), `tests/admin.tuning.test.ts` asserts the one-export count, and every control
+the panel has dispatches `saveNinaTuningAction`.
+
+Every dispatch carries the whole tuning — scores, relationship, `enabled` map and notes, one object
+held in `useState` and posted whole, comfortably inside the 1 MB body cap `next.config.ts` leaves at
+its default. That, plus two facts about this screen, is what makes committing on every edit safe
+rather than reckless: `nina_tuning` is one row per account, upserted on `user_id`, so there is no
+history to fork; and the admin surface is one operator, so there is no second editor's in-flight
+draft to overwrite. Sequential dispatch means commits cannot interleave out of order even when
+several queue up, and a whole-row upsert is idempotent — so the failure mode of auto-save here is a
+wasted round trip, never a half-written character. Two dials dragged inside the settle window
+coalesce into one write; an immediate commit carries any dial still waiting; and a debounce that
+matures while a save is in flight queues behind it and re-sends the whole draft.
+
+### Every control commits itself
+
+The commit moments are `components/admin/MemoryTable.tsx`'s rule, taken control-kind by
+control-kind — and the slider is the one that needed a new answer:
+
+- **The notes commit on BLUR.** A keystroke debounce would queue actions AND queue `revalidatePath`
+  re-renders, and the operator's cursor would spend the session fighting them. Blur is exactly one
+  write per completed edit, at the moment the edit is finished; typing touches only the draft,
+  which is what makes "no Save button" true rather than cosmetic.
+- **The relationship radios and every toggle commit on CHANGE.** A discrete control's change IS the
+  finished edit — there is no "still dragging" state to wait out.
+- **The dials commit DEBOUNCED**, `TUNING_DIAL_COMMIT_DEBOUNCE_MS` (600 ms, declared in
+  `lib/admin/tuningModel.ts` beside every other bound this package imports rather than re-declares)
+  after the last change. A native `<input type="range">` fires `change` on every pointer move and
+  KEEPS FOCUS after the thumb is released, so the notes' moment — blur — does not exist for a
+  slider. The debounce is the settle detector: one continuous drag becomes one save, and the timer
+  is cleared on re-arm, whenever an immediate commit has already carried everything pending, and on
+  unmount. **Cleared, not flushed** — an edit the timer never fired for was never committed, exactly
+  as an unclicked Save was never committed in the staged-commit panel this file replaced.
+
+Disarming before an immediate dispatch is not an optimization: the immediate commit carries the
+WHOLE draft, so clearing the timer is what makes "nothing pending is lost and nothing is
+double-sent" true rather than lucky. And both paths skip the dispatch when the draft equals the
+saved row — the debounce re-checks at fire time through a ref mirror of the live draft and saved
+row, because a timer callback runs outside render.
+
+Three consequences worth writing down, because all three look like details:
+
+- **`saved` is the panel's own state, and nothing syncs it from the prop.** It starts as the
+  `tuning` prop and is updated ONLY from the action's result, which carries the row after
+  `coerceNinaTuning` and the re-rendered route in one round trip. Nothing else writes this row (one
+  operator), so the only way it changes under the panel is the panel's own save coming back —
+  reading the row off the result is the same freshness as reading it off a re-render, without
+  having to tell "my save landed" apart from "the row changed under me".
+- **The draft does not blindly adopt the canonical row.** `coerceNinaNotes` trims and collapses, so
+  the stored row can differ cosmetically from what was typed, and the operator may have kept editing
+  while the save was in flight. `mergeTuningAfterSave(current, sent, canonical)` adopts the stored
+  value only for fields still equal to what was dispatched; a field edited since keeps the newer
+  local value and stays pending, riding the next commit. It is the same per-field comparison
+  `changedTuningFields` makes, which is why the merge and the pending dots always agree.
+- **Nothing is disabled while a save is in flight.** The staged-commit panel locked every control on
+  `pending`; locking on every debounce settle would flicker the whole panel uneditable for the
+  length of a round trip, and editing during a save is safe here — the merge above protects
+  anything typed after dispatch, and the next commit carries the newest whole draft. `pending`
+  drives only the status line.
+
+The honest cost: a commit carries the notes as they stand, so an unfinished sentence can spend a
+moment as the stored row if a dial settles mid-edit. The alternative — sending a stale notes value
+to "protect" it — would write an older draft over the operator's newer words, which is the one
+failure this pipeline exists to prevent.
+
+### The status line where the counter was
+
+The "N unsaved" counter is now a tri-state status line in the section header, `aria-live="polite"`
+because it is the one line that changes on its own and "Saved" is worth hearing without stealing
+focus. **Saving…** covers both halves of the pending window — a commit in flight and a settle timer
+armed; React batches the timer firing with the transition opening, so there is no gap where neither
+shows. **Saved** is the success surface, with no qualifier. **Unsaved edits** is what shows while
+the operator types — a keystroke commits nothing, that is the rule — and after a failed save, whose
+sentence renders once as a red paragraph at the foot of the panel. The per-row unsaved dot survives
+with its old shape and a new baseline: `rowPending` still folds a row's two unsaved paths — its
+score and its toggle — into the single existing mark, because two identical marks on one row is an
+operator wondering which meant what, but it now measures the draft against the panel's live `saved`
+rather than against a prop that only moves on a re-render. The header still carries the `N off`
+count, since the number of excluded parameters is the one setting that cannot be inferred from the
+numbers beneath it, and both checkbox kinds still carry the 44 px rule: `DialSlider` wraps its box
+in `TOUCH_ICON`, and the relationship legend's label in `TOUCH_TARGET`, so a bare 16 px control
+never becomes the exception to it.
 
 A checkbox edits `draft.enabled[key]` and nothing else; **switching a parameter off never clears the
 number it is parked at**, which is the point of a toggle as opposed to dragging the slider back to
-the default. One row therefore has two ways to be unsaved — its score and its toggle — and
-`rowUnsaved` folds them into the single existing dot, because two identical marks on one row is an
-operator wondering which meant what. The section header line carries an `N off` count, since the
-number of excluded parameters is the one setting that cannot be inferred from the numbers beneath
-it. Both new checkboxes carry the 44 px rule: `DialSlider` wraps its box in `TOUCH_ICON`, and the
-relationship legend's label in `TOUCH_TARGET`, so a bare 16 px control never becomes the exception
-to it.
+the default — the operator parks `flirty` at 80, excludes it from tonight's prompt, and gets the 80
+back with one click.
 
-The reset-to-defaults control is a second action rather than a client-side state reset, for the same
-reason `/admin/memory`'s purge is: the defaults are defined server-side in `lib/nina/tuning.ts`, and
-a client that re-implements them is a second definition that will one day disagree.
+### Where "back to defaults" lives now
+
+The reset-to-defaults control is gone, and with it the second action this section used to justify.
+What survives is `DialSlider`'s per-dial "default *N*" chip, and it is a draft edit like any other:
+it writes the default through `onChange`, so the commit rides the same settle debounce as a drag.
+The defaults themselves still come from the server — the `defaults` prop is `NINA_TUNING_DEFAULTS`
+mapped by the page, because the defaults are defined in `lib/nina/tuning.ts` and a client that
+re-implemented them would be a second definition that one day disagrees. The header's "every dial
+at its default" line is the whole-panel answer to the same question.
 
 ### Why the slider is a new primitive rather than a `NumberInput`
 
@@ -668,8 +750,11 @@ has no counterpart in `tuning.ts` and so cannot contradict it.
 
 ### The prompt preview is a string prop, and that is invariant 5
 
-The panel shows the operator the system prompt her current settings assemble to. It arrives as a
-**plain string prop** from `app/admin/personality/page.tsx`, which calls the pure assembler. It is
+The panel shows the operator the system prompt her SAVED settings assemble to. It arrives as a
+**plain string prop** from `app/admin/personality/page.tsx`, which calls the pure assembler, and it
+trails the draft by design: while the panel holds edits the row does not, the `<summary>` says so —
+*"(as saved — the edits above are not in it yet)"* — and every commit's `revalidatePath` hands the
+page a fresh assembly in the same response that carried the save. It is
 never fetched, never streamed and never the result of a model call: `scripts/check-llm-payload-boundary.mjs`
 Rule 2 forbids awaiting a model call from a page render, by function name, and a preview that called
 one would fail the build. The pure-function-versus-model-call distinction is the whole reason phase 3
@@ -896,6 +981,17 @@ belong to `/admin/memory`.
   `retireSlotAction`, `removePendingPromiseAction`, and `AdminMemoryResult`.
 - `@/lib/admin/memoryModel` — `FactCard`, `SlotCard`, `ADMIN_FACT_CATEGORIES`,
   `ADMIN_FACT_TEXT_MAX`, `ADMIN_SLOT_VALUE_MAX`, `ADMIN_PURGE_CONFIRMATION`.
+- `@/lib/admin/tuningActions` — `/admin/personality`'s ONE write: `saveNinaTuningAction` and
+  `AdminTuningResult`. A `'use server'` module, so it crosses into `CharacterPanel` as a client
+  reference and its own Zod import stays on the server; since the simplify set it exports exactly
+  one action, and a test pins the count.
+- `@/lib/admin/tuningModel` — the panel's client-safe model and copy adapter: `TuningDraft`,
+  `changedTuningFields` / `tuningDraftEquals` (the predicate under every unsaved mark and the
+  status line), the post-save `mergeTuningAfterSave`, `TUNING_DIAL_COMMIT_DEBOUNCE_MS`,
+  `tuningCopy`, `relationshipCopy` and `loudestDials`. It imports exactly one module —
+  `@/lib/nina/tuning`, zero-import itself — and that is also where the panel takes its key arrays
+  and bounds directly (`NINA_TRAITS`, `NINA_DIALS`, `NINA_RELATIONSHIPS`,
+  `NINA_TUNING_RELATIONSHIP_KEY`, `NINA_SCORE_MIN`/`MAX`, `NINA_NOTES_MAX`).
 - `@/lib/admin/shortcutActions` — `/admin/shortcuts`'s four writes: `addShortcutAction`,
   `saveShortcutCellAction`, `toggleShortcutAction`, `deleteShortcutAction`, and
   `AdminShortcutResult`.
@@ -919,7 +1015,9 @@ belong to `/admin/memory`.
 because `schema.ts` would pull a validator into the `/admin` browser bundle for the sake of an
 integer — a module-level `z.object(...)` is a side effect no bundler tree-shakes. `folderOps.ts` is
 the same trap one phase later: `FolderMenu` wants three path helpers and would have found them next
-to that module's schemas, so it takes them from `filetree.ts` instead.
+to that module's schemas, so it takes them from `filetree.ts` instead. `saveNinaTuningAction` is
+that rule holding in the other direction: a `'use server'` export is imported as a client
+reference, so the action's module body — Zod included — never reaches the bundle that calls it.
 
 `lib/share/origin.ts` is the same shape of rule and the reason `shareOrigin` is a prop: it opens
 with `import 'server-only'`, so nothing in this directory can call it and the answer has to arrive
@@ -971,16 +1069,27 @@ nothing in this directory is reachable from a test; everything it *decides* was 
 tested there. A new pure judgement belongs in `lib/admin/filetree.ts` or `lib/nina/crop.ts`, not
 here.
 
-What two suites do instead is read a file in this directory **as text**, to hold a property no pure
+What three suites do instead is read a file in this directory **as text**, to hold a property no pure
 function can carry. `tests/admin.shell.test.ts` reads `AdminNav.tsx` for the bottom bar's
 `grid h-14 w-full max-w-[470px] grid-cols-7` row, the `h-14`/layout-padding pair, the sr-only
 accessible names, and the seven distinct inlined glyphs. `tests/admin.shortcuts.test.ts` reads
 `ShortcutTable.tsx` for two
 absences: that it names no `@/lib/nina/` and no `server-only` specifier, and that no dialog or
-second-click API appears anywhere in it. Both are guards against a future edit rather than tests of
-behaviour — which is why the docstrings in those two files are written never to *spell* the
-specifiers and API names they explain: a text guard cannot tell an explanation from a
-reintroduction.
+second-click API appears anywhere in it. And `tests/admin.tuning.test.ts` — the third, reading two
+more files here since the simplify set — holds the auto-save model in place across
+`CharacterPanel.tsx` and `DialSlider.tsx`: the three removed button labels appear nowhere in the
+panel's RAW source (comments included), `confirmingReset` and `resetNinaTuningAction` nowhere in
+its code, the dials' path names `TUNING_DIAL_COMMIT_DEBOUNCE_MS` and carries both `setTimeout(` and
+`clearTimeout(`, the notes field commits through `onBlur={commitNotes}` and contains neither a
+timer nor a dispatch of its own, the radios and toggles commit on change, `tuningDraftEquals(`
+guards at least three sites with `mergeTuningAfterSave(` present, `disabled={pending}` is absent,
+and the three status-line strings are spelled. All of these are guards against a future edit rather
+than tests of behaviour — which is why the docstrings in those files are written never to *spell*
+the specifiers and API names they explain: a text guard cannot tell an explanation from a
+reintroduction. The tuning suite splits the difference precisely: identifier assertions run through
+`codeOnly()`, which strips block comments, so the panel's docstring MAY discuss the deleted action;
+the label assertions read the raw file, so nothing in `CharacterPanel.tsx` — prose included — may
+spell *"Save the whole tuning"*, *"Discard changes"* or *"Reset to defaults"*.
 
 `ShareToNinaItem` is the worked example. The component itself is untested and untestable — it is
 `window.open`, `useTransition` and a click — but the one thing about it that can be *wrong on
@@ -1050,6 +1159,13 @@ Everything else in the package is ordinary React: a `useTransition` per interact
 row/editor in `MemoryLedger` and `MemorySlots`), and `CropStudio`'s pointer capture keyed by
 `pointerId`. No component here spawns work that outlives it, and nothing polls.
 
+The personality panel owns this package's one `setTimeout` and its one queued-write surface. The
+dial settle timer is cleared on re-arm, on subsumption by an immediate commit, and on unmount, so no
+save fires into a dead component; and because Server Actions dispatch one at a time per client, the
+commits a fast drag mints cannot interleave — each queues behind the last, and each is a whole-row
+idempotent upsert, which is the property that makes auto-save safe at all (see the character-panel
+section).
+
 The folder operations need no gesture counter of their own. Each is a single awaited action inside
 one component's transition, its result is consumed by the `onOk` of the call that made it, and the
 only cross-component write is `navigateToFolder`, which is a `router.push` — so there is nothing for
@@ -1068,6 +1184,11 @@ human can act on:
   and non-fatal: a truncated manifest makes the diff over-report, so files are re-PUT and their
   inserts are discarded by `ON CONFLICT DO NOTHING`. Slower, never wrong.
 - **Per action**, in `SelectionPane`'s `error` state, rendered in a `role="alert"` paragraph.
+- **Per tuning commit**, in `CharacterPanel`'s `result` — the action's own sentence (*"The write
+  failed and nothing was changed — move any control to try again."*, which names the retry that
+  exists now there is no Save button to press again), rendered as a red paragraph at the foot of
+  the panel while the status line falls back to "Unsaved edits". Nothing was written, so `saved`
+  stays where it was and the pending dots still name exactly what did not land.
 - **Per folder operation**, in `FolderMenu`'s and `PhotoMoveBar`'s `error` state, also
   `role="alert"` — and the string is the server's own sentence from `lib/admin/folderOps.ts`,
   never a client paraphrase and never matched on. `FolderMenu` renders it as one more `absolute`
@@ -1219,6 +1340,14 @@ down the string.
   44 pt target) rather than reopening the two-row text layout — and if the row count ever does
   change, `h-14` is paired with `app/admin/layout.tsx`'s
   `pb-[calc(5rem+var(--safe-bottom))]` in a test, and both move together.
+- **Do not give the personality panel back a Save button, a `disabled={pending}` lock, or a
+  keystroke debounce on the notes.** The auto-save model is load-bearing in exactly the places a
+  "harmless" rollback breaks: the staged-commit row rode a second action the simplify set deleted
+  (the test pins the one-export count and forbids the removed identifiers), locking on every
+  debounce settle would flicker the whole panel uneditable for a round trip at a time — the test
+  forbids the substring — and a notes debounce queues writes the blur rule exists to prevent.
+  Typing must touch only the draft; the commit moments are the character-panel section's, and
+  `MemoryTable`'s before that.
 
 ## Notes
 
@@ -1263,9 +1392,9 @@ whose continuation lines are bare prose fails the guard while quoting the rule i
 
 The character panel adds one accepted limitation. **There is no live preview of a bubble** — the
 panel shows the assembled *prompt*, not a sample reply, because a sample reply is a model call and
-Rule 2 puts that off a render entirely. Seeing the effect of a dial means moving it, saving, and
-talking to her; there is no cache anywhere on the turn path, so the next message she sends is
-already the tuned one.
+Rule 2 puts that off a render entirely. Seeing the effect of a dial means moving it and talking to
+her — the save is the drag settling; there is no cache anywhere on the turn path, so the next
+message she sends is already the tuned one.
 
 ## Documentation Created
 
@@ -1346,3 +1475,37 @@ Refreshed here: the overview's two "five-cell" sentences, three module-map rows,
 one primary consumer, the test-consumer section (which now names the two suites that read a file in
 this directory as text, and why that is not an import), and six gotchas. This package still has no
 test file of its own, and that is still correct.
+
+2026-09-09 — updated following task **P1-RI-A025** (`simplify-personality-settings` phase 1 of 2,
+the prompt-revision purge). One prop and everything that rendered it left `CharacterPanel.tsx`:
+`revision: number` is gone from the props, the section header reads "relationship · loudest dials ·
+*N* off" without the trailing "· revision *N*", and the prompt-preview `<summary>` no longer names
+a revision. The draft-reset that used to watch `revision !== lastRevision` now watches content —
+`tuningDraftEquals(tuning, lastTuning)` — which resets the draft exactly when the canonical row's
+content changes under it and lets a server-side trim (a coerced `notes`, say) land without a
+counter to announce it. `DialSlider.tsx` lost only a doc-comment clause comparing the rendered
+number against `nina_turns`' recorded revision. No control, bound, label or prop signature beyond
+the removed one changed, and the Save/Discard/Reset button model is untouched — phase 2 of the set
+owns replacing it. Migration `drizzle/0016_retire_tuning_revision.sql` is committed but NOT
+applied; applying it is the post-deploy `npm run db:migrate`. Refreshed here: one clause of the
+character-panel section.
+
+2026-09-09 — updated following task **P1-RI-A026** (`simplify-personality-settings` phase 2 of 2,
+R2: *"remove the Discard and Reset buttons; make Personality auto-save every time a change is
+made."*). `CharacterPanel.tsx` replaced the staged-commit row with auto-save: the Save / Discard
+changes / Reset to defaults buttons and `confirmingReset` are gone, dials commit through a
+`TUNING_DIAL_COMMIT_DEBOUNCE_MS` settle timer (cleared on re-arm, on subsumption by an immediate
+commit, and on unmount), toggles and the relationship radios commit on change, the notes commit on
+blur, a tri-state Saving…/Saved/Unsaved-edits status line replaced the "N unsaved" counter, and
+`saved` — the panel's live belief about the stored row — is maintained from the action's result and
+adopted per-field through `mergeTuningAfterSave`, so a coerced notes value lands without clobbering
+edits made since dispatch. `DialSlider.tsx` lost only doc-comment prose: its props are unchanged and
+`ImageGenPanel` still shares them, its per-dial "default N" chip now being the surviving route back
+to defaults. On the lib side (`tuningActions.ts`, `schema.ts`, `tuningModel.ts`) the reset action
+and schema were deleted, leaving one whole-tuning save whose result carries the stored row, and
+every docstring citing the old model was reworded — including `lib/admin/imageGenActions.ts`'s.
+Refreshed here: the header, four module-map rows, the character-panel section (rewritten around the
+commit moments, the canonical merge and the status line), the prompt-preview paragraph, one Notes
+limitation sentence, one concurrency paragraph, one error-handling bullet, the test-consumer section
+(a third text-reading suite), two dependency bullets, the zod-boundary paragraph, and one new
+gotcha.
