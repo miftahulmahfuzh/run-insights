@@ -1,6 +1,3 @@
-> Adopted from `SEARCH_KBD_AND_UP_BTN_PLAN.md` phase 1. Source: `.workflows/plan/search-kbd-and-up-btn/phase-1.md`.
-> Written and reconciled by /analyze — edit the source, not this copy.
-
 # Phase 1: The panel pins the window over its focused field
 
 **Plan set:** `SEARCH_KBD_AND_UP_BTN_PLAN.md`

@@ -9,6 +9,7 @@ import {
   isKeyboardTextField,
   isNearBottom,
   keyboardOverlapPx,
+  panelBottomCss,
   KEYBOARD_MIN_PX,
   KEYBOARD_REASSERT_DELAYS_MS,
   KEYBOARD_REASSERT_SCROLL_OPTIONS,
@@ -456,5 +457,52 @@ describe('attachStripPadBottomCss', () => {
 describe('NINA_KEYBOARD_OVERLAP_VAR', () => {
   it('is the channel the strip and the panel both spell', () => {
     expect(NINA_KEYBOARD_OVERLAP_VAR).toBe('--nina-kb-overlap')
+  })
+})
+
+describe('panelBottomCss', () => {
+  // 40 is the tab bar's outer height, same literal as the composer blocks above.
+
+  it('is the keyboard edge alone while the bar is hidden', () => {
+    // R1's box fix, unchanged in the string: with the flag absent the whole lift term collapses to
+    // 0 and the panel ends at the keyboard's top edge exactly as before R2. The string is CONSTANT
+    // across states — the vars underneath it are what move, so no re-render is needed anywhere.
+    expect(panelBottomCss({ barClearancePx: 40 })).toBe(
+      'calc(var(--nina-kb-overlap, 0px) + (40px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+  })
+
+  it('puts the inset INSIDE the gate, not beside it', () => {
+    // composerBottomCss's regression, guarded the same way: an inset added OUTSIDE the
+    // multiplication would lift the panel one safe-bottom above the keyboard's edge with the bar
+    // hidden — a strip of dead glass at the panel's floor on every keyboard frame.
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain('(40px + var(--safe-bottom)) *')
+    expect(panelBottomCss({ barClearancePx: 40 })).not.toContain(') + var(--safe-bottom)')
+  })
+
+  it('names the two variables that are written off this screen', () => {
+    // The overlap is ChatScreen's publisher, the flag is ChatChrome's. If the emission and the
+    // constants ever disagree, the panel stops following one of them and nothing else notices.
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain(
+      `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+    )
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+  })
+
+  it('sums the bar clearance on top of the keyboard edge while both are published', () => {
+    // The transient frame: bar shown, keyboard overlap already out, the hide-on-focus a commit
+    // later. The panel rides the bar's clearance above the keyboard edge and settles when the bar
+    // hides; additive is the honest arithmetic for two independent :root channels.
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain('0px) + (40px')
+  })
+
+  it('treats an unmeasurable clearance as no clearance', () => {
+    // controlBottomCss's degradation. The caller's constant is finite in practice — it is
+    // TAB_BAR_OUTER_HEIGHT_PX — but the structure must survive a degenerate input rather than
+    // emit a negative length.
+    expect(panelBottomCss({ barClearancePx: NaN })).toBe(
+      'calc(var(--nina-kb-overlap, 0px) + (0px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+    expect(panelBottomCss({ barClearancePx: -1 })).toContain('(0px + var(--safe-bottom))')
   })
 })

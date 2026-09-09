@@ -488,3 +488,44 @@ export function attachStripPadBottomCss(overlapPx: number): string {
   if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
   return 'calc(1rem + var(--safe-bottom))'
 }
+
+/**
+ * The sidebar panel's `bottom`, as a CSS length — `composerBottomCss`'s shape, one surface over.
+ *
+ * The first term is the keyboard's edge (`NINA_KEYBOARD_OVERLAP_VAR`, published by `ChatScreen`):
+ * the box fix that ends the panel at the keyboard's measured top edge, so the field typed into is
+ * inside the visible region. The second is R2's: while the bar is showing, the panel lifts by the
+ * bar's clearance PLUS the safe-bottom inset the bar pads itself by, so the revealed bar renders
+ * in its own strip BELOW the panel's bottom edge — reachable and tappable — instead of behind the
+ * panel's opaque `z-50` fill. The terms SUM: the bar's strip sits on the glass, the panel's box
+ * ends exactly at the bar's top border, and the rail rides the panel's lifted edge (its floor
+ * zeroes there — the bar carries the inset, `RAIL_PAD_BOTTOM_CSS`'s gate).
+ *
+ * ── THE INSET IS INSIDE THE MULTIPLICATION, ON `composerBottomCss`'S OWN RULE ──────────────────
+ * An inset added OUTSIDE the gate — `… * var(…, 0) + var(--safe-bottom)` — would lift the panel
+ * one inset above the keyboard's edge with the bar HIDDEN, stranding a strip of dead glass at the
+ * panel's floor on every keyboard frame: the unpainted-strip defect that function's docstring
+ * records at length, one surface over. Gating the whole sum keeps the hidden geometry byte-equal
+ * to the pre-R2 string.
+ *
+ * ── THE TWO TERMS CAN SUM, AND THAT IS CORRECT ────────────────────────────────────────────────
+ * For a frame or two the bar can be showing while a keyboard overlap is already published (the
+ * rail's tap, then a field tapped; the keyboard rule hides the bar a commit later). The panel then
+ * rides the bar's clearance ON TOP of the keyboard edge and settles when the bar hides. Additive
+ * is the honest arithmetic for two independent `:root` channels, and the transient is one frame.
+ *
+ * ── WHY THE STRING IS CONSTANT ────────────────────────────────────────────────────────────────
+ * Both gates are `var()`s read at paint time, so the returned string never changes and the caller
+ * can hold it at module level — the style attribute never re-renders, whatever the keyboard and
+ * the bar do. Absent vars substitute their zeros, which is exactly `inset-0`: the resting panel
+ * and the server's HTML agree, on `NINA_BAR_VISIBLE_VAR`'s own reasoning.
+ *
+ * A string, because that is what the style attribute takes and because `var(--safe-bottom)` is
+ * `env(safe-area-inset-bottom)`, which is readable only to CSS.
+ */
+export function panelBottomCss(input: { barClearancePx: number }): string {
+  const { barClearancePx } = input
+  const clearance =
+    Number.isFinite(barClearancePx) && barClearancePx > 0 ? Math.round(barClearancePx) : 0
+  return `calc(var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px) + (${clearance}px + var(--safe-bottom)) * var(${NINA_BAR_VISIBLE_VAR}, 0))`
+}

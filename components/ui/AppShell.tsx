@@ -1,6 +1,7 @@
 import type * as React from 'react'
 
 import { ChatChrome } from '@/components/nina/ChatChrome'
+import { NinaBarProvider } from '@/components/nina/NinaBarProvider'
 import { NinaSidebarProvider } from '@/components/nina/NinaSidebar'
 import { NinaUnreadBadgeSlot } from '@/components/nina/NinaUnreadBadge'
 import { cn } from '@/lib/cn'
@@ -127,6 +128,13 @@ export function AppShell({
    *
    * Gated on `screen === 'chat'` because no other screen has a sidebar, and this file stays a
    * Server Component: rendering a client provider from here is a boundary, not a conversion.
+   *
+   * ── R2 ADDS A SECOND PROVIDER ON THIS SEAM ─────────────────────────────────────────────────
+   * The rail's `up` — inside `{children}`, in the panel — and `ChatChrome`'s toggle now move ONE
+   * bar state (`components/nina/NinaBarProvider.tsx`), and the argument above is theirs to reuse:
+   * two controls that must not disagree hold one state, and the provider has to sit above BOTH of
+   * them. Same nesting rule as the sidebar's, so the same structural test guards it —
+   * `NinaBarProvider` wraps `NinaSidebarProvider`, which still encloses `{shell}` directly.
    */
   const shell = (
     <>
@@ -154,7 +162,13 @@ export function AppShell({
     </>
   )
 
-  return screen === 'chat' ? <NinaSidebarProvider>{shell}</NinaSidebarProvider> : shell
+  return screen === 'chat' ? (
+    <NinaBarProvider>
+      <NinaSidebarProvider>{shell}</NinaSidebarProvider>
+    </NinaBarProvider>
+  ) : (
+    shell
+  )
 }
 
 /**

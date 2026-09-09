@@ -38,6 +38,7 @@ const PAGE = 'app/nina/page.tsx'
 const SIDEBAR = 'components/nina/NinaSidebar.tsx'
 const CHROME = 'components/nina/ChatChrome.tsx'
 const FIELD = 'components/nina/NinaSearchField.tsx'
+const BAR_PROVIDER = 'components/nina/NinaBarProvider.tsx'
 
 describe('the sidebar provider wraps both of its consumers', () => {
   it('AppShell renders the provider, because it is what renders ChatChrome', () => {
@@ -77,6 +78,31 @@ describe('the sidebar provider wraps both of its consumers', () => {
     // file and `tests/share.bundle.test.ts` exists because this import graph leaked a session read
     // once already — a `'use client'` here would be a much larger change than the bug warranted.
     expect(isClientModule(SHELL)).toBe(false)
+  })
+})
+
+describe('the bar provider wraps both of ITS consumers', () => {
+  it('NinaBarProvider exists and exposes the nullable hook', () => {
+    const provider = readRepoCode(BAR_PROVIDER)
+    expect(provider).toContain('export function NinaBarProvider')
+    expect(provider).toContain('export function useNinaBar')
+    expect(provider).toContain('NinaBarContextValue | null')
+  })
+
+  it('AppShell mounts it around the same shell node the sidebar provider wraps', () => {
+    const shell = readRepoCode(SHELL)
+    // The rail's `up` (inside {children}, in the panel) and ChatChrome's toggle (the chrome
+    // sibling) must read ONE bar state. Measured in production for the sidebar provider: a
+    // consumer mounted outside its own provider takes its null branch and the control silently
+    // does nothing — every unit test green, a dead button in the hand. Placement is the bug this
+    // file exists for. The bar provider sits OUTSIDE so the sidebar provider keeps enclosing
+    // `{shell}` directly, which this file's first describe pins.
+    expect(shell).toMatch(/<NinaBarProvider>\s*<NinaSidebarProvider>\{shell\}/)
+  })
+
+  it('both consumers read the shared state through the hook', () => {
+    expect(readRepoCode(CHROME)).toContain('useNinaBar()')
+    expect(readRepoCode(SIDEBAR)).toContain('useNinaBar()')
   })
 })
 

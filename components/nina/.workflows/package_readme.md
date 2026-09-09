@@ -1,7 +1,7 @@
 # Package: components/nina
 
 **Location**: `components/nina`
-**Last Updated**: 2026-09-09 (task `P1-CN-A001`, `photo-send-chat-icons` phase 2 of 2: the keyboard channel became one component — `KeyboardOverlapPublisher`, the `visualViewport` subscription and `--nina-kb-overlap` broadcast extracted out of `ChatScreen`, mounted there and scoped to `NinaAboutScreen`'s open viewer — the `/nina/about` attach strip gained the sidebar panel's box fix (`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss`), and the sidebar's focus reassert gained a second, box-change trigger (`planBoxReassert` over a `ResizeObserver`). Previously `P2-CN-A000` (phase 1): the strip's two icon-only sends and `attachNinaPhotoToChat`'s `target`/`sessionId`/`next` contract. First documentation of this package was the phase-1 pass.)
+**Last Updated**: 2026-09-09 (task `P1-CN-A002`, `search-kbd-and-up-btn` phase 2 of 2: the rail's `up` became the chat page's bar toggle — the bar's reveal state moved out of `ChatChrome` into a shared `NinaBarProvider` mounted in `AppShell` around both consumers, the panel learned `panelBottomCss`'s bar-lift term (`PANEL_BOTTOM_CSS`) so the revealed bar renders in a reachable strip below the panel, `RAIL_PAD_BOTTOM_CSS` gained the bar gate beside the overlap subtraction, and a text field in the panel's dialog now hides the bar exactly like the composer does). Previously `P1-CN-A001` of `photo-send-chat-icons` (phase 2 of 2): the keyboard channel became one component — `KeyboardOverlapPublisher`, the `visualViewport` subscription and `--nina-kb-overlap` broadcast extracted out of `ChatScreen`, mounted there and scoped to `NinaAboutScreen`'s open viewer — the `/nina/about` attach strip gained the panel's box fix (`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss`), and the sidebar's focus reassert gained a second, box-change trigger (`planBoxReassert` over a `ResizeObserver`). Previously `P1-CN-A001` of `search-kbd-and-up-btn` (phase 1 of 2): the window pin — the keyboard reveal pans the window behind the opaque panel, so a passive `window` `scroll` listener now pins the root scroller while a panel text field holds focus and hands the reading position back on blur. Previously `P2-CN-A000` (`photo-send-chat-icons` phase 1 of 2): the strip's two icon-only sends and `attachNinaPhotoToChat`'s `target`/`sessionId`/`next` contract. First documentation of this package happened twice — an independent `/update-readme` pass on each branch, from two different code states — and this file is their merge.)
 
 ## Overview
 
@@ -46,17 +46,20 @@ conclusion.
   rule that mirrors the server's exactly.
 - Draw the conversation: day-divided list, bubbles with quote stubs and photo grids and run cards,
   two swipe gestures plus a tap, and the actions sheet — with every gate decided in `lib/`.
-- Host the sidebar overlay: URL-held open state, the pinned four-icon rail, the session list with
-  its three row actions, search with its persisted semantic toggle, and the keyboard-overlap
-  channel's consumer half — the panel ends at the var, and its focused fields are re-asserted on
-  both the clock and the panel's box actually changing.
+- Host the sidebar overlay: URL-held open state, the pinned four-icon rail whose `up` is the chat
+  page's bar toggle (one shared bar state, `NinaBarProvider`), the session list with its three row
+  actions, search with its persisted semantic toggle, and the keyboard-overlap channel's consumer
+  half — the panel ends at the var (lifted above the bar while the bar shows), its focused fields
+  are re-asserted on both the clock and the panel's box actually changing, and the window behind it
+  is pinned while a field holds focus.
 - Serve `/nina/about`: her album and media as two viewer lists over one shared `PhotoViewer`, the
   image-job summary, and the zoomed-photo attach strip — two icon sends (phase 1) ending at the
   keyboard's measured top edge (phase 2).
 - Serve `/nina/jobs` and `/nina/jobs/[id]`: the redo/delete controls, the ticking elapsed clock, and
   the detail card whose jump arrives already decided.
-- Publish the unread dot and the chrome: the tab bar's hide-on-scroll state machine, the floating
-  control lane, and the one `router.refresh()` that clears a dot the runner just read to zero.
+- Publish the unread dot and the chrome: the tab bar's hide-on-scroll state machine — its state
+  held ONCE in `NinaBarProvider` and worn by the two controls that move it — the floating control
+  lane, and the one `router.refresh()` that clears a dot the runner just read to zero.
 - Never render `description` — invariant 5. The only prose about a photograph is `glm-4.6v`'s
   private input to her prompt; nothing in this directory receives it, and `alt=""` is the honest
   rendering of that everywhere a Blob photo appears.
@@ -79,7 +82,8 @@ conclusion.
 | `QuoteStub.tsx` | `'use client'` | The quoted strip, above a bubble's text and above the composer's input. A real `<button>` when `onJump` is passed; inert in the composer. `bg-ink-3/20` per RULING E1. |
 | `RunAttachmentCard.tsx` | `'use client'` | A run inside the bubble, and the door to it: one `<Link>` to `/r/[id]` whose `onNavigate` (not `onClick`) saves R14's scroll mark. |
 | `TypingIndicator.tsx` | **no directive** | Nina, mid-thought. Reuses `LoadingDots` (the app's one loading idiom and its one keyframe); wears her exact bubble shape. The face is an optional prop here and required at every hop above — the asymmetry is deliberate. |
-| `NinaSidebar.tsx` | `'use client'` | The full-screen overlay panel, plus `NinaSidebarProvider` (one boolean, one `pushedRef`, shared by the trigger and the panel) and `NinaSidebarTrigger` (a bare 44 px button that renders null outside a provider). Ends its box at the keyboard's measured top edge via `--nina-kb-overlap`; hosts the pinned four-icon rail; re-asserts focused fields over the keyboard on TWO triggers — the `KEYBOARD_REASSERT_DELAYS_MS` schedule armed by `focusin`, and `planBoxReassert` over a `ResizeObserver` on the panel's own box — sharing one `isKeyboardTextField` guard and one `KEYBOARD_REASSERT_SCROLL_OPTIONS` assert. |
+| `NinaSidebar.tsx` | `'use client'` | The full-screen overlay panel, plus `NinaSidebarProvider` (one boolean, one `pushedRef`, shared by the trigger and the panel) and `NinaSidebarTrigger` (a bare 44 px button that renders null outside a provider). Ends its box at `PANEL_BOTTOM_CSS` — `panelBottomCss`'s string: the keyboard's measured top edge plus, while the bar shows, the bar's clearance and the inset the bar pads itself by. Hosts the pinned four-icon rail (`>` close, `up` bar toggle, `+` create, wand) whose `up` dispatches `'toggle'` through `useNinaBar`. Re-asserts focused fields over the keyboard on TWO triggers — the `KEYBOARD_REASSERT_DELAYS_MS` schedule armed by `focusin`, and `planBoxReassert` over a `ResizeObserver` on the panel's own box — and PINS the window behind the panel while a field holds focus, all inside the `open`-keyed effect, sharing one `isKeyboardTextField` guard and one `KEYBOARD_REASSERT_SCROLL_OPTIONS` assert. |
+| `NinaBarProvider.tsx` | `'use client'` | The bar state's shared home: one `NinaBarState` (`'hidden' | 'shown'`, resting `'hidden'`) + one stable-identity `dispatch`, and the state machine's ONLY component importer of `lib/nina/chrome`'s `nextBarState`. `useNinaBar()` returns null outside a provider, on the `useNinaSidebar` precedent — unreachable while `AppShell` mounts it around both consumers, and the structural test keeps it so. A provider rather than props because its two consumers are SIBLINGS (`ChatChrome` and the rail's button); the resting state publishes nothing. |
 | `SessionList.tsx` | `'use client'` | Every chat in `planSessionList`'s order. Decides nothing; the empty state is reachable in exactly two real states and is built. |
 | `SessionRow.tsx` | `'use client'` | One chat: the row (link, or button when it is the open one) and a `⋯` disclosure over pin / rename / remove — a `mode` union with inline panels, `FolderMenu`'s shape. Icon-only actions since `search-clear-and-sidebar-icons`: the words became `aria-label`s verbatim. |
 | `NinaSearchField.tsx` | `'use client'` | Sidebar search + the semantic toggle. Measures; `lib/nina/search.ts` decides. Its hit `<Link>`s fire no close callback — the measured production race — and take no props at all, so the seam cannot be re-armed. |
@@ -92,7 +96,7 @@ conclusion.
 | `NinaJobActions.tsx` | `'use client'` | Redo, one tap, no dialog — and delete. `NOTE` is a `Record` over the whole `NinaJobRefusal` union, so a fifth refusal is a build error until it has a sentence. The accessible name names the row (`Coba lagi <title>`), not the button. |
 | `NinaJobDetail.tsx` | `'use client'` | `/nina/jobs/[id]`'s card. Every prop serializable; the jump arrives already decided by `planJobJump` on the server. The prompt renders because R1 asked for it by name — it is her generated text, not the private `description`. |
 | `NinaJobElapsed.tsx` | `'use client'` | The ticking clock. First render uses the server's `nowMs` on both sides (a wire-time difference is a hydration mismatch; after mount it is only a tick), with the correction riding a 0 ms timer because `react-hooks/set-state-in-effect` is an error. |
-| `ChatChrome.tsx` | `'use client'` | `/nina`'s chrome: the tab bar (hidden at rest on this screen) and the floating `>` / `^v` control lane. Measures the composer by id with a `ResizeObserver`; decides nothing — `lib/nina/chrome.ts` owns the state machine. Publishes `--nina-bar-visible` on `:root`. |
+| `ChatChrome.tsx` | `'use client'` | `/nina`'s chrome: the tab bar (hidden at rest on this screen) and the floating control lane — a centred pair now, the sidebar's `>` beside the `^v` bar toggle. Owns every bar EFFECT and none of the bar STATE: it reads `bar`/`dispatch` from `useNinaBar` (its button sends `'toggle'`, its focus sync sends `'composer-engaged'` for the composer OR a panel-dialog text field, its 5 s timer sends `'autohide'`) and remains the ONE writer of `--nina-bar-visible` on `:root`. Measures the composer by id with a `ResizeObserver`; decides nothing — `lib/nina/chrome.ts` owns the state machine. |
 | `NinaUnreadBadge.tsx` | **async Server Component** | The unread dot, counted from `lib/nina/queries` on the partial unread index, global across sessions (mark-read is the session-scoped half). `getUserId`, not `requireUserId` — it renders inside `AppShell` where there may be no session. `NinaUnreadBadgeSlot` is its `Suspense` wrapper with `fallback={null}`. |
 | `NinaUnreadSync.tsx` | `'use client'` | The dot the runner just read himself out of existence, actually going away: exactly one `router.refresh()` when `hadUnread` flips, no timer, the rule and its termination argument in `lib/nina/unread.ts`. |
 | `useChatScroll.ts` | `'use client'` | R14's DOM half: read `[id^="nina-msg-"]` rows in document order, write the scroll mark by `replaceState` against `window.location.search` (never the possibly-stale hook snapshot). Zero arithmetic — `lib/nina/scroll.ts` decides. |
@@ -178,9 +182,11 @@ composer never lifts". The edge snaps with the keyboard (no transition on `botto
 a lagging edge would chase the keyboard's own animation and read as a glitch.
 
 The sidebar has the keyboard's other half, and it is the half a box cannot fix: iOS Safari's focus
-reveal scrolls the panel's own `overflow-y-auto` container even when the field was already visible.
-The answer is to assert rather than measure, and since phase 2 the assert has TWO triggers sharing
-one guard and one call:
+reveal scrolls the panel's own `overflow-y-auto` container even when the field was already visible,
+and — the channel an assert cannot see at all — it pans the WINDOW behind the opaque panel, lifting
+every `position: fixed` element, panel included. The answer is two corrections that both measure
+nothing: the panel ASSERTS, on two triggers sharing one guard and one call, and the window is
+PINNED:
 
 - **The clock** — one delegated `focusin` listener (inside the `open`-keyed effect, so it cannot
   grow a dependency) arms `KEYBOARD_REASSERT_DELAYS_MS` against the field that took focus, each
@@ -197,6 +203,21 @@ one guard and one call:
   its new size is the one observable signal that the shrink landed, and it is not a second
   `visualViewport` subscription; it watches an element the effect already holds. `contentRect` is
   the panel's whole box — the panel carries no padding or border of its own.
+- **The window** — the conversation behind the panel scrolls the WINDOW (`MessageList` calls
+  `window.scrollTo`), and the reveal's second act pans the layout viewport itself; `nearest` is
+  structurally blind to that channel, because a fixed element's layout geometry is unchanged by a
+  window scroll and for the root scroller it computes zero every time. So the window gets a
+  corrector that measures nothing and schedules nothing: the offset is captured at focus-in
+  (BEFORE the keyboard has moved anything — the pan rides the keyboard's rise, hundreds of ms
+  later), a `{ passive: true }` `window` `scroll` listener pins the root scroller to 0/0 for as
+  long as the armed field holds focus, and the captured reading position is handed back on
+  focus-out and in the effect's cleanup. Event-driven, so there is no timing hole — each frame of
+  the keyboard-rise pan fires the event and is countered within it — and self-loop-safe by
+  arithmetic: the listener's own `scrollTo` fires a scroll whose handler reads 0/0 and returns.
+  The pin is attached on arm and removed on disarm (a field→field move disarms, re-captures and
+  re-arms), and the disarm is idempotent; the effect's cleanup calls it rather than trusting the
+  blur, because whether a closed-over field's `focusout` was delivered is not observable from
+  here. Each clock tick also pins — a no-op whenever the listener got there first.
 
 Both triggers resolve to one assert: whatever holds focus RIGHT NOW, qualified by
 `isKeyboardTextField` (INPUT / TEXTAREA / contenteditable, and nothing else — the panel itself
@@ -207,7 +228,9 @@ grow a `smooth`. `nearest` walks every scrollable ancestor and computes zero scr
 already-visible field, which is why over-firing is cheap and under-firing is the one failure the
 rule must not do (`planBoxReassert` rounds nothing — a sub-pixel change is a change), and why the
 keyboard CLOSING — the box growing back — re-asserts for free and fixes the mirrored case (field
-scrolled out, keyboard folds) at no cost.
+scrolled out, keyboard folds) at no cost. The pin's guards mirror the same discipline: text fields
+only, `activeElement` checked at FIRE time, every write reading first and writing only when the
+numbers are wrong, and `behavior: 'instant'` throughout.
 
 ## The attach strip (phase 1 of `photo-send-chat-icons`, just landed)
 
@@ -284,8 +307,9 @@ two things a route would have bought are bought back deliberately:
   exists because the TRIGGER pushes and the PANEL closes in two different subtrees, so the
   `pushedRef` deciding `back()` vs `replaceState` must be one ref — two would replace over an entry
   the trigger pushed. `AppShell` wraps the chat shell in the provider (as a sibling of `<main>`),
-  which is itself the fix for a shipped bug: the page used to own it, `ChatChrome` rendered outside
-  it, and the trigger drew nothing.
+  with `NinaBarProvider` OUTSIDE it on the same argument (below), which is itself the fix for a
+  shipped bug: the page used to own it, `ChatChrome` rendered outside it, and the trigger drew
+  nothing.
 - **Focus**: `Sheet`'s three behaviours (body scroll lock, focus in on open and back out on close,
   Escape) plus `inert={!open}` for the one thing `Sheet` gets from unmounting.
 
@@ -294,9 +318,10 @@ Two measured rules live here and are easy to regress:
 - **The `Sheet.tsx` trap**: the panel's open/close effect keys on `open` ALONE and reads the latest
   close through `closeRef`, because this panel contains the rename field — an unstable `onClose`
   dependency reaching a focused input is the exact bug that cost "one digit per keyboard" on the
-  review screen. **Do not add a dependency to that array.** The reassert's box observer lives
-  INSIDE that same effect for this reason — the `ResizeObserver` needs the panel element the effect
-  already holds, and one keystroke in the rename field must still never tear it down.
+  review screen. **Do not add a dependency to that array.** The reassert's box observer and the
+  window pin live INSIDE that same effect for this reason — the `ResizeObserver` needs the panel
+  element the effect already holds, and one keystroke in the rename field must still never tear
+  either down.
 - **No close beside a push, ever.** `NinaSearchField`'s hit `<Link>`s, the rail's wand and the
   avatar `<Link>` all navigate without calling `closeRef`: the close path pops a pushed entry, and
   firing it in the same tick as a `<Link>`'s push raced a back against a forward — measured in
@@ -308,11 +333,81 @@ The panel is always mounted (mount-on-open needs a double `rAF` to transition FR
 `transitionend`, which never fires under `transition-none`), slides on `transition-transform` with
 the codebase's first `motion-reduce:transition-none`, and — since `search-clear-and-sidebar-icons` —
 is a **two-deck column**: a scroll region (`header, search, list`, `overflow-y-auto
-overscroll-contain`) over a shrink-0 **four-icon rail** (`>` close, `up` scroll-to-top, `+` create,
-wand to `/nina/jobs`) pinned to the panel's bottom edge, which is the keyboard's measured top edge —
-so the rail stays reachable with the keyboard up, which the two full-width rows it replaced never
-were. The rail's floor mirrors the composer's own `padding-bottom` decomposition, re-spelled in CSS
-because this panel has no numeric overlap — only the var.
+overscroll-contain`) over a shrink-0 **four-icon rail** (`>` close, `up` bar toggle, `+` create,
+wand to `/nina/jobs`) pinned to the panel's bottom edge, which is `PANEL_BOTTOM_CSS`: the keyboard's
+measured top edge plus — while the bar shows — the bar's clearance and the safe-bottom the bar pads
+itself by, so the revealed bar renders in a reachable strip BELOW the panel's opaque `z-50` fill.
+The string is `panelBottomCss`'s with `TAB_BAR_OUTER_HEIGHT_PX` as the clearance, held at module
+level because every input is a constant; the vars underneath it move, and `transition-transform`
+being transform-only is why the edge snaps with the keyboard and with the bar. The rail's floor
+`RAIL_PAD_BOTTOM_CSS` is the composer's own `padding-bottom` decomposition QUOTED, not called —
+both of `composerPadBottomCss`'s gates are re-spelled in CSS (subtract the overlap var; and, since
+the panel LIFTS above the bar instead of covering it, the `* (1 - var(--nina-bar-visible))`
+complement too — an ungated floor would double-count the inset the bar's own `padding-bottom`
+carries), and the comment in the file is the pin: change the floor or its gates in
+`composerPadBottomCss`, change them here. The rail replaced two full-width rows and stays reachable
+with the keyboard up, which they never were. The scroll deck carries no ref: the scroll-to-top
+handle `up` used to be is gone with its repurposing into the bar toggle, so nothing scrolls the
+deck programmatically any more — the focus assertion in the `open`-keyed effect addresses the
+focused ELEMENT, whose `scrollIntoView` walks every scrollable ancestor.
+
+### The bar: one state, two buttons, one var writer
+
+The bar's reveal state is held ONCE, in `NinaBarProvider`, and worn by the two controls that move
+it — the chat page's `^v` toggle and the rail's `up` — so they can never disagree. The provider
+exists because the panel is `ChatChrome`'s SIBLING: `AppShell` renders `<main>` (the panel rides in
+through the page) and the chrome side by side, so no prop chain reaches from one to the other, and
+two local states would be two bars. Same shape of problem as `NinaSidebarProvider`'s `pushedRef`,
+same answer, one nesting: `NinaBarProvider` wraps `NinaSidebarProvider`, which still encloses
+`{shell}` directly — the shape `tests/nina.sidebarProvider.test.ts`'s second describe pins.
+
+The decision half stays in `lib/nina/chrome.ts` (`NinaBarState`, `NinaChromeEvent`, `nextBarState`,
+`autoHideDelayMs`, `isControlVisible`, `barToggleGlyph`) — pure, unit-tested, reachable from a
+node-environment suite — and `NinaBarProvider.tsx` is that machine's only component importer.
+Consumers name events, not methods: `dispatch('toggle' | 'autohide' | 'composer-engaged' |
+'composer-released')`, so every call site reads as the machine's own rule and there is no second way
+to say "be hidden". `'toggle'` has exactly two senders, both buttons. `dispatch` has stable identity
+(`useCallback` with empty deps), so consumers may name it in their own effect dependency arrays
+without re-subscribing. `useNinaBar()` returns null outside a provider, on the `useNinaSidebar`
+precedent — a consumer mounted outside its provider degrades instead of crashing; unreachable while
+`AppShell` mounts it around both consumers, and the structural test is what keeps it so. The
+resting state is `'hidden'` — `/nina`'s and every screen's: the provider is mounted only on the
+chat screen, and nothing publishes `NINA_BAR_VISIBLE_VAR` until `ChatChrome`'s own effect sees
+`'shown'`.
+
+`ChatChrome` owns every EFFECT, none of which changed in kind when the state moved out of it:
+
+- **the focus sync** — a `document`-level `focusin`/`focusout` pair that dispatches
+  `'composer-engaged'` when a keyboard-raising field holds focus. The composer's textarea is one
+  surface; the sidebar panel's text fields are the second: any `INPUT` / `TEXTAREA` / contenteditable
+  inside the panel's `[role="dialog"]` engages the same rule, because `chrome.ts`'s rule is about
+  KEYBOARDS, not about the composer — a bar shown under a keyboard is shown and invisible, and the
+  panel's search and rename fields raise the same keyboard. `focusout` is read one task later
+  (`setTimeout(0)`, held in a ref so it cannot fire after unmount), which is what keeps a
+  textarea→Send — and now a search→rename — move from blinking the bar.
+- **the auto-hide timer** — `autoHideDelayMs(bar, keyboardEngaged)`: 5 s, restarted by a toggle
+  through the effect cleanup, paused while a keyboard is up anywhere (a panel field just hid the
+  bar anyway).
+- **the `NINA_BAR_VISIBLE_VAR` publisher** — set only while the state is `'shown'`, removed on hide
+  and on unmount. Still `ChatChrome`, still one effect, still the var's ONLY writer. `NinaSidebar`
+  reads it (`PANEL_BOTTOM_CSS`'s lift, `RAIL_PAD_BOTTOM_CSS`'s gate) and never writes it.
+
+The geometry half is `lib/nina/chatview.ts`'s `panelBottomCss`: the keyboard term the panel already
+carried, plus a bar term — `(${clearance}px + var(--safe-bottom)) * var(--nina-bar-visible, 0)` —
+with the inset INSIDE the multiplication, so the hidden geometry stays byte-equal to the pre-bar
+string (an inset added OUTSIDE the gate would lift the panel one inset above the keyboard's edge
+with the bar HIDDEN — the unpainted-strip defect `composerBottomCss`'s docstring records at length,
+one surface over). The two terms can sum for a frame (rail tap, then a field tapped; the keyboard
+rule hides the bar a commit later), which is the honest arithmetic for two independent `:root`
+channels. The clearance is `TAB_BAR_OUTER_HEIGHT_PX` passed as an argument — `lib/` never imports
+`components/` — and the pure arithmetic is unit-tested in `lib/nina/chatview.test.ts`.
+
+One predicate over DOM types lives in `ChatChrome` rather than in `lib/` (`isTextFocusInDialog`):
+that file's signatures carry no DOM types. Its field half is spelled twice on purpose — the panel's
+own `focusin` filter (in the `[open]` effect) filters its assert listener, this one filters the
+bar's engage rule; different questions about the same DOM. The dialog half is `[role="dialog"]`:
+the panel is the only dialog mounted on `/nina` that contains text fields, so `closest` reads
+membership without `ChatChrome` holding a ref into another component's DOM.
 
 The session rows carry the third icon-only conversion (`SessionRow`): pin / rename / remove as
 glyphs whose words survive verbatim as `aria-label`s, the rename field's own `✕` that clears without
@@ -369,6 +464,7 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 |---|---|---|
 | `ChatScreen` | `ChatScreen.tsx` | Props all REQUIRED (`initial`, `todayISO`, `userId`, `sessionId`, `pending`, `pendingPhoto`, `flight`, `avatar`) on the RULING E2b habit: one caller, and `tsc` should notice a missing prop — an optional default here turned a broken route into a chat that silently wrote into the wrong session or never polled. |
 | `KeyboardOverlapPublisher` | `KeyboardOverlapPublisher.tsx` | `{ onOverlap?: (overlapPx: number) => void }` — the callback is optional because the `:root` var needs no consumer; renders null. Mount it; never subscribe to `visualViewport` yourself. |
+| `NinaBarProvider`, `useNinaBar` | `NinaBarProvider.tsx` | `{ children }`. `useNinaBar()` returns `{ bar: NinaBarState, dispatch: (event: NinaChromeEvent) => void } | null` — null outside a provider, on the `useNinaSidebar` precedent. `dispatch` has stable identity; `nextBarState` decides, the provider only forwards. |
 | `NinaSidebar`, `NinaSidebarProvider`, `NinaSidebarTrigger`, `useNinaSidebar`, `NinaSidebarAvatar` | `NinaSidebar.tsx` | `useNinaSidebar()` returns `null` outside a provider, on purpose — a `ChatChrome` with no sidebar draws no `>`. |
 | `NinaSearchField` | `NinaSearchField.tsx` | Zero props. Its hits are `<Link>`s; the prop it used to take is gone rather than optional. |
 | `useSemanticPref` | `useSemanticPref.ts` | `readonly [boolean, (next) => void]`, cross-tab via `storage`, degrade-to-tab-lifetime when the store refuses. |
@@ -396,8 +492,8 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 ### External
 
 - `react` — the whole surface: `useState`/`useRef`/`useEffect`/`useLayoutEffect`/`useMemo`/
-  `useCallback`/`useTransition`, `createContext`, `useSyncExternalStore` (`useSemanticPref`), and
-  `Suspense` (`NinaUnreadBadgeSlot`).
+  `useCallback`/`useTransition`, `createContext` (`NinaBarProvider` and `NinaSidebarProvider`),
+  `useSyncExternalStore` (`useSemanticPref`), and `Suspense` (`NinaUnreadBadgeSlot`).
 - `next/link`, `next/navigation` — `<Link>` for every navigation that is one; `useRouter` for
   `refresh`/`push`/`replace`; `useSearchParams` for the URL-derived states.
 - `next/image` — `NinaAvatar`'s committed-fallback branch only.
@@ -415,12 +511,14 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 - `@/lib/nina/messageActions`, `jobActions`, `searchActions` — the edit/delete, redo/delete, and
   search writes.
 - `@/lib/nina/chatview` — `composerBottomCss`, `composerPadBottomCss`, `attachStripPadBottomCss`,
-  `keyboardOverlapPx`, `NINA_KEYBOARD_OVERLAP_VAR`, and the reassert's shared vocabulary:
-  `KEYBOARD_REASSERT_DELAYS_MS`, `KEYBOARD_REASSERT_SCROLL_OPTIONS`, `isKeyboardTextField`,
-  `planBoxReassert` (+ the `KeyboardFieldLike` / `PanelBoxSize` shapes). The geometry the
-  components measure for and never compute.
-- `@/lib/nina/chrome` — the tab bar state machine (`nextBarState`, `autoHideDelayMs`,
-  `controlBottomCss`), `NINA_CHROME_CONTROL_CLASS`, `NINA_BAR_VISIBLE_VAR`.
+  `panelBottomCss` (the panel's keyboard-plus-bar `bottom`), `keyboardOverlapPx`, and the two
+  `:root` channels `NINA_KEYBOARD_OVERLAP_VAR` and `NINA_BAR_VISIBLE_VAR`, plus the reassert's
+  shared vocabulary: `KEYBOARD_REASSERT_DELAYS_MS`, `KEYBOARD_REASSERT_SCROLL_OPTIONS`,
+  `isKeyboardTextField`, `planBoxReassert` (+ the `KeyboardFieldLike` / `PanelBoxSize` shapes). The
+  geometry the components measure for and never compute.
+- `@/lib/nina/chrome` — the tab bar state machine (`NinaBarState`, `NinaChromeEvent`, `nextBarState`
+  — whose only component importer is `NinaBarProvider.tsx` — `autoHideDelayMs`, `isControlVisible`,
+  `barToggleGlyph`, `controlBottomCss`) and `NINA_CHROME_CONTROL_CLASS`.
 - `@/lib/nina/sidebar`, `sessions`, `active`, `search`, `edit`, `reply`, `scroll`, `reveal`,
   `turnflight`, `live`, `chatphotos`, `jobview`, `attach`, `album`, `images`, `unread`, `queries` —
   every decision listed in the Overview lives in one of these; the component imports the function,
@@ -446,13 +544,18 @@ make it, and every type that erases at compile time (`ChatMessage`, `RunAttachme
 - `app/nina/page.tsx` — `ChatScreen` (keyed on `activeSessionId`), `NinaSidebar`, `NinaUnreadSync`,
   and `ChatMessage` as a type. It resolves `?s=` owner-scoped before anything renders, maps
   `lib/nina/queries`'s rows onto `ChatMessage` field by field (never spreading — `description` cannot
-  ride along), and destructures `ninaAvatarView` the same careful way.
+  ride along), and destructures `ninaAvatarView` the same careful way. It renders neither provider a
+  second time — the structural test asserts the sidebar one's absence.
 - `app/nina/about/page.tsx` — `NinaAboutScreen`, its only mount site. Three indexed reads, no model
   call, no `loading.tsx`.
 - `app/nina/jobs/page.tsx` / `app/nina/jobs/[id]/page.tsx` — `NinaJobList` (with `actions`) and
   `NinaJobDetail`.
 - `components/ui/AppShell.tsx` — `ChatChrome` (with the server-built `NinaUnreadBadgeSlot` node),
-  `NinaSidebarProvider` (wrapping the chat shell so the trigger and the panel share one ref).
+  `NinaBarProvider` and `NinaSidebarProvider` (both wrapping the chat shell when `screen ===
+  'chat'`; the bar provider sits OUTSIDE so the sidebar one still encloses `{shell}` directly).
+  Rendering client providers from here is a boundary, not a conversion: the file has no `'use
+  client'` and must not gain one (five server pages import it; `tests/share.bundle.test.ts` exists
+  because that import graph leaked a session read once already).
 
 ### Test consumers
 
@@ -468,8 +571,15 @@ component. Five suites instead read package files **as text** via `tests/support
   `NinaAboutScreen`.
 - `tests/nina.chatAvatar.test.ts` — `TypingIndicator`, `MessageList`, `ChatScreen`, `types.ts` (the
   avatar prop is required at every hop above the optional leaf).
-- `tests/nina.sidebarProvider.test.ts` — `NinaSidebar`, `ChatChrome`, `NinaSearchField` (the
-  no-close-beside-a-push rule).
+- `tests/nina.sidebarProvider.test.ts` — `AppShell`, `NinaSidebar`, `NinaBarProvider`, `ChatChrome`,
+  `NinaSearchField`. Two describes, one method: the sidebar provider wraps `{shell}` rather than
+  sitting inside it (`<NinaSidebarProvider>{shell}</NinaSidebarProvider>`), the page renders no
+  second provider, the trigger still returns null outside a provider, and a search hit leaves the
+  panel by navigation alone; and — since the bar provider — `NinaBarProvider.tsx` exists with its
+  nullable hook, `AppShell` mounts it OUTSIDE the sidebar provider around the same `{shell}` node,
+  and both consumers read the state through `useNinaBar()`. Provider misplacement is invisible to
+  every other gate: a consumer outside its provider takes the null branch and the control silently
+  does nothing, all unit tests green.
 - `tests/tabbar.geometry.test.ts` — `ChatChrome`, `ChatScreen` (the clearance constants agree).
 
 For the same reason the docstrings in those files are written never to *spell* the strings the
@@ -477,10 +587,12 @@ guards assert: a text guard cannot tell an explanation from a reintroduction.
 
 The keyboard's decision rules are tested in `lib/` instead — `lib/nina/chatview.test.ts` holds
 `isKeyboardTextField`'s truth table, `planBoxReassert`'s three verdicts (including the
-sub-pixel-change-is-a-change case), the shared scroll options, and `attachStripPadBottomCss`'s
-resting/keyboard/degenerate answers. No suite reads `KeyboardOverlapPublisher` as text; its
-one-subscription invariant is carried by its own docstring and `ChatChrome`'s, and by the mount
-being the only thing the two routes do.
+sub-pixel-change-is-a-change case), the shared scroll options, `attachStripPadBottomCss`'s
+resting/keyboard/degenerate answers, and `panelBottomCss`'s bar-lift arithmetic. No suite reads
+`KeyboardOverlapPublisher` as text; its one-subscription invariant is carried by its own docstring
+and `ChatChrome`'s, and by the mount being the only thing the two routes do. `NinaBarProvider`, by
+contrast, IS read as text — provider misplacement is the failure no rendered test could see, so its
+existence, its nullable hook and its mount shape are pinned structurally.
 
 ## Concurrency
 
@@ -497,9 +609,12 @@ locks:
   response is dropped), `pushedRef` (one per provider), `syncedForRef` (`NinaUnreadSync`, tri-state).
 - **One `visualViewport` subscription** — `KeyboardOverlapPublisher`'s, mounted once on `/nina` and
   once (scoped to the open viewer) on `/nina/about`, two routes that are never mounted together.
-  **One schedule at a time** in the sidebar's focus reassert, cancelled and re-armed per focus, and
-  **one `ResizeObserver`** on the panel per open — disconnected on cleanup, and verdict-gated by
-  `planBoxReassert` so a delivery that moved nothing asserts nothing.
+  **One schedule at a time** in the sidebar's focus reassert, cancelled and re-armed per focus;
+  **one `ResizeObserver`** on the panel per open — disconnected on cleanup and verdict-gated by
+  `planBoxReassert` so a delivery that moved nothing asserts nothing; and **one window pin at a
+  time** — its `scroll` listener is attached on arm and removed on disarm, the lifetime doubly bound
+  (removal on disarm, the `activeElement` check at fire time), so it never outlives the field it
+  defends.
 - **Cross-tab** only in `useSemanticPref`: a module-level listener set plus the `storage` event, so
   `/admin/nina`'s opened tab and this one agree.
 - `reactStrictMode` double-invocation is answered the same way everywhere: decide purely (in `lib/`
@@ -546,13 +661,31 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
   a failed poll attempt says nothing and retries rather than ending the wait early.
 - **The sidebar panel stays mounted** — DOM for rows the server read anyway, in exchange for no
   double-rAF mount and no stranded reduced-motion exit.
+- **The window pin is a `{ passive: true }` listener that reads-and-returns** on every scroll where
+  nothing is wrong — the common case — and the bar state is plain React context: the resting screen
+  publishes no var at all.
 
 ## Usage
+
+### Mounting topology
+
+```tsx
+// components/ui/AppShell.tsx — both providers above BOTH consumers; the bar provider
+// sits outside so the sidebar provider keeps enclosing {shell} directly
+return screen === 'chat' ? (
+  <NinaBarProvider>
+    <NinaSidebarProvider>{shell}</NinaSidebarProvider>
+  </NinaBarProvider>
+) : (
+  shell
+)
+```
 
 ### Mounting the screen
 
 ```tsx
 // app/nina/page.tsx — after requireUserId(); ?s= already resolved owner-scoped.
+<NinaSidebar avatar={avatarView} sessions={rows} activeSessionId={activeSessionId} />
 <ChatScreen
   key={activeSessionId ?? 'none'}
   initial={rows}            // ChatMessage[], oldest first, mapped on the server
@@ -572,6 +705,21 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
   a chip. Invariant 5, and the mapping layer is field-by-field precisely so it cannot ride along.
 - **Do not decide anything here that `lib/nina` could decide.** No jsdom means no test can hold it.
   The component measures; `lib` answers; a new rule belongs in a `lib/nina/*.test.ts`.
+- **Provider placement is load-bearing, and its failure is silent — for BOTH providers.**
+  `NinaSidebarTrigger` and `useNinaBar` both return null outside a provider, and a null is
+  indistinguishable from "no sidebar here" / "the bar is just hidden". This exact bug shipped once
+  (F35: the page's provider was inside `{children}` while `ChatChrome` was a sibling of it, and 2513
+  green tests did not notice). Keep both providers in `AppShell`, keep `NinaBarProvider` OUTSIDE
+  `NinaSidebarProvider` so the sidebar one still encloses `{shell}` directly, and never add a second
+  of either in a page — the structural test guards the shape for both.
+- **`NINA_BAR_VISIBLE_VAR` has one writer.** `ChatChrome`'s publish effect sets it while the bar is
+  shown and removes it otherwise; `NinaSidebar` only READS it (the panel's lift, the rail floor's
+  gate). A second writer is how the panel and the bar start disagreeing about where the glass ends.
+- **`RAIL_PAD_BOTTOM_CSS` quotes `composerPadBottomCss`; `PANEL_BOTTOM_CSS` is `panelBottomCss`'s
+  string.** The halving and the 3.25 px are that function's and `TabBar`'s numbers, and BOTH gates
+  are re-spelled in the rail's CSS — the overlap subtraction and the bar complement. Change the floor
+  or its gates there, change them here. The panel's own string is held at module level precisely so
+  it never re-renders.
 - **Do not add a second `visualViewport` subscription.** `ChatChrome`'s docstring forbids it; the
   keyboard's one channel is `KeyboardOverlapPublisher` plus the `:root` var. Mount the publisher
   (scoped to the fragment whose reader needs it, as `/nina/about` does); never subscribe directly
@@ -581,7 +729,7 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
   decisions with a test file waiting for each; both triggers share them so they cannot drift.
 - **Do not add a dependency to `NinaSidebar`'s `open`-keyed effect.** The `Sheet.tsx` trap cost "one
   digit per keyboard"; the latest close reaches that effect through `closeRef`, and both reassert
-  triggers live inside it for the same reason.
+  triggers and the window pin live inside it for the same reason.
 - **Do not call a close callback beside a `<Link>` push.** A back and a forward raced on one entry in
   production and every search hit opened the wrong conversation. The href drops `?sidebar=1`; let the
   navigation close the panel.
@@ -608,7 +756,9 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
 - **Do not reintroduce `bg-paper-2` as an inset surface.** RULING E1: `bg-ink-3/20`, verified against
   both schemes.
 - **Do not add a URL writer to `ChatScreen`'s commit.** New parameters join the mount-time strip
-  effect's by-name delete list; `?s=` and `?at=` must survive it.
+  effect's by-name delete list; `?s=` and `?at=` must survive it. And history writes read
+  `window.location.search`, never the `searchParams` snapshot — `ChatScreen`'s mount-time
+  `replaceState` can be one write ahead of React.
 - **Do not give `TypingIndicator`'s avatar a required-looking default upstream.** Optional at the
   leaf, required at every hop above: the asymmetry is how the "typing row ignores the album" bug got
   fixed and stays fixed.
@@ -618,19 +768,25 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
 
 ## Notes
 
-**The plan set is complete (2/2).** Phase 2 (`P1-CN-A001`, "Keyboard channel: about strip box fix +
-rename re-assert") did what this section used to promise: it created
+**Both plan sets are complete (2/2 each).** `photo-send-chat-icons` phase 2 (`P1-CN-A001`,
+"Keyboard channel: about strip box fix + rename re-assert") created
 `components/nina/KeyboardOverlapPublisher.tsx` (the one `visualViewport` subscription + the
 `--nina-kb-overlap` broadcast + the optional `onOverlap` mirror), changed `ChatScreen` to render it
 instead of owning the two keyboard effects, mounted it in `NinaAboutScreen`'s open-viewer fragment
 so the strip's container ends at `bottom: var(--nina-kb-overlap, 0px)` with `attachStripPadBottomCss`
 replacing its `pb-[…]` class — the same box fix the sidebar panel ships, for the same exposure R3
-reported on the rename field — and re-triggers the sidebar's focus reassert when the panel's box
+reported on the rename field — and re-triggered the sidebar's focus reassert when the panel's box
 actually changes (`planBoxReassert` over a `ResizeObserver` inside the same `open`-keyed effect)
 rather than only on `KEYBOARD_REASSERT_DELAYS_MS`. It also lifted the reassert's shared vocabulary —
 `isKeyboardTextField`, `KEYBOARD_REASSERT_SCROLL_OPTIONS`, `planBoxReassert` — into
-`lib/nina/chatview.ts` with tests in `chatview.test.ts`. Nothing in phase 1's surface (the strip's
-two sends, the action, the suite) changed; the suite stayed the wiring guard.
+`lib/nina/chatview.ts` with tests in `chatview.test.ts`.
+`search-kbd-and-up-btn` phase 1 (`P1-CN-A001`, the window pin) added the keyboard defence's second
+channel — the window behind the opaque panel, pinned at 0/0 while a panel text field holds focus and
+restored on blur and on cleanup. Its phase 2 (`P1-CN-A002`, "rail `up` toggles the main TabBar")
+moved the bar state out of `ChatChrome` into `NinaBarProvider`, gave the rail's `up` the chat page
+toggle's job, added `panelBottomCss`'s bar-lift term and the rail floor's bar gate, and extended the
+bar's keyboard rule to the panel's dialog fields. Nothing in the strip's phase-1 surface (the two
+sends, the action, the suite) changed through any of it; the suite stayed the wiring guard.
 
 **Known, accepted limitations**: `NinaSearchField`'s semantic pass costs a model call per debounced
 query (700 ms debounce, `shouldRunSemantic` gates it); Server Actions serialize the describe
@@ -645,10 +801,13 @@ F34 added the album-photo handoff; F35 added sessions, the sidebar, the search f
 `search-jump-pinpoint` landed the soft-nav landing and the tap-to-pinpoint; `search-clear-and-sidebar-icons`
 made the session rows' actions icon-only, added the rename field's `✕`, re-asserted focused fields
 over the keyboard, and rebuilt the sidebar as a two-deck column with the pinned four-icon rail;
-`photo-send-chat-icons` phase 1 (`P2-CN-A000`) made the attach strip
-two icon-only sends with an explicit target and a pushed `next`, and its phase 2 (`P1-CN-A001`,
-this documentation's trigger) extracted the keyboard channel into `KeyboardOverlapPublisher`, gave
-the `/nina/about` strip the panel's box fix, and gave the sidebar's reassert its box-change trigger.
+`photo-send-chat-icons` phase 1 (`P2-CN-A000`) made the attach strip two icon-only sends with an
+explicit target and a pushed `next`, and its phase 2 (`P1-CN-A001`) extracted the keyboard channel
+into `KeyboardOverlapPublisher`, gave the `/nina/about` strip the panel's box fix, and gave the
+sidebar's reassert its box-change trigger; `search-kbd-and-up-btn` phase 1 (`P1-CN-A001`) pinned the
+window behind the panel over a focused field, and its phase 2 (`P1-CN-A002`) made the rail's `up`
+the chat page's bar toggle through the shared `NinaBarProvider`, lifted the panel above the revealed
+bar, and gated the rail floor by the bar var.
 
 ## Documentation Created
 
@@ -677,9 +836,30 @@ reassert's second trigger: a `ResizeObserver` on the panel inside the existing `
 its deliveries decided by the new pure `planBoxReassert` / `isKeyboardTextField` /
 `KEYBOARD_REASSERT_SCROLL_OPTIONS` in `lib/nina/chatview.ts` (tested in `chatview.test.ts`).
 
-Refreshed here: the header line, two Key Responsibilities bullets, the module map (a new
+Refreshed there: the header line, two Key Responsibilities bullets, the module map (a new
 `KeyboardOverlapPublisher` row; `ChatScreen`, `NinaSidebar` and `NinaAboutScreen` re-spelled), the
 keyboard-channel section rewritten out of its phase-2-future tense, a closing paragraph on the
 attach strip, the `Sheet.tsx` trap bullet, the export table, the `chatview` dependency bullet, a
-test-consumer note, the concurrency bullet, three gotchas, and this section. Phase 1's sections
-stand as written.
+test-consumer note, the concurrency bullet, three gotchas, and that section. Phase 1's sections
+stood as written.
+
+2026-09-09 — merged with this package's OTHER first documentation. This file was written twice,
+independently, from two different code states: the passes above on the `photo-send-chat-icons`
+branch, and a separate `/update-readme` pass on the `search-kbd-and-up-btn` branch (created
+2026-09-09 12:45 for that set's `P1-CN-A001` window pin; updated 13:16 for `P1-CN-A002`'s shared bar
+state — a tree that had the bar state and the window pin but neither the publisher nor the strip).
+The merge of the two code lines left the two documents contradicting each other about the same files
+(`NinaSidebar`'s rail, `ChatChrome`'s bar state, `lib/nina/chatview.ts`'s exports), so they are
+reconciled here against the merged tree. The merge refreshed: the header chain (all four tasks,
+newest first — note that the two sets each minted a `P1-CN-A001`, so the chain names the set for
+every entry), the sidebar and chrome Key Responsibilities bullets, the module map (a new
+`NinaBarProvider` row; `ChatChrome` and `NinaSidebar` re-spelled; the rail's `up` corrected from
+scroll-to-top to bar toggle, and the scroll-to-top handle recorded as removed), the keyboard-channel
+section (the window pin added beside the two reassert triggers), the sidebar-overlay section (the
+panel's bar-lift geometry, the gated rail floor) plus a new "The bar: one state, two buttons, one
+var writer" subsection, the export table (`NinaBarProvider`/`useNinaBar`), the dependency bullets
+(`panelBottomCss` under `chatview`; `NINA_BAR_VISIBLE_VAR` moved from the `chrome` bullet to the
+`chatview` one, where the constant actually lives; `chrome`'s bullet re-spelled around
+`nextBarState`'s single importer and `barToggleGlyph`), the AppShell consumer bullet and the
+`nina.sidebarProvider` test-consumer bullet (its second describe), the concurrency, performance and
+gotcha additions, the `AppShell` mounting-topology snippet, and this section.

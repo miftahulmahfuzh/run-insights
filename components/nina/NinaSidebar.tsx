@@ -4,16 +4,19 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
+import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
 import { cn } from '@/lib/cn'
 import {
   isKeyboardTextField,
   KEYBOARD_REASSERT_DELAYS_MS,
   KEYBOARD_REASSERT_SCROLL_OPTIONS,
+  NINA_BAR_VISIBLE_VAR,
   NINA_KEYBOARD_OVERLAP_VAR,
+  panelBottomCss,
   planBoxReassert,
   type PanelBoxSize,
 } from '@/lib/nina/chatview'
-import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
+import { barToggleGlyph, NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
 import { NINA_JOBS_HREF } from '@/lib/nina/jobview'
 import type { NinaCropInput } from '@/lib/nina/crop'
 import {
@@ -24,6 +27,7 @@ import {
   type SidebarSession,
 } from '@/lib/nina/sidebar'
 import { NinaAvatar } from './NinaAvatar'
+import { useNinaBar } from './NinaBarProvider'
 import { NewChatButton } from './NewChatButton'
 import { NinaSearchField } from './NinaSearchField'
 import { SessionList } from './SessionList'
@@ -210,37 +214,51 @@ export function NinaSidebarTrigger({ className }: { className?: string }) {
 /*
  * ── THE RAIL (R5) ────────────────────────────────────────────────────────────────────────────
  * Four icon controls pinned to the panel's bottom edge: `>` (close, the chat page trigger's own
- * chevron), `up` (the list to its top), `+` (`NewChatButton`, icon-only now) and the wand
- * ("Proses foto"). They replace the two full-width rows that cost 44 px + margins each on an XS
- * Max — the owner's III.1 — and they sit at the panel's bottom because the panel already ends at
- * the keyboard's measured top edge (the `bottom` var below), so the rail stays reachable with the
- * keyboard up, which the scrolling rows never were.
+ * chevron), `up` (the chat page's bar toggle, R2 — shared state, see the button below), `+`
+ * (`NewChatButton`, icon-only now) and the wand ("Proses foto"). They replace the two full-width
+ * rows that cost 44 px + margins each on an XS Max — the owner's III.1 — and they sit at the
+ * panel's bottom because the panel already ends at the keyboard's measured top edge (the `bottom`
+ * var below), so the rail stays reachable with the keyboard up, which the scrolling rows never
+ * were.
  */
 
 /**
  * The rail's floor — the composer's resting floor, QUOTED, not called.
  *
  * `composerPadBottomCss` (lib/nina/chatview.ts) is `max(0px, var(--safe-bottom) / 2 - 3.25px)`
- * with two gates: it returns `'0px'` when its numeric overlap is positive, and it multiplies the
- * floor by `1 - var(--nina-bar-visible)` because the composer's box rides the tab bar's clearance
- * when the bar shows. Neither gate crosses into this file as written:
+ * with two gates, and both are re-spelled here in CSS for the same reason: this panel has no
+ * number to feed either function. It is `ChatScreen`'s sibling, not its descendant, and its only
+ * keyboard channel is the `--nina-kb-overlap` CSS var, a length at paint time that no `lib/`
+ * function can consume.
  *
- *   - the overlap gate takes the MEASURED number, and this panel has no number — it is
- *     `ChatScreen`'s sibling, not its descendant, and its only keyboard channel is the
- *     `--nina-kb-overlap` CSS var, a length at paint time that no `lib/` function can consume. So
- *     the gate is re-spelled in CSS: subtracting the var zeroes the floor whenever a keyboard is
- *     published, which is the same branch as the function's `if (overlapPx > 0) return '0px'`.
- *     The subtraction can never leave a residue — a published overlap is at least
- *     `KEYBOARD_MIN_PX` (120) and the floor is at most ~26 px at any real inset.
- *   - the bar gate is dropped, not forgotten: this panel is `z-50` OVER the bar, and its bottom
- *     edge is the glass whether the bar shows or not. Zeroing the rail's floor because a bar it
- *     covers has appeared would lift it off the glass for no reason.
+ *   - the overlap gate: subtracting the var zeroes the floor whenever a keyboard is published,
+ *     which is the same branch as the function's `if (overlapPx > 0) return '0px'`. The
+ *     subtraction can never leave a residue — a published overlap is at least `KEYBOARD_MIN_PX`
+ *     (120) and the floor is at most ~26 px at any real inset.
+ *   - the bar gate: `* (1 - var(--nina-bar-visible))`, the function's own complement. This gate
+ *     used to be dropped — the panel was `z-50` OVER a bar it covered, and zeroing the floor would
+ *     have lifted the rail off the glass for no reason. R2 changes the geometry: the panel now
+ *     LIFTS above the bar (`PANEL_BOTTOM_CSS` below), the bar pads itself by the whole inset in
+ *     its own `padding-bottom`, and the rail rides the panel's lifted edge — so an ungated floor
+ *     here would pad by an inset the bar is already padding, the double-count
+ *     `controlBottomCss`'s docstring names. Zeroed, the rail's row keeps only its `py-2`, flush
+ *     against the bar's top border by the same measure the composer is.
  *
  * The two numbers inside the `max()` — the halving and the `3.25px` — stay
  * `composerPadBottomCss`'s and `TabBar`'s (the captions' 21.75 px, `TAB_BAR_CONTENT_DROP_CSS`'s
  * history). This comment is the pin: change the floor there, change it here.
  */
-const RAIL_PAD_BOTTOM_CSS = `calc(max(0px, var(--safe-bottom) / 2 - 3.25px - var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)))`
+const RAIL_PAD_BOTTOM_CSS = `calc(max(0px, var(--safe-bottom) / 2 - 3.25px - var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
+
+/**
+ * The panel's `bottom` — `panelBottomCss`'s string, held at module level because every input is a
+ * constant (`TAB_BAR_OUTER_HEIGHT_PX`, `TabBar`'s outer height, the number the composer's own
+ * clearance reads): the keyboard's edge, plus — while the bar shows — the bar's clearance and the
+ * safe-bottom the bar pads itself by, so the bar renders in a reachable strip below this panel.
+ * See the style attribute below and the function's docstring; the point of the constant is the one
+ * the old inline `bottom` made: the string never re-renders, the vars underneath it are what move.
+ */
+const PANEL_BOTTOM_CSS = panelBottomCss({ barClearancePx: TAB_BAR_OUTER_HEIGHT_PX })
 
 /**
  * The rail buttons' shared skin: the chat page pair's own `NINA_CHROME_CONTROL_CLASS`, at the
@@ -342,6 +360,14 @@ export function NinaSidebar({
   const panelRef = React.useRef<HTMLDivElement>(null)
   const titleId = React.useId()
 
+  /*
+   * The bar state, shared with `ChatChrome`'s toggle through `NinaBarProvider` (mounted in
+   * `AppShell` around both subtrees). Null only outside that provider — unreachable from this
+   * panel, and the hook's null contract is the `useNinaSidebar` precedent, not a live branch.
+   */
+  const ninaBar = useNinaBar()
+  const glyph = barToggleGlyph(ninaBar?.bar ?? 'hidden')
+
   /**
    * **The `Sheet.tsx` trap, and this panel has the field that triggered it.**
    *
@@ -377,7 +403,7 @@ export function NinaSidebar({
     panelRef.current?.focus()
 
     /*
-     * ── R1'S SURVIVING HALF: THE PANEL'S SCROLL, WHICH THE BOX FIX CANNOT SEE ───────────────────
+     * ── R1'S TWO SCROLL CHANNELS: THE PANEL'S DECK, AND THE WINDOW BEHIND IT ─────────────────────
      *
      * The inline `bottom: var(--nina-kb-overlap)` below ends the panel's BOX at the keyboard's
      * top edge, and the owner's report survived it — because the search field sits at the top of
@@ -387,26 +413,60 @@ export function NinaSidebar({
      * its scrolled offset, and the field rides out through the container's top edge. The composer
      * never lifts, and it is the one fixed element on this screen inside no scroll container.
      *
-     * The answer is to ASSERT rather than measure. One delegated `focusin` listener on the panel
-     * — same shape as the Escape listener below it, torn down by the same cleanup, and incapable
-     * of growing a dependency that would break this effect's keyed-on-`open`-ALONE rule — arms
-     * the schedule from `lib/nina/chatview.ts` (`KEYBOARD_REASSERT_DELAYS_MS`; invariant 8 — a
-     * rule in a component cannot be tested) against the field that just took focus, and each
-     * tick calls `scrollIntoView({ block: 'nearest' })` on it, which walks EVERY scrollable
-     * ancestor (this container and the document) and corrects whichever one Safari scrolled.
-     * Idempotent: `nearest` on an already-visible element computes zero scroll. And NO second
-     * `visualViewport` subscription (invariant 2) — the assert needs no measurement at all.
+     * The DECK is the shipped assert's channel, and it stays what it was. One delegated `focusin`
+     * listener on the panel — same shape as the Escape listener below it, torn down by the same
+     * cleanup, and incapable of growing a dependency that would break this effect's
+     * keyed-on-`open`-ALONE rule — arms the schedule from `lib/nina/chatview.ts`
+     * (`KEYBOARD_REASSERT_DELAYS_MS`; invariant 8 — a rule in a component cannot be tested)
+     * against the field that just took focus, and each tick calls
+     * `scrollIntoView({ block: 'nearest' })` on it, which walks EVERY scrollable ancestor (this
+     * container and the document) and corrects whichever one Safari scrolled. Idempotent:
+     * `nearest` on an already-visible element computes zero scroll.
      *
-     * Three guards, each earning its line:
+     * ── THE WINDOW IS THE CHANNEL THAT ASSERT CANNOT SEE, AND THE REPORT SURVIVED IT ─────────────
+     * The conversation behind this opaque panel scrolls the WINDOW (`MessageList` calls
+     * `window.scrollTo` — MessageList.tsx:163,223), so the document carries real scrollable
+     * overflow while the panel is open, and the keyboard reveal's second act pans the layout
+     * viewport itself: `window.scrollY` moves, and every `position: fixed` element on the glass
+     * moves with it — this panel included, which is the lift the owner sees. `nearest` is
+     * structurally blind to that channel: it is a no-op whenever the scroll it is asked to
+     * correct leaves its target inside the scrollport, and a fixed element's layout geometry is
+     * UNCHANGED by a window scroll, so for the root scroller it computes zero every time. The
+     * window therefore gets its own corrector, which measures nothing and schedules nothing: a
+     * `window` `scroll` listener that pins the root scroller to 0 for as long as a panel text
+     * field holds focus. Event-driven, so there is no timing hole for the reveal to slip through
+     * — every scroll the browser performs, including each frame of the keyboard-rise pan, fires
+     * the event and is countered within it. Self-loop-safe by arithmetic: this listener's own
+     * `scrollTo` fires a scroll event whose handler reads 0/0 and returns — a no-op, not a loop.
+     *
+     * The pin is UNDONE on focus-out and in this effect's teardown by putting the captured
+     * position back, so the conversation behind the panel keeps its reading position. Both the
+     * pin and the restore are invisible — `bg-paper` covers the glass — and neither can fight the
+     * runner: with the body scroll locked and the panel covering it, the root scroller has no
+     * user-facing scroll of its own to interrupt; the only thing that moves it while a field is
+     * focused is the browser's own reveal, which the pin exists to counter.
+     *
+     * Guards, each earning its line:
      *   - text fields only (`INPUT` / `TEXTAREA` / contenteditable): the panel itself takes focus
-     *     on open above, and neither the panel nor a button has text the keyboard could hide;
+     *     on open above, and neither the panel nor a button has text the keyboard could hide —
+     *     and only a text field raises the keyboard whose reveal these correctors answer;
      *   - `document.activeElement === target` at FIRE time, not schedule time: a blur or a focus
      *     move within the window means the armed field is no longer the one on screen, and
-     *     asserting it would fight the runner — the guard turns every late tick into a no-op;
+     *     asserting or pinning for it would fight the runner — the guard turns every late tick
+     *     into a no-op, and the same check gates the pin's own listener;
      *   - a new focus into the panel CANCELS the running schedule and arms a fresh one, so
-     *     exactly one schedule is live at a time (search field → rename field moves restart it).
+     *     exactly one schedule is live at a time (search field → rename field moves restart it);
+     *     the pin disarms and re-arms around the same move, re-capturing the reading position
+     *     the previous field was already holding;
+     *   - every correction reads first and writes only when the numbers are wrong: the pin
+     *     returns when the scroll is already 0/0, the restore returns when it is already the
+     *     captured one, and both writes are `behavior: 'instant'` (invariant 4).
+     *
+     * NO second `visualViewport` subscription (invariant 2) — neither corrector measures.
      */
     let reassertTimers: number[] = []
+    let focusedField: HTMLElement | null = null
+    let capturedScroll: { x: number; y: number } | null = null
     const panel = panelRef.current
 
     /**
@@ -423,10 +483,52 @@ export function NinaSidebar({
       active.scrollIntoView(KEYBOARD_REASSERT_SCROLL_OPTIONS)
     }
 
+    /*
+     * The pin itself. Attached on arm and removed on disarm, so it never outlives a focused
+     * field; the `activeElement` check is the second lock on that lifetime — an event arriving
+     * in the gap between a blur and its `focusout` finds nothing left to defend.
+     */
+    const onWindowScroll = () => {
+      if (document.activeElement !== focusedField) return
+      if (window.scrollX === 0 && window.scrollY === 0) return
+      /* `instant` — the layout has already moved; a chase reads as a glitch, and no new motion. */
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' })
+    }
+
+    /*
+     * Disarm: stop pinning, and hand the reading position back. Idempotent — focus-out and the
+     * arm path's own `disarmPin()` around one field→field move make a second call a no-op, so
+     * the restore cannot run twice against a capture that is already gone.
+     */
+    const disarmPin = () => {
+      if (focusedField === null) return
+      focusedField = null
+      window.removeEventListener('scroll', onWindowScroll)
+      const captured = capturedScroll
+      capturedScroll = null
+      if (captured === null) return
+      if (window.scrollX === captured.x && window.scrollY === captured.y) return
+      window.scrollTo({ left: captured.x, top: captured.y, behavior: 'instant' })
+    }
+
     const onPanelFocusIn = (event: FocusEvent) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
       if (!isKeyboardTextField(target)) return
+
+      /*
+       * First focus, or a move to another field: capture where the conversation behind the panel
+       * sits, BEFORE the keyboard has moved anything — the reveal's window pan rides the
+       * keyboard's RISE, hundreds of ms after this event, so this read is the reading position.
+       * The deck's own focus-synchronous scroll is deliberately not captured; the assert below
+       * is what corrects that one.
+       */
+      if (focusedField !== target) {
+        disarmPin()
+        focusedField = target
+        capturedScroll = { x: window.scrollX, y: window.scrollY }
+        window.addEventListener('scroll', onWindowScroll, { passive: true })
+      }
 
       for (const timer of reassertTimers) window.clearTimeout(timer)
       reassertTimers = KEYBOARD_REASSERT_DELAYS_MS.map((delay) =>
@@ -435,6 +537,13 @@ export function NinaSidebar({
           /* `instant`, never `smooth`: the layout has already moved under the runner and a 300 ms
              chase reads as a glitch — `decideAutoScroll`'s 'viewport' rule, and no new motion. */
           target.scrollIntoView(KEYBOARD_REASSERT_SCROLL_OPTIONS)
+          /* The window half of the same assert. The `scroll` listener usually has the pin held
+             already; scroll events are dispatched a frame after the scroll they report, so a
+             tick landing inside that gap pins one frame sooner. A no-op whenever the listener
+             got there first — same arithmetic, same guard. */
+          if (focusedField === target && (window.scrollX !== 0 || window.scrollY !== 0)) {
+            window.scrollTo({ left: 0, top: 0, behavior: 'instant' })
+          }
         }, delay),
       )
     }
@@ -485,6 +594,19 @@ export function NinaSidebar({
     })
     if (panel !== null) boxObserver.observe(panel)
 
+    /*
+     * Focus leaving the armed field folds the pin: the keyboard is going down (or moving to the
+     * next field, whose own `focusin` re-arms within the same task, after this restore has put
+     * the shared reading position back), the reveal is over, and the position is owed back now.
+     * The panel div's own focus-out — the `focus()` on open above — arrives here with
+     * `focusedField` still null and is a no-op, which is the guard's point.
+     */
+    const onPanelFocusOut = (event: FocusEvent) => {
+      if (event.target !== focusedField) return
+      disarmPin()
+    }
+    panel?.addEventListener('focusout', onPanelFocusOut)
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
@@ -497,7 +619,15 @@ export function NinaSidebar({
       document.removeEventListener('keydown', onKeyDown)
       panel?.removeEventListener('focusin', onPanelFocusIn)
       boxObserver.disconnect()
+      panel?.removeEventListener('focusout', onPanelFocusOut)
       for (const timer of reassertTimers) window.clearTimeout(timer)
+      /*
+       * The cleanup restores the reading position itself rather than trusting the blur: a panel
+       * closed over a focused field tears THIS effect down, and whether the browser has already
+       * delivered that field's `focusout` is not observable from here. `disarmPin` is the same
+       * call focus-out uses — one restore, guarded against running twice.
+       */
+      disarmPin()
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()
     }
@@ -506,26 +636,13 @@ export function NinaSidebar({
   const list = planSessionList({ sessions, activeSessionId })
 
   /*
-   * The list's own scroll container. The panel used to scroll itself; the rail restructure (below)
-   * pins the rail outside the scroll, so the region that scrolls is this inner div and `up` needs
-   * a handle on it. Phase 1's focus assertion is unaffected by the move: it addresses the focused
-   * element, and `scrollIntoView` walks every scrollable ancestor.
+   * The list's own scroll container is the div below (`min-h-0 flex-1 overflow-y-auto
+   * overscroll-contain`): the panel used to scroll itself, and the rail restructure pins the rail
+   * outside the scroll. It carries no ref — nothing scrolls it programmatically any more (the
+   * scroll-to-top handle is gone with R2's repurposing of `up`) — and the focus assertion in the
+   * `open`-keyed effect above addresses the focused ELEMENT, whose `scrollIntoView` walks every
+   * scrollable ancestor.
    */
-  const listScrollRef = React.useRef<HTMLDivElement>(null)
-
-  /*
-   * `up`: the list to its top, smooth — and instant under `prefers-reduced-motion` (invariant 3:
-   * no smooth scroll survives that setting ungated). Read at TAP time, the way
-   * `MessageList`'s handler does (`components/nina/MessageList.tsx:219`), not in a listener: the
-   * setting can change while the panel is open, and a matchMedia subscription would be state this
-   * panel has no other use for.
-   */
-  const onScrollToTop = () => {
-    const el = listScrollRef.current
-    if (el === null) return
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollTo({ top: 0, behavior: reduced ? 'instant' : 'smooth' })
-  }
 
   return (
     <div
@@ -543,37 +660,47 @@ export function NinaSidebar({
       )}
       style={{
         /*
-         * The keyboard's edge. `inset-0` pins this panel to the LAYOUT viewport, and iOS does not
-         * shrink that when the software keyboard opens — so a full-height panel runs on behind the
-         * keys and Safari's focus reveal answers by lifting the whole fixed overlay off the top of
-         * the glass ("mengangkat UI keatas", the owner's report): the search field this panel is
-         * typed into exits the screen while the keyboard holds the bottom. Ending the panel at the
-         * keyboard's measured top edge instead puts the field inside the visible region — the same
-         * fix `Composer` ships as `composerBottomCss(overlap, …)`, reached here as a `:root`
-         * custom property because the subscription that measures it lives in `ChatScreen`, this
-         * panel's sibling, not its ancestor (`NINA_BAR_VISIBLE_VAR`'s seam; the var's own docstring
-         * in `lib/nina/chatview.ts` carries the rest).
+         * The keyboard's edge, and now the bar's too. `inset-0` pins this panel to the LAYOUT
+         * viewport, and iOS does not shrink that when the software keyboard opens — so a
+         * full-height panel runs on behind the keys and Safari's focus reveal answers by lifting
+         * the whole fixed overlay off the top of the glass ("mengangkat UI keatas", the owner's
+         * report): the search field this panel is typed into exits the screen while the keyboard
+         * holds the bottom. Ending the panel at the keyboard's measured top edge instead puts the
+         * field inside the visible region — the same fix `Composer` ships as
+         * `composerBottomCss(overlap, …)`, reached here as a `:root` custom property because the
+         * subscription that measures it lives in `ChatScreen`, this panel's sibling, not its
+         * ancestor.
+         *
+         * R2 adds the second term: while the bar is showing (`--nina-bar-visible`), the panel
+         * lifts by the bar's clearance plus the safe-bottom the bar pads itself by, so the bar
+         * renders in its own reachable strip BELOW this panel's bottom edge instead of behind the
+         * panel's opaque `z-50` fill. The arithmetic is `panelBottomCss`'s
+         * (lib/nina/chatview.ts) — the composer's own var-gated shape — and `PANEL_BOTTOM_CSS`
+         * above holds the string.
          *
          * An inline style rather than a Tailwind arbitrary value, because it must beat `inset-0`'s
          * `bottom: 0` in the cascade without depending on utility sort order. The string is
-         * CONSTANT — it never re-renders, whatever the keyboard does; the var underneath it is what
-         * moves. Absent (no keyboard, Android, pre-hydration, off `/nina`) it substitutes `0px`,
-         * which is exactly `inset-0`, so the resting panel and the server's HTML never differ. And
-         * `transition-transform` is transform-only, so the edge SNAPS with the keyboard rather than
-         * lagging a transition behind it.
+         * CONSTANT — it never re-renders, whatever the keyboard and the bar do; the vars
+         * underneath it are what move. Absent (no keyboard, no bar, Android, pre-hydration, off
+         * `/nina`) both substitute their zeros, which is exactly `inset-0`, so the resting panel
+         * and the server's HTML never differ. And `transition-transform` is transform-only, so
+         * the edge SNAPS with the keyboard and with the bar rather than lagging a transition
+         * behind either — the composer's own behaviour when the bar auto-hides.
          *
-         * This edge fixes the panel's BOX. The panel's SCROLL is the other half of the bug —
-         * Safari's focus reveal scrolls the panel's own `overflow-y-auto` container, which no box
-         * can unscroll — and the `focusin` listener in the `open`-keyed effect above is what
-         * corrects it, on `KEYBOARD_REASSERT_DELAYS_MS`' schedule.
+         * This edge fixes the panel's BOX. The panel's SCROLL is the other half of the bug, and
+         * both of its channels are corrected in the `open`-keyed effect above: the delegated
+         * `focusin` listener re-asserts the focused field over the deck's reveal on
+         * `KEYBOARD_REASSERT_DELAYS_MS`' schedule, and — the channel `nearest` cannot see — a
+         * window `scroll` listener pins the root scroller to 0 while a panel text field holds
+         * focus.
          *
          * Since the rail (R5) this edge is ALSO the rail's floor: the rail is this panel's last
-         * flex child, so the keyboard's top edge is where the rail's own bottom padding starts —
-         * which is why the rail's floor formula reads this same var. The panel itself no longer
-         * scrolls (`overflow-y-auto` moved to the scroll region below with `overscroll-contain`);
-         * it is now the column that holds the two decks.
+         * flex child, so the keyboard's top edge — or the bar's, while it shows — is where the
+         * rail's own bottom padding starts, which is why `RAIL_PAD_BOTTOM_CSS` reads both vars.
+         * The panel itself no longer scrolls (`overflow-y-auto` moved to the scroll region below
+         * with `overscroll-contain`); it is now the column that holds the two decks.
          */
-        bottom: `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+        bottom: PANEL_BOTTOM_CSS,
       }}
     >
       {/*
@@ -586,7 +713,7 @@ export function NinaSidebar({
         buttons and the rail needs no background — the frosted discs carry the glass treatment, the
         panel's `bg-paper` is what shows between them.
       */}
-      <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* The app's column, so the panel is not a full-bleed sheet of paper on a wide viewport.
             `--safe-top` is the notch inset; `PhotoViewer` is the precedent for a full-screen overlay
             honouring it. The bottom is `pb-6`, not the old `calc(1.5rem + var(--safe-bottom))`:
@@ -657,9 +784,10 @@ export function NinaSidebar({
 
       {/*
         ── THE RAIL (R5): FOUR ICONS, PINNED TO THE PANEL'S BOTTOM EDGE ─────────────────────────
-        The owner's list, in his order: `>` closes, `up` returns the list to its top, `+` starts a
-        chat, the wand opens "Proses foto". Two full-width rows bought this — they cost 44 px plus
-        margins each on the small glass and the list behind them paid for it.
+        The owner's list, in his order: `>` closes, `up` toggles the main bar (R2 — the chat page's
+        own reveal, shared state), `+` starts a chat, the wand opens "Proses foto". Two full-width
+        rows bought this — they cost 44 px plus margins each on the small glass and the list behind
+        them paid for it.
 
         ── THE GAP IS THE COMPOSER'S OWN (R5-c) ─────────────────────────────────────────────────
         "gunakan jarak yang sama dengan jarak chat query input field <-> bottom screen". The
@@ -705,19 +833,38 @@ export function NinaSidebar({
           </button>
 
           {/*
-            `up` — ChatChrome's toggle chevron (`M6 14l6-6 6 6`, strokeWidth 2.4), the second of the
-            two controls the owner cited. Scrolls the list's own container (not the page — the
-            panel covers it) to its top; smooth, instant under reduced motion (see onScrollToTop).
+            `up` — the chat page toggle's own control, doing the chat page's job from the panel: it
+            toggles the MAIN app TabBar through the same shared state ChatChrome's toggle writes
+            (`NinaBarProvider`, mounted in `AppShell` around both subtrees). The semantics are the
+            chat page's verbatim: `nextBarState(current, 'toggle')` inside the provider's
+            `dispatch`, the 5 s auto-hide and the keyboard rule are `ChatChrome`'s effects and fire
+            on this state whatever wrote it; the glyph is `barToggleGlyph`'s two chevrons
+            (`M6 14l6-6 6 6` / `M6 10l6 6 6-6`, strokeWidth 2.4) at this rail's `size-5`;
+            `aria-expanded` + `aria-controls="main-tab-bar"` and the chat page's English labels
+            make the single control honest to a screen reader.
+
+            It REPLACED the scroll-to-top tap handle: the list is the panel's whole height and its
+            top is its first row, so the handle bought nothing the list's own gesture didn't.
+            `listScrollRef` and `onScrollToTop` are gone with it — nothing scrolls the deck
+            programmatically now.
+
+            `ninaBar` is null only outside a `NinaBarProvider`, which is unreachable from this
+            panel: `AppShell` mounts the provider around the same `shell` node that carries both
+            consumers (the sidebar provider's own measured precedent, and
+            `tests/nina.sidebarProvider.test.ts`'s structural guard). The optional chain is the
+            hook's null contract, not a live branch.
           */}
           <button
             type="button"
-            onClick={onScrollToTop}
-            aria-label="Ke atas"
+            onClick={() => ninaBar?.dispatch('toggle')}
+            aria-expanded={ninaBar?.bar === 'shown'}
+            aria-controls="main-tab-bar"
+            aria-label={glyph === 'up' ? 'Show the main navigation' : 'Hide the main navigation'}
             className={RAIL_CONTROL_CLASS}
           >
             <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
               <path
-                d="M6 14l6-6 6 6"
+                d={glyph === 'up' ? 'M6 14l6-6 6 6' : 'M6 10l6 6 6-6'}
                 stroke="currentColor"
                 strokeWidth="2.4"
                 strokeLinecap="round"
