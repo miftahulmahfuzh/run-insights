@@ -1,7 +1,7 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-09 (task `P1-RI-A028`, phase 1 of the `admin-imagegen-simplify` set — the Image Generation tab moved onto the auto-save draft/saved pipeline, the prefs reset action and its schema deleted; previously task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s actions, and the prefs Zod boundary in `schema.ts`)
+**Last Updated**: 2026-09-09 (task `P1-RI-A029`, phase 2 of 3 of the same set — the image-prefs revision purge: `AdminImageGenResult` no longer carries `revision` and the save note no longer names one; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but NOT applied — the post-deploy `npm run db:migrate`; previously task `P1-RI-A028`, phase 1 of the set — the Image Generation tab moved onto the auto-save draft/saved pipeline, the prefs reset action and its schema deleted; previously task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s actions, and the prefs Zod boundary in `schema.ts`)
 
 ## Overview
 
