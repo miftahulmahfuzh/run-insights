@@ -1,0 +1,426 @@
+# Phase 3: Focus on — the redundant hint under each option
+
+**Plan set:** `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md`
+**Analysis:** `20260909-153327-6A82_code_analyzer.md`
+**Satisfies:** R3 — the user-facing thing this phase serves
+**Depends on:** Phase 2
+**Difficulty:** EASY
+**Package:** `components/admin` + `lib`
+
+---
+
+## Goal
+
+Each of the six "Focus on" cards renders its label and nothing else — the second line that
+repeated the lowercased label back at the operator ("face" under Face, "big boobs" under Big
+boobs) is gone, and with it the data that only existed to feed that line
+(`NinaImageFocusSpec.userSaid`) and the copy accessor's vestigial shape. The user's vocabulary
+survives verbatim in the labels, positively pinned by test, and the negative clinical-synonym
+test — the protection that stops a well-meaning edit from shipping "gluteal" for "bubble butt" —
+survives unchanged in meaning.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:**
+- `NinaImageFocusSpec.userSaid` (`lib/nina/imageprefs.ts:212`) and its six values
+  (`lib/nina/imageprefs.ts:217-226`)
+- the focus card's hint span `{copy.hint}` and its wrapper (`components/admin/ImageGenPanel.tsx:280-288`, inner spans)
+- test pins: the `hint.length` loop line (`tests/admin.imagegen.test.ts:92`), the fallback-hint
+  line (`tests/admin.imagegen.test.ts:136`), the `userSaid` array pin
+  (`tests/nina.imageprefs.test.ts:171-182`, replaced — see Creates)
+
+**Renames:** none.
+
+**Signature changes:**
+- `imageFocusCopy(key: string): ImageGenCopy` -> `imageFocusCopy(key: string): string`
+  (`lib/admin/imageGenModel.ts:280`). Every caller is in this phase's file list (census:
+  `components/admin/ImageGenPanel.tsx:262`, `tests/admin.imagegen.test.ts:91,92,105,135,136,140`).
+  No caller reads `.band` or the focus `.hint` after this phase.
+
+**Creates:**
+- `NINA_IMAGE_FOCUS_KEYS.map((k) => NINA_IMAGE_FOCUS_SPECS[k].label)` pinned to
+  `['Face','Skin','Big boobs','Bubble butt','Big thighs','Very long calves']` — the `userSaid`
+  pin re-homed on `label`, same test, same file (`tests/nina.imageprefs.test.ts`). Order and
+  spelling are the specification; the user dictated both.
+
+**Requires (from earlier phases):**
+- Phase 1's auto-save pipeline is in place: the focus checkbox commits on change through phase 1's
+  handler, `disabled={pending}` is gone from it, and the per-field pending predicate is measured
+  against the panel's `saved` state, not the `prefs` prop.
+- Phase 2's revision purge is done: no `revision` prop, copy, or docstring remains in
+  `ImageGenPanel.tsx` / `imageGenModel.ts` / `imageprefs.ts`.
+- Both are preconditions, not work this phase does: if `disabled={pending}` is still on the focus
+  checkbox, phase 1 has not landed and this phase must not run yet.
+
+**Leaves alone (owned by others):**
+- `NINA_FOCUS_EMPHASIS` and everything in `lib/nina/imagegen.ts` — the prompt's emphasis
+  vocabulary (`term`/`sentence` literals keyed by `NinaImageFocusKey`, `lib/nina/imagegen.ts:319-346`)
+  has never read the spec record; this phase does not add a reader.
+- `NinaTraitSpec.userSaid` / `NinaDialSpec.userSaid` in `lib/nina/tuning.ts` — a DIFFERENT member
+  with the same name and live readers (`lib/admin/tuningModel.ts:140-142` renders it into the
+  tuning hints). Nothing anywhere in this set touches it; a repo-wide `userSaid` grep is the wrong
+  gate (see Verification).
+- `ImageGenCopy` the interface and `promptLengthCopy` — the length slider's hint and band are
+  genuinely informative and stay (`lib/admin/imageGenModel.ts:89-101,307-318`).
+- `hasImageFocusCopy`, `prettifyFocusKey`, `focusOnKeys` — all keep their signatures and callers.
+- The fieldset's "These add emphasis on top…" paragraph (`ImageGenPanel.tsx:255-259`) — it explains
+  emphasis-vs-inclusion, which is NOT the redundancy the user named.
+- The ring/selected styling, `TOUCH_TARGET`, `items-start gap-2` card layout, the `unsaved` badge
+  beside each label, the DialSlider and text-field hints, and phase 1's commit handlers (their
+  spelling, whatever it is, carries through verbatim — see Assumptions).
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/nina/imageprefs.ts` | modify | `userSaid` off `NinaImageFocusSpec` (:207-213) and off all six spec values (:215-227); the two docstrings that promise the member (:184-189, :198-206) rewritten |
+| `lib/admin/imageGenModel.ts` | modify | `imageFocusCopy` returns the label string; its docstring (:273-290) rewritten; one loose header sentence corrected (:44) |
+| `components/admin/ImageGenPanel.tsx` | modify | the six cards render one span; `const copy = imageFocusCopy(key)` gone; one paragraph added to the fieldset comment explaining the label-only card |
+| `tests/admin.imagegen.test.ts` | modify | three test blocks re-pinned to the string return (:88-94, :104-111, :133-141); clinical-synonym negative test keeps its meaning |
+| `tests/nina.imageprefs.test.ts` | modify | the `userSaid` array pin (:171-182) re-homed on `label` |
+
+## Implementation Steps
+
+> **Line numbers.** `lib/nina/imageprefs.ts` :184-227 is untouched by phases 1-2 (their edits in
+> this file are the `revision` members at :616+, below it), so its numbers are exact. In
+> `imageGenModel.ts` phase 2 rewords `ImageGenDraft`'s docstring (~:53) and in `ImageGenPanel.tsx`
+> phases 1-2 rewrite everything above the Focus fieldset and below the picker, shifting numbers by
+> more than the diff — the content anchors in each step win over the numbers there.
+
+### Step 1: `NinaImageFocusSpec` loses `userSaid`
+**File:** `lib/nina/imageprefs.ts:184-227`
+**Change:** Replace the block from the `NINA_IMAGE_FOCUS_KEYS` docstring through the end of the
+`NINA_IMAGE_FOCUS_SPECS` record with the following. The record itself keeps `Object.freeze` on the
+outer object and every entry (frozen because `NINA_IMAGE_PREFS_DEFAULTS` is frozen and hands the
+same objects around); only the member and the docstring promises change. `calves` collapses to one
+line because `userSaid` was the only reason it wrapped.
+**Code:**
+```ts
+/**
+ * **The six, in the user's own order**, which is the panel's order and the prompt's order.
+ *
+ * The keys are short because they become column names (`focus_boobs`) and object keys read by a
+ * client panel; the user's words are in `label`, where nothing may tidy them.
+ */
+export const NINA_IMAGE_FOCUS_KEYS = ['face', 'skin', 'boobs', 'butt', 'thighs', 'calves'] as const
+
+export type NinaImageFocusKey = (typeof NINA_IMAGE_FOCUS_KEYS)[number]
+
+export function isNinaImageFocusKey(key: string): key is NinaImageFocusKey {
+  return (NINA_IMAGE_FOCUS_KEYS as readonly string[]).includes(key)
+}
+
+/**
+ * One focus option, fully described. The `NINA_TRAIT_SPECS` idiom: a key array for the order, a
+ * spec record for everything about each key.
+ *
+ * `label` is **the user's own words, sentence-cased** — his list was *"face, skin, big boobs,
+ * bubble butt, big thighs, very long calves"*, and the image-prefs simplify set made the label the
+ * one home for those words on this record by deleting `userSaid`, whose only reader was the
+ * redundant hint the same set removed from the panel. Nothing may rephrase the label, because the
+ * whole complaint that produced this feature was that the prompt did not say these words. The
+ * prompt's emphasis vocabulary itself lives in `NINA_FOCUS_EMPHASIS` (`lib/nina/imagegen.ts`),
+ * which is keyed by `NinaImageFocusKey` and has never read this record.
+ */
+export interface NinaImageFocusSpec {
+  readonly key: NinaImageFocusKey
+  /** The checkbox's label. Sentence case. */
+  readonly label: string
+}
+
+export const NINA_IMAGE_FOCUS_SPECS: Readonly<Record<NinaImageFocusKey, NinaImageFocusSpec>> =
+  Object.freeze({
+    face: Object.freeze({ key: 'face', label: 'Face' }),
+    skin: Object.freeze({ key: 'skin', label: 'Skin' }),
+    boobs: Object.freeze({ key: 'boobs', label: 'Big boobs' }),
+    butt: Object.freeze({ key: 'butt', label: 'Bubble butt' }),
+    thighs: Object.freeze({ key: 'thighs', label: 'Big thighs' }),
+    calves: Object.freeze({ key: 'calves', label: 'Very long calves' }),
+  })
+```
+**Impact:** `imageFocusCopy` (Step 2) stops compiling until Step 2 lands — do Steps 1 and 2 in one
+commit. `tests/nina.imageprefs.test.ts:174` stops compiling until Step 5. No other file reads the
+member (census in the Interface Contract).
+
+### Step 2: `imageFocusCopy` returns the label, and only the label
+**File:** `lib/admin/imageGenModel.ts:273-290`
+**Change:** Replace `imageFocusCopy` and its docstring wholesale. The shape follows the same rung
+the set used to delete `userSaid` itself: `band` was already always `''` here (a checkbox has no
+scale), and a `hint` field whose contract is "must stay empty" is an absence pinned by a test —
+exactly the drift this set exists to remove. `promptLengthCopy` keeps `ImageGenCopy` because its
+hint and band are rendered and read by `/admin`'s hub card.
+**Code:**
+```ts
+/**
+ * The label for one of the six focus options, **read off phase 1's specs** — and, since the
+ * image-prefs simplify set, the ONLY copy a focus card has. The hint this function used to return
+ * rendered the spec's `userSaid` under each option, which repeated the label back in lower case
+ * ("face" under Face); the user asked for that line gone, and with it went `userSaid`, whose one
+ * reader was this return value.
+ *
+ * A plain string, not `ImageGenCopy`, for the same rung: `band` was already always `''` here (a
+ * checkbox has no scale), and a `hint` that must stay empty is an absence pinned by its own test.
+ * `promptLengthCopy` keeps the `ImageGenCopy` shape because its hint and band are genuinely
+ * rendered.
+ *
+ * The fallback exists so a running page degrades to a readable label rather than crashing on a key
+ * phase 1 adds, and `tests/admin.imagegen.test.ts` fails on any key in `NINA_IMAGE_FOCUS_KEYS`
+ * that reaches it — the net is for a running page, never a licence to ship an unlabelled checkbox.
+ */
+export function imageFocusCopy(key: string): string {
+  if (hasImageFocusCopy(key)) {
+    return NINA_IMAGE_FOCUS_SPECS[key as keyof typeof NINA_IMAGE_FOCUS_SPECS].label
+  }
+  return prettifyFocusKey(key)
+}
+```
+**Rider (docstring only, same file, same subject — where the user's words live):** the file header's
+third paragraph (:42-46) says the six options *"live in `NINA_IMAGE_FOCUS_SPECS[key].label`, the
+prompt composes from the same specs, and this file only reads them"*. The middle clause is loose —
+the prompt composes from `NINA_FOCUS_EMPHASIS` (`lib/nina/imagegen.ts`), keyed by the same
+`NinaImageFocusKey`. Replace that one sentence with:
+```ts
+ * live in `NINA_IMAGE_FOCUS_SPECS[key].label`, the prompt's emphasis terms are keyed by the same
+ * `NinaImageFocusKey` (`NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts`), and this file only reads
+ * them, so the panel cannot promise an emphasis the prompt does not add. A label
+```
+(i.e. the paragraph reads `…big thighs, very long calves. They` / `live in … / them, so the panel…`
+with no other word moved.)
+**Impact:** `components/admin/ImageGenPanel.tsx:262` and the three admin-test blocks stop compiling
+until Steps 3-4 land. Same commit.
+
+### Step 3: the six cards render one line each
+**File:** `components/admin/ImageGenPanel.tsx` — the Focus fieldset's grid (today :260-292; after
+phases 1-2, locate by `NINA_IMAGE_FOCUS_KEYS.map`)
+**Change:** Two edits inside the fieldset. (a) Add a third paragraph to the existing JSX comment so
+the label-only card is a recorded decision and not an accident a later diff "fixes" by restoring
+Personality's hint pattern. (b) Replace the map body: the `const copy` line goes, the two nested
+spans collapse to one (the inner `block` class existed to stack label over hint; with one child
+there is nothing to stack), the hint span goes.
+
+The checkbox line shown here is **phase 1's, carried forward verbatim from its landed plan** —
+`onChange` through `setFocus` (phase 1 kept the name), the pending predicate spelled
+`pendingFields.has(...)` (phase 1's per-field set, measured against the panel's `saved` state),
+and the absence of `disabled={pending}` are all phase 1's contract, quoted as its file holds them.
+This phase owns only the span structure and the label expression.
+**Code:**
+```tsx
+          {/*
+           * The leading `*` on every line of this comment is load-bearing and not tidy:
+           * `ci:client-secret-guard` recognises a comment line only when it is trimmed-prefixed by
+           * `//`, `*` or `/*`, so a JSX comment with bare prose continuation lines is scanned as
+           * code. Both existing admin pages record the same trap.
+           *
+           * These six are ADDITIVE. R1's four body facts are in every prompt whatever is ticked
+           * here — plan invariant 4 — so clearing all six shortens the emphasis and does not
+           * undress the subject paragraph. The sentence below says so, and the preview proves it.
+           *
+           * Each card is the label and nothing else: the line this set removed rendered the
+           * lowercased label back at the operator — "face" under Face — which was the copy reading
+           * itself. The words the prompt actually spends live in `NINA_FOCUS_EMPHASIS`
+           * (`lib/nina/imagegen.ts`), a paragraph cannot carry them, and the assembled prompt
+           * below is where an operator reads what a tick adds. Personality's option cards still
+           * carry hints; these deliberately do not, because Personality's hints say something the
+           * control's label cannot.
+           */}
+          <p className="mb-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
+            These add emphasis on top of the prompt. They cannot take anything out of it: her body
+            is described in every photograph whether or not anything here is ticked. Read the
+            assembled prompt below to see what each one adds.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {NINA_IMAGE_FOCUS_KEYS.map((key) => {
+              const ticked = isOn(key)
+              return (
+                <label
+                  key={key}
+                  className={cn(
+                    TOUCH_TARGET,
+                    'flex cursor-pointer items-start gap-2 rounded-card bg-paper-2 p-3',
+                    ticked && 'ring-2 ring-accent',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={ticked}
+                    onChange={(event) => setFocus(key, event.target.checked)}
+                    className="mt-0.5 size-4 shrink-0 accent-accent"
+                  />
+                  <span className="text-[13px] font-semibold text-ink">
+                    {imageFocusCopy(key)}
+                    {pendingFields.has(`focus.${key}`) && (
+                      <span className="ml-2 text-[11px] font-semibold text-accent">unsaved</span>
+                    )}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+```
+(The quoted block deliberately shows no `disabled={pending}` on the checkbox — phase 1 removed it.
+If the tree still has it, phase 1 has not landed; stop.)
+**Impact:** The panel imports of `imageFocusCopy` stay (still called, now inlined in the JSX). The
+grid, ring styling, `TOUCH_TARGET`, the pending badge and the fieldset paragraph are unchanged; the
+cards lose one text line and their row heights equalise for free.
+
+### Step 4: the admin test pins the new shape
+**File:** `tests/admin.imagegen.test.ts:88-141`
+**Change:** Three blocks. The clinical-synonym negative test keeps every word of its comment and
+every clinical term; only the selector changes, because `imageFocusCopy` now IS the label. The
+positive spelling of the vocabulary is NOT restated here — this file's own comment (:100-103)
+records why: *"phase 1 owns the spelling and asserts the words in `tests/nina.imageprefs.test.ts`,
+so restating them here would be a second source of truth for the same requirement."* Step 5 moves
+that positive pin onto `label`.
+**Code:**
+```ts
+  it('has a real label for every one of them', () => {
+    for (const key of NINA_IMAGE_FOCUS_KEYS) {
+      expect(hasImageFocusCopy(key), `no copy for focus option ${key}`).toBe(true)
+      expect(imageFocusCopy(key).length).toBeGreaterThan(0)
+    }
+  })
+
+  /*
+   * The one thing about this vocabulary that could ship wrong without anybody noticing. The user
+   * gave these six as prompt text — *"big boobs, bubble butt, big thighs, very long calves"* — and
+   * a well-meaning edit that replaced them with clinical synonyms would change what the camera is
+   * asked for while leaving the page looking finished. This is a NEGATIVE assertion on purpose:
+   * phase 1 owns the spelling and asserts the words in `tests/nina.imageprefs.test.ts`, so
+   * restating them here would be a second source of truth for the same requirement.
+   */
+  it('has not sanitised the option names into clinical synonyms', () => {
+    const labels = NINA_IMAGE_FOCUS_KEYS.map((key) => imageFocusCopy(key))
+      .join(' ')
+      .toLowerCase()
+    for (const clinical of ['mammary', 'gluteal', 'gluteus', 'adipose', 'posterior', 'bust']) {
+      expect(labels, `a focus label says "${clinical}"`).not.toContain(clinical)
+    }
+  })
+```
+and, in the existing `'falls back to a readable label for a key it has never heard of'` block,
+drop the hint line and unwrap the `.label` selectors:
+```ts
+  it('falls back to a readable label for a key it has never heard of', () => {
+    expect(hasImageFocusCopy('some_new_option')).toBe(false)
+    expect(imageFocusCopy('some_new_option')).toBe('Some new option')
+    /* And a key phase 1 DOES declare keeps its declared label rather than the prettified key:
+     * `prettifyFocusKey('butt')` is "Butt", and the user's word is "bubble butt". */
+    expect(prettifyFocusKey('butt')).toBe('Butt')
+    expect(imageFocusCopy('butt')).toBe('Bubble butt')
+  })
+```
+**Impact:** No import changes (`imageFocusCopy`, `hasImageFocusCopy`, `prettifyFocusKey` all still
+imported). The `'reads the length band off phase 1…'` block's `promptLengthCopy(...).hint` /
+`.band` pins are untouched — the length slider still has both.
+
+### Step 5: the vocabulary pin moves onto `label`
+**File:** `tests/nina.imageprefs.test.ts:171-182`
+**Change:** Replace the `userSaid` pin with the label pin — same test, same literal array, same
+order. This is now the ONE positive statement of the user's six words in their panel spelling;
+`tests/admin.imagegen.test.ts` holds the negative half (Step 4) and the spot check
+`imageFocusCopy('butt')` -> `'Bubble butt'`.
+**Code:**
+```ts
+  it('carries his own words, verbatim and untidied, in the labels', () => {
+    // "focus on (select multi options): face, skin, big boobs, bubble butt, big thighs, very long
+    // calves". The list is the specification, so it is stored rather than paraphrased. The
+    // simplify set made `label` the one home for these words on the spec when it deleted
+    // `userSaid` — whose only reader was the redundant hint under each option. Order and spelling
+    // are both his; the prompt's emphasis terms (`NINA_FOCUS_EMPHASIS`, lib/nina/imagegen.ts) are
+    // keyed by the same keys and say the same words in prompt register.
+    expect(NINA_IMAGE_FOCUS_KEYS.map((k) => NINA_IMAGE_FOCUS_SPECS[k].label)).toEqual([
+      'Face',
+      'Skin',
+      'Big boobs',
+      'Bubble butt',
+      'Big thighs',
+      'Very long calves',
+    ])
+  })
+```
+**Impact:** None beyond Step 1's — the file already imports `NINA_IMAGE_FOCUS_SPECS` and
+`NINA_IMAGE_FOCUS_KEYS` (:16-17 area, unchanged).
+
+## Verification
+
+**Build:** `npm run typecheck` (runs `next typegen && tsc --noEmit`)
+**Lint:** `npm run lint`
+**Tests:**
+```
+npx vitest run tests/admin.imagegen.test.ts tests/nina.imageprefs.test.ts
+npx vitest run
+```
+**Census (the right gate, scoped):** the image-focus `userSaid` is gone, the tuning `userSaid` is
+nobody's business — so grep the touched files, not the repo. The gate pins the CODE, not the word:
+this phase's own replacement docstrings and comments name `userSaid` in prose (they record why it
+was deleted), so a bare grep would fail on this phase's own landed text — the same codeOnly split
+`tests/admin.imagegen.test.ts` codifies (a comment may DISCUSS the boundary, only code may cross
+it):
+```
+grep -rnE "userSaid[?]*\s*:|\.userSaid" lib/nina/imageprefs.ts lib/admin/imageGenModel.ts components/admin/ImageGenPanel.tsx tests/admin.imagegen.test.ts tests/nina.imageprefs.test.ts
+```
+must return nothing — it matches the member declaration, the six spec literal values, and every
+property read, but none of the prose. And `grep -c userSaid lib/nina/tuning.ts` must stay
+non-zero (a repo-wide grep that comes back empty would mean somebody broke the tuning specs — that
+is the failure, not success).
+**Commit hygiene (shared worktree):** `git add` and `git commit` by explicit path for exactly the
+five files; read the `--stat` before committing; format only the touched files
+(`npx prettier --write <five paths>`), never repo-wide `npm run format`, which would reformat
+peers' in-flight files.
+**Manual check:** run the app locally on a non-3000 port (`.env.local` here is production's URL —
+do not migrate, do not touch the DB; this phase has no schema surface anyway), open
+`/admin/image-generation`: six Focus cards show one line each, the ring still appears on tick, the
+"unsaved" badge still appears beside a just-ticked label, the fieldset still opens with the
+emphasis-vs-inclusion paragraph, and the assembled-prompt `<details>` still shows the
+`FOCUS:` block with the user's words (that text comes from `NINA_FOCUS_EMPHASIS`, which this phase
+did not touch — it must not have changed).
+**Exit criteria:** the six cards show one line each; the scoped census grep is empty; the label
+vocabulary pin passes with the exact six strings in order; `npx vitest run`,
+`npm run lint`, `npm run typecheck` all green.
+
+## Assumptions
+
+- **Phase 1's handler spellings — RESOLVED against its landed plan.** The quoted card quotes
+  phase 1's file: the handler is `setFocus(key, event.target.checked)` (name kept), the pending
+  set is `pendingFields` — `pendingFields.has(`focus.${key}`)`, measured against the panel's
+  `saved` state — and the checkbox carries no `disabled`. The reconciliation corrected this plan's
+  former `unsaved.has(...)` spelling (today's file, which phase 1 replaces). If the landed tree
+  ever disagrees with the quote, phase 1's file wins; this plan's claim on the region is the span
+  structure and `{imageFocusCopy(key)}`.
+- **Phase 2 leaves the quoted regions' content alone — verified against its plan.** In
+  `imageprefs.ts` its edits are the `revision` members at :613+ (below this phase's :184-227
+  block); in `imageGenModel.ts` the `ImageGenDraft` docstring (~:53, above it, shifting numbers
+  only); in `ImageGenPanel.tsx` the `revision` prop + docstring, the destructure, the two revision
+  copy sites, and the header resync paragraph — none inside the code blocks above.
+- ~~The phase-1 and phase-2 plan files did not exist when this plan was written~~ — superseded at
+  reconciliation: both plans have since landed and were checked against these assumptions. Every
+  one held; the single correction was the pending-set spelling, fixed in Step 3's quote.
+
+## Decisions
+
+| Fork | Chosen | Rung |
+|---|---|---|
+| `imageFocusCopy` after the hint: keep `ImageGenCopy` with `hint: ''`/`band: ''`, or return the label string? | Return `string` | The index's own Decision row (userSaid): a member whose only reader is its own test is the drift this set removes; `band: ''` was already vestigial (a checkbox has no scale) and an always-empty `hint` is an absence pinned by a test. `promptLengthCopy` keeps `ImageGenCopy` because its hint and band are rendered |
+| Where the positive vocabulary pin lives: admin test or prefs test? | `tests/nina.imageprefs.test.ts`, re-homed from `userSaid` to `label` | The admin file's own comment (`tests/admin.imagegen.test.ts:100-103`): phase 1 owns the spelling and asserts it there; restating in the admin file is a second source of truth. The admin file keeps the negative clinical-synonym net plus the `'Bubble butt'` spot check — the render path stays guarded without restating the list |
+| Should the fieldset comment explain the missing hint? | Yes, one paragraph | The sibling Personality cards still carry hints; without a recorded reason the next diff restores this one. Same register as the panel's existing comment blocks |
+
+## Handoffs
+
+- **`lib/nina/.workflows/package_readme.md:487`** names `NinaImageFocusSpec.userSaid` in prose —
+  doc drift after this phase. For the readme-updater at landing (or the coordinator's finalize
+  step), not for this phase: package readmes are updated against the landed tree, and the
+  `.workflows/plan/*.md` copies are historical records that must never be edited.
+- **`lib/nina/tuning.ts`'s `userSaid`** (`NinaTraitSpec`/`NinaDialSpec`) has live readers
+  (`lib/admin/tuningModel.ts:140-142`) and is outside every phase of this set. Stated here so no
+  implementer "completes" the purge across the homonym.
+- **DialSlider / text-field hints** are genuinely informative (prompt-length band, per-field
+  guidance) and are out of scope by the index; nobody should read R3 as "remove all hints".
+
+## Rollback
+
+Revert the phase-3 commit(s). Every change is a pure frontend/test subtraction: no schema, no
+migration, no persisted shape, no cross-phase contract beyond `imageFocusCopy`'s return type,
+which the revert restores together with its callers. Hints return; `userSaid` returns; tests
+re-pin to the old shape by the same revert.
