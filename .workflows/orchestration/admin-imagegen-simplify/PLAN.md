@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/run-insights/.claude/worktrees/admin-imagegen-simplify`
 **Branch:** `worktree-admin-imagegen-simplify` (base: `origin/main` @ `8652e42`)
 **Phases:** 3
-**Status:** complete — all 3 phases landed on `worktree-admin-imagegen-simplify`; a phase is complete when its row in the Phases table is ticked ✅. The set is reviewed and merged as a whole. No migration applied yet — phase 2's `0017` is committed but NOT applied; it runs post-deploy via `npm run db:migrate` (invariant 7).
+**Status:** complete — 3/3 phases landed; merged to `main` @ b373a90; migration 0017 applied post-deploy and verified in the database (`nina_image_prefs.revision` dropped, journal 16→17).
 **Coordinator:** orch-admin-imagegen-simplify
 
 ---

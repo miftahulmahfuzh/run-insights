@@ -3,6 +3,12 @@
   "coordinator": "orch-admin-imagegen-simplify",
   "coordinator_session_id": "a2a78f17-6fb7-498b-8cc8-b43241a9b279",
   "created": "2026-09-09T09:41:45+00:00",
+  "landed": {
+    "at": "2026-09-09T11:36:32+00:00",
+    "base": "main",
+    "commit": "b373a906c3326f0f42b285e7d04831681b4fcb51",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -63,6 +69,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-imagegen-simplify/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-imagegen-simplify",
-  "updated": "2026-09-09T11:33:07+00:00",
+  "updated": "2026-09-09T11:36:32+00:00",
   "worktree": "/home/miftah/run-insights/.claude/worktrees/admin-imagegen-simplify"
 }
