@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
 import { cn } from '@/lib/cn'
+import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
 import { createNinaChatSession } from '@/lib/nina/sessionActions'
 
 /**
@@ -29,6 +30,21 @@ import { createNinaChatSession } from '@/lib/nina/sessionActions'
  * open sidebar sitting over the chat it just opened. Replacing drops the parameter, so the panel
  * closes through the URL that opened it and the gesture underneath still goes back to the session
  * he came from.
+ *
+ * ── R5: THE ROW BECAME A DISC IN THE RAIL ─────────────────────────────────────────────────────
+ * "Chat baru" and "Proses foto" cost two full-width rows on an XS Max, so the sidebar now carries
+ * a four-icon rail at its bottom edge (`NinaSidebar.tsx`) and this control is its `+`. The chrome
+ * skin is `NINA_CHROME_CONTROL_CLASS` — the chat page's floating pair's own frosted glass, which
+ * is the pair the owner pointed at — with `size-11` overriding the pair's `size-8`: the pair's
+ * 32 px is a recorded owner exception that does NOT travel (its own docstring: "neither
+ * generalises"), because its defence was "the nearest rival target is tens of pixels away", and in
+ * the rail the nearest rival is 6 px to the side. 44 px is the floor invariant 4 cites, and two of
+ * the rail's four actions (this one creates a session and navigates; the wand navigates) are
+ * consequential, not chrome.
+ *
+ * Pending was a sentence ("Membuka chat baru…") on the row; on a disc it is `aria-busy` plus the
+ * dim of `disabled:opacity-60` — `NinaJobActions`' pattern for a one-tap action in flight, and
+ * there is no room on a 44 px disc for a sentence anyway.
  *
  * ── WHAT IT DOES NOT DO ───────────────────────────────────────────────────────────────────────
  * It never creates a second empty session: `createNinaChatSession` returns the newest session
@@ -64,18 +80,22 @@ export function NewChatButton({
     <button
       type="button"
       onClick={create}
+      aria-label="Chat baru"
+      aria-busy={pending}
       disabled={pending}
-      className={cn(
-        'flex h-11 w-full items-center justify-center gap-2 rounded-field bg-ink px-4',
-        'text-[14px] font-semibold text-card transition-opacity active:opacity-80',
-        'disabled:opacity-60',
-        className,
-      )}
+      className={cn(NINA_CHROME_CONTROL_CLASS, 'size-11', 'disabled:opacity-60', className)}
     >
-      <span aria-hidden="true" className="text-[17px] leading-none">
-        +
-      </span>
-      <span>{pending ? 'Membuka chat baru…' : 'Chat baru'}</span>
+      {/*
+        Lucide's `plus` (`M5 12h14`, `M12 5v14`), the glyph AdminNav's collection note covers —
+        lucide-static 1.42.0, ISC — drawn at the rail chevrons' own `strokeWidth 2.4` so the disc's
+        three house-drawn shapes and this borrowed one read at one weight. `aria-hidden`: the
+        button's name is the label above, and a labelled glyph inside a labelled button reads the
+        label twice.
+      */}
+      <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+        <path d="M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M12 5v14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+      </svg>
     </button>
   )
 }

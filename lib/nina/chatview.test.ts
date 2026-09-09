@@ -8,6 +8,7 @@ import {
   isNearBottom,
   keyboardOverlapPx,
   KEYBOARD_MIN_PX,
+  KEYBOARD_REASSERT_DELAYS_MS,
   NINA_BAR_VISIBLE_VAR,
   STICK_TO_BOTTOM_PX,
 } from './chatview'
@@ -213,6 +214,43 @@ describe('keyboardOverlapPx', () => {
         scale: NaN,
       }),
     ).toBe(0)
+  })
+})
+
+describe('KEYBOARD_REASSERT_DELAYS_MS', () => {
+  it('asserts in the same frame as the focus, before anything has moved', () => {
+    // Safari's reveal scroll happens synchronously with the focus event, so the first assert owes
+    // the schedule no delay at all — a schedule that started at 50 ms would spend its first frame
+    // trusting the very scroll it exists to correct.
+    expect(KEYBOARD_REASSERT_DELAYS_MS.at(0)).toBe(0)
+  })
+
+  it('is strictly ascending', () => {
+    // Every timer is armed when the focus lands, so an equal pair fires one assert where two were
+    // promised, and a descending pair asserts the later moment first. The previous delay rides in
+    // a closure variable rather than an index, which keeps `noUncheckedIndexedAccess` out of it.
+    let previous = -Infinity
+    for (const delay of KEYBOARD_REASSERT_DELAYS_MS) {
+      expect(delay).toBeGreaterThan(previous)
+      previous = delay
+    }
+  })
+
+  it('keeps asserting past the whole keyboard-settle chain, not just the animation', () => {
+    // The animation is ~300 ms, but the panel's box shrinks one visualViewport-resize → React
+    // state → effect → style round trip AFTER it, and Safari re-reveals against the new box. The
+    // last delay must clear the entire chain: 600 is twice the animation and past the round trip.
+    expect(KEYBOARD_REASSERT_DELAYS_MS.at(-1)).toBeGreaterThanOrEqual(600)
+  })
+
+  it('is made of non-negative integer milliseconds', () => {
+    // These go straight into `window.setTimeout`. A fractional or negative delay fires at a
+    // moment nobody chose; the rule is asserted here because the component that runs it cannot
+    // be tested (`vitest.config.ts` is `environment: 'node'`).
+    for (const delay of KEYBOARD_REASSERT_DELAYS_MS) {
+      expect(Number.isInteger(delay)).toBe(true)
+      expect(delay).toBeGreaterThanOrEqual(0)
+    }
   })
 })
 

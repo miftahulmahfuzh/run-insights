@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { CONTROL_CLASS } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -60,6 +60,30 @@ import { useSemanticPref } from './useSemanticPref'
  * optional for the same reason its own doc comment once made it required: as long as the seam
  * exists, a caller can wire it back to the close path and re-arm the race.
  *
+ * ── THE ✕ IN THE FIELD'S RIGHT END (R2), AND WHY THE INPUT IS `type="text"` ──────────────────
+ * The owner's ask has two halves that must land as ONE tap: the query AND the results go, and the
+ * keyboard stays up so the next query can be typed straight away. `type="search"` would draw
+ * Safari's own small clear glyph on iOS — an affordance this code cannot size to the 44 px floor,
+ * cannot give an accessible name, and cannot teach the two-part clear to — while Chrome Android
+ * draws none at all. So the input is `type="text"` and the ✕ below is the ONE clear affordance,
+ * on every browser, with a target, a name ("Hapus pencarian") and semantics this component owns;
+ * `enterKeyHint="search"` stays, so the keyboard's return key still reads SEARCH and still
+ * commits through the Enter handler.
+ *
+ * The tap does three things — `setText('')`, `setResult(null)`, `inputRef.current?.focus()` —
+ * and deliberately nothing to `requestRef`: the emptied query re-runs the effect above, whose
+ * bump drops any in-flight response and whose cleanup cancels the pending debounce, so the clear
+ * cannot race a search it just deleted. Nulling `result` is honest state, not decoration: the
+ * `active` gate already hides every results block the moment the query empties, but keeping the
+ * old `result` would let a clear-then-retype of the SAME query pass `fresh` on the first
+ * keystroke back and repaint the stale answer as though it were this search's.
+ *
+ * And the keyboard never folds on the way: the ✕ cancels its own `pointerdown`
+ * (`preventDefault()`), so the tap moves focus NOWHERE — the input never blurs, and iOS has no
+ * blur to fold the keyboard over. The `focus()` in the click handler is the net for the paths
+ * pointer events do not cover: a keyboard user's Enter on the button, and focus already
+ * elsewhere. The same convention the rename field's ✕ (phase 2) wears — one idiom, two fields.
+ *
  * ── MOTION (INVARIANT 8) ─────────────────────────────────────────────────────────────────────
  * The only transition here is `transition-colors` on the toggle. `app/globals.css` is explicit that
  * the `transition-*` utilities in `Chip`, `KindSelector` and `Button` are "deliberately untouched"
@@ -70,6 +94,11 @@ import { useSemanticPref } from './useSemanticPref'
 export function NinaSearchField() {
   const [text, setText] = useState('')
   const [semantic, setSemantic] = useSemanticPref()
+
+  /* The ✕'s handle on the field it clears: `focus()` after the clear is 2b — the keyboard never
+     folds between the tap and the next keystroke. */
+  const inputRef = useRef<HTMLInputElement>(null)
+  const inputId = useId()
 
   /**
    * **The last search that finished, tagged with the input that produced it** — and NOT a separate
@@ -150,10 +179,24 @@ export function NinaSearchField() {
   return (
     <div className="mb-4">
       <div className="flex items-center gap-2">
-        <label className="min-w-0 flex-1">
-          <span className="sr-only">Search all chats</span>
+        {/*
+          The wrapper — not the label — is `relative`, because the ✕ pins to the INPUT's box and
+          a label's content model admits no button (no labelable element but its own control).
+          `Field`'s own suffix slot is the precedent for the shape: an adornment inside the
+          control's box hangs off a `relative` parent of the input, and the label pairs by
+          `htmlFor` instead of wrapping. The accessible name is unchanged: "Search all chats".
+        */}
+        <div className="relative min-w-0 flex-1">
+          <label htmlFor={inputId} className="sr-only">
+            Search all chats
+          </label>
           <input
-            type="search"
+            ref={inputRef}
+            id={inputId}
+            /* `type="text"`, not `type="search"` — the header's ✕ section: Safari's native clear
+               glyph cannot be sized, named, or taught the two-part clear, and Chrome Android
+               draws none at all. `enterKeyHint="search"` keeps the blue SEARCH key. */
+            type="text"
             value={text}
             onChange={(event) => setText(event.target.value)}
             maxLength={SEARCH_QUERY_MAX_CHARS}
@@ -182,11 +225,44 @@ export function NinaSearchField() {
               event.preventDefault()
               event.currentTarget.blur()
             }}
-            /* `CONTROL_CLASS` carries the `text-base` that stops Safari zooming the viewport on
-               focus — an iOS rule `components/ui/Field.tsx` says beats the design. */
-            className={cn(CONTROL_CLASS, 'h-11')}
+            /* `pr-11` only while the ✕ is on screen: the ✕ owns the field's last 44 px and no
+               character may run under it, while the EMPTY field keeps its full-width placeholder
+               padding. `pr` beats `CONTROL_CLASS`'s `px-4` on the right by CSS source order —
+               `HeroFields`' "km"-suffix input (`className="pr-10"` over the same class) is the
+               precedent, and `cn` is a plain join, so source order is the only referee. */
+            className={cn(CONTROL_CLASS, 'h-11', text !== '' && 'pr-11')}
           />
-        </label>
+          {/*
+            The ✕ — both halves of the ask as one tap. 2a: the query AND the results go
+            (`setText('')` + `setResult(null)` — see the header for why the null is load-bearing
+            and why `requestRef` needs no touch). 2b: `onPointerDown` calls `preventDefault()`, so
+            the tap never moves focus out of the input and iOS never gets a blur to fold the
+            keyboard over; the `focus()` in the click handler is the net for what pointer events
+            do not cover — a keyboard user's Enter on the button, focus already elsewhere.
+
+            Rendered only when there is text: an ✕ over an empty field is a control that lies.
+            `inset-y-0 right-0 w-11` is a 44 px target filling the field's height (invariant 4),
+            the skin is the panel header's own ✕ convention (`rounded-pill`, a 19 px glyph,
+            `text-ink-3`), and `active:opacity-70` with no transition is the hit rows' discrete
+            press feedback — nothing for invariant 8 to answer. The rename field's ✕ (phase 2)
+            wears this same skin and event strategy: one convention, two fields.
+          */}
+          {text !== '' && (
+            <button
+              type="button"
+              aria-label="Hapus pencarian"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setText('')
+                setResult(null)
+                inputRef.current?.focus()
+              }}
+              className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
         {/*
           `role="switch"` with `aria-checked`, and not `Chip`'s `aria-pressed`. `Chip`'s own comment

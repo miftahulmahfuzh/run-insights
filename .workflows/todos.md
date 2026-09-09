@@ -2,17 +2,17 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-07
+**Last Updated**: 2026-09-09
 **Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 21
+- Completed: 24
 
 ---
 
@@ -63,6 +63,60 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A027** Phase 3: The sidebar's bottom icon rail
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the `NinaSidebar.tsx` restructure — a scroll area for the list plus a pinned bottom rail replacing the two full-width rows, rail spacing equal to the composer's floor arithmetic — and `NewChatButton.tsx` becoming the rail's icon-only `+`. Exit criteria: no full-width "Chat baru"/"Proses foto" rows; a 4-button rail (`>` close, `up` scroll-to-top, `+` create chat, wand-sparkles Link to `NINA_JOBS_HREF`) pinned at the panel bottom with the composer's gap to the glass; phase 1's focus-assert effect survives the restructure; build + tests green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R5 — Sidebar bottom rail: 4 icon buttons replacing the two full-width rows, composer-gap spacing from the glass
+  - **Depends on**: `P1-RI-A025`
+  - **Plan**: `.workflows/plan/P1-RI-A027.md`
+  - **Completed**: 2026-09-09 10:24
+  - **Method**: /do
+  - **Files**: components/nina/NewChatButton.tsx, components/nina/NinaSidebar.tsx, tests/nina.jobActions.test.ts
+  - **Verification**: `npx prettier --check` clean on the three touched files; `npm run typecheck` clean; `npm test` 163 files / 3488 tests all passing; `npm run build` succeeded — all run in this worktree.
+  - **Drift**: The plan's code blocks applied cleanly; `npx prettier --write` (scoped to the three touched files, not repo-wide) normalized the Step-3 block's indentation after the splice, as the plan's own Verification section prescribed.
+  - **Drift**: The plan's Verification section claims this worktree has no `node_modules` and no `.env.local` — both were present (phases 1-2 ran here); no setup was needed.
+  - **Drift**: `tests/nina.jobActions.test.ts` is a THIRD file beyond the plan's Files table (which names exactly two) — see the Decided entry for why; the phase's functional diff remains the plan's two component files.
+  - **Decided**: `npm test` was red at BASE (verified by stashing the phase's changes: the same 4 failures) — `tests/nina.jobActions.test.ts`'s `vi.mock` factories predate `readNinaTuning` (landed `be1057e`) and `captionNinaPhoto` (landed `b4f1004`); the caption call built a real `narrativeClient` and hung 4 session-resolution tests at the 5000ms timeout → repaired the stale mocks in-phase (added `readNinaTuning` to the queries factory, added a `@/lib/nina/caption` mock resolving null so the real deterministic `ninaImageCaption` pool line still builds the body, defaults in `beforeEach`, header docstring updated). Rungs 1-2: plan invariant 1 ("npm test passes at the end of every phase") and the phase exit criteria ("build + typecheck + tests green") demand a green suite; repairing a stale mock strengthens the checks rather than relaxing them. The suite went 4 failed | 15 passed → 19 passed, and 19s → 586ms.
+
+- [x] **P1-RI-A025** Phase 1: The keyboard stops eating the sidebar's fields; the search field clears
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns the panel-level focus-reassertion effect in `NinaSidebar.tsx` with its pure schedule in `lib/nina/chatview.ts` + test, and the search field's ✕ button and clear semantics in `NinaSearchField.tsx`. Exit criteria: on keyboard-open over any field inside the open panel the focused field is re-asserted visible across the keyboard-animation window (`scrollIntoView({ block: 'nearest', behavior: 'instant' })`, idempotent, scheduled purely); the search ✕ renders only when text is non-empty, clears query AND results, keeps focus in the input; `chatview.test.ts` covers the new schedule; build + tests green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — Bug: the search field is lifted off-screen by the keyboard; typed text invisible / R2 — ✕ in the search field (right end): clears query AND results, keyboard stays/raises
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A025.md`
+  - **Completed**: 2026-09-09 09:26
+  - **Method**: /implement (swarm phase 1/3)
+  - **Files**: lib/nina/chatview.ts, lib/nina/chatview.test.ts, components/nina/NinaSidebar.tsx, components/nina/NinaSearchField.tsx
+  - **Drift**: Plan's invariant greps said `visualViewport` grep of `NinaSidebar.tsx` → 0, but the plan's own prescribed code block carries the comment "NO second `visualViewport` subscription (invariant 2)" — count is 1, comment only. Verified zero `visualViewport` API access added anywhere (`window.visualViewport` / `.visualViewport.` grep: only the pre-existing sanctioned readers ChatScreen.tsx:590, MessageBubble.tsx, PhotoViewer.tsx). Same class: the `type="search"` grep hits only the plan's own comments quoting the old value; the attribute itself is gone (was the repo's only one).
+  - **Drift**: npm test full suite: 4 failed / 3484 passed — all 5000 ms timeouts in `tests/nina.jobActions.test.ts` (photograph-delivery server actions; zero coupling to any phase-1 file). REPRODUCED AT BASE: with the four phase-1 files stashed, the full suite at HEAD fails the same way (4 failed / 3480 passed; the +4 with changes are the new KEYBOARD_REASSERT_DELAYS_MS tests, all passing). Pre-existing load-dependent flakiness, not a phase-1 regression. The phase's own `lib/nina/chatview.test.ts` is 36/36 (4 new). typecheck, build and format:check green.
+  - **Drift**: The plan's manual device checks (iPhone XS Max keyboard reveal, on-device ✕ behaviour) were not run — no device in this session; the plan assigns automated coverage to the pure schedule tests, which pass.
+  - **Drift**: Duplicate Step-3 mint race with the live phase-2 peer in this SHARED worktree: own subagent minted P1-NIN-A032/33/34 into `lib/nina/.workflows/todos.md` (09:10-09:11); the peer minted P1-RI-A025/26/27 into the root file (09:12) and its index writeback overwrote the NIN ids. RI set survives; the NIN set was removed (`lib/nina/.workflows/todos.md` restored to HEAD, three NIN adopted plan files deleted); both index copies verified byte-identical on RI ids.
+  - **Decided**: Duplicate task-id mint race with phase-2 peer → adopt the peer's P1-RI-A025/26/27 (root package RI), remove own P1-NIN-A032/33/34 (tie-break: narrower blast radius — only own files edited, fully reversible pre-commit, index already RI).
+  - **Decided**: Verification greps' "→ 0" expectations vs the plan's own prescribed comment text → comments stay verbatim, greps adjudicated by intent (rung 3: the plan's code blocks are complete by construction; rung 1: invariant 2's actual rule — no second `visualViewport` subscription — holds).
+  - **Decided**: Pre-existing `tests/nina.jobActions.test.ts` timeouts at base → land phase 1 anyway, report loudly (invariant 1 assumes a green base, measured false at HEAD; fixing another surface's timers would widen scope).
+
+- [x] **P1-RI-A026** Phase 2: Session actions become icons; the rename field clears
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `SessionRow.tsx` alone — the three menu buttons become icon-only (Lucide-lineage inline SVG, 44 px, Indonesian `aria-label`s preserved, pending/error behaviour unchanged) and the rename `Input` gains a ✕ at its right end that empties the draft and refocuses the input. Exit criteria: pin/pencil/trash icon buttons with identical actions, targets, pending gating and error line; the ✕ appears only when the draft is non-empty, clears it, and the keyboard stays up; build + tests green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R3 — Icon-library answer + icons replacing the "Pin ke atas"/"Ganti nama"/"Hapus" text buttons / R4 — ✕ in the rename field (right end): clears the current name, keyboard stays/raises
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A026.md`
+  - **Completed**: 2026-09-09 09:20
+  - **Method**: /implement (swarm phase 2/3)
+  - **Files**: components/nina/SessionRow.tsx
+  - **Drift**: npm test: 3484/3488 pass; 4 failures on first run, 3 on an isolated re-run — all 5000ms TIMEOUTS in tests/nina.jobActions.test.ts. Pre-existing and load-sensitive, not this phase's: that test file has NO import path to SessionRow.tsx (grep-verified across lib/ and tests/), none of its files were modified by this phase or by the concurrent phase-1 session, and the failure count fluctuates between runs. typecheck, npm run build, and targeted prettier are all green.
+  - **Drift**: PEER FORK (needs coordinator reconciliation): the concurrent phase-1 session (impl-search-clear-and-sidebar-icons-p1) ran its own task creation under package NIN — entries in lib/nina/.workflows/todos.md and adopted plans lib/nina/.workflows/plan/P1-NIN-A03{2,3,4}.md — and briefly wrote P1-NIN ids into both plan-index copies' TaskID cells. The authoritative bookkeeping for this set is the ROOT file .workflows/todos.md with ids P1-RI-A025 (phase 1) / P1-RI-A026 (phase 2) / P1-RI-A027 (phase 3); both index copies' cells carry the RI ids as of 09:15. Do NOT delete the peer's NIN artifacts (its session may still re-clobber); just record the fork.
+  - **Decided**: Task bookkeeping location → root .workflows/todos.md (package code RI) rather than a components/nina or lib/nina package file → rung 6 (surrounding convention: recent components/nina UI plan sets — nina-chat-sessions, nina-chat-avatar-profile, composer-frost — are all tracked in the root file). The mint command's suggestion P1-RI-A020 was REJECTED as already spent by the landed admin-home-screen-shortcut set (git log -S); A025/A026/A027 were each verified unspent.
 
 - [x] **P1-RI-A023** Phase 1: The composer: paint to the edge, take less room, frost the glass
   - **Difficulty**: HARD

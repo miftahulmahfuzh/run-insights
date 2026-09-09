@@ -226,6 +226,55 @@ export const NINA_BAR_VISIBLE_VAR = '--nina-bar-visible'
 export const NINA_KEYBOARD_OVERLAP_VAR = '--nina-kb-overlap'
 
 /**
+ * When `NinaSidebar`'s panel re-asserts the focused field's visibility, in ms after the field
+ * gained focus inside the open panel — the schedule half of the fix whose box half is
+ * `NINA_KEYBOARD_OVERLAP_VAR` above.
+ *
+ * ── WHY ASSERT AT ALL, WHEN THE PANEL ALREADY ENDS AT THE KEYBOARD ────────────────────────────
+ * `bottom: var(--nina-kb-overlap, 0px)` ends the panel's BOX at the keyboard's measured top edge,
+ * and the owner's report survived it, because the search field sits at the top of a tall content
+ * block inside the panel's OWN `overflow-y-auto` container — and when the keyboard opens over a
+ * field inside a scrollable container, iOS Safari scrolls THAT CONTAINER as its "reveal": a
+ * `scrollTop` the panel's box geometry says nothing about. The var then shrinks the panel a beat
+ * later (visualViewport resize → React state → effect → style), the container keeps its scrolled
+ * offset, and the field rides up out of the container's top edge with the keyboard holding the
+ * bottom of the glass. The composer never lifts, and it is the one fixed element on this screen
+ * that is inside no scroll container at all — the distinguishing fact.
+ *
+ * So the panel ASSERTS rather than measures: on each focus into one of its text fields, it calls
+ * `scrollIntoView({ block: 'nearest', behavior: 'instant' })` on that field — which walks EVERY
+ * scrollable ancestor at once (the panel's own container and the document) and corrects whichever
+ * one Safari scrolled, without needing to know which fired. It is idempotent: `nearest` on an
+ * already-visible element computes zero scroll, so an assert with nothing to correct costs
+ * nothing, keyboard or no keyboard.
+ *
+ * ── WHY A SCHEDULE, AND WHY THESE NUMBERS ────────────────────────────────────────────────────
+ * The frame in which Safari performs its reveal is not observable from here — there is no event
+ * for "a container was scrolled by the reveal", and a second `visualViewport` subscription is the
+ * thing `ChatChrome`'s docstring forbids. Asserting repeatedly across the window in which the
+ * keyboard and the panel's box are still settling turns "catch the one right moment" into "be
+ * right at every moment", and the whole rule is five numbers:
+ *
+ *   - `0` — the same frame as the focus. Whatever the reveal scrolled, it scrolled it
+ *     synchronously with the focus event, before any keyboard animation began.
+ *   - `120` — mid-rise. The iOS keyboard animation runs ~300 ms and the visual viewport moves
+ *     most of its total in its first half.
+ *   - `300` — at the animation's end, where the reveal's second pass often fires: the layout has
+ *     settled but the panel's `bottom` var is still one React commit behind.
+ *   - `600` — clear of the whole chain, not just the animation: the `visualViewport` resize →
+ *     `setOverlap` → style-write round trip that finally shrinks the panel, and any re-reveal
+ *     Safari performs against the new box.
+ *   - `1000` — the tail, for a slow first dispatch on an overloaded phone. And it is the END, on
+ *     purpose: after one second the scroll position is the runner's own act, and an assert that
+ *     kept firing would drag the panel back every time he scrolled the focused field away to
+ *     read beside it.
+ *
+ * `readonly number[]` because the component must not be able to mutate the schedule it runs on.
+ * The component measures (focus landed, focus still held); this decides when.
+ */
+export const KEYBOARD_REASSERT_DELAYS_MS: readonly number[] = [0, 120, 300, 600, 1000]
+
+/**
  * The composer's `bottom`, as a CSS length. Its partner is `composerPadBottomCss` below, and
  * neither is correct without the other.
  *
