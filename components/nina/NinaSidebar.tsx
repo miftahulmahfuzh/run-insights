@@ -5,7 +5,14 @@ import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
 import { cn } from '@/lib/cn'
-import { KEYBOARD_REASSERT_DELAYS_MS, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
+import {
+  isKeyboardTextField,
+  KEYBOARD_REASSERT_DELAYS_MS,
+  KEYBOARD_REASSERT_SCROLL_OPTIONS,
+  NINA_KEYBOARD_OVERLAP_VAR,
+  planBoxReassert,
+  type PanelBoxSize,
+} from '@/lib/nina/chatview'
 import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
 import { NINA_JOBS_HREF } from '@/lib/nina/jobview'
 import type { NinaCropInput } from '@/lib/nina/crop'
@@ -401,16 +408,25 @@ export function NinaSidebar({
      */
     let reassertTimers: number[] = []
     const panel = panelRef.current
+
+    /**
+     * The assert itself, shared by both triggers below: qualify whatever holds focus RIGHT NOW
+     * and `scrollIntoView` it. The tag guard is `isKeyboardTextField`'s — the same three-way test
+     * the `focusin` listener below makes on its own target — and `KEYBOARD_REASSERT_SCROLL_OPTIONS`
+     * is the same `{ block: 'nearest', behavior: 'instant' }` the schedule's ticks have always
+     * used, as a constant so the second trigger cannot quietly grow a `smooth`.
+     */
+    const assertFocusedField = () => {
+      const active = document.activeElement
+      if (!(active instanceof HTMLElement)) return
+      if (!isKeyboardTextField(active)) return
+      active.scrollIntoView(KEYBOARD_REASSERT_SCROLL_OPTIONS)
+    }
+
     const onPanelFocusIn = (event: FocusEvent) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
-      if (
-        target.tagName !== 'INPUT' &&
-        target.tagName !== 'TEXTAREA' &&
-        !target.isContentEditable
-      ) {
-        return
-      }
+      if (!isKeyboardTextField(target)) return
 
       for (const timer of reassertTimers) window.clearTimeout(timer)
       reassertTimers = KEYBOARD_REASSERT_DELAYS_MS.map((delay) =>
@@ -418,11 +434,56 @@ export function NinaSidebar({
           if (document.activeElement !== target) return
           /* `instant`, never `smooth`: the layout has already moved under the runner and a 300 ms
              chase reads as a glitch — `decideAutoScroll`'s 'viewport' rule, and no new motion. */
-          target.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+          target.scrollIntoView(KEYBOARD_REASSERT_SCROLL_OPTIONS)
         }, delay),
       )
     }
     panel?.addEventListener('focusin', onPanelFocusIn)
+
+    /*
+     * ── R3: THE SECOND TRIGGER — THE BOX ARRIVING, NOT THE CLOCK ────────────────────────────────
+     *
+     * The rename field is the report that survived the schedule above. The failure is a RACE the
+     * five delays cannot win reliably: Safari's focus reveal scrolls the deck, the panel's
+     * `bottom` var shrinks the box one React commit LATER (visualViewport resize → publisher
+     * state → effect → style), and if the last tick fired before the shrink landed, the field
+     * rides out through the container's top edge and nothing fires again for a second — by which
+     * time it is off screen.
+     *
+     * The box ARRIVING at its new size is the one observable signal that the shrink landed, and a
+     * `ResizeObserver` on the panel is how that signal is received. It is NOT a second
+     * `visualViewport` subscription (invariant 4): the observer watches this panel's own box, a
+     * layout fact about an element this effect already holds — and it lives INSIDE the same
+     * `open`-keyed effect, so the `Sheet.tsx` trap is not re-sprung: no dependency is added to
+     * the array, and one keystroke in the rename field still never tears anything down.
+     *
+     * `planBoxReassert` carries the whole when-rule — the spec fires once on `observe()` (the
+     * baseline, not a change), a delivery can repeat the previous size (skip), and only a real
+     * change asserts. The assert is `assertFocusedField`'s: whatever holds focus at this moment,
+     * if it is a text field — the same guards as the `focusin` listener, evaluated at fire time,
+     * with no armed target to go stale. On the keyboard CLOSING the box grows back, the assert
+     * runs, and `nearest` on a visible field computes zero scroll — idempotent, so the closing
+     * direction costs nothing and fixes the mirrored case (field scrolled out, keyboard folds)
+     * for free.
+     *
+     * `contentRect` is the panel's whole box here: the panel carries no padding and no border
+     * (`fixed inset-0 flex flex-col bg-paper outline-none`), so its content rect IS its box, and
+     * the rail's `border-t` is inside a child.
+     */
+    let lastBox: PanelBoxSize | null = null
+    const boxObserver = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1]
+      if (entry == null) return
+      const next: PanelBoxSize = {
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      }
+      const verdict = planBoxReassert(lastBox, next)
+      lastBox = next
+      if (verdict !== 'assert') return
+      assertFocusedField()
+    })
+    if (panel !== null) boxObserver.observe(panel)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -435,6 +496,7 @@ export function NinaSidebar({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       panel?.removeEventListener('focusin', onPanelFocusIn)
+      boxObserver.disconnect()
       for (const timer of reassertTimers) window.clearTimeout(timer)
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()

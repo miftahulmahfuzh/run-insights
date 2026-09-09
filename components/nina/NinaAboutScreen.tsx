@@ -6,10 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
 import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
-import { attachNinaPhotoToChat } from '@/lib/nina/albumActions'
+import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
+import { attachNinaPhotoToChat, type NinaAttachTarget } from '@/lib/nina/albumActions'
 import {
   NINA_ATTACH_MAX_CHARS,
   type NinaAlbumPhoto,
@@ -97,8 +99,17 @@ export function NinaAboutScreen({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [question, setQuestion] = React.useState('')
-  const [attaching, setAttaching] = React.useState(false)
+  /* Which send is in flight — `'recent'` or `'new'` — or `null` when neither is. One flight for
+   * two controls: it names the button that shows the dots and disables the other one. */
+  const [sending, setSending] = React.useState<NinaAttachTarget | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
+  /**
+   * R3. The keyboard's overlap in px, mirrored from the publisher mounted below. The strip's
+   * `bottom` reads the `:root` var and needs no state; this mirror exists only for the NUMBER the
+   * padding gate wants (`attachStripPadBottomCss`) — the same division `ChatScreen` draws between
+   * its `overlap` state and the var the sidebar panel reads.
+   */
+  const [kbOverlap, setKbOverlap] = React.useState(0)
 
   const albumViewer: ViewerPhoto[] = React.useMemo(
     () => album.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
@@ -191,31 +202,40 @@ export function NinaAboutScreen({
     window.history.replaceState(null, '', urlWithPhoto(null))
   }, [urlWithPhoto])
 
-  /** R26. `''` is a valid question: attaching with nothing to ask must work. */
-  const attach = React.useCallback(async () => {
-    if (open == null || attaching) return
-    const list = open.section === 'album' ? album : gallery
-    const photo = list[open.index]
-    if (photo == null) return
-    setAttaching(true)
-    setNotice(null)
-    try {
-      const result = await attachNinaPhotoToChat({
-        kind: open.section === 'album' ? 'avatar' : 'image',
-        id: photo.id,
-        body: question,
-      })
-      if (!result.ok) {
-        setNotice('Gagal kirim fotonya. Coba lagi.')
-        return
+  /**
+   * R26 still: `''` is a valid question, and attaching with nothing to ask must work. R1/R2 add
+   * the target — his most recent conversation, or a fresh one — and it is the SERVER that decides
+   * which conversation that is and where to land: this handler names the button and pushes the
+   * `next` the action returns, and spells no URL of its own.
+   */
+  const attach = React.useCallback(
+    async (target: NinaAttachTarget) => {
+      if (open == null || sending !== null) return
+      const list = open.section === 'album' ? album : gallery
+      const photo = list[open.index]
+      if (photo == null) return
+      setSending(target)
+      setNotice(null)
+      try {
+        const result = await attachNinaPhotoToChat({
+          kind: open.section === 'album' ? 'avatar' : 'image',
+          id: photo.id,
+          body: question,
+          target,
+        })
+        if (!result.ok || result.next === null) {
+          setNotice('Gagal kirim fotonya. Coba lagi.')
+          return
+        }
+        /* Refresh first, so the pushed conversation renders the row that was just written. */
+        router.refresh()
+        router.push(result.next)
+      } finally {
+        setSending(null)
       }
-      /* Refresh first, so the pushed `/nina` renders the row that was just written. */
-      router.refresh()
-      router.push('/nina')
-    } finally {
-      setAttaching(false)
-    }
-  }, [album, attaching, gallery, open, question, router])
+    },
+    [album, gallery, open, question, router, sending],
+  )
 
   const currentAlbumIndex = Math.max(
     0,
@@ -323,6 +343,24 @@ export function NinaAboutScreen({
 
       {open != null && (
         <>
+          {/*
+            ── R3: THE KEYBOARD CHANNEL, MOUNTED SCOPED TO THE OPEN VIEWER ───────────────────────
+            `ChatScreen` is not mounted on this route (`app/nina/about/page.tsx` renders this
+            screen inside `AppShell` and nothing else), so nothing published
+            `--nina-kb-overlap` here and the strip below had NO keyboard protection at all — the
+            member of the class with strictly less than the sidebar panel, which at least had the
+            var and the reassert.
+
+            Page-level vs scoped-to-open: SCOPED, deliberately. This publisher's only reader is
+            the strip, and the strip exists only while `open != null`, so a page-level mount would
+            run a `visualViewport` subscription with no consumer — and would publish a var that
+            nothing on this route reads while no photo is open. The cost side is nil: the
+            subscriber starts before the strip can be tapped (same commit), and its unmount
+            removes the var, so closing the viewer leaves nothing behind. The invariant holds by
+            construction: `/nina` and `/nina/about` are different routes, never mounted together,
+            so this is never a second concurrent subscription on one screen.
+          */}
+          <KeyboardOverlapPublisher onOverlap={setKbOverlap} />
           <PhotoViewer
             photos={open.section === 'album' ? albumViewer : galleryViewer}
             index={open.index}
@@ -336,7 +374,45 @@ export function NinaAboutScreen({
             must not grow an F33 button, and its bottom row is already the dot pager. A fixed strip
             over it costs that component nothing.
           */}
-          <div className="fixed inset-x-0 bottom-0 z-70 flex flex-col gap-2 bg-ink/95 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
+          {/*
+            ── R3: THE BOX FIX, `NinaSidebar.tsx`'s EXACT PATTERN ────────────────────────────────
+            iOS does not shrink the layout viewport when the keyboard opens, so this strip —
+            `fixed` at `bottom-0`, inside no scroll container — runs on behind the keys and
+            Safari's focus reveal answers by lifting the whole fixed overlay off the top of the
+            glass: the field the runner just tapped leaves through the top of the screen, which is
+            the bug he reported. Ending the strip at the keyboard's MEASURED top edge puts the
+            field inside the visible region — the same fix the composer ships as
+            `composerBottomCss`, reached here as a `:root` custom property because the
+            subscription lives in the publisher above.
+
+            An inline style rather than a Tailwind arbitrary value, because it must beat
+            `bottom-0`'s `bottom: 0` in the cascade without depending on utility sort order. The
+            string is CONSTANT — it never re-renders, whatever the keyboard does; the var
+            underneath it is what moves. Absent (no keyboard, Android, pre-hydration) it
+            substitutes `0px`, which is exactly `bottom-0`, so the resting strip and the server's
+            HTML never differ. The edge SNAPS with the keyboard — no transition on `bottom` — and
+            that is kept deliberately: the strip has no `transition-all` to accidentally catch the
+            property, and a lagging edge would chase the keyboard's own animation and read as a
+            glitch (`decideAutoScroll`'s 'viewport' rule).
+
+            ── WHY THE BOX ALONE IS THE WHOLE CURE HERE, AND NO REASSERT IS NEEDED ──────────────
+            The sidebar needed a reassert because its field sits INSIDE an `overflow-y-auto`
+            deck, and Safari's reveal scrolls THAT CONTAINER — a scrollTop no box can unscroll.
+            This strip is inside no scroll container at all, the composer's distinguishing fact,
+            and the composer's recorded outcome from exactly this shape was "the composer never
+            lifts". The padding gate is the one refinement the box needs: with the strip's bottom
+            edge on the keys, the old `1rem + var(--safe-bottom)` floor would hold the input row
+            ~50 px off the keyboard — padding by a floor that is behind the keyboard, which is the
+            same class of mistake `composerPadBottomCss`'s docstring records. `attachStripPadBottomCss`
+            is that function's gate on this bar's own floor.
+          */}
+          <div
+            className="fixed inset-x-0 bottom-0 z-70 flex flex-col gap-2 bg-ink/95 px-4 pt-3"
+            style={{
+              bottom: `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+              paddingBottom: attachStripPadBottomCss(kbOverlap),
+            }}
+          >
             {notice != null && (
               <p className="text-[12px] font-medium text-card/80" role="status">
                 {notice}
@@ -351,9 +427,48 @@ export function NinaAboutScreen({
               aria-label="Pertanyaan tentang foto ini"
               className="w-full rounded-field bg-card/10 px-3 py-2 text-[15px] text-card placeholder:text-card/50"
             />
-            <Button size="md" onClick={attach} disabled={attaching}>
-              {attaching ? 'Mengirim…' : 'Kirim ke chat'}
-            </Button>
+            {/*
+              R1/R2: THE TWO SENDS WEAR GLYPHS; THE WORDS BECAME THE ACCESSIBLE NAMES —
+              SessionRow's three menu buttons are the pattern and its header is the record. The
+              glyph is `aria-hidden` decor, the word it replaced is the `aria-label` verbatim
+              ("Kirim ke chat"; the new one extends it), and the control stays a `Button` because
+              everything the guard needs lives there: `loading` swaps the glyph for pulsing dots
+              inside an unchanged box, `md` keeps the 44px floor.
+
+              `variant="secondary"`, and not the default `primary`: primary is `bg-ink text-card`
+              and this strip is `bg-ink/95`, so the shipped button was ink-on-ink — a slab a shade
+              darker than its own surface. The light `bg-paper-2 text-ink` disc is how SessionRow's
+              menu already reads on a dark panel. `flex-1` on each: the row the full-width labelled
+              button owned, split into two adjacent controls, the original send on the left.
+
+              ONE flight, TWO controls: `sending` names which one fired, so only that one shows
+              dots, and `disabled={sending !== null}` on BOTH keeps the other unreachable mid-send —
+              the loading/disabled split of the rename form's Simpan/Batal row, one flight wider.
+            */}
+            <div className="flex gap-2">
+              <Button
+                size="md"
+                variant="secondary"
+                className="flex-1"
+                loading={sending === 'recent'}
+                disabled={sending !== null}
+                aria-label="Kirim ke chat"
+                onClick={() => attach('recent')}
+              >
+                <SendHorizontalIcon />
+              </Button>
+              <Button
+                size="md"
+                variant="secondary"
+                className="flex-1"
+                loading={sending === 'new'}
+                disabled={sending !== null}
+                aria-label="Kirim ke chat baru"
+                onClick={() => attach('new')}
+              >
+                <MessageSquarePlusIcon />
+              </Button>
+            </div>
           </div>
         </>
       )}
@@ -369,4 +484,60 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
     label: photo.label,
     isCurrent: (photo as NinaAlbumPhoto).isCurrent === true,
   }
+}
+
+/*
+ * The strip's two send glyphs, inlined rather than imported — `SessionRow`'s collection note and
+ * `AdminNav`'s before it. Both are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
+ * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
+ * presentation attributes exactly as published; the only adaptations are JSX spelling
+ * (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and `height` for
+ * our `className` and the 18px size. Every glyph is 18px in `currentColor` and `aria-hidden` — the
+ * accessible name is the `aria-label` on the button, never the picture.
+ *
+ * `send-horizontal` is the paper plane every chat app uses for "send", lying sideways so it reads
+ * at 18px on the row that fires it (lucide's `send` is the same arrow at 45 degrees; the
+ * horizontal one reads better beside a full-width input row). `message-square-plus` is the
+ * sidebar rail's own noun — `NewChatButton`'s `plus` on a chat-bubble body — the one glyph in the
+ * app that already means "a conversation that does not exist yet", which is exactly what this
+ * button sells.
+ */
+
+/** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
+function SendHorizontalIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" />
+      <path d="M6 12h16" />
+    </svg>
+  )
+}
+
+/** "Kirim ke chat baru" — a conversation with no prior content. Lucide's `message-square-plus`, verbatim. */
+function MessageSquarePlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+      <path d="M12 8v6" />
+      <path d="M9 11h6" />
+    </svg>
+  )
 }

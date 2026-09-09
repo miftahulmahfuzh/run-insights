@@ -1,0 +1,719 @@
+# Phase 1: Attach strip: two icon sends (recent + new chat)
+
+**Plan set:** `PHOTO_SEND_CHAT_ICONS_PLAN.md`
+**Analysis:** `20260909-112330-P7K2_code_analyzer.md`
+**Satisfies:** R1, R2 — the zoomed-photo strip's "Kirim ke chat" becomes an icon-only send to the most recent session (behavior unchanged on the server), and a second adjacent icon-only send always lands the photo in a conversation with no prior content.
+**Depends on:** none
+**Difficulty:** NORMAL
+**Package:** `components/nina` + `lib/nina`
+
+---
+
+## Goal
+
+The strip at the bottom of the zoomed photo on `/nina/about` stops being one full-width labelled Button and becomes two adjacent icon-only `Button`s in their own row: `send-horizontal` (the existing send, server behavior byte-identical — same action chain, same `sessionId: null` resolution) and `message-square-plus` (a new-chat send composed from the existing `createNinaChatSession` + an explicit `sessionId` to `sendNinaMessage`). Both paths return the destination, and the screen pushes `/nina?s=<sessionId>` so the runner lands in the conversation that received the photo.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** none — no symbol, no config key.
+
+**Renames:** `NinaAboutScreen`'s local state `attaching: boolean` -> `sending: NinaAttachTarget | null` (component-private, no external reader).
+
+**Creates:**
+- `NinaAttachTarget` — exported type, `'recent' | 'new'`, in `lib/nina/albumActions.ts`
+- `NinaAttachInput.target: NinaAttachTarget` — REQUIRED new field (no default)
+- `NinaAttachResult.sessionId: string | null` and `NinaAttachResult.next: string | null`
+- module-private `REFUSED` const in `lib/nina/albumActions.ts` (not exported)
+- `SendHorizontalIcon`, `MessageSquarePlusIcon` — private components at the bottom of `components/nina/NinaAboutScreen.tsx`
+- `tests/nina.attachTargets.test.ts`
+
+**Signature changes:**
+- `attachNinaPhotoToChat(input: NinaAttachInput)`: input `{ kind, id, body }` -> `{ kind, id, body, target }` (target required); result `{ ok, userMessageId }` -> `{ ok, userMessageId, sessionId, next }` with `next = '/nina?${SESSION_PARAM}=${sessionId}'` iff `ok`, else `null`. Sole caller is `NinaAboutScreen.tsx` (verified by grep); no other consumer exists.
+- screen handler `attach()` -> `attach(target: NinaAttachTarget)`, called as `attach('recent')` / `attach('new')` from the two buttons.
+
+**Navigation change the reconciler must know:** a successful send now pushes `result.next` (`/nina?s=<sessionId>`, BOTH targets) where it pushed bare `'/nina'` before. Same destination conversation; `?s=` is the app's standard session deep link (`createNinaChatSession`'s own `next`, sidebar row hrefs at `app/nina/page.tsx:303`) and a stale id degrades silently to the newest chat (`chooseActiveSession`, `lib/nina/active.ts:139`).
+
+**Requires (from earlier phases):** none.
+
+**Leaves alone (owned by others):**
+- `sendNinaMessage`'s internals and session-resolution policy — `lib/nina/actions.ts`, `lib/nina/sessionResolve.ts`, `lib/nina/queries.ts` untouched
+- `lib/nina/sessionActions.ts` — `createNinaChatSession` is CALLED, never edited
+- `lib/nina/album.ts` — `NINA_ATTACH_MAX_CHARS` stays the one shared clamp
+- `components/ui/PhotoViewer.tsx` and every caller's props for it
+- the strip CONTAINER's positioning classes (`fixed inset-x-0 bottom-0 z-70 ... pb-[calc(1rem+var(--safe-bottom))]`) — Phase 2 owns the box; this phase must not move it
+- `NinaSidebar.tsx`, `SessionRow.tsx`, `NewChatButton.tsx`, `ChatScreen.tsx`, `lib/nina/chatview.ts` — Phase 2 / nobody
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/nina/albumActions.ts` | modify | `target` on the input, `sessionId` + `next` on the result, the `'new'` branch composing `createNinaChatSession` + explicit `sessionId`, docstring rewritten honestly (whole file replaced, lines 1-67) |
+| `components/nina/NinaAboutScreen.tsx` | modify | import gains `type NinaAttachTarget` (line 12); state `attaching` -> `sending` (line 100); `attach` parameterized and pushing `result.next` (lines 194-218); strip's control row becomes input row + adjacent icon row (lines 333-357); two glyph components appended after `toCell` (after line 372) |
+| `tests/nina.attachTargets.test.ts` | create | the send-path composition suite (mocked `sendNinaMessage` + `createNinaChatSession`) and the strip's structural claims |
+
+## Implementation Steps
+
+Steps 1 and 2 must land together: Step 1 makes `target` required, so the tree does not typecheck between Step 1 and Step 2. The phase is committed as one unit.
+
+### Step 1: `attachNinaPhotoToChat` — two targets, and the destination comes back
+
+**File:** `lib/nina/albumActions.ts:1-67` (whole file)
+**Change:** replace the file. `target: 'recent'` keeps the exact shipped send (`sessionId: null`); `target: 'new'` creates/reuses a session first via `createNinaChatSession`, then sends with that explicit id. Both paths return the landed `sessionId` and a ready-to-push `next` spelled from it, so a refused send can never navigate. `NINA_ATTACH_MAX_CHARS` stays the one clamp.
+
+**Code:**
+
+```ts
+'use server'
+
+import { sendNinaMessage, type SendNinaMessageResult } from './actions'
+import { SESSION_PARAM } from './active'
+import { NINA_ATTACH_MAX_CHARS } from './album'
+import { createNinaChatSession } from './sessionActions'
+
+/**
+ * "Attach to chat", from the album's zoomed-photo state — F33 R26; the two targets are the strip's
+ * two icon sends (photo-send-chat-icons R1/R2).
+ *
+ * ── WHY THIS FILE EXISTS AT ALL, GIVEN IT IS ONE CALL ─────────────────────────────────────────
+ * Isolation. `lib/nina/actions.ts` is phase 3's file and phases 5, 6, 12 and 13 all edit it; the
+ * album importing from here instead means the only thing this phase asks of that file is one
+ * optional input field and one word of tool set. If the reconciler moves `sendNinaMessage`, this
+ * is the single call site that follows it.
+ *
+ * ── TWO TARGETS, ONE ACTION ───────────────────────────────────────────────────────────────────
+ * `target: 'recent'` is the send that shipped with R26 and stays byte-identical on the server:
+ * `sessionId: null`, so `sendNinaMessage`'s own resolution — his most recently active
+ * conversation, created if he has none (assumption A3) — picks the destination. `target: 'new'`
+ * is the second icon: the photo must land in a conversation with no prior content, and the
+ * sanctioned way to get one is the sidebar rail's own `createNinaChatSession` — eager, and
+ * reusing the newest EMPTY session rather than minting a second one (its recorded anti-litter
+ * rule; an empty newest session IS the new chat, which is the plan index's reading of "always a
+ * new chat session"). Calling it from here is a plain server-side call between two `'use server'`
+ * modules: `requireUserId` runs a second time for the same user, and its create branch's
+ * `revalidatePath('/nina')` is harmless — the caller refreshes anyway.
+ *
+ * Anything that is not `'new'` reads as `'recent'`: a value this file does not recognise
+ * coalesces to the behaviour that shipped first rather than inventing a third one, which is
+ * `setNinaChatSessionPinned`'s posture to a boolean from the same boundary.
+ *
+ * ── WHY THE DESTINATION COMES BACK AS `next` ──────────────────────────────────────────────────
+ * `sendNinaMessage` already returns `sessionId` (F36 R6), and THAT id — not the caller's claim,
+ * not the id the create minted — is where the row actually landed, ownership re-proved on the
+ * way in. The URL is built here from it, on the server, for the reason `NewChatButton` records
+ * for `next`: which URL opens a conversation is the server's rule, decided from an id it proved.
+ * For `target: 'new'` the string equals the `next` `createNinaChatSession` returned by
+ * construction — same `SESSION_PARAM`, same id — but the copy that ships is spelled from the
+ * landed id, which is what lets the rule below be absolute: `next` is null iff `!ok`, so a
+ * refused send can never navigate anywhere.
+ *
+ * ── THE ONE COST OF 'new', STATED RATHER THAN DISCOVERED ──────────────────────────────────────
+ * The session is created BEFORE the send, because the send has to name it. So a send that then
+ * REFUSES — the photograph is no longer his, mostly — leaves the created-or-reused empty session
+ * behind. That is the same state one tap of the sidebar's `+` leaves; it is deletable from the
+ * list (R11); and the reuse branch means a retry of the same button re-enters THAT session rather
+ * than minting another. Ordering it the other way would need a send that can name a session that
+ * does not exist yet, which is `sendNinaMessage`'s refusal case, not a capability.
+ *
+ * ── WHY THERE IS NO REVEAL ANIMATION ON THIS PATH ─────────────────────────────────────────────
+ * `ChatScreen`'s staggered reveal (RU-5) is for bubbles arriving while he is watching the
+ * conversation. Here he is on `/nina/about`, and the WhatsApp behaviour he described is that
+ * attaching takes you to the chat. So the action persists everything and the caller navigates:
+ * `/nina` is a Server Component reading `listNinaMessages`, so her reply is simply there when it
+ * paints, with no client state to hand across a route change.
+ *
+ * ── AND WHY `unavailable` IS GONE (F36 R6) ────────────────────────────────────────────────────
+ * `sendNinaMessage` no longer waits for the model, so at the moment this returns there is no
+ * answer to the question "could she reply". The field could only ever have been `false`. What the
+ * caller does instead is unchanged and was already right: it navigates to the conversation that
+ * received the photo, whose Server Component reads `listNinaMessages` — so his photo is on screen
+ * immediately, and her reply appears through `ChatScreen`'s poll, which that page starts because
+ * the newest row is his.
+ *
+ * ── WHY THE CLAMP IS IMPORTED AND NOT DECLARED ────────────────────────────────────────────────
+ * A `'use server'` module may export only async functions, so `NINA_ATTACH_MAX_CHARS` cannot be a
+ * `const` in this file. It lives in `lib/nina/album.ts`, which is the pure module the screen
+ * already imports for its `maxLength` — so the input's cap and the server's clamp are one number,
+ * which is the only arrangement in which they cannot disagree. `SESSION_PARAM` imports the same
+ * way for the same reason: `lib/nina/active.ts` is the pure module that owns the parameter's name.
+ */
+
+/** Which conversation receives the photo — the strip's two icons, in row order. */
+export type NinaAttachTarget = 'recent' | 'new'
+
+export interface NinaAttachInput {
+  kind: 'avatar' | 'image'
+  id: string
+  /** May be empty — a text-free attach is a valid send, exactly as phase 8's run attachment is. */
+  body: string
+  /**
+   * Which button fired. **Required, so `tsc` is the thing that notices a caller that forgot to
+   * decide** — the required-nullable shape `sendNinaMessage` gives `sessionId`. There is no
+   * default: which conversation receives the photo is the whole question the two icons exist to
+   * answer, and a silent default would answer it wrong exactly once, invisibly.
+   */
+  target: NinaAttachTarget
+}
+
+export interface NinaAttachResult {
+  ok: boolean
+  userMessageId: string | null
+  /**
+   * The conversation the photograph actually landed in — `sendNinaMessage`'s own answer, null iff
+   * `!ok`. `target: 'new'` lands in the session `createNinaChatSession` minted or reused;
+   * `target: 'recent'` lands wherever the `sessionId: null` resolution pointed.
+   */
+  sessionId: string | null
+  /**
+   * The ready-to-push destination, `/nina?${SESSION_PARAM}=<sessionId>` — null iff `!ok`. The
+   * caller pushes THIS and never spells a URL of its own, so the screen cannot drift from the
+   * page's parameter grammar.
+   */
+  next: string | null
+}
+
+const REFUSED: NinaAttachResult = { ok: false, userMessageId: null, sessionId: null, next: null }
+
+export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<NinaAttachResult> {
+  const body = input.body.trim().slice(0, NINA_ATTACH_MAX_CHARS)
+  const attachExisting = { kind: input.kind, id: input.id }
+
+  let result: SendNinaMessageResult
+  if (input.target === 'new') {
+    /* The eager create FIRST: the send has to name the session, so the session has to exist. What
+     * comes back is either a freshly minted id or the newest empty session's — "always a new chat
+     * session" reads as "never a conversation that already has content", and that is exactly what
+     * the reuse branch returns. */
+    const created = await createNinaChatSession()
+    if (!created.ok || created.sessionId === null) return REFUSED
+    result = await sendNinaMessage({
+      body,
+      attachExisting,
+      /* EXPLICIT, and the whole point of the button: `null` would re-resolve to his most recent,
+       * which is the conversation he was possibly trying to leave. */
+      sessionId: created.sessionId,
+    })
+  } else {
+    result = await sendNinaMessage({
+      body,
+      attachExisting,
+      /*
+       * F35 phase 3 (R2). `null`, and it is the right answer rather than a placeholder: he is on
+       * `/nina/about` with the album open, there is no session in view, and "no session in view"
+       * resolves to his most recent conversation (assumption A3). The caller then navigates to
+       * `/nina?${SESSION_PARAM}=<that id>` — the SAME session by that resolution — so the photo he
+       * just sent is on the screen he lands on. Naming a session here would mean the album knowing
+       * about a parameter that belongs to the chat. R1 keeps this branch byte-identical to what
+       * shipped: same field values, same resolution; only the caller's URL gained the explicit id.
+       */
+      sessionId: null,
+    })
+  }
+
+  if (!result.ok || result.sessionId === null) return REFUSED
+  return {
+    ok: true,
+    userMessageId: result.userMessageId,
+    sessionId: result.sessionId,
+    next: `/nina?${SESSION_PARAM}=${result.sessionId}`,
+  }
+}
+```
+
+**Impact:** `NinaAttachInput` gaining a required field breaks `NinaAboutScreen.tsx` until Step 2 — land both in one commit. `NinaAttachResult` widening breaks nobody (grep: no other consumer; `components/admin/ShareToNinaItem.tsx:70` mentions the action in a comment only, and its claim — "sends immediately ... the screen then navigates to the chat" — stays true). The `'new'` path's create runs `requireUserId` a second time (same request, same user) and `revalidatePath('/nina')` on the create branch — both harmless; the caller refreshes anyway.
+
+### Step 2: the screen — state, handler, and the icon row
+
+**File:** `components/nina/NinaAboutScreen.tsx`
+
+**Change 2a — import (line 12):**
+
+```tsx
+import { attachNinaPhotoToChat, type NinaAttachTarget } from '@/lib/nina/albumActions'
+```
+
+**Change 2b — state (line 100), replacing `const [attaching, setAttaching] = React.useState(false)`:**
+
+```tsx
+  const [question, setQuestion] = React.useState('')
+  /* Which send is in flight — `'recent'` or `'new'` — or `null` when neither is. One flight for
+   * two controls: it names the button that shows the dots and disables the other one. */
+  const [sending, setSending] = React.useState<NinaAttachTarget | null>(null)
+  const [notice, setNotice] = React.useState<string | null>(null)
+```
+
+**Change 2c — handler (lines 194-218), replacing the whole `attach` callback:**
+
+```tsx
+  /**
+   * R26 still: `''` is a valid question, and attaching with nothing to ask must work. R1/R2 add
+   * the target — his most recent conversation, or a fresh one — and it is the SERVER that decides
+   * which conversation that is and where to land: this handler names the button and pushes the
+   * `next` the action returns, and spells no URL of its own.
+   */
+  const attach = React.useCallback(
+    async (target: NinaAttachTarget) => {
+      if (open == null || sending !== null) return
+      const list = open.section === 'album' ? album : gallery
+      const photo = list[open.index]
+      if (photo == null) return
+      setSending(target)
+      setNotice(null)
+      try {
+        const result = await attachNinaPhotoToChat({
+          kind: open.section === 'album' ? 'avatar' : 'image',
+          id: photo.id,
+          body: question,
+          target,
+        })
+        if (!result.ok || result.next === null) {
+          setNotice('Gagal kirim fotonya. Coba lagi.')
+          return
+        }
+        /* Refresh first, so the pushed conversation renders the row that was just written. */
+        router.refresh()
+        router.push(result.next)
+      } finally {
+        setSending(null)
+      }
+    },
+    [album, gallery, open, question, router, sending],
+  )
+```
+
+**Change 2d — the strip's control rows (lines 333-357), replacing the comment + input + Button inside the `{open != null && (...)}` block. The `PhotoViewer` element and the outer fragment stay exactly as they are:**
+
+```tsx
+          {/*
+            The attach control sits ABOVE the overlay (z-70 against its z-60) rather than inside
+            it, and that is deliberate: `PhotoViewer` is shared with three review surfaces that
+            must not grow an F33 button, and its bottom row is already the dot pager. A fixed strip
+            over it costs that component nothing.
+          */}
+          <div className="fixed inset-x-0 bottom-0 z-70 flex flex-col gap-2 bg-ink/95 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
+            {notice != null && (
+              <p className="text-[12px] font-medium text-card/80" role="status">
+                {notice}
+              </p>
+            )}
+            <input
+              type="text"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              maxLength={NINA_ATTACH_MAX_CHARS}
+              placeholder="Tanya soal foto ini (opsional)"
+              aria-label="Pertanyaan tentang foto ini"
+              className="w-full rounded-field bg-card/10 px-3 py-2 text-[15px] text-card placeholder:text-card/50"
+            />
+            {/*
+              R1/R2: THE TWO SENDS WEAR GLYPHS; THE WORDS BECAME THE ACCESSIBLE NAMES —
+              SessionRow's three menu buttons are the pattern and its header is the record. The
+              glyph is `aria-hidden` decor, the word it replaced is the `aria-label` verbatim
+              ("Kirim ke chat"; the new one extends it), and the control stays a `Button` because
+              everything the guard needs lives there: `loading` swaps the glyph for pulsing dots
+              inside an unchanged box, `md` keeps the 44px floor.
+
+              `variant="secondary"`, and not the default `primary`: primary is `bg-ink text-card`
+              and this strip is `bg-ink/95`, so the shipped button was ink-on-ink — a slab a shade
+              darker than its own surface. The light `bg-paper-2 text-ink` disc is how SessionRow's
+              menu already reads on a dark panel. `flex-1` on each: the row the full-width labelled
+              button owned, split into two adjacent controls, the original send on the left.
+
+              ONE flight, TWO controls: `sending` names which one fired, so only that one shows
+              dots, and `disabled={sending !== null}` on BOTH keeps the other unreachable mid-send —
+              the loading/disabled split of the rename form's Simpan/Batal row, one flight wider.
+            */}
+            <div className="flex gap-2">
+              <Button
+                size="md"
+                variant="secondary"
+                className="flex-1"
+                loading={sending === 'recent'}
+                disabled={sending !== null}
+                aria-label="Kirim ke chat"
+                onClick={() => attach('recent')}
+              >
+                <SendHorizontalIcon />
+              </Button>
+              <Button
+                size="md"
+                variant="secondary"
+                className="flex-1"
+                loading={sending === 'new'}
+                disabled={sending !== null}
+                aria-label="Kirim ke chat baru"
+                onClick={() => attach('new')}
+              >
+                <MessageSquarePlusIcon />
+              </Button>
+            </div>
+          </div>
+```
+
+**Variant decision, stated as the design facts require:** the strip's surface is `bg-ink/95` and `Button`'s default `primary` is `bg-ink text-card` — the shipped button was literally ink-on-ink. `secondary` (`bg-paper-2 text-ink`) is a light disc with dark ink, which reads on the dark glass, and it is the exact variant `SessionRow.tsx:337-366` uses for its three icon-only menu `Button`s — so the app already has this idiom on a dark panel. `flex-1` keeps the two controls adjacent and splits the row the full-width button owned; each stays 44px tall (`md`, the iOS floor) and roughly half the strip wide.
+
+**Mis-tap guard, stated as invariant 7 requires:** both buttons carry `disabled={sending !== null}`, so while either send is in flight BOTH are unreachable; the fired one additionally carries `loading`, which swaps its glyph for `Button`'s pulsing dots in an unchanged box. The fired button therefore shows `disabled` + `loading` together (opacity 50%, dots centered) — the redundancy is deliberate and symmetrical: the guard reads identically on both, and removing either prop later leaves the other one holding the invariant.
+
+**Impact:** no visible text remains on either control; the accessible names are `aria-label="Kirim ke chat"` (verbatim, the words the old button's text gave the screen reader) and `aria-label="Kirim ke chat baru"`. The empty-question attach stays valid (R26) — nothing in the handler gates on `question`. `router.push(result.next)` replaces `router.push('/nina')`; see the Interface Contract's navigation note.
+
+### Step 3: the two glyphs (lucide, verbatim, provenance recorded)
+
+**File:** `components/nina/NinaAboutScreen.tsx` — append after `toCell` (end of file, after line 372)
+**Change:** two private components, JSX-spelled from the lucide-static SVGs. PROVENANCE: both were fetched live on 2026-09-09 from `https://unpkg.com/lucide-static@1.42.0/icons/send-horizontal.svg` and `https://unpkg.com/lucide-static@1.42.0/icons/message-square-plus.svg` (network was available; the paths below are the published ones verbatim). The only adaptations are the ones `SessionRow.tsx:467-482` records: `stroke-width` -> `strokeWidth`, and lucide's `class`/`width`/`height` dropped for our `className` at 18px.
+
+**Code:**
+
+```tsx
+/*
+ * The strip's two send glyphs, inlined rather than imported — `SessionRow`'s collection note and
+ * `AdminNav`'s before it. Both are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
+ * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
+ * presentation attributes exactly as published; the only adaptations are JSX spelling
+ * (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and `height` for
+ * our `className` and the 18px size. Every glyph is 18px in `currentColor` and `aria-hidden` — the
+ * accessible name is the `aria-label` on the button, never the picture.
+ *
+ * `send-horizontal` is the paper plane every chat app uses for "send", lying sideways so it reads
+ * at 18px on the row that fires it (lucide's `send` is the same arrow at 45 degrees; the
+ * horizontal one reads better beside a full-width input row). `message-square-plus` is the
+ * sidebar rail's own noun — `NewChatButton`'s `plus` on a chat-bubble body — the one glyph in the
+ * app that already means "a conversation that does not exist yet", which is exactly what this
+ * button sells.
+ */
+
+/** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
+function SendHorizontalIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" />
+      <path d="M6 12h16" />
+    </svg>
+  )
+}
+
+/** "Kirim ke chat baru" — a conversation with no prior content. Lucide's `message-square-plus`, verbatim. */
+function MessageSquarePlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+      <path d="M12 8v6" />
+      <path d="M9 11h6" />
+    </svg>
+  )
+}
+```
+
+**Impact:** none outside this file — both components are module-private, matching `SessionRow`'s arrangement.
+
+### Step 4: the tests
+
+**File:** `tests/nina.attachTargets.test.ts` (new)
+**Change:** one suite, two halves. The composition is tested with both server actions mocked at `attachNinaPhotoToChat`'s edges — that is the boundary this phase owns; `sendNinaMessage`'s internals are already covered by `tests/nina.chatPhotoReattach.test.ts` and are explicitly out of scope. The screen's wiring is tested as source claims in the `tests/nina.chatPhoto.test.ts` style, because `environment: 'node'` cannot render a client component.
+
+**Code:**
+
+```ts
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { readRepoCode } from './support/importGraph'
+
+/**
+ * **The strip's two send paths, as the server action actually composes them (R1/R2).**
+ *
+ * Two halves, because the phase's surface is one action plus one screen:
+ *
+ *   1. `attachNinaPhotoToChat` with BOTH collaborators mocked at its edges — `sendNinaMessage`
+ *      and `createNinaChatSession`. The claims that matter are the ones the plan index words as
+ *      invariants: the recent send still carries `sessionId: null` (byte-identical resolution,
+ *      and never a create), the new send creates FIRST and then names THAT session, and the
+ *      destination comes back as a ready-to-push `next` spelled from the session the photograph
+ *      landed in — not from the create's copy.
+ *   2. the screen's wiring, as source claims — `environment: 'node'` cannot render a client
+ *      component, so what is left is the shape: the words became `aria-label`s and no quoted
+ *      literal survived, both targets are wired, both buttons share one flight, and the bare
+ *      `router.push('/nina')` is gone. `tests/nina.chatPhoto.test.ts` is the precedent for
+ *      asserting on this file this way.
+ *
+ * Mocking a `'use server'` module is ordinary `vi.mock` — the directive is a bundler concern, and
+ * suites that import `lib/nina/actions.ts` directly (`tests/nina.chatPhotoReattach.test.ts`)
+ * already prove these modules load fine under Vitest. Mocking the two collaborators whole also
+ * keeps `requireUserId`, `next/cache` and the database client out of this suite entirely.
+ */
+
+const spies = vi.hoisted(() => ({
+  sendNinaMessage: vi.fn(),
+  createNinaChatSession: vi.fn(),
+}))
+
+vi.mock('@/lib/nina/actions', () => ({ sendNinaMessage: spies.sendNinaMessage }))
+
+vi.mock('@/lib/nina/sessionActions', () => ({
+  createNinaChatSession: spies.createNinaChatSession,
+}))
+
+/* Every id is exactly 12 symbols of `[0-9A-Za-z_-]` for the reason
+ * `tests/nina.chatPhotoReattach.test.ts` gives: the real validators run `isValidId`, and a
+ * 13-character fixture would refuse on shape while an assertion passed for the wrong reason.
+ * (Here the mocks stand in front of the validators, so the discipline is for the fixtures' own
+ * readability — and so the suite survives a mock becoming a partial.) */
+const AVATAR_ID = 'avaAAAAAAAAA'
+const LANDED_SESSION_ID = 'sesAAAAAAAAA'
+const OTHER_LANDED_ID = 'sesCCCCCCCCCC'
+const CREATED_SESSION_ID = 'sesBBBBBBBBBB'
+const RUNNER_MESSAGE_ID = 'msgRUNNER001'
+
+const SENT = {
+  ok: true,
+  userMessageId: RUNNER_MESSAGE_ID,
+  sessionId: LANDED_SESSION_ID,
+  cursor: 41,
+  turnId: null,
+}
+
+const CREATED = { ok: true, sessionId: CREATED_SESSION_ID, next: `/nina?s=${CREATED_SESSION_ID}` }
+
+const REFUSED_SEND = { ok: false, userMessageId: null, sessionId: null, cursor: null, turnId: null }
+
+const REFUSED_CREATE = { ok: false, sessionId: null, next: null }
+
+const REFUSED_RESULT = { ok: false, userMessageId: null, sessionId: null, next: null }
+
+type AlbumActions = typeof import('@/lib/nina/albumActions')
+
+let albumActions: AlbumActions
+
+beforeEach(async () => {
+  vi.resetModules()
+  for (const spy of Object.values(spies)) spy.mockReset()
+
+  spies.sendNinaMessage.mockResolvedValue({ ...SENT })
+  spies.createNinaChatSession.mockResolvedValue({ ...CREATED })
+
+  albumActions = await import('@/lib/nina/albumActions')
+})
+
+afterEach(() => {
+  vi.resetModules()
+})
+
+/** The single input `sendNinaMessage` received, asserting there was exactly one call. */
+function sentInput(): Record<string, unknown> {
+  expect(spies.sendNinaMessage).toHaveBeenCalledTimes(1)
+  return spies.sendNinaMessage.mock.calls[0]![0] as Record<string, unknown>
+}
+
+describe('target "recent" is the send that shipped (R1)', () => {
+  it('keeps `sessionId: null` — same action chain, same resolution, and never a create', async () => {
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: '  lihat ini  ',
+      target: 'recent',
+    })
+
+    expect(spies.createNinaChatSession).not.toHaveBeenCalled()
+    expect(sentInput()).toEqual({
+      body: 'lihat ini',
+      attachExisting: { kind: 'avatar', id: AVATAR_ID },
+      sessionId: null,
+    })
+    expect(result).toEqual({
+      ok: true,
+      userMessageId: RUNNER_MESSAGE_ID,
+      sessionId: LANDED_SESSION_ID,
+      next: `/nina?s=${LANDED_SESSION_ID}`,
+    })
+  })
+
+  it('clamps the question with the one shared clamp', async () => {
+    await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: `a${'b'.repeat(700)}`,
+      target: 'recent',
+    })
+
+    expect((sentInput().body as string).length).toBe(600)
+  })
+
+  it('still sends an empty question — a photo alone is a valid send (R26)', async () => {
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'image',
+      id: 'imgPHOTO0001',
+      body: '   ',
+      target: 'recent',
+    })
+
+    expect(sentInput()).toMatchObject({ body: '', attachExisting: { kind: 'image' } })
+    expect(result.ok).toBe(true)
+  })
+
+  it('refuses without a destination when the send refuses', async () => {
+    spies.sendNinaMessage.mockResolvedValue({ ...REFUSED_SEND })
+
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: '',
+      target: 'recent',
+    })
+
+    expect(result).toEqual(REFUSED_RESULT)
+  })
+})
+
+describe('target "new" always lands the photo in a conversation with no prior content (R2)', () => {
+  it('creates the session FIRST, then names it explicitly on the send', async () => {
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: '',
+      target: 'new',
+    })
+
+    expect(spies.createNinaChatSession).toHaveBeenCalledTimes(1)
+    expect(spies.createNinaChatSession.mock.invocationCallOrder[0]!).toBeLessThan(
+      spies.sendNinaMessage.mock.invocationCallOrder[0]!,
+    )
+    expect(sentInput()).toEqual({
+      body: '',
+      attachExisting: { kind: 'avatar', id: AVATAR_ID },
+      sessionId: CREATED_SESSION_ID,
+    })
+    expect(result).toEqual({
+      ok: true,
+      userMessageId: RUNNER_MESSAGE_ID,
+      sessionId: CREATED_SESSION_ID,
+      next: `/nina?s=${CREATED_SESSION_ID}`,
+    })
+  })
+
+  it('refuses and never sends when the create fails — there is no session to name', async () => {
+    spies.createNinaChatSession.mockResolvedValue({ ...REFUSED_CREATE })
+
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: 'ada',
+      target: 'new',
+    })
+
+    expect(result).toEqual(REFUSED_RESULT)
+    expect(spies.sendNinaMessage).not.toHaveBeenCalled()
+  })
+
+  it('reports the refusal when the send itself refuses — the created empty session stays', async () => {
+    spies.sendNinaMessage.mockResolvedValue({ ...REFUSED_SEND })
+
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: '',
+      target: 'new',
+    })
+
+    expect(result).toEqual(REFUSED_RESULT)
+    expect(spies.createNinaChatSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('points `next` at the session the photo LANDED in, not the one the create returned', async () => {
+    /* The two collaborators disagree on purpose: `sendNinaMessage` re-proves ownership and its
+     * `sessionId` is the fact about where the row went. If the shipped `next` ever started life
+     * from the create's copy instead of the landed id, this is the assertion that catches it. */
+    spies.sendNinaMessage.mockResolvedValue({ ...SENT, sessionId: OTHER_LANDED_ID })
+
+    const result = await albumActions.attachNinaPhotoToChat({
+      kind: 'avatar',
+      id: AVATAR_ID,
+      body: '',
+      target: 'new',
+    })
+
+    expect(result.next).toBe(`/nina?s=${OTHER_LANDED_ID}`)
+  })
+})
+
+describe('the strip carries the words as accessible names, not as text (structural)', () => {
+  const ABOUT = 'components/nina/NinaAboutScreen.tsx'
+  const source = readRepoCode(ABOUT)
+
+  it('both aria-labels are the words the controls replaced', () => {
+    expect(source).toContain('aria-label="Kirim ke chat"')
+    expect(source).toContain('aria-label="Kirim ke chat baru"')
+  })
+
+  it('no visible label survived — the quoted literals are gone from the code', () => {
+    expect(source).not.toContain("'Kirim ke chat'")
+    expect(source).not.toContain('Mengirim')
+  })
+
+  it('both targets are wired to the one handler', () => {
+    expect(source).toContain("attach('recent')")
+    expect(source).toContain("attach('new')")
+  })
+
+  it('both buttons share one flight and stay disabled through it (invariant 7)', () => {
+    expect(source.match(/disabled=\{sending !== null\}/g)?.length).toBe(2)
+    expect(source).toContain("loading={sending === 'recent'}")
+    expect(source).toContain("loading={sending === 'new'}")
+  })
+
+  it('the send navigates to the conversation that received the photo', () => {
+    expect(source).toContain('router.push(result.next)')
+    expect(source).not.toContain("router.push('/nina')")
+  })
+})
+```
+
+**Impact:** new file only; no existing suite is edited. `tests/nina.chatPhoto.test.ts`'s claim that `NinaAboutScreen.tsx` contains no `actions=` still holds (the import spells `albumActions'`, never `actions=`), and no suite asserts the removed `'Kirim ke chat'`/`'Mengirim…'` literals (grep: they appear only in comments elsewhere).
+
+## The strip as Phase 2 must quote it
+
+Phase 2 owns the container's box and the keyboard publisher. This phase leaves the strip as ONE `<div>` container with THREE children in this order, and touches no positioning class:
+
+```tsx
+<div className="fixed inset-x-0 bottom-0 z-70 flex flex-col gap-2 bg-ink/95 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
+  {/* 1. the notice, conditionally:  {notice != null && (<p className="text-[12px] font-medium text-card/80" role="status">{notice}</p>)} */}
+  {/* 2. the question input, full width, unchanged from before this phase */}
+  {/* 3. the icon row: <div className="flex gap-2"> holding the two `Button`s (size="md" variant="secondary" className="flex-1") */}
+</div>
+```
+
+Phase 2's `bottom: var(--nina-kb-overlap, 0px)` belongs on THAT container element (as `style`, beside the untouched `className`), and the publisher mounts as a sibling in the `open != null` fragment. The icon row div carries no positioning of its own (`flex gap-2` only), so the box change cannot disturb it.
+
+## Verification
+
+**Build:** `npm run typecheck` (runs `next typegen && tsc --noEmit`)
+**Lint:** `npm run lint`
+**Tests:** `npx vitest run tests/nina.attachTargets.test.ts tests/nina.chatPhoto.test.ts tests/nina.chatPhotoReattach.test.ts`, then the whole suite `npm test`
+**Manual check:** `npm run dev`, open `/nina/about`, tap a photo: the strip shows the question field with two adjacent light discs under it, no text on either; the left disc sends into the most recent conversation, the right one into a conversation with nothing before the photo; either lands on the conversation that received the photo (URL `/nina?s=…`); tapping one dims both until it resolves.
+**Exit criteria:** two adjacent icon-only controls; the recent-session send's server chain unchanged (`sessionId: null`, no create — proven by the suite); the new-chat send always lands in a conversation with no prior content (the `createNinaChatSession` reuse branch is that guarantee); the runner lands in the conversation that received the photo; both paths tested; full suite green.
+
+## Handoffs
+
+- **Phase 2** owns the strip container's box (`bottom: var(--nina-kb-overlap, 0px)`) and the keyboard publisher on `/nina/about`. Quote the JSX from "The strip as Phase 2 must quote it" above — this phase deliberately left the container's `className` byte-identical to what shipped.
+- **Phase 2** (rename re-assert) is unaffected by this phase's files except that `NinaAboutScreen.tsx` gained content above the strip; no symbol it names was touched.
+- Nobody: `components/admin/ShareToNinaItem.tsx:70`'s comment about `attachNinaPhotoToChat` remains true as written (it was already stale about the 13-16 s turn wait — pre-existing, not this phase's to fix).
+
+## Rollback
+
+`git revert` of this phase's single commit range on the branch restores the labelled full-width "Kirim ke chat" Button, the bare `router.push('/nina')`, and the `{ ok, userMessageId }` result shape. Nothing else depends on any of it: `NinaAttachResult`'s widening and `target` have exactly one caller, the two glyph components are private, and the new test file is additive. Phase 2 does not exist yet at this point in the sequence, so there is nothing to coordinate.
