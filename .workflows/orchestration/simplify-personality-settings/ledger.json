@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "441f881",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "0016 generated+committed, NEVER applied (db:migrate is post-deploy only); jobActions test has 4 PRE-EXISTING timeouts at base (expect them in npm test); grep-B residue = 9 lib lines + 4 imagePrefs lines in tests/db.schema.nina.test.ts (path lacks 'image'), decided in phase 1",
       "package": "lib/nina`, `lib/db`, `lib/admin`, `app`, `components`, `tests`, `drizzle",
       "plan": ".workflows/plan/simplify-personality-settings/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T03:28:54+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A025",
       "title": "Purge the tuning revision mechanism everywhere"
     },
     {
@@ -44,6 +44,6 @@
   "plan": "/home/miftah/.worktrees/run-insights/simplify-personality-settings/.workflows/orchestration/simplify-personality-settings/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "simplify-personality-settings",
-  "updated": "2026-09-09T02:28:21+00:00",
+  "updated": "2026-09-09T03:28:54+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/simplify-personality-settings"
 }
