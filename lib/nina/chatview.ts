@@ -275,6 +275,93 @@ export const NINA_KEYBOARD_OVERLAP_VAR = '--nina-kb-overlap'
 export const KEYBOARD_REASSERT_DELAYS_MS: readonly number[] = [0, 120, 300, 600, 1000]
 
 /**
+ * The shape of an element the panel's reassert is willing to assert on — the DOM's own `tagName`
+ * and `isContentEditable`, and nothing else.
+ *
+ * Deliberately not `HTMLElement`: this file's header rule is no DOM types in a signature, and
+ * these two fields are all the decision reads. `HTMLElement` satisfies the interface
+ * structurally, so a caller passes the element it already holds with no cast and no wrapper, and
+ * a test in `environment: 'node'` passes a plain object — which is the whole reason the rule
+ * lives here and not in the component (invariant 5; there is no jsdom to render a field into).
+ */
+export interface KeyboardFieldLike {
+  readonly tagName: string
+  readonly isContentEditable: boolean
+}
+
+/**
+ * Whether an element is a text field the software keyboard could open for — the one guard both of
+ * `NinaSidebar`'s reassert triggers share.
+ *
+ * `INPUT` / `TEXTAREA` / `contenteditable`, and nothing else — the exact truth table the panel's
+ * `focusin` listener has carried since the search-field incident, lifted here so the second
+ * trigger (the box-change one, same phase) cannot grow a second, drifting copy. The panel itself
+ * takes focus on open (`tabIndex={-1}`) and its buttons take focus on tap, and neither has text a
+ * keyboard could hide; asserting on them would scroll the list under a reader who is only moving
+ * through it.
+ */
+export function isKeyboardTextField(field: KeyboardFieldLike | null): boolean {
+  if (field === null) return false
+  return field.tagName === 'INPUT' || field.tagName === 'TEXTAREA' || field.isContentEditable
+}
+
+/**
+ * The one `scrollIntoView` call the panel's reassert makes, as data.
+ *
+ * `block: 'nearest'` walks every scrollable ancestor (the panel's own `overflow-y-auto` deck and
+ * the document) and corrects whichever one Safari's focus reveal scrolled — and computes zero
+ * scroll on an already-visible field, so an assert with nothing to correct costs nothing.
+ * `behavior: 'instant'`, never `smooth`: the layout has already moved under the runner and a
+ * 300 ms chase reads as a glitch — `decideAutoScroll`'s 'viewport' rule, and no new motion.
+ *
+ * A constant rather than a literal at two call sites so the second trigger cannot quietly grow a
+ * `smooth`.
+ */
+export const KEYBOARD_REASSERT_SCROLL_OPTIONS = {
+  block: 'nearest',
+  behavior: 'instant',
+} as const
+
+/** The panel's box, as the `ResizeObserver` reports it: the content rect's two dimensions. */
+export interface PanelBoxSize {
+  readonly width: number
+  readonly height: number
+}
+
+/** What a `ResizeObserver` delivery on the panel calls for. See `planBoxReassert`. */
+export type BoxReassertVerdict = 'baseline' | 'skip' | 'assert'
+
+/**
+ * Whether a `ResizeObserver` delivery on the sidebar panel means "the box actually changed —
+ * assert the focused field now". The when-half of the reassert, next to
+ * `KEYBOARD_REASSERT_DELAYS_MS`' clock-half.
+ *
+ *   - `'baseline'` — the first delivery, which the spec fires on `observe()` with the size the
+ *     panel already had. Nothing changed. Asserting here would scroll the list on every open,
+ *     before any field exists to protect.
+ *   - `'skip'` — a delivery whose rect is the one before it. The observer can fire without the
+ *     panel's box having moved; an assert on that is work with nothing to correct.
+ *   - `'assert'` — a real change. This is the moment the clock-half misses: Safari's focus reveal
+ *     scrolls the deck, the `bottom` var shrinks the panel one React commit later, and if the
+ *     last scheduled tick fired before the shrink landed, the focused field rides out through the
+ *     container's top edge — the residue the rename-field report describes. The box ARRIVING at
+ *     its new size is the one observable signal that the shrink landed, and it needs no second
+ *     `visualViewport` subscription and no new dependency on the `open`-keyed effect.
+ *
+ * Exact `===` on both numbers, no rounding: an assert is idempotent (`'nearest'` on a visible
+ * field computes zero scroll), so over-firing is cheap and under-firing — skipping a real change
+ * — is the one thing this rule must not do.
+ */
+export function planBoxReassert(
+  previous: PanelBoxSize | null,
+  next: PanelBoxSize,
+): BoxReassertVerdict {
+  if (previous === null) return 'baseline'
+  if (previous.width === next.width && previous.height === next.height) return 'skip'
+  return 'assert'
+}
+
+/**
  * The composer's `bottom`, as a CSS length. Its partner is `composerPadBottomCss` below, and
  * neither is correct without the other.
  *
@@ -371,4 +458,33 @@ export function composerBottomCss(overlapPx: number, chromeClearancePx: number):
 export function composerPadBottomCss(overlapPx: number): string {
   if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
   return `calc(max(0px, var(--safe-bottom) / 2 - 3.25px) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
+}
+
+/**
+ * The photo-question strip's own `padding-bottom`, as a CSS length — `composerPadBottomCss`'s
+ * exact gate, on the one fixed bar that is not the composer's: `/nina/about`'s attach strip
+ * (`components/nina/NinaAboutScreen.tsx`), which ends at the keyboard's top edge through
+ * `NINA_KEYBOARD_OVERLAP_VAR` the same way the panel does.
+ *
+ * The strip's resting floor is what its old `pb-[calc(1rem+var(--safe-bottom))]` class spelled:
+ * 1rem of glass under the send row plus the phone's home-indicator inset. With the keyboard up
+ * the whole floor goes to `'0px'`, on the composer's recorded reasoning: the keyboard's top edge
+ * is the floor, the inset is behind it, and padding by either would lift the input row off the
+ * keys — the gap the owner reported as "ada gap diantara chat query field dengan bagian bawah",
+ * one route over. The strip's send row keeps its own `py-2`-equivalent spacing inside the row, so
+ * what the keyboard state removes is the floor and not the control's breathing room — and zeroing
+ * the 1rem too, not just the inset term, is the deliberate reading of "the same gate":
+ * `composerPadBottomCss` zeroes its WHOLE floor when the overlap is positive, keeping only the
+ * row's own padding, and a kept 1rem would paint a dead 16 px band of `bg-ink/95` between the
+ * send control and the keys — the lifted look, in miniature.
+ *
+ * `'0px'` rather than `'0'`: a length going into `style.paddingBottom`, on
+ * `composerPadBottomCss`'s recorded reason. Takes the overlap and not the var, for the reason the
+ * composer takes it: the strip's consumer mirrors the publisher's number into state, and a
+ * CSS-computable "is the overlap positive" gate does not exist without a second `:root` variable,
+ * which would be a second channel to keep honest.
+ */
+export function attachStripPadBottomCss(overlapPx: number): string {
+  if (Number.isFinite(overlapPx) && overlapPx > 0) return '0px'
+  return 'calc(1rem + var(--safe-bottom))'
 }

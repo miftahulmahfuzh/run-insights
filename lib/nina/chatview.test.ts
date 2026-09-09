@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  attachStripPadBottomCss,
   composerBottomCss,
   composerPadBottomCss,
   decideAutoScroll,
   groupIntoDays,
+  isKeyboardTextField,
   isNearBottom,
   keyboardOverlapPx,
   KEYBOARD_MIN_PX,
   KEYBOARD_REASSERT_DELAYS_MS,
+  KEYBOARD_REASSERT_SCROLL_OPTIONS,
   NINA_BAR_VISIBLE_VAR,
+  NINA_KEYBOARD_OVERLAP_VAR,
+  planBoxReassert,
   STICK_TO_BOTTOM_PX,
+  type KeyboardFieldLike,
+  type PanelBoxSize,
 } from './chatview'
 
 /** iPhone XS Max, the design target (docs/design-brief.md), in CSS px. */
@@ -349,5 +356,105 @@ describe('composerPadBottomCss', () => {
         'calc(max(0px, var(--safe-bottom) / 2 - 3.25px) * (1 - var(--nina-bar-visible, 0)))',
       )
     }
+  })
+})
+
+describe('isKeyboardTextField', () => {
+  // The shared guard both of the panel's reassert triggers consult. The DOM behaviour it feeds —
+  // `scrollIntoView` on a live field — cannot run here (`environment: 'node'`); what is asserted
+  // is the whole decision, which is the part a rule can carry.
+
+  const field = (tagName: string, isContentEditable = false): KeyboardFieldLike => ({
+    tagName,
+    isContentEditable,
+  })
+
+  it('takes the three keyboard-opening elements', () => {
+    expect(isKeyboardTextField(field('INPUT'))).toBe(true)
+    expect(isKeyboardTextField(field('TEXTAREA'))).toBe(true)
+    expect(isKeyboardTextField(field('DIV', true))).toBe(true)
+  })
+
+  it('refuses everything else the panel can focus', () => {
+    // The panel itself (`tabIndex={-1}`) and its buttons take focus on open/tap; asserting on
+    // them would scroll the list under a reader who is only moving through it. SELECT is pinned
+    // false to lock the rule to the original three-way guard it replaced, so a widening is a
+    // decision about this line, not a silent one.
+    expect(isKeyboardTextField(field('DIV'))).toBe(false)
+    expect(isKeyboardTextField(field('BUTTON'))).toBe(false)
+    expect(isKeyboardTextField(field('A'))).toBe(false)
+    expect(isKeyboardTextField(field('SELECT'))).toBe(false)
+  })
+
+  it('refuses the absence of an element', () => {
+    expect(isKeyboardTextField(null)).toBe(false)
+  })
+})
+
+describe('planBoxReassert', () => {
+  const box = (width: number, height: number): PanelBoxSize => ({ width, height })
+
+  it('records the observer spec baseline instead of asserting on it', () => {
+    // ResizeObserver fires once on observe() with the size the panel already had. Asserting
+    // there would scroll the list on every open, before any field exists to protect.
+    expect(planBoxReassert(null, box(390, 844))).toBe('baseline')
+  })
+
+  it('skips a delivery that repeats the previous box', () => {
+    expect(planBoxReassert(box(390, 844), box(390, 844))).toBe('skip')
+  })
+
+  it('asserts on a real change — the keyboard shrink the schedule raced', () => {
+    // 812 -> 500 is the panel's box arriving at the keyboard's top edge: the moment the fixed
+    // delays can miss, because the last tick may have fired before the shrink landed.
+    expect(planBoxReassert(box(390, IPHONE_HEIGHT), box(390, 500))).toBe('assert')
+  })
+
+  it('asserts on a width change too (rotation)', () => {
+    expect(planBoxReassert(box(390, IPHONE_HEIGHT), box(IPHONE_HEIGHT, 390))).toBe('assert')
+  })
+
+  it('treats a sub-pixel change as a change — under-firing is the one failure the rule must not do', () => {
+    expect(planBoxReassert(box(390, IPHONE_HEIGHT), box(390, IPHONE_HEIGHT + 0.5))).toBe('assert')
+  })
+})
+
+describe('KEYBOARD_REASSERT_SCROLL_OPTIONS', () => {
+  it('is nearest + instant, the one assert both triggers share', () => {
+    // `instant` is the whole point: the layout has already moved under the runner and a smooth
+    // chase reads as a glitch. A constant, so the second trigger cannot quietly grow a `smooth`.
+    expect(KEYBOARD_REASSERT_SCROLL_OPTIONS).toEqual({ block: 'nearest', behavior: 'instant' })
+  })
+})
+
+describe('attachStripPadBottomCss', () => {
+  const RESTING = 'calc(1rem + var(--safe-bottom))'
+
+  it('is the old pb-[calc(1rem+var(--safe-bottom))] class, byte for byte, at rest', () => {
+    // The resting geometry must be exactly what the replaced class spelled: with no keyboard,
+    // nothing on /nina/about moves.
+    expect(attachStripPadBottomCss(0)).toBe(RESTING)
+  })
+
+  it('zeroes the whole floor under the keyboard — the composer gate, on this bar', () => {
+    // `KEYBOARD_HEIGHT` is this suite's own plausible overlap. The keyboard's top edge is the
+    // floor and the inset is behind it; padding by either lifts the input off the keys, which is
+    // `composerPadBottomCss`'s recorded mistake one route over.
+    expect(attachStripPadBottomCss(KEYBOARD_HEIGHT)).toBe('0px')
+    expect(attachStripPadBottomCss(KEYBOARD_HEIGHT)).not.toBe('0')
+  })
+
+  it('answers the no-keyboard degenerate inputs with the resting floor', () => {
+    // The same degradation `composerBottomCss`/`composerPadBottomCss` get: unmeasurable and
+    // negative mean "no keyboard", and a NaN must not decide geometry.
+    for (const overlap of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -120]) {
+      expect(attachStripPadBottomCss(overlap)).toBe(RESTING)
+    }
+  })
+})
+
+describe('NINA_KEYBOARD_OVERLAP_VAR', () => {
+  it('is the channel the strip and the panel both spell', () => {
+    expect(NINA_KEYBOARD_OVERLAP_VAR).toBe('--nina-kb-overlap')
   })
 })

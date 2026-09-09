@@ -1,7 +1,7 @@
 # Package: components/nina
 
 **Location**: `components/nina`
-**Last Updated**: 2026-09-09 (task `P2-CN-A000`, `photo-send-chat-icons` phase 1: the `/nina/about` attach strip's "Kirim ke chat" button became two adjacent icon-only sends — `send-horizontal` for the most-recent session, `message-square-plus` for a brand-new one — with `attachNinaPhotoToChat` gaining the required `target` input and `sessionId`/`next` result fields, and the screen pushing `result.next`. First documentation of this package.)
+**Last Updated**: 2026-09-09 (task `P1-CN-A001`, `photo-send-chat-icons` phase 2 of 2: the keyboard channel became one component — `KeyboardOverlapPublisher`, the `visualViewport` subscription and `--nina-kb-overlap` broadcast extracted out of `ChatScreen`, mounted there and scoped to `NinaAboutScreen`'s open viewer — the `/nina/about` attach strip gained the sidebar panel's box fix (`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss`), and the sidebar's focus reassert gained a second, box-change trigger (`planBoxReassert` over a `ResizeObserver`). Previously `P2-CN-A000` (phase 1): the strip's two icon-only sends and `attachNinaPhotoToChat`'s `target`/`sessionId`/`next` contract. First documentation of this package was the phase-1 pass.)
 
 ## Overview
 
@@ -48,9 +48,11 @@ conclusion.
   two swipe gestures plus a tap, and the actions sheet — with every gate decided in `lib/`.
 - Host the sidebar overlay: URL-held open state, the pinned four-icon rail, the session list with
   its three row actions, search with its persisted semantic toggle, and the keyboard-overlap
-  channel.
+  channel's consumer half — the panel ends at the var, and its focused fields are re-asserted on
+  both the clock and the panel's box actually changing.
 - Serve `/nina/about`: her album and media as two viewer lists over one shared `PhotoViewer`, the
-  image-job summary, and the zoomed-photo attach strip whose two icon sends are this set's phase 1.
+  image-job summary, and the zoomed-photo attach strip — two icon sends (phase 1) ending at the
+  keyboard's measured top edge (phase 2).
 - Serve `/nina/jobs` and `/nina/jobs/[id]`: the redo/delete controls, the ticking elapsed clock, and
   the detail card whose jump arrives already decided.
 - Publish the unread dot and the chrome: the tab bar's hide-on-scroll state machine, the floating
@@ -64,7 +66,8 @@ conclusion.
 | File | Kind | Purpose |
 |---|---|---|
 | `types.ts` | **types only**, no directive | `ChatMessage`, `ChatAvatar`, `ChatMessageState`, `ChatRole` — the client shape of the conversation, mapped from `lib/nina/queries`'s rows on the server so no component knows a column name. No runtime export at all. |
-| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → staggered reveal. Also owns the keyboard measurement (until phase 2 extracts it), the deep-link landings (`?jump=` mount and soft-nav), the photo viewer state, and every notice sentence the screen says. |
+| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → staggered reveal. Mounts `KeyboardOverlapPublisher` — the keyboard measurement it used to own inline — and keeps only the numeric mirror for `MessageList`'s bottom pad and the composer's two CSS strings; also the deep-link landings (`?jump=` mount and soft-nav), the photo viewer state, and every notice sentence the screen says. |
+| `KeyboardOverlapPublisher.tsx` | `'use client'` | The ONE `visualViewport` subscription in the app and the keyboard's ONE broadcast. Empty-deps `resize`/`scroll` subscription (a keystroke never re-subscribes), `keyboardOverlapPx` for the number, `--nina-kb-overlap` set on `:root` and removed — not zeroed — at rest and on unmount, and an optional `onOverlap` callback (read through a latest-ref, called inside the same `sync`) for a consumer that wants the number as a number. Paints null. A component rather than a hook because its consumers are two different ROUTES and `rg KeyboardOverlapPublisher` must answer "who measures the keyboard". |
 | `MessageList.tsx` | `'use client'` | The conversation, grouped by day. The page scrolls — no `overflow-y-auto` panel — and `decideAutoScroll` is fed by a passive scroll *sample*, not an effect measurement. Honours R14's `?at=` scroll mark with a `useLayoutEffect` restore. |
 | `MessageBubble.tsx` | `'use client'` | One message. Two sides, two extension slots (`quote`, `above`), two `sr-only`-until-focused openers, and three gestures decided in `lib/` (`decideReplySwipe`, `decideMessageActionSwipe`, `decideMessageActionTap`). Marked `'use client'` since phase 7 — the reply gesture forced it, and no `BubbleShell` split was needed. |
 | `MessageActionsSheet.tsx` | `'use client'` | Edit / delete / resend / retry in one `Sheet`. Owns its own draft (the `Sheet.tsx` focus-loss lesson, a second time); `key={acting?.id}` upstream is what resets it. Delete is immediate — the owner removed the confirm step by instruction. |
@@ -76,13 +79,13 @@ conclusion.
 | `QuoteStub.tsx` | `'use client'` | The quoted strip, above a bubble's text and above the composer's input. A real `<button>` when `onJump` is passed; inert in the composer. `bg-ink-3/20` per RULING E1. |
 | `RunAttachmentCard.tsx` | `'use client'` | A run inside the bubble, and the door to it: one `<Link>` to `/r/[id]` whose `onNavigate` (not `onClick`) saves R14's scroll mark. |
 | `TypingIndicator.tsx` | **no directive** | Nina, mid-thought. Reuses `LoadingDots` (the app's one loading idiom and its one keyframe); wears her exact bubble shape. The face is an optional prop here and required at every hop above — the asymmetry is deliberate. |
-| `NinaSidebar.tsx` | `'use client'` | The full-screen overlay panel, plus `NinaSidebarProvider` (one boolean, one `pushedRef`, shared by the trigger and the panel) and `NinaSidebarTrigger` (a bare 44 px button that renders null outside a provider). Ends its box at the keyboard's measured top edge via `--nina-kb-overlap`; hosts the pinned four-icon rail; asserts focused fields over the keyboard on `KEYBOARD_REASSERT_DELAYS_MS`. |
+| `NinaSidebar.tsx` | `'use client'` | The full-screen overlay panel, plus `NinaSidebarProvider` (one boolean, one `pushedRef`, shared by the trigger and the panel) and `NinaSidebarTrigger` (a bare 44 px button that renders null outside a provider). Ends its box at the keyboard's measured top edge via `--nina-kb-overlap`; hosts the pinned four-icon rail; re-asserts focused fields over the keyboard on TWO triggers — the `KEYBOARD_REASSERT_DELAYS_MS` schedule armed by `focusin`, and `planBoxReassert` over a `ResizeObserver` on the panel's own box — sharing one `isKeyboardTextField` guard and one `KEYBOARD_REASSERT_SCROLL_OPTIONS` assert. |
 | `SessionList.tsx` | `'use client'` | Every chat in `planSessionList`'s order. Decides nothing; the empty state is reachable in exactly two real states and is built. |
 | `SessionRow.tsx` | `'use client'` | One chat: the row (link, or button when it is the open one) and a `⋯` disclosure over pin / rename / remove — a `mode` union with inline panels, `FolderMenu`'s shape. Icon-only actions since `search-clear-and-sidebar-icons`: the words became `aria-label`s verbatim. |
 | `NinaSearchField.tsx` | `'use client'` | Sidebar search + the semantic toggle. Measures; `lib/nina/search.ts` decides. Its hit `<Link>`s fire no close callback — the measured production race — and take no props at all, so the seam cannot be re-armed. |
 | `useSemanticPref.ts` | `'use client'` | The toggle's persistence — the first `localStorage` in the codebase, via `useSyncExternalStore`, with a module-level listener set and a `storage` listener so two tabs agree. |
 | `NewChatButton.tsx` | `'use client'` | The rail's `+`. A `<button>` and not a `<Link>` because the id does not exist until the action runs; `replace`, not `push`; never mints a second empty session (the action reuses the newest empty one). |
-| `NinaAboutScreen.tsx` | `'use client'` | `/nina/about`. One `PhotoViewer` over two sections (album / chat), open state derived from `?photo=album.<id>` / `?photo=chat.<id>` — never mirrored into state. Since `P2-CN-A000`: the zoomed-photo attach strip's **two adjacent icon-only sends**, one flight for both. |
+| `NinaAboutScreen.tsx` | `'use client'` | `/nina/about`. One `PhotoViewer` over two sections (album / chat), open state derived from `?photo=album.<id>` / `?photo=chat.<id>` — never mirrored into state. Since `P2-CN-A000`: the zoomed-photo attach strip's **two adjacent icon-only sends**, one flight for both. Since `P1-CN-A001`: the strip ends at `var(--nina-kb-overlap, 0px)` with `attachStripPadBottomCss` as its padding gate, fed by the publisher mounted inside the open-viewer fragment. |
 | `NinaPhotoGrid.tsx` | `'use client'` | One square grid for both sections — they differ in exactly two ways (the current-photo ring; the gallery's two parties). `alt=""` on every cell; the `<button>` carries the accessible name. |
 | `NinaAvatar.tsx` | **no directive** | Her face in a circle at three sizes (28 / 44 / 128 px). The only `next/image` call site among Nina's images — the committed fallback PNG is a build asset; an album Blob URL gets a plain `<img>` under `ninaCropStyle`. |
 | `NinaJobList.tsx` | `'use client'` | The job list, rendered by `/nina/jobs` **and** summarised under `/nina/about`'s Media. Every prop serializable; `actions?: boolean` (not a render-prop — a Server Component caller cannot receive one) draws the per-row mutations on the console surface alone. Absence is one sentence worded by the caller. |
@@ -133,30 +136,78 @@ implementation. The facts worth having before editing it:
   commit. `app/nina/page.tsx` also keys `<ChatScreen key={activeSessionId ?? 'none'}>`, so a session
   switch remounts rather than merging two conversations' local state.
 
-### The keyboard channel (and what phase 2 does to it)
+### The keyboard channel
 
-Today `ChatScreen` owns the app's only `visualViewport` subscription and broadcasts the measured
-overlap as `--nina-kb-overlap` on `:root` — a custom property because the sidebar panel needs the
-same number and is a SIBLING (rendered by the page beside this component), so no prop can cross and
-`ChatChrome`'s docstring forbids a second subscription. The var is removed, not zeroed, at rest and
-on unmount, so the resting geometry is what an absent var falls back to.
+The keyboard is one measurement and one broadcast, and since phase 2 of `photo-send-chat-icons`
+they live in `KeyboardOverlapPublisher`, not in a screen. It subscribes to `visualViewport` (empty
+deps — a keystroke in any consumer must never re-subscribe, the same rule the sidebar's
+`open`-keyed effect enforces), turns the reading into a number with `keyboardOverlapPx` (which
+filters out the URL bar and pinch-zoom, and returns 0 on Android, where the layout viewport really
+does shrink — so there the var is never set and no consumer ever moves), and sets
+`--nina-kb-overlap` on `:root`. The var is a custom property because the sidebar panel needs the
+same number and is a SIBLING (rendered by the page beside `ChatScreen`), so no prop can cross and
+`ChatChrome`'s docstring forbids a second subscription; `NINA_BAR_VISIBLE_VAR` is the precedent for
+exactly that gap. The var is removed, not zeroed, at rest and on unmount, so the resting geometry
+is what an absent var falls back to and nothing survives navigating off the route.
 
-**Phase 2 (`P1-CN-A001`, pending) moves that subscription.** A new `components/nina/
-KeyboardOverlapPublisher.tsx` becomes the one implementation and the one broadcast;
-`ChatScreen` renders it and keeps only a numeric mirror for the composer's offset, and
-`NinaAboutScreen` mounts it (scoped to the open-viewer fragment — its only reader is the strip) to
-end the strip's box at `var(--nina-kb-overlap, 0px)` exactly as the sidebar panel already does.
-The cross-phase invariant it upholds: exactly one publisher implementation, never two concurrent
-`visualViewport` subscriptions on one screen. Do not add a second one in the meantime — `ChatChrome`
-chose composer focus over `visualViewport` for its own hide logic for the same reason.
+It is a component rather than a hook for two stated reasons: its consumers are two ROUTES, not two
+components of one tree (`ChatScreen` on `/nina`, `NinaAboutScreen` on `/nina/about` — never mounted
+together, so the one-subscription-per-screen invariant holds by construction, and never a second
+concurrent subscription), and it must stay grep-visible — `rg KeyboardOverlapPublisher` answers
+"who measures the keyboard", where a call inside a hook's body does not. A consumer that needs the
+NUMBER as a number, and not the var, passes `onOverlap` and mirrors the value into its own state:
+`ChatScreen` for `MessageList`'s bottom pad and the composer's two CSS strings, `NinaAboutScreen`
+for the strip's padding gate. The callback is called synchronously inside the same `sync` that sets
+the internal state, so a mirror is never a frame behind the var, and `setState` with an unchanged
+number bails out, so a `scroll` event that does not move the measurement costs the consumer
+nothing.
+
+`/nina/about`'s mount is SCOPED to the open-viewer fragment, deliberately: the strip is the route's
+only reader and exists only while `open != null`, so a page-level mount would run a subscription
+with no consumer and publish a var nothing on the route reads. The strip then gets the sidebar
+panel's box fix — `bottom: var(--nina-kb-overlap, 0px)` as an INLINE STYLE (the string is constant
+and never re-renders; the var underneath is what moves), because it must beat `bottom-0` in the
+cascade without depending on utility sort order — plus `attachStripPadBottomCss(kbOverlap)` as its
+`paddingBottom`: the old `pb-[calc(1rem+var(--safe-bottom))]` class at rest, byte for byte, and
+`'0px'` under the keyboard, on `composerPadBottomCss`'s recorded reasoning that padding by a floor
+which is BEHIND the keyboard lifts the input off the keys — the "ada gap diantara chat query field
+dengan bagian bawah" report, one route over. The strip needs no reassert, unlike the panel: its
+field sits inside NO `overflow-y-auto` container, and Safari's focus reveal scrolls a CONTAINER —
+the composer's own distinguishing fact, whose recorded outcome from exactly this shape was "the
+composer never lifts". The edge snaps with the keyboard (no transition on `bottom`), deliberately:
+a lagging edge would chase the keyboard's own animation and read as a glitch.
 
 The sidebar has the keyboard's other half, and it is the half a box cannot fix: iOS Safari's focus
 reveal scrolls the panel's own `overflow-y-auto` container even when the field was already visible.
-The answer is to assert rather than measure — one delegated `focusin` listener (inside the
-`open`-keyed effect, so it cannot grow a dependency) arms `KEYBOARD_REASSERT_DELAYS_MS` against the
-field that took focus, and each tick `scrollIntoView({ block: 'nearest', behavior: 'instant' })`
-corrects whichever ancestor Safari moved. Phase 2 re-triggers that schedule from the panel's box
-actually changing, not only on the fixed delay list.
+The answer is to assert rather than measure, and since phase 2 the assert has TWO triggers sharing
+one guard and one call:
+
+- **The clock** — one delegated `focusin` listener (inside the `open`-keyed effect, so it cannot
+  grow a dependency) arms `KEYBOARD_REASSERT_DELAYS_MS` against the field that took focus, each
+  tick guarded by `document.activeElement !== target` so it cannot fire for a field already left.
+- **The box** — a `ResizeObserver` on the panel, added inside the SAME `open`-keyed effect (no
+  dependency added, so the `Sheet.tsx` trap is not re-sprung), feeds each delivery through
+  `planBoxReassert`: the spec fires once on `observe()` with the size the panel already had
+  (`'baseline'` — not a change), a delivery repeating the previous size is `'skip'`, and only a
+  real change is `'assert'`. This is the trigger the rename-field report proved the clock needs:
+  the panel's `bottom` var shrinks the box one React commit LATER than the focus reveal scrolled
+  the deck (visualViewport resize → publisher state → effect → style), and if the last tick fired
+  before the shrink landed, the field rides out through the container's top edge with nothing
+  scheduled to bring it back for a second — by which time it is off screen. The box ARRIVING at
+  its new size is the one observable signal that the shrink landed, and it is not a second
+  `visualViewport` subscription; it watches an element the effect already holds. `contentRect` is
+  the panel's whole box — the panel carries no padding or border of its own.
+
+Both triggers resolve to one assert: whatever holds focus RIGHT NOW, qualified by
+`isKeyboardTextField` (INPUT / TEXTAREA / contenteditable, and nothing else — the panel itself
+takes focus on open via `tabIndex={-1}` and its buttons take focus on tap, and neither has text a
+keyboard could hide), then `scrollIntoView(KEYBOARD_REASSERT_SCROLL_OPTIONS)` —
+`{ block: 'nearest', behavior: 'instant' }` as a lib constant so the second trigger cannot quietly
+grow a `smooth`. `nearest` walks every scrollable ancestor and computes zero scroll on an
+already-visible field, which is why over-firing is cheap and under-firing is the one failure the
+rule must not do (`planBoxReassert` rounds nothing — a sub-pixel change is a change), and why the
+keyboard CLOSING — the box growing back — re-asserts for free and fixes the mirrored case (field
+scrolled out, keyboard folds) at no cost.
 
 ## The attach strip (phase 1 of `photo-send-chat-icons`, just landed)
 
@@ -211,9 +262,16 @@ fourth test. The TEST's expectation was corrected to the landed id (recorded in 
 broken the `'recent'`-target tests). The divergence is then load-bearing: a separate test makes the
 two collaborators disagree on purpose (`OTHER_LANDED_ID`) and asserts `next` follows the landed id —
 so if `next` ever started life from the create's copy instead of the send's answer, that assertion
-is what catches it. When phase 2 edits `NinaAboutScreen`, this suite is the wiring guard for the
-strip: the aria-labels verbatim, no quoted literal surviving, both targets wired, one shared flight,
-and `router.push(result.next)` with no `router.push('/nina')`.
+is what catches it. This suite is the wiring guard for the strip: the aria-labels verbatim, no
+quoted literal surviving, both targets wired, one shared flight, and `router.push(result.next)`
+with no `router.push('/nina')`.
+
+Phase 2 of the set (`P1-CN-A001`) then changed the strip's GEOMETRY and nothing else about it: the
+container swapped its `pb-[calc(1rem+var(--safe-bottom))]` class for the inline
+`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss` pair (see "The keyboard channel"
+above), and the publisher was mounted inside the same `open != null` fragment. The wiring this
+suite guards — labels, targets, one flight, `result.next` — is untouched, and the suite passed
+over the change unedited.
 
 ## The sidebar overlay
 
@@ -236,7 +294,9 @@ Two measured rules live here and are easy to regress:
 - **The `Sheet.tsx` trap**: the panel's open/close effect keys on `open` ALONE and reads the latest
   close through `closeRef`, because this panel contains the rename field — an unstable `onClose`
   dependency reaching a focused input is the exact bug that cost "one digit per keyboard" on the
-  review screen. **Do not add a dependency to that array.**
+  review screen. **Do not add a dependency to that array.** The reassert's box observer lives
+  INSIDE that same effect for this reason — the `ResizeObserver` needs the panel element the effect
+  already holds, and one keystroke in the rename field must still never tear it down.
 - **No close beside a push, ever.** `NinaSearchField`'s hit `<Link>`s, the rail's wand and the
   avatar `<Link>` all navigate without calling `closeRef`: the close path pops a pushed entry, and
   firing it in the same tick as a `<Link>`'s push raced a back against a forward — measured in
@@ -308,6 +368,7 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 | Export | From | Notes |
 |---|---|---|
 | `ChatScreen` | `ChatScreen.tsx` | Props all REQUIRED (`initial`, `todayISO`, `userId`, `sessionId`, `pending`, `pendingPhoto`, `flight`, `avatar`) on the RULING E2b habit: one caller, and `tsc` should notice a missing prop — an optional default here turned a broken route into a chat that silently wrote into the wrong session or never polled. |
+| `KeyboardOverlapPublisher` | `KeyboardOverlapPublisher.tsx` | `{ onOverlap?: (overlapPx: number) => void }` — the callback is optional because the `:root` var needs no consumer; renders null. Mount it; never subscribe to `visualViewport` yourself. |
 | `NinaSidebar`, `NinaSidebarProvider`, `NinaSidebarTrigger`, `useNinaSidebar`, `NinaSidebarAvatar` | `NinaSidebar.tsx` | `useNinaSidebar()` returns `null` outside a provider, on purpose — a `ChatChrome` with no sidebar draws no `>`. |
 | `NinaSearchField` | `NinaSearchField.tsx` | Zero props. Its hits are `<Link>`s; the prop it used to take is gone rather than optional. |
 | `useSemanticPref` | `useSemanticPref.ts` | `readonly [boolean, (next) => void]`, cross-tab via `storage`, degrade-to-tab-lifetime when the store refuses. |
@@ -353,9 +414,11 @@ The package has no barrel; consumers import per file. What crosses its boundary:
   `removeNinaChatSession`, `setNinaChatSessionPinned`, `NinaSessionActionResult`.
 - `@/lib/nina/messageActions`, `jobActions`, `searchActions` — the edit/delete, redo/delete, and
   search writes.
-- `@/lib/nina/chatview` — `composerBottomCss`, `composerPadBottomCss`, `keyboardOverlapPx`,
-  `NINA_KEYBOARD_OVERLAP_VAR`, `KEYBOARD_REASSERT_DELAYS_MS`. The geometry the components measure
-  for and never compute.
+- `@/lib/nina/chatview` — `composerBottomCss`, `composerPadBottomCss`, `attachStripPadBottomCss`,
+  `keyboardOverlapPx`, `NINA_KEYBOARD_OVERLAP_VAR`, and the reassert's shared vocabulary:
+  `KEYBOARD_REASSERT_DELAYS_MS`, `KEYBOARD_REASSERT_SCROLL_OPTIONS`, `isKeyboardTextField`,
+  `planBoxReassert` (+ the `KeyboardFieldLike` / `PanelBoxSize` shapes). The geometry the
+  components measure for and never compute.
 - `@/lib/nina/chrome` — the tab bar state machine (`nextBarState`, `autoHideDelayMs`,
   `controlBottomCss`), `NINA_CHROME_CONTROL_CLASS`, `NINA_BAR_VISIBLE_VAR`.
 - `@/lib/nina/sidebar`, `sessions`, `active`, `search`, `edit`, `reply`, `scroll`, `reveal`,
@@ -412,6 +475,13 @@ component. Five suites instead read package files **as text** via `tests/support
 For the same reason the docstrings in those files are written never to *spell* the strings the
 guards assert: a text guard cannot tell an explanation from a reintroduction.
 
+The keyboard's decision rules are tested in `lib/` instead — `lib/nina/chatview.test.ts` holds
+`isKeyboardTextField`'s truth table, `planBoxReassert`'s three verdicts (including the
+sub-pixel-change-is-a-change case), the shared scroll options, and `attachStripPadBottomCss`'s
+resting/keyboard/degenerate answers. No suite reads `KeyboardOverlapPublisher` as text; its
+one-subscription invariant is carried by its own docstring and `ChatChrome`'s, and by the mount
+being the only thing the two routes do.
+
 ## Concurrency
 
 The package is cooperative-async, not threaded, and its safety comes from structure rather than
@@ -425,8 +495,11 @@ locks:
   cursor, a ref because it is read inside the loop), `dropped` (`Composer` tiles), `requestRef`
   (`NinaSearchField` — a Server Action cannot be cancelled, so every run takes an id and a stale
   response is dropped), `pushedRef` (one per provider), `syncedForRef` (`NinaUnreadSync`, tri-state).
-- **One `visualViewport` subscription** — `ChatScreen`'s today, the shared publisher from phase 2.
-  **One schedule at a time** in the sidebar's focus reassert, cancelled and re-armed per focus.
+- **One `visualViewport` subscription** — `KeyboardOverlapPublisher`'s, mounted once on `/nina` and
+  once (scoped to the open viewer) on `/nina/about`, two routes that are never mounted together.
+  **One schedule at a time** in the sidebar's focus reassert, cancelled and re-armed per focus, and
+  **one `ResizeObserver`** on the panel per open — disconnected on cleanup, and verdict-gated by
+  `planBoxReassert` so a delivery that moved nothing asserts nothing.
 - **Cross-tab** only in `useSemanticPref`: a module-level listener set plus the `storage` event, so
   `/admin/nina`'s opened tab and this one agree.
 - `reactStrictMode` double-invocation is answered the same way everywhere: decide purely (in `lib/`
@@ -500,9 +573,15 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
 - **Do not decide anything here that `lib/nina` could decide.** No jsdom means no test can hold it.
   The component measures; `lib` answers; a new rule belongs in a `lib/nina/*.test.ts`.
 - **Do not add a second `visualViewport` subscription.** `ChatChrome`'s docstring forbids it; the
-  keyboard's one channel is the `:root` var (and, after phase 2, the one publisher component).
+  keyboard's one channel is `KeyboardOverlapPublisher` plus the `:root` var. Mount the publisher
+  (scoped to the fragment whose reader needs it, as `/nina/about` does); never subscribe directly
+  and never set `NINA_KEYBOARD_OVERLAP_VAR` by hand.
+- **Do not widen the reassert's guards from the components.** `isKeyboardTextField` (a fourth tag?),
+  `planBoxReassert` (a rounding step?), and the scroll options (`smooth`?) are `lib/nina/chatview`'s
+  decisions with a test file waiting for each; both triggers share them so they cannot drift.
 - **Do not add a dependency to `NinaSidebar`'s `open`-keyed effect.** The `Sheet.tsx` trap cost "one
-  digit per keyboard"; the latest close reaches that effect through `closeRef`.
+  digit per keyboard"; the latest close reaches that effect through `closeRef`, and both reassert
+  triggers live inside it for the same reason.
 - **Do not call a close callback beside a `<Link>` push.** A back and a forward raced on one entry in
   production and every search hit opened the wrong conversation. The href drops `?sidebar=1`; let the
   navigation close the panel.
@@ -539,16 +618,19 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
 
 ## Notes
 
-**Phase 2 of this plan set is pending** (`P1-CN-A001`, "Keyboard channel: about strip box fix +
-rename re-assert"): it creates `components/nina/KeyboardOverlapPublisher.tsx` (the one
-`visualViewport` subscription + the `--nina-kb-overlap` broadcast + an optional numeric mirror),
-changes `ChatScreen.tsx` to render it instead of owning the two keyboard effects, and mounts it in
-`NinaAboutScreen`'s open-viewer fragment so the strip's container ends at
-`bottom: var(--nina-kb-overlap, 0px)` with a matching `paddingBottom` (`attachStripPadBottomCss`)
+**The plan set is complete (2/2).** Phase 2 (`P1-CN-A001`, "Keyboard channel: about strip box fix +
+rename re-assert") did what this section used to promise: it created
+`components/nina/KeyboardOverlapPublisher.tsx` (the one `visualViewport` subscription + the
+`--nina-kb-overlap` broadcast + the optional `onOverlap` mirror), changed `ChatScreen` to render it
+instead of owning the two keyboard effects, mounted it in `NinaAboutScreen`'s open-viewer fragment
+so the strip's container ends at `bottom: var(--nina-kb-overlap, 0px)` with `attachStripPadBottomCss`
 replacing its `pb-[…]` class — the same box fix the sidebar panel ships, for the same exposure R3
-reported on the rename field. It also re-triggers the sidebar's focus reassert when the panel's box
-actually changes rather than only on `KEYBOARD_REASSERT_DELAYS_MS`. Nothing in phase 1's surface
-(the strip's two sends, the action, the suite) is its territory; the suite stays the wiring guard.
+reported on the rename field — and re-triggers the sidebar's focus reassert when the panel's box
+actually changes (`planBoxReassert` over a `ResizeObserver` inside the same `open`-keyed effect)
+rather than only on `KEYBOARD_REASSERT_DELAYS_MS`. It also lifted the reassert's shared vocabulary —
+`isKeyboardTextField`, `KEYBOARD_REASSERT_SCROLL_OPTIONS`, `planBoxReassert` — into
+`lib/nina/chatview.ts` with tests in `chatview.test.ts`. Nothing in phase 1's surface (the strip's
+two sends, the action, the suite) changed; the suite stayed the wiring guard.
 
 **Known, accepted limitations**: `NinaSearchField`'s semantic pass costs a model call per debounced
 query (700 ms debounce, `shouldRunSemantic` gates it); Server Actions serialize the describe
@@ -563,8 +645,10 @@ F34 added the album-photo handoff; F35 added sessions, the sidebar, the search f
 `search-jump-pinpoint` landed the soft-nav landing and the tap-to-pinpoint; `search-clear-and-sidebar-icons`
 made the session rows' actions icon-only, added the rename field's `✕`, re-asserted focused fields
 over the keyboard, and rebuilt the sidebar as a two-deck column with the pinned four-icon rail;
-`photo-send-chat-icons` phase 1 (`P2-CN-A000`, this documentation's trigger) made the attach strip
-two icon-only sends with an explicit target and a pushed `next`.
+`photo-send-chat-icons` phase 1 (`P2-CN-A000`) made the attach strip
+two icon-only sends with an explicit target and a pushed `next`, and its phase 2 (`P1-CN-A001`,
+this documentation's trigger) extracted the keyboard channel into `KeyboardOverlapPublisher`, gave
+the `/nina/about` strip the panel's box fix, and gave the sidebar's reassert its box-change trigger.
 
 ## Documentation Created
 
@@ -579,3 +663,23 @@ screen push `result.next`. It also settled a plan-internal contradiction in the 
 `'new'`-target expectation — `result.sessionId` is the id the mocked send LANDED in, not the
 create's id, per the plan's own Interface Contract — which is documented above under "The attach
 strip" for the phase-2 reader. The suite is `tests/nina.attachTargets.test.ts`.
+
+2026-09-09 — updated following task **P1-CN-A001** (`photo-send-chat-icons` phase 2 of 2, R3:
+"mengedit nama session — keyboard mendorong text field ke atas sehingga tidak terlihat di layar",
+with the photo-question field fixed under the same mechanism). It created
+`KeyboardOverlapPublisher.tsx` — the one `visualViewport` subscription and `--nina-kb-overlap`
+broadcast, its semantics moved verbatim out of the two effects `ChatScreen` used to carry, plus the
+optional `onOverlap` mirror callback — mounted it from `ChatScreen` (`onOverlap={setOverlap}`) and
+from `NinaAboutScreen` inside the open-viewer fragment, gave the strip
+`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss` (the old
+`pb-[calc(1rem+var(--safe-bottom))]` at rest, `'0px'` under the keyboard), and added the sidebar
+reassert's second trigger: a `ResizeObserver` on the panel inside the existing `open`-keyed effect,
+its deliveries decided by the new pure `planBoxReassert` / `isKeyboardTextField` /
+`KEYBOARD_REASSERT_SCROLL_OPTIONS` in `lib/nina/chatview.ts` (tested in `chatview.test.ts`).
+
+Refreshed here: the header line, two Key Responsibilities bullets, the module map (a new
+`KeyboardOverlapPublisher` row; `ChatScreen`, `NinaSidebar` and `NinaAboutScreen` re-spelled), the
+keyboard-channel section rewritten out of its phase-2-future tense, a closing paragraph on the
+attach strip, the `Sheet.tsx` trap bullet, the export table, the `chatview` dependency bullet, a
+test-consumer note, the concurrency bullet, three gotchas, and this section. Phase 1's sections
+stand as written.

@@ -22,12 +22,7 @@ import {
   type RunAttachment,
 } from '@/lib/nina/attach'
 import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
-import {
-  composerBottomCss,
-  composerPadBottomCss,
-  keyboardOverlapPx,
-  NINA_KEYBOARD_OVERLAP_VAR,
-} from '@/lib/nina/chatview'
+import { composerBottomCss, composerPadBottomCss } from '@/lib/nina/chatview'
 import {
   applyMessageDeletion,
   applyMessageEdit,
@@ -52,6 +47,7 @@ import {
 } from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
+import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
 import type { ChatAvatar, ChatMessage } from './types'
@@ -335,6 +331,12 @@ export function ChatScreen({
   const cursorRef = useRef(flight.cursor)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
+  /**
+   * The keyboard's overlap in px, measured by `KeyboardOverlapPublisher` below. The publisher owns
+   * the subscription and the `:root` broadcast; this is a MIRROR of the number, kept because this
+   * screen's own consumers want the number and not the var — `MessageList`'s bottom pad and the
+   * composer's two CSS strings (`composerBottomCss` / `composerPadBottomCss`).
+   */
   const [overlap, setOverlap] = useState(0)
   /** Phase 7 (R12). The message being replied to, or null for an ordinary send. */
   const [draftQuote, setDraftQuote] = useState<QuoteView | null>(null)
@@ -579,57 +581,6 @@ export function ChatScreen({
    */
   const viewerAttachId =
     shownIndex === null ? null : attachableIdAt(viewerMessage?.imageIds, shownIndex)
-
-  /*
-   * The iOS keyboard. Safari does not resize the layout viewport when it opens, so a fixed
-   * composer would sit behind it and Safari will not scroll fixed chrome into view. `visualViewport`
-   * is the only honest measurement; `keyboardOverlapPx` turns it into a number and filters out the
-   * URL bar and pinch-zoom. Empty deps, so a keystroke never re-subscribes.
-   */
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (vv == null) return
-    const sync = () => {
-      setOverlap(
-        keyboardOverlapPx({
-          innerHeight: window.innerHeight,
-          visualHeight: vv.height,
-          visualOffsetTop: vv.offsetTop,
-          scale: vv.scale,
-        }),
-      )
-    }
-    sync()
-    vv.addEventListener('resize', sync)
-    vv.addEventListener('scroll', sync)
-    return () => {
-      vv.removeEventListener('resize', sync)
-      vv.removeEventListener('scroll', sync)
-    }
-  }, [])
-
-  /*
-   * The keyboard's one broadcast, and the reason it is a custom property: the sidebar panel needs
-   * the same overlap this screen already measures, but it is a SIBLING — rendered by the page
-   * beside this component, not under it — so a prop cannot cross and a second `visualViewport`
-   * subscription is the thing `ChatChrome`'s docstring forbids. `:root` is the nearest thing both
-   * inherit from; `NINA_BAR_VISIBLE_VAR` is the precedent for exactly this gap, and
-   * `NINA_KEYBOARD_OVERLAP_VAR`'s own docstring says what the panel does with the number.
-   *
-   * Removed — not zeroed — whenever the overlap is zero, and on unmount, so the resting geometry
-   * (`inset-0`) is what an unread var falls back to and nothing survives navigation off `/nina`.
-   */
-  useEffect(() => {
-    const root = document.documentElement
-    if (overlap > 0) {
-      root.style.setProperty(NINA_KEYBOARD_OVERLAP_VAR, `${overlap}px`)
-    } else {
-      root.style.removeProperty(NINA_KEYBOARD_OVERLAP_VAR)
-    }
-    return () => {
-      root.style.removeProperty(NINA_KEYBOARD_OVERLAP_VAR)
-    }
-  }, [overlap])
 
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
@@ -1433,6 +1384,15 @@ export function ChatScreen({
 
   return (
     <>
+      {/*
+        The keyboard's ONE subscription and ONE broadcast, extracted from the two effects this
+        component used to carry (the semantics' docstring lives on the component).
+        `setOverlap` mirrors the number into this screen's state for `MessageList` and the
+        composer; the `:root` var is how the sidebar panel — this component's SIBLING, rendered by
+        the page beside it — reads the same measurement without a second subscription.
+      */}
+      <KeyboardOverlapPublisher onOverlap={setOverlap} />
+
       {messages.length === 0 && !showTyping ? (
         <EmptyState
           title="Nina has not started yet"

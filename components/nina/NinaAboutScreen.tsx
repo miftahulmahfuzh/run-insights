@@ -6,9 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
 import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
+import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import { attachNinaPhotoToChat, type NinaAttachTarget } from '@/lib/nina/albumActions'
 import {
   NINA_ATTACH_MAX_CHARS,
@@ -101,6 +103,13 @@ export function NinaAboutScreen({
    * two controls: it names the button that shows the dots and disables the other one. */
   const [sending, setSending] = React.useState<NinaAttachTarget | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
+  /**
+   * R3. The keyboard's overlap in px, mirrored from the publisher mounted below. The strip's
+   * `bottom` reads the `:root` var and needs no state; this mirror exists only for the NUMBER the
+   * padding gate wants (`attachStripPadBottomCss`) — the same division `ChatScreen` draws between
+   * its `overlap` state and the var the sidebar panel reads.
+   */
+  const [kbOverlap, setKbOverlap] = React.useState(0)
 
   const albumViewer: ViewerPhoto[] = React.useMemo(
     () => album.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
@@ -334,6 +343,24 @@ export function NinaAboutScreen({
 
       {open != null && (
         <>
+          {/*
+            ── R3: THE KEYBOARD CHANNEL, MOUNTED SCOPED TO THE OPEN VIEWER ───────────────────────
+            `ChatScreen` is not mounted on this route (`app/nina/about/page.tsx` renders this
+            screen inside `AppShell` and nothing else), so nothing published
+            `--nina-kb-overlap` here and the strip below had NO keyboard protection at all — the
+            member of the class with strictly less than the sidebar panel, which at least had the
+            var and the reassert.
+
+            Page-level vs scoped-to-open: SCOPED, deliberately. This publisher's only reader is
+            the strip, and the strip exists only while `open != null`, so a page-level mount would
+            run a `visualViewport` subscription with no consumer — and would publish a var that
+            nothing on this route reads while no photo is open. The cost side is nil: the
+            subscriber starts before the strip can be tapped (same commit), and its unmount
+            removes the var, so closing the viewer leaves nothing behind. The invariant holds by
+            construction: `/nina` and `/nina/about` are different routes, never mounted together,
+            so this is never a second concurrent subscription on one screen.
+          */}
+          <KeyboardOverlapPublisher onOverlap={setKbOverlap} />
           <PhotoViewer
             photos={open.section === 'album' ? albumViewer : galleryViewer}
             index={open.index}
@@ -347,7 +374,45 @@ export function NinaAboutScreen({
             must not grow an F33 button, and its bottom row is already the dot pager. A fixed strip
             over it costs that component nothing.
           */}
-          <div className="fixed inset-x-0 bottom-0 z-70 flex flex-col gap-2 bg-ink/95 px-4 pt-3 pb-[calc(1rem+var(--safe-bottom))]">
+          {/*
+            ── R3: THE BOX FIX, `NinaSidebar.tsx`'s EXACT PATTERN ────────────────────────────────
+            iOS does not shrink the layout viewport when the keyboard opens, so this strip —
+            `fixed` at `bottom-0`, inside no scroll container — runs on behind the keys and
+            Safari's focus reveal answers by lifting the whole fixed overlay off the top of the
+            glass: the field the runner just tapped leaves through the top of the screen, which is
+            the bug he reported. Ending the strip at the keyboard's MEASURED top edge puts the
+            field inside the visible region — the same fix the composer ships as
+            `composerBottomCss`, reached here as a `:root` custom property because the
+            subscription lives in the publisher above.
+
+            An inline style rather than a Tailwind arbitrary value, because it must beat
+            `bottom-0`'s `bottom: 0` in the cascade without depending on utility sort order. The
+            string is CONSTANT — it never re-renders, whatever the keyboard does; the var
+            underneath it is what moves. Absent (no keyboard, Android, pre-hydration) it
+            substitutes `0px`, which is exactly `bottom-0`, so the resting strip and the server's
+            HTML never differ. The edge SNAPS with the keyboard — no transition on `bottom` — and
+            that is kept deliberately: the strip has no `transition-all` to accidentally catch the
+            property, and a lagging edge would chase the keyboard's own animation and read as a
+            glitch (`decideAutoScroll`'s 'viewport' rule).
+
+            ── WHY THE BOX ALONE IS THE WHOLE CURE HERE, AND NO REASSERT IS NEEDED ──────────────
+            The sidebar needed a reassert because its field sits INSIDE an `overflow-y-auto`
+            deck, and Safari's reveal scrolls THAT CONTAINER — a scrollTop no box can unscroll.
+            This strip is inside no scroll container at all, the composer's distinguishing fact,
+            and the composer's recorded outcome from exactly this shape was "the composer never
+            lifts". The padding gate is the one refinement the box needs: with the strip's bottom
+            edge on the keys, the old `1rem + var(--safe-bottom)` floor would hold the input row
+            ~50 px off the keyboard — padding by a floor that is behind the keyboard, which is the
+            same class of mistake `composerPadBottomCss`'s docstring records. `attachStripPadBottomCss`
+            is that function's gate on this bar's own floor.
+          */}
+          <div
+            className="fixed inset-x-0 bottom-0 z-70 flex flex-col gap-2 bg-ink/95 px-4 pt-3"
+            style={{
+              bottom: `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+              paddingBottom: attachStripPadBottomCss(kbOverlap),
+            }}
+          >
             {notice != null && (
               <p className="text-[12px] font-medium text-card/80" role="status">
                 {notice}
