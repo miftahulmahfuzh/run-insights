@@ -1,0 +1,49 @@
+{
+  "branch": "feature/search-kbd-and-up-btn",
+  "coordinator": "orch-search-kbd-and-up-btn",
+  "coordinator_session_id": "3871a981-fe60-4ffa-b416-293592f2af57",
+  "created": "2026-09-09T05:26:21+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "components/nina",
+      "plan": ".workflows/plan/search-kbd-and-up-btn/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "The panel pins the window over its focused field"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "components/nina` + `components/ui` + `lib/nina` + `tests",
+      "plan": ".workflows/plan/search-kbd-and-up-btn/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The rail's `up` reveals the main bar"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/search-kbd-and-up-btn/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "search-kbd-and-up-btn",
+  "updated": "2026-09-09T05:28:03+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/search-kbd-and-up-btn"
+}
