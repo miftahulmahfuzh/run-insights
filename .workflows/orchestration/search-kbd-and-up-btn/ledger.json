@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "dcf9563",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "window pin + focus-lifetime deck assert landed inside the [open] effect (one file, +119/-14); after-phase anchors verified exact (549/557/566/619/632/758/796, effect closes 547) and phase-2 surface byte-identical; DECISIVE on-device check still OPEN per invariant 8 (plan Verification steps 1-7, fresh-bundle) \u2014 suite green is not proof; plan nits: anchor table end-of-file is 698 not 699 (cosmetic), 13-hunk check is a git diff -U0 measurement (reproduced)",
       "package": "components/nina",
       "plan": ".workflows/plan/search-kbd-and-up-btn/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T05:51:38+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CN-A001",
       "title": "The panel pins the window over its focused field"
     },
     {
@@ -36,7 +36,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "The rail's `up` reveals the main bar"
     }
@@ -44,6 +44,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/search-kbd-and-up-btn/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "search-kbd-and-up-btn",
-  "updated": "2026-09-09T05:28:03+00:00",
+  "updated": "2026-09-09T05:59:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/search-kbd-and-up-btn"
 }
