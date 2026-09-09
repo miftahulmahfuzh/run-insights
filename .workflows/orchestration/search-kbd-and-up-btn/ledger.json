@@ -3,6 +3,12 @@
   "coordinator": "orch-search-kbd-and-up-btn",
   "coordinator_session_id": "3871a981-fe60-4ffa-b416-293592f2af57",
   "created": "2026-09-09T05:26:21+00:00",
+  "landed": {
+    "at": "2026-09-09T07:01:34+00:00",
+    "base": "main",
+    "commit": "74ccb738abfec1d3f25e3a7b6310535bbebda4eb",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -23,27 +29,27 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "0b4683b",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "set complete 2/2; all gates green (typecheck, build, 3497/3497 = base 3489 + 8 new); drift: plan's inv-3 grep said 3 dep arrays, actual 5 at base AND after (plan miscounted base; invariant holds, no code change); on-device checklist (plan Verification 1-8, XS Max) still OPEN per invariant 8",
       "package": "components/nina` + `components/ui` + `lib/nina` + `tests",
       "plan": ".workflows/plan/search-kbd-and-up-btn/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T06:26:20+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CN-A002",
       "title": "The rail's `up` reveals the main bar"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/search-kbd-and-up-btn/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "search-kbd-and-up-btn",
-  "updated": "2026-09-09T05:59:36+00:00",
+  "updated": "2026-09-09T07:01:34+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/search-kbd-and-up-btn"
 }
