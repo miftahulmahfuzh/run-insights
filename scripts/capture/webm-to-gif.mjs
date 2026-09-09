@@ -30,7 +30,8 @@ import { promisify } from 'node:util'
 
 const run = promisify(execFile)
 
-/** Per GIF. Three of these plus twelve stills is what keeps `docs/media/` inside 8 MB. */
+/** Per GIF — the absolute ceiling. The per-GIF shares that keep the five of them plus fourteen
+ *  stills inside `docs/media/`'s 8 MB live where the recordings are, in `shoot.mjs`. */
 export const MAX_BYTES = 2 * 1024 * 1024
 
 /**

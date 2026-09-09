@@ -7,8 +7,9 @@
  *
  * WHAT IT WRITES, AND WHAT IT DELIBERATELY DOES NOT.
  *
- * It writes one `user`, one `profiles` row, three Blob objects, and 27 `extractions` rows with
- * their `run_photos`. It writes **no `runs` row, no split, no zone, no record and no badge** —
+ * It writes one `user`, one `profiles` row, three Blob objects, and `RUNS.length + 1` (26)
+ * `extractions` rows with their `run_photos`. It writes **no `runs` row, no split, no zone, no
+ * record and no badge** —
  * `shoot.mjs` clicks "Confirm & save" on each extraction and the app's own `commitReviewAction`
  * writes all of those, exactly as it would for a real upload.
  *
@@ -156,6 +157,18 @@ async function purge() {
     const rows = await sql.query(`select blob_urls from extractions where user_id = $1`, [user.id])
     const urls = new Set()
     for (const row of rows) for (const ref of row.blob_urls ?? []) urls.add(ref.url)
+    /* Nina's two album shapes since the F19 era: the chat's photographs and her profile album.
+     * The cascade takes their ROWS, but a blob is not a row — deleting the user first would
+     * strand every photograph she ever sent in the store with nothing left pointing at it, which
+     * is precisely the orphan `scripts/blob-reap.mjs` exists to clean up after. The thumbnails
+     * are separate objects under their own pathnames, so they are collected too. */
+    const ninaImages = await sql.query(
+      `select blob_url from nina_message_images where user_id = $1
+         union select blob_url from nina_avatars where user_id = $1
+         union select thumb_url from nina_avatars where user_id = $1 and thumb_url is not null`,
+      [user.id],
+    )
+    for (const row of ninaImages) if (row.blob_url) urls.add(row.blob_url)
     console.log(`    ${urls.size} distinct blob url(s)`)
 
     step(2, 'deleting them')
@@ -173,10 +186,34 @@ async function purge() {
   }
 
   step(4, 'verifying')
-  /* Two shapes of check, because the schema has two shapes of ownership. Seven tables carry
-   * `user_id` directly; the three child tables of a run reach it only through `runs`, and those
-   * are the ones a partial cascade would strand. */
-  const owned = ['extractions', 'runs', 'insights', 'records', 'badges', 'shares', 'profiles']
+  /* Two shapes of check, because the schema has two shapes of ownership. The tables listed here
+   * carry `user_id` directly — the core seven plus the Nina surfaces the F33 era added; the
+   * three child tables of a run reach it only through `runs`, and those are the ones a partial
+   * cascade would strand. A table that starts carrying a demo user's rows and is not on this
+   * list is a purge that reports success while leaving data behind, so new tables belong here
+   * the day they are created. */
+  const owned = [
+    'extractions',
+    'runs',
+    'insights',
+    'records',
+    'badges',
+    'shares',
+    'profiles',
+    'nina_turns',
+    'nina_chat_sessions',
+    'nina_messages',
+    'nina_message_images',
+    'nina_memory_slots',
+    'nina_memory_facts',
+    'nina_shortcuts',
+    'nina_nags',
+    'nina_avatars',
+    'nina_folders',
+    'nina_tuning',
+    'nina_image_prefs',
+    'push_subscriptions',
+  ]
   const leftovers = {}
   for (const table of owned) {
     const [{ n }] = await sql.query(

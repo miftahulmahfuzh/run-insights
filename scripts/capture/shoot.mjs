@@ -1,11 +1,12 @@
 /**
  * F19 — drive the real app and photograph it.
  *
- *   node --env-file=.env.local scripts/capture/shoot.mjs [--commit] [--stills] [--gifs]
+ *   node --env-file=.env.local scripts/capture/shoot.mjs [--commit] [--hero] [--warm] [--nina]
+ *                                                       [--stills] [--gifs]
  *                                                       [--only 03-review-banner,review]
  *                                                       [--origin http://localhost:3210]
  *
- * With no pass flags it runs all three. The dev server must already be up, and
+ * With no pass flags it runs all of them. The dev server must already be up, and
  * `scripts/capture/seed-demo.mjs` must already have run.
  *
  * `--only` narrows a pass to named artifacts — see ARTIFACTS below. It is what makes a one-file
@@ -16,12 +17,19 @@
  * PASS 1 — COMMIT. Opens each seeded extraction at `/x/<id>` and clicks **Confirm & save**.
  * This is the pass that makes the data real: `commitReviewAction` validates the draft, writes the
  * run with its splits and zones in one batch, appends the corrections log and fires
- * `onRunCommitted`, which recomputes the ten personal records and evaluates all twenty-two badge
- * rules. Nothing in this file computes a metric, and nothing in the seed writes one.
+ * `onRunCommitted`, which recomputes the eleven personal records and evaluates all twenty-two
+ * badge rules. Nothing in this file computes a metric, and nothing in the seed writes one.
  *
  * It only works because every seeded payload leaves the consistency banner green, which is
  * `tests/capture/dataset.test.ts`'s job to keep true. When that test is red this pass stalls on
  * the first run rather than producing 25 subtly wrong screenshots.
+ *
+ * PASS — NINA. A real conversation with a real model. The runner's lines are scripted; every
+ * bubble of hers is `glm-5.3`'s actual reply, read off the same turn engine the app ships, and the
+ * photograph she sends back is one real OpenRouter generation (~$0.04, 78–150 s). Nothing here
+ * inserts a `nina_messages` row, because the app's own standard is *"no fake Nina messages, ever"*
+ * — a harness that fabricated her side of the conversation would produce exactly the picture this
+ * repo should not publish.
  *
  * PASS 2 — STILLS. Viewport-sized PNGs at a phone's dimensions, not `fullPage`. Every screen in
  * this app is `max-w-[470px]`, so 390x844 is the shape it was designed in; a full-page capture of
@@ -55,6 +63,19 @@ const ORIGIN = arg('origin', 'http://localhost:3210')
 const KEEP_VIDEO = process.argv.includes('--keep-video')
 
 /*
+ * PER-GIF BUDGETS, and the arithmetic they serve: `docs/media/` is capped at 8 MB, fourteen stills
+ * take about 2.2 MB of it, and FIVE GIFs now share the rest — so each gets an explicit share of
+ * the ~5.5 MB rather than all five assuming the 2 MB absolute ceiling in `webm-to-gif.mjs` and the
+ * sum quietly landing at ten. `review` takes no share because it has never come within 1.5 MB of
+ * needing one. The ladder drops frames and pixels until each share is met.
+ */
+const MB = 1024 * 1024
+const HERO_GIF_BUDGET = 1.5 * MB
+const TRENDS_GIF_BUDGET = 1.1 * MB
+const NINA_CHAT_GIF_BUDGET = 1.4 * MB
+const NINA_JOBS_GIF_BUDGET = 1.1 * MB
+
+/*
  * PASS ORDER IS LOAD-BEARING, and one of these dependencies cost a whole GIF.
  *
  *   commit  writes the 25 runs.
@@ -65,9 +86,12 @@ const KEEP_VIDEO = process.argv.includes('--keep-video')
  *           hero commits, and `/trends` renders the regenerating state instead of the prose. The
  *           first attempt at this order produced a 22-second trends GIF of a card reading
  *           "Rendering…".
+ *   nina    talks to her for real. It MUST come after `commit`, because her turn engine can look
+ *           the demo runner's runs up — an empty `runs` table makes her answers about a training
+ *           history that does not exist. It is independent of `hero` and `warm`.
  *   stills  and gifs then read from a warm cache.
  */
-const ALL_PASSES = ['commit', 'hero', 'warm', 'stills', 'gifs']
+const ALL_PASSES = ['commit', 'hero', 'warm', 'nina', 'stills', 'gifs']
 const passes = ALL_PASSES.filter((p) => process.argv.includes(`--${p}`))
 const RUN = passes.length > 0 ? new Set(passes) : new Set(ALL_PASSES)
 
@@ -92,9 +116,13 @@ const ARTIFACTS = [
   '10-trends-chart',
   '11-badges',
   '12-share',
+  '13-nina-chat',
+  '14-nina-about',
   'hero',
   'review',
   'trends',
+  'nina-chat',
+  'nina-jobs',
 ]
 
 const only = arg('only', null)
@@ -574,7 +602,8 @@ function assertProducedWhatWasAsked() {
   if (missing.length > 0) {
     throw new Error(
       `--only asked for ${missing.join(', ')} and no pass produced ${missing.length === 1 ? 'it' : 'them'}. ` +
-        `Stills need --stills; hero needs --hero; review and trends need --gifs.`,
+        `Stills need --stills; hero needs --hero; review and trends need --gifs; ` +
+        `the nina stills, nina-chat and nina-jobs need --nina.`,
     )
   }
   log(`    --only: ${produced.size} of ${ONLY.size} written — ${[...produced].sort().join(', ')}`)
@@ -716,7 +745,7 @@ async function hero(browser) {
       await settle(page, { charts: true })
       await page.waitForTimeout(1600)
     },
-    { speed: 8 },
+    { speed: 8, max: HERO_GIF_BUDGET },
   )
 
   /*
@@ -763,16 +792,21 @@ async function gifs(browser) {
     await page.waitForTimeout(1200)
   })
 
-  await record(browser, 'trends', async (page) => {
-    await page.goto('/trends')
-    await settle(page, { charts: true })
-    await page.waitForTimeout(1200)
-    for (let i = 0; i < 14; i++) {
-      await step(page, 170)
-      await page.waitForTimeout(260)
-    }
-    await page.waitForTimeout(1000)
-  })
+  await record(
+    browser,
+    'trends',
+    async (page) => {
+      await page.goto('/trends')
+      await settle(page, { charts: true })
+      await page.waitForTimeout(1200)
+      for (let i = 0; i < 14; i++) {
+        await step(page, 170)
+        await page.waitForTimeout(260)
+      }
+      await page.waitForTimeout(1000)
+    },
+    { max: TRENDS_GIF_BUDGET },
+  )
 
   /*
    * A fourth recording of the runs list and a run page was made and then dropped. It came out at
@@ -780,6 +814,156 @@ async function gifs(browser) {
    * and it showed nothing that `01-runs.png`, `05-run-detail.png` and the hero do not already show.
    * Raising the budget to keep it would have been the wrong way round.
    */
+}
+
+/* ============================================================================
+ * Pass — Nina: a real conversation with a real model
+ * ==========================================================================*/
+
+/**
+ * Send one line as the runner and wait for her side of the exchange.
+ *
+ * Both halves of the wait are real, and neither is slept through: the reply is one `glm-5.3` turn
+ * with tools, and the bubbles it emits are revealed on a 450–1400 ms per-bubble stagger capped at
+ * 3.2 s (`lib/nina/reveal.ts`) — so the four seconds after her first bubble is the reveal
+ * finishing, not padding. A timeout leaves the honest failure state on screen rather than throwing,
+ * because a GIF of Nina failing to answer is at least a picture of the truth; the run log is where
+ * the failure is actually reported.
+ */
+async function sayAndWait(page, line) {
+  const before = await page.locator('[data-role="nina"]').count()
+  await page.getByLabel('Message Nina').fill(line)
+  await page.getByLabel('Send').click()
+  const arrived = await page
+    .waitForFunction((n) => document.querySelectorAll('[data-role="nina"]').length > n, before, {
+      timeout: 150_000,
+    })
+    .then(() => true)
+    .catch(() => false)
+  if (!arrived) log('    (no reply arrived — the screen keeps whatever honest state it is in)')
+  await page.waitForTimeout(4_000)
+  return arrived
+}
+
+async function nina(browser) {
+  if (!wantsAny('nina-chat', 'nina-jobs', '13-nina-chat', '14-nina-about')) return
+
+  const context = await newContext(browser)
+  const page = await context.newPage()
+
+  /* Compile the three routes before anything is recorded, so no GIF opens on a cold Turbopack
+   * build. `/nina` first: for a fresh demo account it renders the "Nina has not started yet" empty
+   * state, which is the honest opening frame of her first conversation. */
+  log('  warming the /nina routes')
+  await page.goto('/nina')
+  await settle(page)
+
+  /*
+   * THE SETUP EXCHANGES, unrecorded, and each one exists because a specific artifact needs it.
+   *
+   * The run question gives the chat GIF a history to sit inside and gives `13-nina-chat` its
+   * substance — with 25 committed runs behind the demo account, her answer comes off her real
+   * `lookup_runs` tool rather than off nothing. The photo request opens the one image generation
+   * this pass spends; every artifact that shows a photograph of her needs it. Neither runs when
+   * `--only` names nothing that needs it, for the same reason `--only review` never records the
+   * hero: a filter naming one artifact must not spend money on another.
+   */
+  if (wants('13-nina-chat')) {
+    log('  her, on the run the seed just committed')
+    await sayAndWait(page, 'baru log lari tadi pagi. lo baca belum?')
+  }
+  if (wantsAny('nina-jobs', '13-nina-chat', '14-nina-about')) {
+    log('  the photo request — one real generation, ~78-150 s, ~$0.04')
+    await sayAndWait(page, 'kirim fotomu dong yang barusan')
+  }
+  await page.close()
+  await context.close()
+
+  if (wants('nina-jobs')) {
+    /* The generation runs while this records, which is the point: the jobs page is the feature —
+     * a queue with stages you can watch — and the recording is of the watching.
+     *
+     * The watching is RE-RENDERING, and the first attempt is why: the stage labels are
+     * server-rendered (`lib/nina/jobview.ts`) and the page does not poll for them, so a job that
+     * quietly finished still said "Lagi digambar" while its elapsed ticker kept counting — five
+     * minutes of GIF ended without the transition that is the page's whole point. A runner checks
+     * on a generation by pulling to refresh, so the loop is that pull: re-render, read the first
+     * row (newest-first, so a re-run's job is always the first one), hold eight seconds, again.
+     * Selesai — or Gagal, which is hers to apologise for — arrives on camera because the page is
+     * re-rendered in front of the recording, not because the old one updated. Timelapsed 6×.
+     */
+    await record(
+      browser,
+      'nina-jobs',
+      async (page) => {
+        await page.goto('/nina/jobs')
+        await settle(page)
+        await page.waitForTimeout(1_500)
+        for (let i = 0; i < 30; i++) {
+          await page.reload()
+          await settle(page)
+          const text = await page
+            .locator('a[href*="/nina/jobs/"]')
+            .first()
+            .textContent()
+            .catch(() => '')
+          if (text && /Selesai|Gagal/.test(text)) break
+          await page.waitForTimeout(8_000)
+        }
+        await page.waitForTimeout(1_200)
+        const detail = page.locator('a[href*="/nina/jobs/"]').first()
+        if ((await detail.count()) > 0) {
+          await detail.click()
+          await settle(page)
+          await page.waitForTimeout(2_500)
+        }
+      },
+      { speed: 6, max: NINA_JOBS_GIF_BUDGET },
+    )
+  }
+
+  if (wants('nina-chat')) {
+    /* The recorded exchange, and it comes LAST on purpose: by now the photograph has landed, so
+     * the conversation the GIF opens on already holds her replies and her photo — a first-time
+     * visitor sees a living chat, not an empty room. The line is a follow-up to whatever coaching
+     * she just gave, which keeps a re-run's history reading like a conversation instead of a
+     * script: her reply is new every time, and so is the context she pulls it from. */
+    await record(
+      browser,
+      'nina-chat',
+      async (page) => {
+        await page.goto('/nina')
+        await settle(page)
+        await page.waitForTimeout(1_800)
+        await sayAndWait(page, 'siap, gw coba pelan2 besok. makasih ya')
+        await page.waitForTimeout(1_200)
+      },
+      { max: NINA_CHAT_GIF_BUDGET },
+    )
+  }
+
+  if (wantsAny('13-nina-chat', '14-nina-about')) {
+    const stills = await newContext(browser)
+    const stillsPage = await stills.newPage()
+
+    if (wants('13-nina-chat')) {
+      log('  /nina — the conversation, her replies and her photo in it')
+      await stillsPage.goto('/nina')
+      await settle(stillsPage)
+      /* The reveal stagger runs on mount too; four seconds clears the worst of it. */
+      await stillsPage.waitForTimeout(4_000)
+      await shot(stillsPage, '13-nina-chat')
+    }
+    if (wants('14-nina-about')) {
+      log('  /nina/about — her face, her album, the media grid')
+      await stillsPage.goto('/nina/about')
+      await settle(stillsPage)
+      await stillsPage.waitForTimeout(1_200)
+      await shot(stillsPage, '14-nina-about')
+    }
+    await stillsPage.close()
+    await stills.close()
+  }
 }
 
 async function record(browser, name, body, options = {}) {
@@ -827,9 +1011,10 @@ try {
   /*
    * `wants('hero')` and not just `RUN.has('hero')`, because of one footgun worth closing.
    *
-   * `--only review` with no pass flags runs ALL FIVE passes — that is what "no pass flags means all
-   * of them" has always meant — and the hero pass costs a real vision call. Nobody typing a filter
-   * naming one GIF intends to spend money on a different one.
+   * `--only review` with no pass flags runs EVERY pass — that is what "no pass flags means all
+   * of them" has always meant — and the hero pass costs a real vision call and the nina pass a
+   * real generation. Nobody typing a filter naming one GIF intends to spend money on a different
+   * one.
    */
   if (RUN.has('hero') && wants('hero')) {
     log('\n[1c] the hero recording — a real upload through the real pipeline')
@@ -840,6 +1025,10 @@ try {
     const context = await newContext(browser)
     await warm(context)
     await context.close()
+  }
+  if (RUN.has('nina')) {
+    log('\n[1c] nina — a real conversation, one real generation')
+    await nina(browser)
   }
   if (RUN.has('stills')) {
     log('\n[2] stills')
