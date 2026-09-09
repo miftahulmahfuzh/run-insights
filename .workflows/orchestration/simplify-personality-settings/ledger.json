@@ -1,0 +1,49 @@
+{
+  "branch": "feature/simplify-personality-settings",
+  "coordinator": "orch-simplify-personality-settings",
+  "coordinator_session_id": "622ee419-afed-4d38-846a-c72d59dce5a9",
+  "created": "2026-09-09T02:28:21+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina`, `lib/db`, `lib/admin`, `app`, `components`, `tests`, `drizzle",
+      "plan": ".workflows/plan/simplify-personality-settings/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Purge the tuning revision mechanism everywhere"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "components/admin`, `lib/admin`, `tests",
+      "plan": ".workflows/plan/simplify-personality-settings/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Auto-save the Personality panel"
+    }
+  ],
+  "plan": "/home/miftah/.worktrees/run-insights/simplify-personality-settings/.workflows/orchestration/simplify-personality-settings/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "simplify-personality-settings",
+  "updated": "2026-09-09T02:28:21+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/simplify-personality-settings"
+}
