@@ -3,6 +3,12 @@
   "coordinator": "orch-admin-bottom-bar-icons",
   "coordinator_session_id": "768f4276-7e10-4852-8ebb-8e39d7e0821f",
   "created": "2026-09-09T00:42:55+00:00",
+  "landed": {
+    "at": "2026-09-09T01:14:27+00:00",
+    "base": "main",
+    "commit": "d915767cd9c54891f6ec77f4f95897fca068e314",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -27,7 +33,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-bottom-bar-icons/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-bottom-bar-icons",
-  "updated": "2026-09-09T01:07:59+00:00",
+  "updated": "2026-09-09T01:14:27+00:00",
   "verified_at": "2026-09-09T01:07:40+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-bottom-bar-icons"
 }
