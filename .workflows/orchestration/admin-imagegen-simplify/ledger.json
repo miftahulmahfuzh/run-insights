@@ -42,27 +42,27 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "87019e5",
       "depends_on": [
         2
       ],
       "difficulty": "EASY",
       "n": 3,
-      "note": null,
+      "note": "Focus cards label-only; imageFocusCopy returns string; NinaImageFocusSpec.userSaid + six values deleted. Decision: census scoped to focus specs \u2014 NinaImageTextSpec.userSaid (same file, different record, no reader) untouched, follow-up candidate. Set 3/3 complete.",
       "package": "components/admin` + `lib",
       "plan": ".workflows/plan/admin-imagegen-simplify/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T11:33:07+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A031",
       "title": "Focus on: the redundant hint under each option"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-imagegen-simplify/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-imagegen-simplify",
-  "updated": "2026-09-09T11:03:14+00:00",
+  "updated": "2026-09-09T11:33:07+00:00",
   "worktree": "/home/miftah/run-insights/.claude/worktrees/admin-imagegen-simplify"
 }
