@@ -41,8 +41,9 @@ import { ninaBand } from '@/lib/nina/tuning'
  * There is no copy table in this file, for `tuningModel.ts`'s three recorded reasons, and the
  * third is the one that decides it here: **the six focus options are the user's own words** — face,
  * skin, big boobs, bubble butt, big thighs, very long calves. They are prompt text, not copy. They
- * live in `NINA_IMAGE_FOCUS_SPECS[key].label`, the prompt composes from the same specs, and this
- * file only reads them, so the panel cannot promise an emphasis the prompt does not add. A label
+ * live in `NINA_IMAGE_FOCUS_SPECS[key].label`, the prompt's emphasis terms are keyed by the same
+ * `NinaImageFocusKey` (`NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts`), and this file only reads
+ * them, so the panel cannot promise an emphasis the prompt does not add. A label
  * typed into the JSX would be a second source of truth for a vocabulary the user dictated.
  *
  * What IS local is genuinely local: `LENGTH_BAND_NOTE` below is editorial about the SURFACE
@@ -50,7 +51,7 @@ import { ninaBand } from '@/lib/nina/tuning'
  * phase 2's business and is visible in the preview rather than described here.
  */
 
-/** What a browser edits: phase 1's row, minus the revision the database mints. */
+/** What a browser edits: phase 1's row, with its vocabulary loosened for the adaptation seam. */
 export interface ImageGenDraft {
   /** R4. 0-100 on phase 1's scale, read through its five bands. */
   promptLength: number
@@ -271,22 +272,26 @@ export function hasImageFocusCopy(key: string): boolean {
 }
 
 /**
- * Copy for one of the six focus options, **read off phase 1's specs.**
+ * The label for one of the six focus options, **read off phase 1's specs** — and, since the
+ * image-prefs simplify set, the ONLY copy a focus card has. The hint this function used to return
+ * rendered the spec's `userSaid` under each option, which repeated the label back in lower case
+ * ("face" under Face); the user asked for that line gone, and with it went `userSaid`, whose one
+ * reader was this return value.
+ *
+ * A plain string, not `ImageGenCopy`, for the same rung: `band` was already always `''` here (a
+ * checkbox has no scale), and a `hint` that must stay empty is an absence pinned by its own test.
+ * `promptLengthCopy` keeps the `ImageGenCopy` shape because its hint and band are genuinely
+ * rendered.
  *
  * The fallback exists so a running page degrades to a readable label rather than crashing on a key
  * phase 1 adds, and `tests/admin.imagegen.test.ts` fails on any key in `NINA_IMAGE_FOCUS_KEYS`
  * that reaches it — the net is for a running page, never a licence to ship an unlabelled checkbox.
  */
-export function imageFocusCopy(key: string): ImageGenCopy {
+export function imageFocusCopy(key: string): string {
   if (hasImageFocusCopy(key)) {
-    const spec = NINA_IMAGE_FOCUS_SPECS[key as keyof typeof NINA_IMAGE_FOCUS_SPECS]
-    /* `userSaid`, not `axis` — phase 1's `NinaImageFocusSpec` is `{ key, label, userSaid }`, and
-     * `userSaid` is the user's own fragment verbatim and lower case ("big boobs", "bubble butt").
-     * Rendering it as the hint is the honest thing: the checkbox promises exactly the words the
-     * prompt will emphasise, and nothing in this file may rephrase them (phase 1's own rule). */
-    return { label: spec.label, hint: spec.userSaid, band: '' }
+    return NINA_IMAGE_FOCUS_SPECS[key as keyof typeof NINA_IMAGE_FOCUS_SPECS].label
   }
-  return { label: prettifyFocusKey(key), hint: '', band: '' }
+  return prettifyFocusKey(key)
 }
 
 /**
@@ -352,4 +357,92 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
 
 export function imageGenDraftEquals(a: ImageGenDraft, b: ImageGenDraft): boolean {
   return changedImageGenFields(a, b).length === 0
+}
+
+/**
+ * How long the prompt-length dial waits after its last change before it commits — the settle
+ * window of the auto-save panel (this set's R2).
+ *
+ * `TUNING_DIAL_COMMIT_DEBOUNCE_MS`'s argument in `lib/admin/tuningModel.ts` transfers verbatim: a
+ * native `<input type="range">` fires `change` on every pointer move of a drag and on every arrow
+ * keypress, and it KEEPS FOCUS after the thumb is released — so the blur rule that commits the text
+ * fields below cannot transfer to the one dial this panel has, because there is no blur event that
+ * means "this edit is finished". The debounce is the settle detector: one continuous drag becomes
+ * one save. 600 ms sits above the tens-of-milliseconds gaps between change events inside one drag
+ * and below the time it takes to wonder whether the edit landed. A separate constant rather than
+ * importing the tuning one: the two windows answer to two panels, and recalibrating one is a
+ * product decision about THAT panel that must not silently move the other.
+ *
+ * Named here rather than in the component for the same reason every bound in this file is imported
+ * rather than re-declared: one home, and a test can pin it.
+ */
+export const IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS = 600
+
+/**
+ * The focus map's share of the post-save merge — `tuningModel.ts`'s private `mergeRecord`, with one
+ * value type instead of three, so it is typed `boolean` and named for the one record it merges.
+ *
+ * The rule is one line per key: **adopt the stored value only where the operator has not touched
+ * the key since dispatch** — `current` still holds exactly what was `sent`. A key that has moved on
+ * keeps the newer local value and stays pending; the next commit carries it. Keys are taken from
+ * the union of all three sides, so a key present on one side only is decided rather than dropped.
+ */
+function mergeFocusRecord(
+  current: Record<string, boolean>,
+  sent: Record<string, boolean>,
+  canonical: Record<string, boolean>,
+): Record<string, boolean> {
+  const merged: Record<string, boolean> = {}
+  for (const key of Object.keys({ ...sent, ...canonical, ...current })) {
+    if (current[key] !== sent[key] && current[key] !== undefined) {
+      merged[key] = current[key]
+    } else if (canonical[key] !== undefined) {
+      merged[key] = canonical[key]
+    } else if (sent[key] !== undefined) {
+      merged[key] = sent[key]
+    }
+    /* All three undefined: the key is in nobody's draft — leave it out of the merge too. */
+  }
+  return merged
+}
+
+/**
+ * The post-save canonical merge — what the auto-save panel does when a save comes back. The
+ * structural twin of `mergeTuningAfterSave` (`lib/admin/tuningModel.ts:315-334`), field for field.
+ *
+ * `writeNinaImagePrefs` coerces before it writes, and the coercion is not a no-op:
+ * `coerceNinaImageText` collapses whitespace runs, trims and truncates ("  long  hugging  leggings  "
+ * is stored as "long hugging leggings") and `coerceNinaImagePromptLength` clamps, so the stored row
+ * can differ cosmetically from what was typed. The panel cannot keep showing the pre-coercion text
+ * after the row that holds the canonical form has landed — the operator would watch the field "not
+ * take" — but it also cannot adopt the stored row wholesale, because the operator may have kept
+ * editing while the save was in flight, and a wholesale adoption would write the older stored value
+ * over the newer local one. That is the one failure this merge exists to prevent.
+ *
+ * So: for each field, if `current` still equals what was `sent`, the field was untouched since
+ * dispatch and takes the canonical value (a collapsed wardrobe appears; a clamped dial snaps to
+ * what was stored); otherwise the field keeps the newer local value and remains pending — it rides
+ * the next commit. `changedImageGenFields` is the same per-field comparison in boolean form, which
+ * is why the merge and the pending marks always agree. The reference is decided by
+ * `referenceKey(...)` — the ONE identity measure this file already uses for "is the selection the
+ * same", and the one the pending mark is computed from.
+ */
+export function mergeImageGenAfterSave(
+  current: ImageGenDraft,
+  sent: ImageGenDraft,
+  canonical: ImageGenDraft,
+): ImageGenDraft {
+  return {
+    promptLength:
+      current.promptLength === sent.promptLength ? canonical.promptLength : current.promptLength,
+    focus: mergeFocusRecord(current.focus, sent.focus, canonical.focus),
+    wardrobe: current.wardrobe === sent.wardrobe ? canonical.wardrobe : current.wardrobe,
+    venue: current.venue === sent.venue ? canonical.venue : current.venue,
+    time: current.time === sent.time ? canonical.time : current.time,
+    notes: current.notes === sent.notes ? canonical.notes : current.notes,
+    reference:
+      referenceKey(current.reference) === referenceKey(sent.reference)
+        ? canonical.reference
+        : current.reference,
+  }
 }

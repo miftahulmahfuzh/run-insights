@@ -614,7 +614,6 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
         // R10 — the chosen photograph, as a set plus an id. Never a blob URL.
         'reference_source',
         'reference_id',
-        'revision',
         'updated_at',
       ].sort(),
     )
@@ -654,10 +653,8 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     }
   })
 
-  it('stores the slider and the revision as integers, never floats', () => {
-    for (const key of ['prompt_length', 'revision']) {
-      expect(sqlType(schema.ninaImagePrefs, key), key).toBe('integer')
-    }
+  it('stores the slider as an integer, never a float', () => {
+    expect(sqlType(schema.ninaImagePrefs, 'prompt_length')).toBe('integer')
   })
 
   it('carries NO SQL DEFAULT on any stored value — the defaults live in TypeScript', () => {
@@ -673,7 +670,6 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
       'notes',
       'reference_source',
       'reference_id',
-      'revision',
     ]) {
       expect(columns(schema.ninaImagePrefs).get(key)?.notNull, key).toBe(true)
       expect(columns(schema.ninaImagePrefs).get(key)?.hasDefault, key).toBe(false)

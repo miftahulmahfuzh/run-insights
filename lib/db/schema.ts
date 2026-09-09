@@ -2130,7 +2130,7 @@ export const ninaShortcutsRelations = relations(ninaShortcuts, ({ one }) => ({
  *
  * ── `user_id` IS THE PRIMARY KEY ──────────────────────────────────────────────────────────────
  * One row per user, so `user_id` alone is the natural key. It is also what lets
- * `writeNinaImagePrefs` be a single `ON CONFLICT DO UPDATE` that bumps `revision` in SQL, instead of
+ * `writeNinaImagePrefs` be a single `ON CONFLICT DO UPDATE` — one statement per save — instead of
  * a read-then-write that is correct until two tabs race.
  */
 export const ninaImagePrefs = pgTable('nina_image_prefs', {
@@ -2202,14 +2202,6 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
    */
   referenceId: text('reference_id').notNull(),
 
-  /**
-   * **Bumped by the database on every save.** A stored row always has `revision >= 1`; `0` is
-   * `NINA_IMAGE_PREFS_DEFAULTS.revision` and means no row has ever been written.
-   * `writeNinaImagePrefs` computes it as `revision + 1` inside the upsert, so no caller can send
-   * one — a revision the client supplies is a revision a stale tab can move backwards. No `DEFAULT`
-   * here for the same reason as every column above: the one writer always supplies it.
-   */
-  revision: integer('revision').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
     .notNull()
     .defaultNow()
