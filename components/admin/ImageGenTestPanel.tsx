@@ -94,7 +94,7 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
    * `setTimeout(run, pollDelayFor(0))` and never a bare call — and `react-hooks/set-state-in-effect`
    * enforces it: a read whose `setView` is reachable synchronously from an effect body is a
    * cascading render, which is the rule `CharacterPanel.tsx` also records when it rejects the
-   * effect form of its revision sync. The handle is cleared on unmount, and `load` additionally
+   * effect form of its draft sync. The handle is cleared on unmount, and `load` additionally
    * honours `alive`, so a resolution arriving after unmount sets nothing either way. */
   React.useEffect(() => {
     const timer = setTimeout(() => void load(null), 0)

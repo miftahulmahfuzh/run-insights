@@ -417,7 +417,6 @@ describe('the defaults, and the coercion that never throws', () => {
       time: '',
       notes: '',
       reference: { source: 'none', id: '' },
-      revision: 0,
     })
   })
 
@@ -438,13 +437,11 @@ describe('the defaults, and the coercion that never throws', () => {
     for (const bad of [
       undefined,
       {},
-      { promptLength: '80', focus: 'all', reference: 7, revision: -4 },
+      { promptLength: '80', focus: 'all', reference: 7 },
       { promptLength: Number.NaN, wardrobe: 12, venue: null, time: [], notes: {} },
     ]) {
       expect(() => coerceNinaImagePrefs(bad as never)).not.toThrow()
     }
-    expect(coerceNinaImagePrefs({ revision: -4 }).revision).toBe(0)
-    expect(coerceNinaImagePrefs({ revision: 7.9 }).revision).toBe(7)
   })
 
   it('keep 0 as a real prompt length and not as "unreadable"', () => {
@@ -497,11 +494,13 @@ describe("the migration's data step transcribes the defaults correctly", () => {
     expect(values).toMatch(/(false\s*,\s*){5}false\s*,/)
     expect(NINA_IMAGE_FOCUS_KEYS).toHaveLength(6)
     expect(values).toMatch(new RegExp(`'${NINA_IMAGE_REFERENCE_NONE.source}'\\s*,\\s*''\\s*,`))
-    // A copied row is a row the operator saved something into, so revision 1 and not 0.
+    // The trailing `1` is 0011's data step as it ran. The column it seeded was dropped by a later
+    // migration, but an applied migration is a fact about what happened, so its literal stays
+    // pinned rather than being reinterpreted to match today's schema.
     expect(values).toMatch(/,\s*1\s*FROM "nina_tuning"/)
   })
 
-  it('names every column the table has, so a NOT NULL cannot be missed', () => {
+  it('names every column the copy needs, so a NOT NULL cannot be missed', () => {
     const sql = migrationSql()
     const columnList = sql.slice(
       sql.indexOf('INSERT INTO "nina_image_prefs"'),
@@ -517,7 +516,6 @@ describe("the migration's data step transcribes the defaults correctly", () => {
       'notes',
       'reference_source',
       'reference_id',
-      'revision',
     ]) {
       expect(columnList, column).toContain(`"${column}"`)
     }

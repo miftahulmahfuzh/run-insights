@@ -3733,13 +3733,12 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
     time: row.timeOfDay,
     notes: row.notes,
     reference: { source: row.referenceSource, id: row.referenceId },
-    revision: row.revision,
   })
 }
 
 /**
- * The other direction. `revision` is absent on purpose — the database computes it (see
- * `writeNinaImagePrefs`), so it must not appear in a `set` clause a caller can influence.
+ * The other direction. The write value carries every column the table has, so this is a flat copy
+ * of one nested model into the row's flat columns — nothing is held back for the database to mint.
  *
  * The six focus columns are `NOT NULL`, so drizzle's insert type makes a forgotten one a compile
  * error here — which is what `nina_tuning`'s nullable `*_enabled` columns could not do and why
@@ -3792,29 +3791,27 @@ export async function readNinaImagePrefs(userId: string): Promise<NinaImagePrefs
 }
 
 /**
- * **One save, not fifteen** (plan invariant 7). Upsert on `user_id` and return what was stored.
+ * **One save, not fifteen** (plan invariant 7). Upsert on `user_id` and return what was stored —
+ * statement for statement, `writeNinaTuning`.
  *
  * Every paragraph of `writeNinaTuning`'s docstring applies unchanged, so they are cited rather than
- * repeated: the revision is computed in SQL and the caller cannot send one (a revision a client
- * supplies is a revision a stale tab can move backwards); it coerces before it writes, because
- * Zod's job is a good error message for a human at a form and this is the store defending its own
- * invariants against a script, a test and a future migration; and phase 4's "reset" is a WRITE with
- * the defaults rather than a DELETE, because deleting the row would take `revision` back to 0 and
- * erase the fact that the operator did something on that date.
+ * repeated: it coerces before it writes, because Zod's job is a good error message for a human at a
+ * form and this is the store defending its own invariants against a script, a test and a future
+ * migration; and a save replaces the whole row, because the caller always supplies one.
  */
 export async function writeNinaImagePrefs(
   userId: string,
   prefs: NinaImagePrefsWrite,
 ): Promise<NinaImagePrefs> {
-  const safe = coerceNinaImagePrefs({ ...prefs, revision: 0 })
+  const safe = coerceNinaImagePrefs(prefs)
   const columns = imagePrefsToColumns(safe)
 
   const rows = await db
     .insert(ninaImagePrefs)
-    .values({ userId, ...columns, revision: 1 })
+    .values({ userId, ...columns })
     .onConflictDoUpdate({
       target: ninaImagePrefs.userId,
-      set: { ...columns, revision: sql`${ninaImagePrefs.revision} + 1`, updatedAt: new Date() },
+      set: { ...columns, updatedAt: new Date() },
     })
     .returning()
 

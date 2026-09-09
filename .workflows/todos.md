@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-09
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
-- Completed: 27
+- Blocked: 0
+- Completed: 28
 
 ---
 
@@ -22,20 +22,11 @@
 
 ### [P1] High
 
-- [ ] **P1-RI-A029** Phase 2: Revision purge: the counter leaves frontend, backend, and database
-  - **Difficulty**: NORMAL
-  - **Type**: Refactor
-  - **Context**: Owns every remaining `revision` in the image-prefs stack — `NinaImagePrefs.revision`, `NinaImagePrefsWrite`'s `Omit`, `NinaImagePrefsInput.revision`, `coerceRevision`, the defaults' `revision: 0`, `coerceNinaImagePrefs`'s line, `imagePrefsFromRow`'s mapping, `writeNinaImagePrefs`'s `revision: 1` insert and SQL `+1` upsert (the upsert keeps bumping `updated_at`), `AdminImageGenResult.revision` and the save note's wording, the panel's `revision` prop + its docstring + the two "revision N" copy sites + the header-docstring paragraph recording the retired resync, the page's prop pass, the hub card's ". Revision N." sentence (`app/admin/page.tsx:183`), `ImageGenDraft`'s docstring, the `ImageGenTestPanel` comment, and the `"revision" in DEFAULTS` test pin (`tests/admin.imagegen.test.ts:76-78` — deleted wholesale; the census cannot tolerate the word) — and the database: the drizzle column removed from `lib/db/schema.ts` plus a new `drizzle/0017_*.sql` doing `ALTER TABLE "nina_image_prefs" DROP COLUMN "revision";` (precedent `0016`; re-check `origin/main` for a taken `0017` before creating the file). Re-pins `tests/nina.imageprefs.test.ts` and `tests/db.schema.nina.test.ts`. Does not touch the focus cards (phase 3's), the auto-save pipeline (phase 1's, quoted as it left it), `updatedAt`, or the defaults object's other members. Exit criteria: a census grep for `revision` over `app components lib scripts tests` returns image-prefs hits nowhere; `npx vitest run` green; the migration applies cleanly with its runbook written in the plan — merge/deploy the code first, then `npm run db:migrate` (the repo's one database is production; the reverse order breaks every write).
-  - **Status**: pending
-  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 2 of 3)
-  - **Satisfies**: R1 — Purge prompt revision tracking — frontend, backend, and database both — because Image generation settings are configuration tuning, not a prompt update needing version history
-  - **Depends on**: `P1-RI-A028`
-  - **Plan**: `.workflows/plan/P1-RI-A029.md`
 - [ ] **P1-RI-A031** Phase 3: Focus on: the redundant hint under each option
   - **Difficulty**: EASY
   - **Type**: Update
   - **Context**: Owns the six focus cards rendering their label only — the hint span gone from `ImageGenPanel.tsx` and `imageFocusCopy` simplified accordingly; `NinaImageFocusSpec.userSaid` removed from `lib/nina/imageprefs.ts` (its only reader was the hint; the prompt's vocabulary lives in `NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts:319-344`, which never reads it); test pins updated (`hint.length`, the fallback hint, the `userSaid` array — the clinical-synonym negative test stays, now pinning labels alone). Does not touch the fieldset's "These add emphasis on top…" paragraph (it explains emphasis-vs-inclusion — not redundant), the ring/selected styling, `NINA_FOCUS_EMPHASIS`, or the `DialSlider` and text-field hints. Exit criteria: the six cards show one line each; the census grep (code forms `userSaid:` / `userSaid?:` / `.userSaid`) shows no `userSaid` in the image-focus specs; `npx vitest run` green.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 3 of 3)
   - **Satisfies**: R3 — Focus on section: remove the redundant description under each option ("face" under Face, "skin" under Skin, …)
   - **Depends on**: `P1-RI-A029`
@@ -81,6 +72,24 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A029** Phase 2: Revision purge: the counter leaves frontend, backend, and database
+  - **Difficulty**: NORMAL
+  - **Type**: Refactor
+  - **Context**: Owns every remaining `revision` in the image-prefs stack — `NinaImagePrefs.revision`, `NinaImagePrefsWrite`'s `Omit`, `NinaImagePrefsInput.revision`, `coerceRevision`, the defaults' `revision: 0`, `coerceNinaImagePrefs`'s line, `imagePrefsFromRow`'s mapping, `writeNinaImagePrefs`'s `revision: 1` insert and SQL `+1` upsert (the upsert keeps bumping `updated_at`), `AdminImageGenResult.revision` and the save note's wording, the panel's `revision` prop + its docstring + the two "revision N" copy sites + the header-docstring paragraph recording the retired resync, the page's prop pass, the hub card's ". Revision N." sentence (`app/admin/page.tsx:183`), `ImageGenDraft`'s docstring, the `ImageGenTestPanel` comment, and the `"revision" in DEFAULTS` test pin (`tests/admin.imagegen.test.ts:76-78` — deleted wholesale; the census cannot tolerate the word) — and the database: the drizzle column removed from `lib/db/schema.ts` plus a new `drizzle/0017_*.sql` doing `ALTER TABLE "nina_image_prefs" DROP COLUMN "revision";` (precedent `0016`; re-check `origin/main` for a taken `0017` before creating the file). Re-pins `tests/nina.imageprefs.test.ts` and `tests/db.schema.nina.test.ts`. Does not touch the focus cards (phase 3's), the auto-save pipeline (phase 1's, quoted as it left it), `updatedAt`, or the defaults object's other members. Exit criteria: a census grep for `revision` over `app components lib scripts tests` returns image-prefs hits nowhere; `npx vitest run` green; the migration applies cleanly with its runbook written in the plan — merge/deploy the code first, then `npm run db:migrate` (the repo's one database is production; the reverse order breaks every write).
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R1 — Purge prompt revision tracking — frontend, backend, and database both — because Image generation settings are configuration tuning, not a prompt update needing version history
+  - **Depends on**: `P1-RI-A028`
+  - **Plan**: `.workflows/plan/P1-RI-A029.md`
+  - **Completed**: 2026-09-09 17:32
+  - **Method**: /do (swarm phase 2/3)
+  - **Files**: lib/nina/imageprefs.ts, lib/nina/queries.ts, lib/db/schema.ts, drizzle/0017_retire_imageprefs_revision.sql, drizzle/meta/0017_snapshot.json, drizzle/meta/_journal.json, lib/admin/imageGenActions.ts, app/admin/image-generation/page.tsx, components/admin/ImageGenPanel.tsx, app/admin/page.tsx, lib/admin/imageGenModel.ts, components/admin/ImageGenTestPanel.tsx, tests/nina.imageprefs.test.ts, tests/db.schema.nina.test.ts, tests/admin.imagegen.test.ts
+  - **Drift**: No implementation drift — every anchor quoted from phase 1's post-state matched the landed tree; the plan's three census-only NO-EDIT checks (5b, 5e, 7f) all confirmed counter-free.
+  - **Drift**: app/admin/page.tsx: the hub-card replacement needed prettier's continuation-line form (the trailing '.' wraps to its own line) because the plan's one-line block exceeded print width at the file's indent — the repo's format gate decided, content identical.
+  - **Drift**: Plan line numbers were pre-phase-1; all edits located by anchor text as the plan instructs.
+  - **Drift**: Pre-existing, NOT this phase's, left untouched: two eslint warnings in scripts/capture/shoot.mjs; prettier dirt at lib/nina/queries.ts (~:77) and tests/db.schema.nina.test.ts (~:557) — both dirty at HEAD, outside this phase's hunks (also why no repo-wide `npm run format` at landing).
+  - **Verification**: `npx vitest run` green; the revision census over `app components lib scripts tests` returns no image-prefs hit (sole residue is English prose about a photo in `tests/live/vision.live.test.ts:34`); `drizzle/0017_retire_imageprefs_revision.sql` exists with exactly the one DROP COLUMN, `origin/main` has no `0017` (number verified untaken). **The migration is committed but NEVER applied — `db:migrate` was not run and must run only after the code deploys** (invariant 7, the `0016` precedent).
 
 - [x] **P1-RI-A028** Phase 1: Auto-save panel: the Personality commit pipeline, buttons removed
   - **Difficulty**: HARD

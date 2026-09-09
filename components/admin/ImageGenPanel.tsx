@@ -112,10 +112,9 @@ import {
  * changes under the panel is the panel's own save coming back; no other sync exists, and the prop
  * is the mount-time baseline and a fresh page load, nothing more.
  *
- * The staged-commit panel's revision-keyed draft resync is gone with it: nothing here is keyed on
- * the `revision` prop any more. The prop still arrives and still renders — the "revision N" words
- * in the header and the preview summary — but it is display copy now, and nothing in the pipeline
- * reads it.
+ * The staged-commit panel's keyed draft resync is gone with it, and nothing has replaced it: the
+ * row arrives once as the `prefs` prop and is maintained from the save's own result, so there is
+ * no sync mechanism left and no prop to key one on.
  *
  * The draft does NOT blindly adopt the canonical row: `coerceNinaImageText` collapses whitespace
  * runs and truncates, so the stored row can differ cosmetically from what was typed, and the
@@ -166,12 +165,6 @@ export interface ImageGenPanelProps {
    */
   defaults: ImageGenDraft
   /**
-   * The row's revision counter, for the "revision N" words in the header and the preview summary.
-   * DISPLAY COPY ONLY: the pipeline never reads it — `saved` is maintained from the action's own
-   * result — and no resync is keyed on it any more.
-   */
-  revision: number
-  /**
    * `buildNinaImagePrompt(...)`, assembled on the SERVER from the SAVED prefs.
    *
    * It is not recomputed as the sliders move, and that is deliberate rather than a limitation: the
@@ -204,7 +197,6 @@ export function ImageGenPanel({
   userId,
   prefs,
   defaults,
-  revision,
   promptPreview,
   references,
   photoTotal,
@@ -410,7 +402,7 @@ export function ImageGenPanel({
         <span className="text-right text-[12px] font-medium text-ink-3">
           prompt length {draft.promptLength} &middot; {on.length} of {NINA_IMAGE_FOCUS_KEYS.length}{' '}
           emphasised
-          {selectedKey !== '' && ' · one reference'} &middot; revision {revision}
+          {selectedKey !== '' && ' · one reference'}
         </span>
       </div>
 
@@ -603,7 +595,7 @@ export function ImageGenPanel({
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
           <summary className="cursor-pointer list-none text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
-            The assembled image prompt &middot; revision {revision}
+            The assembled image prompt
             {dirty && (
               <span className="ml-2 font-medium text-ink-3">
                 (as saved — the edits above are not in it yet)

@@ -74,10 +74,6 @@ describe('toImageGenDraft — the read-side seam', () => {
     draft.focus[key] = !before
     expect(NINA_IMAGE_PREFS_DEFAULTS.focus[key]).toBe(before)
   })
-
-  it('does not carry the revision — the panel takes that as its own prop', () => {
-    expect('revision' in DEFAULTS).toBe(false)
-  })
 })
 
 describe('the vocabulary is phase 1s, and is complete', () => {

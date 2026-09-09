@@ -180,7 +180,7 @@ export default async function AdminHomePage() {
               ? ', nothing emphasised'
               : `, ${focused.length} of ${NINA_IMAGE_FOCUS_KEYS.length} emphasised`}
             {referenceKey(imageDraft.reference) === '' ? ', no reference' : ', one photo reference'}
-            . Revision {imagePrefs.revision}.
+            .
           </p>
           <Link
             href="/admin/image-generation"

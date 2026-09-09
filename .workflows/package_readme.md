@@ -1068,7 +1068,8 @@ anticipates that.
 - `app/admin/personality/page.tsx` — `<CharacterPanel>` loses its `revision` prop; the page hands it
   the draft, the defaults and the prompt preview, and nothing else.
 - `app/admin/page.tsx` — the hub card's character summary no longer ends with "Revision N." The
-  image card beside it still reads `imagePrefs.revision`; that surface is not this set's to touch.
+  image card beside it read `imagePrefs.revision` at the time; the `admin-imagegen-simplify` set's
+  phase 2 (`P1-RI-A029`) has since removed it.
 - `tests/nina.tuning.test.ts` — the hostile-input and defaults cases stop asserting a `revision`
   field exists, clamps, or sits at `0`.
 - `tests/admin.tuning.test.ts` — the "draft does not carry the revision" case is deleted rather than

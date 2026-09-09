@@ -612,19 +612,17 @@ export interface NinaImagePrefs {
   readonly notes: string
   /** `NINA_IMAGE_REFERENCE_NONE` = an unanchored generation. */
   readonly reference: NinaImageReference
-  /**
-   * Bumped by the DATABASE on every save.
-   *
-   * **`0` means no row has ever been written**, i.e. the shipping defaults. A stored row always has
-   * `revision >= 1`, which is why `writeNinaImagePrefs` computes it in SQL and why
-   * `NinaImagePrefsWrite` cannot supply one: a revision the client sends is a revision a stale tab
-   * can move backwards. `writeNinaTuning`'s argument, verbatim.
-   */
-  readonly revision: number
 }
 
-/** What a caller supplies to `writeNinaImagePrefs`. The revision is the database's to assign. */
-export type NinaImagePrefsWrite = Omit<NinaImagePrefs, 'revision'>
+/**
+ * What a caller supplies to `writeNinaImagePrefs`. **The whole row, and no longer a subset of it**:
+ * there is no database-minted member left to omit, so this is `NinaImagePrefs` spelled under its
+ * write-path name. The alias survives rather than being inlined at its four call sites because
+ * `writeNinaImagePrefs`'s signature and `lib/admin/imageGenActions.ts`'s `toImagePrefsWrite` are
+ * written against the write shape, and the day the write path wants a member of its own again it
+ * should not have to invent a name.
+ */
+export type NinaImagePrefsWrite = NinaImagePrefs
 
 /**
  * What `coerceNinaImagePrefs` accepts: the shape, with every field `unknown`.
@@ -641,7 +639,6 @@ export interface NinaImagePrefsInput {
   readonly time?: unknown
   readonly notes?: unknown
   readonly reference?: unknown
-  readonly revision?: unknown
 }
 
 /**
@@ -660,14 +657,7 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
   time: '',
   notes: '',
   reference: NINA_IMAGE_REFERENCE_NONE,
-  revision: 0,
 })
-
-/** A revision, made safe. Integer, never negative, and 0 is the "never written" sentinel. */
-function coerceRevision(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
-  return Math.max(0, Math.floor(value))
-}
 
 /**
  * **Anything at all, made into a usable `NinaImagePrefs`. This function never throws.**
@@ -697,6 +687,5 @@ export function coerceNinaImagePrefs(
     time: coerceNinaImageText('time', input?.time),
     notes: coerceNinaImageText('notes', input?.notes),
     reference: coerceNinaImageReference(input?.reference),
-    revision: coerceRevision(input?.revision),
   }
 }

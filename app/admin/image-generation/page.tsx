@@ -140,7 +140,6 @@ export default async function AdminImageGenerationPage() {
         userId={userId}
         prefs={toImageGenDraft(prefs)}
         defaults={toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS)}
-        revision={prefs.revision}
         promptPreview={buildNinaImagePrompt({
           purpose: 'selfie',
           scene: ADMIN_IMAGE_PREVIEW_SCENE,

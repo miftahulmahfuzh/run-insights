@@ -841,8 +841,8 @@ row is a no-op.
 through `mergeImageGenAfterSave` (`imageGenModel.ts`, the structural twin of `tuningModel.ts`'s
 `mergeTuningAfterSave`): a field still equal to what was dispatched takes the canonical value — a
 collapsed whitespace run appears, a clamped dial snaps — while a field edited since keeps the newer
-local value and rides the next commit. `revision` rides along as display copy; phase 2 of the set
-removes it.
+local value and rides the next commit. `revision` used to ride along as display copy until phase 2
+of the set (`P1-RI-A029`) purged it; the merge now moves only the fields the type still carries.
 
 **`imageGenModel.ts` imports two modules and it has to.** `@/lib/nina/imageprefs` for the bounds
 and the vocabulary, and `@/lib/nina/tuning` for `ninaBand` — because `ninaPromptLengthRungFor`
@@ -1290,7 +1290,8 @@ gone with it. `saveNinaImagePrefsAction` now returns the canonical row: `prefs: 
 = 600, the dial's settle window; the six focus checkboxes and the photo reference commit on
 change, the four text fields on blur). `disabled={pending}` is removed from every control —
 `pending` drives only the tri-state `aria-live` status line ("Saving…" / "Saved" / "Unsaved
-edits") — and `AdminImageGenResult.revision` is display copy that phase 2 of the set removes.
+edits") — and `AdminImageGenResult.revision` was display copy that phase 2 of the set (`P1-RI-A029`)
+has since removed.
 
 Refreshed here: the `Last Updated` line, the imageGen section's action census (four actions ->
 three) and its test-action paragraph, which had told the operator to save first. No schema, bound

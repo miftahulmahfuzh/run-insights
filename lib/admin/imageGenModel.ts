@@ -50,7 +50,7 @@ import { ninaBand } from '@/lib/nina/tuning'
  * phase 2's business and is visible in the preview rather than described here.
  */
 
-/** What a browser edits: phase 1's row, minus the revision the database mints. */
+/** What a browser edits: phase 1's row, with its vocabulary loosened for the adaptation seam. */
 export interface ImageGenDraft {
   /** R4. 0-100 on phase 1's scale, read through its five bands. */
   promptLength: number

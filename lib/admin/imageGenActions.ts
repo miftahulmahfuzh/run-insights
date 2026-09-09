@@ -33,7 +33,7 @@ import {
  *                                 so this call is the only gate on this endpoint. Plan invariant 6.
  *   2. Zod                      — every field, every time. The client is not a source of truth.
  *   3. the write                — one row, through phase 1's `writeNinaImagePrefs`, which owns the
- *                                 clamp and the revision bump.
+ *                                 clamp.
  *   4. `revalidatePath`         — re-renders THIS page, so the panel and the prompt preview show
  *                                 the row that was just written.
  *
@@ -79,8 +79,6 @@ export interface AdminImageGenResult {
    * future caller that wants the sentence.
    */
   note?: string
-  /** The revision the row now carries. Display copy only; phase 2 of the simplify set removes it. */
-  revision?: number
   /**
    * The row as stored — `toImageGenDraft` over what `writeNinaImagePrefs` returned, i.e. AFTER
    * `coerceNinaImagePrefs`. Present on success. The panel merges it with
@@ -108,9 +106,8 @@ function failed(where: string, cause: unknown): AdminImageGenResult {
  * instead of a silently dropped control. If phase 1 landed the reference as two flat members
  * (`referenceSource` / `referenceId`), THIS is the function that un-groups it and the only one.
  *
- * `NinaImagePrefsWrite` is IMPORTED rather than re-declared as a local `Omit<NinaImagePrefs,
- * 'revision'>`, for `toTuningWrite`'s reason: *"a constant that is agreed rather than shared is a
- * constant that will one day disagree."*
+ * `NinaImagePrefsWrite` is IMPORTED rather than re-declared locally, for `toTuningWrite`'s reason:
+ * *"a constant that is agreed rather than shared is a constant that will one day disagree."*
  */
 function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite {
   return {
@@ -162,9 +159,8 @@ export async function saveNinaImagePrefsAction(input: {
     revalidatePath('/admin/image-generation')
     return {
       ok: true,
-      revision: stored.revision,
       prefs: toImageGenDraft(stored),
-      note: `Saved as revision ${stored.revision}. The next photograph she takes is assembled from it — there is no cache on the image path.`,
+      note: 'Saved. The next photograph she takes is assembled from it — there is no cache on the image path.',
     }
   } catch (cause) {
     return failed('save', cause)
