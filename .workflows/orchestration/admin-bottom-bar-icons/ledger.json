@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "22943b9",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "child's completion handler reported swarm:false (no TaskID in this set), so the coordinator recorded the outcome from git: 22943b9 on feature/admin-bottom-bar-icons, clean tree",
       "package": "admin shell",
       "plan": ".workflows/plan/admin-bottom-bar-icons/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T01:07:59+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "done",
       "task_id": null,
       "title": "Icon-only one-row bottom bar"
     }
@@ -27,6 +27,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-bottom-bar-icons/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "admin-bottom-bar-icons",
-  "updated": "2026-09-09T00:42:55+00:00",
+  "updated": "2026-09-09T01:07:59+00:00",
+  "verified_at": "2026-09-09T01:07:40+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/admin-bottom-bar-icons"
 }
