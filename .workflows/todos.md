@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 23
+- Completed: 24
 
 ---
 
@@ -50,16 +50,6 @@
   - **Files**: app/nina/page.tsx, components/nina/NinaUnreadBadge.tsx, components/nina/NinaUnreadSync.tsx, lib/nina/unread.ts, lib/nina/unread.test.ts
   - **Verification**: `npm run typecheck` clean; `npm run build` clean; new suite `lib/nina/unread.test.ts` 9/9; all three `ci:*` guards PASS; eslint + prettier clean on the five files. Landed as `d710ded` on `feature/nina-chat-sessions`, merged to `main`. Ledger note: session-scoped mark-read + one-shot `router.refresh()`; no poll, no new query, count stays global.
 
-- [ ] **P1-RI-A027** Phase 3: The sidebar's bottom icon rail
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns the `NinaSidebar.tsx` restructure — a scroll area for the list plus a pinned bottom rail replacing the two full-width rows, rail spacing equal to the composer's floor arithmetic — and `NewChatButton.tsx` becoming the rail's icon-only `+`. Exit criteria: no full-width "Chat baru"/"Proses foto" rows; a 4-button rail (`>` close, `up` scroll-to-top, `+` create chat, wand-sparkles Link to `NINA_JOBS_HREF`) pinned at the panel bottom with the composer's gap to the glass; phase 1's focus-assert effect survives the restructure; build + tests green.
-  - **Status**: blocked
-  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 3 of 3)
-  - **Satisfies**: R5 — Sidebar bottom rail: 4 icon buttons replacing the two full-width rows, composer-gap spacing from the glass
-  - **Depends on**: `P1-RI-A025`
-  - **Plan**: `.workflows/plan/P1-RI-A027.md`
-
 ### [P2] Medium
 
 ### [P3] Low
@@ -73,6 +63,24 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A027** Phase 3: The sidebar's bottom icon rail
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the `NinaSidebar.tsx` restructure — a scroll area for the list plus a pinned bottom rail replacing the two full-width rows, rail spacing equal to the composer's floor arithmetic — and `NewChatButton.tsx` becoming the rail's icon-only `+`. Exit criteria: no full-width "Chat baru"/"Proses foto" rows; a 4-button rail (`>` close, `up` scroll-to-top, `+` create chat, wand-sparkles Link to `NINA_JOBS_HREF`) pinned at the panel bottom with the composer's gap to the glass; phase 1's focus-assert effect survives the restructure; build + tests green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R5 — Sidebar bottom rail: 4 icon buttons replacing the two full-width rows, composer-gap spacing from the glass
+  - **Depends on**: `P1-RI-A025`
+  - **Plan**: `.workflows/plan/P1-RI-A027.md`
+  - **Completed**: 2026-09-09 10:24
+  - **Method**: /do
+  - **Files**: components/nina/NewChatButton.tsx, components/nina/NinaSidebar.tsx, tests/nina.jobActions.test.ts
+  - **Verification**: `npx prettier --check` clean on the three touched files; `npm run typecheck` clean; `npm test` 163 files / 3488 tests all passing; `npm run build` succeeded — all run in this worktree.
+  - **Drift**: The plan's code blocks applied cleanly; `npx prettier --write` (scoped to the three touched files, not repo-wide) normalized the Step-3 block's indentation after the splice, as the plan's own Verification section prescribed.
+  - **Drift**: The plan's Verification section claims this worktree has no `node_modules` and no `.env.local` — both were present (phases 1-2 ran here); no setup was needed.
+  - **Drift**: `tests/nina.jobActions.test.ts` is a THIRD file beyond the plan's Files table (which names exactly two) — see the Decided entry for why; the phase's functional diff remains the plan's two component files.
+  - **Decided**: `npm test` was red at BASE (verified by stashing the phase's changes: the same 4 failures) — `tests/nina.jobActions.test.ts`'s `vi.mock` factories predate `readNinaTuning` (landed `be1057e`) and `captionNinaPhoto` (landed `b4f1004`); the caption call built a real `narrativeClient` and hung 4 session-resolution tests at the 5000ms timeout → repaired the stale mocks in-phase (added `readNinaTuning` to the queries factory, added a `@/lib/nina/caption` mock resolving null so the real deterministic `ninaImageCaption` pool line still builds the body, defaults in `beforeEach`, header docstring updated). Rungs 1-2: plan invariant 1 ("npm test passes at the end of every phase") and the phase exit criteria ("build + typecheck + tests green") demand a green suite; repairing a stale mock strengthens the checks rather than relaxing them. The suite went 4 failed | 15 passed → 19 passed, and 19s → 586ms.
 
 - [x] **P1-RI-A025** Phase 1: The keyboard stops eating the sidebar's fields; the search field clears
   - **Difficulty**: HARD

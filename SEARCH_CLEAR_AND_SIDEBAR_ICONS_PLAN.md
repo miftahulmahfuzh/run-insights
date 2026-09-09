@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/search-clear-and-sidebar-icons`
 **Branch:** `feature/search-clear-and-sidebar-icons` (base: `origin/main` @ `557a05c`)
 **Phases:** 3
-**Status:** phase 2/3 complete
+**Status:** complete
 **Coordinator:** —
 
 ## Why
@@ -71,7 +71,7 @@ any admin surface. No new npm dependencies — icons stay inline SVG.
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | The keyboard stops eating the sidebar's fields; the search field clears | R1, R2 | `components/nina` + `lib/nina` | 4 | — | HARD | `.workflows/plan/search-clear-and-sidebar-icons/phase-1.md` | `P1-RI-A025` | — |
 | 2 ✅ | Session actions become icons; the rename field clears | R3, R4 | `components/nina` | 1 | — | NORMAL | `.workflows/plan/search-clear-and-sidebar-icons/phase-2.md` | `P1-RI-A026` | — |
-| 3 | The sidebar's bottom icon rail | R5 | `components/nina` | 2 | 1 | NORMAL | `.workflows/plan/search-clear-and-sidebar-icons/phase-3.md` | `P1-RI-A027` | — |
+| 3 ✅ | The sidebar's bottom icon rail | R5 | `components/nina` | 2 | 1 | NORMAL | `.workflows/plan/search-clear-and-sidebar-icons/phase-3.md` | `P1-RI-A027` | — |
 
 ### Phase 1 — The keyboard stops eating the sidebar's fields; the search field clears
 **Satisfies:** R1, R2

@@ -367,7 +367,8 @@ The model is never awaited in a render path (`rankNinaSearchHits`, payload-guard
 unavailable the results fall back to the text ranking and the field says so, because an empty list
 would be a false claim about the runner's own history. A hit is a real `<Link>` to
 `/nina?s=<session>&at=<message>~0` — phase 3's parameter and `lib/nina/scroll.ts`'s mark, no third
-grammar. `Chat baru` above the list creates a session and opens it (R2).
+grammar. The rail's `+` creates a session and opens it (R2 — a full-width `Chat baru` row above
+the list until P1-RI-A027 moved it to the bottom rail).
 
 **Tapping a photo (F35 R10).** A photograph in the chat is a tap target. It opens the app's one
 full-screen overlay (`components/ui/PhotoViewer`), paging across that bubble's photos only — the
@@ -640,7 +641,9 @@ package readmes of their own.
 - `components/nina/ChatChrome` — imported by `AppShell` for `screen === 'chat'`.
 - `components/nina/NinaUnreadBadge` — `NinaUnreadBadgeSlot`, constructed on the server, passed down
   as a `ReactNode`.
-- `lib/nina/chrome` — the reveal rules, consumed only by `ChatChrome`.
+- `lib/nina/chrome` — the reveal rules, and `NINA_CHROME_CONTROL_CLASS`: the floating pair's skin,
+  which `NinaSidebar` (its trigger, and since P1-RI-A027 its bottom rail) and `NewChatButton` also
+  read.
 - `lib/nina/chatview` — `NINA_BAR_VISIBLE_VAR` (by `ChatChrome`), `composerBottomCss` and
   `keyboardOverlapPx` (by `ChatScreen`), and the panel's keyboard pair `NINA_KEYBOARD_OVERLAP_VAR`
   and `KEYBOARD_REASSERT_DELAYS_MS` (both by `NinaSidebar`).
@@ -895,6 +898,66 @@ glyph took its name. The rename `Input` gained an ✕ at its right end — `abso
 nama"` — which empties the draft and keeps the keyboard up: `onPointerDown` prevents the blur, the
 click handler re-focuses the input through a ref. The prefill on `open('rename')` is deliberately
 unchanged: the ✕ is for renaming from scratch, not a tax on typo fixes.
+
+### Recent changes — P1-RI-A027 (2026-09-09)
+
+*Phase 3 of the `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` set (R5): the sidebar's two full-width
+rows became a four-icon rail pinned to the panel's bottom edge, and the panel's scroll moved into
+an inner deck.*
+
+**The panel is a two-deck column now, and no longer scrolls itself.** It gained `flex flex-col`
+and lost its own `overflow-y-auto overscroll-contain` — the two scroll utilities moved whole to an
+inner `min-h-0 flex-1` region holding the header, the search field and `SessionList`, so no row
+ever scrolls under the buttons. `min-h-0` is belt-and-braces: with `overflow-y-auto` the spec
+already zeroes a flex child's automatic minimum, and the class stands against the engines that got
+that wrong. Phase 1's focus-reassertion effect survived the move untouched, by its own
+construction — it addresses the focused element, and `scrollIntoView` walks every scrollable
+ancestor, so which container scrolls is invisible to it. The deck's bottom padding lost its
+`--safe-bottom` term (`pb-6` now): that inset was the panel's glass clearance, and since the rail
+it is the rail's to carry — keeping it would clear the glass twice.
+
+**The rail (R5), in the owner's order: `>` closes, `up` returns the list to its top, `+` starts a
+chat, the wand opens "Proses foto".** The two full-width rows cost 44 px plus margins each on an
+XS Max. `>` is the chat page trigger's own chevron doing the opposite job, wired to `closeRef`;
+the header ✕ stays, its mirror at the other end of the panel rather than its replacement. `up`
+scrolls the list's own container (not the page — the panel covers it) through the new
+`listScrollRef`, smooth and **instant under `prefers-reduced-motion`**, with the `matchMedia` read
+at TAP time the way `MessageList`'s handler does: the setting can change while the panel is open,
+and a subscription would be state this panel has no other use for. `+` is `NewChatButton`, still
+the `newChatSlot` seam's default and now the rail's third cell (an override lands in the rail's
+row, which the seam's docstring now says honestly): icon-only 44 px with `aria-label="Chat baru"`
+and Lucide's `plus` at the rail chevrons' own `strokeWidth 2.4`, its pending sentence replaced by
+`aria-busy` plus the dim of `disabled:opacity-60` — no room on a disc for "Membuka chat baru…",
+and `NinaJobActions`' pattern for a one-tap action in flight. Its create/refuse logic is
+untouched: still a `<button>` that closes FIRST and then `router.replace`s on refusal — no Link
+push to race. The wand is a plain `<Link>` to `NINA_JOBS_HREF` that **deliberately never calls
+`closeRef`**: this panel's close path pops a pushed history entry, and firing it beside a Link's
+push races them (measured in production, 2026-09-08, on this panel's own search hits).
+`/nina/jobs` is a different route, so the pushed entry carries no `sidebar` key and the URL that
+opened the panel closes it.
+
+**The rail's gap to the glass is the composer's own, mirrored by decomposition.**
+`RAIL_PAD_BOTTOM_CSS` quotes `composerPadBottomCss`'s floor — `max(0px, var(--safe-bottom) / 2 -
+3.25px)` — rather than calling it, because the panel has no measured overlap to hand it: it is
+`ChatScreen`'s sibling, and its only keyboard channel is the `--nina-kb-overlap` var, a length no
+`lib/` function can consume. The function's `if (overlapPx > 0) return '0px'` gate is re-spelled
+in CSS by subtracting the var, which zeroes the floor whenever a keyboard is published; the
+`1 - var(--nina-bar-visible)` gate is dropped, not forgotten — the panel is `z-50` over the bar,
+and zeroing the rail's floor because a bar it covers appeared would lift it off the glass. The
+rail row carries the composer's `py-2` and the container below carries the floor, so the halves
+read where the composer spells them: 21.75 px on an XS Max, the bare 8 px flush above the
+keyboard. `RAIL_CONTROL_CLASS` is the chat pair's own `NINA_CHROME_CONTROL_CLASS` raised to
+`size-11` — the pair's 32 px is a recorded owner exception that does not travel, because its
+defence was "the nearest rival target is tens of pixels away" and in the rail it is 6 px away.
+The wand's glyph is a module-private `WandSparklesIcon`, Lucide's `wand-sparkles` copied verbatim
+from `components/admin/AdminNav.tsx` — the same silhouette that already means image generation on
+the admin side, and `/nina/jobs` is that queue's runner-facing face.
+
+**Repaired: `tests/nina.jobActions.test.ts` was red at BASE.** Its `vi.mock` factories predated
+`readNinaTuning` (be1057e) and `captionNinaPhoto` (b4f1004), so the four session-resolution cases
+hung at the 5000 ms timeout — `finishSelfie`'s caption call built a real `narrativeClient`. The
+suite now mocks `@/lib/nina/caption` and arms `readNinaTuning` with `NINA_TUNING_DEFAULTS`: 19/19
+passing, and the file dropped 19 s to ~0.6 s.
 
 ### Recent changes — P1-RI-A019 (2026-09-07)
 

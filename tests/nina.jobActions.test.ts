@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NinaImageJobArgs } from '@/lib/nina/imagerecipe'
+import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
 
 /**
  * **`/nina/jobs`'s redo, from the tap to the photograph.**
@@ -28,12 +29,15 @@ import type { NinaImageJobArgs } from '@/lib/nina/imagerecipe'
  *      session-resolution path beside it.
  *
  * ── WHAT IS MOCKED, AND WHY IT IS ONLY THE EDGES ──────────────────────────────────────────────
- * `@/lib/db`, `@/lib/nina/queries`, `@/lib/nina/imagecall`, `@vercel/blob`, `next/server`,
- * `next/cache` and `@/lib/auth/requireUserId`. Everything in between — `jobActions.ts`,
+ * `@/lib/db`, `@/lib/nina/queries`, `@/lib/nina/imagecall`, `@/lib/nina/caption`, `@vercel/blob`,
+ * `next/server`, `next/cache` and `@/lib/auth/requireUserId`. Everything in between — `jobActions.ts`,
  * `imagejobs.ts`, `imagerun.ts`, `sessionResolve.ts`, `jobview.ts` — is the real module. Mocking
  * `@/lib/nina/imagejobs` would have been shorter and would have made property 4 untestable in this
  * file, since `vi.mock` is hoisted and file-scoped: the same suite cannot both stub a module and
- * drive the real one.
+ * drive the real one. `@/lib/nina/caption` joined the edges when `captionNinaPhoto` entered
+ * `finishSelfie` (b4f1004): it is a text-model call that leaves the process, and this suite
+ * asserts where a bubble lands, never what it says — `null` drops to the real deterministic
+ * `ninaImageCaption` pool line.
  */
 
 /* ── the edges ─────────────────────────────────────────────────────────────────────────────── */
@@ -93,6 +97,8 @@ const insertNinaMessageImages = vi.fn()
 const insertNinaAvatarAsCurrent = vi.fn()
 const ensureNinaSession = vi.fn()
 const callNinaImageModel = vi.fn()
+const captionNinaPhoto = vi.fn()
+const readNinaTuning = vi.fn()
 const put = vi.fn()
 
 vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: () => requireUserId() }))
@@ -105,9 +111,13 @@ vi.mock('@/lib/nina/queries', () => ({
   insertNinaMessageImages: (...args: unknown[]) => insertNinaMessageImages(...args),
   insertNinaAvatarAsCurrent: (...args: unknown[]) => insertNinaAvatarAsCurrent(...args),
   ensureNinaSession: (...args: unknown[]) => ensureNinaSession(...args),
+  readNinaTuning: (...args: unknown[]) => readNinaTuning(...args),
 }))
 vi.mock('@/lib/nina/imagecall', () => ({
   callNinaImageModel: (...args: unknown[]) => callNinaImageModel(...args),
+}))
+vi.mock('@/lib/nina/caption', () => ({
+  captionNinaPhoto: (...args: unknown[]) => captionNinaPhoto(...args),
 }))
 vi.mock('@vercel/blob', () => ({ put: (...args: unknown[]) => put(...args) }))
 
@@ -167,6 +177,11 @@ beforeEach(async () => {
     costMicroUsd: 40_000,
     latencyMs: 78_200,
   })
+  /* The caption is the one edge that talks to a text model: unmocked it leaves the process and
+     the test times out at its own clock. `null` keeps the body honest — the real deterministic
+     `ninaImageCaption` draw for the real job id — and the tuning read resolves to what ships. */
+  captionNinaPhoto.mockResolvedValue(null)
+  readNinaTuning.mockResolvedValue(NINA_TUNING_DEFAULTS)
   put.mockResolvedValue({ url: 'https://blob.test/nina/x.png', pathname: 'nina/x.png' })
 
   actions = await import('@/lib/nina/jobActions')
