@@ -220,9 +220,14 @@ export function NinaSidebar({
    * search field". Phase 5 renders nothing here and sketches no input, because a field with no
    * action behind it is a control that lies. Phase 6 owns `lib/nina/search.ts`, the search action,
    * the toggle and its persistence key, and **filled this slot the second way**:
-   * `NinaSearchField` is rendered as the slot's default below, taking its close callback from
-   * `closeRef` rather than through a prop chain from `app/nina/page.tsx` — the page being another
-   * phase's file in the wave this landed in. Passing a `searchSlot` still replaces the default.
+   * `NinaSearchField` is rendered as the slot's default below. It was first wired with this
+   * panel's close callback through `closeRef`; it takes NOTHING now, and that is a rule rather
+   * than a simplification — its hits are `<Link>`s, and firing `closeSidebar()` beside a Link's
+   * push races the close path's `history.back()` against it (measured in production, 2026-09-08:
+   * every hit opened the conversation the runner was already in). A hit href carries no `sidebar`
+   * key, so the navigation closes the panel through the URL that opened it — the same rule the
+   * `/nina/jobs` link below states in its own header. Passing a `searchSlot` still replaces the
+   * default.
    */
   searchSlot?: React.ReactNode
   /**
@@ -383,7 +388,10 @@ export function NinaSidebar({
           replaces the default rather than adding to it.
         */}
         <div className="mb-4">
-          {searchSlot ?? <NinaSearchField onNavigate={() => closeRef.current()} />}
+          {/* No close callback, on the jobs link's own rule: this panel's close path pops a
+              pushed entry, and firing that beside a Link's push races them. The field's hit hrefs
+              drop `?sidebar=1`, which is what closes the panel. */}
+          {searchSlot ?? <NinaSearchField />}
         </div>
         <div className="mb-4">
           {newChatSlot ?? <NewChatButton onNavigate={() => closeRef.current()} />}

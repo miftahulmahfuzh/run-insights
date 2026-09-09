@@ -42,6 +42,24 @@ import { useSemanticPref } from './useSemanticPref'
  * navigation also gets prefetch, long-press and middle-click for free — `app/nina/page.tsx`'s
  * argument for making Nina's avatar a `<Link>` rather than a `<button>`.
  *
+ * ── WHY THE LINK FIRES NO CLOSE CALLBACK, AND WHY THIS COMPONENT TAKES NO PROPS ───────────────
+ * MEASURED IN PRODUCTION, 2026-09-08: a hit opened the conversation the runner was already in,
+ * never the hit's own. The cause was an `onClick={onNavigate}` on this very Link, wired by the
+ * sidebar to its close path — and that path is not symmetric: opening the panel pushes
+ * `?sidebar=1`, so closing calls `window.history.back()`, in the SAME TICK as the Link's own
+ * push. A back and a forward raced on one entry, the back won, and the pop to the entry the
+ * runner came from cancelled the push to the hit's session. The panel still closed (the popped-to
+ * entry predates `?sidebar=1`), which made the tap look like it had worked.
+ *
+ * The fix is the rule every other link out of this panel already follows — the `/nina/jobs` link's
+ * header states it: "a plain `<Link>`, and it deliberately does not call `closeRef` … firing it in
+ * the same tick as a `<Link>`'s push would put a back and a forward on one entry and race them."
+ * A hit href carries no `sidebar` key, so the navigation itself drops `?sidebar=1` and the panel
+ * closes through the URL that opened it — the same close the avatar link, the jobs link and
+ * `SessionRow`'s inactive row rely on. The prop this component used to take is gone rather than
+ * optional for the same reason its own doc comment once made it required: as long as the seam
+ * exists, a caller can wire it back to the close path and re-arm the race.
+ *
  * ── MOTION (INVARIANT 8) ─────────────────────────────────────────────────────────────────────
  * The only transition here is `transition-colors` on the toggle. `app/globals.css` is explicit that
  * the `transition-*` utilities in `Chip`, `KindSelector` and `Button` are "deliberately untouched"
@@ -49,17 +67,7 @@ import { useSemanticPref } from './useSemanticPref'
  * for `prefers-reduced-motion` to answer.
  */
 
-export interface NinaSearchFieldProps {
-  /**
-   * Close the sidebar. **Required, and deliberately not optional**: a hit is a navigation to
-   * `/nina?s=…`, and a sidebar left open over the session it just opened is the bug. Making it
-   * required means `tsc` fails if phase 5's seam does not wire it, which is a better guarantee than
-   * a comment asking phase 5 to remember.
-   */
-  onNavigate: () => void
-}
-
-export function NinaSearchField({ onNavigate }: NinaSearchFieldProps) {
+export function NinaSearchField() {
   const [text, setText] = useState('')
   const [semantic, setSemantic] = useSemanticPref()
 
@@ -233,9 +241,11 @@ export function NinaSearchField({ onNavigate }: NinaSearchFieldProps) {
         <ul className="mt-2 space-y-1">
           {hits.map((hit) => (
             <li key={`${hit.kind}:${hit.messageId ?? hit.sessionId}`}>
+              {/* A plain Link, deliberately with no onClick — see the header's "WHY THE LINK FIRES
+                  NO CLOSE CALLBACK". The href alone is the departure, and it drops `?sidebar=1`,
+                  which is what closes the panel. */}
               <Link
                 href={hit.href}
-                onClick={onNavigate}
                 className="block rounded-field bg-paper-2 px-3 py-2.5 active:opacity-70"
               >
                 <span className="flex items-baseline justify-between gap-2">

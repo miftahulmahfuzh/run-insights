@@ -37,6 +37,7 @@ const SHELL = 'components/ui/AppShell.tsx'
 const PAGE = 'app/nina/page.tsx'
 const SIDEBAR = 'components/nina/NinaSidebar.tsx'
 const CHROME = 'components/nina/ChatChrome.tsx'
+const FIELD = 'components/nina/NinaSearchField.tsx'
 
 describe('the sidebar provider wraps both of its consumers', () => {
   it('AppShell renders the provider, because it is what renders ChatChrome', () => {
@@ -76,5 +77,42 @@ describe('the sidebar provider wraps both of its consumers', () => {
     // file and `tests/share.bundle.test.ts` exists because this import graph leaked a session read
     // once already — a `'use client'` here would be a much larger change than the bug warranted.
     expect(isClientModule(SHELL)).toBe(false)
+  })
+})
+
+/**
+ * **A tap that navigates must not also fire the close path — MEASURED IN PRODUCTION, 2026-09-08.**
+ *
+ * The search-jump set (`search-jump-pinpoint`) landed with every gate green and every href correct,
+ * and in production a search hit opened the conversation the runner was ALREADY in, never the hit's
+ * own. The departure was the bug, not the landing: `NinaSearchField`'s hit was a `<Link>` that also
+ * called `onNavigate`, and the sidebar wired that to `closeRef` — so `closeSidebar()` ran
+ * `window.history.back()` (its `pushedRef` branch; opening the panel had pushed `?sidebar=1`) in
+ * the SAME TICK as the Link's own push. A back and a forward raced on one entry, and the back won:
+ * the pop to `/nina?s=<current>` cancelled the pending push to `/nina?s=<hit>&jump=<message>`, the
+ * screen never re-rendered another session, and `?jump=`'s landing — mount or soft-nav — never ran.
+ * The panel itself closed (the popped-to entry predates `?sidebar=1`), which made the tap look
+ * like it had worked.
+ *
+ * The rule is the one the `/nina/jobs` link's own header already states: "a plain `<Link>`, and it
+ * deliberately does not call `closeRef` … firing it in the same tick as a `<Link>`'s push would put
+ * a back and a forward on one entry and race them." The hit href carries no `sidebar` key, so the
+ * navigation itself drops `?sidebar=1` and the panel closes through the URL that opened it — the
+ * same close the avatar link, the jobs link and `SessionRow`'s inactive row already rely on.
+ * `NewChatButton` keeps its callback: it is a `<button>` that closes FIRST and then
+ * `router.replace`s, no push to race.
+ */
+describe('a search hit leaves the panel by navigation alone', () => {
+  it('the hit is a plain Link — no onClick beside its href', () => {
+    const field = readRepoCode(FIELD)
+    expect(field).toContain('href={hit.href}')
+    // The prop is the seam: while it exists, some caller can wire it back to closeRef and re-arm
+    // the same-tick back. Removing it is the rule, not passing a noop.
+    expect(field).not.toContain('onNavigate')
+  })
+
+  it('the sidebar does not hand the search field its close callback', () => {
+    const sidebar = readRepoCode(SIDEBAR)
+    expect(sidebar).toMatch(/<NinaSearchField\s*\/>/)
   })
 })
