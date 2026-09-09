@@ -6,17 +6,16 @@ import { DialSlider } from '@/components/admin/DialSlider'
 import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
-import { Button, CONTROL_CLASS } from '@/components/ui'
-import {
-  resetNinaImagePrefsAction,
-  saveNinaImagePrefsAction,
-  type AdminImageGenResult,
-} from '@/lib/admin/imageGenActions'
+import { CONTROL_CLASS } from '@/components/ui'
+import { saveNinaImagePrefsAction, type AdminImageGenResult } from '@/lib/admin/imageGenActions'
 import {
   ADMIN_IMAGE_PREVIEW_SCENE,
   changedImageGenFields,
   focusOnKeys,
   imageFocusCopy,
+  imageGenDraftEquals,
+  IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
+  mergeImageGenAfterSave,
   parseReferenceKey,
   promptLengthCopy,
   referenceKey,
@@ -54,21 +53,88 @@ import {
  * still yields a prompt naming all four, and the operator can see that in the preview because the
  * preview is the real assembler.
  *
+ * ── EVERY CONTROL COMMITS ITSELF — AND WHY THAT IS SAFE HERE ────────────────────────────────
+ * The simplify set's R2, the same sentence the Personality tab's simplify set answered — *"hapus
+ * tombol" the staged-commit row, "buat Personality capable to auto-save everytime some changes are
+ * made"* — and `CharacterPanel.tsx` already shipped the answer for the sibling tab, so this panel
+ * adopts that pipeline control-kind by control-kind rather than inventing a second one. Four
+ * properties make committing on every edit safe rather than reckless:
+ *
+ *   1. **One writer.** `nina_image_prefs` is one row per account, upserted on `user_id` by
+ *      `writeNinaImagePrefs` — there is no history to fork and no list to reconcile.
+ *   2. **One operator.** The admin surface is one person; there is no second editor whose
+ *      in-flight draft this panel could silently overwrite.
+ *   3. **Sequential dispatch.** Next dispatches Server Actions one at a time per client
+ *      (`node_modules/next/dist/docs/01-app/02-guides/server-actions.md`, "Sequential dispatch on
+ *      the client"), so commits cannot interleave out of order even when several queue up.
+ *   4. **The write is an idempotent whole-row upsert.** Every commit sends the complete draft, so
+ *      a commit that duplicates another or queues behind it writes the same truth. The failure
+ *      mode of auto-save here is a wasted round trip, never a half-written row.
+ *
+ * ── THE COMMIT MOMENTS ARE `CharacterPanel`'s RULE, NOT A STYLE CHOICE ──────────────────────
+ * `CharacterPanel.tsx` records the measured precedent (which itself cites `MemoryTable`'s
+ * "HOW A CELL SAVES, AND WHY IT IS BLUR AND NOT A DEBOUNCE") and this panel follows it
+ * control-kind by control-kind:
+ *
+ *   - **The prompt-length dial commits DEBOUNCED, `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS` after the
+ *     last change.** A range input fires `change` on every pointer move and KEEPS FOCUS after the
+ *     thumb is released, so blur — the text fields' moment — does not exist for a slider. The
+ *     debounce is the settle detector: one continuous drag becomes one save, and the timer is
+ *     cleared on re-arm, on unmount, and whenever an immediate commit has already carried
+ *     everything pending.
+ *   - **The six focus checkboxes and the photo reference commit on CHANGE.** A discrete control's
+ *     change IS the finished edit — there is no "still dragging" state to wait out.
+ *   - **The four text fields commit on BLUR.** A keystroke debounce would queue an action per
+ *     sentence. Blur is exactly one write per completed edit, at the moment the edit is finished.
+ *
+ * ── ONE ACTION PER COMMIT, AND IT ALWAYS CARRIES THE WHOLE DRAFT ────────────────────────────
+ * Plan invariant 7 survives auto-save unchanged: one Server Action, the whole row — Next
+ * dispatches actions one at a time per client, so eleven controls as eleven actions would stall
+ * behind each other, and each action drags a re-rendered route back with it. The pipeline leans on
+ * the whole-row rule three ways: a dial change inside the settle window coalesces into one write;
+ * an immediate commit (a checkbox, a pick, a field blur) carries any dial still waiting in the
+ * debounce and disarms the timer, so nothing pending is lost and nothing is double-sent; and a
+ * debounce that matures while a save is still in flight simply queues behind it and re-sends the
+ * whole draft — idempotent, and the fire-time equality check makes the common case free.
+ *
+ * One honest consequence: a commit carries the text fields as they stand, so an unfinished sentence
+ * can spend a moment as the stored row if the dial settles mid-edit. The alternative — sending a
+ * stale value to "protect" it — would write an older draft over the operator's newer words, which
+ * is the one failure this pipeline exists to prevent.
+ *
+ * ── THE ROW THE PANEL BELIEVES IN ───────────────────────────────────────────────────────────
+ * `saved` is the panel's copy of the stored row. It starts as the `prefs` prop and is updated ONLY
+ * from the action's own result: the save returns the row after `coerceNinaImagePrefs`, and the
+ * response carries both that value and the re-rendered route in one round trip
+ * (`server-actions.md`, "A single response carries data and UI"), so reading the row off the result
+ * is the same freshness as reading it off the prop — without having to tell "my save landed" apart
+ * from "the row changed under me". Nothing else writes this row (one operator), so the only way it
+ * changes under the panel is the panel's own save coming back; no other sync exists, and the prop
+ * is the mount-time baseline and a fresh page load, nothing more.
+ *
+ * The staged-commit panel's revision-keyed draft resync is gone with it: nothing here is keyed on
+ * the `revision` prop any more. The prop still arrives and still renders — the "revision N" words
+ * in the header and the preview summary — but it is display copy now, and nothing in the pipeline
+ * reads it.
+ *
+ * The draft does NOT blindly adopt the canonical row: `coerceNinaImageText` collapses whitespace
+ * runs and truncates, so the stored row can differ cosmetically from what was typed, and the
+ * operator may have kept editing while the save was in flight. `mergeImageGenAfterSave(current,
+ * sent, canonical)` adopts the stored value only for fields still equal to what was dispatched; a
+ * field edited since keeps the newer local value and stays pending, riding the next commit.
+ *
+ * ── NOTHING IS DISABLED WHILE A SAVE IS IN FLIGHT ───────────────────────────────────────────
+ * The staged-commit panel locked every control on `pending`. Auto-save must not: locking on every
+ * debounce settle would flicker the whole panel uneditable for the length of a round trip, and
+ * editing during a save is safe here — the draft keeps accepting changes, the merge above protects
+ * anything typed after dispatch, and the next commit carries the newest whole draft. `pending`
+ * drives only the status line.
+ *
  * ── `useTransition`, NOT `<form action={…}>` ────────────────────────────────────────────────
  * `CharacterPanel.tsx` states the reason and it is unchanged here: the plain-argument +
  * result-object convention on the sibling admin pages, and an operator-only tool gains nothing from
  * progressive enhancement that it does not lose in consistency. Validation is Zod on the server for
  * every field, either way.
- *
- * ── ONE SAVE (PLAN INVARIANT 7) ─────────────────────────────────────────────────────────────
- * A slider, six checkboxes, four text fields and a photograph is eleven controls. Every one of them
- * edits a local draft; nothing writes on change; one button sends the whole object. Next dispatches
- * Server Actions one at a time per client, so eleven actions would stall behind each other.
- *
- * **The photo reference is part of that same one save**, which is why the selection lives in this
- * draft even though phase 4 ships no grid to pick it with. Phase 5's picker is a control that calls
- * `onChange` and nothing else — no action of its own, no schema of its own, no round trip of its
- * own.
  *
  * ── EVERY WORD BESIDE A CONTROL COMES FROM `lib/nina/imageprefs.ts` ─────────────────────────
  * Labels, hints, placeholders and bounds are `imageFocusCopy` / `promptLengthCopy`,
@@ -87,10 +153,23 @@ import {
 
 export interface ImageGenPanelProps {
   userId: string
-  /** The prefs as the row holds them right now — the baseline for "unsaved". */
+  /**
+   * The prefs as the row holds them at mount — the baseline the draft and the panel's `saved` copy
+   * both start from. After mount the pipeline maintains `saved` itself from the action's results;
+   * see "THE ROW THE PANEL BELIEVES IN" above for why the prop is not watched.
+   */
   prefs: ImageGenDraft
-  /** `NINA_IMAGE_PREFS_DEFAULTS`, mapped — the baseline for "no longer the shipping default". */
+  /**
+   * `NINA_IMAGE_PREFS_DEFAULTS`, mapped — the baseline for "no longer the shipping default".
+   * The global Reset is gone; this prop now drives `DialSlider`'s `defaultValue` marker and its
+   * per-dial "default N" undo, which is the surviving route back to a single default.
+   */
   defaults: ImageGenDraft
+  /**
+   * The row's revision counter, for the "revision N" words in the header and the preview summary.
+   * DISPLAY COPY ONLY: the pipeline never reads it — `saved` is maintained from the action's own
+   * result — and no resync is keyed on it any more.
+   */
   revision: number
   /**
    * `buildNinaImagePrompt(...)`, assembled on the SERVER from the SAVED prefs.
@@ -98,13 +177,12 @@ export interface ImageGenPanelProps {
    * It is not recomputed as the sliders move, and that is deliberate rather than a limitation: the
    * assembler reaches the whole persona, and shipping that into the browser to preview a string
    * would put Nina's canon in a client bundle to save one round trip. The preview's own summary
-   * line says which revision it is showing.
+   * line says when it is stale.
    */
   promptPreview: string
   /**
    * Every photograph the reference grid may offer, newest first, already mapped to a plain
-   * serializable shape on the server. Phase 4 renders the count and the selected tile; phase 5
-   * renders the grid from the same array.
+   * serializable shape on the server.
    *
    * **RECONCILED:** mapped from `listNinaPhotoReferences(userId).rows` with
    * `toImageReferenceOption`, and structurally identical to phase 5's `PhotoReferenceItem`, so
@@ -117,8 +195,7 @@ export interface ImageGenPanelProps {
    *
    * **RECONCILED: this prop is on phase 4's list because phase 5 needs it and phase 5 does not edit
    * this prop list.** Phase 5's footer says *"Showing 48 of 142 (94 older not on this page)"*, which
-   * it cannot do from `references.length` alone. Phase 4's own seam placeholder renders it too, so
-   * the number is verifiable before the grid exists.
+   * it cannot do from `references.length` alone.
    */
   photoTotal: number
 }
@@ -132,27 +209,52 @@ export function ImageGenPanel({
   references,
   photoTotal,
 }: ImageGenPanelProps) {
+  /* What the controls show and edit. */
   const [draft, setDraft] = React.useState<ImageGenDraft>(prefs)
+  /* What the panel believes the row holds. The predicate under every "unsaved" mark and the status
+   * line is `changedImageGenFields(draft, saved)` — never the prop. See the header. */
+  const [saved, setSaved] = React.useState<ImageGenDraft>(prefs)
   const [result, setResult] = React.useState<AdminImageGenResult | null>(null)
-  const [confirmingReset, setConfirmingReset] = React.useState(false)
+  /* Whether the dial debounce is armed — render-visible, because the timer itself lives in a ref
+   * and the status line has to show the pending window. */
+  const [commitArmed, setCommitArmed] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
-  // The server re-renders with the canonical row after every action, so the draft follows the prop
-  // rather than diverging from it — a stale field next to "saved as revision 5" is how a second
-  // save writes the pre-canonical value back.
-  //
-  // Keyed on `revision` and not on the object, and adjusted DURING RENDER rather than in an effect:
-  // `CharacterPanel.tsx:131-147` has the full argument, including why
-  // `react-hooks/set-state-in-effect` rejects the alternative.
-  const [lastRevision, setLastRevision] = React.useState(revision)
-  if (revision !== lastRevision) {
-    setLastRevision(revision)
-    setDraft(prefs)
-    setConfirmingReset(false)
-  }
+  /* The one debounce. A ref because it is a timer handle, not render state; armed/disarmed above
+   * is the render-visible half. */
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  /* The latest draft and saved row, for code that runs outside render (the timer's callback).
+   * Mirrored in an effect — the sanctioned home for a ref write, and the shape `CharacterPanel.tsx`
+   * uses for the same pipeline. NOT setState: the `react-hooks/set-state-in-effect` rule this repo
+   * enforces rejects that, and nothing here needs it — the pipeline's state changes all happen in
+   * event handlers and the transition. */
+  const latest = React.useRef({ draft: prefs, saved: prefs })
+  React.useEffect(() => {
+    latest.current = { draft, saved }
+  })
 
-  const unsaved = React.useMemo(() => new Set(changedImageGenFields(draft, prefs)), [draft, prefs])
-  const dirty = unsaved.size > 0
+  /* Timer hygiene, the `ImageGenTestPanel.tsx` shape: the handle is cleared on unmount, so a
+   * navigate-away inside the settle window cannot fire a save into a dead component. Cleared, not
+   * flushed — the edit was never committed, exactly as an unclicked Save was never committed in
+   * the staged-commit panel this file replaced. */
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const pendingFields = React.useMemo(
+    () => new Set(changedImageGenFields(draft, saved)),
+    [draft, saved],
+  )
+  const clean = pendingFields.size === 0
+  /* "Saving…" covers both halves of the pending window: a commit in flight (`pending`) and a
+   * commit waiting for the settle timer (`commitArmed`). Between the timer firing and the
+   * transition opening, React batches the two updates, so there is no gap where neither shows. */
+  const saving = pending || commitArmed
+  /* `ImageGenTestPanel`'s warning is exactly this: the assembled prompt below was built from
+   * `saved`, so a draft that differs from it is a prompt the test would not actually send. */
+  const dirty = !clean
   const on = focusOnKeys(draft)
   const length = promptLengthCopy(draft.promptLength)
 
@@ -163,8 +265,95 @@ export function ImageGenPanel({
    */
   const selectedKey = referenceKey(draft.reference)
 
+  /** Disarm the settle timer. Safe to call when nothing is armed; the state write bails out. */
+  function disarmCommit() {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setCommitArmed(false)
+  }
+
+  /**
+   * THE one dispatch. `sent` is the exact draft that left the browser — the merge's reference
+   * point for "edited since dispatch". The whole row goes, every time (plan invariant 7); the
+   * action's `prefs` comes back canonical and is adopted per-field.
+   *
+   * The previous error is cleared as the new attempt starts, the way `MemoryTable` clears a row's
+   * result when its cell is edited again.
+   */
+  function dispatchSave(sent: ImageGenDraft) {
+    setResult(null)
+    startTransition(async () => {
+      const outcome = await saveNinaImagePrefsAction({
+        userId,
+        promptLength: sent.promptLength,
+        focus: sent.focus,
+        wardrobe: sent.wardrobe,
+        venue: sent.venue,
+        time: sent.time,
+        notes: sent.notes,
+        reference: sent.reference,
+      })
+      if (!outcome.ok || outcome.prefs === undefined) {
+        /* Nothing was written, so `saved` stays where it was — the panel is still pending exactly
+         * the fields it was pending before, and the sentence below says what to do. */
+        setResult(outcome)
+        return
+      }
+      const canonical = outcome.prefs
+      setSaved(canonical)
+      setDraft((current) => mergeImageGenAfterSave(current, sent, canonical))
+    })
+  }
+
+  /**
+   * The immediate path — the six focus checkboxes and the reference pick. `next` is the draft as
+   * this control just produced it (a `setState` has not landed when its own `onChange` runs —
+   * `MemoryTable`'s `commitFact` passes the patch for exactly this reason).
+   *
+   * Disarming is not an optimization: an immediate commit carries the WHOLE draft, so it subsumes
+   * any dial still waiting in the debounce — clearing the timer here is what makes "nothing pending
+   * is lost and nothing is double-sent" true rather than lucky.
+   */
+  function commitImmediate(next: ImageGenDraft) {
+    setDraft(next)
+    disarmCommit()
+    if (imageGenDraftEquals(next, saved)) return
+    dispatchSave(next)
+  }
+
+  /**
+   * The dial's path — debounced. Every change re-arms the timer (one continuous drag is one save),
+   * and the fire-time check re-reads the LIVE draft and saved row through the ref mirror: if an
+   * immediate commit already sent everything while the timer ran, the dispatch is skipped rather
+   * than duplicated. A draft that matches the saved row never arms at all — the second half of
+   * "do not fire a save for a draft identical to the saved row" (the first half is this same check
+   * on the immediate path).
+   */
+  function scheduleDialCommit(next: ImageGenDraft) {
+    setDraft(next)
+    if (imageGenDraftEquals(next, saved)) {
+      disarmCommit()
+      return
+    }
+    if (timerRef.current !== null) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      setCommitArmed(false)
+      const { draft: draftNow, saved: savedNow } = latest.current
+      if (imageGenDraftEquals(draftNow, savedNow)) return
+      dispatchSave(draftNow)
+    }, IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS)
+    setCommitArmed(true)
+  }
+
+  /**
+   * A focus checkbox — an immediate commit, like every discrete control. R5's emphasis map rides
+   * the same whole-row action as everything else.
+   */
   function setFocus(key: string, next: boolean) {
-    setDraft((current) => ({ ...current, focus: { ...current.focus, [key]: next } }))
+    commitImmediate({ ...draft, focus: { ...draft.focus, [key]: next } })
   }
 
   /** Absent means OFF, everywhere in this feature. One reader for that rule in this file. */
@@ -173,17 +362,27 @@ export function ImageGenPanel({
   }
 
   /**
-   * R10's selection, into the same local draft as every other control (plan invariant 7).
-   * **This is the function phase 5's picker calls.** It is the whole of the contract.
+   * R10's selection, committed immediately — a photograph is either the anchor or it is not, and
+   * the click is the finished edit. **This is the function phase 5's picker calls.** It is the
+   * whole of the contract.
    */
   function setReference(next: ImageGenDraft['reference']) {
-    setDraft((current) => ({ ...current, reference: next }))
+    commitImmediate({ ...draft, reference: next })
   }
 
-  function run(action: () => Promise<AdminImageGenResult>) {
-    startTransition(async () => {
-      setResult(await action())
-    })
+  /**
+   * The four text fields' commit moment — `MemoryTable`'s rule verbatim: blur is exactly one write
+   * per completed edit, at the moment the edit is finished. NEVER a keystroke debounce; see the
+   * header. Typing changed ONLY the draft, so the blur reads the draft the keystrokes already
+   * landed — and it disarms first, so it carries any dial still settling.
+   *
+   * Defined LAST among the handlers, directly above the JSX: every one of the four fields mounts
+   * it as `onBlur={commitText}`.
+   */
+  function commitText() {
+    disarmCommit()
+    if (imageGenDraftEquals(draft, saved)) return
+    dispatchSave(draft)
   }
 
   return (
@@ -191,11 +390,22 @@ export function ImageGenPanel({
       <div className="flex items-center justify-between gap-4 py-5">
         <h2 className="text-[15px] font-semibold text-ink">
           How she is photographed
-          {dirty && (
-            <span className="ml-2 text-[12px] font-semibold text-accent">
-              {unsaved.size} unsaved
-            </span>
-          )}
+          {/*
+           * The save-status surface, where the "N unsaved" counter used to be. Tri-state, and the
+           * third state is not decoration: "Unsaved edits" is what shows while the operator TYPES
+           * into a text field (a keystroke commits nothing — that is the rule) and after a FAILED
+           * save (the error sentence renders below). `aria-live="polite"` because this is the one
+           * line that changes on its own, and "Saved" is worth hearing without stealing focus.
+           */}
+          <span
+            aria-live="polite"
+            className={cn(
+              'ml-2 text-[12px] font-semibold',
+              saving || !clean ? 'text-accent' : 'text-ink-3',
+            )}
+          >
+            {saving ? 'Saving…' : clean ? 'Saved' : 'Unsaved edits'}
+          </span>
         </h2>
         <span className="text-right text-[12px] font-medium text-ink-3">
           prompt length {draft.promptLength} &middot; {on.length} of {NINA_IMAGE_FOCUS_KEYS.length}{' '}
@@ -206,7 +416,9 @@ export function ImageGenPanel({
 
       <div className="pb-6">
         <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
-          Everything on this page goes into the <strong>image</strong> prompt, not into her voice.{' '}
+          Everything on this page goes into the <strong>image</strong> prompt, not into her voice,
+          and every change saves itself — the dial when its drag settles, a checkbox or a photograph
+          the moment you pick it, the text fields when you leave them.{' '}
           <strong>There is no cache on the image path</strong>, so a saved row is in the next
           photograph she takes with no invalidation step and no deploy. What this page does{' '}
           <strong>not</strong> control is the scene — she still chooses that per photograph, and the
@@ -232,9 +444,8 @@ export function ImageGenPanel({
             defaultValue={defaults.promptLength}
             min={NINA_IMAGE_PROMPT_LENGTH_MIN}
             max={NINA_IMAGE_PROMPT_LENGTH_MAX}
-            disabled={pending}
-            unsaved={unsaved.has('promptLength')}
-            onChange={(value) => setDraft((current) => ({ ...current, promptLength: value }))}
+            unsaved={pendingFields.has('promptLength')}
+            onChange={(value) => scheduleDialCommit({ ...draft, promptLength: value })}
           />
         </section>
 
@@ -273,14 +484,13 @@ export function ImageGenPanel({
                   <input
                     type="checkbox"
                     checked={ticked}
-                    disabled={pending}
                     onChange={(event) => setFocus(key, event.target.checked)}
-                    className="mt-0.5 size-4 shrink-0 accent-accent disabled:opacity-50"
+                    className="mt-0.5 size-4 shrink-0 accent-accent"
                   />
                   <span>
                     <span className="block text-[13px] font-semibold text-ink">
                       {copy.label}
-                      {unsaved.has(`focus.${key}`) && (
+                      {pendingFields.has(`focus.${key}`) && (
                         <span className="ml-2 text-[11px] font-semibold text-accent">unsaved</span>
                       )}
                     </span>
@@ -296,7 +506,7 @@ export function ImageGenPanel({
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
               {NINA_IMAGE_TEXT_SPECS.wardrobe.label}
-              {unsaved.has('wardrobe') && (
+              {pendingFields.has('wardrobe') && (
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
@@ -304,11 +514,11 @@ export function ImageGenPanel({
               className={CONTROL_CLASS}
               value={draft.wardrobe}
               maxLength={NINA_IMAGE_WARDROBE_MAX}
-              disabled={pending}
               placeholder={NINA_IMAGE_TEXT_SPECS.wardrobe.placeholder}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, wardrobe: event.target.value }))
               }
+              onBlur={commitText}
             />
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               What she is wearing. Leave it empty and she wears what the canon says.
@@ -318,7 +528,7 @@ export function ImageGenPanel({
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
               {NINA_IMAGE_TEXT_SPECS.venue.label}
-              {unsaved.has('venue') && (
+              {pendingFields.has('venue') && (
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
@@ -326,11 +536,11 @@ export function ImageGenPanel({
               className={CONTROL_CLASS}
               value={draft.venue}
               maxLength={NINA_IMAGE_VENUE_MAX}
-              disabled={pending}
               placeholder={NINA_IMAGE_TEXT_SPECS.venue.placeholder}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, venue: event.target.value }))
               }
+              onBlur={commitText}
             />
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Where she is. This is a standing preference; the scene she picks per photograph still
@@ -341,7 +551,7 @@ export function ImageGenPanel({
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
               {NINA_IMAGE_TEXT_SPECS.time.label}
-              {unsaved.has('time') && (
+              {pendingFields.has('time') && (
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
@@ -349,11 +559,11 @@ export function ImageGenPanel({
               className={CONTROL_CLASS}
               value={draft.time}
               maxLength={NINA_IMAGE_TIME_MAX}
-              disabled={pending}
               placeholder={NINA_IMAGE_TEXT_SPECS.time.placeholder}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, time: event.target.value }))
               }
+              onBlur={commitText}
             />
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Time of day and weather, in your own words.
@@ -363,7 +573,7 @@ export function ImageGenPanel({
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-semibold tracking-[0.02em] text-ink-2">
               {NINA_IMAGE_TEXT_SPECS.notes.label}
-              {unsaved.has('notes') && (
+              {pendingFields.has('notes') && (
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
@@ -371,15 +581,15 @@ export function ImageGenPanel({
               className={cn(CONTROL_CLASS, 'min-h-[76px] resize-y py-2 leading-snug')}
               value={draft.notes}
               maxLength={NINA_IMAGE_NOTES_MAX}
-              disabled={pending}
               placeholder={NINA_IMAGE_TEXT_SPECS.notes.placeholder}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, notes: event.target.value }))
               }
+              onBlur={commitText}
             />
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Anything no other field can say. Handed to the camera verbatim — this is the image
-              prompt, not her system prompt.
+              prompt, not her system prompt. It saves when you leave the field.
             </span>
           </label>
         </div>
@@ -389,7 +599,6 @@ export function ImageGenPanel({
           total={photoTotal}
           value={selectedKey}
           onChange={(next) => setReference(parseReferenceKey(next))}
-          disabled={pending}
         />
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
@@ -416,89 +625,23 @@ export function ImageGenPanel({
          * depends on none of this form's state and could not conflict with the picker mount
          * above it.
          *
-         * `dirty` is this panel's own `unsaved.size > 0`. The test runs the SAVED row, so an
-         * operator with unsaved edits is warned rather than handed a verdict on a prompt he is
-         * not looking at.
+         * `dirty` is this panel's own `pendingFields.size > 0` — transient under auto-save (true
+         * while a debounce is armed or a blur-pending edit exists), which is still exactly the
+         * warning the test wants: the test runs the SAVED row, so an operator mid-edit is warned
+         * rather than handed a verdict on a prompt he is not looking at.
          *
-         * It sits after the assembled prompt and before the Save row for two reasons: the
-         * verdict is about the prompt printed immediately above it, so the two read as one
-         * block; and the button spends money against `NINA_IMAGE_DAILY_CAP`, so it must not sit
-         * where a hand aiming for Save can land on it. */}
+         * It sits after the assembled prompt because the verdict is about the prompt printed
+         * immediately above it, so the two read as one block; and it spends money against
+         * `NINA_IMAGE_DAILY_CAP`, so it keeps its distance from the controls above it. */}
         <ImageGenTestPanel dirty={dirty} />
 
+        {/*
+         * The failure surface, and the only rendering of `result`. A successful save is the status
+         * line's job ("Saved", no qualifier); this paragraph exists for the sentence an operator
+         * needs to act on.
+         */}
         {result?.ok === false && (
           <p className="mb-3 text-[12px] font-semibold text-red">{result.error}</p>
-        )}
-        {result?.ok === true && result.note && (
-          <p className="mb-3 text-[12px] font-semibold text-accent">{result.note}</p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={pending || !dirty}
-            loading={pending}
-            onClick={() =>
-              run(() =>
-                saveNinaImagePrefsAction({
-                  userId,
-                  promptLength: draft.promptLength,
-                  focus: draft.focus,
-                  wardrobe: draft.wardrobe,
-                  venue: draft.venue,
-                  time: draft.time,
-                  notes: draft.notes,
-                  reference: draft.reference,
-                }),
-              )
-            }
-          >
-            Save every parameter
-          </Button>
-
-          <Button
-            variant="ghost"
-            disabled={pending || !dirty}
-            onClick={() => {
-              setDraft(prefs)
-              setResult(null)
-            }}
-          >
-            Discard changes
-          </Button>
-
-          {!confirmingReset && (
-            <Button
-              variant="destructive"
-              disabled={pending}
-              onClick={() => setConfirmingReset(true)}
-            >
-              Reset to defaults
-            </Button>
-          )}
-        </div>
-
-        {confirmingReset && (
-          <div className="mt-3 rounded-card border border-rule bg-paper-2 p-3">
-            <p className="mb-2 max-w-[70ch] text-[12px] font-medium text-ink-2">
-              This writes <strong>every</strong> parameter on this page back to its default, clears
-              the photo reference, and bumps the revision so the row records that it happened. It
-              does not touch her body canon — that was never a setting.
-            </p>
-            <div className="flex gap-2">
-              <Button
-                disabled={pending}
-                onClick={() => {
-                  run(() => resetNinaImagePrefsAction({ userId }))
-                  setConfirmingReset(false)
-                }}
-              >
-                Reset the image parameters
-              </Button>
-              <Button variant="ghost" disabled={pending} onClick={() => setConfirmingReset(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
         )}
       </div>
     </section>

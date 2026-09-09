@@ -1,7 +1,7 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-08 (task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s four actions, and the prefs Zod boundary in `schema.ts`; previously task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — R1: `/admin/shortcuts`, the trigger registry's admin surface)
+**Last Updated**: 2026-09-09 (task `P1-RI-A028`, phase 1 of the `admin-imagegen-simplify` set — the Image Generation tab moved onto the auto-save draft/saved pipeline, the prefs reset action and its schema deleted; previously task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s actions, and the prefs Zod boundary in `schema.ts`)
 
 ## Overview
 
@@ -815,14 +815,34 @@ invalidation step at all.
 
 ### `imageGenModel.ts` / `imageGenActions.ts` — `/admin/image-generation`
 
-`tuningModel.ts` / `tuningActions.ts`'s shape, for the Image Generation tab. Four Server Actions,
-each opening with `await requireAdmin()`: `saveNinaImagePrefsAction`, `resetNinaImagePrefsAction`,
-`runNinaImageTestAction`, `readNinaImageTestAction`.
+`tuningModel.ts` / `tuningActions.ts`'s shape, for the Image Generation tab. Three Server Actions,
+each opening with `await requireAdmin()`: `saveNinaImagePrefsAction`, `runNinaImageTestAction`,
+`readNinaImageTestAction`.
 
 **One save, not eleven.** A slider, six focus checkboxes, four free-text fields and a photograph
 is eleven controls, and they travel as ONE object — plan invariant 7, and the same reason
 `tuningActions` batches: Next dispatches Server Actions one at a time per client, so eleven
 actions would be eleven serialised round trips and eleven chances to half-save.
+
+**Auto-save since the simplify set (P1-RI-A028), on `CharacterPanel`'s pattern.** There is no
+Save/Discard/Reset row and no confirm block: every control commits at its own moment and every
+commit is the one save above carrying the WHOLE draft — the prompt-length dial debounced through
+`IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS` (600, exported by `imageGenModel.ts` so a test can pin it), the
+six focus checkboxes and the photo reference on change, the four text fields on blur. Nothing is
+disabled while a commit is in flight: `pending` drives only the tri-state `aria-live` status line
+("Saving…" / "Saved" / "Unsaved edits"), because locking on every debounce settle would flicker the
+whole panel uneditable for the length of a round trip. An immediate commit carries any dial still
+waiting in the debounce and disarms the timer, and a commit whose draft already equals the saved
+row is a no-op.
+
+**The save returns the row it wrote.** `saveNinaImagePrefsAction`'s success result carries
+`prefs: ImageGenDraft` — `toImageGenDraft` over what `writeNinaImagePrefs` returned, i.e. AFTER
+`coerceNinaImagePrefs`, so the panel reads the stored truth without a refetch. The panel adopts it
+through `mergeImageGenAfterSave` (`imageGenModel.ts`, the structural twin of `tuningModel.ts`'s
+`mergeTuningAfterSave`): a field still equal to what was dispatched takes the canonical value — a
+collapsed whitespace run appears, a clamped dial snaps — while a field edited since keeps the newer
+local value and rides the next commit. `revision` rides along as display copy; phase 2 of the set
+removes it.
 
 **`imageGenModel.ts` imports two modules and it has to.** `@/lib/nina/imageprefs` for the bounds
 and the vocabulary, and `@/lib/nina/tuning` for `ninaBand` — because `ninaPromptLengthRungFor`
@@ -845,12 +865,12 @@ unselected reference validated at all** — the default state and the reset were
 boundary. Fixed when the tab landed; the `''` spelling is `lib/nina/imageprefs.ts`'s, and the
 declaring module owns it.
 
-**The test action reads the SAVED prefs, never the panel's state.** An operator who picks a
-photograph and hits Test prompt without saving would otherwise test the *previous* reference, so
-the dispatch resolves `resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null` from
-the row and the panel's dirty state is what tells them to save first. The verdict lookup lives in
-`imageGenTestView.ts`: `policy` is the only classification that renders as a provider refusal;
-`timeout` / `transport` / `stale` are inconclusive.
+**The test action reads the SAVED prefs, never the panel's state.** The dispatch resolves
+`resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null` from the row, so the only
+window in which a just-made edit is not what a test would draw is the commit still in flight —
+the state the status line names "Unsaved edits", which the pending commit closes on its own. The
+verdict lookup lives in `imageGenTestView.ts`: `policy` is the only classification that renders as
+a provider refusal; `timeout` / `transport` / `stale` are inconclusive.
 
 **`schema.ts` gained the prefs boundary with every bound imported**, not restated — see its
 `nina-image-generation-tab phase 4` section.
@@ -1256,3 +1276,24 @@ Save/Discard/Reset button model. Migration `drizzle/0016_retire_tuning_revision.
 `nina_tuning.revision` and `nina_turns.tuning_revision`) is committed but NOT applied — applying it
 is the post-deploy `npm run db:migrate`. Refreshed here: one clause of the `tuningActions.ts`
 action list.
+
+2026-09-09 — updated following task **P1-RI-A028** (`admin-imagegen-simplify` phase 1 of 3, the
+auto-save panel: the Personality commit pipeline, buttons removed).
+
+The Image Generation tab's panel is rewritten onto `CharacterPanel.tsx`'s auto-save draft/saved
+pattern. The prefs half of `imageGenActions.ts` is one action again — the reset action and its
+userId-only reset schema are deleted outright from `imageGenActions.ts` and `schema.ts`, and the
+panel's Save/Discard/Reset row, its confirm block, `confirmingReset` and the `run()` wrapper are
+gone with it. `saveNinaImagePrefsAction` now returns the canonical row: `prefs: ImageGenDraft` —
+`toImageGenDraft` over what `writeNinaImagePrefs` stored — adopted by the panel through
+`mergeImageGenAfterSave` (new in `imageGenModel.ts`, alongside `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS`
+= 600, the dial's settle window; the six focus checkboxes and the photo reference commit on
+change, the four text fields on blur). `disabled={pending}` is removed from every control —
+`pending` drives only the tri-state `aria-live` status line ("Saving…" / "Saved" / "Unsaved
+edits") — and `AdminImageGenResult.revision` is display copy that phase 2 of the set removes.
+
+Refreshed here: the `Last Updated` line, the imageGen section's action census (four actions ->
+three) and its test-action paragraph, which had told the operator to save first. No schema, bound
+or export outside the image prefs trio was touched. `tests/admin.imagegen.test.ts` grew 13 cases,
+43 -> 56, including two negatives that fail if the deleted action's identifier or the removed
+confirm state reappears in the source.

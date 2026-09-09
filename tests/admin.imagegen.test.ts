@@ -10,6 +10,8 @@ import {
   IMAGE_REFERENCE_NONE,
   imageFocusCopy,
   imageGenDraftEquals,
+  IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
+  mergeImageGenAfterSave,
   parseReferenceKey,
   prettifyFocusKey,
   promptLengthCopy,
@@ -18,7 +20,7 @@ import {
   toImageReferenceOption,
   type ImageGenDraft,
 } from '@/lib/admin/imageGenModel'
-import { ninaImagePrefsResetSchema, ninaImagePrefsWriteSchema } from '@/lib/admin/schema'
+import { ninaImagePrefsWriteSchema } from '@/lib/admin/schema'
 import {
   NINA_IMAGE_FOCUS_KEYS,
   NINA_PROMPT_LENGTH_RUNGS,
@@ -261,6 +263,67 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
   })
 })
 
+describe('IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS — the settle window', () => {
+  it('is 600ms: long enough that one drag is one save, short enough that Saved lands while you watch', () => {
+    /* Pinned as a literal for the same reason the tuning window is: recalibrating the window is a
+     * product decision, and this line is where it becomes an explicit one. */
+    expect(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS).toBe(600)
+  })
+})
+
+describe('mergeImageGenAfterSave — the post-save canonical merge', () => {
+  it('adopts the stored row for every field untouched since the dispatch', () => {
+    /* `coerceNinaImageText` collapses whitespace runs and trims, so the stored form is not always
+     * the typed string — the merge must show the stored form, not keep the pre-coercion text the
+     * operator can no longer get back to. */
+    const sent: ImageGenDraft = { ...DEFAULTS, wardrobe: '  long  hugging  leggings  ' }
+    const canonical: ImageGenDraft = { ...sent, wardrobe: 'long hugging leggings' }
+    const merged = mergeImageGenAfterSave(sent, sent, canonical)
+    expect(merged.wardrobe).toBe('long hugging leggings')
+    expect(imageGenDraftEquals(merged, canonical)).toBe(true)
+  })
+
+  it('keeps a dial moved after the dispatch, and leaves exactly that field pending', () => {
+    const sent: ImageGenDraft = { ...DEFAULTS, promptLength: 40 }
+    const movedSince: ImageGenDraft = { ...sent, promptLength: 90 }
+    const merged = mergeImageGenAfterSave(movedSince, sent, sent)
+    expect(merged.promptLength).toBe(90)
+    expect(changedImageGenFields(merged, sent)).toEqual(['promptLength'])
+  })
+
+  it('does not clobber notes typed after the dispatch with the coerced stored value', () => {
+    const sent: ImageGenDraft = { ...DEFAULTS, notes: '  nina is full of sweat  ' }
+    const canonical: ImageGenDraft = { ...sent, notes: 'nina is full of sweat' }
+    const typedSince: ImageGenDraft = { ...sent, notes: 'nina is full of sweat and glowing' }
+    const merged = mergeImageGenAfterSave(typedSince, sent, canonical)
+    expect(merged.notes).toBe('nina is full of sweat and glowing')
+    expect(changedImageGenFields(merged, canonical)).toEqual(['notes'])
+  })
+
+  it('carries the focus map through the same per-key rule', () => {
+    const key = NINA_IMAGE_FOCUS_KEYS[0]
+    const sent: ImageGenDraft = { ...DEFAULTS, focus: { ...DEFAULTS.focus, [key]: true } }
+    /* The operator un-ticks after dispatch; the stored row still says on. */
+    const untickedSince: ImageGenDraft = { ...sent, focus: { ...sent.focus, [key]: false } }
+    const merged = mergeImageGenAfterSave(untickedSince, sent, sent)
+    expect(merged.focus[key]).toBe(false)
+    expect(changedImageGenFields(merged, sent)).toEqual([`focus.${key}`])
+  })
+
+  it('decides the reference by its key — the same measure the pending mark uses', () => {
+    const sent: ImageGenDraft = { ...DEFAULTS, reference: { source: 'album', id: 'av_1' } }
+    /* Untouched since dispatch: canonical is adopted even where coercion rewrote it (an
+     * unresolvable reference coerces to none at the store). */
+    const canonical: ImageGenDraft = { ...sent, reference: IMAGE_REFERENCE_NONE }
+    expect(mergeImageGenAfterSave(sent, sent, canonical).reference).toEqual(IMAGE_REFERENCE_NONE)
+    /* Re-picked since dispatch: the newer local value stays, whatever it points at. */
+    const pickedSince: ImageGenDraft = { ...sent, reference: { source: 'chat', id: 'img_2' } }
+    const merged = mergeImageGenAfterSave(pickedSince, sent, sent)
+    expect(merged.reference).toEqual({ source: 'chat', id: 'img_2' })
+    expect(changedImageGenFields(merged, sent)).toEqual(['reference'])
+  })
+})
+
 describe('focusOnKeys — what the header counts', () => {
   it('returns phase 1s declared order and nothing else', () => {
     const all: ImageGenDraft = {
@@ -400,8 +463,6 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     expect(ninaImagePrefsWriteSchema.safeParse(payload({ userId: '' } as never)).success).toBe(
       false,
     )
-    expect(ninaImagePrefsResetSchema.safeParse({ userId: '' }).success).toBe(false)
-    expect(ninaImagePrefsResetSchema.safeParse({ userId: 'user_1' }).success).toBe(true)
   })
 })
 
@@ -424,30 +485,6 @@ function codeOnly(path: string): string {
 }
 
 describe('the gate cannot be forgotten — plan invariant 6', () => {
-  /*
-   * ── RECONCILED: THIS TEST IS SPLIT IN TWO, AND PHASE 6 IS WHY ────────────────────────────────
-   * `tests/admin.tuning.test.ts:308-321` is the template, and it loops over EVERY
-   * `export async function` in the action file asserting both `await requireAdmin()` AND
-   * `.safeParse(`, with the gate first. Copied verbatim, that loop **fails once phase 6 lands**,
-   * because phase 6 appends two more actions to THIS file and neither of them parses with Zod:
-   *
-   *   - `runNinaImageTestAction()` takes **no arguments at all** — that is the design, not an
-   *     oversight: there is no payload to forge, so there is nothing to parse, and an empty
-   *     `z.object({})` added to satisfy a grep would be cargo cult.
-   *   - `readNinaImageTestAction(jobId)` shape-checks its one argument with `isValidId`, which is
-   *     `parseNinaJumpParam`'s and `/nina/jobs/[id]`'s precedent. A nanoid is not a shape Zod adds
-   *     anything to.
-   *
-   * Phase 6 raised this as its Handoff 5 — *"the one concrete cross-phase collision found"* — and
-   * offered two resolutions. **The reconciler took its option (b), the stronger one:** the
-   * `requireAdmin`-is-first half keeps looping over every export, forever, including the two phase 6
-   * has not written yet; the `.safeParse` half applies only to the actions that actually take a
-   * payload, named explicitly. Option (a) — scoping the whole loop to this phase's two names —
-   * would have silently stopped asserting invariant 6 over phase 6's actions, which is the half
-   * that matters and the half that must not be narrowed.
-   *
-   * **Phase 6 does not edit this file.** It is not on its Owns list and it must not become so.
-   */
   it('opens EVERY action with requireAdmin(), including ones later phases append', () => {
     const bodies = readFileSync(ACTIONS, 'utf8').split('export async function ').slice(1)
     expect(bodies.length).toBeGreaterThan(0)
@@ -463,11 +500,19 @@ describe('the gate cannot be forgotten — plan invariant 6', () => {
     }
   })
 
-  it('parses the payload with Zod, after the gate, in the two actions that take one', () => {
-    /* Named rather than looped, for the reason above. When phase 6 lands, its two actions are
-     * covered by the requireAdmin loop and by its own tests. */
+  /*
+   * ── THE SPLIT THAT SURVIVED RECONCILIATION ──────────────────────────────────────────────────
+   * The `requireAdmin`-is-first half above keeps looping over EVERY `export async function` in the
+   * action file, forever. This `.safeParse` half does not loop, because exactly ONE action in the
+   * file takes a payload worth validating: `saveNinaImagePrefsAction`. The two test-prompt actions
+   * deliberately take none — `runNinaImageTestAction` has no arguments at all (there is no shape to
+   * forge, so an empty `z.object({})` would be cargo cult) and `readNinaImageTestAction`
+   * shape-checks its one id with `isValidId` plus an owner-scoped `WHERE`. Zod on those would be a
+   * schema asserting nothing.
+   */
+  it('parses the payload with Zod, after the gate, in the one action that takes one', () => {
     const source = readFileSync(ACTIONS, 'utf8')
-    for (const name of ['saveNinaImagePrefsAction', 'resetNinaImagePrefsAction']) {
+    for (const name of ['saveNinaImagePrefsAction']) {
       const body = source.slice(source.indexOf(`export async function ${name}`))
       const gate = body.indexOf('await requireAdmin()')
       const zod = body.indexOf('.safeParse(')
@@ -494,37 +539,22 @@ describe('the gate cannot be forgotten — plan invariant 6', () => {
 describe('one save, not eleven — plan invariant 7', () => {
   /*
    * ── RECONCILED: AN ALLOWLIST, NOT A COUNT ───────────────────────────────────────────────────
-   * The draft of this test asserted `toHaveLength(2)` and this plan's Handoffs told phase 6 to
-   * raise it "to 3". **Both numbers were wrong and the mechanism was worse than the numbers.**
-   *
-   *   - Phase 6 appends **two** actions to this file, not one — `runNinaImageTestAction` and
-   *     `readNinaImageTestAction` (its Interface Contract lists both) — so the count would go to
-   *     four.
-   *   - `tests/admin.imagegen.test.ts` is **this phase's file**. It is on no other phase's Owns
-   *     list, and phase 6's Files table does not include it. So a count that has to be edited when
-   *     phase 6 lands is a change **nobody owns**: phase 6 would be editing a test it was told to
-   *     leave alone, in the same wave, to make it pass. That is how a green suite becomes a merge
-   *     conflict.
-   *
-   * So the invariant is expressed as an ALLOWLIST that is already correct for both phases. It is
-   * strictly stronger than a count: a count says "how many", which nobody can check the meaning
-   * of, while this says WHICH — and it still fails loudly if anyone adds an action neither phase
-   * planned, which is the speed bump the count was reaching for.
-   *
-   * Plan invariant 7 is *"one save per surface, not one per field"*, and that is what the second
-   * assertion below pins: the two prefs actions are a save and a reset, and phase 6's two are a
-   * different KIND of action — one spends money, one polls a job — not one more field.
+   * The prefs half of the action file is ONE action — the whole-row save every control rides on.
+   * The two prompt-test actions are a different KIND of action (one spends money, one polls a
+   * job), not one more field. The allowlist fails loudly if anyone adds an action nobody planned —
+   * and, since the simplify set, if anyone re-adds the reset the panel no longer offers: the
+   * `codeOnly` negative below fires on the identifier even though the file's header discusses the
+   * deletion in prose (comments may document what code may not do).
    */
-  it("exports only planned actions: this phase's two, plus phase 6's two", () => {
+  it('exports only planned actions: the prefs save plus the two test actions', () => {
     const source = readFileSync(ACTIONS, 'utf8')
     const exported = (source.match(/^export async function (\w+)/gm) ?? []).map((line) =>
       line.replace('export async function ', ''),
     )
     const planned = [
-      /* Phase 4 — R4-R10's UI half. One whole-prefs save, one reset. */
+      /* R4-R10's write half, auto-saved since the simplify set. One whole-prefs save. */
       'saveNinaImagePrefsAction',
-      'resetNinaImagePrefsAction',
-      /* Phase 6 — R11/R12. Named here so this file needs no edit when phase 6 lands. */
+      /* R11/R12 — the prompt test. */
       'runNinaImageTestAction',
       'readNinaImageTestAction',
     ]
@@ -535,13 +565,15 @@ describe('one save, not eleven — plan invariant 7', () => {
       ).toContain(name)
     }
     expect(exported).toContain('saveNinaImagePrefsAction')
-    expect(exported).toContain('resetNinaImagePrefsAction')
+    expect(codeOnly(ACTIONS)).not.toContain('resetNinaImagePrefsAction')
   })
 
   it('sends every control in the one save call', () => {
     /* The panel must not gain a second action for the picker or for any field. Read the call site:
-     * every member of the draft has to appear in the one payload. */
+     * every member of the draft has to appear in the one payload — and there is exactly one call
+     * site, so no control grew a side channel. */
     const source = codeOnly(PANEL)
+    expect((source.match(/saveNinaImagePrefsAction\(/g) ?? []).length).toBe(1)
     const call = source.slice(source.indexOf('saveNinaImagePrefsAction({'))
     for (const field of [
       'promptLength',
@@ -560,6 +592,75 @@ describe('one save, not eleven — plan invariant 7', () => {
     const source = readFileSync(ACTIONS, 'utf8')
     expect(source).toContain('writeNinaImagePrefs(')
     expect(source).toContain("revalidatePath('/admin/image-generation')")
+  })
+})
+
+describe('the panel commits itself — no staged-commit row', () => {
+  it('renders none of the removed controls or the removed action', () => {
+    /* The raw file for the user-facing labels, codeOnly for the identifiers — the same split the
+     * `codeOnly` docstring argues for: a comment may DISCUSS the boundary, only code may cross it.
+     * The panel's header names the removed row in prose, which is exactly why the label assertions
+     * must not match prose the header is free to write. */
+    const source = readFileSync(PANEL, 'utf8')
+    for (const gone of ['Save every parameter', 'Discard changes', 'Reset to defaults']) {
+      expect(source, `the panel still offers "${gone}"`).not.toContain(gone)
+    }
+    const code = codeOnly(PANEL)
+    expect(code).not.toContain('confirmingReset')
+    expect(code).not.toContain('resetNinaImagePrefsAction')
+  })
+
+  it('debounces the dial on the named settle window and clears the timer', () => {
+    const code = codeOnly(PANEL)
+    expect(code).toContain('IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS')
+    expect(code).toContain('setTimeout(')
+    /* Cleared on re-arm, on subsumption, and on unmount — the ImageGenTestPanel hygiene. */
+    expect(code).toContain('clearTimeout(')
+  })
+
+  it('commits the four text fields on blur, and never on a keystroke timer', () => {
+    const code = codeOnly(PANEL)
+    expect((code.match(/onBlur=\{commitText\}/g) ?? []).length).toBe(4)
+    /* The blur path itself: typing touches only setDraft, so the commit reads the draft the
+     * keystrokes already landed — no timer anywhere on this path. `commitText` is the LAST handler
+     * before the JSX, so the slice is its body alone. */
+    const fn = code.slice(code.indexOf('function commitText()'), code.indexOf('return ('))
+    expect(fn).not.toContain('setTimeout')
+  })
+
+  it('commits the six focus options and the reference pick immediately on change', () => {
+    const code = codeOnly(PANEL)
+    expect(code).toContain('setFocus(key, event.target.checked)')
+    expect(code).toContain('setReference(parseReferenceKey(next))')
+    /* Each name appears once as the definition and once per call site that rides it: three
+     * `commitImmediate` (definition, setFocus, setReference) and two `scheduleDialCommit`
+     * (definition, the dial's onChange). Nothing else may route to either. */
+    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(3)
+    expect((code.match(/scheduleDialCommit\(/g) ?? []).length).toBe(2)
+  })
+
+  it('does not fire a save for a draft identical to the saved row', () => {
+    const code = codeOnly(PANEL)
+    /* Both paths guard with the same equality — immediate at :commitImmediate, fire-time inside
+     * the debounce callback against the live ref mirror. */
+    expect((code.match(/imageGenDraftEquals\(/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(code).toContain('mergeImageGenAfterSave(')
+  })
+
+  it('does not lock the controls while a commit is in flight', () => {
+    /* Editing during a save is safe (sequential dispatch + the guarded merge); locking on every
+     * settle would flicker the panel uneditable for a round trip each time. */
+    expect(codeOnly(PANEL)).not.toContain('disabled={pending}')
+  })
+
+  it('shows the save-status surface where the counter used to be', () => {
+    const source = readFileSync(PANEL, 'utf8')
+    expect(source).toContain('Saving…')
+    expect(source).toContain("'Saved'")
+    expect(source).toContain("'Unsaved edits'")
+    expect(source).toContain('aria-live="polite"')
+    /* The staged-commit counter is gone; the per-control "unsaved" marks stay. */
+    expect(codeOnly(PANEL)).not.toContain('unsaved.size')
   })
 })
 

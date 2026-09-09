@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-09
-**Total Active Tasks**: 0
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
-- Completed: 26
+- Blocked: 1
+- Completed: 27
 
 ---
 
@@ -22,6 +22,24 @@
 
 ### [P1] High
 
+- [ ] **P1-RI-A029** Phase 2: Revision purge: the counter leaves frontend, backend, and database
+  - **Difficulty**: NORMAL
+  - **Type**: Refactor
+  - **Context**: Owns every remaining `revision` in the image-prefs stack — `NinaImagePrefs.revision`, `NinaImagePrefsWrite`'s `Omit`, `NinaImagePrefsInput.revision`, `coerceRevision`, the defaults' `revision: 0`, `coerceNinaImagePrefs`'s line, `imagePrefsFromRow`'s mapping, `writeNinaImagePrefs`'s `revision: 1` insert and SQL `+1` upsert (the upsert keeps bumping `updated_at`), `AdminImageGenResult.revision` and the save note's wording, the panel's `revision` prop + its docstring + the two "revision N" copy sites + the header-docstring paragraph recording the retired resync, the page's prop pass, the hub card's ". Revision N." sentence (`app/admin/page.tsx:183`), `ImageGenDraft`'s docstring, the `ImageGenTestPanel` comment, and the `"revision" in DEFAULTS` test pin (`tests/admin.imagegen.test.ts:76-78` — deleted wholesale; the census cannot tolerate the word) — and the database: the drizzle column removed from `lib/db/schema.ts` plus a new `drizzle/0017_*.sql` doing `ALTER TABLE "nina_image_prefs" DROP COLUMN "revision";` (precedent `0016`; re-check `origin/main` for a taken `0017` before creating the file). Re-pins `tests/nina.imageprefs.test.ts` and `tests/db.schema.nina.test.ts`. Does not touch the focus cards (phase 3's), the auto-save pipeline (phase 1's, quoted as it left it), `updatedAt`, or the defaults object's other members. Exit criteria: a census grep for `revision` over `app components lib scripts tests` returns image-prefs hits nowhere; `npx vitest run` green; the migration applies cleanly with its runbook written in the plan — merge/deploy the code first, then `npm run db:migrate` (the repo's one database is production; the reverse order breaks every write).
+  - **Status**: pending
+  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R1 — Purge prompt revision tracking — frontend, backend, and database both — because Image generation settings are configuration tuning, not a prompt update needing version history
+  - **Depends on**: `P1-RI-A028`
+  - **Plan**: `.workflows/plan/P1-RI-A029.md`
+- [ ] **P1-RI-A031** Phase 3: Focus on: the redundant hint under each option
+  - **Difficulty**: EASY
+  - **Type**: Update
+  - **Context**: Owns the six focus cards rendering their label only — the hint span gone from `ImageGenPanel.tsx` and `imageFocusCopy` simplified accordingly; `NinaImageFocusSpec.userSaid` removed from `lib/nina/imageprefs.ts` (its only reader was the hint; the prompt's vocabulary lives in `NINA_FOCUS_EMPHASIS`, `lib/nina/imagegen.ts:319-344`, which never reads it); test pins updated (`hint.length`, the fallback hint, the `userSaid` array — the clinical-synonym negative test stays, now pinning labels alone). Does not touch the fieldset's "These add emphasis on top…" paragraph (it explains emphasis-vs-inclusion — not redundant), the ring/selected styling, `NINA_FOCUS_EMPHASIS`, or the `DialSlider` and text-field hints. Exit criteria: the six cards show one line each; the census grep (code forms `userSaid:` / `userSaid?:` / `.userSaid`) shows no `userSaid` in the image-focus specs; `npx vitest run` green.
+  - **Status**: blocked
+  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 3 of 3)
+  - **Satisfies**: R3 — Focus on section: remove the redundant description under each option ("face" under Face, "skin" under Skin, …)
+  - **Depends on**: `P1-RI-A029`
+  - **Plan**: `.workflows/plan/P1-RI-A031.md`
 - [x] **P1-RI-A022** Phase 2: A tile you can tell apart: the admin icon set
   - **Difficulty**: NORMAL
   - **Type**: Feature
@@ -63,6 +81,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A028** Phase 1: Auto-save panel: the Personality commit pipeline, buttons removed
+  - **Difficulty**: HARD
+  - **Type**: Refactor
+  - **Context**: Owns the save model end to end — `ImageGenPanel.tsx` rewritten onto the `draft`/`saved` pattern with `CharacterPanel.tsx` as the template, control-kind by control-kind (dials debounced `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS`, focus checkboxes and reference selection commit on change, the four text fields commit on blur); `saveNinaImagePrefsAction` returns the canonical row as `prefs: ImageGenDraft` (mirroring `AdminTuningResult.tuning`); `mergeImageGenAfterSave` and the debounce constant added to `imageGenModel.ts`; a tri-state `aria-live` status line ("Saving…" / "Saved" / "Unsaved edits"); `disabled={pending}` removed from every control; the Save, Discard and Reset buttons, the confirm block, `confirmingReset` and `run()` deleted; `resetNinaImagePrefsAction` and `ninaImagePrefsResetSchema` deleted outright (the Personality precedent: `resetNinaTuningAction` is gone); `tests/admin.imagegen.test.ts`'s allowlist and Zod loop re-pinned plus new auto-save pins mirroring `tests/admin.tuning.test.ts`. Does not touch the `revision` prop, the "revision N" copy, or anything in `imageprefs.ts` / `queries.ts` / `lib/db/schema.ts` — phase 2's; `ImageGenTestPanel`'s `dirty` prop stays wired, its meaning now transient (debounce armed or blur-pending). Exit criteria: no Save/Discard/Reset anywhere; a slider drag saves once when it settles, a checkbox saves on click, a text field saves on blur, a reference pick saves on click; a failed save leaves the fields pending with the error sentence; `npx vitest run` green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_IMAGEGEN_SIMPLIFY_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R2 — Remove the "Save every parameter", "Discard changes" and "Reset to defaults" buttons; auto-save on every change, the way Personality does
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A028.md`
+  - **Completed**: 2026-09-09 17:01
+  - **Method**: /implement (swarm phase 1/3)
+  - **Files**: lib/admin/imageGenModel.ts, lib/admin/imageGenActions.ts, lib/admin/schema.ts, components/admin/ImageGenPanel.tsx, tests/admin.imagegen.test.ts
+  - **Verification**: `npm run typecheck` clean; `npm run lint` clean (0 errors); `npx vitest run tests/admin.imagegen.test.ts` 56/56; full `npx vitest run` 3547/3547 across 164 files — all green in this worktree.
+  - **Drift**: Plan Step 4's panel header quoted the user's request verbatim, which names the three removed button labels ('Save every parameter', 'Discard changes', 'Reset to defaults'); Step 5f's raw-file label pin — byte-identical to the shipped tests/admin.tuning.test.ts pin this plan says it mirrors — would have failed against the plan's own file. Reworded the header's citation to keep the operative Indonesian half ("*"hapus tombol" the staged-commit row, "buat Personality capable to auto-save everytime some changes are made"*") without printing the labels. The shipped CharacterPanel.tsx contains none of the phrases either. Note for the readme-updater: per phase 1's Handoffs, lib/admin/.workflows/package_readme.md:819 still names the deleted resetNinaImagePrefsAction in its action census — that file is readme-updater's to update now.
+  - **Drift**: Plan Step 2a's import block listed '@/lib/admin/schema' before '@/lib/admin/imageGenModel'; placed in the repo's sorted import order instead (imageGenModel sorts between chatPhotos and imageGenTestView, per the tuningActions.ts precedent). Import members identical to the plan's.
+  - **Drift**: Step 5d: the old phase-6 RECONCILED comment above the gate-loop case was deleted outright and the new comment attached to the safeParse case (the plan's quoted block places comment+case together; the tuning sibling's gate describe opens bare).
+  - **Drift**: Prettier reformatted components/admin/ImageGenPanel.tsx after transcription (wrapping only); all pins re-verified green after.
+  - **Decided**: Panel header quoting the user's request (naming the removed button labels) vs Step 5f's raw-file label pin → pin wins, header citation reworded (rungs 3+6: the test block byte-mirrors the shipped tuning pin; CharacterPanel's header cites the simplify set without printing the labels)
+  - **Decided**: Plan's import-block order vs repo's sorted-import convention → sorted position, members unchanged (rung 6: tuningActions.ts precedent)
 
 - [x] **P1-RI-A027** Phase 3: The sidebar's bottom icon rail
   - **Difficulty**: NORMAL

@@ -655,7 +655,7 @@ function focusShape<K extends string>(keys: readonly K[]): Record<K, typeof focu
  * EXACTLY when `source === 'none'` (`lib/nina/imageprefs.ts` §4), so `''` is the *only*
  * representation of "nothing selected" that reaches this boundary — the panel's draft carries it
  * and `NINA_IMAGE_PREFS_DEFAULTS` is built from it. A `.min(1)` here would reject the default
- * state, so no unselected reference could ever be saved and the reset would fail too; a `.nullable()`
+ * state, so no unselected reference could ever be saved; a `.nullable()`
  * would admit a second empty value the row cannot store. The pairing this schema exists to enforce
  * is not weakened by either removal: the `refine` below is what rejects a half-selection, in both
  * directions.
@@ -693,13 +693,3 @@ export const ninaImagePrefsWriteSchema = z.object({
   reference: ninaImageReferenceSchema,
 })
 export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
-
-/**
- * The reset takes no prefs at all — deliberately. The defaults it writes are the image-prefs
- * model's own module constant, so accepting them from the client would be accepting a client's
- * opinion of what "default" means.
- */
-export const ninaImagePrefsResetSchema = z.object({
-  userId: userIdSchema,
-})
-export type NinaImagePrefsResetInput = z.infer<typeof ninaImagePrefsResetSchema>

@@ -353,3 +353,91 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
 export function imageGenDraftEquals(a: ImageGenDraft, b: ImageGenDraft): boolean {
   return changedImageGenFields(a, b).length === 0
 }
+
+/**
+ * How long the prompt-length dial waits after its last change before it commits — the settle
+ * window of the auto-save panel (this set's R2).
+ *
+ * `TUNING_DIAL_COMMIT_DEBOUNCE_MS`'s argument in `lib/admin/tuningModel.ts` transfers verbatim: a
+ * native `<input type="range">` fires `change` on every pointer move of a drag and on every arrow
+ * keypress, and it KEEPS FOCUS after the thumb is released — so the blur rule that commits the text
+ * fields below cannot transfer to the one dial this panel has, because there is no blur event that
+ * means "this edit is finished". The debounce is the settle detector: one continuous drag becomes
+ * one save. 600 ms sits above the tens-of-milliseconds gaps between change events inside one drag
+ * and below the time it takes to wonder whether the edit landed. A separate constant rather than
+ * importing the tuning one: the two windows answer to two panels, and recalibrating one is a
+ * product decision about THAT panel that must not silently move the other.
+ *
+ * Named here rather than in the component for the same reason every bound in this file is imported
+ * rather than re-declared: one home, and a test can pin it.
+ */
+export const IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS = 600
+
+/**
+ * The focus map's share of the post-save merge — `tuningModel.ts`'s private `mergeRecord`, with one
+ * value type instead of three, so it is typed `boolean` and named for the one record it merges.
+ *
+ * The rule is one line per key: **adopt the stored value only where the operator has not touched
+ * the key since dispatch** — `current` still holds exactly what was `sent`. A key that has moved on
+ * keeps the newer local value and stays pending; the next commit carries it. Keys are taken from
+ * the union of all three sides, so a key present on one side only is decided rather than dropped.
+ */
+function mergeFocusRecord(
+  current: Record<string, boolean>,
+  sent: Record<string, boolean>,
+  canonical: Record<string, boolean>,
+): Record<string, boolean> {
+  const merged: Record<string, boolean> = {}
+  for (const key of Object.keys({ ...sent, ...canonical, ...current })) {
+    if (current[key] !== sent[key] && current[key] !== undefined) {
+      merged[key] = current[key]
+    } else if (canonical[key] !== undefined) {
+      merged[key] = canonical[key]
+    } else if (sent[key] !== undefined) {
+      merged[key] = sent[key]
+    }
+    /* All three undefined: the key is in nobody's draft — leave it out of the merge too. */
+  }
+  return merged
+}
+
+/**
+ * The post-save canonical merge — what the auto-save panel does when a save comes back. The
+ * structural twin of `mergeTuningAfterSave` (`lib/admin/tuningModel.ts:315-334`), field for field.
+ *
+ * `writeNinaImagePrefs` coerces before it writes, and the coercion is not a no-op:
+ * `coerceNinaImageText` collapses whitespace runs, trims and truncates ("  long  hugging  leggings  "
+ * is stored as "long hugging leggings") and `coerceNinaImagePromptLength` clamps, so the stored row
+ * can differ cosmetically from what was typed. The panel cannot keep showing the pre-coercion text
+ * after the row that holds the canonical form has landed — the operator would watch the field "not
+ * take" — but it also cannot adopt the stored row wholesale, because the operator may have kept
+ * editing while the save was in flight, and a wholesale adoption would write the older stored value
+ * over the newer local one. That is the one failure this merge exists to prevent.
+ *
+ * So: for each field, if `current` still equals what was `sent`, the field was untouched since
+ * dispatch and takes the canonical value (a collapsed wardrobe appears; a clamped dial snaps to
+ * what was stored); otherwise the field keeps the newer local value and remains pending — it rides
+ * the next commit. `changedImageGenFields` is the same per-field comparison in boolean form, which
+ * is why the merge and the pending marks always agree. The reference is decided by
+ * `referenceKey(...)` — the ONE identity measure this file already uses for "is the selection the
+ * same", and the one the pending mark is computed from.
+ */
+export function mergeImageGenAfterSave(
+  current: ImageGenDraft,
+  sent: ImageGenDraft,
+  canonical: ImageGenDraft,
+): ImageGenDraft {
+  return {
+    promptLength:
+      current.promptLength === sent.promptLength ? canonical.promptLength : current.promptLength,
+    focus: mergeFocusRecord(current.focus, sent.focus, canonical.focus),
+    wardrobe: current.wardrobe === sent.wardrobe ? canonical.wardrobe : current.wardrobe,
+    venue: current.venue === sent.venue ? canonical.venue : current.venue,
+    time: current.time === sent.time ? canonical.time : current.time,
+    notes: current.notes === sent.notes ? canonical.notes : current.notes,
+    reference:
+      referenceKey(current.reference) === referenceKey(sent.reference)
+        ? canonical.reference
+        : current.reference,
+  }
+}

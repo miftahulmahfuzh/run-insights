@@ -3,16 +3,13 @@
 import { revalidatePath } from 'next/cache'
 
 import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
+import { toImageGenDraft, type ImageGenDraft } from '@/lib/admin/imageGenModel'
 import { imageTestVerdict, type NinaImageTestJobView } from '@/lib/admin/imageGenTestView'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import {
-  ninaImagePrefsResetSchema,
-  ninaImagePrefsWriteSchema,
-  type NinaImagePrefsWriteInput,
-} from '@/lib/admin/schema'
+import { ninaImagePrefsWriteSchema, type NinaImagePrefsWriteInput } from '@/lib/admin/schema'
 import { isValidId } from '@/lib/id'
 import { getNinaImageJobDetail, ninaImageQuotaLeft } from '@/lib/nina/imagejobs'
-import { NINA_IMAGE_PREFS_DEFAULTS, type NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
+import type { NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
 import { NINA_IMAGE_DAILY_CAP } from '@/lib/nina/imagerecipe'
 import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/imagetest'
 import {
@@ -23,9 +20,11 @@ import {
 } from '@/lib/nina/queries'
 
 /**
- * `/admin/image-generation`'s panel, write side — R4 through R9, and R10's selection.
+ * `/admin/image-generation`'s panel, write side — R4 through R9, R10's selection, and since the
+ * simplify set the single write the auto-save panel has: every control commits at its own moment
+ * and every commit is the one action below.
  *
- * Both actions follow `lib/admin/tuningActions.ts`'s four lines, in this order and for these
+ * The action follows `lib/admin/tuningActions.ts`'s four lines, in this order and for these
  * reasons:
  *
  *   1. `await requireAdmin()`   — FIRST, above any use of an argument. A Server Action is a POST
@@ -42,38 +41,62 @@ import {
  * `tuningActions.ts` records this about the tuning and it holds verbatim for the prefs: there is no
  * cache anywhere on the image path, so a committed row is in the next generation's prompt with no
  * invalidation step at all. The revalidation is for the PREVIEW, which is server-assembled from the
- * saved row and would otherwise show the pre-save prompt beside a "saved as revision 5" line.
+ * saved row and would otherwise show the pre-save prompt beside the "saved" line.
  *
  * ── ONE SAVE, NOT ELEVEN ────────────────────────────────────────────────────────────────────
- * Plan invariant 7, and `ninaImagePrefsWriteSchema`'s docstring has the mechanism. There are
- * exactly two exported functions in this file today and `tests/admin.imagegen.test.ts` asserts they
- * are drawn from a named allowlist, because "add one action per field" is the obvious-looking
- * change that would reintroduce the stall.
+ * Plan invariant 7, and `ninaImagePrefsWriteSchema`'s docstring has the mechanism. The prefs half
+ * of this file is exactly ONE action — the whole-row save every control rides on. The file's other
+ * exports are the two prompt-test actions, a different KIND of action (one spends money, one polls
+ * a job), not one more field. `tests/admin.imagegen.test.ts` asserts all of them against a named
+ * allowlist, because "add one action per field" is the obvious-looking change that would
+ * reintroduce the stall — an action outside the allowlist fails the test, so a per-field action
+ * stays an explicit decision somebody has to write down.
  *
- * **Phase 6 appends the test-prompt actions to this file.** The allowlist already names them, and
- * the `requireAdmin`-is-first loop already covers them the moment they exist. It is a deliberate
- * speed bump: an action outside the allowlist fails the test, so a per-field action stays an
- * explicit decision somebody has to write down, and phase 6's addition is a different KIND of
- * action — it spends money — rather than one more field.
+ * ── THE RESULT CARRIES THE ROW IT WROTE ──────────────────────────────────────────────────────
+ * The success result's `prefs` is `toImageGenDraft(stored)` — the row AFTER `coerceNinaImagePrefs`,
+ * as the database holds it. The panel adopts it through `mergeImageGenAfterSave` (see
+ * `lib/admin/imageGenModel.ts`): `coerceNinaImageText` collapses whitespace runs and truncates, so
+ * the stored row can differ cosmetically from what was typed, and the response carries this value
+ * and the re-rendered route in one round trip anyway (`server-actions.md`, "A single response
+ * carries data and UI") — reading the row off the result is the same freshness as reading it off
+ * the prop, without having to tell "my save landed" apart from "the row changed under me". Nothing
+ * needs to tell them apart: this panel is the row's only writer, so the only way the row changes
+ * under it is this file's own save coming back.
  *
  * ── A RESULT OBJECT, NEVER A THROW ──────────────────────────────────────────────────────────
- * The panel is a `useTransition` client with plain-argument actions. A throw from a Server Action
- * reaches the browser as an opaque digest; a sentence reaches the operator.
+ * The panel is a `useTransition` client with plain-argument actions — the shape the sibling admin
+ * pages set. A throw from a Server Action reaches the browser as an opaque digest; a sentence
+ * reaches the operator. There is no Save button any more, so the failure sentence names the retry
+ * that exists: move any control and it commits again.
  */
 
 export interface AdminImageGenResult {
   ok: boolean
   error?: string
-  /** One sentence about what was written. */
+  /**
+   * One sentence about what was written. The panel's status line is the success surface ("Saved"
+   * with no qualifier); this stays in the shape for the result-object convention and for any
+   * future caller that wants the sentence.
+   */
   note?: string
-  /** The revision the row now carries, so the panel can name it without a refetch. */
+  /** The revision the row now carries. Display copy only; phase 2 of the simplify set removes it. */
   revision?: number
+  /**
+   * The row as stored — `toImageGenDraft` over what `writeNinaImagePrefs` returned, i.e. AFTER
+   * `coerceNinaImagePrefs`. Present on success. The panel merges it with
+   * `mergeImageGenAfterSave` so coerced values appear without clobbering edits made since
+   * dispatch.
+   */
+  prefs?: ImageGenDraft
 }
 
-/** Every action's catch-all. A stack trace goes to the log; a sentence goes to the admin. */
+/** The action's catch-all. A stack trace goes to the log; a sentence goes to the admin. */
 function failed(where: string, cause: unknown): AdminImageGenResult {
   console.error(`[imgn] admin image prefs ${where} failed`, cause)
-  return { ok: false, error: 'The write failed and nothing was changed. Try again.' }
+  return {
+    ok: false,
+    error: 'The write failed and nothing was changed — move any control to try again.',
+  }
 }
 
 /**
@@ -102,7 +125,9 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
 }
 
 /**
- * Save the whole prefs row. One action, one row, one revision bump.
+ * Save the whole prefs row. One action, one row — the only write the panel has, dispatched by every
+ * control at its own commit moment (the dial debounced, the focus checkboxes and the reference on
+ * change, the four text fields on blur).
  *
  * The argument types are deliberately loose (`Record<string, boolean>`, `source: string`) and Zod
  * does the narrowing, which is `saveNinaTuningAction`'s convention: a Server Action's declared
@@ -130,73 +155,19 @@ export async function saveNinaImagePrefsAction(input: {
   }
 
   try {
-    /* `writeNinaImagePrefs` returns the whole stored row, already coerced, so reading the revision
-     * off it is reading the truth rather than a hope — `writeNinaTuning`'s landed contract. */
-    const { revision } = await writeNinaImagePrefs(
-      parsed.data.userId,
-      toImagePrefsWrite(parsed.data),
-    )
+    /* `writeNinaImagePrefs` returns the whole stored row, already coerced, so the result's `prefs`
+     * is the truth rather than a hope — `writeNinaTuning`'s landed contract, and what lets the
+     * panel adopt the canonical draft without a refetch. */
+    const stored = await writeNinaImagePrefs(parsed.data.userId, toImagePrefsWrite(parsed.data))
     revalidatePath('/admin/image-generation')
     return {
       ok: true,
-      revision,
-      note: `Saved as revision ${revision}. The next photograph she takes is assembled from it — there is no cache on the image path.`,
+      revision: stored.revision,
+      prefs: toImageGenDraft(stored),
+      note: `Saved as revision ${stored.revision}. The next photograph she takes is assembled from it — there is no cache on the image path.`,
     }
   } catch (cause) {
     return failed('save', cause)
-  }
-}
-
-/**
- * Reset every image parameter to `NINA_IMAGE_PREFS_DEFAULTS`.
- *
- * It **writes** the defaults rather than deleting the row, and so it bumps the revision like any
- * other save. That is the honest record: a reset is a thing that happened at a revision, not a
- * hole where one used to be.
- *
- * The defaults do NOT go through Zod. They are phase 1's module constant, not client input, and
- * validating a constant against a schema derived from the same module would only assert that phase
- * 1 agrees with itself. The focus record and the reference ARE copied, though —
- * `NINA_IMAGE_PREFS_DEFAULTS` is frozen, and `writeNinaImagePrefs` should never be handed the
- * singleton itself.
- *
- * **Reset clears the photo reference.** R1's body canon is unconditional, so a defaulted row still
- * produces a prompt naming the body; a defaulted row that kept pointing at a photograph would be a
- * "reset" that left the single most influential input in place.
- */
-export async function resetNinaImagePrefsAction(input: {
-  userId: string
-}): Promise<AdminImageGenResult> {
-  await requireAdmin()
-
-  const parsed = ninaImagePrefsResetSchema.safeParse(input)
-  if (!parsed.success) {
-    return { ok: false, error: 'That is not an account this panel can reset.' }
-  }
-
-  const defaults: NinaImagePrefsWrite = {
-    promptLength: NINA_IMAGE_PREFS_DEFAULTS.promptLength,
-    focus: { ...NINA_IMAGE_PREFS_DEFAULTS.focus },
-    wardrobe: NINA_IMAGE_PREFS_DEFAULTS.wardrobe,
-    venue: NINA_IMAGE_PREFS_DEFAULTS.venue,
-    time: NINA_IMAGE_PREFS_DEFAULTS.time,
-    notes: NINA_IMAGE_PREFS_DEFAULTS.notes,
-    reference: {
-      source: NINA_IMAGE_PREFS_DEFAULTS.reference.source,
-      id: NINA_IMAGE_PREFS_DEFAULTS.reference.id,
-    },
-  }
-
-  try {
-    const { revision } = await writeNinaImagePrefs(parsed.data.userId, defaults)
-    revalidatePath('/admin/image-generation')
-    return {
-      ok: true,
-      revision,
-      note: `Every image parameter is back at its default, as revision ${revision}. The body canon is unchanged — it never was a setting.`,
-    }
-  } catch (cause) {
-    return failed('reset', cause)
   }
 }
 
