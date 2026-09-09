@@ -9,7 +9,7 @@ import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
-import { attachNinaPhotoToChat } from '@/lib/nina/albumActions'
+import { attachNinaPhotoToChat, type NinaAttachTarget } from '@/lib/nina/albumActions'
 import {
   NINA_ATTACH_MAX_CHARS,
   type NinaAlbumPhoto,
@@ -97,7 +97,9 @@ export function NinaAboutScreen({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [question, setQuestion] = React.useState('')
-  const [attaching, setAttaching] = React.useState(false)
+  /* Which send is in flight — `'recent'` or `'new'` — or `null` when neither is. One flight for
+   * two controls: it names the button that shows the dots and disables the other one. */
+  const [sending, setSending] = React.useState<NinaAttachTarget | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
 
   const albumViewer: ViewerPhoto[] = React.useMemo(
@@ -191,31 +193,40 @@ export function NinaAboutScreen({
     window.history.replaceState(null, '', urlWithPhoto(null))
   }, [urlWithPhoto])
 
-  /** R26. `''` is a valid question: attaching with nothing to ask must work. */
-  const attach = React.useCallback(async () => {
-    if (open == null || attaching) return
-    const list = open.section === 'album' ? album : gallery
-    const photo = list[open.index]
-    if (photo == null) return
-    setAttaching(true)
-    setNotice(null)
-    try {
-      const result = await attachNinaPhotoToChat({
-        kind: open.section === 'album' ? 'avatar' : 'image',
-        id: photo.id,
-        body: question,
-      })
-      if (!result.ok) {
-        setNotice('Gagal kirim fotonya. Coba lagi.')
-        return
+  /**
+   * R26 still: `''` is a valid question, and attaching with nothing to ask must work. R1/R2 add
+   * the target — his most recent conversation, or a fresh one — and it is the SERVER that decides
+   * which conversation that is and where to land: this handler names the button and pushes the
+   * `next` the action returns, and spells no URL of its own.
+   */
+  const attach = React.useCallback(
+    async (target: NinaAttachTarget) => {
+      if (open == null || sending !== null) return
+      const list = open.section === 'album' ? album : gallery
+      const photo = list[open.index]
+      if (photo == null) return
+      setSending(target)
+      setNotice(null)
+      try {
+        const result = await attachNinaPhotoToChat({
+          kind: open.section === 'album' ? 'avatar' : 'image',
+          id: photo.id,
+          body: question,
+          target,
+        })
+        if (!result.ok || result.next === null) {
+          setNotice('Gagal kirim fotonya. Coba lagi.')
+          return
+        }
+        /* Refresh first, so the pushed conversation renders the row that was just written. */
+        router.refresh()
+        router.push(result.next)
+      } finally {
+        setSending(null)
       }
-      /* Refresh first, so the pushed `/nina` renders the row that was just written. */
-      router.refresh()
-      router.push('/nina')
-    } finally {
-      setAttaching(false)
-    }
-  }, [album, attaching, gallery, open, question, router])
+    },
+    [album, gallery, open, question, router, sending],
+  )
 
   const currentAlbumIndex = Math.max(
     0,
@@ -351,9 +362,48 @@ export function NinaAboutScreen({
               aria-label="Pertanyaan tentang foto ini"
               className="w-full rounded-field bg-card/10 px-3 py-2 text-[15px] text-card placeholder:text-card/50"
             />
-            <Button size="md" onClick={attach} disabled={attaching}>
-              {attaching ? 'Mengirim…' : 'Kirim ke chat'}
-            </Button>
+            {/*
+              R1/R2: THE TWO SENDS WEAR GLYPHS; THE WORDS BECAME THE ACCESSIBLE NAMES —
+              SessionRow's three menu buttons are the pattern and its header is the record. The
+              glyph is `aria-hidden` decor, the word it replaced is the `aria-label` verbatim
+              ("Kirim ke chat"; the new one extends it), and the control stays a `Button` because
+              everything the guard needs lives there: `loading` swaps the glyph for pulsing dots
+              inside an unchanged box, `md` keeps the 44px floor.
+
+              `variant="secondary"`, and not the default `primary`: primary is `bg-ink text-card`
+              and this strip is `bg-ink/95`, so the shipped button was ink-on-ink — a slab a shade
+              darker than its own surface. The light `bg-paper-2 text-ink` disc is how SessionRow's
+              menu already reads on a dark panel. `flex-1` on each: the row the full-width labelled
+              button owned, split into two adjacent controls, the original send on the left.
+
+              ONE flight, TWO controls: `sending` names which one fired, so only that one shows
+              dots, and `disabled={sending !== null}` on BOTH keeps the other unreachable mid-send —
+              the loading/disabled split of the rename form's Simpan/Batal row, one flight wider.
+            */}
+            <div className="flex gap-2">
+              <Button
+                size="md"
+                variant="secondary"
+                className="flex-1"
+                loading={sending === 'recent'}
+                disabled={sending !== null}
+                aria-label="Kirim ke chat"
+                onClick={() => attach('recent')}
+              >
+                <SendHorizontalIcon />
+              </Button>
+              <Button
+                size="md"
+                variant="secondary"
+                className="flex-1"
+                loading={sending === 'new'}
+                disabled={sending !== null}
+                aria-label="Kirim ke chat baru"
+                onClick={() => attach('new')}
+              >
+                <MessageSquarePlusIcon />
+              </Button>
+            </div>
           </div>
         </>
       )}
@@ -369,4 +419,60 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
     label: photo.label,
     isCurrent: (photo as NinaAlbumPhoto).isCurrent === true,
   }
+}
+
+/*
+ * The strip's two send glyphs, inlined rather than imported — `SessionRow`'s collection note and
+ * `AdminNav`'s before it. Both are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
+ * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
+ * presentation attributes exactly as published; the only adaptations are JSX spelling
+ * (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and `height` for
+ * our `className` and the 18px size. Every glyph is 18px in `currentColor` and `aria-hidden` — the
+ * accessible name is the `aria-label` on the button, never the picture.
+ *
+ * `send-horizontal` is the paper plane every chat app uses for "send", lying sideways so it reads
+ * at 18px on the row that fires it (lucide's `send` is the same arrow at 45 degrees; the
+ * horizontal one reads better beside a full-width input row). `message-square-plus` is the
+ * sidebar rail's own noun — `NewChatButton`'s `plus` on a chat-bubble body — the one glyph in the
+ * app that already means "a conversation that does not exist yet", which is exactly what this
+ * button sells.
+ */
+
+/** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
+function SendHorizontalIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" />
+      <path d="M6 12h16" />
+    </svg>
+  )
+}
+
+/** "Kirim ke chat baru" — a conversation with no prior content. Lucide's `message-square-plus`, verbatim. */
+function MessageSquarePlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+      <path d="M12 8v6" />
+      <path d="M9 11h6" />
+    </svg>
+  )
 }
