@@ -3,6 +3,12 @@
   "coordinator": "orch-photo-send-chat-icons",
   "coordinator_session_id": "c7e24010-c0d3-452e-9be5-fb8a88664fa6",
   "created": "2026-09-09T05:12:08+00:00",
+  "landed": {
+    "at": "2026-09-09T06:09:18+00:00",
+    "base": "main",
+    "commit": "c708d8f18a09b2e771f39b7a0ddb335ba81bf81a",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -45,6 +51,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photo-send-chat-icons/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photo-send-chat-icons",
-  "updated": "2026-09-09T06:08:02+00:00",
+  "updated": "2026-09-09T06:09:18+00:00",
   "worktree": "/home/miftah/run-insights/.claude/worktrees/photo-send-chat-icons"
 }
