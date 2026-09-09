@@ -24,20 +24,20 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "8ca61b9",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "SessionRow: 3 icon buttons (pin/pencil/trash, aria-labels verbatim Indonesian) + rename-field X (pointerdown-preventDefault, keyboard stays up). Decisions: bookkeeping in ROOT todos.md with RI ids A025/A026/A027 (rung 6 convention) \u2014 p1 forked NIN ids A032-034 into lib/nina/.workflows, needs coordinator reconciliation. Flake: 3-4 timeout failures in tests/nina.jobActions.test.ts pre-existing (no import path to SessionRow; fluctuates between runs); typecheck/build/prettier green.",
       "package": "components/nina",
       "plan": ".workflows/plan/search-clear-and-sidebar-icons/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T02:28:39+00:00",
       "satisfies": [
         "R3",
         "R4"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A026",
       "title": "Session actions become icons; the rename field clears"
     },
     {
@@ -63,6 +63,14 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/search-clear-and-sidebar-icons/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "search-clear-and-sidebar-icons",
-  "updated": "2026-09-09T02:00:52+00:00",
-  "worktree": "/home/miftah/.worktrees/run-insights/search-clear-and-sidebar-icons"
+  "updated": "2026-09-09T02:30:37+00:00",
+  "verified_at": "2026-09-09T02:30:37+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/search-clear-and-sidebar-icons",
+  "notes": [
+    {
+      "at": "2026-09-09T02:32:00+00:00",
+      "by": "orch-search-clear-and-sidebar-icons",
+      "text": "Phase 2 landed 8ca61b9, verified from git (ancestor of feature/search-clear-and-sidebar-icons). TaskID mint race at 09:10-09:12 (p1 subagent minted P1-NIN-A032/33/34; p2 minted P1-RI-A025/26/27 and won the writeback): p1 removed its own NIN set and adopted RI \u2014 RATIFIED, root .workflows/todos.md RI ids are authoritative for all phases. verify's phase-1 'spawned'->'pending' downgrade is a live-phase artifact (p1 actively working in tmux @110), NOT an abandonment; do not re-spawn on runnable_now until its window is confirmed dead. Pre-existing flake recorded by p2: 3-4 5s timeouts in tests/nina.jobActions.test.ts, no import path to SessionRow.tsx, fluctuates run-to-run \u2014 cross-check against p1's run before attributing."
+    }
+  ]
 }
