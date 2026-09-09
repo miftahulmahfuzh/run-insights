@@ -3,6 +3,12 @@
   "coordinator": "orch-simplify-personality-settings",
   "coordinator_session_id": "622ee419-afed-4d38-846a-c72d59dce5a9",
   "created": "2026-09-09T02:28:21+00:00",
+  "landed": {
+    "at": "2026-09-09T04:26:16+00:00",
+    "base": "main",
+    "commit": "6279ebeb6acc776e03febc066bb900f84c84c923",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -44,6 +50,6 @@
   "plan": "/home/miftah/.worktrees/run-insights/simplify-personality-settings/.workflows/orchestration/simplify-personality-settings/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "simplify-personality-settings",
-  "updated": "2026-09-09T04:11:39+00:00",
+  "updated": "2026-09-09T04:26:16+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/simplify-personality-settings"
 }
