@@ -151,8 +151,8 @@ export async function saveNinaImagePrefsAction(input: {
  * Reset every image parameter to `NINA_IMAGE_PREFS_DEFAULTS`.
  *
  * It **writes** the defaults rather than deleting the row, and so it bumps the revision like any
- * other save. That is the honest record, for `resetNinaTuningAction`'s reason: a reset is a thing
- * that happened at a revision, not a hole where one used to be.
+ * other save. That is the honest record: a reset is a thing that happened at a revision, not a
+ * hole where one used to be.
  *
  * The defaults do NOT go through Zod. They are phase 1's module constant, not client input, and
  * validating a constant against a schema derived from the same module would only assert that phase

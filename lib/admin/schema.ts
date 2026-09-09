@@ -491,16 +491,6 @@ export const ninaTuningWriteSchema = z.object({
 })
 export type NinaTuningWriteInput = z.infer<typeof ninaTuningWriteSchema>
 
-/**
- * The reset takes no tuning at all — deliberately. The defaults it writes are phase 1's module
- * constant, so accepting them from the client would be accepting a client's opinion of what
- * "default" means, and invariant 2 is the one thing in this set that must not be negotiable.
- */
-export const ninaTuningResetSchema = z.object({
-  userId: userIdSchema,
-})
-export type NinaTuningResetInput = z.infer<typeof ninaTuningResetSchema>
-
 /* ============================================================================
  * nina-emoji-shortcuts phase 3 — /admin/shortcuts. Appended; nothing above
  * this line changed.
@@ -705,9 +695,9 @@ export const ninaImagePrefsWriteSchema = z.object({
 export type NinaImagePrefsWriteInput = z.infer<typeof ninaImagePrefsWriteSchema>
 
 /**
- * The reset takes no prefs at all — deliberately, for `ninaTuningResetSchema`'s reason: the
- * defaults it writes are phase 1's module constant, so accepting them from the client would be
- * accepting a client's opinion of what "default" means.
+ * The reset takes no prefs at all — deliberately. The defaults it writes are the image-prefs
+ * model's own module constant, so accepting them from the client would be accepting a client's
+ * opinion of what "default" means.
  */
 export const ninaImagePrefsResetSchema = z.object({
   userId: userIdSchema,

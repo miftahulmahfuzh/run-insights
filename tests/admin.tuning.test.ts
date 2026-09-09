@@ -2,17 +2,19 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { ninaTuningResetSchema, ninaTuningWriteSchema } from '@/lib/admin/schema'
+import { ninaTuningWriteSchema } from '@/lib/admin/schema'
 import {
   changedTuningFields,
   hasRelationshipCopy,
   hasTuningCopy,
   loudestDials,
+  mergeTuningAfterSave,
   prettifyKey,
   relationshipCopy,
   toTuningDraft,
   tuningCopy,
   tuningDraftEquals,
+  TUNING_DIAL_COMMIT_DEBOUNCE_MS,
   type TuningDraft,
 } from '@/lib/admin/tuningModel'
 import {
@@ -160,6 +162,54 @@ describe('changedTuningFields — what the operator sees as unsaved', () => {
   })
 })
 
+describe('TUNING_DIAL_COMMIT_DEBOUNCE_MS — the settle window', () => {
+  it('is 600ms: long enough that one drag is one save, short enough that Saved lands while you watch', () => {
+    /* Pinned as a literal for the same reason the trait count above is: recalibrating the window
+     * is a product decision, and this line is where it becomes an explicit one. */
+    expect(TUNING_DIAL_COMMIT_DEBOUNCE_MS).toBe(600)
+  })
+})
+
+describe('mergeTuningAfterSave — the post-save canonical merge', () => {
+  it('adopts the stored row for every field untouched since the dispatch', () => {
+    /* `coerceNinaNotes` will have trimmed and collapsed what was typed; the merge must show the
+     * stored form, not keep the pre-coercion text the operator can no longer get back to. */
+    const sent: TuningDraft = { ...DEFAULTS, notes: '  hello  \n\n\n\n world  ' }
+    const canonical: TuningDraft = { ...sent, notes: 'hello\n\n world' }
+    const merged = mergeTuningAfterSave(sent, sent, canonical)
+    expect(merged.notes).toBe('hello\n\n world')
+    expect(tuningDraftEquals(merged, canonical)).toBe(true)
+  })
+
+  it('keeps a field edited after the dispatch, and leaves exactly that field pending', () => {
+    const key = NINA_TRAITS[0]
+    const sent: TuningDraft = { ...DEFAULTS, traits: { ...DEFAULTS.traits, [key]: 40 } }
+    const editedSince: TuningDraft = { ...sent, traits: { ...sent.traits, [key]: 90 } }
+    const merged = mergeTuningAfterSave(editedSince, sent, sent)
+    expect(merged.traits[key]).toBe(90)
+    expect(changedTuningFields(merged, sent)).toEqual([`traits.${key}`])
+  })
+
+  it('does not clobber notes typed after the dispatch with the coerced stored value', () => {
+    const sent: TuningDraft = { ...DEFAULTS, notes: '  padded  ' }
+    const canonical: TuningDraft = { ...sent, notes: 'padded' }
+    const typedSince: TuningDraft = { ...sent, notes: 'padded and more' }
+    const merged = mergeTuningAfterSave(typedSince, sent, canonical)
+    expect(merged.notes).toBe('padded and more')
+    expect(changedTuningFields(merged, canonical)).toEqual(['notes'])
+  })
+
+  it('carries the toggle map through the same per-field rule', () => {
+    const key = NINA_TRAITS[0]
+    const sent: TuningDraft = { ...DEFAULTS, enabled: { ...DEFAULTS.enabled, [key]: false } }
+    /* The operator re-toggles after dispatch; the stored row still says off. */
+    const toggledSince: TuningDraft = { ...sent, enabled: { ...sent.enabled, [key]: true } }
+    const merged = mergeTuningAfterSave(toggledSince, sent, sent)
+    expect(merged.enabled[key]).toBe(true)
+    expect(changedTuningFields(merged, sent)).toEqual([`enabled.${key}`])
+  })
+})
+
 describe('loudestDials — what the hub card prints', () => {
   it('is empty when nothing was moved, so the card can say so', () => {
     expect(loudestDials(DEFAULTS, DEFAULTS)).toEqual([])
@@ -262,8 +312,6 @@ describe('ninaTuningWriteSchema — the boundary', () => {
 
   it('refuses an empty userId, which requireAdmin would never produce', () => {
     expect(ninaTuningWriteSchema.safeParse(payload({ userId: '' } as never)).success).toBe(false)
-    expect(ninaTuningResetSchema.safeParse({ userId: '' }).success).toBe(false)
-    expect(ninaTuningResetSchema.safeParse({ userId: 'user_1' }).success).toBe(true)
   })
 })
 
@@ -319,12 +367,15 @@ describe('the gate cannot be forgotten', () => {
 })
 
 describe('one save, not sixteen — plan invariant 11', () => {
-  it('exports exactly two actions: the whole-tuning save and the reset', () => {
+  it('exports exactly one action: the whole-tuning save every control rides on', () => {
     const source = readFileSync(ACTIONS, 'utf8')
     const exported = source.match(/^export async function (\w+)/gm) ?? []
-    expect(exported).toHaveLength(2)
+    expect(exported).toHaveLength(1)
     expect(source).toContain('export async function saveNinaTuningAction')
-    expect(source).toContain('export async function resetNinaTuningAction')
+    /* codeOnly for the identifier, not raw source: the new file's own header names the deleted
+     * reset in prose while arguing why the count is one, and prose may discuss what code may not
+     * do — the codeOnly docstring's own rule, and the same split the panel cases below use. */
+    expect(codeOnly(ACTIONS)).not.toContain('resetNinaTuningAction')
   })
 
   it('writes through phase 1s query and revalidates this page', () => {
@@ -334,6 +385,74 @@ describe('one save, not sixteen — plan invariant 11', () => {
      * that revalidated `/admin/nina` would re-render a page the operator is not looking at and
      * leave the panel showing a stale row until a manual reload. */
     expect(source).toContain("revalidatePath('/admin/personality')")
+  })
+
+  it('returns the row it wrote, so the panel can adopt the canonical draft', () => {
+    /* `coerceNinaNotes` trims and collapses — the stored row is not always the typed string —
+     * so the result must carry the stored row or the panel has nothing honest to adopt. */
+    const source = readFileSync(ACTIONS, 'utf8')
+    expect(source).toContain('tuning: toTuningDraft(stored)')
+  })
+})
+
+describe('the panel commits itself — no staged-commit row', () => {
+  it('renders none of the removed controls or the removed action', () => {
+    /* The raw file for the user-facing labels, codeOnly for the identifiers — the same split the
+     * `codeOnly` docstring above argues for: a comment may DISCUSS the boundary, only code may
+     * cross it. The panel's header names the removed row in prose, which is exactly why the
+     * label assertions must not match prose the header is free to write. */
+    const source = readFileSync(PANEL, 'utf8')
+    for (const gone of ['Save the whole tuning', 'Discard changes', 'Reset to defaults']) {
+      expect(source, `the panel still offers "${gone}"`).not.toContain(gone)
+    }
+    const code = codeOnly(PANEL)
+    expect(code).not.toContain('confirmingReset')
+    expect(code).not.toContain('resetNinaTuningAction')
+  })
+
+  it('debounces the dials on the named settle window and clears the timer', () => {
+    const code = codeOnly(PANEL)
+    expect(code).toContain('TUNING_DIAL_COMMIT_DEBOUNCE_MS')
+    expect(code).toContain('setTimeout(')
+    /* Cleared on re-arm, on subsumption, and on unmount — the ImageGenTestPanel hygiene. */
+    expect(code).toContain('clearTimeout(')
+  })
+
+  it('commits the notes on blur, and never on a keystroke timer', () => {
+    const code = codeOnly(PANEL)
+    expect(code).toContain('onBlur={commitNotes}')
+    /* The notes field's own wiring: typing touches only setDraft — no timer, no dispatch. */
+    const notesField = code.split('<textarea')[1]?.split('</label>')[0] ?? ''
+    expect(notesField).not.toContain('setTimeout')
+    expect(notesField).not.toContain('dispatchSave')
+  })
+
+  it('commits the relationship and every toggle immediately on change', () => {
+    const code = codeOnly(PANEL)
+    expect(code).toContain('onChange={() => commitImmediate({ ...draft, relationship: value })}')
+    expect(code).toContain('setEnabled(NINA_TUNING_RELATIONSHIP_KEY, event.target.checked)')
+    expect(code).toContain('onEnabledChange={(next) => setEnabled(key, next)}')
+  })
+
+  it('does not fire a save for a draft identical to the saved row', () => {
+    const code = codeOnly(PANEL)
+    /* Both paths guard with the same equality — immediate at :commitImmediate, fire-time inside
+     * the debounce callback against the live ref mirror. */
+    expect(code.match(/tuningDraftEquals\(/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(code).toContain('mergeTuningAfterSave(')
+  })
+
+  it('does not lock the controls while a commit is in flight', () => {
+    /* Editing during a save is safe (sequential dispatch + the guarded merge); locking on every
+     * settle would flicker the panel uneditable for a round trip each time. */
+    expect(codeOnly(PANEL)).not.toContain('disabled={pending}')
+  })
+
+  it('shows the save-status surface where the counter used to be', () => {
+    const source = readFileSync(PANEL, 'utf8')
+    expect(source).toContain('Saving…')
+    expect(source).toContain("'Saved'")
+    expect(source).toContain("'Unsaved edits'")
   })
 })
 

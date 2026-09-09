@@ -3,18 +3,17 @@
 import { revalidatePath } from 'next/cache'
 
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import {
-  ninaTuningResetSchema,
-  ninaTuningWriteSchema,
-  type NinaTuningWriteInput,
-} from '@/lib/admin/schema'
+import { ninaTuningWriteSchema, type NinaTuningWriteInput } from '@/lib/admin/schema'
+import { toTuningDraft, type TuningDraft } from '@/lib/admin/tuningModel'
 import { writeNinaTuning } from '@/lib/nina/queries'
-import { NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
+import type { NinaTuning } from '@/lib/nina/tuning'
 
 /**
- * `/admin/personality`'s character panel, write side — R1, R2, R3.
+ * `/admin/personality`'s character panel, write side — R1, R2, R3, then R4, then the simplify
+ * set: the panel commits every control by itself, and this file is the single action they all
+ * ride on.
  *
- * Both actions follow `lib/admin/memoryActions.ts`'s four lines, in this order and for these
+ * The action follows `lib/admin/memoryActions.ts`'s four lines, in this order and for these
  * reasons:
  *
  *   1. `await requireAdmin()`   — FIRST, above any use of an argument. A Server Action is a POST
@@ -23,38 +22,68 @@ import { NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
  *                                 so this call is the only gate on this endpoint.
  *   2. Zod                      — every field, every time. The client is not a source of truth.
  *   3. the write                — one row, through phase 1's `writeNinaTuning`, which owns the
- *                                 clamp.
- *   4. `revalidatePath`         — re-renders THIS page, so the panel and the prompt preview show
- *                                 the row that was just written.
+ *                                 clamp and the upsert.
+ *   4. `revalidatePath`         — re-renders THIS page, so the prompt preview shows the row that
+ *                                 was just written.
  *
  * ── `revalidatePath` IS NOT HOW THE EDIT REACHES NINA, AND THAT IS THE FEATURE ──────────────
  * `memoryActions.ts` records this about the memory tables and it holds verbatim for the tuning:
  * there is no cache anywhere on the turn path, so a committed row is in her next prompt with no
  * invalidation step at all. No deploy, no distillation pass, no revalidation. That is why the
- * panel's own copy says it, and why the slider is a live control rather than a config file.
+ * panel's own copy says it, and why auto-save is safe to commit a dial the moment its drag
+ * settles: what lands is live on her very next message.
  *
- * ── ONE SAVE, NOT SIXTEEN ───────────────────────────────────────────────────────────────────
- * Plan invariant 11, and `ninaTuningWriteSchema`'s docstring has the mechanism. There are exactly
- * two exported functions in this file and `tests/admin.tuning.test.ts` asserts the count, because
- * "add one action per dial" is the obvious-looking change that would reintroduce the stall.
+ * ── ONE ACTION, NOT SIXTEEN — AND NOW IT IS LITERALLY ONE ───────────────────────────────────
+ * Plan invariant 11, and `ninaTuningWriteSchema`'s docstring has the mechanism: Next dispatches
+ * Server Actions one at a time per client, so per-dial actions would stall behind each other.
+ * The simplify set made the count exact: `resetNinaTuningAction` is gone (the panel it served
+ * lost its staged-commit row), this file exports exactly one action, and
+ * `tests/admin.tuning.test.ts` asserts the count — "add one action per dial" remains the
+ * obvious-looking change the assertion exists to refuse.
+ *
+ * ── THE RESULT CARRIES THE ROW IT WROTE ──────────────────────────────────────────────────────
+ * The success result's `tuning` is `toTuningDraft(stored)` — the row AFTER `coerceNinaTuning`,
+ * as the database holds it. The panel adopts it through `mergeTuningAfterSave` (see
+ * `tuningModel.ts`): `coerceNinaNotes` trims and collapses, so the stored row can differ
+ * cosmetically from what was typed, and the response carries this value and the re-rendered
+ * route in one round trip anyway (`server-actions.md`, "A single response carries data and UI")
+ * — reading the row off the result is the same freshness as reading it off the prop, without
+ * having to tell "my save landed" apart from "the row changed under me". Nothing needs to tell
+ * them apart: this panel is the row's only writer, so the only way the row changes under it is
+ * this file's own save coming back.
  *
  * ── A RESULT OBJECT, NEVER A THROW ──────────────────────────────────────────────────────────
- * The panel is a `useTransition` client with plain-argument actions — the shape phase 15 set on the
- * sibling admin page and phase 16 followed. A throw from a Server Action reaches the browser as an
- * opaque digest; a sentence reaches the operator.
+ * The panel is a `useTransition` client with plain-argument actions — the shape phase 15 set on
+ * the sibling admin page. A throw from a Server Action reaches the browser as an opaque digest;
+ * a sentence reaches the operator. There is no retry button any more, so the failure sentence
+ * names the retry that exists: move any control and it commits again.
  */
 
 export interface AdminTuningResult {
   ok: boolean
   error?: string
-  /** One sentence about what was written. */
+  /**
+   * One sentence about what was written. The panel's status line is the success surface ("Saved"
+   * with no qualifier); this stays in the shape for the result-object convention and for any
+   * future caller that wants the sentence.
+   */
   note?: string
+  /**
+   * The row as stored — `toTuningDraft` over what `writeNinaTuning` returned, i.e. AFTER
+   * `coerceNinaTuning`. Present on success. The panel merges it with
+   * `mergeTuningAfterSave` so coerced values appear without clobbering edits made since
+   * dispatch.
+   */
+  tuning?: TuningDraft
 }
 
-/** Every action's catch-all. A stack trace goes to the log; a sentence goes to the admin. */
-function failed(where: string, cause: unknown): AdminTuningResult {
-  console.error(`[tune] admin tuning ${where} failed`, cause)
-  return { ok: false, error: 'The write failed and nothing was changed. Try again.' }
+/** The action's catch-all. A stack trace goes to the log; a sentence goes to the admin. */
+function failed(cause: unknown): AdminTuningResult {
+  console.error('[tune] admin tuning save failed', cause)
+  return {
+    ok: false,
+    error: 'The write failed and nothing was changed — move any control to try again.',
+  }
 }
 
 /**
@@ -68,10 +97,9 @@ function failed(where: string, cause: unknown): AdminTuningResult {
  * `dialShape` builds the Zod shape from phase 1's own key arrays — so no cast is needed anywhere
  * on this path.
  *
- * The return type is `NinaTuning`, IMPORTED from `lib/nina/tuning.ts` rather than re-declared as a
- * local shape. Phase 1 owns the tuning's fields, and a second declaration of them here is the
- * shape `lib/admin/avatars.ts` warns about: *"a constant that is agreed rather than shared is a
- * constant that will one day disagree."*
+ * The return type is `NinaTuning`, IMPORTED from `lib/nina/tuning.ts` rather than re-declared
+ * locally. A second declaration of it here is the shape `lib/admin/avatars.ts` warns about:
+ * *"a constant that is agreed rather than shared is a constant that will one day disagree."*
  */
 function toTuningWrite(input: NinaTuningWriteInput): NinaTuning {
   return {
@@ -86,7 +114,9 @@ function toTuningWrite(input: NinaTuningWriteInput): NinaTuning {
 }
 
 /**
- * Save the whole tuning. One action, one row.
+ * Save the whole tuning. One action, one row — the only write the panel has, dispatched by
+ * every control at its own commit moment (dials debounced, toggles and radios on change, notes
+ * on blur).
  *
  * The argument types are deliberately loose (`Record<string, number>`, `relationship: string`) and
  * Zod does the narrowing, which is the convention `saveSlotAction`'s `key: string` set: a Server
@@ -113,62 +143,17 @@ export async function saveNinaTuningAction(input: {
   }
 
   try {
-    /* Awaited, not fired-and-forgotten: `revalidatePath` below must re-render the page around the
-     * row this write stored, not the one it replaced. */
-    await writeNinaTuning(parsed.data.userId, toTuningWrite(parsed.data))
+    /* `writeNinaTuning` returns the whole stored `NinaTuning` — phase 1's landed contract. The
+     * row it hands back is what the database actually holds, already coerced, so the result's
+     * `tuning` is the truth rather than a hope, and the panel can adopt it without a refetch. */
+    const stored = await writeNinaTuning(parsed.data.userId, toTuningWrite(parsed.data))
     revalidatePath('/admin/personality')
     return {
       ok: true,
+      tuning: toTuningDraft(stored),
       note: 'Saved. She reads it on her very next message — there is no cache on her turn path.',
     }
   } catch (cause) {
-    return failed('save', cause)
-  }
-}
-
-/**
- * Reset every dial to `NINA_TUNING_DEFAULTS` — the behavioural rollback the plan's own Rollback
- * section names as cheaper than the code one.
- *
- * It **writes** the defaults rather than deleting the row, because a row of defaults and NO row
- * read identically: `readNinaTuning` returns `NINA_TUNING_DEFAULTS` for a user with no row, and
- * `coerceNinaTuning` maps a defaults row back to those same values. A delete would be a second
- * code path answering a question this one write already answers. Invariant 2 is what makes this a
- * real rollback instead of a gesture: the default tuning renders the prompt she shipped with,
- * character for character.
- *
- * The defaults do NOT go through Zod. They are phase 1's module constant, not client input, and
- * validating a constant against a schema derived from the same module would only assert that phase
- * 1 agrees with itself. The two records ARE spread, though — `NINA_TUNING_DEFAULTS` is frozen and
- * so are `traits` and `dials`, and `writeNinaTuning` should never be handed the singleton itself.
- */
-export async function resetNinaTuningAction(input: { userId: string }): Promise<AdminTuningResult> {
-  await requireAdmin()
-
-  const parsed = ninaTuningResetSchema.safeParse(input)
-  if (!parsed.success) {
-    return { ok: false, error: 'That is not an account this panel can reset.' }
-  }
-
-  const defaults: NinaTuning = {
-    traits: { ...NINA_TUNING_DEFAULTS.traits },
-    dials: { ...NINA_TUNING_DEFAULTS.dials },
-    /* Spread like the two records above: `NINA_ENABLED_DEFAULTS` is frozen and `writeNinaTuning`
-     * must never be handed the singleton. "Reset" turns every parameter back ON, because the Nina
-     * who shipped is the one with nothing excluded. */
-    enabled: { ...NINA_TUNING_DEFAULTS.enabled },
-    relationship: NINA_TUNING_DEFAULTS.relationship,
-    notes: NINA_TUNING_DEFAULTS.notes,
-  }
-
-  try {
-    await writeNinaTuning(parsed.data.userId, defaults)
-    revalidatePath('/admin/personality')
-    return {
-      ok: true,
-      note: 'Every dial is back at its default. She is the Nina who shipped.',
-    }
-  } catch (cause) {
-    return failed('reset', cause)
+    return failed(cause)
   }
 }

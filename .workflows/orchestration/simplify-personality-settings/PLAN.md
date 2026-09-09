@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/simplify-personality-settings`
 **Branch:** `feature/simplify-personality-settings` (base: `origin/main` @ `557a05c`)
 **Phases:** 2
-**Status:** phase 1/2 complete — phase 1 landed on `feature/simplify-personality-settings`; a phase is complete when its row in the Phases table is ticked ✅. The set is reviewed and merged as a whole. Migration `0016` is **committed, not applied** — `db:migrate` stays a post-deploy act (invariant 4).
+**Status:** complete — both phases landed on `feature/simplify-personality-settings`; a phase is complete when its row in the Phases table is ticked ✅. The set is reviewed and merged as a whole. Migration `0016` is **committed, not applied** — `db:migrate` stays a post-deploy act (invariant 4).
 **Coordinator:** —
 
 ## Why
@@ -65,7 +65,7 @@ replaced by auto-save; `resetNinaTuningAction` + `ninaTuningResetSchema` deleted
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Purge the tuning revision mechanism everywhere | R1 | `lib/nina`, `lib/db`, `lib/admin`, `app`, `components`, `tests`, `drizzle` | ~21 | — | NORMAL | `.workflows/plan/simplify-personality-settings/phase-1.md` | P1-RI-A025 | — |
-| 2 | Auto-save the Personality panel | R2 | `components/admin`, `lib/admin`, `tests` | ~8 | 1 | HARD | `.workflows/plan/simplify-personality-settings/phase-2.md` | P1-RI-A026 | — |
+| 2 ✅ | Auto-save the Personality panel | R2 | `components/admin`, `lib/admin`, `tests` | ~8 | 1 | HARD | `.workflows/plan/simplify-personality-settings/phase-2.md` | P1-RI-A026 | — |
 
 ### Phase 1 — Purge the tuning revision mechanism everywhere
 **Satisfies:** R1

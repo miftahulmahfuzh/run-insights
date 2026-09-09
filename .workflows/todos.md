@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-09
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 3
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 22
+- Completed: 23
 
 ---
 
@@ -21,16 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-RI-A026** Phase 2: Auto-save the Personality panel
-  - **Difficulty**: HARD
-  - **Type**: Refactor
-  - **Context**: Owns the `CharacterPanel` rewrite — delete Save/Discard/Reset and `confirmingReset`; sliders debounced-commit, toggles/radios immediate-commit, notes blur-commit; "Saving…/Saved" status surface replacing the "N unsaved" counter (per-row dots may remain as pending indicators); post-save canonical merge that adopts the stored row without clobbering newer local edits; delete `resetNinaTuningAction` and `ninaTuningResetSchema` (+ their tests, incl. the "exactly two actions" structural test → one); `AdminTuningResult` re-shaped for auto-save; and every prose citation that named the deleted symbols. Exit criteria: no Save/Discard/Reset control renders; every control commits by itself on its MemoryTable-rule moment through ONE whole-tuning action; the reset action, its schema and every citation that named them are gone from code; a failed save shows a sentence and the pending state; typecheck, lint, tests green.
-  - **Status**: open
-  - **Plan Set**: `SIMPLIFY_PERSONALITY_SETTINGS_PLAN.md` (phase 2 of 2)
-  - **Satisfies**: R2 — Remove the "Discard changes" and "Reset to defaults" buttons; Personality auto-saves every time a change is made.
-  - **Depends on**: `P1-RI-A025`
-  - **Plan**: `.workflows/plan/P1-RI-A026.md`
 
 - [x] **P1-RI-A022** Phase 2: A tile you can tell apart: the admin icon set
   - **Difficulty**: NORMAL
@@ -73,6 +63,23 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A026** Phase 2: Auto-save the Personality panel
+  - **Difficulty**: HARD
+  - **Type**: Refactor
+  - **Context**: Owns the `CharacterPanel` rewrite — delete Save/Discard/Reset and `confirmingReset`; sliders debounced-commit, toggles/radios immediate-commit, notes blur-commit; "Saving…/Saved" status surface replacing the "N unsaved" counter (per-row dots may remain as pending indicators); post-save canonical merge that adopts the stored row without clobbering newer local edits; delete `resetNinaTuningAction` and `ninaTuningResetSchema` (+ their tests, incl. the "exactly two actions" structural test → one); `AdminTuningResult` re-shaped for auto-save; and every prose citation that named the deleted symbols. Exit criteria: no Save/Discard/Reset control renders; every control commits by itself on its MemoryTable-rule moment through ONE whole-tuning action; the reset action, its schema and every citation that named them are gone from code; a failed save shows a sentence and the pending state; typecheck, lint, tests green.
+  - **Status**: completed
+  - **Plan Set**: `SIMPLIFY_PERSONALITY_SETTINGS_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — Remove the "Discard changes" and "Reset to defaults" buttons; Personality auto-saves every time a change is made.
+  - **Depends on**: `P1-RI-A025`
+  - **Plan**: `.workflows/plan/P1-RI-A026.md`
+  - **Completed**: 2026-09-09 10:54
+  - **Method**: /do
+  - **Files**: lib/admin/tuningModel.ts, lib/admin/tuningActions.ts, lib/admin/schema.ts, components/admin/CharacterPanel.tsx, components/admin/DialSlider.tsx, app/admin/personality/page.tsx, lib/admin/imageGenActions.ts, tests/admin.tuning.test.ts
+  - **Drift**: Prettier reformatted `components/admin/CharacterPanel.tsx` after transcription (formatting only); all 48 structural substring tests re-verified green afterwards.
+  - **Drift**: `tests/nina.jobActions.test.ts` intermittently exceeds vitest's default 5s test timeout (3-4 DB-touching cases, varying set). Measured pre-existing: fails identically on the clean base commit `155a2dc`, zero import overlap with this phase's diff, and the full suite passes 3495/3495 across 163 files at `--testTimeout=30000`. Not this phase's regression; left untouched (out of the phase's Files).
+  - **Drift**: The plan's manual browser check (drag a dial -> Saving... -> Saved; failure surface with a broken DATABASE_URL) was NOT performed: an unattended session would need an admin login against the one production database. Every behaviour it would confirm is asserted by the structural suite (commit moments, tri-state status line, failure sentence rendering, no disabled controls).
+  - **Verification**: `npm run typecheck` clean; `npm run lint` clean; full vitest 3495/3495 across 163 files at `--testTimeout=30000`; the phase plan's exit-criteria greps clean (no Save/Discard/Reset control, one whole-tuning action, the reset action/schema and every citation that named them gone); all 48 structural substring tests green after the final prettier reformat.
 
 - [x] **P1-RI-A025** Phase 1: Purge the tuning revision mechanism everywhere
   - **Difficulty**: NORMAL
