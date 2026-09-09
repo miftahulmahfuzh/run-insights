@@ -1,0 +1,1127 @@
+# Phase 2: The rail's `up` reveals the main bar
+
+**Plan set:** `SEARCH_KBD_AND_UP_BTN_PLAN.md`
+**Analysis:** `20260909-112804-K4B7_code_analyzer.md`
+**Satisfies:** R2
+**Depends on:** Phase 1
+**Difficulty:** HARD
+**Package:** `components/nina` + `components/ui` + `lib/nina`
+
+---
+
+## Goal
+
+The sidebar rail's `up` button stops being a scroll-to-top handle and becomes the chat page's bar
+toggle, verbatim: it flips the main `TabBar` between hidden and shown through ONE shared bar state
+that both it and `ChatChrome`'s own toggle read and write, with the chat page's 5 s auto-hide, its
+keyboard rule, its glyph flip, and its `aria-expanded`/`aria-controls` a11y. Because the open panel
+is an opaque `fixed inset-0 z-50` overlay, the revealed bar would be invisible behind it — so the
+panel's `bottom` gains the composer's own var-gated bar-lift term and the rail's floor zeroes while
+the bar shows, putting the bar in a reachable strip below the lifted panel.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Creates:**
+
+- `components/nina/NinaBarProvider.tsx` — new client file, the `NinaSidebarProvider` file-shape
+  precedent: provider + hook in one file. Public surface:
+  - `export function NinaBarProvider({ children }: { children: React.ReactNode })`
+  - `export function useNinaBar(): NinaBarContextValue | null` where
+    `NinaBarContextValue = { bar: NinaBarState; dispatch: (event: NinaChromeEvent) => void }`.
+    Nullable on the `useNinaSidebar` precedent. `NinaBarContextValue` itself is module-private.
+  - Resting state `'hidden'`. `dispatch` is the state machine's only door — a stable
+    `React.useCallback` that forwards the event to `nextBarState`.
+- `panelBottomCss(input: { barClearancePx: number }): string` in `lib/nina/chatview.ts` — pure,
+  returns
+  `` `calc(var(--nina-kb-overlap, 0px) + (${clearance}px + var(--safe-bottom)) * var(--nina-bar-visible, 0))` ``
+  with a non-finite/non-positive clearance contributing `0`. The clearance arrives as an argument
+  (`lib/` never imports `components/`, invariant 5).
+- Module-private `const PANEL_BOTTOM_CSS = panelBottomCss({ barClearancePx: TAB_BAR_OUTER_HEIGHT_PX })`
+  in `NinaSidebar.tsx` — the panel's constant `bottom` string.
+- Module-private `function isTextFocusInDialog(active: Element | null): boolean` in
+  `ChatChrome.tsx` — the panel-dialog half of the keyboard rule.
+- `describe('panelBottomCss')` block in `lib/nina/chatview.test.ts`; a
+  `describe('the bar provider wraps both of ITS consumers')` block in
+  `tests/nina.sidebarProvider.test.ts`.
+
+**Deletes:**
+
+- `onScrollToTop` (`components/nina/NinaSidebar.tsx:461-466` at `5ccae06`) and its doc comment.
+- `listScrollRef` (`NinaSidebar.tsx:452`) and its `ref={listScrollRef}` use on the scroll deck
+  (`:527`). Verified in this tree: its only readers are `onScrollToTop` and the deck div; phase 1
+  was forbidden from using it, and its guard reads no ref.
+- `ChatChrome`'s local bar state: `const [bar, setBar] = useState<NinaBarState>('hidden')`
+  (`ChatChrome.tsx:85`), every `setBar(...)` call, and `onToggle` (`:178-180`). `nextBarState` and
+  `type NinaBarState` leave `ChatChrome`'s import list (they move to `NinaBarProvider`);
+  `useCallback` leaves its react import.
+- The rail button's `aria-label="Ke atas"` (`NinaSidebar.tsx:653`) — replaced by the chat page's
+  English pair ("Show the main navigation" / "Hide the main navigation").
+- No config key, no var, no route.
+
+**Renames:**
+
+- `ChatChrome`'s `composerEngaged` state -> `keyboardEngaged` (setter likewise). Same boolean,
+  widened surface: a keyboard is up via the composer OR a panel-dialog text field. `lib/nina/chrome.ts`'s
+  parameter names (`composerEngaged`) are untouched — `autoHideDelayMs(bar, keyboardEngaged)` and
+  `isControlVisible(keyboardEngaged)` pass positionally.
+
+**Signature changes:** none on any existing exported symbol.
+
+**Decision spelled (the scope asked for one owner of `onToggle`):** `onToggle` is dissolved, not
+moved. The provider's `dispatch` is the machine's only door; `ChatChrome`'s toggle button and the
+rail's `up` button each call `dispatch('toggle')` directly. Nothing else may call it with any other
+event — the other two events are fired only by `ChatChrome`'s own effects (focus sync:
+`'composer-engaged'`; auto-hide timer: `'autohide'`).
+
+**Requires (from earlier phases):**
+
+- Phase 1 landed: `NinaSidebar.tsx`'s `[open]`-keyed effect (`:357-442` at `5ccae06`) contains its
+  window-scroll pin/restore and focus-arm guard, and that effect's dependency array is exactly
+  `[open]`. **Every `NinaSidebar.tsx` hunk below is quoted at `5ccae06`; phase 1 does not edit any
+  of their text, so each OLD quote below is byte-identical after phase 1 — only line numbers at or
+  after `:357` move, and they move by exactly +105 (phase 1's 191-line block replaces base
+  357-442; the anchor table in phase 1's Interface Contract maps every line). Hunk headers below
+  the effect therefore give both numbers: the line the file stands at when THIS phase starts
+  (after phase 1), and the base `5ccae06` number. Content is the anchor; the numbers are a
+  convenience.** My hunks in that file are exactly: the
+  imports block, the rail block comment, `RAIL_PAD_BOTTOM_CSS` + its docstring, the new
+  `PANEL_BOTTOM_CSS`, the component head's two added lines, the `listScrollRef`/`onScrollToTop`
+  block, the deck div's `ref`, the panel's `style` block, the rail intro comment, and the `up`
+  button. Phase 1 owns nothing in those regions.
+
+**Leaves alone (owned by others or nobody):**
+
+- `components/ui/TabBar.tsx` — consumed as-is (`#main-tab-bar`, `hidden` -> translate + inert).
+- `lib/nina/chrome.ts` — consumed as-is: `nextBarState`, `autoHideDelayMs`, `isControlVisible`,
+  `barToggleGlyph`, `CHROME_AUTOHIDE_MS`, `NINA_CHROME_CONTROL_CLASS`.
+- `components/nina/NinaSearchField.tsx`, `lib/nina/sidebar.ts`, `components/nina/ChatScreen.tsx`
+  (the ONE `visualViewport` subscription and the `--nina-kb-overlap` publisher).
+- The rail's other three cells: `>` close, `+` `NewChatButton`, the wand `<Link>` — untouched.
+- The chat page's control lane and its `controlBottomCss` geometry — untouched.
+- `NINA_BAR_VISIBLE_VAR`'s writer set — still exactly `ChatChrome`'s one effect (invariant 6).
+- Every route but `/nina`; and `/nina` with the panel closed changes only in that a bar revealed
+  from the panel keeps the chat page's own 5 s semantics after the close — identical to the chat
+  page's existing toggle behaviour.
+
+**Placement constraint the reconciler must know:** `NinaBarProvider` mounts OUTSIDE
+`NinaSidebarProvider` in `AppShell.tsx` —
+`<NinaBarProvider><NinaSidebarProvider>{shell}</NinaSidebarProvider></NinaBarProvider>`.
+`tests/nina.sidebarProvider.test.ts` asserts the regex
+`/<NinaSidebarProvider>\{shell\}<\/NinaSidebarProvider>/`, so nesting the bar provider INSIDE the
+sidebar provider breaks the suite. Outside is also the correct order: the sidebar provider keeps
+enclosing `{shell}` directly, and the bar provider gains both consumers (the panel inside
+`{children}` and `ChatChrome` as `{shell}`'s sibling).
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/nina/chatview.ts` | modify | add `panelBottomCss` (+ docstring) at the end of the file |
+| `lib/nina/chatview.test.ts` | modify | import `panelBottomCss` + `NINA_KEYBOARD_OVERLAP_VAR`; add `describe('panelBottomCss')` (5 tests) |
+| `components/nina/NinaBarProvider.tsx` | create | the shared bar state: provider + nullable hook, modelled on `NinaSidebarProvider`/`useNinaSidebar` |
+| `components/ui/AppShell.tsx` | modify | import the provider; wrap `shell` OUTSIDE `NinaSidebarProvider` on the same `screen === 'chat'` gate; one docstring section |
+| `components/nina/ChatChrome.tsx` | modify | bar state read/written through the context; `composerEngaged` -> `keyboardEngaged`; the panel-dialog focus rule; delete `onToggle` + the local `useState`; toggle button dispatches |
+| `components/nina/NinaSidebar.tsx` | modify | `up` button rewritten to the bar toggle; `PANEL_BOTTOM_CSS`; `RAIL_PAD_BOTTOM_CSS` bar gate; delete `listScrollRef`/`onScrollToTop`; imports. **Quoted at `5ccae06`, valid after phase 1 — see Interface Contract** |
+| `tests/nina.sidebarProvider.test.ts` | modify | structural guard pinning the new provider's placement (7 files in all — the 7th is the test for my own wiring, the repo's measured precedent for this exact silent failure) |
+
+## Implementation Steps
+
+### Step 1: `panelBottomCss` — the pure, var-gated panel lift
+
+**File:** `lib/nina/chatview.ts` (append after `composerPadBottomCss` — the file's last symbol,
+ending at line 374 at `5ccae06`)
+
+**Change:** add the panel's `bottom` arithmetic beside the composer's, with the same shape and the
+same two variables. The clearance is an argument, not an import (invariant 5).
+
+**Code — append at end of file:**
+
+```ts
+/**
+ * The sidebar panel's `bottom`, as a CSS length — `composerBottomCss`'s shape, one surface over.
+ *
+ * The first term is the keyboard's edge (`NINA_KEYBOARD_OVERLAP_VAR`, published by `ChatScreen`):
+ * the box fix that ends the panel at the keyboard's measured top edge, so the field typed into is
+ * inside the visible region. The second is R2's: while the bar is showing, the panel lifts by the
+ * bar's clearance PLUS the safe-bottom inset the bar pads itself by, so the revealed bar renders
+ * in its own strip BELOW the panel's bottom edge — reachable and tappable — instead of behind the
+ * panel's opaque `z-50` fill. The terms SUM: the bar's strip sits on the glass, the panel's box
+ * ends exactly at the bar's top border, and the rail rides the panel's lifted edge (its floor
+ * zeroes there — the bar carries the inset, `RAIL_PAD_BOTTOM_CSS`'s gate).
+ *
+ * ── THE INSET IS INSIDE THE MULTIPLICATION, ON `composerBottomCss`'S OWN RULE ──────────────────
+ * An inset added OUTSIDE the gate — `… * var(…, 0) + var(--safe-bottom)` — would lift the panel
+ * one inset above the keyboard's edge with the bar HIDDEN, stranding a strip of dead glass at the
+ * panel's floor on every keyboard frame: the unpainted-strip defect that function's docstring
+ * records at length, one surface over. Gating the whole sum keeps the hidden geometry byte-equal
+ * to the pre-R2 string.
+ *
+ * ── THE TWO TERMS CAN SUM, AND THAT IS CORRECT ────────────────────────────────────────────────
+ * For a frame or two the bar can be showing while a keyboard overlap is already published (the
+ * rail's tap, then a field tapped; the keyboard rule hides the bar a commit later). The panel then
+ * rides the bar's clearance ON TOP of the keyboard edge and settles when the bar hides. Additive
+ * is the honest arithmetic for two independent `:root` channels, and the transient is one frame.
+ *
+ * ── WHY THE STRING IS CONSTANT ────────────────────────────────────────────────────────────────
+ * Both gates are `var()`s read at paint time, so the returned string never changes and the caller
+ * can hold it at module level — the style attribute never re-renders, whatever the keyboard and
+ * the bar do. Absent vars substitute their zeros, which is exactly `inset-0`: the resting panel
+ * and the server's HTML agree, on `NINA_BAR_VISIBLE_VAR`'s own reasoning.
+ *
+ * A string, because that is what the style attribute takes and because `var(--safe-bottom)` is
+ * `env(safe-area-inset-bottom)`, which is readable only to CSS.
+ */
+export function panelBottomCss(input: { barClearancePx: number }): string {
+  const { barClearancePx } = input
+  const clearance =
+    Number.isFinite(barClearancePx) && barClearancePx > 0 ? Math.round(barClearancePx) : 0
+  return `calc(var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px) + (${clearance}px + var(--safe-bottom)) * var(${NINA_BAR_VISIBLE_VAR}, 0))`
+}
+```
+
+**Impact:** none by itself — no reader yet. Degenerate-input rule matches `controlBottomCss`
+(non-finite/negative clearance contributes nothing; the structure survives).
+
+### Step 2: tests for `panelBottomCss`
+
+**File:** `lib/nina/chatview.test.ts` (imports at lines 3-14; new `describe` at end of file)
+
+**Change:** two additions to the import block, and the test block after the existing
+`composerPadBottomCss` describe.
+
+**Code — replace the import block (lines 3-14) with:**
+
+```ts
+import {
+  composerBottomCss,
+  composerPadBottomCss,
+  decideAutoScroll,
+  groupIntoDays,
+  isNearBottom,
+  keyboardOverlapPx,
+  panelBottomCss,
+  KEYBOARD_MIN_PX,
+  KEYBOARD_REASSERT_DELAYS_MS,
+  NINA_BAR_VISIBLE_VAR,
+  NINA_KEYBOARD_OVERLAP_VAR,
+  STICK_TO_BOTTOM_PX,
+} from './chatview'
+```
+
+**Code — append at end of file:**
+
+```ts
+describe('panelBottomCss', () => {
+  // 40 is the tab bar's outer height, same literal as the composer blocks above.
+
+  it('is the keyboard edge alone while the bar is hidden', () => {
+    // R1's box fix, unchanged in the string: with the flag absent the whole lift term collapses to
+    // 0 and the panel ends at the keyboard's top edge exactly as before R2. The string is CONSTANT
+    // across states — the vars underneath it are what move, so no re-render is needed anywhere.
+    expect(panelBottomCss({ barClearancePx: 40 })).toBe(
+      'calc(var(--nina-kb-overlap, 0px) + (40px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+  })
+
+  it('puts the inset INSIDE the gate, not beside it', () => {
+    // composerBottomCss's regression, guarded the same way: an inset added OUTSIDE the
+    // multiplication would lift the panel one safe-bottom above the keyboard's edge with the bar
+    // hidden — a strip of dead glass at the panel's floor on every keyboard frame.
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain('(40px + var(--safe-bottom)) *')
+    expect(panelBottomCss({ barClearancePx: 40 })).not.toContain(') + var(--safe-bottom)')
+  })
+
+  it('names the two variables that are written off this screen', () => {
+    // The overlap is ChatScreen's publisher, the flag is ChatChrome's. If the emission and the
+    // constants ever disagree, the panel stops following one of them and nothing else notices.
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain(
+      `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+    )
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain(`var(${NINA_BAR_VISIBLE_VAR}, 0)`)
+  })
+
+  it('sums the bar clearance on top of the keyboard edge while both are published', () => {
+    // The transient frame: bar shown, keyboard overlap already out, the hide-on-focus a commit
+    // later. The panel rides the bar's clearance above the keyboard edge and settles when the bar
+    // hides; additive is the honest arithmetic for two independent :root channels.
+    expect(panelBottomCss({ barClearancePx: 40 })).toContain('0px) + (40px')
+  })
+
+  it('treats an unmeasurable clearance as no clearance', () => {
+    // controlBottomCss's degradation. The caller's constant is finite in practice — it is
+    // TAB_BAR_OUTER_HEIGHT_PX — but the structure must survive a degenerate input rather than
+    // emit a negative length.
+    expect(panelBottomCss({ barClearancePx: NaN })).toBe(
+      'calc(var(--nina-kb-overlap, 0px) + (0px + var(--safe-bottom)) * var(--nina-bar-visible, 0))',
+    )
+    expect(panelBottomCss({ barClearancePx: -1 })).toContain('(0px + var(--safe-bottom))')
+  })
+})
+```
+
+**Impact:** 5 new green tests; nothing existing moves.
+
+### Step 3: the shared bar state — `NinaBarProvider.tsx` (new file)
+
+**File:** `components/nina/NinaBarProvider.tsx` (create)
+
+**Code — complete file:**
+
+```tsx
+'use client'
+
+import * as React from 'react'
+
+import { nextBarState, type NinaBarState, type NinaChromeEvent } from '@/lib/nina/chrome'
+
+/**
+ * `/nina`'s bar state, shared by the two controls that move it (R2).
+ *
+ * ── WHY A PROVIDER, AND WHY MOUNTED IN `AppShell` ─────────────────────────────────────────────
+ * The bar's reveal state was `ChatChrome`'s local `useState`, and the chat page's toggle was its
+ * only writer. R2 gives the sidebar rail's `up` the same job — "persis sama dengan tombol up di
+ * chat page" — and the panel is `ChatChrome`'s SIBLING: `AppShell` renders `<main>` (the panel
+ * rides in through the page) and the chrome side by side, so no prop chain reaches from one to the
+ * other, and two local states would be two bars that can disagree. `NinaSidebarProvider` sits
+ * above both for exactly this reason — measured in production when it did not
+ * (`components/ui/AppShell.tsx`'s docstring), and `tests/nina.sidebarProvider.test.ts` is what
+ * notices if the placement regresses. Same shape of problem, same answer: one provider around the
+ * same `shell` node, and the panel's rail button and the chat toggle can never disagree because
+ * they hold one state.
+ *
+ * ── WHY ONE `dispatch` AND NOT A METHOD PER EVENT ─────────────────────────────────────────────
+ * `nextBarState` is total over `NinaChromeEvent`, and the events' names are the vocabulary the
+ * machine and its tests already use. Exposing the machine's own event — rather than `toggleBar()`
+ * / `hideBar()` wrappers — keeps every call site reading as its rule (`dispatch('autohide')`,
+ * `dispatch('composer-engaged')`) and adds no second way to say "be hidden". `'toggle'` has
+ * exactly two senders, both buttons; the other two events are `ChatChrome`'s effects'.
+ *
+ * The resting state is `'hidden'` — `/nina`'s and every screen's (invariant 7): the provider is
+ * mounted only on the chat screen, and nothing publishes `NINA_BAR_VISIBLE_VAR` until
+ * `ChatChrome`'s own effect sees `'shown'`. The rail button reading this state costs no var and
+ * no writer: the var's writer set is unchanged.
+ *
+ * ── WHY THE HOOK IS NULLABLE ─────────────────────────────────────────────────────────────────
+ * `useNinaSidebar()`'s precedent, verbatim: null outside a provider, so a consumer mounted outside
+ * its own provider degrades instead of crashing the screen. Unreachable today — `AppShell` mounts
+ * this provider around both consumers — and the structural test in
+ * `tests/nina.sidebarProvider.test.ts` is what keeps it so.
+ */
+
+interface NinaBarContextValue {
+  bar: NinaBarState
+  dispatch: (event: NinaChromeEvent) => void
+}
+
+const NinaBarContext = React.createContext<NinaBarContextValue | null>(null)
+
+/** Null outside a provider, on the `useNinaSidebar` precedent. */
+export function useNinaBar(): NinaBarContextValue | null {
+  return React.useContext(NinaBarContext)
+}
+
+export function NinaBarProvider({ children }: { children: React.ReactNode }) {
+  const [bar, setBar] = React.useState<NinaBarState>('hidden')
+
+  /**
+   * The state machine's only door. `nextBarState` decides; this only forwards the event. Stable
+   * identity, so consumers may name it in their own effect dependencies without re-subscribing.
+   */
+  const dispatch = React.useCallback(
+    (event: NinaChromeEvent) => setBar((current) => nextBarState(current, event)),
+    [],
+  )
+
+  const value = React.useMemo<NinaBarContextValue>(() => ({ bar, dispatch }), [bar, dispatch])
+
+  return <NinaBarContext.Provider value={value}>{children}</NinaBarContext.Provider>
+}
+```
+
+**Impact:** new module, no readers yet — the tree builds and tests green at this point.
+
+### Step 4: `AppShell` mounts the provider around `shell`
+
+**File:** `components/ui/AppShell.tsx` (imports at :3-7; docstring block :104-130; return :157)
+
+**Change:** import the provider, append one section to the existing "why the sidebar's provider is
+here" docstring block, and wrap `shell` with `NinaBarProvider` OUTSIDE `NinaSidebarProvider` on the
+same gate.
+
+**Code — replace lines 3-5 of the import block:**
+
+```tsx
+import { ChatChrome } from '@/components/nina/ChatChrome'
+import { NinaBarProvider } from '@/components/nina/NinaBarProvider'
+import { NinaSidebarProvider } from '@/components/nina/NinaSidebar'
+```
+
+**Code — inside the `/* ── WHY THE SIDEBAR'S PROVIDER IS HERE AND NOT IN `app/nina/page.tsx` ── */`
+block comment, append before its closing `*/` (after the `Gated on `screen === 'chat'`…` lines):**
+
+```
+   *
+   * ── R2 ADDS A SECOND PROVIDER ON THIS SEAM ─────────────────────────────────────────────────
+   * The rail's `up` — inside `{children}`, in the panel — and `ChatChrome`'s toggle now move ONE
+   * bar state (`components/nina/NinaBarProvider.tsx`), and the argument above is theirs to reuse:
+   * two controls that must not disagree hold one state, and the provider has to sit above BOTH of
+   * them. Same nesting rule as the sidebar's, so the same structural test guards it —
+   * `NinaBarProvider` wraps `NinaSidebarProvider`, which still encloses `{shell}` directly.
+```
+
+**Code — replace the return (line 157):**
+
+```tsx
+  return screen === 'chat' ? (
+    <NinaBarProvider>
+      <NinaSidebarProvider>{shell}</NinaSidebarProvider>
+    </NinaBarProvider>
+  ) : (
+    shell
+  )
+```
+
+**Impact:** `/nina`'s tree gains one client provider around the existing shell. `AppShell` stays a
+Server Component (`tests/nina.sidebarProvider.test.ts`'s `isClientModule(SHELL)` assertion holds —
+this file renders client providers already). No other screen is affected: the gate is unchanged.
+
+### Step 5: `ChatChrome` consumes the shared state, and gains the panel rule
+
+**File:** `components/nina/ChatChrome.tsx` (whole file read at `5ccae06`)
+
+**Change:** the bar state moves out; the focus sync widens to the panel's dialog; the state's name
+widens with it. The effects' timing is untouched.
+
+**Code — replace lines 3-17 (imports) with:**
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+import type * as React from 'react'
+
+import { TabBar, TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
+import { NINA_BAR_VISIBLE_VAR } from '@/lib/nina/chatview'
+import {
+  autoHideDelayMs,
+  barToggleGlyph,
+  controlBottomCss,
+  isControlVisible,
+  NINA_CHROME_CONTROL_CLASS,
+} from '@/lib/nina/chrome'
+import { useNinaBar } from './NinaBarProvider'
+import { NinaSidebarTrigger } from './NinaSidebar'
+```
+
+**Code — replace the header docstring's first two sections (lines 22-44, from
+`── WHY THE STATE IS HERE AND NOT IN \`AppShell\` OR IN \`TabBar\` ──` through the end of
+`── THE THREE THINGS THIS COMPONENT MEASURES … ──`) with:**
+
+```
+ * ── WHY THE STATE IS IN `NinaBarProvider`, NOT HERE ANY MORE (R2) ────────────────────────────
+ * This was the state's home when the chat page's toggle was its only writer. R2 gives the sidebar
+ * rail's `up` the same job — "persis sama dengan tombol up di chat page" — and the panel is this
+ * component's SIBLING: `AppShell` renders `<main>` (the panel rides in through the page) and this
+ * chrome side by side, so no prop chain joins them and two local states would be two bars that
+ * can disagree. The state moved to `components/nina/NinaBarProvider.tsx`, mounted by `AppShell`
+ * around the same `shell` node `NinaSidebarProvider` wraps — that file's docstring carries the
+ * full argument, and `tests/nina.sidebarProvider.test.ts` pins the placement.
+ *
+ * What stayed here is every EFFECT: the focus sync, the auto-hide timer and the
+ * `NINA_BAR_VISIBLE_VAR` publisher read and write through the context now, and nothing about when
+ * they fire changed. The var's writer set is unchanged — still this file, still one effect.
+ *
+ * `AppShell` has no `'use client'` and must not gain one — five server pages import it, and
+ * `tests/share.bundle.test.ts` exists because that import graph leaked a session read once
+ * already; rendering a client provider from there is a boundary, not a conversion. `TabBar` still
+ * cannot hold the state either, for the reason that is physical rather than architectural: a
+ * hidden bar is translated off screen, and a control inside it would be unreachable.
+ *
+ * ── THE PANEL'S FIELDS HIDE THE BAR TOO (R2) ─────────────────────────────────────────────────
+ * `nextBarState`'s rule is about KEYBOARDS, not about the composer — `lib/nina/chrome.ts`'s own
+ * docstring: a bar shown under a keyboard is shown and invisible. The composer was the only text
+ * surface that could raise one; the panel's search and rename fields raise the same keyboard, so
+ * they take the same event. A text field focused inside the panel's `[role="dialog"]` dispatches
+ * `'composer-engaged'` — the machine's name for "a keyboard is up", now carrying two surfaces.
+ * `focusout`'s one-task deferral is what makes the move from the panel's search field to one of
+ * its rename fields not blink the bar, exactly as it does for the textarea-to-Send move.
+ *
+ * ── THE THREE THINGS THIS COMPONENT MEASURES, AND THE FOUR IT DECIDES NOTHING ABOUT ──────────
+ * It measures `#nina-composer`'s height and whether focus sits in a keyboard-raising field — the
+ * composer's, or any text field inside the panel's dialog — and nothing else. Every rule — what
+ * either toggle does, when the timer runs, which glyph shows, where the lane sits — is a pure
+ * function in `lib/nina/chrome.ts` with a unit test, because `vitest.config.ts` runs
+ * `environment: 'node'` and a rule that lives in a component cannot be asserted in this repo at
+ * all. `lib/nina/chatview.ts`'s header is the pattern: the component measures; that decides.
+```
+
+(The `── WHY IT SUBSCRIBES TO FOCUS … ──` and `── PRE-HYDRATION ──` sections keep their existing
+text.)
+
+**Code — insert after the `COMPOSER_ID` declaration (after line 69, before `BAR_CLEARANCE_PX`'s
+docstring), a module-private helper:**
+
+```tsx
+/**
+ * Whether `activeElement` is a text field sitting inside a dialog — the sidebar panel's fields,
+ * which raise the same keyboard the composer's do and so take the same rule.
+ *
+ * The field half is `NinaSidebar`'s own focusin filter (`INPUT` / `TEXTAREA` / contenteditable),
+ * spelled twice on purpose: the panel's copy filters its own assert listener, this one filters the
+ * bar's engage rule, and a predicate over DOM types cannot live in `lib/nina/chrome.ts` — that
+ * file's signatures carry no DOM types (`chatview.ts`'s header, verbatim).
+ *
+ * The dialog half is `[role="dialog"]`: the panel is the only dialog mounted on `/nina` that
+ * contains text fields, and `closest` reads the focused element's membership without this
+ * component holding a ref into another component's DOM.
+ */
+function isTextFocusInDialog(active: Element | null): boolean {
+  if (active === null || !(active instanceof HTMLElement)) return false
+  if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA' && !active.isContentEditable) {
+    return false
+  }
+  return active.closest('[role="dialog"]') !== null
+}
+```
+
+**Code — replace the component head (lines 84-89) with:**
+
+```tsx
+export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
+  /*
+   * The bar state is the provider's (`components/nina/NinaBarProvider.tsx`). Null only outside a
+   * `NinaBarProvider`, which `AppShell` never allows — both of these are the hook's null contract,
+   * the `useNinaSidebar` precedent, not live code: this chrome would then render a bar nothing can
+   * reveal, exactly as a `ChatChrome` with no sidebar draws no `>`.
+   */
+  const ninaBar = useNinaBar()
+  const bar = ninaBar?.bar ?? 'hidden'
+  const dispatch = ninaBar?.dispatch
+  /** A keyboard is up — the composer's field, or a text field inside the open panel's dialog. */
+  const [keyboardEngaged, setKeyboardEngaged] = useState(false)
+  const [composerHeightPx, setComposerHeightPx] = useState(0)
+  /** The one deferred read below, held so it cannot fire after unmount. */
+  const focusTimer = useRef<number | null>(null)
+```
+
+**Code — replace the focus-sync effect (lines 111-141, comment + effect) with:**
+
+```tsx
+  /*
+   * Whether a keyboard is up — the composer's textarea, or a text field inside the open sidebar
+   * panel — and, when it arrives, the bar going away with it.
+   *
+   * Both are set in one place rather than deriving the second from the first in another effect,
+   * which would cost a render and put two writers on the same piece of state.
+   *
+   * `focusout` fires BEFORE focus lands, while `document.activeElement` is still `<body>`, so it is
+   * read one task later. Without that deferral, moving focus *within* the composer — the textarea
+   * to Send, which is what pressing send is — would read as a release and then as a re-engage, and
+   * the toggle would blink out and back on every send. The same deferral is what makes the move
+   * from the panel's search field to one of its rename fields not blink either.
+   */
+  useEffect(() => {
+    const sync = () => {
+      const active = document.activeElement
+      const composer = document.getElementById(COMPOSER_ID)
+      const composerEngaged = composer !== null && active !== null && composer.contains(active)
+      const keyboardEngaged = composerEngaged || isTextFocusInDialog(active)
+      setKeyboardEngaged(keyboardEngaged)
+      if (keyboardEngaged) dispatch?.('composer-engaged')
+    }
+    const onFocusIn = () => sync()
+    const onFocusOut = () => {
+      if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+      focusTimer.current = window.setTimeout(sync, 0)
+    }
+    document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('focusout', onFocusOut)
+    return () => {
+      document.removeEventListener('focusin', onFocusIn)
+      document.removeEventListener('focusout', onFocusOut)
+      if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
+    }
+  }, [dispatch])
+```
+
+**Code — replace the auto-hide effect (lines 143-155) with:**
+
+```tsx
+  /*
+   * R1's five seconds. `autoHideDelayMs` returns `null` for every state that should run no timer,
+   * so this effect is an early return rather than a condition, and the cleanup means a toggle
+   * pressed at 4.9 s restarts the clock instead of racing it. `keyboardEngaged` pauses it while a
+   * keyboard is up anywhere — including a panel field, which just hid the bar anyway.
+   */
+  useEffect(() => {
+    const delay = autoHideDelayMs(bar, keyboardEngaged)
+    if (delay === null) return
+    const id = window.setTimeout(() => {
+      dispatch?.('autohide')
+    }, delay)
+    return () => window.clearTimeout(id)
+  }, [bar, keyboardEngaged, dispatch])
+```
+
+**Code — DELETE lines 177-180 entirely: the blank line ABOVE the `onToggle` callback (177), then
+the callback (178-180). The blank line below it (old line 181) stays and becomes the one separator
+between the var-publisher effect's `}, [bar])` and `const glyph` — deleting 178-181 instead would
+leave two consecutive blank lines and fail the scoped `prettier --check`:**
+
+```tsx
+  const onToggle = useCallback(() => {
+    setBar((current) => nextBarState(current, 'toggle'))
+  }, [])
+```
+
+**Code — replace the toggle button's opening tag (lines 246-253 — through the `>` that closes the
+opening tag; the button's own comment and `<svg>` at 254-272 and the closing `</button>` keep
+their existing text unchanged):**
+
+```tsx
+          <button
+            type="button"
+            onClick={() => dispatch?.('toggle')}
+            aria-expanded={bar === 'shown'}
+            aria-controls="main-tab-bar"
+            aria-label={glyph === 'up' ? 'Show the main navigation' : 'Hide the main navigation'}
+            className={`pointer-events-auto ${NINA_CHROME_CONTROL_CLASS}`}
+          >
+```
+
+**Code — replace line 188 (`isControlVisible(composerEngaged)`) with:**
+
+```tsx
+      {isControlVisible(keyboardEngaged) && (
+```
+
+**Impact:** `ChatChrome`'s behaviour on the chat page (panel closed) is unchanged: same timer, same
+var publisher, same lane, same toggle. The one new behaviour is the panel-dialog rule, which needs
+the panel to exist. `dispatch` is stable (provider `useCallback`), so `[dispatch]` in the focus-sync
+deps never re-subscribes. The remaining `bar`/`glyph`/var-publisher/`TabBar` render code is
+untouched — `const glyph = barToggleGlyph(bar)` (line 182) keeps working against the context-backed
+`bar`.
+
+### Step 6: `NinaSidebar` — the rail's `up` becomes the bar toggle
+
+**File:** `components/nina/NinaSidebar.tsx` — **all quotes below are the file at `5ccae06`, and
+each hunk's OLD text is byte-identical after phase 1 (phase 1 edits only inside the `[open]`
+effect, base 357-442, so every hunk here is untouched by it; line numbers at/after :357 move by
+exactly +105).** Ten hunks (6a-6j), none inside the effect. Hunks 6f-6j sit below base :443, so
+their headers give the after-phase-1 line number first and the base `5ccae06` number second —
+content is the anchor, the after-phase-1 number is where the file stands when this phase starts
+(and phase 2's own earlier hunks 6b-6e shift it further as they land).
+
+**Hunk 6a — imports (replace lines 7-9 and add to the two affected lists; before the effect, so
+these line numbers are the same at base and after phase 1):**
+
+Old (lines 7-9):
+
+```tsx
+import { cn } from '@/lib/cn'
+import { KEYBOARD_REASSERT_DELAYS_MS, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
+import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
+```
+
+New:
+
+```tsx
+import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
+import { cn } from '@/lib/cn'
+import {
+  KEYBOARD_REASSERT_DELAYS_MS,
+  NINA_BAR_VISIBLE_VAR,
+  NINA_KEYBOARD_OVERLAP_VAR,
+  panelBottomCss,
+} from '@/lib/nina/chatview'
+import { barToggleGlyph, NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
+```
+
+And in the relative import block (lines 19-22), add after `import { NinaAvatar } from './NinaAvatar'`:
+
+```tsx
+import { useNinaBar } from './NinaBarProvider'
+```
+
+**Hunk 6b — the rail block comment (replace lines 203-211):**
+
+```tsx
+/*
+ * ── THE RAIL (R5) ────────────────────────────────────────────────────────────────────────────
+ * Four icon controls pinned to the panel's bottom edge: `>` (close, the chat page trigger's own
+ * chevron), `up` (the chat page's bar toggle, R2 — shared state, see the button below), `+`
+ * (`NewChatButton`, icon-only now) and the wand ("Proses foto"). They replace the two full-width
+ * rows that cost 44 px + margins each on an XS Max — the owner's III.1 — and they sit at the
+ * panel's bottom because the panel already ends at the keyboard's measured top edge (the `bottom`
+ * var below), so the rail stays reachable with the keyboard up, which the scrolling rows never
+ * were.
+ */
+```
+
+**Hunk 6c — `RAIL_PAD_BOTTOM_CSS` gains the bar gate (replace lines 213-236, docstring + value):**
+
+```tsx
+/**
+ * The rail's floor — the composer's resting floor, QUOTED, not called.
+ *
+ * `composerPadBottomCss` (lib/nina/chatview.ts) is `max(0px, var(--safe-bottom) / 2 - 3.25px)`
+ * with two gates, and both are re-spelled here in CSS for the same reason: this panel has no
+ * number to feed either function. It is `ChatScreen`'s sibling, not its descendant, and its only
+ * keyboard channel is the `--nina-kb-overlap` CSS var, a length at paint time that no `lib/`
+ * function can consume.
+ *
+ *   - the overlap gate: subtracting the var zeroes the floor whenever a keyboard is published,
+ *     which is the same branch as the function's `if (overlapPx > 0) return '0px'`. The
+ *     subtraction can never leave a residue — a published overlap is at least `KEYBOARD_MIN_PX`
+ *     (120) and the floor is at most ~26 px at any real inset.
+ *   - the bar gate: `* (1 - var(--nina-bar-visible))`, the function's own complement. This gate
+ *     used to be dropped — the panel was `z-50` OVER a bar it covered, and zeroing the floor would
+ *     have lifted the rail off the glass for no reason. R2 changes the geometry: the panel now
+ *     LIFTS above the bar (`PANEL_BOTTOM_CSS` below), the bar pads itself by the whole inset in
+ *     its own `padding-bottom`, and the rail rides the panel's lifted edge — so an ungated floor
+ *     here would pad by an inset the bar is already padding, the double-count
+ *     `controlBottomCss`'s docstring names. Zeroed, the rail's row keeps only its `py-2`, flush
+ *     against the bar's top border by the same measure the composer is.
+ *
+ * The two numbers inside the `max()` — the halving and the `3.25px` — stay
+ * `composerPadBottomCss`'s and `TabBar`'s (the captions' 21.75 px, `TAB_BAR_CONTENT_DROP_CSS`'s
+ * history). This comment is the pin: change the floor there, change it here.
+ */
+const RAIL_PAD_BOTTOM_CSS = `calc(max(0px, var(--safe-bottom) / 2 - 3.25px - var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)) * (1 - var(${NINA_BAR_VISIBLE_VAR}, 0)))`
+```
+
+**Hunk 6d — the panel's constant `bottom` (insert immediately after hunk 6c's closing `const
+RAIL_PAD_BOTTOM_CSS = …` line, before `RAIL_CONTROL_CLASS`'s docstring):**
+
+```tsx
+/**
+ * The panel's `bottom` — `panelBottomCss`'s string, held at module level because every input is a
+ * constant (`TAB_BAR_OUTER_HEIGHT_PX`, `TabBar`'s outer height, the number the composer's own
+ * clearance reads): the keyboard's edge, plus — while the bar shows — the bar's clearance and the
+ * safe-bottom the bar pads itself by, so the bar renders in a reachable strip below this panel.
+ * See the style attribute below and the function's docstring; the point of the constant is the one
+ * the old inline `bottom` made: the string never re-renders, the vars underneath it are what move.
+ */
+const PANEL_BOTTOM_CSS = panelBottomCss({ barClearancePx: TAB_BAR_OUTER_HEIGHT_PX })
+```
+
+**Hunk 6e — the component head (after line 336 `const titleId = React.useId()`, insert):**
+
+```tsx
+  /*
+   * The bar state, shared with `ChatChrome`'s toggle through `NinaBarProvider` (mounted in
+   * `AppShell` around both subtrees). Null only outside that provider — unreachable from this
+   * panel, and the hook's null contract is the `useNinaSidebar` precedent, not a live branch.
+   */
+  const ninaBar = useNinaBar()
+  const glyph = barToggleGlyph(ninaBar?.bar ?? 'hidden')
+```
+
+**Hunk 6f — delete `listScrollRef` and `onScrollToTop` (replace lines 551-571 as this phase starts;
+base `5ccae06`: 446-466. The OLD text below is base text and phase 1 leaves it byte-identical):**
+
+Old:
+
+```tsx
+  /*
+   * The list's own scroll container. The panel used to scroll itself; the rail restructure (below)
+   * pins the rail outside the scroll, so the region that scrolls is this inner div and `up` needs
+   * a handle on it. Phase 1's focus assertion is unaffected by the move: it addresses the focused
+   * element, and `scrollIntoView` walks every scrollable ancestor.
+   */
+  const listScrollRef = React.useRef<HTMLDivElement>(null)
+
+  /*
+   * `up`: the list to its top, smooth — and instant under `prefers-reduced-motion` (invariant 3:
+   * no smooth scroll survives that setting ungated). Read at TAP time, the way
+   * `MessageList`'s handler does (`components/nina/MessageList.tsx:219`), not in a listener: the
+   * setting can change while the panel is open, and a matchMedia subscription would be state this
+   * panel has no other use for.
+   */
+  const onScrollToTop = () => {
+    const el = listScrollRef.current
+    if (el === null) return
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollTo({ top: 0, behavior: reduced ? 'instant' : 'smooth' })
+  }
+```
+
+New:
+
+```tsx
+  /*
+   * The list's own scroll container is the div below (`min-h-0 flex-1 overflow-y-auto
+   * overscroll-contain`): the panel used to scroll itself, and the rail restructure pins the rail
+   * outside the scroll. It carries no ref — nothing scrolls it programmatically any more (the
+   * scroll-to-top handle is gone with R2's repurposing of `up`) — and the focus assertion in the
+   * `open`-keyed effect above addresses the focused ELEMENT, whose `scrollIntoView` walks every
+   * scrollable ancestor.
+   */
+```
+
+**Hunk 6g — the panel's `style` block (replace lines 587-620 as this phase starts; base
+`5ccae06`: 482-515. The `<div ref={panelRef} …>` opening above it is untouched):**
+
+Old (base `5ccae06` text, byte-identical after phase 1):
+
+```tsx
+      style={{
+        /*
+         * The keyboard's edge. `inset-0` pins this panel to the LAYOUT viewport, and iOS does not
+         * shrink that when the software keyboard opens — so a full-height panel runs on behind the
+         * keys and Safari's focus reveal answers by lifting the whole fixed overlay off the top of
+         * the glass ("mengangkat UI keatas", the owner's report): the search field this panel is
+         * typed into exits the screen while the keyboard holds the bottom. Ending the panel at the
+         * keyboard's measured top edge instead puts the field inside the visible region — the same
+         * fix `Composer` ships as `composerBottomCss(overlap, …)`, reached here as a `:root`
+         * custom property because the subscription that measures it lives in `ChatScreen`, this
+         * panel's sibling, not its ancestor (`NINA_BAR_VISIBLE_VAR`'s seam; the var's own docstring
+         * in `lib/nina/chatview.ts` carries the rest).
+         *
+         * An inline style rather than a Tailwind arbitrary value, because it must beat `inset-0`'s
+         * `bottom: 0` in the cascade without depending on utility sort order. The string is
+         * CONSTANT — it never re-renders, whatever the keyboard does; the var underneath it is what
+         * moves. Absent (no keyboard, Android, pre-hydration, off `/nina`) it substitutes `0px`,
+         * which is exactly `inset-0`, so the resting panel and the server's HTML never differ. And
+         * `transition-transform` is transform-only, so the edge SNAPS with the keyboard rather than
+         * lagging a transition behind it.
+         *
+         * This edge fixes the panel's BOX. The panel's SCROLL is the other half of the bug —
+         * Safari's focus reveal scrolls the panel's own `overflow-y-auto` container, which no box
+         * can unscroll — and the `focusin` listener in the `open`-keyed effect above is what
+         * corrects it, on `KEYBOARD_REASSERT_DELAYS_MS`' schedule.
+         *
+         * Since the rail (R5) this edge is ALSO the rail's floor: the rail is this panel's last
+         * flex child, so the keyboard's top edge is where the rail's own bottom padding starts —
+         * which is why the rail's floor formula reads this same var. The panel itself no longer
+         * scrolls (`overflow-y-auto` moved to the scroll region below with `overscroll-contain`);
+         * it is now the column that holds the two decks.
+         */
+        bottom: `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
+      }}
+```
+
+New:
+
+```tsx
+      style={{
+        /*
+         * The keyboard's edge, and now the bar's too. `inset-0` pins this panel to the LAYOUT
+         * viewport, and iOS does not shrink that when the software keyboard opens — so a
+         * full-height panel runs on behind the keys and Safari's focus reveal answers by lifting
+         * the whole fixed overlay off the top of the glass ("mengangkat UI keatas", the owner's
+         * report): the search field this panel is typed into exits the screen while the keyboard
+         * holds the bottom. Ending the panel at the keyboard's measured top edge instead puts the
+         * field inside the visible region — the same fix `Composer` ships as
+         * `composerBottomCss(overlap, …)`, reached here as a `:root` custom property because the
+         * subscription that measures it lives in `ChatScreen`, this panel's sibling, not its
+         * ancestor.
+         *
+         * R2 adds the second term: while the bar is showing (`--nina-bar-visible`), the panel
+         * lifts by the bar's clearance plus the safe-bottom the bar pads itself by, so the bar
+         * renders in its own reachable strip BELOW this panel's bottom edge instead of behind the
+         * panel's opaque `z-50` fill. The arithmetic is `panelBottomCss`'s
+         * (lib/nina/chatview.ts) — the composer's own var-gated shape — and `PANEL_BOTTOM_CSS`
+         * above holds the string.
+         *
+         * An inline style rather than a Tailwind arbitrary value, because it must beat `inset-0`'s
+         * `bottom: 0` in the cascade without depending on utility sort order. The string is
+         * CONSTANT — it never re-renders, whatever the keyboard and the bar do; the vars
+         * underneath it are what move. Absent (no keyboard, no bar, Android, pre-hydration, off
+         * `/nina`) both substitute their zeros, which is exactly `inset-0`, so the resting panel
+         * and the server's HTML never differ. And `transition-transform` is transform-only, so
+         * the edge SNAPS with the keyboard and with the bar rather than lagging a transition
+         * behind either — the composer's own behaviour when the bar auto-hides.
+         *
+         * This edge fixes the panel's BOX. The panel's SCROLL is the other half of the bug, and
+         * both of its channels are corrected in the `open`-keyed effect above: the delegated
+         * `focusin` listener re-asserts the focused field over the deck's reveal on
+         * `KEYBOARD_REASSERT_DELAYS_MS`' schedule, and — the channel `nearest` cannot see — a
+         * window `scroll` listener pins the root scroller to 0 while a panel text field holds
+         * focus.
+         *
+         * Since the rail (R5) this edge is ALSO the rail's floor: the rail is this panel's last
+         * flex child, so the keyboard's top edge — or the bar's, while it shows — is where the
+         * rail's own bottom padding starts, which is why `RAIL_PAD_BOTTOM_CSS` reads both vars.
+         * The panel itself no longer scrolls (`overflow-y-auto` moved to the scroll region below
+         * with `overscroll-contain`); it is now the column that holds the two decks.
+         */
+        bottom: PANEL_BOTTOM_CSS,
+      }}
+```
+
+**Hunk 6h — the scroll deck div (replace line 632 as this phase starts; base `5ccae06`: 527):**
+
+Old:
+
+```tsx
+      <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+```
+
+New:
+
+```tsx
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+```
+
+**Hunk 6i — the rail intro comment (replace lines 703-705 as this phase starts; base `5ccae06`:
+598-600):**
+
+Old:
+
+```tsx
+        The owner's list, in his order: `>` closes, `up` returns the list to its top, `+` starts a
+        chat, the wand opens "Proses foto". Two full-width rows bought this — they cost 44 px plus
+        margins each on the small glass and the list behind them paid for it.
+```
+
+New:
+
+```tsx
+        The owner's list, in his order: `>` closes, `up` toggles the main bar (R2 — the chat page's
+        own reveal, shared state), `+` starts a chat, the wand opens "Proses foto". Two full-width
+        rows bought this — they cost 44 px plus margins each on the small glass and the list behind
+        them paid for it.
+```
+
+**Hunk 6j — the `up` button (replace lines 750-770 as this phase starts; base `5ccae06`:
+645-665):**
+
+Old:
+
+```tsx
+          {/*
+            `up` — ChatChrome's toggle chevron (`M6 14l6-6 6 6`, strokeWidth 2.4), the second of the
+            two controls the owner cited. Scrolls the list's own container (not the page — the
+            panel covers it) to its top; smooth, instant under reduced motion (see onScrollToTop).
+          */}
+          <button
+            type="button"
+            onClick={onScrollToTop}
+            aria-label="Ke atas"
+            className={RAIL_CONTROL_CLASS}
+          >
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+              <path
+                d="M6 14l6-6 6 6"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+```
+
+New:
+
+```tsx
+          {/*
+            `up` — the chat page toggle's own control, doing the chat page's job from the panel: it
+            toggles the MAIN app TabBar through the same shared state ChatChrome's toggle writes
+            (`NinaBarProvider`, mounted in `AppShell` around both subtrees). The semantics are the
+            chat page's verbatim: `nextBarState(current, 'toggle')` inside the provider's
+            `dispatch`, the 5 s auto-hide and the keyboard rule are `ChatChrome`'s effects and fire
+            on this state whatever wrote it; the glyph is `barToggleGlyph`'s two chevrons
+            (`M6 14l6-6 6 6` / `M6 10l6 6 6-6`, strokeWidth 2.4) at this rail's `size-5`;
+            `aria-expanded` + `aria-controls="main-tab-bar"` and the chat page's English labels
+            make the single control honest to a screen reader.
+
+            It REPLACED the scroll-to-top tap handle: the list is the panel's whole height and its
+            top is its first row, so the handle bought nothing the list's own gesture didn't.
+            `listScrollRef` and `onScrollToTop` are gone with it — nothing scrolls the deck
+            programmatically now.
+
+            `ninaBar` is null only outside a `NinaBarProvider`, which is unreachable from this
+            panel: `AppShell` mounts the provider around the same `shell` node that carries both
+            consumers (the sidebar provider's own measured precedent, and
+            `tests/nina.sidebarProvider.test.ts`'s structural guard). The optional chain is the
+            hook's null contract, not a live branch.
+          */}
+          <button
+            type="button"
+            onClick={() => ninaBar?.dispatch('toggle')}
+            aria-expanded={ninaBar?.bar === 'shown'}
+            aria-controls="main-tab-bar"
+            aria-label={glyph === 'up' ? 'Show the main navigation' : 'Hide the main navigation'}
+            className={RAIL_CONTROL_CLASS}
+          >
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden="true">
+              <path
+                d={glyph === 'up' ? 'M6 14l6-6 6 6' : 'M6 10l6 6 6-6'}
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+```
+
+**Impact:** the rail keeps four cells and its skin (`RAIL_CONTROL_CLASS`, `size-5`, 2.4 weight).
+`>` close, `+` `NewChatButton` and the wand `<Link>` are byte-untouched. The keyboard-overlap half
+of the panel's `bottom` string is identical to today's when the bar is hidden, so the R1 box fix is
+unchanged until the bar shows. Removing the deck's ref changes no behaviour — the div and its
+classes stay.
+
+### Step 7: the structural guard for the new provider's placement
+
+**File:** `tests/nina.sidebarProvider.test.ts` (const block at :36-40; insert the new `describe`
+after the `describe('the sidebar provider wraps both of its consumers', …)` block, which ends at
+line 81 — between it and the `a search hit leaves the panel by navigation alone` describe at
+:105)
+
+**Change:** the same production bug this file exists for is now reachable a second way — a
+misplaced `NinaBarProvider` would leave both consumers on their null branch and the rail's `up`
+would tap without effect while every unit test stays green. Pin the placement structurally, as the
+sidebar's was pinned.
+
+**Code — add to the const block (after line 40 `const FIELD = 'components/nina/NinaSearchField.tsx'`):**
+
+```ts
+const BAR_PROVIDER = 'components/nina/NinaBarProvider.tsx'
+```
+
+**Code — new describe block:**
+
+```ts
+describe('the bar provider wraps both of ITS consumers', () => {
+  it('NinaBarProvider exists and exposes the nullable hook', () => {
+    const provider = readRepoCode(BAR_PROVIDER)
+    expect(provider).toContain('export function NinaBarProvider')
+    expect(provider).toContain('export function useNinaBar')
+    expect(provider).toContain('NinaBarContextValue | null')
+  })
+
+  it('AppShell mounts it around the same shell node the sidebar provider wraps', () => {
+    const shell = readRepoCode(SHELL)
+    // The rail's `up` (inside {children}, in the panel) and ChatChrome's toggle (the chrome
+    // sibling) must read ONE bar state. Measured in production for the sidebar provider: a
+    // consumer mounted outside its own provider takes its null branch and the control silently
+    // does nothing — every unit test green, a dead button in the hand. Placement is the bug this
+    // file exists for. The bar provider sits OUTSIDE so the sidebar provider keeps enclosing
+    // `{shell}` directly, which this file's first describe pins.
+    expect(shell).toMatch(/<NinaBarProvider>\s*<NinaSidebarProvider>\{shell\}/)
+  })
+
+  it('both consumers read the shared state through the hook', () => {
+    expect(readRepoCode(CHROME)).toContain('useNinaBar()')
+    expect(readRepoCode(SIDEBAR)).toContain('useNinaBar()')
+  })
+})
+```
+
+**Impact:** 3 new green tests; the existing describes are untouched and keep passing (the placement
+regex from step 4 satisfies this file's existing
+`/<NinaSidebarProvider>\{shell\}<\/NinaSidebarProvider>/` assertion).
+
+## Verification
+
+**Build:**
+
+```
+npm run typecheck
+npm run build
+```
+
+**Tests:**
+
+```
+npm run test
+```
+
+Base-green rule (index invariant 1): reproduce the base first — the known red is exactly the 4
+pre-existing load-dependent timeouts in `tests/nina.jobActions.test.ts`; count nothing else against
+this phase. The new blocks (`lib/nina/chatview.test.ts`'s `panelBottomCss`,
+`tests/nina.sidebarProvider.test.ts`'s bar-provider describe) must be green, and
+`lib/nina/chrome.test.ts` + the existing sidebar-provider describes must be untouched-green.
+
+**Prettier (scoped, never repo-wide):**
+
+```
+npx prettier --check components/nina/NinaBarProvider.tsx components/nina/NinaSidebar.tsx components/nina/ChatChrome.tsx components/ui/AppShell.tsx lib/nina/chatview.ts lib/nina/chatview.test.ts tests/nina.sidebarProvider.test.ts
+```
+
+**Structural greps — invariants 2, 3, 6:**
+
+```
+# invariant 2 — no visualViewport READER in either of this phase's files (the index counts readers,
+# not mentions: the bare word already sits in NinaSidebar's doc comment at base and stays there)
+grep -rn 'window\.visualViewport\|visualViewport\.' components/nina/NinaSidebar.tsx components/nina/NinaBarProvider.tsx
+#   -> no output. And the ONE subscription is still ChatScreen's:
+grep -c 'window\.visualViewport' components/nina/ChatScreen.tsx   # -> 1
+
+# invariant 3 — the [open] effect's dependency array is still exactly [open] (nothing in this file grew a dep)
+grep -nE '\}, \[' components/nina/NinaSidebar.tsx
+#   -> exactly: the pushedRef effect's `}, [open])`, the panel effect's `}, [open])`, and `}, [sidebar])`
+
+# invariant 6 — ONE writer on the bar var, still ChatChrome's own effect; the machine has one importer
+grep -rn "setProperty(NINA_BAR_VISIBLE_VAR" components/   # -> exactly one hit: ChatChrome.tsx
+# the machine is IMPORTED in exactly one component — the provider. ChatChrome's new docstring and
+# the rail button's comment mention `nextBarState` in prose, which is fine; a second import, or a
+# direct call outside the provider, is what breaks the one-door rule:
+grep -rn "nextBarState" components/ | grep 'import'
+#   -> exactly one line: NinaBarProvider.tsx's `import { nextBarState, … } from '@/lib/nina/chrome'`
+grep -n "dispatch" components/nina/NinaSidebar.tsx components/nina/ChatChrome.tsx
+#   -> the buttons' dispatch calls only (NinaSidebar: ninaBar?.dispatch('toggle');
+#      ChatChrome: dispatch?.('toggle' | 'autohide' | 'composer-engaged')) — no setBar, no nextBarState call
+```
+
+**Manual check (on device — the XS Max is the design target; a desktop viewport cannot answer
+this):** with the sidebar open from a chat,
+
+1. tap `up` -> the main TabBar slides up into a strip BELOW the panel's bottom edge; the panel and
+   its rail lift above it; the bar's tabs are tappable.
+2. wait 5 s -> the bar auto-hides (slides down); the panel settles back onto the glass. The
+   panel's edge snap is instant — the composer's own behaviour when the bar auto-hides; the BAR
+   keeps its existing 200 ms translate.
+3. tap `up`, then tap it again quickly -> the second tap hides the bar immediately; the chevron
+   flips up/down with the state, and VoiceOver announces "Show the main navigation" / "Hide the
+   main navigation" with `aria-expanded` and `aria-controls="main-tab-bar"`.
+4. tap `up`, then tap the search field -> the keyboard rises, the bar hides, and the panel ends at
+   the keyboard's top edge (this rides on R1's own fix — the two var-gated terms compose).
+5. tap a tab in the revealed bar -> navigation happens and the panel closes with it (the hit route
+   carries no `?sidebar=1`); back on `/nina` the bar is hidden at rest and no `--nina-bar-visible`
+   leaks (the publisher's cleanup).
+6. close the panel with `>` while the bar is shown -> the bar keeps the chat page's own 5 s
+   semantics, exactly as if the chat page's toggle had been pressed.
+7. the other three rail cells are unchanged: `>` closes, `+` starts a chat, the wand navigates to
+   `/nina/jobs`.
+8. the chat page's own toggle still works: close the panel, tap `^` -> the bar slides up over the
+   composer with the same 5 s auto-hide — now reading the same state the rail wrote.
+
+**Exit criteria:** rail `up` toggles the bar with chat-page semantics (5 s auto-hide, glyph flip,
+`aria-expanded`/`aria-controls`, hide on panel-field focus); the bar renders in a reachable strip
+below the lifted panel; the chat page's toggle works off the same state; typecheck/build/suite
+green; `panelBottomCss` covered in `chatview.test.ts`; invariant greps 2/3/6 hold.
+
+## Handoffs
+
+- **Phase 1:** none needed — its guard block inside the `[open]` effect is quoted nowhere in this
+  plan and is untouched; my `NinaSidebar.tsx` hunks are all outside base `:357-442` (after phase 1,
+  outside the shifted `357-547`), and their old text is byte-identical in both states.
+- **Nobody:** the scroll deck keeps its `overflow-y-auto overscroll-contain` and its structural
+  comment now states it carries no ref. If a future requirement wants a programmatic scroll
+  handle, it re-adds a ref then; this phase does not keep a dead one.
+- Accepted at reconciliation: this phase touches 7 files — the 7th is
+  `tests/nina.sidebarProvider.test.ts`, carrying the structural test for the placement step 4
+  performs (the repo's measured precedent: provider misplacement is invisible to every other
+  gate). The index's phase row and rollback section now say 7.
+
+## Rollback
+
+Revert the six existing files and delete the new one — but restore `NinaSidebar.tsx` from its
+**phase-1-complete** state, not from `5ccae06` (a checkout from `5ccae06` would silently drop
+phase 1):
+
+```
+rm components/nina/NinaBarProvider.tsx
+git checkout HEAD -- components/ui/AppShell.tsx components/nina/ChatChrome.tsx lib/nina/chatview.ts lib/nina/chatview.test.ts tests/nina.sidebarProvider.test.ts
+# NinaSidebar.tsx: undo exactly hunks 6a-6j (re-add listScrollRef/onScrollToTop, restore the old
+# up button, the old style block, RAIL_PAD_BOTTOM_CSS without the bar gate, the old imports) while
+# leaving phase 1's effect intact — in practice: git revert of this phase's commit, which is
+# hunk-scoped and touches none of phase 1's lines.
+```
+
+No schema, no data, no route, no var rename — the bar state's move back into `ChatChrome` is a pure
+refactor reversal and `NINA_BAR_VISIBLE_VAR`'s publisher set and readers return to today's shape.
