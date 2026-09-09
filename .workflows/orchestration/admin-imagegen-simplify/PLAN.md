@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/run-insights/.claude/worktrees/admin-imagegen-simplify`
 **Branch:** `worktree-admin-imagegen-simplify` (base: `origin/main` @ `8652e42`)
 **Phases:** 3
-**Status:** planned
+**Status:** phase 1/3 complete — phase 1 landed on `worktree-admin-imagegen-simplify`; a phase is complete when its row in the Phases table is ticked ✅. The set is reviewed and merged as a whole. No migration yet — phase 2's `0017` is committed then applied post-deploy (invariant 7).
 **Coordinator:** orch-admin-imagegen-simplify
 
 ---
@@ -72,9 +72,9 @@ auto-save; read as precedent, not edited). `nina_tuning`'s revision is already g
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Auto-save panel: the Personality commit pipeline, buttons removed | R2 | `components/admin` + `lib/admin` | 5 | — | HARD | `.workflows/plan/admin-imagegen-simplify/phase-1.md` | — | — |
-| 2 | Revision purge: the counter leaves frontend, backend, and database | R1 | `lib` + `app` + `drizzle` | 15 | 1 | NORMAL | `.workflows/plan/admin-imagegen-simplify/phase-2.md` | — | — |
-| 3 | Focus on: the redundant hint under each option | R3 | `components/admin` + `lib` | 5 | 2 | EASY | `.workflows/plan/admin-imagegen-simplify/phase-3.md` | — | — |
+| 1 ✅ | Auto-save panel: the Personality commit pipeline, buttons removed | R2 | `components/admin` + `lib/admin` | 5 | — | HARD | `.workflows/plan/admin-imagegen-simplify/phase-1.md` | P1-RI-A028 | — |
+| 2 | Revision purge: the counter leaves frontend, backend, and database | R1 | `lib` + `app` + `drizzle` | 15 | 1 | NORMAL | `.workflows/plan/admin-imagegen-simplify/phase-2.md` | P1-RI-A029 | — |
+| 3 | Focus on: the redundant hint under each option | R3 | `components/admin` + `lib` | 5 | 2 | EASY | `.workflows/plan/admin-imagegen-simplify/phase-3.md` | P1-RI-A031 | — |
 
 ### Phase 1 — Auto-save panel: the Personality commit pipeline, buttons removed
 **Satisfies:** R2

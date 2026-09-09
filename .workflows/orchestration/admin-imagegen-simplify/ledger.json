@@ -1,0 +1,68 @@
+{
+  "branch": "worktree-admin-imagegen-simplify",
+  "coordinator": "orch-admin-imagegen-simplify",
+  "coordinator_session_id": "a2a78f17-6fb7-498b-8cc8-b43241a9b279",
+  "created": "2026-09-09T09:41:45+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "a237cc0",
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": "auto-save panel landed, buttons+reset action+reset schema gone, suite 3547/3547. Decision: plan S4's header quote named the three removed button labels and would fail S5f's raw-file label pin (byte-mirrors the shipped tuning pin) \u2014 header citation reworded to keep only the operative Indonesian half; import block placed in repo sorted order. Phase 2 note: the retired-resync header paragraph S7(b) re-anchors is INTACT in the landed file; only the R2-citation sentence differs from the plan's quote.",
+      "package": "components/admin` + `lib/admin",
+      "plan": ".workflows/plan/admin-imagegen-simplify/phase-1.md",
+      "reported_at": "2026-09-09T10:14:47+00:00",
+      "satisfies": [
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P1-RI-A028",
+      "title": "Auto-save panel: the Personality commit pipeline, buttons removed"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib` + `app` + `drizzle",
+      "plan": ".workflows/plan/admin-imagegen-simplify/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Revision purge: the counter leaves frontend, backend, and database"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        2
+      ],
+      "difficulty": "EASY",
+      "n": 3,
+      "note": null,
+      "package": "components/admin` + `lib",
+      "plan": ".workflows/plan/admin-imagegen-simplify/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Focus on: the redundant hint under each option"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/admin-imagegen-simplify/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "admin-imagegen-simplify",
+  "updated": "2026-09-09T10:15:47+00:00",
+  "worktree": "/home/miftah/run-insights/.claude/worktrees/admin-imagegen-simplify"
+}
