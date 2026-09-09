@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/admin-bottom-bar-icons`
 **Branch:** `feature/admin-bottom-bar-icons` (base: `origin/main` @ `18b0c58`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete — 1/1 phases landed on `feature/admin-bottom-bar-icons`; a phase is complete when its row in the Phases table is ticked ✅; the set is reviewed and merged as a whole
 **Coordinator:** —
 
 ## Why
@@ -54,7 +54,7 @@ verified); any new npm dependency.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Icon-only one-row bottom bar | R1, R2, R3 | admin shell | 5 | — | NORMAL | `.workflows/plan/admin-bottom-bar-icons/phase-1.md` | — | — |
+| 1 ✅ | Icon-only one-row bottom bar | R1, R2, R3 | admin shell | 5 | — | NORMAL | `.workflows/plan/admin-bottom-bar-icons/phase-1.md` | P1-CA-A004 | — |
 
 ### Phase 1 — Icon-only one-row bottom bar
 **Satisfies:** R1, R2, R3

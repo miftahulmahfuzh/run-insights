@@ -376,10 +376,11 @@ function Row({
         {/*
          * A `<select>` and not a checkbox, for two reasons that both come from files in this
          * directory. `CELL_CONTROL` gives it the 44 px target and the 16 px font for free, where a
-         * checkbox would need both bolted on; and `docs/design-brief.md`'s *"a plain-text link,
-         * never an icon button — unambiguous at a glance and an icon is a guess"* is the stance
-         * `AdminNav` cites for refusing glyphs. "on" and "off" are two words that cannot be
-         * misread. It saves on CHANGE, because a select's change IS the finished edit.
+         * checkbox would need both bolted on; and "on" and "off" are two words that cannot be
+         * misread. `AdminNav`'s phone bar went icon-only in `admin-bottom-bar-icons` — seven cells
+         * on 414 px stopped fitting words — which is the inverse of this cell: two words fit, and
+         * a glyph here would be the guess. It saves on CHANGE, because a select's change IS the
+         * finished edit.
          */}
         <select
           aria-label="On or off"

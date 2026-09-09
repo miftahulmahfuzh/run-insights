@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-08 (tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar; previously task `P1-ADM-A001`, phase 3 of the nina-emoji-shortcuts set — `ShortcutTable` and `/admin/shortcuts`, and `AdminNav` grew a sixth cell)
+**Last Updated**: 2026-09-09 (task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
 
 ## Overview
 
@@ -15,7 +15,7 @@ Most of it is `'use client'`, but **not all of it, and the exceptions are delibe
 highlighting, and `usePathname()` would make an entire sidebar client-rendered to bold one word — so
 selection is expressed in the URL instead. In `UserPicker` it is also conveyed with `aria-current`;
 `AdminNav` sets no such attribute, which is the honest reading of "no active-link highlighting" —
-it renders six plain links and marks none of them. `CircleFrame` holds no state and imports only
+it renders seven plain links and marks none of them. `CircleFrame` holds no state and imports only
 pure modules, so it renders on the server *and* compiles into the client graph of whichever client
 component imports it.
 
@@ -33,8 +33,8 @@ is the rails-and-canvas layout it always was, at the same widths.
 
 There **is** a bottom bar below `lg`, and it is `AdminNav` — not `components/ui/TabBar.tsx`. The
 distinction is worth a sentence because the two now look alike and are not: `TabBar` is the
-runner's four-tab navigation inside `AppShell`'s 470 px column; `AdminNav` is this package's own
-six-cell `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
+runner's five-tab navigation inside `AppShell`'s 470 px column; `AdminNav` is this package's own
+seven-cell icon-only `fixed bottom-0 h-14 z-30 border-t` bar, still a Server Component, still with no
 active-link highlighting. There is no `AppShell` and no 470 px column here. Tokens are still
 borrowed from the app's design system rather than re-invented.
 
@@ -94,7 +94,7 @@ and are unit-tested there.
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
 | `ChatPhotoGrid.tsx` | `'use client'` | `/admin/photos` — every photo Nina has put in the conversation, as one flat collection: one folder line, one grid, no tree. Borrows the breadcrumb look, imports nothing from `explorer/`. |
 | `ChatPhotoDetail.tsx` | `'use client'` | One chat photo in full. `SelectionPane`'s shape, not its content — and it *does* print `description` and `prompt`, which the album deliberately does not. |
-| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed **seven-cell** bottom bar below `lg` — a `grid-cols-4 grid-rows-2` grid at `h-28`, i.e. two rows of 56 px, so the cell keeps its height and gains width — and the sticky left rail at `lg`. Overview · Album · Persona · Images · Photos · Memory · Shortcut on a phone; the long labels at `lg`. It went multi-row because seven single-row cells are 59.1 px wide, whose content box is exactly the eight characters the label ceiling allows; `app/admin/layout.tsx`'s `pb-[calc(8rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. No active-link highlighting, on purpose. |
+| `AdminNav.tsx` | **no directive** | The `/admin` nav: a fixed **seven-cell** bottom bar below `lg` — `grid-cols-7` at `h-14`, one row of seven 56 px-tall icon cells — and the sticky left text rail at `lg`. Seven inlined Lucide glyphs (`layout-dashboard` · `images` · `smile` · `wand-sparkles` · `camera` · `brain` · `zap`) on a phone, each link named by its sr-only `short` string; the long labels at `lg`. It went icon-only because the owner asked for it (*"replace semua text pada bottom bar menjadi icon"*), overturning the plain-text stance this row used to carry — seven label cells at 59.1 px never fit one row, seven 24 px glyphs do; `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. No active-link highlighting, on purpose. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — the trigger registry as one table. `MemoryTable`'s mechanics with different columns: blur-to-save cells, optimistic delete, no confirmation. |
 | `ImageGenPanel.tsx` | `'use client'` | `/admin/image-generation` — the whole content of that route: the prompt-length `DialSlider`, six focus checkboxes, four free-text fields, the mounted photo-reference picker and test panel, and a **pure** prompt preview built by the real `buildNinaImagePrompt`. One `useTransition`, **one save for all eleven controls** (plan invariant 7), one reset, dirty state. |
 | `PhotoReferencePicker.tsx` | `'use client'` | The reference grid: Nina's album and her chat photographs as one caption-less, gapless, square-tile collection in the iOS Photos idiom — no filename, no date, no set label on any tile. Single selection, `aria-pressed`, reveal-by-48, `loading="lazy"`. It cannot announce which set a tile came from, because `PhotoReferenceItem` carries no provenance field to announce. |
@@ -797,8 +797,9 @@ the row is gone and nothing manufactures it again. `row.enabled` deliberately ha
 `<select>` renders the prop and the server's answer is what changes it, so a refused toggle never
 flashes "on". It is a `<select>` and not a checkbox for two reasons from this directory:
 `CELL_CONTROL` gives it the 44 px target and the 16 px font for free, and "on"/"off" are two words
-that cannot be misread where `docs/design-brief.md` calls an icon a guess. It saves on **change**,
-because a select's change IS the finished edit.
+that cannot be misread — the case `admin-bottom-bar-icons` overturned for the PHONE BAR, where
+seven cells stopped fitting words, is the inverse of this one, where two words fit and a glyph
+would be the guess. It saves on **change**, because a select's change IS the finished edit.
 
 **There is no confirmation anywhere.** The `✕` deletes on the first click. Invariant 6 and the
 owner's own sentence, and `tests/admin.shortcuts.test.ts` asserts the absence of every dialog and
@@ -827,8 +828,10 @@ shorter, which is why the height did not move for the fifth cell either. The 8-c
 ceiling in `tests/admin.shell.test.ts` was **not loosened**: 414 px over six cells is 69 px, a
 61 px content box, and eight characters of Poppins semibold at 11 px measure ≈ 51 px. `Shortcut` is
 the singular on purpose — the plural is nine characters — and it is the only pair here whose two
-strings differ by grammatical number rather than by word. A seventh route is 59 px a cell and does
-not fit eight characters; that is what the next person to add one is spending.
+strings differ by grammatical number rather than by word. The "a seventh route is 59 px a cell and
+does not fit eight characters" arithmetic held until `admin-bottom-bar-icons` took the words off
+the bar: the seventh route landed as a 24 px glyph in that 59 px cell, the ceiling retired with the
+text it measured, and `short` became the sr-only accessible name each glyph carries.
 
 `UserPicker` gained exactly one optional, defaulted prop, `basePath = '/admin/memory'`, and no
 existing call site was edited. It is a prop and not a `usePathname()` read for the rule this package
@@ -959,8 +962,9 @@ here.
 
 What two suites do instead is read a file in this directory **as text**, to hold a property no pure
 function can carry. `tests/admin.shell.test.ts` reads `AdminNav.tsx` for the bottom bar's
-`grid h-14 w-full max-w-[470px] grid-cols-6` row, the `h-14`/layout-padding pair, and the
-8-character `short` ceiling. `tests/admin.shortcuts.test.ts` reads `ShortcutTable.tsx` for two
+`grid h-14 w-full max-w-[470px] grid-cols-7` row, the `h-14`/layout-padding pair, the sr-only
+accessible names, and the seven distinct inlined glyphs. `tests/admin.shortcuts.test.ts` reads
+`ShortcutTable.tsx` for two
 absences: that it names no `@/lib/nina/` and no `server-only` specifier, and that no dialog or
 second-click API appears anywhere in it. Both are guards against a future edit rather than tests of
 behaviour — which is why the docstrings in those two files are written never to *spell* the
@@ -1191,10 +1195,12 @@ down the string.
   stray select-all-and-tab must not destroy a shortcut when the delete control is four columns away.
 - **Do not make the on/off `<select>` optimistic.** Only the delete is. A draft on `row.enabled`
   would show "on" for a row the write is about to refuse.
-- **Do not loosen the 8-character `short` ceiling to fit a seventh nav route.** Six cells is 69 px
-  and a 61 px content box; a seventh is 59 px and does not fit eight characters. The height is not
-  the lever — more cells make the row narrower, not shorter — and `h-14` is paired with
-  `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` in a test.
+- **Do not put words back in a phone nav cell.** The one-row bar is what icons bought
+  (`admin-bottom-bar-icons`: seven 59.1 px cells, each a 24 px glyph with its sr-only `short` as
+  the accessible name); an eighth route widens to `grid-cols-8` (51.8 px a cell, still past the
+  44 pt target) rather than reopening the two-row text layout — and if the row count ever does
+  change, `h-14` is paired with `app/admin/layout.tsx`'s
+  `pb-[calc(5rem+var(--safe-bottom))]` in a test, and both move together.
 
 ## Notes
 

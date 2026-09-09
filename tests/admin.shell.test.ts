@@ -114,36 +114,64 @@ describe('the admin nav', () => {
     }
   })
 
-  it('carries a phone label short enough for its cell', () => {
-    // Two sets each added a route independently -- image-generation and shortcuts -- so the bar
-    // went five -> seven in one merge. It is a 4x2 grid below `lg`, so a cell is 414 / 4 = 103.5px.
-    // The 8-character ceiling is KEPT, and the arithmetic is why -- this is the six-across table
-    // from `main` re-run for the shape that actually shipped:
-    //
-    //   cell           414 / 4            = 103.5px
-    //   content box    103.5 - px-1 (4+4) =  95.5px
-    //   8 characters   Poppins semibold, text-[11px], ~6.4px/char measured on the existing
-    //                  "Overview" cell    =  ~51.0px
-    //   slack                             =  ~44.5px
-    //
-    // Seven ACROSS was the alternative and it does not fit: 59.1px a cell, 51.1px of content box,
-    // exactly the width of the eight characters, which is what `main`'s six-across comment costed
-    // in advance. It would have forced the ceiling to 7 and the rewording of Overview and
-    // Shortcut; 4x2 keeps every label and leaves ~44px of slack instead of ~0.
-    //
-    // NOTE THE AXIS: `docs/design-brief.md`'s 44pt minimum is a HEIGHT rule, and `h-14` satisfied
-    // it at six across -- more cells make a row narrower per cell, never shorter. Width ran out,
-    // not height. `the bar and the padding that clears it` below asserts the grid really is 4x2.
-    // All seven clear the ceiling: Overview 8, Album 5, Persona 7, Images 6, Photos 6, Memory 6,
-    // Shortcut 8.
-    // `m[1]!` per `tests/tabbar.geometry.test.ts:86`, the sibling guard this file borrows its
-    // shape from: a capture group that matched is a string, and `noUncheckedIndexedAccess`
-    // cannot see that.
+  it('carries one non-empty short string per cell: the accessible names', () => {
+    /*
+     * `admin-bottom-bar-icons` R2 took the words off the bar, so `short` stopped being rendered
+     * text and became each link's sr-only accessible name -- the string VoiceOver announces where
+     * the glyph is `aria-hidden` decor. The 8-character CELL ceiling this test used to hold is
+     * retired with the text it measured: it existed because 414px / 7 = 59.1px was a 51.1px
+     * content box, the exact width of eight characters of Poppins semibold at 11px -- and a glyph
+     * has no character count. What the new role still needs caught: seven entries, one per cell
+     * (counted against the grid in `the bar and the padding that clears it`), and non-empty -- an
+     * empty accessible name is worse than none, announced as "link" with nothing after it.
+     *
+     * `m[1]!` per `tests/tabbar.geometry.test.ts:86`, the sibling guard this file borrows its
+     * shape from: a capture group that matched is a string, and `noUncheckedIndexedAccess`
+     * cannot see that.
+     */
     const shorts = [...adminNav.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
     expect(shorts).toHaveLength(7)
     for (const short of shorts) {
-      expect(short.length, `"${short}" will not fit a nav cell`).toBeLessThanOrEqual(8)
+      expect(short.length, `"${short}" is an empty accessible name`).toBeGreaterThan(0)
     }
+  })
+
+  it('renders every phone cell as one aria-hidden glyph plus one sr-only name', () => {
+    /*
+     * R2's shape, held per cell: the glyph is decoration (`aria-hidden`), the `<span>` is the
+     * name. The svgs are counted by OPEN TAG (`<svg` up to the first `>`), not by the substring
+     * "svg", so a comment saying the word cannot satisfy the count. The span is matched as source
+     * because its classes are a literal but its content is JSX -- `classNames()` joins only the
+     * `className="..."` literals and cannot carry the `{link.short}` part.
+     *
+     * The span is ONE template, not seven literals: the cell lives inside `LINKS.map()`, so the
+     * source spells the sr-only name once and the seven rendered names are that template times
+     * the seven `short` strings -- counted, and held non-empty, in the accessible-names `it`
+     * above. `toHaveLength(1)` is therefore the exact-fit form here: two spans would mean a
+     * second cell template somewhere, zero means the bar lost its names.
+     */
+    const svgTags = [...adminNav.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
+    expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(7)
+    for (const tag of svgTags) {
+      expect(tag, 'a glyph is not aria-hidden decor').toContain('aria-hidden="true"')
+    }
+    const names = [
+      ...adminNav.matchAll(/<span className="sr-only lg:hidden">\{link\.short\}<\/span>/g),
+    ]
+    expect(names, 'the cell template lost its sr-only accessible-name span').toHaveLength(1)
+  })
+
+  it('inlines seven DISTINCT glyphs', () => {
+    /*
+     * The Album/Images/Photos trio is the hard part of an icon bar: three routes a reader tells
+     * apart by words alone ("Nina's album" / "Image Generation" / "Chat photos"), which is why
+     * they were never allowed to become two photo outlines that differ by a corner. Lucide's
+     * `images` (a stack) / `wand-sparkles` (how a photo is MADE) / `camera` (the photographs
+     * that were) are three different silhouettes; this holds the line, because a copy-pasted
+     * glyph body would pass the count above and fail here.
+     */
+    const glyphs = [...adminNav.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
+    expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(7)
   })
 
   it('pins itself to the bottom of the phone viewport and pads the home indicator', () => {
@@ -175,84 +203,73 @@ describe('the admin nav', () => {
 
 describe('the bar and the padding that clears it', () => {
   /*
-   * THE CASE THIS FILE EXISTS FOR. The bar's height lives in `AdminNav`'s `h-28` and the clearance
-   * under `<main>` lives in the layout's `pb-[calc(8rem+var(--safe-bottom))]`; Tailwind can read
-   * neither from a TypeScript constant, so the geometry is spelled twice by necessity —
+   * THE CASE THIS FILE EXISTS FOR. The bar's height lives in `AdminNav`'s `h-14` and the clearance
+   * under `<main>` lives in the layout's `pb-[calc(5rem+var(--safe-bottom))]`; Tailwind can read
+   * neither from a TypeScript constant, so the geometry is spelled twice by necessity --
    * `components/ui/AppShell.tsx` cites `TAB_BAR_HEIGHT_PX` in a comment for the same reason. If the
    * bar grows and the padding does not, the last card of every admin page sits under it, on the one
    * device this phase was written for.
    *
-   * The ROW COUNT joined the matched shape when the bar went multi-row, and the merge that brought
-   * a SEVENTH route made it `grid-cols-4 grid-rows-2` at `h-28`. Seven single-row cells would be
-   * 59.1px wide at 414px, whose 51.1px content box is exactly the eight characters the ceiling
-   * above allows — so width, not height, is what ran out (`h-14` cleared the 44pt HEIGHT minimum
-   * at six across and would at seven). 4x2 keeps a 56px-tall cell and widens it to 103.5px. Both
-   * numbers are captured, because a cell's tap target is now the height DIVIDED by the row count
-   * and a guard that read `h-28` as one cell would pass a bar with four rows of 28px.
-   *
-   * The matched shape is `TabBar`'s own formatted row with this bar's numbers in it, so the class
-   * sorter produces it rather than breaking it — verified against `prettier-plugin-tailwindcss`
-   * 0.8.1 / `tailwindcss` 4.3.3, which sorts `grid-rows-*` immediately after `grid-cols-*`.
+   * The bar is ONE ROW again (`admin-bottom-bar-icons` R3): `grid-cols-7` at `h-14`, which is the
+   * shape the 4x2 text grid replaced when seven LABELS would not fit across -- 59.1px a cell is a
+   * 51.1px content box, exactly eight characters with nothing to spare, and a 24px glyph does not
+   * measure characters. The matched shape is `TabBar`'s own formatted row with this bar's numbers
+   * in it, so the class sorter produces it rather than breaking it -- verified against
+   * `prettier-plugin-tailwindcss` 0.8.1 / `tailwindcss` 4.3.3, which sorted `grid-rows-*`
+   * immediately after `grid-cols-*`; deleting it leaves every surviving family where it was.
    */
-  const bar = navClasses.match(
-    /grid h-(\d+) w-full max-w-\[470px\] grid-cols-(\d+) grid-rows-(\d+)/,
-  )
+  const bar = navClasses.match(/grid h-(\d+) w-full max-w-\[470px\] grid-cols-(\d+)/)
   const clearance = layoutClasses.match(/pb-\[calc\((\d+(?:\.\d+)?)rem\+var\(--safe-bottom\)\)\]/)
   const cellCount = [...adminNav.matchAll(/short: '([^']*)'/g)].length
 
   it('spells both halves in the shape this case can read', () => {
     expect(
       bar,
-      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-<n> grid-rows-<n>` row',
+      'AdminNav lost its `grid h-<n> w-full max-w-[470px] grid-cols-<n>` row',
     ).not.toBeNull()
     expect(clearance, 'the admin layout lost its --safe-bottom clearance on <main>').not.toBeNull()
   })
 
-  it('fits every route, with no blank row and at most one short row', () => {
+  it('is one row of exactly seven cells', () => {
     /*
-     * This assertion was `cols * rows === cellCount` — an EXACT fit — and it held while the bar
-     * carried six routes in a 3x2 grid. Seven routes cannot satisfy it: 7 is prime, so the only
-     * uniform grid with no empty cell is one row of seven, and that layout was rejected on
-     * measurement (59.1px a cell, a 51.1px content box, exactly the width of the eight characters
-     * the ceiling above allows). A 4x2 grid therefore leaves ONE empty cell, deliberately, and
-     * `AdminNav`'s own comment says so.
+     * The exact-fit assertion RETURNS from its relaxed form. It was `cols * rows === cellCount`
+     * and held while six routes sat in a 3x2 grid; seven made 7 prime, so the only uniform grid
+     * with no empty cell was one row of seven -- rejected for TEXT (59.1px a cell, a 51.1px
+     * content box, exactly the eight characters the ceiling allowed), which is how the bar went
+     * 4x2 with one empty cell and this guard was relaxed to "no blank row". Icons un-reject the
+     * one-row layout, so every cell is spoken for again and the fit is exact.
      *
-     * Relaxed, not removed. The two defects the exact-fit form actually caught are both still
-     * caught, and named separately so a failure says which one happened:
-     *   - a grid too small for the routes, which clips or drops a cell;
-     *   - a wholly blank row, which is 56px of dead bar.
-     * The trailing gap is bounded at `cols - 1` by construction, so "at most one short row" is
-     * the strongest true statement left.
+     * The row count is held by ABSENCE, on the class literals (see `classNames` for why not the
+     * whole file, whose comments narrate the 4x2 as history): a bar that regains a second row
+     * needs the layout's reserve to grow with it, and a test that read only "at least seven
+     * cells" would pass while the last card sat under the bar.
      */
-    const cols = Number(bar![2])
-    const rows = Number(bar![3])
-    expect(cols * rows, 'the grid has fewer cells than there are routes').toBeGreaterThanOrEqual(
-      cellCount,
-    )
-    expect(cols * (rows - 1), 'the last row of the grid is entirely empty').toBeLessThan(cellCount)
-    expect(cols * rows - cellCount, 'more than one row-worth of empty cells').toBeLessThan(cols)
+    expect(Number(bar![2]), 'the grid does not have a cell per route').toBe(cellCount)
+    expect(navClasses, 'the bar grew a second row back').not.toMatch(/grid-rows/)
+    expect(navClasses).not.toContain('h-28')
   })
 
   it('reserves more room than the bar occupies', () => {
-    // Tailwind spacing: --spacing is 0.25rem, so `h-28` is 28 * 4 = 112px. The +1 is the
+    // Tailwind spacing: --spacing is 0.25rem, so `h-14` is 14 * 4 = 56px. The +1 is the
     // `border-t`, which is part of the nav's border box and therefore part of what has to be
-    // cleared.
+    // cleared. 5rem is 80px against that 57px: 23px of breathing room, the pre-4x2 pairing
+    // restored with the row count. The 8rem reserve was the two-row bar's other half; it is
+    // asserted absent on the CLASS LITERALS because the layout's docstring narrates it as
+    // history, which a whole-file assertion would fail on.
     const barPx = Number(bar![1]) * 4 + 1
     const clearancePx = Number(clearance![1]) * 16
+    expect(barPx).toBe(57)
+    expect(clearancePx).toBe(80)
+    expect(layoutClasses, 'the two-row reserve outlived the two-row bar').not.toContain('8rem')
     expect(clearancePx).toBeGreaterThan(barPx)
   })
 
   it('gives every cell a tap target past the 44pt minimum, on both axes', () => {
     // docs/design-brief.md:175 — "Minimum 44 × 44pt tap targets", and the iOS constraints win over
-    // any conflicting design output (line 18). A row is the bar's height over its row count; a
-    // column is 414px — the XS Max portrait width — over its column count.
-    expect((Number(bar![1]) * 4) / Number(bar![3])).toBeGreaterThanOrEqual(44)
+    // any conflicting design output (line 18). The bar is one row (no `grid-rows`, asserted
+    // above), so a cell's height is the bar's height; a column is 414px -- the XS Max portrait
+    // width -- over its column count.
+    expect(Number(bar![1]) * 4).toBeGreaterThanOrEqual(44)
     expect(414 / Number(bar![2])).toBeGreaterThanOrEqual(44)
-  })
-
-  it('keeps a cell wide enough for an eight-character label at text-[11px]', () => {
-    // 82.8px is the five-across width the 8-character ceiling above was calibrated against. A
-    // narrower cell than that is a cell those labels no longer fit, whatever the row count says.
-    expect(414 / Number(bar![2])).toBeGreaterThanOrEqual(82.8)
   })
 })
