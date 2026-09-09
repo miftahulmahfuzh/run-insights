@@ -2,7 +2,7 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-07
+**Last Updated**: 2026-09-09
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 4
+- Completed: 5
 
 ---
 
@@ -29,6 +29,25 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-CA-A004** Phase 1: Icon-only one-row bottom bar
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `components/admin/AdminNav.tsx` (icons, `grid-cols-7` one row, sr-only names, comment rewrite, inlined Lucide paths), `app/admin/layout.tsx` (reserve `8rem` → `5rem`), `tests/admin.shell.test.ts` (re-pin geometry contract), `components/admin/.workflows/package_readme.md` (AdminNav row + the dead `:800` citation), `components/admin/ShortcutTable.tsx` (one comment clause at `:372-383` whose AdminNav attribution this change falsifies — folded in at finalization; no markup). Exit criteria: at 414 px the bar is one 56 px row of seven distinct Lucide glyphs with accessible names; `<main>`'s reserve is `5rem`; the test file pins the new pair and passes; all gates green.
+  - **Status**: completed
+  - **Plan Set**: `ADMIN_BOTTOM_BAR_ICONS_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1, R2, R3 — find the most appropriate icon collection on the web; replace all bottom-bar text with icons; icon size + spacing such that the bar fits one row on the XS Max
+  - **Depends on**: (none)
+  - **Plan**: `.workflows/plan/P1-CA-A004.md`
+  - **Completed**: 2026-09-09 08:00
+  - **Method**: /implement
+  - **Files**: components/admin/AdminNav.tsx, app/admin/layout.tsx, tests/admin.shell.test.ts, components/admin/.workflows/package_readme.md, components/admin/ShortcutTable.tsx
+  - **Drift**: ShortcutTable comment sits at :376-383, plan quoted :372-383 — content identical, line-number-only drift
+  - **Drift**: Plan's Step 6 format command listed 4 of the 5 touched files (ShortcutTable.tsx omitted); all 5 formatted per the Files-table intent — prettier only collapsed the three long SVG d attributes to single lines
+  - **Drift**: Plan index in this worktree is repo-root ADMIN_BOTTOM_BAR_ICONS_PLAN.md (.workflows/orchestration path absent); its TaskID cell was written there by the bookkeeping step
+  - **Drift**: tests/nina.jobActions.test.ts has pre-existing load-induced 5s-timeout flakiness under full-suite parallel load (2 of 4 runs tipped; passes 19/19 in isolation; references none of the touched files). Full suite achieved a clean 163/163 pass on the final code.
+  - **Decided**: svg open-tag count 8 vs 7 → reworded the AdminNav provenance comment to 'root `svg` element' so it stops spelling a literal <svg>; test kept verbatim (rung 2 exit criteria + the test's own stated intent that a comment cannot satisfy the count + repo convention of never spelling a guarded token)
+  - **Decided**: sr-only span count 7 vs 1 → the span is ONE template inside LINKS.map(); assertion now expects exactly 1 cell template, with the 7 rendered names guaranteed jointly by the accessible-names it (7 non-empty shorts) and the hrefs it (rung 2 + narrower blast radius: one assertion line vs unrolling the plan's mapped component)
 
 - [x] **P1-CA-A003** Phase 5: The photo-reference picker
   - **Difficulty**: NORMAL
