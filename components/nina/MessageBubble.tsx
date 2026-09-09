@@ -42,15 +42,25 @@ import type { ChatMessage } from './types'
  * message and nothing at all visually, which is the trade this app's design language wants: 200
  * permanently visible reply buttons would be 200 pieces of furniture in a reading surface.
  *
- * **The landing flash is a colour transition and not an animation.** A one-off tint that fades is
- * `transition-shadow` on a `data-` attribute: no keyframe, no `[animation:…]` call site, and
- * therefore nothing for `tests/motion.reducedMotion.test.ts` to guard — which is the good outcome,
- * because that suite would otherwise require a fifth keyframe *and* a still redefinition of it
- * under `@media (prefers-reduced-motion: reduce)`. It is also the honest reading of
- * `app/globals.css`'s own line: the `transition-*` utilities in `Chip`, `KindSelector` and
- * `Button` are "deliberately untouched" by the reduced-motion escape because they "animate colour
- * only, which is not motion". `QUOTE_FLASH_MS` is 1600 — long enough to survive a smooth scroll
- * (~500 ms) plus the eye finding the line, short enough to be gone before it becomes decoration.
+ * **The landing flash is a three-blink animation, and it is a keyframe on purpose.** It started
+ * as a `transition-shadow` tint — "no keyframe, no `[animation:…]` call site, and therefore
+ * nothing for `tests/motion.reducedMotion.test.ts` to guard" — and that design held until
+ * 2026-09-09, when the owner asked for the landing to read at a glance: *"buat highlight biru ini
+ * lebih conspicuous, misal buat dia flicker lebih cepat, tiga kali flicker"*. A tint you cannot
+ * make flicker is a tint that cannot answer that ask, so the transition is gone and
+ * `nina-flash-ring` — three hard ~150 ms blinks of the accent ring over 0.96 s, in
+ * `app/globals.css` — took its place. The invariant-8 cost the old paragraph avoided paying is
+ * paid now, in the open: the keyframe exists, its `[animation:…]` call site is below, and the
+ * suite guards the still redefinition under `@media (prefers-reduced-motion: reduce)` — which
+ * gives the reduce setting the old steady ring, held for the animation's duration, instead of
+ * three strobes. The rest of that paragraph's reading of `app/globals.css` still holds: the
+ * `transition-*` utilities in `Chip`, `KindSelector` and `Button` animate colour only, which is
+ * not motion, and the `transition-shadow` below now exists for the FAILED ring alone.
+ *
+ * `QUOTE_FLASH_MS` is 1600 — it bounds the flash STATE, and with it the smooth-scroll window
+ * (~500 ms) a reply tap may still be travelling through. The visible flicker ends itself at
+ * ~0.96 s; nothing lingers after it, because the animation ends off and the steady ring is no
+ * longer applied beside it.
  *
  * ── R8: THE FOURTH GESTURE (PHASE 7 OF THE SESSIONS SET) ──────────────────────────────────────
  * Swipe a bubble to the LEFT to edit or delete it — either side of the conversation. The decision
@@ -447,13 +457,17 @@ export function MessageBubble({
           message.state === 'sending' && 'opacity-60',
           message.state === 'failed' && 'ring-1 ring-red',
           /*
-           * The landing tint (R12: "clicking … will automatically scroll to that message"; a
-           * scroll that does not say WHICH message it landed on has done half the job). A colour
-           * transition rather than a keyframe — see the header. `ring` rather than a background
-           * swap so the bubble's own fill, and therefore its text contrast, never moves.
+           * The landing flash (R12: "clicking … will automatically scroll to that message"; a
+           * scroll that does not say WHICH message it landed on has done half the job) — three
+           * hard blinks of the accent ring, `nina-flash-ring` in `app/globals.css`, applied
+           * INSTEAD of a steady ring and never beside one, so the element's own box-shadow under
+           * the animation is none and the blink ends clean. The `transition-shadow` under it is
+           * not the flash's any more: it exists for the FAILED ring above, which is a real
+           * class-driven shadow change and fades as one. See the header for why the old
+           * transition-based tint became a keyframe, and what that costs and buys.
            */
           'transition-shadow duration-300',
-          flash && 'ring-2 ring-accent',
+          flash && '[animation:nina-flash-ring_0.96s_linear]',
         )}
       >
         {quote != null && (

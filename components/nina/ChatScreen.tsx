@@ -650,11 +650,15 @@ export function ChatScreen({
   }, [])
 
   /**
-   * The landing tint, held for `QUOTE_FLASH_MS`.
+   * The landing flash, held for `QUOTE_FLASH_MS`.
    *
    * It runs whether or not the page moved: `kind: 'none'` means the target was already on screen,
-   * which is exactly the case where a scroll alone would identify nothing. Transition-based in
-   * `MessageBubble`, so invariant 8 has nothing to guard.
+   * which is exactly the case where a scroll alone would identify nothing. Since 2026-09-09 the
+   * visible effect is `nina-flash-ring` in `MessageBubble` — three hard blinks of the accent ring
+   * over ~0.96 s, with a still redefinition under `@media (prefers-reduced-motion: reduce)` that
+   * `tests/motion.reducedMotion.test.ts` guards. The timer outlives the blink on purpose: it is
+   * what bounds the state, so a second landing inside its window restarts the flash rather than
+   * racing a clearing timer.
    */
   const flashMessage = useCallback((targetId: string) => {
     setNotice(null)
@@ -795,6 +799,24 @@ export function ChatScreen({
    * RESIDUAL EDGE, accepted: a second tap of the SAME hit re-navigates to a byte-identical URL,
    * which the router may deduplicate into no render at all — no re-land. The first tap landed,
    * so nothing is lost; telling a repeat tap from a repeat render is not worth a nonce in the URL.
+   *
+   * ── WHY THE LANDING FRAME IS NEVER CANCELLED (measured in production, 2026-09-09) ─────────
+   * This effect has no cleanup, and that is load-bearing. The strip ABOVE schedules its own
+   * teardown: Next's patched `replaceState` dispatches an `ACTION_RESTORE` in a transition, which
+   * re-renders this component with `jumpRaw === null` and re-runs this effect — the very
+   * re-run that resets `softNavSeen`. With a `return () => cancelAnimationFrame(frame)` cleanup,
+   * that second run first tore down the frame the FIRST run had just scheduled, and whether the
+   * landing survived was a race between the rAF and the transition: a cold navigation (the first
+   * tap of a hit — RSC over the wire, slow commit) usually landed; a warm one (the same hit
+   * tapped again, payload already in the segment cache, fast commit) reliably did not. The owner
+   * measured it as "search ↔ chat ↔ search, the second and third tap never flash". The frame
+   * therefore guards itself and nothing else: `alive.current` inside it is the unmount
+   * protection, and a newer arrival re-lands on top of an older frame's landing, which is the
+   * correct final state. The MOUNT landing above keeps its cleanup — its deps are `[landOn]`,
+   * a stable callback, so nothing in this file can re-run it mid-frame; only unmount can, and
+   * StrictMode's dev double-run is exactly what its `jumpRef`-cleared-inside-the-frame shape is
+   * written against. Do not "symmetrise" this file onto one shape: the two effects have
+   * different re-run surfaces, and each cleanup policy is load-bearing for its own.
    */
   const jumpRaw = searchParams.get(JOB_JUMP_PARAM)
   const softNavSeen = useRef<string | null>(jumpRaw)
@@ -810,10 +832,11 @@ export function ChatScreen({
       window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
     }
 
-    const frame = window.requestAnimationFrame(() => {
+    /* Deliberately NOT cancelled — see the header paragraph above. `alive` is the unmount
+     * guard; a second run of this effect with a fresh target supersedes rather than cancels. */
+    window.requestAnimationFrame(() => {
       if (alive.current) landOn(targetId)
     })
-    return () => window.cancelAnimationFrame(frame)
   }, [jumpRaw, landOn])
 
   /**
