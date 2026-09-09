@@ -3,16 +3,16 @@
 **Package Path**: `components/nina`
 **Package Code**: CN
 **Last Updated**: 2026-09-09
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 1
+- Completed: 2
 
 ---
 
@@ -21,16 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-CN-A002** Phase 2: The rail's `up` reveals the main bar
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns the bar state's move into a shared provider (new `components/nina/NinaBarProvider.tsx`, `AppShell` wiring, `ChatChrome` consumption + panel-dialog focus rule); the pure panel-lift arithmetic and tests in `lib/nina/chatview.ts`; the rail `up` button rewrite (glyph flip, `aria-expanded`/`aria-controls`, 5 s auto-hide, keyboard rule), the panel `bottom` gaining the bar-lift term, `RAIL_PAD_BOTTOM_CSS`'s matching gate, and the removal of `onScrollToTop`/the scroll-to-top use of `listScrollRef` — all in `NinaSidebar.tsx` **as it looks after phase 1** (ten hunks 6a-6j, none inside phase 1's replaced base 357-442); and the provider-placement structural guard in `tests/nina.sidebarProvider.test.ts`. Does not touch phase 1's guard block inside the `[open]` effect, `TabBar.tsx`, `lib/nina/chrome.ts`'s state machine (consumed as-is), or the search field. Exit criteria: rail `up` toggles the bar with chat-page semantics (5 s auto-hide, glyph flip, `aria-expanded`/`aria-controls`, hide on panel-field focus); the bar renders in a reachable strip below the lifted panel; the chat page toggle still works off the same state; typecheck/build/suite green; new pure arithmetic covered in `chatview.test.ts`; the placement guard green in `tests/nina.sidebarProvider.test.ts`.
-  - **Status**: open
-  - **Plan Set**: `SEARCH_KBD_AND_UP_BTN_PLAN.md` (phase 2 of 2)
-  - **Satisfies**: R2 — The rail's `up` button shows the main app bottom bar, exactly like the chat page's up button
-  - **Depends on**: `P1-CN-A001`
-  - **Plan**: `.workflows/plan/P1-CN-A002.md`
 
 ### [P2] Medium
 
@@ -64,6 +54,21 @@
   - **Decided**: Anchor-table end-of-file off-by-one (698 vs 699) treated as a cosmetic counting artifact, not drift requiring re-plan → both splice anchors verified byte-exact before applying (rung 3: the phase plan's code blocks and its own anchor checks).
   - **Decided**: 13-vs-5 hunk-count discrepancy resolved by reproducing the plan's exact 13-hunk list under `git diff -U0` — the plan's measurement context, not a wrong application (rung 3: the phase plan's stated verification commands).
   - **Decided**: Application method: the 191-line replacement block was spliced programmatically from the plan file's tsx code fence (not retyped), then verified by the plan's full structural-check battery — all exact.
+
+- [x] **P1-CN-A002** Phase 2: The rail's `up` reveals the main bar
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns the bar state's move into a shared provider (new `components/nina/NinaBarProvider.tsx`, `AppShell` wiring, `ChatChrome` consumption + panel-dialog focus rule); the pure panel-lift arithmetic and tests in `lib/nina/chatview.ts`; the rail `up` button rewrite (glyph flip, `aria-expanded`/`aria-controls`, 5 s auto-hide, keyboard rule), the panel `bottom` gaining the bar-lift term, `RAIL_PAD_BOTTOM_CSS`'s matching gate, and the removal of `onScrollToTop`/the scroll-to-top use of `listScrollRef` — all in `NinaSidebar.tsx` **as it looks after phase 1** (ten hunks 6a-6j, none inside phase 1's replaced base 357-442); and the provider-placement structural guard in `tests/nina.sidebarProvider.test.ts`. Does not touch phase 1's guard block inside the `[open]` effect, `TabBar.tsx`, `lib/nina/chrome.ts`'s state machine (consumed as-is), or the search field. Exit criteria: rail `up` toggles the bar with chat-page semantics (5 s auto-hide, glyph flip, `aria-expanded`/`aria-controls`, hide on panel-field focus); the bar renders in a reachable strip below the lifted panel; the chat page toggle still works off the same state; typecheck/build/suite green; new pure arithmetic covered in `chatview.test.ts`; the placement guard green in `tests/nina.sidebarProvider.test.ts`.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_KBD_AND_UP_BTN_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — The rail's `up` button shows the main app bottom bar, exactly like the chat page's up button
+  - **Depends on**: `P1-CN-A001`
+  - **Plan**: `.workflows/plan/P1-CN-A002.md`
+  - **Completed**: 2026-09-09 13:11
+  - **Method**: /do
+  - **Files**: lib/nina/chatview.ts, lib/nina/chatview.test.ts, components/nina/NinaBarProvider.tsx, components/ui/AppShell.tsx, components/nina/ChatChrome.tsx, components/nina/NinaSidebar.tsx, tests/nina.sidebarProvider.test.ts
+  - **Drift**: Plan's invariant-3 grep promised exactly 3 dependency arrays in NinaSidebar.tsx; the grep actually returns 5 at BOTH base 5ccae06 and after this phase — the plan miscounted base (the two `}, [])` useCallback arrays predate the phase). Invariant 3 itself holds: the [open]-keyed panel effect's array is exactly [open] and no array gained a dependency. No code change implied.
+  - **Outstanding**: the decisive on-device manual checklist (phase plan Verification steps 1-8 on the iPhone XS Max) remains open per index invariant 8 — typecheck/build/the 3497-test suite and the invariant greps are not proof of the fix by the plan's own statement. Phase 1's R1 on-device checklist (steps 1-7) is still open too, and step 4 here rides on it.
 
 ---
 

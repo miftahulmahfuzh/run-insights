@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 
 import { TabBar, TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
@@ -10,35 +10,46 @@ import {
   barToggleGlyph,
   controlBottomCss,
   isControlVisible,
-  nextBarState,
   NINA_CHROME_CONTROL_CLASS,
-  type NinaBarState,
 } from '@/lib/nina/chrome'
+import { useNinaBar } from './NinaBarProvider'
 import { NinaSidebarTrigger } from './NinaSidebar'
 
 /**
  * `/nina`'s chrome: no tab bar, and one floating control that pulls it back up (R1).
  *
- * ── WHY THE STATE IS HERE AND NOT IN `AppShell` OR IN `TabBar` ───────────────────────────────
- * `AppShell` has no `'use client'` and must not gain one. Five server pages import it, and
- * `tests/share.bundle.test.ts` exists because that import graph leaked a session read once already
- * (F33 phase 10 put `getUserId()` inside `TabBar`, and `/s/[token]`'s barrel import went red).
- * Turning the shell of `/`, `/me`, `/trends`, `/r/[id]` and `/nina` into client components for one
- * boolean is not a trade worth making.
+ * ── WHY THE STATE IS IN `NinaBarProvider`, NOT HERE ANY MORE (R2) ────────────────────────────
+ * This was the state's home when the chat page's toggle was its only writer. R2 gives the sidebar
+ * rail's `up` the same job — "persis sama dengan tombol up di chat page" — and the panel is this
+ * component's SIBLING: `AppShell` renders `<main>` (the panel rides in through the page) and this
+ * chrome side by side, so no prop chain joins them and two local states would be two bars that
+ * can disagree. The state moved to `components/nina/NinaBarProvider.tsx`, mounted by `AppShell`
+ * around the same `shell` node `NinaSidebarProvider` wraps — that file's docstring carries the
+ * full argument, and `tests/nina.sidebarProvider.test.ts` pins the placement.
  *
- * `TabBar` cannot hold it either, and the reason is physical rather than architectural: when the
- * bar is hidden it is translated off screen, so a control *inside* it would be unreachable — which
- * is the entire reason R1 asks for a floating one.
+ * What stayed here is every EFFECT: the focus sync, the auto-hide timer and the
+ * `NINA_BAR_VISIBLE_VAR` publisher read and write through the context now, and nothing about when
+ * they fire changed. The var's writer set is unchanged — still this file, still one effect.
  *
- * So the state lives in the smallest client component that can render both, and `AppShell` keeps
- * doing exactly what its own docstring describes for the unread dot: it constructs
- * `<NinaUnreadBadgeSlot />` on the server and hands it down as a `ReactNode`, now through one more
- * hop. The badge is server work passed into a client bar; the hidden-bar boolean is client state
- * passed into the same bar from the layer above it. Same seam, opposite direction.
+ * `AppShell` has no `'use client'` and must not gain one — five server pages import it, and
+ * `tests/share.bundle.test.ts` exists because that import graph leaked a session read once
+ * already; rendering a client provider from there is a boundary, not a conversion. `TabBar` still
+ * cannot hold the state either, for the reason that is physical rather than architectural: a
+ * hidden bar is translated off screen, and a control inside it would be unreachable.
+ *
+ * ── THE PANEL'S FIELDS HIDE THE BAR TOO (R2) ─────────────────────────────────────────────────
+ * `nextBarState`'s rule is about KEYBOARDS, not about the composer — `lib/nina/chrome.ts`'s own
+ * docstring: a bar shown under a keyboard is shown and invisible. The composer was the only text
+ * surface that could raise one; the panel's search and rename fields raise the same keyboard, so
+ * they take the same event. A text field focused inside the panel's `[role="dialog"]` dispatches
+ * `'composer-engaged'` — the machine's name for "a keyboard is up", now carrying two surfaces.
+ * `focusout`'s one-task deferral is what makes the move from the panel's search field to one of
+ * its rename fields not blink the bar, exactly as it does for the textarea-to-Send move.
  *
  * ── THE THREE THINGS THIS COMPONENT MEASURES, AND THE FOUR IT DECIDES NOTHING ABOUT ──────────
- * It measures `#nina-composer`'s height, whether focus is inside it, and nothing else. Every rule —
- * what the toggle does, when the timer runs, which glyph shows, where the lane sits — is a pure
+ * It measures `#nina-composer`'s height and whether focus sits in a keyboard-raising field — the
+ * composer's, or any text field inside the panel's dialog — and nothing else. Every rule — what
+ * either toggle does, when the timer runs, which glyph shows, where the lane sits — is a pure
  * function in `lib/nina/chrome.ts` with a unit test, because `vitest.config.ts` runs
  * `environment: 'node'` and a rule that lives in a component cannot be asserted in this repo at
  * all. `lib/nina/chatview.ts`'s header is the pattern: the component measures; that decides.
@@ -69,6 +80,27 @@ import { NinaSidebarTrigger } from './NinaSidebar'
 const COMPOSER_ID = 'nina-composer'
 
 /**
+ * Whether `activeElement` is a text field sitting inside a dialog — the sidebar panel's fields,
+ * which raise the same keyboard the composer's do and so take the same rule.
+ *
+ * The field half is `NinaSidebar`'s own focusin filter (`INPUT` / `TEXTAREA` / contenteditable),
+ * spelled twice on purpose: the panel's copy filters its own assert listener, this one filters the
+ * bar's engage rule, and a predicate over DOM types cannot live in `lib/nina/chrome.ts` — that
+ * file's signatures carry no DOM types (`chatview.ts`'s header, verbatim).
+ *
+ * The dialog half is `[role="dialog"]`: the panel is the only dialog mounted on `/nina` that
+ * contains text fields, and `closest` reads the focused element's membership without this
+ * component holding a ref into another component's DOM.
+ */
+function isTextFocusInDialog(active: Element | null): boolean {
+  if (active === null || !(active instanceof HTMLElement)) return false
+  if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA' && !active.isContentEditable) {
+    return false
+  }
+  return active.closest('[role="dialog"]') !== null
+}
+
+/**
  * What the bar occupies when it is showing: its **outer** height — the 39 px grid plus the 1 px
  * `border-t` the grid sits under, which is the bar's actual top edge. The same constant
  * `ChatScreen`'s `COMPOSER_CLEARANCE_PX` reads, because both are positioning against the same bar.
@@ -82,8 +114,17 @@ const COMPOSER_ID = 'nina-composer'
 const BAR_CLEARANCE_PX = TAB_BAR_OUTER_HEIGHT_PX
 
 export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) {
-  const [bar, setBar] = useState<NinaBarState>('hidden')
-  const [composerEngaged, setComposerEngaged] = useState(false)
+  /*
+   * The bar state is the provider's (`components/nina/NinaBarProvider.tsx`). Null only outside a
+   * `NinaBarProvider`, which `AppShell` never allows — both of these are the hook's null contract,
+   * the `useNinaSidebar` precedent, not live code: this chrome would then render a bar nothing can
+   * reveal, exactly as a `ChatChrome` with no sidebar draws no `>`.
+   */
+  const ninaBar = useNinaBar()
+  const bar = ninaBar?.bar ?? 'hidden'
+  const dispatch = ninaBar?.dispatch
+  /** A keyboard is up — the composer's field, or a text field inside the open panel's dialog. */
+  const [keyboardEngaged, setKeyboardEngaged] = useState(false)
   const [composerHeightPx, setComposerHeightPx] = useState(0)
   /** The one deferred read below, held so it cannot fire after unmount. */
   const focusTimer = useRef<number | null>(null)
@@ -109,7 +150,8 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
   }, [])
 
   /*
-   * Whether focus is inside the composer — and, when it arrives, the bar going away with it.
+   * Whether a keyboard is up — the composer's textarea, or a text field inside the open sidebar
+   * panel — and, when it arrives, the bar going away with it.
    *
    * Both are set in one place rather than deriving the second from the first in another effect,
    * which would cost a render and put two writers on the same piece of state.
@@ -117,14 +159,17 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
    * `focusout` fires BEFORE focus lands, while `document.activeElement` is still `<body>`, so it is
    * read one task later. Without that deferral, moving focus *within* the composer — the textarea
    * to Send, which is what pressing send is — would read as a release and then as a re-engage, and
-   * the toggle would blink out and back on every send.
+   * the toggle would blink out and back on every send. The same deferral is what makes the move
+   * from the panel's search field to one of its rename fields not blink either.
    */
   useEffect(() => {
     const sync = () => {
+      const active = document.activeElement
       const composer = document.getElementById(COMPOSER_ID)
-      const engaged = composer !== null && composer.contains(document.activeElement)
-      setComposerEngaged(engaged)
-      if (engaged) setBar((current) => nextBarState(current, 'composer-engaged'))
+      const composerEngaged = composer !== null && active !== null && composer.contains(active)
+      const keyboardEngaged = composerEngaged || isTextFocusInDialog(active)
+      setKeyboardEngaged(keyboardEngaged)
+      if (keyboardEngaged) dispatch?.('composer-engaged')
     }
     const onFocusIn = () => sync()
     const onFocusOut = () => {
@@ -138,21 +183,22 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
       document.removeEventListener('focusout', onFocusOut)
       if (focusTimer.current !== null) window.clearTimeout(focusTimer.current)
     }
-  }, [])
+  }, [dispatch])
 
   /*
    * R1's five seconds. `autoHideDelayMs` returns `null` for every state that should run no timer,
    * so this effect is an early return rather than a condition, and the cleanup means a toggle
-   * pressed at 4.9 s restarts the clock instead of racing it.
+   * pressed at 4.9 s restarts the clock instead of racing it. `keyboardEngaged` pauses it while a
+   * keyboard is up anywhere — including a panel field, which just hid the bar anyway.
    */
   useEffect(() => {
-    const delay = autoHideDelayMs(bar, composerEngaged)
+    const delay = autoHideDelayMs(bar, keyboardEngaged)
     if (delay === null) return
     const id = window.setTimeout(() => {
-      setBar((current) => nextBarState(current, 'autohide'))
+      dispatch?.('autohide')
     }, delay)
     return () => window.clearTimeout(id)
-  }, [bar, composerEngaged])
+  }, [bar, keyboardEngaged, dispatch])
 
   /*
    * The one channel to the composer, which is not a descendant of this component: `AppShell`
@@ -175,17 +221,13 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
     }
   }, [bar])
 
-  const onToggle = useCallback(() => {
-    setBar((current) => nextBarState(current, 'toggle'))
-  }, [])
-
   const glyph = barToggleGlyph(bar)
 
   return (
     <>
       <TabBar ninaBadge={ninaBadge} hidden={bar === 'hidden'} />
 
-      {isControlVisible(composerEngaged) && (
+      {isControlVisible(keyboardEngaged) && (
         /*
          * The control lane: the full 470 px column, pinned entirely ABOVE the composer's top edge.
          *
@@ -245,7 +287,7 @@ export function ChatChrome({ ninaBadge }: { ninaBadge?: React.ReactNode } = {}) 
 
           <button
             type="button"
-            onClick={onToggle}
+            onClick={() => dispatch?.('toggle')}
             aria-expanded={bar === 'shown'}
             aria-controls="main-tab-bar"
             aria-label={glyph === 'up' ? 'Show the main navigation' : 'Hide the main navigation'}

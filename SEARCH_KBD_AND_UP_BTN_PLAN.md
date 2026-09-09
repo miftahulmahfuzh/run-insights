@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/search-kbd-and-up-btn`
 **Branch:** `feature/search-kbd-and-up-btn` (base: `origin/main` @ `5ccae06`)
 **Phases:** 2
-**Status:** phase 1/2 complete
+**Status:** complete
 **Coordinator:** orch-search-kbd-and-up-btn
 
 ---
@@ -87,7 +87,7 @@ list ordering; any DB/schema/route change.
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | The panel pins the window over its focused field | R1 | `components/nina` | 1 | — | HARD | `.workflows/plan/search-kbd-and-up-btn/phase-1.md` | P1-CN-A001 | — |
-| 2 | The rail's `up` reveals the main bar | R2 | `components/nina` + `components/ui` + `lib/nina` + `tests` | 7 | 1 | HARD | `.workflows/plan/search-kbd-and-up-btn/phase-2.md` | P1-CN-A002 | — |
+| 2 ✅ | The rail's `up` reveals the main bar | R2 | `components/nina` + `components/ui` + `lib/nina` + `tests` | 7 | 1 | HARD | `.workflows/plan/search-kbd-and-up-btn/phase-2.md` | P1-CN-A002 | — |
 
 ### Phase 1 — The panel pins the window over its focused field
 **Satisfies:** R1
