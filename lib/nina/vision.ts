@@ -27,22 +27,33 @@ import {
  *  prompt tokens and clear a flat floor of 500 without a murmur.
  *
  *  So the floor is TEXT-AWARE: the text we actually sent, estimated at a deliberately
- *  pessimistic 3 chars/token, PLUS 500 per image. Read the phase-6 plan's Step 3 before
- *  touching it.
+ *  pessimistic 3 chars/token, PLUS the per-image floor below (`NINA_TOKEN_FLOOR_PER_IMAGE` —
+ *  measured, and re-calibrated on 2026-09-09; read its note and the phase-6 plan's Step 3 before
+ *  touching either).
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 
 /**
- * MEASURED, and ported verbatim from `lib/llm/vision.ts`'s `TOKEN_FLOOR_PER_IMAGE` with its
- * reasoning intact. 500 sits 3.4x above the observed 141-token drop signature. A 768 px chat photo
- * costs ~1,700 input tokens — a wider margin than F04's 1,092, so if 500 is right there it is
- * right here.
+ * MEASURED, and re-calibrated on 2026-09-09 after a false trip. The original 500 was ported
+ * verbatim from `lib/llm/vision.ts`'s flat floor on the argument that a 768 px chat photo costs
+ * ~1,700 input tokens, so a 3.4x margin was harmless there. It was not harmless HERE, because this
+ * floor is TEXT-AWARE: with the text term already covering the prompt, the per-image term's only
+ * job is to be positive — a DROPPED image contributes zero image tokens, so any positive constant
+ * detects it, while a constant sized to a 768 px photo outlaws smaller real ones. And small ones
+ * reach this code un-resized: `longEdgeTargetFor` never downscales a source whose short edge is
+ * already under target.
  *
- * MULTIPLIED by the image count, and the multiplication is load-bearing: a flat floor would let a
- * 3-image request with only one image actually delivered slip straight through. This phase always
- * sends one, and the multiplication stays anyway, for whoever sends three.
+ * The arrival card of 2026-09-08 (`nina_message_images` Jv4VMDMao31j, 612×862) reported 1,559
+ * prompt tokens against a 1,649 floor and was refused as "dropped" while demonstrably delivered —
+ * the same card upscaled to short edge 768 scored 1,930 and the model read back every field on it.
+ * Image tokens run ~pixels/1,100, so 500 per image drew the break-even at ~640 px of short edge,
+ * and every photo under it got Nina's "your eyes failed" routine no matter how legible it was.
+ *
+ * 150 keeps the drop signature caught — 0 image tokens still fails by 150 — and passes real photos
+ * down to roughly a 350 px short edge. MULTIPLIED by the image count, and the multiplication stays
+ * load-bearing: a 3-image request with only one image actually delivered must still fail.
  */
-export const NINA_TOKEN_FLOOR_PER_IMAGE = 500
+export const NINA_TOKEN_FLOOR_PER_IMAGE = 150
 
 /**
  * Characters per token, for the TEXT half of the floor only. Real BPE on English/Indonesian prose

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { NINA_DESCRIBE_SYSTEM_PROMPT, NINA_SELF_DESCRIBE_SYSTEM_PROMPT } from './prompts/describe'
+import {
+  NINA_DESCRIBE_REQUEST_TEXT,
+  NINA_DESCRIBE_SYSTEM_PROMPT,
+  NINA_SELF_DESCRIBE_SYSTEM_PROMPT,
+} from './prompts/describe'
 import {
   NINA_TOKEN_FLOOR_PER_IMAGE,
   NinaVisionTokenFloorError,
@@ -47,6 +51,18 @@ describe('the floor arithmetic', () => {
     expect(droppedReport).toBeLessThan(floor) // this one does not
     // A real 768px photo is ~1,700 input tokens on top of the text.
     expect(droppedReport + 1_700).toBeGreaterThan(floor)
+  })
+
+  it('clears the floor for the measured 612×862 arrival card — the false trip of 2026-09-08', () => {
+    // MEASURED, twice, deterministic: glm-4.6v reported 1,559 prompt_tokens for the shipped runner
+    // prompt over one 612×862 photo (`nina_message_images` Jv4VMDMao31j). At 500/image the floor
+    // was 1,649, the guard refused, and Nina told him the picture "didn't load" — while the SAME
+    // card upscaled to short edge 768 scored 1,930 and read back every field on it. The image WAS
+    // delivered; it was merely small. Image tokens run ~pixels/1,100, so the per-image term must
+    // sit UNDER a small real photo, not over it: the floor's drop detection needs the term to be
+    // positive, because a dropped image reports the text alone.
+    const promptChars = NINA_DESCRIBE_SYSTEM_PROMPT.length + NINA_DESCRIBE_REQUEST_TEXT.length
+    expect(describeTokenFloor(promptChars, 1)).toBeLessThanOrEqual(1_559)
   })
 })
 
