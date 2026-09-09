@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import * as React from 'react'
 
 import { cn } from '@/lib/cn'
-import { NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
+import { KEYBOARD_REASSERT_DELAYS_MS, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
 import { NINA_CHROME_CONTROL_CLASS } from '@/lib/nina/chrome'
 import { NINA_JOBS_HREF } from '@/lib/nina/jobview'
 import type { NinaCropInput } from '@/lib/nina/crop'
@@ -284,6 +284,61 @@ export function NinaSidebar({
      */
     panelRef.current?.focus()
 
+    /*
+     * ── R1'S SURVIVING HALF: THE PANEL'S SCROLL, WHICH THE BOX FIX CANNOT SEE ───────────────────
+     *
+     * The inline `bottom: var(--nina-kb-overlap)` below ends the panel's BOX at the keyboard's
+     * top edge, and the owner's report survived it — because the search field sits at the top of
+     * a tall content block inside the panel's OWN `overflow-y-auto` container, and iOS Safari's
+     * focus reveal scrolls that CONTAINER even though the field was already visible: a scrollTop
+     * the box says nothing about. The var shrinks the panel a commit later, the container keeps
+     * its scrolled offset, and the field rides out through the container's top edge. The composer
+     * never lifts, and it is the one fixed element on this screen inside no scroll container.
+     *
+     * The answer is to ASSERT rather than measure. One delegated `focusin` listener on the panel
+     * — same shape as the Escape listener below it, torn down by the same cleanup, and incapable
+     * of growing a dependency that would break this effect's keyed-on-`open`-ALONE rule — arms
+     * the schedule from `lib/nina/chatview.ts` (`KEYBOARD_REASSERT_DELAYS_MS`; invariant 8 — a
+     * rule in a component cannot be tested) against the field that just took focus, and each
+     * tick calls `scrollIntoView({ block: 'nearest' })` on it, which walks EVERY scrollable
+     * ancestor (this container and the document) and corrects whichever one Safari scrolled.
+     * Idempotent: `nearest` on an already-visible element computes zero scroll. And NO second
+     * `visualViewport` subscription (invariant 2) — the assert needs no measurement at all.
+     *
+     * Three guards, each earning its line:
+     *   - text fields only (`INPUT` / `TEXTAREA` / contenteditable): the panel itself takes focus
+     *     on open above, and neither the panel nor a button has text the keyboard could hide;
+     *   - `document.activeElement === target` at FIRE time, not schedule time: a blur or a focus
+     *     move within the window means the armed field is no longer the one on screen, and
+     *     asserting it would fight the runner — the guard turns every late tick into a no-op;
+     *   - a new focus into the panel CANCELS the running schedule and arms a fresh one, so
+     *     exactly one schedule is live at a time (search field → rename field moves restart it).
+     */
+    let reassertTimers: number[] = []
+    const panel = panelRef.current
+    const onPanelFocusIn = (event: FocusEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (
+        target.tagName !== 'INPUT' &&
+        target.tagName !== 'TEXTAREA' &&
+        !target.isContentEditable
+      ) {
+        return
+      }
+
+      for (const timer of reassertTimers) window.clearTimeout(timer)
+      reassertTimers = KEYBOARD_REASSERT_DELAYS_MS.map((delay) =>
+        window.setTimeout(() => {
+          if (document.activeElement !== target) return
+          /* `instant`, never `smooth`: the layout has already moved under the runner and a 300 ms
+             chase reads as a glitch — `decideAutoScroll`'s 'viewport' rule, and no new motion. */
+          target.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+        }, delay),
+      )
+    }
+    panel?.addEventListener('focusin', onPanelFocusIn)
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
@@ -294,6 +349,8 @@ export function NinaSidebar({
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      panel?.removeEventListener('focusin', onPanelFocusIn)
+      for (const timer of reassertTimers) window.clearTimeout(timer)
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()
     }
@@ -335,6 +392,11 @@ export function NinaSidebar({
          * which is exactly `inset-0`, so the resting panel and the server's HTML never differ. And
          * `transition-transform` is transform-only, so the edge SNAPS with the keyboard rather than
          * lagging a transition behind it.
+         *
+         * This edge fixes the panel's BOX. The panel's SCROLL is the other half of the bug —
+         * Safari's focus reveal scrolls the panel's own `overflow-y-auto` container, which no box
+         * can unscroll — and the `focusin` listener in the `open`-keyed effect above is what
+         * corrects it, on `KEYBOARD_REASSERT_DELAYS_MS`' schedule.
          */
         bottom: `var(${NINA_KEYBOARD_OVERLAP_VAR}, 0px)`,
       }}

@@ -7,12 +7,12 @@
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 22
+- Completed: 23
 
 ---
 
@@ -50,16 +50,6 @@
   - **Files**: app/nina/page.tsx, components/nina/NinaUnreadBadge.tsx, components/nina/NinaUnreadSync.tsx, lib/nina/unread.ts, lib/nina/unread.test.ts
   - **Verification**: `npm run typecheck` clean; `npm run build` clean; new suite `lib/nina/unread.test.ts` 9/9; all three `ci:*` guards PASS; eslint + prettier clean on the five files. Landed as `d710ded` on `feature/nina-chat-sessions`, merged to `main`. Ledger note: session-scoped mark-read + one-shot `router.refresh()`; no poll, no new query, count stays global.
 
-- [ ] **P1-RI-A025** Phase 1: The keyboard stops eating the sidebar's fields; the search field clears
-  - **Difficulty**: HARD
-  - **Type**: Bug
-  - **Context**: Owns the panel-level focus-reassertion effect in `NinaSidebar.tsx` with its pure schedule in `lib/nina/chatview.ts` + test, and the search field's ✕ button and clear semantics in `NinaSearchField.tsx`. Exit criteria: on keyboard-open over any field inside the open panel the focused field is re-asserted visible across the keyboard-animation window (`scrollIntoView({ block: 'nearest', behavior: 'instant' })`, idempotent, scheduled purely); the search ✕ renders only when text is non-empty, clears query AND results, keeps focus in the input; `chatview.test.ts` covers the new schedule; build + tests green.
-  - **Status**: in_progress
-  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 1 of 3)
-  - **Satisfies**: R1 — Bug: the search field is lifted off-screen by the keyboard; typed text invisible / R2 — ✕ in the search field (right end): clears query AND results, keyboard stays/raises
-  - **Depends on**: —
-  - **Plan**: `.workflows/plan/P1-RI-A025.md`
-
 - [ ] **P1-RI-A027** Phase 3: The sidebar's bottom icon rail
   - **Difficulty**: NORMAL
   - **Type**: Feature
@@ -83,6 +73,26 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A025** Phase 1: The keyboard stops eating the sidebar's fields; the search field clears
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns the panel-level focus-reassertion effect in `NinaSidebar.tsx` with its pure schedule in `lib/nina/chatview.ts` + test, and the search field's ✕ button and clear semantics in `NinaSearchField.tsx`. Exit criteria: on keyboard-open over any field inside the open panel the focused field is re-asserted visible across the keyboard-animation window (`scrollIntoView({ block: 'nearest', behavior: 'instant' })`, idempotent, scheduled purely); the search ✕ renders only when text is non-empty, clears query AND results, keeps focus in the input; `chatview.test.ts` covers the new schedule; build + tests green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — Bug: the search field is lifted off-screen by the keyboard; typed text invisible / R2 — ✕ in the search field (right end): clears query AND results, keyboard stays/raises
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A025.md`
+  - **Completed**: 2026-09-09 09:26
+  - **Method**: /implement (swarm phase 1/3)
+  - **Files**: lib/nina/chatview.ts, lib/nina/chatview.test.ts, components/nina/NinaSidebar.tsx, components/nina/NinaSearchField.tsx
+  - **Drift**: Plan's invariant greps said `visualViewport` grep of `NinaSidebar.tsx` → 0, but the plan's own prescribed code block carries the comment "NO second `visualViewport` subscription (invariant 2)" — count is 1, comment only. Verified zero `visualViewport` API access added anywhere (`window.visualViewport` / `.visualViewport.` grep: only the pre-existing sanctioned readers ChatScreen.tsx:590, MessageBubble.tsx, PhotoViewer.tsx). Same class: the `type="search"` grep hits only the plan's own comments quoting the old value; the attribute itself is gone (was the repo's only one).
+  - **Drift**: npm test full suite: 4 failed / 3484 passed — all 5000 ms timeouts in `tests/nina.jobActions.test.ts` (photograph-delivery server actions; zero coupling to any phase-1 file). REPRODUCED AT BASE: with the four phase-1 files stashed, the full suite at HEAD fails the same way (4 failed / 3480 passed; the +4 with changes are the new KEYBOARD_REASSERT_DELAYS_MS tests, all passing). Pre-existing load-dependent flakiness, not a phase-1 regression. The phase's own `lib/nina/chatview.test.ts` is 36/36 (4 new). typecheck, build and format:check green.
+  - **Drift**: The plan's manual device checks (iPhone XS Max keyboard reveal, on-device ✕ behaviour) were not run — no device in this session; the plan assigns automated coverage to the pure schedule tests, which pass.
+  - **Drift**: Duplicate Step-3 mint race with the live phase-2 peer in this SHARED worktree: own subagent minted P1-NIN-A032/33/34 into `lib/nina/.workflows/todos.md` (09:10-09:11); the peer minted P1-RI-A025/26/27 into the root file (09:12) and its index writeback overwrote the NIN ids. RI set survives; the NIN set was removed (`lib/nina/.workflows/todos.md` restored to HEAD, three NIN adopted plan files deleted); both index copies verified byte-identical on RI ids.
+  - **Decided**: Duplicate task-id mint race with phase-2 peer → adopt the peer's P1-RI-A025/26/27 (root package RI), remove own P1-NIN-A032/33/34 (tie-break: narrower blast radius — only own files edited, fully reversible pre-commit, index already RI).
+  - **Decided**: Verification greps' "→ 0" expectations vs the plan's own prescribed comment text → comments stay verbatim, greps adjudicated by intent (rung 3: the plan's code blocks are complete by construction; rung 1: invariant 2's actual rule — no second `visualViewport` subscription — holds).
+  - **Decided**: Pre-existing `tests/nina.jobActions.test.ts` timeouts at base → land phase 1 anyway, report loudly (invariant 1 assumes a green base, measured false at HEAD; fixing another surface's timers would widen scope).
 
 - [x] **P1-RI-A026** Phase 2: Session actions become icons; the rename field clears
   - **Difficulty**: NORMAL
