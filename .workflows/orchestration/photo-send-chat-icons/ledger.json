@@ -24,27 +24,27 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "a8d2c5064c49a890fbaa7bcc695910e8783c731e",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "R3 done: ONE visualViewport publisher extracted from ChatScreen; about strip ends at keyboard top edge (bottom var + attachStripPadBottomCss); sidebar rename reassert now also fires on real box change (ResizeObserver + planBoxReassert), deps still [open] alone. No ladder decisions. Gate note: exit-2 grep also matches the adopted plan doc quoting itself.",
       "package": "components/nina` + `lib/nina",
       "plan": ".workflows/plan/photo-send-chat-icons/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T06:08:02+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CN-A001",
       "title": "Keyboard channel: about strip box fix + rename re-assert"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photo-send-chat-icons/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photo-send-chat-icons",
-  "updated": "2026-09-09T05:42:27+00:00",
+  "updated": "2026-09-09T06:08:02+00:00",
   "worktree": "/home/miftah/run-insights/.claude/worktrees/photo-send-chat-icons"
 }
