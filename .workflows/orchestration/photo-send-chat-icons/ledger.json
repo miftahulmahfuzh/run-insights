@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "a1bed18bc0c85260ed2dc238cb62a4e8179e91d9",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "two icon sends landed (recent + new-chat, createNinaChatSession reuse); decision: attachTargets suite asserts the LANDED sessionId per the Interface Contract, not the create's copy \u2014 plan's own test-1 expectation was the stale half",
       "package": "components/nina` + `lib/nina",
       "plan": ".workflows/plan/photo-send-chat-icons/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T05:42:27+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P2-CN-A000",
       "title": "Attach strip: two icon sends (recent + new chat)"
     },
     {
@@ -45,6 +45,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photo-send-chat-icons/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photo-send-chat-icons",
-  "updated": "2026-09-09T05:12:14+00:00",
+  "updated": "2026-09-09T05:42:27+00:00",
   "worktree": "/home/miftah/run-insights/.claude/worktrees/photo-send-chat-icons"
 }

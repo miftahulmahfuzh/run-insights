@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/run-insights/.claude/worktrees/photo-send-chat-icons`
 **Branch:** `worktree-photo-send-chat-icons` (base: `origin/main` @ `5ccae06`)
 **Phases:** 2
-**Status:** planned
+**Status:** phase 1/2 complete
 **Coordinator:** orch-photo-send-chat-icons
 
 <The Coordinator line is the peer address of the session driving this set, filled in by
@@ -48,8 +48,8 @@ addresses a session that does not exist, and the reports meant for it go nowhere
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Attach strip: two icon sends (recent + new chat) | R1, R2 | `components/nina` + `lib/nina` | 3–4 | — | NORMAL | `.workflows/plan/photo-send-chat-icons/phase-1.md` | — | — |
-| 2 | Keyboard channel: about strip box fix + rename re-assert | R3 | `components/nina` + `lib/nina` | 6 | 1 | HARD | `.workflows/plan/photo-send-chat-icons/phase-2.md` | — | — |
+| 1 ✅ | Attach strip: two icon sends (recent + new chat) | R1, R2 | `components/nina` + `lib/nina` | 3–4 | — | NORMAL | `.workflows/plan/photo-send-chat-icons/phase-1.md` | P2-CN-A000 | — |
+| 2 | Keyboard channel: about strip box fix + rename re-assert | R3 | `components/nina` + `lib/nina` | 6 | 1 | HARD | `.workflows/plan/photo-send-chat-icons/phase-2.md` | P1-CN-A001 | — |
 
 ### Phase 1 — Attach strip: two icon sends (recent + new chat)
 **Satisfies:** R1, R2
