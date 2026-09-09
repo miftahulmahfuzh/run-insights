@@ -16,7 +16,6 @@ import {
   NINA_SHORTCUT_EXPANSION_MAX,
   NINA_SHORTCUT_LABEL_MAX,
   NINA_TRIGGER_MAX,
-  describeKind,
   formatFired,
   type ShortcutField,
   type ShortcutRow,
@@ -329,9 +328,6 @@ function Row({
         <code className="mt-1 block px-2 text-[11px] font-medium break-all text-ink-3">
           {row.matchKey}
         </code>
-        <span className="mt-0.5 block px-2 text-[11px] font-medium text-ink-3">
-          {describeKind(row.kind)}
-        </span>
       </td>
 
       <td className={CELL}>

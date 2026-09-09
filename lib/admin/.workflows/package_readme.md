@@ -705,7 +705,6 @@ export interface ShortcutRow      { id, trigger, matchKey, kind, label, expansio
 export interface ShortcutSource   { …the same columns, with Date }
 export function buildShortcutRows(sources: readonly ShortcutSource[]): ShortcutRow[]
 export function formatFired(uses: number, lastUsedAt: string | null): string
-export function describeKind(kind: AdminShortcutKind): string
 
 // shortcutStore.ts — 'server-only'
 export interface AdminShortcutDraft { trigger: string; label: string; expansion: string }
@@ -749,8 +748,9 @@ depends on how the RSC boundary treats `Date` today. It is declared here rather 
 that a test can drive it without a database.
 
 `formatFired` says `'never'` and not `'0'`, because zero is the answer to a question the operator is
-not asking: what he wants at a glance is which codes are dead. `describeKind` explains the one thing
-about `kind` that surprises people — `yumm` does not fire inside `yummy`, `🍑` fires anywhere.
+not asking: what he wants at a glance is which codes are dead. `describeKind`, which explained the
+glyph/word boundary under every trigger cell, was removed on 2026-09-09 at the owner's request — on
+a phone the sentence wrapped the table's narrowest column into five lines.
 
 #### `shortcutStore.ts` — the only writer, and it reaches no table
 
@@ -975,7 +975,7 @@ handed to her, and then through `after()`.
   defaults `?user=` to the signed-in admin, and builds every row server-side so the table gets plain
   serializable props.
 - `components/admin/ShortcutTable.tsx` — the four shortcut actions and `AdminShortcutResult`, plus
-  `shortcutModel.ts`'s three caps, `ADMIN_SHORTCUT_PAGE`, `describeKind`, `formatFired` and the
+  `shortcutModel.ts`'s three caps, `ADMIN_SHORTCUT_PAGE`, `formatFired` and the
   `ShortcutField` / `ShortcutRow` types. It imports **no other** `lib/` module in either directory.
 
 ### Secondary consumers

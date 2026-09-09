@@ -143,15 +143,9 @@ export function formatFired(uses: number, lastUsedAt: string | null): string {
   return `${uses}× · ${lastUsedAt.slice(0, 10)}`
 }
 
-/**
- * What the trigger's classification MEANS, in the words the operator needs.
- *
- * `kind` is not user input and is not editable, so the only useful thing the cell can do with it is
- * explain the boundary rule it selected — which is the one behaviour that surprises people
- * (`yumm` deliberately does not fire inside `yummy`; `🍑` deliberately fires anywhere).
+/*
+ * `kind` is carried on every row and rendered nowhere: the explainer sentence that used to sit
+ * under the trigger cell (`describeKind`) folded the table's narrowest column into five lines on a
+ * phone and was removed on the owner's request. The field stays — the ledger has it, and the next
+ * surface that needs the glyph/word split reads it from here rather than re-deriving it.
  */
-export function describeKind(kind: AdminShortcutKind): string {
-  return kind === 'glyph'
-    ? 'glyph — fires anywhere in his message'
-    : 'word — fires on its own only, never inside a longer word'
-}

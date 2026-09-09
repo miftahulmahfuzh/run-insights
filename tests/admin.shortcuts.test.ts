@@ -9,7 +9,6 @@ import {
   NINA_TRIGGER_MAX,
   SHORTCUT_FIELDS,
   buildShortcutRows,
-  describeKind,
   formatFired,
   type ShortcutSource,
 } from '@/lib/admin/shortcutModel'
@@ -109,13 +108,6 @@ describe('formatFired', () => {
 
   it('drops the day when there is a count and no instant', () => {
     expect(formatFired(3, null)).toBe('3×')
-  })
-})
-
-describe('describeKind', () => {
-  it('explains the boundary rule, which is the one thing about kind that surprises people', () => {
-    expect(describeKind('glyph')).toMatch(/anywhere/i)
-    expect(describeKind('word')).toMatch(/inside a longer word/i)
   })
 })
 

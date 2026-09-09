@@ -909,11 +909,12 @@ that module's header carries the argument for the indirection, and the short ver
 boundary should be one file wide rather than resting on a property of a file in another directory
 that a `'use client'` component now names.
 
-Under the trigger cell the table prints two read-only lines the operator cannot get anywhere else:
+Under the trigger cell the table prints one read-only line the operator cannot get anywhere else:
 the **folded `matchKey`**, because `✌️` and `✌` are the same shortcut and nothing else on the page
-says so, and `describeKind(row.kind)`, because "fires anywhere" versus "never inside a longer word"
-is the one thing about the classification that surprises people. Neither is editable — both are
-derived server-side.
+says so. The `kind` explainer sentence that used to sit under it (`describeKind` — "fires anywhere"
+versus "never inside a longer word") was removed on 2026-09-09 at the owner's request: it wrapped
+the table's narrowest column into five lines on a phone. `kind` is still carried on every row and
+rendered nowhere.
 
 ### `AdminNav`'s sixth cell, and `UserPicker`'s one new prop
 
@@ -996,7 +997,7 @@ belong to `/admin/memory`.
   `saveShortcutCellAction`, `toggleShortcutAction`, `deleteShortcutAction`, and
   `AdminShortcutResult`.
 - `@/lib/admin/shortcutModel` — `NINA_TRIGGER_MAX`, `NINA_SHORTCUT_LABEL_MAX`,
-  `NINA_SHORTCUT_EXPANSION_MAX`, `ADMIN_SHORTCUT_PAGE`, `describeKind`, `formatFired`, and the
+  `NINA_SHORTCUT_EXPANSION_MAX`, `ADMIN_SHORTCUT_PAGE`, `formatFired`, and the
   `ShortcutField` / `ShortcutRow` types. **This is the only module `ShortcutTable.tsx` takes its
   bounds from**, and the point of the indirection is that the file then names no `@/lib/nina/`
   specifier — a test asserts it.
