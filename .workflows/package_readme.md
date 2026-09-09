@@ -642,7 +642,8 @@ package readmes of their own.
   as a `ReactNode`.
 - `lib/nina/chrome` — the reveal rules, consumed only by `ChatChrome`.
 - `lib/nina/chatview` — `NINA_BAR_VISIBLE_VAR` (by `ChatChrome`), `composerBottomCss` and
-  `keyboardOverlapPx` (by `ChatScreen`).
+  `keyboardOverlapPx` (by `ChatScreen`), and the panel's keyboard pair `NINA_KEYBOARD_OVERLAP_VAR`
+  and `KEYBOARD_REASSERT_DELAYS_MS` (both by `NinaSidebar`).
 - `lib/pwa` — the install contract (`INSTALL`, `ADMIN_INSTALL`, `APPLE_WEB_APP`, `PWA_ICONS`),
   read by `app/manifest.ts`, `app/layout.tsx`, `app/admin/manifest.webmanifest/route.ts` and
   `app/admin/layout.tsx`. Plain constants — no `server-only`, no env read, no image generation.
@@ -832,6 +833,49 @@ per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEA
 (the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
 `NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
 `P1-RI-A019`.
+
+### Recent changes — P1-RI-A025 (2026-09-09)
+
+*Phase 1 of the `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` set (R1, R2): the keyboard stops eating
+the sidebar's fields, and the search field gains a ✕ that clears the query and its results.*
+
+**R1 — the panel asserts its fields rather than measuring the keyboard.** The
+`bottom: var(--nina-kb-overlap)` box fix ended the panel at the keyboard's top edge, and the report
+survived it: the search field sits at the top of a tall block inside the panel's OWN
+`overflow-y-auto` container, and iOS Safari's focus reveal scrolls THAT container — a `scrollTop`
+no box geometry sees. So the panel asserts instead: a delegated `focusin` listener in
+`NinaSidebar`'s `open`-keyed effect arms `KEYBOARD_REASSERT_DELAYS_MS` (`[0, 120, 300, 600, 1000]`,
+new in `lib/nina/chatview.ts` beside `NINA_KEYBOARD_OVERLAP_VAR` — a rule a component cannot be
+tested under, so the numbers live where the suite can hold them), and each tick calls
+`scrollIntoView({ block: 'nearest', behavior: 'instant' })` on the focused field, which walks every
+scrollable ancestor at once, computes zero scroll when nothing has moved, and needs no second
+`visualViewport` subscription. Three guards: text fields only; `document.activeElement === target`
+checked at fire time, so a late tick never fights a focus that has moved; and a new focus cancels
+the running schedule, so exactly one is live. The schedule ends at 1000 ms on purpose — after a
+second the scroll position is the runner's own act, and an assert that kept firing would drag the
+field back from where he scrolled it. Phase 2's rename field is covered for free: the listener is
+delegated at the panel, so any text field inside it is.
+
+**R2 — the ✕ in the search field, and why the input is `type="text"`.** One tap does all three
+things the ask names: `setText('')`, `setResult(null)` and `focus()` back into the input — the
+query and the results go together and the keyboard never folds. Nulling the result is load-bearing:
+the `active` gate already hides the block, but a kept `result` would let a clear-then-retype of the
+same query pass `fresh` on the first keystroke back and repaint the stale answer as this search's.
+`type="search"` became `type="text"` because Safari's native clear glyph cannot be sized to the
+44 px floor, cannot be given a name, and cannot be taught the two-part clear, while Chrome Android
+draws none at all; `enterKeyHint="search"` keeps the SEARCH key. The button cancels its own
+`pointerdown`, so the tap moves focus nowhere and iOS gets no blur to fold the keyboard over — the
+click handler's `focus()` is the net for the Enter-on-the-button path. It renders only when there
+is text, and it wears the same skin and event strategy as phase 2's rename ✕: one idiom, two
+fields.
+
+**New:** `KEYBOARD_REASSERT_DELAYS_MS` in `lib/nina/chatview.ts`, with four tests in
+`lib/nina/chatview.test.ts` holding its shape (first delay `0`, strictly ascending, last past the
+whole keyboard-settle chain, integer milliseconds) — the stand-in for a component `vitest` cannot
+render. **Changed:** `components/nina/NinaSidebar.tsx` — the listener and its cleanup beside the
+panel's Escape listener, keyed on `open` alone; `components/nina/NinaSearchField.tsx` — the wrapper
+takes `relative` with the label pairing by `htmlFor`, and the ✕ owns the field's last 44 px
+(`pr-11`) only while text is present.
 
 ### Recent changes — P1-RI-A026 (2026-09-09)
 
