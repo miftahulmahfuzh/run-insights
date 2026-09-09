@@ -581,14 +581,10 @@ describe('runNinaTurn — the log', () => {
     expect(store.rows[0]!.toolCalls).toBe('')
   })
 
-  it('records the tuning revision beside the prompt version', async () => {
+  it('records the prompt version, which dates the assembler the turn ran on', async () => {
     const store = fakeTurnStore()
     const client = scriptedClient([sendMessage(GOOD)])
-    await runNinaTurn(
-      input({ tuning: ninaTuningFixture({ revision: 7 }) }),
-      fakeTurnDeps(client, { store }),
-    )
-    expect(store.rows[0]!.tuningRevision).toBe(7)
+    await runNinaTurn(input(), fakeTurnDeps(client, { store }))
     expect(store.rows[0]!.promptVersion).toBe(ninaContextFixture().promptVersion)
   })
 

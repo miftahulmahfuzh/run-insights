@@ -50,7 +50,7 @@ import {
  * is agreed rather than shared is a constant that will one day disagree."*
  */
 
-/** What a browser edits: phase 1's row, minus the revision the database mints. */
+/** What a browser edits: phase 1's row, with its records loosened to string keys — see each field. */
 export interface TuningDraft {
   traits: Record<string, number>
   dials: Record<string, number>

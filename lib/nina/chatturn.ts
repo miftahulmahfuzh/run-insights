@@ -186,7 +186,6 @@ export function ninaChatTurnStore(turnId: string): NinaTurnStore {
         .set({
           model: row.model,
           promptVersion: row.promptVersion,
-          tuningRevision: row.tuningRevision,
           inputTokens: row.inputTokens,
           outputTokens: row.outputTokens,
           toolCalls: row.toolCalls,

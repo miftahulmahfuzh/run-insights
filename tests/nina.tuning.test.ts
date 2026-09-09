@@ -351,7 +351,7 @@ describe('clamping and coercion never throw', () => {
       { traits: 'nope' },
       { traits: [] },
       { traits: { anger: {} }, dials: 7 },
-      { relationship: 42, notes: {}, revision: -9 },
+      { relationship: 42, notes: {} },
       { traits: Object.create(null) },
     ]
     for (const input of hostile) {
@@ -359,8 +359,6 @@ describe('clamping and coercion never throw', () => {
       expect(Object.keys(tuning.traits).sort()).toEqual([...NINA_TRAITS].sort())
       expect(Object.keys(tuning.dials).sort()).toEqual([...NINA_DIALS].sort())
       expect(NINA_RELATIONSHIPS).toContain(tuning.relationship)
-      expect(tuning.revision).toBeGreaterThanOrEqual(0)
-      expect(Number.isInteger(tuning.revision)).toBe(true)
     }
   })
 
@@ -379,7 +377,6 @@ describe('clamping and coercion never throw', () => {
       enabled,
       relationship: 'girlfriend' as const,
       notes: 'call him yang more often',
-      revision: 4,
     }
     expect(coerceNinaTuning(input)).toEqual(input)
   })
@@ -423,7 +420,6 @@ describe('NINA_TUNING_DEFAULTS is the Nina who ships today', () => {
       verbosity: 50,
     })
     expect(NINA_TUNING_DEFAULTS.notes).toBe('')
-    expect(NINA_TUNING_DEFAULTS.revision).toBe(0)
   })
 
   it('puts anger in the OFF band, which is the band phase 2 floors at rung 0', () => {

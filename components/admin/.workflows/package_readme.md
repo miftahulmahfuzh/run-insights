@@ -604,7 +604,7 @@ down, because both look like details and neither is:
 - **The disclosure is gone, not defaulted open.** `open` was never a prop — passing it would make
   React control the attribute and fight the operator's click, and `revalidatePath` re-renders this
   component after every save. So the root is a plain `<section>`, and what the `<summary>` used to
-  hold is now the section header: relationship · loudest dials · *N* off · revision, the same
+  hold is now the section header: relationship · loudest dials · *N* off, the same
   one-line answer to "what is she set to" that the hub card gives.
 - **`id="character"` stayed on that section root.** It was a live deep link from the overview card
   for two plan sets. The card points at the route now, and the id costs one attribute and keeps a
@@ -1328,3 +1328,17 @@ Refreshed here: the overview's two "five-cell" sentences, three module-map rows,
 one primary consumer, the test-consumer section (which now names the two suites that read a file in
 this directory as text, and why that is not an import), and six gotchas. This package still has no
 test file of its own, and that is still correct.
+
+2026-09-09 — updated following task **P1-RI-A025** (`simplify-personality-settings` phase 1 of 2,
+the prompt-revision purge). One prop and everything that rendered it left `CharacterPanel.tsx`:
+`revision: number` is gone from the props, the section header reads "relationship · loudest dials ·
+*N* off" without the trailing "· revision *N*", and the prompt-preview `<summary>` no longer names
+a revision. The draft-reset that used to watch `revision !== lastRevision` now watches content —
+`tuningDraftEquals(tuning, lastTuning)` — which resets the draft exactly when the canonical row's
+content changes under it and lets a server-side trim (a coerced `notes`, say) land without a
+counter to announce it. `DialSlider.tsx` lost only a doc-comment clause comparing the rendered
+number against `nina_turns`' recorded revision. No control, bound, label or prop signature beyond
+the removed one changed, and the Save/Discard/Reset button model is untouched — phase 2 of the set
+owns replacing it. Migration `drizzle/0016_retire_tuning_revision.sql` is committed but NOT
+applied; applying it is the post-deploy `npm run db:migrate`. Refreshed here: one clause of the
+character-panel section.

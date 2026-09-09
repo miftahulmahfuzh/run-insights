@@ -590,25 +590,6 @@ export const ninaTurns = pgTable(
     /** `NINA_PROMPT_VERSION` at call time, so a voice regression can be dated. */
     promptVersion: integer('prompt_version'),
     /**
-     * **`nina_tuning.revision` at call time (F35 R1/R2/R3).** `prompt_version` identifies the
-     * ASSEMBLER; this identifies the SETTING it assembled. With a per-user character tuning the
-     * first is no longer sufficient on its own — two turns on prompt version 3 can be two
-     * different Ninas, and "what was she set to when she said that" is the question a voice
-     * regression actually asks.
-     *
-     * NULLABLE with no default, and NULL means one thing only: **a turn from before the tuning
-     * existed.** Every turn after phase 3 carries a number, because `readNinaTuning` returns the
-     * defaults rather than null and the defaults' revision is `0` — so `0` is "she was on the
-     * shipping character" and NULL is "we did not record it", which are genuinely different
-     * answers and must not be spelled the same way.
-     *
-     * `integer` and not a foreign key: `nina_tuning` holds one CURRENT row per user, not a
-     * history, so there is no row for revision 7 to point at once revision 8 is saved. An audit
-     * pointer must never be able to block a write — the same argument `nina_messages.turn_id`
-     * makes for carrying no FK.
-     */
-    tuningRevision: integer('tuning_revision'),
-    /**
      * The D3 token-floor canary again, one feature over: `extractions.prompt_tokens` exists for
      * exactly this reason and `lib/llm/vision.ts` reads it. A vision turn whose `input_tokens`
      * sits far below the floor is a turn where the endpoint silently dropped the image.
@@ -666,9 +647,8 @@ export const ninaTurns = pgTable(
      *
      * NULL means "not hidden". A timestamp means "hidden, then". Nullable, no default, and **no
      * backfill script** — every row written before this column reads NULL and is therefore
-     * visible, which is `tuning_revision`'s idiom and the `*_enabled` columns' idiom one table
-     * over: the migration IS the backfill, because the absent value already spells the right
-     * answer.
+     * visible, which is the `*_enabled` columns' idiom one table over: the migration IS the
+     * backfill, because the absent value already spells the right answer.
      *
      * The runner's words were *"delete job icon … (but just soft delete in neon db). so i can
      * keep the job list tidy and pristine"*, and the parenthesis is a specification. This table
@@ -1950,8 +1930,8 @@ export const ninaFoldersRelations = relations(ninaFolders, ({ one }) => ({
  * ── `user_id` IS THE PRIMARY KEY ──────────────────────────────────────────────────────────────
  * One row per user, so `user_id` alone is the natural key and there is no second fact to hang a
  * surrogate id on — the `nina_nags` / `nina_folders` idiom with a one-column key instead of two.
- * It is also what lets `writeNinaTuning` be a single `ON CONFLICT DO UPDATE` upsert that bumps
- * `revision` in SQL, instead of a read-then-write that is correct until two tabs race.
+ * It is also what lets `writeNinaTuning` be a single `ON CONFLICT DO UPDATE` upsert of the whole
+ * row, instead of a read-then-write that is correct until two tabs race.
  */
 export const ninaTuning = pgTable('nina_tuning', {
   userId: text('user_id')
@@ -2045,13 +2025,12 @@ export const ninaTuning = pgTable('nina_tuning', {
    * makes `tuningToColumns` a compile error if it forgets one it declares.
    *
    * ── NULLABLE, WITH NO DEFAULT, AND THAT IS THE BACKFILL ─────────────────────────────────────
-   * The `nina_turns.tuning_revision` idiom, verbatim: NULLABLE with no default, and NULL means one
-   * thing only — **a row written before the toggles existed**. `coerceNinaEnabled` reads anything
-   * that is not literally `false` as enabled, so an existing production row is all-on the moment
-   * the migration lands, with no `UPDATE` and no data step. A `DEFAULT true` would have been the
-   * second copy of `NINA_ENABLED_DEFAULTS` in a second language that this table's header forbids.
-   * `writeNinaTuning` supplies all seventeen on every save, so NULL never appears in a row this
-   * app has written.
+   * NULLABLE with no default, and NULL means one thing only — **a row written before the toggles
+   * existed**. `coerceNinaEnabled` reads anything that is not literally `false` as enabled, so an
+   * existing production row is all-on the moment the migration lands, with no `UPDATE` and no
+   * data step. A `DEFAULT true` would have been the second copy of `NINA_ENABLED_DEFAULTS` in a
+   * second language that this table's header forbids. `writeNinaTuning` supplies all seventeen on
+   * every save, so NULL never appears in a row this app has written.
    */
   relationshipEnabled: boolean('relationship_enabled'),
   angerEnabled: boolean('anger_enabled'),
@@ -2071,17 +2050,6 @@ export const ninaTuning = pgTable('nina_tuning', {
   photoEagernessEnabled: boolean('photo_eagerness_enabled'),
   verbosityEnabled: boolean('verbosity_enabled'),
 
-  /**
-   * **Bumped by the database on every save**, and stamped onto `nina_turns.tuning_revision` so a
-   * voice change can be dated to a setting rather than only to a commit.
-   *
-   * A stored row always has `revision >= 1`; `0` is `NINA_TUNING_DEFAULTS.revision` and means no
-   * row has ever been written. `writeNinaTuning` computes it as `revision + 1` inside the upsert,
-   * so no caller can send one — a revision the client supplies is a revision a stale tab can move
-   * backwards. No `DEFAULT` here for the same reason as every column above: the one writer always
-   * supplies it.
-   */
-  revision: integer('revision').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
     .notNull()
     .defaultNow()

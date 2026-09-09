@@ -94,7 +94,6 @@ export default async function AdminPersonalityPage() {
         userId={userId}
         tuning={toTuningDraft(tuning)}
         defaults={toTuningDraft(NINA_TUNING_DEFAULTS)}
-        revision={tuning.revision}
         promptPreview={buildNinaSystemPrompt(tuning)}
       />
     </div>

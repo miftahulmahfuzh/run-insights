@@ -14,6 +14,7 @@ import {
   loudestDials,
   relationshipCopy,
   tuningCopy,
+  tuningDraftEquals,
   type TuningDraft,
 } from '@/lib/admin/tuningModel'
 import { TOUCH_TARGET } from '@/components/admin/touch'
@@ -48,8 +49,8 @@ import {
  * was deliberately never a prop, because passing it would make React control the attribute and
  * fight the user's click, and `revalidatePath` re-renders this component after every save. So the
  * root is a plain `<section>`, and what the `<summary>` carried — the relationship, the loudest
- * dials, how many parameters are off, and the revision — is carried by the section header, where
- * it is the same one-line answer to "what is she set to" that the hub card gives.
+ * dials, how many parameters are off — is carried by the section header, where it is the same
+ * one-line answer to "what is she set to" that the hub card gives.
  *
  * **`id="character"` survives on that section root**, and it is not decoration: for two plan sets
  * the overview card deep-linked to this panel by that `#character` fragment on the album route.
@@ -103,14 +104,14 @@ export interface CharacterPanelProps {
   tuning: TuningDraft
   /** `NINA_TUNING_DEFAULTS`, mapped — the baseline for "no longer the Nina who shipped". */
   defaults: TuningDraft
-  revision: number
   /**
    * `buildNinaSystemPrompt(tuning)`, assembled on the SERVER from the SAVED tuning.
    *
    * It is not recomputed as the sliders move, and that is deliberate rather than a limitation: the
    * assembler reaches the whole persona, and shipping that into the browser to preview a string
    * would put Nina's canon in a client bundle to save one round trip. The preview's own summary
-   * line — the one `<details>` this panel still has — says which revision it is showing.
+   * line — the one `<details>` this panel still has — says it shows the SAVED row, not the edits
+   * above it.
    */
   promptPreview: string
 }
@@ -119,7 +120,6 @@ export function CharacterPanel({
   userId,
   tuning,
   defaults,
-  revision,
   promptPreview,
 }: CharacterPanelProps) {
   const [draft, setDraft] = React.useState<TuningDraft>(tuning)
@@ -128,19 +128,21 @@ export function CharacterPanel({
   const [pending, startTransition] = React.useTransition()
 
   // The server re-renders with the canonical row after every action, so the draft follows the prop
-  // rather than diverging from it — a stale slider next to "saved as revision 5" is how a second
-  // save writes the pre-canonical value back.
+  // rather than diverging from it — a stale slider next to the saved note is how a second save
+  // writes the pre-canonical value back.
   //
-  // Keyed on `revision` and not on the object: the prop is a fresh object on every render, so an
+  // Keyed on CONTENT and not on the object: the prop is a fresh object on every render, so an
   // identity comparison would reset the draft on any unrelated re-render and throw away the
-  // operator's keystrokes. The revision changes exactly when the row does.
+  // operator's keystrokes. `tuningDraftEquals` compares field by field, so the draft resets
+  // exactly when the row's content changes under it — which is also why an adopted canonical row
+  // (notes trimmed by `coerceNinaNotes`, say) lands here without clobbering anything newer.
   //
   // Adjusted DURING RENDER rather than in an effect, which is React's own recipe for "some state
   // derives from a prop" and the reason `MemorySlots` does it this way: an effect would paint the
   // stale value first, and `react-hooks/set-state-in-effect` rejects it for exactly that.
-  const [lastRevision, setLastRevision] = React.useState(revision)
-  if (revision !== lastRevision) {
-    setLastRevision(revision)
+  const [lastTuning, setLastTuning] = React.useState<TuningDraft>(tuning)
+  if (!tuningDraftEquals(tuning, lastTuning)) {
+    setLastTuning(tuning)
     setDraft(tuning)
     setConfirmingReset(false)
   }
@@ -216,7 +218,7 @@ export function CharacterPanel({
             : loud
                 .map((dial) => `${tuningCopy(dial.key).label.toLowerCase()} ${dial.value}`)
                 .join(', ')}
-          {off > 0 && ` · ${off} off`} &middot; revision {revision}
+          {off > 0 && ` · ${off} off`}
         </span>
       </div>
 
@@ -406,7 +408,7 @@ export function CharacterPanel({
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
           <summary className="cursor-pointer list-none text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
-            The assembled system prompt &middot; revision {revision}
+            The assembled system prompt
             {dirty && (
               <span className="ml-2 font-medium text-ink-3">
                 (as saved — the edits above are not in it yet)
@@ -470,10 +472,8 @@ export function CharacterPanel({
         {confirmingReset && (
           <div className="mt-3 rounded-card border border-rule bg-paper-2 p-3">
             <p className="mb-2 max-w-[70ch] text-[12px] font-medium text-ink-2">
-              This writes <strong>every</strong> dial back to its shipping default and bumps the
-              revision, so the row records that it happened rather than losing the fact. It is a
-              real rollback and not a gesture: the default tuning renders the prompt she shipped
-              with.
+              This writes <strong>every</strong> dial back to its shipping default. It is a real
+              rollback and not a gesture: the default tuning renders the prompt she shipped with.
             </p>
             <div className="flex gap-2">
               <Button

@@ -37,8 +37,8 @@ import { cn } from '@/lib/cn'
  *
  * ── THE NUMBER IS NOT DECORATION ────────────────────────────────────────────────────────────
  * An unlabelled slider is a dial the operator cannot report back: "flirty is quite high" is not a
- * bug report and cannot be compared against `nina_turns`' recorded revision. So the value renders
- * as an `<output>` tied to the input, and it is the number that is actually stored.
+ * bug report and cannot be checked against the row the panel stores. So the value renders as an
+ * `<output>` tied to the input, and it is the number that is actually stored.
  *
  * ── THREE DIFFERENT KINDS OF "CHANGED", ALL VISIBLE ─────────────────────────────────────────
  * `defaultValue` is the SHIPPING default, so accent type means *this is no longer the Nina who

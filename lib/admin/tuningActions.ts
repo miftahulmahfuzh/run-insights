@@ -9,7 +9,7 @@ import {
   type NinaTuningWriteInput,
 } from '@/lib/admin/schema'
 import { writeNinaTuning } from '@/lib/nina/queries'
-import { NINA_TUNING_DEFAULTS, type NinaTuningWrite } from '@/lib/nina/tuning'
+import { NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
 
 /**
  * `/admin/personality`'s character panel, write side — R1, R2, R3.
@@ -23,7 +23,7 @@ import { NINA_TUNING_DEFAULTS, type NinaTuningWrite } from '@/lib/nina/tuning'
  *                                 so this call is the only gate on this endpoint.
  *   2. Zod                      — every field, every time. The client is not a source of truth.
  *   3. the write                — one row, through phase 1's `writeNinaTuning`, which owns the
- *                                 clamp and the revision bump.
+ *                                 clamp.
  *   4. `revalidatePath`         — re-renders THIS page, so the panel and the prompt preview show
  *                                 the row that was just written.
  *
@@ -49,8 +49,6 @@ export interface AdminTuningResult {
   error?: string
   /** One sentence about what was written. */
   note?: string
-  /** The revision the row now carries, so the panel can name it without a refetch. */
-  revision?: number
 }
 
 /** Every action's catch-all. A stack trace goes to the log; a sentence goes to the admin. */
@@ -70,12 +68,12 @@ function failed(where: string, cause: unknown): AdminTuningResult {
  * `dialShape` builds the Zod shape from phase 1's own key arrays — so no cast is needed anywhere
  * on this path.
  *
- * `NinaTuningWrite` is IMPORTED from `lib/nina/tuning.ts` rather than re-declared as a local
- * `Omit<NinaTuning, 'revision'>`. Phase 1 exports that exact type under that exact name, and a
- * second declaration of it here is the shape `lib/admin/avatars.ts` warns about: *"a constant that
- * is agreed rather than shared is a constant that will one day disagree."*
+ * The return type is `NinaTuning`, IMPORTED from `lib/nina/tuning.ts` rather than re-declared as a
+ * local shape. Phase 1 owns the tuning's fields, and a second declaration of them here is the
+ * shape `lib/admin/avatars.ts` warns about: *"a constant that is agreed rather than shared is a
+ * constant that will one day disagree."*
  */
-function toTuningWrite(input: NinaTuningWriteInput): NinaTuningWrite {
+function toTuningWrite(input: NinaTuningWriteInput): NinaTuning {
   return {
     traits: input.traits,
     dials: input.dials,
@@ -88,7 +86,7 @@ function toTuningWrite(input: NinaTuningWriteInput): NinaTuningWrite {
 }
 
 /**
- * Save the whole tuning. One action, one row, one revision bump.
+ * Save the whole tuning. One action, one row.
  *
  * The argument types are deliberately loose (`Record<string, number>`, `relationship: string`) and
  * Zod does the narrowing, which is the convention `saveSlotAction`'s `key: string` set: a Server
@@ -115,15 +113,13 @@ export async function saveNinaTuningAction(input: {
   }
 
   try {
-    /* `writeNinaTuning` returns the whole stored `NinaTuning`, not a number — phase 1's landed
-     * contract. The row it hands back is what the database actually holds, already coerced, so
-     * reading the revision off it is reading the truth rather than a hope. */
-    const { revision } = await writeNinaTuning(parsed.data.userId, toTuningWrite(parsed.data))
+    /* Awaited, not fired-and-forgotten: `revalidatePath` below must re-render the page around the
+     * row this write stored, not the one it replaced. */
+    await writeNinaTuning(parsed.data.userId, toTuningWrite(parsed.data))
     revalidatePath('/admin/personality')
     return {
       ok: true,
-      revision,
-      note: `Saved as revision ${revision}. She reads it on her very next message — there is no cache on her turn path.`,
+      note: 'Saved. She reads it on her very next message — there is no cache on her turn path.',
     }
   } catch (cause) {
     return failed('save', cause)
@@ -134,11 +130,12 @@ export async function saveNinaTuningAction(input: {
  * Reset every dial to `NINA_TUNING_DEFAULTS` — the behavioural rollback the plan's own Rollback
  * section names as cheaper than the code one.
  *
- * It **writes** the defaults rather than deleting the row, and so it bumps the revision like any
- * other save. That is the honest record: `nina_turns` stamps the tuning revision that produced
- * each turn, so "he reset her at revision 8" has to be a revision, not a hole where one used to
- * be. Invariant 2 is what makes this a real rollback instead of a gesture: the default tuning
- * renders the prompt she shipped with, character for character.
+ * It **writes** the defaults rather than deleting the row, because a row of defaults and NO row
+ * read identically: `readNinaTuning` returns `NINA_TUNING_DEFAULTS` for a user with no row, and
+ * `coerceNinaTuning` maps a defaults row back to those same values. A delete would be a second
+ * code path answering a question this one write already answers. Invariant 2 is what makes this a
+ * real rollback instead of a gesture: the default tuning renders the prompt she shipped with,
+ * character for character.
  *
  * The defaults do NOT go through Zod. They are phase 1's module constant, not client input, and
  * validating a constant against a schema derived from the same module would only assert that phase
@@ -153,7 +150,7 @@ export async function resetNinaTuningAction(input: { userId: string }): Promise<
     return { ok: false, error: 'That is not an account this panel can reset.' }
   }
 
-  const defaults: NinaTuningWrite = {
+  const defaults: NinaTuning = {
     traits: { ...NINA_TUNING_DEFAULTS.traits },
     dials: { ...NINA_TUNING_DEFAULTS.dials },
     /* Spread like the two records above: `NINA_ENABLED_DEFAULTS` is frozen and `writeNinaTuning`
@@ -165,12 +162,11 @@ export async function resetNinaTuningAction(input: { userId: string }): Promise<
   }
 
   try {
-    const { revision } = await writeNinaTuning(parsed.data.userId, defaults)
+    await writeNinaTuning(parsed.data.userId, defaults)
     revalidatePath('/admin/personality')
     return {
       ok: true,
-      revision,
-      note: `Every dial is back at its default, as revision ${revision}. She is the Nina who shipped.`,
+      note: 'Every dial is back at its default. She is the Nina who shipped.',
     }
   } catch (cause) {
     return failed('reset', cause)

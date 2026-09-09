@@ -68,10 +68,6 @@ describe('toTuningDraft — the read-side seam', () => {
     draft.traits[NINA_TRAITS[0]] = 99
     expect(NINA_TUNING_DEFAULTS.traits[NINA_TRAITS[0]]).not.toBe(99)
   })
-
-  it('does not carry the revision — the panel takes that as its own prop', () => {
-    expect('revision' in DEFAULTS).toBe(false)
-  })
 })
 
 describe('the copy is complete for phase 1s vocabulary', () => {
@@ -336,7 +332,7 @@ describe('one save, not sixteen — plan invariant 11', () => {
     expect(source).toContain('writeNinaTuning(')
     /* The route the PANEL is on, which since the Personality tab is no longer the album's. A save
      * that revalidated `/admin/nina` would re-render a page the operator is not looking at and
-     * leave the panel showing a stale revision until a manual reload. */
+     * leave the panel showing a stale row until a manual reload. */
     expect(source).toContain("revalidatePath('/admin/personality')")
   })
 })
