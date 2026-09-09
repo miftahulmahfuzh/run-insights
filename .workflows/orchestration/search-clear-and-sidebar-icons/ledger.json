@@ -1,0 +1,68 @@
+{
+  "branch": "feature/search-clear-and-sidebar-icons",
+  "coordinator": "orch-search-clear-and-sidebar-icons",
+  "coordinator_session_id": "56b050f5-d34e-4d71-9192-bdd17a6f620f",
+  "created": "2026-09-09T02:00:52+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "components/nina` + `lib/nina",
+      "plan": ".workflows/plan/search-clear-and-sidebar-icons/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The keyboard stops eating the sidebar's fields; the search field clears"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "components/nina",
+      "plan": ".workflows/plan/search-clear-and-sidebar-icons/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3",
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Session actions become icons; the rename field clears"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "components/nina",
+      "plan": ".workflows/plan/search-clear-and-sidebar-icons/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R5"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "The sidebar's bottom icon rail"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/search-clear-and-sidebar-icons/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "search-clear-and-sidebar-icons",
+  "updated": "2026-09-09T02:00:52+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/search-clear-and-sidebar-icons"
+}
