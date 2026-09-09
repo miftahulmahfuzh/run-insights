@@ -23,6 +23,7 @@ import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import { reviveNinaImageJobs } from '@/lib/nina/imagerun'
 import { sessionTitleFor } from '@/lib/nina/sessions'
 import { ninaFlightView } from '@/lib/nina/turnflight'
+import { flashBlinkCount } from '@/lib/nina/reply'
 import { NINA_CHAT_HREF, sessionDayLabel, type SidebarSession } from '@/lib/nina/sidebar'
 import {
   getCurrentNinaAvatar,
@@ -257,6 +258,12 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
     reviveNinaImageJobs(userId),
   ])
   const avatar = ninaAvatarView(avatarRow)
+
+  /* The landing flash's blink count, from the owner's Vercel tuning knob
+   * (`NINA_FLASH_BLINKS`; `flashBlinkCount` survives it being unset or malformed). Read per
+   * render — the page is dynamic — so a dashboard retune lands with the next deployment. Pure
+   * and env-only: no query, no model, nothing to keep warm. */
+  const flashBlinks = flashBlinkCount(process.env.NINA_FLASH_BLINKS)
 
   /* One reading of the clock for this render, shared by the conversation's day dividers and the
    * sidebar's row labels. Hoisted out of `<ChatScreen>`'s prop so the same instant answers both —
@@ -511,6 +518,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
           pendingPhoto={pendingPhoto}
           flight={flight}
           avatar={{ src: avatar.src, natural: avatar.natural, crop: avatar.crop }}
+          flashBlinks={flashBlinks}
         />
 
         {/*

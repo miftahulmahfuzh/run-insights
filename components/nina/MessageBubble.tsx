@@ -42,25 +42,31 @@ import type { ChatMessage } from './types'
  * message and nothing at all visually, which is the trade this app's design language wants: 200
  * permanently visible reply buttons would be 200 pieces of furniture in a reading surface.
  *
- * **The landing flash is a three-blink animation, and it is a keyframe on purpose.** It started
- * as a `transition-shadow` tint — "no keyframe, no `[animation:…]` call site, and therefore
- * nothing for `tests/motion.reducedMotion.test.ts` to guard" — and that design held until
- * 2026-09-09, when the owner asked for the landing to read at a glance: *"buat highlight biru ini
- * lebih conspicuous, misal buat dia flicker lebih cepat, tiga kali flicker"*. A tint you cannot
- * make flicker is a tint that cannot answer that ask, so the transition is gone and
- * `nina-flash-ring` — three hard ~150 ms blinks of the accent ring over 0.96 s, in
- * `app/globals.css` — took its place. The invariant-8 cost the old paragraph avoided paying is
+ * **The landing flash is a blink train, and it is a keyframe on purpose.** It started as a
+ * `transition-shadow` tint — "no keyframe, no `[animation:…]` call site, and therefore nothing
+ * for `tests/motion.reducedMotion.test.ts` to guard" — and that design held until 2026-09-09,
+ * when the owner asked for the landing to read at a glance: *"buat highlight biru ini lebih
+ * conspicuous, misal buat dia flicker lebih cepat, tiga kali flicker"*. A tint you cannot make
+ * flicker is a tint that cannot answer that ask, so the transition is gone and
+ * `nina-flash-blink` in `app/globals.css` took its place: hard ~150 ms blinks of a 2px ring, one
+ * blink per iteration, the count driven by `--nina-flash-count` (owner-tuned through
+ * `NINA_FLASH_BLINKS`, default four). The invariant-8 cost the old paragraph avoided paying is
  * paid now, in the open: the keyframe exists, its `[animation:…]` call site is below, and the
  * suite guards the still redefinition under `@media (prefers-reduced-motion: reduce)` — which
  * gives the reduce setting the old steady ring, held for the animation's duration, instead of
- * three strobes. The rest of that paragraph's reading of `app/globals.css` still holds: the
+ * strobes. The rest of that paragraph's reading of `app/globals.css` still holds: the
  * `transition-*` utilities in `Chip`, `KindSelector` and `Button` animate colour only, which is
  * not motion, and the `transition-shadow` below now exists for the FAILED ring alone.
  *
- * `QUOTE_FLASH_MS` is 1600 — it bounds the flash STATE, and with it the smooth-scroll window
- * (~500 ms) a reply tap may still be travelling through. The visible flicker ends itself at
- * ~0.96 s; nothing lingers after it, because the animation ends off and the steady ring is no
- * longer applied beside it.
+ * The COLOUR is per side: hers blink `--accent`; his blink white (`--nina-flash-ring-color`,
+ * set below when `mine`) — "flicker buat user's bubble itu diganti warnanya jadi putih". Both
+ * quote-tap landings and search-hit landings ride the same `flash` prop, so the reply-to box
+ * pointing at one of his bubbles and a search hit inside one blink white alike.
+ *
+ * The hold is `flashHoldMs(flashBlinks)` — the train plus one cycle of tail — computed in
+ * `lib/nina/reply.ts` and measured in `ChatScreen`; at the default four it is the same 1600 ms
+ * the old fixed constant held. Nothing lingers after the last blink, because the animation ends
+ * off and the steady ring is not applied beside it.
  *
  * ── R8: THE FOURTH GESTURE (PHASE 7 OF THE SESSIONS SET) ──────────────────────────────────────
  * Swipe a bubble to the LEFT to edit or delete it — either side of the conversation. The decision
@@ -235,7 +241,7 @@ export function MessageBubble({
    * than the rendered window, or belongs to an unconfirmed send.
    */
   quote?: QuoteView | null
-  /** True while this is the message a quote tap just scrolled to. Holds for `QUOTE_FLASH_MS`. */
+  /** True while this is the message a landing just landed on; blinks for `flashHoldMs(flashBlinks)`. */
   flash?: boolean
   /** Arm a reply to this message. Omitted makes the bubble inert, as on a read-only page. */
   onReply?: (message: ChatMessage) => void
@@ -458,16 +464,26 @@ export function MessageBubble({
           message.state === 'failed' && 'ring-1 ring-red',
           /*
            * The landing flash (R12: "clicking … will automatically scroll to that message"; a
-           * scroll that does not say WHICH message it landed on has done half the job) — three
-           * hard blinks of the accent ring, `nina-flash-ring` in `app/globals.css`, applied
-           * INSTEAD of a steady ring and never beside one, so the element's own box-shadow under
-           * the animation is none and the blink ends clean. The `transition-shadow` under it is
-           * not the flash's any more: it exists for the FAILED ring above, which is a real
-           * class-driven shadow change and fades as one. See the header for why the old
-           * transition-based tint became a keyframe, and what that costs and buys.
+           * scroll that does not say WHICH message it landed on has done half the job):
+           * `nina-flash-blink` in `app/globals.css`, one hard blink per iteration, applied
+           * INSTEAD of a steady ring and never beside one so the element's own box-shadow under
+           * the animation is none and the train ends clean.
+           *
+           * The COUNT is not ours to choose — `--nina-flash-count` is set on `MessageList`'s
+           * container from `flashBlinkCount(process.env.NINA_FLASH_BLINKS)` (owner-tuned in the
+           * Vercel env; the `, 4` is only the fallback if that var ever stops arriving, and a
+           * var() in the shorthand is what lets the count stay a value rather than a stop
+           * rewrite). The COLOUR is: hers blink `--accent` (the keyframe's default); HIS blink
+           * white — the owner's ask, "flicker buat user's bubble itu diganti warnanya jadi
+           * putih", both for a quote tap landing on his bubble and for a search hit landing on
+           * one — and against `bg-ink` a white rim reads as the bubble itself flashing, in both
+           * schemes. The `transition-shadow` under the animation is not the flash's: it exists
+           * for the FAILED ring above, which is a real class-driven shadow change and fades as
+           * one. See the header for the whole story.
            */
           'transition-shadow duration-300',
-          flash && '[animation:nina-flash-ring_0.96s_linear]',
+          flash && mine && '[--nina-flash-ring-color:#fff]',
+          flash && '[animation:nina-flash-blink_0.32s_linear_var(--nina-flash-count,_4)]',
         )}
       >
         {quote != null && (

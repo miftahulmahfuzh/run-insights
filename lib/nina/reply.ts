@@ -318,8 +318,50 @@ export const QUOTE_SCROLL_TOLERANCE_PX = 8
 /** The gap above a target too tall to centre. One 4pt step up from the bubble gap. */
 export const QUOTE_SCROLL_TOP_MARGIN_PX = 16
 
-/** How long the tint holds on the message a quote landed on. See `MessageBubble` for why 1600ms. */
-export const QUOTE_FLASH_MS = 1600
+/* ── the landing flash ─────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One blink of `nina-flash-blink` (`app/globals.css`): ~150 ms ring, ~170 ms gap. The keyframe is
+ * a SINGLE cycle and the blink count rides `animation-iteration-count`, so tuning the count never
+ * means retouching CSS stops.
+ */
+export const NINA_FLASH_CYCLE_MS = 320
+
+/**
+ * The blink count when `NINA_FLASH_BLINKS` is not set (or cannot be read as a number). The owner
+ * asked for four, 2026-09-09, up from three.
+ */
+export const NINA_FLASH_BLINKS_DEFAULT = 4
+
+/**
+ * **`NINA_FLASH_BLINKS` → how many times the landed bubble blinks**, as a number a CSS
+ * `animation-iteration-count` can take. The owner tunes this in the Vercel env so the feel is a
+ * deploy setting and not a code change; it is read per render of `app/nina/page.tsx` (the page is
+ * dynamic), so a changed variable lands on the next deployment without a code edit.
+ *
+ * `parseInt` on a missing value is `NaN`, and anything the environment hands us that is not a
+ * whole number falls back to `NINA_FLASH_BLINKS_DEFAULT` rather than failing the render — a
+ * malformed tuning knob is the page's business to survive and nobody else's to notice. The clamp
+ * is wide on purpose (1–8): one blink is a legitimate minimum, eight is where the hold below
+ * starts to outlast the reader's attention, and both ends are real values someone tuning in the
+ * dashboard might type.
+ */
+export function flashBlinkCount(raw: string | undefined): number {
+  const parsed = Number.parseInt(raw ?? '', 10)
+  if (!Number.isInteger(parsed)) return NINA_FLASH_BLINKS_DEFAULT
+  return Math.min(8, Math.max(1, parsed))
+}
+
+/**
+ * How long the flash STATE holds on the message a landing landed on: the whole blink train, then
+ * one full cycle of nothing. The tail is what makes a second landing inside the window restart
+ * the blink rather than race a clearing timer, and it is why the default count lands the hold on
+ * exactly the 1600 ms the old fixed constant (`QUOTE_FLASH_MS`) held — same feel, now derived
+ * from the tune instead of hard-coded beside it.
+ */
+export function flashHoldMs(blinks: number): number {
+  return blinks * NINA_FLASH_CYCLE_MS + NINA_FLASH_CYCLE_MS
+}
 
 /**
  * What the component measures, extending phase 4's three document numbers with the target's own

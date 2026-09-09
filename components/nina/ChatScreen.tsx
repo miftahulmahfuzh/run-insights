@@ -33,8 +33,8 @@ import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { JOB_JUMP_PARAM, nextSoftNavJump, parseNinaJumpParam } from '@/lib/nina/jobview'
 import {
-  QUOTE_FLASH_MS,
   buildQuote,
+  flashHoldMs,
   planQuoteScroll,
   type QuoteScroll,
   type QuoteView,
@@ -205,6 +205,7 @@ export function ChatScreen({
   pendingPhoto,
   flight,
   avatar,
+  flashBlinks,
 }: {
   /** The stored conversation, oldest first, mapped on the server. */
   initial: readonly ChatMessage[]
@@ -307,6 +308,20 @@ export function ChatScreen({
    * typing row came to ignore the album for as long as it did.
    */
   avatar: ChatAvatar
+  /**
+   * **How many times the landing flash blinks** — resolved on the server by `flashBlinkCount`
+   * from `process.env.NINA_FLASH_BLINKS` (the owner's Vercel tuning knob, 2026-09-09: "bikin
+   * jadi vercel env aja biar tuning nilainya gampang"). This screen does not render it; it
+   * reaches the bubbles two ways, and both are here so neither can drift: as
+   * `--nina-flash-count` through `MessageList` (the keyframe's iteration count), and as the
+   * blink train's length through `flashHoldMs` in `flashMessage` (the state hold) — so a
+   * retune changes what the eye sees and what bounds it by the same number.
+   *
+   * REQUIRED rather than optional, on RULING E2b's habit: `app/nina/page.tsx` is the one caller
+   * and `tsc` should be what notices if it stops passing it. The keyframe's `, 4` fallback is
+   * for a CSS var that stopped arriving, never for a caller that did not send the number.
+   */
+  flashBlinks: number
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
   /** Mid-reveal: the pause between two of her bubbles. Distinct from `awaiting`; see the render. */
@@ -650,24 +665,31 @@ export function ChatScreen({
   }, [])
 
   /**
-   * The landing flash, held for `QUOTE_FLASH_MS`.
+   * The landing flash, held for `flashHoldMs(flashBlinks)`.
    *
    * It runs whether or not the page moved: `kind: 'none'` means the target was already on screen,
    * which is exactly the case where a scroll alone would identify nothing. Since 2026-09-09 the
-   * visible effect is `nina-flash-ring` in `MessageBubble` — three hard blinks of the accent ring
-   * over ~0.96 s, with a still redefinition under `@media (prefers-reduced-motion: reduce)` that
-   * `tests/motion.reducedMotion.test.ts` guards. The timer outlives the blink on purpose: it is
-   * what bounds the state, so a second landing inside its window restarts the flash rather than
-   * racing a clearing timer.
+   * visible effect is `nina-flash-blink` in `MessageBubble` — hard blinks of a 2px ring, the
+   * count owner-tuned through `NINA_FLASH_BLINKS` — with a still redefinition under
+   * `@media (prefers-reduced-motion: reduce)` that `tests/motion.reducedMotion.test.ts` guards.
+   * The timer outlives the blink train by one full cycle on purpose: it is what bounds the state,
+   * so a second landing inside its window restarts the flash rather than racing a clearing timer.
+   *
+   * `flashBlinks` is a dep and that is safe rather than incidental: it is constant per mount (a
+   * server-resolved number), and the effects that key on this callback's identity re-run to
+   * no-ops — the mount path returns on the cleared `jumpRef`, the watcher on the stripped URL.
    */
-  const flashMessage = useCallback((targetId: string) => {
-    setNotice(null)
-    setFlashId(targetId)
-    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
-    flashTimer.current = window.setTimeout(() => {
-      if (alive.current) setFlashId(null)
-    }, QUOTE_FLASH_MS)
-  }, [])
+  const flashMessage = useCallback(
+    (targetId: string) => {
+      setNotice(null)
+      setFlashId(targetId)
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
+      flashTimer.current = window.setTimeout(() => {
+        if (alive.current) setFlashId(null)
+      }, flashHoldMs(flashBlinks))
+    },
+    [flashBlinks],
+  )
 
   /**
    * R12's second half: tapping a quote scrolls to the message it names, and says which one it
@@ -1429,6 +1451,7 @@ export function ChatScreen({
           keyboardOverlapPx={overlap}
           restoreMark={mark}
           flashId={flashId}
+          flashBlinks={flashBlinks}
           avatar={avatar}
           onReply={handleReply}
           onJumpToQuote={handleJumpToQuote}

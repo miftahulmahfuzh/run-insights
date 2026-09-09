@@ -50,6 +50,7 @@ export function MessageList({
   keyboardOverlapPx,
   restoreMark,
   flashId = null,
+  flashBlinks,
   onReply,
   onJumpToQuote,
   onRequestActions,
@@ -69,8 +70,19 @@ export function MessageList({
    * arriving at a conversation and the wrong answer for coming back to one.
    */
   restoreMark: ChatScrollMark | null
-  /** Phase 7. The message a quote tap just landed on; it holds a tint for `QUOTE_FLASH_MS`. */
+  /** Phase 7. The message a quote tap just landed on; it holds a tint for `flashHoldMs(flashBlinks)`. */
   flashId?: string | null
+  /**
+   * How many times a landed bubble blinks, resolved on the server by `flashBlinkCount` from
+   * `NINA_FLASH_BLINKS` (the owner's Vercel tuning knob) and set here as `--nina-flash-count` on
+   * the list's container — a custom property INHERITS, so one server-resolved number reaches
+   * every bubble's `animation-iteration-count` without threading a prop through each row, and a
+   * retune in the dashboard is a redeploy, not a code change. REQUIRED rather than optional, on
+   * RULING E2b's habit: `ChatScreen` is the one caller and `tsc` should notice if it stops
+   * passing it — the keyframe's own `, 4` fallback is for a var that stopped arriving, not for a
+   * caller that never sent one.
+   */
+  flashBlinks: number
   /** Phase 7. A swipe, or the focus-revealed button, arming a reply to this message. */
   onReply?: (message: ChatMessage) => void
   /** Phase 7. A tap on a quote stub: scroll to the message it names. */
@@ -261,7 +273,13 @@ export function MessageList({
   )
 
   return (
-    <div className="space-y-5">
+    <div
+      className="space-y-5"
+      /* The one dynamic value this list gives the cascade: `nina-flash-blink`'s iteration count,
+       * inherited by every bubble below. The cast is the usual React-types-vs-custom-properties
+       * gap — `style` accepts these at runtime and csstype's `Properties` has no `--*` index. */
+      style={{ '--nina-flash-count': flashBlinks } as React.CSSProperties}
+    >
       {groupIntoDays(messages).map((day) => (
         <section key={day.dayISO}>
           <h2 className="text-center text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">

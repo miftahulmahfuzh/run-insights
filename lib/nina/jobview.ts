@@ -48,9 +48,9 @@ export function ninaJobHref(jobId: string): string {
  *   1. **Different arithmetic.** `?at=` is an anchor AND AN OFFSET (`<messageId>~<offset>`),
  *      resolved by `resolveRestoreTop` into "put that message back where it was". This is
  *      `planQuoteScroll`: centre the target in the band the composer leaves over, or top-align it
- *      with a 16px margin when it is taller than the band — and then FLASH it for
- *      `QUOTE_FLASH_MS`. R1 asked for the second one by name ("just like how we can click and
- *      directly pinpoint reply_to message").
+ *      with a 16px margin when it is taller than the band — and then FLASH it (`nina-flash-blink`;
+ *      `flashHoldMs` bounds the state). R1 asked for the second one by name ("just like how we
+ *      can click and directly pinpoint reply_to message").
  *   2. **There is no offset to give.** A job page never measured this conversation. Writing `~0`
  *      would be putting a fabricated measurement into a key whose entire contract is that it holds
  *      a real one.

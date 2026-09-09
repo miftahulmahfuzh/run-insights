@@ -330,7 +330,8 @@ export function isDegradedSearch(response: NinaSearchResponse | null): boolean {
  *
  * The message arm DELEGATES to `ninaJumpHref`, so a search tap and `/nina/jobs/[id]`'s "Buka
  * chat-nya" button build the same URL and land through the same code in `ChatScreen`: instant
- * scroll into the band the composer leaves over, then the blue ring for `QUOTE_FLASH_MS`. That is
+ * scroll into the band the composer leaves over, then the landing blink (`nina-flash-blink`,
+ * white on one of his bubbles, `--accent` on one of hers). That is
  * the ask in one sentence — "the same effect as clicking the reply-to box" — and the four reasons
  * `jobview.ts` documents for `jump` ≠ `at` all hold for a search box too: different arithmetic,
  * no offset to give (a search field never measured this conversation), opposite lifetimes, and

@@ -245,66 +245,62 @@ dialog::backdrop {
 }
 
 /*
- * The bubble landing flash (search-hit and reply-to pinpoint) — three hard blinks of the accent
- * ring, ~150 ms on / ~240 ms off, over 0.96 s, then gone. The owner's ask, 2026-09-09: the old
- * single fade-in tint "masuk lebih conspicuous, misal flicker lebih cepat, tiga kali flicker".
+ * The bubble landing flash (search-hit and reply-to pinpoint): hard blinks of a 2px ring, ~150 ms
+ * on / ~170 ms off per cycle, N cycles — then gone. Born 2026-09-09 from the owner's asks, in
+ * order: "masuk lebih conspicuous, misal flicker lebih cepat, tiga kali flicker"; "flicker buat
+ * user's bubble itu diganti warnanya jadi putih"; and "tambahin jumlah flicker nya … bikin jadi
+ * vercel env aja biar tuning nilainya gampang".
+ *
+ * ONE CYCLE, AND THE COUNT IS A VARIABLE. This keyframe is a single blink; the call site drives
+ * `animation-iteration-count` from `--nina-flash-count`, which `MessageList` sets on the list
+ * from `flashBlinkCount(process.env.NINA_FLASH_BLINKS)` (`lib/nina/reply.ts`). Tuning the count
+ * in the Vercel dashboard is therefore a value change and never a stop rewrite — a keyframe's
+ * percentages cannot come from a custom property, but the iteration count can come from one.
+ *
+ * AND THE COLOUR IS A VARIABLE TOO: `--nina-flash-ring-color`, defaulting to `--accent`. Her
+ * bubbles take the default; his (`MessageBubble`, when `mine`) set it to white — the owner's
+ * ask, and the one saturated edge his dark bubble can wear that hers cannot: a white ring
+ * against `bg-ink` reads as the bubble itself flashing a bright rim, in both schemes (white on
+ * light paper is a modest step, on dark paper a halo; both measured, both read). The literal
+ * beats `--card` here on purpose: `--card` flips to near-navy in the dark scheme and the ring
+ * would vanish against `--paper` exactly when the bubble is at its brightest.
  *
  * HARD CUTS, AND NOT VIA A TIMING FUNCTION. The first draft put `steps(1,end)` in the
  * `[animation:…]` shorthand and measured it in headless Chromium (2026-09-09): the whole ring ran
  * one continuous ON — the shorthand's timing function never reached the keyframe segments, and
- * `getAnimations()[0].effect.getTiming().easing` still reported `linear`. Whether that is engine
- * behaviour or spec subtlety, the blink must not depend on the answer, so the cuts are IN the
- * stops: each on/off edge is a duplicated stop 0.1% wide (~1 ms of 960 ms), which renders as an
- * instantaneous switch under any easing, and the call site asks for `linear` so nothing
- * "helpfully" smooths even that millisecond. ON spans: [0,16), [41,57), [82,98).
- *
- * The keyframe ends OFF and the element's own box-shadow beneath the animation is none (the call
- * site applies the animation INSTEAD of a steady `ring-2`, never beside it), so there is no
- * pop-back when the animation ends and nothing lingers until `QUOTE_FLASH_MS` clears the state.
+ * `getAnimations()[0].effect.getTiming().easing` still reported `linear`. The cuts are therefore
+ * IN the stops: the on/off edge is a duplicated stop 0.1% wide (~0.3 ms of the 320 ms cycle),
+ * an instantaneous switch under any easing, and the call site asks for `linear` so nothing
+ * "helpfully" smooths even that. The cycle ends OFF and the element's own box-shadow beneath the
+ * animation is none (the call site applies the animation INSTEAD of a steady `ring-2`, never
+ * beside it), so there is no pop-back when the last iteration ends and nothing lingers until
+ * `flashHoldMs` clears the state.
  *
  * The shadow is spelled literally rather than through `ring-2`, on `dialog::backdrop`'s
  * precedent: keyframe stops run in the plain cascade, where Tailwind's ring is a five-layer
  * `var()` composition, and naming one layer of it here would couple the blink to utility
- * plumbing it cannot see. `0 0 0 2px var(--accent)` is the ring the old `ring-2 ring-accent`
- * computed to, in both schemes (`--accent` carries its own dark value).
+ * plumbing it cannot see.
  *
  * `tests/motion.reducedMotion.test.ts` asserts the escape below by name-token, and that it holds
- * perfectly still: the reduce setting gets the steady ring the old transition used to draw, held
- * for the animation's full 0.96 s and then dismissed by the animation's end — the same signal
- * without the strobing.
+ * perfectly still: under the reduce setting every iteration draws the steady ring, so N
+ * iterations are exactly as still as one — the same signal without the strobing.
  */
-@keyframes nina-flash-ring {
+@keyframes nina-flash-blink {
   0%,
-  15.9% {
-    box-shadow: 0 0 0 2px var(--accent);
+  47.9% {
+    box-shadow: 0 0 0 2px var(--nina-flash-ring-color, var(--accent));
   }
-  16%,
-  40.9% {
-    box-shadow: none;
-  }
-  41%,
-  56.9% {
-    box-shadow: 0 0 0 2px var(--accent);
-  }
-  57%,
-  81.9% {
-    box-shadow: none;
-  }
-  82%,
-  97.9% {
-    box-shadow: 0 0 0 2px var(--accent);
-  }
-  98%,
+  48%,
   100% {
     box-shadow: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  @keyframes nina-flash-ring {
+  @keyframes nina-flash-blink {
     0%,
     100% {
-      box-shadow: 0 0 0 2px var(--accent);
+      box-shadow: 0 0 0 2px var(--nina-flash-ring-color, var(--accent));
     }
   }
 }

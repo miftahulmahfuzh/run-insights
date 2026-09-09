@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  NINA_FLASH_BLINKS_DEFAULT,
+  NINA_FLASH_CYCLE_MS,
   QUOTE_EMPTY_LABEL,
   QUOTE_PREVIEW_MAX_CHARS,
   QUOTE_SCROLL_TOP_MARGIN_PX,
   REPLY_SWIPE_MIN_DISTANCE,
   buildQuote,
   decideReplySwipe,
+  flashBlinkCount,
+  flashHoldMs,
   planQuoteScroll,
   quoteContextBlock,
   quoteMediaOf,
@@ -313,5 +317,39 @@ describe('planQuoteScroll', () => {
     expect(planQuoteScroll(geometry({ scrollHeight: Number.POSITIVE_INFINITY }))).toEqual({
       kind: 'none',
     })
+  })
+})
+
+/* ── the flash tuning: NINA_FLASH_BLINKS is the owner's env knob ───────────────────────────── */
+
+describe('flashBlinkCount', () => {
+  it('defaults when the env var is unset or is not a whole number', () => {
+    expect(flashBlinkCount(undefined)).toBe(NINA_FLASH_BLINKS_DEFAULT)
+    expect(flashBlinkCount('')).toBe(NINA_FLASH_BLINKS_DEFAULT)
+    expect(flashBlinkCount('four')).toBe(NINA_FLASH_BLINKS_DEFAULT)
+    expect(flashBlinkCount('4.5')).toBe(NINA_FLASH_BLINKS_DEFAULT)
+  })
+
+  it('takes a valid value verbatim, and clamps the extremes into 1..8', () => {
+    expect(flashBlinkCount('4')).toBe(4)
+    expect(flashBlinkCount(' 2 ')).toBe(2)
+    expect(flashBlinkCount('1')).toBe(1)
+    expect(flashBlinkCount('8')).toBe(8)
+    expect(flashBlinkCount('0')).toBe(1)
+    expect(flashBlinkCount('-3')).toBe(1)
+    expect(flashBlinkCount('50')).toBe(8)
+  })
+})
+
+describe('flashHoldMs', () => {
+  it('is the whole blink train plus one full cycle of tail', () => {
+    expect(flashHoldMs(1)).toBe(2 * NINA_FLASH_CYCLE_MS)
+    expect(flashHoldMs(4)).toBe(5 * NINA_FLASH_CYCLE_MS)
+  })
+
+  it('at the default count holds exactly what the old fixed 1600ms constant held', () => {
+    /* The continuity pin: the owner tuned the COUNT, not the feel. If this drifts, it means the
+     * default flash got longer or shorter than the tint it replaced, and that was not asked for. */
+    expect(flashHoldMs(NINA_FLASH_BLINKS_DEFAULT)).toBe(1600)
   })
 })
