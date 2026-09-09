@@ -345,7 +345,7 @@ function Row({
         <textarea
           aria-label="Expansion"
           className={cn(CELL_CONTROL, 'resize-y leading-snug')}
-          rows={2}
+          rows={1}
           value={expansion}
           maxLength={NINA_SHORTCUT_EXPANSION_MAX}
           onChange={(event) => {
@@ -502,7 +502,7 @@ function AddRow({
         <textarea
           aria-label="The context the new shortcut stands for"
           className={cn(CELL_CONTROL, 'resize-y leading-snug')}
-          rows={2}
+          rows={1}
           value={expansion}
           maxLength={NINA_SHORTCUT_EXPANSION_MAX}
           disabled={pending}
