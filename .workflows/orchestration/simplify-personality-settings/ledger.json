@@ -23,27 +23,27 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "55da58c",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "auto-save landed: one whole-tuning action (reset deleted), dials debounced 600ms/toggles+radios on change/notes on blur, canonical post-save merge; plan applied verbatim, no decisions; jobActions 5s-timeout flake is pre-existing on base (19/19 pass @30s); typecheck+lint+3495/3495 green",
       "package": "components/admin`, `lib/admin`, `tests",
       "plan": ".workflows/plan/simplify-personality-settings/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-09T04:11:39+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A026",
       "title": "Auto-save the Personality panel"
     }
   ],
   "plan": "/home/miftah/.worktrees/run-insights/simplify-personality-settings/.workflows/orchestration/simplify-personality-settings/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "simplify-personality-settings",
-  "updated": "2026-09-09T03:28:54+00:00",
+  "updated": "2026-09-09T04:11:39+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/simplify-personality-settings"
 }
