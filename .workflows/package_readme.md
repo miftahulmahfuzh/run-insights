@@ -833,6 +833,25 @@ per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEA
 `NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
 `P1-RI-A019`.
 
+### Recent changes — P1-RI-A026 (2026-09-09)
+
+*Phase 2 of the `SEARCH_CLEAR_AND_SIDEBAR_ICONS_PLAN.md` set (R3, R4): the session row's three menu
+buttons became icon-only, and the rename field gained its own ✕.*
+
+One file changed: `components/nina/SessionRow.tsx`. The three menu actions — "Pin ke atas"
+("Lepas pin" once pinned), "Ganti nama", "Hapus" — are icon-only `Button`s wearing 18 px inline-SVG
+glyphs (`pin` and `pencil` copied verbatim from lucide-static 1.42.0; `trash` copied verbatim from
+`NinaJobActions`' `TrashIcon`, so the app keeps one trash can), `aria-hidden`, with the Indonesian
+labels preserved verbatim as the `aria-label`s — `AdminNav` R2's arrangement. They are still
+`Button`s: `md` is the 44 px target, `variant` still carries the destructive red on "Hapus", and
+the two mutations keep `loading={pending}` (the mis-tap guard) — icon-only changes none of that.
+The module-private state glyph was renamed `PinIcon` → `PinnedIcon` now that the lucide action
+glyph took its name. The rename `Input` gained an ✕ at its right end — `absolute w-11` inside
+`Field`'s `relative` wrapper, `pr-11` only while the draft is non-empty, `aria-label="Kosongkan
+nama"` — which empties the draft and keeps the keyboard up: `onPointerDown` prevents the blur, the
+click handler re-focuses the input through a ref. The prefill on `open('rename')` is deliberately
+unchanged: the ✕ is for renaming from scratch, not a tax on typo fixes.
+
 ### Recent changes — P1-RI-A019 (2026-09-07)
 
 *R1 of `NINA_CHAT_AVATAR_PROFILE_PLAN.md`: the typing row's 28 px circle now honours the profile
