@@ -1,9 +1,15 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
+
 import { sendNinaMessage, type SendNinaMessageResult } from './actions'
 import { SESSION_PARAM } from './active'
 import { NINA_ATTACH_MAX_CHARS } from './album'
+import { releaseBlobIfUnreferenced } from './blobRelease'
+import { deleteNinaMessageImage, getNinaMessageImage } from './queries'
 import { createNinaChatSession } from './sessionActions'
+import { requireUserId } from '@/lib/auth/requireUserId'
+import { isValidId } from '@/lib/id'
 
 /**
  * "Attach to chat", from the album's zoomed-photo state — F33 R26; the two targets are the strip's
@@ -151,4 +157,72 @@ export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<Nin
     sessionId: result.sessionId,
     next: `/nina?${SESSION_PARAM}=${result.sessionId}`,
   }
+}
+
+/**
+ * Delete one of HIS photographs, from the Media viewer's own delete control — the row and, when
+ * nothing else needs them, the Blob bytes the ask ("user bisa menghapus foto nya sendiri, dan
+ * tidak memenuhi-memuhi storage di production") is really about.
+ *
+ * ── WHY THIS FILE, AND WHY THE ACTION IS THIS SMALL ───────────────────────────────────────────
+ * Isolation, the same reason `attachNinaPhotoToChat` above gives: `lib/nina/actions.ts` is another
+ * phase's file, and this is the screen's own action module. The rule worth the storage — "row
+ * first, blob second, and only if nothing else points at it" — is not re-implemented here at all;
+ * it is `releaseBlobIfUnreferenced` (`lib/nina/blobRelease.ts`), the ONE shared implementation the
+ * admin surface already deletes through. An action that copies a delete rule is how the copy
+ * becomes the one that forgot the check.
+ *
+ * ── ONLY HIS PHOTOGRAPHS, AND THE GUARD IS THE PRODUCT RULE ───────────────────────────────────
+ * `kind === 'generated'` is refused: hers are the operator's collection (`/admin/photos`), whose
+ * Remove already carries the carrier-message logic a generated row needs. The Media grid shows her
+ * photographs too, so the CLIENT hides the control on them — but a hidden control is not an
+ * authorization, and a hand-typed claim for one of her rows lands here and is refused, exactly as
+ * the admin actions refuse a stale link rather than degrade.
+ *
+ * ── THE BUBBLE IS NOT TOUCHED, AND THAT IS A RECORDED RULE ────────────────────────────────────
+ * `removeChatPhotoAction`'s header argues it twice: the photo path must NOT delete a runner
+ * message, because the message is his and may carry his text (the R26 re-attach path writes rows
+ * like these onto messages that are mostly words). His uploads attach to HIS rows
+ * (`lib/nina/actions.ts` STEP 1b) and `isNinaPhotoCarrierMessage` is false for every one of them,
+ * so there is no photo-only-carrier case to handle and none is handled. A bubble left empty by the
+ * removal of its last photograph still has its own delete, in the chat's message menu.
+ *
+ * ── NO CONFIRMATION, NO REASON FIELD, ON PURPOSE ──────────────────────────────────────────────
+ * The runner's own recorded overrule — "remove the confirmation message when user delete his own
+ * message" — is a posture, not a paragraph, and a destructive control that ships with a dialog
+ * re-litigates it one tap at a time. And the refusal shape is `{ ok: false }` without a reason,
+ * `attachNinaPhotoToChat`'s shape: every refusal path on this screen shows the same sentence,
+ * because "not his" and "not there" are deliberately indistinguishable across this boundary
+ * (`getNinaMessageImage`'s standing rule), and which one it was is worth a log line, not a field a
+ * client can render.
+ *
+ * ── WHY `revalidatePath` HERE WHEN `messageActions.ts` REFUSES ONE ────────────────────────────
+ * `removeNinaMessage` patches client state from the return value because `ChatScreen` owns the
+ * list it renders. This screen's Media grid is props from a Server Component — there is no client
+ * copy to patch, so the refresh must reach the server render, and
+ * `revalidatePath('/nina/about')` is what turns `router.refresh()` into a fresh read rather than a
+ * replay of the router cache.
+ */
+export async function deleteNinaChatPhoto(input: { id: string }): Promise<{ ok: boolean }> {
+  const userId = await requireUserId()
+
+  /* Shape before ownership: an id that cannot be one of ours never reaches the database, and the
+   * read below is the only query this refusal spends nothing on. */
+  if (!isValidId(input?.id)) return { ok: false }
+
+  const row = await getNinaMessageImage(userId, input.id)
+  if (row == null) return { ok: false }
+  if (row.kind === 'generated') return { ok: false }
+
+  const deleted = await deleteNinaMessageImage(userId, input.id)
+  if (deleted == null) return { ok: false }
+
+  /* The row is gone; the row's own return value is the reference handed to the release, so the
+   * bytes leave the store unless another row — a re-attach copy, her album — still points at them.
+   * `'shared'` and `'failed'` are logged there and are NOT failures here: the ask was the
+   * photograph's removal from the collection, and that happened. */
+  await releaseBlobIfUnreferenced(userId, { blobUrl: deleted.blobUrl, pathname: deleted.pathname })
+
+  revalidatePath('/nina/about')
+  return { ok: true }
 }

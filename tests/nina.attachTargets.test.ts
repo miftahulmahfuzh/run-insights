@@ -28,12 +28,34 @@ import { readRepoCode } from './support/importGraph'
 const spies = vi.hoisted(() => ({
   sendNinaMessage: vi.fn(),
   createNinaChatSession: vi.fn(),
+  requireUserId: vi.fn(),
+  revalidatePath: vi.fn(),
+  getNinaMessageImage: vi.fn(),
+  deleteNinaMessageImage: vi.fn(),
+  releaseBlobIfUnreferenced: vi.fn(),
 }))
 
 vi.mock('@/lib/nina/actions', () => ({ sendNinaMessage: spies.sendNinaMessage }))
 
 vi.mock('@/lib/nina/sessionActions', () => ({
   createNinaChatSession: spies.createNinaChatSession,
+}))
+
+/*
+ * The delete action moved in beside the attach action, and its imports arrive with it. Mocked at
+ * the edges whole, for the reason this suite's header already gives — `requireUserId` drags the
+ * next-auth chain and `queries` drags the database client, and neither belongs in a suite whose
+ * subject is the two sends' branching. The delete has its own suite
+ * (`tests/nina.galleryDelete.test.ts`), which owns these collaborators' assertions.
+ */
+vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: spies.requireUserId }))
+vi.mock('next/cache', () => ({ revalidatePath: spies.revalidatePath }))
+vi.mock('@/lib/nina/queries', () => ({
+  getNinaMessageImage: spies.getNinaMessageImage,
+  deleteNinaMessageImage: spies.deleteNinaMessageImage,
+}))
+vi.mock('@/lib/nina/blobRelease', () => ({
+  releaseBlobIfUnreferenced: spies.releaseBlobIfUnreferenced,
 }))
 
 /* Every id is exactly 12 symbols of `[0-9A-Za-z_-]` for the reason
@@ -239,10 +261,14 @@ describe('the strip carries the words as accessible names, not as text (structur
     expect(source).toContain("attach('new')")
   })
 
-  it('both buttons share one flight and stay disabled through it (invariant 7)', () => {
-    expect(source.match(/disabled=\{sending !== null\}/g)?.length).toBe(2)
+  it('all three controls share one flight and stay disabled through it (invariant 7)', () => {
+    /* The row grew a delete (`tests/nina.galleryDelete.test.ts` owns its wiring) and the flight
+     * grew with it: THREE controls, ONE predicate — each button reads the other flights as its
+     * own, so nothing in the row is reachable while anything in it is in flight. */
+    expect(source.match(/disabled=\{sending !== null \|\| deleting\}/g)?.length).toBe(3)
     expect(source).toContain("loading={sending === 'recent'}")
     expect(source).toContain("loading={sending === 'new'}")
+    expect(source).toContain('loading={deleting}')
   })
 
   it('the send navigates to the conversation that received the photo', () => {

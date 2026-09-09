@@ -1,6 +1,5 @@
 'use server'
 
-import { del } from '@vercel/blob'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 
@@ -20,6 +19,7 @@ import {
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { newId } from '@/lib/id'
 import { captionNinaPhoto } from '@/lib/nina/caption'
+import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
 import {
   deleteNinaMessage,
@@ -29,7 +29,6 @@ import {
   getNinaMessagesByIds,
   insertNinaMessageImages,
   insertNinaMessages,
-  isBlobPathnameReferenced,
   readNinaTuning,
   setNinaMessageImageDescription,
   updateNinaChatPhotoBlob,
@@ -81,9 +80,10 @@ import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision
  * R26's re-attach path copies `blob_url`/`pathname` onto a new row rather than copying bytes
  * (`lib/nina/actions.ts:143-192`), so a chat photograph's object can also be another chat row's or
  * a `nina_avatars` row's — possibly HER CURRENT PROFILE PICTURE. Every delete in this file goes
- * through `releaseChatPhotoBlob`, which asks `isBlobPathnameReferenced` first. Invariant 8 (no
- * orphaned blobs) yields to that: an orphan costs storage, a deleted-but-referenced object is
- * visible data loss.
+ * through `releaseBlobIfUnreferenced` (`lib/nina/blobRelease.ts`, the one shared implementation —
+ * this file's former private helper, extracted when the runner-facing delete needed the same
+ * rule), which asks `isBlobPathnameReferenced` first. Invariant 8 (no orphaned blobs) yields to
+ * that: an orphan costs storage, a deleted-but-referenced object is visible data loss.
  *
  * ── A CHAT PHOTOGRAPH MAY HAVE NO MESSAGE (R1) ──────────────────────────────────────────────
  * `nina_message_images.message_id` is nullable with `ON DELETE SET NULL`, so deleting a chat
@@ -167,7 +167,7 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
 
   let note: string | undefined
   if (existing.pathname !== pathname) {
-    const outcome = await releaseChatPhotoBlob(userId, existing)
+    const outcome = await releaseBlobIfUnreferenced(userId, existing)
     if (outcome === 'shared') note = 'The old file is still used elsewhere, so it was kept.'
   }
 
@@ -284,7 +284,7 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
    */
   if (image == null) {
     await deleteNinaMessage(userId, message.id)
-    await releaseChatPhotoBlob(userId, { blobUrl, pathname })
+    await releaseBlobIfUnreferenced(userId, { blobUrl, pathname })
     return { ok: false, error: 'The photo could not be attached to a message.' }
   }
 
@@ -324,7 +324,7 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
  * The same R26 path that produced the runner-message case also produced the SHARED-OBJECT case: it
  * copies `blob_url`/`pathname` rather than bytes, so the object behind this row may also be behind
  * another chat row or a `nina_avatars` row — possibly her current profile picture.
- * `releaseChatPhotoBlob` asks first. Deleting the row before asking is what makes the question
+ * `releaseBlobIfUnreferenced` asks first. Deleting the row before asking is what makes the question
  * answerable without an exclusion parameter.
  *
  * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REMOVABLE FROM HERE ───────────────────────
@@ -332,7 +332,7 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
  * exists elsewhere. `generatedChatPhotoScope` excludes it, so it never appears on `/admin/photos`
  * and an id for one is a stale link or a hand-typed claim. Acting on it would be worse than useless:
  * the photograph the operator can SEE on the screen would still be there afterwards, and
- * `releaseChatPhotoBlob` would be asked about an object the original member still points at. The
+ * `releaseBlobIfUnreferenced` would be asked about an object the original member still points at. The
  * refusal is first, above every read and every delete, and it is a sentence rather than the generic
  * miss so the operator knows the id was real and the answer was still no. Removing a re-share from a
  * bubble is the runner's own message-edit path, not this screen's.
@@ -368,7 +368,7 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
     if (gone == null) return { ok: false, error: 'That photo is not in the collection.' }
   }
 
-  const outcome = await releaseChatPhotoBlob(userId, row)
+  const outcome = await releaseBlobIfUnreferenced(userId, row)
 
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return {
@@ -522,60 +522,6 @@ async function loadPhotoCarrier(
   ])
 
   return { message: messages[0] ?? null, siblings }
-}
-
-/**
- * **Delete a Blob object we have just stopped pointing at — but only if nothing else points at
- * it.** The one place `del` is called in this file, so Replace and Remove cannot drift.
- *
- * ── WHY THE CHECK EXISTS ────────────────────────────────────────────────────────────────────
- * `resolveAttachment` (`lib/nina/actions.ts:143-192`) implements R26 by copying `blob_url` and
- * `pathname` onto a new row. No bytes are copied. So one object can be behind a chat row AND
- * another chat row AND a `nina_avatars` row — including the one that IS her current profile
- * picture. An unconditional `del` here blanks her face, or an older bubble, while the rows still
- * point at a dead URL. `isBlobPathnameReferenced` asks both tables, scoped by `user_id`, over the
- * same six columns `scripts/blob-reap.mjs` counts references in.
- *
- * ── WHY IT IS SAFE TO ASK AFTER THE ROW IS GONE ─────────────────────────────────────────────
- * Because that is the ONLY time it is safe to ask. Every caller has already removed its own
- * reference — Remove deleted the row (or the message, whose cascade deleted it), Replace repointed
- * the row at the new pathname — so the row being changed is out of the answer by construction, and
- * there is no "except this one" parameter that a future caller could pass wrongly.
- *
- * ── WHAT IT COSTS WHEN IT SAYS "SHARED" ─────────────────────────────────────────────────────
- * The object stays in the store while the row that named it is gone. That is a deliberate orphan
- * class and `reap-orphaned-blobs` is its backstop — which is what a backstop is for. The
- * alternative is unrecoverable data loss, and invariant 8 does not outrank that.
- *
- * `'failed'` is logged, not surfaced: a `del` that 500s leaves an orphan, which is recoverable, and
- * the operator asked for the photograph to leave the collection, which it has.
- */
-async function releaseChatPhotoBlob(
-  userId: string,
-  ref: { blobUrl: string; pathname: string },
-): Promise<'deleted' | 'shared' | 'failed'> {
-  let shared: boolean
-  try {
-    shared = await isBlobPathnameReferenced(userId, ref.pathname, ref.blobUrl)
-  } catch (cause) {
-    // Could not prove it is unreferenced, so do not delete it. Erring toward an orphan is the only
-    // direction that is recoverable.
-    console.error('[f36] could not check blob references; keeping the object', ref.pathname, cause)
-    return 'failed'
-  }
-
-  if (shared) {
-    console.info('[f36] blob kept: another row still points at it', ref.pathname)
-    return 'shared'
-  }
-
-  try {
-    await del(ref.blobUrl)
-    return 'deleted'
-  } catch (cause) {
-    console.error('[f36] row gone, blob left behind', ref.pathname, cause)
-    return 'failed'
-  }
 }
 
 /**

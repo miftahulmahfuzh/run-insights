@@ -11,7 +11,11 @@ import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
-import { attachNinaPhotoToChat, type NinaAttachTarget } from '@/lib/nina/albumActions'
+import {
+  attachNinaPhotoToChat,
+  deleteNinaChatPhoto,
+  type NinaAttachTarget,
+} from '@/lib/nina/albumActions'
 import {
   NINA_ATTACH_MAX_CHARS,
   type NinaAlbumPhoto,
@@ -102,6 +106,8 @@ export function NinaAboutScreen({
   /* Which send is in flight — `'recent'` or `'new'` — or `null` when neither is. One flight for
    * two controls: it names the button that shows the dots and disables the other one. */
   const [sending, setSending] = React.useState<NinaAttachTarget | null>(null)
+  /** The delete's own flight, shared with the sends: nothing in the row is reachable mid-delete. */
+  const [deleting, setDeleting] = React.useState(false)
   const [notice, setNotice] = React.useState<string | null>(null)
   /**
    * R3. The keyboard's overlap in px, mirrored from the publisher mounted below. The strip's
@@ -236,6 +242,47 @@ export function NinaAboutScreen({
     },
     [album, gallery, open, question, router, sending],
   )
+
+  /**
+   * The photograph under the viewer, and whether THIS screen offers its delete.
+   *
+   * `open?.section === 'chat'` is doing narrowing work, not spelling preference: only the chat
+   * list's rows carry a `side`, and the delete exists for exactly one of the two — **HIS
+   * photographs only** ("Foto kamu"). Hers are the operator's collection, and their Remove lives
+   * on `/admin/photos`, where the carrier-message logic a generated row needs already ships. An
+   * album cell is an avatar: there is no delete there and never has been. The hidden control is
+   * not the authorization either — the action refuses a `generated` id on its own — but the
+   * runner is never shown a button the server would refuse.
+   */
+  const openChatPhoto = open?.section === 'chat' ? gallery[open.index] : undefined
+  const deletable = openChatPhoto != null && openChatPhoto.side === 'his'
+
+  /**
+   * One tap, gone — the runner's recorded posture on destructive controls ("remove the
+   * confirmation message when user delete nina's message, and also when user delete his own"):
+   * a dialog here would re-litigate that ruling one photograph at a time.
+   *
+   * Success does not navigate and does not mutate state to close the viewer: the grid is server
+   * props, so `router.refresh()` re-reads it without the deleted row, and `open` — derived from
+   * the URL against the refreshed list — resolves to null and closes the overlay by itself. The
+   * refusal shows the same sentence every other failure on this strip shows, because "not his"
+   * and "not there" are one outcome across this boundary by design.
+   */
+  const removePhoto = React.useCallback(async () => {
+    if (openChatPhoto == null || deleting || sending !== null) return
+    setDeleting(true)
+    setNotice(null)
+    try {
+      const result = await deleteNinaChatPhoto({ id: openChatPhoto.id })
+      if (!result.ok) {
+        setNotice('Gagal menghapus foto. Coba lagi.')
+        return
+      }
+      router.refresh()
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleting, openChatPhoto, router, sending])
 
   const currentAlbumIndex = Math.max(
     0,
@@ -451,7 +498,7 @@ export function NinaAboutScreen({
                 variant="secondary"
                 className="flex-1"
                 loading={sending === 'recent'}
-                disabled={sending !== null}
+                disabled={sending !== null || deleting}
                 aria-label="Kirim ke chat"
                 onClick={() => attach('recent')}
               >
@@ -462,12 +509,34 @@ export function NinaAboutScreen({
                 variant="secondary"
                 className="flex-1"
                 loading={sending === 'new'}
-                disabled={sending !== null}
+                disabled={sending !== null || deleting}
                 aria-label="Kirim ke chat baru"
                 onClick={() => attach('new')}
               >
                 <MessageSquarePlusIcon />
               </Button>
+              {/*
+                ── THE DELETE: HIS MEDIA PHOTOGRAPHS ONLY, AND THE ROW'S THIRD GLYPH ──────────
+                Square and not `flex-1`, on the row's end: the two sends are this strip's reason
+                for existing and share the width between them, while delete is the one control
+                here that ends something — it takes the space its risk earns, no more. Rendered
+                only when the open photo is a chat photograph of his (`deletable` above), shown
+                with NO confirmation step — the runner's own overrule on destructive controls —
+                and sharing the row's one flight: `deleting` dots inside this button, both sends
+                dead until it settles.
+              */}
+              {deletable && (
+                <Button
+                  size="md"
+                  variant="secondary"
+                  loading={deleting}
+                  disabled={sending !== null || deleting}
+                  aria-label="Hapus foto"
+                  onClick={removePhoto}
+                >
+                  <TrashIcon />
+                </Button>
+              )}
             </div>
           </div>
         </>
@@ -487,8 +556,8 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
 }
 
 /*
- * The strip's two send glyphs, inlined rather than imported — `SessionRow`'s collection note and
- * `AdminNav`'s before it. Both are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
+ * The strip's three glyphs, inlined rather than imported — `SessionRow`'s collection note and
+ * `AdminNav`'s before it. All are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
  * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
  * presentation attributes exactly as published; the only adaptations are JSX spelling
  * (`stroke-width` -> `strokeWidth`) and dropping lucide's own `class`, `width` and `height` for
@@ -500,7 +569,9 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
  * horizontal one reads better beside a full-width input row). `message-square-plus` is the
  * sidebar rail's own noun — `NewChatButton`'s `plus` on a chat-bubble body — the one glyph in the
  * app that already means "a conversation that does not exist yet", which is exactly what this
- * button sells.
+ * button sells. `trash-2` is the delete-with-content glyph — the can plus the two strokes that
+ * say something is IN it, which is the difference between "clear this" and "this had a photograph
+ * in it" — and it is the row's third icon, not a variant of either send.
  */
 
 /** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
@@ -538,6 +609,28 @@ function MessageSquarePlusIcon() {
       <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
       <path d="M12 8v6" />
       <path d="M9 11h6" />
+    </svg>
+  )
+}
+
+/** "Hapus foto" — his photograph leaves the Media grid and, when nothing else needs it, the store. Lucide's `trash-2`, verbatim. */
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   )
 }
