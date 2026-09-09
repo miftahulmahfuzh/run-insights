@@ -1,0 +1,50 @@
+{
+  "branch": "worktree-photo-send-chat-icons",
+  "coordinator": "orch-photo-send-chat-icons",
+  "coordinator_session_id": "c7e24010-c0d3-452e-9be5-fb8a88664fa6",
+  "created": "2026-09-09T05:12:08+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "components/nina` + `lib/nina",
+      "plan": ".workflows/plan/photo-send-chat-icons/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Attach strip: two icon sends (recent + new chat)"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "components/nina` + `lib/nina",
+      "plan": ".workflows/plan/photo-send-chat-icons/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Keyboard channel: about strip box fix + rename re-assert"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/photo-send-chat-icons/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "photo-send-chat-icons",
+  "updated": "2026-09-09T05:12:14+00:00",
+  "worktree": "/home/miftah/run-insights/.claude/worktrees/photo-send-chat-icons"
+}
