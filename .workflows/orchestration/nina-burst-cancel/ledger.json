@@ -1,0 +1,49 @@
+{
+  "branch": "feature/nina-burst-cancel",
+  "coordinator": "orch-nina-burst-cancel",
+  "coordinator_session_id": "bdd6cc9b-2e10-4e3a-8b1e-48c6b8948173",
+  "created": "2026-09-10T02:54:07+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-burst-cancel/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Cancel-and-retarget: supersede a thinking turn, discard its result"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-burst-cancel/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Answer the accumulated bubbles: burst framing in the turn prompt"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-burst-cancel/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-burst-cancel",
+  "updated": "2026-09-10T02:54:37+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-burst-cancel"
+}
