@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, gte, lt } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
 import { ninaChatSessions, ninaTurns } from '@/lib/db/schema'
@@ -50,6 +50,16 @@ import { NINA_TURN_STALE_MS } from './turnflight'
 
 export const CHAT_TURN_PHASE_RUNNING = 'running'
 export const CHAT_TURN_PHASE_PERSISTING = 'persisting'
+
+/**
+ * The `error_code` a CANCELLED turn carries (`status='failed'`). Not a phase — the row is closed
+ * the moment this lands — and not a vendor failure either: the runner sent another message while
+ * this turn was still thinking, so the send superseded it and started a fresh one whose context
+ * contains everything this one was answering. A free-text string like every other reason on this
+ * column, and `jobErrorLabel`'s raw-code fallthrough never renders it: the jobs pages read
+ * `kind='image'` rows only (`lib/nina/jobview.ts`).
+ */
+export const CHAT_TURN_REASON_SUPERSEDED = 'superseded'
 
 const PENDING_PHASES: readonly string[] = [CHAT_TURN_PHASE_RUNNING, CHAT_TURN_PHASE_PERSISTING]
 
@@ -163,6 +173,66 @@ export async function openNinaChatTurn(
 }
 
 /**
+ * **Cancel a turn that is still THINKING, so the send that follows can start a fresh one in its
+ * place (R1).**
+ *
+ * "Hasn't started answering" has an exact database meaning and this function is its only
+ * authority: the cancellable window is `status='pending' AND error_code='running'` AND the claim is
+ * still fresh (`NINA_TURN_STALE_MS`). A `'persisting'` claim is the model answering and her rows
+ * going in — never cancelled, so the message falls back to the chain. An expired `'running'` claim
+ * is a turn PRESUMED dead — not cancelled either: its invocation may still be alive, its metrics
+ * belong on its row, `openNinaChatTurn` does not need it out of the way (an expired claim does not
+ * block an open), and the sweep closes it `'stale'` in its own time.
+ *
+ * ── THE RACE, AND WHY THE DECISION LIVES IN THE UPDATE'S OWN WHERE ─────────────────────────────
+ * Two writers want this one row: this UPDATE (`pending`+`running` → `failed`+`superseded`) and the
+ * superseded turn's own `ninaChatTurnStore.record` (`pending`+`running` → `pending`+`persisting`).
+ * Postgres row locking picks exactly one winner, and the predicate re-asserted inside this
+ * statement — not the read above it — is what makes it so. The read only decides whether a cancel
+ * is worth ATTEMPTING; losing the race here is a false answer, not a corruption. Losing means the
+ * turn reached `'persisting'` between the read and the write, which is precisely the state the
+ * caller must not cancel: the caller falls back to today's behavior and the turn chains the
+ * message.
+ *
+ * Returns **true when this call won the row** (it is now closed `failed`/`superseded`), false when
+ * there was nothing to cancel, the window was shut, or the race was lost. It never throws for a
+ * database problem on purpose — the caller wraps it anyway, because a failed cancel must degrade to
+ * today's behavior, which is always safe: his message is already persisted and the running turn
+ * chains onto it.
+ */
+export async function supersedeNinaChatTurn(userId: string, sessionId: string): Promise<boolean> {
+  const now = Date.now()
+
+  const live = await getPendingNinaChatTurn(userId, sessionId)
+  /* No live claim — the next `openNinaChatTurn` opens one anyway. */
+  if (live === null) return false
+  /* She is answering. The window is shut and the chain is the path. */
+  if (live.phase !== CHAT_TURN_PHASE_RUNNING) return false
+  /* Presumed dead. The sweep owns this row, and an expired claim never blocked an open. */
+  if (now - live.createdAt.getTime() >= NINA_TURN_STALE_MS) return false
+
+  const olderThan = new Date(now - NINA_TURN_STALE_MS)
+  const cancelled = await db
+    .update(ninaTurns)
+    .set({ status: 'failed', errorCode: CHAT_TURN_REASON_SUPERSEDED })
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.id, live.id),
+        eq(ninaTurns.kind, 'chat'),
+        /* The race, decided here and not by the read above: only a row that is STILL
+         * pending+running — and still fresh — may be won. */
+        eq(ninaTurns.status, 'pending'),
+        eq(ninaTurns.errorCode, CHAT_TURN_PHASE_RUNNING),
+        gte(ninaTurns.createdAt, olderThan),
+      ),
+    )
+    .returning({ id: ninaTurns.id })
+
+  return cancelled.length > 0
+}
+
+/**
  * **The `NinaTurnStore` `runNinaTurn` is handed for a background chat turn, so the pre-opened row
  * is UPDATED instead of a second row being INSERTed.**
  *
@@ -177,25 +247,101 @@ export async function openNinaChatTurn(
  * 'no-reply' notice for a reply that was one insert away. So this records the METRICS and advances
  * the phase to `'persisting'`, and `closeNinaChatTurn` — called after the bubbles land — is what
  * ends the turn. Two writes, one row, and no window in which the truth is unreadable.
+ *
+ * ── THE PHASE ADVANCE IS CONDITIONAL, AND THE LOSS HAS ITS OWN ARM ─────────────────────────────
+ * This UPDATE and `supersedeNinaChatTurn`'s race for the same row, and Postgres row locking picks
+ * exactly one winner. Arm 1 carries `status = 'pending'` in its own WHERE and `.returning`s what it
+ * advanced, so a lost race is SEEN rather than assumed — an unconditional UPDATE would overwrite a
+ * freshly written `superseded` reason with a phase value and leave a closed row claiming to be
+ * mid-persist, a lie nothing downstream could read past. Arm 2 is what the loss earns: the METRICS,
+ * and only the metrics. `status` and `error_code` are absent from its SET by construction, so a
+ * closer's reason is physically impossible to overwrite here, and the token usage the call actually
+ * spent still lands on the row it belongs to. Arm 2's WHERE is `status='failed'` rather than
+ * `error_code='superseded'` on purpose: it also covers the sweep's `'stale'` on a turn that
+ * outlived its claim and turned out to be alive — whose metrics landed before this change and must
+ * keep landing.
  */
 export function ninaChatTurnStore(turnId: string): NinaTurnStore {
   return {
     async record(userId, row) {
+      const metrics = {
+        model: row.model,
+        promptVersion: row.promptVersion,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        toolCalls: row.toolCalls,
+        latencyMs: row.latencyMs,
+      }
+
+      /* Arm 1 — the phase advance, CONDITIONAL on the row still being a live claim. */
+      const advanced = await db
+        .update(ninaTurns)
+        .set({ ...metrics, errorCode: CHAT_TURN_PHASE_PERSISTING })
+        .where(
+          and(
+            eq(ninaTurns.userId, userId),
+            eq(ninaTurns.id, turnId),
+            eq(ninaTurns.kind, 'chat'),
+            eq(ninaTurns.status, 'pending'),
+          ),
+        )
+        .returning({ id: ninaTurns.id })
+      if (advanced.length > 0) return
+
+      /* Arm 2 — the claim was closed beneath us (`superseded` by a send, or `stale` by the sweep).
+       * Metrics only; the reason someone else wrote stays exactly as they wrote it. */
       await db
         .update(ninaTurns)
-        .set({
-          model: row.model,
-          promptVersion: row.promptVersion,
-          inputTokens: row.inputTokens,
-          outputTokens: row.outputTokens,
-          toolCalls: row.toolCalls,
-          latencyMs: row.latencyMs,
-          errorCode: CHAT_TURN_PHASE_PERSISTING,
-        })
+        .set(metrics)
         .where(
-          and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, turnId), eq(ninaTurns.kind, 'chat')),
+          and(
+            eq(ninaTurns.userId, userId),
+            eq(ninaTurns.id, turnId),
+            eq(ninaTurns.kind, 'chat'),
+            eq(ninaTurns.status, 'failed'),
+          ),
         )
     },
+  }
+}
+
+/**
+ * **Does this invocation still own the claim it opened?** The background turn asks exactly once,
+ * right after `runNinaTurn` returns — the moment the answer exists and the cost is already spent.
+ *
+ * The answer is narrowly `'superseded'` — `status='failed' AND error_code='superseded'`, the exact
+ * state `supersedeNinaChatTurn` writes — and NOTHING ELSE counts as a loss. A claim the sweep
+ * closed `'stale'` under a turn that turned out to be alive still answers false and the turn
+ * proceeds exactly as it does today: the claim is gone but her rows are written, the poll delivers
+ * them through the message predicate, and the only cost is a ledger row closed before its answer
+ * landed. Discarding on every non-pending state would turn a slow turn into a silently lost reply,
+ * which is the one outcome invariant 7 exists to prevent.
+ *
+ * ── A READ THAT FAILS ANSWERS FALSE, AND THAT IS A DECISION ───────────────────────────────────
+ * If this read throws, the most the turn can honestly know is "no supersede was PROVEN", and being
+ * wrong in that direction costs a duplicate answer — the old turn answers message 1 while the
+ * retargeting turn answers 1 and 3 — which is the same priced-and-accepted blast radius as
+ * `openNinaChatTurn`'s own race. The opposite degradation, discarding on a failed read, would let
+ * one database hiccup on the hottest path in the app cost a whole 45-second answer. Duplicates are
+ * acceptable; lost replies are not.
+ */
+export async function chatTurnWasSuperseded(userId: string, turnId: string): Promise<boolean> {
+  try {
+    const rows = await db
+      .select({ status: ninaTurns.status, errorCode: ninaTurns.errorCode })
+      .from(ninaTurns)
+      .where(
+        and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, turnId), eq(ninaTurns.kind, 'chat')),
+      )
+      .limit(1)
+    const row = rows[0]
+    return row != null && row.status === 'failed' && row.errorCode === CHAT_TURN_REASON_SUPERSEDED
+  } catch (cause) {
+    console.warn('[nina] could not read the claim; assuming the turn still owns it', {
+      turnId,
+      error: String(cause),
+    })
+    return false
   }
 }
 

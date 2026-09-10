@@ -80,16 +80,20 @@ vi.mock('@/lib/nina/queries', () => ({
 }))
 
 const openNinaChatTurn = vi.fn()
+const supersedeNinaChatTurn = vi.fn()
+const chatTurnWasSuperseded = vi.fn()
 const sweepStaleNinaChatTurns = vi.fn()
 const closeNinaChatTurn = vi.fn()
 const ninaSessionExists = vi.fn()
 
 vi.mock('@/lib/nina/chatturn', () => ({
+  chatTurnWasSuperseded: (...a: unknown[]) => chatTurnWasSuperseded(...a),
   closeNinaChatTurn: (...a: unknown[]) => closeNinaChatTurn(...a),
   getPendingNinaChatTurn: vi.fn(),
   ninaChatTurnStore: () => ({ record: vi.fn() }),
   ninaSessionExists: (...a: unknown[]) => ninaSessionExists(...a),
   openNinaChatTurn: (...a: unknown[]) => openNinaChatTurn(...a),
+  supersedeNinaChatTurn: (...a: unknown[]) => supersedeNinaChatTurn(...a),
   sweepStaleNinaChatTurns: (...a: unknown[]) => sweepStaleNinaChatTurns(...a),
 }))
 
@@ -158,6 +162,8 @@ beforeEach(async () => {
   /* The newest row in the session — where the poll must resume from. Above his 40. */
   listNinaMessages.mockResolvedValue([runnerRow({ id: HERS, seq: 57, role: 'nina' })])
   openNinaChatTurn.mockResolvedValue(TURN)
+  supersedeNinaChatTurn.mockResolvedValue(false)
+  chatTurnWasSuperseded.mockResolvedValue(false)
   sweepStaleNinaChatTurns.mockResolvedValue(undefined)
   closeNinaChatTurn.mockResolvedValue(undefined)
   ninaSessionExists.mockResolvedValue(true)
@@ -270,6 +276,9 @@ describe('an accepted resend claims a turn for the row that is already there', (
     await actions.resendNinaMessage({ messageId: HIS })
 
     expect(sweepStaleNinaChatTurns).toHaveBeenCalledWith(USER)
+    /* A resend is a RECOVERY tool, not a cancel (plan scope): it never supersedes a thinking
+     * turn, whatever its phase. */
+    expect(supersedeNinaChatTurn).not.toHaveBeenCalled()
     expect(openNinaChatTurn).toHaveBeenCalledOnce()
     expect(openNinaChatTurn).toHaveBeenCalledWith(USER, {
       sessionId: SESSION,

@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-10 (task `P1-NIN-A028`, phase 1 of 2 of the `nina-burst-cancel` set — the burst cancel: a send arriving between the sweep and the open in `sendNinaMessage` calls `supersedeNinaChatTurn` in `chatturn.ts`, which closes a still-thinking claim — `status='pending' AND error_code='running'`, still fresh — as `failed`/`superseded` so `openNinaChatTurn` opens a fresh turn answering the whole burst, while `chatTurnWasSuperseded` makes the superseded invocation in `runNinaBackgroundTurn` persist nothing (no bubbles, no distillation, no auto-title, no chain) and `ninaChatTurnStore.record` splits into a conditional phase-advance arm plus a metrics-only arm, so the winner advances and the loser's token usage still lands on its row; no schema change, no prompt change, no client change; previously task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -575,7 +575,7 @@ caption call**, and the panel says so before the click.
 ### Chat turn pipeline
 | File | Purpose |
 |---|---|
-| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. Since `P1-NIN-A023` it also reads the live shortcut table (fourth entry in the turn's `Promise.all`) and bumps the fired rows fire-and-forget. |
+| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. Since `P1-NIN-A023` it also reads the live shortcut table (fourth entry in the turn's `Promise.all`) and bumps the fired rows fire-and-forget. Since the `nina-burst-cancel` set's phase 1 it also attempts the cancel of a still-thinking claim between the sweep and the open, and `runNinaBackgroundTurn` discards a superseded turn's answer whole. |
 | `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. Also the **one** place shortcuts are matched (`shortcutHits`, once per turn) and rendered into the user turn (`shortcutBlock`). |
 | `tools.ts` *(T)* | Tool *dispatch*. Gateway-injected, so it tests with no DB. |
 | `schema.ts` *(T)* | Zod output contract for `SEND_TOOL` and the tool arg schemas. |
@@ -1084,7 +1084,7 @@ his own phone; and a push arrives as `router.refresh()`, landing all four bubble
 `mergeServerMessages` in **one frame** — precisely the collapse of the staggered reveal that
 `ChatScreen`'s header spends a paragraph forbidding.
 
-`lib/nina/chatturn.ts` owns the claim's lifecycle — open, read, record, close, sweep.
+`lib/nina/chatturn.ts` owns the claim's lifecycle — open, read, cancel, record, close, sweep.
 `sweepStaleNinaChatTurns` closes a turn whose process died as `failed`/`stale`; it **never retries and
 never writes an apology bubble**, because app-authored prose in Nina's mouth is forbidden (invariant
 7). The retry is the runner's to ask for, and since `P1-NIN-A022` he has a way to ask that does not
@@ -1098,6 +1098,66 @@ serialises Server Actions per client, so only two *different* clients within ~50
 cost of a collision is one duplicate reply — both replies real, nothing fabricated, the conversation
 still coherent — which is cheaper than the unique index it would take to prevent, and that index
 would have been this set's only migration.
+
+### The burst cancels the thinking turn (`P1-NIN-A028`, phase 1 of 2 of the `nina-burst-cancel` set)
+
+A send arriving while the conversation's claim is still THINKING used to fall to the chain: the
+open refused, `turnId` came back null, and the running turn answered the whole burst in one late
+reply. The send path now interposes a **cancel** — `supersedeNinaChatTurn(userId, sessionId)`, STEP
+1c-i in `sendNinaMessage`, placed after every refusal and after his row is committed (a cancel is a
+write on somebody else's turn and must never be spent on a send that then refuses), between the
+sweep and the open that needs the claim gone. It closes a claim that is `status='pending' AND
+error_code='running'` and still fresh as `status='failed'` + `error_code='superseded'`
+(`CHAT_TURN_REASON_SUPERSEDED` — a free-text reason on the same column the phases use; the jobs
+pages never render it, because they read `kind='image'` rows only) — and the open below it then
+succeeds where it would have refused: one fresh turn whose context already contains every message
+of the burst, answered together.
+
+**The cancellable window has an exact database meaning, and the function is its only authority.**
+A `'persisting'` claim — the model answered, her rows are going in — is never cancelled; the
+message falls back to the chain. An expired `'running'` claim is a turn PRESUMED dead, not
+cancelled: its invocation may still be alive, its metrics belong on its row, an expired claim never
+blocked an open, and the sweep closes it `'stale'` in its own time. The race against the turn's own
+phase advance is decided inside the supersede UPDATE's own WHERE — `status`, `error_code` and the
+freshness bound re-asserted there, Postgres row locking picking exactly one winner — so a lost race
+is a false answer, not a corruption: it means she reached `'persisting'` between the read and the
+write, which is precisely the state the chain must answer. The function never throws for a database
+problem on purpose, and `sendNinaMessage` wraps it anyway: a failed cancel degrades to exactly
+today's behavior, which is always safe — his message is persisted and the running turn chains onto
+it.
+
+**The superseded turn's invocation discovers it lost, and discards the answer whole.**
+`chatTurnWasSuperseded(userId, turnId)` runs exactly once per turn, right after `runNinaTurn`
+returns — the moment the answer exists and the cost is already spent — and answers true for EXACTLY
+`failed`+`superseded`, never `'stale'`, `'crashed'`, `'ok'` or a missing row: a claim the sweep
+closed `'stale'` under a turn that turned out to be alive still writes her rows, because the poll
+delivers through the message predicate and the only cost is a ledger row closed before its answer
+landed. A read that throws answers false too — "no supersede was PROVEN" — because one database
+hiccup must not cost a whole 45-second answer; a duplicate answer is the same accepted blast radius
+as `openNinaChatTurn`'s race, a lost reply is not. On true, `runNinaBackgroundTurn` exits before
+the session-exists check: no bubbles, no close, no distillation, no auto-title and — a `return`
+from inside the `try` falling out through the `finally` — no chain. The shortcut bump stays ABOVE
+the exit, because the trigger was in his message and the payload was billed for it; `closed = true`
+spares the `finally`'s idempotent close, and `failure` stays `undefined` because `'crashed'` would
+be a lie.
+
+**`ninaChatTurnStore.record` is two conditional arms, because the cancel and the phase advance race
+for the same row.** Arm 1 — the advance to `'persisting'` — carries `status='pending'` in its own
+WHERE and `.returning`s what it advanced, so a lost race is SEEN rather than assumed; an
+unconditional UPDATE would overwrite a freshly written `superseded` reason with a phase value and
+leave a closed row claiming to be mid-persist, a lie nothing downstream could read past. Arm 2 —
+what the loss earns — writes the METRICS and only the metrics, its SET naming neither `status` nor
+`error_code`, so a closer's reason is physically impossible to overwrite from this statement; its
+WHERE is `status='failed'` rather than `error_code='superseded'` on purpose, so a `'stale'` turn
+that outlived its claim and turned out to be alive still lands its usage. The money ledger stays
+honest on either arm: a superseded turn's token usage still lands on the row it belongs to, and the
+`superseded` reason is the only record that its answer ever existed.
+
+**Two paths deliberately do not cancel.** `resendNinaMessage` is a recovery tool for dead turns,
+not a cancel — it never calls `supersedeNinaChatTurn`, whatever the live claim's phase, and
+`tests/nina.resend.test.ts` pins that against the real `actions.ts`. And there is no client change:
+`ChatScreen` already allows fast re-sends and keeps polling while a claim is pending, and it
+branches on none of this — the cancel-and-restart is invisible to it by design.
 
 ## Image-job tracking (`lib/nina/jobview.ts`, R1)
 
@@ -1564,10 +1624,14 @@ DDL** (invariant 8) — phase 1 owns this set's one migration.
 | `turn-live` | `openNinaChatTurn` returned `null` — a turn already owns this conversation |
 | `failed` | the claim could not be opened; the row is untouched and one more tap is the recovery |
 
-**`turn-live` is where a resend and a send part company.** On the send path a null `turnId` is the
-ordinary burst case, and reporting it would mark a perfectly persisted message as failed. Here there
-is nothing new to persist, so a null is the *only* thing that happened, and saying so is the
-difference between a runner who waits and one who taps again.
+**`turn-live` is where a resend and a send part company.** On the send path a burst while she is
+thinking no longer reaches this refusal at all — the burst cancel (see *"The burst cancels the
+thinking turn"* above) supersedes the claim and opens fresh — so the null `turnId` left there is the
+chain case, and reporting it would mark a perfectly persisted message as failed. Here there is
+nothing new to persist, so a null is the *only* thing that happened, and saying so is the
+difference between a runner who waits and one who taps again. A resend is a recovery tool, not a
+cancel: it never calls `supersedeNinaChatTurn`, whatever the live claim's phase, and
+`tests/nina.resend.test.ts` pins that.
 
 `empty` is reachable and not by any client bug: `removeChatPhotoAction` deletes only the image row
 when `isNinaPhotoCarrierMessage` is false, and that predicate is false for every runner row — so an
@@ -2175,6 +2239,11 @@ are worth knowing:
   a caller has one branch and no `undefined`; the sweep and the cursor read are both `try`/`catch`ed
   and degrade rather than losing a turn that is already claimed. `ChatScreen` treats a *thrown*
   action as `'failed'`, which is what it means: the row is untouched.
+- **A failed cancel or ownership read degrades to today's behavior.** `supersedeNinaChatTurn`
+  answers `false` rather than throwing for a database problem, and `sendNinaMessage` wraps it
+  anyway; `chatTurnWasSuperseded` catches its own read errors and answers `false`. The worst case
+  either way is the pre-feature path — the running turn chains the message, or one duplicate
+  answer. Losing a whole 45-second reply is the one outcome neither may produce.
 - `vision.ts` has two named error classes — `NinaVisionTokenFloorError`, `NinaVisionTransportError`.
 - `imagefail.ts` classifies generation failures into `NINA_IMAGE_FAILURES` and picks what she says
   about each; a failure is a message from Nina, not a stack trace.
@@ -2382,11 +2451,22 @@ are worth knowing:
   already returns `null` — the invariant is asserted against `turn.ts` and must not depend on what
   another file does with an empty argument. Do not "promote" the block into `prompts/system.ts`:
   every turn would then pay for two dozen expansions he did not use.
+- **The burst cancel's three conditionals are load-bearing, and each is one "tidy-up" from a
+  corruption.** `supersedeNinaChatTurn` must keep `status='pending' AND error_code='running'` (and
+  the freshness bound) in its own UPDATE's WHERE — the read above it only decides whether a cancel
+  is worth attempting. `ninaChatTurnStore.record`'s phase advance must stay conditional on
+  `status='pending'` and its metrics-only arm must never name `status` or `error_code`, or a
+  superseded reason is overwritten with a phase value and a closed row claims to be mid-persist.
+  And `chatTurnWasSuperseded` must stay exactly `failed`+`superseded` — widening it to every
+  non-pending state turns a slow `'stale'` turn into a silently lost reply. `chatturn.test.ts` pins
+  all three against the SQL the real module generates.
 
 ## Tests
 
-In-package: 27 colocated `*.test.ts` files over the pure modules — the twenty-seventh is
-`shortcuts.test.ts`, which also carries the zero-import structural guard described above.
+In-package: 28 colocated `*.test.ts` files over the pure modules — the twenty-eighth is
+`chatturn.test.ts`, the chat claim's state machine asserted against the SQL the real module
+generates (see *"The burst cancels the thinking turn"* above); the twenty-seventh, `shortcuts.test.ts`,
+carries the zero-import structural guard described above.
 `turn.test.ts` adds two describe blocks for `P1-NIN-A023` — *"`userTurnText` — the fired shortcut"*
 (invariant 2 three ways, the in-play-only block, the full expansion, the three offsets around
 `HE JUST SAID:`, a disabled row dropped at the input boundary, `recentRunnerTexts` as the only route
@@ -2396,10 +2476,11 @@ in-play-only, and the id still carried by an `unavailable` turn — the action b
 whether she answered). `tests/nina.resend.test.ts` needed one
 line: its `runNinaTurn` mock now returns `firedShortcutIds: []`, because the field is required and
 the action reads its length.
-Repo-level: 30 `tests/nina.*` files,
+Repo-level: 39 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
-asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
-`NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*
+asserted by length), `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
+`NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt) and `tests/nina.burstCancel.test.ts`
+(the burst cancel, below). `NEVER_SAY` is the *unconditional*
 subset precisely so that walk keeps proving something true at every setting rather than only at the
 default. That file also walks `GIRLFRIEND_VOICE_EXAMPLES` (an 8-case `girlfriend register (R2)`
 describe block) rather than retyping the user's five lines.
@@ -2551,6 +2632,26 @@ initialised mount value does not, a `null` raw re-arms (a repeat tap is genuine,
 not), and a value that cannot be one of our ids is refused without being retried. And
 `tests/nina.chatPhoto.test.ts` counts `replaceState` in `ChatScreen`'s source — exactly two, the
 sanctioned pair.
+
+**The burst cancel is tested at two altitudes.** `lib/nina/chatturn.test.ts` asserts the claim's
+state machine against the SQL the real module generates (`tests/support/fakeDb`, splitting each
+UPDATE into its SET and WHERE halves): the supersede UPDATE carries `status='pending' AND
+error_code='running'` and the freshness bound in its own WHERE, does not even attempt a cancel
+against a `'persisting'` or expired claim, and answers `false` when it races and misses;
+`record`'s arm 1 advances only a live claim to `'persisting'` and its metrics-only arm names
+neither `status` nor `error_code`; and `chatTurnWasSuperseded` is true for exactly
+`failed`+`superseded` — never `'stale'`, `'crashed'`, `'ok'`, or a missing row.
+`tests/nina.burstCancel.test.ts` drives the real `sendNinaMessage` and `runNinaBackgroundTurn` with
+only the edges mocked: the cancel lands after his row is persisted and before the claim is opened,
+a WON cancel reports the NEW turn's id and defers exactly one background turn, a LOST cancel and a
+FAILED cancel are both exactly today (the open refuses; the open still runs), the superseded
+invocation inserts no bubble, closes nothing, starts no distillation and no chain while its
+shortcut bump still fires, and an ownership read answering false persists everything exactly as
+today — the regression guard for the ordinary turn. The two suites that mock `chatturn` needed the
+new exports to exist: `tests/nina.resend.test.ts`'s factory mock gains `supersedeNinaChatTurn` and
+`chatTurnWasSuperseded` (and one case pins that a resend never calls the first), and
+`tests/nina.chatPhotoReattach.test.ts` stubs `supersedeNinaChatTurn` to `false` because the real
+one would reach for its dummy `DATABASE_URL`.
 
 ## Notes
 

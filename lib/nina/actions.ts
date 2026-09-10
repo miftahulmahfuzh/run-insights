@@ -9,11 +9,13 @@ import { after } from 'next/server'
 import { ninaPhotoProvenance } from './attach'
 import { titleNinaSessionIfNeeded } from './autotitle'
 import {
+  chatTurnWasSuperseded,
   closeNinaChatTurn,
   getPendingNinaChatTurn,
   ninaChatTurnStore,
   ninaSessionExists,
   openNinaChatTurn,
+  supersedeNinaChatTurn,
   sweepStaleNinaChatTurns,
 } from './chatturn'
 import type { NinaContext } from './context'
@@ -715,6 +717,37 @@ export async function sendNinaMessage(input: {
     console.warn('[nina] chat turn sweep failed', { error: String(cause) })
   }
 
+  /*
+   * ── STEP 1c-i — THE CANCEL (R1). ─────────────────────────────────────────────────────────────
+   * If a turn for THIS conversation is still THINKING (`pending` + `running`, and fresh — see
+   * `supersedeNinaChatTurn` for why an expired one is left alone), this send closes it
+   * `failed`/`superseded`, and the `openNinaChatTurn` below then opens a FRESH one whose context
+   * already contains both his messages — the one the thinking turn was answering (persisted in
+   * STEP 1, before any of this) and this one. One round trip, one turn, and the burst is answered
+   * together instead of queued behind a stale answer.
+   *
+   * It sits here — after every refusal and after his row is committed — because a cancel is a
+   * write on somebody else's turn and must never be spent on a send that then refuses. It sits
+   * between the sweep and the open because the open is what needs the claim gone: the moment the
+   * supersede wins, there is no pending claim left for this session and the open proceeds.
+   *
+   * A cancel that LOSES — she reached `'persisting'`, the claim expired, or the statement raced
+   * and missed — has no branch here, on purpose: `openNinaChatTurn` then refuses as it always has
+   * and the turn that beat us chains onto this message exactly as before. The boolean buys one
+   * log line and nothing else.
+   */
+  let superseded = false
+  try {
+    superseded = await supersedeNinaChatTurn(userId, sessionId)
+  } catch (cause) {
+    /* Invariant 7: a cancel that could not run must never cost him the send. The worst case is
+     * exactly today's behavior — his message is saved and the running turn chains onto it. */
+    console.warn('[nina] could not supersede the thinking turn', { error: String(cause) })
+  }
+  if (superseded) {
+    console.log('[nina] superseded a thinking turn', { userId, sessionId })
+  }
+
   let turnId: string | null = null
   try {
     turnId = await openNinaChatTurn(userId, { sessionId, runnerMessageId, depth: 0 })
@@ -979,6 +1012,37 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
       void bumpNinaShortcutUses(userId, result.firedShortcutIds).catch((cause) => {
         console.warn('[nina] shortcut usage bump failed', { turnId, error: String(cause) })
       })
+    }
+
+    /*
+     * ── THE OWNERSHIP RE-CHECK (R1). ───────────────────────────────────────────────────────────
+     * Up to 45 s passed since this turn opened its claim, and a send that arrived while the claim
+     * was still `'running'` may have superseded it — closed the row `failed`/`superseded` and
+     * started a fresh turn whose context contains everything this one was answering. This
+     * invocation is the loser of that race, and the answer it is holding is now a DUPLICATE. So it
+     * persists NOTHING and exits: no session check, no bubbles, no close, no distillation, no
+     * auto-title, and — because a `return` from inside this `try` leaves the function after the
+     * `finally` — no chain. `ninaChatTurnStore.record` has already landed the token usage on the
+     * row (its arm 2), so the money ledger stays honest; the `superseded` reason on the row is the
+     * only record this answer ever existed.
+     *
+     * The shortcut bump above STAYS above this exit, exactly as it stays above every other early
+     * return: the trigger was in his message and the payload was billed for it — a turn the runner
+     * retargeted does not un-fire it any more than a failed one does.
+     *
+     * `closed = true` because the row IS closed — by the cancel, not by us — so the `finally`'s
+     * `closeNinaChatTurn` (conditional on `status='pending'` and a no-op here anyway) is spared
+     * the statement. `failure = undefined` because 'crashed' would be a lie; the row already
+     * carries the truth.
+     */
+    if (await chatTurnWasSuperseded(userId, turnId)) {
+      console.warn('[nina] turn was superseded mid-flight; discarding its answer', {
+        turnId,
+        sessionId,
+      })
+      failure = undefined
+      closed = true
+      return
     }
 
     /*

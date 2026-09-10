@@ -2,18 +2,17 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-08
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-10
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 25
-- Completed: 24
+- Completed: 31
 
 ---
 
@@ -113,6 +112,16 @@
   - **Method**: /implement (swarm wave 1)
   - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
 
+- [ ] **P1-NIN-A032** Phase 2: Answer the accumulated bubbles: burst framing in the turn prompt
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns: lib/nina/turn.ts (NinaTurnInput gains the accumulated unanswered runner texts; userTurnText renders them), lib/nina/actions.ts — runNinaBackgroundTurn computes them from the context window it already loaded and passes them through, and the prompt-layer tests. Exit: a turn opened over a burst of unanswered runner messages carries an explicit block naming every unanswered message except the newest as hers to answer together; a turn with no accumulated messages produces a byte-identical user turn to before; the chain path and the resend path get the same framing for free because it is computed from the window.
+  - **Status**: pending
+  - **Plan Set**: `NINA_BURST_CANCEL_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — "The fresh turn answers ALL accumulated unanswered user bubbles, not only the newest"
+  - **Depends on**: `P1-NIN-A028`
+  - **Plan**: `.workflows/plan/P1-NIN-A032.md`
+
 ### [P2] Medium
 
 ### [P3] Low
@@ -125,6 +134,23 @@
 
 ### [P1] High
 
+- [x] **P1-NIN-A028** Phase 1: Cancel-and-retarget: supersede a thinking turn, discard its result
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns: lib/nina/chatturn.ts (the conditional supersede, the ownership read, ninaChatTurnStore.record made conditional), lib/nina/actions.ts (sendNinaMessage's cancel attempt; runNinaBackgroundTurn's discard path), and their tests. Exit: a send arriving while the claim is pending+running fails that row as superseded, opens and starts a fresh turn, and the old invocation — when its model call returns — writes no bubbles, no distillation, and starts no chain; a send arriving while the claim is pending+persisting (or already closed) keeps today's behavior; the superseded row keeps its token metrics and its reason.
+  - **Status**: completed
+  - **Plan Set**: `NINA_BURST_CANCEL_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — "When a new send arrives while the current turn is still thinking, CANCEL that turn and start a fresh one in its place"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A028.md`
+  - **Completed**: 2026-09-10 10:15
+  - **Method**: /implement (phase 1 of 2)
+  - **Files**: lib/nina/chatturn.ts, lib/nina/actions.ts, lib/nina/chatturn.test.ts, tests/nina.burstCancel.test.ts, tests/nina.resend.test.ts, tests/nina.chatPhotoReattach.test.ts
+  - **Verified**: `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm test` 168 files / 3583 tests, all passed; `npm run db:check` "Everything's fine" with `drizzle/` gaining no file (invariant 6). Production code landed byte-faithful to the plan — all drift is fixture-level in this phase's own new test files, no invariant touched.
+  - **Drift**: `tests/nina.burstCancel.test.ts` — `authEnv()` requires `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` besides `AUTH_SECRET`; the plan's fixture set only `AUTH_SECRET` and every test died at the ticket loop. Fixed to the `chatPhotoReattach` precedent.
+  - **Drift**: `tests/nina.burstCancel.test.ts` — the `bumpNinaShortcutUses` spy needed `mockResolvedValue(undefined)`: the action voids `.catch` off the returned promise, so a bare `vi.fn()` (returning `undefined`) killed any turn with a fired shortcut as "crashed".
+  - **Drift**: `tests/nina.burstCancel.test.ts` — the plan's `loadNinaContext` fixture `{ conversation: { window: [] } }` under-specified `runNinaDistillation`'s reads (`memory.slots`, `runner.fullName`/`nickname`, `conversation.olderMessageCount`); the happy-path test threw `undefined.map` after the close. Fixture enriched.
+  - **Drift**: `lib/nina/chatturn.test.ts` — the freshness-bound UPDATE param reaches the fake client as the driver-serialized ISO string, not a `Date`; `expect.any(Date)` replaced with an ISO-timestamp string matcher (same assertion intent).
 - [x] **P1-NIN-A023** Phase 2: Firing a shortcut into the turn
   - **Difficulty**: HARD
   - **Type**: Feature
