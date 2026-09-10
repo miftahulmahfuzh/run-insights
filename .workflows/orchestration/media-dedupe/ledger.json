@@ -1,0 +1,92 @@
+{
+  "branch": "feature/media-dedupe",
+  "coordinator": "orch-media-dedupe",
+  "coordinator_session_id": "6928e2b6-08c8-4267-a8af-71234cfe4003",
+  "created": "2026-09-10T04:50:04+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/db`, `lib/photos`, `lib/nina",
+      "plan": ".workflows/plan/media-dedupe/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Foundation: `content_hash` kolom, util hash, plumbing data"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "components/nina`, `lib/nina",
+      "plan": ".workflows/plan/media-dedupe/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Write-time dedup: jalur upload chat runner"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina`, `lib/admin`, `scripts",
+      "plan": ".workflows/plan/media-dedupe/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Write-time dedup: jalur generated + admin"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "scripts",
+      "plan": ".workflows/plan/media-dedupe/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Backfill sweep: hash-fill + peleburan duplikat existing"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/media-dedupe/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "media-dedupe",
+  "updated": "2026-09-10T04:50:04+00:00",
+  "worktree": "/home/miftah/.worktrees/media-dedupe"
+}
