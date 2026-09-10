@@ -83,11 +83,11 @@ function Header() {
       <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Shortcuts</h1>
       <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
         A short <strong>trigger</strong> and the whole long context it stands in for. A cell saves
-        when you leave it, on/off saves the moment it changes, and a row deletes on one click — no
-        confirmation anywhere. Edits here write production and she reads them on her very next
-        message; there is no distillation pass and no cache in between. A shortcut fires only when
-        its trigger appears in something <strong>you</strong> type — never in something she says —
-        and a message with no trigger in it carries none of this at all.
+        when you leave it, the checkbox at the start of a row saves the moment it changes, and a row
+        deletes on one click — no confirmation anywhere. Edits here write production and she reads
+        them on her very next message; there is no distillation pass and no cache in between. A
+        shortcut fires only when its trigger appears in something <strong>you</strong> type — never
+        in something she says — and a message with no trigger in it carries none of this at all.
       </p>
     </header>
   )

@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, `admin-imagegen-simplify` phase 3 of 3 — the focus-card hint purge: each of the six "Focus on" cards is now its label and nothing else — the hint `<span>` under the checkbox is gone, and the card's single span still carries the "unsaved" marker; previously task `P1-RI-A029`, `admin-imagegen-simplify` phase 2 of 3 — the image-prefs revision purge: `ImageGenPanel` takes no `revision` prop and prints no "revision N" copy anywhere, and the column leaves `nina_image_prefs` in `drizzle/0017_retire_imageprefs_revision.sql` (committed, NOT applied — the post-deploy `npm run db:migrate`); previously task `P1-RI-A028`, phase 1 of the same set — `ImageGenPanel` adopted the Personality auto-save pipeline and its Save/Discard/Reset row went with the reset action; before that, task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
+**Last Updated**: 2026-09-10 (owner request, no task id — `/admin/shortcuts`' two-word on/off dropdown became a one-click checkbox in the table's FIRST column, `DialSlider`'s per-dial idiom whole, still non-optimistic, with a disabled checked box in the add row and a guard test keeping the dropdown from coming back; previously 2026-09-09, task `P1-RI-A031`, `admin-imagegen-simplify` phase 3 of 3 — the focus-card hint purge: each of the six "Focus on" cards is now its label and nothing else — the hint `<span>` under the checkbox is gone, and the card's single span still carries the "unsaved" marker; previously task `P1-RI-A029`, `admin-imagegen-simplify` phase 2 of 3 — the image-prefs revision purge: `ImageGenPanel` takes no `revision` prop and prints no "revision N" copy anywhere, and the column leaves `nina_image_prefs` in `drizzle/0017_retire_imageprefs_revision.sql` (committed, NOT applied — the post-deploy `npm run db:migrate`); previously task `P1-RI-A028`, phase 1 of the same set — `ImageGenPanel` adopted the Personality auto-save pipeline and its Save/Discard/Reset row went with the reset action; before that, task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
 
 ## Overview
 
@@ -866,7 +866,12 @@ thumb, and a second set of table mechanics would be a second set of ways to lose
 tokens verbatim — `text-base` below `lg` for the iOS 16 px rule, `min-h-11` for the 44 px target,
 13 px density back at `lg` — and the `overflow-x-auto overscroll-x-contain` box is its box.
 
-Six columns: **trigger · label · expansion · on/off · fired · ✕**. `Fired` is the only one that goes
+Six columns: **✓ · trigger · label · expansion · fired · ✕**. The first is the on/off checkbox, and
+it leads the row on purpose (2026-09-10): the two-word on/off dropdown it replaced cost two clicks —
+open the picker, then pick — where a checkbox is the toggle in one, and the thumb meets it before
+anything it switches. It is `DialSlider`'s per-dial checkbox whole: a `TOUCH_ICON` `<label>` makes
+the 44 px box the hit target, the glyph is `size-4 accent-accent`, and the accessible name is the
+label's `sr-only` span. `Fired` is the only one that goes
 below `lg` (`hidden lg:table-cell`), and the reason is `MemoryTable`'s own for dropping Origin and
 When: five of the six are things the operator *acts* on, while `Fired` is telemetry he *reads* — a
 count and a date, both answers to "is this code dead?", which is a question asked at a desk. It is
@@ -886,17 +891,15 @@ and the comparison is against the VALUE, never the row object: `revalidatePath` 
 fresh object on every write, so comparing identity would wipe a draft in a cell nobody had touched
 each time any other cell saved. `Escape` reverts a cell, `Cmd`/`Ctrl+Enter` commits without leaving
 it, and an emptied cell is **refused rather than treated as a delete** — a stray select-all-and-tab
-would otherwise destroy a shortcut silently, and the one-click delete is four columns away.
+would otherwise destroy a shortcut silently, and the one-click delete is three columns away.
 
 **Only the delete is optimistic**, exactly as on `/admin/memory`. `useOptimistic` here is a plain
 filter rather than the ledger's blank-row substitute, because a shortcut has no closed vocabulary:
 the row is gone and nothing manufactures it again. `row.enabled` deliberately has **no draft** — the
-`<select>` renders the prop and the server's answer is what changes it, so a refused toggle never
-flashes "on". It is a `<select>` and not a checkbox for two reasons from this directory:
-`CELL_CONTROL` gives it the 44 px target and the 16 px font for free, and "on"/"off" are two words
-that cannot be misread — the case `admin-bottom-bar-icons` overturned for the PHONE BAR, where
-seven cells stopped fitting words, is the inverse of this one, where two words fit and a glyph
-would be the guess. It saves on **change**, because a select's change IS the finished edit.
+checkbox renders the prop and the server's answer is what changes it, so a refused toggle never
+flashes "on". It saves on **change**, because a checkbox's change IS the finished edit — and since
+2026-09-10 that change is one click, the checkbox leading the row, where the two-word on/off
+dropdown it replaced wanted two.
 
 **There is no confirmation anywhere.** The `✕` deletes on the first click. Invariant 6 and the
 owner's own sentence, and `tests/admin.shortcuts.test.ts` asserts the absence of every dialog and
@@ -1332,9 +1335,13 @@ down the string.
   test names every dialog and second-click API it forbids. For the same reason, do not *spell* those
   names in a comment in that file — the guard reads the source and cannot tell the two apart.
 - **Do not make an emptied shortcut cell delete its row.** It is refused and reverted on purpose: a
-  stray select-all-and-tab must not destroy a shortcut when the delete control is four columns away.
-- **Do not make the on/off `<select>` optimistic.** Only the delete is. A draft on `row.enabled`
+  stray select-all-and-tab must not destroy a shortcut when the delete control is three columns away.
+- **Do not make the on/off checkbox optimistic.** Only the delete is. A draft on `row.enabled`
   would show "on" for a row the write is about to refuse.
+- **Do not give the shortcut table its two-click on/off dropdown back.** The checkbox in the first
+  column is the toggle in one click, and a test pins the property by forbidding the dropdown's
+  machinery in that file — so, as with the no-confirmation suite, the cell's comment must not spell
+  the machinery it is arguing against.
 - **Do not put words back in a phone nav cell.** The one-row bar is what icons bought
   (`admin-bottom-bar-icons`: seven 59.1 px cells, each a 24 px glyph with its sr-only `short` as
   the accessible name); an eighth route widens to `grid-cols-8` (51.8 px a cell, still past the
@@ -1530,3 +1537,11 @@ module-map row above never described that line, so nothing here went stale; only
 `Last Updated` line needed the phase. The member the hint read is deleted from
 `NINA_IMAGE_FOCUS_SPECS` in `lib/nina/imageprefs.ts`, and `imageFocusCopy` returns the label as a
 plain string (`lib/admin/imageGenModel.ts`).
+
+2026-09-10 — the shortcut table's on/off dropdown became a checkbox in the table's first column,
+at the owner's hand: "on" to "off" through a picker was two clicks where a toggle owes one. The
+checkbox is `DialSlider`'s per-dial idiom whole — `TOUCH_ICON` `<label>` for the 44 px target,
+`size-4 accent-accent` glyph, `sr-only` name — and still saves on CHANGE, still through the
+non-optimistic `toggleShortcutAction`. The add row answers with a disabled, checked, decorative
+box where its word "on" used to sit, and `tests/admin.shortcuts.test.ts` gained the guard that
+keeps the dropdown from coming back.

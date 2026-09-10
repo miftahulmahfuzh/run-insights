@@ -289,6 +289,20 @@ describe('the client boundary — one door, and it is shortcutModel', () => {
     expect(source).toContain('lg:min-h-0')
     expect(source).toContain('lg:text-[13px]')
   })
+
+  it('toggles in one click: the on/off control is a checkbox, and no dropdown comes back', () => {
+    const source = read(TABLE)
+    // The owner retired the two-word on/off dropdown on 2026-09-10: open the picker, then pick,
+    // is two clicks for a toggle, and a checkbox is one — in the table's FIRST column, so the
+    // thumb lands on it before anything it toggles. This pins the property the same way the
+    // no-confirmation suite pins its own, because a "make it consistent with the other tables"
+    // edit is exactly how the second click comes back. And as with that suite, the cell's own
+    // comment must not spell the machinery it is arguing against — the guard cannot tell an
+    // explanation from a reintroduction.
+    expect(source).toContain('type="checkbox"')
+    expect(source).not.toContain('<select')
+    expect(source).not.toContain('<option')
+  })
 })
 
 describe('R1 — no confirmation, anywhere on this page', () => {

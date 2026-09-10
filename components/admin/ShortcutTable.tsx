@@ -151,16 +151,19 @@ export function ShortcutTable({ userId, rows }: { userId: string; rows: readonly
     <Card className="mt-8 overflow-x-auto overscroll-x-contain">
       <table className="w-full min-w-[460px] border-collapse text-left lg:min-w-[1000px]">
         <caption className="sr-only">
-          Every shortcut this account has. A trigger, what it is for, and the context it stands in
-          for. A cell saves when you leave it; the on/off control saves the moment it changes; the
-          delete control removes a row on the first click, with no confirmation. On a narrow screen
-          the Fired column is not shown; the table scrolls sideways inside its own box.
+          Every shortcut this account has. A checkbox, a trigger, what it is for, and the context it
+          stands in for. A cell saves when you leave it; the checkbox saves the moment it changes;
+          the delete control removes a row on the first click, with no confirmation. On a narrow
+          screen the Fired column is not shown; the table scrolls sideways inside its own box.
         </caption>
 
         {/* No column group — the widths live on the header cells. `CELL_WIDE_ONLY`'s docstring has
             the argument. */}
         <thead>
           <tr className="bg-paper-2">
+            <th scope="col" className={cn(HEAD_CELL, 'w-[56px] lg:w-[48px]')}>
+              <span className="sr-only">On</span>
+            </th>
             <th scope="col" className={cn(HEAD_CELL, 'w-[96px] lg:w-[150px]')}>
               Trigger
             </th>
@@ -169,9 +172,6 @@ export function ShortcutTable({ userId, rows }: { userId: string; rows: readonly
             </th>
             <th scope="col" className={HEAD_CELL}>
               Expansion
-            </th>
-            <th scope="col" className={cn(HEAD_CELL, 'w-[76px] lg:w-[84px]')}>
-              On
             </th>
             <th scope="col" className={cn(HEAD_CELL_WIDE_ONLY, 'lg:w-[132px]')}>
               Fired
@@ -246,9 +246,9 @@ function Row({
    * `revalidatePath` hands every row a fresh object on every write, so comparing identity would
    * wipe out a draft in a cell nobody had touched every time any other cell saved.
    *
-   * `row.enabled` deliberately has NO draft. The select renders the prop, and the server's answer
-   * is what changes it — an optimistic toggle would show "on" for a row the write is about to
-   * refuse, and `MemoryTable`'s rule is that only the DELETE is optimistic.
+   * `row.enabled` deliberately has NO draft. The checkbox renders the prop, and the server's
+   * answer is what changes it — an optimistic toggle would show "on" for a row the write is about
+   * to refuse, and `MemoryTable`'s rule is that only the DELETE is optimistic.
    */
   const [lastTrigger, setLastTrigger] = React.useState(row.trigger)
   if (row.trigger !== lastTrigger) {
@@ -271,7 +271,7 @@ function Row({
    * agreed to — and `revert` puts the draft back to it.
    *
    * An emptied cell deliberately does NOT delete the row: a stray select-all-and-tab would destroy
-   * a shortcut silently, and the one-click delete is four columns away. The refusal is reported
+   * a shortcut silently, and the one-click delete is three columns away. The refusal is reported
    * before the round trip, because the schema would make it anyway.
    */
   function commit(field: ShortcutField, draft: string, committed: string, revert: () => void) {
@@ -310,6 +310,32 @@ function Row({
 
   return (
     <tr className={cn(!row.enabled && 'opacity-60')}>
+      <td className={CELL}>
+        {/*
+         * A checkbox, and the column is the table's FIRST — until 2026-09-10 the control was a
+         * two-word "on"/"off" dropdown, and flipping it cost two clicks (open the picker, then
+         * pick), which is one more than a toggle owes anybody. A checkbox is the toggle in one
+         * click, and it keeps what the dropdown got for free by borrowing `DialSlider.tsx`'s
+         * per-dial checkbox whole: the 44 px target is the wrapping `<label>` (`TOUCH_ICON` — the
+         * hit area is the box, not the 16 px glyph inside it), the accessible name is that label's
+         * `sr-only` span, and a checked box against a cleared one is a picture, not two words to
+         * read. It saves on CHANGE, because a checkbox's change IS the finished edit — the one
+         * click, finished.
+         */}
+        <label className={cn(TOUCH_ICON, 'cursor-pointer')}>
+          <input
+            type="checkbox"
+            checked={row.enabled}
+            onChange={(event) => {
+              const next = event.target.checked
+              onRun(row.id, () => toggleShortcutAction({ userId, id: row.id, enabled: next }))
+            }}
+            className="size-4 accent-accent"
+          />
+          <span className="sr-only">Turn the {row.trigger} shortcut on or off</span>
+        </label>
+      </td>
+
       <td className={CELL}>
         <input
           aria-label="Trigger"
@@ -361,31 +387,6 @@ function Row({
         {result?.ok === true && result.note !== undefined && (
           <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
         )}
-      </td>
-
-      <td className={CELL}>
-        {/*
-         * A `<select>` and not a checkbox, for two reasons that both come from files in this
-         * directory. `CELL_CONTROL` gives it the 44 px target and the 16 px font for free, where a
-         * checkbox would need both bolted on; and "on" and "off" are two words that cannot be
-         * misread. The admin phone bar — `AdminNavLinks` since the shell/leaf split — went
-         * icon-only in `admin-bottom-bar-icons` — seven cells on 414 px stopped fitting words —
-         * which is the inverse of this cell: two words fit, and
-         * a glyph here would be the guess. It saves on CHANGE, because a select's change IS the
-         * finished edit.
-         */}
-        <select
-          aria-label="On or off"
-          className={cn(CELL_CONTROL, 'appearance-none')}
-          value={row.enabled ? 'on' : 'off'}
-          onChange={(event) => {
-            const next = event.target.value === 'on'
-            onRun(row.id, () => toggleShortcutAction({ userId, id: row.id, enabled: next }))
-          }}
-        >
-          <option value="on">on</option>
-          <option value="off">off</option>
-        </select>
       </td>
 
       <td className={cn(CELL_WIDE_ONLY, 'text-[11px] font-medium text-ink-3 tabular-nums')}>
@@ -467,6 +468,21 @@ function AddRow({
   return (
     <tr className="bg-paper-2/40">
       <td className={CELL}>
+        {/* The state a new row will be created in, as a picture rather than a control — `disabled`
+            keeps the one affordance in this row the `+`, and the `TOUCH_ICON` box keeps the glyph
+            lined up with the real checkboxes below it. */}
+        <label className={TOUCH_ICON}>
+          <input
+            type="checkbox"
+            checked
+            disabled
+            aria-hidden="true"
+            className="size-4 accent-accent disabled:opacity-50"
+          />
+        </label>
+      </td>
+
+      <td className={CELL}>
         <input
           aria-label="The trigger to add"
           className={CELL_CONTROL}
@@ -525,8 +541,6 @@ function AddRow({
           <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
         )}
       </td>
-
-      <td className={cn(CELL, 'text-[11px] font-medium text-ink-3')}>on</td>
 
       <td className={cn(CELL_WIDE_ONLY, 'text-[11px] font-medium text-ink-3')}>
         New shortcuts start on. Nothing has fired yet.
