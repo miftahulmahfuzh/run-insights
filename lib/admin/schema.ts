@@ -43,6 +43,7 @@ import {
 
 import {
   NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_PROMPT_LENGTH_MAX,
   NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_NOTES_MAX,
@@ -707,6 +708,12 @@ export const ninaImagePrefsWriteSchema = z.object({
       const verdict = validateNinaImageTemplate(value)
       if (!verdict.ok) ctx.addIssue({ code: 'custom', message: verdict.error })
     }),
+  /**
+   * §8's camera — a closed two-id enum, so a forged or stale client cannot put an unverified
+   * model id on the wire. The store's `coerceNinaImageModel` remains the read-side degrade; this
+   * is the write-side refusal.
+   */
+  model: z.enum(NINA_IMAGE_MODEL_IDS),
   /** R10's selection. Phase 5 supplies the grid; the round trip is already here. */
   reference: ninaImageReferenceSchema,
 })

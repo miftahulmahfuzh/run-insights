@@ -15,6 +15,8 @@ import {
   imageFocusCopy,
   imageGenDraftEquals,
   IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
+  imageModelHint,
+  imageModelLabel,
   mergeImageGenAfterSave,
   parseReferenceKey,
   promptLengthCopy,
@@ -25,6 +27,7 @@ import {
 import { cn } from '@/lib/cn'
 import {
   NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_PROMPT_LENGTH_MAX,
   NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_NOTES_MAX,
@@ -290,6 +293,7 @@ export function ImageGenPanel({
         time: sent.time,
         notes: sent.notes,
         promptTemplate: sent.promptTemplate,
+        model: sent.model,
         reference: sent.reference,
       })
       if (!outcome.ok || outcome.prefs === undefined) {
@@ -365,6 +369,15 @@ export function ImageGenPanel({
    */
   function setReference(next: ImageGenDraft['reference']) {
     commitImmediate({ ...draft, reference: next })
+  }
+
+  /**
+   * §8's camera — an immediate commit, like every discrete control: the dropdown's change IS the
+   * finished edit. It rides the one whole-row save, so it carries anything still pending (the
+   * dial, an unsent textarea) exactly the way a checkbox does.
+   */
+  function setModel(next: string) {
+    commitImmediate({ ...draft, model: next })
   }
 
   /**
@@ -454,6 +467,41 @@ export function ImageGenPanel({
             unsaved={pendingFields.has('promptLength')}
             onChange={(value) => scheduleDialCommit({ ...draft, promptLength: value })}
           />
+        </section>
+
+        {/*
+         * §8's camera (the 2026-09-10 ask). A closed two-option select rather than a free-text
+         * id: the vocabulary lives in `lib/nina/imageprefs.ts` beside the coercion, the Zod
+         * boundary refuses anything outside it, and the label and hint are phase 1's specs — the
+         * same "no copy table in the panel" rule as every other word on this page. It commits on
+         * CHANGE, like the checkboxes, because the selection is the finished edit; the new
+         * camera is on the next generation with no invalidation step, and the Test panel below
+         * is how the lighter sibling gets probed before he leans on it.
+         */}
+        <section className="mb-6">
+          <label className="block">
+            <span className="mb-1.5 flex items-baseline gap-2 text-[12px] font-semibold tracking-[0.02em] text-ink-2">
+              Image model
+              {pendingFields.has('model') && (
+                <span className="text-[11px] font-semibold text-accent">unsaved</span>
+              )}
+            </span>
+            <select
+              className={CONTROL_CLASS}
+              value={draft.model}
+              onChange={(event) => setModel(event.target.value)}
+            >
+              {NINA_IMAGE_MODEL_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {imageModelLabel(id)}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
+              {imageModelHint(draft.model) ||
+                'Which camera draws her. An unknown id falls back to the measured one.'}
+            </span>
+          </label>
         </section>
 
         <fieldset className="mb-6">

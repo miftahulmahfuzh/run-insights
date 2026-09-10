@@ -188,6 +188,13 @@ export async function callNinaImageModel(
    * calls — is unchanged.
    */
   referenceUrl: string | null = null,
+  /**
+   * The job's chosen camera, already normalised by `coerceNinaImageModel`. Optional and defaulted
+   * to the module constant for the same reason `referenceUrl` is defaulted — the payload builder
+   * owns the fallback, so a caller that never heard of the dropdown builds the body it always
+   * built.
+   */
+  model?: string,
 ): Promise<NinaImageCallResult> {
   const startedAt = Date.now()
 
@@ -241,7 +248,9 @@ export async function callNinaImageModel(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl })),
+      body: JSON.stringify(
+        buildImageRequestBody({ prompt, seed, referenceDataUrl, model }),
+      ),
       signal: AbortSignal.timeout(postTimeoutMs),
       cache: 'no-store',
     })

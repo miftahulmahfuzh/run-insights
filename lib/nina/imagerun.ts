@@ -13,6 +13,7 @@ import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
 import { planNinaImageWrite, type NinaImageDedupHit } from './imageDedupe'
 import { ninaImageCaption, type NinaImageFailure } from './imagefail'
 import { signImageBytes, type NinaImageSignature } from './perceptualSign'
+import { coerceNinaImageModel } from './imageprefs'
 import {
   claimNinaImageJob,
   completeNinaImageJob,
@@ -595,6 +596,8 @@ async function attemptOnce(
     args.prompt,
     args.seed,
     referenceUrl,
+    /* The job's own camera, normalised — an old jsonb row without the key rides the default. */
+    coerceNinaImageModel(args.model),
   )
   if (!outcome.ok) {
     return { outcome: await closeFailed(userId, jobId, args, attempts, outcome), anchored }

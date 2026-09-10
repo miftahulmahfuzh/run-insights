@@ -4,6 +4,7 @@ import { fireNinaImageGeneration } from './imagerun'
 import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
+import { coerceNinaImageModel } from './imageprefs'
 import { SEED_MAX } from './imagerecipe'
 import { readNinaImagePrefs, readNinaTuning } from './queries'
 
@@ -97,6 +98,9 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
   const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
   const prompt = buildNinaImagePrompt({ purpose: 'avatar', scene, mood, tuning, prefs })
 
+  /* The row's camera (§8), same one-coercion rule as `selfiegen.ts`. */
+  const model = coerceNinaImageModel(prefs.model)
+
   const jobId = await openNinaImageJob(userId, {
     purpose: 'avatar',
     scene,
@@ -107,7 +111,8 @@ export async function generateNinaAvatar(request: NinaAvatarRequest): Promise<Ni
     replyToId: null,
     source: request.source,
     attempts: 0,
-    sidecar: sidecarText({ prompt, seed, purpose: 'avatar' }),
+    model,
+    sidecar: sidecarText({ prompt, seed, purpose: 'avatar', model }),
   })
 
   /* In-platform now — see `selfiegen.ts`'s note and `imagerun.ts`'s header. Nobody asked in chat,

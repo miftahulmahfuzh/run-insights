@@ -597,7 +597,7 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
     expect(fkFor(schema.ninaImagePrefs, 'user_id')?.onDelete).toBe('cascade')
   })
 
-  it('spells exactly the sixteen columns phases 2, 3, 4 and 5 were written against', () => {
+  it('spells exactly the seventeen columns phases 2, 3, 4 and 5 were written against', () => {
     expect(names(schema.ninaImagePrefs)).toEqual(
       [
         'user_id',
@@ -617,6 +617,8 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
         'notes',
         // The editable template shell (the 2026-09-10 ask). `''` = the default.
         'prompt_template',
+        // §8's camera (the 2026-09-10 ask). The coerced provider id, not a module constant.
+        'model',
         // R10 — the chosen photograph, as a set plus an id. Never a blob URL.
         'reference_source',
         'reference_id',

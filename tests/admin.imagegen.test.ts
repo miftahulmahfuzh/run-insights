@@ -23,6 +23,7 @@ import {
 import { ninaImagePrefsWriteSchema } from '@/lib/admin/schema'
 import {
   NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_MODEL_IDS,
   NINA_PROMPT_LENGTH_RUNGS,
   NINA_IMAGE_PROMPT_LENGTH_MAX,
   NINA_IMAGE_PROMPT_LENGTH_MIN,
@@ -206,7 +207,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
     expect(imageGenDraftEquals(DEFAULTS, toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS))).toBe(true)
   })
 
-  it('names the six scalar fields in a fixed order', () => {
+  it('names the seven scalar fields in a fixed order', () => {
     const edited: ImageGenDraft = {
       ...DEFAULTS,
       promptLength:
@@ -216,6 +217,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       time: 'rainy night',
       notes: 'nina is full of sweat',
       promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT,
+      model: 'qwen/qwen-image-3',
     }
     expect(changedImageGenFields(edited, DEFAULTS)).toEqual([
       'promptLength',
@@ -224,6 +226,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       'time',
       'notes',
       'promptTemplate',
+      'model',
     ])
     expect(imageGenDraftEquals(edited, DEFAULTS)).toBe(false)
   })
@@ -411,6 +414,21 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
           payload({ [field]: 'x'.repeat(max + 1) } as Partial<ImageGenDraft>),
         ).success,
         `${field} at ${max + 1}`,
+      ).toBe(false)
+    }
+  })
+
+  it('§8: the model is a closed enum — every declared id in, everything else out', () => {
+    for (const id of NINA_IMAGE_MODEL_IDS) {
+      expect(
+        ninaImagePrefsWriteSchema.safeParse(payload({ model: id })).success,
+        id,
+      ).toBe(true)
+    }
+    for (const forged of ['gpt-image-1', 'qwen/qwen-image-3-ultra', '', null, 42]) {
+      expect(
+        ninaImagePrefsWriteSchema.safeParse(payload({ model: forged as never })).success,
+        String(forged),
       ).toBe(false)
     }
   })
@@ -630,6 +648,7 @@ describe('one save, not eleven — plan invariant 7', () => {
       'time',
       'notes',
       'promptTemplate',
+      'model',
       'reference',
     ]) {
       expect(call, `the save call omits ${field}`).toContain(field)
@@ -680,10 +699,11 @@ describe('the panel commits itself — no staged-commit row', () => {
     const code = codeOnly(PANEL)
     expect(code).toContain('setFocus(key, event.target.checked)')
     expect(code).toContain('setReference(parseReferenceKey(next))')
-    /* Each name appears once as the definition and once per call site that rides it: four
-     * `commitImmediate` (definition, setFocus, setReference, the template reset) and two
-     * `scheduleDialCommit` (definition, the dial's onChange). Nothing else may route to either. */
-    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(4)
+    /* Each name appears once as the definition and once per call site that rides it: five
+     * `commitImmediate` (definition, setFocus, setReference, the template reset, the model
+     * select) and two `scheduleDialCommit` (definition, the dial's onChange). Nothing else may
+     * route to either. */
+    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(5)
     expect((code.match(/scheduleDialCommit\(/g) ?? []).length).toBe(2)
   })
 

@@ -569,7 +569,7 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
 }
 
 /* ============================================================================
- * §7 The editable prompt template (the 2026-09-10 ask)
+ * §6 The editable prompt template (the 2026-09-10 ask)
  * ==========================================================================*/
 
 /**
@@ -793,7 +793,72 @@ export function coerceNinaImageTemplate(value: unknown): string {
 }
 
 /* ============================================================================
- * §6 The preferences themselves
+ * §7 The image model (the 2026-09-10 ask, second half)
+ * ==========================================================================*/
+
+/**
+ * **The two cameras the dropdown offers, verified live on 2026-09-10**: both ids were listed by
+ * OpenRouter's `/api/v1/images/models` the day this shipped. A CLOSED vocabulary, not a free-text
+ * id, for the reason `NINA_IMAGE_REFERENCE_SOURCES` is one: an unknown model id must fail toward
+ * the measured default at the read, not toward a provider 404 after the money is spent. A new
+ * model is a code change — and, per this repo's own discipline, a probe — rather than a form
+ * field.
+ *
+ * Lives HERE and not in `lib/nina/imagerecipe.ts` because three hosts that may not import that
+ * file all need it: the `'use client'` panel renders the dropdown, the Zod boundary checks the
+ * save, and `scripts/nina-image-worker.ts` normalises old jsonb args on claim — and this module is
+ * importable from all three (zero imports; the worker reaches it by relative path under
+ * `--experimental-strip-types`). `imagerecipe.ts`'s `NINA_IMAGE_MODEL` is the DEFAULT id spelled
+ * for the payload builder, and `tests/nina.imagerecipe.test.ts` asserts the two agree — the same
+ * RULING A6 mitigation shape as `ninaImagePathname` versus `NINA_BLOB_PREFIX`.
+ */
+export const NINA_IMAGE_MODEL_IDS = ['qwen/qwen-image-3', 'qwen/qwen-image-3-pro'] as const
+
+export type NinaImageModelId = (typeof NINA_IMAGE_MODEL_IDS)[number]
+
+/** The measured camera, and the value everything unreadable degrades to. */
+export const NINA_IMAGE_MODEL_DEFAULT: NinaImageModelId = 'qwen/qwen-image-3-pro'
+
+export interface NinaImageModelSpec {
+  readonly id: NinaImageModelId
+  /** The dropdown's label. The provider's own product name, nothing invented. */
+  readonly label: string
+  /** One line under the dropdown. What is measured, and what is not. */
+  readonly hint: string
+}
+
+export const NINA_IMAGE_MODEL_SPECS: Readonly<Record<NinaImageModelId, NinaImageModelSpec>> =
+  Object.freeze({
+    'qwen/qwen-image-3': Object.freeze({
+      id: 'qwen/qwen-image-3',
+      label: 'Qwen Image 3',
+      hint:
+        'The lighter sibling. Never run here — seed, resolution and reference behaviour are ' +
+        'measured on the Pro only — so send a Test after switching.',
+    }),
+    'qwen/qwen-image-3-pro': Object.freeze({
+      id: 'qwen/qwen-image-3-pro',
+      label: 'Qwen Image 3 Pro',
+      hint:
+        'The measured camera: ~80 s unanchored, ~150 s anchored, about $0.04 a generation, ' +
+        'honours the seed and the 3:4 frame.',
+    }),
+  })
+
+/**
+ * A model id, made safe. **Anything unreadable is the default** — the same degrade the focus
+ * flags and the reference make, for the same reason: a generation must never reach the provider
+ * with an id nobody verified.
+ */
+export function coerceNinaImageModel(value: unknown): NinaImageModelId {
+  if (typeof value !== 'string') return NINA_IMAGE_MODEL_DEFAULT
+  return (NINA_IMAGE_MODEL_IDS as readonly string[]).includes(value)
+    ? (value as NinaImageModelId)
+    : NINA_IMAGE_MODEL_DEFAULT
+}
+
+/* ============================================================================
+ * §8 The preferences themselves
  * ==========================================================================*/
 
 /**
@@ -838,6 +903,12 @@ export interface NinaImagePrefs {
    * broken prompt).
    */
   readonly promptTemplate: string
+  /**
+   * §8's camera. The narrow `NinaImageModelId`, because the store coerces and nothing downstream
+   * re-reads it loosely — the job args carry the id forward and `coerceNinaImageModel` guards
+   * that older read.
+   */
+  readonly model: NinaImageModelId
   /** `NINA_IMAGE_REFERENCE_NONE` = an unanchored generation. */
   readonly reference: NinaImageReference
 }
@@ -867,6 +938,7 @@ export interface NinaImagePrefsInput {
   readonly time?: unknown
   readonly notes?: unknown
   readonly promptTemplate?: unknown
+  readonly model?: unknown
   readonly reference?: unknown
 }
 
@@ -886,6 +958,7 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
   time: '',
   notes: '',
   promptTemplate: '',
+  model: NINA_IMAGE_MODEL_DEFAULT,
   reference: NINA_IMAGE_REFERENCE_NONE,
 })
 
@@ -917,6 +990,7 @@ export function coerceNinaImagePrefs(
     time: coerceNinaImageText('time', input?.time),
     notes: coerceNinaImageText('notes', input?.notes),
     promptTemplate: coerceNinaImageTemplate(input?.promptTemplate),
+    model: coerceNinaImageModel(input?.model),
     reference: coerceNinaImageReference(input?.reference),
   }
 }

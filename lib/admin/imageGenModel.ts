@@ -1,8 +1,11 @@
 import {
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_FOCUS_SPECS,
+  NINA_IMAGE_MODEL_IDS,
+  NINA_IMAGE_MODEL_SPECS,
   NINA_IMAGE_REFERENCE_SOURCES,
   ninaPromptLengthRungFor,
+  type NinaImageModelId,
   type NinaImagePrefs,
 } from '@/lib/nina/imageprefs'
 import { ninaBand } from '@/lib/nina/tuning'
@@ -81,6 +84,12 @@ export interface ImageGenDraft {
    * validator (`validateNinaImageTemplate`) is what both the save and the render agree on.
    */
   promptTemplate: string
+  /**
+   * §8's camera. A loose `string` for the same seam reason as `reference.source` — the panel
+   * reads it opaquely through `imageModelLabel`/`imageModelHint` — and the Zod boundary narrows
+   * it to `NINA_IMAGE_MODEL_IDS` at the save.
+   */
+  model: string
   /**
    * R10's selection, persisted by THIS phase's save so that phase 5 only has to supply the grid.
    *
@@ -250,6 +259,7 @@ export function toImageGenDraft(prefs: NinaImagePrefs): ImageGenDraft {
     time: prefs.time,
     notes: prefs.notes,
     promptTemplate: prefs.promptTemplate,
+    model: prefs.model,
     reference: { source: prefs.reference.source, id: prefs.reference.id },
   }
 }
@@ -276,6 +286,30 @@ export function prettifyFocusKey(key: string): string {
 /** Whether a key is one phase 1 actually declares. The test reads this. */
 export function hasImageFocusCopy(key: string): boolean {
   return (NINA_IMAGE_FOCUS_KEYS as readonly string[]).includes(key)
+}
+
+/**
+ * §8's dropdown copy, read off phase 1's specs with the same discipline as `imageFocusCopy`: no
+ * copy table here, so the panel cannot promise a behaviour the provider has not measured. The
+ * fallback exists for the seam — a `draft.model` is a loose `string`, and an id this module has
+ * never heard of degrades to a readable label rather than a crash, the way `imageFocusCopy` does.
+ */
+export function hasImageModelCopy(id: string): boolean {
+  return (NINA_IMAGE_MODEL_IDS as readonly string[]).includes(id)
+}
+
+export function imageModelLabel(id: string): string {
+  if (hasImageModelCopy(id)) {
+    return NINA_IMAGE_MODEL_SPECS[id as NinaImageModelId].label
+  }
+  return prettifyFocusKey(id)
+}
+
+export function imageModelHint(id: string): string {
+  if (hasImageModelCopy(id)) {
+    return NINA_IMAGE_MODEL_SPECS[id as NinaImageModelId].hint
+  }
+  return ''
 }
 
 /**
@@ -354,6 +388,7 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
   if (next.time !== saved.time) changed.push('time')
   if (next.notes !== saved.notes) changed.push('notes')
   if (next.promptTemplate !== saved.promptTemplate) changed.push('promptTemplate')
+  if (next.model !== saved.model) changed.push('model')
   if (referenceKey(next.reference) !== referenceKey(saved.reference)) changed.push('reference')
 
   for (const key of Object.keys({ ...saved.focus, ...next.focus }).sort()) {
@@ -452,6 +487,7 @@ export function mergeImageGenAfterSave(
       current.promptTemplate === sent.promptTemplate
         ? canonical.promptTemplate
         : current.promptTemplate,
+    model: current.model === sent.model ? canonical.model : current.model,
     reference:
       referenceKey(current.reference) === referenceKey(sent.reference)
         ? canonical.reference

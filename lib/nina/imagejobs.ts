@@ -12,12 +12,12 @@ import {
   ninaImageDailyCap,
   NINA_IMAGE_COST_MICRO_USD,
   NINA_IMAGE_MAX_ATTEMPTS,
-  NINA_IMAGE_MODEL,
   NINA_IMAGE_STALE_MS,
   type NinaImageJobArgs,
   type NinaImageJobPhase,
   type NinaImagePurpose,
 } from './imagerecipe'
+import { coerceNinaImageModel } from './imageprefs'
 import type { NinaJobRefusal } from './jobview'
 import {
   countNinaTurnsSince,
@@ -102,7 +102,10 @@ export async function ninaImageQuotaLeft(userId: string, now: Date = new Date())
 export async function openNinaImageJob(userId: string, args: NinaImageJobArgs): Promise<string> {
   return insertNinaTurn(userId, {
     kind: 'image',
-    model: NINA_IMAGE_MODEL,
+    /* The row's model column IS the job's camera, chosen by the operator's dropdown and carried
+     * on `args` — not a module constant. The coercion makes an old or hand-built args read as the
+     * measured default, the same degrade the run hosts apply. */
+    model: coerceNinaImageModel(args.model),
     status: 'pending',
     errorCode: JOB_PHASE_QUEUED,
     toolCalls: IMAGE_TOOL_CALL,

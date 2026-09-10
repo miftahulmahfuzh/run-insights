@@ -3959,6 +3959,7 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
     time: row.timeOfDay,
     notes: row.notes,
     promptTemplate: row.promptTemplate,
+    model: row.model,
     reference: { source: row.referenceSource, id: row.referenceId },
   })
 }
@@ -3987,6 +3988,7 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
     timeOfDay: prefs.time,
     notes: prefs.notes,
     promptTemplate: prefs.promptTemplate,
+    model: prefs.model,
     referenceSource: prefs.reference.source,
     referenceId: prefs.reference.id,
   }

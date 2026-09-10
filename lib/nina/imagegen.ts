@@ -553,10 +553,12 @@ export function sidecarText(input: {
   prompt: string
   seed: number
   purpose: NinaImagePurpose
+  /** The camera this sidecar describes — the job's coerced id, not the module constant. */
+  model: string
 }): string {
   return [
     `provider:   openrouter`,
-    `model:      ${NINA_IMAGE_MODEL}`,
+    `model:      ${input.model}`,
     `purpose:    ${input.purpose}`,
     `resolution: ${NINA_IMAGE_RESOLUTION} ${NINA_IMAGE_ASPECT}`,
     `seed:       ${input.seed}`,

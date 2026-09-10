@@ -118,6 +118,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
     time: input.time,
     notes: input.notes,
     promptTemplate: input.promptTemplate,
+    model: input.model,
     reference: { source: input.reference.source, id: input.reference.id },
   }
 }
@@ -141,6 +142,7 @@ export async function saveNinaImagePrefsAction(input: {
   time: string
   notes: string
   promptTemplate: string
+  model: string
   reference: { source: string; id: string }
 }): Promise<AdminImageGenResult> {
   await requireAdmin()

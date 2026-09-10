@@ -428,6 +428,7 @@ describe('the defaults, and the coercion that never throws', () => {
       time: '',
       notes: '',
       promptTemplate: '',
+      model: 'qwen/qwen-image-3-pro',
       reference: { source: 'none', id: '' },
     })
   })

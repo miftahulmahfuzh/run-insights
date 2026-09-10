@@ -2,7 +2,7 @@ import 'server-only'
 
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import type { NinaImageFailure } from './imagefail'
-import type { NinaImagePrefs } from './imageprefs'
+import { coerceNinaImageModel, type NinaImagePrefs } from './imageprefs'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
 import { SEED_MAX } from './imagerecipe'
 import { fireNinaImageGeneration } from './imagerun'
@@ -151,6 +151,10 @@ export async function dispatchNinaImageTest(userId: string): Promise<NinaImageTe
   const reference = await resolveNinaPhotoReference(userId, prefs.reference)
 
   try {
+    /* The row's camera (§8), read off the row the test just assembled from — one coercion decides
+     * the `nina_turns.model` stamp and the sidecar, exactly as in `selfiegen.ts`. */
+    const model = coerceNinaImageModel(prefs.model)
+
     const jobId = await openNinaImageJob(userId, {
       purpose: 'selfie',
       scene: NINA_IMAGE_TEST_SCENE,
@@ -167,7 +171,8 @@ export async function dispatchNinaImageTest(userId: string): Promise<NinaImageTe
       source: 'admin',
       attempts: 0,
       referenceUrl: reference?.blobUrl ?? null,
-      sidecar: sidecarText({ prompt, seed, purpose: 'selfie' }),
+      model,
+      sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model }),
     })
 
     /*

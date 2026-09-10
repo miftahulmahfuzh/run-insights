@@ -4,6 +4,7 @@ import { fireNinaImageGeneration } from './imagerun'
 import type { NinaImageFailure } from './imagefail'
 import { buildNinaImagePrompt, sidecarText } from './imagegen'
 import { ninaImageQuotaLeft, openNinaImageJob } from './imagejobs'
+import { coerceNinaImageModel } from './imageprefs'
 import { SEED_MAX } from './imagerecipe'
 import { readNinaImagePrefs, readNinaTuning } from './queries'
 
@@ -92,6 +93,10 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
   const [tuning, prefs] = await Promise.all([readNinaTuning(userId), readNinaImagePrefs(userId)])
   const prompt = buildNinaImagePrompt({ purpose: 'selfie', scene, mood, tuning, prefs })
 
+  /* The row's camera (§8), read off the prefs the prompt was just built from — one coercion here
+   * decides both the `nina_turns.model` stamp (inside `openNinaImageJob`) and the sidecar text. */
+  const model = coerceNinaImageModel(prefs.model)
+
   const jobId = await openNinaImageJob(userId, {
     purpose: 'selfie',
     scene,
@@ -101,7 +106,8 @@ export async function generateNinaSelfie(request: NinaSelfieRequest): Promise<Ni
     replyToId,
     source: 'chat',
     attempts: 0,
-    sidecar: sidecarText({ prompt, seed, purpose: 'selfie' }),
+    model,
+    sidecar: sidecarText({ prompt, seed, purpose: 'selfie', model }),
   })
 
   /*

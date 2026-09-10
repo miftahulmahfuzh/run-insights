@@ -8,7 +8,10 @@ import {
   sidecarText,
 } from '@/lib/nina/imagegen'
 import {
+  coerceNinaImageModel,
   NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_MODEL_DEFAULT,
+  NINA_IMAGE_MODEL_IDS,
   NINA_IMAGE_PREFS_DEFAULTS,
   NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
   NINA_PROMPT_TEMPLATE_DEFAULT,
@@ -245,11 +248,46 @@ describe('the prompt', () => {
   })
 
   it('the sidecar records prompt, model and seed, and says there is no reference', () => {
-    const text = sidecarText({ prompt: 'p', seed: 42, purpose: 'selfie' })
+    const text = sidecarText({ prompt: 'p', seed: 42, purpose: 'selfie', model: NINA_IMAGE_MODEL })
     expect(text).toContain(NINA_IMAGE_MODEL)
     expect(text).toContain('seed:       42')
     expect(text).toContain('reference:  none (RU-18)')
     expect(text).toContain('--- prompt as sent ---')
+  })
+
+  it('the sidecar records the camera the job actually chose, not the module constant', () => {
+    const text = sidecarText({
+      prompt: 'p',
+      seed: 42,
+      purpose: 'selfie',
+      model: 'qwen/qwen-image-3',
+    })
+    expect(text).toContain('model:      qwen/qwen-image-3\n')
+  })
+
+  it('§8: the dropdown vocabulary agrees with the payload builder’s default (RULING A6)', () => {
+    /* `imagerecipe.ts` cannot import `imageprefs.ts` (zero-import), so the default id is spelled
+     * twice on purpose — and asserted here, the same mitigation `ninaImagePathname` has. */
+    expect(NINA_IMAGE_MODEL).toBe(NINA_IMAGE_MODEL_DEFAULT)
+    expect((NINA_IMAGE_MODEL_IDS as readonly string[]).includes(NINA_IMAGE_MODEL)).toBe(true)
+  })
+
+  it('§8: the payload carries the job’s camera, and builds byte-identically without one', () => {
+    const defaulted = buildImageRequestBody({ prompt: 'a photograph', seed: 42 })
+    expect(JSON.stringify(buildImageRequestBody({ prompt: 'a photograph', seed: 42, model: NINA_IMAGE_MODEL }))).toBe(
+      JSON.stringify(defaulted),
+    )
+    expect(
+      buildImageRequestBody({ prompt: 'a photograph', seed: 42, model: 'qwen/qwen-image-3' }).model,
+    ).toBe('qwen/qwen-image-3')
+  })
+
+  it('§8: the coerce degrades an unreadable or unknown id to the measured default', () => {
+    expect(coerceNinaImageModel('qwen/qwen-image-3')).toBe('qwen/qwen-image-3')
+    expect(coerceNinaImageModel('qwen/qwen-image-3-pro')).toBe('qwen/qwen-image-3-pro')
+    for (const bad of [undefined, null, '', 'gpt-image-1', 42]) {
+      expect(coerceNinaImageModel(bad), String(bad)).toBe(NINA_IMAGE_MODEL_DEFAULT)
+    }
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────

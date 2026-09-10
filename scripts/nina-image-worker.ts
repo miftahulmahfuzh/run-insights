@@ -62,6 +62,7 @@ import { fileURLToPath } from 'node:url'
 import { newId } from '../lib/id.ts'
 import { planNinaImageWrite, type NinaImageDedupHit } from '../lib/nina/imageDedupe.ts'
 import { classifyImageFailure, ninaImageApology, ninaImageCaption } from '../lib/nina/imagefail.ts'
+import { coerceNinaImageModel } from '../lib/nina/imageprefs.ts'
 import type { NinaImageFailure } from '../lib/nina/imagefail.ts'
 import {
   buildImageReferenceDataUrl,
@@ -616,6 +617,13 @@ export async function generate(
   seed: number,
   /** The job's `args.referenceUrl`, already normalised by `ninaImageReferenceUrl`. */
   referenceUrl: string | null = null,
+  /**
+   * The job's chosen camera (the 2026-09-10 dropdown), already normalised by
+   * `coerceNinaImageModel`. Optional and defaulted: the payload builder owns the fallback to
+   * `NINA_IMAGE_MODEL`, so a caller that never heard of the dropdown builds the body it always
+   * built — which is also what every pre-dropdown job (no `args.model` key at all) does.
+   */
+  model?: string,
 ): Promise<WorkerOutcome> {
   const startedAt = Date.now()
   const apiKey = process.env.OPENROUTER_API_KEY as string
@@ -631,7 +639,9 @@ export async function generate(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl })),
+      body: JSON.stringify(
+        buildImageRequestBody({ prompt, seed, referenceDataUrl, model }),
+      ),
       /* What is left of the 240 s after the reference fetch, floored so a slow fetch cannot hand
        * `AbortSignal.timeout` a zero. */
       signal: AbortSignal.timeout(
@@ -1211,7 +1221,14 @@ export async function runOneJob(
     attempt: job.attempts,
   })
 
-  const outcome = await generate(job.args.prompt, job.args.seed, ninaImageReferenceUrl(job.args))
+  const outcome = await generate(
+    job.args.prompt,
+    job.args.seed,
+    ninaImageReferenceUrl(job.args),
+    /* §8: an old jsonb row without the key coerces to the measured default, the same degrade the
+     * in-platform host applies. */
+    coerceNinaImageModel(job.args.model),
+  )
   if (!outcome.ok) {
     return closeFailed(sql, job, {
       kind: outcome.kind,

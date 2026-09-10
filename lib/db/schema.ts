@@ -2268,13 +2268,23 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
 
   /**
    * The editable prompt template (the 2026-09-10 ask; `NINA_PROMPT_TEMPLATE_MAX` = 2000). A shell
-   * of `{{block}}` placeholders the operator may reorder, drop or add prose to — see §7 of
+   * of `{{block}}` placeholders the operator may reorder, drop or add prose to — see §6 of
    * `lib/nina/imageprefs.ts` for the vocabulary and the validator that guards both the save and
    * the read. `''` = the shipping default shell, and a stored value that fails the validator
    * READS as `''` (`coerceNinaImageTemplate`), so a hand-run SQL update can never ship a broken
    * prompt. NOT NULL with `''` as the empty value, like every other text column in this table.
    */
   promptTemplate: text('prompt_template').notNull(),
+
+  /**
+   * §8's camera (the 2026-09-10 ask): `'qwen/qwen-image-3' | 'qwen/qwen-image-3-pro'`. The
+   * vocabulary and its coercion live in `lib/nina/imageprefs.ts` (`NINA_IMAGE_MODEL_IDS` /
+   * `coerceNinaImageModel`) — no CHECK, for this table's standing argument: an unknown id is a
+   * bug in one writer, and the reader coerces it to the measured default rather than failing a
+   * generation. The id rides the job's `args.model` from here, so a RETRY reproduces on the same
+   * camera.
+   */
+  model: text('model').notNull(),
 
   /**
    * R10, the storage half. Which set the chosen photograph came from — `'none' | 'album' | 'chat'`
