@@ -23,23 +23,23 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "4478758",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "landed pathspec-only: P3+P4 are writing THIS SAME worktree concurrently; my build gate was red only inside P3's mid-flight imageworker test. Whole-tree build must be re-run after P3/P4 settle; sequence their pushers. Minor: contentHashOf import placed below compressForNina (alphabetical; plan's 2a clause self-contradicted).",
       "package": "components/nina`, `lib/nina",
       "plan": ".workflows/plan/media-dedupe/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T05:45:34+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CN-A004",
       "title": "Write-time dedup: jalur upload chat runner"
     },
     {
@@ -58,7 +58,7 @@
         "R1",
         "R2"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Write-time dedup: jalur generated + admin"
     },
@@ -79,7 +79,7 @@
         "R2",
         "R3"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Backfill sweep: hash-fill + peleburan duplikat existing"
     }
@@ -87,6 +87,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-dedupe/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-dedupe",
-  "updated": "2026-09-10T05:27:27+00:00",
+  "updated": "2026-09-10T05:46:40+00:00",
+  "verified_at": "2026-09-10T05:46:40+00:00",
   "worktree": "/home/miftah/.worktrees/media-dedupe"
 }
