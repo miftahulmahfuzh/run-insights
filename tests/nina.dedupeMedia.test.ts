@@ -428,7 +428,8 @@ const sigOf = (dhash: bigint, sig16: Uint8Array) => ({ dhash, sig16 })
 
 /** A minimal verified original WITH the byte-facts and signature the perceptual pass reads. */
 const prow = (
-  over: Partial<Row> & Pick<Row, 'id'> & { width?: number; height?: number; sig?: unknown },
+  over: Partial<Row> &
+    Pick<Row, 'id'> & { width?: number | null; height?: number | null; sig?: unknown },
 ): Row =>
   row({
     width: 679,
@@ -532,7 +533,7 @@ describe('buildPerceptualMergePlan', () => {
     const old = prow({ id: 'old', createdAt: '2026-09-07T00:00:00Z' })
     const newer = prow({ id: 'new', createdAt: '2026-09-10T00:00:00Z', messageId: 'm' })
     const { groups } = buildPerceptualMergePlan([old, newer])
-    expect(groups[0].keeperId).toBe('new')
+    expect(groups[0]?.keeperId).toBe('new')
   })
   it('never merges across dimensions', () => {
     const a = prow({ id: 'a' })
