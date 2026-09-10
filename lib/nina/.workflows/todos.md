@@ -117,7 +117,7 @@
   - **Difficulty**: HARD
   - **Type**: Feature
   - **Context**: Owns: `lib/nina/imagerun.ts` `storeNinaImage` hash bytes sebelum `put`; bila original (user, hash) sudah ada → skip `put`, insert reference ke existing; lockstep perilaku sama di `scripts/nina-image-worker.ts` (raw SQL, + test). `lib/admin/chatPhotoUpload.ts` hash blob hasil encode; pre-check sebelum `upload()`; klaim hash → `addChatPhotoAction` validasi + tulis; race/dupe admin ikut invariant 2-3. Exit: generate/admin-add yang bytes-nya sudah ada tidak menciptakan objek blob baru; worker script perilakunya setara; test untuk kedua jalur.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 3 of 4)
   - **Satisfies**: R1, R2 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan).
   - **Depends on**: `P1-DB-A006`

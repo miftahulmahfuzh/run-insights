@@ -1,7 +1,7 @@
 # Package: components/nina
 
 **Location**: `components/nina`
-**Last Updated**: 2026-09-10 (task `P2-CN-A003`, `job-jump-flash`: the deep-link landing flash's ring on HIS bubbles took the bubble's own fill — the class literal in `MessageBubble.tsx` became `[--nina-flash-ring-color:var(--ink)]`, superseding the 09-09 white ("flicker buat user's bubble itu diganti warnanya jadi putih") after one night, because a 2px `#fff` ring drawn outside a `bg-ink` bubble onto light sky paper was invisible exactly where a `/nina/jobs` deep link always lands, on a bubble of his; her bubbles keep the keyframe's `--accent` default and the `app/globals.css` keyframes are untouched, so the change is that literal plus the three comments recording the decision (the `MessageBubble` header and flash site, `app/globals.css`'s keyframe, and `lib/nina/search.ts`'s landing prose) — the whole chain (`planJobJump` → `ButtonLink` → `ChatScreen.landOn` → `measureQuoteScroll` → `flashMessage` → `MessageBubble`) was proven live in a local prod build in both schemes, the target resting `data-flash=true` in the readable band). Previously (2026-09-09) task `P1-CN-A002` of `search-kbd-and-up-btn` (phase 2 of 2): the rail's `up` became the chat page's bar toggle — the bar's reveal state moved out of `ChatChrome` into a shared `NinaBarProvider` mounted in `AppShell` around both consumers, the panel learned `panelBottomCss`'s bar-lift term (`PANEL_BOTTOM_CSS`) so the revealed bar renders in a reachable strip below the panel, `RAIL_PAD_BOTTOM_CSS` gained the bar gate beside the overlap subtraction, and a text field in the panel's dialog now hides the bar exactly like the composer does). Previously `P1-CN-A001` of `photo-send-chat-icons` (phase 2 of 2): the keyboard channel became one component — `KeyboardOverlapPublisher`, the `visualViewport` subscription and `--nina-kb-overlap` broadcast extracted out of `ChatScreen`, mounted there and scoped to `NinaAboutScreen`'s open viewer — the `/nina/about` attach strip gained the panel's box fix (`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss`), and the sidebar's focus reassert gained a second, box-change trigger (`planBoxReassert` over a `ResizeObserver`). Previously `P1-CN-A001` of `search-kbd-and-up-btn` (phase 1 of 2): the window pin — the keyboard reveal pans the window behind the opaque panel, so a passive `window` `scroll` listener now pins the root scroller while a panel text field holds focus and hands the reading position back on blur. Previously `P2-CN-A000` (`photo-send-chat-icons` phase 1 of 2): the strip's two icon-only sends and `attachNinaPhotoToChat`'s `target`/`sessionId`/`next` contract. First documentation of this package happened twice — an independent `/update-readme` pass on each branch, from two different code states — and this file is their merge.)
+**Last Updated**: 2026-09-10 (task `P1-CN-A004`, `media-dedupe` phase 2 of 4: write-time content-hash dedup on the runner chat upload path — `Composer` now hashes every pick's COMPRESSED bytes with `contentHashOf` and pre-checks the new owner-scoped `findNinaDuplicateChatImage` before uploading, so a duplicate pick never PUTs, never mints a ticket and never describes, and `ComposerDraftImage` became a discriminated union (`upload` | `deduped`); `ChatScreen` splits the draft and sends `contentHashes` keyed by the STORED pathname plus `dedupedImageIds`, ordering the optimistic bubble fresh → deduped → pinned; the server race-closes at insert over the new pure module `lib/nina/dedupe.ts` — originals first, references second through the same `resolveAttachment` seam as the pinned photo, just-landed blobs released under `after()`, row first blob second, and an invalid hash writes NULL rather than failing a send, invariant 9). Previously (2026-09-10) task `P2-CN-A003`, `job-jump-flash`: the deep-link landing flash's ring on HIS bubbles took the bubble's own fill — the class literal in `MessageBubble.tsx` became `[--nina-flash-ring-color:var(--ink)]`, superseding the 09-09 white ("flicker buat user's bubble itu diganti warnanya jadi putih") after one night, because a 2px `#fff` ring drawn outside a `bg-ink` bubble onto light sky paper was invisible exactly where a `/nina/jobs` deep link always lands, on a bubble of his; her bubbles keep the keyframe's `--accent` default and the `app/globals.css` keyframes are untouched, so the change is that literal plus the three comments recording the decision (the `MessageBubble` header and flash site, `app/globals.css`'s keyframe, and `lib/nina/search.ts`'s landing prose) — the whole chain (`planJobJump` → `ButtonLink` → `ChatScreen.landOn` → `measureQuoteScroll` → `flashMessage` → `MessageBubble`) was proven live in a local prod build in both schemes, the target resting `data-flash=true` in the readable band). Previously (2026-09-09) task `P1-CN-A002` of `search-kbd-and-up-btn` (phase 2 of 2): the rail's `up` became the chat page's bar toggle — the bar's reveal state moved out of `ChatChrome` into a shared `NinaBarProvider` mounted in `AppShell` around both consumers, the panel learned `panelBottomCss`'s bar-lift term (`PANEL_BOTTOM_CSS`) so the revealed bar renders in a reachable strip below the panel, `RAIL_PAD_BOTTOM_CSS` gained the bar gate beside the overlap subtraction, and a text field in the panel's dialog now hides the bar exactly like the composer does). Previously `P1-CN-A001` of `photo-send-chat-icons` (phase 2 of 2): the keyboard channel became one component — `KeyboardOverlapPublisher`, the `visualViewport` subscription and `--nina-kb-overlap` broadcast extracted out of `ChatScreen`, mounted there and scoped to `NinaAboutScreen`'s open viewer — the `/nina/about` attach strip gained the panel's box fix (`bottom: var(--nina-kb-overlap, 0px)` + `attachStripPadBottomCss`), and the sidebar's focus reassert gained a second, box-change trigger (`planBoxReassert` over a `ResizeObserver`). Previously `P1-CN-A001` of `search-kbd-and-up-btn` (phase 1 of 2): the window pin — the keyboard reveal pans the window behind the opaque panel, so a passive `window` `scroll` listener now pins the root scroller while a panel text field holds focus and hands the reading position back on blur. Previously `P2-CN-A000` (`photo-send-chat-icons` phase 1 of 2): the strip's two icon-only sends and `attachNinaPhotoToChat`'s `target`/`sessionId`/`next` contract. First documentation of this package happened twice — an independent `/update-readme` pass on each branch, from two different code states — and this file is their merge.)
 
 ## Overview
 
@@ -41,9 +41,11 @@ third keyframe here would have to argue with that file's own conclusion.
 - Run one turn of the conversation end to end: optimistic send, the action's return releasing
   `busy`, the poll that brings her bubbles, and the staggered reveal that plays them — with her
   words never fabricated by this package.
-- Own the composer: text, photo tiles (compress → PUT → describe → sendable ticket), the reply
-  strip, the pinned run chip and the pinned album photo, and the four-clause "something to send"
-  rule that mirrors the server's exactly.
+- Own the composer: text, photo tiles (compress → hash → owner-scoped pre-check → PUT + describe,
+  or — when the bytes are already in the collection — attach the existing photograph with no
+  upload, no ticket and no describe at all), the reply strip, the pinned run chip and the pinned
+  album photo, and the four-clause "something to send" rule (whose image clause covers BOTH draft
+  kinds since media-dedupe P2 — a `deduped` tile is still an image).
 - Draw the conversation: day-divided list, bubbles with quote stubs and photo grids and run cards,
   two swipe gestures plus a tap, and the actions sheet — with every gate decided in `lib/`.
 - Host the sidebar overlay: URL-held open state, the pinned four-icon rail whose `up` is the chat
@@ -69,12 +71,12 @@ third keyframe here would have to argue with that file's own conclusion.
 | File | Kind | Purpose |
 |---|---|---|
 | `types.ts` | **types only**, no directive | `ChatMessage`, `ChatAvatar`, `ChatMessageState`, `ChatRole` — the client shape of the conversation, mapped from `lib/nina/queries`'s rows on the server so no component knows a column name. No runtime export at all. |
-| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → staggered reveal. Mounts `KeyboardOverlapPublisher` — the keyboard measurement it used to own inline — and keeps only the numeric mirror for `MessageList`'s bottom pad and the composer's two CSS strings; also the deep-link landings (`?jump=` mount and soft-nav), the photo viewer state, and every notice sentence the screen says. |
+| `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → staggered reveal. Mounts `KeyboardOverlapPublisher` — the keyboard measurement it used to own inline — and keeps only the numeric mirror for `MessageList`'s bottom pad and the composer's two CSS strings; also the deep-link landings (`?jump=` mount and soft-nav), the photo viewer state, and every notice sentence the screen says. Since media-dedupe P2 its send splits the draft by `source` — tickets for `upload` tiles, ids for `deduped` ones, `contentHashes` keyed by the STORED pathname — and orders the optimistic bubble fresh uploads → deduped tiles → pinned photo, the same three-part order the server writes. |
 | `KeyboardOverlapPublisher.tsx` | `'use client'` | The ONE `visualViewport` subscription in the app and the keyboard's ONE broadcast. Empty-deps `resize`/`scroll` subscription (a keystroke never re-subscribes), `keyboardOverlapPx` for the number, `--nina-kb-overlap` set on `:root` and removed — not zeroed — at rest and on unmount, and an optional `onOverlap` callback (read through a latest-ref, called inside the same `sync`) for a consumer that wants the number as a number. Paints null. A component rather than a hook because its consumers are two different ROUTES and `rg KeyboardOverlapPublisher` must answer "who measures the keyboard". |
 | `MessageList.tsx` | `'use client'` | The conversation, grouped by day. The page scrolls — no `overflow-y-auto` panel — and `decideAutoScroll` is fed by a passive scroll *sample*, not an effect measurement. Honours R14's `?at=` scroll mark with a `useLayoutEffect` restore. |
 | `MessageBubble.tsx` | `'use client'` | One message. Two sides, two extension slots (`quote`, `above`), two `sr-only`-until-focused openers, and three gestures decided in `lib/` (`decideReplySwipe`, `decideMessageActionSwipe`, `decideMessageActionTap`). Marked `'use client'` since phase 7 — the reply gesture forced it, and no `BubbleShell` split was needed. Also carries the landing flash: one `flash` prop — shared by the quote-tap, the search hit and `/nina/jobs`' "Buka chat-nya" deep link alike, and the jobs one always lands on a bubble of his — attaches `app/globals.css`'s `nina-flash-blink` keyframe (hard 2px-ring blinks, `data-flash=true` for the probe) and recolours the ring PER SIDE: hers keep the keyframe's `--accent` default, his take the bubble's own fill, `[--nina-flash-ring-color:var(--ink)]` — the 09-09 white lasted a night, invisible against light sky paper exactly where a jobs deep link lands, while the token flips with the scheme so the ring reads as the bubble briefly thickening in both. The count is not chosen here: `--nina-flash-count` arrives on `MessageList`'s container from `flashBlinkCount(process.env.NINA_FLASH_BLINKS)`. |
 | `MessageActionsSheet.tsx` | `'use client'` | Edit / delete / resend / retry in one `Sheet`. Owns its own draft (the `Sheet.tsx` focus-loss lesson, a second time); `key={acting?.id}` upstream is what resets it. Delete is immediate — the owner removed the confirm step by instruction. |
-| `Composer.tsx` | `'use client'` | The fixed bar: auto-growing textarea, photo tiles, reply strip, run chip, photo chip, send. Owns its own text — a bug fix written in advance. Takes `bottomCss`/`padBottomCss` as precomputed strings and computes no geometry. |
+| `Composer.tsx` | `'use client'` | The fixed bar: auto-growing textarea, photo tiles, reply strip, run chip, photo chip, send. Owns its own text — a bug fix written in advance. Takes `bottomCss`/`padBottomCss` as precomputed strings and computes no geometry. Since media-dedupe P2 the tile pipeline is compress → `contentHashOf` → `findNinaDuplicateChatImage` → `planNinaPickUpload`, with the `checking` state between `compressing` and `uploading`; a tile the pre-check matched skips PUT, ticket mint and describe entirely and turns `ready` holding the existing photograph it will attach. |
 | `ChatImages.tsx` | **no directive** | The photos inside a bubble, through `MessageBubble`'s `above` slot. `onOpen` absent means the grid is not interactive — phase 6's exact markup. `kinds` parallel array names the tap target honestly (`photoSideOf`). |
 | `ChatPhotoActions.tsx` | `'use client'` | Save/attach controls in `PhotoViewer`'s `actions` slot. The `<a download>` cross-origin trap answered with three strategies (`chooseSaveStrategy`: share / download / open) and the fetch started on `pointerdown` so transient activation survives. |
 | `AttachmentChip.tsx` | **no directive** | The run pinned to the next message. Compiles into `Composer`'s graph — same reasoning `MessageBubble` carried before phase 7. Not a link: a tap must not throw the runner out of a draft. |
@@ -232,6 +234,86 @@ keyboard CLOSING — the box growing back — re-asserts for free and fixes the 
 scrolled out, keyboard folds) at no cost. The pin's guards mirror the same discipline: text fields
 only, `activeElement` checked at FIRE time, every write reading first and writing only when the
 numbers are wrong, and `behavior: 'instant'` throughout.
+
+## The upload dedup (media-dedupe P2)
+
+Since `P1-CN-A004` a photograph enters the conversation through a hash before it enters Blob.
+The decision module is `lib/nina/dedupe.ts` — pure, unit-tested with no database, no DOM and no
+mock, and client-safe with exactly two imports (`attach`'s provenance rule and
+`lib/photos/contentHash`'s hash) because this package is one of its three readers. Its consumers
+split exactly along the client/server line:
+
+- **The composer consumes `planNinaPickUpload`.** After `compressForNina` returns, EVERY pick is
+  hashed — `contentHashOf(compressed.file)`, the exact bytes a PUT would carry (invariant 4: a
+  different re-encode is honestly two objects, not a dedup miss), a millisecond against a PUT
+  that is a round trip and a permanent object — and then `findNinaDuplicateChatImage` asks the
+  owner's collection whether an ORIGINAL with these bytes already exists (one indexed,
+  owner-scoped lookup). `planNinaPickUpload` turns the two answers into one of two outcomes:
+  `attach-existing` — the tile never uploads, never mints a ticket, never pays the 8–11 s
+  describe, and jumps straight to `ready` holding the existing photograph it will attach — or
+  `upload`, the old pipeline, hash in hand for the race-close. The tile pipeline gained one
+  state for it (`checking`), and the dedup is deliberately INVISIBLE to him: a deduplicated tile
+  shows the same thumbnail, joins `ready` like any other, sends like any other. The pre-check is
+  a Server Action, so — like the describe half — it serializes per client across tiles; the
+  compress-and-PUT half stays parallel.
+- **The action consumes the rest, and no component calls it.** `normalizeClaimedContentHash`
+  (a claim is format-checked, never signature-checked — the same trust class as
+  `width`/`height`/`bytes`; trimmed, and uppercase hex REJECTED rather than folded, because
+  `contentHashOf` emits lowercase and one spelling is what phase 4's sweep compares against),
+  `partitionNinaUploadClaims`, and `ninaUploadInsertRow` are the send's STEP 1b vocabulary.
+  Phase 3's generated and admin paths deliberately do NOT reuse this module (`planNinaImageWrite`
+  and `planChatPhotoAddWrite` are its reconciled siblings — three modules, three jobs, do not
+  merge them), so this path is the only one whose decisions a client component reads.
+
+The degrade rule is invariant 9 at every floor, and it is why a pick can never fail BECAUSE of
+dedup: an uncomputable hash is null and the tile uploads as it always did; a thrown pre-check is
+caught to null (the tile uploads; the race-close at send time still holds the hash); an invalid
+claim writes NULL, never a send error; a failed keeper LOOKUP degrades to fresh. The whole ladder
+lands on "writes the photograph, maybe twice" — never on "a row pointing at nothing" and never on
+"loses the message".
+
+**The send carries the split.** `ComposerDraftImage` is a discriminated union now:
+`{ source: 'upload', ticket, url, pathname, contentHash }` or
+`{ source: 'deduped', url, imageId }` — the `url` of a `deduped` entry exists for the optimistic
+bubble only; the payload is the ID, never a URL, on `resolveAttachment`'s recorded reasoning.
+`ChatScreen` filters the draft by `source` and sends three fields: `imageTickets` for the uploads
+only, `dedupedImageIds` for the deduped ones (capped at `NINA_MAX_CHAT_IMAGES` exactly like the
+tickets), and `contentHashes` — keyed by the STORED pathname the ticket itself carries, NOT
+index-aligned, because the server's STEP 0 already dedupes claims by pathname and one filter
+between pairing and use would point hashes at the wrong rows. The optimistic bubble re-orders to
+match the server: fresh uploads, then deduplicated tiles, then the pinned album photo — one
+three-part order on both sides of the wire.
+
+**Reference semantics — the pinned photo's seam, minus its refusal.** A deduplicated tile rides
+the exact seam the pinned album photo has ridden since F37: `resolveAttachment` re-proves
+ownership per id (untrusted like every other id in the payload), an ORPHAN keeper is re-parented
+by R4's adopt arm rather than doubled, and a live keeper is written as a REFERENCE row — the
+keeper's `blob_url`/`pathname` copied, the KEEPER's `kind` (`photoSideOf` keeps telling the truth
+about whose photograph it is), provenance flattened to the ORIGINAL through
+`ninaPhotoProvenance`, and the description preferring the keeper but falling back to the
+just-paid-for claim's — the one place a reference takes a description the attach arm never has.
+The reference row carries NO `contentHash`: the hash belongs to whoever owns the bytes, and this
+path's hashes are client claims (phase 3's generated references DO carry theirs, because there
+the writer measured the bytes itself — the per-path rule is "a reference row carries the hash
+only when its writer held the bytes"). Where the seam parts company with the pinned photo: a
+keeper that died mid-compose DROPS the tile and sends the message (warned), it does not refuse —
+the pinned photo is what the send is ABOUT, a deduplicated tile is a photograph he happens to be
+re-sending. And RULING B1's refusal rule gained its FIFTH disjunct: a send made entirely of
+references is still a send. The composer's four-clause guard is unchanged and stays correct — a
+`deduped` tile is still an image in the draft.
+
+**The race-close (STEP 1b), row first, blob second.** The composer's pre-check ran before the
+keeper row could exist, so the action asks the same question again at insert time — one indexed
+`(user_id, content_hash)` lookup per DISTINCT hash (phase 1's partial index, never a scan), then
+`partitionNinaUploadClaims`: a DB keeper wins over everything (EVERY claim with that hash becomes
+a reference to it, the first included, because the keeper predates this send), and same-send
+twins — the same file picked twice in one batch, both tiles past the pre-check because neither
+row existed yet — split first-fresh, later-reference. The originals insert FIRST, in one
+statement, so their ids exist; the references insert second; only then is a release REGISTERED,
+and it runs under `after()`: each just-landed blob goes through `releaseBlobIfUnreferenced` (the
+reference-checked delete, which would rather leave an orphan for `reap-orphaned-blobs` than
+delete shared bytes), so the rows always exist before the bytes they orphaned can vanish —
+invariant 3 spelled as control flow.
 
 ## The attach strip (phase 1 of `photo-send-chat-icons`, just landed)
 
@@ -483,7 +565,7 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 | `ChatImages` | `ChatImages.tsx` | `{ urls, kinds?, onOpen? }` — absent `onOpen` means not interactive. |
 | `ChatPhotoActions` | `ChatPhotoActions.tsx` | Rendered through `PhotoViewer`'s `actions` slot. |
 | `MessageList`, `MessageBubble`, `MessageActionsSheet` | their files | Internal to the screen except for `MessageList`'s callbacks; `MessageActionsSheet` is keyed by `acting?.id` upstream. |
-| `Composer`, `ComposerDraftImage` | `Composer.tsx` | `onSend` must be referentially stable; `bottomCss`/`padBottomCss` are a PAIR and neither is optional. |
+| `Composer`, `ComposerDraftImage` | `Composer.tsx` | `onSend` must be referentially stable; `bottomCss`/`padBottomCss` are a PAIR and neither is optional. `ComposerDraftImage` is a discriminated union since media-dedupe P2 — `upload` (ticket, url, stored pathname, contentHash) or `deduped` (url, imageId); a `deduped` entry's `url` is for the optimistic bubble, the payload is the id. |
 | `AttachmentChip`, `PhotoAttachmentChip`, `QuoteStub`, `RunAttachmentCard`, `TypingIndicator` | their files | Leaf renderers; `QuoteStub`'s `mine` is whose bubble it sits INSIDE, not whose message is quoted. |
 | `readAnchorRows`, `useChatScrollMark` | `useChatScroll.ts` | The scroll mark's DOM half; `RunAttachmentCard` and `ChatScreen` are its consumers. |
 | `ChatMessage`, `ChatAvatar`, `ChatMessageState`, `ChatRole` | `types.ts` | Types only — the serialization boundary between `app/nina/page.tsx` and this package. |
@@ -505,7 +587,13 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 ### Internal
 
 - `@/lib/nina/actions` — `sendNinaMessage`, `pollNinaReply`, `resendNinaMessage`, `describeNinaImage`,
-  plus `SentBubble` / `NinaResendRefusal` types. The only path to the model on any of these screens.
+  `findNinaDuplicateChatImage` (the pick pre-check, media-dedupe P2), plus `SentBubble` /
+  `NinaResendRefusal` types. The only path to the model on any of these screens.
+- `@/lib/nina/dedupe` — `planNinaPickUpload`, the composer's whole per-tile dedup decision as a
+  value (media-dedupe P2). The module's other exports — `normalizeClaimedContentHash`,
+  `ninaUploadInsertRow`, `partitionNinaUploadClaims` — are the ACTION's STEP 1b vocabulary; no
+  component imports them, and the module stays pure and client-safe with exactly two imports
+  (`attach`, `photos/contentHash`) because this package is one of its three readers.
 - `@/lib/nina/albumActions` — `attachNinaPhotoToChat`, `NinaAttachTarget` (the strip's two sends).
 - `@/lib/nina/sessionActions` — `createNinaChatSession`, `renameNinaChatSession`,
   `removeNinaChatSession`, `setNinaChatSessionPinned`, `NinaSessionActionResult`.
@@ -526,7 +614,9 @@ The package has no barrel; consumers import per file. What crosses its boundary:
   measures, and renders the answer.
 - `@/lib/auth/requireUserId` — `getUserId` only (in `NinaUnreadBadge`; the redirecting variant would
   soft-404 from inside a loading fallback).
-- `@/lib/photos/compressForNina`, `@/lib/photos/save` — the pick pipeline and the save strategies.
+- `@/lib/photos/compressForNina`, `@/lib/photos/contentHash`, `@/lib/photos/save` — the pick
+  pipeline, `contentHashOf` (webcrypto sha-256 over the exact compressed bytes — browser-native,
+  so the composer and the server compute the one string), and the save strategies.
 - `@/lib/cn`, `@/lib/id`, `@/lib/format`, `@/lib/date/ranges` — the usual utilities; formatting
   happens on the server and arrives formatted.
 - `@/components/ui` — `Button` (`loading`/`variant`/`md` carry the mis-tap and 44 px guarantees),
@@ -595,6 +685,14 @@ and `ChatChrome`'s, and by the mount being the only thing the two routes do. `Ni
 contrast, IS read as text — provider misplacement is the failure no rendered test could see, so its
 existence, its nullable hook and its mount shape are pinned structurally.
 
+The dedup follows the same shape one layer over: `tests/nina.dedupe.test.ts` asserts
+`lib/nina/dedupe`'s decisions pure (no database, no DOM, no mock) and
+`tests/nina.chatDedupe.test.ts` drives the real `sendNinaMessage` with only the edges mocked
+(`requireUserId`; `next/server`'s `after` captured so the row-before-blob order is provable; the
+`queries` module spread over its real export list; `blobRelease`) — neither imports nor
+text-reads anything here, and the composer's half of the decision is asserted through
+`planNinaPickUpload`, not through a render.
+
 ## Concurrency
 
 The package is cooperative-async, not threaded, and its safety comes from structure rather than
@@ -641,7 +739,9 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
   answering), and `'edit-unavailable'` (an optimistic row has nothing to edit yet).
 - **Deliberately silent**: `AbortError` from a dismissed share sheet (`ChatPhotoActions` — a person
   changing their mind must produce silence), a failed search transport (`NinaSearchField` clears the
-  spinner; the model's own failure arrives as `mode: 'text'`), a failed `localStorage` write
+  spinner; the model's own failure arrives as `mode: 'text'`), an uncomputable content hash and a
+  failed duplicate pre-check (`Composer` — both degrade the tile to an ordinary upload; invariant
+  9's client half is that a pick never fails BECAUSE of dedup), a failed `localStorage` write
   (degrades to tab-lifetime), and `localStorage` reads under private mode.
 - Nothing throws across the action boundary without being caught into `null` first, so a network
   drop and a refusal are distinguishable states rather than an unhandled rejection.
@@ -657,7 +757,9 @@ a new union member is a build error until it has a sentence: `NOTICE_TEXT` and `
 - **The unread count is one partial-indexed query** per render of a tabbed screen, no polling
   anywhere; the dot clears through exactly one refresh per real unread visit.
 - **Photos are compressed client-side before the PUT**; every render path uses plain `<img>` at
-  already-final sizes; the describe pre-pass overlaps the runner typing rather than the turn budget.
+  already-final sizes; the describe pre-pass overlaps the runner typing rather than the turn budget;
+  and since media-dedupe P2 a duplicate pick costs one hash and one indexed lookup instead of a
+  PUT, a permanent Blob object and the 8–11 s describe.
 - **Poll backoff** (`ninaPollDelayFor`) with a give-up ceiling shared with the server's staleness;
   a failed poll attempt says nothing and retries rather than ending the wait early.
 - **The sidebar panel stays mounted** — DOM for rows the server read anyway, in exchange for no
@@ -748,7 +850,11 @@ return screen === 'chat' ? (
 - **Do not add `text-[15px]` to an input** or drop any control below 44 px. Both floors have recorded
   reports behind them.
 - **Do not write a second upload path or re-upload an existing photo.** `attachExisting` is an id the
-  server proves ownership of; a URL is neither a ticket nor a pointer.
+  server proves ownership of; a URL is neither a ticket nor a pointer. The same rule gained a third
+  spelling with media-dedupe P2: a `deduped` tile sends `imageId`, never its `url`, and the send's
+  `contentHashes` is keyed by the STORED pathname the ticket carries — never index-aligned against
+  the claims, and never uppercased by hand (`normalizeClaimedContentHash` rejects uppercase on
+  purpose, so phase 4's sweep compares one spelling).
 - **Do not sort sessions, jobs or search hits client-side.** The order is the SQL's; re-sorting is
   the second opinion the phase promised not to write.
 - **Do not add a keyframe here.** Transitions only; the app's two animations — the pulse and the
@@ -790,12 +896,20 @@ toggle's job, added `panelBottomCss`'s bar-lift term and the rail floor's bar ga
 bar's keyboard rule to the panel's dialog fields. Nothing in the strip's phase-1 surface (the two
 sends, the action, the suite) changed through any of it; the suite stayed the wiring guard.
 
+**media-dedupe is the set now running (phase 2 of 4 landed here, `P1-CN-A004`).** Phase 1
+(`P1-DB-A006`) added `nina_message_images.content_hash` and `lib/photos/contentHash.ts`; phase 2
+wired the runner upload path to it end to end (the section above). Phase 3 (the generated and
+admin paths) deliberately does NOT import `lib/nina/dedupe.ts` — it ships its own zero-import
+decision module and its own admin plan — and phase 4 backfills the column and sweeps existing
+duplicates; the hash-less reference rows phase 2 writes are the expected NULLs phase 4's pass-1
+fill owns, not drift.
+
 **Known, accepted limitations**: `NinaSearchField`'s semantic pass costs a model call per debounced
 query (700 ms debounce, `shouldRunSemantic` gates it); Server Actions serialize the describe
-pre-pass per tile; the unread dot is global across sessions (mark-read is session-scoped, and A3
-makes the common case clear itself); the sidebar panel keeps its rows in the DOM while closed
-(`inert`, not unmounted); a repeated soft-nav `?jump=` to a byte-identical URL may deduplicate into
-no re-land (the first tap landed; a nonce in the URL was rejected).
+pre-pass and the dedup pre-check per tile; the unread dot is global across sessions (mark-read is
+session-scoped, and A3 makes the common case clear itself); the sidebar panel keeps its rows in the
+DOM while closed (`inert`, not unmounted); a repeated soft-nav `?jump=` to a byte-identical URL may
+deduplicate into no re-land (the first tap landed; a nonce in the URL was rejected).
 
 History in brief: F33 built her page, album, promises and the first attach ("Kirim ke chat");
 F34 added the album-photo handoff; F35 added sessions, the sidebar, the search field and
@@ -865,3 +979,24 @@ var writer" subsection, the export table (`NinaBarProvider`/`useNinaBar`), the d
 `nextBarState`'s single importer and `barToggleGlyph`), the AppShell consumer bullet and the
 `nina.sidebarProvider` test-consumer bullet (its second describe), the concurrency, performance and
 gotcha additions, the `AppShell` mounting-topology snippet, and this section.
+
+2026-09-10 — updated following task **P1-CN-A004** (`media-dedupe` phase 2 of 4, "write-time
+content-hash dedup on the runner chat upload path"). `Composer` gained the hash-and-pre-check
+pipeline — `contentHashOf` over the compressed bytes for EVERY pick, `findNinaDuplicateChatImage`
+before any PUT, `planNinaPickUpload` deciding, the `checking` tile state, and the `Tile.existing`
+escape hatch that skips ticket mint and describe on a match — and `ComposerDraftImage` became a
+discriminated union (`upload` / `deduped`). `ChatScreen`'s send splits the draft into
+`imageTickets` + `contentHashes` (keyed by stored pathname) + `dedupedImageIds` and re-orders the
+optimistic bubble fresh → deduped → pinned. The server half — the degrade-don't-refuse tile
+resolution, RULING B1's fifth refusal disjunct, and the STEP 1b partition with its race-close and
+row-first-blob-second `after()` releases — lives in `lib/nina/actions.ts` over the new pure module
+`lib/nina/dedupe.ts`, and is documented here because this package's composer is one of the
+module's two code consumers and the optimistic order is this package's half of the contract. New
+suites: `tests/nina.dedupe.test.ts` (the pure decisions) and `tests/nina.chatDedupe.test.ts` (the
+action behaviour, edges mocked).
+
+Refreshed there: the header line, two Key Responsibilities bullets, the module map (`Composer` and
+`ChatScreen` re-spelled), the new "The upload dedup" section, the export table's `Composer` row,
+the dependency bullets (`actions` extended, a new `dedupe` bullet, `photos/contentHash` added), a
+test-consumer note, a Performance bullet, an Error Handling bullet, the upload-path gotcha, the
+Notes, and this section.

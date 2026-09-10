@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 
 ---
 
@@ -21,16 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-CN-A004** Phase 2: Write-time dedup: jalur upload chat runner
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns: `Composer.tsx` hash `compressed.file` via util P1; pre-check server (action owner-scoped baru di `actions.ts`, finder P1) SEBELUM `upload()`; bila duplikat → tile memakai foto existing sebagai attachment reference (seam `?photo=image:<id>` / `resolveAttachment`, bukan insert arm baru); bila tidak → klaim hash ikut `sendNinaMessage`, divalidasi 64-hex. Race-close di STEP 1b: bila original lain dengan hash sama sudah ada saat insert → baris baru REFERENCE (copy `blob_url`/`pathname` keeper + `source_image_id`) dan blob baru di-release (`releaseBlobIfUnreferenced`, row-first-blob-second). Exit: pick file sama dua kali → hanya satu objek blob baru, kedua jadi reference tersembunyi dari Media; dua send balapan → satu objek + satu original; test unit skip + race-close.
-  - **Status**: open
-  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 2 of 4)
-  - **Satisfies**: R1, R2, R3 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan); R3: Section Media tetap tidy (foto sama tidak muncul dua kali di feed).
-  - **Depends on**: `P1-DB-A006`
-  - **Plan**: `.workflows/plan/P1-CN-A004.md`
 
 ### [P2] Medium
 
@@ -43,6 +33,26 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-CN-A004** Phase 2: Write-time dedup: jalur upload chat runner
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns: `Composer.tsx` hash `compressed.file` via util P1; pre-check server (action owner-scoped baru di `actions.ts`, finder P1) SEBELUM `upload()`; bila duplikat → tile memakai foto existing sebagai attachment reference (seam `?photo=image:<id>` / `resolveAttachment`, bukan insert arm baru); bila tidak → klaim hash ikut `sendNinaMessage`, divalidasi 64-hex. Race-close di STEP 1b: bila original lain dengan hash sama sudah ada saat insert → baris baru REFERENCE (copy `blob_url`/`pathname` keeper + `source_image_id`) dan blob baru di-release (`releaseBlobIfUnreferenced`, row-first-blob-second). Exit: pick file sama dua kali → hanya satu objek blob baru, kedua jadi reference tersembunyi dari Media; dua send balapan → satu objek + satu original; test unit skip + race-close.
+  - **Status**: done
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1, R2, R3 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan); R3: Section Media tetap tidy (foto sama tidak muncul dua kali di feed).
+  - **Depends on**: `P1-DB-A006`
+  - **Plan**: `.workflows/plan/P1-CN-A004.md`
+  - **Completed**: 2026-09-10 12:47
+  - **Method**: /do
+  - **Files**: lib/nina/dedupe.ts, components/nina/Composer.tsx, components/nina/ChatScreen.tsx, lib/nina/actions.ts, tests/nina.dedupe.test.ts, tests/nina.chatDedupe.test.ts
+  - **Drift**: Plan Step 1 doc comment cited `photoSideOf` at `lib/nina/album.ts:146`; it actually sits at album.ts:173 — wrote the reference without the line number. Cosmetic.
+    Plan Step 2a's placement clause contradicted its own justification: it said to put `contentHashOf` "directly above" the compressForNina import but justified with "compressForNina sorts before contentHash" (which implies below). No eslint import-order rule exists; repo convention is alphabetical within the @/lib group → contentHashOf placed directly BELOW compressForNina. Cosmetic.
+    The code commit (4478758) was made by the main context, not pusher: explicit pathspec of exactly the six modified files, --stat verified. Reason: peer sessions impl-media-dedupe-p3 and impl-media-dedupe-p4 are concurrently implementing in THIS SAME WORKTREE (its only worktree) with half-written files in it (lib/nina/imageDedupe.ts, scripts/nina-image-worker.ts, tests mid-edit, scripts/nina-dedupe-*.mjs, modified package.json/imagerun.ts) — ANY broad `git add` would sweep their files in. The follow-up docs commit must likewise add ONLY its own docs files by name.
+    Verification state, honest: `npm run typecheck` clean after the phase's edits; full suite green (171 files / 3643 tests) at 12:40:57; the plan's regression set (nina.dedupe, nina.chatDedupe, nina.attach, nina.chatPhotoReattach, nina.resend, nina.blobRelease) re-ran green (6 files / 65 tests) AFTER the peer writes. `npm run build` currently fails ONLY inside peer P3's mid-flight tests/nina.imageworker.test.ts (WorkerStoredImage now requires contentHash/duplicateOf — phase 3's own surface, consistent with phase 3's plan); no phase-2 file implicated; the whole-tree build must be re-run by the coordinator after P3/P4 settle.
+  - **Decided**: contentHashOf import placement (plan self-contradiction) → below compressForNina, alphabetical (rung 6: surrounding code convention; plan's own justification clause agreed)
+  - **Decided**: ResolvedNinaAttachment docstrings → applied the plan's condensed named interface verbatim (rung 3: code blocks complete by construction)
+  - **Decided**: Landing under concurrent peer sessions in one shared worktree → pathspec-scoped commit 4478758 now rather than waiting, then coordinator sequences P3/P4 landings (tie-break: narrower blast radius; an uncommitted verified phase sitting in a tree two other sessions are rewriting is the greater risk)
 
 - [x] **P2-CN-A003** Phase 1: Flash the landing in the bubble's own color — and prove the jobs jump end-to-end
   - **Difficulty**: NORMAL
