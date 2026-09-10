@@ -13,6 +13,13 @@ Date: 2026-09-10. Status: validated with the operator (R1-R3 below are verbatim,
 3. Above the Replace / Remove row, add an icon button (set as profile photo); clicking expands the
    framing selection and "Set as her profile picture" exactly as Nina's album page already has —
    so Chat-photos images can become her profpic too.
+4. R4, after the operator saw the first landing: *"buat semua icon itu dalam SATU row saja … i
+   prefer compact and simple UI"* — the five controls (eye, brush, person, replace, trash) share
+   ONE flex-wrap row, a hairline divider between the two view toggles and the three action
+   controls. The expanded blocks mount below the row in button order; the three toggle states
+   lifted into `ChatPhotoDetail`, `ChatPhotoProfilePicture` became panel-only, and
+   `ChatPhotoControls` renders its two buttons as a fragment whose `basis-full` messages wrap
+   beneath the row.
 
 ## Decisions taken with the operator
 

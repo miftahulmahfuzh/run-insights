@@ -24,28 +24,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "4249ca6",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "getNinaJobPhoto owner-scoped join in queries.ts \u00a712 + planJobPhoto in jobview.ts + icon-only row in NinaJobDetail (jump aria-label 'Buka chat-nya', photo icon \u2192 /nina/about?photo=chat.<id>); avatar jobs skip the read; no decisions, no drift",
       "package": "lib/nina`, `app/nina/jobs/[id]`, `components/nina",
       "plan": ".workflows/plan/job-photo-link/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T05:21:17+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A033",
       "title": "Detail foto icon row (jump + photo)"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/job-photo-link/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "job-photo-link",
-  "updated": "2026-09-10T04:56:02+00:00",
+  "updated": "2026-09-10T05:21:17+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/job-photo-link"
 }
