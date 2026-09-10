@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/media-dedupe`
 **Branch:** `feature/media-dedupe` (base: `origin/main` @ `ac9cf03`)
 **Phases:** 4
-**Status:** phase 1/4 complete
+**Status:** phases 1, 2, 4 complete — 3 in flight
 **Coordinator:** orch-media-dedupe
 
 <The Coordinator line is the peer address of the session driving this set, filled in by
@@ -73,9 +73,9 @@ lihat Keputusan); perubahan pada keempat read yang tidak boleh memfilter
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Foundation: `content_hash` kolom, util hash, plumbing data | R1 | `lib/db`, `lib/photos`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/media-dedupe/phase-1.md` | P1-DB-A006 | — |
-| 2 | Write-time dedup: jalur upload chat runner | R1, R2, R3 | `components/nina`, `lib/nina` | 6 | 1 | HARD | `.workflows/plan/media-dedupe/phase-2.md` | P1-CN-A004 | — |
+| 2 ✅ | Write-time dedup: jalur upload chat runner | R1, R2, R3 | `components/nina`, `lib/nina` | 6 | 1 | HARD | `.workflows/plan/media-dedupe/phase-2.md` | P1-CN-A004 | — |
 | 3 | Write-time dedup: jalur generated + admin | R1, R2 | `lib/nina`, `lib/admin`, `scripts` | 15 | 1 | HARD | `.workflows/plan/media-dedupe/phase-3.md` | P1-NIN-A033 | — |
-| 4 | Backfill sweep: hash-fill + peleburan duplikat existing | R1, R2, R3 | `scripts` | 4 | 1 | NORMAL | `.workflows/plan/media-dedupe/phase-4.md` | P1-SC-A001 | — |
+| 4 ✅ | Backfill sweep: hash-fill + peleburan duplikat existing | R1, R2, R3 | `scripts` | 4 | 1 | NORMAL | `.workflows/plan/media-dedupe/phase-4.md` | P1-SC-A001 | — |
 
 **Dua aturan keeper, disengaja — jangan disatukan.** Write-time attach (P2/P3) memakai aturan
 `findNinaImageByContentHash` (P1): original TERBARU dengan hash itu, karena baris terbaru paling
@@ -174,6 +174,7 @@ Media menampilkan tiap foto tepat sekali; re-run berikutnya = 0 perubahan.
 | **(reconciler)** Hash pada baris REFERENCE: P3 menulis, P2 tidak | Per-path: baris reference membawa `content_hash` hanya bila penulisnya mengukur bytes sendiri (server P3 — ya; klaim client P2 — tidak). NULL yang dihasilkan P2 diisi pass 1 P4 | 4: kriteria exit phase + semantik tunggal invariant 4 (klaim hanya disimpan di baris yang write-nya memegang bytes); P4 terverifikasi mengisi, bukan menandai drift |
 | **(reconciler)** Keeper election: original terbaru (finder P1) vs `message_id > description > oldest > id` (sweep P4) | Keduanya dipertahankan, tidak disatukan — write-time attach dan sweep merge adalah pertanyaan berbeda; lihat catatan di bawah tabel phase | 4: rasional masing-masing plan (P1: terbaru paling kecil kemungkinan terhapus antara read dan write; P4: bubble tidak boleh kosong + prose already paid) |
 | **(reconciler)** Transport hash jalur upload: `tokenPayload` `/api/upload` (duga analisis) vs klaim `sendNinaMessage` | Klaim `contentHashes` di `sendNinaMessage` (keyed by stored pathname) — `/api/upload` tidak berubah, hash kelas yang sama dengan `bytes`/`width`/`height`, tidak ditandatangani | 5: Why/Requirements indeks + kontrak fase-2 yang dinyatakan ("DECIDED, do not reopen"); impact point 6 analisis superseded — kebutuhannya (validasi format server-side) tetap dipenuhi P2 + pintu insert P1 |
+| **(coordinator)** P4 `--apply` vs aturan STOP: snapshot analisis (2 grup objek-duplikat) ≠ production live (grup selfie `W-hhpnGxV0SI`/`1dMy2Zs5V1MJ` sudah self-resolve oleh aktor di luar plan; 26 baris ≠ 23; 3 baris generated baru) | P4 benar berhenti dan menulis apa pun tanpa `--apply`. Di Step 5 koordinator jalankan **dry-run segar** di branch tip: `--apply` hanya bila temuan segar persis grup kartu kedatangan yang masih cocok (keeper `sbTuT8NKXL24` / loser `ywNnXvpnnKSi` — keluhan asli user); dump tabel affected dulu ke `logs/`; re-run dry-run setelahnya wajib 0 perubahan (bukti idempoten); verifikasi baris repoint + blob loser terhapus via query. Mismatch lain apa pun = tanpa `--apply`, dilaporkan di termination block | Rung 2+3 dengan prinsip premis-terfalsifikasi-tidak-mengikat: exit criteria P4 terikat snapshot yang production live sudah sanggah; kebutuhan di baliknya (R2/R3 atas bytes duplikat yang NYATA ada) tetap berlaku; aturan Step-5 — destructive work yang direncanakan dieksekusi, bukan diparkir, dengan dump + audit trail + bukti idempotence |
 
 ## Open Questions
 

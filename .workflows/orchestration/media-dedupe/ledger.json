@@ -64,30 +64,30 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "8cf9301",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "code landed + verified (32 scoped/3614 full suite); --apply WITHHELD: prod data drifted from Step 5 acceptance snapshot (26 rows vs 23; kartu finding intact+exact keeper sbTuT8NKXL24/loser ywNnXvpnnKSi; selfie finding self-resolved to tidy; 2 groups now avatar-ref-only skips; 3 new rows arrived mid-session) \u2014 fresh dry run must be read before any --apply; content_hash still all-NULL in prod",
       "package": "scripts",
       "plan": ".workflows/plan/media-dedupe/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T05:53:23+00:00",
       "satisfies": [
         "R1",
         "R2",
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-SC-A001",
       "title": "Backfill sweep: hash-fill + peleburan duplikat existing"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-dedupe/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-dedupe",
-  "updated": "2026-09-10T05:46:40+00:00",
+  "updated": "2026-09-10T05:53:23+00:00",
   "verified_at": "2026-09-10T05:46:40+00:00",
   "worktree": "/home/miftah/.worktrees/media-dedupe"
 }
