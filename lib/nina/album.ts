@@ -1,13 +1,16 @@
 import type { NinaCropInput } from './crop'
+import { isValidId } from '@/lib/id'
 
 /**
  * Her album and the conversation's photographs, as the screens need them — F33 R17/R19/R26.
  *
- * ── WHY THIS FILE IS PURE AND IMPORT-FREE ─────────────────────────────────────────────────────
+ * ── WHY THIS FILE IS PURE, AND ITS IMPORTS COUNTED ────────────────────────────────────────────
  * Invariant 6: vitest runs `environment: 'node'` with no jsdom, so UI behaviour worth testing has
  * to be a pure function in `lib/`. Everything below is read by a client grid, a Server Component
  * and a unit suite, which is exactly the `lib/photos/gallery.ts` and `lib/nina/images.ts` shape.
- * The single import is a TYPE, so it erases.
+ * Two imports, and both earn the file's purity: `./crop` is a TYPE, so it erases, and `@/lib/id`
+ * is one regex predicate with no dependency behind it — the same file `lib/nina/jobview.ts`
+ * reaches for when a URL-borne id must be shape-checked before it is allowed to become a query.
  *
  * ── THE ALBUM IS DELIBERATELY A SET OF DIFFERENT FACES ────────────────────────────────────────
  * RU-18 dropped the face anchor: *"i only want successful image generation"*. So her generated
@@ -325,4 +328,136 @@ export function galleryPhotos(rows: readonly ImageLike[]): NinaGalleryPhoto[] {
       label: NINA_SIDE_LABEL[side],
     }
   })
+}
+
+/* ── THE `/nina/about` VIEWER'S `?photo=` PARAMETER ──────────────────────────────────────────────
+ * The codec that was private to `NinaAboutScreen.tsx`, lifted into this file because it now has
+ * TWO parsers: the screen derives the viewer's open state from the URL on every render, and the
+ * page (`app/nina/about/page.tsx`) has to resolve a `chat.<id>` the gallery window missed before
+ * it can render. One grammar, one home — the same argument `JOB_JUMP_PARAM` makes for itself in
+ * `lib/nina/jobview.ts`, and the same reason it is testable here rather than inside a component.
+ *
+ * ── THE OTHER `?photo=` GRAMMAR IS NOT THIS ONE ────────────────────────────────────────────────
+ * `/nina?photo=avatar:<id>|image:<id>` (`lib/nina/attach.ts`, colon) is the composer-attach
+ * pointer on a different route, and it stays byte-identical. The two parameters share the KEY
+ * `photo` — `ChatScreen` deletes both in one `replaceState` for exactly that reason — but their
+ * VALUE grammars differ (`section.id` here, `kind:id` there), so each module owns its whole round
+ * trip and neither can drift into the other's route. That is also why this module's constant is
+ * `NINA_ABOUT_PHOTO_PARAM` and not a second `PHOTO_PARAM`: a file that imports both must never be
+ * left to guess which grammar a bare `PHOTO_PARAM` spells.
+ *
+ * `.` and not `:` between section and id because `URLSearchParams` leaves `.` unencoded — the
+ * reason the screen-private codec gave, and the reason it survives the move unchanged.
+ */
+
+/** The about route itself, so the href builder below does not bury the path in a template. */
+export const NINA_ABOUT_HREF = '/nina/about'
+
+/** The parameter's KEY. The same `'photo'` string `lib/nina/attach.ts` exports; see the header. */
+export const NINA_ABOUT_PHOTO_PARAM = 'photo'
+
+/**
+ * Which list the parameter's section names: `album` is her profile album, `chat` is the Media
+ * gallery. The screen's own word for it, exported because the page now parses the same union the
+ * screen renders.
+ */
+export type NinaViewerSection = 'album' | 'chat'
+
+/** `chat.<id>` — section and id, joined by the dot the header above argues for. */
+export function encodeAboutPhoto(section: NinaViewerSection, id: string): string {
+  return `${section}.${id}`
+}
+
+/**
+ * `unknown -> { section, id } | null`, on `parseNinaPhotoParam`'s precedent and for its stated
+ * reason: a `searchParams` value is `string | string[] | undefined` and `URLSearchParams.get` is
+ * `string | null`, and a shape check that refuses to be handed the wrong shape is a shape check
+ * with a second bug in it. A repeated `?photo=a&photo=b` is a malformed link, not an interesting
+ * case.
+ *
+ * A miss is `null`, and `null` is "no viewer" — never an error. The id is NOT shape-checked here
+ * on purpose: the codec's only job is to split the string, and both consumers answer an
+ * unresolvable id with a closed viewer anyway — the screen by `findIndex` missing, the page by
+ * `aboutPhotoIdOutsideGallery`'s `isValidId` gate. Leniency here cannot open anything.
+ */
+export function decodeAboutPhoto(raw: unknown): { section: NinaViewerSection; id: string } | null {
+  if (typeof raw !== 'string') return null
+  const dot = raw.indexOf('.')
+  if (dot <= 0) return null
+  const section = raw.slice(0, dot)
+  const id = raw.slice(dot + 1)
+  if (id.length === 0) return null
+  if (section !== 'album' && section !== 'chat') return null
+  return { section, id }
+}
+
+/**
+ * The deep link itself: `/nina/about?photo=chat.<id>`. This is what Phase 2's Detail-foto photo
+ * button navigates to. The screen's own taps do NOT go through it — `urlWithPhoto` sets the key
+ * on `window.location` because it must PRESERVE whatever else is on the current URL, while a
+ * `<Link href>` has no current URL to preserve and gets this builder instead.
+ */
+export function aboutPhotoHref(section: NinaViewerSection, id: string): string {
+  const params = new URLSearchParams()
+  params.set(NINA_ABOUT_PHOTO_PARAM, encodeAboutPhoto(section, id))
+  return `${NINA_ABOUT_HREF}?${params.toString()}`
+}
+
+/** What `aboutViewerLists` hands back: one list per section, each already in render order. */
+export interface NinaAboutViewerLists {
+  album: readonly NinaAlbumPhoto[]
+  chat: readonly NinaGalleryPhoto[]
+}
+
+/**
+ * **Which list the viewer renders over — the one decision the URL is allowed to change.**
+ *
+ * The chat arm is `gallery` PLUS the server-resolved photo appended at the END, and the append
+ * position is load-bearing twice:
+ *
+ *   - the Media grid maps the `gallery` prop itself, so grid cell `i` and viewer index `i` still
+ *     address the same photograph for every `i < gallery.length` — a deep link never changes what
+ *     the grid shows (plan-set invariant 8) — and
+ *   - a resolved out-of-window photograph is by definition OLDER than everything in the window,
+ *     so last is also where newest-first order says it belongs.
+ *
+ * The album arm never carries the resolved photo. An `album.<id>` deep link has no resolver
+ * behind it on purpose: nothing outside a tap on the album grid itself mints one, the album read
+ * is unpaginated (`albumPhotos` slices only for the render), and an avatar id is not a
+ * `nina_message_images` row — the read that would resolve it does not exist. Refusing the
+ * `album` section is `aboutPhotoIdOutsideGallery`'s business, not this function's.
+ */
+export function aboutViewerLists(input: {
+  album: readonly NinaAlbumPhoto[]
+  gallery: readonly NinaGalleryPhoto[]
+  resolvedChatPhoto: NinaGalleryPhoto | null
+}): NinaAboutViewerLists {
+  if (input.resolvedChatPhoto == null) return { album: input.album, chat: input.gallery }
+  return { album: input.album, chat: [...input.gallery, input.resolvedChatPhoto] }
+}
+
+/**
+ * **The membership-miss predicate: does this `?photo=` value name a chat photograph the gallery
+ * window does not hold — the one case where the single-row deep-link read is worth a query?**
+ *
+ * Runs on the page over the SAME `galleryPhotos` output it is about to render, BEFORE any extra
+ * read, so the common case costs zero queries and the check can never disagree with the grid
+ * about what "in the window" means. Answers `null` — "nothing to resolve" — for every shape that
+ * is not a well-formed `chat.<id>` of one of ours outside the list: no parameter, a repeated
+ * parameter (`unknown`'s array arm), the `album` section, a malformed split, and an id that
+ * cannot be one of ours (`isValidId` — the cheap shape check before a query, `app/nina/jobs/[id]`'s
+ * stated rule, so a hand-typed URL costs the page nothing at all).
+ *
+ * The `album` section is refused HERE and not by the codec on purpose: `decodeAboutPhoto` must
+ * keep parsing `album.<id>` — the screen opens album photos through it — while the RESOLVER has
+ * no album arm, because an album miss is a render-cap artifact and not the R3 window.
+ */
+export function aboutPhotoIdOutsideGallery(
+  raw: unknown,
+  gallery: readonly NinaGalleryPhoto[],
+): string | null {
+  const parsed = decodeAboutPhoto(raw)
+  if (parsed === null || parsed.section !== 'chat') return null
+  if (!isValidId(parsed.id)) return null
+  return gallery.some((photo) => photo.id === parsed.id) ? null : parsed.id
 }

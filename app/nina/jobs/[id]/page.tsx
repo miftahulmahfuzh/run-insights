@@ -15,7 +15,9 @@ import {
   jobErrorLabel,
   jobStage,
   planJobJump,
+  planJobPhoto,
 } from '@/lib/nina/jobview'
+import { getNinaJobPhoto } from '@/lib/nina/queries'
 
 /**
  * `/nina/jobs/[id]` — R1's image-generation detail page.
@@ -38,6 +40,22 @@ import {
  * reply target, and a message that has been deleted or whose session was removed) into one value
  * the client renders without re-deriving anything.
  *
+ * ── WHERE THE PHOTOGRAPH IS DECIDED ───────────────────────────────────────────────────────────
+ * HERE too, from an owner-scoped read (`getNinaJobPhoto`) — the same split the jump keeps, for the
+ * same reason. `planJobPhoto` turns the two facts (whose job is this; does its photograph row still
+ * exist) into the value the client renders.
+ *
+ * ── WHY SEQUENTIAL-AND-SKIPPED FOR AVATAR, AND NOT `Promise.all` ──────────────────────────────
+ * `purpose` is a fact only the detail read produces, so "run the photo read in parallel with the
+ * detail read" and "run no query at all for an avatar job" cannot both hold. The skip wins: an
+ * avatar job's read is empty BY CONSTRUCTION (`finishAvatar` writes no carrier message, so no
+ * `turn_id` ever names one), and avatar jobs are the common case on this page — every avatar
+ * generation is one, while chat selfies are capped at six a day — so the unconditional parallel
+ * spelling would spend the query exactly where it is worth least. One sequential round trip on a
+ * page opened a handful of times a day is the economics `getNinaImageJobDetail` already states for
+ * its own second read. The RULE (an avatar job never gets the icon) does not depend on the skip —
+ * `planJobPhoto`'s avatar arm holds it where a test reaches it.
+ *
  * `SESSION_PARAM` is imported HERE and passed down, so `?s=`'s spelling still lives in exactly one
  * place — `app/nina/page.tsx` concentrates its cross-phase dependencies the same way and says so.
  *
@@ -59,6 +77,10 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
    * `react-hooks/purity` guards re-render idempotency and a Server Component renders once. */
   // eslint-disable-next-line react-hooks/purity -- see app/nina/jobs/page.tsx.
   const nowMs = Date.now()
+
+  /* Skipped outright for an avatar job — see the docstring's `Promise.all` paragraph. */
+  const photoRow = job.purpose === 'avatar' ? null : await getNinaJobPhoto(userId, id)
+  const photo = planJobPhoto({ purpose: job.purpose, imageId: photoRow?.id ?? null })
 
   return (
     <AppShell>
@@ -93,6 +115,7 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
           replySessionId: job.replySessionId,
           sessionParam: SESSION_PARAM,
         })}
+        photo={photo}
       />
     </AppShell>
   )

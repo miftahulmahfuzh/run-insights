@@ -14,10 +14,12 @@ import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
  *
  *   1. The three COLLECTION reads skip a reference. Two call sites for three statements, because
  *      `generatedChatPhotoScope` is shared by the page and the count on purpose.
- *   2. The four reads that make a photograph RENDER, or that build Nina's context, carry NO such
+ *   2. The reads that make a photograph RENDER, or that build Nina's context, carry NO such
  *      predicate — invariant 2, written as an ABSENCE on purpose. A future "consistency" cleanup
  *      that adds the filter to `getNinaMessageImagesForMessages` blanks a photograph in a live
- *      conversation, and this is the only thing that would notice.
+ *      conversation, and this is the only thing that would notice. (The job-photo link set added a
+ *      fifth render read, `getNinaJobPhoto` — the Detail foto row's link fact — asserted below on
+ *      the same absence.)
  *   3. Every INSERT names both columns, so an original binds NULL rather than omitting the column.
  *
  * The assertions match `"source_avatar_id" is null` rather than the fully-qualified spelling,
@@ -30,6 +32,9 @@ type Queries = typeof import('@/lib/nina/queries')
 /** 12 chars, so `isValidId` would accept it and `newId()` could have produced it. */
 const IMAGE = 'imgAAAAAAAAA'
 const MESSAGE = 'msgAAAAAAAAA'
+
+/** 12 chars, so `isValidId` would accept it and `newId()` could have produced it. */
+const JOB = 'jobAAAAAAAAA'
 
 let fake: FakeDb
 let queries: Queries
@@ -120,6 +125,19 @@ describe('invariant 2: whatever a listing hides, a bubble still gets', () => {
     expect(where).not.toContain('source_image_id')
   })
 
+  it('getNinaJobPhoto carries none either — the Detail foto row renders from it', async () => {
+    /* The fifth render read: the icon is DRAWN from this row, so hiding a reference here would
+     * blank the one control that proves the photograph still exists. Today a job's own row can
+     * only be an original — references are minted on re-attach under a NEW carrier message — but
+     * the invariant is written as an absence, not as today's data. */
+    fake.enqueue([])
+    await expect(queries.getNinaJobPhoto('u1', JOB)).resolves.toBeNull()
+
+    const where = whereOf(fake.only().sql)
+    expect(where).not.toContain('source_avatar_id')
+    expect(where).not.toContain('source_image_id')
+  })
+
   it('isBlobPathnameReferenced counts a reference as a reference — it is the whole question', async () => {
     /* This is what stands between /admin/photos and deleting bytes somebody is still rendering,
      * and a reference is BY DEFINITION a second row pointing at one Blob object. Filtering here
@@ -189,5 +207,47 @@ describe('Replace stops the provenance lying about bytes that are gone', () => {
     /* One statement, so there is no window in which the row points at new bytes and old
      * provenance — `updateNinaChatPhotoBlob`'s own argument for nulling `description` here. */
     expect(fake.queries).toHaveLength(1)
+  })
+})
+
+describe('getNinaJobPhoto — the job→photo join (this set)', () => {
+  it('scopes BOTH tables, joins on the carrier message, filters to the job’s generated photograph', async () => {
+    fake.enqueue([])
+    await queries.getNinaJobPhoto('u1', JOB)
+
+    const { sql } = fake.only()
+    /* The join is the only job→photo key there is: the image row carries no job id, the carrier
+     * message carries `turn_id`. `listNinaSelfieJobIdsSince` walks this exact join in the other
+     * direction. */
+    expect(sql).toContain(
+      'inner join "nina_messages" on "nina_messages"."id" = "nina_message_images"."message_id"',
+    )
+    const where = whereOf(sql)
+    /* Invariant 3, spelled on both sides: the images predicate is the module's standing rule, the
+     * messages predicate is spelled too because a join's WHERE is where ownership is proved. */
+    expect(where).toContain('"nina_message_images"."user_id" = $')
+    expect(where).toContain('"nina_messages"."user_id" = $')
+    expect(where).toContain('"nina_messages"."turn_id" = $')
+    /* HIS uploads share the table; a job's photograph is always hers. */
+    expect(where).toContain('"nina_message_images"."kind" = $')
+    expect(fake.only().params).toContain(JOB)
+  })
+
+  it('deterministic order, one row, and nothing but the id', async () => {
+    fake.enqueue([])
+    await queries.getNinaJobPhoto('u1', JOB)
+
+    const { sql } = fake.only()
+    /* The gallery's own tiebreak, so LIMIT 1 stays deterministic even if a job ever carried two
+     * photographs. */
+    expect(sql).toContain(
+      'order by "nina_message_images"."created_at" desc, "nina_message_images"."id" desc',
+    )
+    expect(sql).toContain('limit $')
+    /* Invariant 5, STRUCTURALLY: the page maps this row to an href and nothing else, so the
+     * projection names the id and nothing else — `description` is not kept off the client by the
+     * caller's discipline, it is never selected. */
+    expect(sql.startsWith('select "nina_message_images"."id" from')).toBe(true)
+    expect(sql).not.toContain('description')
   })
 })

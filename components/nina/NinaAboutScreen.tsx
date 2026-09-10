@@ -17,10 +17,15 @@ import {
   type NinaAttachTarget,
 } from '@/lib/nina/albumActions'
 import {
+  NINA_ABOUT_PHOTO_PARAM,
   NINA_ATTACH_MAX_CHARS,
+  aboutViewerLists,
+  decodeAboutPhoto,
+  encodeAboutPhoto,
   type NinaAlbumPhoto,
   type NinaAvatarView,
   type NinaGalleryPhoto,
+  type NinaViewerSection,
 } from '@/lib/nina/album'
 import { NINA_JOBS_HREF, type NinaJobListItem } from '@/lib/nina/jobview'
 
@@ -51,29 +56,17 @@ import { NINA_JOBS_HREF, type NinaJobListItem } from '@/lib/nina/jobview'
  * grouping, no "most like her" ordering and no note on screen about it. Newest first, that is all.
  */
 
-type Section = 'album' | 'chat'
+/**
+ * Which list the viewer is over. The union and its whole codec live in `lib/nina/album.ts` now:
+ * the server page has to parse the very parameter this screen derives its open state from, and
+ * two parsers of one grammar in two files is how grammars drift. The local alias keeps this
+ * file's word for it.
+ */
+type Section = NinaViewerSection
 
 interface Open {
   section: Section
   index: number
-}
-
-const PHOTO_PARAM = 'photo'
-
-/** `album.pr0000000001`. `.` and not `:` because `URLSearchParams` leaves `.` unencoded. */
-function encodePhoto(section: Section, id: string): string {
-  return `${section}.${id}`
-}
-
-function decodePhoto(raw: string | null): { section: Section; id: string } | null {
-  if (raw == null) return null
-  const dot = raw.indexOf('.')
-  if (dot <= 0) return null
-  const section = raw.slice(0, dot)
-  const id = raw.slice(dot + 1)
-  if (id.length === 0) return null
-  if (section !== 'album' && section !== 'chat') return null
-  return { section, id }
 }
 
 export function NinaAboutScreen({
@@ -82,6 +75,7 @@ export function NinaAboutScreen({
   gallery,
   jobs,
   jobsNowMs,
+  resolvedPhoto,
 }: {
   avatar: NinaAvatarView
   album: readonly NinaAlbumPhoto[]
@@ -99,6 +93,23 @@ export function NinaAboutScreen({
   jobs: readonly NinaJobListItem[]
   /** The server's clock at render, for the elapsed tickers. See the page. */
   jobsNowMs: number
+  /**
+   * **A photograph the URL names but the gallery window dropped — resolved on the server, or
+   * null.** Optional and nullable, and both absences are the SAME answer downstream.
+   *
+   * `?photo=chat.<id>` used to open only when the id sat inside `gallery` — the newest
+   * `NINA_GALLERY_LIMIT` originals — so a photograph older than the window resolved to
+   * `index < 0` and the viewer silently did not open. The page now falls such a miss through
+   * `getNinaMessageImage` (the deep-link read; it never filters references, so a re-attached
+   * album face re-opens too) and maps the row through `galleryPhotos([row])[0]` before handing it
+   * here — the mapping is what strips `description`, `glm-4.6v`'s private prose, from the row
+   * (invariant 5). A deleted or foreign id arrives as `null` and behaves exactly like the old
+   * miss: a closed viewer, never an error.
+   *
+   * The photo is VIEWER-ONLY. `aboutViewerLists` appends it to the chat arm of the viewer's lists
+   * and to nothing else; the Media grid keeps mapping the `gallery` prop (invariant 8).
+   */
+  resolvedPhoto?: NinaGalleryPhoto | null
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -117,13 +128,29 @@ export function NinaAboutScreen({
    */
   const [kbOverlap, setKbOverlap] = React.useState(0)
 
+  /** `undefined` (prop absent) and `null` (the server proved nothing) are one value here. */
+  const resolvedChatPhoto = resolvedPhoto ?? null
+
+  /**
+   * One list per section, in render order. `aboutViewerLists`' whole job is appending the
+   * resolved photo to the chat arm and to nothing else. Every reader below (`open`, `openAt`,
+   * `onIndex`, `attach`, `openChatPhoto`) goes through THIS object rather than the raw props, so
+   * the viewer's indices and its id reads cannot drift from the list the viewer actually shows.
+   */
+  const viewerLists = React.useMemo(
+    () => aboutViewerLists({ album, gallery, resolvedChatPhoto }),
+    [album, gallery, resolvedChatPhoto],
+  )
+
   const albumViewer: ViewerPhoto[] = React.useMemo(
-    () => album.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
-    [album],
+    () =>
+      viewerLists.album.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
+    [viewerLists],
   )
   const galleryViewer: ViewerPhoto[] = React.useMemo(
-    () => gallery.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
-    [gallery],
+    () =>
+      viewerLists.chat.map((photo) => ({ url: photo.url, kind: photo.kind, label: photo.label })),
+    [viewerLists],
   )
 
   /**
@@ -138,16 +165,19 @@ export function NinaAboutScreen({
    * sources of truth for one fact, and the second would be the one that goes stale.
    *
    * A stale or malformed id resolves to `null` — the viewer simply does not open, which is
-   * `lib/panel/param.ts`'s rule and its reason: a deleted photo must close a panel, not crash one.
+   * `lib/panel/param.ts`'s rule and its reason: a deleted photo must close a panel, not crash
+   * one. What changed with `resolvedPhoto` is only WHICH ids can be stale: the chat arm now
+   * carries one row the gallery list does not, so an out-of-window deep link resolves here too,
+   * and an id the server could not resolve still falls out the bottom as `null`.
    */
   const open: Open | null = React.useMemo(() => {
-    const parsed = decodePhoto(searchParams.get(PHOTO_PARAM))
+    const parsed = decodeAboutPhoto(searchParams.get(NINA_ABOUT_PHOTO_PARAM))
     if (parsed == null) return null
-    const list = parsed.section === 'album' ? album : gallery
+    const list = viewerLists[parsed.section]
     const index = list.findIndex((photo) => photo.id === parsed.id)
     if (index < 0) return null
     return { section: parsed.section, index }
-  }, [album, gallery, searchParams])
+  }, [viewerLists, searchParams])
 
   /**
    * Whether THIS mount pushed the entry the parameter is sitting on.
@@ -164,34 +194,34 @@ export function NinaAboutScreen({
   /** One writer for the parameter, so no caller can set it without going through the codec. */
   const urlWithPhoto = React.useCallback((value: string | null) => {
     const url = new URL(window.location.href)
-    if (value === null) url.searchParams.delete(PHOTO_PARAM)
-    else url.searchParams.set(PHOTO_PARAM, value)
+    if (value === null) url.searchParams.delete(NINA_ABOUT_PHOTO_PARAM)
+    else url.searchParams.set(NINA_ABOUT_PHOTO_PARAM, value)
     return url.toString()
   }, [])
 
   const openAt = React.useCallback(
     (section: Section, index: number) => {
-      const list = section === 'album' ? album : gallery
+      const list = viewerLists[section]
       const photo = list[index]
       if (photo == null) return
       setQuestion('')
       setNotice(null)
-      window.history.pushState(null, '', urlWithPhoto(encodePhoto(section, photo.id)))
+      window.history.pushState(null, '', urlWithPhoto(encodeAboutPhoto(section, photo.id)))
       pushedRef.current = true
     },
-    [album, gallery, urlWithPhoto],
+    [viewerLists, urlWithPhoto],
   )
 
   /** Paging inside the open section. `replaceState`, so twelve swipes are not twelve backs. */
   const onIndex = React.useCallback(
     (index: number) => {
       if (open == null) return
-      const list = open.section === 'album' ? album : gallery
+      const list = viewerLists[open.section]
       const photo = list[index]
       if (photo == null) return
-      window.history.replaceState(null, '', urlWithPhoto(encodePhoto(open.section, photo.id)))
+      window.history.replaceState(null, '', urlWithPhoto(encodeAboutPhoto(open.section, photo.id)))
     },
-    [album, gallery, open, urlWithPhoto],
+    [open, viewerLists, urlWithPhoto],
   )
 
   /**
@@ -217,7 +247,7 @@ export function NinaAboutScreen({
   const attach = React.useCallback(
     async (target: NinaAttachTarget) => {
       if (open == null || sending !== null) return
-      const list = open.section === 'album' ? album : gallery
+      const list = viewerLists[open.section]
       const photo = list[open.index]
       if (photo == null) return
       setSending(target)
@@ -240,7 +270,7 @@ export function NinaAboutScreen({
         setSending(null)
       }
     },
-    [album, gallery, open, question, router, sending],
+    [open, question, router, sending, viewerLists],
   )
 
   /**
@@ -254,7 +284,7 @@ export function NinaAboutScreen({
    * not the authorization either — the action refuses a `generated` id on its own — but the
    * runner is never shown a button the server would refuse.
    */
-  const openChatPhoto = open?.section === 'chat' ? gallery[open.index] : undefined
+  const openChatPhoto = open?.section === 'chat' ? viewerLists.chat[open.index] : undefined
   const deletable = openChatPhoto != null && openChatPhoto.side === 'his'
 
   /**
