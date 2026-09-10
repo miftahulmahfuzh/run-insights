@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-10 (task `P1-RI-A032`, phase 1 of 2 of the `JOB_PHOTO_LINK_PLAN.md` set — the `/nina/about` viewer's `?photo=` codec lifted out of `NinaAboutScreen.tsx` into `album.ts` (`NINA_ABOUT_HREF`, `NINA_ABOUT_PHOTO_PARAM`, `NinaViewerSection`, `encodeAboutPhoto` / `decodeAboutPhoto`, the `aboutPhotoHref` deep-link builder, `NinaAboutViewerLists` / `aboutViewerLists`, and the membership-miss predicate `aboutPhotoIdOutsideGallery`), and an any-age photo deep link: `app/nina/about/page.tsx` now awaits Next 16's `searchParams` and resolves a `chat.<id>` the 200-newest gallery window dropped through the single-row `getNinaMessageImage` read, mapped through `galleryPhotos([row])[0]` on the server so `description` never crosses into client props — a deleted id is a closed viewer, not an error; previously task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -652,7 +652,9 @@ stores; zero imports by rule, because three hosts outside the package reach for 
 `crop.ts` *(T)*.
 
 ### Album and attachments
-`album.ts` *(T)*, `albumActions.ts`, `attach.ts` *(T)*.
+`album.ts` *(T)* — the album/gallery mappers and, since `P1-RI-A032`, the whole `/nina/about`
+viewer's `?photo=` codec beside them (see *"The `/nina/about` viewer's `?photo=` codec lives here
+now"* below); `albumActions.ts`, `attach.ts` *(T)*.
 
 ### Chat UI logic (pure, node-testable)
 `chatview.ts` *(T)*, `reply.ts` *(T)*, `reveal.ts` *(T)*, `scroll.ts` *(T)*, `live.ts` *(T)*,
@@ -1177,7 +1179,68 @@ change it. `ABOUT_JOB_LIMIT = 5` is module-local to the route: one caller, and n
 `CHAT_HISTORY_LIMIT`.
 
 The `?photo=` codec, the two-section swipe isolation and the album's wrap are untouched — the diff
-never enters that region.
+never enters that region. (True of R3's own diff; the codec has since moved out of the screen and
+the deep link has since learned to resolve outside the window — next section.)
+
+## The `/nina/about` viewer's `?photo=` codec lives here now, and an any-age deep link resolves on the server (`P1-RI-A032`, phase 1 of 2 of `JOB_PHOTO_LINK_PLAN.md`)
+
+The codec `NinaAboutScreen.tsx` kept private since R3 — `encodePhoto` / `decodePhoto` over
+`?photo=album.<id>|chat.<id>` — is lifted into this package's `album.ts`, because it has **two
+parsers now**: the screen derives the viewer's open state from the URL on every render, and the page
+(`app/nina/about/page.tsx`) has to resolve a `chat.<id>` the gallery window missed **before it can
+render**. One grammar, one home — the argument `JOB_JUMP_PARAM` makes for itself in `jobview.ts`.
+The shipped names are `NINA_ABOUT_HREF` (`'/nina/about'`), `NINA_ABOUT_PHOTO_PARAM` (`'photo'`),
+`type NinaViewerSection = 'album' | 'chat'`, `encodeAboutPhoto` / `decodeAboutPhoto`, the
+`aboutPhotoHref(section, id)` builder, `NinaAboutViewerLists` / `aboutViewerLists`, and
+`aboutPhotoIdOutsideGallery(raw, gallery)`.
+
+**There are two `?photo=` grammars and they are not each other.** `attach.ts`'s
+`/nina?photo=avatar:<id>|image:<id>` is the composer-attach pointer on a different route and stays
+byte-identical. The two share the KEY — `ChatScreen` deletes both in one `replaceState` for exactly
+that reason — but their VALUE grammars differ (`section.id` with a dot here, `kind:id` with a colon
+there), each module owns its whole round trip, and that is why this module's constant is
+`NINA_ABOUT_PHOTO_PARAM` and not a second `PHOTO_PARAM`: a file importing both must never be left to
+guess which grammar a bare `'photo'` spells. The dot itself is load-bearing — `URLSearchParams`
+leaves `.` unencoded.
+
+**`album.ts` is still pure, and its imports are now counted instead of denied.** `./crop` is a TYPE
+so it erases; the one new value import is `@/lib/id`'s `isValidId`, one regex predicate with no
+dependency behind it — the same file `jobview.ts` reaches for when a URL-borne id must be
+shape-checked before it is allowed to become a query. Everything the codec exports is node-testable,
+which is where its suite lives (`tests/nina.aboutPhoto.test.ts`).
+
+**The page resolves the miss, on the server, and `description` stays there.**
+`PageProps<'/nina/about'>` is Next 16's globally available helper — not an import — and
+`searchParams` is a PROMISE that must be awaited. `aboutPhotoIdOutsideGallery(photoParam, gallery)`
+runs over rows already in hand — pure: parse, section, shape, membership, no query — so the common
+page view (no parameter, or one the newest `NINA_GALLERY_LIMIT` holds) costs exactly the three
+indexed reads it always cost. Only a MISS reaches `getNinaMessageImage`, the existing single-row
+deep-link read: owner-scoped to `(user_id, id)`, and it never filters `isOriginalPhoto()`, so an
+album face re-attached into the conversation re-opens too. A row that resolves is mapped through
+`galleryPhotos([row])[0] ?? null` ON THE SERVER, and that mapping is the invariant, not a nicety:
+the read projects `imageColumns`, so the row carries `description` — `glm-4.6v`'s private prose
+(invariant 5) — and `galleryPhotos` is the step that strips it. A deleted or foreign id arrives as
+`null` and behaves exactly like the old `index < 0`: a closed viewer, never an error.
+
+**The viewer renders over the merged list; the grid keeps mapping `gallery`.**
+`aboutViewerLists({ album, gallery, resolvedChatPhoto })` is the one decision the URL is allowed to
+change: the chat arm is `gallery` plus the resolved photo **appended at the end**, which is
+load-bearing twice — the Media grid maps the `gallery` prop itself, so cell `i` and viewer index `i`
+address the same photograph for every `i < gallery.length` (plan invariant 8: a deep link never
+changes what the grid shows), and a resolved out-of-window photograph is by definition older than
+everything in the window, so last is where newest-first order says it belongs. The screen reads
+every viewer photo — `open`, `openAt`, `onIndex`, `attach` and `openChatPhoto` — out of THAT object,
+so the delete control cannot silently vanish for a resolved photo. The album arm never carries the
+resolved photo: an `album.<id>` deep link has no resolver behind it on purpose — nothing outside a
+tap on the album grid mints one, the album read is unpaginated, and an avatar id is not a
+`nina_message_images` row; `aboutPhotoIdOutsideGallery` refuses the `album` section while
+`decodeAboutPhoto` keeps parsing it, because the screen opens album photos through that codec.
+
+`aboutPhotoHref(section, id)` builds `/nina/about?photo=chat.<id>` and is the sanctioned builder for
+that grammar; the screen's own taps deliberately do NOT go through it (`urlWithPhoto` sets the key
+on `window.location` because it must preserve whatever else is on the current URL, while a
+`<Link href>` has nothing to preserve). Phase 2 of this set (`P1-RI-A033`, still pending) is the
+consumer it was built for — the Detail-foto photo button in `lib/nina/jobview.ts`'s territory.
 
 ## Redoing a failed job — one tap, no dialog (R1 of the job-redo set)
 
@@ -2396,7 +2459,7 @@ in-play-only, and the id still carried by an `unavailable` turn — the action b
 whether she answered). `tests/nina.resend.test.ts` needed one
 line: its `runNinaTurn` mock now returns `firedShortcutIds: []`, because the field is required and
 the action reads its length.
-Repo-level: 30 `tests/nina.*` files,
+Repo-level: 39 `tests/nina.*` files,
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length) and `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt). `NEVER_SAY` is the *unconditional*
@@ -2551,6 +2614,26 @@ initialised mount value does not, a `null` raw re-arms (a repeat tap is genuine,
 not), and a value that cannot be one of our ids is refused without being retried. And
 `tests/nina.chatPhoto.test.ts` counts `replaceState` in `ChatScreen`'s source — exactly two, the
 sanctioned pair.
+
+**The about codec is tested where it now lives, and its wiring as source claims**
+(`tests/nina.aboutPhoto.test.ts`, six describe blocks, `P1-RI-A032`). The pure half is covered
+directly: the round trip for both sections and the refusal of every shape that is not one section
+and one id — `null`, `undefined`, the repeated-parameter array arm, the empty string, no dot, a
+leading dot, an empty id, a section the viewer does not have — with the dot-not-colon spelling
+pinned against the attach grammar (the encoded value must contain no colon); `aboutPhotoHref` naming the about
+route and the photo parameter and NOTHING else, and surviving both the platform's own URL parse and
+the screen's decode; `aboutViewerLists`' append rule — nothing resolved means the chat arm IS the
+gallery, a resolved photo lands at index `gallery.length` so every grid index still addresses the
+same photograph, and the album arm never carries it; and `aboutPhotoIdOutsideGallery` answering the
+one id the server must resolve and `null` for everything else, including a well-formed id
+`isValidId` cannot accept. `environment: 'node'` cannot render either consumer, so the wiring is
+asserted the way the `replaceState` count is — as source claims whose wording rots loudly:
+`app/nina/about/page.tsx` must await the `PageProps<'/nina/about'>` promise, gate the single-row
+read on the membership miss, and cross the row only through `galleryPhotos` (a claim that also
+asserts the word `description` appears NOWHERE in the stripped code); `NinaAboutScreen.tsx` must
+derive every viewer list through `aboutViewerLists`, read the open photo by index out of the list
+the viewer shows, keep the grid on `cells={gallery.map(toCell)}`, and import nothing from the attach
+module.
 
 ## Notes
 
