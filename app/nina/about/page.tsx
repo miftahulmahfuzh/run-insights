@@ -3,9 +3,11 @@ import { NinaAboutScreen } from '@/components/nina/NinaAboutScreen'
 import { requireUserId } from '@/lib/auth/requireUserId'
 import {
   NINA_ABOUT_PHOTO_PARAM,
+  NINA_ABOUT_RETURN_PARAM,
   NINA_GALLERY_LIMIT,
   aboutPhotoIdOutsideGallery,
   albumPhotos,
+  decodeAboutReturnTo,
   galleryPhotos,
   ninaAvatarView,
 } from '@/lib/nina/album'
@@ -85,7 +87,10 @@ const ABOUT_JOB_LIMIT = 5
 
 export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/about'>) {
   const userId = await requireUserId()
-  const { [NINA_ABOUT_PHOTO_PARAM]: photoParam } = await searchParams
+  const {
+    [NINA_ABOUT_PHOTO_PARAM]: photoParam,
+    [NINA_ABOUT_RETURN_PARAM]: returnParam,
+  } = await searchParams
 
   const [avatars, images, jobs] = await Promise.all([
     listNinaAvatars(userId),
@@ -113,6 +118,15 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
   const deepLinkId = aboutPhotoIdOutsideGallery(photoParam, gallery)
   const resolvedRow = deepLinkId === null ? null : await getNinaMessageImage(userId, deepLinkId)
   const resolvedPhoto = resolvedRow == null ? null : (galleryPhotos([resolvedRow])[0] ?? null)
+
+  /*
+   * The deep link's RETURN leg, decoded where every other URL fact on this page is decoded. The
+   * value is sanitized by `decodeAboutReturnTo` itself — an off-app or malformed target degrades
+   * to `null`, which the screen reads as "close in place", the behaviour the link had before the
+   * leg existed. So a hand-edited `?return=` can never steer the close anywhere but inside the
+   * app, and the prop needs no guard of its own.
+   */
+  const returnTo = decodeAboutReturnTo(returnParam)
 
   /*
    * ── `react-hooks/purity` IS A FALSE POSITIVE ON AN ASYNC SERVER COMPONENT ────────────────────
@@ -156,6 +170,7 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
         jobs={toNinaJobListItems(jobs)}
         jobsNowMs={jobsNowMs}
         resolvedPhoto={resolvedPhoto}
+        returnTo={returnTo}
       />
     </AppShell>
   )

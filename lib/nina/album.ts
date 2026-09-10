@@ -357,6 +357,23 @@ export const NINA_ABOUT_HREF = '/nina/about'
 export const NINA_ABOUT_PHOTO_PARAM = 'photo'
 
 /**
+ * The deep link's optional RETURN leg: where the runner came from when they tapped the link, so
+ * closing the viewer hands them back to THAT page instead of leaving them on `/nina/about`.
+ *
+ * The request it answers is the runner's, from checking the deep link in production: the photo
+ * icon on Detail foto lands on `/nina/about` with the viewer open, and closing it must go back to
+ * Detail foto — *"kembalikan user ke halaman Detail foto nya. jadi harus inget history page yang
+ * dibuka"*. History alone cannot answer that: a deep link can be opened with no in-app history
+ * beneath it (new tab, shared link), so the origin has to travel IN the link rather than be
+ * remembered by the session.
+ *
+ * The value is an IN-APP PATH ONLY, and `decodeAboutReturnTo` is the one place that decision is
+ * spelled — the builder refuses to write what the decoder would refuse, so an href this module
+ * mints cannot name an off-app target even from a caller bug.
+ */
+export const NINA_ABOUT_RETURN_PARAM = 'return'
+
+/**
  * Which list the parameter's section names: `album` is her profile album, `chat` is the Media
  * gallery. The screen's own word for it, exported because the page now parses the same union the
  * screen renders.
@@ -396,11 +413,38 @@ export function decodeAboutPhoto(raw: unknown): { section: NinaViewerSection; id
  * button navigates to. The screen's own taps do NOT go through it — `urlWithPhoto` sets the key
  * on `window.location` because it must PRESERVE whatever else is on the current URL, while a
  * `<Link href>` has no current URL to preserve and gets this builder instead.
+ *
+ * `returnTo` is the optional origin page (see `NINA_ABOUT_RETURN_PARAM`): the screen's close
+ * handler pushes it instead of stripping the parameter in place, which is how a viewer opened
+ * from Detail foto closes back onto Detail foto. The value must pass `decodeAboutReturnTo` —
+ * the builder silently drops one that would not, so the href this module mints can never carry
+ * an off-app target, and callers need no guard of their own.
  */
-export function aboutPhotoHref(section: NinaViewerSection, id: string): string {
+export function aboutPhotoHref(section: NinaViewerSection, id: string, returnTo?: string): string {
   const params = new URLSearchParams()
   params.set(NINA_ABOUT_PHOTO_PARAM, encodeAboutPhoto(section, id))
+  const back = decodeAboutReturnTo(returnTo)
+  if (back !== null) params.set(NINA_ABOUT_RETURN_PARAM, back)
   return `${NINA_ABOUT_HREF}?${params.toString()}`
+}
+
+/**
+ * `unknown -> in-app path | null` for the RETURN leg, on `decodeAboutPhoto`'s precedent and for
+ * its stated reason: a `searchParams` value is `string | string[] | undefined`, and the shape
+ * check refuses to be handed the wrong shape rather than guessing.
+ *
+ * **The one rule is "an in-app absolute path, and nothing else."** It must start with a single
+ * `/` — a relative value would resolve against wherever the close happens to run, and an empty
+ * one says nothing; `//host` and `/\host` are protocol-relative URLs wearing a leading slash, and
+ * both are the open-redirect shape, so the second character and any backslash are refused
+ * outright. Anything off-app (`https://…`) fails the first-character test already. A miss is
+ * `null`, and `null` is "close in place" — the behaviour the deep link had before the RETURN leg
+ * existed, so every malformed or hostile value degrades to today's answer, never an error.
+ */
+export function decodeAboutReturnTo(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return null
+  return raw
 }
 
 /** What `aboutViewerLists` hands back: one list per section, each already in render order. */

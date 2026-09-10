@@ -76,6 +76,7 @@ export function NinaAboutScreen({
   jobs,
   jobsNowMs,
   resolvedPhoto,
+  returnTo,
 }: {
   avatar: NinaAvatarView
   album: readonly NinaAlbumPhoto[]
@@ -110,6 +111,19 @@ export function NinaAboutScreen({
    * and to nothing else; the Media grid keeps mapping the `gallery` prop (invariant 8).
    */
   resolvedPhoto?: NinaGalleryPhoto | null
+  /**
+   * **The deep link's RETURN leg, already decoded and sanitized on the server.** Where the close
+   * should land the runner instead of `/nina/about` — the origin page a deep link like Detail
+   * foto's names with `?return=` (`NINA_ABOUT_RETURN_PARAM`). The runner asked for it from
+   * production: *"kembalikan user ke halaman Detail foto nya. jadi harus inget history page yang
+   * dibuka"* — closing the viewer opened from Detail foto must land back on Detail foto.
+   *
+   * History alone cannot answer that: a deep link may have no in-app entry beneath it (new tab,
+   * shared link), so the origin travels in the link and the close pushes it. `null` (absent,
+   * malformed, or off-app — `decodeAboutReturnTo` answered them all the same) means the behaviour
+   * this screen had before the leg existed: strip the parameter in place.
+   */
+  returnTo?: string | null
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -225,9 +239,24 @@ export function NinaAboutScreen({
   )
 
   /**
-   * `back()` when we pushed, `replaceState` when we did not — `usePanelParam`'s rule, for its
-   * reason. A deep link or a refresh of `/nina/about?photo=…` arrives with the parameter already
-   * set and no entry of ours underneath it; calling `back()` there would navigate off the app.
+   * `back()` when we pushed, the RETURN leg when the link carried one, `replaceState` when
+   * neither — `usePanelParam`'s rule, extended by one rung for the deep link's origin.
+   *
+   * The pushed branch stays FIRST because it is the screen's own gesture: a grid tap inside
+   * about pushed an entry, and undoing that gesture must stay `back()` even if a `?return=` sits
+   * in the URL (reachable only by a hand-edited link) — the origin page answers "where did the
+   * DEEP LINK come from", not "undo the last tap".
+   *
+   * The RETURN branch is the runner's production request: a viewer opened from Detail foto
+   * closes back onto Detail foto, not onto an about page they never meant to stand on. A deep
+   * link arrives with the parameter already set and no entry of ours underneath it — `back()`
+   * there would navigate off the app, which is exactly why the origin travels in the link and
+   * the close PUSHES it instead. The push leaves the `?photo=` entry in history, so back-swiping
+   * from Detail foto re-opens the viewer: the parameter still names a photograph, and the URL
+   * remaining the viewer's truth is this screen's oldest rule. `returnTo` is
+   * server-sanitized (`decodeAboutReturnTo`), so the push target is an in-app path or absent.
+   *
+   * The final branch is unchanged: no origin, close in place.
    */
   const close = React.useCallback(() => {
     if (pushedRef.current) {
@@ -235,8 +264,12 @@ export function NinaAboutScreen({
       window.history.back()
       return
     }
+    if (returnTo) {
+      router.push(returnTo)
+      return
+    }
     window.history.replaceState(null, '', urlWithPhoto(null))
-  }, [urlWithPhoto])
+  }, [returnTo, router, urlWithPhoto])
 
   /**
    * R26 still: `''` is a valid question, and attaching with nothing to ask must work. R1/R2 add

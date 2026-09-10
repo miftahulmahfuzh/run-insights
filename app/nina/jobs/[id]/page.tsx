@@ -80,7 +80,7 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
 
   /* Skipped outright for an avatar job — see the docstring's `Promise.all` paragraph. */
   const photoRow = job.purpose === 'avatar' ? null : await getNinaJobPhoto(userId, id)
-  const photo = planJobPhoto({ purpose: job.purpose, imageId: photoRow?.id ?? null })
+  const photo = planJobPhoto({ jobId: job.id, purpose: job.purpose, imageId: photoRow?.id ?? null })
 
   return (
     <AppShell>
