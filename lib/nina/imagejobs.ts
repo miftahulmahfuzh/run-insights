@@ -9,8 +9,8 @@ import type { NinaTurnStatus } from '@/lib/db/schema'
 import { ninaImageApology, type NinaImageFailure } from './imagefail'
 import {
   jakartaDayStart,
+  ninaImageDailyCap,
   NINA_IMAGE_COST_MICRO_USD,
-  NINA_IMAGE_DAILY_CAP,
   NINA_IMAGE_MAX_ATTEMPTS,
   NINA_IMAGE_MODEL,
   NINA_IMAGE_STALE_MS,
@@ -87,7 +87,7 @@ export interface NinaImageJobRow {
 
 export async function ninaImageQuotaLeft(userId: string, now: Date = new Date()): Promise<number> {
   const used = await countNinaTurnsSince(userId, 'image', jakartaDayStart(now))
-  return Math.max(0, NINA_IMAGE_DAILY_CAP - used)
+  return Math.max(0, ninaImageDailyCap() - used)
 }
 
 /**
@@ -812,8 +812,9 @@ function toJobRow(row: {
  */
 
 /**
- * How many jobs the list renders. Six a day is `NINA_IMAGE_DAILY_CAP`, so sixty is ten days of
- * flat-out use — `NINA_ALBUM_MAX`'s reasoning, one table over. A real `LIMIT`, not a `slice`: this
+ * How many jobs the list renders. The cap (`ninaImageDailyCap()`, env-tunable, 30 at this
+ * writing) bounds a day's rows, so sixty is a couple of days of flat-out use — `NINA_ALBUM_MAX`'s
+ * reasoning, one table over. A real `LIMIT`, not a `slice`: this
  * table grows forever and a tracking page has no business reading all of it.
  */
 export const NINA_JOB_LIST_LIMIT = 60

@@ -75,8 +75,9 @@ import { getNinaMessageImage, listNinaAvatars, listNinaMessageImages } from '@/l
  *
  * **A summary, not the list.** `/nina/jobs` is the full history with its stages, elapsed times and
  * errors; this is the head of it on a page whose subject is her album. Five is one screen-third
- * under a three-column grid, and at `NINA_IMAGE_DAILY_CAP`'s six a day it is today and a little of
- * yesterday — the window a runner who just asked for a photo is actually looking at.
+ * under a three-column grid — the head of a single day's output at the daily cap
+ * (`ninaImageDailyCap()`, env-tunable), which is the window a runner who just asked for a photo is
+ * actually looking at.
  *
  * Module-local on purpose. `NINA_GALLERY_LIMIT` lives in `lib/nina/album.ts` because it is tied by
  * its own docstring to `CHAT_HISTORY_LIMIT`, so that the gallery and the chat describe the same

@@ -143,13 +143,50 @@ export type NinaImageJobPhase = 'queued' | 'dispatched' | 'running'
 export const NINA_IMAGE_COST_MICRO_USD = 40_000
 
 /**
- * Six a day. **DESIGNED, not measured** — at the measured $0.040 that is $0.24/day and ~$7.20/month
- * worst case, the right order of magnitude for a personal toy whose owner told us not to stint on
- * tokens but who is also paying the bill. It counts FAILED generations too, because
- * `countNinaTurnsSince` does: a cap that only counts successes is a cap an unlucky afternoon can
- * spend ten times over, and every failed attempt still cost either money or a runner minute.
+ * **The fallback daily cap — 30, the 2026-09-10 ask:** *"buat quota untuk image generation can be
+ * easily changed via vercel env. right now set it to 30 images."* The LIVE number is
+ * `ninaImageDailyCap()` below, which reads `NINA_IMAGE_DAILY_CAP` from the environment; the Vercel
+ * variable moves the cap with no deploy and this constant is what ships when it is unset. At the
+ * measured $0.040 the default is $1.20/day and ~$36/month worst case — the owner was shown that
+ * arithmetic next to the 6/day it replaced and chose the raise.
+ *
+ * It counts FAILED generations too, because `countNinaTurnsSince` does: a cap that only counts
+ * successes is a cap an unlucky afternoon can spend ten times over, and every failed attempt still
+ * cost either money or a runner minute.
  */
-export const NINA_IMAGE_DAILY_CAP = 6
+export const NINA_IMAGE_DAILY_CAP = 30
+
+/**
+ * The clamp `ninaImageDailyCap` applies to the env override. **1, not 0**: an operator who wants no
+ * generations unchecks the photo dial (`nina_tuning.photo_eagerness`), which announces itself in
+ * her behaviour, whereas a mistyped `0` here would ban them silently. **200, not ∞**: the variable
+ * is a MONEY number and a dropped digit should fail toward the modest side, not the ruinous one.
+ */
+export const NINA_IMAGE_DAILY_CAP_MIN = 1
+export const NINA_IMAGE_DAILY_CAP_MAX = 200
+
+/**
+ * **The daily cap, as the environment has it — the one reader.**
+ *
+ * Read at CALL time, not at import time, so a Vercel env edit takes effect on the next generation
+ * with no redeploy and no cold-start distinction; every consumer (`ninaImageQuotaLeft`, the
+ * admin panel's capped sentence) goes through here rather than touching `process.env` itself or
+ * the constant, which would freeze the number at build time. `lib/share/origin.ts` is the
+ * precedent for an optional variable read beside its fallback rather than through `lib/env.ts`:
+ * this file must keep its zero-import property (`scripts/nina-image-worker.ts` imports it under
+ * `--experimental-strip-types`), and `process.env` is a global, not an import.
+ *
+ * Unset, empty, or unparseable all fall back to `NINA_IMAGE_DAILY_CAP`; a parsed value is floored
+ * to an integer and clamped into `NINA_IMAGE_DAILY_CAP_MIN..MAX`. A cap that could not be read
+ * must never degrade to 0 — zero would be a silent generation ban.
+ */
+export function ninaImageDailyCap(): number {
+  const raw = process.env.NINA_IMAGE_DAILY_CAP
+  if (typeof raw !== 'string' || raw.trim() === '') return NINA_IMAGE_DAILY_CAP
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed)) return NINA_IMAGE_DAILY_CAP
+  return Math.min(NINA_IMAGE_DAILY_CAP_MAX, Math.max(NINA_IMAGE_DAILY_CAP_MIN, parsed))
+}
 
 /* ── The threshold chain. Two hosts, one ordering; asserted in tests/nina.imagerecipe.test.ts. ── */
 

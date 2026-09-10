@@ -10,7 +10,7 @@ import { ninaImagePrefsWriteSchema, type NinaImagePrefsWriteInput } from '@/lib/
 import { isValidId } from '@/lib/id'
 import { getNinaImageJobDetail, ninaImageQuotaLeft } from '@/lib/nina/imagejobs'
 import type { NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
-import { NINA_IMAGE_DAILY_CAP } from '@/lib/nina/imagerecipe'
+import { ninaImageDailyCap } from '@/lib/nina/imagerecipe'
 import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/imagetest'
 import {
   readNinaImagePrefs,
@@ -217,7 +217,7 @@ export async function runNinaImageTestAction(): Promise<NinaImageTestDispatchRes
       return {
         ok: false,
         message:
-          `Today’s ${NINA_IMAGE_DAILY_CAP} generations are spent, so nothing was sent and ` +
+          `Today’s ${ninaImageDailyCap()} generations are spent, so nothing was sent and ` +
           'nothing was billed. The cap counts failed generations too, and it rolls over at ' +
           'midnight in Jakarta.',
       }

@@ -4255,7 +4255,7 @@ export async function resolveNinaPhotoReference(
  *
  * ── WHY IDS AND NOT A COUNT ───────────────────────────────────────────────────────────────────
  * A count of photographs since a day would let a selfie HE asked for through `generate_image`
- * settle a promise he had not kept — `NINA_IMAGE_DAILY_CAP` allows six a day, so that is not a
+ * settle a promise he had not kept — `ninaImageDailyCap()` allows several a day, so that is not a
  * theoretical collision. The avatar landing test can afford a same-day tolerance because a
  * *generated avatar* only ever comes from a promise or an operator; a chat selfie cannot. Same
  * read, same index, exact answer.

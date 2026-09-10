@@ -519,7 +519,7 @@ export const NINA_DIAL_SPECS: Readonly<Record<NinaDial, NinaDialSpec>> = {
     key: 'photoEagerness',
     label: 'Photo eagerness',
     axis: 'How readily she takes a photograph of herself, and how readily she offers one as the reward for a training commitment.',
-    path: 'lib/nina/prompts/tools.ts GENERATE_IMAGE_TOOL ("Use it when he asks, or when you promised one") and lib/nina/promises.ts\'s reward dispatch. NOT NINA_IMAGE_DAILY_CAP — that is a money cap of 6/day and its docstring says so; this dial changes how eagerly she OFFERS, never what the operator spends.',
+    path: 'lib/nina/prompts/tools.ts GENERATE_IMAGE_TOOL ("Use it when he asks, or when you promised one") and lib/nina/promises.ts\'s reward dispatch. NOT NINA_IMAGE_DAILY_CAP — that is a money cap (env-tunable, see ninaImageDailyCap) and its docstring says so; this dial changes how eagerly she OFFERS, never what the operator spends.',
     defaultScore: 50,
     defaultBecause:
       'Today she takes one when asked or when she promised one, and the promise mechanism already exists. Reactive but not reluctant; the middle band is today.',

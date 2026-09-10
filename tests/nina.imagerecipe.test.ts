@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ADMIN_AVATAR_CONTENT_TYPES, ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
 import {
@@ -47,6 +47,7 @@ import {
   NINA_IMAGE_STALE_MS,
   NINA_IMAGE_SWEEP_BUDGET,
   ninaImageCallTimeoutMs,
+  ninaImageDailyCap,
   ninaImagePathname,
   ninaImageReferenceUrl,
   NINA_HOST_MAX_DURATION_MS,
@@ -947,10 +948,46 @@ describe('the threshold chain', () => {
     expect(NINA_IMAGE_MAX_ATTEMPTS).toBeLessThanOrEqual(3)
   })
 
-  it('the cap is a small positive integer', () => {
+  it('the cap default is 30 — the 2026-09-10 ask, "right now set it to 30 images"', () => {
     expect(Number.isInteger(NINA_IMAGE_DAILY_CAP)).toBe(true)
-    expect(NINA_IMAGE_DAILY_CAP).toBeGreaterThan(0)
-    expect(NINA_IMAGE_DAILY_CAP).toBeLessThanOrEqual(20)
+    expect(NINA_IMAGE_DAILY_CAP).toBe(30)
+  })
+
+  /* The env override is read at CALL time, so a test can stub it the same way production sets
+   * it: a Vercel env edit, no deploy. Everything unparseable degrades to the constant — an
+   * unreadable cap must never read as "unlimited" or as zero. */
+  describe('ninaImageDailyCap — the env-tunable override', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('falls back to the constant when the variable is unset or empty', () => {
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', '')
+      expect(ninaImageDailyCap()).toBe(NINA_IMAGE_DAILY_CAP)
+      delete process.env.NINA_IMAGE_DAILY_CAP
+      expect(ninaImageDailyCap()).toBe(NINA_IMAGE_DAILY_CAP)
+    })
+
+    it('parses a set variable, flooring a non-integer', () => {
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', '12')
+      expect(ninaImageDailyCap()).toBe(12)
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', '7.9')
+      expect(ninaImageDailyCap()).toBe(7)
+    })
+
+    it('clamps into 1..200 — a cap of zero or a negative would be a silent generation ban', () => {
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', '0')
+      expect(ninaImageDailyCap()).toBe(1)
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', '-5')
+      expect(ninaImageDailyCap()).toBe(1)
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', '99999')
+      expect(ninaImageDailyCap()).toBe(200)
+    })
+
+    it('garbage falls back to the constant, never to zero or NaN', () => {
+      vi.stubEnv('NINA_IMAGE_DAILY_CAP', 'thirty')
+      expect(ninaImageDailyCap()).toBe(NINA_IMAGE_DAILY_CAP)
+    })
   })
 
   it('R10: BOTH in-platform timeouts clear the host ceiling with a full turn spent', () => {

@@ -285,8 +285,9 @@ export async function resolveNinaPromises(
    * and the read below is skipped entirely, so the common cron tick costs exactly what it costs
    * today. When it is not null it is the EARLIEST day any of those jobs was fired, which bounds the
    * scan: `PROMISE_MAX_ATTEMPTS` with a one-day cooldown puts a stuck promise out of its misery in
-   * four days, and the open-ended TTL caps the worst case at 60 — 6 photographs a day against
-   * `NINA_IMAGE_DAILY_CAP`, so a few hundred rows on an indexed range at the very worst.
+   * four days, and the open-ended TTL caps the worst case at 60 — a day's photographs bounded by
+   * `ninaImageDailyCap()` (env-tunable, 30 at this writing), so a few hundred rows on an indexed
+   * range at the very worst.
    */
   let selfieSinceISO: DateISO | null = null
   for (const promise of slot.promises) {

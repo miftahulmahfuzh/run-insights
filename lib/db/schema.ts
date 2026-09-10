@@ -697,8 +697,9 @@ export const ninaTurns = pgTable(
      * read is one `LIMIT 60` walk of `nina_turns_user_created_idx`, which ALREADY carries
      * `kind = 'image'` as a heap filter on tuples it has fetched anyway; `deleted_at IS NULL` is a
      * second predicate on those same fetched tuples and costs one null check each. The set it
-     * filters is bounded by `NINA_IMAGE_DAILY_CAP` — six image rows per user per day — so sixty
-     * rows is ten days of flat-out use, and the worst case for a runner who hides everything is
+     * filters is bounded by the daily cap (`ninaImageDailyCap()`, env-tunable, 30 at this
+     * writing) — a few dozen image rows per user per day at the outside — so sixty
+     * rows is a couple of days of flat-out use, and the worst case for a runner who hides everything is
      * that the walk passes a few extra tuples before it fills the limit. The index would cost a
      * write on every turn Nina ever takes, chat rows included, to save microseconds on a page
      * opened by hand. `nina_turns` keeps exactly one index, and

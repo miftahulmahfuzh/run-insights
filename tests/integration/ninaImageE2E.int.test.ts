@@ -72,7 +72,7 @@ import {
  * the router below intercept the one call that costs money.
  *
  * ── THE DAILY CAP ─────────────────────────────────────────────────────────────────────────────
- * `NINA_IMAGE_DAILY_CAP` is 6 and `countNinaTurnsSince` counts failures too, so a suite that opens
+ * `NINA_IMAGE_DAILY_CAP` (30 at this writing) and `countNinaTurnsSince` counts failures too, so a suite that opens
  * jobs can exhaust a quota. It cannot exhaust the OPERATOR's: the cap is `WHERE user_id = $1` and
  * every row here belongs to a user created in `beforeAll` and deleted in `afterAll`. Three image
  * jobs are opened in total. Do not add a fourth case without counting again.
