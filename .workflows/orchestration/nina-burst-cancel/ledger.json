@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "cb3917296ec7f76e354ded84e941a70557511c82",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "no ladder decisions; 4 fixture-level drifts fixed inside the phase's own new test suites (authEnv vars, bump promise default, distillation context shape, ISO-string param matcher); production code byte-faithful to the plan",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-burst-cancel/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T03:29:15+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A028",
       "title": "Cancel-and-retarget: supersede a thinking turn, discard its result"
     },
     {
@@ -36,7 +36,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Answer the accumulated bubbles: burst framing in the turn prompt"
     }
@@ -44,6 +44,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-burst-cancel/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-burst-cancel",
-  "updated": "2026-09-10T02:54:37+00:00",
+  "updated": "2026-09-10T03:30:00+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-burst-cancel"
 }
