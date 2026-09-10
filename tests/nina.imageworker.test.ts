@@ -94,6 +94,9 @@ function sent(sql: FakeSql, pattern: RegExp): Recorded[] {
 
 const SESSION_ID = 'sess00000001'
 
+/** NIST FIPS 180-4's SHA-256("abc") — the spelling the hash util produces and the column expects. */
+const CONTENT_HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+
 function jobFixture(overrides: Partial<ClaimedJob> = {}): ClaimedJob {
   return {
     jobId: 'job000000001',
@@ -309,6 +312,27 @@ describe('finishSelfie — Finding 1', () => {
     await finishSelfie(sql, jobFixture(), image, result)
     expect(sent(sql, /insert into nina_message_images/)).toHaveLength(1)
     expect(sent(sql, /set status = 'ok'/)).toHaveLength(1)
+  })
+
+  it('names content_hash in the image INSERT and binds NULL while nothing hashes yet', async () => {
+    // media-dedupe P1: the column pass-through, mirror of insertNinaMessageImages. The NULL is
+    // the whole point for now — P3 replaces it with a store-time hash, and this assertion is
+    // what makes the column impossible to forget in between.
+    const sql = sqlResolving(SESSION_ID)
+    await finishSelfie(sql, jobFixture(), image, result)
+
+    const [insert] = sent(sql, /insert into nina_message_images/)
+    expect(insert?.text).toMatch(/\bcontent_hash\b/)
+    expect(insert?.values).toContain(null)
+  })
+
+  it('binds the hash the caller supplies, once one exists', async () => {
+    // P3's contract, asserted before P3 exists: the parameter is a pass-through, not a constant.
+    const sql = sqlResolving(SESSION_ID)
+    await finishSelfie(sql, jobFixture(), { ...image, contentHash: CONTENT_HASH }, result)
+
+    const [insert] = sent(sql, /insert into nina_message_images/)
+    expect(insert?.values).toContain(CONTENT_HASH)
   })
 
   it('ACCUMULATES the spend on success rather than overwriting the failed attempt’s', async () => {

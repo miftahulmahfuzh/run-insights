@@ -203,9 +203,13 @@ describe('nina_message_images', () => {
 
   it('adds no index for them — they are residual predicates, like kind', () => {
     // `generatedChatPhotoScope` argues this in full for `kind` at the same table size. An index
-    // asserted as an ABSENCE so that adding one is a decision somebody makes on purpose.
+    // asserted as an ABSENCE so that adding one is a decision somebody makes on purpose. One
+    // such decision since media-dedupe P1: `…_user_content_hash_idx` — the write-time dedup
+    // lookup, partial (content_hash IS NOT NULL) and non-unique; the column's header carries the
+    // reasoning in full.
     expect(indexNames(schema.ninaMessageImages)).toEqual([
       'nina_message_images_message_idx',
+      'nina_message_images_user_content_hash_idx',
       'nina_message_images_user_created_idx',
     ])
   })

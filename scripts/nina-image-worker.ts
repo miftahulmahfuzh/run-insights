@@ -210,6 +210,10 @@ const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
       'bytes',
       'description',
       'prompt',
+      /* media-dedupe P1. Named by finishSelfie's INSERT, so rule 1's existence check covers it.
+       * Nullable, so rule 2 does not demand it — the worker binds NULL until P3 teaches `store`
+       * to hash before put. Listing it is what makes a future RENAME of the column red here. */
+      'content_hash',
       'sort_order',
     ],
   },
@@ -768,7 +772,7 @@ export async function resolveWorkerSessionId(
 export async function finishSelfie(
   sql: NeonSql,
   job: ClaimedJob,
-  image: { blobUrl: string; pathname: string; bytes: number },
+  image: { blobUrl: string; pathname: string; bytes: number; contentHash?: string | null },
   result: { costMicroUsd: number; latencyMs: number },
 ): Promise<void> {
   const messageId = newId()
@@ -794,7 +798,11 @@ export async function finishSelfie(
    *
    * DEPLOY ORDER: this INSERT names a column migration 0008 creates. Additive, and migrations run
    * before the deploy in the normal order — but a worker deployed against an un-migrated database
-   * fails this statement, so the order is a requirement here and not an incidental. */
+   * fails this statement, so the order is a requirement here and not an incidental. The same now
+   * applies to `content_hash` (migration 0018, media-dedupe P1) — except that preflight's
+   * `findSchemaDrift` runs the existence check FIRST, so an un-migrated database takes the
+   * workflow red before a job is claimed, rather than dropping a photograph after the money was
+   * spent. */
   await sql`
     insert into nina_messages
       (id, user_id, session_id, role, text, source, turn_id, reply_to_id, photo_only)
@@ -806,10 +814,12 @@ export async function finishSelfie(
   `
   await sql`
     insert into nina_message_images
-      (id, user_id, message_id, kind, blob_url, pathname, width, height, bytes, description, prompt, sort_order)
+      (id, user_id, message_id, kind, blob_url, pathname, width, height, bytes, description, prompt,
+       content_hash, sort_order)
     values (
       ${imageId}, ${userId}, ${messageId}, 'generated', ${image.blobUrl}, ${image.pathname},
-      ${NINA_IMAGE_WIDTH}, ${NINA_IMAGE_HEIGHT}, ${image.bytes}, ${args.scene}, ${args.sidecar}, 0
+      ${NINA_IMAGE_WIDTH}, ${NINA_IMAGE_HEIGHT}, ${image.bytes}, ${args.scene}, ${args.sidecar},
+      ${image.contentHash ?? null}, 0
     )
   `
   await sql`

@@ -1143,6 +1143,38 @@ export const ninaMessageImages = pgTable(
     sourceImageId: text('source_image_id').references((): AnyPgColumn => ninaMessageImages.id, {
       onDelete: 'set null',
     }),
+    /**
+     * ── CONTENT HASH: WHAT MAKES "THESE BYTES ARE ALREADY STORED" AN INDEXED QUESTION ──────────
+     *
+     * sha-256 over the EXACT bytes this row's Blob object stores, as 64 lowercase hex characters.
+     * `lib/photos/contentHash.ts` is the only intended producer. One semantics, stated once:
+     * **equal hash ⟺ equal stored bytes.** Not a hash of the file he picked (the server never
+     * sees it — the upload PUT goes browser → Blob directly), and not a perceptual hash (plan
+     * Decisions — cross-encoding dedup is YAGNI; the measured duplicates were the same file picked
+     * twice). A recompression that lands on different bytes is two objects that are honestly
+     * different at the only level this table can see, which is storage.
+     *
+     * **User-scoped, never global.** The lookup key is `(user_id, content_hash)` and the partial
+     * index below serves exactly that shape. Dedup must not link one user's bytes to another's —
+     * ownership is per-user, and the Blob release path (`isBlobPathnameReferenced`) is
+     * user-scoped, so a shared pointer would let one user's delete free bytes another user still
+     * renders.
+     *
+     * **NULL is a real, permanent state, not a gap to fill on the next write.** A row predating
+     * this column, and any write whose path had no bytes in hand to hash, both store NULL — and
+     * NULL means "dedup is INACTIVE for this row": SQL `=` against NULL never matches, so no
+     * consumer needs a special case, and none may invent one that treats NULL as "definitely
+     * unique". The backfill sweep (media-dedupe phase 4) fills the historical rows once, from the
+     * Blob itself; nothing writes this column after insert.
+     *
+     * **Why a plain index and not UNIQUE.** The duplicate row this mechanism writes is a
+     * REFERENCE — copy `blob_url`/`pathname`, set `source_image_id`, the F37 shape — because the
+     * plan's decision is that the latecomer row STAYS (a bubble must not be emptied to save
+     * storage). A unique index would turn that race-close into a thrown INSERT, and would force
+     * reference rows either to lie (NULL hash) or to collide. Uniqueness here is a decision the
+     * write path makes after a lookup; the index makes the lookup cheap, nothing more.
+     */
+    contentHash: text('content_hash'),
     /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
@@ -1152,6 +1184,16 @@ export const ninaMessageImages = pgTable(
     index('nina_message_images_message_idx').on(t.messageId),
     /** Phase 13's gallery, newest first, without a join. */
     index('nina_message_images_user_created_idx').on(t.userId, t.createdAt.desc()),
+    /**
+     * The write-time dedup lookup — "does THIS user already store these bytes?" — as one indexed
+     * question instead of a per-write scan. Partial on purpose: a NULL row (everything written
+     * before this column, and any write that could not hash) can never be a match, so leaving it
+     * out keeps the index down to the rows the mechanism can answer about. Non-unique; the
+     * column's header carries the argument for why the schema does not enforce uniqueness here.
+     */
+    index('nina_message_images_user_content_hash_idx')
+      .on(t.userId, t.contentHash)
+      .where(sql`${t.contentHash} is not null`),
   ],
 )
 

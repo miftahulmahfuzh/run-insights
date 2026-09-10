@@ -6,8 +6,8 @@
 **Worktree:** `/home/miftah/.worktrees/media-dedupe`
 **Branch:** `feature/media-dedupe` (base: `origin/main` @ `ac9cf03`)
 **Phases:** 4
-**Status:** planned
-**Coordinator:** —
+**Status:** phase 1/4 complete
+**Coordinator:** orch-media-dedupe
 
 <The Coordinator line is the peer address of the session driving this set, filled in by
 `/analyze-orchestrator` when it takes the set over. Leave it `—`.>
@@ -72,10 +72,10 @@ lihat Keputusan); perubahan pada keempat read yang tidak boleh memfilter
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Foundation: `content_hash` kolom, util hash, plumbing data | R1 | `lib/db`, `lib/photos`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/media-dedupe/phase-1.md` | — | — |
-| 2 | Write-time dedup: jalur upload chat runner | R1, R2, R3 | `components/nina`, `lib/nina` | 6 | 1 | HARD | `.workflows/plan/media-dedupe/phase-2.md` | — | — |
-| 3 | Write-time dedup: jalur generated + admin | R1, R2 | `lib/nina`, `lib/admin`, `scripts` | 15 | 1 | HARD | `.workflows/plan/media-dedupe/phase-3.md` | — | — |
-| 4 | Backfill sweep: hash-fill + peleburan duplikat existing | R1, R2, R3 | `scripts` | 4 | 1 | NORMAL | `.workflows/plan/media-dedupe/phase-4.md` | — | — |
+| 1 ✅ | Foundation: `content_hash` kolom, util hash, plumbing data | R1 | `lib/db`, `lib/photos`, `lib/nina` | 8 | — | NORMAL | `.workflows/plan/media-dedupe/phase-1.md` | P1-DB-A006 | — |
+| 2 | Write-time dedup: jalur upload chat runner | R1, R2, R3 | `components/nina`, `lib/nina` | 6 | 1 | HARD | `.workflows/plan/media-dedupe/phase-2.md` | P1-CN-A004 | — |
+| 3 | Write-time dedup: jalur generated + admin | R1, R2 | `lib/nina`, `lib/admin`, `scripts` | 15 | 1 | HARD | `.workflows/plan/media-dedupe/phase-3.md` | P1-NIN-A033 | — |
+| 4 | Backfill sweep: hash-fill + peleburan duplikat existing | R1, R2, R3 | `scripts` | 4 | 1 | NORMAL | `.workflows/plan/media-dedupe/phase-4.md` | P1-SC-A001 | — |
 
 **Dua aturan keeper, disengaja — jangan disatukan.** Write-time attach (P2/P3) memakai aturan
 `findNinaImageByContentHash` (P1): original TERBARU dengan hash itu, karena baris terbaru paling

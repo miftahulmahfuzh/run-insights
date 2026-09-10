@@ -113,6 +113,16 @@
   - **Method**: /implement (swarm wave 1)
   - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
 
+- [ ] **P1-NIN-A033** Phase 3: Write-time dedup: jalur generated + admin
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns: `lib/nina/imagerun.ts` `storeNinaImage` hash bytes sebelum `put`; bila original (user, hash) sudah ada → skip `put`, insert reference ke existing; lockstep perilaku sama di `scripts/nina-image-worker.ts` (raw SQL, + test). `lib/admin/chatPhotoUpload.ts` hash blob hasil encode; pre-check sebelum `upload()`; klaim hash → `addChatPhotoAction` validasi + tulis; race/dupe admin ikut invariant 2-3. Exit: generate/admin-add yang bytes-nya sudah ada tidak menciptakan objek blob baru; worker script perilakunya setara; test untuk kedua jalur.
+  - **Status**: blocked
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R1, R2 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan).
+  - **Depends on**: `P1-DB-A006`
+  - **Plan**: `.workflows/plan/P1-NIN-A033.md`
+
 ### [P2] Medium
 
 ### [P3] Low

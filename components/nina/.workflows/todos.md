@@ -22,6 +22,16 @@
 
 ### [P1] High
 
+- [ ] **P1-CN-A004** Phase 2: Write-time dedup: jalur upload chat runner
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns: `Composer.tsx` hash `compressed.file` via util P1; pre-check server (action owner-scoped baru di `actions.ts`, finder P1) SEBELUM `upload()`; bila duplikat → tile memakai foto existing sebagai attachment reference (seam `?photo=image:<id>` / `resolveAttachment`, bukan insert arm baru); bila tidak → klaim hash ikut `sendNinaMessage`, divalidasi 64-hex. Race-close di STEP 1b: bila original lain dengan hash sama sudah ada saat insert → baris baru REFERENCE (copy `blob_url`/`pathname` keeper + `source_image_id`) dan blob baru di-release (`releaseBlobIfUnreferenced`, row-first-blob-second). Exit: pick file sama dua kali → hanya satu objek blob baru, kedua jadi reference tersembunyi dari Media; dua send balapan → satu objek + satu original; test unit skip + race-close.
+  - **Status**: open
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1, R2, R3 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan); R3: Section Media tetap tidy (foto sama tidak muncul dua kali di feed).
+  - **Depends on**: `P1-DB-A006`
+  - **Plan**: `.workflows/plan/P1-CN-A004.md`
+
 ### [P2] Medium
 
 ### [P3] Low

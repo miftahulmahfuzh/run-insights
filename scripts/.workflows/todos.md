@@ -30,6 +30,16 @@
   - **Depends on**: `P1-DB-A004`
   - **Plan**: `.workflows/plan/P1-SC-A000.md`
 
+- [ ] **P1-SC-A001** Phase 4: Backfill sweep: hash-fill + peleburan duplikat existing
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns: script BARU `scripts/nina-dedupe-media.mjs` (+ npm script `nina:dedupe-media`, pola `blob-reap.mjs`: `--env-file=.env.local`, createRequire, dry-run default, `--apply`): pass 1 hash-fill semua baris original (GET blob → sha256 → UPDATE); pass 2 grup per `(user_id, content_hash)` antara ORIGINAL → elect keeper (`message_id NOT NULL > description NOT NULL > oldest created_at > id`) → loser: repoint `blob_url`/`pathname` ke keeper + `source_image_id = keeper.id` → release blob loser hanya bila refCount 0. Juga menyatukan baris reference yang memegang URL berbeda dari keeper-nya. Idempoten. Exit: dry-run melaporkan persis 2 grup objek-duplikat terukur; setelah `--apply`: dua objek loser terhapus dari store, baris tetap ada, Media tampil tiap foto tepat sekali; re-run = 0 perubahan.
+  - **Status**: blocked
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R1, R2, R3 — R2: Konsumsi storage prod minimum; R3: Section Media tetap tidy.
+  - **Depends on**: `P1-DB-A006`
+  - **Plan**: `.workflows/plan/P1-SC-A001.md`
+
 ### [P2] Medium
 
 ### [P3] Low

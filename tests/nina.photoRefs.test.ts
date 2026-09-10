@@ -47,6 +47,9 @@ afterEach(() => {
 
 const REFERENCE_SKIPPED = ['"source_avatar_id" is null', '"source_image_id" is null'] as const
 
+/** NIST FIPS 180-4's SHA-256("abc") — any 64-lowercase-hex literal would do for the shape tests. */
+const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+
 /**
  * The WHERE clause alone. Both columns are in `imageColumns`, so they appear in every SELECT list
  * on this table — an unscoped `not.toContain` would fail on the projection and prove nothing. The
@@ -167,6 +170,50 @@ describe('insertNinaMessageImages names both columns on every path', () => {
       },
     ])
     expect(fake.queries[1]!.params).toContain('avatarAAAAAA')
+  })
+
+  it('names content_hash and binds NULL while nobody sends a hash yet', async () => {
+    // media-dedupe P1: the column pass-through, live before any caller. The F37 tests above
+    // assert the same shape for the provenance pair; this is its third member.
+    fake.enqueue([[MESSAGE]], [])
+    await queries.insertNinaMessageImages('u1', [
+      { messageId: MESSAGE, kind: 'upload', blobUrl: 'https://x/a.jpg', pathname: 'nina/u1/a.jpg' },
+    ])
+
+    const insert = fake.sqlAt(1)
+    expect(insert).toContain('"content_hash"')
+    expect(fake.queries[1]!.params).toContain(null)
+  })
+
+  it('binds a valid hash claim as given', async () => {
+    fake.enqueue([[MESSAGE]], [])
+    await queries.insertNinaMessageImages('u1', [
+      {
+        messageId: MESSAGE,
+        kind: 'upload',
+        blobUrl: 'https://x/a.jpg',
+        pathname: 'nina/u1/a.jpg',
+        contentHash: ABC_SHA256,
+      },
+    ])
+    expect(fake.queries[1]!.params).toContain(ABC_SHA256)
+  })
+
+  it('coerces a malformed hash claim to NULL rather than storing it (invariant 9)', async () => {
+    // The claim came from a client; the column only ever holds what isValidContentHash accepts.
+    // Dedup going quietly inactive beats a send error, and beats a column that lies.
+    fake.enqueue([[MESSAGE]], [])
+    await queries.insertNinaMessageImages('u1', [
+      {
+        messageId: MESSAGE,
+        kind: 'upload',
+        blobUrl: 'https://x/a.jpg',
+        pathname: 'nina/u1/a.jpg',
+        contentHash: 'NOT-A-HASH',
+      },
+    ])
+    expect(fake.queries[1]!.params).not.toContain('NOT-A-HASH')
+    expect(fake.queries[1]!.params).toContain(null)
   })
 })
 
