@@ -333,3 +333,152 @@ export function releaseDecision(counts) {
   if (imageRefs > 0) return 'kept-shared'
   return 'released'
 }
+
+/* ── THE PERCEPTUAL PASS (2026-09-10's measured defect) ────────────────────────────────────────
+ * Everything above groups by `content_hash` — the byte-exact question the column can answer. The
+ * measured production pair `DfeYafysbVAe` + `zGGxRerRI_jS` is the class that question cannot see:
+ * a photograph downloaded out of the collection and re-uploaded RE-ENCODES on pick
+ * (`compressForNina`, 1024 px / q0.75), so the new row's bytes — and hash — differ from the
+ * original's, while the pixels are the same photograph. Measured on that pair: 64-bit difference
+ * hash 0/64, 16x16 grayscale mean-abs 0.1/255. A recode is perceptually the SAME image.
+ *
+ * The pass is deliberately CONSERVATIVE, because a perceptual merge can destroy a near-miss
+ * (two shots of the same court are not duplicates). Three gates, ALL required, all measured:
+ *   1. same `width` AND `height`, both non-null — a recode passes through at its own size;
+ *   2. dHash distance ≤ `PERCEPTUAL_MAX_DHASH` (of 64);
+ *   3. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16` (of 255).
+ * Only ORIGINALS participate — a reference is already hidden from the collection reads, so it is
+ * not a tile anybody sees twice. Merges never cross users. A row whose bytes were never signed
+ * (failed GET, undecodable file) simply does not participate.
+ *
+ * ── THE LOSER CARRIES THE KEEPER'S BYTE-FACTS ─────────────────────────────────────────────────
+ * The byte pass's `merge-row` needs no hash/dimension fields: hash equality is what PUT the pair
+ * in one group, so the repointed row's columns stay true as they are. Here they DIFFER, and after
+ * the repoint the row renders the keeper's object — so the op carries the keeper's
+ * `content_hash`/`width`/`height`/`bytes` and the executor writes them, or the repointed row
+ * describes bytes it no longer serves (the exact lie a row's columns must never tell).
+ *
+ * ── IDEMPOTENCE ────────────────────────────────────────────────────────────────────────────────
+ * After a perceptual merge the loser is a reference (excluded here) whose copied hash puts it in
+ * the byte pass's `tidy` bucket. A second run proposes nothing — same contract as the byte pass.
+ */
+
+/** Measured 2026-09-10 on `DfeYafysbVAe` + `zGGxRerRI_jS`: 0 and 0.1. Pinned one step above. */
+export const PERCEPTUAL_MAX_DHASH = 1
+export const PERCEPTUAL_MAX_SIG16 = 2
+
+/** Hamming distance between two 64-bit difference hashes (bigints). */
+export function dhashHamming(a, b) {
+  let count = 0
+  let diff = a ^ b
+  while (diff !== 0n) {
+    if (diff & 1n) count++
+    diff >>= 1n
+  }
+  return count
+}
+
+/** Mean absolute difference over two equal-length grayscale signatures. Mismatched → Infinity. */
+export function sig16MeanAbs(a, b) {
+  if (a == null || b == null || a.length !== b.length || a.length === 0)
+    return Number.POSITIVE_INFINITY
+  let total = 0
+  for (let i = 0; i < a.length; i++) total += Math.abs(a[i] - b[i])
+  return total / a.length
+}
+
+/** The three gates of the header, as one predicate. `false` for anything unsigned or undimensioned. */
+export function isPerceptualTwin(a, b) {
+  if (a?.width == null || a?.height == null || b?.width == null || b?.height == null) return false
+  if (a.width !== b.width || a.height !== b.height) return false
+  const asig = a.sig
+  const bsig = b.sig
+  if (asig == null || bsig == null) return false
+  if (typeof asig.dhash !== 'bigint' || typeof bsig.dhash !== 'bigint') return false
+  if (dhashHamming(asig.dhash, bsig.dhash) > PERCEPTUAL_MAX_DHASH) return false
+  return sig16MeanAbs(asig.sig16, bsig.sig16) <= PERCEPTUAL_MAX_SIG16
+}
+
+/**
+ * rows (+ `sig` where the ops script measured one) → `{ ops, groups }`, the byte pass's shape.
+ * `excludeIds` — ids the byte plan is already repointing THIS run; a row must never be repointed
+ * twice in one run. Clusters are per-user components over `isPerceptualTwin` edges; the keeper is
+ * `electKeeper`'s standing order; ops are `merge-row`s (with the keeper's byte-facts) before
+ * `release-blob`s, releases deduplicated by pathname+URL — all as `buildMergePlan` does it.
+ */
+export function buildPerceptualMergePlan(rows, excludeIds) {
+  const excluded = excludeIds ?? new Set()
+  const eligible = rows.filter((r) => !excluded.has(r.id) && isOriginalRow(r) && r.sig != null)
+
+  /* Per-user union over twin edges — small n, so growth-by-scan beats a real union-find. */
+  const byUser = new Map()
+  for (const r of eligible) {
+    const members = byUser.get(r.userId)
+    if (members) members.push(r)
+    else byUser.set(r.userId, [r])
+  }
+
+  const mutations = []
+  const groups = []
+  for (const [userId, members] of byUser) {
+    const unclustered = [...members].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    while (unclustered.length > 0) {
+      const cluster = [unclustered.shift()]
+      let grew = true
+      while (grew) {
+        grew = false
+        for (let i = unclustered.length - 1; i >= 0; i--) {
+          if (cluster.some((m) => isPerceptualTwin(m, unclustered[i]))) {
+            cluster.push(unclustered.splice(i, 1)[0])
+            grew = true
+          }
+        }
+      }
+      if (cluster.length < 2) continue
+
+      const keeper = electKeeper(cluster)
+      const losers = cluster
+        .filter((r) => r.id !== keeper.id)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      const released = []
+      const pairs = []
+      for (const loser of losers) {
+        mutations.push({
+          op: 'merge-row',
+          id: loser.id,
+          keeperId: keeper.id,
+          blobUrl: keeper.blobUrl,
+          pathname: keeper.pathname,
+          contentHash: keeper.contentHash,
+          width: keeper.width,
+          height: keeper.height,
+          bytes: keeper.bytes,
+        })
+        pairs.push({
+          loserId: loser.id,
+          dhash: dhashHamming(loser.sig.dhash, keeper.sig.dhash),
+          sig16: Math.round(sig16MeanAbs(loser.sig.sig16, keeper.sig.sig16) * 100) / 100,
+        })
+        if (!released.some((r) => r.pathname === loser.pathname && r.blobUrl === loser.blobUrl)) {
+          released.push({ pathname: loser.pathname, blobUrl: loser.blobUrl, bytes: loser.bytes })
+        }
+      }
+      for (const r of released) {
+        mutations.push({ op: 'release-blob', userId, ...r })
+      }
+      groups.push({
+        userId,
+        action: 'merge',
+        perceptual: true,
+        keeperId: keeper.id,
+        loserIds: losers.map((l) => l.id),
+        releaseCount: released.length,
+        ids: cluster.map((m) => m.id),
+        pairs,
+      })
+    }
+  }
+
+  groups.sort((a, b) => a.keeperId.localeCompare(b.keeperId))
+  return { ops: mutations, groups }
+}

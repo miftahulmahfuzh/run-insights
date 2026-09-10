@@ -25,8 +25,17 @@
  *  3b. VERIFY GATE: every member of a multi-row group that did NOT just get filled is re-fetched
  *      and re-hashed. A stored hash a fresh GET contradicts is a `hash-repair` op plus a skipped
  *      group. `scripts/nina-dedupe-media.mjs` trusts a hash it did not just measure for nothing.
+ *  3c. PERCEPTUAL SIGNATURES: every ORIGINAL is fetched once more and signed (64-bit dHash +
+ *      16x16 grayscale mean-abs, via sharp — the pass goes quiet, not the sweep, without it).
+ *      This is what sees the pass the byte keys cannot: a photograph downloaded out of the
+ *      collection and re-uploaded RE-ENCODES on pick, so its hash differs from the original's
+ *      while the pixels are the same photograph (measured 2026-09-10: `DfeYafysbVAe` +
+ *      `zGGxRerRI_jS`, dHash 0/64, mean-abs 0.1/255).
  *  4. PASS 2 (merge): `buildMergePlan` groups by (user_id, content_hash), elects keepers among
- *      originals, and returns the ordered ops.
+ *      originals, and returns the ordered ops; `buildPerceptualMergePlan` then clusters the
+ *      remaining originals at conservative gates (same dimensions, dHash ≤ 1, mean-abs ≤ 2 —
+ *      read `scripts/nina-dedupe-plan.mjs`'s header before loosening either number). A row the
+ *      byte plan repoints is excluded from the perceptual plan — no row is repointed twice.
  *  5. report — every op printed (`fill-hash` first, then the merge plan's). DRY RUN STOPS HERE.
  *  6. `--apply` executes ops in order — fills, repairs, repoints, then releases; each
  *      `release-blob` re-asks the live reference gate first
@@ -54,6 +63,7 @@ import { pathToFileURL } from 'node:url'
 import {
   buildFillOps,
   buildMergePlan,
+  buildPerceptualMergePlan,
   isOriginalRow,
   isStoreUrl,
   parseArgs,
@@ -64,6 +74,14 @@ import {
 const require = createRequire(import.meta.url)
 const { del } = require('@vercel/blob')
 const { neon } = require('@neondatabase/serverless')
+/* sharp signs the originals for the perceptual pass. If it is missing the sweep still runs —
+ * only the perceptual half goes quiet; the byte passes never needed it. */
+let sharp = null
+try {
+  sharp = require('sharp')
+} catch {
+  sharp = null
+}
 
 const kb = (n) => (n == null ? '?' : `${(n / 1000).toFixed(1)} KB`)
 
@@ -124,6 +142,8 @@ async function main() {
     blobUrl: r.blob_url,
     pathname: r.pathname,
     bytes: r.bytes,
+    width: r.width,
+    height: r.height,
     description: r.description,
     sourceAvatarId: r.source_avatar_id,
     sourceImageId: r.source_image_id,
@@ -173,13 +193,38 @@ async function main() {
     if (got.hash !== row.contentHash) row.staleHash = true
   }
 
-  /* ── 4. PASS 2 — the merge plan ────────────────────────────────────────────────────────────── */
+  /* ── 3c. PERCEPTUAL SIGNATURES — sign every original, so re-encode twins are visible ───────── */
+  const originalCount = rows.filter((r) => isOriginalRow(r)).length
+  let unsigned = 0
+  if (sharp == null) {
+    console.log('perceptual signatures        skipped — sharp is not installed')
+  } else {
+    for (const row of rows) {
+      if (!isOriginalRow(row) || row.sig != null || row.hashFailed) continue
+      const got = await fetchRowBytes(row)
+      if (!got.ok) {
+        unsigned++
+        continue
+      }
+      try {
+        row.sig = await signBytes(got.bytes)
+      } catch {
+        unsigned++ // undecodable bytes — the row simply does not participate in the perceptual pass
+      }
+    }
+  }
+
+  /* ── 4. PASS 2 — the merge plan (byte-exact first, then the perceptual pass on the remainder) ─ */
   const plannable = rows.filter((r) => r.contentHash != null)
   const plan = buildMergePlan(plannable)
+  /* A row the byte pass repoints is a reference by the time the perceptual plan would run — and
+   * no row may be repointed twice in one run. Excluded, not skipped: its own merge already lands. */
+  const byteLoserIds = new Set(plan.ops.filter((o) => o.op === 'merge-row').map((o) => o.id))
+  const perceptual = buildPerceptualMergePlan(rows, byteLoserIds)
   /* Pass 1's fills are WRITES, not report lines: they join the op list ahead of every
    * repair/repoint/release, so the dry run prints them and --apply executes them. The first
    * landing computed them and wrote nothing — the bug this line exists to keep dead. */
-  const ops = [...buildFillOps(rows), ...plan.ops]
+  const ops = [...buildFillOps(rows), ...plan.ops, ...perceptual.ops]
   const findings = plan.groups.filter((g) => g.action === 'merge')
   const tidy = plan.groups.filter((g) => g.action === 'tidy')
   const skipped = plan.groups.filter((g) => g.action === 'skipped')
@@ -202,8 +247,16 @@ async function main() {
     )
   }
   console.log(
-    `groups                       ${findings.length} finding(s) / ${tidy.length} tidy / ${skipped.length} skipped`,
+    `groups                       ${findings.length} byte finding(s) / ${perceptual.groups.length} perceptual / ${tidy.length} tidy / ${skipped.length} skipped`,
   )
+  if (sharp != null) {
+    const signedCount = rows.filter((r) => r.sig != null).length
+    console.log(
+      `perceptual signatures        ${signedCount} of ${originalCount} originals${
+        unsigned ? ` (${unsigned} unsigned — they do not participate)` : ''
+      }`,
+    )
+  }
 
   for (const g of findings) {
     const keeper = rowById.get(g.keeperId)
@@ -225,6 +278,33 @@ async function main() {
       )
       console.log(
         `    → merge-row  ${loser.id}: blob_url/pathname → keeper, source_image_id = ${g.keeperId}`,
+      )
+      console.log(`    → release    ${loser.pathname} (${kb(loser.bytes)}) if live refs = 0`)
+    }
+  }
+  for (const g of perceptual.groups) {
+    const keeper = rowById.get(g.keeperId)
+    console.log('')
+    console.log(
+      `PERCEPTUAL FINDING  keeper ${g.keeperId}  ${g.ids.length} rows  (same pixels, different bytes)`,
+    )
+    console.log(
+      `  keeper   ${keeper.pathname}  message=${keeper.messageId ?? 'null'} ${
+        keeper.description ? 'described' : 'undescribed'
+      }  ${kb(keeper.bytes)}`,
+    )
+    for (const p of g.pairs) {
+      const loser = rowById.get(p.loserId)
+      console.log(
+        `  loser    ${loser.pathname}  message=${loser.messageId ?? 'null'} ${
+          isOriginalRow(loser) ? 'original' : 'reference'
+        }  ${kb(loser.bytes)}`,
+      )
+      console.log(
+        `    measured  dHash ${p.dhash}/64, 16x16 mean-abs ${p.sig16}/255  (gates: ≤1, ≤2)`,
+      )
+      console.log(
+        `    → merge-row  ${p.loserId}: blob_url/pathname → keeper, source_image_id = ${g.keeperId}, byte-facts → keeper's`,
       )
       console.log(`    → release    ${loser.pathname} (${kb(loser.bytes)}) if live refs = 0`)
     }
@@ -251,6 +331,10 @@ async function main() {
     if (op.op === 'merge-row')
       console.log(
         `UPDATE nina_message_images SET blob_url = '${op.blobUrl}', pathname = '${op.pathname}', source_image_id = '${op.keeperId}' WHERE id = '${op.id}'`,
+      )
+    if (op.op === 'merge-row' && op.contentHash != null)
+      console.log(
+        `UPDATE nina_message_images SET content_hash = '${op.contentHash}', width = ${op.width}, height = ${op.height}, bytes = ${op.bytes} WHERE id = '${op.id}'  (perceptual — the row now serves the keeper's bytes)`,
       )
     if (op.op === 'release-blob')
       console.log(
@@ -288,6 +372,17 @@ async function main() {
              set blob_url = ${op.blobUrl}, pathname = ${op.pathname}, source_image_id = ${op.keeperId}
            where id = ${op.id}
         `
+        /* The perceptual pass's byte-facts: the repointed row now serves the keeper's object, so
+         * its hash/dimensions/size must describe THOSE bytes, not the ones it just stopped
+         * naming. Absent on the byte pass's ops — there, hash equality already holds. */
+        if (op.contentHash != null) {
+          await sql`
+            update nina_message_images
+               set content_hash = ${op.contentHash}, width = ${op.width},
+                   height = ${op.height}, bytes = ${op.bytes}
+             where id = ${op.id}
+          `
+        }
       } else if (op.op === 'release-blob') {
         if (!isStoreUrl(op.blobUrl))
           throw new Error(`refusing to release a non-store URL: ${op.blobUrl}`)
@@ -342,10 +437,30 @@ async function fetchRowBytes(row) {
     const res = await fetch(row.blobUrl)
     if (!res.ok) return { ok: false, reason: `GET ${res.status}` }
     const bytes = new Uint8Array(await res.arrayBuffer())
-    return { ok: true, hash: sha256Hex(bytes), size: bytes.byteLength }
+    return { ok: true, hash: sha256Hex(bytes), size: bytes.byteLength, bytes }
   } catch (error) {
     return { ok: false, reason: `GET failed: ${error.message}` }
   }
+}
+
+/**
+ * The perceptual pass's only inputs, measured off the same GET that hashed the row: a 64-bit
+ * difference hash over a 9x8 grayscale thumbnail and the 16x16 grayscale signature itself.
+ * Constant memory — the buffer is dropped the moment both are computed.
+ */
+async function signBytes(bytes) {
+  const img = sharp(bytes, { failOn: 'none' })
+  const [sig16, dh] = await Promise.all([
+    img.clone().resize(16, 16, { fit: 'fill' }).grayscale().raw().toBuffer(),
+    img.clone().resize(9, 8, { fit: 'fill' }).grayscale().raw().toBuffer(),
+  ])
+  let dhash = 0n
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      if (dh[y * 9 + x] > dh[y * 9 + x + 1]) dhash |= 1n << BigInt(y * 8 + x)
+    }
+  }
+  return { dhash, sig16: new Uint8Array(sig16) }
 }
 
 /* Run only as the process entry point, so `tests/nina.dedupeMedia.test.ts` can import the pure

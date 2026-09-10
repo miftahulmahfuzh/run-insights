@@ -4,16 +4,22 @@ import { contentHashOf } from '@/lib/photos/contentHash'
 import {
   buildFillOps,
   buildMergePlan,
+  buildPerceptualMergePlan,
   compareKeeperCandidates,
+  dhashHamming,
   electKeeper,
   groupKeyOf,
   isOriginalRow,
+  isPerceptualTwin,
   isSha256Hex,
   isStoreUrl,
   parseArgs,
   partitionGroup,
+  PERCEPTUAL_MAX_DHASH,
+  PERCEPTUAL_MAX_SIG16,
   releaseDecision,
   sha256Hex,
+  sig16MeanAbs,
 } from '@/scripts/nina-dedupe-plan.mjs'
 
 /**
@@ -407,5 +413,168 @@ describe('releaseDecision', () => {
     expect(releaseDecision({ imageRefs: null, avatarRefs: 0, jsonbRefs: 0 })).toBe('kept-unknown')
     expect(releaseDecision({})).toBe('kept-unknown')
     expect(releaseDecision({ imageRefs: 0, avatarRefs: -1, jsonbRefs: 0 })).toBe('kept-unknown')
+  })
+})
+
+/* ── the perceptual pass (2026-09-10's measured defect) ───────────────────────────────────────
+ * A photograph downloaded out of the collection and re-uploaded re-encodes on pick, so its bytes
+ * — and therefore its content_hash — differ from the original's, and the byte pass can never see
+ * the pair. The measured production pair `DfeYafysbVAe` + `zGGxRerRI_jS` (a q0.75 re-encode of
+ * the same 679x1024 pixels) measured dHash 0/64 and a 16x16 mean-abs of 0.1/255: a re-encode is
+ * perceptually the SAME photograph. The thresholds pin THAT, and nothing looser.
+ */
+const uniform16 = (v: number): Uint8Array => Uint8Array.from({ length: 256 }, () => v)
+const sigOf = (dhash: bigint, sig16: Uint8Array) => ({ dhash, sig16 })
+
+/** A minimal verified original WITH the byte-facts and signature the perceptual pass reads. */
+const prow = (
+  over: Partial<Row> & Pick<Row, 'id'> & { width?: number; height?: number; sig?: unknown },
+): Row =>
+  row({
+    width: 679,
+    height: 1024,
+    sig: sigOf(0n, uniform16(100)),
+    createdAt: '2026-09-08T02:00:00Z',
+    ...over,
+  } as Parameters<typeof row>[0]) as Row
+
+describe('perceptual thresholds', () => {
+  it('pins the measured gates — dHash ≤ 1 of 64, 16x16 mean-abs ≤ 2 of 255', () => {
+    expect(PERCEPTUAL_MAX_DHASH).toBe(1)
+    expect(PERCEPTUAL_MAX_SIG16).toBe(2)
+  })
+  it('dhashHamming counts differing bits', () => {
+    expect(dhashHamming(0n, 0n)).toBe(0)
+    expect(dhashHamming(0b1n, 0b0n)).toBe(1)
+    expect(dhashHamming(0b1011n, 0b0000n)).toBe(3)
+    expect(dhashHamming(0xffn << 56n, 0n)).toBe(8)
+  })
+  it('sig16MeanAbs is the mean absolute difference over the 256 cells', () => {
+    expect(sig16MeanAbs(uniform16(100), uniform16(100))).toBe(0)
+    expect(sig16MeanAbs(uniform16(100), uniform16(101))).toBe(1)
+    expect(sig16MeanAbs(uniform16(100), uniform16(103))).toBe(3)
+  })
+})
+
+describe('isPerceptualTwin', () => {
+  it('accepts the measured pair — same dims, dHash 0, mean-abs 0.1', () => {
+    const a = prow({ id: 'DfeYafysbVAe' })
+    const b = prow({
+      id: 'zGGxRerRI_jS',
+      createdAt: '2026-09-10T08:11:00Z',
+      sig: sigOf(
+        0n,
+        Uint8Array.from({ length: 256 }, (_, i) => 100 + (i % 2)),
+      ),
+    })
+    expect(isPerceptualTwin(a, b)).toBe(true)
+  })
+  it('is inclusive at both gates', () => {
+    const a = prow({ id: 'a' })
+    const dhashAtGate = prow({ id: 'b', sig: sigOf(BigInt(PERCEPTUAL_MAX_DHASH), uniform16(100)) })
+    const sigAtGate = prow({
+      id: 'c',
+      sig: sigOf(
+        0n,
+        Uint8Array.from({ length: 256 }, (_, i) => (i < 128 ? 104 : 100)),
+      ),
+    }) // mean-abs = (128*4 + 128*0)/256 = 2 — exactly at the gate
+    expect(isPerceptualTwin(a, dhashAtGate)).toBe(true)
+    expect(isPerceptualTwin(a, sigAtGate)).toBe(true)
+  })
+  it('refuses beyond either gate', () => {
+    const a = prow({ id: 'a' })
+    expect(isPerceptualTwin(a, prow({ id: 'b', sig: sigOf(0b11n, uniform16(100)) }))).toBe(false) // two differing bits — one past the dHash gate
+    expect(isPerceptualTwin(a, prow({ id: 'b', sig: sigOf(0n, uniform16(103)) }))).toBe(false)
+  })
+  it('refuses different or missing dimensions — a recode keeps dims, a different crop does not', () => {
+    const a = prow({ id: 'a' })
+    expect(isPerceptualTwin(a, prow({ id: 'b', width: 768 }))).toBe(false)
+    expect(isPerceptualTwin(a, prow({ id: 'b', height: 1152 }))).toBe(false)
+    expect(isPerceptualTwin(a, prow({ id: 'b', width: null }))).toBe(false)
+  })
+  it('refuses a row whose bytes were never signed', () => {
+    expect(isPerceptualTwin(prow({ id: 'a' }), prow({ id: 'b', sig: undefined }))).toBe(false)
+  })
+})
+
+describe('buildPerceptualMergePlan', () => {
+  it('merges the measured pair: repoint + byte-facts, then release — rows first, blob second', () => {
+    const keeper = prow({ id: 'DfeYafysbVAe', contentHash: H_SELFIE, messageId: 'msgA' })
+    const loser = prow({
+      id: 'zGGxRerRI_jS',
+      contentHash: H_KARTU,
+      createdAt: '2026-09-10T08:11:00Z',
+      messageId: 'msgB',
+    })
+    const { ops, groups } = buildPerceptualMergePlan([keeper, loser])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ action: 'merge', perceptual: true, keeperId: keeper.id })
+    expect(ops).toHaveLength(2)
+    expect(ops[0]).toEqual({
+      op: 'merge-row',
+      id: 'zGGxRerRI_jS',
+      keeperId: 'DfeYafysbVAe',
+      blobUrl: keeper.blobUrl,
+      pathname: keeper.pathname,
+      contentHash: H_SELFIE,
+      width: 679,
+      height: 1024,
+      bytes: 1000,
+    })
+    expect(ops[1]).toMatchObject({
+      op: 'release-blob',
+      pathname: loser.pathname,
+      blobUrl: loser.blobUrl,
+    })
+  })
+  it('elects the keeper with the standing order (message-anchored, described, oldest)', () => {
+    const old = prow({ id: 'old', createdAt: '2026-09-07T00:00:00Z' })
+    const newer = prow({ id: 'new', createdAt: '2026-09-10T00:00:00Z', messageId: 'm' })
+    const { groups } = buildPerceptualMergePlan([old, newer])
+    expect(groups[0].keeperId).toBe('new')
+  })
+  it('never merges across dimensions', () => {
+    const a = prow({ id: 'a' })
+    const b = prow({ id: 'b', width: 768 })
+    const { ops, groups } = buildPerceptualMergePlan([a, b])
+    expect(ops).toEqual([])
+    expect(groups).toEqual([])
+  })
+  it('never merges across users', () => {
+    const a = prow({ id: 'a' })
+    const b = prow({ id: 'b', userId: 'another-user' })
+    expect(buildPerceptualMergePlan([a, b]).ops).toEqual([])
+  })
+  it('a reference is not a tile — only originals participate', () => {
+    const a = prow({ id: 'a' })
+    const ref = prow({ id: 'ref', sourceImageId: 'a' })
+    const { ops, groups } = buildPerceptualMergePlan([a, ref])
+    expect(ops).toEqual([])
+    expect(groups).toEqual([])
+  })
+  it('unsigned rows are skipped, and a lone original produces nothing (idempotence)', () => {
+    const a = prow({ id: 'a' })
+    const unsigned = prow({ id: 'b', sig: undefined })
+    expect(buildPerceptualMergePlan([a, unsigned]).ops).toEqual([])
+    expect(buildPerceptualMergePlan([a]).ops).toEqual([])
+    expect(buildPerceptualMergePlan([a]).groups).toEqual([])
+  })
+  it('honours excludeIds — a row the byte pass already repointed this run is not touched twice', () => {
+    const a = prow({ id: 'a' })
+    const b = prow({ id: 'b', createdAt: '2026-09-10T00:00:00Z' })
+    expect(buildPerceptualMergePlan([a, b], new Set(['b'])).groups).toEqual([])
+  })
+  it('two losers sharing one old object release it once, after both repoints', () => {
+    const keeper = prow({ id: 'k', createdAt: '2026-09-07T00:00:00Z' })
+    const sharedUrl = `https://store.public.blob.vercel-storage.com/nina/${USER}/chat/shared.jpg`
+    const l1 = prow({ id: 'l1', blobUrl: sharedUrl, pathname: `nina/${USER}/chat/shared.jpg` })
+    const l2 = prow({ id: 'l2', blobUrl: sharedUrl, pathname: `nina/${USER}/chat/shared.jpg` })
+    const { ops } = buildPerceptualMergePlan([keeper, l1, l2])
+    const mergeIdx = ops.map((o) => o.op).lastIndexOf('merge-row')
+    const releaseIdx = ops.map((o) => o.op).indexOf('release-blob')
+    expect(ops.filter((o) => o.op === 'merge-row')).toHaveLength(2)
+    expect(ops.filter((o) => o.op === 'release-blob')).toHaveLength(1)
+    expect(mergeIdx).toBeLessThan(releaseIdx)
   })
 })
