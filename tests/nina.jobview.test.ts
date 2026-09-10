@@ -332,11 +332,13 @@ describe('nextSoftNavJump is the one-shot rule for a jump that does not remount'
 })
 
 describe('planJobPhoto — the photograph link', () => {
+  const JOB_ID = 'jobAAAAAAAAA'
+
   it('names the row id in the about-viewer grammar, on the about route', () => {
     /* R2's destination is the EXISTING viewer: `/nina/about?photo=chat.<id>`. The dot spelling is
      * the about codec's (`.` survives URLSearchParams unencoded); the chat page's `?photo=` is a
      * DIFFERENT grammar with a colon, and plan invariant 5 keeps them separate. */
-    const plan = planJobPhoto({ purpose: 'selfie', imageId: 'imgAAAAAA1234' })
+    const plan = planJobPhoto({ jobId: JOB_ID, purpose: 'selfie', imageId: 'imgAAAAAA1234' })
     if (plan.kind !== 'ready') throw new Error('expected a ready plan')
     const url = new URL(plan.href, 'https://example.test')
     expect(url.pathname).toBe('/nina/about')
@@ -344,17 +346,34 @@ describe('planJobPhoto — the photograph link', () => {
     expect(plan.href).not.toContain('chat:')
   })
 
+  it('carries the job page as the RETURN leg, so closing the viewer lands back on Detail foto', () => {
+    /* The runner's production request: the viewer opened from Detail foto closes back onto
+     * Detail foto. History cannot answer it (a deep link has no in-app entry beneath it in a new
+     * tab), so the origin travels in the link — and the plan, not the page, spells it. */
+    const plan = planJobPhoto({ jobId: JOB_ID, purpose: 'selfie', imageId: 'imgAAAAAA1234' })
+    if (plan.kind !== 'ready') throw new Error('expected a ready plan')
+    const url = new URL(plan.href, 'https://example.test')
+    expect(url.searchParams.get('return')).toBe(`/nina/jobs/${JOB_ID}`)
+    /* And the origin survives the platform's own parse as an in-app path. */
+    expect(url.searchParams.get('return')).toMatch(/^\//)
+    expect(url.searchParams.get('return')).not.toMatch(/^\/\//)
+  })
+
   it('draws nothing for a job whose photo row is gone', () => {
     /* Admin Remove deletes the row; a removed session cascades the carrier message. Both arrive
      * as the same `null` from `getNinaJobPhoto` and the same `none` here — never a link the
      * server has not proved. */
-    expect(planJobPhoto({ purpose: 'selfie', imageId: null })).toEqual({ kind: 'none' })
+    expect(planJobPhoto({ jobId: JOB_ID, purpose: 'selfie', imageId: null })).toEqual({
+      kind: 'none',
+    })
   })
 
   it('never links an avatar job, even if a row somehow resolved', () => {
     /* The plan index's DECIDED rule: no job→avatar key exists. The arm lives in `planJobPhoto`
      * and not only in the page's query skip, so a future caller cannot draw the icon by
      * forgetting the skip. */
-    expect(planJobPhoto({ purpose: 'avatar', imageId: 'imgAAAAAA1234' })).toEqual({ kind: 'none' })
+    expect(planJobPhoto({ jobId: JOB_ID, purpose: 'avatar', imageId: 'imgAAAAAA1234' })).toEqual({
+      kind: 'none',
+    })
   })
 })

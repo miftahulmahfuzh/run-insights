@@ -481,9 +481,12 @@ export type NinaJobPhoto = { kind: 'ready'; href: string } | { kind: 'none' }
  *
  * `vitest.config.ts` is `environment: 'node'` with no jsdom, which is why `planJobJump` lives in
  * this file and not in `NinaJobDetail`; this function has exactly the same reason to sit beside
- * it. The page passes two facts it read under the runner's own `userId` — the job's `purpose` and
- * the photograph row's id (`getNinaJobPhoto`'s projection) — and gets back the value the client
- * renders without re-deriving anything.
+ * it. The page passes three facts it read under the runner's own `userId` — the job's `purpose`,
+ * the photograph row's id (`getNinaJobPhoto`'s projection) and the job's own id, which becomes
+ * the deep link's RETURN leg (`NINA_ABOUT_RETURN_PARAM`): the runner asked that closing the
+ * viewer opened from Detail foto land back on Detail foto, and the origin has to travel in the
+ * link because history cannot be presumed behind a deep link — and gets back the value the
+ * client renders without re-deriving anything.
  *
  * ── THE AVATAR ARM IS A DECIDED RULE, NOT JUST A SAVED QUERY ───────────────────────────────────
  * `finishAvatar` writes an `nina_avatars` row and NO carrier message, so no job id ever reaches
@@ -509,13 +512,18 @@ export type NinaJobPhoto = { kind: 'ready'; href: string } | { kind: 'none' }
  * codec had to move to `lib/` at all.
  */
 export function planJobPhoto(input: {
+  /** The job's id — the RETURN leg of the deep link, so closing the viewer lands back here. */
+  jobId: string
   purpose: 'selfie' | 'avatar'
   /** The job photograph's row id, or `null` when `getNinaJobPhoto` resolved nothing. */
   imageId: string | null
 }): NinaJobPhoto {
   if (input.purpose === 'avatar') return { kind: 'none' }
   if (input.imageId === null) return { kind: 'none' }
-  return { kind: 'ready', href: aboutPhotoHref('chat', input.imageId) }
+  return {
+    kind: 'ready',
+    href: aboutPhotoHref('chat', input.imageId, `/nina/jobs/${input.jobId}`),
+  }
 }
 
 /* ── the soft-navigation guard ────────────────────────────────────────────────────────────── */
