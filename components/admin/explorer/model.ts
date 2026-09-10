@@ -1,5 +1,7 @@
 import type { UploadRefusal } from '@/lib/admin/filetree'
 import type { NinaCropInput } from '@/lib/nina/crop'
+import type { NinaPhotoSide } from '@/lib/nina/album'
+import type { NinaImageKind } from '@/lib/db/schema'
 
 /**
  * What `/admin/nina`'s explorer knows about the album, and nothing more.
@@ -13,37 +15,111 @@ import type { NinaCropInput } from '@/lib/nina/crop'
  * it and the Server Component that builds these objects does not drag a client module in with it.
  */
 
-export interface ExplorerPhoto {
+/**
+ * Fields every explorer row has, whatever table it came from. The four that VARY between the two
+ * arms (`thumbUrl`, `folder`, `isCurrent`, `crop`) are typed generally HERE and narrowed on the
+ * media arm, so a consumer reading them off the `ExplorerPhoto` union gets the general type and
+ * compiles either way — while a consumer reading a MEDIA-ONLY field must narrow on `origin` first,
+ * which is the compiler refusing to let album code assume a message image.
+ */
+interface ExplorerPhotoBase {
   id: string
   /**
    * The ORIGINAL blob. Deliberately not what the grid renders.
    * `components/admin/UploadAvatar.tsx:26-33` is why it exists un-re-encoded ("a 4x zoom on a
    * 768 px source would show her face at 192 px of real detail"), and this is the URL the framing
-   * studio, the sanity circles and phase 13's full-screen viewer all read.
+   * studio, the sanity circles and the full-screen viewer all read.
    */
   url: string
   /**
-   * The 256 px derived JPEG, or `null`.
-   *
-   * **`null` is not an edge case, it is the migration path.** Every row that existed before phase 1
-   * added the column has no thumbnail, and a browser without `OffscreenCanvas` uploads none. Every
-   * consumer therefore falls back to `url`, and the grid is correct-but-heavy rather than broken.
+   * The name a tile and the pane header print. Album rows: the file's name on his laptop, or the
+   * id for a row written before the column existed. Media rows: DERIVED, because
+   * `nina_message_images` has no filename column — the page builds one from the row's date and id
+   * (see `app/admin/nina/page.tsx`'s media arm).
    */
-  thumbUrl: string | null
-  /** `''` is the album root. `'2026/bali'` is two levels down. Never a blob prefix — a column. */
-  folder: string
-  /** The name the file had on his laptop, or a fallback built from the id for a pre-phase-1 row. */
   filename: string
   width: number | null
   height: number | null
   bytes: number | null
+  /** Album: the `nina_avatars.source` column. Media: the row's own `kind`, which on that table
+   * IS the provenance — `'generated'` came from her worker, `'upload'` came from his composer. */
   source: string
+  /** Album: the row's `is_current`. Media: always `false` — see `MediaExplorerPhoto`. */
   isCurrent: boolean
   /** Read by nothing in `components/` — invariant 5. Shown as present/absent, never rendered. */
   description: string | null
   crop: NinaCropInput
+  /** ISO 8601. A `Date` does not survive the RSC boundary. */
   createdAt: string
+  /** `''` is the album root, `'2026/bali'` is two levels down, and `''` is also the only value a
+   * media row ever carries — it is filed nowhere. Never a blob prefix — a column. */
+  folder: string
+  /**
+   * The 256 px derived JPEG, or `null`.
+   *
+   * **`null` is not an edge case, it is the migration path.** Every row that existed before the
+   * column was added has no thumbnail, and a browser without `OffscreenCanvas` uploads none. Every
+   * consumer therefore falls back to `url`, and the grid is correct-but-heavy rather than broken.
+   * Media rows are `null` PERMANENTLY — see `MediaExplorerPhoto`.
+   */
+  thumbUrl: string | null
 }
+
+/** One row of the album: an `nina_avatars` row, narrowed to what a browser needs. */
+export interface AlbumExplorerPhoto extends ExplorerPhotoBase {
+  origin: 'album'
+}
+
+/**
+ * One row of the Media view: an original `nina_message_images` row, the superset
+ * `listNinaMediaPhotos` reads. Everything the Chat-photos surface knew about such a row
+ * (`components/admin/chatPhotoModel.ts`) collapses into this arm as that surface merges away —
+ * including its two load-bearing docstrings: `pathname` is never parsed, and an orphan
+ * (`messageId: null`) is a first-class member, not an error.
+ */
+export interface MediaExplorerPhoto extends ExplorerPhotoBase {
+  origin: 'media'
+  /**
+   * Always `null`, and typed as the LITERAL so a media row cannot grow a thumbnail by accident:
+   * the table has no thumbnail column (`lib/nina/album.ts:80-105`'s argument), so the grid's
+   * `photo.thumbUrl ?? photo.url` fallback is the only render path — the accepted cost behind
+   * `NINA_CHAT_PHOTO_PAGE_SIZE = 48`.
+   */
+  thumbUrl: null
+  /**
+   * Always `false`. Adoption (`setChatPhotoAsAvatarAction`) COPIES the bytes into `nina_avatars`,
+   * and it is the copy that carries `is_current` — a message image is never itself her face.
+   */
+  isCurrent: false
+  /** Identity (all three null): `resolveCrop` folds it to centred `object-cover`. Framing begins
+   * only when an adoption mints an avatar row that can store one. */
+  crop: NinaCropInput
+  /** The table's own kind: `'generated'` (her worker) or `'upload'` (his composer). */
+  kind: NinaImageKind
+  /** `photoSideOf(kind)`, computed on the server exactly as `galleryPhotos` computes it. */
+  side: NinaPhotoSide
+  /**
+   * The generation sidecar, carried in full — `/admin` is the one surface where reading it is the
+   * point. Non-null only while the generated bytes are still the ones the prompt produced:
+   * `updateNinaChatPhotoBlob` nulls it on replace, which is why a replaced row offers no prompt
+   * affordance in the phase that renders one.
+   */
+  prompt: string | null
+  /**
+   * The bubble this photograph hangs off, or NULL once it has outlived one — a session delete
+   * orphans the row instead of destroying it. An ORPHAN is a first-class member of the Media
+   * collection; the pane says so in words rather than printing an empty cell.
+   */
+  messageId: string | null
+  /** Position within its message's bubble. `0` for everything the worker wrote. */
+  sortOrder: number
+}
+
+/**
+ * One row of the explorer's content pane — an album avatar OR a Media photograph. Narrow on
+ * `photo.origin` (`'album' | 'media'`) to reach an arm's own fields.
+ */
+export type ExplorerPhoto = AlbumExplorerPhoto | MediaExplorerPhoto
 
 /** One folder that holds at least one row. `buildTree` (phase 2) nests a list of these. */
 export interface ExplorerFolder {
@@ -58,6 +134,11 @@ export interface ExplorerFolder {
  * consecutive pages *during* an upload; nothing is ever skipped).
  */
 export interface ExplorerPageInfo {
+  /**
+   * The folder this page was read from. `''` on the Media arm too — a message image is filed
+   * nowhere — but there it is UNREAD: the pager is view-scoped and the breadcrumb draws from
+   * `view`, so the value exists only to keep this one shape serving both arms.
+   */
   folder: string
   /** 1-based, clamped by the page before it ever reaches a query. */
   page: number

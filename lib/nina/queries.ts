@@ -74,11 +74,7 @@ import {
   normalizeNinaTrigger,
   type NinaShortcutKind,
 } from '@/lib/nina/shortcuts'
-import {
-  coerceNinaTuning,
-  NINA_TUNING_DEFAULTS,
-  type NinaTuning,
-} from '@/lib/nina/tuning'
+import { coerceNinaTuning, NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
 import { isValidContentHash } from '@/lib/photos/contentHash'
 
 /**
@@ -305,6 +301,21 @@ export interface NinaImageInsert {
  */
 export interface NinaChatPhotoPage {
   rows: NinaImageRow[]
+  total: number
+}
+
+/**
+ * One page of the Media view — `/admin/nina?view=media` (R1, image-collection phase 1).
+ *
+ * Structurally the twin of `NinaChatPhotoPage` above and deliberately NOT a rename of it: that
+ * interface's docstring is `/admin/photos`' contract, and the purge that deletes that surface
+ * deletes its type with it. `rows` is `NinaImageRow` unchanged, for the same reason as there —
+ * `imageColumns` is the projection, so the admin surface reads exactly what every other reader of
+ * this table reads and no second row shape enters the module.
+ */
+export interface NinaMediaPage {
+  rows: NinaImageRow[]
+  /** Every ORIGINAL row for this user, BOTH kinds — not just this page. */
   total: number
 }
 
@@ -1877,13 +1888,17 @@ export async function findNinaImageByContentHash(
  * `user_id` alone, the other is `user_id AND kind`. A `userId` parameter here would mean two
  * functions that both know about ownership and a reader who has to check whether they agree.
  *
- * ── THE THREE READS IT FILTERS, AND THE FOUR IT MUST NEVER FILTER ──────────────────────
+ * ── THE COLLECTION READS IT FILTERS, AND THE ONES IT MUST NEVER ───────────────────────
  * Filtered — the COLLECTION reads, which describe a set of photographs to a human:
  *   · `listNinaMessageImages`   → /nina/about's Media feed
  *   · `listNinaChatPhotos`      → /admin/photos, via `generatedChatPhotoScope`
  *   · `countNinaChatPhotos`     → /admin's hub card, via the same scope — which is why there are
  *                                 only TWO call sites for three reads, and why the listing and
  *                                 the count still cannot disagree about the total.
+ *   · `listNinaMediaPhotos` + `countNinaMediaPhotos` → /admin/nina?view=media and its tree badge,
+ *                                 via `mediaCollectionScope` — the all-kinds superset of the
+ *                                 generated pair, sharing THIS predicate so a reference cannot
+ *                                 sneak into one view while another hides it.
  *
  * NOT filtered, and a future "consistency" cleanup that adds it here is a data-loss bug —
  * these are what makes a photograph RENDER and what Nina is given to look at (invariant 2):
@@ -2006,6 +2021,98 @@ export async function countNinaChatPhotos(userId: string): Promise<number> {
     .select({ total: sql<number>`count(*)`.mapWith(Number) })
     .from(ninaMessageImages)
     .where(generatedChatPhotoScope(userId))
+  return counted[0]?.total ?? 0
+}
+
+/* ============================================================================
+ * §5a-2 The Media view — every ORIGINAL photograph, both kinds (R1)
+ *
+ * `/admin/nina?view=media` reads these. The membership is the exact set `/nina/about`'s Media
+ * section shows (`listNinaMessageImages` + `isOriginalPhoto`) — NOT `/admin/photos`' generated-only
+ * scope: the folder the user asked for is "semua foto - foto yang saat ini ada di Media", his
+ * uploads included. Kept beside the generated pair rather than merged into it on purpose:
+ * `generatedChatPhotoScope` outlives that surface's purge entirely — the image-reference picker
+ * (`listNinaPhotoReferences`) still reads it — so the two scopes sit side by side for good, each
+ * the one definition of its own surface.
+ * ==========================================================================*/
+
+/**
+ * The predicate that DEFINES the Media view, written once so the page and the tree badge cannot
+ * drift apart — `generatedChatPhotoScope`'s own argument, one view over.
+ *
+ * Deliberately NO `kind` arm, and that is the whole difference from the scope above: his composer
+ * uploads (`kind = 'upload'`) are members here, because the point of the folder is that even a
+ * manually-attached photograph becomes replaceable and adoptable. The reference filter STAYS —
+ * a re-show is the same photograph, not a second one (`isOriginalPhoto`).
+ *
+ * Same index story as `generatedChatPhotoScope`, only cheaper: `isOriginalPhoto()` is residual (no
+ * index carries it) and the `kind` residual is gone entirely, so the read is the index range scan
+ * `nina_message_images_user_created_idx` was built for — equality on `user_id`,
+ * `(created_at desc, id desc)` already in index order, nothing else filtered. **No index is being
+ * added**: no migration in this plan, and nothing has measured a need.
+ */
+function mediaCollectionScope(userId: string) {
+  return and(eq(ninaMessageImages.userId, userId), isOriginalPhoto())
+}
+
+/**
+ * One page of the Media view, plus the total — the read behind `/admin/nina?view=media`.
+ *
+ * Modelled on `listNinaChatPhotos` above, with two deltas and one deliberate non-delta:
+ *
+ *   · the scope is `mediaCollectionScope` — no `kind` arm; see there.
+ *   · the count is this section's own `countNinaMediaPhotos`, so the page and the tree badge share
+ *     one predicate rather than two opinions about how many photographs exist.
+ *
+ * The non-delta is the page size: `NINA_CHAT_PHOTO_PAGE_SIZE` stays the default AND the ceiling
+ * even though the rows are no longer only hers. That is not an oversight — the constant's NUMBER
+ * was chosen for the cost of a page of originals (`nina_message_images` has no thumbnail column,
+ * so every tile loads its full blob — `lib/nina/album.ts:80-105`), and this grid pays exactly the
+ * same cost per tile. The number travels with the cost, not with the predicate.
+ *
+ * Two statements run concurrently and `offset` is floored at 0, for the reasons
+ * `listNinaChatPhotos` and `NinaAvatarFolderPage` already record; not re-argued here.
+ */
+export async function listNinaMediaPhotos(
+  userId: string,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<NinaMediaPage> {
+  const limit = Math.max(
+    1,
+    Math.min(opts.limit ?? NINA_CHAT_PHOTO_PAGE_SIZE, NINA_CHAT_PHOTO_PAGE_SIZE),
+  )
+  const offset = Math.max(0, Math.trunc(opts.offset ?? 0))
+
+  const [rows, total] = await Promise.all([
+    db
+      .select(imageColumns)
+      .from(ninaMessageImages)
+      .where(mediaCollectionScope(userId))
+      .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+      .limit(limit)
+      .offset(offset),
+    countNinaMediaPhotos(userId),
+  ])
+
+  return { rows, total }
+}
+
+/**
+ * How many original photographs the Media view holds, as a number rather than as a list of rows —
+ * the tree pane's badge.
+ *
+ * The tree shows "Media <n>" on BOTH views, which is why the album arm runs this aggregate even
+ * though it lists avatars: the badge is the rail's whole point (`FolderTree`'s header), and "how
+ * many photographs are in there" is a question a count answers without a page of rows — the exact
+ * mistake `countNinaAvatars` was written to undo. `listNinaMediaPhotos` does not call this one
+ * twice — it calls it once, beside its own page — so listing and badge are one predicate by
+ * construction.
+ */
+export async function countNinaMediaPhotos(userId: string): Promise<number> {
+  const counted = await db
+    .select({ total: sql<number>`count(*)`.mapWith(Number) })
+    .from(ninaMessageImages)
+    .where(mediaCollectionScope(userId))
   return counted[0]?.total ?? 0
 }
 

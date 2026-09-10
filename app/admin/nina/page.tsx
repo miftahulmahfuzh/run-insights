@@ -1,9 +1,26 @@
 import { FileExplorer } from '@/components/admin/FileExplorer'
-import type { ExplorerFolder, ExplorerPhoto } from '@/components/admin/explorer/model'
-import { NINA_FOLDER_ROOT, validateFolderPath } from '@/lib/admin/filetree'
+import type {
+  AlbumExplorerPhoto,
+  ExplorerFolder,
+  ExplorerPageInfo,
+  ExplorerPhoto,
+  MediaExplorerPhoto,
+} from '@/components/admin/explorer/model'
+import { NINA_FOLDER_ROOT, readExplorerView, validateFolderPath } from '@/lib/admin/filetree'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import { NINA_ADMIN_PAGE_SIZE, NINA_AVATAR_FALLBACK_SRC } from '@/lib/nina/album'
-import { listNinaAvatarFolders, listNinaAvatarsInFolder } from '@/lib/nina/queries'
+import {
+  NINA_ADMIN_PAGE_SIZE,
+  NINA_AVATAR_FALLBACK_SRC,
+  NINA_CHAT_PHOTO_PAGE_SIZE,
+  photoSideOf,
+} from '@/lib/nina/album'
+import {
+  countNinaMediaPhotos,
+  listNinaAvatarFolders,
+  listNinaAvatarsInFolder,
+  listNinaMediaPhotos,
+  type NinaAvatarFolderCount,
+} from '@/lib/nina/queries'
 import { shareOrigin } from '@/lib/share/origin'
 
 /**
@@ -68,42 +85,144 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
   const { userId } = await requireAdmin()
 
   const params = await props.searchParams
+  /*
+   * The view is read FIRST, because it decides which table this page reads at all. `?view=media`
+   * ignores `?folder=` by construction: Media is not a folder and has no path, so a folder on a
+   * media URL is a stale parameter, not a destination — the media arm never consults `folder`, and
+   * the breadcrumb draws "Album / Media" from `view` alone. The folder is still VALIDATED
+   * unconditionally, because the album arm below needs it and because a refused path must fall
+   * back to the root on both arms rather than throw.
+   */
+  const view = readExplorerView(params.view)
   const requested = validateFolderPath(readOne(params.folder) ?? NINA_FOLDER_ROOT)
   const folder = requested.ok ? requested.path : NINA_FOLDER_ROOT
   const page = readPage(readOne(params.page))
 
-  const [listed, folders] = await Promise.all([
-    listNinaAvatarsInFolder(userId, folder, {
-      limit: NINA_ADMIN_PAGE_SIZE,
-      offset: (page - 1) * NINA_ADMIN_PAGE_SIZE,
-    }),
-    listNinaAvatarFolders(userId),
-  ])
-
   /*
-   * The row -> prop mapping is here rather than in the client component for the reason it always
-   * was: `NinaAvatarRow` carries `announcedAt`, `pathname`, `sourceKey` and `thumbPathname`, none of
-   * which a browser has any use for, and none of which should cross the serialization boundary
-   * wholesale.
-   *
-   * `filename` falls back to the id because every row written before phase 1 added the column has
-   * none, and a grid tile with no label under it is worse than a tile labelled by its id.
+   * The two arms fill the same four slots and fall through to ONE render, because the header, the
+   * tree and the explorer are the same chrome over either table. `folders` (the tree's read) is
+   * unconditional: BOTH views draw the same tree pane, Media pinned under "Album", so the tree
+   * must be built even while the grid is showing the other collection.
    */
-  const photos: ExplorerPhoto[] = listed.rows.map((row) => ({
-    id: row.id,
-    url: row.blobUrl,
-    thumbUrl: row.thumbUrl,
-    folder: row.folder,
-    filename: row.filename ?? row.id,
-    width: row.width,
-    height: row.height,
-    bytes: row.bytes,
-    source: row.source,
-    isCurrent: row.isCurrent,
-    description: row.description,
-    crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
-    createdAt: row.createdAt.toISOString(),
-  }))
+  let folders: NinaAvatarFolderCount[]
+  let photos: ExplorerPhoto[]
+  let pageInfo: ExplorerPageInfo
+  let mediaTotal: number
+
+  if (view === 'media') {
+    /*
+     * One page of every ORIGINAL conversation photograph, both kinds, orphans included. No
+     * `limit` argument on purpose: `NINA_CHAT_PHOTO_PAGE_SIZE` is the read's own default AND
+     * ceiling, so the constant's one spelling governs the page size and no call site can quietly
+     * widen it into the unpaginated read it exists to prevent.
+     */
+    const [listed, treeFolders] = await Promise.all([
+      listNinaMediaPhotos(userId, { offset: (page - 1) * NINA_CHAT_PHOTO_PAGE_SIZE }),
+      listNinaAvatarFolders(userId),
+    ])
+    folders = treeFolders
+
+    /*
+     * Row -> prop on the server, for the same reason as the album arm below: plain serializable
+     * props and nothing else. `side` is `photoSideOf(kind)` computed HERE, which is what keeps the
+     * his/hers discriminator in one place (`lib/nina/album.ts`) — the same call `galleryPhotos`
+     * makes for the same reason.
+     *
+     * `filename` is DERIVED, because the table has no filename column: the day the photograph was
+     * made plus its id, so two same-day photographs still sort apart in a `title=` and in the pane
+     * header. Not parsed out of `pathname` — the pathname is displayed, never read
+     * (`chatPhotoModel.ts`'s rule, which this arm inherits with the rows).
+     */
+    photos = listed.rows.map((row): MediaExplorerPhoto => ({
+      origin: 'media',
+      id: row.id,
+      url: row.blobUrl,
+      /* `null`, permanently: the table has no thumbnail column (`lib/nina/album.ts:80-105`), so
+         the grid's `thumbUrl ?? url` fallback is the only render path. */
+      thumbUrl: null,
+      /* A message image is filed nowhere. The value is the album root's path — but nothing links
+         into it: the breadcrumb and the pane draw their trail from `view`, and folder verbs never
+         see a media row. */
+      folder: NINA_FOLDER_ROOT,
+      filename: `${row.createdAt.toISOString().slice(0, 10)} ${row.id}`,
+      width: row.width,
+      height: row.height,
+      bytes: row.bytes,
+      /* On this table the kind IS the provenance: 'generated' from her worker, 'upload' from his
+         composer. Rendered as the pane's Source row, never assumed. */
+      source: row.kind,
+      /* Never her current face: adoption COPIES the bytes into `nina_avatars`, and it is the copy
+         that carries `is_current`. */
+      isCurrent: false,
+      description: row.description,
+      /* Identity crop — `resolveCrop` folds the three nulls to centred object-cover. Framing
+         arrives only when adoption mints an avatar row that can store one. */
+      crop: { scale: null, x: null, y: null },
+      createdAt: row.createdAt.toISOString(),
+      kind: row.kind,
+      side: photoSideOf(row.kind),
+      prompt: row.prompt,
+      messageId: row.messageId,
+      sortOrder: row.sortOrder,
+    }))
+
+    pageInfo = {
+      folder: NINA_FOLDER_ROOT,
+      page,
+      pageSize: NINA_CHAT_PHOTO_PAGE_SIZE,
+      total: listed.total,
+    }
+    mediaTotal = listed.total
+  } else {
+    /*
+     * The media badge's count rides along on the album arm too: the tree pane shows "Media <n>" on
+     * every view, and one aggregate answers it — the same single `count(*)` the /admin hub card
+     * runs, and the exact shape `countNinaAvatars` was written to make cheap.
+     */
+    const [listed, treeFolders, mediaCount] = await Promise.all([
+      listNinaAvatarsInFolder(userId, folder, {
+        limit: NINA_ADMIN_PAGE_SIZE,
+        offset: (page - 1) * NINA_ADMIN_PAGE_SIZE,
+      }),
+      listNinaAvatarFolders(userId),
+      countNinaMediaPhotos(userId),
+    ])
+    folders = treeFolders
+
+    /* The row -> prop mapping is here rather than in the client component for the reason it always
+     * was: `NinaAvatarRow` carries `announcedAt`, `pathname`, `sourceKey` and `thumbPathname`, none
+     * of which a browser has any use for, and none of which should cross the serialization boundary
+     * wholesale.
+     *
+     * `filename` falls back to the id because every row written before the column existed has
+     * none, and a grid tile with no label under it is worse than a tile labelled by its id.
+     * The `(row): AlbumExplorerPhoto` annotation is what keeps `origin: 'album'` a literal —
+     * without it the string widens and the union stops being discriminable. */
+    photos = listed.rows.map((row): AlbumExplorerPhoto => ({
+      origin: 'album',
+      id: row.id,
+      url: row.blobUrl,
+      thumbUrl: row.thumbUrl,
+      folder: row.folder,
+      filename: row.filename ?? row.id,
+      width: row.width,
+      height: row.height,
+      bytes: row.bytes,
+      source: row.source,
+      isCurrent: row.isCurrent,
+      description: row.description,
+      crop: { scale: row.cropScale, x: row.cropX, y: row.cropY },
+      createdAt: row.createdAt.toISOString(),
+    }))
+
+    pageInfo = {
+      folder,
+      page,
+      pageSize: NINA_ADMIN_PAGE_SIZE,
+      total: listed.total,
+    }
+    mediaTotal = mediaCount
+  }
 
   /* `NinaAvatarFolderCount`'s count field is `photos` (phase 1's name; this phase's draft assumed
    * `count`). `ExplorerFolder` keeps `count`, because that is what makes it structurally
@@ -120,13 +239,21 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
       <header className="mb-5 lg:mb-6">
         <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Nina&rsquo;s album</h1>
         <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
-          Drop a folder straight out of Explorer and only the new files upload. Click a photo to
-          frame her face and make it her profile picture. Folders are metadata, not blob paths, so
-          moving a photo moves no bytes.
+          {/*
+           * The body copy follows the view; the h1 does not (its rename is a later phase's edit,
+           * kept out of here so this phase ships no label churn). The media sentence says what the
+           * view IS and nothing about verbs that have not landed yet.
+           */}
+          {view === 'media'
+            ? 'Every photograph of the conversation — hers and his, uploads included — newest first, the same set the Media section shows.'
+            : 'Drop a folder straight out of Explorer and only the new files upload. Click a photo to frame her face and make it her profile picture. Folders are metadata, not blob paths, so moving a photo moves no bytes.'}
         </p>
       </header>
 
-      {albumTotal === 0 ? (
+      {/* The empty-ALBUM notice is an album-view fact (it is about her committed face and about
+          dropping folders). On the media arm the grid's own empty state speaks instead, so the
+          operator is never told to drop a folder over a grid of conversation photographs. */}
+      {view === 'album' && albumTotal === 0 ? (
         <p className="mb-6 max-w-[70ch] rounded-card border border-rule bg-card p-5 text-[13px] font-medium text-ink-2">
           The album is empty, so she is still showing the committed photo (
           <code className="text-ink">{NINA_AVATAR_FALLBACK_SRC}</code>). Add a folder below and the
@@ -144,6 +271,10 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
        * rather than the per-deployment one, so a link minted on a preview still opens the real
        * chat instead of a hostname that dies at the next push.
        *
+       * `view` and `mediaCount` are the media arm's thread: which collection the URL has open, and
+       * how many photographs it holds in total — the tree badge needs the count on BOTH views,
+       * which is why the album arm ran the aggregate.
+       *
        * The leading `*` on every line is the same load-bearing detail `SelectionPane`'s seam
        * comment records: `ci:client-secret-guard`'s Rule 3 exempts only lines a comment scanner
        * recognises, and a JSX comment with bare prose continuation lines fails the guard while
@@ -153,12 +284,9 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
         userId={userId}
         folders={folderList}
         photos={photos}
-        page={{
-          folder,
-          page,
-          pageSize: NINA_ADMIN_PAGE_SIZE,
-          total: listed.total,
-        }}
+        page={pageInfo}
+        view={view}
+        mediaCount={mediaTotal}
         shareOrigin={shareOrigin()}
       />
     </div>

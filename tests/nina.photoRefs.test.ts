@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { NINA_CHAT_PHOTO_PAGE_SIZE } from '@/lib/nina/album'
+
 import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
 
 /**
@@ -314,5 +316,55 @@ describe('getNinaJobPhoto — the job→photo join (this set)', () => {
      * caller's discipline, it is never selected. */
     expect(sql.startsWith('select "nina_message_images"."id" from')).toBe(true)
     expect(sql).not.toContain('description')
+  })
+})
+
+describe('the Media view read — /admin/nina?view=media (image-collection phase 1)', () => {
+  it('listNinaMediaPhotos — BOTH statements skip a reference and NEITHER carries a kind arm', async () => {
+    fake.enqueue([], [[0]])
+    await queries.listNinaMediaPhotos('u1')
+
+    expect(fake.queries).toHaveLength(2)
+    for (const query of fake.queries) {
+      const where = whereOf(query.sql)
+      for (const predicate of REFERENCE_SKIPPED) expect(where, query.sql).toContain(predicate)
+      expect(where).toContain('"user_id" = $')
+      // The superset property, asserted as an ABSENCE for the same reason invariant 2's is: his
+      // composer uploads (`kind = 'upload'`) are members of this collection, and a `kind` filter
+      // here would silently hide every photograph he attached himself.
+      expect(where).not.toContain('"kind" =')
+    }
+    // The pager's two statements, in one round trip. The COUNT is recorded first (its function
+    // call runs during the Promise.all array's evaluation, while the rows chain is a lazy
+    // thenable), so the page of rows is at index 1 — the one that carries the pagination.
+    expect(fake.sqlAt(1)).toContain('limit')
+  })
+
+  it('countNinaMediaPhotos — the tree badge counts the same set the page lists', async () => {
+    fake.enqueue([[7]])
+    await expect(queries.countNinaMediaPhotos('u1')).resolves.toBe(7)
+
+    const where = whereOf(fake.only().sql)
+    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
+    expect(where).not.toContain('"kind" =')
+  })
+
+  it('defaults and CEILINGS the page at NINA_CHAT_PHOTO_PAGE_SIZE, and floors the offset', async () => {
+    // The cost argument travels with the number (`lib/nina/album.ts:80-105`: media tiles load
+    // ORIGINALS), so a hand-edited limit must not be able to turn one page into the unpaginated
+    // read the constant exists to prevent. Drizzle binds limit AND offset on the rows statement
+    // (index 1 — the count is Q0, see above), so both bounds are visible in `params`.
+    fake.enqueue([], [[0]])
+    await queries.listNinaMediaPhotos('u1', { limit: 10_000, offset: -5 })
+    expect(fake.queries[1]?.params).toContain(NINA_CHAT_PHOTO_PAGE_SIZE)
+    expect(fake.queries[1]?.params).not.toContain(10_000)
+    // The negative offset was floored to 0, which drizzle omits entirely — it certainly cannot
+    // have reached Postgres as a negative.
+    expect(fake.sqlAt(1)).not.toContain('offset $')
+
+    fake.reset()
+    fake.enqueue([], [[0]])
+    await queries.listNinaMediaPhotos('u1', { offset: 96 })
+    expect(fake.queries[1]?.params).toContain(96)
   })
 })

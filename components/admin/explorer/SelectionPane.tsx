@@ -22,7 +22,7 @@ import {
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 } from '@/lib/admin/ninaAlbumActions'
-import { folderBreadcrumbs } from '@/lib/admin/filetree'
+import { folderBreadcrumbs, NINA_MEDIA_NODE_LABEL } from '@/lib/admin/filetree'
 import { cn } from '@/lib/cn'
 import { isIdentityCrop, resolveCrop, type NinaCrop } from '@/lib/nina/crop'
 
@@ -67,6 +67,14 @@ import type { ExplorerPhoto } from './model'
  * Invariant 5. `AlbumManager.tsx:167-169` printed the prose into the page, which this pane
  * deliberately does not do: the row says *whether* she can talk about this photo, not what a
  * vision model wrote. It is her prompt's private input.
+ *
+ * ── THE MEDIA ARM IS READ-ONLY, AND THE EARLY RETURN IS THE POINT ───────────────────────────
+ * A media row (`photo.origin === 'media'`) is a `nina_message_images` row. Every control this pane
+ * has otherwise — the framing pair, set-current, share, describe, remove — addresses an
+ * `nina_avatars` row by id and would refuse it (or, worse, no-op against some other row). So the
+ * media arm returns its own pane: the photograph, the facts, and the one verb that is client-only.
+ * That is not a stub; it is the phase's contract — no new verbs — made structural. Phase 2 lifts
+ * replace/remove/adopt into this arm; phase 3 replaces the describe story on both arms.
  */
 
 /** The rail's own wording for `useSavePhoto`'s two rung-out outcomes. */
@@ -139,10 +147,123 @@ export function SelectionPane({
 
   /* `folderBreadcrumbs` (phase 2's name; the draft assumed `breadcrumbFor`) returns crumbs of
    * `{ path, name, depth, isCurrent }` — so the label is `name`, and the root's own name is
-   * `NINA_FOLDER_ROOT_LABEL`, which is why "Album" needs no special case here. */
-  const trail = folderBreadcrumbs(photo.folder)
-    .map((crumb) => crumb.name)
-    .join(' / ')
+   * `NINA_FOLDER_ROOT_LABEL`, which is why "Album" needs no special case here.
+   *
+   * A MEDIA row is filed nowhere: its trail is the view it lives in, not a folder path — printing
+   * "Album" for it (what `folderBreadcrumbs('')` would say) would be the pane misnaming its own
+   * subject. */
+  const trail =
+    photo.origin === 'media'
+      ? NINA_MEDIA_NODE_LABEL
+      : folderBreadcrumbs(photo.folder)
+          .map((crumb) => crumb.name)
+          .join(' / ')
+
+  /*
+   * THE MEDIA ARM. Placed after every hook (states, `useSavePhoto`, the scroll effect) and before
+   * the album JSX, so both arms share the machinery and neither can skip a hook — the React rules
+   * and the honesty rule agree for once. `draft`/`dirty`/`run` simply go unused on this arm; they
+   * are not dead code, they are the other arm's.
+   */
+  if (photo.origin === 'media') {
+    return (
+      <aside ref={paneRef} className="rounded-card border border-rule bg-card p-4 lg:p-5">
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold text-ink" title={photo.filename}>
+              {photo.filename}
+            </p>
+            <p className="truncate text-[12px] font-medium text-ink-3" title={trail}>
+              {trail}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close the details pane"
+            className={cn(TOUCH_ICON, '-mt-2 -mr-2 shrink-0 text-[15px] font-semibold text-ink-3')}
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* The photograph itself, whole and un-transformed — the same ruling PhotoGrid's header
+            records against `next/image` for Blob-hosted files, and no studio around it: framing is
+            an avatar concept until adoption copies these bytes into a row that can carry one. */}
+        <div className="overflow-hidden rounded-chip border border-rule bg-paper-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted and deliberately
+              un-transformed; see PhotoGrid's header. */}
+          <img
+            src={photo.url}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="max-h-[420px] w-full object-contain"
+          />
+        </div>
+
+        {/* The facts, in the album pane's vocabulary. `Side` is `photoSideOf`'s answer and
+            `Source` is the table's own kind; both English (`AlbumManager.tsx:233`'s rule for /admin
+            copy). The description row stays PRESENCE-ONLY (invariant 5): whether she can talk
+            about it, never the prose — the prose is glm-4.6v's private text about her photograph. */}
+        <dl className="mt-5 space-y-1 border-t border-rule pt-4 text-[12px] font-medium text-ink-3">
+          <div className="flex gap-2">
+            <dt>Side</dt>
+            <dd className="text-ink-2">{photo.side === 'hers' ? 'Hers' : 'His'}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt>Source</dt>
+            <dd className="text-ink-2">{photo.source}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt>Pixels</dt>
+            <dd className="text-ink-2 tabular-nums">
+              {photo.width ?? '?'} &times; {photo.height ?? '?'}
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt>Thumbnail</dt>
+            <dd className="text-ink-2">None — the grid loads the original</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt>Nina</dt>
+            <dd className="text-ink-2">
+              {photo.description == null
+                ? 'Cannot talk about this photo yet'
+                : 'Can talk about this photo'}
+            </dd>
+          </div>
+        </dl>
+
+        {/* The one control. Download is `useSavePhoto`'s ladder — all client-side — so it is the
+            only verb this phase can offer a media row without lifting a guard that phase 2 owns.
+            `pending` is never true here (no server action can run on this arm), so there is no
+            loading slot and no `error` paragraph: nothing can fail. */}
+        <div className="mt-5 flex flex-wrap items-center gap-1 border-t border-rule pt-4">
+          <Button
+            size="md"
+            variant="secondary"
+            className={RAIL_BUTTON}
+            loading={saver.busy}
+            aria-label="Download this photo"
+            title="Download this photo"
+            onPointerDown={saver.warm}
+            onFocus={saver.warm}
+            onClick={saver.save}
+          >
+            <DownloadIcon className="size-4" />
+          </Button>
+
+          {saver.notice !== null && (
+            <p className="basis-full text-[12px] font-medium text-ink-3">
+              {SAVE_NOTICE_TEXT[saver.notice]}
+            </p>
+          )}
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside ref={paneRef} className="rounded-card border border-rule bg-card p-4 lg:p-5">

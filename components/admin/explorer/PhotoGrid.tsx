@@ -7,6 +7,7 @@ import { ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
 import type { ExplorerPageInfo, ExplorerPhoto } from './model'
+import type { ExplorerView } from '@/lib/admin/filetree'
 
 /**
  * One folder's page of photographs.
@@ -37,12 +38,16 @@ import type { ExplorerPageInfo, ExplorerPhoto } from './model'
 export function PhotoGrid({
   photos,
   page,
+  view,
   selectedId,
   onSelect,
   hrefForPage,
 }: {
   photos: readonly ExplorerPhoto[]
   page: ExplorerPageInfo
+  /** Which collection this grid is. Only the EMPTY copy branches on it — a tile is a tile, and
+   * the view has no other rendering consequence here. */
+  view: ExplorerView
   selectedId: string | null
   onSelect: (id: string) => void
   hrefForPage: (page: number) => string
@@ -52,13 +57,25 @@ export function PhotoGrid({
   const lastPage = Math.max(1, Math.ceil(page.total / page.pageSize))
 
   if (photos.length === 0) {
+    /* The empty copy names the collection, because "drop a folder" is a lie over Media and
+       "this folder" is a lie about a view. An over-shot page says the same thing on both arms —
+       the pager is the same pager. */
+    const onFirstPage = page.page <= 1
     return (
       <EmptyState
-        title={page.page > 1 ? 'Nothing on this page' : 'Nothing in this folder yet'}
+        title={
+          onFirstPage
+            ? view === 'media'
+              ? 'Nothing in Media yet'
+              : 'Nothing in this folder yet'
+            : 'Nothing on this page'
+        }
         description={
-          page.page > 1
-            ? 'This folder is not that long any more.'
-            : 'Drop a folder from Explorer, or add photos with the buttons above.'
+          onFirstPage
+            ? view === 'media'
+              ? 'Photographs from the conversation land here — hers and his, newest first.'
+              : 'Drop a folder from Explorer, or add photos with the buttons above.'
+            : 'This folder is not that long any more.'
         }
         action={
           page.page > 1 ? (

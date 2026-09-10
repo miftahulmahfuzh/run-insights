@@ -1,13 +1,14 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set
-— the focus-card hint purge: the six "Focus on" cards render their label and nothing else,
-`imageFocusCopy` in `lib/admin/imageGenModel.ts` returns the label as a plain string, and
-`NinaImageFocusSpec.userSaid` leaves `lib/nina/imageprefs.ts`; the free-text spec's `userSaid`
-stays; previously task `P1-RI-A025`, phase 1 of 2 of the simplify-personality-settings
-set — the tuning revision mechanism purged stack-wide; its migration committed but deliberately not
-yet applied)
+**Last Updated**: 2026-09-10 (task `P1-RI-A034`, phase 1 of the `IMAGE_COLLECTION_PLAN.md` set —
+the Media read path: a virtual `Media` tree node pinned under the album root and addressed by the
+`?view=media` parameter, never by a folder path; the paginated all-kinds originals read
+`listNinaMediaPhotos` / `countNinaMediaPhotos` behind it; `ExplorerPhoto` becomes a discriminated
+union; read-only, no Server Action touched; previously task `P1-RI-A031` — the focus-card hint
+purge, `imageFocusCopy` returning a plain string and `NinaImageFocusSpec.userSaid` deleted; before
+that `P1-RI-A025` — the tuning revision mechanism purged stack-wide, its migration committed but
+deliberately not yet applied)
 
 ## Overview
 
@@ -841,6 +842,64 @@ per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEA
 (the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
 `NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
 `P1-RI-A019`.
+
+### Recent changes — P1-RI-A034 (2026-09-10)
+
+*Phase 1 of the `IMAGE_COLLECTION_PLAN.md` set (R1, the read half): `/admin/nina` gains a second,
+virtual collection — the tree pane pins a **Media** row below "Album" (with the total count), and
+`?view=media` swaps the grid to every original conversation photograph, both kinds, orphans
+included, newest first, 48 to a page. Read path only: no Server Action was touched, and selection
+opens the pane with download as its one verb.*
+
+The root-owned slice is `app/admin/nina/page.tsx`, the Server Component that now serves both
+collections. It reads the view **first** — `readExplorerView(params.view)`, from
+`lib/admin/filetree.ts` — because the view decides which table the page reads at all: the media
+arm never consults `?folder=` (a folder on a media URL is a stale parameter, not a destination;
+the breadcrumb draws from `view` alone), while the folder is still validated unconditionally so a
+refused path falls back to the root on both arms rather than throwing. The two arms fill the same
+four slots (`folders`, `photos`, `pageInfo`, `mediaTotal`) and fall through to ONE render — the
+same header, tree and explorer over either table — and the folder list is read on BOTH arms,
+because both views draw the same tree pane and the pane shows the Media badge on both.
+
+The media arm calls `listNinaMediaPhotos(userId, { offset })` with **no `limit` argument on
+purpose**: `NINA_CHAT_PHOTO_PAGE_SIZE` (48) is that read's own default *and* ceiling, so no call
+site can quietly widen one page into the unpaginated read the constant exists to prevent. Rows map
+to `MediaExplorerPhoto` on the server, field by field — `thumbUrl` is `null` permanently (the
+table has no thumbnail column, so the grid's `thumbUrl ?? url` fallback is the only render path),
+`folder` is the root's `''` and unread (a message image is filed nowhere), `filename` is
+**derived** (`YYYY-MM-DD <id>`) because the table has no filename column and is never parsed out
+of `pathname`, `source` is the row's own `kind`, `isCurrent` is `false` (adoption copies the bytes
+into `nina_avatars` and the copy carries `is_current`), and the crop is the identity. `side` is
+`photoSideOf(kind)` computed here — the same call `galleryPhotos` makes, which keeps the his/hers
+discriminator in one place. The `(row): MediaExplorerPhoto` / `(row): AlbumExplorerPhoto`
+annotations are load-bearing: without them `origin: 'album'` widens to `string` and the union
+stops being discriminable.
+
+The album arm gained one parallel read, `countNinaMediaPhotos(userId)`: the tree's Media badge
+shows the count on BOTH views, so the album view pays one `count(*)` for a number its grid never
+uses — the badge is the rail's whole point, and a badge without a count is decoration. The header
+body copy follows the view (the `h1`'s own rename is a later phase's edit, kept out so this phase
+ships no label churn), and the empty-album notice became an album-view fact: on Media the grid's
+own empty state speaks instead, so the operator is never told to drop a folder over conversation
+photographs.
+
+**Changed:** `app/admin/nina/page.tsx` — the arm split above; `page={pageInfo}` replaces the
+inline page object, and two new props (`view`, `mediaCount`) thread down to `FileExplorer`.
+
+**In packages with readmes of their own** — the same phase, one slice each. `lib/admin`: the
+virtual node (`NINA_MEDIA_VIEW_PARAM` / `NINA_MEDIA_VIEW_VALUE`, `ExplorerView`,
+`readExplorerView`, `NINA_MEDIA_NODE_LABEL`, `MediaViewNode` / `mediaViewNode`) — it carries a
+`view` discriminant and no `path`, so `findFolderNode`, `isFolderAncestorOf` and `FolderMenu`
+cannot even ask whether Media is in the tree, and the view is told apart by parameter KEY, never
+by a reserved path, so a real folder named "Media" stays legal. `lib/nina`: `NinaMediaPage`,
+`mediaCollectionScope` (`user_id` + `isOriginalPhoto()` with deliberately **no `kind` arm**, so
+his composer uploads are members), `listNinaMediaPhotos` and `countNinaMediaPhotos`.
+`components/admin`: `ExplorerPhoto` is now the discriminated union `AlbumExplorerPhoto |
+MediaExplorerPhoto` narrowed on `origin`; `FileExplorer` takes `view` / `mediaCount`, hides the
+album-only Add buttons and absorbs drops while Media is open; `FolderTree` renders the pinned row
+through a `menu={null}` slot so it gets no folder verbs; `PhotoGrid` branches only its empty copy;
+`SelectionPane` opens a read-only media arm placed after every hook. Tests pinning the phase:
+`tests/admin.filetree.test.ts` and `tests/nina.photoRefs.test.ts`.
 
 ### Recent changes — P1-RI-A031 (2026-09-09)
 

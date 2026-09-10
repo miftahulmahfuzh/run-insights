@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-10
-**Total Active Tasks**: 0
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
-- Completed: 31
+- Blocked: 1
+- Completed: 32
 
 ---
 
@@ -21,6 +21,26 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [ ] **P1-RI-A035** Phase 2: Media verbs on both kinds; purge the Chat photos surface
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns lifting the `kind !== 'generated'` refusals (`replaceChatPhotoAction`, `editChatPhotoDescriptionAction` + `updateNinaChatPhotoDescription`'s WHERE, `setChatPhotoAsAvatarAction`) so every ORIGINAL media row is replaceable, describable, adoptable; the ONE side→subject mapping `describeSubjectForSide` in `lib/nina/album.ts`; the migrated client upload flow (ChatPhotoAdd/chatPhotoUpload → explorer/, Media view's 'Add photos', Replace) mounted through SelectionPane restructured into a two-line dispatcher over a private AlbumSelectionPane and a new MediaPane (narrowing Phase 1's `origin` union via the `isMediaRow` type guard), with adopt-with-crop draft, Replace, Remove, Download and NO FileExplorer prop changes (Phase 1's `view: ExplorerView` + `mediaCount: number` stand); the prompt toggle rendered ONLY when `prompt != null` (R2); and the purge: `app/admin/photos/page.tsx`, every ChatPhoto* component, `chatPhotoModel.ts`, `chatPhotoUpload` (re-homed into explorer/, not lost), `listNinaChatPhotos` + `NinaChatPhotoPage`, the nav entry + dashboard card, `tests/admin.chatPhotosRail.test.ts`, with `ADMIN_CHAT_PHOTOS_PATH`'s VALUE re-homed to '/admin/nina' (constant stays). `countNinaChatPhotos` and `generatedChatPhotoScope` are deliberately KEPT (the image-reference picker is their remaining caller). `MediaDescription.tsx` is created as a marked seam for Phase 3. Exit criteria: every verb from the old rail works in the Media folder for both kinds; /admin/photos, its nav entry and card are gone; tests/admin.shell.test.ts updated and green; no ChatPhoto* component remains; the mapping has one definition and one suite; the whole suite passes.
+  - **Status**: pending
+  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1 (verbs half) — manually-uploaded chat images become replaceable and adoptable as her profile picture; R2 — a replaced photo no longer offers the view-prompt affordance.
+  - **Depends on**: `P1-RI-A034`
+  - **Plan**: `.workflows/plan/P1-RI-A035.md`
+
+- [ ] **P1-RI-A036** Phase 4: "Image collection": rename + borderless grid
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns every user-visible 'Nina's album' → 'Image collection' (nav label + short, dashboard card, page h1 + body copy, app/admin/personality/page.tsx copy), with a short label that does not collide with 'Images'; the post-purge nav comment rewrites Phase 2 left stale on purpose (ImagesIcon's docstring, the shell test's trio comment); `explorer/PhotoGrid.tsx` restyled to the Photo-reference recipe — gap-[3px] sheet with one rounded-field overflow-hidden, aspect-square tiles on a bg-ink-3/20 bed, no per-tile border/radius/padding, selection as scale-down + badge (Phase 1's `view` prop and view-aware media empty state kept byte for byte); opportunistically the stale comments in the analysis reference list (including schema.ts's filtered-reads line naming the retired listNinaChatPhotos). Does not touch PhotoReferencePicker.tsx and its test, any action, any data read, or Phase 3's describe panel internals. Exit criteria: the page reads 'Image collection' everywhere; the grid is borderless in the picker's idiom and tests/admin.photoReference.test.ts is untouched and green; suite + lint + typecheck pass.
+  - **Status**: blocked
+  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R4 — Rename the page "Image collection"; borderless photo grid, Photo-reference style.
+  - **Depends on**: `P1-RI-A034`, `P1-RI-A035`
+  - **Plan**: `.workflows/plan/P1-RI-A036.md`
 
 - [x] **P1-RI-A032** Phase 1: About-viewer codec + any-age photo deep link
   - **Difficulty**: NORMAL
@@ -81,6 +101,32 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A034** Phase 1: Media folder in the Image collection explorer (read path)
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns the virtual Media folder end to end on the READ side: a pure tree-node builder in `lib/admin/filetree.ts` (a pinned 'Media' sibling under the 'Album' root — never a storable folder path, invisible to `isFolderAncestorOf`/move/delete), a paginated all-kinds originals read + count in `lib/nina/queries.ts` (WHERE `user_id` + `isOriginalPhoto()` — the exact membership of /nina/about's Media section), an `ExplorerPhoto` extension carrying media-only fields (`kind`/`side`, `prompt`, `messageId`; album-only fields nullable there), the `?view=media` arm of `app/admin/nina/page.tsx` (page size `NINA_CHAT_PHOTO_PAGE_SIZE`, `searchParams` awaited per Next 16), and `FileExplorer`/`FolderTree`/`PhotoGrid` composition so the grid renders media tiles and the tree shows Media with its count. Selection opens the pane read-only at worst. Does not touch any Server Action, any write path, SelectionPane's control set, /admin/photos, or nav labels. Exit criteria: /admin/nina?view=media lists every original conversation photo (both kinds, orphans included, newest first, paginated at 48); the tree pane shows 'Album' then 'Media' with a count; album folders behave exactly as before; new pure logic unit-tested; lint + typecheck + full suite green.
+  - **Status**: completed
+  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — Merge Chat photos into the album: purge the Chat photos tab; one Media folder in the album's folder list, below "Album", showing what /nina/about's Media section shows; manually-uploaded chat images become replaceable and adoptable as her profile picture.
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A034.md`
+  - **Completed**: 2026-09-10 17:25
+  - **Method**: /do (swarm phase 1/4)
+  - **Files**: lib/admin/filetree.ts, lib/nina/queries.ts, components/admin/explorer/model.ts, app/admin/nina/page.tsx, components/admin/FileExplorer.tsx, components/admin/explorer/FolderTree.tsx, components/admin/explorer/PhotoGrid.tsx, components/admin/explorer/SelectionPane.tsx, tests/admin.filetree.test.ts, tests/nina.photoRefs.test.ts
+  - **Verification**: `npm run typecheck` clean (next typegen + tsc --noEmit); `npm run lint` 0 errors (4 pre-existing warnings in untouched scripts/capture/shoot.mjs); `npx vitest run tests/admin.filetree.test.ts tests/nina.photoRefs.test.ts` 97/97; full `npm run test` 3779/3779 across 177 files; prettier clean on all ten touched files. The plan's manual browser check (/admin/nina?view=media in a logged-in browser) was not performed — admin-gated UI, unattended session; its contracts are pinned by the new/extended unit suites.
+  - **Drift**: Plan Step 5b's replacement block omitted the pre-existing `{dragging && <p aria-live="polite">Drop into …</p>}` paragraph in FileExplorer — kept; the step's own Impact line and the exit criteria require album view to behave identically (rung 2).
+  - **Drift**: Plan Step 4 spelled the media body copy with `&mdash;` inside a JS string literal, which renders as literal text — used the real em dash character, matching the repo's string convention (e.g. SAVE_NOTICE_TEXT) (rung 6).
+  - **Drift**: Plan Step 3's tail said to insert the new `folder` docstring 'after the existing folder field's comment line' but quoted the comment on `total`; applied as giving ExplorerPageInfo.folder its doc comment — a literal insert would have duplicated the field and not compiled (rung 3, intent).
+  - **Drift**: Plan Step 10's tests assumed rows-first query order and a bound offset; the fakeDb harness records the COUNT as Q0 (its function call runs during the Promise.all array evaluation; the rows chain is a lazy thenable) and drizzle binds both limit ($2) and offset ($3), omitting the offset clause entirely at 0 — assertions re-pointed at the real recording; the pinned contract (page ceiling NINA_CHAT_PHOTO_PAGE_SIZE=48, offset floored at 0, both statements user-scoped + reference-filtered with NO kind arm) unchanged (rung 6, mechanics; contract per plan).
+  - **Drift**: Prettier collapsed one pre-existing multi-line import in lib/nina/queries.ts ('@/lib/nina/tuning') while formatting the file; cosmetic, file now prettier-clean.
+  - **Drift**: `npm run lint` reports 4 warnings, all in scripts/capture/shoot.mjs (untouched by this phase — pre-existing branch state).
+  - **Decided**: Step 3 in a swarm: created ALL FOUR phases' tasks (not the mint-only-own-phase shortcut some earlier sets used) and wrote every TaskID back into BOTH index copies — the set has only phase 1 spawned, peers skip minting via the filled TaskID column, and the /do hand-off needs phase 2's task to exist (rung 6 / command spec).
+  - **Decided**: Package assignment: phases 1, 2, 4 (owning app-level files) → root package RI; phase 3 → components/admin (CA) (rung 6, repo precedent from the admin-responsive set).
+  - **Decided**: Kept the drag-overlay live paragraph in FileExplorer media/album toolbar rework → exit criteria outrank the code block (rung 2).
+  - **Decided**: Media body copy em dash spelling → repo string convention (rung 6).
+  - **Decided**: ExplorerPageInfo.folder docstring application → plan code-block intent over its muddled prose (rung 3).
+  - **Decided**: Media read test assertions re-pointed at the harness's real SQL recording → contract unchanged, mechanics per harness (rung 6).
 
 - [x] **P1-RI-A033** Phase 2: Detail foto icon row (jump + photo)
   - **Difficulty**: NORMAL
