@@ -90,40 +90,44 @@ export function ChatPhotoControls({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <>
       {/*
        * R1: icons, no text — the verbs live in `aria-label`/`title`, the destructive red stays on
        * the trash, and `loading` keeps each square box while its dots run. `w-11 px-0` squares the
        * `md` button: 44 px of tap target either way.
+       *
+       * R4: the two buttons are a FRAGMENT, so the rail's single icon row is their flex parent —
+       * they are row siblings of the eye, brush and person toggles, not a stacked column of their
+       * own. The hidden input rides along invisibly, and the inline messages below carry
+       * `basis-full`, which is what makes a flex-wrap row push them onto their own full-width line
+       * under the icons instead of squeezing them between buttons.
        */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="md"
-          variant="secondary"
-          aria-label="Replace this photo"
-          title="Replace this photo"
-          className="w-11 px-0"
-          loading={busy === 'replacing'}
-          disabled={busy !== 'idle'}
-          onClick={() => fileRef.current?.click()}
-        >
-          <SwapIcon className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          size="md"
-          variant="destructive"
-          aria-label="Remove this photo"
-          title="Remove this photo"
-          className="w-11 px-0"
-          loading={busy === 'removing'}
-          disabled={busy !== 'idle'}
-          onClick={() => void onRemove()}
-        >
-          <TrashIcon className="size-4" />
-        </Button>
-      </div>
+      <Button
+        type="button"
+        size="md"
+        variant="secondary"
+        aria-label="Replace this photo"
+        title="Replace this photo"
+        className="w-11 px-0"
+        loading={busy === 'replacing'}
+        disabled={busy !== 'idle'}
+        onClick={() => fileRef.current?.click()}
+      >
+        <SwapIcon className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        size="md"
+        variant="destructive"
+        aria-label="Remove this photo"
+        title="Remove this photo"
+        className="w-11 px-0"
+        loading={busy === 'removing'}
+        disabled={busy !== 'idle'}
+        onClick={() => void onRemove()}
+      >
+        <TrashIcon className="size-4" />
+      </Button>
 
       <input
         ref={fileRef}
@@ -133,8 +137,8 @@ export function ChatPhotoControls({
         onChange={(event) => void onPick(event)}
       />
 
-      {error !== null && <p className="text-[12px] font-medium text-red">{error}</p>}
-      {note !== null && <p className="text-[12px] font-medium text-ink-3">{note}</p>}
-    </div>
+      {error !== null && <p className="basis-full text-[12px] font-medium text-red">{error}</p>}
+      {note !== null && <p className="basis-full text-[12px] font-medium text-ink-3">{note}</p>}
+    </>
   )
 }

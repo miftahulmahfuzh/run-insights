@@ -101,6 +101,42 @@ describe('R2 — the detail rail is compact', () => {
   })
 })
 
+describe('R4 — all five icons share ONE row', () => {
+  it('the rail renders the five controls as one contiguous row: eye, brush, person, replace, trash', () => {
+    const detail = readRepoCode(DETAIL)
+    // The JSX MOUNTS in row order, and the row is one flex container: eye and brush, the
+    // hairline divider, the person toggle, then the Replace/Remove pair mounted inline.
+    const row = detail.slice(
+      detail.indexOf('<EyeIcon'),
+      detail.indexOf('</div>', detail.indexOf('<ChatPhotoControls')),
+    )
+    expect(row).toContain('<EyeIcon')
+    expect(row).toContain('<BrushIcon')
+    expect(row).toContain('<PersonFrameIcon')
+    expect(row).toContain('<ChatPhotoControls')
+    // Row order is the reading order: see-what-it-is first, act-on-it after, destructive last.
+    expect(row.indexOf('<BrushIcon')).toBeGreaterThan(row.indexOf('<EyeIcon'))
+    expect(row.indexOf('<PersonFrameIcon')).toBeGreaterThan(row.indexOf('<BrushIcon'))
+    expect(row.indexOf('<ChatPhotoControls')).toBeGreaterThan(row.indexOf('<PersonFrameIcon'))
+    // One hairline between the two view toggles and the three action controls.
+    expect(row).toContain('bg-rule')
+  })
+
+  it('Replace and Remove join the row as siblings, not as their own stacked column', () => {
+    const controls = readRepoCode(CONTROLS)
+    expect(controls).not.toContain('flex-col')
+    // Their inline messages wrap BELOW the row (basis-full in the parent's flex-wrap), which is
+    // how text can follow two buttons out of one fragment.
+    expect(controls).toMatch(/basis-full/)
+  })
+
+  it('the framing panel is panel-only — its toggle lives in the rail row now', () => {
+    const source = readRepoCode(PROFILE)
+    expect(source).not.toContain('PersonFrameIcon')
+    expect(source).not.toMatch(/aria-expanded/)
+  })
+})
+
 describe('R3 — set as her profile picture, from the chat rail', () => {
   it('the framing panel exists and drives the adoption action', () => {
     expect(repoFileExists(PROFILE)).toBe(true)
@@ -111,15 +147,6 @@ describe('R3 — set as her profile picture, from the chat rail', () => {
     expect(source).toContain('Reset framing')
     expect(source).toContain('Set as her profile picture')
     expect(source).toContain('CircleFrame')
-  })
-
-  it('its icon sits ABOVE the Replace / Remove row, where the operator asked for it', () => {
-    const detail = readRepoCode(DETAIL)
-    // The JSX MOUNTS, not the imports — the question is what renders above what.
-    const profile = detail.indexOf('<ChatPhotoProfilePicture')
-    const controls = detail.indexOf('<ChatPhotoControls')
-    expect(profile).toBeGreaterThan(-1)
-    expect(controls).toBeGreaterThan(profile)
   })
 
   it('the panel disables itself once she is wearing the photo', () => {
