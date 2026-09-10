@@ -23,6 +23,7 @@ const FLAT_KEEPER = {
   description: 'Keeper prose, already paid for.',
   sourceAvatarId: null,
   sourceImageId: null,
+  contentHash: HASH,
 }
 
 describe('planChatPhotoAddWrite', () => {
@@ -79,12 +80,39 @@ describe('planChatPhotoAddWrite', () => {
     expect(plan.sourceImageId).toBe('keep123XYZ_9')
   })
 
-  it('a null hash claim stays null on a reference row: NULL means no claim, not a lie', () => {
+  it('a reference row carries the KEEPER hash, never this encode’s claim', () => {
+    // The source-key skip (2026-09-10's measured defect): the pre-check matched on the PICKED
+    // file's bytes, so the claim describes an encode nobody stored — while the row is about to
+    // render the keeper's bytes. A row's content_hash describes the bytes its blob_url serves.
+    const plan = planChatPhotoAddWrite({
+      claims: {
+        ...CLAIMS,
+        contentHash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+      },
+      pinned: FLAT_KEEPER,
+      hit: null,
+    })
+    expect(plan.contentHash).toBe(HASH)
+  })
+
+  it('a keeper that never had a hash keeps the reference’s hash NULL — never the claim', () => {
+    const plan = planChatPhotoAddWrite({
+      claims: CLAIMS,
+      pinned: { ...FLAT_KEEPER, contentHash: null },
+      hit: null,
+    })
+    expect(plan.contentHash).toBeNull()
+  })
+
+  it('an original still writes the claim as its own hash', () => {
     const plan = planChatPhotoAddWrite({
       claims: { ...CLAIMS, contentHash: null },
       pinned: null,
-      hit: FLAT_KEEPER,
+      hit: null,
     })
     expect(plan.contentHash).toBeNull()
+    expect(planChatPhotoAddWrite({ claims: CLAIMS, pinned: null, hit: null }).contentHash).toBe(
+      HASH,
+    )
   })
 })

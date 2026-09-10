@@ -78,14 +78,21 @@ describe('planNinaPickUpload — dup -> skip upload + attach pointer', () => {
     })
   })
 
-  it('uploads when the hash could not be computed — dedup inactive, pick never blocked', () => {
+  it('uploads when neither hash could be computed — dedup inactive, pick never blocked', () => {
     expect(planNinaPickUpload({ contentHash: null, duplicate: null })).toEqual({
       outcome: 'upload',
       contentHash: null,
     })
+  })
+
+  it('attaches on a SOURCE-only hit: the encode missed, but the picked file itself is stored', () => {
+    // The downloaded-then-re-uploaded photograph (2026-09-10's measured defect): the composer
+    // re-encoded the pick into bytes nobody stored, so the encode's hash missed — but the pick's
+    // own bytes ARE a row's stored bytes, the pre-check matched on that key, and a duplicate in
+    // hand is the collection's answer regardless of which key matched.
     expect(planNinaPickUpload({ contentHash: null, duplicate: existing })).toEqual({
-      outcome: 'upload',
-      contentHash: null,
+      outcome: 'attach-existing',
+      existing,
     })
   })
 })

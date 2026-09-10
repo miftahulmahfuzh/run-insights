@@ -131,6 +131,15 @@ export async function encodeChatPhotoJpeg(
  * makes. The pre-check is one owner-scoped server action round trip; on a hit it saves the PUT, a
  * second Blob object, and the duplicate row that would have hidden the keeper from nothing.
  *
+ * ── THE SECOND KEY, OVER THE PICK ITSELF (2026-09-10's measured defect) ──────────────────────
+ * The encode hash above can never match a photograph that was downloaded out of the collection
+ * and re-added: THIS re-encode produces bytes nobody has ever stored. So the picked file is
+ * hashed too and both keys go into the one lookup — the pick's bytes ARE a stored row's object
+ * byte for byte, and `content_hash` holds "sha-256 over a row's stored bytes" either way. On a
+ * source-key hit the claims still describe THIS encode; that is correct — `addChatPhotoAction`
+ * pins the keeper by id and writes the KEEPER's measured hash onto the reference row, so the
+ * encode's claim never reaches the database as a byte description.
+ *
  * ── WHY DEDUPE IS OPT-IN, AND WHY REPLACE MUST NEVER PASS IT ─────────────────────────────────
  * `opts.dedupe` defaults to OFF so every existing caller keeps today's behavior, and
  * `ChatPhotoAdd` is the only caller that turns it on. Replace must NOT: its contract is "swap the
@@ -148,7 +157,10 @@ export async function uploadChatPhoto(
   const contentHash = await contentHashOf(encoded.blob)
 
   if (opts.dedupe === true) {
-    const duplicate = await findChatPhotoDuplicateAction(contentHash)
+    /* Only a dedupe caller pays for the pick's own hash — the opt-out paths keep today's
+     * behavior byte for byte. */
+    const sourceHash = await contentHashOf(file).catch(() => null)
+    const duplicate = await findChatPhotoDuplicateAction(contentHash, sourceHash ?? undefined)
     if (duplicate != null) {
       return {
         blobUrl: duplicate.blobUrl,

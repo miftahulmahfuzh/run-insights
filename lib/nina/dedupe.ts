@@ -282,9 +282,14 @@ export type NinaPickUploadPlan =
  * answered — the composer's whole dedup decision, as a value, so the suite can assert
  * "duplicate -> skip the upload, attach the pointer" without rendering a component.
  *
- * A null hash uploads regardless of anything else: with no hash there is nothing to match on,
- * and a photograph must never fail to enter the conversation because its hash could not be
- * computed (invariant 9's client half).
+ * The DECISION is the duplicate's alone, and that is deliberate: since the source-key lookup
+ * (2026-09-10's measured defect), a non-null `duplicate` means the collection already holds
+ * EITHER the encoded bytes OR the picked file itself — and either way the answer is the same,
+ * attach what exists. A null `contentHash` no longer forces an upload by itself; it only means
+ * the encode's hash contributed nothing, which the caller (the composer) has already folded into
+ * whether it asked at all. No duplicate and no hash — or any duplicate-less shape — uploads:
+ * a photograph must never fail to enter the conversation because a hash could not be computed
+ * (invariant 9's client half).
  */
 export function planNinaPickUpload(input: {
   /** `contentHashOf` over the exact bytes that would be PUT, or null when hashing failed. */
@@ -292,7 +297,7 @@ export function planNinaPickUpload(input: {
   /** `findNinaDuplicateChatImage`'s answer — the existing photograph, or null. */
   duplicate: NinaExistingPhoto | null
 }): NinaPickUploadPlan {
-  if (input.contentHash !== null && input.duplicate !== null) {
+  if (input.duplicate !== null) {
     return { outcome: 'attach-existing', existing: input.duplicate }
   }
   return { outcome: 'upload', contentHash: input.contentHash }

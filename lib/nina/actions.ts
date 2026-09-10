@@ -989,6 +989,14 @@ export async function sendNinaMessage(input: {
  * is never the payload — an id resolved against `user_id` is a fact, and this action does the
  * resolving.
  *
+ * ── TWO KEYS, ONE QUESTION ─────────────────────────────────────────────────────────────────────
+ * Since 2026-09-10's measured defect the input carries a SECOND hash: the picked file's own
+ * (`sourceHash`), next to the encode's. A downloaded-then-reuploaded photograph is re-encoded by
+ * `compressForNina` into bytes nobody has ever stored, so its encode hash can never match — but
+ * the picked file's bytes ARE a stored row's object byte-for-byte, and `content_hash` holds
+ * "sha-256 over a row's stored bytes" either way. Both claims are normalized independently and
+ * the misses drop out; asking with only one valid key is the same question it always was.
+ *
  * ── FAILURE IS `null`, AND `null` MEANS "UPLOAD" ───────────────────────────────────────────────
  * An invalid hash (the 64-hex check is the whole of the trust this claim gets — invariant 9), a
  * miss, and a failed lookup are all the same answer: nothing matched, so the composer uploads.
@@ -997,15 +1005,20 @@ export async function sendNinaMessage(input: {
  * decisions that must agree.
  */
 export async function findNinaDuplicateChatImage(input: {
-  contentHash: string
+  contentHash: string | null
+  sourceHash: string | null
 }): Promise<NinaExistingPhoto | null> {
   const userId = await requireUserId()
 
-  const contentHash = normalizeClaimedContentHash(input?.contentHash)
-  if (contentHash === null) return null
+  /* Both keys, normalized separately (invariant 9 is per-claim, never per-request); a key that
+   * failed its own check contributes nothing rather than poisoning the other one. */
+  const keys = [input?.contentHash, input?.sourceHash]
+    .map((value) => normalizeClaimedContentHash(value))
+    .filter((value): value is string => value !== null)
+  if (keys.length === 0) return null
 
   try {
-    const keeper = await findNinaImageByContentHash(userId, contentHash)
+    const keeper = await findNinaImageByContentHash(userId, keys)
     if (keeper === null) return null
     return { kind: 'image', id: keeper.id, url: keeper.blobUrl }
   } catch (cause) {

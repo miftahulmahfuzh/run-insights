@@ -387,15 +387,31 @@ export function Composer({
         }
 
         /*
-         * The pre-check, BEFORE any upload: one indexed, owner-scoped lookup. A transport
-         * failure degrades to "no duplicate" — the pick uploads, the race-close at send time
-         * still holds the hash, and a photograph never fails to send because dedup had a bad
-         * round trip.
+         * The SECOND key, over the pick itself (2026-09-10's measured defect): a photograph that
+         * was downloaded out of the collection and re-uploaded re-encodes here into bytes nobody
+         * has ever stored, so the encode hash above can never match — but the picked file's own
+         * bytes ARE a stored row's object, byte for byte, and `content_hash` holds "sha-256 over
+         * a row's stored bytes" for every row. Asking both keys in one lookup is what turns
+         * "download → re-upload" from a second Blob object into an attach. Same degradation rule
+         * as the encode hash: a miss costs nothing, a photograph is never blocked on it.
+         */
+        let sourceHash: string | null = null
+        try {
+          sourceHash = await contentHashOf(file)
+        } catch {
+          sourceHash = null
+        }
+
+        /*
+         * The pre-check, BEFORE any upload: one indexed, owner-scoped lookup over BOTH keys. A
+         * transport failure degrades to "no duplicate" — the pick uploads, the race-close at send
+         * time still holds the encode's hash, and a photograph never fails to send because dedup
+         * had a bad round trip.
          */
         const duplicate =
-          contentHash === null
+          contentHash === null && sourceHash === null
             ? null
-            : await findNinaDuplicateChatImage({ contentHash }).catch(() => null)
+            : await findNinaDuplicateChatImage({ contentHash, sourceHash }).catch(() => null)
 
         const step = planNinaPickUpload({ contentHash, duplicate })
         if (step.outcome === 'attach-existing') {

@@ -346,20 +346,52 @@ describe('findNinaDuplicateChatImage', () => {
       id: 'imgKEEPER001',
       blobUrl: 'https://blob.example/nina/u1/chat/zzzz.jpg',
     })
-    const photo = await actions.findNinaDuplicateChatImage({ contentHash: HASH })
+    const photo = await actions.findNinaDuplicateChatImage({ contentHash: HASH, sourceHash: null })
     expect(photo).toEqual({
       kind: 'image',
       id: 'imgKEEPER001',
       url: 'https://blob.example/nina/u1/chat/zzzz.jpg',
     })
-    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', HASH)
+    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', [HASH])
+  })
+
+  it('asks BOTH keys in one lookup — the encode’s and the picked file’s own', async () => {
+    spies.findNinaImageByContentHash.mockResolvedValue(null)
+    const SOURCE_HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    await actions.findNinaDuplicateChatImage({ contentHash: HASH, sourceHash: SOURCE_HASH })
+    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', [HASH, SOURCE_HASH])
+  })
+
+  it('a source-only hit reaches the lookup: the encode missed, the pick itself is stored', async () => {
+    spies.findNinaImageByContentHash.mockResolvedValue({
+      id: 'imgKEEPER001',
+      blobUrl: 'https://blob.example/nina/u1/chat/zzzz.jpg',
+    })
+    const SOURCE_HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    const photo = await actions.findNinaDuplicateChatImage({
+      contentHash: null,
+      sourceHash: SOURCE_HASH,
+    })
+    expect(photo?.id).toBe('imgKEEPER001')
+    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', [SOURCE_HASH])
+  })
+
+  it('a malformed key drops out without poisoning the valid one', async () => {
+    spies.findNinaImageByContentHash.mockResolvedValue(null)
+    const SOURCE_HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    await actions.findNinaDuplicateChatImage({ contentHash: 'zz', sourceHash: SOURCE_HASH })
+    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', [SOURCE_HASH])
   })
 
   it('an invalid hash is null with no lookup; a miss is null', async () => {
-    expect(await actions.findNinaDuplicateChatImage({ contentHash: 'zz' })).toBeNull()
+    expect(
+      await actions.findNinaDuplicateChatImage({ contentHash: 'zz', sourceHash: null }),
+    ).toBeNull()
     expect(spies.findNinaImageByContentHash).not.toHaveBeenCalled()
 
     spies.findNinaImageByContentHash.mockResolvedValue(null)
-    expect(await actions.findNinaDuplicateChatImage({ contentHash: HASH })).toBeNull()
+    expect(
+      await actions.findNinaDuplicateChatImage({ contentHash: HASH, sourceHash: null }),
+    ).toBeNull()
   })
 })

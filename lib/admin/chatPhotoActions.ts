@@ -377,16 +377,28 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
  * it already owns. Invariant 9 in one guard: a malformed hash is `null`, never an error, and the
  * caller proceeds to a normal upload and loses nothing but the round trip it was trying to save.
  *
+ * ── THE SECOND KEY (2026-09-10's measured defect) ────────────────────────────────────────────
+ * `sourceHash` is the picked file's OWN hash, asked alongside the encode's. The encode hash can
+ * never match for a photograph that was downloaded out of the collection and re-uploaded — the
+ * re-encode here produces bytes nobody has ever stored — while the picked file's bytes ARE a
+ * stored row's object byte for byte, and one `content_hash` column answers for both identities.
+ * Either key matching is the same answer: skip the PUT, pin the keeper.
+ *
  * The answer names the ORIGINAL only (the finder filters references), so the caller's skip path
  * pins a keeper that is flat and `addChatPhotoAction`'s own re-read does the rest.
  */
 export async function findChatPhotoDuplicateAction(
   contentHash: string,
+  sourceHash?: string,
 ): Promise<{ id: string; blobUrl: string; pathname: string } | null> {
   const { userId } = await requireAdmin()
-  if (!isValidContentHash(contentHash)) return null
 
-  const row = await findNinaImageByContentHash(userId, contentHash)
+  const keys = [contentHash, sourceHash].filter((value): value is string =>
+    isValidContentHash(value),
+  )
+  if (keys.length === 0) return null
+
+  const row = await findNinaImageByContentHash(userId, keys)
   if (row == null) return null
   return { id: row.id, blobUrl: row.blobUrl, pathname: row.pathname }
 }

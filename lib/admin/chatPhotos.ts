@@ -346,6 +346,13 @@ export interface ChatPhotoKeeper {
   description: string | null
   sourceAvatarId: string | null
   sourceImageId: string | null
+  /**
+   * The hash the keeper's OWN object was measured against (or NULL — an old row the sweep's
+   * pass-1 fill has not reached). Since the source-key skip (2026-09-10's measured defect) this
+   * is what a duplicate row must carry: the reference renders the keeper's bytes, so the only
+   * honest hash for it is the keeper's — the client's claim may describe an encode nobody stored.
+   */
+  contentHash: string | null
 }
 
 /** What `addChatPhotoAction` writes, and what it releases afterwards. */
@@ -355,7 +362,10 @@ export interface ChatPhotoAddPlan {
   /** F37's pair: non-null on either makes the row a REFERENCE the collection reads skip. */
   sourceAvatarId: string | null
   sourceImageId: string | null
-  /** The client's validated hash claim — NULL when there was none or it failed validation. */
+  /**
+   * The claim on an ORIGINAL; on a duplicate, the keeper's own measured hash (NULL when it never
+   * had one). One rule underneath: a row's content_hash describes the bytes its blob_url serves.
+   */
   contentHash: string | null
   /** Copied from the keeper on a duplicate (`resolveAttachment`'s precedent); NULL on an original. */
   description: string | null
@@ -392,6 +402,15 @@ export interface ChatPhotoAddPlan {
  * string, nothing to release. The race path PUT a fresh object whose pathname cannot equal the
  * keeper's (`addRandomSuffix: true`), so THAT object is the loser and it is released after the
  * reference row is in. The comparison is what keeps one function honest about both.
+ *
+ * ── WHY A DUPLICATE CARRIES THE KEEPER'S HASH, NOT THE CLAIM'S ────────────────────────────────
+ * A row's `content_hash` means "sha-256 over the bytes this row's blob_url serves", and a
+ * reference serves the KEEPER's bytes. On the encode-key paths the claim and the keeper's hash
+ * are the same value (that is what a byte match IS), so nothing changes there; on the source-key
+ * skip (2026-09-10's measured defect) the claim describes an encode nobody stored — writing it
+ * onto a row that renders the keeper's object would make the column lie. So the keeper's own
+ * measured hash wins, NULL included: a keeper that never had a hash keeps this row hash-less,
+ * which is the sweep's pass-1 fill's job to correct, not a claim's to guess at.
  */
 export function planChatPhotoAddWrite(input: {
   claims: { blobUrl: string; pathname: string; contentHash: string | null }
@@ -424,7 +443,7 @@ export function planChatPhotoAddWrite(input: {
     pathname: keeper.pathname,
     sourceAvatarId: provenance.sourceAvatarId,
     sourceImageId: provenance.sourceImageId,
-    contentHash: input.claims.contentHash,
+    contentHash: keeper.contentHash,
     description: keeper.description,
     release:
       input.claims.pathname === keeper.pathname

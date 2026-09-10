@@ -1824,13 +1824,23 @@ export async function getNinaMessageImagesForMessages(
  * `nina_message_images_user_content_hash_idx` serves exactly this shape.
  *
  * ── THE CLAIM IS VALIDATED BEFORE THIS RUNS, NOT INSIDE IT ───────────────────────────────────
- * `contentHash` is a `string`, not `string | null`: NULL means "no dedup" everywhere else in this
- * file's vocabulary, and a caller holding NULL wants the no-match answer, not a query that can
- * only answer no. Callers validate client claims with `isValidContentHash`
+ * Every hash handed here is a `string`: NULL means "no dedup" everywhere else in this file's
+ * vocabulary, and a caller holding NULL wants the no-match answer, not a query that can only
+ * answer no. Callers validate client claims with `isValidContentHash`
  * (`lib/photos/contentHash.ts`) first and simply do not call this on failure — the same shape
  * `resolveAttachment` uses for its provenance source. `insertNinaMessageImages` re-checks the
  * format at the write anyway; the two checks agree by construction because both call the one
  * predicate.
+ *
+ * ── ONE CALL, TWO KINDS OF BYTE IDENTITY ─────────────────────────────────────────────────────
+ * The list form exists because a pick carries TWO hashes worth asking about (2026-09-10's
+ * measured defect): the encode's — the bytes a PUT would carry — and the picked file's own,
+ * which for a download-then-reupload is byte-for-byte a row's stored object. `content_hash`
+ * holds "sha-256 over a row's stored bytes" for every row, so ONE column answers both questions
+ * and the caller asks them together: `in (encode, source)`, one indexed round trip. The two
+ * matches can name different rows only when the same picture is stored twice in two encodes;
+ * either is a correct attach target (a reference flattens to its original either way), so the
+ * ordering stays the collection's — newest first, the least likely to have been deleted.
  *
  * `null` for "not yours", "no such bytes" and "no row carries them" — this module's standing rule,
  * which here is also the dedup answer "store it, you are the first": the outcomes want exactly the
@@ -1839,15 +1849,16 @@ export async function getNinaMessageImagesForMessages(
  */
 export async function findNinaImageByContentHash(
   userId: string,
-  contentHash: string,
+  contentHash: string | string[],
 ): Promise<NinaImageRow | null> {
+  const hashes = Array.isArray(contentHash) ? contentHash : [contentHash]
   const rows = await db
     .select(imageColumns)
     .from(ninaMessageImages)
     .where(
       and(
         eq(ninaMessageImages.userId, userId),
-        eq(ninaMessageImages.contentHash, contentHash),
+        inArray(ninaMessageImages.contentHash, hashes),
         isOriginalPhoto(),
       ),
     )
