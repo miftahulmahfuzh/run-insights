@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-10
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 30
+- Completed: 31
 
 ---
 
@@ -39,15 +39,6 @@
   - **Drift**: `npm run lint` emits 1 new warning on app/nina/about/page.tsx:127 — the react-hooks/purity eslint-disable the plan's complete file reproduces is now unused: the rule no longer objects to the hoisted `const jobsNowMs = Date.now()` (probe-verified: even an inline `Date.now()` in JSX draws no purity report today). Kept byte-for-byte per the plan's complete code block; harmless, and the docstring argument stays true.
   - **Decided**: Unused react-hooks/purity eslint-disable → keep the plan's file byte-for-byte, record the lint warning (rung 3: the plan's complete code block ships it; removing it would be an extra refactor bought with the same commit).
   - **Decided**: Manual deep-link probe → skipped as environment-blocked (rung 2: the exit criteria's automated gates are all met; the plan's Verification marks the probe "(optional)").
-- [ ] **P1-RI-A033** Phase 2: Detail foto icon row (jump + photo)
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns the new owner-scoped read in `lib/nina/queries.ts` (job → photo via `nina_message_images ⋈ nina_messages.turn_id = jobId`, `kind='generated'`, deterministic order, limit 1); a pure `planJobPhoto`/href helper beside `planJobJump` in `lib/nina/jobview.ts` consuming phase 1's `aboutPhotoHref` codec; the detail page resolving the photo fact (a sequential read, skipped entirely for avatar jobs) and passing it down; `NinaJobDetail`'s row becoming icon-only controls — jump icon ("Buka chat-nya" as `aria-label`) beside the photo icon (opens the `/nina/about?photo=…` link) — with the refusal sentences unchanged when a control has no fact. Does not touch `getNinaImageJobDetail`'s contract beyond callers, `NinaJobList`/`/nina/jobs` list rows, the chat page, admin surfaces, the attach strip. Exit criteria: on a completed selfie job the row shows [chat icon][photo icon]; on `no-message` the photo icon shows beside its sentence; on `avatar`/`gone` (and any job whose photo row is gone — admin Remove, runner message delete) the photo icon is absent; after an admin Replace the photo icon still opens the NEW bytes; `npm run lint`, `npm run typecheck`, `npx vitest run` green.
-  - **Status**: pending
-  - **Plan Set**: `JOB_PHOTO_LINK_PLAN.md` (phase 2 of 2)
-  - **Satisfies**: R1 — "Buka chat-nya" becomes an icon-only button (no text); R2 — Same row gains an icon button opening the existing full-screen photo view (with its send-to-recent / send-to-new chat controls)
-  - **Depends on**: `P1-RI-A032`
-  - **Plan**: `.workflows/plan/P1-RI-A033.md`
 
 - [x] **P1-RI-A022** Phase 2: A tile you can tell apart: the admin icon set
   - **Difficulty**: NORMAL
@@ -90,6 +81,20 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A033** Phase 2: Detail foto icon row (jump + photo)
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the new owner-scoped read in `lib/nina/queries.ts` (job → photo via `nina_message_images ⋈ nina_messages.turn_id = jobId`, `kind='generated'`, deterministic order, limit 1); a pure `planJobPhoto`/href helper beside `planJobJump` in `lib/nina/jobview.ts` consuming phase 1's `aboutPhotoHref` codec; the detail page resolving the photo fact (a sequential read, skipped entirely for avatar jobs) and passing it down; `NinaJobDetail`'s row becoming icon-only controls — jump icon ("Buka chat-nya" as `aria-label`) beside the photo icon (opens the `/nina/about?photo=…` link) — with the refusal sentences unchanged when a control has no fact. Does not touch `getNinaImageJobDetail`'s contract beyond callers, `NinaJobList`/`/nina/jobs` list rows, the chat page, admin surfaces, the attach strip. Exit criteria: on a completed selfie job the row shows [chat icon][photo icon]; on `no-message` the photo icon shows beside its sentence; on `avatar`/`gone` (and any job whose photo row is gone — admin Remove, runner message delete) the photo icon is absent; after an admin Replace the photo icon still opens the NEW bytes; `npm run lint`, `npm run typecheck`, `npx vitest run` green.
+  - **Status**: completed
+  - **Plan Set**: `JOB_PHOTO_LINK_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R1 — "Buka chat-nya" becomes an icon-only button (no text); R2 — Same row gains an icon button opening the existing full-screen photo view (with its send-to-recent / send-to-new chat controls)
+  - **Depends on**: `P1-RI-A032`
+  - **Plan**: `.workflows/plan/P1-RI-A033.md`
+  - **Completed**: 2026-09-10 12:06
+  - **Method**: /implement (swarm phase 2/2)
+  - **Files**: lib/nina/queries.ts, lib/nina/jobview.ts, app/nina/jobs/[id]/page.tsx, components/nina/NinaJobDetail.tsx, tests/nina.jobview.test.ts, tests/nina.photoRefs.test.ts
+  - **Verification**: `npm run typecheck` exit 0; `npm run lint` exit 0 (3 pre-existing warnings in scripts/capture/shoot.mjs, untouched by this phase); `npx vitest run tests/nina.jobview.test.ts tests/nina.photoRefs.test.ts` 53/53; full `npx vitest run` 3592/3592 across 167 files; per-file prettier clean on all six touched files.
 
 - [x] **P1-RI-A031** Phase 3: Focus on: the redundant hint under each option
   - **Difficulty**: EASY

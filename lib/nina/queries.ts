@@ -74,11 +74,7 @@ import {
   normalizeNinaTrigger,
   type NinaShortcutKind,
 } from '@/lib/nina/shortcuts'
-import {
-  coerceNinaTuning,
-  NINA_TUNING_DEFAULTS,
-  type NinaTuning,
-} from '@/lib/nina/tuning'
+import { coerceNinaTuning, NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
 
 /**
  * Every Nina read and write, in one module — `lib/db/queries.ts` for `lib/nina/`.
@@ -1795,6 +1791,7 @@ export async function getNinaMessageImagesForMessages(
  * these are what makes a photograph RENDER and what Nina is given to look at (invariant 2):
  *   · `getNinaMessageImagesForMessages` → every bubble, and the delete log
  *   · `getNinaMessageImage`             → the ?photo= deep link and the re-attach path
+ *   · `getNinaJobPhoto`                 → the Detail foto row's photograph link (this set)
  *   · `dbNinaSourceGateway.readMessageWindow` / `.readConversation` → her context
  *   · `isBlobPathnameReferenced`        → "is anyone still pointing at these bytes", which is
  *                                         wrong by exactly the rows this predicate hides
@@ -4062,4 +4059,102 @@ export async function listNinaSelfieJobIdsSince(userId: string, since: Date): Pr
       ),
     )
   return rows.map((row) => row.jobId).filter((jobId): jobId is string => jobId != null)
+}
+
+/* ============================================================================
+ * §12 The job → photograph link (this set's R2/R3/R4)
+ * ==========================================================================*/
+
+/**
+ * The whole fact the Detail foto row needs: the id of the photograph the job produced. See
+ * `getNinaJobPhoto` for why that is all it selects.
+ */
+export interface NinaJobPhotoRow {
+  /** The `nina_message_images.id` the `/nina/about?photo=chat.<id>` link names. */
+  id: string
+}
+
+/**
+ * **A job's photograph, through the only job→photo key the schema has: `nina_messages.turn_id`.**
+ *
+ * Both writers of a finished selfie spell the chain the same way — `scripts/nina-image-worker.ts`'s
+ * `finishSelfie` (raw SQL) and its in-platform twin `lib/nina/imagerun.ts` insert one
+ * `nina_messages` row with `turn_id = jobId` and `photo_only`, then one `nina_message_images` row
+ * with `kind = 'generated'` hanging off it. The image row itself carries NO job id, so the join
+ * below is not one way to answer the question, it is the only one. `listNinaSelfieJobIdsSince`
+ * (§11) walks this exact join in the other direction; this is that read with a point instead of a
+ * list.
+ *
+ * ── WHY THE LINK SURVIVES AN ADMIN REPLACE, AND DIES ON AN ADMIN REMOVE ───────────────────────
+ * `replaceChatPhotoAction` swaps bytes on the SAME row (`updateNinaChatPhotoBlob` — same id, same
+ * `message_id`, same `created_at`), so the id this read returns keeps naming the photograph after
+ * a Replace, and the viewer it opens shows the new bytes. That is R4, and it is why the link must
+ * name the row id and nothing derived from the bytes. `removeChatPhotoAction` deletes the row
+ * outright — R3's stated boundary — and this read then returns `null`, which the page renders as
+ * NO control: never a link the server has not proved.
+ *
+ * ── THE TWO NULLS, AND WHY NEITHER IS AN ERROR ────────────────────────────────────────────────
+ * "Not yours" and "does not resolve" are one outcome, this module's standing rule. The second
+ * `null` here is genuinely ambiguous by design: a removed session cascades the carrier message
+ * away, the `innerJoin` misses, and the photograph — orphaned, `message_id SET NULL` — stays alive
+ * in Media but unreachable from Detail foto. That degradation is DECIDED (plan index, *Decisions*:
+ * repairing it needs a `job_id` column, which is a migration this set forbids), so `null` is the
+ * honest answer and not a case to disambiguate. `finishAvatar` writes no carrier message at all,
+ * so an avatar job's `turn_id` names nothing and this read returns `null` for one by construction —
+ * the page still skips calling it (see `planJobPhoto`'s avatar arm, the rule half of that
+ * decision).
+ *
+ * ── OWNER SCOPE ON BOTH TABLES ────────────────────────────────────────────────────────────────
+ * `nina_message_images.user_id` is this module's standing rule. `nina_messages.user_id` is spelled
+ * too, although the page has already owner-verified `jobId` through `getNinaImageJobDetail`: a
+ * join's WHERE is where this module proves ownership, and a job id is a claim wherever it arrives
+ * from. The redundancy costs one predicate, not one round trip.
+ *
+ * ── WHY `kind = 'generated'`, THE ORDER, AND THE ONE ROW ──────────────────────────────────────
+ * `generated` excludes HIS uploads, which share the table. The order is the gallery's own —
+ * `(created_at desc, id desc)`, `listNinaMessageImages`' — so `LIMIT 1` is deterministic even if a
+ * job ever carried two photographs; today both writers write exactly one, so the tiebreak is
+ * insurance rather than a fix.
+ *
+ * ── WHY `isOriginalPhoto()` IS DELIBERATELY ABSENT ────────────────────────────────────────────
+ * This read makes a photograph RENDER — the Detail foto icon is drawn from the row it returns —
+ * which is exactly the class `isOriginalPhoto`'s docstring says must never be filtered (the reads
+ * that render). The absence is asserted in `tests/nina.photoRefs.test.ts`, so a future
+ * "consistency" cleanup that adds the predicate here fails loudly instead of blanking the control.
+ *
+ * ── WHY THE PROJECTION IS `{ id }` AND NOT `imageColumns` ─────────────────────────────────────
+ * The page maps this row to an href and nothing else (plan invariant 5). Selecting only `id` makes
+ * `description`'s exclusion STRUCTURAL — `glm-4.6v`'s private prose cannot cross into client props
+ * if it is never selected — and keeps this read from growing a projection nobody reads. Widen it
+ * only with a consumer.
+ *
+ * ── WHY THERE IS NO INDEX AND NO MIGRATION ────────────────────────────────────────────────────
+ * `nina_messages.turn_id` is deliberately unindexed (`lib/db/schema.ts`: "nothing renders it, and
+ * an audit pointer must not be able to block a delete") and this set adds no index (plan invariant
+ * 4). The cost is bounded anyway: the images side enters through
+ * `nina_message_images_user_created_idx (user_id, created_at desc)`, the join is on
+ * `nina_messages`' primary key, and one user's photographs number in the dozens — not the
+ * thousands that would make an unindexed `turn_id` scan visible. One statement, on a page opened a
+ * handful of times a day, behind a read (`getNinaImageJobDetail`) that already accepts a second
+ * sequential round trip for exactly these economics.
+ */
+export async function getNinaJobPhoto(
+  userId: string,
+  jobId: string,
+): Promise<NinaJobPhotoRow | null> {
+  const rows = await db
+    .select({ id: ninaMessageImages.id })
+    .from(ninaMessageImages)
+    .innerJoin(ninaMessages, eq(ninaMessages.id, ninaMessageImages.messageId))
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessages.userId, userId),
+        eq(ninaMessages.turnId, jobId),
+        eq(ninaMessageImages.kind, 'generated'),
+      ),
+    )
+    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+    .limit(1)
+  return rows[0] ?? null
 }

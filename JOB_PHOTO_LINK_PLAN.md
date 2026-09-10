@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/job-photo-link`
 **Branch:** `feature/job-photo-link` (base: `origin/main` @ `ac9cf03`)
 **Phases:** 2
-**Status:** phase 1/2 complete (P1-RI-A032)
+**Status:** complete
 **Coordinator:** —
 
 **Plan: 2 phases — 10 files across `app/`, `components/`, `lib/`, `tests/` (Phase 1: 4, Phase 2: 6, zero overlap); the shared about-viewer codec must exist before the linking side consumes it. R1 -> 2 · R2 -> 2 · R3 -> 1,2 · R4 -> 1,2.**

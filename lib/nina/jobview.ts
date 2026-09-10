@@ -1,5 +1,6 @@
 import { formatDuration, MISSING } from '@/lib/format'
 import { isValidId } from '@/lib/id'
+import { aboutPhotoHref } from '@/lib/nina/album'
 
 /**
  * **R1's whole vocabulary: what a job's row says, and where its "go to the bubble" button points.**
@@ -444,6 +445,77 @@ export const NINA_JOB_JUMP_NOTE: Record<Exclude<NinaJobJump['kind'], 'ready'>, s
     'Foto ini bukan dari chat — Nina ganti foto profilnya sendiri, jadi nggak ada bubble yang memicunya.',
   'no-message': 'Job ini nggak nyimpen pesan pemicunya, jadi nggak ada bubble yang bisa dituju.',
   gone: 'Pesan yang minta foto ini sudah nggak ada — kehapus, atau chatnya dihapus.',
+}
+
+/* ── the photograph link ─────────────────────────────────────────────────────────────────── */
+
+/**
+ * What the Detail foto row needs to know about the job's photograph — `NinaJobJump`'s shape, one
+ * refusal fewer.
+ *
+ * ── WHY A DISCRIMINATED UNION AND NOT `string | null` ──────────────────────────────────────────
+ * Three reasons, in the order a reviewer meets them.
+ *
+ *   1. **Parity of idiom.** `photo` renders beside `jump` and answers with the same idiom —
+ *      `kind === 'ready'` — so a reader of the component reads two facts in one grammar instead of
+ *      a union and a nullable string.
+ *   2. **The fact crosses the boundary decided.** The prop is REQUIRED and non-nullable, so a page
+ *      that forgot to resolve the photograph cannot glide past the question the way a missing prop
+ *      (and therefore `undefined`) would sail through a `string | null` check. The component's own
+ *      header states the arrangement: the server decides, the client renders.
+ *   3. **The refusal has room to speak.** If a future requirement ever needs to say WHY there is
+ *      no photograph, the union grows an arm and nothing downstream changes shape; `string | null`
+ *      would have to become this union anyway.
+ *
+ * What it deliberately does NOT have is the jump's THREE refusal arms: each of those carries a
+ * sentence (`NINA_JOB_JUMP_NOTE`), while the photograph's absence carries NONE — the plan index's
+ * decided rule is that the icon is simply not drawn ("never a link the server has not proved"), so
+ * `{ kind: 'none' }` is the renderer's signal to draw nothing. An arm with no sentence is not
+ * redundancy here; it is the difference between "no fact" and "no prop".
+ */
+export type NinaJobPhoto = { kind: 'ready'; href: string } | { kind: 'none' }
+
+/**
+ * **R2's "open the full-screen photo" link, as a rule rather than as a `&&` inside the component —
+ * and the plan index's avatar decision, kept where a test can reach it.**
+ *
+ * `vitest.config.ts` is `environment: 'node'` with no jsdom, which is why `planJobJump` lives in
+ * this file and not in `NinaJobDetail`; this function has exactly the same reason to sit beside
+ * it. The page passes two facts it read under the runner's own `userId` — the job's `purpose` and
+ * the photograph row's id (`getNinaJobPhoto`'s projection) — and gets back the value the client
+ * renders without re-deriving anything.
+ *
+ * ── THE AVATAR ARM IS A DECIDED RULE, NOT JUST A SAVED QUERY ───────────────────────────────────
+ * `finishAvatar` writes an `nina_avatars` row and NO carrier message, so no job id ever reaches
+ * the conversation photographs: there is no job→avatar key, and matching one by `description` or
+ * date would be a guess that can name the wrong face (plan index, *Decisions*). So an avatar job
+ * answers `{ kind: 'none' }` EVEN IF a row id somehow arrived — this arm is the rule, and the
+ * page's skip of the read is merely the rule's cost half, exactly as `getNinaImageJobDetail`'s
+ * `replyToId === null` early return is the cost half of `planJobJump`'s avatar arm.
+ *
+ * ── WHY `'chat'` IS A LITERAL HERE AND NOT A PARAMETER ──────────────────────────────────────────
+ * A job photograph is by construction a conversation photograph — the read filters
+ * `kind = 'generated'`, and `finishAvatar` writes album rows, not message images. The `'album'`
+ * section is the codec's other half and no job can ever name one, so the literal is spelled once
+ * rather than threaded through a parameter a caller could get wrong.
+ *
+ * ── WHY THE HREF COMES FROM THE CODEC MODULE AND IS NOT SPELLED HERE ────────────────────────────
+ * The app carries TWO `?photo=` grammars that must stay separate (plan invariant 5): `/nina`'s
+ * `kind:id` colon grammar (`lib/nina/attach.ts`, the composer attach) and `/nina/about`'s
+ * `section.id` dot grammar (the viewer state this link writes). The about codec module owns the
+ * second spelling — the parameter name, the dot, the route — and this module only names the fact,
+ * the same division `ninaJumpHref` keeps with `SESSION_PARAM`. The codec's other consumers are
+ * `NinaAboutScreen` itself; this is the first OUTBOUND writer of its grammar, which is why the
+ * codec had to move to `lib/` at all.
+ */
+export function planJobPhoto(input: {
+  purpose: 'selfie' | 'avatar'
+  /** The job photograph's row id, or `null` when `getNinaJobPhoto` resolved nothing. */
+  imageId: string | null
+}): NinaJobPhoto {
+  if (input.purpose === 'avatar') return { kind: 'none' }
+  if (input.imageId === null) return { kind: 'none' }
+  return { kind: 'ready', href: aboutPhotoHref('chat', input.imageId) }
 }
 
 /* ── the soft-navigation guard ────────────────────────────────────────────────────────────── */
