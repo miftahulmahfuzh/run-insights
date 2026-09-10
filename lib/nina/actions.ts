@@ -53,7 +53,13 @@ import {
   NINA_TURN_STALE_MS,
   ninaAwaitingByMessage,
 } from './turnflight'
-import { NINA_TURN_BUDGET, productionDeps, runNinaTurn, type NinaTurnSource } from './turn'
+import {
+  NINA_BURST_MAX_MESSAGES,
+  NINA_TURN_BUDGET,
+  productionDeps,
+  runNinaTurn,
+  type NinaTurnSource,
+} from './turn'
 import type { NinaRelationship } from './tuning'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
@@ -955,6 +961,47 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
       .reverse()
       .slice(0, NINA_SHORTCUT_LOOKBACK)
 
+    /*
+     * **R2 (the burst-cancel set).** The earlier messages of the burst this turn answers — what he
+     * sent in a row WITHOUT waiting for a reply, every one of them still unanswered when this turn
+     * was opened. `'HE JUST SAID:'` names the newest; without this list the restart turn's prompt
+     * is byte-identical to an ordinary turn's, and she answers "dan makan apa lunch?" with no way
+     * to know "mau kemana hari ini?" is standing unanswered in front of it.
+     *
+     * **No new query**, for the reason the block above already argues: `loadNinaContext` has
+     * already loaded the window, OLDEST FIRST with both roles in it
+     * (`ConversationFacts.window`, `lib/nina/context.ts:286`). The walk is three predicates, and
+     * each is load-bearing:
+     *
+     *   · `role === 'nina'` ENDS the walk — everything above her row was answered by the reply it
+     *     precedes, and naming it would ask her to answer it twice;
+     *   · `turn.id === runnerMessageId` is SKIPPED, not collected — that message is
+     *     `input.runnerText`, already named by `'HE JUST SAID:'`, and the exclusion is BY ID
+     *     because two identical texts are two messages ("eh", "eh");
+     *   · `turn.text.length === 0` is SKIPPED — a photo-only message's `body` is `''` (`runnerText`
+     *     is null for it on both the send and the chain path), and an empty bullet is a rendering
+     *     bug, not a message. The walk does NOT stop for one: the photograph is still part of the
+     *     burst, and it still reaches her through the window's `imageDescriptions`.
+     *
+     * The newest `NINA_BURST_MAX_MESSAGES` survive — see the constant's note in `lib/nina/turn.ts`
+     * for the 40-row-window × 4 000-character arithmetic that makes the cap arithmetic, not taste.
+     *
+     * **All three paths get this from one computation, which is the set's exit criterion**: the
+     * restart turn after phase 1's supersede, a chained follow-up, and a resend all arrive HERE,
+     * so all three frame the burst identically. Cannot throw — pure array reads over rows already
+     * in memory (INVARIANT 7). An empty walk is the ordinary single-message turn and costs zero
+     * bytes downstream (invariant 2 of the prompt layer).
+     */
+    const burstTexts: string[] = []
+    for (let i = loadedContext.conversation.window.length - 1; i >= 0; i -= 1) {
+      const turn = loadedContext.conversation.window[i]!
+      if (turn.role === 'nina') break
+      if (turn.id === runnerMessageId) continue
+      if (turn.text.length === 0) continue
+      burstTexts.push(turn.text)
+    }
+    const earlierRunnerTexts = burstTexts.reverse().slice(-NINA_BURST_MAX_MESSAGES)
+
     /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
      *
      * INVARIANT 5 IS ENFORCED BY THIS ARGUMENT AND NOWHERE ELSE. `imageDescriptions` is TEXT.
@@ -980,6 +1027,7 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
         attachedRunId: input.attachedRunId,
         shortcuts,
         recentRunnerTexts,
+        earlierRunnerTexts,
       },
       { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
     )

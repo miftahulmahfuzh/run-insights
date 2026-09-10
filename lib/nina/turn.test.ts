@@ -15,10 +15,13 @@ import {
 } from '@/tests/fixtures/ninaTurn'
 import { describe, expect, it } from 'vitest'
 
+import type { ConversationTurn } from './context'
+
 import { LOOKUP_RUNS_TOOL, NINA_SYSTEM_PROMPT, SEND_TOOL, buildNinaSystemPrompt } from './prompts'
 import { normalizeNinaTrigger, type NinaShortcutMatchable } from './shortcuts'
 import {
   MAX_TOOL_ROUNDS,
+  NINA_BURST_MAX_MESSAGES,
   NINA_MAX_TOKENS,
   NINA_MIN_ROUND_BUDGET_MS,
   NINA_TURN_BUDGET,
@@ -790,5 +793,119 @@ describe('NinaTurnResult.firedShortcutIds — what the usage bump reads', () => 
     )
     expect(result.source).toBe('unavailable')
     expect(result.firedShortcutIds).toEqual(['sc0000000001'])
+  })
+})
+
+/* ============================================================================
+ * R2 (the burst-cancel set) — the accumulated messages. The WALK lives in `lib/nina/actions.ts`
+ * and is proven through the drained background turn in `tests/nina.resend.test.ts`; this block
+ * proves the prompt layer's half: the cap's bound, and the WORDS the walk's output becomes.
+ * ========================================================================= */
+
+/** A `ConversationTurn` as `conversationFacts` builds one (`lib/nina/context.ts:693`). */
+function windowTurn(
+  id: string,
+  role: 'runner' | 'nina',
+  text: string,
+  over: Partial<ConversationTurn> = {},
+): ConversationTurn {
+  return {
+    id,
+    role,
+    text,
+    sentOnISO: '2026-09-10',
+    sentAtLabel: 'Thu 10 Sep 09:00',
+    daysAgo: 0,
+    replyToId: null,
+    runId: null,
+    imageDescriptions: [],
+    ...over,
+  }
+}
+
+describe('NINA_BURST_MAX_MESSAGES — the cap', () => {
+  it('bounds the block to a handful — the payload must not be a function of how long he types', () => {
+    /* 40 window rows × 4 000 chars would be ~156 KB uncapped; the cap keeps the absolute worst
+     * case at a few whole messages. The precise value is prompt policy — pinned small, with WHICH
+     * end survives the cap pinned by the walk's own test in `tests/nina.resend.test.ts`. */
+    expect(NINA_BURST_MAX_MESSAGES).toBeGreaterThanOrEqual(2)
+    expect(NINA_BURST_MAX_MESSAGES).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('userTurnText — the burst (R2, the burst-cancel set)', () => {
+  it('carries ZERO burst bytes when no earlier message is unanswered — INVARIANT 2, three ways', async () => {
+    /* The baseline is the turn as this file built it before the feature existed. Every case below
+     * must produce it byte for byte: the field ABSENT (what `lib/nina/proactive.ts`, the cron
+     * route and every live test still pass), explicitly `[]`, and a list whose every entry is
+     * empty — the photo-only degenerate case the renderer is the last guard against. */
+    const baseline = await userTurnOf(input())
+    expect(await userTurnOf(input({ earlierRunnerTexts: undefined }))).toBe(baseline)
+    expect(await userTurnOf(input({ earlierRunnerTexts: [] }))).toBe(baseline)
+    expect(await userTurnOf(input({ earlierRunnerTexts: ['', '   '] }))).toBe(baseline)
+  })
+
+  it('names the earlier messages as hers to answer together with HE JUST SAID', async () => {
+    const userTurn = await userTurnOf(
+      input({
+        runnerText: 'dan makan apa lunch?',
+        earlierRunnerTexts: ['mau kemana hari ini?', 'jangan lupa ya'],
+      }),
+    )
+    expect(userTurn).toContain('WITHOUT WAITING FOR YOUR REPLY')
+    expect(userTurn).toContain('- mau kemana hari ini?')
+    expect(userTurn).toContain('- jangan lupa ya')
+    expect(userTurn).toContain('answer it too, not only the ones listed above')
+    /* The newest is named by the existing block, never duplicated as a bullet. */
+    expect(userTurn.indexOf('- dan makan apa lunch?')).toBe(-1)
+    expect(userTurn).toContain('HE JUST SAID:')
+  })
+
+  it('sits AFTER the shortcut block and IMMEDIATELY BEFORE `HE JUST SAID:`', async () => {
+    const history = runHistoryFixture()
+    const attached = history.runs[0]!
+    const userTurn = await userTurnOf(
+      input({
+        history,
+        attachedRunId: attached.runId,
+        runnerText: 'abis ini 🍑 ya',
+        shortcuts: [shortcut()],
+        earlierRunnerTexts: ['mau kemana hari ini?'],
+      }),
+    )
+    const run = userTurn.indexOf('HE ATTACHED THIS RUN TO HIS MESSAGE')
+    const peach = userTurn.indexOf(PEACH)
+    const burst = userTurn.indexOf('WITHOUT WAITING FOR YOUR REPLY')
+    const said = userTurn.indexOf('HE JUST SAID:')
+    expect(run).toBeGreaterThanOrEqual(0)
+    expect(peach).toBeGreaterThan(run)
+    expect(burst).toBeGreaterThan(peach)
+    expect(said).toBeGreaterThan(burst)
+  })
+
+  it('drops the trailer when the newest message is a photo — there is no HE JUST SAID: to point at', async () => {
+    const userTurn = await userTurnOf(
+      input({
+        runnerText: null,
+        sourceMessageId: null,
+        earlierRunnerTexts: ['mau kemana hari ini?'],
+      }),
+    )
+    expect(userTurn).toContain('- mau kemana hari ini?')
+    expect(userTurn).not.toContain('answer it too, not only the ones listed above')
+    expect(userTurn).not.toContain('HE JUST SAID:')
+  })
+
+  it('collapses each message to one line — the list must read as a list', async () => {
+    const userTurn = await userTurnOf(input({ earlierRunnerTexts: ['satu\n\ndua   tiga'] }))
+    expect(userTurn).toContain('- satu dua tiga')
+  })
+
+  it('renders every entry it is given — the CAP IS THE CALLER’S, as recentRunnerTexts already rules', async () => {
+    const many = Array.from({ length: NINA_BURST_MAX_MESSAGES + 3 }, (_, i) => `pesan ${i}`)
+    const userTurn = await userTurnOf(input({ earlierRunnerTexts: many }))
+    for (const text of many) {
+      expect(userTurn).toContain(`- ${text}`)
+    }
   })
 })

@@ -76,6 +76,10 @@ vi.mock('@/lib/nina/gateway', () => ({
 vi.mock('@/lib/nina/turn', () => ({
   /* The chain's wall-clock guard reads `.overall`; the real literal, so the arithmetic is real. */
   NINA_TURN_BUDGET: { overall: 45_000 },
+  /* The burst walk in `runNinaBackgroundTurn` reads this (burst-cancel set R2). Vitest THROWS on
+   * an export the factory omits, which would crash the turn before its model call — the value is
+   * the real literal, though no test here reads it. */
+  NINA_BURST_MAX_MESSAGES: 6,
   productionDeps: () => ({}),
   runNinaTurn: (...a: unknown[]) => runNinaTurn(...a),
 }))
