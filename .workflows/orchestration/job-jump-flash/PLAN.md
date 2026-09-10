@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/job-jump-flash`
 **Branch:** `feature/job-jump-flash` (base: `origin/main` @ `204fd34`)
 **Phases:** 1
-**Status:** orchestrated
+**Status:** complete
 **Coordinator:** orch-job-jump-flash
 
 ---

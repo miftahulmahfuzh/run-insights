@@ -3,6 +3,12 @@
   "coordinator": "orch-job-jump-flash",
   "coordinator_session_id": "15fbdb06-bf2e-4435-bed1-737b5728bb67",
   "created": "2026-09-10T02:41:25+00:00",
+  "landed": {
+    "at": "2026-09-10T03:12:13+00:00",
+    "base": "main",
+    "commit": "243daed411fc5d04fd2741c7d20f197d3210ef50",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -26,6 +32,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/job-jump-flash/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "job-jump-flash",
-  "updated": "2026-09-10T03:07:42+00:00",
+  "updated": "2026-09-10T03:12:13+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/job-jump-flash"
 }
