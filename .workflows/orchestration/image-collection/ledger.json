@@ -1,0 +1,89 @@
+{
+  "branch": "feature/image-collection",
+  "coordinator": "orch-image-collection",
+  "coordinator_session_id": "d87837c5-ea06-4949-ad46-73383bb0aee8",
+  "created": "2026-09-10T09:51:52+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "HARD",
+      "n": 1,
+      "note": null,
+      "package": "app/admin`, `components/admin/explorer`, `lib/admin`, `lib/nina",
+      "plan": ".workflows/plan/image-collection/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Media folder in the Image collection explorer (read path)"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/admin`, `lib/nina`, `components/admin`, `app/admin",
+      "plan": ".workflows/plan/image-collection/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Media verbs on both kinds; purge the Chat photos surface"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "components/admin`, `lib/admin`, `lib/nina",
+      "plan": ".workflows/plan/image-collection/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R3"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "One describe control everywhere; described photos reach Nina's context"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        2
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "app/admin`, `components/admin",
+      "plan": ".workflows/plan/image-collection/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R4"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "\"Image collection\": rename + borderless grid"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/image-collection/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "image-collection",
+  "updated": "2026-09-10T09:51:52+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/image-collection"
+}
