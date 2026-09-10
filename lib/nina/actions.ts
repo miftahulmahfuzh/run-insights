@@ -9,11 +9,13 @@ import { after } from 'next/server'
 import { ninaPhotoProvenance } from './attach'
 import { titleNinaSessionIfNeeded } from './autotitle'
 import {
+  chatTurnWasSuperseded,
   closeNinaChatTurn,
   getPendingNinaChatTurn,
   ninaChatTurnStore,
   ninaSessionExists,
   openNinaChatTurn,
+  supersedeNinaChatTurn,
   sweepStaleNinaChatTurns,
 } from './chatturn'
 import type { NinaContext } from './context'
@@ -51,7 +53,13 @@ import {
   NINA_TURN_STALE_MS,
   ninaAwaitingByMessage,
 } from './turnflight'
-import { NINA_TURN_BUDGET, productionDeps, runNinaTurn, type NinaTurnSource } from './turn'
+import {
+  NINA_BURST_MAX_MESSAGES,
+  NINA_TURN_BUDGET,
+  productionDeps,
+  runNinaTurn,
+  type NinaTurnSource,
+} from './turn'
 import type { NinaRelationship } from './tuning'
 import { NinaVisionTokenFloorError, describeNinaImages } from './vision'
 
@@ -715,6 +723,37 @@ export async function sendNinaMessage(input: {
     console.warn('[nina] chat turn sweep failed', { error: String(cause) })
   }
 
+  /*
+   * ── STEP 1c-i — THE CANCEL (R1). ─────────────────────────────────────────────────────────────
+   * If a turn for THIS conversation is still THINKING (`pending` + `running`, and fresh — see
+   * `supersedeNinaChatTurn` for why an expired one is left alone), this send closes it
+   * `failed`/`superseded`, and the `openNinaChatTurn` below then opens a FRESH one whose context
+   * already contains both his messages — the one the thinking turn was answering (persisted in
+   * STEP 1, before any of this) and this one. One round trip, one turn, and the burst is answered
+   * together instead of queued behind a stale answer.
+   *
+   * It sits here — after every refusal and after his row is committed — because a cancel is a
+   * write on somebody else's turn and must never be spent on a send that then refuses. It sits
+   * between the sweep and the open because the open is what needs the claim gone: the moment the
+   * supersede wins, there is no pending claim left for this session and the open proceeds.
+   *
+   * A cancel that LOSES — she reached `'persisting'`, the claim expired, or the statement raced
+   * and missed — has no branch here, on purpose: `openNinaChatTurn` then refuses as it always has
+   * and the turn that beat us chains onto this message exactly as before. The boolean buys one
+   * log line and nothing else.
+   */
+  let superseded = false
+  try {
+    superseded = await supersedeNinaChatTurn(userId, sessionId)
+  } catch (cause) {
+    /* Invariant 7: a cancel that could not run must never cost him the send. The worst case is
+     * exactly today's behavior — his message is saved and the running turn chains onto it. */
+    console.warn('[nina] could not supersede the thinking turn', { error: String(cause) })
+  }
+  if (superseded) {
+    console.log('[nina] superseded a thinking turn', { userId, sessionId })
+  }
+
   let turnId: string | null = null
   try {
     turnId = await openNinaChatTurn(userId, { sessionId, runnerMessageId, depth: 0 })
@@ -922,6 +961,47 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
       .reverse()
       .slice(0, NINA_SHORTCUT_LOOKBACK)
 
+    /*
+     * **R2 (the burst-cancel set).** The earlier messages of the burst this turn answers — what he
+     * sent in a row WITHOUT waiting for a reply, every one of them still unanswered when this turn
+     * was opened. `'HE JUST SAID:'` names the newest; without this list the restart turn's prompt
+     * is byte-identical to an ordinary turn's, and she answers "dan makan apa lunch?" with no way
+     * to know "mau kemana hari ini?" is standing unanswered in front of it.
+     *
+     * **No new query**, for the reason the block above already argues: `loadNinaContext` has
+     * already loaded the window, OLDEST FIRST with both roles in it
+     * (`ConversationFacts.window`, `lib/nina/context.ts:286`). The walk is three predicates, and
+     * each is load-bearing:
+     *
+     *   · `role === 'nina'` ENDS the walk — everything above her row was answered by the reply it
+     *     precedes, and naming it would ask her to answer it twice;
+     *   · `turn.id === runnerMessageId` is SKIPPED, not collected — that message is
+     *     `input.runnerText`, already named by `'HE JUST SAID:'`, and the exclusion is BY ID
+     *     because two identical texts are two messages ("eh", "eh");
+     *   · `turn.text.length === 0` is SKIPPED — a photo-only message's `body` is `''` (`runnerText`
+     *     is null for it on both the send and the chain path), and an empty bullet is a rendering
+     *     bug, not a message. The walk does NOT stop for one: the photograph is still part of the
+     *     burst, and it still reaches her through the window's `imageDescriptions`.
+     *
+     * The newest `NINA_BURST_MAX_MESSAGES` survive — see the constant's note in `lib/nina/turn.ts`
+     * for the 40-row-window × 4 000-character arithmetic that makes the cap arithmetic, not taste.
+     *
+     * **All three paths get this from one computation, which is the set's exit criterion**: the
+     * restart turn after phase 1's supersede, a chained follow-up, and a resend all arrive HERE,
+     * so all three frame the burst identically. Cannot throw — pure array reads over rows already
+     * in memory (INVARIANT 7). An empty walk is the ordinary single-message turn and costs zero
+     * bytes downstream (invariant 2 of the prompt layer).
+     */
+    const burstTexts: string[] = []
+    for (let i = loadedContext.conversation.window.length - 1; i >= 0; i -= 1) {
+      const turn = loadedContext.conversation.window[i]!
+      if (turn.role === 'nina') break
+      if (turn.id === runnerMessageId) continue
+      if (turn.text.length === 0) continue
+      burstTexts.push(turn.text)
+    }
+    const earlierRunnerTexts = burstTexts.reverse().slice(-NINA_BURST_MAX_MESSAGES)
+
     /* STEP 3 — the turn. 13–45 s. Never throws for a model problem.
      *
      * INVARIANT 5 IS ENFORCED BY THIS ARGUMENT AND NOWHERE ELSE. `imageDescriptions` is TEXT.
@@ -947,6 +1027,7 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
         attachedRunId: input.attachedRunId,
         shortcuts,
         recentRunnerTexts,
+        earlierRunnerTexts,
       },
       { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
     )
@@ -979,6 +1060,37 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
       void bumpNinaShortcutUses(userId, result.firedShortcutIds).catch((cause) => {
         console.warn('[nina] shortcut usage bump failed', { turnId, error: String(cause) })
       })
+    }
+
+    /*
+     * ── THE OWNERSHIP RE-CHECK (R1). ───────────────────────────────────────────────────────────
+     * Up to 45 s passed since this turn opened its claim, and a send that arrived while the claim
+     * was still `'running'` may have superseded it — closed the row `failed`/`superseded` and
+     * started a fresh turn whose context contains everything this one was answering. This
+     * invocation is the loser of that race, and the answer it is holding is now a DUPLICATE. So it
+     * persists NOTHING and exits: no session check, no bubbles, no close, no distillation, no
+     * auto-title, and — because a `return` from inside this `try` leaves the function after the
+     * `finally` — no chain. `ninaChatTurnStore.record` has already landed the token usage on the
+     * row (its arm 2), so the money ledger stays honest; the `superseded` reason on the row is the
+     * only record this answer ever existed.
+     *
+     * The shortcut bump above STAYS above this exit, exactly as it stays above every other early
+     * return: the trigger was in his message and the payload was billed for it — a turn the runner
+     * retargeted does not un-fire it any more than a failed one does.
+     *
+     * `closed = true` because the row IS closed — by the cancel, not by us — so the `finally`'s
+     * `closeNinaChatTurn` (conditional on `status='pending'` and a no-op here anyway) is spared
+     * the statement. `failure = undefined` because 'crashed' would be a lie; the row already
+     * carries the truth.
+     */
+    if (await chatTurnWasSuperseded(userId, turnId)) {
+      console.warn('[nina] turn was superseded mid-flight; discarding its answer', {
+        turnId,
+        sessionId,
+      })
+      failure = undefined
+      closed = true
+      return
     }
 
     /*

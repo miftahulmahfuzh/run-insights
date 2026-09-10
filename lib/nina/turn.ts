@@ -357,6 +357,30 @@ export interface NinaTurnInput {
    * she echoed back would otherwise re-fire itself for as long as it stayed in the window.
    */
   recentRunnerTexts?: readonly string[]
+  /**
+   * **R2 (the burst-cancel set).** The RUNNER messages this turn must answer TOGETHER WITH
+   * `runnerText` — what he sent in a row WITHOUT waiting for a reply: **oldest first**,
+   * **excluding the message this turn is answering** (that one is `runnerText`), **excluding every
+   * message a reply of hers already answered**, and **already capped to
+   * `NINA_BURST_MAX_MESSAGES` by the caller**. The caller owns the window and the renderer owns
+   * the wording, and a cap applied in two places is a cap that drifts — the same ruling
+   * `recentRunnerTexts` states as "already sliced by the caller".
+   *
+   * It exists because `'HE JUST SAID:'` names ONE message, and a burst is not one message. Without
+   * this field the restart turn's prompt is byte-identical to an ordinary turn's, and she answers
+   * "dan makan apa lunch?" with no way to know "mau kemana hari ini?" is still standing unanswered
+   * in front of it — the exact failure the burst-cancel set exists to remove.
+   *
+   * **Not to be confused with `recentRunnerTexts` directly above.** That one feeds the shortcut
+   * matcher and carries his last few messages REGARDLESS of whether she answered them; this one
+   * feeds the framing and carries only the messages THIS reply must answer. A message can be in
+   * both, neither, or either alone, and neither list may be derived from the other: the first is
+   * "recent, both roles' replies notwithstanding", the second is "unanswered, hers excluded".
+   *
+   * Absent, `[]`, and "present but every entry empty" are the SAME turn: **zero burst bytes**
+   * (invariant 2), asserted in `lib/nina/turn.test.ts`.
+   */
+  earlierRunnerTexts?: readonly string[]
   /** Phase 10's `PROACTIVE_INSTRUCTIONS[kind]`, appended to the user turn. */
   proactive?: string | null
 }
@@ -455,6 +479,90 @@ function shortcutBlock(hits: NinaShortcutHits): string | null {
   }
 }
 
+/* ============================================================================
+ * R2 (the burst-cancel set) — the burst. The messages he sent in a row without waiting, named so
+ * the turn answers all of them and not only the newest.
+ * ==========================================================================*/
+
+/**
+ * How many earlier unanswered messages the burst block names, at most.
+ *
+ * Sized against the two numbers that bound this payload: the window is 40 rows
+ * (`CONTEXT_MESSAGE_WINDOW`, `lib/nina/load.ts:64`) and each runner message is up to 4 000
+ * characters (`MAX_RUNNER_MESSAGE_CHARS`, `lib/nina/schema.ts:44`) — so an UNCAPPED block over a
+ * window full of unanswered monologue is 39 × 4 000 ≈ 156 KB, and a single turn's payload would be
+ * a function of how long he is willing to type. Six bounds the absolute worst case at
+ * 6 × 4 000 = 24 KB, which is still only arithmetic worst case: the bursts this app actually
+ * produces are two or three messages of a few words each ("eh", "nina", "gimana" — the chain
+ * block's own example in `lib/nina/actions.ts`), so the common cost of the block is one header and
+ * two short lines.
+ *
+ * Six and not fewer, because it is the same "how far back is still one thought" distance
+ * `NINA_SHORTCUT_LOOKBACK` chose for the same medium (`lib/nina/shortcuts.ts:85`). Six and not
+ * two, because this block is the ONLY place the earlier messages are named as hers to answer: the
+ * window JSON carries them, but nothing in it says they are unanswered.
+ *
+ * **A count cap, and deliberately not a character budget.** `renderNinaShortcutBlock` clamps to
+ * `NINA_SHORTCUT_BLOCK_MAX_CHARS` because an expansion is admin-written data of unbounded size
+ * riding along on every turn. A burst message is a message she is being TOLD to answer, and
+ * truncating or dropping one turns "answer ALL of them" into a lie in exactly the case the
+ * requirement is about. The count is the bound; the messages under it go whole.
+ *
+ * Lives in THIS file and not in `lib/nina/actions.ts` for the reason
+ * `NINA_SHORTCUT_LOOKBACK` lives in `lib/nina/shortcuts.ts`: it is the prompt layer's policy about
+ * what she is told, applied by the caller that owns the window — one authority, testable from
+ * `lib/nina/turn.test.ts`.
+ */
+export const NINA_BURST_MAX_MESSAGES = 6
+
+/**
+ * The burst block's own words. PROTOCOL text, not persona text — the loop telling her what
+ * happened to the conversation, in the same register as `NINA_SEND_NUDGE` above and
+ * `quoteContextBlock` in `lib/nina/reply.ts`. "WITHOUT WAITING FOR YOUR REPLY" rather than "while
+ * you were still thinking" because the block is reached by three paths (the restart turn after a
+ * supersede, a chained follow-up, a resend) and only the first of them is literally "thinking".
+ */
+const NINA_BURST_HEADER =
+  'HE SENT SEVERAL MESSAGES IN A ROW WITHOUT WAITING FOR YOUR REPLY — none of them has been ' +
+  'answered yet. The earlier ones are below, oldest first. Answer ALL of them in this ONE reply:'
+
+/**
+ * Only when a newest message actually follows. A burst whose newest message is a PHOTO has
+ * `runnerText: null`, no `'HE JUST SAID:'` heading is rendered, and pointing at one that is not
+ * there would be a lie — the photograph still reaches her through the window's
+ * `imageDescriptions`, and "answer ALL of them" is the whole instruction she needs.
+ */
+const NINA_BURST_TRAILER =
+  'His newest message is under "HE JUST SAID:" — answer it too, not only the ones listed above.'
+
+/**
+ * The rendered burst block, or null.
+ *
+ * **Null is the invariant.** Absent input, an empty list, and a list whose every entry is blank
+ * all render NOTHING — no header, no empty bullets, not one byte (invariant 2). The empty-entry
+ * skip is enforced HERE as well as at the producer because this function is the last thing between
+ * an input and the payload: a future caller that hands it a `''` gets one fewer bullet, not a
+ * blank line the model reads as "he said something unsayable".
+ *
+ * Each message is collapsed to one line before it becomes a bullet — `quotePreview`'s reason in
+ * `lib/nina/reply.ts`: the bubble may be `whitespace-pre-wrap` because her line breaks are how she
+ * talks, but a LIST he is being told to answer must read as a list, and a multi-line message
+ * spending its lines on blank lines breaks the bullet framing. The character cap therefore keeps
+ * meaning characters of message, not of `\n`.
+ *
+ * `hasNewest` — whether `'HE JUST SAID:'` will actually follow this block (Step 3 computes it
+ * from `input.runnerText`, which is null for a photo-only newest message).
+ */
+function burstBlock(earlier: readonly string[] | undefined, hasNewest: boolean): string | null {
+  const texts = (earlier ?? [])
+    .map((text) => text.replace(/\s+/g, ' ').trim())
+    .filter((text) => text.length > 0)
+  if (texts.length === 0) return null
+  const lines = [NINA_BURST_HEADER, ...texts.map((text) => `- ${text}`)]
+  if (hasNewest) lines.push(NINA_BURST_TRAILER)
+  return lines.join('\n')
+}
+
 /**
  * The user turn. One JSON block of facts, then what he said — the same order and the same framing
  * `narrate.ts` uses (`Analyse this ${scope}.\n\n${json}`), because that is the shape this endpoint
@@ -507,10 +615,10 @@ function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string {
   }
 
   /*
-   * R2. AFTER the attached run and IMMEDIATELY BEFORE `'HE JUST SAID:'`, for the reason R12 gives
-   * one block up: this is the standing instruction his next sentence has to be read UNDER, so she
-   * reads it before the sentence rather than after it. Below the run block because a run he
-   * attached is the SUBJECT of the message, while the shortcut is the register the message is in.
+   * R2. AFTER the attached run and BEFORE `'HE JUST SAID:'` — for the reason R12 gives one block
+   * up: this is the standing instruction his next sentence has to be read UNDER, so she reads it
+   * before the sentence rather than after it. Below the run block because a run he attached is the
+   * SUBJECT of the message, while the shortcut is the register the message is in.
    *
    * **A turn that fired nothing pushes nothing** — no header, no empty block, not one byte
    * (invariant 2). That is the whole reason this is a user-turn block and not a section of the
@@ -520,6 +628,27 @@ function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string {
   const shortcuts = shortcutBlock(hits)
   if (shortcuts != null) {
     parts.push(shortcuts)
+  }
+
+  /*
+   * **R2 (the burst-cancel set).** AFTER the shortcut block and STILL immediately before
+   * `'HE JUST SAID:'` — the last thing she reads before the message she is answering, because the
+   * block's entire job is to make that message NOT the only one on the table. Below the shortcut
+   * block because a shortcut is the register a message is written in and the burst is WHICH
+   * messages are being answered — register before scope, the same ordering the attached-run block
+   * argues above. The burst block is the ONE block allowed between the shortcut block and his
+   * message, and its own trailer is what re-ties the two.
+   *
+   * **A turn with no burst pushes nothing** — absent input, an empty list, and a list whose every
+   * entry is empty all render zero bytes (invariant 2). That is every ordinary turn, every
+   * proactive turn, and the resend of a message with no burst behind it.
+   */
+  const burst = burstBlock(
+    input.earlierRunnerTexts,
+    input.runnerText != null && input.runnerText.length > 0,
+  )
+  if (burst != null) {
+    parts.push(burst)
   }
 
   if (input.runnerText != null && input.runnerText.length > 0) {

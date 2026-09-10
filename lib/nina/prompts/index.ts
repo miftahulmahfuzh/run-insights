@@ -68,7 +68,27 @@
  * been sent before is such a change, so `nina_turns` has to be able to tell those turns from
  * version 5's. This is the SINGLE bump for the whole set: phase 2 owns it and no other phase
  * touches this constant, because two bumps would date two commits to one change. */
-export const NINA_PROMPT_VERSION = 6
+/* 7 — the nina-burst-cancel set, R2. **NO SYSTEM TEXT MOVED AND NO TOOL SCHEMA MOVED.**
+ * `./system.ts` and `./tools.ts` were not opened; `buildNinaSystemPrompt` is byte-identical to
+ * version 6's at every tuning and `tests/__snapshots__/nina.prompts.test.ts.snap` passes
+ * UNREGENERATED. What changed is the ASSEMBLER: `userTurnText` in `lib/nina/turn.ts` gained one
+ * conditional block — the burst block, naming the messages he sent in a row without waiting for a
+ * reply as hers to answer together with `'HE JUST SAID:'`, rendered by `burstBlock` and pushed
+ * after the shortcut block and immediately before `'HE JUST SAID:'` — fed by one new OPTIONAL
+ * field on `NinaTurnInput`, `earlierRunnerTexts`, computed by `runNinaBackgroundTurn` from the
+ * context window it already loaded (`lib/nina/actions.ts`) and capped by
+ * `NINA_BURST_MAX_MESSAGES`. A turn with no unanswered burst pushes nothing at all and is
+ * byte-for-byte version 6's user turn, which `lib/nina/turn.test.ts` asserts three ways (field
+ * absent, `[]`, and a list whose every entry is empty).
+ *
+ * **The bump is still correct, and version 6's own entry says why in as many words:**
+ * `NINA_PROMPT_VERSION` now identifies the ASSEMBLER, not the output, and what the constant buys
+ * is that a change in her behaviour can be dated to the commit that caused it. A turn that now
+ * answers three messages where it could never before have been told about two of them is such a
+ * change, so `nina_turns` has to be able to tell those turns from version 6's. This is the SINGLE
+ * bump for the whole set: phase 2 owns it and no other phase touches this constant, because two
+ * bumps would date two commits to one change. */
+export const NINA_PROMPT_VERSION = 7
 
 export {
   LANGUAGE_RULE,

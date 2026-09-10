@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { NINA_BURST_MAX_MESSAGES } from '@/lib/nina/turn'
+
 /**
  * **R5: a resend re-runs the turn for a row that is already there, and writes nothing.**
  *
@@ -80,16 +82,20 @@ vi.mock('@/lib/nina/queries', () => ({
 }))
 
 const openNinaChatTurn = vi.fn()
+const supersedeNinaChatTurn = vi.fn()
+const chatTurnWasSuperseded = vi.fn()
 const sweepStaleNinaChatTurns = vi.fn()
 const closeNinaChatTurn = vi.fn()
 const ninaSessionExists = vi.fn()
 
 vi.mock('@/lib/nina/chatturn', () => ({
+  chatTurnWasSuperseded: (...a: unknown[]) => chatTurnWasSuperseded(...a),
   closeNinaChatTurn: (...a: unknown[]) => closeNinaChatTurn(...a),
   getPendingNinaChatTurn: vi.fn(),
   ninaChatTurnStore: () => ({ record: vi.fn() }),
   ninaSessionExists: (...a: unknown[]) => ninaSessionExists(...a),
   openNinaChatTurn: (...a: unknown[]) => openNinaChatTurn(...a),
+  supersedeNinaChatTurn: (...a: unknown[]) => supersedeNinaChatTurn(...a),
   sweepStaleNinaChatTurns: (...a: unknown[]) => sweepStaleNinaChatTurns(...a),
 }))
 
@@ -106,12 +112,19 @@ vi.mock('@/lib/nina/gateway', () => ({
   dbNinaSourceGateway: {},
   dbNinaToolGateway: { loadRunHistory: () => Promise.resolve([]) },
 }))
-vi.mock('@/lib/nina/turn', () => ({
-  /* The chain's wall-clock guard reads `.overall`; the real literal, so the arithmetic is real. */
-  NINA_TURN_BUDGET: { overall: 45_000 },
-  productionDeps: () => ({}),
-  runNinaTurn: (...a: unknown[]) => runNinaTurn(...a),
-}))
+vi.mock('@/lib/nina/turn', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/nina/turn')>()
+  return {
+    ...actual,
+    /* Everything real EXCEPT the model call and the production deps: the drain below reads the
+     * `NinaTurnInput` this action assembles, and `NINA_BURST_MAX_MESSAGES` must stay the REAL
+     * constant so the derivation under test is capped by the value the prompt layer owns. The
+     * real module loads clean under Vitest — `lib/nina/turn.test.ts` imports it unmocked, and
+     * `tests/support/setup.ts` carries the env the import graph needs. */
+    productionDeps: () => ({}),
+    runNinaTurn: (...a: unknown[]) => runNinaTurn(...a),
+  }
+})
 vi.mock('@/lib/nina/distill', () => ({ runTurnDistillation: vi.fn() }))
 vi.mock('@/lib/nina/autotitle', () => ({ titleNinaSessionIfNeeded: vi.fn() }))
 
@@ -158,6 +171,8 @@ beforeEach(async () => {
   /* The newest row in the session — where the poll must resume from. Above his 40. */
   listNinaMessages.mockResolvedValue([runnerRow({ id: HERS, seq: 57, role: 'nina' })])
   openNinaChatTurn.mockResolvedValue(TURN)
+  supersedeNinaChatTurn.mockResolvedValue(false)
+  chatTurnWasSuperseded.mockResolvedValue(false)
   sweepStaleNinaChatTurns.mockResolvedValue(undefined)
   closeNinaChatTurn.mockResolvedValue(undefined)
   ninaSessionExists.mockResolvedValue(true)
@@ -270,6 +285,9 @@ describe('an accepted resend claims a turn for the row that is already there', (
     await actions.resendNinaMessage({ messageId: HIS })
 
     expect(sweepStaleNinaChatTurns).toHaveBeenCalledWith(USER)
+    /* A resend is a RECOVERY tool, not a cancel (plan scope): it never supersedes a thinking
+     * turn, whatever its phase. */
+    expect(supersedeNinaChatTurn).not.toHaveBeenCalled()
     expect(openNinaChatTurn).toHaveBeenCalledOnce()
     expect(openNinaChatTurn).toHaveBeenCalledWith(USER, {
       sessionId: SESSION,
@@ -385,5 +403,102 @@ describe('the background turn is rebuilt from the persisted row', () => {
     await deferred[0]!()
 
     expect(closeNinaChatTurn).toHaveBeenCalled()
+  })
+})
+
+/* ── the burst framing (the burst-cancel set, R2) ─────────────────────────────────────────── */
+
+/** A `ConversationTurn` as `loadNinaContext` builds one — the shape the burst walk reads. */
+function windowTurn(id: string, role: 'runner' | 'nina', text: string) {
+  return {
+    id,
+    role,
+    text,
+    sentOnISO: '2026-09-10',
+    sentAtLabel: 'Thu 10 Sep 09:00',
+    daysAgo: 0,
+    replyToId: null,
+    runId: null,
+    imageDescriptions: [] as string[],
+  }
+}
+
+describe('the turn carries the burst it was opened over (R2)', () => {
+  it('names every unanswered message except the resent one, oldest first', async () => {
+    loadNinaContext.mockResolvedValue({
+      conversation: {
+        window: [
+          windowTurn(HERS, 'nina', 'answered'),
+          windowTurn('msgaaa000001', 'runner', 'mau kemana hari ini?'),
+          windowTurn('msgbbb000001', 'runner', 'jangan lupa ya'),
+          windowTurn(HIS, 'runner', 'dan makan apa lunch?'),
+        ],
+      },
+    })
+
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    expect(runNinaTurn).toHaveBeenCalledOnce()
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    expect(turnInput.earlierRunnerTexts).toEqual(['mau kemana hari ini?', 'jangan lupa ya'])
+    /* The resent message itself is `runnerText`, never also a bullet — and `runnerText` is rebuilt
+     * from the ROW (property 3), while the window's row for HIS deliberately carries a DIFFERENT
+     * string here: if the walk excluded by text instead of by id, that window string would come
+     * back as a bullet and the `toEqual` above would fail. */
+    expect(turnInput.runnerText).toBe('lari gw kemaren gimana menurut lo?')
+  })
+
+  it('stops at her first row below the burst, skips a photo-only row, and excludes by id', async () => {
+    loadNinaContext.mockResolvedValue({
+      conversation: {
+        window: [
+          windowTurn('msgold000001', 'runner', 'answered already'),
+          windowTurn(HERS, 'nina', 'the answer'),
+          /* Photo-only mid-burst: skipped as a bullet, and it does NOT end the walk. */
+          windowTurn('msgphoto001', 'runner', ''),
+          windowTurn('msgaaa000001', 'runner', 'mau kemana?'),
+          windowTurn(HIS, 'runner', 'dan makan apa?'),
+        ],
+      },
+    })
+
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    expect(turnInput.earlierRunnerTexts).toEqual(['mau kemana?'])
+  })
+
+  it('caps the list at the NEWEST NINA_BURST_MAX_MESSAGES — the oldest fall off, not the newest', async () => {
+    const burst = Array.from({ length: 8 }, (_, i) =>
+      windowTurn(`msgb${String(i).padStart(8, '0')}`, 'runner', `pesan ${i}`),
+    )
+    loadNinaContext.mockResolvedValue({
+      conversation: {
+        window: [windowTurn(HERS, 'nina', 'answered'), ...burst, windowTurn(HIS, 'runner', 'ok')],
+      },
+    })
+
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    const texts = turnInput.earlierRunnerTexts as string[]
+    expect(texts).toHaveLength(NINA_BURST_MAX_MESSAGES)
+    /* Eight unanswered messages, cap 6: the walk collects newest-first (`pesan 7` … `pesan 0`),
+     * reverses to oldest-first, and `.slice(-6)` keeps the NEWEST six — `pesan 2` … `pesan 7`. The
+     * two OLDEST fall off, never the ones adjacent to `HE JUST SAID:`. */
+    expect(texts).toEqual(['pesan 2', 'pesan 3', 'pesan 4', 'pesan 5', 'pesan 6', 'pesan 7'])
+  })
+
+  it('derives nothing extra on an ordinary resend with no burst behind it', async () => {
+    /* The `beforeEach` default window is empty, which is also the walk's answer for a resend whose
+     * target has no unanswered siblings: invariant 2, at the derivation rather than the renderer. */
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    expect(turnInput.earlierRunnerTexts).toEqual([])
   })
 })

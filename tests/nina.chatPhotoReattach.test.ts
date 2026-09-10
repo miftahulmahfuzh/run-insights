@@ -51,6 +51,9 @@ vi.mock('@/lib/nina/chatturn', async (importOriginal) => {
   return {
     ...actual,
     sweepStaleNinaChatTurns: async () => 0,
+    /* Step 7 of phase 1 put a real cancel on the send path; this suite's DATABASE_URL is a dummy,
+     * so answer "nothing to cancel" instead of reaching for the network. */
+    supersedeNinaChatTurn: async () => false,
     /* The burst case: a turn is already running for this conversation. His message is saved and
      * nothing else happens, which is exactly the surface this suite wants. */
     openNinaChatTurn: async () => null,

@@ -2,8 +2,8 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-08
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-10
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
@@ -12,8 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 25
-- Completed: 24
+- Completed: 32
 
 ---
 
@@ -125,6 +124,44 @@
 
 ### [P1] High
 
+- [x] **P1-NIN-A032** Phase 2: Answer the accumulated bubbles: burst framing in the turn prompt
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns: lib/nina/turn.ts (NinaTurnInput gains the accumulated unanswered runner texts; userTurnText renders them), lib/nina/actions.ts — runNinaBackgroundTurn computes them from the context window it already loaded and passes them through, and the prompt-layer tests. Exit: a turn opened over a burst of unanswered runner messages carries an explicit block naming every unanswered message except the newest as hers to answer together; a turn with no accumulated messages produces a byte-identical user turn to before; the chain path and the resend path get the same framing for free because it is computed from the window.
+  - **Status**: completed
+  - **Plan Set**: `NINA_BURST_CANCEL_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R2 — "The fresh turn answers ALL accumulated unanswered user bubbles, not only the newest"
+  - **Depends on**: `P1-NIN-A028`
+  - **Plan**: `.workflows/plan/P1-NIN-A032.md`
+  - **Completed**: 2026-09-10 10:46
+  - **Method**: /do
+  - **Files**: lib/nina/turn.ts, lib/nina/actions.ts, lib/nina/prompts/index.ts, lib/nina/turn.test.ts, tests/nina.resend.test.ts, tests/nina.burstCancel.test.ts
+  - **Verified**: `npm run typecheck` clean; `npm run lint` 0 errors (3 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npx prettier --check` clean on all six paths; `npm run test` 3594 passed / 168 files, 0 failed; `npm run ci:llm-payload-guard` passed (invariant 8: no new `runNinaTurn` call site); `npm run db:check` clean with `drizzle/` untouched (invariant 6).
+  - **Drift**:
+    - `tests/nina.burstCancel.test.ts` (phase 1's file, NOT in this phase's Files table) needed one line added to its hand-written `@/lib/nina/turn` mock factory: `NINA_BURST_MAX_MESSAGES: 6`. Vitest throws on any export a mock factory omits, so runNinaBackgroundTurn's new read of the constant crashed the background turn before its model call in 3 of that suite's tests. Same hazard class the plan's reconciliation checked for `tests/nina.resend.test.ts` only; fixed in that file's own established convention (a real-literal with a comment, like `NINA_TURN_BUDGET: { overall: 45_000 }`).
+    - Plan's Step 7b first test asserted `turnInput.runnerText` equals the WINDOW's text for HIS (`'dan makan apa lunch?'`), but the resend path rebuilds runnerText from the ROW (the file's own documented property 3; `runnerRow()` body is `'lari gw kemaren gimana menurut lo?'`). Assertion corrected to the row body — keeping window and row texts DIFFERENT makes the by-ID exclusion proof stronger, since a text-based exclusion would leak the window string in as a bullet.
+    - Plan's Step 6 position test omitted `attachedRunId`, so attachedRunFact returned null and `HE ATTACHED THIS RUN TO HIS MESSAGE` never rendered (indexOf -1). Added `attachedRunId` from the fixture, matching the existing ordering test's idiom at `lib/nina/turn.test.ts:711`.
+  - **Decided**:
+    - Step 7b runnerText assertion: window text → row body. Rung 6: `tests/nina.resend.test.ts`'s own documented property 3 ("The turn input is rebuilt from the row") plus the surrounding code's row-sourced rebuild; the plan's assertion contradicted the file it lives in.
+    - Step 6 position test harness: added `attachedRunId` from `runHistoryFixture()`. Rung 6: the surrounding code's existing convention (identical test at `lib/nina/turn.test.ts`).
+    - burstCancel mock factory: added the real-literal constant rather than converting the factory to `importOriginal`. Tie-break: narrower blast radius — one line in a landed suite's existing hand-written factory, per that file's own `NINA_TURN_BUDGET` precedent.
+- [x] **P1-NIN-A028** Phase 1: Cancel-and-retarget: supersede a thinking turn, discard its result
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns: lib/nina/chatturn.ts (the conditional supersede, the ownership read, ninaChatTurnStore.record made conditional), lib/nina/actions.ts (sendNinaMessage's cancel attempt; runNinaBackgroundTurn's discard path), and their tests. Exit: a send arriving while the claim is pending+running fails that row as superseded, opens and starts a fresh turn, and the old invocation — when its model call returns — writes no bubbles, no distillation, and starts no chain; a send arriving while the claim is pending+persisting (or already closed) keeps today's behavior; the superseded row keeps its token metrics and its reason.
+  - **Status**: completed
+  - **Plan Set**: `NINA_BURST_CANCEL_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R1 — "When a new send arrives while the current turn is still thinking, CANCEL that turn and start a fresh one in its place"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A028.md`
+  - **Completed**: 2026-09-10 10:15
+  - **Method**: /implement (phase 1 of 2)
+  - **Files**: lib/nina/chatturn.ts, lib/nina/actions.ts, lib/nina/chatturn.test.ts, tests/nina.burstCancel.test.ts, tests/nina.resend.test.ts, tests/nina.chatPhotoReattach.test.ts
+  - **Verified**: `npm run typecheck` clean; `npm run lint` 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched); `npm test` 168 files / 3583 tests, all passed; `npm run db:check` "Everything's fine" with `drizzle/` gaining no file (invariant 6). Production code landed byte-faithful to the plan — all drift is fixture-level in this phase's own new test files, no invariant touched.
+  - **Drift**: `tests/nina.burstCancel.test.ts` — `authEnv()` requires `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` besides `AUTH_SECRET`; the plan's fixture set only `AUTH_SECRET` and every test died at the ticket loop. Fixed to the `chatPhotoReattach` precedent.
+  - **Drift**: `tests/nina.burstCancel.test.ts` — the `bumpNinaShortcutUses` spy needed `mockResolvedValue(undefined)`: the action voids `.catch` off the returned promise, so a bare `vi.fn()` (returning `undefined`) killed any turn with a fired shortcut as "crashed".
+  - **Drift**: `tests/nina.burstCancel.test.ts` — the plan's `loadNinaContext` fixture `{ conversation: { window: [] } }` under-specified `runNinaDistillation`'s reads (`memory.slots`, `runner.fullName`/`nickname`, `conversation.olderMessageCount`); the happy-path test threw `undefined.map` after the close. Fixture enriched.
+  - **Drift**: `lib/nina/chatturn.test.ts` — the freshness-bound UPDATE param reaches the fake client as the driver-serialized ISO string, not a `Date`; `expect.any(Date)` replaced with an ISO-timestamp string matcher (same assertion intent).
 - [x] **P1-NIN-A023** Phase 2: Firing a shortcut into the turn
   - **Difficulty**: HARD
   - **Type**: Feature
