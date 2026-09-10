@@ -50,7 +50,8 @@ import { AdminNavLinks } from '@/components/admin/AdminNavLinks'
  * `components/admin/AdminNavLinks.tsx` as a client leaf, and this shell, the eyebrow and the
  * footer paragraph stay on the server. The leaf is still server-rendered into the initial HTML,
  * so the bar works before hydration exactly as it did. See that file's header for the active-cell
- * rule (`text-accent` on the glyph, `aria-current` on the link) and the row's geometry.
+ * rule (`text-accent` on the glyph below `lg`, the `bg-accent-soft` pill at `lg`, `aria-current`
+ * on the link) and the row's geometry.
  */
 
 export function AdminNav() {

@@ -101,7 +101,7 @@ export function PhotoMoveBar({
 
         <select
           aria-label="Move the selected photos into"
-          className={`${CONTROL_CLASS} sm:max-w-[240px]`}
+          className={`${CONTROL_CLASS} min-w-0 flex-1 sm:max-w-[240px]`}
           value={target}
           disabled={pending}
           onChange={(event) => setTarget(event.target.value)}
@@ -113,28 +113,39 @@ export function PhotoMoveBar({
           ))}
         </select>
 
+        {/* Icon-only like the toolbar above the grid (2026-09-10 — one row on a 414 px screen):
+            the accessible name is the `aria-label`, never the glyph. The confirm block below
+            keeps its words: a destructive confirmation is exactly where labels beat icons. */}
         <Button
           size="md"
+          aria-label="Move into the chosen folder"
           disabled={pending || targets.length === 0}
           onClick={() => run(() => moveNinaAvatarsAction({ ids, folder: target }))}
         >
-          Move
+          <FolderInputIcon className="size-5" />
         </Button>
 
         <Button
           size="md"
           variant="destructive"
+          aria-label="Remove the selected photos"
           disabled={pending}
           onClick={() => {
             setError(null)
             setConfirming(true)
           }}
         >
-          Remove&hellip;
+          <TrashIcon className="size-5" />
         </Button>
 
-        <Button size="md" variant="ghost" disabled={pending} onClick={onDone}>
-          Clear
+        <Button
+          size="md"
+          variant="ghost"
+          aria-label="Clear the selection"
+          disabled={pending}
+          onClick={onDone}
+        >
+          <XIcon className="size-5" />
         </Button>
       </div>
 
@@ -189,5 +200,74 @@ export function PhotoMoveBar({
         </p>
       )}
     </div>
+  )
+}
+
+/*
+ * The row's three glyphs, inlined rather than imported — `FileExplorer.tsx` records the full
+ * ruling (Lucide, lucide-static 1.43.0, ISC, copied verbatim from unpkg with the same
+ * normalisations; `aria-hidden` glyph, `aria-label` name). They are deliberately private to this
+ * file, as `SessionRow.tsx`'s are to it: a shared module for five small paths has never been
+ * worth the indirection here.
+ */
+
+/** Move the selection into the chosen folder: an arrow entering a folder. */
+function FolderInputIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
+      <path d="M2 13h10" />
+      <path d="m9 16 3-3-3-3" />
+    </svg>
+  )
+}
+
+/** Remove the selection: a lidded bin. */
+function TrashIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  )
+}
+
+/** Clear the selection: a cross. */
+function XIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
   )
 }

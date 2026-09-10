@@ -91,7 +91,6 @@ export function FileExplorer({
   const folder = page.folder
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0)
 
@@ -173,9 +172,10 @@ export function FileExplorer({
     [router, hrefFor],
   )
 
+  /* Selecting IS opening the pane — there is no separate details toggle: the pane mounts for the
+   * selection, and its × hands the selection back (see the render at the bottom of the file). */
   function select(id: string) {
     setSelectedId(id)
-    setDetailOpen(true)
   }
 
   function onPickFolder(event: React.ChangeEvent<HTMLInputElement>) {
@@ -290,30 +290,37 @@ export function FileExplorer({
           {/* The drawer's handle. It does not exist at `lg`, where the rail is a column that is
               always on screen — so `aria-expanded` never lies about a control the operator can
               still see. */}
+          {/* The drawer's handle. It does not exist at `lg`, where the rail is a column that is
+              always on screen — so `aria-expanded` never lies about a control the operator can
+              still see. The toolbar's buttons are icon-only (one row on a 414 px screen), so the
+              accessible name is the `aria-label`, never the glyph — the same rule
+              `AdminNavLinks.tsx` states for its links. */}
           <Button
             size="md"
             variant="secondary"
             className="lg:hidden"
             aria-expanded={treeOpen}
             aria-controls="admin-folder-rail"
+            aria-label={treeOpen ? 'Hide the folders' : 'Show the folders'}
             onClick={() => setTreeOpen(!treeOpen)}
           >
-            {treeOpen ? 'Hide folders' : 'Folders'}
+            <PanelLeftIcon className="size-5" />
           </Button>
 
-          <Button size="md" variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            Add photos
-          </Button>
-          <Button size="md" onClick={() => folderInputRef.current?.click()}>
-            Add a folder
+          <Button
+            size="md"
+            variant="secondary"
+            aria-label="Add photos"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ImagePlusIcon className="size-5" />
           </Button>
           <Button
             size="md"
-            variant="ghost"
-            aria-pressed={detailOpen}
-            onClick={() => setDetailOpen(!detailOpen)}
+            aria-label="Add a folder"
+            onClick={() => folderInputRef.current?.click()}
           >
-            {detailOpen ? 'Hide details' : 'Show details'}
+            <FolderPlusIcon className="size-5" />
           </Button>
         </div>
       </div>
@@ -326,7 +333,7 @@ export function FileExplorer({
       <div
         className={cn(
           'grid grid-cols-1 items-start gap-4 lg:gap-5',
-          detailOpen && selected != null
+          selected != null
             ? 'lg:grid-cols-[200px_minmax(0,1fr)_320px]'
             : 'lg:grid-cols-[200px_minmax(0,1fr)]',
         )}
@@ -391,11 +398,11 @@ export function FileExplorer({
           />
         </div>
 
-        {detailOpen && selected != null && (
+        {selected != null && (
           <SelectionPane
             photo={selected}
             shareOrigin={shareOrigin}
-            onClose={() => setDetailOpen(false)}
+            onClose={() => setSelectedId(null)}
             onRemoved={() => setSelectedId(null)}
           />
         )}
@@ -418,4 +425,76 @@ function hrefForFolder(folder: string, page: number): string {
   if (page > 1) params.set('page', String(page))
   const query = params.toString()
   return query === '' ? '/admin/nina' : `/admin/nina?${query}`
+}
+
+/*
+ * The toolbar's three glyphs, inlined rather than imported — the ruling `AdminNavLinks.tsx`
+ * records for its seven, extended to this screen's icons-only toolbar (2026-09-10: the labelled
+ * buttons wrapped onto three rows on a 414 px screen): **Lucide** (lucide-static 1.43.0, ISC),
+ * fetched from `unpkg.com/lucide-static@latest/icons/<name>.svg` and copied verbatim, with
+ * Lucide's `class`/`width`/`height` dropped and `stroke-width` normalised to `strokeWidth` on
+ * the root `svg`, where the `stroke*` presentation attributes inherit to every child. Every
+ * glyph takes `className` and is `aria-hidden` — the accessible name is the button's
+ * `aria-label`, never the picture.
+ */
+
+/** The folder rail's drawer handle: a sidebar panel. */
+function PanelLeftIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+    </svg>
+  )
+}
+
+/** Add photographs: a picture with a plus. */
+function ImagePlusIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M16 5h6" />
+      <path d="M19 2v6" />
+      <path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5" />
+      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+      <circle cx="9" cy="9" r="2" />
+    </svg>
+  )
+}
+
+/** Add a folder: a folder with a plus. */
+function FolderPlusIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 10v6" />
+      <path d="M9 13h6" />
+      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+    </svg>
+  )
 }

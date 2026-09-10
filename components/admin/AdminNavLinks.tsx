@@ -25,13 +25,22 @@ import { usePathname } from 'next/navigation'
  * HTML on first load and re-renders from router state on navigation — so the bar still works
  * before hydration and the first paint of every route already shows the right cell in blue.
  *
- * ── THE ACTIVE CELL: `text-accent`, AND `aria-current` ───────────────────────────────────────
- * The matching glyph paints `text-accent` — the same blue as the *"Manage the album"* link on the
- * admin home (`app/admin/page.tsx`), the exact token the owner named. The class sits on the
- * `<Icon>`, not the `<Link>`, so it cannot leak into the `lg` sidebar rendition: the glyph is
- * `lg:hidden`, and the sidebar's labels stay `text-ink-2` as they were — the request names the
- * bottom bar's icons, as R2's did. `aria-current="page"` rides on the `<Link>` and is the
- * accessible half of the same change: it is how `UserPicker` has always conveyed its selection,
+ * ── THE ACTIVE CELL: `text-accent`, THE `lg` PILL, AND `aria-current` ────────────────────────
+ * Below `lg`, the matching glyph paints `text-accent` — the same blue as the *"Manage the album"*
+ * link on the admin home (`app/admin/page.tsx`), the exact token the owner named. The class sits
+ * on the `<Icon>`, not the `<Link>`, so it cannot leak into the `lg` sidebar rendition: the glyph
+ * is `lg:hidden`.
+ *
+ * At `lg` the highlight is the pill, added 2026-09-10 after the owner's *"make the active tab
+ * highlighted — right now we click it, but there is no difference between an active tab and the
+ * others"*: the sidebar's desktop labels had inherited only the unconditional `text-ink-2`, so
+ * the mobile highlight was being painted on an element that is not rendered there. The active
+ * branch fills the same rounded pill the hover treatment already drew, with `bg-accent-soft` and
+ * `text-ink` — the selected vocabulary the album's photo tiles use (`bg-accent-soft` in
+ * `ChatPhotoGrid`/`PhotoGrid`) — and carries explicit `lg:hover:` twins of itself, because the
+ * hover variant outranks the plain class and would otherwise repaint the active cell as an
+ * inactive one under the pointer. `aria-current="page"` rides on the `<Link>` and is the
+ * accessible half of both changes: it is how `UserPicker` has always conveyed its selection,
  * and a cell that is coloured for the eye wants to be named for the screen reader too.
  *
  * The match itself: `/admin` is compared EXACT — a prefix match there would mark every cell
@@ -162,7 +171,11 @@ export function AdminNavLinks() {
             <Link
               href={link.href}
               aria-current={active ? 'page' : undefined}
-              className="flex h-full items-center justify-center font-semibold text-ink-2 transition-colors lg:h-auto lg:justify-start lg:rounded-field lg:px-3 lg:py-2 lg:text-left lg:text-[14px] lg:hover:bg-card lg:hover:text-ink"
+              className={
+                active
+                  ? 'flex h-full items-center justify-center font-semibold text-ink-2 transition-colors lg:h-auto lg:justify-start lg:rounded-field lg:bg-accent-soft lg:px-3 lg:py-2 lg:text-left lg:text-[14px] lg:text-ink lg:hover:bg-accent-soft lg:hover:text-ink'
+                  : 'flex h-full items-center justify-center font-semibold text-ink-2 transition-colors lg:h-auto lg:justify-start lg:rounded-field lg:px-3 lg:py-2 lg:text-left lg:text-[14px] lg:hover:bg-card lg:hover:text-ink'
+              }
             >
               {/*
                * Exactly one NAME is in the accessibility tree at any width. Below `lg` it is the
@@ -172,12 +185,13 @@ export function AdminNavLinks() {
                * one: it would override the `lg` rendition's visible label too, announcing
                * "Album" over a sidebar that says "Nina's album".
                *
-               * `font-semibold` and `text-ink-2` stay in the base classes on purpose: nothing
-               * overrides them at `lg` (the sidebar's 14 px labels are semibold `text-ink-2`
-               * today and must not change), and below `lg` the weight is inert while the colour
-               * is what the glyph's `currentColor` stroke paints with — except on the active
-               * cell, whose glyph carries its own `text-accent` (see the file header) and so
-               * paints blue from itself and not from the link.
+               * `font-semibold` and `text-ink-2` stay in the base classes on purpose: below `lg`
+               * the weight is inert while the colour is what the glyph's `currentColor` stroke
+               * paints with — except on the active cell, whose glyph carries its own
+               * `text-accent` (see the file header) and so paints blue from itself and not from
+               * the link. At `lg` the inactive labels stay `text-ink-2` as they always were;
+               * only the active branch's own `lg:` classes (see the file header) fill the pill
+               * and lift the label to `text-ink`.
                */}
               <span className="sr-only lg:hidden">{link.short}</span>
               <Icon className={active ? 'size-6 text-accent lg:hidden' : 'size-6 lg:hidden'} />
