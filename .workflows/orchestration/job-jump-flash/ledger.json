@@ -1,0 +1,31 @@
+{
+  "branch": "feature/job-jump-flash",
+  "coordinator": "orch-job-jump-flash",
+  "coordinator_session_id": "15fbdb06-bf2e-4435-bed1-737b5728bb67",
+  "created": "2026-09-10T02:41:25+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "d269bee",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "pinpoint+flicker proven live both schemes (ring var=--ink light #1d2733 / dark #f2f7fa, rests in band); gates green; probe port 3100->3777 (stranger held 3100); plan's commit spelling fixed (-m before --); format strays in queries.ts+db.schema.nina.test.ts reverted (HEAD prettier-dirty under fresh install); branch tip 75a9dd1 (docs)",
+      "package": "components/nina",
+      "plan": ".workflows/plan/job-jump-flash/phase-1.md",
+      "reported_at": "2026-09-10T03:07:42+00:00",
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "done",
+      "task_id": "P2-CN-A003",
+      "title": "Flash the landing in the bubble's own color \u2014 and prove the jobs jump end-to-end"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/job-jump-flash/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "job-jump-flash",
+  "updated": "2026-09-10T03:07:42+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/job-jump-flash"
+}

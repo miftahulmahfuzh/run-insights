@@ -77,7 +77,7 @@ poll-cursor consequences nobody asked for yet. The three degraded jump sentences
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Flash the landing in the bubble's own color — and prove the jobs jump end-to-end | R1, R2 | `components/nina` | 3 | — | NORMAL | `.workflows/plan/job-jump-flash/phase-1.md` | — | — |
+| 1 | Flash the landing in the bubble's own color — and prove the jobs jump end-to-end | R1, R2 | `components/nina` | 3 | — | NORMAL | `.workflows/plan/job-jump-flash/phase-1.md` | P2-CN-A003 | — |
 
 ### Phase 1 — Flash the landing in the bubble's own color — and prove the jobs jump end-to-end
 **Satisfies:** R1, R2
