@@ -1175,6 +1175,42 @@ export const ninaMessageImages = pgTable(
      * write path makes after a lookup; the index makes the lookup cheap, nothing more.
      */
     contentHash: text('content_hash'),
+    /**
+     * ── PERCEPTUAL SIGNATURE: WHAT SEES THROUGH A RE-ENCODE ────────────────────────────────────
+     *
+     * `content_hash` answers "these exact bytes are already stored" — and 2026-09-10's recurring
+     * defect is the class that question cannot see: a photograph downloaded out of the collection
+     * re-encodes on its journey back (device save, then `compressForNina` on pick), so its bytes —
+     * and hash — differ from the original's while the pixels are the same photograph. Two columns
+     * hold the answer to "same pixels?", both written from ONE sharp pipeline (the sweep's, verbatim
+     * — `scripts/nina-dedupe-media.mjs`'s `signBytes`), because two encoders must never sign for
+     * one comparison:
+     *
+     *   · `perceptual_hash` — the 64-bit difference hash over a 9x8 grayscale thumbnail, as 16
+     *     lowercase hex characters (`lib/nina/perceptual.ts` is the only parser);
+     *   · `perceptual_sig` — the 16x16 grayscale thumbnail itself, base64 (256 bytes), the
+     *     second gate that keeps a near-miss (two shots of the same court) out of a merge.
+     *
+     * A twin is BOTH: same `width` AND `height`, dHash distance ≤ 1, sig mean-abs ≤ 2 — the
+     * sweep's three gates verbatim (`PERCEPTUAL_*` in `scripts/nina-dedupe-plan.mjs`, mirrored in
+     * `lib/nina/perceptual.ts`), measured 2026-09-10 on the production pair (0/64, 0.1/255) and
+     * pinned one step above. Conservative on purpose: a perceptual merge can destroy a near-miss.
+     *
+     * **NULL is "unsigned", and unsigned means dedup-inactive** — the same semantics
+     * `content_hash`'s NULL carries, for the same reason: a row nobody signed cannot match, and no
+     * reader may treat NULL as "definitely unique". Rows are signed where their bytes are in hand
+     * (the generated store, the chat send's race-close — both on a runtime that now has `sharp`)
+     * and nowhere else; `scripts/nina-image-worker.ts`'s `--omit=dev` runner has no sharp, so its
+     * rows land unsigned and the sweep's `fill-perceptual` op owns filling them. Signatures live on
+     * ORIGINALS only — a reference renders the KEEPER's object, and the sweep signs originals only;
+     * a reference row binds NULL here.
+     *
+     * **No index.** The write-time lookup loads one owner's signed originals and compares in Node —
+     * a Hamming distance is not a B-tree question, the collection is tens of rows today, and a
+     * `pg_trgm`-style index for a scan that costs less than its planning would be the mistake.
+     */
+    perceptualHash: text('perceptual_hash'),
+    perceptualSig: text('perceptual_sig'),
     /** Stable order for a multi-image message, the `run_photos.sort_order` precedent. */
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

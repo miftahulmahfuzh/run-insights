@@ -4,6 +4,15 @@ const nextConfig: NextConfig = {
   // Every route in this app runs on the Node.js runtime — see docs/plans/F01-foundation.md §6.
   reactStrictMode: true,
 
+  /**
+   * sharp is a native module — the bundler must REQUIRE it, not trace it into the server bundle
+   * (`01-app/02-guides/package-bundling.md`: "opt specific packages out of bundling"). It is the
+   * one signer of the perceptual signatures (`lib/nina/perceptualSign.ts`): the send-time twin
+   * check and the generated store both run it on the server, and the sweep's offline copy is the
+   * same pipeline by pin. A bundled sharp is also the classic "Can't find module sharp" deploy.
+   */
+  serverExternalPackages: ['sharp'],
+
   // Vercel Blob public URLs. Roadmap D9/§4.3: run_photos.blob_url and /s/[token] both serve
   // these to the browser. Declared here so all host allow-listing lives in one place.
   images: {

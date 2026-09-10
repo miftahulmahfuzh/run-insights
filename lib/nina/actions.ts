@@ -21,6 +21,7 @@ import {
 } from './chatturn'
 import type { NinaContext } from './context'
 import {
+  applyPerceptualKeepers,
   normalizeClaimedContentHash,
   ninaUploadInsertRow,
   partitionNinaUploadClaims,
@@ -34,11 +35,14 @@ import { NINA_MAX_CHAT_IMAGES, isNinaChatRequestPathname } from './images'
 import { NINA_FULL_TOOL_SET } from './avatartools'
 import { signNinaImageTicket, verifyNinaImageTicket, type NinaImageClaims } from './imageTicket'
 import { loadNinaContext } from './load'
+import { isPerceptualTwin, parseDhashHex, sig16FromBase64 } from './perceptual'
+import { fetchAndSignImage, type NinaImageSignature } from './perceptualSign'
 import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
   adoptNinaMessageImage,
   bumpNinaShortcutUses,
   findNinaImageByContentHash,
+  findNinaSignedOriginals,
   getNinaAvatar,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
@@ -744,7 +748,24 @@ export async function sendNinaMessage(input: {
         }
       }
 
-      const partition = partitionNinaUploadClaims(claims, keepersByHash)
+      /*
+       * THE PERCEPTUAL HALF OF THE RACE-CLOSE (media-dedupe follow-up, 2026-09-10's recurring
+       * defect). The byte keys above answer "these exact bytes are stored" — and a photograph
+       * downloaded out of the collection re-encodes on the way back (the device's save, then
+       * `compressForNina` on pick), so its bytes are NEW while the pixels are the original's.
+       * For every claim the byte keys could not settle, hold the just-landed object once more
+       * (`fetchAndSignImage`) and compare its signature against the owner's signed originals at
+       * the sweep's gates; a twin converts the claim into a REFERENCE — the re-encode never
+       * enters the collection twice — and every claim, twin or not, carries its own signature
+       * onto the row it becomes, so the NEXT re-upload of it can match. A failure anywhere in
+       * here is `null`-shaped and lands fresh, never lost: the same ladder as the byte keys.
+       */
+      const perceptualKeepers = await perceptualTwinsForClaims(userId, claims, keepersByHash)
+
+      const partition = applyPerceptualKeepers(
+        partitionNinaUploadClaims(claims, keepersByHash),
+        perceptualKeepers,
+      )
 
       /* ROW FIRST (1/2) — the originals, in one statement, so their ids exist for the same-send
        * references below. `returning()` rows come back in VALUES order (the guarantee STEP 5's
@@ -753,8 +774,9 @@ export async function sendNinaMessage(input: {
         partition.fresh.length > 0
           ? await insertNinaMessageImages(
               userId,
-              partition.fresh.map((claim) =>
-                ninaUploadInsertRow({ messageId: runnerMessageId, claim, keeper: null }).row,
+              partition.fresh.map(
+                (claim) =>
+                  ninaUploadInsertRow({ messageId: runnerMessageId, claim, keeper: null }).row,
               ),
             )
           : []
@@ -773,7 +795,12 @@ export async function sendNinaMessage(input: {
       /* The just-landed blobs the references orphaned. Registered below, never awaited here. */
       const releases: Array<{ blobUrl: string; pathname: string }> = []
       for (const { claim, keeper } of partition.references) {
-        const resolved = keeper ?? sameSend.get(claim.contentHash) ?? null
+        /* A DB or perceptual reference carries its keeper whole; a SAME-SEND reference resolves
+         * the id from the fresh insert's return, which only claims WITH a hash can reach (the
+         * same-send path is hash-keyed by construction). The wide claim type
+         * (`NinaUploadPartition.references`) is why the null check sits in the expression. */
+        const resolved =
+          keeper ?? (claim.contentHash !== null ? (sameSend.get(claim.contentHash) ?? null) : null)
         if (resolved === null) {
           /* Unreachable by construction — a reference exists only when a keeper (DB or
            * same-send) existed at partition time. But the degradation ladder's floor is "write
@@ -1027,6 +1054,117 @@ export async function findNinaDuplicateChatImage(input: {
     })
     return null
   }
+}
+
+/**
+ * **The perceptual half of STEP 1b's race-close** (media-dedupe follow-up, 2026-09-10's recurring
+ * defect). `findNinaDuplicateChatImage` and the byte re-check above it answer "these exact BYTES
+ * are already stored". They cannot see the class that kept re-creating it: a photograph downloaded
+ * out of the collection re-encodes on the journey back — the device's save, then `compressForNina`
+ * on pick — and arrives as bytes nobody has stored while the pixels are the original's. Measured on
+ * the production pair that kept coming back: 736x981 both, sha-256 worlds apart, dHash 0/64,
+ * 16x16 mean-abs 0.043 — `isPerceptualTwin`'s gates answer it at a canter.
+ *
+ * For every claim the byte keys left OPEN, this fetches the just-landed object back (the PUT went
+ * browser → Blob directly; the public URL is the only way the server holds the bytes) and signs it
+ * with the ONE signer (`lib/nina/perceptualSign.ts`), then scans the owner's signed originals —
+ * newest first, so the first twin is the attach target the byte finder would have picked. TWO
+ * things come back to the caller's claims, both by mutation and by return value:
+ *
+ *   · every signed claim carries `claim.perceptual` — so whichever row it becomes, an ORIGINAL row
+ *     stores its signature and the NEXT re-upload of these pixels can match. This is what makes
+ *     the layer self-sustaining: signatures do not wait for a sweep run to exist.
+ *   · the returned map names each claim's STORED pathname → its twin as `NinaUploadKeeper`, the
+ *     shape `applyPerceptualKeepers` re-partitions on. Keyed by pathname because every claim
+ *     carries one disjoint from its (possibly null) hashes, and the caller signed under it.
+ *
+ * ── EVERY FAILURE IS SILENT, AND SILENT MEANS FRESH ──────────────────────────────────────────
+ * A failed GET, an undecodable body, a dead lookup, an empty scan — each degrades to "no twin, no
+ * signature, land it as the byte keys answered", never to a failed send. A duplicate that slips
+ * this net is what the sweep's perceptual pass has been merging all along; a send that fails here
+ * would be a new and worse defect. The one non-silent choice: claims with a DB byte keeper are
+ * not signed at all — their rows are references, references carry no signature, and the fetch
+ * would be work with no reader.
+ *
+ * ── ONE FETCH PER DISTINCT BYTE SET ───────────────────────────────────────────────────────────
+ * Claims are grouped by `contentHash ?? pathname` — identical encode hashes are identical bytes
+ * (the same file picked twice, however many PUTs landed), so one signature answers for all of
+ * them, and a null-hash claim stands alone under its pathname. The signatures the comparison runs
+ * on were measured HERE, server-side, by the same sharp pipeline the sweep and the generated
+ * store sign with — the browser computes no claim in this layer, which is exactly why it can be
+ * trusted at a ≤1-bit gate while `content_hash`'s claims cannot.
+ */
+async function perceptualTwinsForClaims(
+  userId: string,
+  claims: readonly NinaUploadClaim[],
+  keepersByHash: ReadonlyMap<string, NinaUploadKeeper>,
+): Promise<Map<string, NinaUploadKeeper>> {
+  const open = claims.filter(
+    (claim) => claim.contentHash === null || !keepersByHash.has(claim.contentHash),
+  )
+  if (open.length === 0) return new Map()
+
+  /* One GET-and-sign per distinct byte set; `null` values are failures and simply drop out below. */
+  const signatureOf = new Map<string, NinaImageSignature | null>()
+  for (const claim of open) {
+    const key = claim.contentHash ?? claim.pathname
+    if (signatureOf.has(key)) continue
+    signatureOf.set(key, await fetchAndSignImage(claim.blobUrl))
+  }
+
+  const signed = new Map<string, NinaImageSignature>()
+  for (const claim of open) {
+    const sig = signatureOf.get(claim.contentHash ?? claim.pathname)
+    if (sig !== null && sig !== undefined) {
+      signed.set(claim.pathname, sig)
+      claim.perceptual = { dhashHex: sig.dhashHex, sig16Base64: sig.sig16Base64 }
+    }
+  }
+  if (signed.size === 0) return new Map()
+
+  let originals: Awaited<ReturnType<typeof findNinaSignedOriginals>> = []
+  try {
+    originals = await findNinaSignedOriginals(userId)
+  } catch (cause) {
+    console.warn(
+      '[nina] signed-originals lookup failed; the send lands as its byte keys answered',
+      {
+        error: String(cause),
+      },
+    )
+    return new Map()
+  }
+
+  /* Parse once per original; an unreadable stored signature makes that row invisible, exactly as
+   * the sweep's unsigned rows do not participate. */
+  const candidates = originals.flatMap((row) => {
+    const dhash = parseDhashHex(row.perceptualHash)
+    const sig16 = sig16FromBase64(row.perceptualSig)
+    return dhash !== null && sig16 !== null
+      ? [{ row, candidate: { width: row.width, height: row.height, dhash, sig16 } }]
+      : []
+  })
+
+  const keepers = new Map<string, NinaUploadKeeper>()
+  for (const [pathname, sig] of signed) {
+    const dhash = parseDhashHex(sig.dhashHex)
+    const sig16 = sig16FromBase64(sig.sig16Base64)
+    if (dhash === null || sig16 === null) continue // the signer's output, re-checked by its own format rule
+    const twin = candidates.find((entry) =>
+      isPerceptualTwin({ width: sig.width, height: sig.height, dhash, sig16 }, entry.candidate),
+    )
+    if (twin === undefined) continue
+    keepers.set(pathname, {
+      id: twin.row.id,
+      kind: twin.row.kind,
+      blobUrl: twin.row.blobUrl,
+      pathname: twin.row.pathname,
+      description: twin.row.description,
+      sourceAvatarId: twin.row.sourceAvatarId,
+      sourceImageId: twin.row.sourceImageId,
+    })
+  }
+  return keepers
 }
 
 /**

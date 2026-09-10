@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { contentHashOf } from '@/lib/photos/contentHash'
 import {
   buildFillOps,
+  buildFillPerceptualOps,
   buildMergePlan,
   buildPerceptualMergePlan,
   compareKeeperCandidates,
+  decodeStoredSignature,
   dhashHamming,
+  dhashHexOf,
   electKeeper,
   groupKeyOf,
   isOriginalRow,
@@ -14,11 +17,13 @@ import {
   isSha256Hex,
   isStoreUrl,
   parseArgs,
+  parseDhashHex,
   partitionGroup,
   PERCEPTUAL_MAX_DHASH,
   PERCEPTUAL_MAX_SIG16,
   releaseDecision,
   sha256Hex,
+  sig16FromBase64,
   sig16MeanAbs,
 } from '@/scripts/nina-dedupe-plan.mjs'
 
@@ -577,5 +582,107 @@ describe('buildPerceptualMergePlan', () => {
     expect(ops.filter((o) => o.op === 'merge-row')).toHaveLength(2)
     expect(ops.filter((o) => o.op === 'release-blob')).toHaveLength(1)
     expect(mergeIdx).toBeLessThan(releaseIdx)
+  })
+})
+
+/* ── The stored-signature columns (media-dedupe follow-up, 2026-09-10) ──────────────────────────
+ * The write paths sign rows now; the sweep's job is to DECODE what is stored, MEASURE only what
+ * is not, and PERSIST what it measured. These describe blocks hold the parsers and the two op
+ * builders to the same contracts `lib/nina/perceptual.ts`'s tests hold the app-side copies — the
+ * .mjs mirror cannot import them, so agreement here is the only thing keeping the two spellings
+ * one spelling. */
+
+describe('dhashHexOf / parseDhashHex — the stored perceptual_hash form', () => {
+  it('round-trips zero-padded 16-hex, both directions', () => {
+    expect(dhashHexOf(0n)).toBe('0000000000000000')
+    expect(dhashHexOf(0x484c6c62414e7e5fn)).toBe('484c6c62414e7e5f')
+    expect(parseDhashHex('484c6c62414e7e5f')).toBe(0x484c6c62414e7e5fn)
+    expect(parseDhashHex(dhashHexOf(0xabcdef0123456789n))).toBe(0xabcdef0123456789n)
+  })
+  it('rejects anything that is not exactly 16 lowercase hex — null, never a throw', () => {
+    expect(parseDhashHex('484C6C62414E7E5F')).toBe(null) // uppercase never comes from the signer
+    expect(parseDhashHex('484c6c62414e7e5')).toBe(null) // 15 chars
+    expect(parseDhashHex('484c6c62414e7e5ff')).toBe(null) // 17 chars
+    expect(parseDhashHex('0x484c6c62414e7e5f')).toBe(null)
+    expect(parseDhashHex(1234)).toBe(null)
+    expect(parseDhashHex(null)).toBe(null)
+    expect(parseDhashHex(undefined)).toBe(null)
+  })
+})
+
+describe('sig16FromBase64 — the stored perceptual_sig form', () => {
+  it('decodes exactly 256 bytes and nothing else', () => {
+    const sig = new Uint8Array(256).map((_, i) => i % 251)
+    const encoded = Buffer.from(sig).toString('base64')
+    expect(sig16FromBase64(encoded)).toEqual(sig)
+    expect(sig16FromBase64(Buffer.from(new Uint8Array(255)).toString('base64'))).toBe(null)
+    expect(sig16FromBase64(Buffer.from(new Uint8Array(257)).toString('base64'))).toBe(null)
+    expect(sig16FromBase64('')).toBe(null)
+    expect(sig16FromBase64(null)).toBe(null)
+    expect(sig16FromBase64(42)).toBe(null)
+  })
+})
+
+describe('decodeStoredSignature — a stored pair is the signature, never re-measured', () => {
+  const HEX = '484c6c62414e7e5f'
+  const SIG = Buffer.from(new Uint8Array(256).fill(7)).toString('base64')
+
+  it('decodes a stored pair into the planning shape', () => {
+    const decoded = decodeStoredSignature(row({ id: 'a', perceptualHash: HEX, perceptualSig: SIG }))
+    expect(decoded).toEqual({ dhash: 0x484c6c62414e7e5fn, sig16: new Uint8Array(256).fill(7) })
+  })
+  it('an unsigned row does not participate', () => {
+    expect(decodeStoredSignature(row({ id: 'a', perceptualHash: null, perceptualSig: null }))).toBe(
+      null,
+    )
+  })
+  it('a half-signed row does not either — both halves or neither', () => {
+    expect(decodeStoredSignature(row({ id: 'a', perceptualHash: HEX, perceptualSig: null }))).toBe(
+      null,
+    )
+    expect(decodeStoredSignature(row({ id: 'a', perceptualHash: null, perceptualSig: SIG }))).toBe(
+      null,
+    )
+  })
+})
+
+describe('buildFillPerceptualOps — pass 3c writes what it measured', () => {
+  const HEX = '484c6c62414e7e5f'
+  const sig16 = new Uint8Array(256).fill(9)
+
+  it('ops a row this run measured, with the canonical hex and base64 forms', () => {
+    const measured = row({
+      id: 'measured',
+      perceptualHash: null,
+      perceptualSig: null,
+      sig: sigOf(0x484c6c62414e7e5fn, sig16),
+      perceptualSource: 'measured',
+    } as Parameters<typeof row>[0])
+    expect(buildFillPerceptualOps([measured])).toEqual([
+      {
+        op: 'fill-perceptual',
+        id: 'measured',
+        dhash: HEX,
+        sig: Buffer.from(sig16).toString('base64'),
+      },
+    ])
+  })
+  it('never ops a row whose signature came from the store — decode, not re-write', () => {
+    const stored = row({
+      id: 'stored',
+      perceptualHash: HEX,
+      perceptualSig: Buffer.from(sig16).toString('base64'),
+      sig: sigOf(0x484c6c62414e7e5fn, sig16),
+      perceptualSource: 'stored',
+    } as Parameters<typeof row>[0])
+    expect(buildFillPerceptualOps([stored])).toEqual([])
+  })
+  it('never ops an unsigned or unmeasured row', () => {
+    expect(buildFillPerceptualOps([row({ id: 'plain' })])).toEqual([])
+    expect(
+      buildFillPerceptualOps([
+        row({ id: 'nosource', sig: sigOf(0n, sig16) } as Parameters<typeof row>[0]),
+      ]),
+    ).toEqual([])
   })
 })

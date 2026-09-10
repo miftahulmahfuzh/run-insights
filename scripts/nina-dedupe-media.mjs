@@ -25,12 +25,17 @@
  *  3b. VERIFY GATE: every member of a multi-row group that did NOT just get filled is re-fetched
  *      and re-hashed. A stored hash a fresh GET contradicts is a `hash-repair` op plus a skipped
  *      group. `scripts/nina-dedupe-media.mjs` trusts a hash it did not just measure for nothing.
- *  3c. PERCEPTUAL SIGNATURES: every ORIGINAL is fetched once more and signed (64-bit dHash +
- *      16x16 grayscale mean-abs, via sharp — the pass goes quiet, not the sweep, without it).
- *      This is what sees the pass the byte keys cannot: a photograph downloaded out of the
- *      collection and re-uploaded RE-ENCODES on pick, so its hash differs from the original's
- *      while the pixels are the same photograph (measured 2026-09-10: `DfeYafysbVAe` +
- *      `zGGxRerRI_jS`, dHash 0/64, mean-abs 0.1/255).
+ *  3c. PERCEPTUAL SIGNATURES: every ORIGINAL that does not already carry one (the write paths
+ *      sign rows now — migration 0019's columns, `lib/nina/perceptualSign.ts`'s one signer) is
+ *      fetched once more and signed (64-bit dHash + 16x16 grayscale mean-abs, via sharp — the
+ *      pass goes quiet, not the sweep, without it). This is what sees the pass the byte keys
+ *      cannot: a photograph downloaded out of the collection and re-uploaded RE-ENCODES on pick,
+ *      so its hash differs from the original's while the pixels are the same photograph
+ *      (measured 2026-09-10: `DfeYafysbVAe` + `zGGxRerRI_jS`, dHash 0/64, mean-abs 0.1/255; the
+ *      pair that kept coming back after the write paths shipped was `bjNniaR6_0dY` +
+ *      `IGwGhWzPNmaR`, same gates). A signature measured THIS RUN gets a `fill-perceptual` op —
+ *      the measurement is persisted, not left in the console: the first landing computed fills
+ *      and wrote nothing, and this script has been down that road before.
  *  4. PASS 2 (merge): `buildMergePlan` groups by (user_id, content_hash), elects keepers among
  *      originals, and returns the ordered ops; `buildPerceptualMergePlan` then clusters the
  *      remaining originals at conservative gates (same dimensions, dHash ≤ 1, mean-abs ≤ 2 —
@@ -53,17 +58,21 @@
  * (`lib/nina/blobRelease.ts:53`).
  *
  * ── IDEMPOTENCE ───────────────────────────────────────────────────────────────────────────────
- * A second run: pass 1 finds nothing to fill (its UPDATE guards `content_hash is null`), the
- * previously-merged groups are now one-original-plus-same-URL-references = `tidy` (no ops), and
- * releases only exist for rows that were merged this run. Summary says 0 findings, 0 writes.
+ * A second run: pass 1 finds nothing to fill (its UPDATE guards `content_hash is null`), pass 3c
+ * re-signs nothing (stored signatures are decoded, never re-measured; `fill-perceptual` guards
+ * `perceptual_hash is null` the same way), the previously-merged groups are now
+ * one-original-plus-same-URL-references = `tidy` (no ops), and releases only exist for rows that
+ * were merged this run. Summary says 0 findings, 0 writes.
  */
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
 import {
   buildFillOps,
+  buildFillPerceptualOps,
   buildMergePlan,
   buildPerceptualMergePlan,
+  decodeStoredSignature,
   isOriginalRow,
   isStoreUrl,
   parseArgs,
@@ -116,12 +125,29 @@ async function main() {
     }
     throw error
   }
+  try {
+    await sql`select perceptual_hash, perceptual_sig from nina_message_images limit 1`
+  } catch (error) {
+    if (
+      error.code === '42P01' ||
+      error.code === '42703' ||
+      /column.*(perceptual_hash|perceptual_sig)/i.test(error.message)
+    ) {
+      console.error(
+        'nina_message_images.perceptual_hash/perceptual_sig are missing — migration 0019',
+      )
+      console.error('of the media-dedupe follow-up has not been applied to THIS database.')
+      console.error('Run its migration first: the sweep now persists the signatures it measures.')
+      process.exit(2)
+    }
+    throw error
+  }
 
   /* ── 2. load every row ─────────────────────────────────────────────────────────────────────── */
   const raw = await sql`
     select id, user_id, message_id, kind, blob_url, pathname, bytes, width, height,
            description, prompt, source_avatar_id, source_image_id, sort_order,
-           created_at, content_hash
+           created_at, content_hash, perceptual_hash, perceptual_sig
     from nina_message_images
     order by user_id, created_at, id
   `
@@ -149,10 +175,24 @@ async function main() {
     sourceImageId: r.source_image_id,
     createdAt: r.created_at,
     contentHash: r.content_hash,
+    perceptualHash: r.perceptual_hash,
+    perceptualSig: r.perceptual_sig,
     verifiedHash: null,
     hashFailed: false,
   }))
   const rowById = new Map(rows.map((r) => [r.id, r]))
+
+  /* A stored signature IS the signature — decode it for planning and never re-measure it. The
+   * write paths signed these rows with the same pipeline this script's `signBytes` runs, so a
+   * re-fetch would spend a GET per original to recompute a fact the row already holds. Null
+   * (absent or malformed) leaves the row to pass 3c, which may measure it fresh. */
+  for (const row of rows) {
+    const stored = decodeStoredSignature(row)
+    if (stored != null) {
+      row.sig = stored
+      row.perceptualSource = 'stored'
+    }
+  }
 
   /* ── 3. PASS 1 — hash-fill ─────────────────────────────────────────────────────────────────── */
   const fills = []
@@ -200,6 +240,10 @@ async function main() {
     console.log('perceptual signatures        skipped — sharp is not installed')
   } else {
     for (const row of rows) {
+      /* A stored signature was decoded at load; only rows WITHOUT one are measured here, and a
+       * measurement is queued for persistence (`fill-perceptual`) rather than left in this run's
+       * memory — the first landing computed signatures and wrote nothing, and pass-1's fills were
+       * the same lesson once already. */
       if (!isOriginalRow(row) || row.sig != null || row.hashFailed) continue
       const got = await fetchRowBytes(row)
       if (!got.ok) {
@@ -208,6 +252,7 @@ async function main() {
       }
       try {
         row.sig = await signBytes(got.bytes)
+        row.perceptualSource = 'measured'
       } catch {
         unsigned++ // undecodable bytes — the row simply does not participate in the perceptual pass
       }
@@ -223,8 +268,14 @@ async function main() {
   const perceptual = buildPerceptualMergePlan(rows, byteLoserIds)
   /* Pass 1's fills are WRITES, not report lines: they join the op list ahead of every
    * repair/repoint/release, so the dry run prints them and --apply executes them. The first
-   * landing computed them and wrote nothing — the bug this line exists to keep dead. */
-  const ops = [...buildFillOps(rows), ...plan.ops, ...perceptual.ops]
+   * landing computed them and wrote nothing — the bug this line exists to keep dead. The
+   * perceptual fills ride the same lesson: a signature measured this run is written this run. */
+  const ops = [
+    ...buildFillOps(rows),
+    ...buildFillPerceptualOps(rows),
+    ...plan.ops,
+    ...perceptual.ops,
+  ]
   const findings = plan.groups.filter((g) => g.action === 'merge')
   const tidy = plan.groups.filter((g) => g.action === 'tidy')
   const skipped = plan.groups.filter((g) => g.action === 'skipped')
@@ -324,6 +375,10 @@ async function main() {
       console.log(
         `UPDATE nina_message_images SET content_hash = '${op.hash}' WHERE id = '${op.id}'  (fill — column was null)`,
       )
+    if (op.op === 'fill-perceptual')
+      console.log(
+        `UPDATE nina_message_images SET perceptual_hash = '${op.dhash}', perceptual_sig = '<${op.sig.length} chars base64>' WHERE id = '${op.id}'  (perceptual fill — signature measured this run)`,
+      )
     if (op.op === 'hash-repair')
       console.log(
         `UPDATE nina_message_images SET content_hash = '${op.to}' WHERE id = '${op.id}'  (was '${op.from}')`,
@@ -364,6 +419,10 @@ async function main() {
         /* The `is null` guard is the idempotence the header promises: if another writer filled
          * the column between plan and execute, their measurement stands, never ours over it. */
         await sql`update nina_message_images set content_hash = ${op.hash} where id = ${op.id} and content_hash is null`
+      } else if (op.op === 'fill-perceptual') {
+        /* The same guard, over the signature pair the write paths now also write: a row signed
+         * between plan and execute keeps ITS signature, never this run's over it. */
+        await sql`update nina_message_images set perceptual_hash = ${op.dhash}, perceptual_sig = ${op.sig} where id = ${op.id} and perceptual_hash is null`
       } else if (op.op === 'hash-repair') {
         await sql`update nina_message_images set content_hash = ${op.to} where id = ${op.id}`
       } else if (op.op === 'merge-row') {

@@ -99,7 +99,11 @@ describe('planNinaPickUpload — dup -> skip upload + attach pointer', () => {
 
 describe('ninaUploadInsertRow — the fresh arm', () => {
   it('carries the claim as-is, hash included, provenance absent', () => {
-    const decision = ninaUploadInsertRow({ messageId: 'msgROW000001', claim: claim(), keeper: null })
+    const decision = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim(),
+      keeper: null,
+    })
     expect(decision.outcome).toBe('fresh')
     expect(decision.keeperId).toBeNull()
     expect(decision.row).toEqual({
@@ -112,6 +116,10 @@ describe('ninaUploadInsertRow — the fresh arm', () => {
       bytes: 150_000,
       description: 'an arrival card',
       contentHash: HASH,
+      // the perceptual pair, unsigned by default — the claim carries a signature only when the
+      // send-time race-close measured one (media-dedupe follow-up, 2026-09-10)
+      perceptualHash: null,
+      perceptualSig: null,
       sortOrder: 0,
     })
     expect('sourceAvatarId' in decision.row).toBe(false)
@@ -198,7 +206,13 @@ describe('partitionNinaUploadClaims — the same-send split and the race-close s
 
   it('splits same-send twins: first fresh, later ones reference the same-send original', () => {
     const partition = partitionNinaUploadClaims(
-      [claim(), claim({ sortOrder: 1, pathname: 'nina/u1/chat/bbbbbbbbbbbb-cccccccccccccccccccccccccccccccc.jpg' })],
+      [
+        claim(),
+        claim({
+          sortOrder: 1,
+          pathname: 'nina/u1/chat/bbbbbbbbbbbb-cccccccccccccccccccccccccccccccc.jpg',
+        }),
+      ],
       new Map(),
     )
     expect(partition.fresh).toHaveLength(1)
@@ -218,7 +232,10 @@ describe('partitionNinaUploadClaims — the same-send split and the race-close s
 
   it('a DB keeper wins over the same-send split', () => {
     const k = keeper()
-    const partition = partitionNinaUploadClaims([claim(), claim({ sortOrder: 1 })], new Map([[HASH, k]]))
+    const partition = partitionNinaUploadClaims(
+      [claim(), claim({ sortOrder: 1 })],
+      new Map([[HASH, k]]),
+    )
     expect(partition.fresh).toHaveLength(0)
     expect(partition.references.every((r) => r.keeper === k)).toBe(true)
   })

@@ -200,3 +200,34 @@ resumable on any machine:
 Or put them on the board first (GitHub repos only):
 
     /create-task --from-plan MEDIA_DEDUPE_PLAN.md
+
+---
+
+## Follow-up 2026-09-10: lapisan perceptual write-time (menggantikan keputusan YAGNI di atas)
+
+Baris keputusan "duplikat lintas-encoding = YAGNI / di luar scope" terbantahkan oleh produksi:
+kasus **download dari Media → simpan ke perangkat → upload ulang di chat** terjadi berulang kali.
+Perangkat me-re-encode file yang diunduh (diukur pada pasangan produksi `bjNniaR6_0dY` +
+`IGwGhWzPNmaR`, keduanya 736x981: 45.619 vs 51.336 bytes, +EXIF, sha-256 berjauhan, tapi dHash
+0/64 dan mean-abs 0,043) — sehingga kedua kunci byte (encode hash + source hash) meleset dan lahir
+original kedua. Pass perceptual sweep (be739a0) melihatnya, tapi hanya saat dijalankan manual dan
+signature-nya tidak pernah disimpan.
+
+Yang diterapkan (follow-up, satu commit dengan catatan ini):
+
+- **Kolom `perceptual_hash` + `perceptual_sig`** di `nina_message_images` (migrasi 0019) — NULL
+  berarti tidak tersigning, dedup tidak aktif untuk baris itu.
+- **Satu signer** (`lib/nina/perceptualSign.ts`, sharp): pipeline `signBytes` sweep secara verbatim.
+  `sharp` naik ke `dependencies` + `serverExternalPackages`.
+- **Cek twin saat write** (`lib/nina/actions.ts` STEP 1b): klaim yang kedua kunci byte-nya meleset
+  di-GET balik dan di-sign; kembar (gate sweep: dims sama, dHash ≤1, mean-abs ≤2) menjadi
+  REFERENCE + blob-nya di-release; klaim non-kembar mendarat fresh **dengan signature-nya sendiri**
+  sehingga lapisan ini berkelanjutan tanpa sweep.
+- **Jalur generated** (`lib/nina/imagerun.ts`) men-sign bytes yang dipegangnya saat store.
+- **Sweep** kini men-decode signature tersimpan (tidak pernah mengukur ulang), meng-sign yang
+  belum ada, dan **menuliskannya** lewat op `fill-perceptual` (guard `is null`) — backfill sejarah
+  sekaligus jaring pengaman untuk jalur tanpa signer (worker GH Actions `--omit=dev`, admin add).
+
+Residual yang diakui: photo hasil worker backstop dan admin add mendarat tanpa signature sampai
+sweep berikutnya dijalankan; pre-check composer tetap byte-only (browser tidak menghitung signature
+sharp — drift lintas-implementasi tidak layak pada gate ≤1 bit).

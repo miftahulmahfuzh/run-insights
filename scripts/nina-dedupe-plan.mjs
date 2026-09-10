@@ -310,6 +310,74 @@ export function buildFillOps(rows) {
     .filter(Boolean)
 }
 
+/* ── THE PERCEPTUAL SIGNATURE COLUMNS (media-dedupe follow-up, 2026-09-10) ──────────────────────
+ * `nina_message_images.perceptual_hash` (64-bit dHash, 16 lowercase hex) and `.perceptual_sig`
+ * (the 16x16 grayscale thumbnail, base64) are now WRITTEN-TIME columns: the send-time twin check
+ * (`lib/nina/actions.ts` STEP 1b) and the generated store sign the rows they create, and the twin
+ * gates they answer live in `lib/nina/perceptual.ts`. The sweep's part is narrower and changed:
+ *   · a row that already carries a stored signature is DECODED, not re-signed — no GET, no sharp;
+ *   · a row the sweep signs fresh gets a `fill-perceptual` op, so the measurement outlives the
+ *     run (the first landing computed signatures and wrote nothing — the exact defect the hash
+ *     fills already lived once; a signature that exists only in a console is not a signature);
+ *   · the executor writes with an `is null` guard, the same idempotence `fill-hash` has.
+ * These parsers mirror `lib/nina/perceptual.ts`'s `parseDhashHex` / `sig16FromBase64` — .mjs
+ * cannot import it, so the two stand next to each other and MUST agree: same 16-hex form, same
+ * 256-byte expectation, null and never a throw for anything else.
+ */
+
+const DHASH_HEX_RE = /^[0-9a-f]{16}$/
+
+/** The stored hex form of a 64-bit difference hash, zero-padded to 16. */
+export function dhashHexOf(dhash) {
+  return dhash.toString(16).padStart(16, '0')
+}
+
+/** `lib/nina/perceptual.ts`'s `parseDhashHex`, for the sweep's own reads. Null, never a throw. */
+export function parseDhashHex(raw) {
+  if (typeof raw !== 'string' || !DHASH_HEX_RE.test(raw)) return null
+  return BigInt(`0x${raw}`)
+}
+
+/** `lib/nina/perceptual.ts`'s `sig16FromBase64`: exactly 256 bytes, or null. */
+export function sig16FromBase64(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null
+  const bytes = Buffer.from(raw, 'base64')
+  return bytes.length === 256 ? new Uint8Array(bytes) : null
+}
+
+/**
+ * A row's stored signature, decoded for planning. `null` for absent or malformed values — an
+ * unsigned (or unreadably signed) row simply does not participate in the perceptual pass.
+ */
+export function decodeStoredSignature(row) {
+  const dhash = parseDhashHex(row.perceptualHash)
+  const sig16 = sig16FromBase64(row.perceptualSig)
+  if (dhash == null || sig16 == null) return null
+  return { dhash, sig16 }
+}
+
+/**
+ * One op per row the sweep signed THIS run whose stored column was NULL at load — the
+ * measurement, persisted. Guarded by the executor's `is null`, so a row a concurrent writer
+ * signed between plan and execute keeps THEIR measurement, never ours over it.
+ */
+export function buildFillPerceptualOps(rows) {
+  return rows
+    .map((row) => {
+      if (row.perceptualSource !== 'measured' || row.sig == null) return null
+      if (!DHASH_HEX_RE.test(dhashHexOf(row.sig.dhash))) {
+        throw new Error(`row ${row.id}'s measured dHash is not 16-hex — refusing to write it`)
+      }
+      return {
+        op: 'fill-perceptual',
+        id: row.id,
+        dhash: dhashHexOf(row.sig.dhash),
+        sig: Buffer.from(row.sig.sig16).toString('base64'),
+      }
+    })
+    .filter(Boolean)
+}
+
 /**
  * The release gate, as a pure decision over live counts the ops script measures AFTER the group's
  * rows have been repointed. Counts are numbers; `null` means "the query could not answer" —

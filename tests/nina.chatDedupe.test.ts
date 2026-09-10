@@ -30,6 +30,8 @@ const spies = vi.hoisted(() => ({
   insertNinaMessageImages: vi.fn(),
   adoptNinaMessageImage: vi.fn(),
   findNinaImageByContentHash: vi.fn(),
+  findNinaSignedOriginals: vi.fn(),
+  fetchAndSignImage: vi.fn(),
   releaseBlobIfUnreferenced: vi.fn(),
 }))
 
@@ -50,6 +52,10 @@ vi.mock('@/lib/nina/queries', async (importOriginal) => {
 vi.mock('@/lib/nina/blobRelease', () => ({
   releaseBlobIfUnreferenced: spies.releaseBlobIfUnreferenced,
 }))
+
+/* The one signer is sharp over real bytes — a dependency no unit suite pays for. The default
+ * answer (null) is the production failure shape: unsigned claim, byte-key behavior untouched. */
+vi.mock('@/lib/nina/perceptualSign', () => ({ fetchAndSignImage: spies.fetchAndSignImage }))
 
 vi.mock('@/lib/nina/chatturn', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/nina/chatturn')>()
@@ -122,6 +128,8 @@ beforeEach(async () => {
   spies.adoptNinaMessageImage.mockResolvedValue(null)
   spies.releaseBlobIfUnreferenced.mockResolvedValue('deleted')
   spies.findNinaImageByContentHash.mockResolvedValue(null)
+  spies.findNinaSignedOriginals.mockResolvedValue([])
+  spies.fetchAndSignImage.mockResolvedValue(null)
 
   actions = await import('@/lib/nina/actions')
 })
@@ -135,7 +143,8 @@ describe('STEP 1b race-close: a claim whose bytes already exist becomes a refere
     spies.findNinaImageByContentHash.mockResolvedValue({
       id: 'imgKEEPER001',
       kind: 'upload',
-      blobUrl: 'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      blobUrl:
+        'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
       pathname: 'nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
       description: 'the arrival card, already described',
       sourceAvatarId: null,
@@ -167,7 +176,8 @@ describe('STEP 1b race-close: a claim whose bytes already exist becomes a refere
     expect(referenceRow).toMatchObject({
       messageId: RUNNER_MESSAGE_ID,
       kind: 'upload',
-      blobUrl: 'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      blobUrl:
+        'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
       pathname: 'nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
       description: 'the arrival card, already described',
       sourceImageId: 'imgKEEPER001',
@@ -191,7 +201,7 @@ describe('STEP 1b race-close: a claim whose bytes already exist becomes a refere
 })
 
 describe('STEP 1b same-send twins: one original, one reference to it, one release', () => {
-  it('splits the two claims and releases only the twin\'s blob', async () => {
+  it("splits the two claims and releases only the twin's blob", async () => {
     spies.insertNinaMessageImages.mockImplementation(async (_userId, rows) =>
       (rows as Array<Record<string, unknown>>).map((row, index) => ({
         id: index === 0 ? 'imgFRESH00001' : `imgOTHER${String(index).padStart(3, '0')}`,
@@ -393,5 +403,142 @@ describe('findNinaDuplicateChatImage', () => {
     expect(
       await actions.findNinaDuplicateChatImage({ contentHash: HASH, sourceHash: null }),
     ).toBeNull()
+  })
+})
+
+/* ── STEP 1b's perceptual half (media-dedupe follow-up, 2026-09-10) ─────────────────────────────
+ * The class the byte keys cannot see: a photograph downloaded out of the collection re-encodes on
+ * the way back, so both hashes miss while the pixels are the original's. The race-close now holds
+ * the just-landed bytes once more (`fetchAndSignImage`, mocked here — sharp signs nothing in a
+ * unit suite) and asks the owner's signed originals the sweep's three gates. */
+
+const TWIN_SIG = Buffer.from(new Uint8Array(256).fill(100)).toString('base64')
+
+const TWIN_KEEPER_ROW = {
+  id: 'imgTWIN000001',
+  kind: 'generated',
+  blobUrl: 'https://blob.example/nina/u1/selfie-keeper.png',
+  pathname: 'nina/u1/selfie-keeper.png',
+  description: 'her selfie, described at birth',
+  sourceAvatarId: null,
+  sourceImageId: null,
+  width: 736,
+  height: 981,
+  perceptualHash: '484c6c62414e7e5f',
+  perceptualSig: TWIN_SIG,
+}
+
+describe('STEP 1b perceptual twins: a re-encode of a stored photograph becomes a reference', () => {
+  beforeEach(() => {
+    spies.fetchAndSignImage.mockResolvedValue({
+      dhashHex: '484c6c62414e7e5f',
+      sig16Base64: TWIN_SIG,
+      width: 736,
+      height: 981,
+    })
+    spies.findNinaSignedOriginals.mockResolvedValue([TWIN_KEEPER_ROW])
+  })
+
+  it('writes ONE reference row to the twin, releases the just-landed blob, row before blob', async () => {
+    const result = await actions.sendNinaMessage({
+      body: 'foto yang sama, bytes yang beda',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'a re-encoded selfie')],
+      contentHashes: {}, // both byte keys missed — this is the whole point
+      sessionId: SESSION_ID,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(spies.fetchAndSignImage).toHaveBeenCalledWith(CLAIM_A.blobUrl)
+    expect(spies.findNinaSignedOriginals).toHaveBeenCalledWith('u1')
+
+    expect(spies.insertNinaMessageImages).toHaveBeenCalledTimes(1)
+    const [referenceRow] = insertedCalls()[0]!
+    expect(referenceRow).toMatchObject({
+      messageId: RUNNER_MESSAGE_ID,
+      kind: 'generated', // the keeper's kind — the reference tells the truth about whose bytes
+      blobUrl: TWIN_KEEPER_ROW.blobUrl,
+      pathname: TWIN_KEEPER_ROW.pathname,
+      description: TWIN_KEEPER_ROW.description,
+      sourceImageId: TWIN_KEEPER_ROW.id,
+    })
+    expect(referenceRow).not.toHaveProperty('contentHash')
+    expect(referenceRow).not.toHaveProperty('perceptualHash') // a reference owns no bytes
+
+    expect(spies.releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+    expect(afterTasks).toHaveLength(1)
+    await afterTasks[0]!()
+    expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledWith('u1', {
+      blobUrl: CLAIM_A.blobUrl,
+      pathname: CLAIM_A.pathname,
+    })
+  })
+
+  it('a non-twin lands FRESH and carries its measured signature, so the next re-upload matches', async () => {
+    spies.findNinaSignedOriginals.mockResolvedValue([
+      { ...TWIN_KEEPER_ROW, width: 640, height: 853 }, // different dimensions — gate 1 fails
+    ])
+
+    await actions.sendNinaMessage({
+      body: 'bukan kembar',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'something else')],
+      contentHashes: {},
+      sessionId: SESSION_ID,
+    })
+
+    expect(spies.insertNinaMessageImages).toHaveBeenCalledTimes(1)
+    const freshRow = insertedCalls()[0]![0]!
+    expect(freshRow.sourceImageId).toBeUndefined()
+    expect(freshRow.blobUrl).toBe(CLAIM_A.blobUrl)
+    expect(freshRow.perceptualHash).toBe('484c6c62414e7e5f')
+    expect(freshRow.perceptualSig).toBe(TWIN_SIG)
+    expect(afterTasks).toHaveLength(0) // nothing was released; the row owns its own object
+  })
+
+  it('a failed sign degrades to the byte answer with no twin lookup and no signature', async () => {
+    spies.fetchAndSignImage.mockResolvedValue(null)
+
+    await actions.sendNinaMessage({
+      body: 'tetap terkirim',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'unsignable bytes')],
+      contentHashes: {},
+      sessionId: SESSION_ID,
+    })
+
+    expect(spies.findNinaSignedOriginals).not.toHaveBeenCalled()
+    const freshRow = insertedCalls()[0]![0]!
+    expect(freshRow.perceptualHash).toBeNull()
+    expect(freshRow.perceptualSig).toBeNull()
+    expect(freshRow.blobUrl).toBe(CLAIM_A.blobUrl)
+    expect(afterTasks).toHaveLength(0)
+  })
+
+  it('a claim the byte keys already settled is never signed at all', async () => {
+    spies.findNinaImageByContentHash.mockResolvedValue({
+      id: 'imgKEEPER001',
+      kind: 'upload',
+      blobUrl:
+        'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      pathname: 'nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      description: 'already described',
+      sourceAvatarId: null,
+      sourceImageId: null,
+      messageId: 'msgOLD000001',
+      prompt: null,
+      width: 768,
+      height: 1024,
+      bytes: 150_000,
+      sortOrder: 0,
+      createdAt: new Date('2026-09-09T09:00:00Z'),
+    })
+
+    await actions.sendNinaMessage({
+      body: 'byte-exact, jangan di-GET dua kali',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'the arrival card')],
+      contentHashes: { [CLAIM_A.pathname]: HASH },
+      sessionId: SESSION_ID,
+    })
+
+    expect(spies.fetchAndSignImage).not.toHaveBeenCalled()
+    expect(spies.findNinaSignedOriginals).not.toHaveBeenCalled()
   })
 })

@@ -12,6 +12,7 @@ import { captionNinaPhoto } from './caption'
 import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
 import { planNinaImageWrite, type NinaImageDedupHit } from './imageDedupe'
 import { ninaImageCaption, type NinaImageFailure } from './imagefail'
+import { signImageBytes, type NinaImageSignature } from './perceptualSign'
 import {
   claimNinaImageJob,
   completeNinaImageJob,
@@ -133,6 +134,14 @@ interface StoredImage {
    * object — the measured defect this plan exists for (`sbTuT8NKXL24` + `ywNnXvpnnKSi`).
    */
   duplicateOf: NinaImageDedupHit | null
+  /**
+   * media-dedupe follow-up (2026-09-10). The perceptual signature of these same bytes, signed
+   * where the hash was — the bytes are in hand, so signing is local arithmetic, not a second GET.
+   * Null for an avatar (out of dedup scope, as its hash is), for a deduped put-skip (the row will
+   * be a reference, and references carry no signature), and when sharp failed (the row lands
+   * unsigned; the sweep's `fill-perceptual` owns it later).
+   */
+  signature: NinaImageSignature | null
 }
 
 /**
@@ -170,7 +179,13 @@ async function storeNinaImage(
   const bytes = Buffer.from(b64, 'base64')
   if (purpose === 'avatar') {
     const blob = await putNinaImageBlob(userId, purpose, bytes)
-    return { ...blob, bytes: bytes.byteLength, contentHash: null, duplicateOf: null }
+    return {
+      ...blob,
+      bytes: bytes.byteLength,
+      contentHash: null,
+      duplicateOf: null,
+      signature: null,
+    }
   }
 
   const contentHash = await contentHashOf(bytes)
@@ -198,11 +213,24 @@ async function storeNinaImage(
       bytes: bytes.byteLength,
       contentHash,
       duplicateOf,
+      /* The row is a REFERENCE, and references carry no signature — the keeper's row already
+       * carries (or the sweep fills) the signature of the object they both render. */
+      signature: null,
     }
   }
 
+  /*
+   * media-dedupe follow-up: THE SIGNATURE HAPPENS HERE TOO, for the same reason the hash does —
+   * the bytes are in hand. This is the half that keeps the collection's GENERATED photographs
+   * matchable: the recurring defect is one of these downloaded, re-encoded on a phone, and
+   * re-uploaded through the composer, and the write-time twin check (`lib/nina/actions.ts` STEP
+   * 1b) can only answer if THIS row was signed when it was born. `null` on any sharp failure —
+   * the row lands unsigned and the sweep fills it, never a lost photograph.
+   */
+  const signature = await signImageBytes(bytes)
+
   const blob = await putNinaImageBlob(userId, purpose, bytes)
-  return { ...blob, bytes: bytes.byteLength, contentHash, duplicateOf: null }
+  return { ...blob, bytes: bytes.byteLength, contentHash, duplicateOf: null, signature }
 }
 
 /** The put itself, exactly the pre-dedup statement — extracted so the dedup branch reads. */
@@ -403,6 +431,19 @@ async function finishSelfie(
       prompt: args.sidecar,
       sourceImageId: writePlan.row.sourceImageId,
       contentHash: writePlan.row.contentHash,
+      /*
+       * media-dedupe follow-up. The signature travels only when this row OWNS its bytes — an
+       * original that signed before its put and did not lose the race. A reference serves the
+       * KEEPER's object, so a signature measured off the loser's bytes would be the exact lie a
+       * row must never tell; hence the spread on `sourceImageId == null` rather than a plain
+       * `?? null`, which would bind the loser's measurement onto a pointer.
+       */
+      ...(writePlan.row.sourceImageId == null && image.signature != null
+        ? {
+            perceptualHash: image.signature.dhashHex,
+            perceptualSig: image.signature.sig16Base64,
+          }
+        : {}),
       sortOrder: 0,
     },
   ])

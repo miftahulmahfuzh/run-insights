@@ -74,12 +74,12 @@ import {
   normalizeNinaTrigger,
   type NinaShortcutKind,
 } from '@/lib/nina/shortcuts'
-import {
-  coerceNinaTuning,
-  NINA_TUNING_DEFAULTS,
-  type NinaTuning,
-} from '@/lib/nina/tuning'
+import { coerceNinaTuning, NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
 import { isValidContentHash } from '@/lib/photos/contentHash'
+import {
+  normalizeClaimedPerceptualHash,
+  normalizeClaimedPerceptualSig,
+} from '@/lib/nina/perceptual'
 
 /**
  * Every Nina read and write, in one module — `lib/db/queries.ts` for `lib/nina/`.
@@ -258,6 +258,14 @@ export interface NinaImageRow {
    * `findNinaImageByContentHash` is the reader this column exists for.
    */
   contentHash: string | null
+  /**
+   * The perceptual signature pair (`lib/nina/perceptual.ts` holds the only parsers): the 64-bit
+   * dHash as 16 hex characters and the 16x16 grayscale thumbnail as base64. NULL is "unsigned" —
+   * the row cannot participate in a perceptual twin match, exactly as a NULL `content_hash` cannot
+   * participate in a byte match. Originals only; see the column headers in `lib/db/schema.ts`.
+   */
+  perceptualHash: string | null
+  perceptualSig: string | null
   sortOrder: number
   createdAt: Date
 }
@@ -290,6 +298,16 @@ export interface NinaImageInsert {
    * rather than re-promised at each of the three callers.
    */
   contentHash?: string | null
+  /**
+   * media-dedupe follow-up (2026-09-10). **Optional, and set only where the writer HELD the
+   * bytes**: the generated store signed what it put, the chat send's race-close signed what it
+   * fetched back. The insert coalesces anything the one parsers reject to NULL — the same door
+   * rule as `contentHash` — and a REFERENCE row binds NULL: a reference serves the KEEPER's
+   * object and signatures describe the bytes a row OWNS, so a reference carrying one would be a
+   * fact about bytes it stopped serving.
+   */
+  perceptualHash?: string | null
+  perceptualSig?: string | null
   sortOrder?: number
 }
 
@@ -634,6 +652,8 @@ const imageColumns = {
   sourceAvatarId: ninaMessageImages.sourceAvatarId,
   sourceImageId: ninaMessageImages.sourceImageId,
   contentHash: ninaMessageImages.contentHash,
+  perceptualHash: ninaMessageImages.perceptualHash,
+  perceptualSig: ninaMessageImages.perceptualSig,
   sortOrder: ninaMessageImages.sortOrder,
   createdAt: ninaMessageImages.createdAt,
 }
@@ -1643,6 +1663,16 @@ export async function insertNinaMessageImages(
          * goes inactive for that row, and the send does not fail. No caller sends one yet.
          */
         contentHash: isValidContentHash(row.contentHash) ? row.contentHash : null,
+        /*
+         * media-dedupe follow-up. The perceptual pair coalesces through the one parsers
+         * (`lib/nina/perceptual.ts`) for the same one-shape reason as the hash above: a claim that
+         * fails its format binds NULL — dedup inactive for that row — and the send does not fail.
+         * The two fields are coalesced as a PAIR's parts but bound independently, because a
+         * half-valid pair can only ever widen what cannot match (a NULL never matches), never
+         * produce a false twin: every gate reads both, and a missing half fails them.
+         */
+        perceptualHash: normalizeClaimedPerceptualHash(row.perceptualHash),
+        perceptualSig: normalizeClaimedPerceptualSig(row.perceptualSig),
         sortOrder: row.sortOrder ?? 0,
       })),
     )
@@ -1865,6 +1895,73 @@ export async function findNinaImageByContentHash(
     .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
     .limit(1)
   return rows[0] ?? null
+}
+
+/**
+ * **"What has this user already signed?"** The perceptual twin lookup's read (media-dedupe
+ * follow-up, 2026-09-10): every ORIGINAL that carries both halves of a signature, newest first,
+ * for the send-time race-close to compare its just-uploaded bytes against.
+ *
+ * ── ORIGINALS ONLY, SIGNED ONLY, AND WHY THERE IS NO LIMIT ────────────────────────────────────
+ * `isOriginalPhoto()` because a reference renders the KEEPER's object — matching against one
+ * would point the new row at a pointer, and `ninaPhotoProvenance` would flatten it anyway. Signed
+ * only (`perceptual_hash is not null`): an unsigned row cannot participate, and the predicate is
+ * the SQL half of "NULL never matches". No LIMIT, deliberately — the question is "the collection",
+ * not "something in it", and this collection is tens of rows today; the comparison it feeds is
+ * in-Node arithmetic over at most a few hundred 256-byte signatures, which is why the schema
+ * declines to index a Hamming distance it cannot answer anyway.
+ *
+ * ── NEWEST FIRST, THE FINDER'S ORDER, NOT THE SWEEP'S ─────────────────────────────────────────
+ * `(created_at desc, id desc)` is `findNinaImageByContentHash`'s standing rule and the same
+ * reason: any twin is a correct attach target, and the newest original is the least likely to have
+ * been deleted between this read and the reference write that follows. The sweep elects keepers
+ * differently (`scripts/nina-dedupe-plan.mjs`'s `compareKeeperCandidates`) because it answers a
+ * different question — which row OWNS bytes several rows already point at — and the two orders
+ * are deliberately not unified there, exactly as the byte paths' were not.
+ *
+ * The projection is wider than `imageColumns` because the caller needs the signature pair and the
+ * provenance source ids but not the bubble's `message_id` — a twin match never reads it.
+ */
+export async function findNinaSignedOriginals(userId: string): Promise<
+  Array<{
+    id: string
+    kind: NinaImageKind
+    blobUrl: string
+    pathname: string
+    description: string | null
+    sourceAvatarId: string | null
+    sourceImageId: string | null
+    width: number | null
+    height: number | null
+    /** Non-null by the WHERE, but typed nullable because the parsers own the trust, not SQL. */
+    perceptualHash: string | null
+    perceptualSig: string | null
+  }>
+> {
+  return db
+    .select({
+      id: ninaMessageImages.id,
+      kind: ninaMessageImages.kind,
+      blobUrl: ninaMessageImages.blobUrl,
+      pathname: ninaMessageImages.pathname,
+      description: ninaMessageImages.description,
+      sourceAvatarId: ninaMessageImages.sourceAvatarId,
+      sourceImageId: ninaMessageImages.sourceImageId,
+      width: ninaMessageImages.width,
+      height: ninaMessageImages.height,
+      perceptualHash: ninaMessageImages.perceptualHash,
+      perceptualSig: ninaMessageImages.perceptualSig,
+    })
+    .from(ninaMessageImages)
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        isOriginalPhoto(),
+        isNotNull(ninaMessageImages.perceptualHash),
+        isNotNull(ninaMessageImages.perceptualSig),
+      ),
+    )
+    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
 }
 
 /**
