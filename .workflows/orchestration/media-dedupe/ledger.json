@@ -44,22 +44,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "586c2f2",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 3,
-      "note": null,
+      "note": "all gates green (typecheck/test 3666/build/2 guards); plan-code fixes recorded in commit body: finder imports from ./queries, ADD-provenance pin in nina.chatPhotoAdoption superseded (ADD now writes references via planChatPhotoAddWrite), worker race fixture snake_case, admin KEEPER fixture pathname distinct",
       "package": "lib/nina`, `lib/admin`, `scripts",
       "plan": ".workflows/plan/media-dedupe/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T06:18:47+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A033",
       "title": "Write-time dedup: jalur generated + admin"
     },
     {
@@ -87,7 +87,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-dedupe/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-dedupe",
-  "updated": "2026-09-10T05:53:23+00:00",
+  "updated": "2026-09-10T06:18:47+00:00",
   "verified_at": "2026-09-10T05:46:40+00:00",
   "worktree": "/home/miftah/.worktrees/media-dedupe"
 }
