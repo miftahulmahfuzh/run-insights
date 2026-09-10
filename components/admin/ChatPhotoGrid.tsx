@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { ChatPhotoAdd } from '@/components/admin/ChatPhotoAdd'
 import { ChatPhotoDetail } from '@/components/admin/ChatPhotoDetail'
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/admin/photoIcons'
 import { TOUCH_ICON } from '@/components/admin/touch'
 import { ButtonLink, EmptyState } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -201,17 +202,27 @@ export function ChatPhotoGrid({
               </ul>
 
               <div className="mt-4 flex items-center justify-between gap-2 border-t border-rule pt-3">
+                {/*
+                 * R1: the pager's words are gone; the chevron and its 44 px box carry the link,
+                 * `aria-label` + `title` carry the word, and `rel` keeps the semantics the words
+                 * used to. The disabled side stays a span so a dead end is not a focus stop.
+                 */}
                 {page.page > 1 ? (
                   <Link
                     href={hrefForPage(page.page - 1)}
-                    className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
+                    aria-label="Newer"
+                    title="Newer"
+                    className={cn(TOUCH_ICON, '-ml-2 text-accent')}
                     rel="prev"
                   >
-                    &lsaquo; Newer
+                    <ChevronLeftIcon className="size-4" />
                   </Link>
                 ) : (
-                  <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
-                    &lsaquo; Newer
+                  <span
+                    aria-hidden="true"
+                    className={cn(TOUCH_ICON, '-ml-2 text-ink-3 opacity-40')}
+                  >
+                    <ChevronLeftIcon className="size-4" />
                   </span>
                 )}
 
@@ -222,14 +233,19 @@ export function ChatPhotoGrid({
                 {page.page < lastPage ? (
                   <Link
                     href={hrefForPage(page.page + 1)}
-                    className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
+                    aria-label="Older"
+                    title="Older"
+                    className={cn(TOUCH_ICON, '-mr-2 text-accent')}
                     rel="next"
                   >
-                    Older &rsaquo;
+                    <ChevronRightIcon className="size-4" />
                   </Link>
                 ) : (
-                  <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
-                    Older &rsaquo;
+                  <span
+                    aria-hidden="true"
+                    className={cn(TOUCH_ICON, '-mr-2 text-ink-3 opacity-40')}
+                  >
+                    <ChevronRightIcon className="size-4" />
                   </span>
                 )}
               </div>
@@ -239,6 +255,7 @@ export function ChatPhotoGrid({
 
         {selected != null && (
           <ChatPhotoDetail
+            key={selected.id}
             photo={selected}
             userId={userId}
             onClose={() => setSelectedId(null)}

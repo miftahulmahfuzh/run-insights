@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 
+import { PlusIcon } from '@/components/admin/photoIcons'
 import { Button } from '@/components/ui'
 import { addChatPhotoAction } from '@/lib/admin/chatPhotoActions'
 
@@ -28,7 +29,6 @@ import { uploadChatPhoto } from './chatPhotoUpload'
  */
 export function ChatPhotoAdd({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [errors, setErrors] = useState<readonly string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -39,10 +39,9 @@ export function ChatPhotoAdd({ userId }: { userId: string }) {
 
     setBusy(true)
     setErrors([])
-    setProgress({ done: 0, total: files.length })
 
     const failures: string[] = []
-    for (const [index, file] of files.entries()) {
+    for (const [, file] of files.entries()) {
       try {
         const uploaded = await uploadChatPhoto(userId, file)
         const result = await addChatPhotoAction(uploaded)
@@ -50,24 +49,32 @@ export function ChatPhotoAdd({ userId }: { userId: string }) {
       } catch (cause) {
         failures.push(`${file.name}: ${cause instanceof Error ? cause.message : 'upload failed'}`)
       }
-      setProgress({ done: index + 1, total: files.length })
     }
 
     setErrors(failures)
-    setProgress(null)
     setBusy(false)
   }
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">
+      {/*
+       * R1: icon, no text. The words moved into `aria-label`/`title`, and the sequential loop's
+       * honest counter ("Adding 1/3…") went with them — the button's `loading` dots are the whole
+       * progress display now, and the per-file failures below are still named in full. The label
+       * words survive in the tooltip; they just stopped being layout.
+       */}
       <Button
         type="button"
         size="md"
         variant="secondary"
+        aria-label="Add a photo"
+        title="Add a photo"
+        className="w-11 px-0"
+        loading={busy}
         disabled={busy}
         onClick={() => fileRef.current?.click()}
       >
-        {progress === null ? 'Add photo' : `Adding ${progress.done}/${progress.total}…`}
+        <PlusIcon className="size-4" />
       </Button>
 
       <input

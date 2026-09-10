@@ -7,6 +7,7 @@ import {
   ADMIN_CHAT_PHOTO_MAX_URL_CHARS,
   blobUrlMatchesPathname,
 } from '@/lib/admin/chatPhotos'
+import { NINA_CROP_MAX_ABS_OFFSET, NINA_CROP_MAX_SCALE, NINA_CROP_MIN_SCALE } from '@/lib/nina/crop'
 
 /**
  * Everything `/admin/photos` accepts from a browser. R2, phase 3.
@@ -109,7 +110,24 @@ export const chatPhotoDescriptionSchema = z.object({
     ),
 })
 
+/**
+ * **"Make this chat photograph her profile picture."** The framing panel always knows its whole
+ * draft — identity `{1, 0, 0}` before the operator touches anything — so the crop is three
+ * REQUIRED fields, not an optional one with an all-present-or-all-absent refine. The bounds are
+ * `cropWriteSchema`'s (`lib/admin/schema.ts`), re-spelled here for the same two reasons that file
+ * is separate at all; the numbers themselves stay single-sourced in `lib/nina/crop.ts`. The
+ * schema can only reject nonsense — clamping the crop against the row's real dimensions is the
+ * action's job, server-side, exactly as `saveNinaAvatarCropAction` argues.
+ */
+export const chatPhotoSetAvatarSchema = z.object({
+  id: chatPhotoId,
+  scale: z.number().min(NINA_CROP_MIN_SCALE).max(NINA_CROP_MAX_SCALE),
+  x: z.number().int().min(-NINA_CROP_MAX_ABS_OFFSET).max(NINA_CROP_MAX_ABS_OFFSET),
+  y: z.number().int().min(-NINA_CROP_MAX_ABS_OFFSET).max(NINA_CROP_MAX_ABS_OFFSET),
+})
+
 export type ChatPhotoAddInput = z.infer<typeof chatPhotoAddSchema>
 export type ChatPhotoReplaceInput = z.infer<typeof chatPhotoReplaceSchema>
 export type ChatPhotoRemoveInput = z.infer<typeof chatPhotoRemoveSchema>
 export type ChatPhotoDescriptionInput = z.infer<typeof chatPhotoDescriptionSchema>
+export type ChatPhotoSetAvatarInput = z.infer<typeof chatPhotoSetAvatarSchema>

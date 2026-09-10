@@ -1,9 +1,16 @@
 'use server'
 
-import { del } from '@vercel/blob'
+import { del, put } from '@vercel/blob'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 
+import {
+  ADMIN_AVATAR_EXTS,
+  adminAvatarPathname,
+  contentTypeForAvatarExt,
+  type AdminAvatarExt,
+} from '@/lib/admin/avatars'
+import { chatPhotoSetAvatarSchema } from '@/lib/admin/chatPhotoSchema'
 import { folderAncestors, folderParent, isInFolderTree } from '@/lib/admin/filetree'
 import {
   currentPhotoKeptNote,
@@ -20,6 +27,7 @@ import {
   type CurrentPhotoRef,
 } from '@/lib/admin/folderOps'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
+import { newId } from '@/lib/id'
 import {
   albumManifestSchema,
   avatarBatchRegisterSchema,
@@ -28,7 +36,7 @@ import {
   type AvatarBatchRecord,
 } from '@/lib/admin/schema'
 import { NINA_ADMIN_MANIFEST_MAX } from '@/lib/nina/album'
-import { clampCrop, cropForWrite, resolveCrop } from '@/lib/nina/crop'
+import { clampCrop, cropForWrite, isIdentityCrop, resolveCrop } from '@/lib/nina/crop'
 import {
   declareNinaFolders,
   deleteNinaAvatar,
@@ -37,6 +45,8 @@ import {
   deleteNinaFolderSubtree,
   getCurrentNinaAvatar,
   getNinaAvatar,
+  getNinaAvatarBySourceKey,
+  getNinaMessageImage,
   insertNinaAvatars,
   listNinaAvatarFolders,
   listNinaAvatarManifest,
@@ -47,6 +57,8 @@ import {
   setNinaAvatarDescription,
   updateNinaAvatarCrop,
   type NinaAvatarBlobRef,
+  type NinaAvatarRow,
+  type NinaImageRow,
 } from '@/lib/nina/queries'
 import { describeNinaImages } from '@/lib/nina/vision'
 
@@ -151,6 +163,164 @@ export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminAc
 
   revalidatePath('/admin/nina')
   return { ok: true }
+}
+
+/**
+ * "Set as her profile picture", from a CHAT photograph — the reverse of F37's share. The
+ * `/admin/photos` rail's framing panel sends a chat-photo id and its whole crop draft; this makes
+ * the photograph hers, exactly as `setCurrentNinaAvatarAction` does for an album row.
+ *
+ * ── THE BYTES ARE COPIED, NOT SHARED, AND THAT IS THE DECISION ────────────────────────────────
+ * The two candidate designs were a `nina_avatars` row pointing at the chat photo's object, and
+ * this: `fetch` + `put` into a fresh `avatar-` object. Sharing would win on storage and lose on
+ * everything else, because the album-side deletes (`deleteNinaAvatarAction`, `reapAvatarBlobs`)
+ * call `del` with NO reference check — the reference-checked release
+ * (`releaseBlobIfUnreferenced`) exists on the CHAT side only. A shared object would survive
+ * every chat-side delete and then break the day the operator removed the album row: a dead
+ * photograph in the conversation, unrecoverable. A copy costs one duplicate object (~100-500 KB)
+ * and makes both sides' existing delete rules correct with nothing changed on either. The
+ * adopted row also appears in `/admin/nina` (root folder), where its framing can be re-tuned —
+ * which is a feature, not a leak.
+ *
+ * ── RE-ADOPTION IS A CONSTRAINT DECISION, NOT A COUNT ────────────────────────────────────────
+ * The row is written with `source_key = 'chat-photo:<imageId>'`, so a second "set as her profile
+ * picture" finds the FIRST adoption through `getNinaAvatarBySourceKey` before any bytes move and
+ * just re-currents it — a re-frame-and-re-wear click costs one UPDATE, not a second copy. The
+ * `nina_avatars_user_source_key_unq` index is the backstop for the race the lookup cannot close:
+ * if the INSERT lands `ON CONFLICT DO NOTHING`, the copy is re-read by key and the orphaned
+ * object joins the reaper's domain, the same exposure every upload already has.
+ *
+ * ── THE GUARDS ARE REPLACE'S AND REMOVE'S, VERBATIM ──────────────────────────────────────────
+ * `getNinaMessageImage` deliberately does not filter (it is the bubble and viewer read too), so
+ * this action enforces here what the other two enforce at their own seams: `kind !== 'generated'`
+ * is HIS upload, and a row carrying `source_avatar_id`/`source_image_id` is a re-SHOW of a
+ * photograph that lives elsewhere — adopting it would file a second copy of bytes the original
+ * still owns. `isChatPhotoReference` stays private to `lib/admin/chatPhotoActions.ts` (a `'use
+ * server'` module exports actions, not predicates), so the two-field test is spelled here; the
+ * three actions' refusals stay one rule by tests, not by imports.
+ *
+ * ── THE DESCRIPTION IS SEEDED, AND ONLY A NULL EARNS A VENDOR CALL ───────────────────────────
+ * `insertNinaAvatars` writes the chat row's own `description` into the album row — the same
+ * bytes `glm-4.6v` already described, so promoting a described photograph costs no second call
+ * and no second token-floor exposure. A NULL description behaves exactly as it does on the
+ * album path: `scheduleDescribe` fills it after the response, non-fatally.
+ */
+export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = chatPhotoSetAvatarSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'That framing is out of range.' }
+  const { id, scale, x, y } = parsed.data
+
+  const row = await getNinaMessageImage(userId, id)
+  if (row == null) return { ok: false, error: 'That photo is not in the collection.' }
+  if (row.kind !== 'generated') {
+    return { ok: false, error: 'That one is his upload, not hers.' }
+  }
+  if (row.sourceAvatarId != null || row.sourceImageId != null) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Make the original hers instead.',
+    }
+  }
+
+  /*
+   * The schema can only reject nonsense; the clamp against the row's REAL dimensions is what
+   * guarantees the stored numbers keep the circle covered — `saveNinaAvatarCropAction`'s
+   * server-side guarantee, same reason. Identity stays three NULLs by never being written: the
+   * fresh row's crop columns default to NULL and `isIdentityCrop` skips the UPDATE.
+   */
+  const crop = clampCrop({ width: row.width, height: row.height }, resolveCrop({ scale, x, y }))
+  const sourceKey = `chat-photo:${row.id}`
+
+  let avatar = await getNinaAvatarBySourceKey(userId, sourceKey)
+  if (avatar == null) {
+    avatar = await copyChatPhotoIntoAlbum(userId, row, sourceKey)
+  }
+  if (avatar == null) {
+    return { ok: false, error: 'The copy into her album did not land. Try again.' }
+  }
+
+  if (!isIdentityCrop(crop)) {
+    await updateNinaAvatarCrop(userId, avatar.id, cropForWrite(crop))
+  }
+
+  await setCurrentNinaAvatar(userId, avatar.id)
+  if (avatar.description == null) scheduleDescribe(userId, avatar.id)
+
+  revalidatePath('/admin/photos')
+  revalidatePath('/admin/nina')
+  return { ok: true, id: avatar.id }
+}
+
+/**
+ * `fetch` the chat photograph and `put` it beside her album as `avatar-`, then insert the row.
+ * BYTES FIRST, ROWS SECOND — the create-side mirror of "row first, blob second": a failed copy
+ * writes nothing, while a failed insert at worst leaves an orphan object, which is the recoverable
+ * direction and `scripts/blob-reap.mjs`'s domain. Not exported: a `'use server'` module may export
+ * only async actions, and this is a helper with a caller.
+ *
+ * The row records `put`'s RETURN, never the requested pathname — `addRandomSuffix: true` rewrites
+ * it, and a row pointing at the requested form would point at an object that does not exist.
+ */
+async function copyChatPhotoIntoAlbum(
+  userId: string,
+  row: NinaImageRow,
+  sourceKey: string,
+): Promise<NinaAvatarRow | null> {
+  const ext = avatarExtFor(row.pathname)
+  if (ext == null) return null
+
+  /*
+   * `describeNinaAvatarAction`'s posture for a vendor-shaped call inside an action: the failure is
+   * caught here and reported as one `{ ok: false }` sentence, not thrown — an unhandled rejection
+   * in a Server Action is a framework error page, and "the store could not be reached" is an
+   * operator-actionable state, not a bug report.
+   */
+  try {
+    const response = await fetch(row.blobUrl)
+    if (!response.ok) return null
+    const bytes = await response.arrayBuffer()
+
+    const stored = await put(adminAvatarPathname(userId, newId(), ext), bytes, {
+      access: 'public',
+      addRandomSuffix: true,
+      contentType: contentTypeForAvatarExt(ext),
+    })
+
+    const [inserted] = await insertNinaAvatars(userId, [
+      {
+        blobUrl: stored.url,
+        pathname: stored.pathname,
+        source: 'admin',
+        folder: '',
+        filename: null,
+        sourceKey,
+        width: row.width,
+        height: row.height,
+        bytes: row.bytes,
+        description: row.description,
+      },
+    ])
+    if (inserted != null) return inserted
+
+    // The unique index raced the lookup — another tab adopted this photograph between the read
+    // and the insert. The album row is what the operator meant; the second copy is the reaper's.
+    return getNinaAvatarBySourceKey(userId, sourceKey)
+  } catch (cause) {
+    console.error(
+      '[f34] chat-photo adoption copy failed',
+      { id: row.id, pathname: row.pathname },
+      cause,
+    )
+    return null
+  }
+}
+
+/** The container a chat photograph arrives in, or `null` if it is not one the album accepts. */
+function avatarExtFor(pathname: string): AdminAvatarExt | null {
+  const ext = pathname.slice(pathname.lastIndexOf('.') + 1).toLowerCase()
+  return (ADMIN_AVATAR_EXTS as readonly string[]).includes(ext) ? (ext as AdminAvatarExt) : null
 }
 
 /**

@@ -69,8 +69,12 @@ circles at 44 px / 28 px with their caption, a **Reset framing** secondary contr
 - The crop is client draft state (`draft` / identity `stored` / `dirty` triple, as SelectionPane).
   There is deliberately no "Save framing": a chat row has no crop columns to persist to, so the
   draft's only consumer is the adoption action, which receives `scale`/`x`/`y` at click time.
-- After success the button disables and reports she is wearing it now. A second deliberate click
-  would adopt a second copy; the disabled state covers the accidental one.
+- After success the button disables and reports she is wearing it now. A second click costs no
+  second copy either: the adopted row is written with `source_key = 'chat-photo:<imageId>'`
+  (refinement over the validated draft, landed during TDD), so `getNinaAvatarBySourceKey` finds
+  the first adoption before any bytes move and the action just re-currents it — the
+  `nina_avatars_user_source_key_unq` index is the backstop for the race the lookup cannot close.
+  This is the same "idempotence is a constraint" doctrine the folder upload argues for.
 
 ### The action: `setChatPhotoAsAvatarAction` (in `lib/admin/ninaAlbumActions.ts`)
 

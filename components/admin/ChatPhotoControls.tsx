@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 
+import { SwapIcon, TrashIcon } from '@/components/admin/photoIcons'
 import { Button } from '@/components/ui'
 import { removeChatPhotoAction, replaceChatPhotoAction } from '@/lib/admin/chatPhotoActions'
 
@@ -90,26 +91,37 @@ export function ChatPhotoControls({
 
   return (
     <div className="flex flex-col gap-2">
+      {/*
+       * R1: icons, no text — the verbs live in `aria-label`/`title`, the destructive red stays on
+       * the trash, and `loading` keeps each square box while its dots run. `w-11 px-0` squares the
+       * `md` button: 44 px of tap target either way.
+       */}
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           size="md"
           variant="secondary"
+          aria-label="Replace this photo"
+          title="Replace this photo"
+          className="w-11 px-0"
           loading={busy === 'replacing'}
           disabled={busy !== 'idle'}
           onClick={() => fileRef.current?.click()}
         >
-          Replace
+          <SwapIcon className="size-4" />
         </Button>
         <Button
           type="button"
           size="md"
           variant="destructive"
+          aria-label="Remove this photo"
+          title="Remove this photo"
+          className="w-11 px-0"
           loading={busy === 'removing'}
           disabled={busy !== 'idle'}
           onClick={() => void onRemove()}
         >
-          Remove
+          <TrashIcon className="size-4" />
         </Button>
       </div>
 

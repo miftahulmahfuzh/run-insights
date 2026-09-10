@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 
+import { CheckIcon } from '@/components/admin/photoIcons'
 import { Button, CONTROL_CLASS } from '@/components/ui'
 import { editChatPhotoDescriptionAction } from '@/lib/admin/chatPhotoActions'
 import { ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS } from '@/lib/admin/chatPhotos'
@@ -107,17 +108,28 @@ export function ChatPhotoDescription({
       />
 
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        {/* `Clear` when an emptied box would null a row that HAS prose. Not a confirmation: one
-            click, the first click, and the label says what the click does. */}
+        {/*
+         * R1: a check glyph, not a word. `Clear` when an emptied box would null a row that HAS
+         * prose — the distinction the old label carried moves whole into the accessible name and
+         * the tooltip, and stays out of the layout. Still one click, the first click; still not a
+         * confirmation.
+         */}
         <Button
           type="button"
           size="md"
           variant="secondary"
+          aria-label={
+            willClear && description !== null ? 'Clear the description' : 'Save the description'
+          }
+          title={
+            willClear && description !== null ? 'Clear the description' : 'Save the description'
+          }
+          className="w-11 px-0"
           loading={busy}
           disabled={busy || !dirty}
           onClick={() => void onSave()}
         >
-          {willClear && description !== null ? 'Clear' : 'Save'}
+          <CheckIcon className="size-4" />
         </Button>
         <span className="text-[11px] font-medium text-ink-3 tabular-nums">
           {text.length}/{ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS}

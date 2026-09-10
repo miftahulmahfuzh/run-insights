@@ -80,6 +80,23 @@ export function extForContentType(contentType: string): AdminAvatarExt | null {
 }
 
 /**
+ * The reverse of `extForContentType`, for a writer that knows the CONTAINER and must name the
+ * content type to Blob: `setChatPhotoAsAvatarAction` copies bytes whose container it reads off the
+ * source pathname, and the `put` that lands them needs the matching type. Same three pairs, one
+ * switch, so the two can never disagree about what `.jpg` means.
+ */
+export function contentTypeForAvatarExt(ext: AdminAvatarExt): AdminAvatarContentType {
+  switch (ext) {
+    case 'jpg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'webp':
+      return 'image/webp'
+  }
+}
+
+/**
  * The path-traversal defence and the "do not write beside anything else in the store" defence, in
  * one predicate. The user id is INTERPOLATED FROM THE SESSION by the route, never taken from the
  * request, so a client cannot write into another user's folder even though there is one user.

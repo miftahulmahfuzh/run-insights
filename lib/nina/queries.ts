@@ -466,17 +466,20 @@ export interface NinaAvatarCrop {
 /**
  * What a batch writer supplies. Separate from `NinaAvatarInsert` and NOT an extension of it,
  * because the two describe different acts: `NinaAvatarInsert` is one photo becoming her face, and
- * this is N files landing in a folder with nobody's face changing. `folder`, `filename` and
- * `sourceKey` are all REQUIRED here — a file arriving from a directory walk has all three, and
- * making them optional would let the one caller that matters (`registerNinaAvatarsAction`) write a
- * row with no dedupe key and silently opt out of the unique index that exists to protect it.
+ * this is N files landing in a folder with nobody's face changing. `folder` and `sourceKey` are
+ * REQUIRED here — a file arriving from a directory walk has both, and making them optional would
+ * let the one caller that matters (`registerNinaAvatarsAction`) write a row with no dedupe key and
+ * silently opt out of the unique index that exists to protect it. The second writer
+ * (`setChatPhotoAsAvatarAction`) has a key too — `chat-photo:<imageId>`, which is what makes
+ * re-adoption a constraint decision — but no laptop file, and `filename: null` is exactly what the
+ * column records for bytes that arrived without one.
  */
 export interface NinaAvatarBatchInsert {
   blobUrl: string
   pathname: string
   source: NinaAvatarSource
   folder: string
-  filename: string
+  filename: string | null
   sourceKey: string
   width?: number | null
   height?: number | null
@@ -2855,6 +2858,25 @@ export async function getNinaAvatar(userId: string, id: string): Promise<NinaAva
     .select(avatarColumns)
     .from(ninaAvatars)
     .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.id, id)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * One album row by its dedupe key, ownership-scoped. `setChatPhotoAsAvatarAction`'s re-adoption
+ * lookup: the row that `chat-photo:<imageId>` already produced, so a second "set as her profile
+ * picture" re-currents the FIRST copy instead of storing the bytes twice. `sourceKey` is unique
+ * per `(user_id, source_key)` when non-null (`nina_avatars_user_source_key_unq`), so this answers
+ * with at most one row; `null` means "never adopted" and is the copy path's green light.
+ */
+export async function getNinaAvatarBySourceKey(
+  userId: string,
+  sourceKey: string,
+): Promise<NinaAvatarRow | null> {
+  const rows = await db
+    .select(avatarColumns)
+    .from(ninaAvatars)
+    .where(and(eq(ninaAvatars.userId, userId), eq(ninaAvatars.sourceKey, sourceKey)))
     .limit(1)
   return rows[0] ?? null
 }
