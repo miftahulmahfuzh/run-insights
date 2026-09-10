@@ -2,17 +2,17 @@
 
 **Package Path**: `lib/db`
 **Package Code**: DB
-**Last Updated**: 2026-09-07
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-10
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 4
+- Completed: 5
 
 ---
 
@@ -35,6 +35,27 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-DB-A006** Phase 1: Foundation: content_hash kolom, util hash, plumbing data
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns: migrasi 0018 (kolom `content_hash text` nullable + partial index `(user_id, content_hash) WHERE content_hash IS NOT NULL` di `nina_message_images`); modul murni BARU `lib/photos/contentHash.ts` (WebCrypto sha-256 → hex); `NinaImageInsert` + `insertNinaMessageImages` menerima `contentHash` opsional (pass-through); lookup baru `findNinaImageByContentHash(userId, hash)` di `lib/nina/queries.ts`; pass-through kolom di raw-SQL insert `scripts/nina-image-worker.ts` (+ shape test). Tanpa perubahan perilaku. Exit: migrasi apply bersih (additif), `db:check` hijau, util hash teruji unit, insert menerima & mengabaikan hash tanpa pemanggil baru, worker menulis kolom bila diberi.
+  - **Status**: completed
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 1 of 4)
+  - **Satisfies**: R1 — Satu mekanisme agar semua foto di Media unik (write-time + backfill yang sudah ada).
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-DB-A006.md`
+  - **Completed**: 2026-09-10 12:12
+  - **Method**: /do
+  - **Files**: lib/db/schema.ts, drizzle/0018_real_madame_web.sql, drizzle/meta/0018_snapshot.json, drizzle/meta/_journal.json, lib/photos/contentHash.ts, lib/photos/contentHash.test.ts, lib/nina/queries.ts, scripts/nina-image-worker.ts, tests/nina.photoRefs.test.ts, tests/nina.imageworker.test.ts, tests/db.schema.nina.test.ts
+  - **Drift**:
+    - Plan's contentHash.ts body did not typecheck under this repo's TS + @types/node (TS2345 BufferSource strictness on the digest arg; TS2322 Blob not eliminated in the instanceof false branch) → replaced with an `isBlob` type-predicate + one compile-time-only `as BufferSource` assertion at the digest call. Runtime semantics byte-identical; contract (zero imports, view-not-buffer, lowercase hex) unchanged.
+    - Plan quoted the photoRefs insert describe as ending at :192; in the current tree it ends at :171 (plan's line numbers slightly stale). Text anchors used; no semantic change.
+    - tests/db.schema.nina.test.ts is not in the plan's Files table, but its absence-guard ('adds no index for them — adding one is a decision somebody makes on purpose') trips on the plan-mandated partial index. Expectation extended to the three-index list with a comment naming media-dedupe P1 and where the decision is documented (schema column header).
+  - **Decided**:
+    - Plan's contentHash.ts code block vs this repo's TS lib types → type-predicate + compile-time assertion, runtime unchanged (rung 1: invariant 1 tree-green outranks rung 3 code block on a mechanical typing detail)
+    - Schema-guard expectation of exactly 2 indexes on nina_message_images → extended to 3 with the plan-mandated `nina_message_images_user_content_hash_idx` (guard's stated purpose is to force the addition to be written down; the plan + schema header write it in full; not a relaxed check)
+    - db:migrate applied to PRODUCTION per the plan's explicit direction (additive: nullable column + partial index over 23 rows) and verified by an information_schema/pg_indexes catalog query rather than by migrate's output wording
 
 - [x] **P1-DB-A004** Phase 1: The table and the matcher
   - **Difficulty**: NORMAL

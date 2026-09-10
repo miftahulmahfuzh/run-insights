@@ -60,6 +60,7 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 import { newId } from '../lib/id.ts'
+import { planNinaImageWrite, type NinaImageDedupHit } from '../lib/nina/imageDedupe.ts'
 import { classifyImageFailure, ninaImageApology, ninaImageCaption } from '../lib/nina/imagefail.ts'
 import type { NinaImageFailure } from '../lib/nina/imagefail.ts'
 import {
@@ -83,6 +84,7 @@ import {
   readReportedCostMicroUsd,
 } from '../lib/nina/imagerecipe.ts'
 import type { NinaImageJobArgs } from '../lib/nina/imagerecipe.ts'
+import { contentHashOf } from '../lib/photos/contentHash.ts'
 
 /* `@neondatabase/serverless` and `@vercel/blob` are CJS-friendly and are loaded the way every other
  * script in `scripts/` loads them (`scripts/blob-reap.mjs:34`), so this file needs no bundler and no
@@ -91,12 +93,13 @@ const require = createRequire(import.meta.url)
 const { neon } = require('@neondatabase/serverless') as {
   neon: (url: string) => NeonSql
 }
-const { put } = require('@vercel/blob') as {
+const { put, del } = require('@vercel/blob') as {
   put: (
     pathname: string,
     body: Buffer,
     options: Record<string, unknown>,
   ) => Promise<{ url: string; pathname: string }>
+  del: (url: string) => Promise<unknown>
 }
 
 /**
@@ -151,7 +154,7 @@ interface WorkerTable {
   readonly columns: readonly string[]
 }
 
-const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
+export const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
   /* UPDATE and SELECT only — `claimJob` and the three terminal updates. Never inserted here: the
    * app opens every job (`openNinaImageJob`), and a worker that could open one would be a second
    * writer of a table whose whole point is that the app owns the ledger. */
@@ -184,7 +187,7 @@ const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
     columns: [
       'id',
       'user_id',
-      /* FINDING 1. `NOT NULL` since migration 0004, and omitted by both INSERTs until this phase.
+      /* FINDING 1. `NOT NULL` since migration 0004, and omitted by both INSERTs until that phase.
        * It is listed here so the existence check covers it AND so the NOT NULL coverage check
        * passes — the two halves have to agree or the worker will not start. */
       'session_id',
@@ -210,6 +213,14 @@ const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
       'bytes',
       'description',
       'prompt',
+      /* media-dedupe P1/P3. P1 named content_hash for the INSERT; P3's `findContentDuplicate`
+       * SELECT names it PLUS the two provenance columns (its originals-only WHERE) and
+       * `created_at` (its ORDER BY). All four are listed for the existence check; all four are
+       * nullable or defaulted, so the NOT NULL coverage check demands none of them. */
+      'content_hash',
+      'source_avatar_id',
+      'source_image_id',
+      'created_at',
       'sort_order',
     ],
   },
@@ -225,6 +236,12 @@ const REQUIRED_COLUMNS: Record<string, WorkerTable> = {
       'bytes',
       'source',
       'description',
+      /* media-dedupe P3: named by `releaseBlobIfUnreferenced`'s six-column reference check — the
+       * same six columns `isBlobPathnameReferenced` asks, so the worker cannot release an object
+       * the app would have kept (an album thumbnail sharing bytes is the case that makes the
+       * `thumb_*` columns more than symmetry). */
+      'thumb_pathname',
+      'thumb_url',
       'is_current',
       'announced_at',
     ],
@@ -335,6 +352,49 @@ export async function preflight(sql: NeonSql): Promise<void> {
      */
     throw new Error(`schema drift — ${drift.join('; ')}`)
   }
+}
+
+/** The row `findContentDuplicate` answers with — the shape `imageDedupe.ts` states its `hit` in. */
+export interface WorkerContentDuplicate {
+  id: string
+  blobUrl: string
+  pathname: string
+}
+
+/**
+ * The worker's own spelling of `findNinaImageByContentHash` (`lib/nina/queries.ts`), clause for
+ * clause — it cannot be imported (`server-only`, `@/` aliases; this file's header), so the
+ * POLICY is restated in SQL and the duplication is kept honest the way every duplication in this
+ * file is: by naming the columns in `REQUIRED_COLUMNS`, where a drift takes the workflow red.
+ *
+ *   · owner-scoped — `user_id` in the WHERE, invariant 5;
+ *   · ORIGINALS ONLY — both provenance columns `IS NULL`. A reference must never satisfy a dedup
+ *     lookup, or two references could chain onto each other and the keeper's deletion would
+ *     re-materialize BOTH as originals;
+ *   · newest first — `created_at desc` with `id desc` as the tie-break, the same tie-break the
+ *     collection reads use, so a re-run after a crash names the same keeper.
+ *
+ * Phase 1's partial index (`nina_message_images_user_content_hash_idx`) makes this a lookup, not
+ * a scan.
+ */
+export async function findContentDuplicate(
+  sql: NeonSql,
+  userId: string,
+  contentHash: string,
+): Promise<WorkerContentDuplicate | null> {
+  const rows = (await sql`
+    select id, blob_url, pathname
+    from nina_message_images
+    where user_id = ${userId}
+      and content_hash = ${contentHash}
+      and source_avatar_id is null
+      and source_image_id is null
+    order by created_at desc, id desc
+    limit 1
+  `) as Array<{ id: string; blob_url: string; pathname: string }>
+
+  const row = rows[0]
+  return row == null ? null : { id: row.id, blobUrl: row.blob_url, pathname: row.pathname }
 }
 
 export interface ClaimedJob {
@@ -631,13 +691,39 @@ export async function generate(
   }
 }
 
-/** The PNG into Blob, under `nina/<userId>/<purpose>-<id>.png`. RU-7's per-user prefix. */
-async function store(
+/**
+ * The PNG into Blob, under `nina/<userId>/<purpose>-<id>.png`. RU-7's per-user prefix.
+ *
+ * ── media-dedupe P3: HASH BEFORE PUT, IN LOCKSTEP WITH `lib/nina/imagerun.ts` ─────────────────
+ * Same rule, second host: the bytes are in hand, so `contentHashOf` runs BEFORE `put` and a hit
+ * in this user's originals skips the put entirely — `addRandomSuffix: true` would otherwise
+ * guarantee that identical bytes land as a second object. The row-level decision is NOT made
+ * here: `store` reports what it found and `finishSelfie` runs `planNinaImageWrite` — the SAME
+ * pure function the app side calls — so the two hosts cannot disagree about what a deduped write
+ * looks like. A lookup fault degrades to a plain put (a paid generation must never be lost to a
+ * dedup read), exactly as the app side degrades.
+ *
+ * `avatar` is outside the dedup scope, here as there: `nina_avatars` carries no `content_hash`
+ * and the Media collection never reads it.
+ *
+ * `sql` became a parameter because the dedup lookup needs the database; `runOneJob` is the only
+ * caller and already holds it.
+ */
+export interface WorkerStoredImage {
+  blobUrl: string
+  pathname: string
+  bytes: number
+  /** sha-256 hex of the exact bytes, or null when the purpose is out of dedup scope (`avatar`). */
+  contentHash: string | null
+  /** Non-null: an original already holds these bytes and the put was SKIPPED. */
+  duplicateOf: NinaImageDedupHit | null
+}
+
+async function putBlob(
   userId: string,
   purpose: NinaImageJobArgs['purpose'],
-  b64: string,
-): Promise<{ blobUrl: string; pathname: string; bytes: number }> {
-  const bytes = Buffer.from(b64, 'base64')
+  bytes: Buffer,
+): Promise<{ blobUrl: string; pathname: string }> {
   const blob = await put(ninaImagePathname(userId, purpose, newId()), bytes, {
     access: 'public',
     contentType: NINA_IMAGE_CONTENT_TYPE,
@@ -646,7 +732,92 @@ async function store(
     cacheControlMaxAge: NINA_IMAGE_CACHE_MAX_AGE,
     token: process.env.BLOB_READ_WRITE_TOKEN,
   })
-  return { blobUrl: blob.url, pathname: blob.pathname, bytes: bytes.byteLength }
+  return { blobUrl: blob.url, pathname: blob.pathname }
+}
+
+export async function store(
+  sql: NeonSql,
+  userId: string,
+  purpose: NinaImageJobArgs['purpose'],
+  b64: string,
+): Promise<WorkerStoredImage> {
+  const bytes = Buffer.from(b64, 'base64')
+  if (purpose === 'avatar') {
+    const blob = await putBlob(userId, purpose, bytes)
+    return { ...blob, bytes: bytes.byteLength, contentHash: null, duplicateOf: null }
+  }
+
+  const contentHash = await contentHashOf(bytes)
+
+  let duplicateOf: NinaImageDedupHit | null = null
+  try {
+    duplicateOf = await findContentDuplicate(sql, userId, contentHash)
+  } catch (cause) {
+    console.warn('[nina-worker] dedup lookup failed; storing anyway', {
+      hash: contentHash.slice(0, 12),
+      error: String(cause),
+    })
+  }
+  if (duplicateOf != null) {
+    console.info('[nina-worker] duplicate content; the put is skipped', {
+      bytes: bytes.byteLength,
+      hash: contentHash.slice(0, 12),
+    })
+    return {
+      blobUrl: duplicateOf.blobUrl,
+      pathname: duplicateOf.pathname,
+      bytes: bytes.byteLength,
+      contentHash,
+      duplicateOf,
+    }
+  }
+
+  const blob = await putBlob(userId, purpose, bytes)
+  return { ...blob, bytes: bytes.byteLength, contentHash, duplicateOf: null }
+}
+
+/**
+ * The worker's own spelling of `releaseBlobIfUnreferenced` (`lib/nina/blobRelease.ts`), which
+ * cannot be imported for the same reason everything else here is restated. The rule is the ONE
+ * delete rule of the whole plan set: ROW FIRST, BLOB SECOND — the caller has already written the
+ * row that replaced the reference, and this asks the same SIX columns across the same TWO tables
+ * the app's `isBlobPathnameReferenced` asks (images pathname+url, avatars pathname+url,
+ * thumbnails pathname+url) before `del`. Any fault keeps the object: a loser blob left for the
+ * reaper is recoverable, a deleted object a row still points at is not.
+ */
+export async function releaseBlobIfUnreferenced(
+  sql: NeonSql,
+  userId: string,
+  ref: { blobUrl: string; pathname: string },
+  /** Test seam: `del` arrives through `createRequire`, which no `vi.mock` registry reaches. */
+  delFn: (url: string) => Promise<unknown> = del,
+): Promise<'deleted' | 'shared' | 'failed'> {
+  try {
+    const rows = (await sql`
+      select id from (
+        (select id from nina_message_images
+          where user_id = ${userId}
+            and (pathname = ${ref.pathname} or blob_url = ${ref.blobUrl}))
+        union all
+        (select id from nina_avatars
+          where user_id = ${userId}
+            and (pathname = ${ref.pathname} or blob_url = ${ref.blobUrl}
+              or thumb_pathname = ${ref.pathname} or thumb_url = ${ref.blobUrl}))
+      ) referenced
+      limit 1
+    `) as Array<{ id: string }>
+    if (rows.length > 0) {
+      console.info('[nina-worker] blob kept: another row still points at it')
+      return 'shared'
+    }
+    await delFn(ref.blobUrl)
+    return 'deleted'
+  } catch (cause) {
+    console.warn('[nina-worker] the loser blob could not be released; the reaper owns it now', {
+      error: String(cause),
+    })
+    return 'failed'
+  }
 }
 
 /**
@@ -764,11 +935,16 @@ export async function resolveWorkerSessionId(
  * (R11), and the honest cost is that the retry regenerates and spends a second $0.04 before giving
  * up. That is priced rather than special-cased: both spends are now recorded (see `closeFailed`), so
  * phase 4's detail page will show `attempts: 2` and a doubled cost, which is exactly what happened.
+ *
+ * *media-dedupe P3: the image row is written from `planNinaImageWrite` — the same pure function the
+ * app side calls — so a generation whose bytes this user already stores lands as a REFERENCE with no
+ * second object; the race between the pre-put lookup and this insert is closed HERE, and the loser
+ * blob is released only after the row that replaced it is in.*
  */
 export async function finishSelfie(
   sql: NeonSql,
   job: ClaimedJob,
-  image: { blobUrl: string; pathname: string; bytes: number },
+  image: WorkerStoredImage,
   result: { costMicroUsd: number; latencyMs: number },
 ): Promise<void> {
   const messageId = newId()
@@ -778,6 +954,35 @@ export async function finishSelfie(
   const sessionId = await resolveWorkerSessionId(sql, userId, args.replyToId)
   if (sessionId == null) {
     throw new Error(`no session to file the photograph in (job ${jobId})`)
+  }
+
+  /* ── media-dedupe P3: THE RACE-CLOSE, ASKED A SECOND TIME AT THE INSERT ─────────────────────
+   * `store` asked before its put; two hosts can both hear "no" and both put. The same lookup runs
+   * again here, and a hit turns this write into a REFERENCE through `planNinaImageWrite` — with
+   * the fresh loser bytes scheduled for release after the row is in. A lookup fault degrades to
+   * "original", the same rule as the pre-put lookup: the photograph must never be lost to a
+   * dedup read. */
+  let racedDuplicate: NinaImageDedupHit | null = null
+  if (image.duplicateOf == null && image.contentHash != null) {
+    try {
+      racedDuplicate = await findContentDuplicate(sql, userId, image.contentHash)
+    } catch (cause) {
+      console.warn('[nina-worker] dedup re-check failed; writing an original', {
+        jobId,
+        error: String(cause),
+      })
+    }
+  }
+  const writePlan = planNinaImageWrite({
+    hit: image.duplicateOf ?? racedDuplicate,
+    stored: { blobUrl: image.blobUrl, pathname: image.pathname, contentHash: image.contentHash },
+  })
+  if (writePlan.release != null) {
+    console.info('[nina-worker] lost a dedup race; the row will reference the keeper', {
+      jobId,
+      bytes: image.bytes,
+      hash: image.contentHash?.slice(0, 12) ?? null,
+    })
   }
 
   /* `photo_only = true` marks the bubble as existing only to carry the picture — the same fact
@@ -794,7 +999,11 @@ export async function finishSelfie(
    *
    * DEPLOY ORDER: this INSERT names a column migration 0008 creates. Additive, and migrations run
    * before the deploy in the normal order — but a worker deployed against an un-migrated database
-   * fails this statement, so the order is a requirement here and not an incidental. */
+   * fails this statement, so the order is a requirement here and not an incidental. The same now
+   * applies to `content_hash` (migration 0018, media-dedupe P1) — except that preflight's
+   * `findSchemaDrift` runs the existence check FIRST, so an un-migrated database takes the
+   * workflow red before a job is claimed, rather than dropping a photograph after the money was
+   * spent. */
   await sql`
     insert into nina_messages
       (id, user_id, session_id, role, text, source, turn_id, reply_to_id, photo_only)
@@ -804,12 +1013,19 @@ export async function finishSelfie(
       true
     )
   `
+  /* The plan's values, not `image`'s: a deduped row carries the KEEPER's object and the keeper's
+   * id in `source_image_id`, so `isOriginalPhoto()` hides it from the collection while the bubble
+   * still renders it. `description`/`prompt` stay THIS generation's — the same argument the app
+   * side makes at its insert: the scene is a truthful description of these bytes, and the sidecar
+   * is what ITS generation was told. */
   await sql`
     insert into nina_message_images
-      (id, user_id, message_id, kind, blob_url, pathname, width, height, bytes, description, prompt, sort_order)
+      (id, user_id, message_id, kind, blob_url, pathname, width, height, bytes, description, prompt,
+       content_hash, source_image_id, sort_order)
     values (
-      ${imageId}, ${userId}, ${messageId}, 'generated', ${image.blobUrl}, ${image.pathname},
-      ${NINA_IMAGE_WIDTH}, ${NINA_IMAGE_HEIGHT}, ${image.bytes}, ${args.scene}, ${args.sidecar}, 0
+      ${imageId}, ${userId}, ${messageId}, 'generated', ${writePlan.row.blobUrl},
+      ${writePlan.row.pathname}, ${NINA_IMAGE_WIDTH}, ${NINA_IMAGE_HEIGHT}, ${image.bytes},
+      ${args.scene}, ${args.sidecar}, ${writePlan.row.contentHash}, ${writePlan.row.sourceImageId}, 0
     )
   `
   await sql`
@@ -818,6 +1034,14 @@ export async function finishSelfie(
         cost_micro_usd = coalesce(cost_micro_usd, 0) + ${result.costMicroUsd}
     where id = ${jobId} and user_id = ${userId}
   `
+
+  /* Loser bytes out, after the row that replaced them is in — ROW FIRST, BLOB SECOND. Reached
+   * only on the race path: the skip path never put anything. If the INSERT above throws instead,
+   * the loser blob stays behind and the reaper owns it — the same orphan class the existing
+   * `finish:` failure branch already documents. */
+  if (writePlan.release != null) {
+    await releaseBlobIfUnreferenced(sql, userId, writePlan.release)
+  }
 }
 
 /**
@@ -1000,9 +1224,9 @@ export async function runOneJob(
     })
   }
 
-  let image: { blobUrl: string; pathname: string; bytes: number }
+  let image: WorkerStoredImage
   try {
-    image = await store(job.userId, job.args.purpose, outcome.b64)
+    image = await store(sql, job.userId, job.args.purpose, outcome.b64)
   } catch (cause) {
     return closeFailed(sql, job, {
       kind: 'transport',

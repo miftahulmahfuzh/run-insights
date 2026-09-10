@@ -5,9 +5,12 @@ import { after } from 'next/server'
 
 import { blobEnv } from '@/lib/env'
 import { newId } from '@/lib/id'
+import { contentHashOf } from '@/lib/photos/contentHash'
 
+import { releaseBlobIfUnreferenced } from './blobRelease'
 import { captionNinaPhoto } from './caption'
 import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
+import { planNinaImageWrite, type NinaImageDedupHit } from './imageDedupe'
 import { ninaImageCaption, type NinaImageFailure } from './imagefail'
 import {
   claimNinaImageJob,
@@ -35,6 +38,7 @@ import {
   type NinaImagePurpose,
 } from './imagerecipe'
 import {
+  findNinaImageByContentHash,
   getNinaMessagesByIds,
   insertNinaAvatarAsCurrent,
   insertNinaMessageImages,
@@ -116,15 +120,97 @@ interface StoredImage {
   blobUrl: string
   pathname: string
   bytes: number
+  /**
+   * media-dedupe P3. sha-256 hex of the exact bytes this image holds, or null when the purpose is
+   * out of dedup scope (`avatar` — `nina_avatars` carries no hash and the Media collection never
+   * reads it). Computed BEFORE the put; this is the one generated path where the server holds the
+   * bytes, so here the hash is a fact and not a claim.
+   */
+  contentHash: string | null
+  /**
+   * Non-null: an ORIGINAL row of this user's already stores exactly these bytes and the put was
+   * SKIPPED. The row that lands below references it (F37's shape) instead of storing a second
+   * object — the measured defect this plan exists for (`sbTuT8NKXL24` + `ywNnXvpnnKSi`).
+   */
+  duplicateOf: NinaImageDedupHit | null
 }
 
-/** The PNG into Blob, under `nina/<userId>/<purpose>-<id>.png`. RU-7's per-user prefix. */
+/**
+ * The PNG into Blob, under `nina/<userId>/<purpose>-<id>.png`. RU-7's per-user prefix.
+ *
+ * ── media-dedupe P3: THE HASH HAPPENS HERE, BEFORE THE PUT ────────────────────────────────────
+ * This is the one generated path where the server holds the bytes, so this is where the
+ * content-hash claim stops being a claim. `contentHashOf` runs BEFORE `put`, because the only way
+ * to skip the put is to already know the answer. A hit means an ORIGINAL row of this user's
+ * already stores exactly these bytes — and `addRandomSuffix: true` would otherwise guarantee that
+ * identical bytes land as a second object — so the put is skipped entirely and the row that
+ * `finishSelfie` writes becomes a REFERENCE (the keeper's `blob_url`/`pathname` copied on, the
+ * keeper's id in `source_image_id`). The row is not dropped and no bytes are stored: plan
+ * invariants 2 and 4. The race window this leaves (two hosts answering "no" before either
+ * inserts) is closed by the re-check in `finishSelfie`, not here — one decision,
+ * `planNinaImageWrite`, serves both.
+ *
+ * ── WHY A LOOKUP FAULT CANNOT COST THE PHOTOGRAPH ─────────────────────────────────────────────
+ * The generation has already been paid for when this runs (78 s and $0.04, measured). Dedup is an
+ * optimization on top of that spend, so a dead connection at the lookup degrades to today's
+ * behavior — put + original row — and never to a lost photograph. The re-check in `finishSelfie`
+ * degrades the same way. What is NOT degraded is the column: `contentHash` is computed locally
+ * and always travels.
+ *
+ * ── WHY `avatar` IS OUTSIDE THE SCOPE ─────────────────────────────────────────────────────────
+ * The dedup contract is Media's: `nina_message_images` owns the column and the lookup. An avatar
+ * is a `nina_avatars` row — out of this plan set's scope by its own "Out of scope" line — and
+ * hashing its bytes would be work with no reader. `contentHash: null` says exactly that.
+ */
 async function storeNinaImage(
   userId: string,
   purpose: NinaImagePurpose,
   b64: string,
 ): Promise<StoredImage> {
   const bytes = Buffer.from(b64, 'base64')
+  if (purpose === 'avatar') {
+    const blob = await putNinaImageBlob(userId, purpose, bytes)
+    return { ...blob, bytes: bytes.byteLength, contentHash: null, duplicateOf: null }
+  }
+
+  const contentHash = await contentHashOf(bytes)
+
+  let duplicateOf: NinaImageDedupHit | null = null
+  try {
+    duplicateOf = await findNinaImageByContentHash(userId, contentHash)
+  } catch (cause) {
+    console.warn('[nina] dedup lookup failed; storing anyway', {
+      purpose,
+      hash: contentHash.slice(0, 12),
+      error: String(cause),
+    })
+  }
+
+  if (duplicateOf != null) {
+    console.info('[nina] generated image deduped; the put is skipped', {
+      purpose,
+      bytes: bytes.byteLength,
+      hash: contentHash.slice(0, 12),
+    })
+    return {
+      blobUrl: duplicateOf.blobUrl,
+      pathname: duplicateOf.pathname,
+      bytes: bytes.byteLength,
+      contentHash,
+      duplicateOf,
+    }
+  }
+
+  const blob = await putNinaImageBlob(userId, purpose, bytes)
+  return { ...blob, bytes: bytes.byteLength, contentHash, duplicateOf: null }
+}
+
+/** The put itself, exactly the pre-dedup statement — extracted so the dedup branch reads. */
+async function putNinaImageBlob(
+  userId: string,
+  purpose: NinaImagePurpose,
+  bytes: Buffer,
+): Promise<{ blobUrl: string; pathname: string }> {
   const blob = await put(ninaImagePathname(userId, purpose, newId()), bytes, {
     access: 'public',
     contentType: NINA_IMAGE_CONTENT_TYPE,
@@ -135,7 +221,7 @@ async function storeNinaImage(
      * is the precedent; `scripts/` is the only place that reads the raw variable. */
     token: blobEnv().BLOB_READ_WRITE_TOKEN,
   })
-  return { blobUrl: blob.url, pathname: blob.pathname, bytes: bytes.byteLength }
+  return { blobUrl: blob.url, pathname: blob.pathname }
 }
 
 /**
@@ -258,20 +344,78 @@ async function finishSelfie(
    * degradation, and it must not be swallowed into a "successful" job with no bubble. */
   if (message == null) throw new Error('finishSelfie: no message row was written')
 
+  /*
+   * ── media-dedupe P3: THE RACE-CLOSE — THE QUESTION IS ASKED A SECOND TIME, AT THE INSERT ────
+   * `storeNinaImage` asked "does this user already store these bytes?" before its put, but two
+   * hosts can both answer no and then both put: a sweep runner and an in-platform `after()` share
+   * no lock, and a seeded re-generation produces identical bytes BY DESIGN (same prompt, same
+   * seed). So the question is asked again here, after the put and as close to the insert as this
+   * code can stand. A hit at this door writes the row as a REFERENCE to that keeper and releases
+   * the bytes we just stored — ROW FIRST, BLOB SECOND (plan invariant 3): the reference row is in
+   * before `releaseBlobIfUnreferenced` asks whether anything still points at the loser. A lookup
+   * fault degrades to "original", never to a lost photograph — the same rule as the pre-put
+   * lookup, and the same reason.
+   */
+  let racedDuplicate: NinaImageDedupHit | null = null
+  if (image.duplicateOf == null && image.contentHash != null) {
+    try {
+      racedDuplicate = await findNinaImageByContentHash(userId, image.contentHash)
+    } catch (cause) {
+      console.warn('[nina] dedup re-check failed; writing an original', {
+        jobId,
+        hash: image.contentHash.slice(0, 12),
+        error: String(cause),
+      })
+    }
+  }
+  const writePlan = planNinaImageWrite({
+    hit: image.duplicateOf ?? racedDuplicate,
+    stored: { blobUrl: image.blobUrl, pathname: image.pathname, contentHash: image.contentHash },
+  })
+  if (writePlan.release != null) {
+    console.info('[nina] lost a dedup race; the row will reference the keeper', {
+      jobId,
+      bytes: image.bytes,
+      hash: image.contentHash?.slice(0, 12) ?? null,
+    })
+  }
+
   await insertNinaMessageImages(userId, [
     {
       messageId: message.id,
       kind: 'generated',
-      blobUrl: image.blobUrl,
-      pathname: image.pathname,
+      /* The plan, not `image`: a deduped row carries the KEEPER's object and the keeper's id, so
+       * `isOriginalPhoto()` hides it from the Media feed while the bubble still renders it. */
+      blobUrl: writePlan.row.blobUrl,
+      pathname: writePlan.row.pathname,
       width: NINA_IMAGE_WIDTH,
       height: NINA_IMAGE_HEIGHT,
       bytes: image.bytes,
+      /* ── THE DESCRIPTION AND PROMPT STAY THIS GENERATION'S — DELIBERATELY ───────────────────
+       * `resolveAttachment` copies the source description because that row would otherwise have
+       * to PAY for vision prose it can get free. This row is the opposite case: it never pays for
+       * prose at all — `args.scene` IS a truthful description of these bytes (we wrote the
+       * picture from it), and the caption above is derived from it. Copying the keeper's scene
+       * instead would put ANOTHER generation's prose under this bubble, and a different prompt
+       * with the same seed can render identical bytes; the row must say what ITS generation was
+       * told, which is what `prompt` (the sidecar) is for. */
       description: args.scene,
       prompt: args.sidecar,
+      sourceImageId: writePlan.row.sourceImageId,
+      contentHash: writePlan.row.contentHash,
       sortOrder: 0,
     },
   ])
+
+  /* Loser bytes out — only after the row that pointed at them is in, and only when the plan says
+   * there ARE loser bytes: the skip path referenced the keeper without ever putting, so there is
+   * nothing of ours in the store at all. */
+  if (writePlan.release != null) {
+    const outcome = await releaseBlobIfUnreferenced(userId, writePlan.release)
+    if (outcome !== 'deleted') {
+      console.warn('[nina] dedup loser kept in the store', { jobId, outcome, bytes: image.bytes })
+    }
+  }
 
   await completeNinaImageJob(userId, jobId, result)
 }

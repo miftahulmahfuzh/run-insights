@@ -1,3 +1,4 @@
+import { ninaPhotoProvenance } from '@/lib/nina/attach'
 import { NINA_IMAGE_CAPTIONS } from '@/lib/nina/imagefail'
 import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
 
@@ -329,4 +330,105 @@ export interface ChatPhotoActionResult {
    * was asked.
    */
   note?: string
+}
+
+/* ── media-dedupe P3: the add-path dedup decision ──────────────────────────────────────────── */
+
+/**
+ * The row a duplicate claim is answered from, narrowed to what the decision reads. A
+ * `NinaImageRow` satisfies it; the projection is named here so this pure module states its inputs
+ * instead of importing the query module's row shape.
+ */
+export interface ChatPhotoKeeper {
+  id: string
+  blobUrl: string
+  pathname: string
+  description: string | null
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+}
+
+/** What `addChatPhotoAction` writes, and what it releases afterwards. */
+export interface ChatPhotoAddPlan {
+  blobUrl: string
+  pathname: string
+  /** F37's pair: non-null on either makes the row a REFERENCE the collection reads skip. */
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+  /** The client's validated hash claim — NULL when there was none or it failed validation. */
+  contentHash: string | null
+  /** Copied from the keeper on a duplicate (`resolveAttachment`'s precedent); NULL on an original. */
+  description: string | null
+  /** The fresh object to release AFTER the row lands (ROW FIRST, BLOB SECOND), or null. */
+  release: { blobUrl: string; pathname: string } | null
+}
+
+/**
+ * **The add path's dedup decision, as a pure function.** Three answers, and the two duplicate
+ * answers differ only in HOW the keeper was found — which is why the function takes both and
+ * picks:
+ *
+ *   · `pinned` — the row the browser's pre-check found and NAMED (`duplicateOfId`). Read
+ *     owner-scoped at action time by `getNinaMessageImage`, which does NOT filter references, so a
+ *     row the sweep or the runner path merged into a keeper mid-flight is flattened to its own
+ *     original by `ninaPhotoProvenance` — the ONE writer of these two columns — and the write
+ *     stays correct without this module re-deriving provenance.
+ *   · `hit` — the row the hash lookup found at action time (the race: the client DID put fresh
+ *     bytes and a concurrent original claimed them first). The finder is originals-only, so this
+ *     keeper is always flat.
+ *   · neither — today's original, plus the hash claim.
+ *
+ * ── WHY THE DESCRIPTION IS COPIED ────────────────────────────────────────────────────────────
+ * `resolveAttachment`'s precedent, verbatim in its reasons: the vision prose for these EXACT bytes
+ * already exists on the keeper, `description` is the only text of the row that reaches Nina's
+ * prompt, and a second `glm-4.6v` call over identical pixels is a second bill for a fact already
+ * in hand. Copying it also makes the caption pass cheap on purpose: with `description` non-null,
+ * `scheduleChatPhotoCaption`'s HALF ONE skips the eyes and HALF TWO captions the new bubble from
+ * the copied prose — which is what the operator asked for (a photograph IN a conversation), not a
+ * second description of it.
+ *
+ * ── WHY THE RELEASE IS COMPARING PATHNAMES ───────────────────────────────────────────────────
+ * The pre-check skip path never PUT anything, so its payload ECHOES the keeper's pathname — same
+ * string, nothing to release. The race path PUT a fresh object whose pathname cannot equal the
+ * keeper's (`addRandomSuffix: true`), so THAT object is the loser and it is released after the
+ * reference row is in. The comparison is what keeps one function honest about both.
+ */
+export function planChatPhotoAddWrite(input: {
+  claims: { blobUrl: string; pathname: string; contentHash: string | null }
+  pinned: ChatPhotoKeeper | null
+  hit: ChatPhotoKeeper | null
+}): ChatPhotoAddPlan {
+  const keeper = input.pinned ?? input.hit
+
+  if (keeper == null) {
+    return {
+      blobUrl: input.claims.blobUrl,
+      pathname: input.claims.pathname,
+      sourceAvatarId: null,
+      sourceImageId: null,
+      contentHash: input.claims.contentHash,
+      description: null,
+      release: null,
+    }
+  }
+
+  const provenance = ninaPhotoProvenance({
+    kind: 'image',
+    id: keeper.id,
+    sourceAvatarId: keeper.sourceAvatarId,
+    sourceImageId: keeper.sourceImageId,
+  })
+
+  return {
+    blobUrl: keeper.blobUrl,
+    pathname: keeper.pathname,
+    sourceAvatarId: provenance.sourceAvatarId,
+    sourceImageId: provenance.sourceImageId,
+    contentHash: input.claims.contentHash,
+    description: keeper.description,
+    release:
+      input.claims.pathname === keeper.pathname
+        ? null
+        : { blobUrl: input.claims.blobUrl, pathname: input.claims.pathname },
+  }
 }

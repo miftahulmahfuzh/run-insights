@@ -1,0 +1,2 @@
+ALTER TABLE "nina_message_images" ADD COLUMN "content_hash" text;--> statement-breakpoint
+CREATE INDEX "nina_message_images_user_content_hash_idx" ON "nina_message_images" USING btree ("user_id","content_hash") WHERE "nina_message_images"."content_hash" is not null;

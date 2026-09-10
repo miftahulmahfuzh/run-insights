@@ -43,7 +43,7 @@ export function ChatPhotoAdd({ userId }: { userId: string }) {
     const failures: string[] = []
     for (const [, file] of files.entries()) {
       try {
-        const uploaded = await uploadChatPhoto(userId, file)
+        const uploaded = await uploadChatPhoto(userId, file, { dedupe: true })
         const result = await addChatPhotoAction(uploaded)
         if (!result.ok) failures.push(`${file.name}: ${result.error ?? 'refused'}`)
       } catch (cause) {

@@ -372,13 +372,22 @@ const SESSION_ID = 'ses123XYZ_-9'
 const STORED_DESCRIPTION = 'A woman underwater in a black swimsuit and fins, mid-kick, light above.'
 const CAPTION = 'eh gw nyelam tadi'
 
-/** `instanceof` is the whole point of the class, so the mock exports a real one to be an instance of. */
-class FakeVisionTokenFloorError extends Error {
-  override name = 'NinaVisionTokenFloorError'
-}
+/**
+ * `instanceof` is the whole point of the class, so the mock exports a real one to be an instance of.
+ * Hoisted because media-dedupe P3 gave `components/admin/chatPhotoUpload` a server-action import,
+ * so this file's static import of that client module now transitively loads `chatPhotoActions` →
+ * `vision` while the module body is still evaluating — and the `vi.mock` factory needs the class
+ * to exist by then, not by `beforeEach`.
+ */
+const { FakeVisionTokenFloorError } = vi.hoisted(() => ({
+  FakeVisionTokenFloorError: class extends Error {
+    override name = 'NinaVisionTokenFloorError'
+  },
+}))
 
 const requireAdmin = vi.fn()
 const getNinaMessageImage = vi.fn()
+const findNinaImageByContentHash = vi.fn()
 const insertNinaMessages = vi.fn()
 const insertNinaMessageImages = vi.fn()
 const setNinaMessageImageDescription = vi.fn()
@@ -418,6 +427,7 @@ vi.mock('@/lib/nina/caption', () => ({
 vi.mock('@/lib/nina/queries', () => ({
   deleteNinaMessage: vi.fn(),
   deleteNinaMessageImage: vi.fn(),
+  findNinaImageByContentHash: (...args: unknown[]) => findNinaImageByContentHash(...args),
   getNinaMessageImage: (...args: unknown[]) => getNinaMessageImage(...args),
   getNinaMessageImagesForMessages: vi.fn(),
   getNinaMessagesByIds: vi.fn(),
@@ -430,6 +440,7 @@ vi.mock('@/lib/nina/queries', () => ({
   updateNinaChatPhotoDescription: (...args: unknown[]) => updateNinaChatPhotoDescription(...args),
   updateNinaMessage: (...args: unknown[]) => updateNinaMessage(...args),
 }))
+vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: vi.fn() }))
 
 type Actions = typeof import('@/lib/admin/chatPhotoActions')
 let actions: Actions
@@ -468,6 +479,7 @@ beforeEach(async () => {
   insertNinaMessages.mockResolvedValue([{ id: MESSAGE_ID }])
   insertNinaMessageImages.mockResolvedValue([{ id: IMAGE_ID }])
   getNinaMessageImage.mockResolvedValue({ ...imageRow })
+  findNinaImageByContentHash.mockResolvedValue(null)
   describeNinaImages.mockResolvedValue({
     description: STORED_DESCRIPTION,
     promptTokens: 900,
@@ -624,6 +636,140 @@ describe('replaceChatPhotoAction schedules the same captioner', () => {
     await runTheAfterCallback()
     expect(describeNinaImages).toHaveBeenCalledWith(expect.anything(), { subject: 'self' })
     expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
+  })
+})
+
+describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
+  const HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+  /** A RUNNER-upload pathname — valid for the store, INVALID for the admin predicate. */
+  const keeperUploadPathname = `nina/${USER}/chat/${ID}-${BLOB_SUFFIX}.jpg`
+  /* The keeper's object is NOT goodBlob's: the race path means the client PUT fresh bytes whose
+   * pathname cannot equal the keeper's (`addRandomSuffix`), and the release assertion below rides
+   * on the two being different strings. */
+  const keeperPathname = `nina/${USER}/selfie-keep123XYZ_9-KeeperSuffix0123456789abcd.jpg`
+  const KEEPER = {
+    id: 'keep123XYZ_9',
+    messageId: null,
+    kind: 'generated' as const,
+    blobUrl: `${STORE}/${keeperPathname}`,
+    pathname: keeperPathname,
+    width: 768,
+    height: 1024,
+    bytes: 240_000,
+    description: 'Keeper prose, already paid for.',
+    prompt: null,
+    sourceAvatarId: null,
+    sourceImageId: null,
+    contentHash: HASH,
+    sortOrder: 0,
+    createdAt: new Date(0),
+  }
+
+  it('writes the add as a REFERENCE to the keeper and copies its description', async () => {
+    // The race path: the client PUT fresh bytes (goodBlob's pathname passes the admin predicate)
+    // and the hash lookup found the keeper at action time.
+    findNinaImageByContentHash.mockResolvedValue(KEEPER)
+
+    const result = await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(
+      USER,
+      [
+        expect.objectContaining({
+          blobUrl: KEEPER.blobUrl,
+          pathname: KEEPER.pathname,
+          sourceImageId: KEEPER.id,
+          sourceAvatarId: null,
+          contentHash: HASH,
+          description: KEEPER.description,
+        }),
+      ],
+    )
+  })
+
+  it('releases the fresh loser bytes after the reference row is in (row first, blob second)', async () => {
+    findNinaImageByContentHash.mockResolvedValue(KEEPER)
+    const { releaseBlobIfUnreferenced } = await import('@/lib/nina/blobRelease')
+
+    await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
+
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(USER, {
+      blobUrl: goodBlob.blobUrl,
+      pathname: goodBlob.pathname,
+    })
+  })
+
+  it('the skip path pins the row, skips the admin pathname guard, and releases NOTHING', async () => {
+    // The pre-check path: the client never PUT, so the payload echoes the keeper's object — a
+    // RUNNER-upload pathname here, which the admin predicate would refuse. The pin is why the
+    // guard is skipped, and the echo is why nothing may be released.
+    const { releaseBlobIfUnreferenced } = await import('@/lib/nina/blobRelease')
+    getNinaMessageImage.mockResolvedValue({
+      ...KEEPER,
+      pathname: keeperUploadPathname,
+      blobUrl: `${STORE}/${keeperUploadPathname}`,
+    })
+
+    const result = await actions.addChatPhotoAction({
+      blobUrl: `${STORE}/${keeperUploadPathname}`,
+      pathname: keeperUploadPathname,
+      width: 768,
+      height: 1024,
+      bytes: 240_000,
+      contentHash: HASH,
+      duplicateOfId: KEEPER.id,
+    })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(
+      USER,
+      [expect.objectContaining({ pathname: keeperUploadPathname, sourceImageId: KEEPER.id })],
+    )
+  })
+
+  it('a pinned row that vanished between pre-check and action is a refusal, not a dead row', async () => {
+    getNinaMessageImage.mockResolvedValue(null)
+
+    const result = await actions.addChatPhotoAction({
+      ...goodBlob,
+      contentHash: HASH,
+      duplicateOfId: KEEPER.id,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/pick it again/)
+    expect(insertNinaMessages).not.toHaveBeenCalled()
+  })
+
+  it('a pinned row that is itself a reference flattens to its original', async () => {
+    getNinaMessageImage.mockResolvedValue({
+      ...KEEPER,
+      sourceImageId: 'origin12XYZ_',
+    })
+
+    await actions.addChatPhotoAction({
+      ...goodBlob,
+      contentHash: HASH,
+      duplicateOfId: KEEPER.id,
+    })
+
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(
+      USER,
+      [expect.objectContaining({ sourceImageId: 'origin12XYZ_' })],
+    )
+  })
+
+  it('a malformed hash claim is a NULL and a normal add, never an error (invariant 9)', async () => {
+    const result = await actions.addChatPhotoAction({ ...goodBlob, contentHash: 'not-a-hash' })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(findNinaImageByContentHash).not.toHaveBeenCalled()
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(
+      USER,
+      [expect.objectContaining({ contentHash: null, sourceImageId: null })],
+    )
   })
 })
 

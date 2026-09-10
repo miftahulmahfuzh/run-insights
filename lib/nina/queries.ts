@@ -74,7 +74,12 @@ import {
   normalizeNinaTrigger,
   type NinaShortcutKind,
 } from '@/lib/nina/shortcuts'
-import { coerceNinaTuning, NINA_TUNING_DEFAULTS, type NinaTuning } from '@/lib/nina/tuning'
+import {
+  coerceNinaTuning,
+  NINA_TUNING_DEFAULTS,
+  type NinaTuning,
+} from '@/lib/nina/tuning'
+import { isValidContentHash } from '@/lib/photos/contentHash'
 
 /**
  * Every Nina read and write, in one module — `lib/db/queries.ts` for `lib/nina/`.
@@ -246,6 +251,13 @@ export interface NinaImageRow {
    * `drizzle/0010`'s backfill wrote the same thing for the rows that predate it.
    */
   sourceImageId: string | null
+  /**
+   * media-dedupe P1. sha-256 hex of the bytes this row's Blob object stores, or NULL — a row that
+   * predates the column, or a write whose path had nothing to hash. NULL means dedup is inactive
+   * for this row; see `nina_message_images.content_hash`'s header for the full contract.
+   * `findNinaImageByContentHash` is the reader this column exists for.
+   */
+  contentHash: string | null
   sortOrder: number
   createdAt: Date
 }
@@ -269,6 +281,15 @@ export interface NinaImageInsert {
    */
   sourceAvatarId?: string | null
   sourceImageId?: string | null
+  /**
+   * media-dedupe P1. **Optional on purpose, and nobody sends one yet** — that is what makes this
+   * phase foundation. The value is sha-256 hex over the bytes being stored, computed by
+   * `lib/photos/contentHash.ts`; on the upload path it is a CLIENT CLAIM, so the insert
+   * coalesces anything that fails `isValidContentHash` to NULL (below) — invariant 9's "gagal
+   * validasi = tulis NULL, bukan error", enforced once here at the door every write path shares,
+   * rather than re-promised at each of the three callers.
+   */
+  contentHash?: string | null
   sortOrder?: number
 }
 
@@ -612,6 +633,7 @@ const imageColumns = {
   prompt: ninaMessageImages.prompt,
   sourceAvatarId: ninaMessageImages.sourceAvatarId,
   sourceImageId: ninaMessageImages.sourceImageId,
+  contentHash: ninaMessageImages.contentHash,
   sortOrder: ninaMessageImages.sortOrder,
   createdAt: ninaMessageImages.createdAt,
 }
@@ -1614,6 +1636,13 @@ export async function insertNinaMessageImages(
          */
         sourceAvatarId: row.sourceAvatarId ?? null,
         sourceImageId: row.sourceImageId ?? null,
+        /*
+         * media-dedupe P1. Coalesced through the validator rather than trusted, for the same
+         * one-shape reason as the two columns above — and because the value is a CLIENT CLAIM on
+         * the upload path (invariant 9): a claim that is not 64 lowercase hex binds NULL, dedup
+         * goes inactive for that row, and the send does not fail. No caller sends one yet.
+         */
+        contentHash: isValidContentHash(row.contentHash) ? row.contentHash : null,
         sortOrder: row.sortOrder ?? 0,
       })),
     )
@@ -1773,6 +1802,61 @@ export async function getNinaMessageImagesForMessages(
 }
 
 /**
+ * **"Does this user already store these bytes?"** The write-time dedup lookup (media-dedupe P1),
+ * and the question every dedup arm — the upload pre-check, the generated store, the worker — asks
+ * BEFORE it is allowed to create a second Blob object. Phase 1 ships the question with no
+ * callers; the arms are phases 2 and 3.
+ *
+ * ── ORIGINALS ONLY, BY THE PREDICATE THIS MODULE ALREADY OWNS ────────────────────────────────
+ * `isOriginalPhoto()` in the WHERE is not decoration. A REFERENCE row carries the same
+ * `content_hash` as the keeper it points at (it renders the same bytes), so counting references
+ * would answer "yes" forever after the first copy and point every later dedup arm at a reference
+ * instead of the original — and `ninaPhotoProvenance` flattens precisely so pointers name the
+ * original. `isOriginalPhoto` is a hoisted function declaration, so calling it from above its
+ * definition is this file's normal order, not a trick.
+ *
+ * ── NEWEST FIRST, AND WHY THE CALLER CARES ───────────────────────────────────────────────────
+ * `(created_at desc, id desc)` is `listNinaMessageImages`'s ordering with the same `id` tiebreak
+ * (rows written in one statement tie on `created_at`). For a dedup caller any original with the
+ * bytes is a correct attach target, but the newest one is the least likely to have been deleted
+ * between this read and the write that follows — which is what keeps the attach arm's
+ * `source_image_id` pointing at a row that still exists. The partial index
+ * `nina_message_images_user_content_hash_idx` serves exactly this shape.
+ *
+ * ── THE CLAIM IS VALIDATED BEFORE THIS RUNS, NOT INSIDE IT ───────────────────────────────────
+ * `contentHash` is a `string`, not `string | null`: NULL means "no dedup" everywhere else in this
+ * file's vocabulary, and a caller holding NULL wants the no-match answer, not a query that can
+ * only answer no. Callers validate client claims with `isValidContentHash`
+ * (`lib/photos/contentHash.ts`) first and simply do not call this on failure — the same shape
+ * `resolveAttachment` uses for its provenance source. `insertNinaMessageImages` re-checks the
+ * format at the write anyway; the two checks agree by construction because both call the one
+ * predicate.
+ *
+ * `null` for "not yours", "no such bytes" and "no row carries them" — this module's standing rule,
+ * which here is also the dedup answer "store it, you are the first": the outcomes want exactly the
+ * same next step. The projection is `imageColumns` (one row shape in this module — the caller
+ * needs `id`/`blobUrl`/`pathname`/`kind` to attach, and the rest rides along).
+ */
+export async function findNinaImageByContentHash(
+  userId: string,
+  contentHash: string,
+): Promise<NinaImageRow | null> {
+  const rows = await db
+    .select(imageColumns)
+    .from(ninaMessageImages)
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessageImages.contentHash, contentHash),
+        isOriginalPhoto(),
+      ),
+    )
+    .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
  * **"This row's bytes are not already in the collection under another id."** F37 R1 and R3, as one
  * predicate, so that the three reads that must agree cannot drift.
  *
@@ -1929,6 +2013,15 @@ export interface NinaChatPhotoBlobPatch {
   width: number
   height: number
   bytes: number
+  /**
+   * media-dedupe P3. The sha-256 claim over the NEW bytes, or NULL. Optional so existing callers
+   * compile; the `.set()` below coalesces to NULL, because a Replace that left the OLD hash on
+   * the NEW bytes would be the one lie the dedup lookup cannot survive: `findNinaImageByContentHash`
+   * would keep answering for bytes this row no longer stores (invariant 4's one semantics —
+   * identical hash ⟺ identical bytes in the store). A replaced row is un-hashed until something
+   * hashes its new bytes again; NULL is the honest value, the same meaning it has everywhere.
+   */
+  contentHash?: string | null
 }
 
 /**
@@ -1986,6 +2079,12 @@ export async function updateNinaChatPhotoBlob(
        */
       sourceAvatarId: null,
       sourceImageId: null,
+      /*
+       * media-dedupe P3. Same statement as the nulls above it, for the same reason: there must be
+       * no window in which the row points at new bytes and claims old ones. A valid claim from
+       * the caller sticks; its absence retracts. See `NinaChatPhotoBlobPatch.contentHash`.
+       */
+      contentHash: patch.contentHash ?? null,
     })
     .where(
       and(

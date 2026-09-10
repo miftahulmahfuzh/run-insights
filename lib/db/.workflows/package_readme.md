@@ -1,7 +1,7 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-09
+**Last Updated**: 2026-09-10
 
 ## Overview
 
@@ -84,7 +84,7 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaTurns` | `nina_turns` | Audit/job row for every Nina model call | `nina_turns_user_created_idx` |
 | `ninaChatSessions` | `nina_chat_sessions` | The conversation's partition — one row per topic he started | `nina_chat_sessions_user_created_idx` |
 | `ninaMessages` | `nina_messages` | One bubble of the runner↔Nina conversation | `nina_messages_user_seq_idx`, `nina_messages_user_unread_idx` (partial), `nina_messages_reply_to_idx`, `nina_messages_user_run_idx`, `nina_messages_session_seq_idx`, `nina_messages_user_session_runner_idx` (partial) |
-| `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from | `nina_message_images_message_idx`, `nina_message_images_user_created_idx` |
+| `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from | `nina_message_images_message_idx`, `nina_message_images_user_created_idx`, `nina_message_images_user_content_hash_idx` (partial) |
 | `ninaMemorySlots` | `nina_memory_slots` | Upserted "current fact" memory slot | PK `(user_id, key)` |
 | `ninaMemoryFacts` | `nina_memory_facts` | Append-only "what he has told me" ledger | `nina_memory_facts_user_created_idx` |
 | `ninaShortcuts` | `nina_shortcuts` | The trigger registry — one emoji or short token standing for a long directive he wrote once | `nina_shortcuts_user_match_unq`, `nina_shortcuts_user_enabled_idx` |
@@ -532,6 +532,13 @@ TypeScript that once matched it.
   collection reads instead (`isOriginalPhoto()` in `lib/nina/queries.ts`), and leave the pointers
   naming the **original** rather than the immediate predecessor, so a `SET NULL` cannot resurrect a
   duplicate.
+- **`nina_message_images.content_hash` NULL means "dedup inactive", not "unknown".** It is the
+  write-time dedup key (media-dedupe P1): sha-256 over the exact stored bytes, asked per user via
+  `findNinaImageByContentHash`. Every pre-column row and every write that had no hash in hand
+  stores NULL, and because SQL `=` never matches NULL no consumer needs a special case — and none
+  may invent one that reads NULL as "definitely unique". The index is deliberately **not UNIQUE**:
+  the duplicate this mechanism writes is the reference row above, which must stay, so uniqueness is
+  the write path's decision after the lookup and the index only makes the lookup cheap.
 - **Removing a session is a hard delete, and the cascade stops at the database.** Messages and their
   `nina_message_images` rows go; the Vercel Blob objects behind those rows stay, and the
   `source_message_id` pointers in `nina_memory_slots` / `nina_memory_facts` are left dangling on
@@ -1033,3 +1040,59 @@ rather than reinterpreting it against today's schema.)
 > (`npm run db:migrate`, post-deploy). Until it runs, production still holds the column, so the
 > older entries on this page that describe it describe the database correctly and the code no
 > longer.
+
+### Recent changes — P1-DB-A006 (2026-09-10)
+
+Phase 1 of 4 in `MEDIA_DEDUPE_PLAN.md` — the write-time content-dedup foundation. Within this
+package the task touched `schema.ts` and `drizzle/` only, and **nothing writes a hash yet**: no
+caller sends one, so the column is inert until the plan's later phases arm the writers. The hash
+function is `lib/photos/contentHash.ts`, every read and write is `lib/nina/queries.ts`, and the
+worker binds raw SQL in `scripts/nina-image-worker.ts` — the half of the contract that lives
+outside this package is described below.
+
+**`nina_message_images` gained `content_hash text`** — nullable, no default, no FK — and every
+part of that shape is the decision:
+
+- **NULL is a permanent state, not a gap to fill.** It means "dedup is inactive for this row",
+  which SQL `=` already expresses (a NULL never matches), so no consumer needs a special case and
+  none may invent one that reads NULL as "definitely unique". The plan's phase-4 sweep backfills
+  the historical rows once, from the Blob itself; nothing writes the column after insert.
+- **The index is deliberately not UNIQUE** — the one place this table's story inverts. The
+  duplicate row the dedup mechanism writes is a *reference* (F37: copy `blob_url`, set
+  `source_image_id`, keep the latecomer), so a unique index would turn the race-close into a thrown
+  INSERT and force reference rows either to lie (NULL hash) or to collide. Uniqueness is a decision
+  the write path makes *after* a lookup; `nina_message_images_user_content_hash_idx` on
+  `(user_id, content_hash)` exists only to make that lookup cheap, and it is partial on
+  `content_hash IS NOT NULL` — a NULL row can never match, so leaving it out keeps the index down
+  to the rows the question can be asked about.
+- **User-scoped, never global.** The lookup key is `(user_id, content_hash)`: dedup must not link
+  one user's bytes to another's, because ownership and the Blob release path
+  (`isBlobPathnameReferenced`) are user-scoped, and a shared pointer would let one user's delete
+  free bytes another user still renders.
+- **The hash is over the exact stored bytes** — sha-256 as 64 lowercase hex — not over the file he
+  picked (the server never sees upload bytes) and not a perceptual hash: cross-encoding dedup is
+  YAGNI, the measured duplicates were the same file picked twice.
+
+**Migration `drizzle/0018_real_madame_web.sql`** plus its meta snapshot and journal entry
+(`idx: 18`). Generated; two statements — one nullable `ADD COLUMN`, one partial `CREATE INDEX` —
+no data step, no retype, applies to a populated table without a rewrite.
+
+> **APPLIED to production** — unlike `0016`/`0017` above — and catalog-verified there: the column
+> exists and the index is partial. There is no open deploy action left in this migration.
+
+Outside this package, the contract this schema serves: `lib/photos/contentHash.ts` is the one
+intended producer — `contentHashOf` (WebCrypto sha-256, so the same function runs in the browser,
+on the server and under `--experimental-strip-types`; **zero imports by rule**, which is the
+script-host constraint) and `isValidContentHash` (64-lowercase-hex, the gate for a client
+*claim*). `lib/nina/queries.ts` widened `NinaImageRow` / `NinaImageInsert`, coalesces any claim
+that fails the validator to NULL at the one insert every write path shares (a bad claim is
+dedup-inactive for that row, never a send error), and added
+`findNinaImageByContentHash(userId, hash)` — originals only via `isOriginalPhoto()` (a reference
+row carries the keeper's hash, so counting references would answer "yes" forever) and newest-first
+with the `id` tiebreak, so the attach target is the row least likely to be deleted between the
+lookup and the write that follows. `scripts/nina-image-worker.ts` names `content_hash` in
+`REQUIRED_COLUMNS` — the raw-SQL preflight is what makes a future rename of the column red — and
+`finishSelfie` binds it, NULL until phase 3.
+
+`tests/db.schema.nina.test.ts`'s absence-assertion ("adds no index for them") now expects the
+three-index list: the new index is exactly the deliberate decision that test exists to force.

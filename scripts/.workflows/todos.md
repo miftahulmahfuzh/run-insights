@@ -2,17 +2,17 @@
 
 **Package Path**: `scripts`
 **Package Code**: SC
-**Last Updated**: 2026-09-07
-**Total Active Tasks**: 1
+**Last Updated**: 2026-09-10
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 0
+- Completed: 1
 
 ---
 
@@ -39,3 +39,26 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-SC-A001** Phase 4: Backfill sweep: hash-fill + peleburan duplikat existing
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns: script BARU `scripts/nina-dedupe-media.mjs` (+ npm script `nina:dedupe-media`, pola `blob-reap.mjs`: `--env-file=.env.local`, createRequire, dry-run default, `--apply`): pass 1 hash-fill semua baris original (GET blob → sha256 → UPDATE); pass 2 grup per `(user_id, content_hash)` antara ORIGINAL → elect keeper (`message_id NOT NULL > description NOT NULL > oldest created_at > id`) → loser: repoint `blob_url`/`pathname` ke keeper + `source_image_id = keeper.id` → release blob loser hanya bila refCount 0. Juga menyatukan baris reference yang memegang URL berbeda dari keeper-nya. Idempoten. Exit: dry-run melaporkan persis 2 grup objek-duplikat terukur; setelah `--apply`: dua objek loser terhapus dari store, baris tetap ada, Media tampil tiap foto tepat sekali; re-run = 0 perubahan.
+  - **Status**: completed
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R1, R2, R3 — R2: Konsumsi storage prod minimum; R3: Section Media tetap tidy.
+  - **Depends on**: `P1-DB-A006`
+  - **Plan**: `.workflows/plan/P1-SC-A001.md`
+  - **Completed**: 2026-09-10 12:45
+  - **Method**: /do
+  - **Files**: scripts/nina-dedupe-plan.mjs, scripts/nina-dedupe-media.mjs, tests/nina.dedupeMedia.test.ts, package.json
+  - **Drift**:
+    - Plan Step 2 code block dropped `created_at` from the ops script's row map (the SELECT reads it) — `createdMs()` would throw on the first multi-row group, so keeper election could never run. Fixed by adding `createdAt: r.created_at` to the map.
+    - Plan test "sorts groups deterministically by (user, hash)" contradicted the plan's own implementation and sibling test: it expected a SINGLETON group in `plan.groups` while `buildMergePlan` filters groups to length > 1 and the next test asserts singletons produce none. Test repaired to use two multi-row groups; implementation untouched.
+    - PRODUCTION `--apply` WAS NOT EXECUTED. The dry run does not match Step 5's counted acceptance: 26 db rows (snapshot said 23), only 1 of the 2 measured findings remains (kartu kedatangan keeper `sbTuT8NKXL24` / loser `ywNnXvpnnKSi` — intact and exact), the selfie finding (`W-hhpnGxV0SI` / `1dMy2Zs5V1MJ`) self-resolved to tidy (its rows now name a different object than the snapshot measured), two snapshot-tidy groups became skipped (all-avatarRef pairs, originals gone), and 3 new generated rows arrived during the session. Per the plan's explicit stop rule ("If the groups/keepers differ from this, STOP — do not --apply"), the apply step was withheld. `content_hash` remains all-NULL in production (dry run writes nothing). A human must read a FRESH dry run before any `--apply`.
+    - Tree-wide build gate red from PEER phase 2's in-flight files in the shared worktree (`Composer.tsx:8` imports `findNinaDuplicateChatImage` not yet exported; `ChatScreen.tsx` passes `contentHashes` not yet in the `sendNinaMessage` type). None of this phase's four files are in the app graph; tsc clean outside the peer's files; full vitest passed 3614/3614 including this phase's 32.
+  - **Decided**:
+    - Ops script row map dropped `created_at` → added `createdAt` pass-through (one line) → exit criteria (keeper = oldest `created_at`) plus the plan module's own row contract; rung 2.
+    - Sort-test singleton contradiction → repaired the TEST to two multi-row groups, not the implementation → Step 1 code block filters length > 1 and Step 5 report shape has no singleton group lines; rungs 3+2.
+    - Withheld `--apply` on live production data drift → the plan's own Step 5 stop rule; the snapshot acceptance is falsified, only the kartu finding remains, and the reversible option is to let a fresh dry run be read before any delete; plan's stated stop rule (rung 3, Verification).
+    - Build-gate red attributed to peer P2 in-flight files, not this phase → files outside this phase's owns are never edited (blast radius tie-break); verification attribution.

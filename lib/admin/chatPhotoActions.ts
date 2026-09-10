@@ -14,16 +14,18 @@ import {
   ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS,
   isAdminChatPhotoPathname,
   isNinaPhotoCarrierMessage,
+  planChatPhotoAddWrite,
   type ChatPhotoActionResult,
 } from '@/lib/admin/chatPhotos'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import { newId } from '@/lib/id'
+import { isValidId, newId } from '@/lib/id'
 import { captionNinaPhoto } from '@/lib/nina/caption'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
 import {
   deleteNinaMessage,
   deleteNinaMessageImage,
+  findNinaImageByContentHash,
   getNinaMessageImage,
   getNinaMessageImagesForMessages,
   getNinaMessagesByIds,
@@ -39,6 +41,7 @@ import {
 } from '@/lib/nina/queries'
 import { resolveNinaWriteSession } from '@/lib/nina/sessionResolve'
 import { NinaVisionTokenFloorError, describeNinaImages } from '@/lib/nina/vision'
+import { isValidContentHash } from '@/lib/photos/contentHash'
 
 /**
  * Nina's chat photographs, from `/admin`. R2's write half: *"user can replace a photo in there with
@@ -138,7 +141,7 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
 
   const parsed = chatPhotoReplaceSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'That upload did not describe a photo.' }
-  const { id, blobUrl, pathname, width, height, bytes } = parsed.data
+  const { id, blobUrl, pathname, width, height, bytes, contentHash } = parsed.data
 
   if (!isAdminChatPhotoPathname(pathname, userId)) {
     return { ok: false, error: 'That file did not land in her photo folder.' }
@@ -162,6 +165,11 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
     width,
     height,
     bytes,
+    /* media-dedupe P3, invariant 4. A byte swap MUST move the hash with it: the same trust class
+     * as every other claim this action accepts (the bytes themselves are a claim). No claim or a
+     * malformed one retracts the column to NULL — dedup goes quiet for this row, which is the
+     * honest answer for bytes nothing has hashed yet. */
+    contentHash: isValidContentHash(contentHash) ? contentHash : null,
   })
   if (updated == null) return { ok: false, error: 'That photo is not in the collection.' }
 
@@ -204,6 +212,23 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
  * invisible in the chat forever with no way back. So "add a photo" is still "add a message with a
  * photo on it", `NinaImageInsert.messageId` is still required, and no third shape is invented.
  *
+ * ── media-dedupe P3: "ALREADY IN THE COLLECTION" IS A REFERENCE, NOT A SECOND OBJECT ──────────
+ * The browser hashes the encoded JPEG and asks `findChatPhotoDuplicateAction` BEFORE it PUTs; on a
+ * hit it skips the upload and sends the keeper's object back with `duplicateOfId` pinning the row.
+ * This action never trusts that echo — it re-reads the pinned row owner-scoped and writes the add
+ * as a REFERENCE through `planChatPhotoAddWrite` (`lib/admin/chatPhotos.ts`, which owns the
+ * decision and its arguments). The race — the client DID put fresh bytes and a concurrent original
+ * claimed them — lands on the same plan from the hash lookup, and the loser object is released
+ * after the row is in (ROW FIRST, BLOB SECOND, invariant 3). The failure unwind below releases
+ * `plan.release`, and `plan.release` is NULL exactly when nothing fresh was ever uploaded — which
+ * is what keeps the skip path from ever tripping the unwind's blob release on an object it did not
+ * create.
+ *
+ * The pinned row is refused outright when it has vanished between the pre-check and this action
+ * ("pick it again"): its object may have been released with it, and writing a row onto a dead URL
+ * is the one outcome worse than asking twice. The refusal is a sentence, in the shape of every
+ * other refusal in this file.
+ *
  * ── THE FOUR VALUES THAT HAVE NO JOB TO TAKE THEM FROM ──────────────────────────────────────
  *   · `text` — `ninaImageCaption(newId())`. The SAME function, seeded with a fresh nanoid(12)
  *     instead of a job id. `pickLine` is a pure FNV-1a over its key and a job id is itself a
@@ -221,19 +246,51 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
  *     he has none, so this works on a fresh account.
  *
  * `prompt` is NULL because there was no generation, and it has no reader anywhere in the repo.
- * `description` is NULL at insert and earned below, because a hand-uploaded photograph has no
- * generation prompt and `glm-4.6v` is the only thing that can say what is in it.
+ * `description` is the keeper's prose on a duplicate (see `planChatPhotoAddWrite`) and NULL at
+ * insert on a fresh original, earned below — a hand-uploaded photograph has no generation prompt
+ * and `glm-4.6v` is the only thing that can say what is in it.
  */
 export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
 
   const parsed = chatPhotoAddSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'That upload did not describe a photo.' }
-  const { blobUrl, pathname, width, height, bytes } = parsed.data
+  const { blobUrl, pathname, width, height, bytes, contentHash, duplicateOfId } = parsed.data
 
-  if (!isAdminChatPhotoPathname(pathname, userId)) {
+  /* ── THE CLAIMS, NORMALIZED ─────────────────────────────────────────────────────────────────
+   * Invariant 9, twice. A malformed hash is a NULL and a proceed — dedup goes quiet for this add,
+   * the upload is not refused. A malformed `duplicateOfId` cannot name a row, so the schema's id
+   * shape check already refused it. */
+  const claimedHash = isValidContentHash(contentHash) ? contentHash : null
+  const pinnedId = isValidId(duplicateOfId) ? duplicateOfId : null
+
+  let pinned: NinaImageRow | null = null
+  if (pinnedId != null) {
+    /* The pre-check's echo is a CLAIM; this read is the fact. Owner-scoped, and deliberately NOT
+     * filtered to originals — a keeper the sweep merged mid-flight is flattened by the plan. */
+    pinned = await getNinaMessageImage(userId, pinnedId)
+    if (pinned == null) {
+      return {
+        ok: false,
+        error:
+          'That photo was already in the collection and has since been removed — pick it again.',
+      }
+    }
+  } else if (!isAdminChatPhotoPathname(pathname, userId)) {
     return { ok: false, error: 'That file did not land in her photo folder.' }
   }
+
+  /* The race door: only reached when nothing was pinned, because a pinned row IS the answer. */
+  const hit =
+    pinned == null && claimedHash != null
+      ? await findNinaImageByContentHash(userId, claimedHash)
+      : null
+
+  const plan = planChatPhotoAddWrite({
+    claims: { blobUrl, pathname, contentHash: claimedHash },
+    pinned,
+    hit,
+  })
 
   const sessionId = await resolveNinaWriteSession(userId)
 
@@ -262,13 +319,16 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
     {
       messageId: message.id,
       kind: 'generated',
-      blobUrl,
-      pathname,
+      blobUrl: plan.blobUrl,
+      pathname: plan.pathname,
       width,
       height,
       bytes,
-      description: null,
+      description: plan.description,
       prompt: null,
+      sourceAvatarId: plan.sourceAvatarId,
+      sourceImageId: plan.sourceImageId,
+      contentHash: plan.contentHash,
       sortOrder: 0,
     },
   ])
@@ -278,20 +338,57 @@ export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActio
    * empty array on a mismatch rather than throwing. Leaving it there would put a caption bubble with
    * no picture in the runner's chat forever — the exact defect `removeChatPhotoAction` exists to
    * prevent — so the message is undone and the object we just uploaded is released with it. The
-   * release goes through the same helper as everything else: this object is brand new and carries a
-   * random suffix, so nothing can reference it, but a delete path that is uniform is a delete path
-   * that cannot be the one that forgot to check.
+   * release goes through the same helper as everything else — and through `plan.release`, so a
+   * skipped upload (whose payload names the KEEPER's object) releases NOTHING: there is no object
+   * of ours in the store to release, and the keeper's object is still referenced by its own row.
    */
   if (image == null) {
     await deleteNinaMessage(userId, message.id)
-    await releaseBlobIfUnreferenced(userId, { blobUrl, pathname })
+    if (plan.release != null) await releaseBlobIfUnreferenced(userId, plan.release)
     return { ok: false, error: 'The photo could not be attached to a message.' }
+  }
+
+  /* ROW FIRST, BLOB SECOND: the reference row is in before the loser object is asked about. Only
+   * the race path has a loser at all. */
+  if (plan.release != null) {
+    const outcome = await releaseBlobIfUnreferenced(userId, plan.release)
+    if (outcome !== 'deleted') {
+      console.warn('[admin] duplicate add kept the fresh object', { outcome })
+    }
   }
 
   scheduleChatPhotoCaption(userId, image.id)
 
   revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return { ok: true, id: image.id }
+}
+
+/* ── the pre-check (media-dedupe P3) ───────────────────────────────────────────────────────── */
+
+/**
+ * **"Does the collection already hold these bytes?"** — the question `uploadChatPhoto` asks BEFORE
+ * it PUTs, so re-picking a photograph costs one indexed lookup instead of a second Blob object.
+ * The measured defect this closes: the arrival card existed as two objects
+ * (`sbTuT8NKXL24` + `ywNnXvpnnKSi`) because no layer compared content and `addRandomSuffix: true`
+ * guaranteed two objects for identical bytes.
+ *
+ * Owner-scoped twice over: `requireAdmin()` binds the session, and
+ * `findNinaImageByContentHash` carries `user_id` in its WHERE — the client is told only about rows
+ * it already owns. Invariant 9 in one guard: a malformed hash is `null`, never an error, and the
+ * caller proceeds to a normal upload and loses nothing but the round trip it was trying to save.
+ *
+ * The answer names the ORIGINAL only (the finder filters references), so the caller's skip path
+ * pins a keeper that is flat and `addChatPhotoAction`'s own re-read does the rest.
+ */
+export async function findChatPhotoDuplicateAction(
+  contentHash: string,
+): Promise<{ id: string; blobUrl: string; pathname: string } | null> {
+  const { userId } = await requireAdmin()
+  if (!isValidContentHash(contentHash)) return null
+
+  const row = await findNinaImageByContentHash(userId, contentHash)
+  if (row == null) return null
+  return { id: row.id, blobUrl: row.blobUrl, pathname: row.pathname }
 }
 
 /* ── REMOVE ──────────────────────────────────────────────────────────────────────────────── */

@@ -1,0 +1,1953 @@
+# Phase 2: Write-time dedup — runner chat upload path
+
+**Plan set:** `MEDIA_DEDUPE_PLAN.md`
+**Analysis:** `20260910-103604_code_analyzer.md`
+**Satisfies:** R1, R2, R3 — upload chat runner: a duplicate pick stores no second Blob object (R2), lands as a reference hidden from Media (R3), and is the write-time half of the uniqueness mechanism (R1)
+**Depends on:** Phase 1 — consumed as landed: `content_hash` column + partial index, `lib/photos/contentHash.ts`, `NinaImageInsert.contentHash` pass-through, `findNinaImageByContentHash`
+**Difficulty:** HARD
+**Package:** `components/nina`, `lib/nina`
+
+---
+
+## Goal
+
+Picking the same photograph twice no longer stores it twice. After this phase, the composer
+hashes the exact bytes it is about to PUT, asks an owner-scoped server action whether the
+collection already holds an original with those bytes, and — on a hit — skips the upload and the
+describe entirely, sending a *reference* to the existing photograph through the attach-existing
+seam. The one race the client cannot see (two tabs, or a re-pick while the first send is still in
+flight) is closed server-side at insert time: the row is written as a reference and the
+just-landed blob is released, row first, blob second. Hash validation failure never fails a send
+— it writes NULL and dedup goes silently inactive for that row (invariant 9).
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing.
+
+**Renames:** nothing. (`ComposerDraftImage` keeps its name but changes *shape* — see below.)
+
+**Creates:**
+- Module `lib/nina/dedupe.ts` (NEW, pure, no `'use server'`, client-safe) exporting:
+  - `type NinaDedupeImageKind = 'upload' | 'generated'` (structural twin of `NinaImageKind`;
+    `attach.ts`'s stated reason)
+  - `interface NinaUploadClaim { pathname: string; blobUrl: string; width: number | null; height: number | null; bytes: number | null; description: string | null; sortOrder: number; contentHash: string | null }`
+  - `type NinaHashedUploadClaim = NinaUploadClaim & { contentHash: string }`
+  - `interface NinaUploadKeeper { id: string; kind: NinaDedupeImageKind; blobUrl: string; pathname: string; description: string | null; sourceAvatarId: string | null; sourceImageId: string | null }`
+  - `interface NinaDedupeInsertRow { messageId: string; kind: NinaDedupeImageKind; blobUrl: string; pathname: string; width?: number | null; height?: number | null; bytes?: number | null; description?: string | null; contentHash?: string | null; sourceAvatarId?: string | null; sourceImageId?: string | null; sortOrder: number }` — structurally assignable to phase 1's `NinaImageInsert`
+  - `function normalizeClaimedContentHash(raw: unknown): string | null`
+  - `type NinaPickUploadPlan = { outcome: 'attach-existing'; existing: NinaExistingPhoto } | { outcome: 'upload'; contentHash: string | null }`
+  - `function planNinaPickUpload(input: { contentHash: string | null; duplicate: NinaExistingPhoto | null }): NinaPickUploadPlan`
+  - `type NinaUploadInsertDecision = { outcome: 'fresh'; row: NinaDedupeInsertRow; keeperId: null } | { outcome: 'reference'; row: NinaDedupeInsertRow; keeperId: string }`
+  - `function ninaUploadInsertRow(input: { messageId: string; claim: NinaUploadClaim; keeper: NinaUploadKeeper | null }): NinaUploadInsertDecision`
+  - `interface NinaUploadPartition { fresh: NinaUploadClaim[]; references: Array<{ claim: NinaHashedUploadClaim; keeper: NinaUploadKeeper | null }> }`
+  - `function partitionNinaUploadClaims(claims: readonly NinaUploadClaim[], keepersByHash: ReadonlyMap<string, NinaUploadKeeper>): NinaUploadPartition`
+- Server action `findNinaDuplicateChatImage(input: { contentHash: string }): Promise<NinaExistingPhoto | null>` in `lib/nina/actions.ts` (`'use server'`; returns `{ kind: 'image', id, url }` — exactly `NinaExistingPhoto` — or null)
+- `tests/nina.dedupe.test.ts` (NEW — pure decision logic, vitest node env)
+- `tests/nina.chatDedupe.test.ts` (NEW — send-path dedup, mocks at the edges like `tests/nina.chatPhotoReattach.test.ts`)
+
+**Signature changes:**
+- `sendNinaMessage` input gains two optional fields (additive; both existing callers — `ChatScreen`, `albumActions.attachNinaPhotoToChat` — compile unchanged):
+  - `dedupedImageIds?: readonly string[]` — keeper `nina_message_images` ids for tiles the composer pre-check deduplicated
+  - `contentHashes?: Record<string, string>` — pathname → sha256 hex, keyed by the ticket's STORED pathname
+- RULING B1's refusal rule gains a FIFTH monotone disjunct on both sides: `dedupedImageIds` non-empty (client: `ComposerDraftImage` dedup'd tiles count in `ready.length`, which already feeds `canSend`; server: the three refusal sites in `sendNinaMessage`). Nobody rewrites the condition — it is extended, exactly as phases 6/8/13 extended it.
+- `ComposerDraftImage` (`components/nina/Composer.tsx:175`) changes from `{ ticket: string; url: string }` to a discriminated union on `source: 'upload' | 'deduped'`. Sole external consumer is `components/nina/ChatScreen.tsx` (import at :49, mapping at :1238 and :1269) — updated in this phase.
+- `resolveAttachment` (`lib/nina/actions.ts:189`) keeps its signature; its anonymous return type is extracted into a private named `interface ResolvedNinaAttachment` (same shape, now shared by the dedup'd-tile list).
+- `Tile` / `TileState` in `Composer.tsx` are module-private; `TileState` gains `'checking'`, `Tile` gains `pathname` / `contentHash` / `existing`.
+
+**Requires (from Phase 1):**
+- `lib/photos/contentHash.ts` — AS PHASE 1 LANDED IT (reconciled): `contentHashOf(input: Blob |
+  ArrayBuffer | Uint8Array): Promise<string>` (async WebCrypto sha-256, 64 lowercase hex,
+  cross-runtime — importable from a `'use client'` module) and `isValidContentHash(value:
+  unknown): value is string`. `contentHashOf` accepts the `Blob` directly and `compressed.file`
+  IS a `Blob`, so the one call site is `contentHashOf(compressed.file)` — no `arrayBuffer()` hop.
+  (An earlier draft of this plan assumed a `sha256Hex(ArrayBuffer | Uint8Array)` name; that export
+  does not exist. Do not reintroduce it.)
+- `lib/nina/queries.ts` exports `findNinaImageByContentHash(userId: string, contentHash: string):
+  Promise<NinaImageRow | null>` — owner-scoped, ORIGINALS only (`source_avatar_id IS NULL AND
+  source_image_id IS NULL`), the NEWEST original when several match (`created_at desc, id desc`),
+  `null` when none — a single row, not an array; no adaptation needed at either call site in
+  `lib/nina/actions.ts` (`findNinaDuplicateChatImage` and STEP 1b's keeper loop); no other file
+  reads the finder. Phase 2 does not re-litigate keeper election; it takes the finder as-is
+  (newest original) — the sweep's different election rule (phase 4: message_id > description >
+  oldest > id) is a different question at a different time and is deliberately not unified (plan
+  index, Decisions).
+- `NinaImageInsert` accepts optional `contentHash: string | null` and `insertNinaMessageImages`
+  passes it through to the column (phase 1's deliverable — this phase only supplies values).
+  **Invariant 9's normative owner is that insert door** (phase 1 coalesces any claim failing
+  `isValidContentHash` to NULL). This phase's `normalizeClaimedContentHash` is the DECISION read —
+  it answers "may I look up a keeper for this claim" — and never re-widens what the column
+  accepts: its output is always `null` or a string the insert door accepts unchanged, because
+  both call the one predicate.
+- Migration `0018` (`nina_message_images.content_hash` + partial index `(user_id, content_hash) WHERE content_hash IS NOT NULL`) applied, so the pre-check and race-close lookups are indexed, not scans.
+
+**Leaves alone (owned by others):**
+- `app/api/upload/route.ts` — DECIDED, do not reopen: the hash rides the SEND claim, never the `tokenPayload`. The route's chat branch parses no client payload today and keeps parsing none.
+- `lib/nina/imageTicket.ts` — ticket shape/version unchanged; the hash is deliberately NOT signed.
+- `lib/nina/queries.ts`, `lib/db/schema.ts`, `drizzle/*` — phase 1's files.
+- `lib/nina/imagerun.ts`, `scripts/nina-image-worker.ts`, `lib/admin/*`, `components/admin/*` — phase 3.
+- `scripts/*`, `package.json` scripts — phase 4.
+- The four reads that must never filter (`getNinaMessageImagesForMessages`, `getNinaMessageImage`, source gateway, `isBlobPathnameReferenced`) — untouched, per plan scope.
+- `ChatScreen`'s photo-pin machinery (`?photo=` resolution, `pendingPhoto`, the actions sheet) — only the `sendAndTrack` payload mapping changes.
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `lib/nina/dedupe.ts` | create | Pure decision module: hash normalization, pick plan, insert-row shaper, same-send partition. No db, no `'use server'`, client-safe. |
+| `components/nina/Composer.tsx` | modify | Header doc section; `TileState` + `Tile` + `ComposerDraftImage` (:161-178); `ready` filter (:282); `process` (:300-340) hashes + pre-checks + skips upload on a hit; tile init in `onPick` (:360-371); `submit` payload (:395-404); imports (:8, new). |
+| `components/nina/ChatScreen.tsx` | modify | `sendAndTrack` (:1227-1292): split draft images into uploads/dedup'd, optimistic URL order matches the server's write order, pass `contentHashes` + `dedupedImageIds`. |
+| `lib/nina/actions.ts` | modify | Imports (:7-56); `ResolvedNinaAttachment` extraction (:189-225); arg-object doc (:292-319); input type (:353-378); shape validation (:383-393); cap + refusal sites (:415, :419, :441, :524); STEP 0d-bis (new, after :520); STEP 1b dedup + race-close (:577-608); generalized attachments block (:610-683); `imageDescriptions` (:740-743); new action `findNinaDuplicateChatImage` (after :752). |
+| `tests/nina.dedupe.test.ts` | create | Pure suites: normalization, pick plan, insert-row shaper, partition. |
+| `tests/nina.chatDedupe.test.ts` | create | Send-path suites: race-close reference+release ordering, same-send split, invalid hash → NULL, dedup'd-tile send (fifth disjunct), pre-check action. |
+
+---
+
+## Implementation Steps
+
+### Step 1: The pure decision module `lib/nina/dedupe.ts`
+**File:** `lib/nina/dedupe.ts` (NEW)
+**Change:** Create the module. Every decision STEP 1b and the composer make that is testable
+without a database lives here, in the repo's `attach.ts` idiom: pure by construction, read by a
+`'use client'` component, a `'use server'` module and the unit suite.
+**Code:**
+
+```ts
+import { isValidContentHash } from '@/lib/photos/contentHash'
+
+import { ninaPhotoProvenance } from './attach'
+import type { NinaExistingPhoto } from './attach'
+
+/**
+ * **Write-time dedup for `nina_message_images`, as pure functions** (media-dedupe, phase 2).
+ *
+ * A photograph's SHA-256 — computed over the EXACT bytes that get stored (plan invariant 4) —
+ * decides, at write time, whether those bytes are already in the owner's collection. When they
+ * are, the write becomes a REFERENCE row (F37's provenance mechanism, via `ninaPhotoProvenance`)
+ * instead of a second Blob object: storage stays minimum (R2) and the Media feed shows each
+ * photograph once (R3).
+ *
+ * ── WHY THIS IS A PURE MODULE ─────────────────────────────────────────────────────────────────
+ * Three readers, none of which may drag another's runtime in:
+ *
+ *   · `components/nina/Composer.tsx` — a `'use client'` component that decides, per picked tile,
+ *     whether to PUT bytes or to attach the existing photograph;
+ *   · `lib/nina/actions.ts` — a `'use server'` module that re-checks at insert time (the
+ *     race-close) and shapes every row;
+ *   · `tests/nina.dedupe.test.ts` — the vitest node suite, which asserts the decisions with no
+ *     database, no DOM and no mock.
+ *
+ * So the imports are exactly two, both pure by their own headers: `attach.ts` (the provenance
+ * rule) and `lib/photos/contentHash.ts` (the hash format, phase 1). Everything that talks to
+ * Postgres or Blob stays in `actions.ts`; everything that DECIDES lives here.
+ *
+ * ── THE TRUST MODEL IS THE CLAIM MODEL ────────────────────────────────────────────────────────
+ * A hash arriving from the browser is a claim, the same class of claim `width`/`height`/`bytes`
+ * already are: format-checked, never signature-checked (plan Decisions). `isValidContentHash` is
+ * therefore the ONLY gate, and its failure mode is silence — the hash drops to NULL and the row
+ * is written as an ordinary original (invariant 9). A bad claim costs its owner one duplicated
+ * object in their own store and nothing else; it must never cost a send.
+ *
+ * Phase 3 (generated + admin paths) does NOT reuse this module, and that is the reconciled shape,
+ * not an accident: its hosts need a ZERO-IMPORT decision (`lib/nina/imageDedupe.ts` —
+ * `scripts/nina-image-worker.ts` imports it under `--experimental-strip-types`) and an admin plan
+ * (`planChatPhotoAddWrite` in `lib/admin/chatPhotos.ts`), while this module must stay client-safe
+ * (the composer reads it) and batch-aware (the same-send twin split). The division of labor:
+ * THIS module is the runner-upload path's pick/send decisions and the ONLY thing STEP 1b calls;
+ * `planNinaImageWrite` serves the two generated-image hosts; `planChatPhotoAddWrite` serves the
+ * admin add. Three modules, three jobs — do not merge them and do not grow a fourth.
+ */
+
+/**
+ * `nina_message_images.kind`, stated structurally rather than imported from `lib/db/schema` —
+ * the same boundary `attach.ts` draws for `NinaPhotoKind`: this module is read by a client
+ * component, a server-action module and the unit suite, and it stays portable by naming what it
+ * produces. `lib/db/schema`'s `NinaImageKind` is this exact union, so a drift between the two is
+ * a compile error at the one place that bridges them (`ninaUploadInsertRow`'s callers, which
+ * hand rows to `insertNinaMessageImages`).
+ */
+export type NinaDedupeImageKind = 'upload' | 'generated'
+
+/**
+ * A claim's hash, as the server may trust it: a string whose SHA-256 hex form is exact, or null.
+ *
+ * Trimmed before checking, because a serializer is more likely to add whitespace than a user is,
+ * and a hash with a trailing newline is not a different hash — it is the same hash that must not
+ * silently disable dedup. Uppercase hex is REJECTED rather than folded to lowercase:
+ * `contentHashOf` emits lowercase, so uppercase means the value did not come from the util, and
+ * refusing it keeps ONE spelling of the column in the database — which is what phase 4's sweep
+ * compares literals against.
+ *
+ * This is a DECISION read, not a second column rule. Phase 1's insert door
+ * (`insertNinaMessageImages` coalescing through `isValidContentHash`) remains the one normative
+ * backstop for `nina_message_images.content_hash`; this wrapper only decides whether a keeper
+ * lookup may run, and everything it returns is either `null` or a string the door accepts
+ * unchanged. The trim is the one behavior the door lacks, and it can only ever REPLACE an
+ * invalid-looking-but-valid claim with a valid one — never the reverse.
+ */
+export function normalizeClaimedContentHash(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  return isValidContentHash(trimmed) ? trimmed : null
+}
+
+/**
+ * One upload claim AFTER ticket verification — `NinaImageClaims` with the measured fields
+ * coalesced to the row's nullable shape, plus the position the photograph holds in its bubble.
+ */
+export interface NinaUploadClaim {
+  /** The STORED pathname of the bytes this claim would insert — Vercel's random suffix included. */
+  pathname: string
+  blobUrl: string
+  width: number | null
+  height: number | null
+  bytes: number | null
+  description: string | null
+  /** Position among the send's fresh uploads; `insertNinaMessageImages` sorts on it. */
+  sortOrder: number
+  /** `normalizeClaimedContentHash`'s answer. Null = dedup is inactive for this claim. */
+  contentHash: string | null
+}
+
+/** A claim that is definitely carrying a hash — the only kind that can become a reference. */
+export type NinaHashedUploadClaim = NinaUploadClaim & { contentHash: string }
+
+/**
+ * The row a reference points at: the fields `ninaUploadInsertRow` copies, and nothing else.
+ * `NinaImageRow` (`imageColumns`) satisfies this structurally, so both the pre-insert lookup and
+ * an already-inserted row hand straight over without an adapter.
+ */
+export interface NinaUploadKeeper {
+  id: string
+  kind: NinaDedupeImageKind
+  blobUrl: string
+  pathname: string
+  description: string | null
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+}
+
+/**
+ * The insert shape this module produces — structurally an `NinaImageInsert` (phase 1's
+ * `contentHash` pass-through included), minus `prompt`, which no chat-upload row ever sets.
+ */
+export interface NinaDedupeInsertRow {
+  messageId: string
+  kind: NinaDedupeImageKind
+  blobUrl: string
+  pathname: string
+  width?: number | null
+  height?: number | null
+  bytes?: number | null
+  description?: string | null
+  contentHash?: string | null
+  sourceAvatarId?: string | null
+  sourceImageId?: string | null
+  sortOrder: number
+}
+
+export type NinaUploadInsertDecision =
+  | { outcome: 'fresh'; row: NinaDedupeInsertRow; keeperId: null }
+  | { outcome: 'reference'; row: NinaDedupeInsertRow; keeperId: string }
+
+/**
+ * The row ONE claim becomes, given the keeper the caller has already proved (or null for a
+ * genuine original). The whole of the write-side decision in one function, so the fresh arm and
+ * the reference arm cannot drift apart the way two call sites would.
+ *
+ * The reference arm is "exactly `resolveAttachment`'s shape": the keeper's `blob_url`/`pathname`
+ * are copied, `kind` is the KEEPER's (`photoSideOf`, `lib/nina/album.ts:146`, has to keep
+ * telling the truth about whose photograph this is — a reference to one of her selfies is a
+ * `'generated'` row on his message, exactly as the re-attach path writes), the provenance goes
+ * through `ninaPhotoProvenance` so a reference-to-a-reference flattens to the ORIGINAL, and the
+ * measurements are left off — the row is a pointer, and the keeper carries its own measurements,
+ * exactly as the attach arm has since F37.
+ *
+ * Two deliberate departures from a blind copy of the attach arm, both stated so they are not
+ * "fixed" back:
+ *
+ *   · **The description prefers the keeper but falls back to the claim's.** `resolveAttachment`
+ *     never has a fresh description in hand; here we usually do — the describe call ran on these
+ *     very bytes seconds ago, and identical bytes are the same picture. The keeper wins first
+ *     because an operator-edited description is authoritative for that photograph; the claim's
+ *     covers the never-described keeper (the orphan class the analysis measured) instead of
+ *     discarding a description that was already paid for.
+ *   · **NO `contentHash` on a reference row.** The hash belongs to the row that OWNS the bytes;
+ *     a reference owns none. Writing client-claimed hashes onto references could leave a row
+ *     whose hash disagreed with the keeper's blob-measured one, and phase 4's sweep groups
+ *     originals only — a reference hash would be dead weight with a failure mode attached.
+ *     RECONCILED, do not "fix" either side: phase 3's generated-path references DO carry the hash
+ *     (`planNinaImageWrite`) because there the writer measured the bytes itself, while this path's
+ *     hashes are CLIENT CLAIMS. The per-path rule is: a reference row carries the hash only when
+ *     its writer held the bytes. Phase 2's hash-less reference rows are the expected NULLs phase
+ *     4's pass-1 fill owns — not drift, and not a reason to stamp claims on references here.
+ */
+export function ninaUploadInsertRow(input: {
+  messageId: string
+  claim: NinaUploadClaim
+  keeper: NinaUploadKeeper | null
+}): NinaUploadInsertDecision {
+  if (input.keeper === null) {
+    return {
+      outcome: 'fresh',
+      keeperId: null,
+      row: {
+        messageId: input.messageId,
+        kind: 'upload',
+        blobUrl: input.claim.blobUrl,
+        pathname: input.claim.pathname,
+        width: input.claim.width,
+        height: input.claim.height,
+        bytes: input.claim.bytes,
+        description: input.claim.description,
+        contentHash: input.claim.contentHash,
+        sortOrder: input.claim.sortOrder,
+      },
+    }
+  }
+
+  const keeper = input.keeper
+  return {
+    outcome: 'reference',
+    keeperId: keeper.id,
+    row: {
+      messageId: input.messageId,
+      kind: keeper.kind,
+      blobUrl: keeper.blobUrl,
+      pathname: keeper.pathname,
+      description: keeper.description ?? input.claim.description ?? null,
+      ...ninaPhotoProvenance({
+        kind: 'image',
+        id: keeper.id,
+        sourceAvatarId: keeper.sourceAvatarId,
+        sourceImageId: keeper.sourceImageId,
+      }),
+      sortOrder: input.claim.sortOrder,
+    },
+  }
+}
+
+export interface NinaUploadPartition {
+  /**
+   * The send's originals — inserted FIRST, in one statement, so their ids exist by the time the
+   * references are shaped.
+   */
+  fresh: NinaUploadClaim[]
+  /**
+   * The send's references. `keeper === null` means the keeper is the SAME-SEND original that
+   * owns `claim.contentHash` — its id does not exist until the fresh statement returns, which is
+   * why the split is returned rather than a finished row list.
+   */
+  references: Array<{ claim: NinaHashedUploadClaim; keeper: NinaUploadKeeper | null }>
+}
+
+/**
+ * Which of this send's upload claims become originals and which become references, decided
+ * BEFORE anything is written. Precedence, in order:
+ *
+ *   1. no hash -> fresh, always. Dedup inactive (invariant 9) is not a third kind of row.
+ *   2. a DB keeper for the hash (the race-close re-check's answer) -> reference to it — for EVERY
+ *      claim with that hash, including the first, because the DB keeper predates this send.
+ *   3. no DB keeper, but an EARLIER claim in this send has the same hash (the same file picked
+ *      twice in one batch: both tiles passed the composer's pre-check because neither row existed
+ *      yet) -> reference to that earlier claim; `keeper: null` marks it, and the caller resolves
+ *      the id from the fresh insert's return.
+ *   4. otherwise -> fresh, and this claim becomes the same-send keeper for any later twin.
+ *
+ * `claim as NinaHashedUploadClaim` is safe in the two reference pushes: both are reachable only
+ * under `contentHash !== null`, and the branch above already returned for the null case. The
+ * narrowed field is exactly what the caller needs to resolve the same-send keeper.
+ */
+export function partitionNinaUploadClaims(
+  claims: readonly NinaUploadClaim[],
+  keepersByHash: ReadonlyMap<string, NinaUploadKeeper>,
+): NinaUploadPartition {
+  const fresh: NinaUploadClaim[] = []
+  const references: NinaUploadPartition['references'] = []
+  const sameSend = new Map<string, NinaUploadClaim>()
+
+  for (const claim of claims) {
+    if (claim.contentHash === null) {
+      fresh.push(claim)
+      continue
+    }
+    const keeper = keepersByHash.get(claim.contentHash)
+    if (keeper !== undefined) {
+      references.push({ claim: claim as NinaHashedUploadClaim, keeper })
+      continue
+    }
+    const earlier = sameSend.get(claim.contentHash)
+    if (earlier !== undefined) {
+      references.push({ claim: claim as NinaHashedUploadClaim, keeper: null })
+      continue
+    }
+    sameSend.set(claim.contentHash, claim)
+    fresh.push(claim)
+  }
+
+  return { fresh, references }
+}
+
+export type NinaPickUploadPlan =
+  | { outcome: 'attach-existing'; existing: NinaExistingPhoto }
+  | { outcome: 'upload'; contentHash: string | null }
+
+/**
+ * What ONE picked tile does once its bytes are hashed and the owner-scoped pre-check has
+ * answered — the composer's whole dedup decision, as a value, so the suite can assert
+ * "duplicate -> skip the upload, attach the pointer" without rendering a component.
+ *
+ * A null hash uploads regardless of anything else: with no hash there is nothing to match on,
+ * and a photograph must never fail to enter the conversation because its hash could not be
+ * computed (invariant 9's client half).
+ */
+export function planNinaPickUpload(input: {
+  /** `contentHashOf` over the exact bytes that would be PUT, or null when hashing failed. */
+  contentHash: string | null
+  /** `findNinaDuplicateChatImage`'s answer — the existing photograph, or null. */
+  duplicate: NinaExistingPhoto | null
+}): NinaPickUploadPlan {
+  if (input.contentHash !== null && input.duplicate !== null) {
+    return { outcome: 'attach-existing', existing: input.duplicate }
+  }
+  return { outcome: 'upload', contentHash: input.contentHash }
+}
+```
+
+**Impact:** New file only — nothing imports it yet; the tree stays green. Phase 3 is the expected
+second consumer (see Handoffs).
+
+---
+
+### Step 2: Composer — hash every pick, pre-check before the PUT, tile becomes the existing photo
+**File:** `components/nina/Composer.tsx`
+**Change:** Five hunks. The tile pipeline becomes compress → hash → pre-check → (attach-existing
+| upload → describe). A deduplicated tile is DONE after the pre-check: no PUT, no token mint, no
+describe (which also saves the 8-11 s describe on the duplicate pick), and it joins `ready` so
+the Send button's semantics are unchanged.
+
+**2a — imports.** Extend line 8 and add two new imports (keep the file's grouping):
+
+```ts
+import { describeNinaImage, findNinaDuplicateChatImage } from '@/lib/nina/actions'
+```
+
+```ts
+import { planNinaPickUpload } from '@/lib/nina/dedupe'
+```
+
+```ts
+import { contentHashOf } from '@/lib/photos/contentHash'
+```
+
+(`planNinaPickUpload` sits with the other `@/lib/nina/*` imports; `contentHashOf` directly above the
+existing `@/lib/photos/compressForNina` import — `compressForNina` sorts before `contentHash`.)
+
+**2b — header doc.** Insert a new section between the picker section (ends line 114) and the
+`planNinaPicked` section (starts line 116):
+
+```
+ *
+ * ── AND WHY EVERY PICK IS HASHED, AND WHAT THE HASH BUYS (media-dedupe P2) ────────────────────
+ * After `compressForNina` returns, this composer hashes the compressed bytes — the exact bytes a
+ * PUT would carry — with `contentHashOf`, for EVERY pick, before anything is uploaded. The hash is a
+ * millisecond over ~150 KB; the PUT it can save is a round trip and a permanent object. It is
+ * spent in two places:
+ *
+ *   · a pre-check (`findNinaDuplicateChatImage`) BEFORE the upload: when the owner's collection
+ *     already holds an original with these bytes, the tile never uploads and never describes — it
+ *     switches to the existing photograph and is sent as a reference to it. The duplicate pick
+ *     that started this whole set (the arrival card, picked twice) stops here: one object, one
+ *     original, and the 8-11 s describe is not paid a second time.
+ *   · the send claim (`contentHashes`, keyed by the STORED pathname): `sendNinaMessage` re-checks
+ *     immediately before its insert, closing the race this composer cannot see — the same file
+ *     picked in two tabs, or re-picked while the first send is still in flight.
+ *
+ * The dedup is deliberately INVISIBLE to him: a deduplicated tile shows the same thumbnail, joins
+ * `ready` like any other, and sends like any other. Nothing to learn, nothing to explain. When
+ * the pre-check itself fails — network, a cold action — the tile uploads as it always did: dedup
+ * may degrade to inactive on any single pick, but a pick never fails BECAUSE of dedup. The same
+ * tolerance runs on the server, where an invalid hash is written as NULL rather than an error.
+ *
+```
+
+**2c — types.** Replace lines 161-178 (`TileState`, `Tile`, `ComposerDraftImage`) wholesale:
+
+```ts
+type TileState = 'compressing' | 'checking' | 'uploading' | 'describing' | 'ready' | 'error'
+
+interface Tile {
+  id: string
+  /** `URL.createObjectURL` of the ORIGINAL pick, so the thumbnail appears instantly. */
+  previewUrl: string
+  state: TileState
+  error: string | null
+  /** Set once describe returns — success or handled failure. A tile without one cannot be sent. */
+  ticket: string | null
+  /**
+   * The public Blob URL for the optimistic bubble — set when an upload's result names it. A
+   * deduplicated tile never uploads, so its bubble URL rides on `existing` instead and this
+   * stays null.
+   */
+  blobUrl: string | null
+  /**
+   * media-dedupe P2. The STORED pathname (Vercel's suffix included) of an uploaded tile's bytes —
+   * the key the send's `contentHashes` is keyed by, matching the pathname inside the ticket.
+   * Null until the upload returns; a deduplicated tile never uploads, so it stays null there.
+   */
+  pathname: string | null
+  /**
+   * media-dedupe P2. `contentHashOf` over the exact bytes this tile would PUT — computed for EVERY
+   * pick, because hashing is a millisecond and the branch is a bug waiting to be re-decided.
+   * Cleared to null when the tile turns out to be a duplicate: a deduplicated tile sends a
+   * pointer, and the hash belongs to whichever row ends up owning the bytes.
+   */
+  contentHash: string | null
+  /**
+   * media-dedupe P2. Set when the pre-check matched: these bytes are already in the collection
+   * behind this photograph, so the tile will send a REFERENCE to it instead of a ticket for
+   * fresh bytes. A tile with one has no ticket and needs no describe — the keeper's description
+   * rides along through `resolveAttachment` on the server.
+   */
+  existing: NinaExistingPhoto | null
+}
+
+/**
+ * One photograph the composer is handing to the send, in tile order — the payload's unit since
+ * phase 6, a discriminated union since media-dedupe P2, because a tile can now be one of two
+ * things:
+ *
+ *   · `upload` — this composer PUT the bytes; the signed describe ticket carries them, and
+ *     `contentHash` (null when hashing failed) lets the server race-close a duplicate it cannot
+ *     see yet. `pathname` is the STORED form, which is the key `contentHashes` is keyed by.
+ *   · `deduped` — the pre-check proved the bytes are already in the collection behind
+ *     `imageId`; the message references them, and `url` (the keeper's CDN URL) exists only for
+ *     the optimistic bubble. No ticket, no hash, no bytes on the wire.
+ */
+export type ComposerDraftImage =
+  | {
+      source: 'upload'
+      ticket: string
+      url: string
+      pathname: string
+      contentHash: string | null
+    }
+  | {
+      source: 'deduped'
+      url: string
+      imageId: string
+    }
+```
+
+**2d — `ready` filter.** Replace line 282 (the comment above `canSend` at :284-287 stays; a
+deduplicated tile counts in `ready.length`, which the server admits through the refusal rule's
+new fifth disjunct — extend, never rewrite):
+
+```ts
+  const ready = tiles.filter(
+    (t) => t.state === 'ready' && (t.ticket !== null || t.existing !== null),
+  )
+```
+
+**2e — `process`.** Replace the whole `process` callback (lines 300-340):
+
+```ts
+  const process = useCallback(
+    async (tile: Tile, file: File) => {
+      try {
+        const compressed = await compressForNina(file)
+        patch(tile.id, { state: 'checking' })
+
+        /*
+         * media-dedupe P2. Hash the EXACT bytes a PUT would carry — `compressed.file`, never the
+         * original pick (invariant 4: the hash describes the stored bytes, and only these bytes
+         * are stored). Every pick is hashed; the millisecond is cheaper than the branch. A hash
+         * that cannot be computed degrades to null and the tile uploads as it always has.
+         */
+        let contentHash: string | null = null
+        try {
+          contentHash = await contentHashOf(compressed.file)
+        } catch {
+          contentHash = null
+        }
+
+        /*
+         * The pre-check, BEFORE any upload: one indexed, owner-scoped lookup. A transport
+         * failure degrades to "no duplicate" — the pick uploads, the race-close at send time
+         * still holds the hash, and a photograph never fails to send because dedup had a bad
+         * round trip.
+         */
+        const duplicate =
+          contentHash === null
+            ? null
+            : await findNinaDuplicateChatImage({ contentHash }).catch(() => null)
+
+        const step = planNinaPickUpload({ contentHash, duplicate })
+        if (step.outcome === 'attach-existing') {
+          /* The bytes are already in the collection. No PUT, no mint, no describe — the tile is
+           * simply DONE, holding the existing photograph it will attach. */
+          patch(tile.id, {
+            state: 'ready',
+            contentHash: null,
+            existing: step.existing,
+          })
+          return
+        }
+
+        patch(tile.id, { state: 'uploading' })
+
+        const requested = ninaChatPathname(userId, newId())
+        const result = await upload(requested, compressed.file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+          // Nothing to declare: the chat branch of the route parses no client payload.
+        })
+        patch(tile.id, { state: 'describing', blobUrl: result.url, pathname: result.pathname })
+
+        /*
+         * Her eyes. A FAILED describe still returns a ticket (carrying `description: null`), so
+         * the photo remains sendable and Nina is told honestly that she could not see it — which
+         * is why this branch sets `state: 'ready'` on a `!ok` result too, and only a missing
+         * ticket is an error.
+         */
+        const described = await describeNinaImage({
+          blobUrl: result.url,
+          pathname: result.pathname,
+          width: compressed.width,
+          height: compressed.height,
+          bytes: compressed.compressedBytes,
+        })
+        if (described.ticket === null) {
+          patch(tile.id, { state: 'error', error: 'Nina could not take this one.' })
+          return
+        }
+        patch(tile.id, { state: 'ready', ticket: described.ticket, contentHash: step.contentHash })
+      } catch (cause) {
+        patch(tile.id, {
+          state: 'error',
+          error: cause instanceof Error ? cause.message : 'That photo would not upload.',
+        })
+      }
+    },
+    [patch, userId],
+  )
+```
+
+**2f — tile init in `onPick`.** Inside the `for (const candidate of plan.accepted)` loop
+(:356-371), replace the `fresh.push` block:
+
+```ts
+      fresh.push({
+        tile: {
+          id: `tile-${newId()}`,
+          previewUrl: URL.createObjectURL(file),
+          state: 'compressing',
+          error: null,
+          ticket: null,
+          blobUrl: null,
+          pathname: null,
+          contentHash: null,
+          existing: null,
+        },
+        file,
+      })
+```
+
+**2g — `submit` payload.** In `submit` (:395-425), replace the `onSend` call's `images` argument:
+
+```ts
+    void onSend({
+      body: value.trim(),
+      images: ready.map((tile) =>
+        tile.existing !== null
+          ? { source: 'deduped' as const, url: tile.existing.url, imageId: tile.existing.id }
+          : {
+              source: 'upload' as const,
+              ticket: tile.ticket as string,
+              url: tile.blobUrl as string,
+              pathname: tile.pathname as string,
+              contentHash: tile.contentHash,
+            },
+      ),
+    })
+```
+
+(The `as` casts are the ones the old line already carried — `ready`'s filter proves them but the
+union cannot say so.)
+
+**Impact:** The tile strip, the Send button, rejections, removal and the reply strip are all
+unchanged; `'checking'` renders the same pulse the other in-flight states render. The one
+behavioral change visible from outside is that a duplicate pick now costs zero Blob writes and
+zero describe calls. ChatScreen's `images.map((image) => image.ticket)` at :1269 will not
+compile against the union until Step 3 lands — Steps 2 and 3 are one commit.
+
+---
+
+### Step 3: ChatScreen — carry the two new claim channels in the send
+**File:** `components/nina/ChatScreen.tsx` (sendAndTrack, :1227-1292)
+**Change:** Split the draft images once, order the optimistic bubble the way the server writes
+the rows, and pass the two new fields. `sendAndTrack`'s guard (:1218-1225) needs no change —
+`input.images.length` already counts both kinds.
+
+Replace the block from the `/* The already-owned photo goes AFTER ... */` comment through the
+`sendNinaMessage` call's argument list:
+
+```ts
+      /*
+       * Bubble order, client and server, is the same three-part order: the fresh uploads he
+       * picked, then the tiles the pre-check deduplicated (each a reference the server writes
+       * after the originals, at `sortOrder: images.length + position`), then the pinned album
+       * photo, which keeps the LAST position it has always had. One array, so the optimistic
+       * bubble and every later server render of the same message agree about the order inside it.
+       * Already on the CDN in every case — the describe pre-pass uploaded the picked ones before
+       * send was possible, and the deduplicated and pinned ones have been in Blob since their
+       * first upload — so there is no object URL to revoke and no flicker when the real row lands.
+       */
+      const uploads = input.images.filter(
+        (image): image is Extract<ComposerDraftImage, { source: 'upload' }> =>
+          image.source === 'upload',
+      )
+      const deduped = input.images.filter(
+        (image): image is Extract<ComposerDraftImage, { source: 'deduped' }> =>
+          image.source === 'deduped',
+      )
+      const optimisticUrls = [
+        ...uploads.map((image) => image.url),
+        ...deduped.map((image) => image.url),
+        ...(input.existingPhoto === null ? [] : [input.existingPhoto.url]),
+      ]
+```
+
+…and inside the `sendNinaMessage({...})` call, replace `imageTickets: input.images.map(...)` with
+the four-field claim block (everything else in the call — `replyToMessageId`, `runId`,
+`attachExisting`, `sessionId` — is untouched):
+
+```ts
+          imageTickets: uploads.map((image) => image.ticket),
+          /*
+           * media-dedupe P2. The hash of the exact bytes behind each ticket, keyed by the STORED
+           * pathname the ticket itself carries — so the pairing survives the server's
+           * dedupe-by-pathname in STEP 0 whatever order the claims arrive in. A claim with no
+           * entry dedups as NULL (inactive), which is the honest state for a hash that could not
+           * be computed.
+           */
+          contentHashes: Object.fromEntries(
+            uploads.flatMap((image): Array<[string, string]> =>
+              image.contentHash === null ? [] : [[image.pathname, image.contentHash]],
+            ),
+          ),
+          /*
+           * media-dedupe P2. Tiles whose bytes the pre-check proved are already in the
+           * collection: ids, never URLs — `resolveAttachment` proves ownership before a row is
+           * written, exactly as it does for the pinned album photo below. The `url` this
+           * component holds is for the optimistic bubble; it is not sent.
+           */
+          dedupedImageIds: deduped.map((image) => image.imageId),
+```
+
+**Impact:** `albumActions.attachNinaPhotoToChat` and `handleRetrySendMessage` compile unchanged
+(both new fields are optional; retries never carry photos). The `ComposerDraftImage` import at
+:49 already covers the type predicates.
+
+---
+
+### Step 4: actions.ts — named attachment shape, two new input fields, the fifth refusal disjunct
+**File:** `lib/nina/actions.ts`
+
+**4a — imports.** Extend the existing grouped imports:
+
+```ts
+import { ninaPhotoProvenance, type NinaExistingPhoto } from './attach'
+```
+
+```ts
+import { releaseBlobIfUnreferenced } from './blobRelease'
+```
+
+```ts
+import {
+  normalizeClaimedContentHash,
+  ninaUploadInsertRow,
+  partitionNinaUploadClaims,
+  type NinaDedupeInsertRow,
+  type NinaUploadClaim,
+  type NinaUploadKeeper,
+} from './dedupe'
+```
+
+In the `./queries` import list (:27-41) add `findNinaImageByContentHash` (alphabetically after
+`bumpNinaShortcutUses`), and extend the type import at :42:
+
+```ts
+import type { NinaImageInsert, NinaMessageRow } from './queries'
+```
+
+(`after` from `next/server` is already imported at :7; `isValidId` at :6; `NINA_MAX_CHAT_IMAGES`
+at :22.)
+
+**4b — name the attachment shape.** `resolveAttachment`'s anonymous return type (:192-225)
+becomes a named private interface, declared immediately ABOVE `resolveAttachment`:
+
+```ts
+/**
+ * What `resolveAttachment` hands back — named now that TWO callers share it (media-dedupe P2):
+ * the pinned album photo, and the composer's deduplicated tiles, both of which are photographs
+ * the server already owns being attached to a new message. The shape is unchanged; only the
+ * anonymity is.
+ */
+interface ResolvedNinaAttachment {
+  blobUrl: string
+  pathname: string
+  kind: NinaImageKind
+  description: string | null
+  /**
+   * F37 R1/R3. Both null is unreachable from `resolveAttachment`: it is only ever called for a
+   * photograph the server ALREADY owns, so the row it writes is a reference by definition.
+   * `ninaPhotoProvenance` decides which column and flattens a re-attached reference to its
+   * original.
+   */
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+  /**
+   * **R4.** The `nina_message_images.id` to RE-PARENT onto the new message, or null to write a
+   * reference row — unchanged from the docstring the function carried before the name existed.
+   */
+  adoptableId: string | null
+}
+```
+
+…and `resolveAttachment`'s signature becomes:
+
+```ts
+async function resolveAttachment(
+  userId: string,
+  attach: NinaAttachExisting,
+): Promise<ResolvedNinaAttachment | null> {
+```
+
+**4c — input type.** In `sendNinaMessage`'s input type, insert two fields after the
+`attachExisting` field (ends line 353), before `sessionId`:
+
+```ts
+  /**
+   * media-dedupe P2. The `nina_message_images` ids the COMPOSER's pre-check proved already hold
+   * these bytes: a picked tile whose hash matched one of his originals skipped its upload
+   * entirely and sends this pointer instead. Untrusted like every other id here —
+   * `resolveAttachment` re-proves ownership per id, and an id that has since been deleted DROPS
+   * that tile rather than refusing the send: the tiles are extra and his sentence is not, which
+   * is the forged-ticket precedent, not the pinned-photo one. Capped at `NINA_MAX_CHAT_IMAGES`
+   * exactly as the tickets are.
+   *
+   * **This is RULING B1's refusal rule's FIFTH disjunct** — an image-only send made entirely of
+   * references is still a send. The rule is extended, never rewritten; the same monotone move
+   * phases 6, 8 and 13 made.
+   */
+  dedupedImageIds?: readonly string[]
+  /**
+   * media-dedupe P2. The content hash behind each ticket, keyed by the ticket's STORED pathname
+   * (keyed, not aligned by index, because STEP 0's dedupe-by-pathname filters claims and an
+   * index-aligned array is one filter away from pointing hashes at the wrong rows).
+   *
+   * A claim, the same trust class as `width`/`height`/`bytes`: format-validated here
+   * (`isValidContentHash`, 64-hex) and never signature-checked — `/api/upload`'s tokenPayload is
+   * deliberately untouched. Invalid or missing means the row is written with NULL and dedup is
+   * silently inactive for it — invariant 9, never a send error.
+   */
+  contentHashes?: Record<string, string>
+```
+
+…and extend the printed final signature in the argument-object doc (:299-319) with:
+
+```
+ *       dedupedImageIds?: readonly string[]                          // media-dedupe P2
+ *       contentHashes?: Record<string, string>                       // media-dedupe P2
+ *
+ * **media-dedupe P2 extends the object with those two optional fields**, and the refusal rule
+ * with its fifth disjunct — the same monotone extension the four phases before it made.
+```
+
+**4d — shape validation and the cap.** After the `attach` shape check (:384-389) add:
+
+```ts
+  /* Shape only, like the tickets above: ownership is `resolveAttachment`'s, at STEP 0d-bis. */
+  const dedupedPointers: NinaAttachExisting[] = Array.isArray(input?.dedupedImageIds)
+    ? input.dedupedImageIds
+        .filter((id): id is string => typeof id === 'string' && isValidId(id))
+        .map((id) => ({ kind: 'image' as const, id }))
+    : []
+```
+
+After line 419 (`if (tickets.length > NINA_MAX_CHAT_IMAGES) return REFUSED`) add:
+
+```ts
+  if (dedupedPointers.length > NINA_MAX_CHAT_IMAGES) return REFUSED
+```
+
+**4e — the three refusal sites gain the fifth disjunct.** Each condition extends by one clause,
+in the order the send resolves:
+
+Line 415 (initial, shape-level):
+
+```ts
+  if (
+    text.length === 0 &&
+    tickets.length === 0 &&
+    requestedRunId === null &&
+    attach === null &&
+    dedupedPointers.length === 0
+  ) {
+    return REFUSED
+  }
+```
+
+Line 441 (post ticket verification, same clause):
+
+```ts
+  if (
+    text.length === 0 &&
+    images.length === 0 &&
+    requestedRunId === null &&
+    attach === null &&
+    dedupedPointers.length === 0
+  ) {
+    return REFUSED
+  }
+```
+
+Line 524 (post attachment resolution — the RESOLVED count, which is the honest gate, since
+STEP 0d-bis below may have dropped dead keepers):
+
+```ts
+  if (
+    text.length === 0 &&
+    images.length === 0 &&
+    runId === null &&
+    attached === null &&
+    dedupedPhotos.length === 0
+  ) {
+    return REFUSED
+  }
+```
+
+**Impact:** No existing caller changes behavior — both new fields default to empty. The refusal
+rule stays monotone: every added clause only ever widens what is sendable.
+
+---
+
+### Step 5: actions.ts — STEP 0d-bis, resolve the dedup'd tiles (degrade, don't refuse)
+**File:** `lib/nina/actions.ts` (insert immediately after line 520, i.e. after the
+`attach !== null && attached === null` refusal)
+**Change:** Resolve the deduplicated tiles through the SAME `resolveAttachment` seam the pinned
+photo uses, before the runner's row is written, with the ticket path's miss policy.
+
+```ts
+  /*
+   * STEP 0d-bis — THE DEDUPLICATED TILES (media-dedupe P2). Resolved BEFORE the runner's row, so
+   * a dead keeper is discovered before anything is written — and it DEGRADES rather than refuses,
+   * which is where these tiles part company with the pinned photo one block up. The pinned photo
+   * is what the send is ABOUT (`resolveAttachment`'s miss refusal argues exactly that); a
+   * deduplicated tile is a photograph he happens to be re-sending. If its keeper vanished between
+   * the composer's pre-check and this send — a delete in another tab, mid-compose — the honest
+   * outcome is the ticket path's: warn, drop the tile, send the message. Losing his sentence over
+   * a photograph that was a duplicate anyway would be the worse outcome by a wide margin.
+   *
+   * `resolveAttachment` may also come back with `adoptableId`: a keeper that is an ORPHAN (its
+   * message was deleted) is RE-PARENTED onto this message by the same R4 block that adopts
+   * re-attached orphans, so the photograph comes back into a conversation as its own row rather
+   * than gaining a second one.
+   */
+  const dedupedPhotos: ResolvedNinaAttachment[] = []
+  for (const pointer of dedupedPointers) {
+    try {
+      const resolved = await resolveAttachment(userId, pointer)
+      if (resolved === null) {
+        console.warn('[nina] dropped a deduplicated tile; its keeper is gone', { id: pointer.id })
+        continue
+      }
+      dedupedPhotos.push(resolved)
+    } catch (cause) {
+      console.warn('[nina] could not resolve a deduplicated tile', {
+        id: pointer.id,
+        error: String(cause),
+      })
+    }
+  }
+```
+
+**Impact:** A send that is ONLY a deduplicated tile whose keeper died refuses (fifth refusal
+site's resolved-count clause, Step 4e) BEFORE any write — no empty message row. A send with text
+proceeds text-only.
+
+---
+
+### Step 6: actions.ts — STEP 1b rewrite: partition, race-close, row-first/blob-second releases
+**File:** `lib/nina/actions.ts` (replace lines 577-608 — the comment block plus the
+`if (images.length > 0) {...}` insert)
+**Change:** This is the phase's core. Claims are built with normalized hashes, one indexed keeper
+lookup runs per DISTINCT hash (the race-close), `partitionNinaUploadClaims` splits originals from
+references (including the same-send twins), the originals insert first, the references second,
+and only then are the just-landed blobs' releases REGISTERED — under `after()`, so no Blob delete
+can ever precede the rows that justify them (invariant 3 as control flow).
+
+```ts
+  /*
+   * STEP 1b — the image rows, BEFORE the context load, and the ordering is deliberate twice over.
+   * First: a turn that fails must not leave a message row whose photo was never recorded, which
+   * would render as an empty bubble forever. Second, and the same reason his message is inserted
+   * before the context is loaded: `loadNinaContext` reads the conversation window out of
+   * `nina_messages` + `nina_message_images`, so a description not yet written is a description
+   * she cannot see — on this turn or on any later one that scrolls back to it.
+   *
+   * ── media-dedupe P2: THE WRITE-TIME DEDUP ────────────────────────────────────────────────────
+   * The composer hashed the bytes it PUT and sent each hash keyed by the stored pathname
+   * (`contentHashes`). Every claim below was a fresh upload when it left the browser; by the time
+   * these statements run, one of three things can be true about its bytes:
+   *
+   *   · an original with the same hash is ALREADY in the collection — the composer's pre-check
+   *     ran before this row existed, and its keeper was written after that read;
+   *   · an EARLIER CLAIM IN THIS SAME SEND has the same hash — the same file picked twice in one
+   *     batch, where both tiles passed the pre-check because neither row existed yet;
+   *   · the bytes are genuinely new.
+   *
+   * The first two become REFERENCE rows — `ninaUploadInsertRow` copies the keeper's
+   * `blob_url`/`pathname`, stamps `source_image_id` through `ninaPhotoProvenance` (flattened to
+   * the ORIGINAL), and takes the keeper's `kind` and description — exactly the shape
+   * `resolveAttachment`'s attach arm writes, so the collection reads and the reaper need to know
+   * nothing new. Each reference's just-landed blob is then released. THE ROWS GO FIRST: both
+   * INSERT statements are awaited before any release is even REGISTERED, and the releases run
+   * under `after()` — invariant 3 spelled as control flow.
+   *
+   * A failure anywhere in here is warned and swallowed, as before, and the degradation ladder
+   * always lands on "writes the photograph, maybe twice", never on "writes a row pointing at
+   * nothing" and never on "loses the message": a failed keeper lookup uploads fresh, and a
+   * same-send reference whose original failed to insert degrades to a fresh row of its own (its
+   * bytes are still in Blob — nothing has been released yet).
+   */
+  if (images.length > 0) {
+    try {
+      const claims: NinaUploadClaim[] = images.map((image, index) => ({
+        pathname: image.pathname,
+        blobUrl: image.blobUrl,
+        width: image.width || null,
+        height: image.height || null,
+        bytes: image.bytes || null,
+        description: image.description,
+        sortOrder: index,
+        /*
+         * Invariant 9. An invalid or missing hash is NULL here — dedup silently inactive for
+         * this row — and never a send error. The keeper lookup below never runs for it.
+         */
+        contentHash: normalizeClaimedContentHash(input.contentHashes?.[image.pathname]),
+      }))
+
+      /*
+       * THE RACE-CLOSE RE-CHECK. The composer pre-checked at pick time; this is the same question
+       * asked at insert time, when the window it closes is "the pre-check ran, then someone else
+       * wrote the same bytes". One indexed lookup per DISTINCT hash — `(user_id, content_hash)` is
+       * phase 1's partial index, never a scan — and a FAILED lookup degrades to fresh rather than
+       * to "no rows at all": dedup must never make a send worse.
+       */
+      const keepersByHash = new Map<string, NinaUploadKeeper>()
+      for (const hash of new Set(
+        claims.flatMap((claim) => (claim.contentHash === null ? [] : [claim.contentHash])),
+      )) {
+        try {
+          const keeper = await findNinaImageByContentHash(userId, hash)
+          if (keeper !== null) keepersByHash.set(hash, keeper)
+        } catch (cause) {
+          console.warn('[nina] content-hash lookup failed; this upload lands fresh', {
+            hash,
+            error: String(cause),
+          })
+        }
+      }
+
+      const partition = partitionNinaUploadClaims(claims, keepersByHash)
+
+      /* ROW FIRST (1/2) — the originals, in one statement, so their ids exist for the same-send
+       * references below. `returning()` rows come back in VALUES order (the guarantee STEP 5's
+       * seq argument rests on), so index i of the result is claim i. */
+      const freshRows =
+        partition.fresh.length > 0
+          ? await insertNinaMessageImages(
+              userId,
+              partition.fresh.map((claim) =>
+                ninaUploadInsertRow({ messageId: runnerMessageId, claim, keeper: null }).row,
+              ),
+            )
+          : []
+
+      /* The same-send originals, by hash, now that they have ids. */
+      const sameSend = new Map<string, NinaUploadKeeper>()
+      partition.fresh.forEach((claim, index) => {
+        const row = freshRows[index]
+        if (claim.contentHash !== null && row !== undefined) {
+          sameSend.set(claim.contentHash, row)
+        }
+      })
+
+      /* ROW FIRST (2/2) — the references, in one statement, AFTER the originals exist. */
+      const referenceRows: NinaDedupeInsertRow[] = []
+      /* The just-landed blobs the references orphaned. Registered below, never awaited here. */
+      const releases: Array<{ blobUrl: string; pathname: string }> = []
+      for (const { claim, keeper } of partition.references) {
+        const resolved = keeper ?? sameSend.get(claim.contentHash) ?? null
+        if (resolved === null) {
+          /* Unreachable by construction — a reference exists only when a keeper (DB or
+           * same-send) existed at partition time. But the degradation ladder's floor is "write
+           * the photograph fresh", because this claim's bytes are still sitting in Blob and a
+           * row that names nothing is the one outcome worse than a duplicate. */
+          referenceRows.push(
+            ninaUploadInsertRow({ messageId: runnerMessageId, claim, keeper: null }).row,
+          )
+          continue
+        }
+        referenceRows.push(
+          ninaUploadInsertRow({ messageId: runnerMessageId, claim, keeper: resolved }).row,
+        )
+        /* These bytes landed for THIS send and the row now points at the keeper's URL instead —
+         * nobody references them. Released below, and only here. */
+        releases.push({ blobUrl: claim.blobUrl, pathname: claim.pathname })
+      }
+      if (referenceRows.length > 0) {
+        await insertNinaMessageImages(userId, referenceRows)
+      }
+
+      /* BLOB SECOND. `after()` is this module's convention for work that must outlive the
+       * response; a release that fails leaves an orphan, which `reap-orphaned-blobs` exists for
+       * and which `releaseBlobIfUnreferenced` prefers over any risk of deleting shared bytes. */
+      if (releases.length > 0) {
+        after(async () => {
+          for (const ref of releases) {
+            await releaseBlobIfUnreferenced(userId, ref)
+          }
+        })
+      }
+    } catch (cause) {
+      console.warn('[nina] could not persist chat images', { error: String(cause) })
+    }
+  }
+```
+
+**Impact:** With no hashes on the wire (an old client, or every hash invalid) the partition is
+all-fresh and the statements reduce to today's single insert plus zero lookups — the no-op path
+is byte-equivalent to the old behavior. The residual two-tab race (both STEP 1b re-checks read
+before either commits) stays open by design; phase 4's sweep is its backstop.
+
+---
+
+### Step 7: actions.ts — the attachments block becomes a list, and she is told about every photo
+**File:** `lib/nina/actions.ts` (replace the `R26's row` block, lines 610-683, and the
+`imageDescriptions` array at :740-743)
+**Change:** The adopt-or-reference block generalizes from the one pinned photo to
+`[...dedupedPhotos, pinnedPhoto]`, keeping the pinned photo's `sortOrder` byte-identical when it
+is the only attachment. The reference-row INSERT is batched into one statement; adoption is still
+per candidate.
+
+```ts
+  /*
+   * R26's row — now **ADOPT-OR-REFERENCE** (R4), and since media-dedupe P2 it is a LIST: the
+   * composer's deduplicated tiles ride the SAME seam as the pinned album photo. Both are
+   * photographs the server already owns; both are resolved through `resolveAttachment`; both are
+   * adopted when they are orphans and written as reference rows when they are not. The pinned
+   * photo stays LAST in the list so that, when it is the only attachment, its
+   * `sortOrder: images.length` is byte-identical to what this block has always written — and so
+   * the server's order matches the optimistic bubble's (fresh uploads, deduplicated tiles, pinned
+   * photo — see `ChatScreen`'s `optimisticUrls`).
+   *
+   * Every rule the single-`attached` version carried is unchanged and applies per candidate: the
+   * adopt-or-reference fork, the WHERE-clause race re-check, the warned-and-swallowed failure
+   * discipline, and "the upload block above sets NO provenance, because those bytes arrived from
+   * his camera" — which is still true, and is why the deduplicated tiles are handled HERE and not
+   * there: their bytes arrived from nowhere, because they never uploaded.
+   */
+  const attachments: ResolvedNinaAttachment[] = [
+    ...dedupedPhotos,
+    ...(attached !== null ? [attached] : []),
+  ]
+
+  if (attachments.length > 0) {
+    try {
+      const referenceRows: NinaImageInsert[] = []
+      for (let position = 0; position < attachments.length; position += 1) {
+        /* `noUncheckedIndexedAccess` makes the indexed read nullable; the guard is the repo's
+         * spelling of that (cf. `rows[0] ?? null` all over `queries.ts`), not a real branch. */
+        const candidate = attachments[position]
+        if (candidate === undefined) continue
+        const sortOrder = images.length + position
+        const adopted =
+          candidate.adoptableId === null
+            ? null
+            : await adoptNinaMessageImage(userId, candidate.adoptableId, {
+                messageId: runnerMessageId,
+                sortOrder,
+              })
+
+        if (adopted === null) {
+          referenceRows.push({
+            messageId: runnerMessageId,
+            kind: candidate.kind,
+            blobUrl: candidate.blobUrl,
+            pathname: candidate.pathname,
+            description: candidate.description,
+            sortOrder,
+            sourceAvatarId: candidate.sourceAvatarId,
+            sourceImageId: candidate.sourceImageId,
+          })
+        }
+      }
+      if (referenceRows.length > 0) {
+        await insertNinaMessageImages(userId, referenceRows)
+      }
+    } catch (cause) {
+      console.warn('[nina] could not persist the attached photos', { error: String(cause) })
+    }
+  }
+```
+
+…and the turn's `imageDescriptions` (:740-743) becomes:
+
+```ts
+      imageDescriptions: [
+        ...images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+        /*
+         * media-dedupe P2. Every attachment's description rides along — the pinned album photo's
+         * (as before) and now the deduplicated tiles', whose keeper descriptions were proved
+         * owner-scoped by `resolveAttachment`. A photograph-only send made entirely of
+         * references must still give her eyes: `imageDescriptions` is the ONLY thing she is told
+         * about a photograph (invariant 5 — text, never an image part).
+         */
+        ...attachments.map((candidate) => candidate.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+      ],
+```
+
+**Impact:** With no deduplicated tiles the block writes exactly what it wrote before (one
+candidate, one reference row, same `sortOrder`, same catch). The behavioral deltas are: N
+references batch into one statement (same all-or-nothing statement semantics the rest of the
+file already accepts), and she now hears about deduplicated photos on the turn that carries them.
+
+---
+
+### Step 8: actions.ts — the pre-check action `findNinaDuplicateChatImage`
+**File:** `lib/nina/actions.ts` (insert immediately after `sendNinaMessage`'s closing brace,
+line 752, before the `startNinaBackgroundTurn` doc block)
+**Change:** The composer's pre-check: requireUserId, normalize the claimed hash (an invalid hash
+is "no lookup", not an error), one indexed owner-scoped read through phase 1's finder, and the
+answer returned in exactly the `NinaExistingPhoto` shape the composer already holds a type for.
+
+```ts
+/**
+ * **media-dedupe P2: the composer's pre-check.** "Do my bytes already exist in my collection?"
+ * asked BEFORE a picked photograph is PUT, so a duplicate pick costs no token mint, no upload and
+ * no describe at all — the one part of the dedup that saves the round trip and not just the
+ * storage (R2).
+ *
+ * ── WHY THE ANSWER IS `{ kind: 'image', id, url }` AND NOT THE ROW ─────────────────────────────
+ * It is exactly `NinaExistingPhoto` (`lib/nina/attach.ts`), the type the composer already holds
+ * for `?photo=`-armed photographs: an id the SEND can carry through `dedupedImageIds` into
+ * `resolveAttachment`'s ownership check, plus the URL the tile's optimistic bubble renders. A URL
+ * is never the payload — an id resolved against `user_id` is a fact, and this action does the
+ * resolving.
+ *
+ * ── FAILURE IS `null`, AND `null` MEANS "UPLOAD" ───────────────────────────────────────────────
+ * An invalid hash (the 64-hex check is the whole of the trust this claim gets — invariant 9), a
+ * miss, and a failed lookup are all the same answer: nothing matched, so the composer uploads.
+ * The race-close at STEP 1b re-asks the question at insert time regardless, so a false "no" here
+ * is corrected there — pre-check and race-close are two windows on one decision, not two
+ * decisions that must agree.
+ */
+export async function findNinaDuplicateChatImage(input: {
+  contentHash: string
+}): Promise<NinaExistingPhoto | null> {
+  const userId = await requireUserId()
+
+  const contentHash = normalizeClaimedContentHash(input?.contentHash)
+  if (contentHash === null) return null
+
+  try {
+    const keeper = await findNinaImageByContentHash(userId, contentHash)
+    if (keeper === null) return null
+    return { kind: 'image', id: keeper.id, url: keeper.blobUrl }
+  } catch (cause) {
+    console.warn('[nina] duplicate pre-check failed; the pick will upload', {
+      error: String(cause),
+    })
+    return null
+  }
+}
+```
+
+**Impact:** One new untrusted POST endpoint in the `'use server'` module — `requireUserId()`
+first, input format-validated, return shaped to what the UI renders (the Server Actions guide's
+three rules, all already this file's standing policy). The client additionally `.catch`es the
+transport layer (Step 2e); the two catches cover different failure layers and neither can fail a
+pick.
+
+---
+
+### Step 9: tests — pure decision logic (`tests/nina.dedupe.test.ts`)
+**File:** `tests/nina.dedupe.test.ts` (NEW)
+**Change:** The vitest node suite for every pure decision. No mocks, no db, no DOM.
+
+```ts
+import { describe, expect, it } from 'vitest'
+
+import {
+  normalizeClaimedContentHash,
+  ninaUploadInsertRow,
+  partitionNinaUploadClaims,
+  planNinaPickUpload,
+  type NinaUploadClaim,
+  type NinaUploadKeeper,
+} from '@/lib/nina/dedupe'
+
+/** sha256("test") — a known-answer vector, and a legal 64-hex string. */
+const HASH = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+
+function claim(overrides: Partial<NinaUploadClaim> = {}): NinaUploadClaim {
+  return {
+    pathname: 'nina/u1/chat/aaaaaaaaaaaa-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg',
+    blobUrl: 'https://blob.example/nina/u1/chat/aaaaaaaaaaaa-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg',
+    width: 768,
+    height: 1024,
+    bytes: 150_000,
+    description: 'an arrival card',
+    sortOrder: 0,
+    contentHash: HASH,
+    ...overrides,
+  }
+}
+
+function keeper(overrides: Partial<NinaUploadKeeper> = {}): NinaUploadKeeper {
+  return {
+    id: 'imgKEEPER001',
+    kind: 'upload',
+    blobUrl: 'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+    pathname: 'nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+    description: 'the keeper description',
+    sourceAvatarId: null,
+    sourceImageId: null,
+    ...overrides,
+  }
+}
+
+describe('normalizeClaimedContentHash', () => {
+  it('passes an exact 64-hex string through untouched', () => {
+    expect(normalizeClaimedContentHash(HASH)).toBe(HASH)
+  })
+
+  it('trims surrounding whitespace before validating', () => {
+    expect(normalizeClaimedContentHash(`  ${HASH}\n`)).toBe(HASH)
+  })
+
+  it('rejects uppercase hex rather than folding it', () => {
+    expect(normalizeClaimedContentHash(HASH.toUpperCase())).toBeNull()
+  })
+
+  it('rejects wrong lengths, non-hex, and non-strings', () => {
+    expect(normalizeClaimedContentHash(HASH.slice(1))).toBeNull()
+    expect(normalizeClaimedContentHash(`${HASH}0`)).toBeNull()
+    expect(normalizeClaimedContentHash(`${HASH.slice(0, 63)}g`)).toBeNull()
+    expect(normalizeClaimedContentHash(undefined)).toBeNull()
+    expect(normalizeClaimedContentHash(null)).toBeNull()
+    expect(normalizeClaimedContentHash(123)).toBeNull()
+    expect(normalizeClaimedContentHash({})).toBeNull()
+  })
+})
+
+describe('planNinaPickUpload — dup -> skip upload + attach pointer', () => {
+  const existing = { kind: 'image' as const, id: 'imgKEEPER001', url: 'https://blob.example/k.jpg' }
+
+  it('attaches the existing photograph when the pre-check matched', () => {
+    const plan = planNinaPickUpload({ contentHash: HASH, duplicate: existing })
+    expect(plan).toEqual({ outcome: 'attach-existing', existing })
+  })
+
+  it('uploads when there is no duplicate', () => {
+    expect(planNinaPickUpload({ contentHash: HASH, duplicate: null })).toEqual({
+      outcome: 'upload',
+      contentHash: HASH,
+    })
+  })
+
+  it('uploads when the hash could not be computed — dedup inactive, pick never blocked', () => {
+    expect(planNinaPickUpload({ contentHash: null, duplicate: null })).toEqual({
+      outcome: 'upload',
+      contentHash: null,
+    })
+    expect(planNinaPickUpload({ contentHash: null, duplicate: existing })).toEqual({
+      outcome: 'upload',
+      contentHash: null,
+    })
+  })
+})
+
+describe('ninaUploadInsertRow — the fresh arm', () => {
+  it('carries the claim as-is, hash included, provenance absent', () => {
+    const decision = ninaUploadInsertRow({ messageId: 'msgROW000001', claim: claim(), keeper: null })
+    expect(decision.outcome).toBe('fresh')
+    expect(decision.keeperId).toBeNull()
+    expect(decision.row).toEqual({
+      messageId: 'msgROW000001',
+      kind: 'upload',
+      blobUrl: claim().blobUrl,
+      pathname: claim().pathname,
+      width: 768,
+      height: 1024,
+      bytes: 150_000,
+      description: 'an arrival card',
+      contentHash: HASH,
+      sortOrder: 0,
+    })
+    expect('sourceAvatarId' in decision.row).toBe(false)
+    expect('sourceImageId' in decision.row).toBe(false)
+  })
+})
+
+describe('ninaUploadInsertRow — the race branch: reference + the fields a reference carries', () => {
+  it('copies the keeper, keeps the claim sortOrder, writes NO hash', () => {
+    const decision = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ sortOrder: 2 }),
+      keeper: keeper(),
+    })
+    expect(decision.outcome).toBe('reference')
+    expect(decision.keeperId).toBe('imgKEEPER001')
+    expect(decision.row).toMatchObject({
+      messageId: 'msgROW000001',
+      kind: 'upload',
+      blobUrl: keeper().blobUrl,
+      pathname: keeper().pathname,
+      sortOrder: 2,
+      sourceAvatarId: null,
+      sourceImageId: 'imgKEEPER001',
+    })
+    expect(decision.row.contentHash).toBeUndefined()
+    expect(decision.row.width).toBeUndefined()
+    expect(decision.row.bytes).toBeUndefined()
+  })
+
+  it('flattens a reference keeper to the ORIGINAL via ninaPhotoProvenance', () => {
+    const decision = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim(),
+      keeper: keeper({ kind: 'generated', sourceImageId: 'imgORIGINA01' }),
+    })
+    expect(decision.row.kind).toBe('generated')
+    expect(decision.row.sourceImageId).toBe('imgORIGINA01')
+  })
+
+  it('prefers the keeper description but falls back to the paid-for claim description', () => {
+    const withKeeperText = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ description: 'freshly described' }),
+      keeper: keeper({ description: 'operator words' }),
+    })
+    expect(withKeeperText.row.description).toBe('operator words')
+
+    const keeperSilent = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ description: 'freshly described' }),
+      keeper: keeper({ description: null }),
+    })
+    expect(keeperSilent.row.description).toBe('freshly described')
+
+    const bothSilent = ninaUploadInsertRow({
+      messageId: 'msgROW000001',
+      claim: claim({ description: null }),
+      keeper: keeper({ description: null }),
+    })
+    expect(bothSilent.row.description).toBeNull()
+  })
+})
+
+describe('partitionNinaUploadClaims — the same-send split and the race-close split', () => {
+  it('sends hash-less claims fresh and never groups them', () => {
+    const partition = partitionNinaUploadClaims([claim({ contentHash: null })], new Map())
+    expect(partition.fresh).toHaveLength(1)
+    expect(partition.references).toHaveLength(0)
+  })
+
+  it('references the DB keeper for EVERY claim with that hash, first included', () => {
+    const k = keeper()
+    const partition = partitionNinaUploadClaims(
+      [claim(), claim({ sortOrder: 1 })],
+      new Map([[HASH, k]]),
+    )
+    expect(partition.fresh).toHaveLength(0)
+    expect(partition.references).toHaveLength(2)
+    for (const reference of partition.references) {
+      expect(reference.keeper).toBe(k)
+    }
+  })
+
+  it('splits same-send twins: first fresh, later ones reference the same-send original', () => {
+    const partition = partitionNinaUploadClaims(
+      [claim(), claim({ sortOrder: 1, pathname: 'nina/u1/chat/bbbbbbbbbbbb-cccccccccccccccccccccccccccccccc.jpg' })],
+      new Map(),
+    )
+    expect(partition.fresh).toHaveLength(1)
+    expect(partition.references).toHaveLength(1)
+    expect(partition.references[0]?.keeper).toBeNull()
+    expect(partition.references[0]?.claim.sortOrder).toBe(1)
+  })
+
+  it('three twins -> one original, two references, in order', () => {
+    const partition = partitionNinaUploadClaims(
+      [claim(), claim({ sortOrder: 1 }), claim({ sortOrder: 2 })],
+      new Map(),
+    )
+    expect(partition.fresh).toHaveLength(1)
+    expect(partition.references.map((r) => r.claim.sortOrder)).toEqual([1, 2])
+  })
+
+  it('a DB keeper wins over the same-send split', () => {
+    const k = keeper()
+    const partition = partitionNinaUploadClaims([claim(), claim({ sortOrder: 1 })], new Map([[HASH, k]]))
+    expect(partition.fresh).toHaveLength(0)
+    expect(partition.references.every((r) => r.keeper === k)).toBe(true)
+  })
+})
+```
+
+---
+
+### Step 10: tests — the send path (`tests/nina.chatDedupe.test.ts`)
+**File:** `tests/nina.chatDedupe.test.ts` (NEW)
+**Change:** Drives the REAL `sendNinaMessage` and `findNinaDuplicateChatImage` with the edges
+mocked, exactly the spread-over-the-real-module pattern `tests/nina.chatPhotoReattach.test.ts`
+establishes. `openNinaChatTurn` stubs to the ordinary burst outcome so no model is ever reached;
+`after` is captured so the release ordering is assertable as data: the inserts happen inside
+`sendNinaMessage`, the release only when the captured task runs.
+
+```ts
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { signNinaImageTicket } from '@/lib/nina/imageTicket'
+
+/**
+ * **Write-time dedup as the send path actually behaves** (media-dedupe P2).
+ *
+ *   1. a claim whose hash matches a stored ORIGINAL is written as a REFERENCE row (keeper's URL,
+ *      flattened provenance, keeper's kind) and its just-landed blob is released — ROW FIRST,
+ *      BLOB SECOND, proven by the fact that the release only runs when the captured `after` task
+ *      is invoked after `sendNinaMessage` resolved;
+ *   2. two same-send claims with one hash become one original and one reference to it;
+ *   3. an INVALID hash writes NULL and the send proceeds — invariant 9;
+ *   4. a failed keeper LOOKUP writes fresh rather than losing the rows;
+ *   5. `dedupedImageIds` — the composer's pre-check seam — writes a reference row through the
+ *      same `resolveAttachment` the pinned photo uses, and a photograph-only send made entirely
+ *      of references is a valid send (RULING B1's fifth disjunct);
+ *   6. `findNinaDuplicateChatImage` answers in the `NinaExistingPhoto` shape or null.
+ *
+ * WHAT IS MOCKED, AND WHY IT IS ONLY THE EDGES: `requireUserId`, `next/server` (capturing),
+ * `@/lib/nina/queries` (spread over the real module — a dozen modules in this graph name exports
+ * of it), and `@/lib/nina/blobRelease`. Everything between is the shipping action.
+ */
+
+const spies = vi.hoisted(() => ({
+  getNinaAvatar: vi.fn(),
+  getNinaMessageImage: vi.fn(),
+  getNinaSession: vi.fn(),
+  insertNinaMessages: vi.fn(),
+  insertNinaMessageImages: vi.fn(),
+  adoptNinaMessageImage: vi.fn(),
+  findNinaImageByContentHash: vi.fn(),
+  releaseBlobIfUnreferenced: vi.fn(),
+}))
+
+vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: async () => 'u1' }))
+
+const afterTasks: Array<() => unknown> = []
+vi.mock('next/server', () => ({
+  after: (task: () => unknown) => {
+    afterTasks.push(task)
+  },
+}))
+
+vi.mock('@/lib/nina/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/nina/queries')>()
+  return { ...actual, ...spies }
+})
+
+vi.mock('@/lib/nina/blobRelease', () => ({
+  releaseBlobIfUnreferenced: spies.releaseBlobIfUnreferenced,
+}))
+
+vi.mock('@/lib/nina/chatturn', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/nina/chatturn')>()
+  return {
+    ...actual,
+    sweepStaleNinaChatTurns: async () => 0,
+    openNinaChatTurn: async () => null,
+  }
+})
+
+/* `authEnv()` parses eagerly on first call; the same three the re-attach suite seeds. */
+process.env.AUTH_SECRET ??= 'unit-secret'
+process.env.AUTH_GOOGLE_ID ??= 'unit-id'
+process.env.AUTH_GOOGLE_SECRET ??= 'unit-secret'
+
+const SESSION_ID = 'sesAAAAAAAAA'
+const RUNNER_MESSAGE_ID = 'msgRUNNER001'
+/** sha256("test") — a known-answer vector. */
+const HASH = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+
+const TICKET_SECRET = 'unit-secret'
+
+function ticketFor(pathname: string, blobUrl: string, description: string | null): string {
+  return signNinaImageTicket(
+    {
+      userId: 'u1',
+      pathname,
+      blobUrl,
+      width: 768,
+      height: 1024,
+      bytes: 150_000,
+      description,
+    },
+    TICKET_SECRET,
+  )
+}
+
+const CLAIM_A = {
+  pathname: 'nina/u1/chat/aaaaaaaaaaaa-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg',
+  blobUrl: 'https://blob.example/nina/u1/chat/aaaaaaaaaaaa-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg',
+}
+const CLAIM_B = {
+  pathname: 'nina/u1/chat/cccccccccccc-dddddddddddddddddddddddddddddd.jpg',
+  blobUrl: 'https://blob.example/nina/u1/chat/cccccccccccc-dddddddddddddddddddddddddddddd.jpg',
+}
+
+function insertedCalls(): Array<Record<string, unknown>[]> {
+  return spies.insertNinaMessageImages.mock.calls.map(
+    (call) => call[1] as Array<Record<string, unknown>>,
+  )
+}
+
+type Actions = typeof import('@/lib/nina/actions')
+let actions: Actions
+
+beforeEach(async () => {
+  vi.resetModules()
+  afterTasks.length = 0
+  for (const spy of Object.values(spies)) spy.mockReset()
+
+  spies.getNinaSession.mockResolvedValue({
+    id: SESSION_ID,
+    title: null,
+    titleSource: null,
+    pinnedAt: null,
+    createdAt: new Date('2026-09-01T09:00:00Z'),
+  })
+  spies.insertNinaMessages.mockResolvedValue([{ id: RUNNER_MESSAGE_ID, seq: 41 }])
+  spies.insertNinaMessageImages.mockResolvedValue([])
+  spies.adoptNinaMessageImage.mockResolvedValue(null)
+  spies.releaseBlobIfUnreferenced.mockResolvedValue('deleted')
+  spies.findNinaImageByContentHash.mockResolvedValue(null)
+
+  actions = await import('@/lib/nina/actions')
+})
+
+afterEach(() => {
+  vi.resetModules()
+})
+
+describe('STEP 1b race-close: a claim whose bytes already exist becomes a reference + a release', () => {
+  beforeEach(() => {
+    spies.findNinaImageByContentHash.mockResolvedValue({
+      id: 'imgKEEPER001',
+      kind: 'upload',
+      blobUrl: 'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      pathname: 'nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      description: 'the arrival card, already described',
+      sourceAvatarId: null,
+      sourceImageId: null,
+      messageId: 'msgOLD000001',
+      prompt: null,
+      width: 768,
+      height: 1024,
+      bytes: 150_000,
+      sortOrder: 0,
+      createdAt: new Date('2026-09-09T09:00:00Z'),
+    })
+  })
+
+  it('writes ONE reference row, releases the just-landed blob, and ROW precedes BLOB', async () => {
+    const result = await actions.sendNinaMessage({
+      body: 'ini lagi',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'an arrival card')],
+      contentHashes: { [CLAIM_A.pathname]: HASH },
+      sessionId: SESSION_ID,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', HASH)
+
+    /* ROW FIRST: exactly one insert call, holding the reference row, no fresh row beside it. */
+    expect(spies.insertNinaMessageImages).toHaveBeenCalledTimes(1)
+    const [referenceRow] = insertedCalls()[0]!
+    expect(referenceRow).toMatchObject({
+      messageId: RUNNER_MESSAGE_ID,
+      kind: 'upload',
+      blobUrl: 'https://blob.example/nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      pathname: 'nina/u1/chat/zzzzzzzzzzzz-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.jpg',
+      description: 'the arrival card, already described',
+      sourceImageId: 'imgKEEPER001',
+      sourceAvatarId: null,
+      sortOrder: 0,
+    })
+    expect(referenceRow).not.toHaveProperty('contentHash')
+
+    /* BLOB SECOND: nothing released yet — the release is registered under `after` and runs only
+     * when the response is done. Invoking it now must ask about THIS claim's blob, not the
+     * keeper's. */
+    expect(spies.releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+    expect(afterTasks).toHaveLength(1)
+    await afterTasks[0]!()
+    expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
+    expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledWith('u1', {
+      blobUrl: CLAIM_A.blobUrl,
+      pathname: CLAIM_A.pathname,
+    })
+  })
+})
+
+describe('STEP 1b same-send twins: one original, one reference to it, one release', () => {
+  it('splits the two claims and releases only the twin\'s blob', async () => {
+    spies.insertNinaMessageImages.mockImplementation(async (_userId, rows) =>
+      (rows as Array<Record<string, unknown>>).map((row, index) => ({
+        id: index === 0 ? 'imgFRESH00001' : `imgOTHER${String(index).padStart(3, '0')}`,
+        ...row,
+      })),
+    )
+
+    const result = await actions.sendNinaMessage({
+      body: 'dua kali',
+      imageTickets: [
+        ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'same bytes'),
+        ticketFor(CLAIM_B.pathname, CLAIM_B.blobUrl, 'same bytes'),
+      ],
+      contentHashes: {
+        [CLAIM_A.pathname]: HASH,
+        [CLAIM_B.pathname]: HASH,
+      },
+      sessionId: SESSION_ID,
+    })
+
+    expect(result.ok).toBe(true)
+    const calls = insertedCalls()
+    expect(calls).toHaveLength(2)
+
+    /* First statement: the ORIGINAL, with the hash. */
+    expect(calls[0]).toHaveLength(1)
+    expect(calls[0]![0]).toMatchObject({
+      pathname: CLAIM_A.pathname,
+      contentHash: HASH,
+      sortOrder: 0,
+    })
+    /* Second statement: the TWIN, referencing the original the first statement returned. */
+    expect(calls[1]).toHaveLength(1)
+    expect(calls[1]![0]).toMatchObject({
+      pathname: CLAIM_A.pathname,
+      sourceImageId: 'imgFRESH00001',
+      sortOrder: 1,
+    })
+    expect(calls[1]![0]).not.toHaveProperty('contentHash')
+
+    await afterTasks[0]!()
+    expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
+    expect(spies.releaseBlobIfUnreferenced).toHaveBeenCalledWith('u1', {
+      blobUrl: CLAIM_B.blobUrl,
+      pathname: CLAIM_B.pathname,
+    })
+  })
+})
+
+describe('invariant 9: a bad claim writes NULL and the send proceeds', () => {
+  it('never looks the hash up and inserts an ordinary original', async () => {
+    const result = await actions.sendNinaMessage({
+      body: 'hash rusak',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'whatever')],
+      contentHashes: { [CLAIM_A.pathname]: 'not-a-hash' },
+      sessionId: SESSION_ID,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(spies.findNinaImageByContentHash).not.toHaveBeenCalled()
+    expect(spies.insertNinaMessageImages).toHaveBeenCalledTimes(1)
+    expect(insertedCalls()[0]![0]).toMatchObject({
+      pathname: CLAIM_A.pathname,
+      contentHash: null,
+    })
+    expect(afterTasks).toHaveLength(0)
+  })
+
+  it('a failed keeper LOOKUP degrades to fresh, never to lost rows', async () => {
+    spies.findNinaImageByContentHash.mockRejectedValue(new Error('db down'))
+
+    const result = await actions.sendNinaMessage({
+      body: 'ini lagi',
+      imageTickets: [ticketFor(CLAIM_A.pathname, CLAIM_A.blobUrl, 'whatever')],
+      contentHashes: { [CLAIM_A.pathname]: HASH },
+      sessionId: SESSION_ID,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(insertedCalls()[0]![0]).toMatchObject({
+      pathname: CLAIM_A.pathname,
+      contentHash: HASH,
+    })
+    expect(afterTasks).toHaveLength(0)
+  })
+})
+
+describe('dedupedImageIds: the composer pre-check seam', () => {
+  const LIVE_KEEPER = {
+    id: 'imgKEEPER001',
+    messageId: 'msgOLD000001',
+    kind: 'generated',
+    blobUrl: 'https://blob.example/nina/u1/selfie-1.jpg',
+    pathname: 'nina/u1/selfie-1.jpg',
+    description: 'she is holding a coffee',
+    sourceAvatarId: null,
+    sourceImageId: null,
+    sortOrder: 0,
+    width: 1024,
+    height: 1536,
+    bytes: 240_000,
+    prompt: null,
+    createdAt: new Date('2026-08-01T09:00:00Z'),
+  }
+
+  it('a photograph-only send made of references is a VALID send (the fifth disjunct)', async () => {
+    spies.getNinaMessageImage.mockResolvedValue(LIVE_KEEPER)
+
+    const result = await actions.sendNinaMessage({
+      body: '',
+      dedupedImageIds: ['imgKEEPER001'],
+      sessionId: SESSION_ID,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(spies.insertNinaMessageImages).toHaveBeenCalledTimes(1)
+    expect(insertedCalls()[0]![0]).toMatchObject({
+      messageId: RUNNER_MESSAGE_ID,
+      kind: 'generated',
+      pathname: 'nina/u1/selfie-1.jpg',
+      sourceImageId: 'imgKEEPER001',
+      sortOrder: 0,
+    })
+  })
+
+  it('a keeper that died mid-compose DROPS the tile instead of refusing the send', async () => {
+    spies.getNinaMessageImage.mockResolvedValue(null)
+
+    const withText = await actions.sendNinaMessage({
+      body: 'ini fotonya',
+      dedupedImageIds: ['imgKEEPER001'],
+      sessionId: SESSION_ID,
+    })
+    expect(withText.ok).toBe(true)
+    expect(spies.insertNinaMessageImages).not.toHaveBeenCalled()
+
+    /* …and a photo-only send whose only tile was dropped refuses BEFORE any write. */
+    spies.insertNinaMessages.mockClear()
+    const photoOnly = await actions.sendNinaMessage({
+      body: '',
+      dedupedImageIds: ['imgKEEPER001'],
+      sessionId: SESSION_ID,
+    })
+    expect(photoOnly.ok).toBe(false)
+    expect(spies.insertNinaMessages).not.toHaveBeenCalled()
+  })
+})
+
+describe('findNinaDuplicateChatImage', () => {
+  it('answers the keeper in the NinaExistingPhoto shape', async () => {
+    spies.findNinaImageByContentHash.mockResolvedValue({
+      id: 'imgKEEPER001',
+      blobUrl: 'https://blob.example/nina/u1/chat/zzzz.jpg',
+    })
+    const photo = await actions.findNinaDuplicateChatImage({ contentHash: HASH })
+    expect(photo).toEqual({
+      kind: 'image',
+      id: 'imgKEEPER001',
+      url: 'https://blob.example/nina/u1/chat/zzzz.jpg',
+    })
+    expect(spies.findNinaImageByContentHash).toHaveBeenCalledWith('u1', HASH)
+  })
+
+  it('an invalid hash is null with no lookup; a miss is null', async () => {
+    expect(await actions.findNinaDuplicateChatImage({ contentHash: 'zz' })).toBeNull()
+    expect(spies.findNinaImageByContentHash).not.toHaveBeenCalled()
+
+    spies.findNinaImageByContentHash.mockResolvedValue(null)
+    expect(await actions.findNinaDuplicateChatImage({ contentHash: HASH })).toBeNull()
+  })
+})
+```
+
+**Impact:** New test files only. The existing send-path suites
+(`tests/nina.chatPhotoReattach.test.ts`, `tests/nina.resend.test.ts`) exercise the unchanged
+`attachExisting` behavior — the generalized attachments block writes the identical single
+reference row they assert (`sortOrder: images.length` with one attachment is preserved
+deliberately).
+
+---
+
+## Verification
+
+**Build:** `npm run build`
+**Tests:** `npm run test` — new suites `tests/nina.dedupe.test.ts` + `tests/nina.chatDedupe.test.ts`
+green; existing suites green, in particular `tests/nina.chatPhotoReattach.test.ts`,
+`tests/nina.attach.test.ts`, `tests/nina.resend.test.ts`, `tests/nina.blobRelease.test.ts`.
+**Typecheck:** `npm run typecheck`
+**Manual check:** `npm run dev`, open `/nina`, pick the same photo twice (two messages, and twice
+inside ONE batch if the OS picker allows). Expect: the second pick shows NO `PUT` to
+`*.public.blob.vercel-storage.com` and NO describe round trip in the network tab; after send,
+Media (`/nina/about`) shows the photograph once; the second message's row in
+`nina_message_images` carries `source_image_id` pointing at the first and `blob_url`/`pathname`
+equal to the first's; Blob holds exactly one new object.
+**Exit criteria:** pick the same file twice → only one new blob object, the second tile sent as a
+reference hidden from Media by `isOriginalPhoto()`; two racing sends → one object + one original
+modulo the accepted two-tab window that phase 4's sweep backstops; an invalid hash writes NULL
+and the send succeeds; unit coverage for the skip decision, the race-close reference+release
+ordering, and claim validation.
+
+---
+
+## Handoffs
+
+- **Phase 3 (generated + admin paths):** RECONCILED division of labor — phase 3 does NOT reuse
+  this module. It ships `lib/nina/imageDedupe.ts` (`planNinaImageWrite`, zero-import, shared by
+  `imagerun.ts` + the worker) and `planChatPhotoAddWrite` (`lib/admin/chatPhotos.ts`), and it adds
+  its own admin-scoped pre-check `findChatPhotoDuplicateAction` rather than widening
+  `findNinaDuplicateChatImage`'s contract. The same row-first/blob-second release idiom (release
+  registered only after the repointing write) is the shared template across all three. THIS
+  module's decisions stay the runner-upload path's and the ONLY thing STEP 1b calls:
+  `partitionNinaUploadClaims` + `ninaUploadInsertRow` — not `planNinaImageWrite` (which models
+  neither `kind`/description/`sortOrder`, the same-send twin split, nor the no-hash-on-reference
+  rule, and must stay zero-import for the worker).
+- **Phase 4 (backfill sweep):** the two-tab STEP 1b race (both re-checks read before either
+  commits) remains open by design — the sweep is its backstop. The write path takes phase 1's
+  finder as-is (newest original wins); the sweep elects keepers by a different rule
+  (message_id NOT NULL > description > oldest) — that divergence is acceptable and recorded
+  (plan index, Decisions); write-time does not need to match sweep-time election. Note for pass 1,
+  RECONCILED both ways: rows written by THIS phase always carry a hash on ORIGINALS (the sweep's
+  fill pass skips them), and rows written as REFERENCES deliberately carry NO hash — they are
+  expected NULLs for the sweep's pass-1 fill, never drift, and never a reason to "fix" phase 2
+  into stamping client-claimed hashes on references.
+- **Deliberate non-change, recorded for the next reader of `Composer.tsx`:** the mixed-batch case
+  (fresh + deduplicated tiles in one message) writes the bubble as fresh-first; the composer's
+  optimistic order matches this exactly (Step 3). The tile STRIP order he saw before sending is
+  not re-derived — same fixed order the pinned album photo has always had.
+
+## Rollback
+
+Revert the phase's commit(s). No schema change, no migration, no data migration in this phase —
+everything is behavior. Rows written as references while the phase was live are valid F37
+reference rows (identical shape to the re-attach path's) and can stay; their blobs are the
+keeper's, so nothing orphans. The `content_hash` values this phase wrote on originals remain
+correct inputs for phase 4 and are untouched by the revert.
