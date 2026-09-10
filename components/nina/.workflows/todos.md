@@ -2,7 +2,7 @@
 
 **Package Path**: `components/nina`
 **Package Code**: CN
-**Last Updated**: 2026-09-09
+**Last Updated**: 2026-09-10
 **Total Active Tasks**: 0
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 4
+- Completed: 5
 
 ---
 
@@ -33,6 +33,28 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P2-CN-A003** Phase 1: Flash the landing in the bubble's own color — and prove the jobs jump end-to-end
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `components/nina/MessageBubble.tsx` (ring-color literal :485 + comments :61-64, :470-483), `app/globals.css` (keyframe header color paragraph :260-266), `lib/nina/search.ts` (landing prose :331-334); the live verification protocol. Exit: the class reads `[--nina-flash-ring-color:var(--ink)]`; her bubbles still blink `--accent`; gates green (build, lint, vitest, format-clean); live probe of the /nina/jobs → "Buka chat-nya" flow passes — target `nina-msg-<id>` carries `data-flash="true"` and rests in the readable band.
+  - **Status**: done
+  - **Plan Set**: `JOB_JUMP_FLASH_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — "Buka chat-nya" must pinpoint the exact bubble and flicker it, like reply-to and search; R2 — the user-bubble flicker color becomes the user bubble's own color
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P2-CN-A003.md`
+  - **Completed**: 2026-09-10 09:56
+  - **Method**: /do
+  - **Files**: components/nina/MessageBubble.tsx, app/globals.css, lib/nina/search.ts
+  - **Drift**: Probe port 3100 was held by an unrelated process (EADDRINUSE) — the live probe served on 3777 instead; the plan's requirement ("not 3000", our server answering 307→/ on /nina/jobs) was met.
+    Plan Step 9's `git commit -- <paths> -m …` spelling put -m after the pathspec separator; git rejects that. Flags moved before `--`, same three-path pathspec. Commit landed clean.
+    Repo-wide `npm run format` re-dirtied lib/nina/queries.ts and tests/db.schema.nina.test.ts — HEAD itself is prettier-dirty under the freshly installed prettier (verified by prettier-checking the HEAD blob inside the repo). Both strays reverted; the commit contains exactly the three owned files. Any later format run in this worktree will re-dirty those two files until main fixes them.
+    Production data drift since the 09:00 analysis: jobs TBYflEJGPMfd and xyzLWZds8jfP now also carry live replyToIds. Harmless — the probe resolves the top job dynamically and still probed xZoxXUCsWUzq.
+    Verification Log filled in BOTH the source phase plan (.workflows/plan/job-jump-flash/phase-1.md) and the adopted copy (components/nina/.workflows/plan/P2-CN-A003.md).
+    Bookkeeping files in the working tree, uncommitted, and INTENTIONAL — carried in the docs commit: components/nina/.workflows/todos.md, components/nina/.workflows/plan/P2-CN-A003.md (adopted plan, new file), JOB_JUMP_FLASH_PLAN.md (untracked), .workflows/plan/job-jump-flash/ (untracked), 20260910-090042_code_analyzer.md (untracked).
+  - **Decided**: Probe server port 3100 vs alternative → 3777, because 3100 was held by a stranger (tie-break: reversible option; plan's own requirement met)
+  - **Decided**: Plan Step 9 commit command spelling vs git's argument grammar → flags before `--` separator, identical pathspec set (rung 3: the phase plan's code blocks — intent taken, shell spelling corrected)
+  - **Decided**: Prettier strays in two non-phase files → revert, keep the commit at exactly the three owned files (plan's own rule: 'if it names more, revert the strays before committing')
 
 - [x] **P2-CN-A000** Phase 1: Attach strip: two icon sends (recent + new chat)
   - **Difficulty**: NORMAL
