@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-08
+**Last Updated**: 2026-09-10
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -12,8 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 25
-- Completed: 24
+- Completed: 31
 
 ---
 
@@ -113,16 +112,6 @@
   - **Method**: /implement (swarm wave 1)
   - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
 
-- [ ] **P1-NIN-A033** Phase 3: Write-time dedup: jalur generated + admin
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns: `lib/nina/imagerun.ts` `storeNinaImage` hash bytes sebelum `put`; bila original (user, hash) sudah ada → skip `put`, insert reference ke existing; lockstep perilaku sama di `scripts/nina-image-worker.ts` (raw SQL, + test). `lib/admin/chatPhotoUpload.ts` hash blob hasil encode; pre-check sebelum `upload()`; klaim hash → `addChatPhotoAction` validasi + tulis; race/dupe admin ikut invariant 2-3. Exit: generate/admin-add yang bytes-nya sudah ada tidak menciptakan objek blob baru; worker script perilakunya setara; test untuk kedua jalur.
-  - **Status**: open
-  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 3 of 4)
-  - **Satisfies**: R1, R2 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan).
-  - **Depends on**: `P1-DB-A006`
-  - **Plan**: `.workflows/plan/P1-NIN-A033.md`
-
 ### [P2] Medium
 
 ### [P3] Low
@@ -134,6 +123,29 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A033** Phase 3: Write-time dedup: jalur generated + admin
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns: `lib/nina/imagerun.ts` `storeNinaImage` hash bytes sebelum `put`; bila original (user, hash) sudah ada → skip `put`, insert reference ke existing; lockstep perilaku sama di `scripts/nina-image-worker.ts` (raw SQL, + test). `lib/admin/chatPhotoUpload.ts` hash blob hasil encode; pre-check sebelum `upload()`; klaim hash → `addChatPhotoAction` validasi + tulis; race/dupe admin ikut invariant 2-3. Exit: generate/admin-add yang bytes-nya sudah ada tidak menciptakan objek blob baru; worker script perilakunya setara; test untuk kedua jalur.
+  - **Status**: completed
+  - **Plan Set**: `MEDIA_DEDUPE_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R1, R2 — R2: Konsumsi storage prod minimum (tidak ada bytes duplikat tersimpan).
+  - **Depends on**: `P1-DB-A006`
+  - **Plan**: `.workflows/plan/P1-NIN-A033.md`
+  - **Completed**: 2026-09-10 13:00
+  - **Method**: /do
+  - **Files**: lib/nina/imageDedupe.ts, lib/nina/imagerun.ts, lib/nina/queries.ts, lib/admin/chatPhotos.ts, lib/admin/chatPhotoSchema.ts, lib/admin/chatPhotoActions.ts, components/admin/chatPhotoUpload.ts, components/admin/ChatPhotoAdd.tsx, scripts/nina-image-worker.ts, tests/nina.imageDedupe.test.ts, tests/nina.imagerun.test.ts, tests/nina.imageworker.test.ts, tests/admin.chatPhotoDedupe.test.ts, tests/admin.chatPhotos.test.ts, tests/nina.photoRefs.test.ts, tests/nina.chatPhotoAdoption.test.ts
+  - **Drift**:
+    - Plan's imagerun import block placed findNinaImageByContentHash in './imagejobs'; it is exported from './queries' (P1's landing). Imported from './queries' per the plan's own prose.
+    - Plan's chatPhotoActions import block omitted newId while its own addChatPhotoAction body calls ninaImageCaption(newId()); kept { isValidId, newId } from '@/lib/id'.
+    - ChatPhotoAdd.tsx call site was at :47, plan said :57 — same line content.
+    - tests/nina.chatPhotoAdoption.test.ts (not in the plan's Files table) pins 'ADD says nothing about provenance' — a premise phase 3's exit criteria supersede (a duplicate admin add IS a reference). Re-pointed the check: ADD writes provenance only through planChatPhotoAddWrite's values.
+    - tests/admin.chatPhotos.test.ts: added vi.mock('@/lib/nina/blobRelease') so the plan's releaseBlobIfUnreferenced toHaveBeenCalledWith assertions are mock-backed; hoisted FakeVisionTokenFloorError via vi.hoisted because P3's client→action import makes the vision mock factory run during module evaluation.
+  - **Decided**:
+    - Worker race-test fixture answered the dedup re-check with a camelCase keeper, but findContentDuplicate reads row.blob_url (its own mapping test pins the snake_case shape) → answered with the snake_case row. Plan's assertions are the contract; fixture was the stale half.
+    - Admin chatPhotos KEEPER fixture used the same pathname constants as goodBlob, making claims.pathname === keeper.pathname and the release assertion impossible → gave the keeper a distinct pathname. Pathname-comparison release gate is the contract.
+    - REQUIRED_COLUMNS shape test: optional chains for noUncheckedIndexedAccess (mechanical TS fix).
 
 - [x] **P1-NIN-A023** Phase 2: Firing a shortcut into the turn
   - **Difficulty**: HARD

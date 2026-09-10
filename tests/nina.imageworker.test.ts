@@ -4,10 +4,13 @@ import {
   claimJob,
   closeFailed,
   dispatchCutoffFor,
+  findContentDuplicate,
   findSchemaDrift,
   finishSelfie,
   generate,
   parseArgv,
+  releaseBlobIfUnreferenced,
+  REQUIRED_COLUMNS,
   resolveWorkerSessionId,
 } from '../scripts/nina-image-worker.ts'
 import type { ClaimedJob, SchemaColumn } from '../scripts/nina-image-worker.ts'
@@ -291,7 +294,13 @@ describe('resolveWorkerSessionId — Finding 1', () => {
 })
 
 describe('finishSelfie — Finding 1', () => {
-  const image = { blobUrl: 'https://blob/x.png', pathname: 'nina/u/selfie-x.png', bytes: 1234 }
+  const image = {
+    blobUrl: 'https://blob/x.png',
+    pathname: 'nina/u/selfie-x.png',
+    bytes: 1234,
+    contentHash: null as string | null,
+    duplicateOf: null,
+  }
   const result = { costMicroUsd: 40_000, latencyMs: 78_200 }
 
   it('writes session_id, and writes the session it resolved', async () => {
@@ -354,6 +363,112 @@ describe('finishSelfie — Finding 1', () => {
     await expect(finishSelfie(sql, jobFixture(), image, result)).rejects.toThrow(/no session/)
     expect(sent(sql, /insert into/)).toHaveLength(0)
     expect(sent(sql, /update nina_turns/)).toHaveLength(0)
+  })
+
+  it('media-dedupe P3: the INSERT names source_image_id and binds the plan row, not the raw image', async () => {
+    // The skip path: `store` found the keeper and returned ITS object. The row must name the
+    // keeper, and the statement must carry the column so the reference is impossible to forget.
+    const keeper = {
+      id: 'keeper000001',
+      blobUrl: 'https://blob/keeper.png',
+      pathname: 'nina/u/selfie-keeper.png',
+    }
+    const sql = sqlResolving(SESSION_ID)
+    await finishSelfie(
+      sql,
+      jobFixture(),
+      {
+        blobUrl: keeper.blobUrl,
+        pathname: keeper.pathname,
+        bytes: 1234,
+        contentHash: CONTENT_HASH,
+        duplicateOf: keeper,
+      },
+      result,
+    )
+
+    const [insert] = sent(sql, /insert into nina_message_images/)
+    expect(insert?.text).toMatch(/\bsource_image_id\b/)
+    expect(insert?.values).toContain(keeper.id)
+    expect(insert?.values).toContain(keeper.blobUrl)
+    /* The hash rides the reference row too — invariant 4 is about the BYTES, which are the same. */
+    expect(insert?.values).toContain(CONTENT_HASH)
+    /* Nothing was put, so nothing is released: no release SELECT (keyed on `thumb_pathname` —
+     * the only statement in the whole file that names it) and no `del`. */
+    expect(sent(sql, /thumb_pathname/)).toHaveLength(0)
+  })
+
+  it('media-dedupe P3: a race at insert time writes the reference and then releases the loser', async () => {
+    // The re-check SELECT answers with a keeper (the rows callback matches it by its shape), so
+    // the fresh bytes must be referenced AND then checked before a `del`.
+    const keeper = {
+      id: 'keeper000001',
+      blobUrl: 'https://blob/keeper.png',
+      pathname: 'nina/u/selfie-keeper.png',
+    }
+    const sql = fakeSql({
+      rows: (call) => {
+        /* Order matters: `resolveWorkerSessionId`'s statement also contains `union all`, so the
+         * reply lookup must be answered first. */
+        if (/with reply as/.test(call.text)) return [{ id: SESSION_ID }]
+        /* The dedup re-check is the only other statement naming content_hash in a WHERE. The row
+         * is spelled as the DATABASE spells it — snake_case — because `findContentDuplicate`
+         * maps `blob_url` onto the camelCase hit (the shape its own mapping test pins). */
+        if (/content_hash =/.test(call.text)) {
+          return [{ id: keeper.id, blob_url: keeper.blobUrl, pathname: keeper.pathname }]
+        }
+        /* The release check asks both tables' six columns; nothing else references the loser. */
+        return []
+      },
+    })
+    await finishSelfie(
+      sql,
+      jobFixture(),
+      {
+        blobUrl: 'https://blob/fresh.png',
+        pathname: 'nina/u/selfie-fresh.png',
+        bytes: 1234,
+        contentHash: CONTENT_HASH,
+        duplicateOf: null,
+      },
+      result,
+    )
+
+    const [insert] = sent(sql, /insert into nina_message_images/)
+    expect(insert?.values).toContain(keeper.id)
+    expect(insert?.values).toContain(keeper.blobUrl)
+    /* The release ran, and it asked BOTH tables' six columns before deleting — the worker cannot
+     * release an object the app would have kept. Keyed on `thumb_pathname`: the only statement in
+     * the file that names it. */
+    const [release] = sent(sql, /thumb_pathname/)
+    expect(release?.text).toMatch(/thumb_url/)
+    expect(release?.text).toMatch(/user_id = \$\d+/)
+  })
+
+  it('media-dedupe P3: a dedup re-check fault degrades to an original, and the job still closes', async () => {
+    const sql = fakeSql({
+      failOn: /content_hash =/, // the re-check SELECT is the only statement that matches
+      rows: (call) => (/with reply as/.test(call.text) ? [{ id: SESSION_ID }] : []),
+    })
+    await expect(
+      finishSelfie(
+        sql,
+        jobFixture(),
+        {
+          blobUrl: 'https://blob/fresh.png',
+          pathname: 'nina/u/selfie-fresh.png',
+          bytes: 1234,
+          contentHash: CONTENT_HASH,
+          duplicateOf: null,
+        },
+        result,
+      ),
+    ).resolves.toBeUndefined()
+
+    const [insert] = sent(sql, /insert into nina_message_images/)
+    expect(insert?.values).toContain('https://blob/fresh.png')
+    expect(insert?.values).toContain(null) // source_image_id
+    expect(sent(sql, /set status = 'ok'/)).toHaveLength(1)
   })
 })
 
@@ -628,5 +743,86 @@ describe('findSchemaDrift — Finding 1 as a CLASS', () => {
     expect(findSchemaDrift([column({ table_name: 'ledger', column_name: 'id' })], spec)).toContain(
       'widget (whole table) is missing',
     )
+  })
+})
+
+describe('findContentDuplicate — media-dedupe P3', () => {
+  it('asks the owner-scoped, originals-only, newest-first question in one statement', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    await findContentDuplicate(sql, 'user00000001', CONTENT_HASH)
+
+    const [call] = sql.calls
+    expect(call?.text).toMatch(/from nina_message_images/)
+    expect(call?.text).toMatch(/user_id = \$\d+/)
+    expect(call?.text).toMatch(/content_hash = \$\d+/)
+    /* ORIGINALS ONLY: a reference must never satisfy a dedup lookup, or two references could
+     * chain and the keeper's deletion would re-materialize both as originals. */
+    expect(call?.text).toMatch(/source_avatar_id is null/)
+    expect(call?.text).toMatch(/source_image_id is null/)
+    /* Newest first, the collection reads' own tie-break. */
+    expect(call?.text).toMatch(/order by created_at desc, id desc/)
+    expect(call?.text).toMatch(/limit 1/)
+  })
+
+  it('answers null on a miss', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    expect(await findContentDuplicate(sql, 'user00000001', CONTENT_HASH)).toBeNull()
+  })
+
+  it('maps the snake_case row onto the dedup shape', async () => {
+    const sql = fakeSql({
+      rows: (call) =>
+        /content_hash =/.test(call.text)
+          ? [{ id: 'keeper000001', blob_url: 'https://blob/k.png', pathname: 'nina/u/selfie-k.png' }]
+          : [],
+    })
+    expect(await findContentDuplicate(sql, 'user00000001', CONTENT_HASH)).toEqual({
+      id: 'keeper000001',
+      blobUrl: 'https://blob/k.png',
+      pathname: 'nina/u/selfie-k.png',
+    })
+  })
+})
+
+describe('releaseBlobIfUnreferenced — media-dedupe P3', () => {
+  const ref = { blobUrl: 'https://blob/loser.png', pathname: 'nina/u/selfie-loser.png' }
+
+  it('deletes only when no row in either table answers', async () => {
+    const sql = sqlResolving(SESSION_ID)
+    sql.calls.length = 0
+    const delFn = vi.fn(async () => undefined)
+    expect(await releaseBlobIfUnreferenced(sql, 'user00000001', ref, delFn)).toBe('deleted')
+    expect(delFn).toHaveBeenCalledWith(ref.blobUrl)
+  })
+
+  it('keeps the object when another row still points at it, and never calls del', async () => {
+    const sql = fakeSql({
+      rows: (call) => (/union all/.test(call.text) ? [{ id: 'other0000001' }] : []),
+    })
+    const delFn = vi.fn(async () => undefined)
+    expect(await releaseBlobIfUnreferenced(sql, 'user00000001', ref, delFn)).toBe('shared')
+    expect(delFn).not.toHaveBeenCalled()
+  })
+
+  it('errs toward keep on any fault — an orphan is recoverable, a dead reference is not', async () => {
+    const sql = fakeSql({ failOn: /union all/ })
+    const delFn = vi.fn(async () => undefined)
+    expect(await releaseBlobIfUnreferenced(sql, 'user00000001', ref, delFn)).toBe('failed')
+    expect(delFn).not.toHaveBeenCalled()
+  })
+})
+
+describe('REQUIRED_COLUMNS — media-dedupe P3 names what it queries', () => {
+  it('lists the dedup columns on both tables the worker now reads', () => {
+    // The file's own rule: every column a statement names must be listed, or a rename survives
+    // silently. `findContentDuplicate` and `releaseBlobIfUnreferenced` each named new ones.
+    const images = REQUIRED_COLUMNS.nina_message_images
+    for (const column of ['content_hash', 'source_avatar_id', 'source_image_id', 'created_at']) {
+      expect(images?.columns, column).toContain(column)
+    }
+    const avatars = REQUIRED_COLUMNS.nina_avatars
+    for (const column of ['thumb_pathname', 'thumb_url']) {
+      expect(avatars?.columns, column).toContain(column)
+    }
   })
 })

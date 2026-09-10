@@ -11,6 +11,7 @@ import { NINA_IMAGE_MAX_ATTEMPTS } from '@/lib/nina/imagerecipe'
 import { runNinaImageJob } from '@/lib/nina/imagerun'
 import {
   getNinaMessagesByIds,
+  insertNinaAvatarAsCurrent,
   insertNinaMessageImages,
   insertNinaMessages,
   readNinaTuning,
@@ -38,13 +39,17 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  */
 
 vi.mock('next/server', () => ({ after: (task: () => unknown) => void task }))
-vi.mock('@vercel/blob', () => ({
-  put: vi.fn(async () => ({
-    url: 'https://blob.test/nina/u1/selfie-x.png',
-    pathname: 'nina/u1/selfie-x.png',
-  })),
+
+/** Hoisted so the factory below can name it and the tests can assert on it. */
+const { putBlob, findDuplicate, releaseLoser } = vi.hoisted(() => ({
+  putBlob: vi.fn(),
+  findDuplicate: vi.fn(),
+  releaseLoser: vi.fn(),
 }))
+
+vi.mock('@vercel/blob', () => ({ put: putBlob }))
 vi.mock('@/lib/env', () => ({ blobEnv: () => ({ BLOB_READ_WRITE_TOKEN: 'test-token' }) }))
+vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: releaseLoser }))
 vi.mock('@/lib/nina/caption', () => ({ captionNinaPhoto: vi.fn() }))
 vi.mock('@/lib/nina/imagecall', () => ({ callNinaImageModel: vi.fn() }))
 vi.mock('@/lib/nina/imagejobs', () => ({
@@ -55,6 +60,7 @@ vi.mock('@/lib/nina/imagejobs', () => ({
   requeueNinaImageJob: vi.fn(),
 }))
 vi.mock('@/lib/nina/queries', () => ({
+  findNinaImageByContentHash: findDuplicate,
   getNinaMessagesByIds: vi.fn(),
   insertNinaAvatarAsCurrent: vi.fn(),
   insertNinaMessageImages: vi.fn(),
@@ -71,6 +77,7 @@ const call = vi.mocked(callNinaImageModel)
 const quotedRows = vi.mocked(getNinaMessagesByIds)
 const insertImages = vi.mocked(insertNinaMessageImages)
 const insertMessages = vi.mocked(insertNinaMessages)
+const insertAvatar = vi.mocked(insertNinaAvatarAsCurrent)
 const tuning = vi.mocked(readNinaTuning)
 const writeSession = vi.mocked(resolveNinaWriteSession)
 
@@ -113,6 +120,12 @@ beforeEach(() => {
   insertImages.mockResolvedValue(undefined as never)
   complete.mockResolvedValue(undefined as never)
   caption.mockResolvedValue('nih, di pantai')
+  putBlob.mockResolvedValue({
+    url: 'https://blob.test/nina/u1/selfie-x.png',
+    pathname: 'nina/u1/selfie-x.png',
+  })
+  findDuplicate.mockResolvedValue(null)
+  releaseLoser.mockResolvedValue('deleted')
 })
 
 describe('finishSelfie captions from the scene', () => {
@@ -218,5 +231,94 @@ describe('finishSelfie captions from the scene', () => {
     expect(insertImages).toHaveBeenCalledWith(USER, [
       expect.objectContaining({ description: SCENE, prompt: ARGS.sidecar }),
     ])
+  })
+})
+
+describe('write-time dedup (media-dedupe P3)', () => {
+  const KEEPER = {
+    id: 'keeper000001',
+    blobUrl: 'https://blob.test/nina/u1/selfie-keeper.png',
+    pathname: 'nina/u1/selfie-keeper.png',
+  }
+  const FRESH = {
+    url: 'https://blob.test/nina/u1/selfie-fresh.png',
+    pathname: 'nina/u1/selfie-fresh.png',
+  }
+
+  it('skips the put and writes a REFERENCE when an original already holds the bytes', async () => {
+    findDuplicate.mockResolvedValue(KEEPER)
+
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    /* The whole point: no second object exists. */
+    expect(putBlob).not.toHaveBeenCalled()
+    expect(insertImages).toHaveBeenCalledWith(
+      USER,
+      [
+        expect.objectContaining({
+          blobUrl: KEEPER.blobUrl,
+          pathname: KEEPER.pathname,
+          sourceImageId: KEEPER.id,
+          /* The scene and sidecar stay THIS generation's — argued at the insert. */
+          description: SCENE,
+          prompt: ARGS.sidecar,
+        }),
+      ],
+    )
+    /* Nothing was put, so there is nothing to release. */
+    expect(releaseLoser).not.toHaveBeenCalled()
+    /* A deduped photograph is a delivered photograph. */
+    expect(complete).toHaveBeenCalled()
+  })
+
+  it('hashes the bytes and writes the hash on a fresh original', async () => {
+    putBlob.mockResolvedValue(FRESH)
+
+    await runNinaImageJob(USER, JOB_ID)
+
+    expect(putBlob).toHaveBeenCalledOnce()
+    const [row] = insertImages.mock.calls[0]?.[1] ?? []
+    expect(row?.sourceImageId ?? null).toBeNull()
+    expect(row?.contentHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(releaseLoser).not.toHaveBeenCalled()
+  })
+
+  it('loses a race at insert time: the row becomes a reference and the fresh bytes are released', async () => {
+    // Two hosts both answered "no duplicate" before their puts; the re-check at insert is what
+    // keeps the second object from surviving. ROW FIRST, BLOB SECOND.
+    findDuplicate.mockResolvedValueOnce(null).mockResolvedValueOnce(KEEPER)
+    putBlob.mockResolvedValue(FRESH)
+
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    expect(putBlob).toHaveBeenCalledOnce()
+    expect(insertImages).toHaveBeenCalledWith(
+      USER,
+      [expect.objectContaining({ blobUrl: KEEPER.blobUrl, sourceImageId: KEEPER.id })],
+    )
+    expect(releaseLoser).toHaveBeenCalledWith(USER, {
+      blobUrl: FRESH.url,
+      pathname: FRESH.pathname,
+    })
+  })
+
+  it('a dedup lookup fault degrades to a normal store; the photograph is never lost to it', async () => {
+    // The generation was already paid for. Dedup is an optimization on top of that spend.
+    findDuplicate.mockRejectedValue(new Error('neon: connection reset'))
+
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    expect(putBlob).toHaveBeenCalledOnce()
+    expect(insertImages).toHaveBeenCalled()
+    expect(complete).toHaveBeenCalled()
+  })
+
+  it('an avatar generation is out of dedup scope: no lookup, no hash, album write as before', async () => {
+    claim.mockResolvedValue({ args: { ...ARGS, purpose: 'avatar' }, attempts: 1 } as never)
+
+    await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
+
+    expect(findDuplicate).not.toHaveBeenCalled()
+    expect(insertAvatar).toHaveBeenCalled()
   })
 })

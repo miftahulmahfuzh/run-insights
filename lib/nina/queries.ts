@@ -2009,6 +2009,15 @@ export interface NinaChatPhotoBlobPatch {
   width: number
   height: number
   bytes: number
+  /**
+   * media-dedupe P3. The sha-256 claim over the NEW bytes, or NULL. Optional so existing callers
+   * compile; the `.set()` below coalesces to NULL, because a Replace that left the OLD hash on
+   * the NEW bytes would be the one lie the dedup lookup cannot survive: `findNinaImageByContentHash`
+   * would keep answering for bytes this row no longer stores (invariant 4's one semantics —
+   * identical hash ⟺ identical bytes in the store). A replaced row is un-hashed until something
+   * hashes its new bytes again; NULL is the honest value, the same meaning it has everywhere.
+   */
+  contentHash?: string | null
 }
 
 /**
@@ -2066,6 +2075,12 @@ export async function updateNinaChatPhotoBlob(
        */
       sourceAvatarId: null,
       sourceImageId: null,
+      /*
+       * media-dedupe P3. Same statement as the nulls above it, for the same reason: there must be
+       * no window in which the row points at new bytes and claims old ones. A valid claim from
+       * the caller sticks; its absence retracts. See `NinaChatPhotoBlobPatch.contentHash`.
+       */
+      contentHash: patch.contentHash ?? null,
     })
     .where(
       and(

@@ -49,17 +49,38 @@ const uploadedBlob = {
 
 const BLOB_MISMATCH = 'blobUrl and pathname describe different objects'
 
+/**
+ * media-dedupe P3. The client's sha-256 claim over the exact bytes it PUT — or, on a skipped
+ * upload, over the bytes it tried to. SHAPE only, deliberately: the FORMAT is validated in the
+ * action with `isValidContentHash`, because invariant 9 makes a malformed hash a NULL and a
+ * proceed, never a refused add. A regex here would be an error where the plan demands silence.
+ */
+const chatPhotoContentHash = z.string().min(1).max(128)
+
 /** "Put a new photograph in the collection." Mints the message + image pair. */
 export const chatPhotoAddSchema = z
-  .object({ ...uploadedBlob })
+  .object({
+    ...uploadedBlob,
+    contentHash: chatPhotoContentHash.optional(),
+    /**
+     * The row the browser's pre-check found, when the upload was SKIPPED. An id, so it gets the
+     * shape check every id in this file gets; existence and ownership are the action's job, as
+     * the header above says.
+     */
+    duplicateOfId: chatPhotoId.optional(),
+  })
   .refine((value) => blobUrlMatchesPathname(value.blobUrl, value.pathname), {
     message: BLOB_MISMATCH,
     path: ['blobUrl'],
   })
 
-/** "Swap the bytes behind this row." The row id plus the same claims. */
+/** "Swap the bytes behind this row." The row id plus the same claims, plus the new bytes' hash. */
 export const chatPhotoReplaceSchema = z
-  .object({ id: chatPhotoId, ...uploadedBlob })
+  .object({
+    id: chatPhotoId,
+    ...uploadedBlob,
+    contentHash: chatPhotoContentHash.optional(),
+  })
   .refine((value) => blobUrlMatchesPathname(value.blobUrl, value.pathname), {
     message: BLOB_MISMATCH,
     path: ['blobUrl'],

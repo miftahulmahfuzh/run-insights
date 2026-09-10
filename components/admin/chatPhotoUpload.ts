@@ -2,7 +2,9 @@
 
 import { upload } from '@vercel/blob/client'
 
+import { findChatPhotoDuplicateAction } from '@/lib/admin/chatPhotoActions'
 import { ADMIN_CHAT_PHOTO_CONTENT_TYPE, adminChatPhotoPathname } from '@/lib/admin/chatPhotos'
+import { contentHashOf } from '@/lib/photos/contentHash'
 import { newId } from '@/lib/id'
 
 /**
@@ -49,6 +51,18 @@ export interface UploadedChatPhoto {
   width: number
   height: number
   bytes: number
+  /**
+   * media-dedupe P3. sha-256 hex over the exact bytes this object holds — the bytes that were (or
+   * would have been) PUT. A claim, in the same class as `width` and `bytes`: the action
+   * format-validates it and the shared insert NULLs an invalid one (invariant 9).
+   */
+  contentHash: string
+  /**
+   * Non-null: an original row already holds these bytes, the PUT was SKIPPED, and `blobUrl` /
+   * `pathname` are that row's (the dimensions and byte count are still this encode's — identical
+   * bytes measure identically). `addChatPhotoAction` turns the add into a reference to this row.
+   */
+  duplicateOfId: string | null
 }
 
 /**
@@ -98,7 +112,9 @@ export async function encodeChatPhotoJpeg(
 }
 
 /**
- * Encode, then PUT straight to Blob through the admin handshake.
+ * Encode, then PUT straight to Blob through the admin handshake — unless the collection already
+ * holds these bytes, in which case the PUT is SKIPPED and the claims describe the row that does
+ * hold them.
  *
  * `adminChatPhotoPathname` is what the client may ASK for; Blob rewrites it with a random suffix and
  * the STORED pathname is whatever `upload` returned — 43 symbols in the id segment, not 12 — which is
@@ -107,9 +123,45 @@ export async function encodeChatPhotoJpeg(
  *
  * `handleUploadUrl` is the ADMIN route and not `/api/upload`: that route mints tokens for a
  * merely-signed-in session and knows nothing about this pathname shape.
+ *
+ * ── media-dedupe P3: THE HASH IS OVER THE ENCODED BLOB, BEFORE THE PUT ───────────────────────
+ * `encoded.blob` is the exact body of the PUT, so it is what gets hashed — invariant 4's "bytes
+ * persis yang di-PUT". The re-encode is NOT deterministic across browsers and sessions, and that
+ * is fine: identical hash still means identical stored bytes, which is the only claim the column
+ * makes. The pre-check is one owner-scoped server action round trip; on a hit it saves the PUT, a
+ * second Blob object, and the duplicate row that would have hidden the keeper from nothing.
+ *
+ * ── WHY DEDUPE IS OPT-IN, AND WHY REPLACE MUST NEVER PASS IT ─────────────────────────────────
+ * `opts.dedupe` defaults to OFF so every existing caller keeps today's behavior, and
+ * `ChatPhotoAdd` is the only caller that turns it on. Replace must NOT: its contract is "swap the
+ * bytes behind THIS row", and a deduped replace would point the row at another row's object and
+ * strip its provenance to a reference — which the collection reads then hide, making the
+ * photograph the operator can see vanish from `/admin/photos`. Replace gets the hash for free
+ * (it claims it through `chatPhotoReplaceSchema`) but never the skip.
  */
-export async function uploadChatPhoto(userId: string, file: File): Promise<UploadedChatPhoto> {
+export async function uploadChatPhoto(
+  userId: string,
+  file: File,
+  opts: { dedupe?: boolean } = {},
+): Promise<UploadedChatPhoto> {
   const encoded = await encodeChatPhotoJpeg(file)
+  const contentHash = await contentHashOf(encoded.blob)
+
+  if (opts.dedupe === true) {
+    const duplicate = await findChatPhotoDuplicateAction(contentHash)
+    if (duplicate != null) {
+      return {
+        blobUrl: duplicate.blobUrl,
+        pathname: duplicate.pathname,
+        width: encoded.width,
+        height: encoded.height,
+        bytes: encoded.blob.size,
+        contentHash,
+        duplicateOfId: duplicate.id,
+      }
+    }
+  }
+
   const result = await upload(adminChatPhotoPathname(userId, newId()), encoded.blob, {
     access: 'public',
     contentType: ADMIN_CHAT_PHOTO_CONTENT_TYPE,
@@ -122,5 +174,7 @@ export async function uploadChatPhoto(userId: string, file: File): Promise<Uploa
     width: encoded.width,
     height: encoded.height,
     bytes: encoded.blob.size,
+    contentHash,
+    duplicateOfId: null,
   }
 }

@@ -155,9 +155,15 @@ describe('a reference row is not a member, so replace and remove refuse it', () 
     expect(source).toContain('lives elsewhere')
   })
 
-  it('leaves the ADD path saying nothing about provenance — those bytes are an original', () => {
+  it('media-dedupe P3: the ADD path writes provenance only through planChatPhotoAddWrite', () => {
+    // Used to pin "ADD says nothing about provenance — those bytes are an original", true when
+    // every add WAS an original. media-dedupe P3 superseded that: an add whose bytes the
+    // collection already holds IS a re-share (F37's shape), so the columns are named — but only
+    // through the plan helper's values, and a fresh add still binds NULL there (pinned pure in
+    // tests/admin.chatPhotoDedupe.test.ts and through the action in tests/admin.chatPhotos.test.ts).
     const body = bodyOf('addChatPhotoAction')
-    expect(body).not.toContain('sourceAvatarId')
-    expect(body).not.toContain('sourceImageId')
+    expect(body).toContain('planChatPhotoAddWrite(')
+    expect(body).toContain('sourceAvatarId: plan.sourceAvatarId')
+    expect(body).toContain('sourceImageId: plan.sourceImageId')
   })
 })

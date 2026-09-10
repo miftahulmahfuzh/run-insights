@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-10 (task `P1-NIN-A033`, phase 3 of 4 of the `media-dedupe` set — write-time content-hash dedup on the generated image path and the admin chat-photo path: new zero-import `imageDedupe.ts` hosting `planNinaImageWrite` for BOTH generated hosts (`imagerun.ts` and `scripts/nina-image-worker.ts`), `storeNinaImage` hashing the bytes before the `put` and skipping the upload on a hit, the race re-checked at `finishSelfie`'s insert with the loser blob released row-first, `updateNinaChatPhotoBlob` in `queries.ts` carrying the claimed hash on a blob patch, and — framed as what this package provides to them — `lib/admin`'s add path via `planChatPhotoAddWrite` + `findNinaImageByContentHash`; previously task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -627,8 +627,13 @@ turn by `turn.ts` since `P1-NIN-A023`**).
 `imagerecipe.ts` (camera settings shared with the backstop worker), `imagegen.ts` (prompt text),
 `imagejobs.ts` (job row lifecycle, quota, and — since R2 — the `deleted_at` predicate on every
 image-row read plus `softDeleteNinaImageJob`), `imagecall.ts` (the OpenRouter image call),
+`imageDedupe.ts` (since `P1-NIN-A033` — the ONE write-plan decision both generated hosts share,
+`planNinaImageWrite`; **zero imports** by the same contract `imagefail.ts` states, because
+`scripts/nina-image-worker.ts` runs it under `--experimental-strip-types` — see the dedup section
+below),
 `imagerun.ts` (claim → generate → store → finish, inside `after()` — and, since `P1-NIN-A020`,
-caption the selfie from the scene it was asked to draw),
+caption the selfie from the scene it was asked to draw, and, since `P1-NIN-A033`, hash the bytes
+BEFORE the put and write a reference row on a dedup hit),
 `imagefail.ts` (classify a failure, pick what she says — and, since `P1-NIN-A019`, pick it from the
 scene-agnostic `NINA_IMAGE_CAPTION_POOL` rather than the historical set), `caption.ts` (the
 `glm-5.3` call that writes the real caption from what is in the picture), `imagetools.ts` /
@@ -674,9 +679,12 @@ see the composer section below for why that single spelling is load-bearing.
 
 ### Persistence
 `queries.ts` — every Drizzle query for the `nina_*` tables, including `readNinaTuning` /
-`writeNinaTuning`, and — since `P1-DB-A004` — the five `nina_shortcuts` statements
+`writeNinaTuning`, the five `nina_shortcuts` statements
 (`listNinaShortcuts`, `insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`,
-`bumpNinaShortcutUses`) described below.
+`bumpNinaShortcutUses`) described below, and — since `P1-NIN-A033` — the dedup plumbing:
+`findNinaImageByContentHash` (owner-scoped, originals-only, newest-first — the one lookup the whole
+media-dedupe set answers from) plus the `content_hash` field on `NinaImageInsert` and
+`NinaChatPhotoBlobPatch`, where a valid claim sticks and its absence retracts to NULL.
 
 `tuningFromRow` / `tuningToColumns` are **the one place the flat row and the nested model meet**, and
 after R4 and R3 that is **thirty-eight** snake_case columns against `traits.anger` /
@@ -2069,6 +2077,118 @@ would change what that suite measures.
 touch the constant; two bumps would date two commits to one change. The reason it is a bump at all
 despite no system text moving is in *"The prompt is a function of the tuning"* above.
 
+## Write-time dedup on the generated and admin photo paths (`P1-NIN-A033`, phase 3 of 4)
+
+The measured defect this phase closes: identical bytes landing twice. A seeded re-generation, or the
+same arrival-card photograph re-picked in `/admin/photos`, put a SECOND Blob object under a fresh
+`addRandomSuffix` pathname and a second `nina_message_images` row beside it — `addRandomSuffix`
+guarantees two objects for identical bytes, because no layer compared content. Phase 2 taught the
+runner-upload path to notice; phase 3 teaches the two remaining writers of image rows, and puts the
+generated half's DECISION where both of its hosts can reach it.
+
+### `imageDedupe.ts` — the one decision both generated hosts share
+
+**Zero imports.** Not "few" — zero. `lib/nina/imagerun.ts` (the in-platform writer) and
+`scripts/nina-image-worker.ts` (the GitHub backstop) must produce the same row from the same facts,
+and the worker can import neither `queries.ts` (`server-only`, `@/` aliases) nor anything a query
+module drags in — so the module strips to plain JavaScript and still runs, the same contract
+`imagefail.ts` and `lib/id.ts` state for themselves.
+
+`planNinaImageWrite({ hit, stored })` answers with `{ row, release }`, and there are exactly three
+answers — the third is where the ordering rule lives:
+
+- **No keeper** → an original. The row names this path's own object and carries the hash.
+- **Keeper, same pathname** → the pre-put skip. No bytes were ever put, so the row references the
+  keeper and there is nothing to release. The caller reaches this answer by passing the KEEPER'S own
+  location as `stored` — which is what makes the skip and the race ONE function; the pathname
+  comparison is the only thing distinguishing them.
+- **Keeper, other pathname** → the race. Fresh bytes were put before a concurrent original landed:
+  the row references the keeper and the fresh loser bytes are released — **ROW FIRST, BLOB SECOND**.
+  The release travels IN the plan; the caller puts the row in before asking
+  `releaseBlobIfUnreferenced` about the loser.
+
+The hash rides on the reference row too, and that is deliberate: `content_hash` is a fact about the
+BYTES, and a reference row displays exactly the bytes the keeper stores — writing the value keeps
+the column's one semantics (identical hash ⟺ identical bytes in the store) true for every row that
+carries it, and it costs nothing, the value is already in hand.
+
+### `imagerun.ts` — the hash happens before the put, and the race is closed at the insert
+
+`storeNinaImage` is where the claim stops being a claim: this is the one generated path where the
+server holds the bytes. `contentHashOf` runs BEFORE `put`, because the only way to skip the put is
+to already know the answer — a hit means an ORIGINAL row of this user's already stores exactly these
+bytes, so the put is skipped entirely and the row `finishSelfie` writes becomes a REFERENCE (the
+keeper's `blob_url`/`pathname` copied on, the keeper's id in `source_image_id`). The row is not
+dropped and no bytes are stored.
+
+**The question is asked a second time, at the insert.** `storeNinaImage`'s pre-put lookup cannot see
+a host that has not inserted yet: a sweep runner and an in-platform `after()` share no lock, and a
+seeded re-generation produces identical bytes BY DESIGN. So `finishSelfie` re-checks
+`findNinaImageByContentHash` after the put and as close to the insert as the code can stand; a hit
+there writes the reference and releases the bytes just stored. **A lookup fault degrades to today's
+behavior — put + original — and never to a lost photograph**: the generation has already been paid
+for (78 s and $0.04, measured), so dedup is an optimization on top of that spend, and what is NOT
+degraded is the column, because the hash is computed locally and always travels.
+
+**A deduped row keeps ITS OWN description and prompt — the opposite of `resolveAttachment`'s copy
+rule, deliberately.** `resolveAttachment` copies the source's description because that row would
+otherwise have to PAY for vision prose it can get free. This row is the opposite case: it never pays
+for prose at all — `args.scene` IS a truthful description of these bytes (the picture was written
+from it) — and copying the keeper's scene would put ANOTHER generation's prose under this bubble, a
+real trap because a different prompt with the same seed can render identical bytes. `prompt` (the
+sidecar) exists precisely to record what ITS generation was told.
+
+### What this package provides to `scripts/nina-image-worker.ts`
+
+The worker cannot import `queries.ts` or `blobRelease.ts`, so it restates the POLICY in raw SQL and
+keeps the duplication honest the way every duplication in that file is: by naming the columns in
+`REQUIRED_COLUMNS`, where a drift takes the workflow red. This phase adds `content_hash`,
+`source_avatar_id`, `source_image_id` and `created_at` to its `nina_message_images` entry and
+`thumb_pathname`/`thumb_url` to `nina_avatars` — the columns its new `findContentDuplicate` SELECT
+and its six-column release check query. The ROW-LEVEL decision is not restated at all:
+`finishSelfie` there calls the SAME `planNinaImageWrite` this package ships, so the two hosts cannot
+disagree about what a deduped write looks like. `store` there hashes before the put in lockstep,
+`avatar` out of scope here as there.
+
+### What this package provides to `lib/admin`'s chat-photo path
+
+`lib/admin/chatPhotoActions.ts`, `chatPhotos.ts` and `components/admin/chatPhotoUpload.ts` consume
+three things from here:
+
+- **The lookup.** `findChatPhotoDuplicateAction` is a thin owner-scoped wrapper over
+  `findNinaImageByContentHash` — the browser hashes the encoded JPEG and asks BEFORE it PUTs, so
+  re-picking a photograph costs one indexed lookup instead of a second Blob object.
+- **The insert.** `addChatPhotoAction` writes through `insertNinaMessageImages` as ever, but from
+  `planChatPhotoAddWrite` (`lib/admin/chatPhotos.ts`, which owns that decision and imports
+  `ninaPhotoProvenance` from this package's `attach.ts`): a pin from the pre-check or a race hit
+  becomes a reference whose `description` IS copied from the keeper — this IS the
+  `resolveAttachment` case, the vision prose for identical pixels is already in hand and the
+  caption pass runs cheap off it.
+- **The patch.** `replaceChatPhotoAction` claims the new bytes' hash through
+  `updateNinaChatPhotoBlob` — a valid claim sticks, its absence retracts to NULL.
+
+Replace never DEDUPES, and that asymmetry is correct: its contract is "swap the bytes behind THIS
+row", and a deduped replace would point the row at another row's object and strip its provenance to
+a reference the collection reads then hide — the operator's photograph would vanish from
+`/admin/photos`. Replace gets the hash, never the skip (`uploadChatPhoto`'s `opts.dedupe` is opt-in
+and `ChatPhotoAdd` is its only caller).
+
+### `queries.ts` — the hash moves with the bytes, in one statement
+
+`updateNinaChatPhotoBlob` takes an optional `contentHash` and coalesces it to NULL in the SAME
+`.set()` as the provenance nulls above it: a Replace that left the OLD hash on the NEW bytes would
+be the one lie the dedup lookup cannot survive — `findNinaImageByContentHash` would keep answering
+for bytes this row no longer stores. A replaced row is un-hashed until something hashes its new
+bytes again; NULL is the honest value, the same meaning it has everywhere.
+
+### Scope, and what the NULLs mean
+
+`avatar` is outside the dedup scope in both hosts — `nina_avatars` carries no `content_hash` and the
+Media collection never reads one, so `storeNinaImage`'s `contentHash: null` there is the honest
+value, not a TODO. And a NULL hash on a REFERENCE row is expected, not drift: phase 2's upload-path
+references carry none (there the hash is a CLIENT CLAIM, and a claim never lands on a row that does
+not own the bytes), and phase 4's sweep pass 1 fills the hash-less references from the Blob later.
+
 ## Dataflow
 
 **A user sends Nina a message.** `Composer.tsx` may call `describeNinaImage` first → `vision.ts`
@@ -2120,7 +2240,9 @@ step.
 **Internal:** `@/lib/db` and `@/lib/db/schema` (heaviest), `@/lib/date/ranges` (the Jakarta-timezone
 day model behind nags, patterns, promises and proactive), `@/lib/db/queries`, `@/lib/format`,
 `@/lib/metrics/*`, `@/lib/badges/*`, `@/lib/records/*`, `@/lib/llm/client`, `@/lib/env`, `@/lib/id`,
-`@/lib/auth/requireUserId`, `@/lib/push/send`.
+`@/lib/auth/requireUserId`, `@/lib/push/send`,
+`@/lib/photos/contentHash` (`contentHashOf`/`isValidContentHash` — the sha-256 hex format behind
+the whole media-dedupe set; `imagerun.ts`, `dedupe.ts`, `queries.ts`).
 
 **`persona.ts` and `tuning.ts` import almost nothing.** `tuning.ts` has **zero** imports; `persona.ts`
 imports only `./tuning`. Both stay importable from a `'use client'` module, which is what lets
@@ -2156,6 +2278,12 @@ are worth knowing:
 
 - **`after()` work outlives the response.** `runTurnDistillation` and the image dispatch run after
   the Server Action returns. They must never throw into the response path.
+- **The write-time dedup race is closed by asking twice, not by a lock** (`P1-NIN-A033`). A sweep
+  runner and an in-platform `after()` share no lock and can both answer "no original holds these
+  bytes" before either inserts, and a seeded re-generation produces identical bytes BY DESIGN — so
+  `storeNinaImage` asks before its put and `finishSelfie` asks again at the insert. A hit at the
+  second door writes the reference and releases the just-put loser only after that row is in.
+  There is no lock to take across the two hosts; the second question IS the mechanism.
 - **`persona.ts` and `tuning.ts` are pure and stateless.** Every render function is a pure function of
   its `NinaTuning` argument, safe to call from anywhere, any number of times.
 - **`NINA_TUNING_DEFAULTS` is `Object.freeze`d and shared.** `coerceNinaTuning` always returns a
@@ -2183,6 +2311,13 @@ are worth knowing:
   throwing (it reads `@/lib/env`) is caught, because both callers run it inside `after()` where a
   rejection is a log line and nothing else. A `null` is not an error state: the row keeps the canned
   scene-agnostic caption, nothing is persisted, and a later pass could try again for free.
+- **A dedup fault can never cost the photograph** (`P1-NIN-A033`). The generation is already paid
+  for when `storeNinaImage` hashes, so a dead connection at either lookup — the pre-put one or
+  `finishSelfie`'s re-check — logs a `console.warn` and proceeds with today's put + original row;
+  the column still travels, because the hash is computed locally before either lookup runs.
+  Symmetrically, a fault while releasing the loser blob keeps the object for the reaper:
+  `releaseBlobIfUnreferenced` returns `deleted | shared | failed` and only `deleted` removed
+  anything — an orphan is recoverable, a dead reference is not.
 - `persona.ts` and `tuning.ts` define no error types and never throw.
 
 ## Gotchas
@@ -2382,6 +2517,27 @@ are worth knowing:
   already returns `null` — the invariant is asserted against `turn.ts` and must not depend on what
   another file does with an empty argument. Do not "promote" the block into `prompts/system.ts`:
   every turn would then pay for two dozen expansions he did not use.
+- **A NULL `content_hash` on a REFERENCE row is expected, not drift.** The column's one semantics is
+  *identical hash ⟺ identical bytes in the store*, so a reference carries the hash only when its
+  writer held and measured the bytes — the two generated hosts (`P1-NIN-A033`) and an upload
+  original do; phase 2's upload-path references do not (there the hash is a CLIENT CLAIM, and a
+  claim never lands on a row that does not own the bytes). Phase 4's sweep pass 1 fills the
+  hash-less references from the Blob later. Filling one by hand now is not a fix, it is a claim
+  nobody made.
+- **Do not merge the three dedup decision modules.** `lib/nina/dedupe.ts` (phase 2 — the runner
+  upload path; client-safe, batch-aware), `lib/nina/imageDedupe.ts` (`P1-NIN-A033` — zero-import,
+  so the worker can strip and run it) and `planChatPhotoAddWrite` in `lib/admin/chatPhotos.ts`
+  (the admin add) each exist because their host needs a different import posture; `dedupe.ts`'s
+  header says "three modules, three jobs — do not merge them and do not grow a fourth". In
+  particular `planNinaImageWrite` must NOT grow into `queries.ts`, or the worker loses its one
+  shared decision.
+- **A deduped GENERATED row keeps its own description and prompt; a deduped admin ADD copies the
+  keeper's description.** Both are deliberate and they are opposites: `args.scene` truthfully
+  describes the bytes this generation produced and `prompt` records what THAT generation was told,
+  while the admin add's bytes are a photograph already described on its keeper, so the copy is
+  `resolveAttachment`'s precedent (and it is what keeps the caption pass off the eyes). Unifying
+  either direction puts one generation's prose under another's bubble or bills a second
+  `glm-4.6v` call for a fact already in hand.
 
 ## Tests
 
@@ -2551,6 +2707,49 @@ initialised mount value does not, a `null` raw re-arms (a repeat tap is genuine,
 not), and a value that cannot be one of our ids is refused without being retried. And
 `tests/nina.chatPhoto.test.ts` counts `replaceState` in `ChatScreen`'s source — exactly two, the
 sanctioned pair.
+
+**The generated path's dedup is tested twice, once per host (`P1-NIN-A033`).**
+`tests/nina.imageDedupe.test.ts` covers the shared decision pure: an original (own object, hash
+carried, nothing released) when nothing shares the bytes, a null hash staying null when the purpose
+is out of dedup scope, the skip path referencing the keeper with `release: null` because nothing was
+put, the race path referencing the keeper and naming the fresh loser, and the hash surviving onto
+the reference row — the column is about the bytes, and they are the same.
+`tests/nina.imagerun.test.ts` adds the *write-time dedup (media-dedupe P3)* block against the real
+`imagerun.ts`: the put skipped and a reference written on a pre-put hit, the hash stored on a fresh
+original, a race lost at insert time writing the reference and then releasing the loser, a lookup
+fault degrading to a normal store (the photograph is never lost to a dedup read), an avatar
+generation proving no lookup and no hash at all, and a source-level assertion that the INSERT names
+`source_image_id` and binds the plan's row rather than the raw image.
+
+**The worker's lockstep is pinned clause by clause.** `tests/nina.imageworker.test.ts` adds
+`findContentDuplicate` — asserting the owner-scoped, originals-only, newest-first question AS SQL,
+because it restates `findNinaImageByContentHash`'s policy in raw SQL and the statement is the only
+place a drift could hide — plus `releaseBlobIfUnreferenced` (deletes only when neither table
+answers, keeps the object and never calls `del` when one does, errs toward keep on any fault, with
+`del` injectable because `createRequire` escapes every `vi.mock` registry) and a `REQUIRED_COLUMNS`
+case naming the dedup columns on both tables the worker now reads.
+
+**The admin add's dedup is tested at both altitudes.** `tests/admin.chatPhotoDedupe.test.ts` pins
+`planChatPhotoAddWrite` pure — the original with its hash claim, the race that references and
+releases, the skip that releases nothing, a pinned row that is itself a reference flattening to its
+own original, a pinned album photo inheriting the avatar id, and a null hash claim staying null on a
+reference row. `tests/admin.chatPhotos.test.ts` adds the action block: the reference written with
+the keeper's description, the loser released only after the row is in, the skip path skipping the
+admin pathname guard (its payload echoes a runner-upload pathname the guard would refuse — the pin
+is why) and releasing nothing, a pin that vanished between pre-check and action refused as a
+sentence, and a malformed hash claim answered with a NULL and a normal add. The same file needed one
+structural change: `chatPhotoUpload` now imports the duplicate-check server action, so the suite's
+static import of that client module transitively loads `chatPhotoActions` → `vision` while the
+module body is still evaluating — the fake `NinaVisionTokenFloorError` moved into `vi.hoisted` so
+it exists by factory time, not by `beforeEach`.
+
+**The column's patch semantics is tested as SQL.** `tests/nina.photoRefs.test.ts` proves
+`updateNinaChatPhotoBlob` names `content_hash` in the SAME `UPDATE` statement — one statement, so
+no window exists in which the row points at new bytes and claims old ones — and
+`tests/nina.chatPhotoAdoption.test.ts` flips the ADD-path provenance pin: it used to assert
+`chatPhotoActions` never wrote `sourceAvatarId`/`sourceImageId` because every add was an original;
+an add whose bytes the collection already holds IS a re-share now, so it asserts the columns are
+written only through `planChatPhotoAddWrite`'s values and a fresh add still binds NULL there.
 
 ## Notes
 
