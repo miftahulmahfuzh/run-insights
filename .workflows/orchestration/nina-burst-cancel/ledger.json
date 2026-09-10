@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-burst-cancel",
   "coordinator_session_id": "bdd6cc9b-2e10-4e3a-8b1e-48c6b8948173",
   "created": "2026-09-10T02:54:07+00:00",
+  "landed": {
+    "at": "2026-09-10T04:02:03+00:00",
+    "base": "main",
+    "commit": "64c3d4bbaffe6b85c176c2eea366b7744294c288",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -44,6 +50,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-burst-cancel/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-burst-cancel",
-  "updated": "2026-09-10T03:57:38+00:00",
+  "updated": "2026-09-10T04:02:03+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-burst-cancel"
 }
