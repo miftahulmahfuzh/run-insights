@@ -435,11 +435,7 @@ dropped after a side-by-side showed it indistinguishable at 64 colours on this f
 | File | What it is |
 |---|---|
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, release by release, in Keep-a-Changelog form. |
-| [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | The feasibility record. Endpoint matrix, measured accuracy, the token-floor trap. Authoritative on everything it measured. |
-| [`ROADMAP_v0.1.0.md`](ROADMAP_v0.1.0.md) | v0.1.0 scope, the 17 locked decisions, and §4 — the authoritative shared contract every feature builds against. |
-| [`RECONCILIATION_v0.1.0.md`](RECONCILIATION_v0.1.0.md) | 39 rulings arbitrating eleven plans written in parallel. **Supersedes any individual v0.1.0 plan file.** |
 | [`docs/plans/F01`–`F33`](docs/plans/) | One comprehensive plan per feature, foundation to Nina. 34 files — F16 is two features sharing a number. |
-| [`NINA_*` and `ADMIN_*` plans](NINA_CHATBOT_PLAN.md) | Everything planned after F33 lives at the repo root: chat sessions, search, character tuning, the image pipeline, the admin workshop — one plan per orchestration. |
 | [`docs/nina/persona.md`](docs/nina/persona.md) | Nina's canon: who she is, how she types, what she is allowed to say. |
 | [`docs/design/DESIGN_INTEGRATION.md`](docs/design/DESIGN_INTEGRATION.md) | What came back from Claude Design and how it overrode the plans. |
 | [`docs/google-auth-setup.md`](docs/google-auth-setup.md) | Google OAuth + DomaiNesia DNS, step by step. |
@@ -447,8 +443,9 @@ dropped after a side-by-side showed it indistinguishable at 64 colours on this f
 | [`assets/badges/README.md`](assets/badges/README.md) | The three human acts between a generated candidate and a shipped patch. |
 | [`research/`](research/) | The live feasibility harness and the 108-field fixture. Stays in the repo; `score.mjs` runs in CI. |
 
-**Read `RECONCILIATION_v0.1.0.md` before any v0.1.0 plan file.** The eleven plans were written
-concurrently and three of them contradicted each other; several also found real bugs in the
+The v0.1.0 contract docs — the roadmap, the feasibility record, and the 39-ruling reconciliation
+that arbitrated the eleven plans written in parallel — were removed from the tree in September
+2026 and live in git history. Several of those plans found real bugs in the
 roadmap they were built against — a duplicate-upload guard that stopped guarding on NULL, an
 acute:chronic workload ratio algebraically pinned at 0.25 that could never fire, and a %HRmax
 figure computed against a formula the runner's own watch had already disproved. **The Nina era has

@@ -5,8 +5,8 @@ All notable changes to Run Insights are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Feature codes (`F01`–`F28`) refer to the plan files in [`docs/plans/`](docs/plans/). Ruling codes
-(`R-nn`) refer to [`RECONCILIATION_v0.1.0.md`](RECONCILIATION_v0.1.0.md), which supersedes any
-individual plan file.
+(`R-nn`) refer to `RECONCILIATION_v0.1.0.md`, the v0.1.0 arbitration record — removed from the
+tree in September 2026, readable in git history.
 
 ## [Unreleased]
 

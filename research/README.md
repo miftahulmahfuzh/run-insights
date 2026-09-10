@@ -1,8 +1,9 @@
 # Feasibility harness — run-insights
 
-Live evidence behind `../IMPLEMENTATION_PLAN.md`. Every number in §1 of the plan came from
-these scripts, run against the author's z.ai key and three real Apple Fitness screenshots on
-2026-08-20.
+Live evidence for the ingest pipeline's design. Every accuracy figure behind the
+vision-extraction choices came from these scripts, run against the author's z.ai key and three
+real Apple Fitness screenshots on 2026-08-20. (The feasibility record that first wrote the
+numbers up was removed from the tree in September 2026; it survives in git history.)
 
 | script | what it proves |
 |---|---|
