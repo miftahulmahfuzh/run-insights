@@ -277,6 +277,40 @@ export function buildMergePlan(rows) {
 }
 
 /**
+ * PASS 1's write, as ops. The ops script measures every row whose `content_hash` column is NULL
+ * and hands the loaded rows here; each measured row becomes one `fill-hash` op, so the dry run
+ * prints the fill and `--apply` executes it like any other op.
+ *
+ * WHY THIS IS OPS AT ALL: the first landing of this sweep computed pass 1's fills for the report
+ * and never wrote them — 27 production rows stayed NULL under a header that claimed "UPDATE
+ * content_hash", the first post-deploy upload of the kartu kedatangan photograph matched nothing,
+ * and the post-apply idempotence re-run read green because the op list never carried the fills.
+ * A fill is a WRITE, and only ops get written.
+ *
+ * A row qualifies when the column was NULL entering this run (`hadNullHash`), the run measured
+ * its bytes (`hashFailed` false, `verifiedHash` set), and the measurement is a well-formed hash —
+ * the same paranoia `buildMergePlan` applies to stored hashes, applied to measured ones. Rows
+ * that already carried a hash qualify for nothing: the second run writes nothing, which is the
+ * idempotence the ops script's header promises.
+ *
+ * ORDER: the script executes `[...buildFillOps(rows), ...plan.ops]` — fills land before any
+ * repair/repoint/release, so by the time a merge moves a row, every row already carries the hash
+ * this run measured for it.
+ */
+export function buildFillOps(rows) {
+  return rows
+    .map((row) => {
+      if (row.hadNullHash !== true) return null
+      if (row.hashFailed || row.verifiedHash == null) return null
+      if (!isSha256Hex(row.contentHash)) {
+        throw new Error(`row ${row.id}'s measured hash is not 64-hex — refusing to write it`)
+      }
+      return { op: 'fill-hash', id: row.id, hash: row.contentHash }
+    })
+    .filter(Boolean)
+}
+
+/**
  * The release gate, as a pure decision over live counts the ops script measures AFTER the group's
  * rows have been repointed. Counts are numbers; `null` means "the query could not answer" —
  * which must never mean "no references". Every non-zero count keeps the object; the reason is

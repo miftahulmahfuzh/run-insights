@@ -17,18 +17,19 @@
  * ── WHAT IT DOES, IN ORDER ────────────────────────────────────────────────────────────────────
  *  1. pre-flight: args, env, migration presence, non-empty table
  *  2. load every row of `nina_message_images` (raw SQL — this script cannot import `lib/db`)
- *  3. PASS 1 (hash-fill): GET each row's public blob URL, sha256 the bytes, `UPDATE content_hash`
- *     for rows whose column is NULL. All rows are hashed — originals AND references — because the
- *     merge's safety argument needs the reference's own bytes measured (see
- *     `scripts/nina-dedupe-plan.mjs`'s header). Rows whose GET fails: skipped and reported,
- *     never guessed.
+ *  3. PASS 1 (hash-fill): GET each row's public blob URL, sha256 the bytes, and queue a
+ *     `fill-hash` op writing the column for rows whose `content_hash` is NULL. All rows are
+ *     hashed — originals AND references — because the merge's safety argument needs the
+ *     reference's own bytes measured (see `scripts/nina-dedupe-plan.mjs`'s header). Rows whose
+ *     GET fails: skipped and reported, never guessed.
  *  3b. VERIFY GATE: every member of a multi-row group that did NOT just get filled is re-fetched
  *      and re-hashed. A stored hash a fresh GET contradicts is a `hash-repair` op plus a skipped
  *      group. `scripts/nina-dedupe-media.mjs` trusts a hash it did not just measure for nothing.
  *  4. PASS 2 (merge): `buildMergePlan` groups by (user_id, content_hash), elects keepers among
  *      originals, and returns the ordered ops.
- *  5. report — every op printed. DRY RUN STOPS HERE.
- *  6. `--apply` executes ops in order; each `release-blob` re-asks the live reference gate first
+ *  5. report — every op printed (`fill-hash` first, then the merge plan's). DRY RUN STOPS HERE.
+ *  6. `--apply` executes ops in order — fills, repairs, repoints, then releases; each
+ *      `release-blob` re-asks the live reference gate first
  *      (ROW FIRST, BLOB SECOND — the group's rows are already repointed by the time the gate
  *      runs) and deletes only at zero references.
  *
@@ -51,6 +52,7 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
 import {
+  buildFillOps,
   buildMergePlan,
   isOriginalRow,
   isStoreUrl,
@@ -143,6 +145,7 @@ async function main() {
       failed.push({ id: row.id, reason: got.reason })
       continue
     }
+    row.hadNullHash = true // the column was NULL entering this run — pass 1 owns filling it
     row.contentHash = got.hash
     row.verifiedHash = got.hash // measured this run — no re-fetch needed for the verify gate
     row.bytesMismatch = row.bytes != null && got.size !== row.bytes
@@ -173,6 +176,10 @@ async function main() {
   /* ── 4. PASS 2 — the merge plan ────────────────────────────────────────────────────────────── */
   const plannable = rows.filter((r) => r.contentHash != null)
   const plan = buildMergePlan(plannable)
+  /* Pass 1's fills are WRITES, not report lines: they join the op list ahead of every
+   * repair/repoint/release, so the dry run prints them and --apply executes them. The first
+   * landing computed them and wrote nothing — the bug this line exists to keep dead. */
+  const ops = [...buildFillOps(rows), ...plan.ops]
   const findings = plan.groups.filter((g) => g.action === 'merge')
   const tidy = plan.groups.filter((g) => g.action === 'tidy')
   const skipped = plan.groups.filter((g) => g.action === 'skipped')
@@ -181,7 +188,9 @@ async function main() {
   const mismatchedIds = rows.filter((r) => r.bytesMismatch).map((r) => r.id)
   console.log(`nina dedupe — media          ${apply ? 'APPLY' : 'dry run'}`)
   console.log(`db rows                      ${rows.length}`)
-  console.log(`hash filled                  ${fills.length}   (content_hash was null)`)
+  console.log(
+    `hash filled                  ${fills.length}   (content_hash was null — written on --apply)`,
+  )
   console.log(`stored hashes re-verified    ${storedCount}`)
   console.log(
     `hash fetch failures          ${failed.length}${failed.length ? '  ← groups containing these are SKIPPED' : ''}`,
@@ -230,7 +239,11 @@ async function main() {
   }
 
   console.log('')
-  for (const op of plan.ops) {
+  for (const op of ops) {
+    if (op.op === 'fill-hash')
+      console.log(
+        `UPDATE nina_message_images SET content_hash = '${op.hash}' WHERE id = '${op.id}'  (fill — column was null)`,
+      )
     if (op.op === 'hash-repair')
       console.log(
         `UPDATE nina_message_images SET content_hash = '${op.to}' WHERE id = '${op.id}'  (was '${op.from}')`,
@@ -244,11 +257,11 @@ async function main() {
         `del ${op.blobUrl}  (${op.pathname}, ${kb(op.bytes)}) — only if the live gate says 0 references`,
       )
   }
-  const counts = plan.ops.reduce((acc, op) => ((acc[op.op] = (acc[op.op] ?? 0) + 1), acc), {})
+  const counts = ops.reduce((acc, op) => ((acc[op.op] = (acc[op.op] ?? 0) + 1), acc), {})
   console.log('')
   if (!apply) {
     console.log(
-      `DRY RUN — nothing written. ${plan.ops.length} op(s) ` +
+      `DRY RUN — nothing written. ${ops.length} op(s) ` +
         `(${
           Object.entries(counts)
             .map(([k, v]) => `${k} ${v}`)
@@ -261,9 +274,13 @@ async function main() {
   /* ── 6. execute ────────────────────────────────────────────────────────────────────────────── */
   let done = 0
   let errored = 0
-  for (const op of plan.ops) {
+  for (const op of ops) {
     try {
-      if (op.op === 'hash-repair') {
+      if (op.op === 'fill-hash') {
+        /* The `is null` guard is the idempotence the header promises: if another writer filled
+         * the column between plan and execute, their measurement stands, never ours over it. */
+        await sql`update nina_message_images set content_hash = ${op.hash} where id = ${op.id} and content_hash is null`
+      } else if (op.op === 'hash-repair') {
         await sql`update nina_message_images set content_hash = ${op.to} where id = ${op.id}`
       } else if (op.op === 'merge-row') {
         await sql`
@@ -312,7 +329,7 @@ async function main() {
     }
   }
   console.log(
-    `DONE. ${done} of ${plan.ops.length} op(s) applied.` +
+    `DONE. ${done} of ${ops.length} op(s) applied.` +
       (errored ? ` ${errored} FAILED — re-run to retry; rows are never harmed by a retry.` : ''),
   )
   process.exit(errored > 0 ? 1 : 0)

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { contentHashOf } from '@/lib/photos/contentHash'
 import {
+  buildFillOps,
   buildMergePlan,
   compareKeeperCandidates,
   electKeeper,
@@ -337,6 +338,54 @@ describe('buildMergePlan — the measured production groups', () => {
     const plan = buildMergePlan([row({ id: 'solo' })])
     expect(plan.groups).toEqual([])
     expect(plan.ops).toEqual([])
+  })
+})
+
+describe('buildFillOps — pass 1 writes what it measured', () => {
+  /**
+   * The first landing computed pass 1's fills for the report and never wrote them: 27 production
+   * rows stayed NULL while the header claimed "UPDATE content_hash", and the first post-deploy
+   * upload of the kartu kedatangan photograph matched nothing. These tests pin the seam — a fill
+   * is an OP, and only ops get written.
+   */
+  it('turns each null-column row the run measured into a fill-hash op', () => {
+    const h1 = 'd'.repeat(64)
+    const h2 = 'e'.repeat(64)
+    const ops = buildFillOps([
+      row({ id: 'measured1', contentHash: h1, verifiedHash: h1, hadNullHash: true }),
+      row({ id: 'measured2', contentHash: h2, verifiedHash: h2, hadNullHash: true }),
+    ])
+    expect(ops).toEqual([
+      { op: 'fill-hash', id: 'measured1', hash: h1 },
+      { op: 'fill-hash', id: 'measured2', hash: h2 },
+    ])
+  })
+
+  it('leaves rows that already carried a hash alone — a second run writes nothing (idempotence)', () => {
+    expect(buildFillOps([row({ id: 'preset' })])).toEqual([])
+    expect(buildFillOps([])).toEqual([])
+  })
+
+  it('never fills from a failed GET — an unmeasured hash is not written', () => {
+    expect(
+      buildFillOps([
+        row({
+          id: 'gone',
+          contentHash: null,
+          verifiedHash: null,
+          hashFailed: true,
+          hadNullHash: true,
+        }),
+      ]),
+    ).toEqual([])
+  })
+
+  it('refuses to emit a measurement that is not 64-hex', () => {
+    expect(() =>
+      buildFillOps([
+        row({ id: 'odd', contentHash: 'nope', verifiedHash: 'nope', hadNullHash: true }),
+      ]),
+    ).toThrow(/64-hex/)
   })
 })
 
