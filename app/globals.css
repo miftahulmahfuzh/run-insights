@@ -258,12 +258,19 @@ dialog::backdrop {
  * percentages cannot come from a custom property, but the iteration count can come from one.
  *
  * AND THE COLOUR IS A VARIABLE TOO: `--nina-flash-ring-color`, defaulting to `--accent`. Her
- * bubbles take the default; his (`MessageBubble`, when `mine`) set it to white — the owner's
- * ask, and the one saturated edge his dark bubble can wear that hers cannot: a white ring
- * against `bg-ink` reads as the bubble itself flashing a bright rim, in both schemes (white on
- * light paper is a modest step, on dark paper a halo; both measured, both read). The literal
- * beats `--card` here on purpose: `--card` flips to near-navy in the dark scheme and the ring
- * would vanish against `--paper` exactly when the bubble is at its brightest.
+ * bubbles take the default and stay there — nothing was ever asked about her side. His
+ * (`MessageBubble`, when `mine`) now set it to `var(--ink)`, the bubble's own fill, on the
+ * owner's ask of 2026-09-10 — "kayanya flicker putih di user's bubble masih kurang conspicuous.
+ * coba ganti warna nya jadi warna yang sama dengan warna user's bubble itu sendiri" — which
+ * superseded 09-09's "flicker buat user's bubble itu diganti warnanya jadi putih" after one
+ * night: the white this paragraph used to defend was the "modest step" it measured, 2px of #fff
+ * on light sky paper `#c9e9fb`, and a jobs deep link always lands on a bubble of his, so that
+ * landing read as no mechanism at all. The token is what "warna yang sama dengan warna user's
+ * bubble itu sendiri" means: `--ink` flips with the scheme (`#1d2733` light, `#f2f7fa` dark),
+ * so the ring is high-contrast against `--paper` in both, and beside `bg-ink` it reads as the
+ * bubble itself briefly thickening. The 09-09 rejection of `--card` survives unchanged, for the
+ * reason it was written: `--card` is HER fill, it flips to near-navy in the dark scheme, and a
+ * ring in it would vanish against `--paper` exactly when his bubble is at its brightest.
  *
  * HARD CUTS, AND NOT VIA A TIMING FUNCTION. The first draft put `steps(1,end)` in the
  * `[animation:…]` shorthand and measured it in headless Chromium (2026-09-09): the whole ring ran
