@@ -1,0 +1,299 @@
+import { isValidContentHash } from '@/lib/photos/contentHash'
+
+import { ninaPhotoProvenance } from './attach'
+import type { NinaExistingPhoto } from './attach'
+
+/**
+ * **Write-time dedup for `nina_message_images`, as pure functions** (media-dedupe, phase 2).
+ *
+ * A photograph's SHA-256 — computed over the EXACT bytes that get stored (plan invariant 4) —
+ * decides, at write time, whether those bytes are already in the owner's collection. When they
+ * are, the write becomes a REFERENCE row (F37's provenance mechanism, via `ninaPhotoProvenance`)
+ * instead of a second Blob object: storage stays minimum (R2) and the Media feed shows each
+ * photograph once (R3).
+ *
+ * ── WHY THIS IS A PURE MODULE ─────────────────────────────────────────────────────────────────
+ * Three readers, none of which may drag another's runtime in:
+ *
+ *   · `components/nina/Composer.tsx` — a `'use client'` component that decides, per picked tile,
+ *     whether to PUT bytes or to attach the existing photograph;
+ *   · `lib/nina/actions.ts` — a `'use server'` module that re-checks at insert time (the
+ *     race-close) and shapes every row;
+ *   · `tests/nina.dedupe.test.ts` — the vitest node suite, which asserts the decisions with no
+ *     database, no DOM and no mock.
+ *
+ * So the imports are exactly two, both pure by their own headers: `attach.ts` (the provenance
+ * rule) and `lib/photos/contentHash.ts` (the hash format, phase 1). Everything that talks to
+ * Postgres or Blob stays in `actions.ts`; everything that DECIDES lives here.
+ *
+ * ── THE TRUST MODEL IS THE CLAIM MODEL ────────────────────────────────────────────────────────
+ * A hash arriving from the browser is a claim, the same class of claim `width`/`height`/`bytes`
+ * already are: format-checked, never signature-checked (plan Decisions). `isValidContentHash` is
+ * therefore the ONLY gate, and its failure mode is silence — the hash drops to NULL and the row
+ * is written as an ordinary original (invariant 9). A bad claim costs its owner one duplicated
+ * object in their own store and nothing else; it must never cost a send.
+ *
+ * Phase 3 (generated + admin paths) does NOT reuse this module, and that is the reconciled shape,
+ * not an accident: its hosts need a ZERO-IMPORT decision (`lib/nina/imageDedupe.ts` —
+ * `scripts/nina-image-worker.ts` imports it under `--experimental-strip-types`) and an admin plan
+ * (`planChatPhotoAddWrite` in `lib/admin/chatPhotos.ts`), while this module must stay client-safe
+ * (the composer reads it) and batch-aware (the same-send twin split). The division of labor:
+ * THIS module is the runner-upload path's pick/send decisions and the ONLY thing STEP 1b calls;
+ * `planNinaImageWrite` serves the two generated-image hosts; `planChatPhotoAddWrite` serves the
+ * admin add. Three modules, three jobs — do not merge them and do not grow a fourth.
+ */
+
+/**
+ * `nina_message_images.kind`, stated structurally rather than imported from `lib/db/schema` —
+ * the same boundary `attach.ts` draws for `NinaPhotoKind`: this module is read by a client
+ * component, a server-action module and the unit suite, and it stays portable by naming what it
+ * produces. `lib/db/schema`'s `NinaImageKind` is this exact union, so a drift between the two is
+ * a compile error at the one place that bridges them (`ninaUploadInsertRow`'s callers, which
+ * hand rows to `insertNinaMessageImages`).
+ */
+export type NinaDedupeImageKind = 'upload' | 'generated'
+
+/**
+ * A claim's hash, as the server may trust it: a string whose SHA-256 hex form is exact, or null.
+ *
+ * Trimmed before checking, because a serializer is more likely to add whitespace than a user is,
+ * and a hash with a trailing newline is not a different hash — it is the same hash that must not
+ * silently disable dedup. Uppercase hex is REJECTED rather than folded to lowercase:
+ * `contentHashOf` emits lowercase, so uppercase means the value did not come from the util, and
+ * refusing it keeps ONE spelling of the column in the database — which is what phase 4's sweep
+ * compares literals against.
+ *
+ * This is a DECISION read, not a second column rule. Phase 1's insert door
+ * (`insertNinaMessageImages` coalescing through `isValidContentHash`) remains the one normative
+ * backstop for `nina_message_images.content_hash`; this wrapper only decides whether a keeper
+ * lookup may run, and everything it returns is either `null` or a string the door accepts
+ * unchanged. The trim is the one behavior the door lacks, and it can only ever REPLACE an
+ * invalid-looking-but-valid claim with a valid one — never the reverse.
+ */
+export function normalizeClaimedContentHash(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  return isValidContentHash(trimmed) ? trimmed : null
+}
+
+/**
+ * One upload claim AFTER ticket verification — `NinaImageClaims` with the measured fields
+ * coalesced to the row's nullable shape, plus the position the photograph holds in its bubble.
+ */
+export interface NinaUploadClaim {
+  /** The STORED pathname of the bytes this claim would insert — Vercel's random suffix included. */
+  pathname: string
+  blobUrl: string
+  width: number | null
+  height: number | null
+  bytes: number | null
+  description: string | null
+  /** Position among the send's fresh uploads; `insertNinaMessageImages` sorts on it. */
+  sortOrder: number
+  /** `normalizeClaimedContentHash`'s answer. Null = dedup is inactive for this claim. */
+  contentHash: string | null
+}
+
+/** A claim that is definitely carrying a hash — the only kind that can become a reference. */
+export type NinaHashedUploadClaim = NinaUploadClaim & { contentHash: string }
+
+/**
+ * The row a reference points at: the fields `ninaUploadInsertRow` copies, and nothing else.
+ * `NinaImageRow` (`imageColumns`) satisfies this structurally, so both the pre-insert lookup and
+ * an already-inserted row hand straight over without an adapter.
+ */
+export interface NinaUploadKeeper {
+  id: string
+  kind: NinaDedupeImageKind
+  blobUrl: string
+  pathname: string
+  description: string | null
+  sourceAvatarId: string | null
+  sourceImageId: string | null
+}
+
+/**
+ * The insert shape this module produces — structurally an `NinaImageInsert` (phase 1's
+ * `contentHash` pass-through included), minus `prompt`, which no chat-upload row ever sets.
+ */
+export interface NinaDedupeInsertRow {
+  messageId: string
+  kind: NinaDedupeImageKind
+  blobUrl: string
+  pathname: string
+  width?: number | null
+  height?: number | null
+  bytes?: number | null
+  description?: string | null
+  contentHash?: string | null
+  sourceAvatarId?: string | null
+  sourceImageId?: string | null
+  sortOrder: number
+}
+
+export type NinaUploadInsertDecision =
+  | { outcome: 'fresh'; row: NinaDedupeInsertRow; keeperId: null }
+  | { outcome: 'reference'; row: NinaDedupeInsertRow; keeperId: string }
+
+/**
+ * The row ONE claim becomes, given the keeper the caller has already proved (or null for a
+ * genuine original). The whole of the write-side decision in one function, so the fresh arm and
+ * the reference arm cannot drift apart the way two call sites would.
+ *
+ * The reference arm is "exactly `resolveAttachment`'s shape": the keeper's `blob_url`/`pathname`
+ * are copied, `kind` is the KEEPER's (`photoSideOf`, `lib/nina/album.ts`, has to keep
+ * telling the truth about whose photograph this is — a reference to one of her selfies is a
+ * `'generated'` row on his message, exactly as the re-attach path writes), the provenance goes
+ * through `ninaPhotoProvenance` so a reference-to-a-reference flattens to the ORIGINAL, and the
+ * measurements are left off — the row is a pointer, and the keeper carries its own measurements,
+ * exactly as the attach arm has since F37.
+ *
+ * Two deliberate departures from a blind copy of the attach arm, both stated so they are not
+ * "fixed" back:
+ *
+ *   · **The description prefers the keeper but falls back to the claim's.** `resolveAttachment`
+ *     never has a fresh description in hand; here we usually do — the describe call ran on these
+ *     very bytes seconds ago, and identical bytes are the same picture. The keeper wins first
+ *     because an operator-edited description is authoritative for that photograph; the claim's
+ *     covers the never-described keeper (the orphan class the analysis measured) instead of
+ *     discarding a description that was already paid for.
+ *   · **NO `contentHash` on a reference row.** The hash belongs to the row that OWNS the bytes;
+ *     a reference owns none. Writing client-claimed hashes onto references could leave a row
+ *     whose hash disagreed with the keeper's blob-measured one, and phase 4's sweep groups
+ *     originals only — a reference hash would be dead weight with a failure mode attached.
+ *     RECONCILED, do not "fix" either side: phase 3's generated-path references DO carry the hash
+ *     (`planNinaImageWrite`) because there the writer measured the bytes itself, while this path's
+ *     hashes are CLIENT CLAIMS. The per-path rule is: a reference row carries the hash only when
+ *     its writer held the bytes. Phase 2's hash-less reference rows are the expected NULLs phase
+ *     4's pass-1 fill owns — not drift, and not a reason to stamp claims on references here.
+ */
+export function ninaUploadInsertRow(input: {
+  messageId: string
+  claim: NinaUploadClaim
+  keeper: NinaUploadKeeper | null
+}): NinaUploadInsertDecision {
+  if (input.keeper === null) {
+    return {
+      outcome: 'fresh',
+      keeperId: null,
+      row: {
+        messageId: input.messageId,
+        kind: 'upload',
+        blobUrl: input.claim.blobUrl,
+        pathname: input.claim.pathname,
+        width: input.claim.width,
+        height: input.claim.height,
+        bytes: input.claim.bytes,
+        description: input.claim.description,
+        contentHash: input.claim.contentHash,
+        sortOrder: input.claim.sortOrder,
+      },
+    }
+  }
+
+  const keeper = input.keeper
+  return {
+    outcome: 'reference',
+    keeperId: keeper.id,
+    row: {
+      messageId: input.messageId,
+      kind: keeper.kind,
+      blobUrl: keeper.blobUrl,
+      pathname: keeper.pathname,
+      description: keeper.description ?? input.claim.description ?? null,
+      ...ninaPhotoProvenance({
+        kind: 'image',
+        id: keeper.id,
+        sourceAvatarId: keeper.sourceAvatarId,
+        sourceImageId: keeper.sourceImageId,
+      }),
+      sortOrder: input.claim.sortOrder,
+    },
+  }
+}
+
+export interface NinaUploadPartition {
+  /**
+   * The send's originals — inserted FIRST, in one statement, so their ids exist by the time the
+   * references are shaped.
+   */
+  fresh: NinaUploadClaim[]
+  /**
+   * The send's references. `keeper === null` means the keeper is the SAME-SEND original that
+   * owns `claim.contentHash` — its id does not exist until the fresh statement returns, which is
+   * why the split is returned rather than a finished row list.
+   */
+  references: Array<{ claim: NinaHashedUploadClaim; keeper: NinaUploadKeeper | null }>
+}
+
+/**
+ * Which of this send's upload claims become originals and which become references, decided
+ * BEFORE anything is written. Precedence, in order:
+ *
+ *   1. no hash -> fresh, always. Dedup inactive (invariant 9) is not a third kind of row.
+ *   2. a DB keeper for the hash (the race-close re-check's answer) -> reference to it — for EVERY
+ *      claim with that hash, including the first, because the DB keeper predates this send.
+ *   3. no DB keeper, but an EARLIER claim in this send has the same hash (the same file picked
+ *      twice in one batch: both tiles passed the composer's pre-check because neither row existed
+ *      yet) -> reference to that earlier claim; `keeper: null` marks it, and the caller resolves
+ *      the id from the fresh insert's return.
+ *   4. otherwise -> fresh, and this claim becomes the same-send keeper for any later twin.
+ *
+ * `claim as NinaHashedUploadClaim` is safe in the two reference pushes: both are reachable only
+ * under `contentHash !== null`, and the branch above already returned for the null case. The
+ * narrowed field is exactly what the caller needs to resolve the same-send keeper.
+ */
+export function partitionNinaUploadClaims(
+  claims: readonly NinaUploadClaim[],
+  keepersByHash: ReadonlyMap<string, NinaUploadKeeper>,
+): NinaUploadPartition {
+  const fresh: NinaUploadClaim[] = []
+  const references: NinaUploadPartition['references'] = []
+  const sameSend = new Map<string, NinaUploadClaim>()
+
+  for (const claim of claims) {
+    if (claim.contentHash === null) {
+      fresh.push(claim)
+      continue
+    }
+    const keeper = keepersByHash.get(claim.contentHash)
+    if (keeper !== undefined) {
+      references.push({ claim: claim as NinaHashedUploadClaim, keeper })
+      continue
+    }
+    const earlier = sameSend.get(claim.contentHash)
+    if (earlier !== undefined) {
+      references.push({ claim: claim as NinaHashedUploadClaim, keeper: null })
+      continue
+    }
+    sameSend.set(claim.contentHash, claim)
+    fresh.push(claim)
+  }
+
+  return { fresh, references }
+}
+
+export type NinaPickUploadPlan =
+  | { outcome: 'attach-existing'; existing: NinaExistingPhoto }
+  | { outcome: 'upload'; contentHash: string | null }
+
+/**
+ * What ONE picked tile does once its bytes are hashed and the owner-scoped pre-check has
+ * answered — the composer's whole dedup decision, as a value, so the suite can assert
+ * "duplicate -> skip the upload, attach the pointer" without rendering a component.
+ *
+ * A null hash uploads regardless of anything else: with no hash there is nothing to match on,
+ * and a photograph must never fail to enter the conversation because its hash could not be
+ * computed (invariant 9's client half).
+ */
+export function planNinaPickUpload(input: {
+  /** `contentHashOf` over the exact bytes that would be PUT, or null when hashing failed. */
+  contentHash: string | null
+  /** `findNinaDuplicateChatImage`'s answer — the existing photograph, or null. */
+  duplicate: NinaExistingPhoto | null
+}): NinaPickUploadPlan {
+  if (input.contentHash !== null && input.duplicate !== null) {
+    return { outcome: 'attach-existing', existing: input.duplicate }
+  }
+  return { outcome: 'upload', contentHash: input.contentHash }
+}

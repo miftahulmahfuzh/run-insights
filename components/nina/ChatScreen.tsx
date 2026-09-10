@@ -1228,16 +1228,28 @@ export function ChatScreen({
       const localId = `local-${crypto.randomUUID()}`
       setNotice(null)
       /*
-       * The already-owned photo goes AFTER anything he picked, because that is where the server
-       * puts it: `lib/nina/actions.ts` inserts its row at `sortOrder: images.length`. One array, so
-       * the optimistic bubble and every later server render of the same message agree about the
-       * order inside it. Already on the CDN in every case — the describe pre-pass uploaded the
-       * picked ones before send was possible, and the pinned one has been in Blob since the album
-       * did — so there is no object URL to revoke and no flicker when the real row lands.
+       * Bubble order, client and server, is the same three-part order: the fresh uploads he
+       * picked, then the tiles the pre-check deduplicated (each a reference the server writes
+       * after the originals, at `sortOrder: images.length + position`), then the pinned album
+       * photo, which keeps the LAST position it has always had. One array, so the optimistic
+       * bubble and every later server render of the same message agree about the order inside it.
+       * Already on the CDN in every case — the describe pre-pass uploaded the picked ones before
+       * send was possible, and the deduplicated and pinned ones have been in Blob since their
+       * first upload — so there is no object URL to revoke and no flicker when the real row lands.
        */
-      const pickedUrls = input.images.map((image) => image.url)
-      const optimisticUrls =
-        input.existingPhoto === null ? pickedUrls : [...pickedUrls, input.existingPhoto.url]
+      const uploads = input.images.filter(
+        (image): image is Extract<ComposerDraftImage, { source: 'upload' }> =>
+          image.source === 'upload',
+      )
+      const deduped = input.images.filter(
+        (image): image is Extract<ComposerDraftImage, { source: 'deduped' }> =>
+          image.source === 'deduped',
+      )
+      const optimisticUrls = [
+        ...uploads.map((image) => image.url),
+        ...deduped.map((image) => image.url),
+        ...(input.existingPhoto === null ? [] : [input.existingPhoto.url]),
+      ]
       setMessages((current) => {
         const row: ChatMessage = {
           id: localId,
@@ -1266,7 +1278,26 @@ export function ChatScreen({
       try {
         result = await sendNinaMessage({
           body,
-          imageTickets: input.images.map((image) => image.ticket),
+          imageTickets: uploads.map((image) => image.ticket),
+          /*
+           * media-dedupe P2. The hash of the exact bytes behind each ticket, keyed by the STORED
+           * pathname the ticket itself carries — so the pairing survives the server's
+           * dedupe-by-pathname in STEP 0 whatever order the claims arrive in. A claim with no
+           * entry dedups as NULL (inactive), which is the honest state for a hash that could not
+           * be computed.
+           */
+          contentHashes: Object.fromEntries(
+            uploads.flatMap((image): Array<[string, string]> =>
+              image.contentHash === null ? [] : [[image.pathname, image.contentHash]],
+            ),
+          ),
+          /*
+           * media-dedupe P2. Tiles whose bytes the pre-check proved are already in the
+           * collection: ids, never URLs — `resolveAttachment` proves ownership before a row is
+           * written, exactly as it does for the pinned album photo below. The `url` this
+           * component holds is for the optimistic bubble; it is not sent.
+           */
+          dedupedImageIds: deduped.map((image) => image.imageId),
           replyToMessageId: input.replyToMessageId,
           runId: input.runAttachment?.runId ?? null,
           /*
