@@ -58,10 +58,14 @@ import type { ChatMessage } from './types'
  * `transition-*` utilities in `Chip`, `KindSelector` and `Button` animate colour only, which is
  * not motion, and the `transition-shadow` below now exists for the FAILED ring alone.
  *
- * The COLOUR is per side: hers blink `--accent`; his blink white (`--nina-flash-ring-color`,
- * set below when `mine`) — "flicker buat user's bubble itu diganti warnanya jadi putih". Both
- * quote-tap landings and search-hit landings ride the same `flash` prop, so the reply-to box
- * pointing at one of his bubbles and a search hit inside one blink white alike.
+ * The COLOUR is per side: hers blink `--accent` (the keyframe's default); his blink the bubble's
+ * own fill, `var(--ink)` (`--nina-flash-ring-color`, set below when `mine`). The white the ask
+ * of 2026-09-09 chose — "flicker buat user's bubble itu diganti warnanya jadi putih" — lasted a
+ * night: 2026-09-10, "kayanya flicker putih di user's bubble masih kurang conspicuous. coba
+ * ganti warna nya jadi warna yang sama dengan warna user's bubble itu sendiri". Both quote-tap
+ * landings, search-hit landings and `/nina/jobs`' "Buka chat-nya" ride the same `flash` prop —
+ * and the jobs one always lands on a bubble of his, where a white ring on light sky paper was
+ * the difference between the deep link reading as working and reading as broken.
  *
  * The hold is `flashHoldMs(flashBlinks)` — the train plus one cycle of tail — computed in
  * `lib/nina/reply.ts` and measured in `ChatScreen`; at the default four it is the same 1600 ms
@@ -473,16 +477,30 @@ export function MessageBubble({
            * container from `flashBlinkCount(process.env.NINA_FLASH_BLINKS)` (owner-tuned in the
            * Vercel env; the `, 4` is only the fallback if that var ever stops arriving, and a
            * var() in the shorthand is what lets the count stay a value rather than a stop
-           * rewrite). The COLOUR is: hers blink `--accent` (the keyframe's default); HIS blink
-           * white — the owner's ask, "flicker buat user's bubble itu diganti warnanya jadi
-           * putih", both for a quote tap landing on his bubble and for a search hit landing on
-           * one — and against `bg-ink` a white rim reads as the bubble itself flashing, in both
-           * schemes. The `transition-shadow` under the animation is not the flash's: it exists
-           * for the FAILED ring above, which is a real class-driven shadow change and fades as
-           * one. See the header for the whole story.
+           * rewrite). The COLOUR on HIS side is now the bubble's own fill, and it has a
+           * history: 2026-09-09 asked for white ("flicker buat user's bubble itu diganti
+           * warnanya jadi putih") and 2026-09-10 superseded it after a night with it —
+           * "kayanya flicker putih di user's bubble masih kurang conspicuous. coba ganti warna
+           * nya jadi warna yang sama dengan warna user's bubble itu sendiri". The white was
+           * exactly what the complaint named: a 2px #fff ring drawn OUTSIDE a `bg-ink` bubble
+           * onto light sky paper `#c9e9fb`, the "modest step" the keyframe comment had
+           * measured — and a jobs deep link ALWAYS lands on a bubble of his (the photo request
+           * is his message), which is why that landing read as no mechanism while her `--accent`
+           * blinks read as working. "Warna yang sama dengan warna user's bubble itu sendiri" is
+           * the TOKEN, `var(--ink)`, and not a spelled hex: the fill flips with the scheme
+           * (`#1d2733` light, `#f2f7fa` dark), a light-mode literal would vanish against dark
+           * paper `#0e1b26`, and `bg-ink` on this very div already defines the variable — so
+           * the ring reads as the bubble briefly thickening, in both schemes. HERS still take
+           * the keyframe's `--accent` default and that half of the 09-09 reasoning stands: the
+           * default lives once in `app/globals.css`, she has no `mine` arm here, and nothing
+           * was ever asked about her side. Quote-tap landings and search-hit landings ride this
+           * same `flash` prop, so they follow the new colour with no further edit. The
+           * `transition-shadow` under the animation is not the flash's: it exists for the
+           * FAILED ring above, which is a real class-driven shadow change and fades as one.
+           * See the header for the whole story.
            */
           'transition-shadow duration-300',
-          flash && mine && '[--nina-flash-ring-color:#fff]',
+          flash && mine && '[--nina-flash-ring-color:var(--ink)]',
           flash && '[animation:nina-flash-blink_0.32s_linear_var(--nina-flash-count,_4)]',
         )}
       >
