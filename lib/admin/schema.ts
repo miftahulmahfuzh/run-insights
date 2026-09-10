@@ -51,6 +51,8 @@ import {
   NINA_IMAGE_TIME_MAX,
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
+  NINA_PROMPT_TEMPLATE_MAX,
+  validateNinaImageTemplate,
 } from '@/lib/nina/imageprefs'
 
 /**
@@ -689,6 +691,22 @@ export const ninaImagePrefsWriteSchema = z.object({
   time: z.string().trim().max(NINA_IMAGE_TIME_MAX),
   /** R9. Empty is valid. Free text, handed to the camera verbatim. */
   notes: z.string().trim().max(NINA_IMAGE_NOTES_MAX),
+  /**
+   * The editable template shell (the 2026-09-10 ask). Empty is valid and means "the shipping
+   * default". Everything else goes through `validateNinaImageTemplate` — the SAME function
+   * `buildNinaImagePrompt` re-checks at render — so a template this schema admits is a template
+   * the assembler honours: an unknown `{{placeholder}}`, a stray brace, or a missing
+   * `{{camera}}`/`{{subject}}`/`{{scene}}` is refused, with the validator's own sentence naming
+   * the violation. `.trim()` tidies the ENDS only; the internal newlines ARE the formatting.
+   */
+  promptTemplate: z
+    .string()
+    .trim()
+    .max(NINA_PROMPT_TEMPLATE_MAX)
+    .superRefine((value, ctx) => {
+      const verdict = validateNinaImageTemplate(value)
+      if (!verdict.ok) ctx.addIssue({ code: 'custom', message: verdict.error })
+    }),
   /** R10's selection. Phase 5 supplies the grid; the round trip is already here. */
   reference: ninaImageReferenceSchema,
 })

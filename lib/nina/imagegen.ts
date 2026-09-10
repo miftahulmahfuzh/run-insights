@@ -7,8 +7,12 @@ import {
 import {
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_PREFS_DEFAULTS,
+  NINA_IMAGE_TEMPLATE_TOKEN_RE,
+  NINA_PROMPT_TEMPLATE_DEFAULT,
+  validateNinaImageTemplate,
   type NinaImageFocusKey,
   type NinaImagePrefs,
+  type NinaImageTemplateKey,
 } from '@/lib/nina/imageprefs'
 import { ninaBand, type NinaBandName, type NinaTuning } from '@/lib/nina/tuning'
 
@@ -398,6 +402,54 @@ function ninaFreeTextBlock(label: string, value: string): string | null {
 }
 
 /**
+ * The chat model's per-photograph note, or the empty block when it sent none — `ninaFreeTextBlock`'s
+ * rule for a value that arrives as `null` rather than as the row's own `''`.
+ */
+function ninaMoodBlock(mood: string | null | undefined): string {
+  const text = mood?.trim()
+  if (text == null || text.length === 0) return ''
+  return `EXPRESSION AND ENERGY: ${text}`
+}
+
+/* ============================================================================
+ * THE EDITABLE TEMPLATE SHELL (the 2026-09-10 ask)
+ * ==========================================================================*/
+
+/**
+ * The template this render goes through. `coerceNinaImageTemplate` has already made every STORED
+ * template `''` or valid, but `buildNinaImagePrompt` accepts any `NinaImagePrefs`-shaped argument
+ * — a fixture, a hand-run SQL row that skipped the coercion — so the validator runs HERE too, and
+ * a template that would fail the save fails the render into the shipping shell. The warning is
+ * the only trace such a row leaves, which is the point: an operator should be able to discover a
+ * hand-edited template was discarded rather than silently honoured.
+ */
+function effectiveNinaImageTemplate(prefs: NinaImagePrefs): string {
+  const requested = typeof prefs.promptTemplate === 'string' ? prefs.promptTemplate : ''
+  if (requested === '') return NINA_PROMPT_TEMPLATE_DEFAULT
+  if (validateNinaImageTemplate(requested).ok) return requested
+  console.warn('[imgn] stored prompt template failed validation — rendering the default shell')
+  return NINA_PROMPT_TEMPLATE_DEFAULT
+}
+
+/**
+ * Substitute the nine blocks into a validated template, then normalise the whitespace the empty
+ * blocks leave behind. **The collapse of every run of three or more newlines back down to the
+ * blank-line separator is what makes the default template byte-identical to the hand-rolled
+ * `parts.join('\n')` it replaced**: an absent block leaves its whole template line empty, and
+ * `\n\n` + `\n\n` collapses to exactly the separator the parts list used. Duplicated tokens
+ * render twice — legal, deliberate control.
+ */
+function renderNinaImagePrompt(
+  template: string,
+  blocks: Record<NinaImageTemplateKey, string>,
+): string {
+  const filled = template.replace(NINA_IMAGE_TEMPLATE_TOKEN_RE, (_match, name: string) => {
+    return blocks[name as NinaImageTemplateKey] ?? ''
+  })
+  return filled.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
  * **The words the camera is given, in one pure function of its arguments.**
  *
  * ── THE BLOCK ORDER IS LOAD-BEARING AND EVERY POSITION IS ARGUED ──────────────────────────────
@@ -470,29 +522,30 @@ export function buildNinaImagePrompt(input: {
     outfit: rung.outfit,
   }
 
-  const parts = [camera, '', 'SUBJECT:', ninaAppearance(prefs, detail)]
+  /*
+   * The nine blocks, each exactly what the pre-template assembly pushed for it — the template
+   * COMPOSES them and never re-derives them, which is why the ladder, the focus emphasis, the
+   * dials and the canon all keep working unchanged inside the shell. An empty string is the
+   * "block absent" spelling, and `renderNinaImagePrompt` is what erases the line that absence
+   * empties. Every position argument in this function's docblock above survives: the DEFAULT
+   * shell lists the blocks in that order, byte for byte.
+   */
+  const focusText = ninaFocusBlock(input.purpose, prefs, rung)
+  const presenceText = rung.presence ? ninaPhotoPresence(input.purpose, tuning) : null
 
-  const focus = ninaFocusBlock(input.purpose, prefs, rung)
-  if (focus != null) parts.push('', `FOCUS: ${focus}`)
+  const blocks: Record<NinaImageTemplateKey, string> = {
+    camera,
+    subject: `SUBJECT:\n${ninaAppearance(prefs, detail)}`,
+    focus: focusText != null ? `FOCUS: ${focusText}` : '',
+    pose: presenceText != null ? `POSE AND PRESENCE: ${presenceText}` : '',
+    venue: ninaFreeTextBlock('VENUE', prefs.venue) ?? '',
+    time: ninaFreeTextBlock('TIME', prefs.time) ?? '',
+    scene: `SCENE: ${input.scene.trim()}`,
+    mood: ninaMoodBlock(input.mood),
+    notes: ninaFreeTextBlock('NOTES', prefs.notes) ?? '',
+  }
 
-  const presence = rung.presence ? ninaPhotoPresence(input.purpose, tuning) : null
-  if (presence != null) parts.push('', `POSE AND PRESENCE: ${presence}`)
-
-  const venue = ninaFreeTextBlock('VENUE', prefs.venue)
-  if (venue != null) parts.push('', venue)
-
-  const time = ninaFreeTextBlock('TIME', prefs.time)
-  if (time != null) parts.push('', time)
-
-  parts.push('', `SCENE: ${input.scene.trim()}`)
-
-  const mood = input.mood?.trim()
-  if (mood != null && mood.length > 0) parts.push('', `EXPRESSION AND ENERGY: ${mood}`)
-
-  const notes = ninaFreeTextBlock('NOTES', prefs.notes)
-  if (notes != null) parts.push('', notes)
-
-  return parts.join('\n')
+  return renderNinaImagePrompt(effectiveNinaImageTemplate(prefs), blocks)
 }
 
 /** `gen_badge_art.py`'s `write_sidecar`, minus the file. Only a human ever reads this. */

@@ -11,6 +11,7 @@ import {
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_PREFS_DEFAULTS,
   NINA_IMAGE_PROMPT_LENGTH_DEFAULT,
+  NINA_PROMPT_TEMPLATE_DEFAULT,
   type NinaImageFocusKey,
   type NinaImagePrefs,
 } from '@/lib/nina/imageprefs'
@@ -1021,5 +1022,112 @@ describe('the threshold chain', () => {
   it('R10: the timeout selector is the only place the choice is made', () => {
     expect(ninaImageCallTimeoutMs(false)).toBe(NINA_IMAGE_CALL_TIMEOUT_MS)
     expect(ninaImageCallTimeoutMs(true)).toBe(NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS)
+  })
+})
+
+describe('the editable prompt template — rendering (the 2026-09-10 ask)', () => {
+  /* The DEFAULT template's byte-identity with the pre-template assembly is not asserted by one
+   * test here; it is asserted by EVERY test above, which was written against the hand-rolled
+   * assembly and passes unchanged over the default shell. These tests cover what the shell can
+   * legitimately DO when the operator changes it. */
+
+  function prefsWith(over: Partial<NinaImagePrefs>): NinaImagePrefs {
+    return { ...NINA_IMAGE_PREFS_DEFAULTS, ...over }
+  }
+
+  it('renders byte-identically through an explicitly saved default template', () => {
+    /* A call with NO prefs resolves the length ladder at `NINA_PROMPT_LENGTH_FALLBACK`, so the
+     * prefs side must pin the same rung — the comparison is about the shell, not the rung. */
+    const plain = buildNinaImagePrompt({ purpose: 'selfie', scene: 'on the track' })
+    const viaTemplate = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track',
+      prefs: prefsWith({
+        promptLength: NINA_PROMPT_LENGTH_FALLBACK,
+        promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT,
+      }),
+    })
+    expect(viaTemplate).toBe(plain)
+  })
+
+  it('the empty template IS the default — the one spelling of "unmodified"', () => {
+    expect(
+      buildNinaImagePrompt({ purpose: 'selfie', scene: 'x', prefs: prefsWith({ promptTemplate: '' }) }),
+    ).toBe(
+      buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'x',
+        prefs: prefsWith({ promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT }),
+      }),
+    )
+  })
+
+  it('a reordered shell reorders the prompt — the scene can lead', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'on the track at dusk',
+      prefs: prefsWith({ promptTemplate: '{{scene}}\n\n{{camera}}\n\n{{subject}}' }),
+    })
+    expect(prompt.indexOf('SCENE: on the track at dusk')).toBe(0)
+    expect(prompt.indexOf('SUBJECT:')).toBeGreaterThan(0)
+  })
+
+  it('a dropped optional block is dropped on purpose — notes set, no {{notes}} in the shell', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({
+        notes: 'nina is full of sweat',
+        promptTemplate: '{{camera}}\n\n{{scene}}\n\n{{subject}}',
+      }),
+    })
+    expect(prompt).not.toContain('NOTES:')
+    expect(prompt).not.toContain('nina is full of sweat')
+    /* Invariant 4 survives any shell: the body canon rides {{subject}}. */
+    expect(prompt).toContain('SUBJECT:')
+  })
+
+  it('extra prose typed between tokens ships verbatim', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ promptTemplate: 'SHOT ON FILM.\n\n{{camera}}\n\n{{scene}}\n\n{{subject}}' }),
+    })
+    expect(prompt.startsWith('SHOT ON FILM.')).toBe(true)
+  })
+
+  it('a blank run in the shell collapses to the blank-line separator', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ promptTemplate: '{{camera}}\n\n\n\n{{scene}}\n\n{{subject}}' }),
+    })
+    expect(prompt).not.toMatch(/\n{3,}/)
+  })
+
+  it('a duplicated token renders twice — allowed, and the operator can see it in the preview', () => {
+    const prompt = buildNinaImagePrompt({
+      purpose: 'selfie',
+      scene: 'x',
+      prefs: prefsWith({ promptTemplate: '{{scene}}\n\n{{camera}}\n\n{{subject}}\n\n{{scene}}' }),
+    })
+    expect(prompt.match(/SCENE: x/g)).toHaveLength(2)
+  })
+
+  it('a template that could only arrive by hand-run SQL degrades to the default shell', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const prompt = buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'x',
+        prefs: prefsWith({ promptTemplate: '{{wordrobe}} and {{scene}}' }),
+      })
+      expect(prompt).toBe(
+        buildNinaImagePrompt({ purpose: 'selfie', scene: 'x', prefs: prefsWith({}) }),
+      )
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

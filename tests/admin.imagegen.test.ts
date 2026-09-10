@@ -33,6 +33,8 @@ import {
   NINA_IMAGE_TIME_MAX,
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
+  NINA_PROMPT_TEMPLATE_DEFAULT,
+  NINA_PROMPT_TEMPLATE_MAX,
 } from '@/lib/nina/imageprefs'
 
 /**
@@ -63,6 +65,7 @@ describe('toImageGenDraft — the read-side seam', () => {
     expect(DEFAULTS.venue).toBe(NINA_IMAGE_PREFS_DEFAULTS.venue)
     expect(DEFAULTS.time).toBe(NINA_IMAGE_PREFS_DEFAULTS.time)
     expect(DEFAULTS.notes).toBe(NINA_IMAGE_PREFS_DEFAULTS.notes)
+    expect(DEFAULTS.promptTemplate).toBe(NINA_IMAGE_PREFS_DEFAULTS.promptTemplate)
     expect(DEFAULTS.reference.source).toBe(NINA_IMAGE_PREFS_DEFAULTS.reference.source)
     expect(DEFAULTS.reference.id).toBe(NINA_IMAGE_PREFS_DEFAULTS.reference.id)
   })
@@ -203,7 +206,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
     expect(imageGenDraftEquals(DEFAULTS, toImageGenDraft(NINA_IMAGE_PREFS_DEFAULTS))).toBe(true)
   })
 
-  it('names the five scalar fields in a fixed order', () => {
+  it('names the six scalar fields in a fixed order', () => {
     const edited: ImageGenDraft = {
       ...DEFAULTS,
       promptLength:
@@ -212,6 +215,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       venue: 'Kuta streets in Bali',
       time: 'rainy night',
       notes: 'nina is full of sweat',
+      promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT,
     }
     expect(changedImageGenFields(edited, DEFAULTS)).toEqual([
       'promptLength',
@@ -219,6 +223,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       'venue',
       'time',
       'notes',
+      'promptTemplate',
     ])
     expect(imageGenDraftEquals(edited, DEFAULTS)).toBe(false)
   })
@@ -410,6 +415,54 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     }
   })
 
+  it('bounds the template at the same number the textarea spells, and accepts the default and empty', () => {
+    expect(ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: '' })).success).toBe(true)
+    expect(
+      ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT }))
+        .success,
+    ).toBe(true)
+    /* The boundary cases must be VALID templates — prose padding around the required tokens, not
+     * bare filler, which the validator refuses for its own (missing-placeholder) reason. */
+    const validAt = (n: number): string => {
+      const base = '{{camera}}\n\n{{scene}}\n\n{{subject}}'
+      return base + 'p'.repeat(n - base.length)
+    }
+    expect(
+      ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: validAt(NINA_PROMPT_TEMPLATE_MAX) }))
+        .success,
+    ).toBe(true)
+    expect(
+      ninaImagePrefsWriteSchema.safeParse(
+        payload({ promptTemplate: validAt(NINA_PROMPT_TEMPLATE_MAX + 1) }),
+      ).success,
+    ).toBe(false)
+  })
+
+  it('refuses a template that would break the placeholder wiring — the user’s stated requirement', () => {
+    for (const broken of [
+      '{{camera}}\n\n{{scene}}\n\n{{wordrobe}}', // a typo'd placeholder
+      '{{camera}}\n\n{{subject}}', // missing the required {{scene}}
+      '{{scene}}', // missing camera and subject — invariant 4's line
+      '{camera}', // a stray single brace
+      '{{camera}\n\n{{scene}}\n\n{{subject}}', // an unbalanced closer
+    ]) {
+      const verdict = ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: broken }))
+      expect(verdict.success, broken).toBe(false)
+      /* The refusal is SPECIFIC — the action surfaces the validator's own sentence, which names
+       * the offending placeholder, so the operator can fix it in one pass. */
+      if (!verdict.success) {
+        const issue = verdict.error.issues.find((candidate) => candidate.path.includes('promptTemplate'))
+        expect(issue?.message.length ?? 0, broken).toBeGreaterThan(0)
+      }
+    }
+    /* Reordered, duplicated and prose-decorated shells are all FINE — that is the control. */
+    expect(
+      ninaImagePrefsWriteSchema.safeParse(
+        payload({ promptTemplate: '{{scene}}\n\nSHOT ON FILM.\n\n{{camera}}\n\n{{subject}}\n\n{{scene}}' }),
+      ).success,
+    ).toBe(true)
+  })
+
   it('accepts a reference that names a photograph, and the none reference', () => {
     for (const source of NINA_IMAGE_REFERENCE_SOURCES.filter(
       (value) => value !== IMAGE_REFERENCE_NONE.source,
@@ -576,6 +629,7 @@ describe('one save, not eleven — plan invariant 7', () => {
       'venue',
       'time',
       'notes',
+      'promptTemplate',
       'reference',
     ]) {
       expect(call, `the save call omits ${field}`).toContain(field)
@@ -612,9 +666,9 @@ describe('the panel commits itself — no staged-commit row', () => {
     expect(code).toContain('clearTimeout(')
   })
 
-  it('commits the four text fields on blur, and never on a keystroke timer', () => {
+  it('commits the five text controls on blur, and never on a keystroke timer', () => {
     const code = codeOnly(PANEL)
-    expect((code.match(/onBlur=\{commitText\}/g) ?? []).length).toBe(4)
+    expect((code.match(/onBlur=\{commitText\}/g) ?? []).length).toBe(5)
     /* The blur path itself: typing touches only setDraft, so the commit reads the draft the
      * keystrokes already landed — no timer anywhere on this path. `commitText` is the LAST handler
      * before the JSX, so the slice is its body alone. */
@@ -626,10 +680,10 @@ describe('the panel commits itself — no staged-commit row', () => {
     const code = codeOnly(PANEL)
     expect(code).toContain('setFocus(key, event.target.checked)')
     expect(code).toContain('setReference(parseReferenceKey(next))')
-    /* Each name appears once as the definition and once per call site that rides it: three
-     * `commitImmediate` (definition, setFocus, setReference) and two `scheduleDialCommit`
-     * (definition, the dial's onChange). Nothing else may route to either. */
-    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(3)
+    /* Each name appears once as the definition and once per call site that rides it: four
+     * `commitImmediate` (definition, setFocus, setReference, the template reset) and two
+     * `scheduleDialCommit` (definition, the dial's onChange). Nothing else may route to either. */
+    expect((code.match(/commitImmediate\(/g) ?? []).length).toBe(4)
     expect((code.match(/scheduleDialCommit\(/g) ?? []).length).toBe(2)
   })
 

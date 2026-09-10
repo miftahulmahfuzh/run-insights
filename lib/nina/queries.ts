@@ -3958,6 +3958,7 @@ function imagePrefsFromRow(row: NinaImagePrefsRow): NinaImagePrefs {
      * column is a Postgres type name, and `photo_eagerness` is the precedent. */
     time: row.timeOfDay,
     notes: row.notes,
+    promptTemplate: row.promptTemplate,
     reference: { source: row.referenceSource, id: row.referenceId },
   })
 }
@@ -3985,6 +3986,7 @@ function imagePrefsToColumns(prefs: NinaImagePrefsWrite) {
     venue: prefs.venue,
     timeOfDay: prefs.time,
     notes: prefs.notes,
+    promptTemplate: prefs.promptTemplate,
     referenceSource: prefs.reference.source,
     referenceId: prefs.reference.id,
   }

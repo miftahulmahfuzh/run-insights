@@ -6,7 +6,7 @@ import { DialSlider } from '@/components/admin/DialSlider'
 import { ImageGenTestPanel } from '@/components/admin/ImageGenTestPanel'
 import { PhotoReferencePicker } from '@/components/admin/PhotoReferencePicker'
 import { TOUCH_TARGET } from '@/components/admin/touch'
-import { CONTROL_CLASS } from '@/components/ui'
+import { Button, CONTROL_CLASS } from '@/components/ui'
 import { saveNinaImagePrefsAction, type AdminImageGenResult } from '@/lib/admin/imageGenActions'
 import {
   ADMIN_IMAGE_PREVIEW_SCENE,
@@ -28,10 +28,14 @@ import {
   NINA_IMAGE_PROMPT_LENGTH_MAX,
   NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_NOTES_MAX,
+  NINA_IMAGE_TEMPLATE_KEYS,
+  NINA_IMAGE_TEMPLATE_SPECS,
   NINA_IMAGE_TEXT_SPECS,
   NINA_IMAGE_TIME_MAX,
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
+  NINA_PROMPT_TEMPLATE_DEFAULT,
+  NINA_PROMPT_TEMPLATE_MAX,
 } from '@/lib/nina/imageprefs'
 
 /**
@@ -285,6 +289,7 @@ export function ImageGenPanel({
         venue: sent.venue,
         time: sent.time,
         notes: sent.notes,
+        promptTemplate: sent.promptTemplate,
         reference: sent.reference,
       })
       if (!outcome.ok || outcome.prefs === undefined) {
@@ -363,18 +368,28 @@ export function ImageGenPanel({
   }
 
   /**
-   * The four text fields' commit moment — `MemoryTable`'s rule verbatim: blur is exactly one write
-   * per completed edit, at the moment the edit is finished. NEVER a keystroke debounce; see the
-   * header. Typing changed ONLY the draft, so the blur reads the draft the keystrokes already
+   * The five text controls' commit moment — `MemoryTable`'s rule verbatim: blur is exactly one
+   * write per completed edit, at the moment the edit is finished. NEVER a keystroke debounce; see
+   * the header. Typing changed ONLY the draft, so the blur reads the draft the keystrokes already
    * landed — and it disarms first, so it carries any dial still settling.
    *
-   * Defined LAST among the handlers, directly above the JSX: every one of the four fields mounts
-   * it as `onBlur={commitText}`.
+   * Defined LAST among the handlers, directly above the JSX: every one of the four fields and the
+   * template textarea mount it as `onBlur={commitText}`.
    */
   function commitText() {
     disarmCommit()
     if (imageGenDraftEquals(draft, saved)) return
     dispatchSave(draft)
+  }
+
+  /**
+   * The template's route back to the shipped shell — an immediate commit, like every discrete
+   * control, because the click IS the finished edit. It stores the default TEMPLATE itself rather
+   * than `''`; both render identically, and the stored text is what the operator will see in the
+   * box the next time the page loads.
+   */
+  function resetTemplate() {
+    commitImmediate({ ...draft, promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT })
   }
 
   return (
@@ -596,6 +611,76 @@ export function ImageGenPanel({
           value={selectedKey}
           onChange={(next) => setReference(parseReferenceKey(next))}
         />
+
+        {/*
+         * The editable template shell (the 2026-09-10 ask). It sits here — after every control
+         * whose values flow INTO it, before the assembled preview that shows it — because it is
+         * the outermost thing on this page: the dial, the checkboxes and the four fields are what
+         * the blocks say, and this textarea is where the blocks stand.
+         *
+         * THE GUARD IS NOT IN THE BROWSER. The textarea is an ordinary multi-line control, and
+         * every protection the design promises lives on the server: `saveNinaImagePrefsAction`
+         * refuses an unknown `{{placeholder}}`, a stray brace, or a missing
+         * {{camera}}/{{subject}}/{{scene}} with a sentence naming the violation, and
+         * `buildNinaImagePrompt` degrades a template that fails the same validator to the
+         * shipping shell. The worst this box can do is fail a save with a precise error — the
+         * failure the user asked this feature to make impossible is a BROKEN PROMPT, not a
+         * refused edit.
+         */}
+        <section className="mb-6">
+          <div className="flex items-baseline justify-between gap-4">
+            <h3 className="text-[13px] font-semibold text-ink">Prompt template</h3>
+            <Button variant="secondary" size="md" type="button" onClick={resetTemplate}>
+              Reset to default template
+            </Button>
+          </div>
+          <p className="mb-3 mt-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
+            The skeleton every photograph is assembled from. Each{' '}
+            <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> stands
+            for one whole block from the controls above — labels included — and a block that is
+            empty takes its whole line with it. Reorder them, delete them, or write your own prose
+            around them; it saves when you leave the field, and the placeholder spelling itself
+            cannot be saved broken.
+          </p>
+          <textarea
+            className={cn(
+              CONTROL_CLASS,
+              'min-h-[220px] resize-y py-2 font-mono text-[12px] leading-snug',
+            )}
+            value={draft.promptTemplate}
+            maxLength={NINA_PROMPT_TEMPLATE_MAX}
+            spellCheck={false}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, promptTemplate: event.target.value }))
+            }
+            onBlur={commitText}
+          />
+          <span className="mt-1.5 flex items-baseline justify-between gap-4">
+            <span className="text-[11px] font-semibold text-accent">
+              {pendingFields.has('promptTemplate') && 'unsaved'}
+            </span>
+            <span className="text-[11px] font-medium text-ink-3">
+              {draft.promptTemplate.length} / {NINA_PROMPT_TEMPLATE_MAX}
+            </span>
+          </span>
+          <ul className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+            {/*
+             * The legend IS phase 1's specs, not a copy table here — the same rule as every other
+             * label in this panel, so the browser cannot promise a block the assembler does not
+             * produce.
+             */}
+            {NINA_IMAGE_TEMPLATE_KEYS.map((key) => (
+              <li key={key} className="flex items-start gap-2 rounded-card bg-paper-2 p-2.5">
+                <code className="shrink-0 font-mono text-[11px] font-semibold text-accent">
+                  {`{{${key}}}`}
+                </code>
+                <span className="text-[11px] font-medium leading-snug text-ink-3">
+                  {NINA_IMAGE_TEMPLATE_SPECS[key].description}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <details className="mb-6 rounded-card bg-paper-2 p-4">
           <summary className="cursor-pointer list-none text-[12px] font-semibold text-ink [&::-webkit-details-marker]:hidden">

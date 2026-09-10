@@ -2267,6 +2267,16 @@ export const ninaImagePrefs = pgTable('nina_image_prefs', {
   notes: text('notes').notNull(),
 
   /**
+   * The editable prompt template (the 2026-09-10 ask; `NINA_PROMPT_TEMPLATE_MAX` = 2000). A shell
+   * of `{{block}}` placeholders the operator may reorder, drop or add prose to — see §7 of
+   * `lib/nina/imageprefs.ts` for the vocabulary and the validator that guards both the save and
+   * the read. `''` = the shipping default shell, and a stored value that fails the validator
+   * READS as `''` (`coerceNinaImageTemplate`), so a hand-run SQL update can never ship a broken
+   * prompt. NOT NULL with `''` as the empty value, like every other text column in this table.
+   */
+  promptTemplate: text('prompt_template').notNull(),
+
+  /**
    * R10, the storage half. Which set the chosen photograph came from — `'none' | 'album' | 'chat'`
    * from `lib/nina/imageprefs.ts`. `'none'` is the empty value; there is no NULL. Untyped `text`
    * and no FK; see the header.

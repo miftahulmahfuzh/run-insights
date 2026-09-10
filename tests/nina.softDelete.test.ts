@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ninaImageDailyCap } from '@/lib/nina/imagerecipe'
 import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
 
 /**
@@ -138,8 +139,8 @@ describe('the daily cap keeps counting a hidden job — it is a money cap, not a
     expect(fake.only().sql).not.toContain('deleted_at')
   })
 
-  it('so a runner who generated six and hid all six has nothing left today', async () => {
-    fake.enqueue([[6]]) // NINA_IMAGE_DAILY_CAP
+  it('so a runner who generated up to the cap and hid them all has nothing left today', async () => {
+    fake.enqueue([[ninaImageDailyCap()]])
     await expect(jobs.ninaImageQuotaLeft('u1')).resolves.toBe(0)
     expect(fake.only().sql).not.toContain('deleted_at')
   })

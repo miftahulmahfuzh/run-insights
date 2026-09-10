@@ -9,7 +9,7 @@ import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { ninaImagePrefsWriteSchema, type NinaImagePrefsWriteInput } from '@/lib/admin/schema'
 import { isValidId } from '@/lib/id'
 import { getNinaImageJobDetail, ninaImageQuotaLeft } from '@/lib/nina/imagejobs'
-import type { NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
+import { validateNinaImageTemplate, type NinaImagePrefsWrite } from '@/lib/nina/imageprefs'
 import { ninaImageDailyCap } from '@/lib/nina/imagerecipe'
 import { assembleNinaImageTestPrompt, dispatchNinaImageTest } from '@/lib/nina/imagetest'
 import {
@@ -117,6 +117,7 @@ function toImagePrefsWrite(input: NinaImagePrefsWriteInput): NinaImagePrefsWrite
     venue: input.venue,
     time: input.time,
     notes: input.notes,
+    promptTemplate: input.promptTemplate,
     reference: { source: input.reference.source, id: input.reference.id },
   }
 }
@@ -139,9 +140,23 @@ export async function saveNinaImagePrefsAction(input: {
   venue: string
   time: string
   notes: string
+  promptTemplate: string
   reference: { source: string; id: string }
 }): Promise<AdminImageGenResult> {
   await requireAdmin()
+
+  /*
+   * The template's verdict is surfaced BEFORE the generic parse, and deliberately: a broken shell
+   * is the one save failure where the operator needs the exact sentence — WHICH placeholder is
+   * unknown, WHICH required block is missing — and the generic parse-failure line below would
+   * waste the round trip on "try again". The Zod refine on the same field remains the boundary;
+   * this pre-check is the difference between a refusal and a usable one.
+   */
+  const templateInput = typeof input.promptTemplate === 'string' ? input.promptTemplate.trim() : ''
+  if (templateInput !== '') {
+    const templateVerdict = validateNinaImageTemplate(templateInput)
+    if (!templateVerdict.ok) return { ok: false, error: templateVerdict.error }
+  }
 
   const parsed = ninaImagePrefsWriteSchema.safeParse(input)
   if (!parsed.success) {

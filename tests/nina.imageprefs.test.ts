@@ -9,6 +9,7 @@ import {
   coerceNinaImagePrefs,
   coerceNinaImagePromptLength,
   coerceNinaImageReference,
+  coerceNinaImageTemplate,
   coerceNinaImageText,
   mergeNinaPhotoRefs,
   NINA_IMAGE_FOCUS_DEFAULTS,
@@ -21,6 +22,9 @@ import {
   NINA_IMAGE_PROMPT_LENGTH_MIN,
   NINA_IMAGE_REFERENCE_NONE,
   NINA_IMAGE_REFERENCE_SOURCES,
+  NINA_IMAGE_TEMPLATE_KEYS,
+  NINA_IMAGE_TEMPLATE_REQUIRED_KEYS,
+  NINA_IMAGE_TEMPLATE_SPECS,
   NINA_IMAGE_TEXT_KEYS,
   NINA_IMAGE_TEXT_SPECS,
   NINA_IMAGE_TIME_MAX,
@@ -29,9 +33,12 @@ import {
   NINA_PHOTO_REF_PAGE_SIZE,
   NINA_PHOTO_REF_SCAN_MAX,
   NINA_PROMPT_LENGTH_RUNGS,
+  NINA_PROMPT_TEMPLATE_DEFAULT,
+  NINA_PROMPT_TEMPLATE_MAX,
   ninaImageFocusKeysOn,
   ninaPhotoRefBounds,
   ninaPromptLengthRungFor,
+  validateNinaImageTemplate,
   type NinaImagePrefs,
   type NinaPhotoRef,
 } from '@/lib/nina/imageprefs'
@@ -420,6 +427,7 @@ describe('the defaults, and the coercion that never throws', () => {
       venue: '',
       time: '',
       notes: '',
+      promptTemplate: '',
       reference: { source: 'none', id: '' },
     })
   })
@@ -539,5 +547,90 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
     expect(body).toContain('generatedChatPhotoScope(userId)')
     expect(body).not.toMatch(/ninaMessageImages\.kind/)
     expect(body).toContain('countNinaChatPhotos(userId)')
+  })
+})
+
+describe('the editable prompt template (the 2026-09-10 ask)', () => {
+  /* The tokens are the nine blocks `buildNinaImagePrompt` can produce. Each expands to its WHOLE
+   * block, label included, and a line holding only empty tokens vanishes — so the template owns
+   * the shell (order, presence, extra prose) while the label wording stays owned by the blocks.
+   * That trade is the user's accepted answer to "the admin must not be able to break the
+   * placeholder formatting": there is no syntax here that can dangle. */
+
+  it('the default template names all nine tokens exactly once', () => {
+    const found = [...NINA_PROMPT_TEMPLATE_DEFAULT.matchAll(/\{\{([a-z]+)\}\}/g)].map((m) => m[1])
+    expect([...found].sort()).toEqual([...NINA_IMAGE_TEMPLATE_KEYS].sort())
+  })
+
+  it('every key has a spec, and the specs are exactly the keys', () => {
+    expect(Object.keys(NINA_IMAGE_TEMPLATE_SPECS).sort()).toEqual(
+      [...NINA_IMAGE_TEMPLATE_KEYS].sort(),
+    )
+    for (const key of NINA_IMAGE_TEMPLATE_KEYS) {
+      expect(NINA_IMAGE_TEMPLATE_SPECS[key].description.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('the required keys are camera, subject and scene — invariant 4 plus the photograph itself', () => {
+    expect([...NINA_IMAGE_TEMPLATE_REQUIRED_KEYS].sort()).toEqual(['camera', 'scene', 'subject'])
+  })
+
+  it('the default is valid, and so is a reordered template with every required key', () => {
+    expect(validateNinaImageTemplate(NINA_PROMPT_TEMPLATE_DEFAULT)).toEqual({ ok: true })
+    expect(
+      validateNinaImageTemplate('{{camera}}\n\n{{scene}}\n\n{{subject}}\n\n{{notes}}'),
+    ).toEqual({ ok: true })
+  })
+
+  it('an empty template is VALID — it means "use the default"', () => {
+    expect(validateNinaImageTemplate('')).toEqual({ ok: true })
+  })
+
+  it('an unknown token is refused, and the error names it', () => {
+    const verdict = validateNinaImageTemplate('{{camera}}\n\n{{wordrobe}}\n\n{{scene}}\n\n{{subject}}')
+    expect(verdict.ok).toBe(false)
+    if (!verdict.ok) expect(verdict.error).toContain('wordrobe')
+  })
+
+  it('a stray brace is refused — doubled braces are the whole syntax', () => {
+    for (const bad of ['{camera}', '{{camera}', '{{camera}}}', '{{{camera}}}']) {
+      expect(validateNinaImageTemplate(bad).ok).toBe(false)
+    }
+  })
+
+  it('a missing required token is refused, and the error names it', () => {
+    const verdict = validateNinaImageTemplate('{{camera}}\n\n{{subject}}')
+    expect(verdict.ok).toBe(false)
+    if (!verdict.ok) expect(verdict.error).toContain('scene')
+  })
+
+  it('coerce trims the ends but keeps internal newlines — the template is prose, not a one-liner', () => {
+    const kept = coerceNinaImageTemplate('  {{camera}}\n\n{{scene}}\n\n{{subject}}\n\n')
+    expect(kept).toBe('{{camera}}\n\n{{scene}}\n\n{{subject}}')
+  })
+
+  it('coerce caps at NINA_PROMPT_TEMPLATE_MAX', () => {
+    /* Long enough to overflow the cap, with the overflow landing in plain prose — so the cut
+     * leaves a VALID template and the assertion measures the cap, not the invalid-degrade. */
+    const long = '{{camera}}\n\n{{scene}}\n\n{{subject}}\n\n' + 'p'.repeat(3000)
+    expect(coerceNinaImageTemplate(long)).toHaveLength(NINA_PROMPT_TEMPLATE_MAX)
+  })
+
+  it('coerce degrades an invalid template to empty — the default — and never throws', () => {
+    expect(coerceNinaImageTemplate('{{wordrobe}}')).toBe('')
+    expect(coerceNinaImageTemplate('{{camera')).toBe('')
+    expect(coerceNinaImageTemplate(42)).toBe('')
+    expect(coerceNinaImageTemplate(null)).toBe('')
+  })
+
+  it('the defaults carry an empty promptTemplate — the shipping shell is the default', () => {
+    expect(NINA_IMAGE_PREFS_DEFAULTS.promptTemplate).toBe('')
+  })
+
+  it('coerceNinaImagePrefs runs the template through the same coercion', () => {
+    const good = coerceNinaImagePrefs({ promptTemplate: '{{camera}}\n\n{{scene}}\n\n{{subject}}' })
+    expect(good.promptTemplate).toBe('{{camera}}\n\n{{scene}}\n\n{{subject}}')
+    const bad = coerceNinaImagePrefs({ promptTemplate: '{{scene}}' })
+    expect(bad.promptTemplate).toBe('')
   })
 })

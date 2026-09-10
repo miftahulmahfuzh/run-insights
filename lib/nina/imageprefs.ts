@@ -569,6 +569,230 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
 }
 
 /* ============================================================================
+ * §7 The editable prompt template (the 2026-09-10 ask)
+ * ==========================================================================*/
+
+/**
+ * **The template's placeholders, and why each is a WHOLE block.** The user asked for an editable
+ * template prompt with the safeguard that *"admin tidak bisa merusak placeholder formatting yang
+ * diperlukan"* — the placeholders are what wire the page's parameters into the prompt. The design
+ * that makes breakage hardest: each token expands to its entire block, LABEL INCLUDED (`{{venue}}`
+ * becomes `VENUE: Kuta streets in Bali`), and a line holding only empty tokens vanishes — so the
+ * label wording is owned by the blocks and CANNOT be reworded here, and no dangling `VENUE:` can
+ * ever be typed. What the template owns is the shell: block order, block presence, and any extra
+ * prose typed between the tokens.
+ *
+ * The keys are `NinaImageFocusKey`-style vocabulary: short, lowercase, and the substitution map in
+ * `lib/nina/imagegen.ts` is keyed by this union, so renaming a key here is a compile error there
+ * rather than a silently missing block. This file cannot import `imagegen.ts` (it would be
+ * circular — `imagegen` imports this one), which is exactly why the vocabulary lives HERE: it is
+ * the half the browser renders (the panel's legend) and the Zod boundary checks, and both must
+ * agree with the assembler rather than with each other.
+ */
+export const NINA_IMAGE_TEMPLATE_KEYS = [
+  'camera',
+  'subject',
+  'focus',
+  'pose',
+  'venue',
+  'time',
+  'scene',
+  'mood',
+  'notes',
+] as const
+
+export type NinaImageTemplateKey = (typeof NINA_IMAGE_TEMPLATE_KEYS)[number]
+
+/**
+ * **The three a template may not omit.**
+ *
+ * `{{subject}}` is PLAN INVARIANT 4 — nothing, ever, removes the body canon from the prompt, and a
+ * template without the subject block would do exactly that. `{{camera}}` is the verified
+ * phone-photograph style block, the one sentence that makes the output a photograph rather than a
+ * render. `{{scene}}` is what the photograph is OF — the chat model's per-photograph argument; a
+ * prompt with no slot for it cannot describe the picture he asked for. The other six are
+ * droppable by choice: leaving `{{notes}}` out is a standing decision an operator is entitled to
+ * make, and the save-time error says so rather than refusing it.
+ */
+export const NINA_IMAGE_TEMPLATE_REQUIRED_KEYS: readonly NinaImageTemplateKey[] = [
+  'camera',
+  'subject',
+  'scene',
+]
+
+/**
+ * One template token, described for the panel's legend. `description` is operator copy: it says
+ * what arrives and where its words come from, so the legend cannot promise a block the assembler
+ * does not produce.
+ */
+export interface NinaImageTemplateSpec {
+  readonly key: NinaImageTemplateKey
+  /** One line under the textarea. Sentence case. */
+  readonly description: string
+}
+
+export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<Record<NinaImageTemplateKey, NinaImageTemplateSpec>> =
+  Object.freeze({
+    camera: Object.freeze({
+      key: 'camera',
+      description:
+        'The camera block — the phone-photograph style, chosen by the prompt-length dial. Required.',
+    }),
+    subject: Object.freeze({
+      key: 'subject',
+      description:
+        'Who she is in the photograph — the body canon, her face, and the Wardrobe field. Required.',
+    }),
+    focus: Object.freeze({
+      key: 'focus',
+      description: 'The Focus-on block, built from the six checkboxes.',
+    }),
+    pose: Object.freeze({
+      key: 'pose',
+      description: 'Pose and presence, from the steamy and flirty dials on the Personality tab.',
+    }),
+    venue: Object.freeze({
+      key: 'venue',
+      description: 'The Venue field, VENUE: label included. An empty field removes the whole line.',
+    }),
+    time: Object.freeze({
+      key: 'time',
+      description: 'The Time field, TIME: label included. An empty field removes the whole line.',
+    }),
+    scene: Object.freeze({
+      key: 'scene',
+      description:
+        'What this photograph is of — she chooses it per photograph, and this is the slot it lands in. Required.',
+    }),
+    mood: Object.freeze({
+      key: 'mood',
+      description: 'EXPRESSION AND ENERGY — the per-photograph note the chat model may send.',
+    }),
+    notes: Object.freeze({
+      key: 'notes',
+      description: 'The Notes field, NOTES: label included. An empty field removes the whole line.',
+    }),
+  })
+
+/**
+ * **The shell that ships — and it renders BYTE-IDENTICAL to the assembly it replaced**, which is
+ * the property the whole feature rests on: every prompt test that pinned the pre-template output
+ * passes unchanged, so "the default template is today's prompt" is proved rather than promised.
+ * (A token on its own line surrounded by blank lines, with runs of three or more newlines
+ * collapsed back to the blank-line separator, is exactly `parts.join('\n')` over today's parts.)
+ */
+export const NINA_PROMPT_TEMPLATE_DEFAULT = [
+  '{{camera}}',
+  '',
+  '{{subject}}',
+  '',
+  '{{focus}}',
+  '',
+  '{{pose}}',
+  '',
+  '{{venue}}',
+  '',
+  '{{time}}',
+  '',
+  '{{scene}}',
+  '',
+  '{{mood}}',
+  '',
+  '{{notes}}',
+].join('\n')
+
+/**
+ * The template's cap. The default is ~180 characters; the template is a shell, not a prompt — the
+ * PROSE lives in the blocks and the per-photograph scene. 2000 admits a generous rewrite and
+ * still bounds what a saved row can put on the wire.
+ */
+export const NINA_PROMPT_TEMPLATE_MAX = 2000
+
+/**
+ * The one token shape: `{{` + lowercase letters + `}}`. Anything brace-like outside it is refused
+ * by the validator — there is no legitimate `{` in a photograph prompt, and a single stray one is
+ * exactly the "broken placeholder formatting" the user asked this feature to make impossible.
+ */
+export const NINA_IMAGE_TEMPLATE_TOKEN_RE = /\{\{([a-z]+)\}\}/g
+
+/**
+ * Whether a template may be saved and rendered. **`''` is valid and means "use the default"** —
+ * the one spelling of "unmodified", matching every other text field in this table. The SAME
+ * function guards the save (`lib/admin/schema.ts`'s Zod refine) and the render
+ * (`buildNinaImagePrompt`'s degrade), so a template the panel accepts is a template the
+ * assembler honours, character for character.
+ *
+ * Checks, in the order an operator meets them: an unknown `{{name}}` (a typo, named exactly),
+ * then a stray `{` or `}` outside any token (the mangled-brace case, refused rather than
+ * silently shipped), then a missing required key (named, with the reset escape hatch). Reordered
+ * tokens, duplicated tokens and extra prose are all FINE — that is the control the feature exists
+ * to hand over.
+ */
+export function validateNinaImageTemplate(value: string): { ok: true } | { ok: false; error: string } {
+  if (value === '') return { ok: true }
+
+  const seen = new Set<string>()
+  let stripped: string
+  try {
+    stripped = value.replace(NINA_IMAGE_TEMPLATE_TOKEN_RE, (_match, name: string) => {
+      seen.add(name)
+      return ''
+    })
+  } catch {
+    return { ok: false, error: 'The template could not be read as text.' }
+  }
+
+  for (const name of seen) {
+    if (!(NINA_IMAGE_TEMPLATE_KEYS as readonly string[]).includes(name)) {
+      return {
+        ok: false,
+        error:
+          `Unknown placeholder {{${name}}}. The placeholders are: ` +
+          NINA_IMAGE_TEMPLATE_KEYS.map((key) => `{{${key}}}`).join(', ') +
+          '.',
+      }
+    }
+  }
+
+  const stray = stripped.search(/[{}]/)
+  if (stray !== -1) {
+    return {
+      ok: false,
+      error:
+        `A stray "${stripped.charAt(stray)}" appears outside any {{placeholder}}. ` +
+        'Placeholders use doubled braces — check the character just after the placeholder list.',
+    }
+  }
+
+  for (const key of NINA_IMAGE_TEMPLATE_REQUIRED_KEYS) {
+    if (!seen.has(key)) {
+      return {
+        ok: false,
+        error:
+          `The template is missing {{${key}}}, which every photograph is assembled from. ` +
+          'Put it back, or press "Reset to default".',
+      }
+    }
+  }
+
+  return { ok: true }
+}
+
+/**
+ * A stored template, made safe. Trims the ENDS only — the template is multi-line prose and the
+ * internal newlines are its formatting — cuts at `NINA_PROMPT_TEMPLATE_MAX`, and **degrades an
+ * invalid template to `''`**, the default. That empty is the whole reason a hand-run SQL update
+ * cannot break a generation: the validator runs again here, on the read path, and a template
+ * that would fail the save fails the read into the shipping shell instead. Never throws.
+ */
+export function coerceNinaImageTemplate(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim().slice(0, NINA_PROMPT_TEMPLATE_MAX)
+  if (trimmed === '') return ''
+  return validateNinaImageTemplate(trimmed).ok ? trimmed : ''
+}
+
+/* ============================================================================
  * §6 The preferences themselves
  * ==========================================================================*/
 
@@ -607,6 +831,13 @@ export interface NinaImagePrefs {
   readonly time: string
   /** `''` = nothing appended. */
   readonly notes: string
+  /**
+   * §7's editable template shell. `''` = `NINA_PROMPT_TEMPLATE_DEFAULT` — the one spelling of
+   * "unmodified", and the only value an invalid template can coerce to (see
+   * `coerceNinaImageTemplate`: a broken stored template reads as the shipping shell, never as a
+   * broken prompt).
+   */
+  readonly promptTemplate: string
   /** `NINA_IMAGE_REFERENCE_NONE` = an unanchored generation. */
   readonly reference: NinaImageReference
 }
@@ -635,6 +866,7 @@ export interface NinaImagePrefsInput {
   readonly venue?: unknown
   readonly time?: unknown
   readonly notes?: unknown
+  readonly promptTemplate?: unknown
   readonly reference?: unknown
 }
 
@@ -653,6 +885,7 @@ export const NINA_IMAGE_PREFS_DEFAULTS: NinaImagePrefs = Object.freeze({
   venue: '',
   time: '',
   notes: '',
+  promptTemplate: '',
   reference: NINA_IMAGE_REFERENCE_NONE,
 })
 
@@ -683,6 +916,7 @@ export function coerceNinaImagePrefs(
     venue: coerceNinaImageText('venue', input?.venue),
     time: coerceNinaImageText('time', input?.time),
     notes: coerceNinaImageText('notes', input?.notes),
+    promptTemplate: coerceNinaImageTemplate(input?.promptTemplate),
     reference: coerceNinaImageReference(input?.reference),
   }
 }

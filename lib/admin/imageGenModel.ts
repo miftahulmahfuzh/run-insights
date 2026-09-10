@@ -76,6 +76,12 @@ export interface ImageGenDraft {
   /** R9. */
   notes: string
   /**
+   * The editable template shell (the 2026-09-10 ask). `''` = the shipping default, exactly as
+   * `NinaImagePrefs.promptTemplate` spells it — the panel edits the shell it was handed, and the
+   * validator (`validateNinaImageTemplate`) is what both the save and the render agree on.
+   */
+  promptTemplate: string
+  /**
    * R10's selection, persisted by THIS phase's save so that phase 5 only has to supply the grid.
    *
    * **`source`, not `kind`, and `id` is `string` with `''` as the one empty value** — phase 1's
@@ -243,6 +249,7 @@ export function toImageGenDraft(prefs: NinaImagePrefs): ImageGenDraft {
     venue: prefs.venue,
     time: prefs.time,
     notes: prefs.notes,
+    promptTemplate: prefs.promptTemplate,
     reference: { source: prefs.reference.source, id: prefs.reference.id },
   }
 }
@@ -346,6 +353,7 @@ export function changedImageGenFields(next: ImageGenDraft, saved: ImageGenDraft)
   if (next.venue !== saved.venue) changed.push('venue')
   if (next.time !== saved.time) changed.push('time')
   if (next.notes !== saved.notes) changed.push('notes')
+  if (next.promptTemplate !== saved.promptTemplate) changed.push('promptTemplate')
   if (referenceKey(next.reference) !== referenceKey(saved.reference)) changed.push('reference')
 
   for (const key of Object.keys({ ...saved.focus, ...next.focus }).sort()) {
@@ -440,6 +448,10 @@ export function mergeImageGenAfterSave(
     venue: current.venue === sent.venue ? canonical.venue : current.venue,
     time: current.time === sent.time ? canonical.time : current.time,
     notes: current.notes === sent.notes ? canonical.notes : current.notes,
+    promptTemplate:
+      current.promptTemplate === sent.promptTemplate
+        ? canonical.promptTemplate
+        : current.promptTemplate,
     reference:
       referenceKey(current.reference) === referenceKey(sent.reference)
         ? canonical.reference
