@@ -1,0 +1,51 @@
+{
+  "branch": "feature/job-photo-link",
+  "coordinator": "orch-job-photo-link",
+  "coordinator_session_id": "6968a8f1-312c-4266-83e7-28f09d467e47",
+  "created": "2026-09-10T04:24:24+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "5f06268",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "codec exported from lib/nina/album.ts \u2014 aboutPhotoHref('chat', id) -> /nina/about?photo=chat.<id>, phase-2 Requires met verbatim; decisions: dead react-hooks/purity disable kept per plan (1 lint warning, harmless); manual prod probe env-blocked (Turbopack rejects worktree symlinked node_modules), automated gates green 3586/3586",
+      "package": "lib/nina`, `app/nina/about`, `components/nina",
+      "plan": ".workflows/plan/job-photo-link/phase-1.md",
+      "reported_at": "2026-09-10T04:55:23+00:00",
+      "satisfies": [
+        "R3",
+        "R4"
+      ],
+      "status": "done",
+      "task_id": "P1-RI-A032",
+      "title": "About-viewer codec + any-age photo deep link"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina`, `app/nina/jobs/[id]`, `components/nina",
+      "plan": ".workflows/plan/job-photo-link/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "spawned",
+      "task_id": null,
+      "title": "Detail foto icon row (jump + photo)"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/job-photo-link/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "job-photo-link",
+  "updated": "2026-09-10T04:56:02+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/job-photo-link"
+}
