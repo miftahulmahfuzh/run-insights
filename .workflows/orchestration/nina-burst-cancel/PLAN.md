@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-burst-cancel`
 **Branch:** `feature/nina-burst-cancel` (base: `origin/main` @ `204fd34`)
 **Phases:** 2
-**Status:** phase 1/2 landed
+**Status:** complete
 **Coordinator:** orch-nina-burst-cancel
 
 <The Coordinator line is the peer address of the session driving this set, filled in by
@@ -62,7 +62,7 @@ answer covers the accumulated bubbles — both messages, not just the newest.
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Cancel-and-retarget: supersede a thinking turn, discard its result | R1 | `lib/nina` | 6 (2 prod + 4 test) | — | HARD | `.workflows/plan/nina-burst-cancel/phase-1.md` | P1-NIN-A028 | — |
-| 2 | Answer the accumulated bubbles: burst framing in the turn prompt | R2 | `lib/nina` | 5 (3 prod + 2 test) | 1 | NORMAL | `.workflows/plan/nina-burst-cancel/phase-2.md` | P1-NIN-A032 | — |
+| 2 ✅ | Answer the accumulated bubbles: burst framing in the turn prompt | R2 | `lib/nina` | 5 (3 prod + 2 test) | 1 | NORMAL | `.workflows/plan/nina-burst-cancel/phase-2.md` | P1-NIN-A032 | — |
 
 ### Phase 1 — Cancel-and-retarget: supersede a thinking turn, discard its result
 **Satisfies:** R1

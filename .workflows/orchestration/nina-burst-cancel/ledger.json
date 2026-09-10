@@ -23,27 +23,27 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b751a5f",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 2,
-      "note": null,
+      "note": "burst framing in the turn prompt; decisions: burstCancel suite's turn mock needed NINA_BURST_MAX_MESSAGES (vitest throws on omitted exports), resend-test runnerText asserted from the ROW not the window (that file's property 3), position test harness needed attachedRunId",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-burst-cancel/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T03:57:38+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A032",
       "title": "Answer the accumulated bubbles: burst framing in the turn prompt"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-burst-cancel/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-burst-cancel",
-  "updated": "2026-09-10T03:30:00+00:00",
+  "updated": "2026-09-10T03:57:38+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-burst-cancel"
 }
