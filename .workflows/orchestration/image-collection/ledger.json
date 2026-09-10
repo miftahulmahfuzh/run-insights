@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "c9ec397",
       "depends_on": [],
       "difficulty": "HARD",
       "n": 1,
-      "note": null,
+      "note": "Media view read path landed: ?view=media arm, pinned Media tree row w/ count, read-only SelectionPane media arm, both-kind originals read (mediaCollectionScope), union ExplorerPhoto. Decisions: drag-overlay para kept over plan block (exit criteria outrank code block); media SQL tests re-pointed at fakeDb recording (count is Q0, limit/offset bound, offset 0 omitted); em dash not &mdash; in JS string; ALL 4 phases' tasks pre-minted (P1-RI-A034/A035/A036, P1-CA-A005) + both index copies' TaskID columns filled, so peers skip Step 3.",
       "package": "app/admin`, `components/admin/explorer`, `lib/admin`, `lib/nina",
       "plan": ".workflows/plan/image-collection/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T10:34:52+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A034",
       "title": "Media folder in the Image collection explorer (read path)"
     },
     {
@@ -37,7 +37,7 @@
         "R1",
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Media verbs on both kinds; purge the Chat photos surface"
     },
@@ -84,6 +84,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/image-collection/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "image-collection",
-  "updated": "2026-09-10T09:51:52+00:00",
+  "updated": "2026-09-10T10:35:40+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/image-collection"
 }
