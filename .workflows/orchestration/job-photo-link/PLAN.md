@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/job-photo-link`
 **Branch:** `feature/job-photo-link` (base: `origin/main` @ `ac9cf03`)
 **Phases:** 2
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 **Plan: 2 phases — 10 files across `app/`, `components/`, `lib/`, `tests/` (Phase 1: 4, Phase 2: 6, zero overlap); the shared about-viewer codec must exist before the linking side consumes it. R1 -> 2 · R2 -> 2 · R3 -> 1,2 · R4 -> 1,2.**
@@ -49,8 +49,8 @@
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | About-viewer codec + any-age photo deep link | R3, R4 | `lib/nina`, `app/nina/about`, `components/nina` | 4 | — | NORMAL | `.workflows/plan/job-photo-link/phase-1.md` | — | — |
-| 2 | Detail foto icon row (jump + photo) | R1, R2 | `lib/nina`, `app/nina/jobs/[id]`, `components/nina` | 6 | 1 | NORMAL | `.workflows/plan/job-photo-link/phase-2.md` | — | — |
+| 1 | About-viewer codec + any-age photo deep link | R3, R4 | `lib/nina`, `app/nina/about`, `components/nina` | 4 | — | NORMAL | `.workflows/plan/job-photo-link/phase-1.md` | P1-RI-A032 | — |
+| 2 | Detail foto icon row (jump + photo) | R1, R2 | `lib/nina`, `app/nina/jobs/[id]`, `components/nina` | 6 | 1 | NORMAL | `.workflows/plan/job-photo-link/phase-2.md` | P1-RI-A033 | — |
 
 ### Phase 1 — About-viewer codec + any-age photo deep link
 **Satisfies:** R3, R4 (receiving side)

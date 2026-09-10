@@ -3,6 +3,12 @@
   "coordinator": "orch-job-photo-link",
   "coordinator_session_id": "6968a8f1-312c-4266-83e7-28f09d467e47",
   "created": "2026-09-10T04:24:24+00:00",
+  "landed": {
+    "at": "2026-09-10T05:25:57+00:00",
+    "base": "main",
+    "commit": "766dd985c7be35205fb46d89e9ba1a72f0265ae3",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -46,6 +52,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/job-photo-link/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "job-photo-link",
-  "updated": "2026-09-10T05:21:17+00:00",
+  "updated": "2026-09-10T05:25:57+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/job-photo-link"
 }
