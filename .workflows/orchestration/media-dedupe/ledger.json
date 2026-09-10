@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "b5c7702",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "content_hash col + partial (user_id,content_hash) index live on prod (0018_real_madame_web, catalog-verified); contentHashOf/isValidContentHash + findNinaImageByContentHash + insert-door coalescing + worker raw-SQL pass-through, all gates green. Drift: plan's contentHash.ts needed isBlob type-predicate + compile-time 'as BufferSource' under repo TS libs (runtime byte-identical); schema-guard test extended to 3 indexes for the plan-mandated index. P2 note: reference rows carry NO content_hash per locked decision \u2014 unchanged.",
       "package": "lib/db`, `lib/photos`, `lib/nina",
       "plan": ".workflows/plan/media-dedupe/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-10T05:26:05+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A006",
       "title": "Foundation: `content_hash` kolom, util hash, plumbing data"
     },
     {
@@ -38,7 +38,7 @@
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Write-time dedup: jalur upload chat runner"
     },
@@ -58,7 +58,7 @@
         "R1",
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Write-time dedup: jalur generated + admin"
     },
@@ -79,7 +79,7 @@
         "R2",
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Backfill sweep: hash-fill + peleburan duplikat existing"
     }
@@ -87,6 +87,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/media-dedupe/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "media-dedupe",
-  "updated": "2026-09-10T04:50:04+00:00",
+  "updated": "2026-09-10T05:27:27+00:00",
   "worktree": "/home/miftah/.worktrees/media-dedupe"
 }
