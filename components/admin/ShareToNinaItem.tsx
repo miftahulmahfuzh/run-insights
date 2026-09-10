@@ -2,7 +2,8 @@
 
 import { useTransition } from 'react'
 
-import { buttonClasses } from '@/components/ui'
+import { SendIcon } from '@/components/admin/photoIcons'
+import { buttonClasses, LoadingDots } from '@/components/ui'
 import { ensureNinaAvatarDescriptionAction } from '@/lib/admin/ninaAlbumActions'
 import { ninaPhotoShareUrl } from '@/lib/admin/shareToNina'
 import { cn } from '@/lib/cn'
@@ -143,20 +144,20 @@ export function ShareToNinaItem({
    * (`components/ui/Button.tsx`: *"Exported so a non-`<button>` element can borrow the look"*).
    * Rendering `Button` itself would work, but this item must stay one element with `onClick`
    * straight on it: `window.open` runs inside the click's user activation and nothing may sit
-   * between the gesture and the call. `secondary`/`md`/`fullWidth` is what phase 5's neighbours in
-   * the action stack wear, so it sits with them without a caller having to say so.
+   * between the gesture and the call. Since R6 of 2026-09-10 (`SelectionPane`'s one icon row) the
+   * look it borrows is the squared icon button its rail neighbours wear — `secondary`/`md` squared
+   * to `w-11 px-0` — and the words became the accessible name, verbatim.
    */
   return (
     <button
       type="button"
       onClick={share}
-      className={cn(
-        buttonClasses({ variant: 'secondary', size: 'md', fullWidth: true }),
-        className,
-      )}
+      className={cn(buttonClasses({ variant: 'secondary', size: 'md' }), 'w-11 px-0', className)}
       aria-busy={describing || undefined}
+      aria-label="Share link to Nina"
+      title="Share link to Nina"
     >
-      Share link to Nina
+      {describing ? <LoadingDots className="size-4" /> : <SendIcon className="size-4" />}
     </button>
   )
 }

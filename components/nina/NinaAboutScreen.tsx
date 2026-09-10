@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
+import { SAVE_NOTICE_TEXT, useSavePhoto } from '@/components/ui/useSavePhoto'
 import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
 import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
@@ -321,6 +322,26 @@ export function NinaAboutScreen({
   const deletable = openChatPhoto != null && openChatPhoto.side === 'his'
 
   /**
+   * R5: the strip's download, for BOTH sections. *"tambahkan tombol download di semua image
+   * fullscreen page"* — the album's faces and the conversation's photographs save the same way, so
+   * the URL is derived from whichever section is open, and the control renders unconditionally on
+   * the strip. The save itself is `useSavePhoto`'s ladder — the same share/download/open machinery
+   * the chat viewer's floating pair uses, warmed on `pointerdown` — and its two outcomes wear the
+   * runner-facing Indonesian words the hook exports, merged into the notice line the sends and the
+   * delete already share. `null` when no photo is open arms nothing (the hook no-ops), which is
+   * what lets the hook sit at this component's top level while the strip mounts and unmounts.
+   *
+   * Through `viewerLists`, not the raw props: the chat arm can carry the server-resolved deep-link
+   * photograph a gallery window long since dropped, and an index onto THAT row reads `undefined`
+   * out of `gallery` — a silent download that is not a download, the exact failure the ladder
+   * exists to prevent. `openChatPhoto` above makes the same move for the same reason.
+   */
+  const openPhotoUrl = open == null ? null : (viewerLists[open.section][open.index]?.url ?? null)
+  const saver = useSavePhoto(openPhotoUrl, 'nina')
+  /** One line, three writers: a failed send, a failed delete, a download's last rung. */
+  const stripNotice = notice ?? (saver.notice !== null ? SAVE_NOTICE_TEXT[saver.notice] : null)
+
+  /**
    * One tap, gone — the runner's recorded posture on destructive controls ("remove the
    * confirmation message when user delete nina's message, and also when user delete his own"):
    * a dialog here would re-litigate that ruling one photograph at a time.
@@ -523,9 +544,9 @@ export function NinaAboutScreen({
               paddingBottom: attachStripPadBottomCss(kbOverlap),
             }}
           >
-            {notice != null && (
+            {stripNotice != null && (
               <p className="text-[12px] font-medium text-card/80" role="status">
-                {notice}
+                {stripNotice}
               </p>
             )}
             <input
@@ -579,14 +600,35 @@ export function NinaAboutScreen({
                 <MessageSquarePlusIcon />
               </Button>
               {/*
-                ── THE DELETE: HIS MEDIA PHOTOGRAPHS ONLY, AND THE ROW'S THIRD GLYPH ──────────
+                ── THE DOWNLOAD (R5): EVERY PHOTOGRAPH, EITHER SECTION ─────────────────────────
+                Square like the delete beside it — the two sends own the width, and a download is
+                one verb, not a half of one. `useSavePhoto`'s flight is its own (`saver.busy` dots
+                inside this box, the sends untouched by it: a save never navigates, so it has
+                nothing to exclude), and the warm rides `onPointerDown`/`onFocus` because the
+                ladder's `share()` rung must reach the platform inside Safari's activation window.
+              */}
+              <Button
+                size="md"
+                variant="secondary"
+                loading={saver.busy}
+                disabled={sending !== null || deleting || saver.busy}
+                aria-label="Unduh foto"
+                onPointerDown={saver.warm}
+                onFocus={saver.warm}
+                onClick={saver.save}
+              >
+                <DownloadIcon />
+              </Button>
+              {/*
+                ── THE DELETE: HIS MEDIA PHOTOGRAPHS ONLY, AND THE ROW'S LAST GLYPH ───────────
                 Square and not `flex-1`, on the row's end: the two sends are this strip's reason
                 for existing and share the width between them, while delete is the one control
-                here that ends something — it takes the space its risk earns, no more. Rendered
-                only when the open photo is a chat photograph of his (`deletable` above), shown
-                with NO confirmation step — the runner's own overrule on destructive controls —
-                and sharing the row's one flight: `deleting` dots inside this button, both sends
-                dead until it settles.
+                here that ends something — it takes the space its risk earns, no more, and stays
+                the row's final control because destructive is last (the same grammar the two
+                admin rails read left to right). Rendered only when the open photo is a chat
+                photograph of his (`deletable` above), shown with NO confirmation step — the
+                runner's own overrule on destructive controls — and sharing the row's one flight:
+                `deleting` dots inside this button, both sends dead until it settles.
               */}
               {deletable && (
                 <Button
@@ -619,7 +661,7 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
 }
 
 /*
- * The strip's three glyphs, inlined rather than imported — `SessionRow`'s collection note and
+ * The strip's four glyphs, inlined rather than imported — `SessionRow`'s collection note and
  * `AdminNav`'s before it. All are **Lucide** (lucide-static 1.42.0, ISC), fetched 2026-09-09 from
  * `unpkg.com/lucide-static@1.42.0/icons/<name>.svg` and copied verbatim — the paths and the root's
  * presentation attributes exactly as published; the only adaptations are JSX spelling
@@ -634,7 +676,10 @@ function toCell(photo: NinaAlbumPhoto | NinaGalleryPhoto): NinaGridCell {
  * app that already means "a conversation that does not exist yet", which is exactly what this
  * button sells. `trash-2` is the delete-with-content glyph — the can plus the two strokes that
  * say something is IN it, which is the difference between "clear this" and "this had a photograph
- * in it" — and it is the row's third icon, not a variant of either send.
+ * in it" — and it is the row's last icon, not a variant of either send. `download` (R5) is the
+ * arrow into the tray — the one save glyph every platform's own UI already speaks, and the same
+ * picture `components/admin/photoIcons.tsx` draws for the admin rails; it is inlined here rather
+ * than imported from there because that module is the admin pages' home, not this one's.
  */
 
 /** "Kirim ke chat" — his most recent conversation. Lucide's `send-horizontal`, verbatim. */
@@ -694,6 +739,26 @@ function TrashIcon() {
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
       <path d="M3 6h18" />
       <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  )
+}
+
+/** "Unduh foto" — a copy of the photograph on screen leaves for his device. Lucide's `download`, verbatim. */
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 15V3" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
     </svg>
   )
 }

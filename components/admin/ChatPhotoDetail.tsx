@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-import { BrushIcon, EyeIcon, PersonFrameIcon } from '@/components/admin/photoIcons'
+import { BrushIcon, DownloadIcon, EyeIcon, PersonFrameIcon } from '@/components/admin/photoIcons'
 import { TOUCH_ICON } from '@/components/admin/touch'
+import { Button } from '@/components/ui'
+import { useSavePhoto, type SaveNotice } from '@/components/ui/useSavePhoto'
 import { cn } from '@/lib/cn'
 
 import { ChatPhotoControls } from './ChatPhotoControls'
@@ -18,7 +20,11 @@ import type { ChatPhoto } from './chatPhotoModel'
  * prose blocks are collapsed behind icon toggles until asked for. R4, the same day: *"buat semua
  * icon itu dalam SATU ROW saja … i prefer compact and simple UI"* — so the eye, the brush, the
  * profile-picture toggle and Replace/Remove now share ONE row, with a hairline between the two
- * "see what it is" toggles and the three "do something" controls.
+ * "see what it is" toggles and the three "do something" controls. R7, the same day: a download
+ * joins the do-something half — *"tambahkan icon download untuk mendownload gambarnya"* — before
+ * Replace/Remove, because the row's grammar is non-destructive first, destructive last, and the
+ * download takes a COPY of the photograph the way the eye and brush READ it, only from the
+ * operator's side of the hairline.
  *
  * ── THE SHAPE IS `SelectionPane`'s, THE CONTENT IS NOT ──────────────────────────────────────
  * Still the same `<aside>`, rounded card, close control and action controls at the bottom. The
@@ -49,6 +55,13 @@ import type { ChatPhoto } from './chatPhotoModel'
  * the keyed `ChatPhotoDescription` (whose `key` is now redundant but keeps its own argument).
  */
 
+/** The rail's own wording for `useSavePhoto`'s two rung-out outcomes — the admin's English twin
+ * of the runner-facing Indonesian map the hook itself exports. */
+const SAVE_NOTICE_TEXT: Record<SaveNotice, string> = {
+  opened: 'Opened in a new tab — long-press it to save.',
+  unavailable: 'Could not download it. Try again on a steadier connection.',
+}
+
 export function ChatPhotoDetail({
   photo,
   userId,
@@ -75,6 +88,13 @@ export function ChatPhotoDetail({
   const [showDescription, setShowDescription] = useState(false)
   const [showPrompt, setShowPrompt] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
+
+  /**
+   * R7's download, on `useSavePhoto`'s shared ladder. Keyed remount per photo (`ChatPhotoGrid`'s
+   * `key`) is what resets its flight and notice with the selection — the same remount-the-reset
+   * the three toggles above lean on.
+   */
+  const saver = useSavePhoto(photo.url, 'nina')
 
   /**
    * The rail scrolls itself into view when the selection changes — `SelectionPane.tsx`'s effect,
@@ -170,6 +190,33 @@ export function ChatPhotoDetail({
           >
             <PersonFrameIcon className="size-4" />
           </button>
+
+          {/*
+            R7. The download takes a copy of the photograph the operator is looking at — the same
+            `useSavePhoto` ladder the chat viewer and `/admin/nina`'s rail share, warmed on
+            `pointerdown` so the fetch is usually in hand before the click lands on mobile. It
+            rides before `ChatPhotoControls` so Replace and Remove keep the row's end: the grammar
+            is read, take, change, destroy. Its notice wraps below the row like the controls' own
+            lines (`basis-full` in this flex-wrap parent).
+          */}
+          <Button
+            size="md"
+            variant="secondary"
+            className="w-11 px-0"
+            loading={saver.busy}
+            aria-label="Download this photo"
+            title="Download this photo"
+            onPointerDown={saver.warm}
+            onFocus={saver.warm}
+            onClick={saver.save}
+          >
+            <DownloadIcon className="size-4" />
+          </Button>
+          {saver.notice !== null && (
+            <p className="basis-full text-[12px] font-medium text-ink-3">
+              {SAVE_NOTICE_TEXT[saver.notice]}
+            </p>
+          )}
 
           {/* Its fragment drops Replace and Remove straight into this row; its error/note lines
               wrap below the icons (basis-full) rather than beside them. */}

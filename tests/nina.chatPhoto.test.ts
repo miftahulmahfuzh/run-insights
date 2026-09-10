@@ -19,6 +19,7 @@ const IMAGES = 'components/nina/ChatImages.tsx'
 const LIST = 'components/nina/MessageList.tsx'
 const SCREEN = 'components/nina/ChatScreen.tsx'
 const ACTIONS = 'components/nina/ChatPhotoActions.tsx'
+const SAVE = 'components/ui/useSavePhoto.ts'
 const ABOUT = 'components/nina/NinaAboutScreen.tsx'
 const STRIP = 'components/review/ScreenshotStrip.tsx'
 const INCLUSION = 'components/share/PhotoInclusionList.tsx'
@@ -55,7 +56,9 @@ describe('a chat photo is a tap target that opens the one overlay', () => {
 })
 
 describe('the download is a decision, not an <a download>', () => {
-  const source = readRepoCode(ACTIONS)
+  // The machinery's home since it was lifted out of ChatPhotoActions for the attach strip and the
+  // two admin rails — one ladder, four buttons. Re-growing a copy in any surface is the drift.
+  const source = readRepoCode(SAVE)
 
   it('asks chooseSaveStrategy rather than assuming a platform', () => {
     expect(source).toContain('chooseSaveStrategy(')
@@ -69,12 +72,16 @@ describe('the download is a decision, not an <a download>', () => {
     expect(source).not.toMatch(/download=\{/)
   })
 
-  it('warms the fetch on pointerdown, so share() survives Safari activation', () => {
-    expect(source).toContain('onPointerDown={warm}')
-  })
-
   it('treats a dismissed share sheet as silence', () => {
     expect(source).toContain("error.name === 'AbortError'")
+  })
+
+  it('is what ChatPhotoActions uses, and not a second copy of the ladder', () => {
+    const actions = readRepoCode(ACTIONS)
+    expect(actions).toContain('useSavePhoto(')
+    expect(actions).not.toContain('chooseSaveStrategy(')
+    // The warm survives as the button's own props, on the surface that renders it.
+    expect(actions).toContain('onPointerDown={warm}')
   })
 })
 
@@ -124,7 +131,7 @@ describe('the four pre-existing PhotoViewer callers are byte-identical', () => {
 
 describe("glm-4.6v's private image text still does not reach a component (invariant 5)", () => {
   it('is not read by anything on the chat photo path', () => {
-    for (const file of [IMAGES, LIST, ACTIONS, VIEWER]) {
+    for (const file of [IMAGES, LIST, ACTIONS, VIEWER, SAVE]) {
       expect(readRepoCode(file)).not.toContain('description')
     }
   })
