@@ -7,7 +7,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // (F33) this phase re-hosts and does not re-litigate — see the file's own header. Stubs record
 // what they were given without redoing CropStudio's pointer/pinch geometry here.
 vi.mock('@/components/admin/CropStudio', () => ({
-  CropStudio: ({ crop, onChange, disabled }: { crop: { scale: number }; onChange: (c: { scale: number; x: number; y: number }) => void; disabled: boolean }) => (
+  CropStudio: ({
+    crop,
+    onChange,
+    disabled,
+  }: {
+    crop: { scale: number }
+    onChange: (c: { scale: number; x: number; y: number }) => void
+    disabled: boolean
+  }) => (
     <div data-testid="crop-studio" data-scale={crop.scale} data-disabled={String(disabled)}>
       <button type="button" onClick={() => onChange({ scale: 2, x: 5, y: 5 })}>
         drag
@@ -149,7 +157,9 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
   })
 
   it('shows the filename and folder breadcrumb', () => {
-    render(<SelectionPane {...baseProps()} photo={albumPhoto({ filename: 'a.jpg', folder: 'bali' })} />)
+    render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ filename: 'a.jpg', folder: 'bali' })} />,
+    )
     expect(screen.getByText('a.jpg')).toBeInTheDocument()
     expect(screen.getByText('Album / bali')).toBeInTheDocument()
   })
@@ -194,19 +204,28 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
 
   it('resets framing to identity on Reset', async () => {
     const user = userEvent.setup()
-    render(<SelectionPane {...baseProps()} photo={albumPhoto({ id: 'reset-me', crop: { scale: 2, x: 1, y: 1 } })} />)
+    render(
+      <SelectionPane
+        {...baseProps()}
+        photo={albumPhoto({ id: 'reset-me', crop: { scale: 2, x: 1, y: 1 } })}
+      />,
+    )
     await user.click(screen.getByRole('button', { name: 'Reset framing' }))
     expect(saveNinaAvatarCropAction).toHaveBeenCalledWith({ id: 'reset-me', scale: 1, x: 0, y: 0 })
   })
 
   it('disables Reset once the crop is already identity and undragged', () => {
-    render(<SelectionPane {...baseProps()} photo={albumPhoto({ crop: { scale: 1, x: 0, y: 0 } })} />)
+    render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ crop: { scale: 1, x: 0, y: 0 } })} />,
+    )
     expect(screen.getByRole('button', { name: 'Reset framing' })).toBeDisabled()
   })
 
   it('sets the current avatar and disables the control once it already is one', async () => {
     const user = userEvent.setup()
-    render(<SelectionPane {...baseProps()} photo={albumPhoto({ id: 'promote-me', isCurrent: false })} />)
+    render(
+      <SelectionPane {...baseProps()} photo={albumPhoto({ id: 'promote-me', isCurrent: false })} />,
+    )
     await user.click(screen.getByRole('button', { name: 'Set as her profile picture' }))
     expect(setCurrentNinaAvatarAction).toHaveBeenCalledWith('promote-me')
   })
@@ -219,7 +238,9 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
   it('removes the photo and calls onRemoved(null) on success', async () => {
     const user = userEvent.setup()
     const onRemoved = vi.fn()
-    render(<SelectionPane {...baseProps()} onRemoved={onRemoved} photo={albumPhoto({ id: 'del-me' })} />)
+    render(
+      <SelectionPane {...baseProps()} onRemoved={onRemoved} photo={albumPhoto({ id: 'del-me' })} />,
+    )
     await user.click(screen.getByRole('button', { name: 'Remove this photo' }))
     expect(deleteNinaAvatarAction).toHaveBeenCalledWith('del-me')
     expect(onRemoved).toHaveBeenCalledWith(null)
@@ -231,20 +252,34 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
   })
 
   it('renders the ShareToNinaItem with this photo id and the threaded shareOrigin, never window.location', () => {
-    render(<SelectionPane {...baseProps()} shareOrigin="https://example.com/x" photo={albumPhoto({ id: 'share-me' })} />)
+    render(
+      <SelectionPane
+        {...baseProps()}
+        shareOrigin="https://example.com/x"
+        photo={albumPhoto({ id: 'share-me' })}
+      />,
+    )
     expect(screen.getByTestId('share-to-nina')).toHaveAttribute('data-photo', 'share-me')
   })
 
   it('wires PhotoDescription to the album save/redescribe actions', async () => {
     const user = userEvent.setup()
-    render(<SelectionPane {...baseProps()} photo={albumPhoto({ id: 'desc-me', description: 'old text' })} />)
+    render(
+      <SelectionPane
+        {...baseProps()}
+        photo={albumPhoto({ id: 'desc-me', description: 'old text' })}
+      />,
+    )
     await user.click(screen.getByRole('button', { name: 'Re-describe it — it overwrites' }))
     expect(describeNinaAvatarAction).toHaveBeenCalledWith('desc-me')
 
     const textarea = screen.getByLabelText('What she can see in it')
     await user.type(textarea, ' more')
     await user.click(screen.getByRole('button', { name: 'Save the description' }))
-    expect(editNinaAvatarDescriptionAction).toHaveBeenCalledWith({ id: 'desc-me', description: 'old text more' })
+    expect(editNinaAvatarDescriptionAction).toHaveBeenCalledWith({
+      id: 'desc-me',
+      description: 'old text more',
+    })
   })
 
   it('shows the source, pixel dimensions and thumbnail-presence facts', () => {

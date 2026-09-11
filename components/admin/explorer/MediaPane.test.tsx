@@ -4,7 +4,15 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/admin/CropStudio', () => ({
-  CropStudio: ({ crop, onChange, disabled }: { crop: { scale: number }; onChange: (c: { scale: number; x: number; y: number }) => void; disabled: boolean }) => (
+  CropStudio: ({
+    crop,
+    onChange,
+    disabled,
+  }: {
+    crop: { scale: number }
+    onChange: (c: { scale: number; x: number; y: number }) => void
+    disabled: boolean
+  }) => (
     <div data-testid="crop-studio" data-scale={crop.scale} data-disabled={String(disabled)}>
       <button type="button" onClick={() => onChange({ scale: 3, x: 1, y: 1 })}>
         drag
@@ -13,7 +21,9 @@ vi.mock('@/components/admin/CropStudio', () => ({
   ),
 }))
 vi.mock('@/components/admin/CircleFrame', () => ({
-  CircleFrame: ({ sizeClass }: { sizeClass: string }) => <span data-testid="circle-frame" data-size={sizeClass} />,
+  CircleFrame: ({ sizeClass }: { sizeClass: string }) => (
+    <span data-testid="circle-frame" data-size={sizeClass} />
+  ),
 }))
 
 const { saver } = vi.hoisted(() => ({
@@ -25,7 +35,10 @@ const { describeChatPhotoAction, editChatPhotoDescriptionAction } = vi.hoisted((
   describeChatPhotoAction: vi.fn(),
   editChatPhotoDescriptionAction: vi.fn(),
 }))
-vi.mock('@/lib/admin/chatPhotoActions', () => ({ describeChatPhotoAction, editChatPhotoDescriptionAction }))
+vi.mock('@/lib/admin/chatPhotoActions', () => ({
+  describeChatPhotoAction,
+  editChatPhotoDescriptionAction,
+}))
 
 const { setChatPhotoAsAvatarAction } = vi.hoisted(() => ({ setChatPhotoAsAvatarAction: vi.fn() }))
 vi.mock('@/lib/admin/ninaAlbumActions', () => ({ setChatPhotoAsAvatarAction }))
@@ -80,8 +93,12 @@ describe('MediaPane', () => {
   })
 
   it('shows the created-at timestamp as the header', () => {
-    render(<MediaPane {...baseProps()} photo={mediaPhoto({ createdAt: '2026-09-01T12:30:00.000Z' })} />)
-    expect(screen.getByText(new Date('2026-09-01T12:30:00.000Z').toLocaleString())).toBeInTheDocument()
+    render(
+      <MediaPane {...baseProps()} photo={mediaPhoto({ createdAt: '2026-09-01T12:30:00.000Z' })} />,
+    )
+    expect(
+      screen.getByText(new Date('2026-09-01T12:30:00.000Z').toLocaleString()),
+    ).toBeInTheDocument()
   })
 
   it('calls onClose from the × button', async () => {
@@ -93,7 +110,9 @@ describe('MediaPane', () => {
   })
 
   it('labels the source by kind — upload vs generated', () => {
-    const { rerender } = render(<MediaPane {...baseProps()} photo={mediaPhoto({ kind: 'upload' })} />)
+    const { rerender } = render(
+      <MediaPane {...baseProps()} photo={mediaPhoto({ kind: 'upload' })} />,
+    )
     expect(screen.getByText('His upload, from the chat')).toBeInTheDocument()
 
     rerender(<MediaPane {...baseProps()} photo={mediaPhoto({ kind: 'generated' })} />)
@@ -102,12 +121,19 @@ describe('MediaPane', () => {
 
   it('shows no prompt toggle at all when prompt is null — not a dimmed one', () => {
     render(<MediaPane {...baseProps()} photo={mediaPhoto({ prompt: null })} />)
-    expect(screen.queryByRole('button', { name: 'What she was asked to draw' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'What she was asked to draw' }),
+    ).not.toBeInTheDocument()
   })
 
   it('reveals the prompt on toggle when the sidecar exists', async () => {
     const user = userEvent.setup()
-    render(<MediaPane {...baseProps()} photo={mediaPhoto({ prompt: 'a golden retriever in the surf' })} />)
+    render(
+      <MediaPane
+        {...baseProps()}
+        photo={mediaPhoto({ prompt: 'a golden retriever in the surf' })}
+      />,
+    )
     const toggle = screen.getByRole('button', { name: 'What she was asked to draw' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('a golden retriever in the surf')).not.toBeInTheDocument()
@@ -123,7 +149,12 @@ describe('MediaPane', () => {
     await user.click(screen.getByText('drag'))
     await user.click(screen.getByRole('button', { name: 'Set as her profile picture' }))
 
-    expect(setChatPhotoAsAvatarAction).toHaveBeenCalledWith({ id: 'adopt-me', scale: 3, x: 1, y: 1 })
+    expect(setChatPhotoAsAvatarAction).toHaveBeenCalledWith({
+      id: 'adopt-me',
+      scale: 3,
+      x: 1,
+      y: 1,
+    })
     expect(await screen.findByRole('button', { name: "She's wearing this one now" })).toBeDisabled()
   })
 
@@ -144,12 +175,17 @@ describe('MediaPane', () => {
 
   it('wires PhotoDescription to the media describe/edit actions', async () => {
     const user = userEvent.setup()
-    render(<MediaPane {...baseProps()} photo={mediaPhoto({ id: 'desc-me', description: 'stored' })} />)
+    render(
+      <MediaPane {...baseProps()} photo={mediaPhoto({ id: 'desc-me', description: 'stored' })} />,
+    )
 
     const textarea = screen.getByLabelText('What she can see in it')
     await user.type(textarea, ' more')
     await user.click(screen.getByRole('button', { name: 'Save the description' }))
-    expect(editChatPhotoDescriptionAction).toHaveBeenCalledWith({ id: 'desc-me', description: 'stored more' })
+    expect(editChatPhotoDescriptionAction).toHaveBeenCalledWith({
+      id: 'desc-me',
+      description: 'stored more',
+    })
 
     await user.click(screen.getByRole('button', { name: 'Re-describe it — it overwrites' }))
     expect(describeChatPhotoAction).toHaveBeenCalledWith({ id: 'desc-me' })

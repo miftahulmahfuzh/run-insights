@@ -558,12 +558,7 @@ describe('nina_tuning', () => {
     // who ships. A `DEFAULT 50` here would be a second copy of it in a second language, drifting
     // silently. Instead: no row means the defaults, and `writeNinaTuning` always supplies all of
     // them because it takes a whole `NinaTuning`.
-    for (const key of [
-      'relationship',
-      ...NINA_TRAITS,
-      ...NINA_DIALS.map(snake),
-      'notes',
-    ]) {
+    for (const key of ['relationship', ...NINA_TRAITS, ...NINA_DIALS.map(snake), 'notes']) {
       expect(columns(schema.ninaTuning).get(key)?.notNull, key).toBe(true)
       expect(columns(schema.ninaTuning).get(key)?.hasDefault, key).toBe(false)
     }

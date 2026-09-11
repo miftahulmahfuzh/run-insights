@@ -729,7 +729,7 @@ export function ImageGenPanel({
                   aria-label="Kosongkan notes"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => clearTextField('notes', notesInputRef)}
-                  className="absolute right-0 top-0 grid h-11 w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+                  className="absolute top-0 right-0 grid h-11 w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
                 >
                   ✕
                 </button>
@@ -771,13 +771,13 @@ export function ImageGenPanel({
               Reset to default template
             </Button>
           </div>
-          <p className="mb-3 mt-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
+          <p className="mt-1 mb-3 max-w-[70ch] text-[11px] font-medium text-ink-3">
             This is the prompt she is photographed by — every word of it, editable. A{' '}
-            <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> is where
-            a changing value lands: the Wardrobe field, the ticked Focus terms, the scene she
-            picks per photograph. A line whose value is empty takes the whole line with it, and a
-            placeholder can never be saved broken — rewrite any sentence, delete any line, add
-            your own; it saves when you leave the field.
+            <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> is where a
+            changing value lands: the Wardrobe field, the ticked Focus terms, the scene she picks
+            per photograph. A line whose value is empty takes the whole line with it, and a
+            placeholder can never be saved broken — rewrite any sentence, delete any line, add your
+            own; it saves when you leave the field.
           </p>
           <textarea
             className={cn(
@@ -811,7 +811,7 @@ export function ImageGenPanel({
                 <code className="shrink-0 font-mono text-[11px] font-semibold text-accent">
                   {`{{${key}}}`}
                 </code>
-                <span className="text-[11px] font-medium leading-snug text-ink-3">
+                <span className="text-[11px] leading-snug font-medium text-ink-3">
                   {NINA_IMAGE_TEMPLATE_SPECS[key].description}
                 </span>
               </li>

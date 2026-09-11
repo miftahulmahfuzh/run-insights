@@ -55,7 +55,13 @@ afterEach(() => {
 describe('PhotoMoveBar', () => {
   it('renders nothing when no photo is selected — the selection is phase 5’s, not its own', () => {
     const { container } = render(
-      <PhotoMoveBar selectedId={null} folders={['a']} folder="a" currentId={null} onDone={vi.fn()} />,
+      <PhotoMoveBar
+        selectedId={null}
+        folders={['a']}
+        folder="a"
+        currentId={null}
+        onDone={vi.fn()}
+      />,
     )
     expect(container).toBeEmptyDOMElement()
   })
@@ -228,9 +234,7 @@ describe('PhotoMoveBar', () => {
     await user.click(screen.getByRole('button', { name: 'Remove the selected photos' }))
     await user.click(screen.getByRole('button', { name: 'Remove 1' }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'Her current photo is in the selection.',
-      ),
+      expect(screen.getByRole('alert')).toHaveTextContent('Her current photo is in the selection.'),
     )
     expect(screen.getByText(/delete the files behind them/)).toBeInTheDocument()
   })

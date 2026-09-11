@@ -24,7 +24,13 @@ function renderViewer(props: Partial<React.ComponentProps<typeof PhotoViewer>> =
   const onIndex = props.onIndex ?? vi.fn()
   const onClose = props.onClose ?? vi.fn()
   const utils = render(
-    <PhotoViewer photos={props.photos ?? PHOTOS} index={props.index ?? 0} onIndex={onIndex} onClose={onClose} {...props} />,
+    <PhotoViewer
+      photos={props.photos ?? PHOTOS}
+      index={props.index ?? 0}
+      onIndex={onIndex}
+      onClose={onClose}
+      {...props}
+    />,
   )
   const pan = utils.container.querySelector('.overflow-auto') as HTMLElement
   return { ...utils, onIndex, onClose, pan }
@@ -62,7 +68,10 @@ describe('PhotoViewer', () => {
   })
 
   it('an explicit label beats the kind map — an album photo is never called "avatar"', () => {
-    renderViewer({ photos: [{ url: 'blob:photo-a', kind: 'avatar', label: 'Profile photo' }], index: 0 })
+    renderViewer({
+      photos: [{ url: 'blob:photo-a', kind: 'avatar', label: 'Profile photo' }],
+      index: 0,
+    })
 
     expect(screen.getByText('Profile photo')).toBeInTheDocument()
     expect(screen.queryByText('avatar')).not.toBeInTheDocument()
@@ -116,16 +125,12 @@ describe('PhotoViewer', () => {
     expect(onIndex).toHaveBeenLastCalledWith(1)
 
     // The last photo wraps to the first — not clamps.
-    rerender(
-      <PhotoViewer photos={PHOTOS} index={2} onIndex={onIndex} onClose={vi.fn()} />,
-    )
+    rerender(<PhotoViewer photos={PHOTOS} index={2} onIndex={onIndex} onClose={vi.fn()} />)
     fireEvent.keyDown(document, { key: 'ArrowRight' })
     expect(onIndex).toHaveBeenLastCalledWith(0)
 
     // And the first wraps backwards to the last.
-    rerender(
-      <PhotoViewer photos={PHOTOS} index={0} onIndex={onIndex} onClose={vi.fn()} />,
-    )
+    rerender(<PhotoViewer photos={PHOTOS} index={0} onIndex={onIndex} onClose={vi.fn()} />)
     fireEvent.keyDown(document, { key: 'ArrowLeft' })
     expect(onIndex).toHaveBeenLastCalledWith(2)
   })
@@ -146,9 +151,7 @@ describe('PhotoViewer', () => {
     await user.click(dots[2]!)
     expect(onIndex).toHaveBeenCalledWith(2)
 
-    rerender(
-      <PhotoViewer photos={PHOTOS} index={2} onIndex={onIndex} onClose={vi.fn()} />,
-    )
+    rerender(<PhotoViewer photos={PHOTOS} index={2} onIndex={onIndex} onClose={vi.fn()} />)
     expect(screen.getAllByRole('button', { name: /^Show the / })[2]).toHaveAttribute(
       'aria-current',
       'true',
@@ -160,9 +163,7 @@ describe('PhotoViewer', () => {
 
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
 
-    rerender(
-      <PhotoViewer photos={PHOTOS} index={0} onIndex={vi.fn()} onClose={vi.fn()} />,
-    )
+    rerender(<PhotoViewer photos={PHOTOS} index={0} onIndex={vi.fn()} onClose={vi.fn()} />)
     expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument()
   })
 
@@ -181,9 +182,7 @@ describe('PhotoViewer', () => {
       const { rerender } = renderViewer({ index: 0 })
       scrollTo.mockClear()
 
-      rerender(
-        <PhotoViewer photos={PHOTOS} index={1} onIndex={vi.fn()} onClose={vi.fn()} />,
-      )
+      rerender(<PhotoViewer photos={PHOTOS} index={1} onIndex={vi.fn()} onClose={vi.fn()} />)
       expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0 })
     } finally {
       scrollTo.mockRestore()

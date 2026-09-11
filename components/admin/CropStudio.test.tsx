@@ -42,7 +42,13 @@ const NATURAL = { width: 600, height: 800 } // portrait; at scale 2 the slack is
 function studio(crop: NinaCrop = { scale: 2, x: 0, y: 0 }, disabled = false) {
   const onChange = vi.fn()
   const view = render(
-    <CropStudio src="https://blob.example/her.png" natural={NATURAL} crop={crop} onChange={onChange} disabled={disabled} />,
+    <CropStudio
+      src="https://blob.example/her.png"
+      natural={NATURAL}
+      crop={crop}
+      onChange={onChange}
+      disabled={disabled}
+    />,
   )
   const frame = view.container.querySelector('[role="application"]')!
   // Measure the frame at 400 px, the way layout would.
@@ -126,9 +132,9 @@ describe('CropStudio', () => {
     // carrying the options object.
     const wheelCalls = spy.mock.calls.filter(([type]) => type === 'wheel')
     expect(wheelCalls).not.toHaveLength(0)
-    expect(wheelCalls.some(([, , options]) => JSON.stringify(options) === '{"passive":false}')).toBe(
-      true,
-    )
+    expect(
+      wheelCalls.some(([, , options]) => JSON.stringify(options) === '{"passive":false}'),
+    ).toBe(true)
     spy.mockRestore()
   })
 

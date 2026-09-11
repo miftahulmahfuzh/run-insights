@@ -34,7 +34,9 @@ describe('PhotoGrid', () => {
   it('renders one tile per photo, using the thumbnail when present', () => {
     const { container } = render(
       <PhotoGrid
-        photos={[albumPhoto({ id: 'a', filename: 'a.jpg', thumbUrl: 'https://blob.example/thumb-a.jpg' })]}
+        photos={[
+          albumPhoto({ id: 'a', filename: 'a.jpg', thumbUrl: 'https://blob.example/thumb-a.jpg' }),
+        ]}
         page={page({ total: 1 })}
         view="album"
         selectedId={null}

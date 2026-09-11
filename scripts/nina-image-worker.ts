@@ -640,9 +640,7 @@ export async function generate(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(
-        buildImageRequestBody({ prompt, seed, referenceDataUrl, model }),
-      ),
+      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl, model })),
       /* What is left of the 290 s after the reference fetch, floored so a slow fetch cannot hand
        * `AbortSignal.timeout` a zero. */
       signal: AbortSignal.timeout(

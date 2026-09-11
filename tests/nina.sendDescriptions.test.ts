@@ -200,7 +200,10 @@ describe('the send path carries attached photographs into the turn input (R3)', 
     const result = await actions.sendNinaMessage({
       body: 'dua foto',
       sessionId: SESSION_ID,
-      imageTickets: [ticketFor('a plate of nasi goreng, half eaten'), ticketFor(null, 'aaaaaaaaaaaa')],
+      imageTickets: [
+        ticketFor('a plate of nasi goreng, half eaten'),
+        ticketFor(null, 'aaaaaaaaaaaa'),
+      ],
     })
 
     expect(result.ok).toBe(true)

@@ -575,9 +575,7 @@ export function ninaAppearance(
    * because a hand-run SQL update can still write ' '. */
   const wardrobe = withSentenceStop(prefs.wardrobe.trim())
   if (wardrobe.length > 0) {
-    paragraphs.push(
-      `Her outfit for this photograph: ${wardrobe} ${NINA_OUTFIT_SUFFIX}`,
-    )
+    paragraphs.push(`Her outfit for this photograph: ${wardrobe} ${NINA_OUTFIT_SUFFIX}`)
   } else if (detail.outfit) {
     paragraphs.push(NINA_DEFAULT_OUTFIT)
   }

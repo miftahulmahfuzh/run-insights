@@ -88,10 +88,8 @@ const ABOUT_JOB_LIMIT = 5
 
 export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/about'>) {
   const userId = await requireUserId()
-  const {
-    [NINA_ABOUT_PHOTO_PARAM]: photoParam,
-    [NINA_ABOUT_RETURN_PARAM]: returnParam,
-  } = await searchParams
+  const { [NINA_ABOUT_PHOTO_PARAM]: photoParam, [NINA_ABOUT_RETURN_PARAM]: returnParam } =
+    await searchParams
 
   const [avatars, images, jobs] = await Promise.all([
     listNinaAvatars(userId),

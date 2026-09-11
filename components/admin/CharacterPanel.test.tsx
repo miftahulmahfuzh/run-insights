@@ -149,7 +149,10 @@ describe('CharacterPanel — the commit moments', () => {
   })
 
   it('a dial waits for the settle window, then sends once', async () => {
-    saveAction.mockResolvedValue({ ok: true, tuning: draft({ traits: { ...draft().traits, anger: 55 } }) })
+    saveAction.mockResolvedValue({
+      ok: true,
+      tuning: draft({ traits: { ...draft().traits, anger: 55 } }),
+    })
     panel()
     const anger = traitSlider('anger')
     fireEvent.change(anger, { target: { value: '55' } })
@@ -258,7 +261,10 @@ describe('CharacterPanel — the pipeline’s answers', () => {
   })
 
   it('marks the edited row with the unsaved dot while the field differs from the saved row', async () => {
-    saveAction.mockResolvedValue({ ok: true, tuning: draft({ traits: { ...draft().traits, anger: 55 } }) })
+    saveAction.mockResolvedValue({
+      ok: true,
+      tuning: draft({ traits: { ...draft().traits, anger: 55 } }),
+    })
     panel()
     fireEvent.change(traitSlider('anger'), { target: { value: '55' } })
     // Inside the window the draft differs from saved — the row carries its dot.
@@ -291,7 +297,9 @@ describe('CharacterPanel — the pipeline’s answers', () => {
   it('shows the prompt preview as the SAVED row while edits are pending', async () => {
     saveAction.mockResolvedValue({ ok: true, tuning: draft() })
     panel()
-    expect(screen.queryByText(/as saved — the edits above are not in it yet/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/as saved — the edits above are not in it yet/),
+    ).not.toBeInTheDocument()
 
     fireEvent.change(traitSlider('anger'), { target: { value: '55' } })
     expect(screen.getByText(/as saved — the edits above are not in it yet/)).toBeInTheDocument()

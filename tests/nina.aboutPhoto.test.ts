@@ -113,11 +113,11 @@ describe('the RETURN leg — where closing a deep-linked viewer lands', () => {
     /* The builder refuses what the decoder refuses, so an href this module mints cannot carry an
      * off-app target even from a caller bug — and the refused value costs the caller nothing: no
      * guard, no throw, just the parameter absent. */
-    const good = new URL(aboutPhotoHref('chat', OLD_ID, '/nina/jobs/jobAAAAAAAAA'), 'https://x.test')
-    expect([...good.searchParams.keys()]).toEqual([
-      NINA_ABOUT_PHOTO_PARAM,
-      NINA_ABOUT_RETURN_PARAM,
-    ])
+    const good = new URL(
+      aboutPhotoHref('chat', OLD_ID, '/nina/jobs/jobAAAAAAAAA'),
+      'https://x.test',
+    )
+    expect([...good.searchParams.keys()]).toEqual([NINA_ABOUT_PHOTO_PARAM, NINA_ABOUT_RETURN_PARAM])
     expect(good.searchParams.get(NINA_ABOUT_RETURN_PARAM)).toBe('/nina/jobs/jobAAAAAAAAA')
     const bad = new URL(aboutPhotoHref('chat', OLD_ID, '//evil.test/x'), 'https://x.test')
     expect([...bad.searchParams.keys()]).toEqual([NINA_ABOUT_PHOTO_PARAM])

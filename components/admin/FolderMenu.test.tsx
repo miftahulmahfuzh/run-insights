@@ -163,7 +163,9 @@ describe('FolderMenu', () => {
     expect(options.map((o) => o.textContent)).toEqual(['The album root', 'b', 'b/c'])
     // Nothing from inside a/, and not a itself (its current parent).
     expect(options.map((o) => o.getAttribute('value'))).toEqual(['', 'b', 'b/c'])
-    expect(screen.getByText('No photo is re-uploaded — only the folder changes.')).toBeInTheDocument()
+    expect(
+      screen.getByText('No photo is re-uploaded — only the folder changes.'),
+    ).toBeInTheDocument()
 
     await user.selectOptions(select, 'b')
     await user.click(screen.getByRole('button', { name: 'Move' }))
@@ -223,7 +225,10 @@ describe('FolderMenu', () => {
 
     await user.click(screen.getByText('Delete the rest, keep her photo'))
     await waitFor(() =>
-      expect(deleteFolderAction).toHaveBeenNthCalledWith(2, { folder: 'a/trip', keepCurrent: true }),
+      expect(deleteFolderAction).toHaveBeenNthCalledWith(2, {
+        folder: 'a/trip',
+        keepCurrent: true,
+      }),
     )
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('a/trip'))
   })

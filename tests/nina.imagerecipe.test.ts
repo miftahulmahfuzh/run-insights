@@ -285,9 +285,11 @@ describe('the prompt', () => {
 
   it('§8: the payload carries the job’s camera, and builds byte-identically without one', () => {
     const defaulted = buildImageRequestBody({ prompt: 'a photograph', seed: 42 })
-    expect(JSON.stringify(buildImageRequestBody({ prompt: 'a photograph', seed: 42, model: NINA_IMAGE_MODEL }))).toBe(
-      JSON.stringify(defaulted),
-    )
+    expect(
+      JSON.stringify(
+        buildImageRequestBody({ prompt: 'a photograph', seed: 42, model: NINA_IMAGE_MODEL }),
+      ),
+    ).toBe(JSON.stringify(defaulted))
     expect(
       buildImageRequestBody({ prompt: 'a photograph', seed: 42, model: 'qwen/qwen-image-3' }).model,
     ).toBe('qwen/qwen-image-3')
@@ -1140,7 +1142,11 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
 
   it('the empty template IS the default — the one spelling of "unmodified"', () => {
     expect(
-      buildNinaImagePrompt({ purpose: 'selfie', scene: 'x', prefs: prefsWith({ promptTemplate: '' }) }),
+      buildNinaImagePrompt({
+        purpose: 'selfie',
+        scene: 'x',
+        prefs: prefsWith({ promptTemplate: '' }),
+      }),
     ).toBe(
       buildNinaImagePrompt({
         purpose: 'selfie',

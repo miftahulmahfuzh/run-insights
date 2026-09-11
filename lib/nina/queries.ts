@@ -2228,11 +2228,7 @@ export async function updateNinaChatPhotoBlob(
       contentHash: patch.contentHash ?? null,
     })
     .where(
-      and(
-        eq(ninaMessageImages.userId, userId),
-        eq(ninaMessageImages.id, id),
-        isOriginalPhoto(),
-      ),
+      and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id), isOriginalPhoto()),
     )
     .returning(imageColumns)
 
@@ -2425,11 +2421,7 @@ export async function updateNinaChatPhotoDescription(
     .update(ninaMessageImages)
     .set({ description })
     .where(
-      and(
-        eq(ninaMessageImages.userId, userId),
-        eq(ninaMessageImages.id, id),
-        isOriginalPhoto(),
-      ),
+      and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.id, id), isOriginalPhoto()),
     )
     .returning(imageColumns)
 

@@ -644,50 +644,51 @@ export interface NinaImageTemplateSpec {
   readonly description: string
 }
 
-export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<Record<NinaImageTemplateKey, NinaImageTemplateSpec>> =
-  Object.freeze({
-    bodyFacts: Object.freeze({
-      key: 'bodyFacts',
-      description:
-        'The four facts, in the canon\'s own words: big boobs, a bubble butt, big thighs and very long calves. Required.',
-    }),
-    wardrobe: Object.freeze({
-      key: 'wardrobe',
-      description:
-        'The Wardrobe field\'s value — or her canon default outfit when the field is empty.',
-    }),
-    focus: Object.freeze({
-      key: 'focus',
-      description:
-        'The ticked Focus-on terms, as one list. Nothing ticked, no line — the whole line goes.',
-    }),
-    presence: Object.freeze({
-      key: 'presence',
-      description:
-        'The pose clauses the steamy and flirty dials on the Personality tab add. Quiet dials, no line. Replace this token with your own sentence to pin the pose.',
-    }),
-    venue: Object.freeze({
-      key: 'venue',
-      description: 'The Venue field, verbatim. Empty field, whole line gone.',
-    }),
-    time: Object.freeze({
-      key: 'time',
-      description: 'The Time field, verbatim. Empty field, whole line gone.',
-    }),
-    scene: Object.freeze({
-      key: 'scene',
-      description:
-        'What this photograph is of — she chooses it per photograph, and this is the slot it lands in. Required.',
-    }),
-    mood: Object.freeze({
-      key: 'mood',
-      description: 'EXPRESSION AND ENERGY — the per-photograph note the chat model may send.',
-    }),
-    notes: Object.freeze({
-      key: 'notes',
-      description: 'The Notes field, verbatim. Empty field, whole line gone.',
-    }),
-  })
+export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
+  Record<NinaImageTemplateKey, NinaImageTemplateSpec>
+> = Object.freeze({
+  bodyFacts: Object.freeze({
+    key: 'bodyFacts',
+    description:
+      "The four facts, in the canon's own words: big boobs, a bubble butt, big thighs and very long calves. Required.",
+  }),
+  wardrobe: Object.freeze({
+    key: 'wardrobe',
+    description:
+      "The Wardrobe field's value — or her canon default outfit when the field is empty.",
+  }),
+  focus: Object.freeze({
+    key: 'focus',
+    description:
+      'The ticked Focus-on terms, as one list. Nothing ticked, no line — the whole line goes.',
+  }),
+  presence: Object.freeze({
+    key: 'presence',
+    description:
+      'The pose clauses the steamy and flirty dials on the Personality tab add. Quiet dials, no line. Replace this token with your own sentence to pin the pose.',
+  }),
+  venue: Object.freeze({
+    key: 'venue',
+    description: 'The Venue field, verbatim. Empty field, whole line gone.',
+  }),
+  time: Object.freeze({
+    key: 'time',
+    description: 'The Time field, verbatim. Empty field, whole line gone.',
+  }),
+  scene: Object.freeze({
+    key: 'scene',
+    description:
+      'What this photograph is of — she chooses it per photograph, and this is the slot it lands in. Required.',
+  }),
+  mood: Object.freeze({
+    key: 'mood',
+    description: 'EXPRESSION AND ENERGY — the per-photograph note the chat model may send.',
+  }),
+  notes: Object.freeze({
+    key: 'notes',
+    description: 'The Notes field, verbatim. Empty field, whole line gone.',
+  }),
+})
 
 /**
  * The template's cap. The default template is ~1.4 KB of prose; the cap admits a full rewrite
@@ -717,7 +718,9 @@ export const NINA_IMAGE_TEMPLATE_TOKEN_RE = /\{\{([a-zA-Z]+)\}\}/g
  * Reordered tokens, duplicated tokens, deleted optional lines and rewritten prose are all FINE —
  * that is the control the feature exists to hand over.
  */
-export function validateNinaImageTemplate(value: string): { ok: true } | { ok: false; error: string } {
+export function validateNinaImageTemplate(
+  value: string,
+): { ok: true } | { ok: false; error: string } {
   if (value === '') return { ok: true }
 
   const seen = new Set<string>()

@@ -40,9 +40,13 @@ describe('MediaAdd', () => {
 
     await pick(container, [file('a.jpg')])
 
-    expect(uploadChatPhoto).toHaveBeenCalledWith('user1', expect.objectContaining({ name: 'a.jpg' }), {
-      dedupe: true,
-    })
+    expect(uploadChatPhoto).toHaveBeenCalledWith(
+      'user1',
+      expect.objectContaining({ name: 'a.jpg' }),
+      {
+        dedupe: true,
+      },
+    )
     expect(addChatPhotoAction).toHaveBeenCalledWith({ url: 'https://blob.example/x.jpg' })
     expect(fileInput(container).value).toBe('')
   })

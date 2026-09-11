@@ -20,11 +20,7 @@ import {
 } from '@/lib/nina/imageprefs'
 import { ninaBand, type NinaBandName, type NinaTuning } from '@/lib/nina/tuning'
 
-import {
-  NINA_IMAGE_ASPECT,
-  NINA_IMAGE_RESOLUTION,
-  type NinaImagePurpose,
-} from './imagerecipe'
+import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from './imagerecipe'
 
 /**
  * **The words the camera is given.** Assembled on Vercel, stored in `nina_turns.args.prompt`, and
@@ -599,8 +595,7 @@ export function buildNinaImagePrompt(input: {
    * selfie path, which is the honest reading of "the template IS the prompt".
    */
   if (isAvatar) {
-    const camera =
-      rung.camera === 'full' ? NINA_AVATAR_STYLE : NINA_AVATAR_STYLE_SHORT
+    const camera = rung.camera === 'full' ? NINA_AVATAR_STYLE : NINA_AVATAR_STYLE_SHORT
 
     const detail: NinaAppearanceDetail = {
       /* One sentence on the avatar path at EVERY rung. More body prose under a head-and-shoulders

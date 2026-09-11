@@ -91,7 +91,11 @@ function promise(overrides?: Partial<MemoryRow>): MemoryRow {
   }
 }
 
-function table(rows: MemoryRow[], factTotal = rows.filter((r) => r.kind === 'fact').length, hiddenCount = 0) {
+function table(
+  rows: MemoryRow[],
+  factTotal = rows.filter((r) => r.kind === 'fact').length,
+  hiddenCount = 0,
+) {
   render(<MemoryTable userId="u1" rows={rows} factTotal={factTotal} hiddenCount={hiddenCount} />)
 }
 
@@ -113,7 +117,9 @@ describe('MemoryTable — structure', () => {
     expect(screen.getByText('Slots')).toBeInTheDocument()
     expect(screen.getByText('Pending promises')).toBeInTheDocument()
     expect(screen.getByText('Ledger')).toBeInTheDocument()
-    expect(screen.getByText(/Eight closed keys, every one of them in her prompt/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Eight closed keys, every one of them in her prompt/),
+    ).toBeInTheDocument()
     expect(screen.getByText(/Not editable as text — she checks the metric/)).toBeInTheDocument()
     expect(screen.getByText(/she reads the newest 60 on every turn/)).toBeInTheDocument()
   })
@@ -131,7 +137,9 @@ describe('MemoryTable — structure', () => {
   it('accounts for the rows the page left out', () => {
     table([fact(), fact({ rowId: 'fact:2', target: 'f2' })], 312, 12)
     expect(
-      screen.getByText('Showing the newest 300 of 312 ledger rows. 12 older row(s) are not listed here.'),
+      screen.getByText(
+        'Showing the newest 300 of 312 ledger rows. 12 older row(s) are not listed here.',
+      ),
     ).toBeInTheDocument()
   })
 })
@@ -147,17 +155,26 @@ describe('MemoryTable — slot rows', () => {
   })
 
   it('saves the slot on blur and shows the action’s note', async () => {
-    saveSlot.mockResolvedValue({ ok: true, note: 'Saved. Tuesdays and Thursdays became "Selasa, Kamis".' })
+    saveSlot.mockResolvedValue({
+      ok: true,
+      note: 'Saved. Tuesdays and Thursdays became "Selasa, Kamis".',
+    })
     const user = userEvent.setup()
     table([slot()])
     const box = screen.getByLabelText('Goals value')
     await user.type(box, '!')
     fireEvent.blur(box)
     await waitFor(() =>
-      expect(saveSlot).toHaveBeenCalledWith({ userId: 'u1', key: 'goals', value: 'Run a marathon.!' }),
+      expect(saveSlot).toHaveBeenCalledWith({
+        userId: 'u1',
+        key: 'goals',
+        value: 'Run a marathon.!',
+      }),
     )
     await waitFor(() =>
-      expect(screen.getByText('Saved. Tuesdays and Thursdays became "Selasa, Kamis".')).toBeInTheDocument(),
+      expect(
+        screen.getByText('Saved. Tuesdays and Thursdays became "Selasa, Kamis".'),
+      ).toBeInTheDocument(),
     )
   })
 
@@ -169,7 +186,9 @@ describe('MemoryTable — slot rows', () => {
     fireEvent.blur(box)
 
     expect(
-      screen.getByText('A slot cannot be empty. Delete the row instead — the key comes back blank.'),
+      screen.getByText(
+        'A slot cannot be empty. Delete the row instead — the key comes back blank.',
+      ),
     ).toBeInTheDocument()
     expect(box).toHaveValue('Run a marathon.')
     expect(saveSlot).not.toHaveBeenCalled()
@@ -202,7 +221,15 @@ describe('MemoryTable — slot rows', () => {
   })
 
   it('renders an orphaned key as a read-only, undeletable blank', () => {
-    table([slot({ editable: false, deletable: false, text: '', origin: null, note: 'Nothing written yet.' })])
+    table([
+      slot({
+        editable: false,
+        deletable: false,
+        text: '',
+        origin: null,
+        note: 'Nothing written yet.',
+      }),
+    ])
     expect(screen.getByText('not set')).toBeInTheDocument() // the read-only <p>
     expect(screen.queryByLabelText('Goals value')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument()
@@ -238,7 +265,18 @@ describe('MemoryTable — promise rows', () => {
   })
 
   it('renders When as the first ten characters, or a dash when there is none', () => {
-    table([slot(), slot({ rowId: 'slot:pace', target: 'pace', label: 'Pace', code: 'pace', at: null, hint: '', note: '' })])
+    table([
+      slot(),
+      slot({
+        rowId: 'slot:pace',
+        target: 'pace',
+        label: 'Pace',
+        code: 'pace',
+        at: null,
+        hint: '',
+        note: '',
+      }),
+    ])
     expect(screen.getByText('2026-09-10')).toBeInTheDocument()
     expect(screen.getByText('—')).toBeInTheDocument()
   })
@@ -377,7 +415,9 @@ describe('MemoryTable — the add row', () => {
     await user.type(input, 'Something new.')
     await user.click(screen.getByRole('button', { name: 'Add this row to the ledger' }))
 
-    await waitFor(() => expect(screen.getByText('The write failed. Try again.')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText('The write failed. Try again.')).toBeInTheDocument(),
+    )
     expect(input).toHaveValue('Something new.')
   })
 

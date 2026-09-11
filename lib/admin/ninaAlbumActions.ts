@@ -176,9 +176,7 @@ export async function describeNinaAvatarAction(rawId: string): Promise<AdminActi
  * `setNinaAvatarDescription` takes `string | null` already — `scheduleDescribe` is its other
  * caller — so no query changes.
  */
-export async function editNinaAvatarDescriptionAction(
-  input: unknown,
-): Promise<AdminActionResult> {
+export async function editNinaAvatarDescriptionAction(input: unknown): Promise<AdminActionResult> {
   const { userId } = await requireAdmin()
 
   const parsed = avatarDescriptionSchema.safeParse(input)

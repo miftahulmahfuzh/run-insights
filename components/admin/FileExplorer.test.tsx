@@ -206,10 +206,7 @@ describe('FileExplorer', () => {
     render(<FileExplorer {...baseProps({ folders: [{ folder: 'bali', count: 1 }] })} />)
     await user.click(screen.getByRole('button', { name: 'create-folder' }))
     // Plain string sort: '2' sorts before 'b'.
-    expect(screen.getByTestId('folder-tree')).toHaveAttribute(
-      'data-all-folders',
-      '2026/fresh,bali',
-    )
+    expect(screen.getByTestId('folder-tree')).toHaveAttribute('data-all-folders', '2026/fresh,bali')
   })
 
   it('opens the SelectionPane for the selected photo id and closes it from the pane', async () => {
@@ -251,7 +248,9 @@ describe('FileExplorer', () => {
     filesFromPicker.mockReturnValue([])
     const { container } = render(<FileExplorer {...baseProps()} />)
     const inputs = container.querySelectorAll('input[type="file"]')
-    fireEvent.change(inputs[0] as HTMLInputElement, { target: { files: [new File(['x'], 'a.jpg')] } })
+    fireEvent.change(inputs[0] as HTMLInputElement, {
+      target: { files: [new File(['x'], 'a.jpg')] },
+    })
 
     expect(upload.start).not.toHaveBeenCalled()
   })

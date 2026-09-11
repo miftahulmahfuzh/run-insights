@@ -34,7 +34,11 @@ describe('Sheet', () => {
   })
 
   it('closed renders nothing at all', () => {
-    render(<Sheet open={false} onClose={vi.fn()} title="Edit">Body</Sheet>)
+    render(
+      <Sheet open={false} onClose={vi.fn()} title="Edit">
+        Body
+      </Sheet>,
+    )
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.queryByText('Body')).not.toBeInTheDocument()
@@ -60,7 +64,11 @@ describe('Sheet', () => {
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
 
-    rerender(<Sheet open={true} onClose={vi.fn()} title="Edit km 11"><input aria-label="Pace" /></Sheet>)
+    rerender(
+      <Sheet open={true} onClose={vi.fn()} title="Edit km 11">
+        <input aria-label="Pace" />
+      </Sheet>,
+    )
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
   })
 
@@ -104,7 +112,11 @@ describe('Sheet', () => {
     })
 
     it('a closed sheet leaves the body alone', () => {
-      render(<Sheet open={false} onClose={vi.fn()} title="Edit">Body</Sheet>)
+      render(
+        <Sheet open={false} onClose={vi.fn()} title="Edit">
+          Body
+        </Sheet>,
+      )
 
       expect(document.body.style.overflow).not.toBe('hidden')
     })

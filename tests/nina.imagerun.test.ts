@@ -252,19 +252,16 @@ describe('write-time dedup (media-dedupe P3)', () => {
 
     /* The whole point: no second object exists. */
     expect(putBlob).not.toHaveBeenCalled()
-    expect(insertImages).toHaveBeenCalledWith(
-      USER,
-      [
-        expect.objectContaining({
-          blobUrl: KEEPER.blobUrl,
-          pathname: KEEPER.pathname,
-          sourceImageId: KEEPER.id,
-          /* The scene and sidecar stay THIS generation's — argued at the insert. */
-          description: SCENE,
-          prompt: ARGS.sidecar,
-        }),
-      ],
-    )
+    expect(insertImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({
+        blobUrl: KEEPER.blobUrl,
+        pathname: KEEPER.pathname,
+        sourceImageId: KEEPER.id,
+        /* The scene and sidecar stay THIS generation's — argued at the insert. */
+        description: SCENE,
+        prompt: ARGS.sidecar,
+      }),
+    ])
     /* Nothing was put, so there is nothing to release. */
     expect(releaseLoser).not.toHaveBeenCalled()
     /* A deduped photograph is a delivered photograph. */
@@ -292,10 +289,9 @@ describe('write-time dedup (media-dedupe P3)', () => {
     await expect(runNinaImageJob(USER, JOB_ID)).resolves.toBe('ok')
 
     expect(putBlob).toHaveBeenCalledOnce()
-    expect(insertImages).toHaveBeenCalledWith(
-      USER,
-      [expect.objectContaining({ blobUrl: KEEPER.blobUrl, sourceImageId: KEEPER.id })],
-    )
+    expect(insertImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({ blobUrl: KEEPER.blobUrl, sourceImageId: KEEPER.id }),
+    ])
     expect(releaseLoser).toHaveBeenCalledWith(USER, {
       blobUrl: FRESH.url,
       pathname: FRESH.pathname,

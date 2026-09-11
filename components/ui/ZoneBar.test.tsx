@@ -74,7 +74,9 @@ describe('ZoneBar', () => {
 
   it('a zero-second zone renders no segment — but keeps its label and its table row', () => {
     const { container } = render(
-      <ZoneBar shares={[...SHARES, { zone: 5, durationSec: 0, pct: 0, minBpm: 174, maxBpm: null }]} />,
+      <ZoneBar
+        shares={[...SHARES, { zone: 5, durationSec: 0, pct: 0, minBpm: 174, maxBpm: null }]}
+      />,
     )
 
     expect(container.querySelectorAll('[role="img"] > span')).toHaveLength(3)
@@ -142,11 +144,7 @@ describe('ZoneBar', () => {
 
     it('an open floor reads "and up", and no bounds at all read "no range"', () => {
       render(
-        <ZoneBar
-          shares={[
-            { zone: 5, durationSec: 100, pct: 100, minBpm: 174, maxBpm: null },
-          ]}
-        />,
+        <ZoneBar shares={[{ zone: 5, durationSec: 100, pct: 100, minBpm: 174, maxBpm: null }]} />,
       )
 
       expect(screen.getByText('174 bpm and up')).toBeInTheDocument()
@@ -154,9 +152,7 @@ describe('ZoneBar', () => {
 
     it('both bounds null degrades to "no range", never to missing data', () => {
       render(
-        <ZoneBar
-          shares={[{ zone: 1, durationSec: 100, pct: 100, minBpm: null, maxBpm: null }]}
-        />,
+        <ZoneBar shares={[{ zone: 1, durationSec: 100, pct: 100, minBpm: null, maxBpm: null }]} />,
       )
 
       expect(screen.getByText('no range')).toBeInTheDocument()

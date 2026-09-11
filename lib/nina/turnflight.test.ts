@@ -142,10 +142,8 @@ describe('the cold load and the poll agree on "unanswered"', () => {
   }
 
   /** The page's half: `ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null)`. */
-  const pageAwaiting = (
-    rows: readonly NinaFlightRow[],
-    claimCreatedAt: Date | null,
-  ): boolean => ninaFlightView(rows, NOW, claimCreatedAt).awaiting
+  const pageAwaiting = (rows: readonly NinaFlightRow[], claimCreatedAt: Date | null): boolean =>
+    ninaFlightView(rows, NOW, claimCreatedAt).awaiting
 
   /** A claim opened `ageMs` ago, or `null` for "no pending row for this session". */
   const claim = (ageMs: number | null): Date | null =>

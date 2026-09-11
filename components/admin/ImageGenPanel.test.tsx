@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ImageGenPanel } from './ImageGenPanel'
 import { saveNinaImagePrefsAction } from '@/lib/admin/imageGenActions'
 import { IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS, type ImageGenDraft } from '@/lib/admin/imageGenModel'
-import { NINA_IMAGE_FOCUS_KEYS, NINA_IMAGE_MODEL_IDS, NINA_PROMPT_TEMPLATE_MAX } from '@/lib/nina/imageprefs'
+import {
+  NINA_IMAGE_FOCUS_KEYS,
+  NINA_IMAGE_MODEL_IDS,
+  NINA_PROMPT_TEMPLATE_MAX,
+} from '@/lib/nina/imageprefs'
 
 /*
  * The save action is mocked. `PhotoReferencePicker` and `ImageGenTestPanel` are stubbed at their

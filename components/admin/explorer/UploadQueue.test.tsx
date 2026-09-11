@@ -33,23 +33,35 @@ describe('UploadQueue', () => {
 
   it('renders when idle but an error is present', () => {
     render(
-      <UploadQueue phase="idle" items={[]} report={null} error="Something broke" onDismiss={vi.fn()} />,
+      <UploadQueue
+        phase="idle"
+        items={[]}
+        report={null}
+        error="Something broke"
+        onDismiss={vi.fn()}
+      />,
     )
     expect(screen.getByText('Something broke')).toBeInTheDocument()
   })
 
   it('says "Reading the folder" while reading', () => {
-    render(<UploadQueue phase="reading" items={[]} report={null} error={null} onDismiss={vi.fn()} />)
+    render(
+      <UploadQueue phase="reading" items={[]} report={null} error={null} onDismiss={vi.fn()} />,
+    )
     expect(screen.getByText('Reading the folder')).toBeInTheDocument()
   })
 
   it('says "Checking what is already here" while planning', () => {
-    render(<UploadQueue phase="planning" items={[]} report={null} error={null} onDismiss={vi.fn()} />)
+    render(
+      <UploadQueue phase="planning" items={[]} report={null} error={null} onDismiss={vi.fn()} />,
+    )
     expect(screen.getByText('Checking what is already here')).toBeInTheDocument()
   })
 
   it('says "Nothing to upload" once done with no report at all', () => {
-    render(<UploadQueue phase="finished" items={[]} report={null} error={null} onDismiss={vi.fn()} />)
+    render(
+      <UploadQueue phase="finished" items={[]} report={null} error={null} onDismiss={vi.fn()} />,
+    )
     expect(screen.getByText('Nothing to upload')).toBeInTheDocument()
   })
 
@@ -109,7 +121,12 @@ describe('UploadQueue', () => {
     render(
       <UploadQueue
         phase="uploading"
-        items={[item({ id: 'a', state: 'done' }), item({ id: 'b' }), item({ id: 'c' }), item({ id: 'd' })]}
+        items={[
+          item({ id: 'a', state: 'done' }),
+          item({ id: 'b' }),
+          item({ id: 'c' }),
+          item({ id: 'd' }),
+        ]}
         report={report()}
         error={null}
         onDismiss={vi.fn()}
@@ -121,19 +138,41 @@ describe('UploadQueue', () => {
 
   it('hides the Show/Hide toggle and the progress bar when there are no items', () => {
     render(
-      <UploadQueue phase="finished" items={[]} report={report({ already: 1, found: 1 })} error={null} onDismiss={vi.fn()} />,
+      <UploadQueue
+        phase="finished"
+        items={[]}
+        report={report({ already: 1, found: 1 })}
+        error={null}
+        onDismiss={vi.fn()}
+      />,
     )
-    expect(screen.queryByRole('button', { name: /Show the list|Hide the list/ })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Show the list|Hide the list/ }),
+    ).not.toBeInTheDocument()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
   it('hides Dismiss while busy, and shows it once settled', () => {
     const { rerender } = render(
-      <UploadQueue phase="uploading" items={[item()]} report={null} error={null} onDismiss={vi.fn()} />,
+      <UploadQueue
+        phase="uploading"
+        items={[item()]}
+        report={null}
+        error={null}
+        onDismiss={vi.fn()}
+      />,
     )
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
 
-    rerender(<UploadQueue phase="finished" items={[item({ state: 'done' })]} report={report()} error={null} onDismiss={vi.fn()} />)
+    rerender(
+      <UploadQueue
+        phase="finished"
+        items={[item({ state: 'done' })]}
+        report={report()}
+        error={null}
+        onDismiss={vi.fn()}
+      />,
+    )
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
   })
 
@@ -141,7 +180,13 @@ describe('UploadQueue', () => {
     const user = userEvent.setup()
     const onDismiss = vi.fn()
     render(
-      <UploadQueue phase="finished" items={[item({ state: 'done' })]} report={report()} error={null} onDismiss={onDismiss} />,
+      <UploadQueue
+        phase="finished"
+        items={[item({ state: 'done' })]}
+        report={report()}
+        error={null}
+        onDismiss={onDismiss}
+      />,
     )
     await user.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(onDismiss).toHaveBeenCalled()

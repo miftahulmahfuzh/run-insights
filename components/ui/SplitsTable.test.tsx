@@ -43,7 +43,15 @@ function point(overrides: Partial<PaceHrPoint> & { km: number }): PaceHrPoint {
 const POINTS: PaceHrPoint[] = [
   point({ km: 1, paceSec: 400, hr: 165, cadence: 170, timeSec: 400 }),
   point({ km: 2, paceSec: 500, hr: 150, cadence: 168, timeSec: 500 }),
-  point({ km: 3, paceSec: 430, hr: null, cadence: null, timeSec: 288, partial: true, distanceM: 750 }),
+  point({
+    km: 3,
+    paceSec: 430,
+    hr: null,
+    cadence: null,
+    timeSec: 288,
+    partial: true,
+    distanceM: 750,
+  }),
 ]
 
 function bodyRows(container: HTMLElement): HTMLElement[] {
@@ -148,13 +156,9 @@ describe('SplitsTable', () => {
     })
 
     it('no partial row, no caption', () => {
-      render(
-        <SplitsTable points={[point({ km: 1 })]} zones={ZONES} />,
-      )
+      render(<SplitsTable points={[point({ km: 1 })]} zones={ZONES} />)
 
-      expect(
-        screen.queryByText(/is partial/),
-      ).not.toBeInTheDocument()
+      expect(screen.queryByText(/is partial/)).not.toBeInTheDocument()
     })
   })
 
@@ -212,7 +216,9 @@ describe('SplitsTable', () => {
     })
 
     it('an HR above every bounded zone lands in the open-ceiling zone 5', () => {
-      const { container } = render(<SplitsTable points={[point({ km: 1, hr: 182 })]} zones={ZONES} />)
+      const { container } = render(
+        <SplitsTable points={[point({ km: 1, hr: 182 })]} zones={ZONES} />,
+      )
 
       expect(barOf(bodyRows(container)[0]!).fill).toHaveClass('bg-z5')
     })

@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EXPLORER_REGISTER_CHUNK, useFolderUpload } from './useFolderUpload'
 import { upload } from '@vercel/blob/client'
-import { listNinaAlbumManifestAction, registerNinaAvatarsAction } from '@/lib/admin/ninaAlbumActions'
+import {
+  listNinaAlbumManifestAction,
+  registerNinaAvatarsAction,
+} from '@/lib/admin/ninaAlbumActions'
 import { sourceKeyFor } from '@/lib/admin/filetree'
 import type { WalkedFile } from './dropWalk'
 
@@ -35,7 +38,10 @@ const registerMock = vi.mocked(registerNinaAvatarsAction)
 
 /** `PutBlobResult` is not exported from the client package; capture it off the function instead. */
 type PutResult = Awaited<ReturnType<typeof upload>>
-function putResult(url = 'https://blob.example/original', pathname = 'nina/avatar-x.jpg'): PutResult {
+function putResult(
+  url = 'https://blob.example/original',
+  pathname = 'nina/avatar-x.jpg',
+): PutResult {
   return {
     url,
     pathname,
@@ -83,15 +89,17 @@ function measureOk() {
 }
 
 function makeHook(onFinished = vi.fn()) {
-  const view = renderHook(() =>
-    useFolderUpload({ userId: 'u1', destination: '2026', onFinished }),
-  )
+  const view = renderHook(() => useFolderUpload({ userId: 'u1', destination: '2026', onFinished }))
   return { ...view, onFinished }
 }
 
 /** Drive the gesture up to `planning` with the manifest gated, so callers decide what it holds. */
 async function startToPlanning(files: readonly WalkedFile[]) {
-  const manifestGate = gate<{ ok: true; entries: Array<{ sourceKey: string }>; truncated?: boolean }>()
+  const manifestGate = gate<{
+    ok: true
+    entries: Array<{ sourceKey: string }>
+    truncated?: boolean
+  }>()
   manifestMock.mockReturnValue(manifestGate.promise as never)
   const { result } = makeHook()
   await act(async () => {
@@ -125,7 +133,9 @@ describe('useFolderUpload — the gesture’s decisions before any byte moves', 
       result.current.start([])
     })
     await waitFor(() => expect(result.current.phase).toBe('finished'))
-    expect(result.current.error).toBe('Nothing readable in that drop. Try the folder picker instead.')
+    expect(result.current.error).toBe(
+      'Nothing readable in that drop. Try the folder picker instead.',
+    )
     expect(manifestMock).not.toHaveBeenCalled()
   })
 
@@ -143,7 +153,10 @@ describe('useFolderUpload — the gesture’s decisions before any byte moves', 
   })
 
   it('plans against the destination subtree and shows the diff before uploading', async () => {
-    const files = [walkedFile('bali/DSC_1.jpg'), walkedFile('bali/DSC_2.png', { type: 'image/png' })]
+    const files = [
+      walkedFile('bali/DSC_1.jpg'),
+      walkedFile('bali/DSC_2.png', { type: 'image/png' }),
+    ]
     // Gate the PUTs before the start so the queue can be observed standing still in 'uploading'.
     const putGate = gate<PutResult>()
     uploadMock.mockReturnValue(putGate.promise)
@@ -178,7 +191,11 @@ describe('useFolderUpload — the gesture’s decisions before any byte moves', 
     const { result, manifestGate } = await startToPlanning([file])
 
     await act(async () => {
-      manifestGate.resolve({ ok: true, entries: [existingEntryFor(file, '2026')], truncated: false })
+      manifestGate.resolve({
+        ok: true,
+        entries: [existingEntryFor(file, '2026')],
+        truncated: false,
+      })
     })
     await waitFor(() => expect(result.current.phase).toBe('finished'))
 
@@ -193,7 +210,10 @@ describe('useFolderUpload — the gesture’s decisions before any byte moves', 
 
   it('lists refused files in the report and keeps them out of the queue', async () => {
     const files = [
-      walkedFile('bali/big.jpg', { size: 9 * 1024 * 1024, file: { size: 9 * 1024 * 1024 } as unknown as File }),
+      walkedFile('bali/big.jpg', {
+        size: 9 * 1024 * 1024,
+        file: { size: 9 * 1024 * 1024 } as unknown as File,
+      }),
       walkedFile('bali/ok.jpg'),
     ]
     const putGate = gate<PutResult>()
@@ -318,7 +338,10 @@ describe('useFolderUpload — one file through the lanes', () => {
     )
     const { result } = makeHook()
     await act(async () => {
-      result.current.start([walkedFile('bali/bad.jpg'), walkedFile('bali/good.jpg', { size: 2000, file: { size: 2000 } as unknown as File })])
+      result.current.start([
+        walkedFile('bali/bad.jpg'),
+        walkedFile('bali/good.jpg', { size: 2000, file: { size: 2000 } as unknown as File }),
+      ])
     })
     await waitFor(() => expect(result.current.phase).toBe('finished'))
     const bad = result.current.items.find((i) => i.filename === 'bad.jpg')

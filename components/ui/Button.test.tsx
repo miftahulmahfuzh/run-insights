@@ -36,9 +36,7 @@ describe('Button', () => {
   })
 
   it('renders the leading icon before the label, inside the button', () => {
-    render(
-      <Button leadingIcon={<span data-testid="icon">▲</span>}>Save</Button>,
-    )
+    render(<Button leadingIcon={<span data-testid="icon">▲</span>}>Save</Button>)
 
     const button = screen.getByRole('button', { name: /Save/ })
     const icon = screen.getByTestId('icon')

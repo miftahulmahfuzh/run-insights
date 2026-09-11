@@ -67,7 +67,7 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('chat-chrome')).not.toBeInTheDocument()
   })
 
-  it("the tabs frame: a 470px column with 20px gutters and the tabs bottom gap", () => {
+  it('the tabs frame: a 470px column with 20px gutters and the tabs bottom gap', () => {
     const { container } = renderAppShell()
 
     const main = container.querySelector('main')!
@@ -82,7 +82,7 @@ describe('AppShell', () => {
     expect(badge.closest('a')).toHaveAttribute('href', '/nina')
   })
 
-  it("the chat screen: no bar at all, ChatChrome instead, and the chat bottom gap", () => {
+  it('the chat screen: no bar at all, ChatChrome instead, and the chat bottom gap', () => {
     const { container } = renderAppShell({ screen: 'chat' })
 
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument()
@@ -134,7 +134,9 @@ describe('ScreenHeader', () => {
   })
 
   it('renders at most one plain-text action on the right', () => {
-    const { rerender } = render(<ScreenHeader title="Trends" action={<a href="/trends">TRENDS →</a>} />)
+    const { rerender } = render(
+      <ScreenHeader title="Trends" action={<a href="/trends">TRENDS →</a>} />,
+    )
 
     expect(screen.getByRole('link', { name: 'TRENDS →' })).toBeInTheDocument()
 

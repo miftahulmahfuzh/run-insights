@@ -95,7 +95,10 @@ beforeEach(() => {
 describe('readMessageWindow — the window photographs reach her (R3)', () => {
   it('carries a described photo’s prose in its own row’s imageDescriptions', async () => {
     windowRows.mockResolvedValue({
-      messages: [row('msgA000000001'), row('msgB000000001', { role: 'nina', body: 'kayaknya sih' })],
+      messages: [
+        row('msgA000000001'),
+        row('msgB000000001', { role: 'nina', body: 'kayaknya sih' }),
+      ],
       olderCount: 12,
     })
     imagesFor.mockResolvedValue([image('imgA000000001', 'msgA000000001', 'she is on the pier')])

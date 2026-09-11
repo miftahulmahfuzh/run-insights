@@ -33,7 +33,14 @@ function dial(props?: Partial<Parameters<typeof DialSlider>[0]>) {
 describe('DialSlider', () => {
   it('is a native range input, labelled by the dial’s label', () => {
     const { container } = render(
-      <DialSlider label="Playfulness" value={40} defaultValue={60} min={0} max={100} onChange={vi.fn()} />,
+      <DialSlider
+        label="Playfulness"
+        value={40}
+        defaultValue={60}
+        min={0}
+        max={100}
+        onChange={vi.fn()}
+      />,
     )
     const input = container.querySelector('input[type="range"]')
     expect(input).not.toBeNull()

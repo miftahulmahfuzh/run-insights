@@ -42,7 +42,11 @@ describe('Chip', () => {
     const user = userEvent.setup()
     const onClick = vi.fn()
     // No rerender: the chip was mounted unselected and nothing re-renders it selected.
-    render(<Chip selected={false} onClick={onClick}>Easy</Chip>)
+    render(
+      <Chip selected={false} onClick={onClick}>
+        Easy
+      </Chip>,
+    )
 
     await user.click(screen.getByRole('button', { name: 'Easy' }))
 
@@ -66,7 +70,11 @@ describe('Chip', () => {
 
   it('disables through the native attribute and the chip’s own opacity rule', () => {
     const onClick = vi.fn()
-    render(<Chip disabled onClick={onClick}>Easy</Chip>)
+    render(
+      <Chip disabled onClick={onClick}>
+        Easy
+      </Chip>,
+    )
 
     const chip = screen.getByRole('button', { name: 'Easy' })
     expect(chip).toBeDisabled()
@@ -74,7 +82,11 @@ describe('Chip', () => {
   })
 
   it('merges a caller className after the state classes', () => {
-    render(<Chip selected className="mx-1">Easy</Chip>)
+    render(
+      <Chip selected className="mx-1">
+        Easy
+      </Chip>,
+    )
 
     expect(screen.getByRole('button', { name: 'Easy' })).toHaveClass('bg-ink', 'mx-1')
   })

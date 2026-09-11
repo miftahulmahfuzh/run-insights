@@ -773,7 +773,13 @@ describe('findContentDuplicate — media-dedupe P3', () => {
     const sql = fakeSql({
       rows: (call) =>
         /content_hash =/.test(call.text)
-          ? [{ id: 'keeper000001', blob_url: 'https://blob/k.png', pathname: 'nina/u/selfie-k.png' }]
+          ? [
+              {
+                id: 'keeper000001',
+                blob_url: 'https://blob/k.png',
+                pathname: 'nina/u/selfie-k.png',
+              },
+            ]
           : [],
     })
     expect(await findContentDuplicate(sql, 'user00000001', CONTENT_HASH)).toEqual({

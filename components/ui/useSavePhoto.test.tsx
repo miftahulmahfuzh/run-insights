@@ -73,8 +73,7 @@ function installHarness(initial: { url: string | null; prefix?: string }): Harne
 
   return {
     result: utils.result,
-    rerender: (url, prefix) =>
-      utils.rerender({ url, prefix: prefix ?? initial.prefix ?? 'nina' }),
+    rerender: (url, prefix) => utils.rerender({ url, prefix: prefix ?? initial.prefix ?? 'nina' }),
     fetchMock,
     shareMock,
     canShareMock,
@@ -238,7 +237,9 @@ describe('useSavePhoto', () => {
       const h = installHarness({ url: PHOTO_URL })
       h.canShareMock.mockReturnValue(true)
       h.fetchMock.mockResolvedValue(okFetch())
-      h.shareMock.mockRejectedValue(Object.assign(new Error('sheet dismissed'), { name: 'AbortError' }))
+      h.shareMock.mockRejectedValue(
+        Object.assign(new Error('sheet dismissed'), { name: 'AbortError' }),
+      )
 
       await act(async () => {
         await h.result.current.save()
@@ -352,7 +353,10 @@ describe('useSavePhoto', () => {
   })
 
   it('the file name quotes the blob’s own last segment, prefixed — never a user id', async () => {
-    const h = installHarness({ url: 'https://blob.example/nina/u1/chat/photo%20one.webp', prefix: 'nina foto' })
+    const h = installHarness({
+      url: 'https://blob.example/nina/u1/chat/photo%20one.webp',
+      prefix: 'nina foto',
+    })
     h.fetchMock.mockResolvedValue(okFetch())
 
     await act(async () => {

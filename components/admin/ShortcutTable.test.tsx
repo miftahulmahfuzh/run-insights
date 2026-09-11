@@ -73,7 +73,10 @@ describe('ShortcutTable — the add row', () => {
     await user.type(screen.getByLabelText('The trigger to add'), 'gym')
     await user.type(screen.getByLabelText('What the new shortcut is for'), 'Gym day')
     expect(add).toBeDisabled() // expansion still empty
-    await user.type(screen.getByLabelText('The context the new shortcut stands for'), 'He is at the gym.')
+    await user.type(
+      screen.getByLabelText('The context the new shortcut stands for'),
+      'He is at the gym.',
+    )
     expect(add).toBeEnabled()
   })
 
@@ -109,10 +112,15 @@ describe('ShortcutTable — the add row', () => {
     table([])
     await user.type(screen.getByLabelText('The trigger to add'), 'gym')
     await user.type(screen.getByLabelText('What the new shortcut is for'), 'Gym day')
-    await user.type(screen.getByLabelText('The context the new shortcut stands for'), 'He is at the gym.')
+    await user.type(
+      screen.getByLabelText('The context the new shortcut stands for'),
+      'He is at the gym.',
+    )
     await user.click(screen.getByRole('button', { name: 'Add this shortcut' }))
 
-    await waitFor(() => expect(screen.getByText('That trigger already exists.')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText('That trigger already exists.')).toBeInTheDocument(),
+    )
     expect(screen.getByLabelText('The trigger to add')).toHaveValue('gym')
   })
 
@@ -138,7 +146,9 @@ describe('ShortcutTable — the add row', () => {
 
   it('shows the empty-table sentence only when there are no rows', () => {
     const view = render(<ShortcutTable userId="u1" rows={[]} />)
-    expect(screen.getByText(/No shortcuts yet\. The row above is where the first one goes/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/No shortcuts yet\. The row above is where the first one goes/),
+    ).toBeInTheDocument()
 
     view.rerender(<ShortcutTable userId="u1" rows={[row()]} />)
     expect(screen.queryByText(/No shortcuts yet\./)).not.toBeInTheDocument()
@@ -148,7 +158,9 @@ describe('ShortcutTable — the add row', () => {
     table(
       Array.from({ length: ADMIN_SHORTCUT_PAGE }, (_, i) => row({ id: `s${i}`, trigger: `t${i}` })),
     )
-    expect(screen.getByText(new RegExp(`Showing the newest ${ADMIN_SHORTCUT_PAGE}\\.`))).toBeInTheDocument()
+    expect(
+      screen.getByText(new RegExp(`Showing the newest ${ADMIN_SHORTCUT_PAGE}\\.`)),
+    ).toBeInTheDocument()
   })
 })
 
@@ -300,7 +312,10 @@ describe('ShortcutTable — existing rows', () => {
   })
 
   it('brings a refused delete back with its error line', async () => {
-    deleteAction.mockResolvedValue({ ok: false, error: 'The write failed and nothing was changed. Try again.' })
+    deleteAction.mockResolvedValue({
+      ok: false,
+      error: 'The write failed and nothing was changed. Try again.',
+    })
     const user = userEvent.setup()
     table([row()])
     await user.click(screen.getByRole('button', { name: 'Delete the gym shortcut' }))

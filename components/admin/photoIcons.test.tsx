@@ -63,12 +63,13 @@ describe('photoIcons', () => {
     expect(container.querySelectorAll('svg')).toHaveLength(1)
   })
 
-  it.each(GLYPHS)('$name is aria-hidden — the accessible name is the control’s, never the picture', ({
-    Icon,
-  }) => {
-    const { container } = render(<Icon className="size-4" />)
-    expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
-  })
+  it.each(GLYPHS)(
+    '$name is aria-hidden — the accessible name is the control’s, never the picture',
+    ({ Icon }) => {
+      const { container } = render(<Icon className="size-4" />)
+      expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    },
+  )
 
   it.each(GLYPHS)('$name takes its size from the caller’s className', ({ Icon }) => {
     const { container } = render(<Icon className="size-7 text-red" />)

@@ -32,7 +32,14 @@ vi.mock('next/image', () => ({
     className?: string
   }) => (
     // eslint-disable-next-line @next/next/no-img-element -- the mock, not a caller
-    <img src={src} alt={alt} width={width} height={height} className={className} data-testid="panel-art" />
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      className={className}
+      data-testid="panel-art"
+    />
   ),
 }))
 
@@ -43,12 +50,14 @@ const ART = {
   height: 576,
 }
 
-function renderPanel(props: {
-  open?: boolean
-  art?: PanelArt | null
-  onClose?: () => void
-  children?: (titleId: string) => React.ReactNode
-} = {}) {
+function renderPanel(
+  props: {
+    open?: boolean
+    art?: PanelArt | null
+    onClose?: () => void
+    children?: (titleId: string) => React.ReactNode
+  } = {},
+) {
   const onClose = props.onClose ?? vi.fn()
   const utils = render(
     <DetailPanel

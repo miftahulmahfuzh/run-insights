@@ -248,9 +248,7 @@ export async function callNinaImageModel(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(
-        buildImageRequestBody({ prompt, seed, referenceDataUrl, model }),
-      ),
+      body: JSON.stringify(buildImageRequestBody({ prompt, seed, referenceDataUrl, model })),
       signal: AbortSignal.timeout(postTimeoutMs),
       cache: 'no-store',
     })

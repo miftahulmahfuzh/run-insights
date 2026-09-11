@@ -73,9 +73,7 @@ describe('Field + Input wiring', () => {
   it('a valid field carries no aria-invalid at all', () => {
     renderField()
 
-    expect(screen.getByRole('textbox', { name: 'Resting HR' })).not.toHaveAttribute(
-      'aria-invalid',
-    )
+    expect(screen.getByRole('textbox', { name: 'Resting HR' })).not.toHaveAttribute('aria-invalid')
   })
 
   it('a suffix label renders inside the control’s box, hidden from the accessibility tree', () => {
@@ -179,10 +177,7 @@ describe('NumberInput', () => {
       </Field>,
     )
 
-    expect(screen.getByRole('textbox', { name: 'Weight' })).toHaveAttribute(
-      'inputMode',
-      'decimal',
-    )
+    expect(screen.getByRole('textbox', { name: 'Weight' })).toHaveAttribute('inputMode', 'decimal')
   })
 
   it('keeps every Input wiring — the field still labels and describes it', () => {

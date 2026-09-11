@@ -135,7 +135,9 @@ describe('ImageGenTestPanel', () => {
     readAction
       .mockResolvedValueOnce(readResult())
       .mockResolvedValue(
-        readResult({ job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }) }),
+        readResult({
+          job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }),
+        }),
       )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
@@ -155,10 +157,14 @@ describe('ImageGenTestPanel', () => {
     readAction
       .mockResolvedValueOnce(readResult())
       .mockResolvedValueOnce(
-        readResult({ job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }) }),
+        readResult({
+          job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }),
+        }),
       )
       .mockResolvedValueOnce(
-        readResult({ job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }) }),
+        readResult({
+          job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }),
+        }),
       )
       .mockResolvedValue(
         readResult({ job: job({ status: 'ok', errorCode: null, attempts: 1, prompt: 'AS SENT' }) }),
@@ -192,7 +198,9 @@ describe('ImageGenTestPanel', () => {
     readAction
       .mockResolvedValueOnce(readResult())
       .mockResolvedValue(
-        readResult({ job: job({ status: 'pending', errorCode: 'queued', attempts: 1, prompt: null }) }),
+        readResult({
+          job: job({ status: 'pending', errorCode: 'queued', attempts: 1, prompt: null }),
+        }),
       )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
@@ -205,13 +213,11 @@ describe('ImageGenTestPanel', () => {
   })
 
   it('renders a policy refusal — the one verdict that says the guardrails said no — with the recorded reason', async () => {
-    readAction
-      .mockResolvedValueOnce(readResult())
-      .mockResolvedValue(
-        readResult({
-          job: job({ status: 'failed', errorCode: 'policy', attempts: 2, prompt: null }),
-        }),
-      )
+    readAction.mockResolvedValueOnce(readResult()).mockResolvedValue(
+      readResult({
+        job: job({ status: 'failed', errorCode: 'policy', attempts: 2, prompt: null }),
+      }),
+    )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
     await advance(0)
@@ -230,7 +236,9 @@ describe('ImageGenTestPanel', () => {
     readAction
       .mockResolvedValueOnce(readResult())
       .mockResolvedValue(
-        readResult({ job: job({ status: 'failed', errorCode: 'timeout', attempts: 2, prompt: null }) }),
+        readResult({
+          job: job({ status: 'failed', errorCode: 'timeout', attempts: 2, prompt: null }),
+        }),
       )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
@@ -320,7 +328,9 @@ describe('ImageGenTestPanel', () => {
 
   it('stops watching at the wall clock and says the job is STILL OPEN, not failed', async () => {
     // The mount read itself must NOT carry a job — otherwise the panel opens already watching.
-    readAction.mockResolvedValueOnce(readResult()).mockResolvedValue(readResult({ job: job({ prompt: null }) }))
+    readAction
+      .mockResolvedValueOnce(readResult())
+      .mockResolvedValue(readResult({ job: job({ prompt: null }) }))
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
     await advance(0)

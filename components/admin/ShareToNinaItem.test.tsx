@@ -28,12 +28,7 @@ function deferred<T>() {
 
 function item(props?: Partial<Parameters<typeof ShareToNinaItem>[0]>) {
   return render(
-    <ShareToNinaItem
-      photoId="ph_123"
-      described
-      shareOrigin="https://runins.site"
-      {...props}
-    />,
+    <ShareToNinaItem photoId="ph_123" described shareOrigin="https://runins.site" {...props} />,
   )
 }
 
@@ -67,7 +62,11 @@ describe('ShareToNinaItem', () => {
     item()
     await user.click(screen.getByRole('button', { name: 'Share link to Nina' }))
     expect(open).toHaveBeenCalledTimes(1)
-    expect(open).toHaveBeenCalledWith('https://runins.site/nina?photo=avatar%3Aph_123', '_blank', 'noopener')
+    expect(open).toHaveBeenCalledWith(
+      'https://runins.site/nina?photo=avatar%3Aph_123',
+      '_blank',
+      'noopener',
+    )
   })
 
   it('builds the pointer through the shared formatter — a kind and an id, nothing else', async () => {
@@ -87,9 +86,9 @@ describe('ShareToNinaItem', () => {
     const open = openSpy()
     item({ shareOrigin: 'https://origin-from-server.example' })
     await user.click(screen.getByRole('button', { name: 'Share link to Nina' }))
-    expect(String(open.mock.calls[0]![0]!).startsWith('https://origin-from-server.example/nina')).toBe(
-      true,
-    )
+    expect(
+      String(open.mock.calls[0]![0]!).startsWith('https://origin-from-server.example/nina'),
+    ).toBe(true)
   })
 
   it('does not fire the describe for a photo that already has one', async () => {
@@ -170,6 +169,10 @@ describe('ShareToNinaItem', () => {
     expect(open).toHaveBeenCalledTimes(1)
     // The failure never surfaces as UI: the button simply returns to rest.
     await act(async () => {})
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Share link to Nina' })).not.toHaveAttribute('aria-busy'))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Share link to Nina' })).not.toHaveAttribute(
+        'aria-busy',
+      ),
+    )
   })
 })

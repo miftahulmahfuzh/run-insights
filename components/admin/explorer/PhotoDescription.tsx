@@ -140,7 +140,7 @@ export function PhotoDescription({
 
   return (
     <section className="mt-5 border-t border-rule pt-4">
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+      <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
         What she can see in it
       </p>
 
