@@ -671,7 +671,7 @@ function userTurnText(input: NinaTurnInput, hits: NinaShortcutHits): string {
  * on the day.
  *
  * ── `thinking: { type: 'disabled' }`. MEASURED. NEVER REMOVE. ─────────────────────────────────
- * F31 (`docs/plans/F31-narrate-thinking-disabled.md`, commit 2255565), against real prod facts:
+ * F31 (`docs/plans/archive/F31-narrate-thinking-disabled.md`, commit 2255565), against real prod facts:
  *
  *     thinking on,  1200 tokens →  18-38 s, stop_reason `max_tokens`, content ["thinking"]
  *     thinking on,  4000 tokens →  65-73 s, stop_reason `max_tokens`, content ["thinking"]

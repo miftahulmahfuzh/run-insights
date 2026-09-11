@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Every route in this app runs on the Node.js runtime — see docs/plans/F01-foundation.md §6.
+  // Every route in this app runs on the Node.js runtime — see docs/plans/archive/F01-foundation.md §6.
   reactStrictMode: true,
 
   /**

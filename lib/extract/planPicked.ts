@@ -11,7 +11,7 @@ import { rejectionReason } from './rejectionReason'
  * one of those side effects ran twice. Measured on card #6: one file picked, one tile rendered,
  * **two** token mints and **two distinct blobs written**, one of them orphaned in the store for
  * good. F16 rebuilt `changeKind` around exactly this hazard and left the reason in its source;
- * `onPick` was the last holdout. See docs/plans/F17-onpick-purity.md §1.
+ * `onPick` was the last holdout. See docs/plans/archive/F17-onpick-purity.md §1.
  *
  * ── WHY IT IS HERE AND NOT IN THE COMPONENT ─────────────────────────────────────────────────
  * The same reason `reassignKind.ts` gives, in the same words, because it is the same constraint:

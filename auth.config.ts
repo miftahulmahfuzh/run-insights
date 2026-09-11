@@ -100,7 +100,7 @@ export const authConfig = {
 
   /**
    * Roadmap D8: any Google account may sign in. No allowlist, no `signIn` callback gate. Safety
-   * comes from per-userId scoping — docs/plans/F02-auth-profile.md §1 INVARIANT A.
+   * comes from per-userId scoping — docs/plans/archive/F02-auth-profile.md §1 INVARIANT A.
    */
 
   /**

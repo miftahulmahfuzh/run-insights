@@ -12,7 +12,7 @@ import { MAX_IMAGES, SCREEN_KINDS, type ScreenKind } from './constants'
  * photo picker hands files over in. A heart-rate screen arrived labelled Summary and there was no
  * way back. F29 later pointed that default at the device's actual order, so the mislabel is now
  * rare rather than routine — the swap below is still what makes it fixable when it happens.
- * See docs/plans/F16-upload-kind-swap.md §1; the invariant test below pins the equality that
+ * See docs/plans/archive/F16b-upload-kind-swap.md §1; the invariant test below pins the equality that
  * makes the subtraction approach unsalvageable.
  *
  * Swapping keeps the invariant true after every single tap, so there is never an invalid state to

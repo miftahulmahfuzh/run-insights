@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
 
 /**
- * F02's published auth surface — docs/plans/F02-auth-profile.md §1 (INVARIANT A).
+ * F02's published auth surface — docs/plans/archive/F02-auth-profile.md §1 (INVARIANT A).
  *
  * This file, not `proxy.ts`, is the actual security boundary of the application. Every Server
  * Action and every protected Server Component starts here.

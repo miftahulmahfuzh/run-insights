@@ -4,7 +4,7 @@
     python3 tools/make_badge_sheet.py
     python3 tools/make_badge_sheet.py --out /tmp/shelf.png
 
-Design record: docs/plans/F10-badge-art-skill.md §9 task 14.
+Design record: docs/plans/archive/F10-badge-art-skill.md §9 task 14.
 
 WHY THIS EXISTS AND check_badge_art.py DOES NOT COVER IT. That tool measures one
 candidate and writes one badge's theme strip; this draws all 22 together on both

@@ -25,7 +25,7 @@ import { lastIsoWeeks } from './window'
  * that disagrees about which runs are 10Ks — a reader comparing the two would be reading a bug.
  * The plan's *intent* (one place decides, comparability is enforced by the filter) is honoured
  * exactly; only the enum it named is F06's rather than a new one. Recorded in the execution log at
- * the foot of `docs/plans/F08-views-charts.md`.
+ * the foot of `docs/plans/archive/F08-views-charts.md`.
  */
 export const BUCKET_ORDER: readonly DistanceBucket[] = ['other', '5k', '10k', 'half', 'full']
 

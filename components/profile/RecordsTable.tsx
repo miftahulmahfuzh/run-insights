@@ -61,7 +61,7 @@ export interface RecordRowView {
  * both be open: the `kind` is the discriminator, and `?panel=badge.tourist` resolves to no record
  * here. That exclusivity is structural rather than remembered, which is why neither surface has to
  * know the other exists — and it is why this component owns its own `usePanelParam` instead of a
- * wrapper on `/me` owning both. See `docs/plans/F26-record-row-and-panel.md` §2 B.
+ * wrapper on `/me` owning both. See `docs/plans/archive/F26-record-row-and-panel.md` §2 B.
  *
  * This is the smallest unit that can be the client component, by `BadgeShelf`'s own rule: `rows`
  * crosses as the RSC payload either way, and pushing the boundary down to a per-row wrapper would

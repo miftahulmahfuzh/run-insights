@@ -5,7 +5,7 @@
     python3 tools/make_badge_control.py --out-dir /tmp/x
     python3 tools/make_badge_control.py --only good
 
-Design record: docs/plans/F10-badge-art-skill.md §5.2 (the ten bands) and §7 (why
+Design record: docs/plans/archive/F10-badge-art-skill.md §5.2 (the ten bands) and §7 (why
 nothing in F10 should spend money to find out whether the code runs).
 
 WHAT THIS IS FOR. F10 ships a measurement tool for a deck that does not exist

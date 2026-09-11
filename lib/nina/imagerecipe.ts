@@ -54,9 +54,9 @@
  *
  * **WHAT `input_references` ACTUALLY DOES ON THIS MODEL, measured elsewhere in this repo and not
  * to be re-learned at $0.04 a probe:** it *"behaves like a strong img2img, not a style reference:
- * it transfers the SUBJECT hard and the cloth tone not at all"* — `docs/plans/F10-badge-art-skill.md:1087`
- * (three graded attempts), restated at `docs/plans/F15-badge-master-aspect.md:79-88` and
- * `docs/plans/F25-record-patch-art.md:322`. For a badge that was fatal, because a badge is being
+ * it transfers the SUBJECT hard and the cloth tone not at all"* — `docs/plans/archive/F10-badge-art-skill.md:1087`
+ * (three graded attempts), restated at `docs/plans/archive/F15-badge-master-aspect.md:79-88` and
+ * `docs/plans/archive/F25-record-patch-art.md:322`. For a badge that was fatal, because a badge is being
  * INVENTED. Here it is the point: the operator picks a photograph of the woman he wants back, and
  * the subject transferring hard is the request. The honest caveat, which belongs on the picker and
  * not in a prompt sentence: the chosen photograph's pose and composition come along with her face.

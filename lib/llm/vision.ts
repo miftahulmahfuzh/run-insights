@@ -20,7 +20,7 @@ import {
  *
  * ════════════════════════════════════════════════════════════════════════════════════════════
  *  THE TOKEN-FLOOR GUARD (D3) LIVES IN THIS FILE. It is the highest-value code in the repo.
- *  Read `docs/plans/F04-ingest-extraction.md` §1 before changing anything below.
+ *  Read `docs/plans/archive/F04-ingest-extraction.md` §1 before changing anything below.
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 

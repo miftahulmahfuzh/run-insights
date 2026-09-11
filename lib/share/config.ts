@@ -5,7 +5,7 @@
  * PURE ON PURPOSE — no `server-only`, no `@/lib/env`, no database import. The owner-side panel is a
  * Client Component and reads `SHARE_WARNING` from here; the public page is a Server Component and
  * reads the same flags. A constant with no reason next to it invites a careless flip, so every one
- * of these carries the paragraph that put it where it is (docs/plans/F11-sharing.md §3.3–§3.6).
+ * of these carries the paragraph that put it where it is (docs/plans/archive/F11-sharing.md §3.3–§3.6).
  */
 
 /* ── What the structured fields disclose (plan §3.3.1) ───────────────────────────────────── */

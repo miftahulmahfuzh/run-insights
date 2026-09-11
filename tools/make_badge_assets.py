@@ -5,7 +5,7 @@
     python3 tools/make_badge_assets.py --dry-run
     python3 tools/make_badge_assets.py --lossless
 
-Design record: docs/plans/F10-badge-art-skill.md §5.4, and D12 (offline
+Design record: docs/plans/archive/F10-badge-art-skill.md §5.4, and D12 (offline
 generation, committed, no runtime image calls).
 
   assets/<deck>/<key>.png                1024×768 PNG, lossless, never edited in place

@@ -5,7 +5,7 @@
     python3 tools/decks.py --write    # regenerate tools/decks.json
     python3 tools/decks.py --selftest # offline, no network, no key
 
-Design record: docs/plans/F25-record-patch-art.md §5.
+Design record: docs/plans/archive/F25-record-patch-art.md §5.
 
 WHY THIS FILE EXISTS AT ALL. `make_badge_assets.py`'s header asked for it by
 name:

@@ -3,7 +3,7 @@
 
     python3 tools/check_badge_art.py assets/badges/_candidates/early_bird.a01.png
 
-Design record: docs/plans/F10-badge-art-skill.md §5.2 and §5.3.
+Design record: docs/plans/archive/F10-badge-art-skill.md §5.2 and §5.3.
 
 TEN measurements — the reference tool's nine, rebuilt for navy twill, plus one
 that has no analogue there (check 10, weave texture) because the reference

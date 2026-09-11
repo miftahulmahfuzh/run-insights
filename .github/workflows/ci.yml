@@ -11,7 +11,7 @@ jobs:
     env:
       # CI-only dummy values. next build only validates SHAPE (lib/env.ts is a Zod schema,
       # not a live connection check) — nothing here ever reaches a real z.ai or Neon host.
-      # NEVER put a real secret in this block; see docs/plans/F01-foundation.md section 4.
+      # NEVER put a real secret in this block; see docs/plans/archive/F01-foundation.md section 4.
       #
       # One key, both endpoints (R-40). There is deliberately no LLM_VISION_API_KEY.
       LLM_API_KEY: ci-dummy-key

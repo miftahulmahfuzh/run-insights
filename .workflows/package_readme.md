@@ -644,7 +644,7 @@ this package rather than a leaf:
 React tree; `tests/` holds ~100 flat suites named `<area>.<thing>.test.ts`; `scripts/` holds the
 operational scripts and the seven `check-*` CI guards; `tools/` holds the Python badge and icon art
 pipeline; `drizzle/` holds generated SQL migrations; `types/` holds one module augmentation;
-`docs/plans/` holds the `F01`–`F33` feature plans; `research/` is the pre-build feasibility harness
+`docs/plans/archive/` holds the `F01`–`F33` feature plans; `research/` is the pre-build feasibility harness
 (excluded from `tsconfig` and `eslint`). `lib/db` and `lib/admin` and `components/admin` have
 package readmes of their own.
 
@@ -846,7 +846,7 @@ auth edge and the repo-wide configuration. The persistence layer is documented i
 The product contracts this file defers to, in precedence order: `RECONCILIATION_v0.1.0.md` (the
 `R-n` rulings, which supersede any individual plan and amend the roadmap), then
 `ROADMAP_v0.1.0.md` (§4.1 env-var names, §4.2 formatting, §4.3 schema, §4.8 routes), then the
-per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` holds `R1`
+per-feature plans in `docs/plans/archive/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEAM_PLAN.md` holds `R1`
 (the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
 `NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
 `P1-RI-A019`.

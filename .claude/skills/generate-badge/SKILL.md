@@ -38,7 +38,7 @@ generation, a batch loop is also real money and real wall-clock time spent befor
 looked at any of it.
 
 The art style, the 22 scenes and the reasoning behind them live in `style.md` next to this
-file. The full design record is `docs/plans/F10-badge-art-skill.md`. Read `style.md`; read the
+file. The full design record is `docs/plans/archive/F10-badge-art-skill.md`. Read `style.md`; read the
 plan only when you are about to change the style.
 
 ## The loop
@@ -173,7 +173,7 @@ strip**, as always — 9a passing is necessary and not sufficient.
 - **It works** → generate the remaining nine the same way. No widening pass at all.
 - **It does not** → every record goes square → `extend_badge_art.py`, exactly like a badge.
 
-Either way, **write the measured number into `docs/plans/F25-record-patch-art.md` §6.** The point
+Either way, **write the measured number into `docs/plans/archive/F25-record-patch-art.md` §6.** The point
 of spending the generation is that the next session reads a measurement instead of re-deriving the
 argument from prose for a third time.
 
