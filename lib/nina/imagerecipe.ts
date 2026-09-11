@@ -525,9 +525,17 @@ export function buildImageRequestBody(input: {
   seed: number
   /** A `data:` URL from `buildImageReferenceDataUrl`. Absent or null = an unanchored generation. */
   referenceDataUrl?: string | null
+  /**
+   * The job's chosen camera (the 2026-09-10 dropdown), as the row's coerced id. Optional and
+   * defaulted to `NINA_IMAGE_MODEL` so every caller that does not know about the dropdown — and
+   * every pre-dropdown test — builds the byte-identical body they always built. A caller that HAS
+   * a job passes `coerceNinaImageModel(args.model)`, so an old jsonb row without the key rides the
+   * default like every other absent member.
+   */
+  model?: string
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
-    model: NINA_IMAGE_MODEL,
+    model: input.model ?? NINA_IMAGE_MODEL,
     prompt: input.prompt,
     resolution: NINA_IMAGE_RESOLUTION,
     aspect_ratio: NINA_IMAGE_ASPECT,
@@ -617,4 +625,14 @@ export interface NinaImageJobArgs {
    * gets a picture without the anchor rather than an apology.
    */
   referenceUrl?: string | null
+  /**
+   * **The camera this job was opened with (the 2026-09-10 dropdown), as a coerced provider id.**
+   * OPTIONAL for the exact reason `referenceUrl` is — `nina_turns.args` is jsonb and is never
+   * migrated, both hosts cast old rows straight to this interface, and every job opened before the
+   * dropdown shipped has no such key. The read is `coerceNinaImageModel`
+   * (`lib/nina/imageprefs.ts` — this file cannot import it), which normalises absent, null,
+   * empty and unknown alike to `NINA_IMAGE_MODEL`; a plain `string` member keeps the cast honest
+   * the same way `referenceUrl`'s does.
+   */
+  model?: string
 }
