@@ -597,14 +597,14 @@ export async function ensureNinaAvatarDescriptionAction(rawId: string): Promise<
  * graph, not even as an erased `import type`. `app/admin/nina/page.tsx:26-28` states the same rule
  * for `NinaAvatarRow` and `AlbumPhoto`: the client gets a view model, not the row.
  */
-export interface AdminManifestEntry {
+interface AdminManifestEntry {
   id: string
   folder: string
   sourceKey: string
 }
 
 /** `registerNinaAvatarsAction`'s result. Its own shape, because the client needs two counts. */
-export interface AdminBatchRegisterResult extends AdminActionResult {
+interface AdminBatchRegisterResult extends AdminActionResult {
   /**
    * The rows actually INSERTED, keyed by the dedupe key the client sent, so phase 5 can mark
    * exactly those tiles done without depending on array order. A submitted key that is absent from
@@ -616,7 +616,7 @@ export interface AdminBatchRegisterResult extends AdminActionResult {
 }
 
 /** `listNinaAlbumManifestAction`'s result. */
-export interface AdminManifestResult extends AdminActionResult {
+interface AdminManifestResult extends AdminActionResult {
   entries?: AdminManifestEntry[]
   /** The subtree is at or over `NINA_ADMIN_MANIFEST_MAX`. See the action's docstring. */
   truncated?: boolean
