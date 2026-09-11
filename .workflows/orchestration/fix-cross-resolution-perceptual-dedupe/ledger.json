@@ -3,6 +3,12 @@
   "coordinator": "orch-fix-cross-resolution-perceptual-dedupe",
   "coordinator_session_id": "e80559d6-5be6-46ef-80e8-b7e5b4b2a796",
   "created": "2026-09-11T08:49:43+00:00",
+  "landed": {
+    "at": "2026-09-11T09:28:02+00:00",
+    "base": "main",
+    "commit": "b8910980475f730e6619cc6dd6218811d2e00b43",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -25,6 +31,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/fix-cross-resolution-perceptual-dedupe/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "fix-cross-resolution-perceptual-dedupe",
-  "updated": "2026-09-11T09:24:13+00:00",
+  "updated": "2026-09-11T09:28:02+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/fix-cross-resolution-perceptual-dedupe"
 }

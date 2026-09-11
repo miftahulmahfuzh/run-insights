@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/fix-cross-resolution-perceptual-dedupe`
 **Branch:** `feature/fix-cross-resolution-perceptual-dedupe` (base: `origin/main` @ `94fdb1a`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete — 1/1 phase landed (1 @ P1-NIN-A035)
 **Coordinator:** —
 
 ---
@@ -87,7 +87,7 @@ see this class of duplicate at all.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Cross-resolution perceptual twin gate + production merge | R1 | `lib/nina`, `scripts`, `tests` | 4 | — | NORMAL | `.workflows/plan/fix-cross-resolution-perceptual-dedupe/phase-1.md` | — | — |
+| 1 ✅ | Cross-resolution perceptual twin gate + production merge | R1 | `lib/nina`, `scripts`, `tests` | 4 | — | NORMAL | `.workflows/plan/fix-cross-resolution-perceptual-dedupe/phase-1.md` | P1-NIN-A035 | — |
 
 ### Phase 1 — Cross-resolution perceptual twin gate + production merge
 **Satisfies:** R1
