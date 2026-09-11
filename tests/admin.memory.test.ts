@@ -2,10 +2,16 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { ADMIN_FACT_CATEGORIES } from '@/lib/admin/memoryModel'
+import {
+  ADMIN_FACT_CATEGORIES,
+  ADMIN_FACT_TEXT_MAX,
+  ADMIN_LEDGER_PAGE,
+  ADMIN_SLOT_VALUE_MAX,
+} from '@/lib/admin/memoryModel'
 import {
   buildMemoryRows,
   canonicaliseSlotValue,
+  describeSlot,
   slotEditKind,
   slotProtection,
 } from '@/lib/admin/memoryVocab'
@@ -454,5 +460,35 @@ describe('R1 — no confirmation, anywhere on this page', () => {
     // Anchored to the STATEMENT form (start of line, two-space body indent) so the numbered list in
     // this module's own header does not count as a fifth call site.
     expect(source.match(/^ {2}await requireAdmin\(\)$/gm)).toHaveLength(4)
+  })
+})
+
+/* ── the two exports the first sweep of this file missed ────────────────────────────────────── */
+
+describe('the constants the page renders against', () => {
+  it('bounds the two free-text fields at 400, together', () => {
+    // Equal is the point: a fact and a slot value are the same kind of sentence the prompt reads,
+    // and two different caps would be two different answers to "why did this one refuse?".
+    expect(ADMIN_FACT_TEXT_MAX).toBe(400)
+    expect(ADMIN_SLOT_VALUE_MAX).toBe(400)
+  })
+
+  it('renders one page of 200 ledger rows', () => {
+    expect(ADMIN_LEDGER_PAGE).toBe(200)
+  })
+})
+
+describe('describeSlot — the picker labels and the orphan honesty', () => {
+  it('labels a vocabulary key with its human title and the spec prompt', () => {
+    const { label, hint } = describeSlot('goals')
+    expect(label).toBe('Current goal')
+    expect(hint).toContain('training FOR') // the spec's own prose, not a second spelling
+  })
+
+  it('answers an orphan with the key itself and the warning that SHE still reads it', () => {
+    const { label, hint } = describeSlot('mystery_key')
+    expect(label).toBe('mystery_key')
+    expect(hint).toContain('Not one of the ten keys')
+    expect(hint).toContain('by her')
   })
 })

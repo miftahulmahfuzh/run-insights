@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ADMIN_AVATAR_CACHE_MAX_AGE,
+  ADMIN_AVATAR_ID_RE,
+  ADMIN_AVATAR_MAX_EDGE_PX,
   ADMIN_AVATAR_MAX_UPLOAD_BYTES,
+  ADMIN_AVATAR_MIN_EDGE_PX,
+  ADMIN_AVATAR_THUMB_MAX_UPLOAD_BYTES,
+  ADMIN_AVATAR_TOKEN_TTL_MS,
   adminAvatarPathname,
   adminAvatarThumbPathname,
+  contentTypeForAvatarExt,
   extForContentType,
   isAdminAvatarRequestPathname,
   isAdminAvatarThumbRequestPathname,
@@ -326,5 +333,45 @@ describe('avatarBatchRegisterSchema', () => {
         records: [{ ...record, thumb: { ...record.thumb, url: 'http://x/t.webp' } }],
       }).success,
     ).toBe(false)
+  })
+})
+
+/* ── the constants and the inverse mapping the boundary work leans on ───────────────────────── */
+
+describe('the upload-boundary constants, as one set', () => {
+  it('bounds a real photograph between a thumbnail stamp and a satellite image', () => {
+    // The frame has to be big enough to crop into her face and small enough that a browser can
+    // read the file at all; the thumb cap is a fraction of the original's by design.
+    expect(ADMIN_AVATAR_MIN_EDGE_PX).toBe(256)
+    expect(ADMIN_AVATAR_MAX_EDGE_PX).toBe(12_000)
+    expect(ADMIN_AVATAR_THUMB_MAX_UPLOAD_BYTES).toBeLessThan(ADMIN_AVATAR_MAX_UPLOAD_BYTES)
+  })
+
+  it('gives an upload token ten minutes and the rendered objects a year', () => {
+    // Ten minutes is a human finishing a crop, not a session; a year is immutable-object cache:
+    // a stored pathname never changes content, so the cache max-age can be the largest number
+    // that survives a CDN's own limits.
+    expect(ADMIN_AVATAR_TOKEN_TTL_MS).toBe(10 * 60 * 1000)
+    expect(ADMIN_AVATAR_CACHE_MAX_AGE).toBe(60 * 60 * 24 * 365)
+  })
+
+  it('spells the id shape once, as the regex every id gate compiles', () => {
+    expect(ADMIN_AVATAR_ID_RE.test('aB3_dEf-hI9k')).toBe(true)
+    expect(ADMIN_AVATAR_ID_RE.test('short')).toBe(false)
+    expect(ADMIN_AVATAR_ID_RE.test('aB3_dEf-hI9kx')).toBe(false)
+    expect(ADMIN_AVATAR_ID_RE.test('aB3_dEf-hI9k'.replace(/k$/, '$'))).toBe(false)
+  })
+})
+
+describe('contentTypeForAvatarExt — the inverse of extForContentType', () => {
+  it('round-trips the three accepted containers, both ways', () => {
+    for (const [ext, contentType] of [
+      ['jpg', 'image/jpeg'],
+      ['png', 'image/png'],
+      ['webp', 'image/webp'],
+    ] as const) {
+      expect(contentTypeForAvatarExt(ext)).toBe(contentType)
+      expect(extForContentType(contentType)).toBe(ext)
+    }
   })
 })

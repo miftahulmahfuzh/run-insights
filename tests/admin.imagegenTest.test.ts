@@ -11,6 +11,7 @@ import {
   NINA_IMAGE_TEST_POLL_INTERVALS_MS,
   NINA_IMAGE_TEST_POLL_LATE_AFTER_ATTEMPTS,
   NINA_IMAGE_TEST_POLL_MID_AFTER_ATTEMPTS,
+  NINA_IMAGE_TEST_REASON,
   NINA_IMAGE_TEST_VERDICT_LINE,
   NINA_IMAGE_TEST_VERDICT_WHY,
   NINA_IMAGE_TEST_VERDICTS,
@@ -383,5 +384,25 @@ describe('the surface holds the admin invariants', () => {
         expect(source, `${path} names ${guarded}`).not.toContain(guarded)
       }
     }
+  })
+})
+
+/* ── the reason map — the sentence behind every failure code ─────────────────────────────────── */
+
+describe('NINA_IMAGE_TEST_REASON', () => {
+  it('has measured, specific prose for every failure kind the worker writes', () => {
+    // One entry per member of NINA_IMAGE_FAILURES: a fifth failure kind added upstream lands in
+    // `imageTestVerdict`'s 'unknown' bucket, and this loop is what tells the next editor that the
+    // SENTENCE needs writing too, not just the code.
+    for (const code of NINA_IMAGE_FAILURES) {
+      const reason = NINA_IMAGE_TEST_REASON[code]
+      expect(reason, `no prose for failure kind ${code}`).toBeDefined()
+      expect(reason!.length).toBeGreaterThan(20)
+    }
+  })
+
+  it('names what happened, in words that survive a screenshot', () => {
+    expect(NINA_IMAGE_TEST_REASON.policy).toContain('declined')
+    expect(NINA_IMAGE_TEST_REASON.stale).toContain('deadline')
   })
 })
