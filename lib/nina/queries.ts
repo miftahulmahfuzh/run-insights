@@ -929,29 +929,6 @@ export async function setNinaSessionPinned(
 }
 
 /**
- * How many messages a session holds — written for phase 5's delete confirmation, **which task #136
- * removed. It has no caller now.**
- *
- * Kept rather than deleted, because the number it produces is still the only honest way to name what
- * an R11 removal costs, and there is still no undo for R11 (the archive flag was ruled out). What
- * changed is a product decision — the runner asked for the panel to go — not the arithmetic. Anything
- * that ever has to say what a session removal destroys (an undo, a trash view, a line before a
- * purge) starts here rather than writing the statement again.
- *
- * Every role, not just his: the count is "what disappears", and her replies disappear too. That is
- * why it is a separate statement rather than a column on `listNinaSessions`'s aggregate, which is
- * deliberately `role = 'runner'` only.
- */
-export async function countNinaSessionMessages(userId: string, sessionId: string): Promise<number> {
-  const rows = await db
-    .select({ n: sql<number>`count(*)`.mapWith(Number) })
-    .from(ninaMessages)
-    .where(and(eq(ninaMessages.userId, userId), eq(ninaMessages.sessionId, sessionId)))
-
-  return rows[0]?.n ?? 0
-}
-
-/**
  * **R11's delete, and R8's purge, in one transaction.**
  *
  * `nina_chat_sessions` -> `nina_messages.session_id` (cascade) -> `nina_message_images.message_id`
