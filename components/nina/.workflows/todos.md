@@ -104,17 +104,19 @@
   - **Files**: components/nina/KeyboardOverlapPublisher.tsx, components/nina/ChatScreen.tsx, components/nina/NinaAboutScreen.tsx, components/nina/NinaSidebar.tsx, lib/nina/chatview.ts, lib/nina/chatview.test.ts
   - **Drift**: Exit criterion 2's grep gate now also matches the phase's own adopted plan copy (components/nina/.workflows/plan/P1-CN-A001.md quotes the grep pattern in its text). The gate's intent holds: among real components the matches are exactly KeyboardOverlapPublisher.tsx, PhotoViewer.tsx, MessageBubble.tsx, and ChatScreen.tsx is gone.
     The phase-2 plan docstring prose contained scrambled/duplicated text spans (no control chars — planner-written). Code blocks were applied verbatim; garbled docstring spans were transcribed as meaning-preserving clean English. No semantic change.
+  - **Drift** (recorded 2026-09-11): this task's adopted plan copy at `.workflows/plan/P1-CN-A001.md` was clobbered on main by the parallel set's add/add — dcf9563 (search-kbd phase 1, 12:49) wrote its copy over this path before this phase's completion commit a8d2c50 (13:06) landed, so the merged tree's file stopped being this task's copy while the Plan pointer and the grep-gate note above still described it. Restored byte-exact from a1bed18 during the 2026-09-11 TaskID de-duplication; the window-pin copy now lives at `.workflows/plan/P1-CN-A005.md`.
   - **Decided**: Plan-internal contradiction in phase 1's test block: the first 'new'-target test expected result.sessionId to carry the CREATE's session id while its mocked send landed in a different id — contradicting the plan's own Interface Contract ('sessionId' is sendNinaMessage's own answer, null iff !ok), the reconciled action code (ships result.sessionId), and the same suite's fourth test (next follows the landed id, not the create's copy). → The TEST's expectation was corrected to the landed id (LANDED_SESSION_ID), with a comment. Rung 1 (stated invariant/Interface Contract) + rung 3 (reconciled code block); the alternative repair (re-pointing the shared SENT fixture at the created id) breaks the 'recent'-target tests, so it was not a candidate.
 ### [P1] High
 
-- [x] **P1-CN-A001** Phase 1: The panel pins the window over its focused field
+- [x] **P1-CN-A005** Phase 1: The panel pins the window over its focused field
+  - **Former ID**: `P1-CN-A001` — re-minted 2026-09-11: both 2026-09-09 plan sets minted this ID in parallel on their own branches, colliding as an add/add on the shared adopted-copy path `.workflows/plan/P1-CN-A001.md`. `photo-send-chat-icons` phase 2 keeps it (its adopted copy created that path first: a1bed18 12:39 before dcf9563 12:49). This task's adopted copy moved to `.workflows/plan/P1-CN-A005.md` in the same fix.
   - **Difficulty**: HARD
   - **Type**: Bug
   - **Context**: Owns everything inside `NinaSidebar`'s `[open]` effect in `components/nina/NinaSidebar.tsx`: window-scroll capture/pin (to 0) while a panel text field is focused, restore of the field's pre-focus `scrollY` on blur, and focus-schedule arming/disarming of the existing deck re-assert. No file outside `NinaSidebar.tsx` changes; does not touch `NinaSearchField.tsx`, `lib/nina/chatview.ts` (the schedule and its tests are not the defect), `ChatScreen.tsx`, the composer, the rail, or the panel's `bottom` style. Exit criteria: while a text field inside the open panel is focused, any window scroll is pinned to 0 and the field's pre-focus scroll position is restored on blur; the deck assert arms on focus and disarms on blur; typecheck/build/suite at base-green; invariant greps (2, 3) hold.
   - **Status**: completed
   - **Plan Set**: `SEARCH_KBD_AND_UP_BTN_PLAN.md` (phase 1 of 2)
   - **Satisfies**: R1 — The sidebar search field stays visible above the keyboard when it opens (typed text legible); the earlier fix did not hold
-  - **Plan**: `.workflows/plan/search-kbd-and-up-btn/phase-1.md`
+  - **Plan**: `.workflows/plan/P1-CN-A005.md`
   - **Completed**: 2026-09-09 12:39
   - **Method**: /do
   - **Files**: components/nina/NinaSidebar.tsx
@@ -133,7 +135,7 @@
   - **Status**: completed
   - **Plan Set**: `SEARCH_KBD_AND_UP_BTN_PLAN.md` (phase 2 of 2)
   - **Satisfies**: R2 — The rail's `up` button shows the main app bottom bar, exactly like the chat page's up button
-  - **Depends on**: `P1-CN-A001`
+  - **Depends on**: `P1-CN-A005`
   - **Plan**: `.workflows/plan/P1-CN-A002.md`
   - **Completed**: 2026-09-09 13:11
   - **Method**: /do
