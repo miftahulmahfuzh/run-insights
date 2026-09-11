@@ -29,7 +29,7 @@ export function pollDelayFor(attempts: number): number {
   return POLL_INTERVALS_MS.initial
 }
 
-export interface ExtractionStatusState {
+interface ExtractionStatusState {
   result: ExtractionResult | null
   /** Transport-level failure of the POLL itself — not an extraction failure. */
   pollError: string | null

@@ -14,7 +14,7 @@ import { RunRow } from './RunRow'
  * cannot measure lands on top of the first row.
  */
 
-export interface RunListRow {
+interface RunListRow {
   id: string
   occurredOn: DateISO
   distanceM: number
@@ -75,7 +75,7 @@ export function RunList({
  * the top of their own list knows which week they are in and the date is noise there — but only
  * there. Every other divider is dated, since scrolling back three months without dates is guessing.
  */
-export function WeekDivider({
+function WeekDivider({
   weekKey,
   isCurrent,
   runCount,
