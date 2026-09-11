@@ -1,0 +1,30 @@
+{
+  "branch": "feature/nina-dup-bubble-reveal",
+  "coordinator": "orch-nina-dup-bubble-reveal",
+  "coordinator_session_id": "f4c04fa2-0226-4ef7-86f5-4019e77aef48",
+  "created": "2026-09-11T05:16:34+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "components/nina`, `lib/nina",
+      "plan": ".workflows/plan/nina-dup-bubble-reveal/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Idempotent reveal append (pure helper + call site + tests)"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-dup-bubble-reveal/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-dup-bubble-reveal",
+  "updated": "2026-09-11T05:16:34+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-dup-bubble-reveal"
+}
