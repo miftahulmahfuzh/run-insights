@@ -6,19 +6,19 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "90952c5",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "claim read = 6th Promise.all element (pendingTurn), give-up = NINA_BACKGROUND_BUDGET_MS; typegen+tsc+vitest 3904/3904, no migration; drift: one comment rewrap (plan's FIVE\u2192SIX block absorbed the file's '\u2014 new \u2014')",
       "package": "lib/nina` + page/screen",
       "plan": ".workflows/plan/nina-offline-reply/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T07:02:34+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A038",
       "title": "In-flight truth on reopen: claim-read cold load + honest give-up"
     },
     {
@@ -45,6 +45,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-offline-reply/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-offline-reply",
-  "updated": "2026-09-11T06:29:21+00:00",
+  "updated": "2026-09-11T07:02:34+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-offline-reply"
 }
