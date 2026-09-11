@@ -716,38 +716,6 @@ export async function getAllTimeTotals(userId: string): Promise<AllTimeTotals> {
   return rows[0] ?? { runCount: 0, distanceM: 0, durationSec: 0, firstRunOn: null, lastRunOn: null }
 }
 
-/**
- * Roadmap §4.4 rule 2 — the highest `runs.max_hr` ever observed. F02's `resolveHrMax` is the only
- * caller; no feature may compute HRmax any other way. Reads `runs_user_maxhr_idx` (R-12).
- */
-export async function getObservedMaxHr(userId: string): Promise<number | null> {
-  const rows = await db
-    .select({ value: sql<number | null>`max(${runs.maxHr})` })
-    .from(runs)
-    .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt)))
-  const value = rows[0]?.value
-  return value == null ? null : Number(value)
-}
-
-/**
- * The same lookup with one run held out. R-3 is emphatic that metrics resolve observed-first,
- * including the run's own max — so this exists for exactly one caller: F09's `new_ceiling` badge,
- * which asks "did this run beat the previous best?" and genuinely needs the previous best.
- * **Not for metrics.** Using it there would reintroduce the formula estimate precisely where the
- * measurement is strongest.
- */
-export async function getObservedMaxHrExcludingRun(
-  userId: string,
-  runId: string,
-): Promise<number | null> {
-  const rows = await db
-    .select({ value: sql<number | null>`max(${runs.maxHr})` })
-    .from(runs)
-    .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt), sql`${runs.id} <> ${runId}`))
-  const value = rows[0]?.value
-  return value == null ? null : Number(value)
-}
-
 /** Which run holds the observed max, not just what it was. See `getObservedMaxHrRun`. */
 export interface ObservedMaxHr {
   runId: string
@@ -756,8 +724,8 @@ export interface ObservedMaxHr {
 }
 
 /**
- * The attributed form of `getObservedMaxHr`, and the only query `lib/metrics/hrMax.ts` uses for
- * rule 2 of roadmap §4.4. Three things it does that the plain `max()` above cannot:
+ * The observed-max read that names its run, and the only query `lib/metrics/hrMax.ts` uses for
+ * rule 2 of roadmap §4.4. Three things it does that a plain `max()` cannot:
  *
  *   - **Names the run.** F02 §4.5's transition banner says *"your watch recorded 189 bpm on this
  *     run"*; that sentence needs an id and a date, not a number.

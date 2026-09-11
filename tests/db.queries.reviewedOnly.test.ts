@@ -70,21 +70,6 @@ describe('reviewed-only queries', () => {
     expect(fake.only().sql).toContain('"reviewed_at" is not null')
   })
 
-  it('getObservedMaxHr filters on reviewed_at — a hallucinated 210 must never become a ceiling', async () => {
-    fake.enqueue([[null]])
-    await q.getObservedMaxHr('u1')
-    expect(fake.only().sql).toContain('"reviewed_at" is not null')
-  })
-
-  it('getObservedMaxHrExcludingRun filters on reviewed_at and excludes the run', async () => {
-    fake.enqueue([[null]])
-    await q.getObservedMaxHrExcludingRun('u1', 'r1')
-    const { sql, params } = fake.only()
-    expect(sql).toContain('"reviewed_at" is not null')
-    expect(sql).toContain('<>')
-    expect(params).toContain('r1')
-  })
-
   it('getObservedMaxHrRun filters on reviewed_at — F02’s resolver reads this one, not the max()', async () => {
     fake.enqueue([])
     await q.getObservedMaxHrRun('u1')
@@ -339,8 +324,6 @@ describe('the invariant is complete', () => {
     expect(exportedRollups).toEqual([
       'countReviewedRunsStartedBefore',
       'getAllTimeTotals',
-      'getObservedMaxHr',
-      'getObservedMaxHrExcludingRun',
       'getObservedMaxHrRun',
       'getReviewedRunWindow',
       'getReviewedRunsBefore',

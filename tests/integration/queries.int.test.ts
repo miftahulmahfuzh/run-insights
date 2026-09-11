@@ -265,10 +265,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
       expect(runs).toHaveLength(3)
     })
 
-    it('hides the draft run from getObservedMaxHr — a 200 bpm draft must not become a ceiling', async () => {
-      await expect(q.getObservedMaxHr(U1)).resolves.toBe(189)
-    })
-
     it('still shows the draft through getRunDetail, which is draft-visible by design', async () => {
       const detail = await q.getRunDetail(U1, draftRunId)
       expect(detail?.id).toBe(draftRunId)
@@ -291,11 +287,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
 
     it('assertRunOwned throws NotFoundError for a run that is not yours', async () => {
       await expect(q.assertRunOwned(U2, fixtureRunId)).rejects.toBeInstanceOf(q.NotFoundError)
-    })
-
-    it('getObservedMaxHr is per user — U2’s 210 does not raise U1’s ceiling', async () => {
-      await expect(q.getObservedMaxHr(U1)).resolves.toBe(189)
-      await expect(q.getObservedMaxHr(U2)).resolves.toBe(210)
     })
 
     it('applyRunCorrections cannot touch another user’s run', async () => {
@@ -385,10 +376,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
       expect(rolling28).toHaveLength(2)
       const rolling7 = await q.getRunsBetween(U1, '2026-08-19', '2026-08-26')
       expect(rolling7).toHaveLength(2)
-    })
-
-    it('getObservedMaxHrExcludingRun answers "what was the ceiling BEFORE this run" (R-3)', async () => {
-      await expect(q.getObservedMaxHrExcludingRun(U1, fixtureRunId)).resolves.toBe(175)
     })
   })
 

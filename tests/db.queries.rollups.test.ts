@@ -74,17 +74,3 @@ describe('getAllTimeTotals', () => {
     expect(fake.only().sql).toContain('coalesce')
   })
 })
-
-describe('getObservedMaxHr', () => {
-  it('returns a number when a max exists', async () => {
-    fake.enqueue([['189']])
-    await expect(q.getObservedMaxHr('u1')).resolves.toBe(189)
-  })
-
-  it('returns null — never 0 — when no run has an HR, so the caller can degrade', async () => {
-    // Roadmap §4.4: "no birth_year and no observed max -> null; the caller must degrade, not
-    // default". A 0 here would silently become a divide-by-zero %HRmax.
-    fake.enqueue([[null]])
-    await expect(q.getObservedMaxHr('u1')).resolves.toBeNull()
-  })
-})
