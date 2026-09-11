@@ -23,22 +23,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "746e454",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "Media verbs on both kinds + Chat photos purged; typecheck/lint/3781 tests green. Decisions: MediaPane's dead dirty-var (old Reset gate) dropped with its isIdentityRow import; mediaPane SEAM pin reads raw file (comment-stripper ate the docstring mark); blob-write SET assertions re-spelled to drizzle one-set grammar; adjacent falsified docstrings reworded, Phase 4's owned regions untouched",
       "package": "lib/admin`, `lib/nina`, `components/admin`, `app/admin",
       "plan": ".workflows/plan/image-collection/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T00:52:32+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A035",
       "title": "Media verbs on both kinds; purge the Chat photos surface"
     },
     {
@@ -56,7 +56,7 @@
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "One describe control everywhere; described photos reach Nina's context"
     },
@@ -76,7 +76,7 @@
       "satisfies": [
         "R4"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "\"Image collection\": rename + borderless grid"
     }
@@ -84,6 +84,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/image-collection/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "image-collection",
-  "updated": "2026-09-10T10:35:40+00:00",
+  "updated": "2026-09-11T00:53:29+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/image-collection"
 }
