@@ -15,7 +15,7 @@ the Media read path: a virtual `Media` tree node pinned under the album root and
 `listNinaMediaPhotos` / `countNinaMediaPhotos` behind it; `ExplorerPhoto` becomes a discriminated
 union; read-only, no Server Action touched; previously task `P1-RI-A031` — the focus-card hint
 purge, `imageFocusCopy` returning a plain string and `NinaImageFocusSpec.userSaid` deleted; before
-that `P1-RI-A025` — the tuning revision mechanism purged stack-wide, its migration committed but
+that `P1-RI-A040` — the tuning revision mechanism purged stack-wide, its migration committed but
 deliberately not yet applied)
 
 ## Overview
@@ -1221,7 +1221,7 @@ Untouched by invariant: `app/manifest.ts`, `app/layout.tsx`, `public/**`, `app/i
 `app/apple-icon.png`, `tools/**`, `next.config.ts`, `proxy.ts`. Both tiles therefore still draw the
 runner's art; phase 2 (`P1-RI-A022`) ships `ADMIN_PWA_ICONS` and `app/admin/apple-icon.png`.
 
-### Recent changes — P1-RI-A025 (2026-09-09)
+### Recent changes — P1-RI-A040 (2026-09-09)
 
 *Phase 1 of 2 of the simplify-personality-settings set: the tuning revision mechanism is purged,
 everywhere it existed.*
