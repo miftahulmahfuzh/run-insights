@@ -983,7 +983,7 @@ unread column, which is inert.
 
 > **APPLIED to production**, and the count is 6. `nina_tuning` exists with its 21 columns and
 > `nina_turns.tuning_revision` is present — still true of the database until `0016` applies (see
-> the P1-RI-A025 entry below).
+> the P1-RI-A040 entry below).
 >
 > **It was `0004` on the branch, and the renumber this section predicted is what happened.** `main`
 > gained an unrelated `0004_nina_chat_sessions` while this set was in flight, so both sets minted an
@@ -998,7 +998,7 @@ unread column, which is inert.
 > silence: no error, a clean-looking deploy, and `nina_tuning` simply never created — discovered on
 > the first turn that read it. Regenerating restamps `when`, which is why it applied.
 
-### Recent changes — P1-RI-A025 (2026-09-09)
+### Recent changes — P1-RI-A040 (2026-09-09)
 
 Phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge. Within this
 package the task touched `schema.ts` and `drizzle/` only: `nina_tuning` lost its `revision` column

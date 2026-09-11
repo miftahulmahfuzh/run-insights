@@ -1265,7 +1265,7 @@ Refreshed here: the overview's surface list, a new key responsibility, three mod
 test-consumer list, and five gotchas. `tests/admin.shortcuts.test.ts` is new, with 28 cases — the
 pure half by call, and the module boundaries by reading source.
 
-2026-09-09 — updated following task **P1-RI-A025** (`simplify-personality-settings` phase 1 of 2,
+2026-09-09 — updated following task **P1-RI-A040** (`simplify-personality-settings` phase 1 of 2,
 the prompt-revision purge). `saveNinaTuningAction` no longer reads a revision off
 `writeNinaTuning`'s returned row and no longer returns one — `AdminTuningResult.revision` is
 deleted and the success note no longer names one — and `toTuningWrite` returns `NinaTuning`
