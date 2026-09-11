@@ -1,61 +1,73 @@
 # Package: admin
 
 **Location**: `lib/admin`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the same set — the focus-card hint purge: `imageFocusCopy` in `imageGenModel.ts` returns the focus label as a plain string, the `ImageGenCopy` wrapper whose `hint` was always empty being gone (`promptLengthCopy` keeps that shape — its hint and band are genuinely rendered); previously task `P1-RI-A029`, phase 2 of 3 of the same set — the image-prefs revision purge: `AdminImageGenResult` no longer carries `revision` and the save note no longer names one; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but NOT applied — the post-deploy `npm run db:migrate`; previously task `P1-RI-A028`, phase 1 of the set — the Image Generation tab moved onto the auto-save draft/saved pipeline, the prefs reset action and its schema deleted; previously task `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `imageGenModel.ts`, `imageGenActions.ts`'s actions, and the prefs Zod boundary in `schema.ts`)
+**Last Updated**: 2026-09-12 — full rewrite/compaction against the current tree (every export
+block, signature, constant and reverse dependency re-verified mechanically; the per-task changelog
+this file used to carry inline now lives in `git log -- lib/admin`, see *Recent Changes*).
 
 ## Overview
 
-`lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the admin surfaces'
-Server Actions (`/admin/nina`, the album and file manager; `/admin/personality`, the character
-panel; `/admin/photos`, the chat-photo collection; `/admin/memory`, Nina's persistent memory;
-`/admin/shortcuts`, the trigger registry), the Zod schemas that validate every byte those actions
-accept from a browser, and one zero-import pure library (`filetree.ts`) that the client half of the
-file manager shares verbatim with the server half.
+`lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the admin
+surfaces' Server Actions, the Zod schemas that validate every byte those actions accept from a
+browser, and the pure planning libraries (`filetree.ts`, `folderOps.ts`) that decide — without a
+database — what a folder upload or a folder maintenance operation is allowed to do.
+
+The surfaces: `/admin/nina` (the explorer: her album **and** the media collection formerly
+mounted at `/admin/photos`), `/admin/personality` (character panel + text-model select),
+`/admin/memory`, `/admin/shortcuts`, `/admin/image-generation`. There is no `/admin/photos`
+route any more; `ADMIN_CHAT_PHOTOS_PATH` is `'/admin/nina'`.
 
 It is a *boundary-plus-actions* package. Nothing in it is a general utility: every export exists
-because one admin screen needs it, and the package's organising rule is that a value with two
-readers has exactly one definition — `lib/admin/avatars.ts`'s header states it outright
-(*"a constant that is agreed rather than shared is a constant that will one day disagree"*), and
-`schema.ts` obeys it literally by importing every bound it enforces rather than re-spelling any.
+because one admin screen needs it, and the organising rule is that a value with two readers has
+exactly one definition — `schema.ts` imports every bound it enforces rather than re-spelling one.
 
 **Key Responsibilities:**
 
 - Be the actual authorization boundary for `/admin/**`. `proxy.ts` matches neither `/admin` nor
-  `/api/*` (ruling D3), so `requireAdmin()` / `requireAdminApi()` are the only thing between a
-  signed-in stranger and Nina's album.
+  `/api/*`, so `requireAdmin()` / `requireAdminApi()` are the only thing between a signed-in
+  stranger and Nina's album.
 - Validate every admin input at the boundary with Zod, importing each bound from the module that
   owns it.
-- Own the album's write side: register, promote, crop, delete, describe, and batch-register a
-  dropped folder.
-- Own `/admin/memory`'s write side, and make it structurally impossible to write a memory row
-  without the `admin` source label.
+- Own the album's write side: register a dropped folder, promote, crop, describe (by model or by
+  hand), adopt a chat photo, delete, and maintain folders (create/rename/move/delete, bulk
+  move/remove).
+- Own the media collection's write side: add (with write-time dedupe), replace, remove (with
+  blob release), describe, and the hand-written description edit.
+- Own `/admin/memory`'s write side (four actions), and make it structurally impossible to write
+  a memory row without the `admin` source label.
 - Own `/admin/shortcuts`'s write side, and make it structurally impossible for a caller — or a
   forged POST — to supply a `match_key` or a `kind` that disagrees with its own trigger.
-- Decide a folder upload — walk, classify, refuse, diff against the manifest — in one pure,
-  import-free module that a `'use client'` explorer can import.
+- Decide an upload or a folder operation in pure, import-free (or zod-only) modules that a
+  `'use client'` explorer can share verbatim with the server.
 
 ## Module map
 
 | File | Environment | Purpose |
 |---|---|---|
 | `requireAdmin.ts` | `server-only` | The boundary. Page/action flavour, Route Handler flavour, canonical refusal body. |
-| `avatars.ts` | pure (one constant import) | Blob pathname shapes, content types, size caps, id regex, TTLs — original and thumbnail. |
-| `filetree.ts` | pure, **zero imports** | Folder-path grammar, file classification, dedupe key, `planFolderUpload`, tree building. |
+| `avatars.ts` | pure | Album blob pathname shapes, content types, size caps, id regex, TTLs — original and thumbnail. |
+| `filetree.ts` | pure, **zero imports** | Folder-path grammar, file classification, dedupe key, `planFolderUpload`, tree building, the explorer's album/Media view switch. |
+| `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
-| `ninaAlbumActions.ts` | `'use server'` | The album's write side and the folder-upload register. |
-| `users.ts` | `server-only` | The unscoped account enumeration `/admin/memory`'s picker needs. |
-| `memoryModel.ts` | pure | Memory bounds, categories, card shapes, permission and composition helpers. |
-| `memoryVocab.ts` | pure | The bridge from phase 5's closed slot vocabulary to `/admin/memory`'s cards. |
+| `ninaAlbumActions.ts` | `'use server'` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. |
+| `chatPhotos.ts` | pure | The media collection's vocabulary: pathname shapes, ceilings, id regexes, the carrier-message rule, `planChatPhotoAddWrite`'s types. |
+| `chatPhotoSchema.ts` | pure | Every Zod schema the media collection accepts. Separate from `schema.ts` (different table, different route). `schema.ts` imports from it. |
+| `chatPhotoActions.ts` | `'use server'` | Six actions: add, replace, find-duplicate, remove, describe, edit description. |
+| `users.ts` | `server-only` | The unscoped account enumeration the memory page's picker (and others) need. |
+| `memoryModel.ts` | pure | Memory bounds, the seven categories, and `MemoryRow` — the one row model of `/admin/memory`. |
+| `memoryVocab.ts` | `server-only` in practice (no pill; a test imports it) | The bridge from the closed slot vocabulary to the page's rows: `buildMemoryRows`, `canonicaliseSlotValue`. |
 | `memoryStore.ts` | `server-only` | The only file naming a phase-1 memory writer; forces the `admin` label. |
-| `memoryActions.ts` | `'use server'` | The eight memory Server Actions. |
-| `tuningActions.ts` | `'use server'` | The two character-tuning actions: one whole-tuning save, one reset to defaults. |
-| `tuningModel.ts` | **no directive** | The character panel's client-safe half: the copy for every dial and relationship, the draft shape, and the unsaved-field diff. Imports `@/lib/nina/tuning` and nothing else. |
-| `chatPhotos.ts` | pure (two constant imports) | `/admin/photos`'s vocabulary: the blob pathname shape and its session-binding predicate, the four size ceilings, the id regexes, the empty-bubble rule, `ChatPhotoActionResult`. |
-| `chatPhotoSchema.ts` | pure | Every Zod schema `/admin/photos` accepts. Separate from `schema.ts`, which is scoped to `/admin/nina` and a different table. |
-| `chatPhotoActions.ts` | `'use server'` | The chat-photo collection's four write actions: add, replace, remove, and the hand-written description edit. |
-| `shortcutModel.ts` | **no directive** | `/admin/shortcuts`'s client-safe half: the row model, the page ceiling, the field tuple, the two formatters — and the one re-export of phase 1's three caps. |
-| `shortcutStore.ts` | `server-only` | The only `lib/admin` module that writes a shortcut. Owns the duplicate catch, the empty-trigger refusal, and the admin read's ordering and ceiling. |
-| `shortcutActions.ts` | `'use server'` | The four shortcut Server Actions: add, save one cell, toggle `enabled`, delete. |
+| `memoryActions.ts` | `'use server'` | The four memory actions: save a slot, insert a fact, edit a fact, delete a row. |
+| `tuningActions.ts` | `'use server'` | One action: the whole-tuning save. (The reset action was deleted with the buttons.) |
+| `tuningModel.ts` | pure (client-safe) | The character panel's client-safe half: copy, draft shape, unsaved-field diff, auto-save merge. |
+| `shortcutModel.ts` | pure | The shortcuts row model, page ceiling, field tuple, formatters — and the one re-export of phase 1's three caps. |
+| `shortcutStore.ts` | `server-only` | The only `lib/admin` module that writes a shortcut. Owns the duplicate catch, the empty-trigger refusal, the read's ordering and ceiling. |
+| `shortcutActions.ts` | `'use server'` | The four shortcut actions: add, save one cell, toggle `enabled`, delete. |
+| `imageGenModel.ts` | pure | The image-generation draft: copy, reference-key round trip, draft diff, auto-save merge, dial debounce. |
+| `imageGenActions.ts` | `'use server'` | Three actions: the one whole-prefs save, the test dispatch, the test read. |
+| `imageGenTestView.ts` | pure | The test job's verdict vocabulary and poll schedule — a lookup over `nina_turns.error_code`, never a second classifier. |
+| `textModelActions.ts` | `'use server'` | One action: save the narrative text model (`app_settings`, not `nina_tuning`). |
+| `shareToNina.ts` | pure | `ninaPhotoShareUrl` — the album photo → her chat link, as a URL. |
 
 ## Exported API
 
@@ -71,22 +83,16 @@ export function forbiddenJson(): Response
 ```
 
 `requireAdmin()` is line 1 of every admin page and every admin Server Action. Both of its exits
-throw a framework control-flow error, so the same two rules as `requireUserId()` apply: call it
-FIRST, and never wrap it in a bare try/catch.
+throw a framework control-flow error: call it FIRST, never wrap it in a bare try/catch.
 
-The two refusals are deliberately different answers:
+- **No session → `redirect('/')`** (the sign-in screen — the useful next step).
+- **Signed in, not an admin → `notFound()`** — `/admin/nina` and `/admin/nonsense` answer
+  identically, and signing in again will not help.
+- `requireAdminApi()` throws `UnauthorizedError` (401, imported from `@/lib/auth/requireUserId`,
+  not redefined) or `AdminForbiddenError` (404) so one catch serves both; `forbiddenJson()` is
+  its canonical refusal body.
 
-- **No session → `redirect('/')`.** `/` is the sign-in screen (R-24), so signing in is the useful
-  next step.
-- **Session whose email is not an admin → `notFound()`.** Signing in again will not help, and a
-  404 tells a signed-in stranger nothing: `/admin/nina` and `/admin/nonsense` answer identically.
-  `forbidden()` was rejected because it is behind Next's experimental `authInterrupts` flag.
-
-`getAdminIdentity()` is the branch-don't-refuse flavour; `requireAdminApi()` is the Route Handler
-flavour that throws `UnauthorizedError` (401, F02's class, imported rather than redefined) or
-`AdminForbiddenError` (404) so one catch serves both.
-
-### `avatars.ts` — where a blob lives and how big it may get
+### `avatars.ts` — where an album blob lives and how big it may get
 
 ```ts
 export const ADMIN_AVATAR_EXTS = ['jpg', 'png', 'webp'] as const
@@ -102,40 +108,27 @@ export const ADMIN_AVATAR_CACHE_MAX_AGE = 60 * 60 * 24 * 365
 export function adminAvatarPathname(userId, id, ext): string
 export function adminAvatarThumbPathname(userId, id, ext): string
 export function extForContentType(contentType: string): AdminAvatarExt | null
+export function contentTypeForAvatarExt(ext: AdminAvatarExt): AdminAvatarContentType
 export function isAdminAvatarRequestPathname(pathname, userId): boolean
 export function isAdminAvatarThumbRequestPathname(pathname, userId): boolean
 ```
 
-`NINA_BLOB_PREFIX` is imported from `lib/nina/images.ts` rather than re-declared (ruling A6), so
+Two pathname shapes (`nina/<uid>/avatar-<id>.<ext>`, `nina/<uid>/thumb-<id>.<ext>` — the
+thumbnail **carries the avatar's id**, which is what makes an orphaned thumbnail findable), two
+predicates (the caller must know WHICH shape, because the caps differ 8 MB vs 512 KB), and the
+request regex is a different shape from the stored pathname because `addRandomSuffix: true` means
+Blob rewrites what it was asked for. `NINA_BLOB_PREFIX` is imported from `lib/nina/images.ts` —
 the store layout has one spelling.
-
-**Two pathname shapes, two predicates, two caps.** The original keeps its source container —
-`nina/<userId>/avatar-<id>.<ext>` — because this page never re-encodes it (a 4x crop zoom on a
-downscaled source shows her face at 192 px). The derived thumbnail is
-`nina/<userId>/thumb-<id>.<ext>`, **carrying the AVATAR's id rather than a fresh one**, which is
-what makes an orphaned thumbnail findable later. The `ext` argument is required and not defaulted,
-because the Route Handler cross-checks a pathname's extension against the declared content type.
-
-The predicates are two functions and not one widened alternation on purpose: the caller needs to
-know WHICH shape it was handed, because the two carry different `maximumSizeInBytes` (8 MB vs.
-512 KB), and a 512 KB rule that silently becomes an 8 MB rule is the mistake worth making
-structurally impossible. Both refuse a user id that is not id-shaped rather than interpolating it
-into a regex.
-
-The request regex and the stored pathname are deliberately different shapes: `addRandomSuffix: true`
-means Blob rewrites what it was asked for, so only the request half is enforceable and
-`thumb_pathname` has to be a column rather than a computation.
 
 ### `filetree.ts` — the file manager's decisions, before anything touches the network
 
 **This module has no imports at all, and must not acquire one.** Its readers are a `'use client'`
-explorer, a `'use server'` action module, a Route Handler and the unit suite; one server-side
-import and the client half stops compiling. In particular, do not import `avatars.ts` for the byte
-cap — `planFolderUpload` takes `maxBytes` as an argument precisely so the cap keeps one home.
-
-Bounds and grammar:
+explorer, a `'use server'` action module, a Route Handler and the unit suites; one server-side
+import and the client half stops compiling. Do not import `avatars.ts` for the byte cap —
+`planFolderUpload` takes `maxBytes` as an argument precisely so the cap keeps one home.
 
 ```ts
+// bounds and grammar
 export const NINA_FOLDER_ROOT = ''            // the album root; '' and not '/' or null
 export const NINA_FOLDER_ROOT_LABEL = 'Album'
 export const NINA_FOLDER_SEPARATOR = '/'
@@ -146,455 +139,322 @@ export const NINA_FILENAME_MAX_CHARS = 200
 export const NINA_FOLDER_FORBIDDEN_RE = /[\u0000-\u001f\u007f<>:"\\|?*]/
 export const NINA_SOURCE_KEY_VERSION = 'v1'
 export const NINA_SOURCE_KEY_MAX_CHARS = 800
+
+// paths: normaliseFolderPath, validateFolderPath, foldFolderPath, splitFolderPath,
+//   folderDepth, folderName, folderParent, joinFolderPath, folderAncestors,
+//   folderBreadcrumbs, isFolderAncestorOf, isInFolderTree, sanitiseFolderSegment
+// files: fileExtension, classifyFile, sourceKeyFor
+// planning and tree: planFolderUpload, folderCounts, buildTree, findFolderNode
+// the explorer's view switch (the Media pane):
+export const NINA_MEDIA_VIEW_PARAM = 'view'
+export const NINA_MEDIA_VIEW_VALUE = 'media'
+export const NINA_MEDIA_NODE_LABEL = 'Media'
+export type ExplorerView = 'album' | 'media'
+export function readExplorerView(raw: string | string[] | undefined): ExplorerView
+export function mediaViewNode(count: number): MediaViewNode   // MediaViewNode is module-private
 ```
 
-`NINA_FOLDER_FORBIDDEN_RE` is a DENY list matched unanchored — the test is `!RE.test(value)` — and
-it deliberately has no `g` flag, because a global regex reused with `.test` carries `lastIndex` and
-starts answering `false` to input it just rejected. That is what makes it safe to share between a
-loop here and a `.refine()` in `schema.ts`.
+`NINA_FOLDER_FORBIDDEN_RE` is a DENY list matched unanchored (`!RE.test(value)`) with **no `g`
+flag**, because a global regex reused with `.test` carries `lastIndex` and starts answering
+`false` to input it just rejected — which is what makes it safe to share between a loop here and
+a `.refine()` in `schema.ts`.
 
-Path functions: `normaliseFolderPath`, `validateFolderPath`, `foldFolderPath`, `splitFolderPath`,
-`folderDepth`, `folderName`, `folderParent`, `joinFolderPath`, `folderAncestors`,
-`folderBreadcrumbs`, `isFolderAncestorOf`, `isInFolderTree`, `sanitiseFolderSegment`.
+`planFolderUpload<T extends LocalFileLike>` (see `PlannedUpload<T>`, exported) partitions a
+walked folder into `upload` / `existing` / `rejected` / `refused` plus `folders` and `counts`.
+The per-file check order is load-bearing: **name → kind → shape → bytes → novelty** — a
+`Thumbs.db` nine folders deep reads as "not an image" (silent), not "too deep" (reported).
+`base` is the folder the drop landed in; the same files dropped at the root and inside `Faces`
+are genuinely two different sets. Rejections are returned, never thrown; sorting uses plain
+`<`/`>` on the folded form (host-`localeCompare` broke the suite's ability to assert an order),
+which is the known lexicographic-not-natural limitation. `folders` lists only folders `upload`
+will create: **an empty directory in a dropped tree appears nowhere** — a browser hands over a
+flat list of FILES. Empty folders are durable (`nina_folders`) but only *"New subfolder"* makes
+one.
 
-File functions: `fileExtension`, `classifyFile` (`FileVerdict` / `FileRejection`), `sourceKeyFor`.
+The Media view half (`readExplorerView`, `mediaViewNode`) is the `?view=media` read path: the
+explorer renders a virtual read-only "Media" node built from the chat-photo collection instead
+of the album tree. Pure like the rest of the file so the client can parse the URL param with the
+same grammar the server does.
 
-Planning and tree: `planFolderUpload`, `folderCounts`, `buildTree`, `findFolderNode`.
+### `folderOps.ts` — folder maintenance, decided without a database
 
 ```ts
-export function planFolderUpload<T extends LocalFileLike>(input: {
-  base: string
-  files: readonly T[]
-  manifest: readonly ManifestEntryLike[]
-  maxBytes: number
-}): FolderUploadPlan<T>
+export const ADMIN_FOLDER_OP_MAX_IDS = 500    // blast radius of one move/remove, not a body bound
+export const folderCreateSchema  // { parent, name }
+export const folderRenameSchema  // { folder, name }
+export const folderMoveSchema    // { folder, parent }
+export const photoMoveSchema     // { ids[1..500], folder }
+export const folderDeleteSchema  // { folder, keepCurrent: boolean }
+export const photoRemoveSchema   // { ids[1..500], keepCurrent: boolean }
+export type FolderPlan = { ok: true; folder: string } | { ok: false; error: string }
+export function planFolderCreate(args): FolderPlan
+export function planFolderRename(args): FolderPlan
+export function planFolderMove(args): FolderPlan
+export interface CurrentPhotoRef { id: string; folder: string; filename: string | null }
+export function describeCurrentPhoto(current): string
+export function currentPhotoRefusal(current: CurrentPhotoRef | null, keepCurrent: boolean): string | null
+export function currentPhotoKeptNote(current): string
 ```
 
-Partitions a walked folder into four buckets — `upload`, `existing`, `rejected`, `refused` — plus
-`folders` and `counts`. The per-file order of checks is load-bearing: **name → kind → shape →
-bytes → novelty**. `classifyFile` runs ahead of the path and size checks so that a `Thumbs.db`
-nine folders deep reads as "not an image" (silently swallowed) rather than "too deep" (reported),
-which would tell the operator his tree is malformed when it is merely ordinary.
+Why a separate module: `ninaAlbumActions.ts` is `'use server'` and may export only async
+functions, so Zod schemas and pure predicates need a home that is not `schema.ts` — and the
+schemas sit beside the planners that consume their output. `folderOps` imports zod (no component
+reaches zod), so the tree still reaches `filetree.ts` for path arithmetic without reaching this
+file.
 
-`base` is the folder the drop landed in. The same folder dropped at the root and inside `Faces` is
-genuinely two different sets of files, so a diff that ignored `base` would report the second as
-already uploaded.
+The design facts worth keeping:
 
-Rejections are returned, never thrown, and no ordering of the input is assumed or imposed.
-Sorting uses plain `<`/`>` on the folded form rather than `localeCompare`, because `localeCompare`
-with no locale argument reads the host's and the unit suite could not assert an order at all. The
-consequence is lexicographic rather than natural order (`Folder 10` before `Folder 2`) — a known,
-filed limitation.
-
-`folders` lists only the folders `upload`'s rows will bring into existence. **An empty directory in
-a dropped tree appears nowhere**: a drop hands over a flat list of FILES, so a browser never
-mentions it. Empty folders themselves are durable (`nina_folders`), but only *"New subfolder"* can
-create one.
+- **Moving a folder is an UPDATE of one column. No blob is copied.** Blob layout stays flat;
+  a rename of four hundred photographs writes four hundred `folder` cells and moves zero bytes.
+  The price: two folders that come to share a path are indistinguishable, so a collision must be
+  refused rather than merged.
+- **The destination tree must be EMPTY.** Renaming `Bali` onto `Trips` would be a merge, and a
+  merge of a folder column is not undoable — every other operation here is reversible by its
+  inverse, this one would not be. Merging stays available as the *explicit* gesture: select the
+  photos and move them.
+- **A folder cannot land inside itself**, and the depth bound is checked against the DEEPEST
+  descendant after the move, not against the destination.
+- **The current photo cannot be removed.** SQL already refuses it (`isCurrent = false` in every
+  delete's WHERE); `currentPhotoRefusal` makes the stand explicit BEFORE any row is touched —
+  refuse by default, or with `keepCurrent: true` (a required boolean, not a defaulted one) run
+  the delete and say what stayed via `currentPhotoKeptNote`. A partial delete of hundreds of rows
+  has no inverse; refusing beats half-succeeding.
+- `keepCurrent` exists on `folderDelete`/`photoRemove` and nowhere else; `folder` emptiness on a
+  delete is refused by the ACTION ("the album root is not a folder" is a sentence, not a field
+  error).
 
 ### `schema.ts` — the boundary's Zod layer
 
 ```ts
-export const avatarIdSchema
-export const cropWriteSchema            // type CropWrite
-export const avatarRegisterSchema       // type AvatarRegister — no live caller since phase 5;
-                                        // kept as the field-shape reference the batch record mirrors
+export const avatarIdSchema            // type AvatarDescriptionInput via avatarDescriptionSchema
+export const cropWriteSchema           // type CropWrite
+export const avatarDescriptionSchema   // { id, description } — the album prose edit
+export const avatarRegisterSchema      // type AvatarRegister — live caller: explorer/thumbnail.ts
 export const userIdSchema
 export const slotKeySchema
-export const slotEditSchema             // type SlotEdit
-export const slotRetireSchema
-export const promiseRemoveSchema
-export const factInsertSchema           // type FactInsert
-export const factEditSchema             // type FactEdit
-export const factRetractSchema          // type FactRetract
-export const factPurgeSchema
-
-// the folder-aware upload boundary
+export const slotEditSchema            // type SlotEdit
+export const factInsertSchema          // type FactInsert
+export const factEditSchema            // type FactEdit
+export const memoryDeleteSchema        // type MemoryDelete — discriminated union on kind
 export const folderPathSchema
 export const albumFilenameSchema
 export const sourceKeySchema
-export const avatarBatchRecordSchema    // type AvatarBatchRecord
-export const avatarBatchRegisterSchema  // type AvatarBatchRegister
-export const albumManifestSchema        // type AlbumManifestRequest
-
-// /admin/shortcuts — appended after ninaTuningResetSchema, nothing above it touched
-export const shortcutInsertSchema       // type ShortcutInsert
-export const shortcutCellSchema         // type ShortcutCell — a discriminated union on `field`
-export const shortcutToggleSchema       // type ShortcutToggle
-export const shortcutDeleteSchema       // type ShortcutDelete
+export const avatarBatchRecordSchema   // type AvatarBatchRecord
+export const avatarBatchRegisterSchema // type AvatarBatchRegister
+export const albumManifestSchema       // type AlbumManifestRequest
+export const ninaTuningWriteSchema     // type NinaTuningWriteInput
+export const shortcutInsertSchema      // type ShortcutInsert
+export const shortcutCellSchema        // type ShortcutCell — discriminated union on `field`
+export const shortcutToggleSchema      // type ShortcutToggle
+export const shortcutDeleteSchema      // type ShortcutDelete
+export const ninaImagePrefsWriteSchema // type NinaImagePrefsWriteInput
 ```
 
-**Every bound here is imported, none is declared.** `NINA_FOLDER_MAX_PATH_CHARS`,
-`NINA_FILENAME_MAX_CHARS`, `NINA_SOURCE_KEY_MAX_CHARS`, `NINA_FOLDER_FORBIDDEN_RE` and
-`NINA_FOLDER_SEPARATOR` come from `filetree.ts`; `NINA_ADMIN_BATCH_MAX` from `lib/nina/album.ts`;
-the crop range from `lib/nina/crop.ts`; the blob bounds from `avatars.ts`; the memory bounds from
-`memoryModel.ts`.
+**Every bound here is imported, none is declared**: the folder bounds from `filetree.ts`,
+`NINA_ADMIN_BATCH_MAX` from `lib/nina/album.ts`, the crop range from `lib/nina/crop.ts`, the
+blob bounds from `avatars.ts`, the memory bounds from `memoryModel.ts`, the tuning bounds from
+`lib/nina/tuning.ts`, the image-prefs bounds and vocabularies from `lib/nina/imageprefs.ts`.
+A duplicated number is a number that will one day disagree.
 
-#### `ninaTuningWriteSchema` — one object, not twenty fields
+Facts per schema worth keeping (all verified in source):
 
-The character tuning is validated as a single schema because it is saved as a single action (see
-`tuningActions.ts`). It obeys this file's standing rule literally: **every bound is imported, none
-is re-spelled.** The `0-100` range (`NINA_SCORE_MIN` / `NINA_SCORE_MAX`), the eleven trait keys
-(`NINA_TRAITS`), the four dial keys (`NINA_DIALS`), the five relationship values
-(`NINA_RELATIONSHIPS`) and the free-text length (`NINA_NOTES_MAX` = 2000) all come from
-`lib/nina/tuning.ts`, which is the same module the panel
-imports for its labels and the same one `buildNinaSystemPrompt` reads. A `z.enum` retyped here would
-be a second list of relationships, and the first thing to happen to a second list is that it falls
-behind. **A length bound retyped here would be worse than that**: a Zod cap stricter than the
-model's coercion silently refuses a value the store would happily have kept, in a layer the operator
-cannot see.
+- `folderPathSchema` **validates a canonical path; it does not normalise one** — it wraps
+  `validateFolderPath` and adds the identity check (`result.ok && result.path === value`).
+  Normalisation is the browser's job; a server-side rewrite would store a dedupe key from path A
+  against a row sitting at path B. `.max()` runs before `.refine()`; `''` (the album root) is
+  VALID — every pre-F34 row has it by column DEFAULT.
+- `albumFilenameSchema` is not `folderPathSchema` on one segment: 64 for a typed segment, 200 for
+  a disk filename. On top of the shared character class it refuses `/` explicitly (the deny list
+  forbids `\` but `/` is the separator `filetree` has already split on), trailing space and
+  trailing dot (Win32 strips both), and `.` / `..` by name.
+- `sourceKeySchema` is the dedupe key as a shape: `(normalised relative path, size, lastModified)`
+  folded by `sourceKeyFor`. The 800-character cap is a STORAGE bound — `(user_id, source_key)` is
+  a unique b-tree index and a b-tree tuple cannot exceed ~2704 bytes. The exclusion is `\p{Cc}`,
+  not a positive class: a folder called `naïve` must round-trip.
+- The batch schemas: a record's blob fields are spelled exactly as `avatarRegisterSchema` spells
+  them; no `makeCurrent`; `thumb` is a nullable OBJECT (`{ url, pathname }`) so "has a thumbnail"
+  cannot be half-true — **nullable is deliberate** (a failed canvas encode must not throw away a
+  completed PUT). The envelope is an object holding one array; `NINA_ADMIN_BATCH_MAX` (50) makes
+  `insertNinaAvatars`' throw unreachable. **All-or-nothing at the boundary, on purpose**: a
+  record that fails here is a client bug, and a partial-success path would let that bug write
+  half a batch invisibly.
+- `memoryDeleteSchema` is a discriminated union on `kind` (`slot` | `promise` | `fact`) — the one
+  delete control's three branches, exhaustive by construction. The four per-kind schemas it
+  replaced (`slotRetire`, `promiseRemove`, `factRetract`, `factPurge`) are gone with the actions
+  they served.
+- `ninaTuningWriteSchema` validates the whole tuning as one object — every bound imported from
+  `lib/nina/tuning.ts` — and each trait is **validated, not clamped** (clamping is the assembler's
+  job; a Zod refusal is a message, a clamp is a silent coercion). There is no reset schema: the
+  reset action was deleted with the buttons.
+- `shortcutCellSchema` is a discriminated union on `field` because the three cells have three
+  different caps. **`match_key` and `kind` are absent from all four shortcut schemas** — both are
+  derived inside `lib/nina/queries.ts`'s write statements, so a forged POST has nowhere to put a
+  folded key that disagrees with its own trigger.
+- `ninaImagePrefsWriteSchema` is the one whole-row save's boundary: `focus` is a `strictObject`
+  with every key required (an absent key must not read as "off"); the editable
+  `promptTemplate` goes through `validateNinaImageTemplate` — the SAME function the assembler
+  re-checks at render — so an unknown `{{placeholder}}` or a missing `{{camera}}`/`{{subject}}`/
+  `{{scene}}` is refused at the boundary; `model` is a closed enum (`NINA_IMAGE_MODEL_IDS`) so a
+  stale client cannot put an unverified camera id on the wire.
 
-Each trait is `z.number().int().min(0).max(100)` — **validated, not clamped**. Clamping is the
-assembler's job, because the hand-edited row and the stale API client are reachable without a bug in
-the panel, and a value that fails Zod here is a rejected action with a message rather than a silent
-coercion. The two jobs coexist on purpose: this layer refuses a bad *request*, and
-`lib/nina/tuning.ts` survives a bad *row*.
-
-`ninaTuningResetSchema` beside it is the userId-only shape the reset action takes, for the same
-reason the reset is an action at all: the defaults are server-side.
-
-#### The four shortcut schemas — and the two columns they deliberately cannot carry
-
-Appended after `ninaTuningResetSchema`; nothing above them changed. `NINA_TRIGGER_MAX` (16),
-`NINA_SHORTCUT_LABEL_MAX` (80) and `NINA_SHORTCUT_EXPANSION_MAX` (2000) are imported through
-`shortcutModel.ts` rather than re-spelled, per this file's standing rule. The four private field
-schemas (`shortcutIdSchema`, `shortcutTriggerSchema`, `shortcutLabelSchema`,
-`shortcutExpansionSchema`) are not exported: they exist to be composed here.
-
-**`match_key` and `kind` are absent from every one of the four**, and that absence is the guarantee
-the whole page rests on. Both are derived inside `lib/nina/queries.ts`'s write statements, so a
-forged POST has nowhere to put a folded key that disagrees with its own trigger.
-`tests/admin.shortcuts.test.ts` reads this section and asserts it.
-
-`shortcutCellSchema` is a **discriminated union on `field`** and not three optional strings, because
-the three cells have three different caps: a flat `{ field, value }` would have to allow the longest
-of them, and a 900-character trigger would pass validation only to be refused by the column as a
-500. It also sends ONE field rather than the whole row — the three are independent, and only the
-trigger edit can be refused, so sending all three would make every label typo a candidate for a
-duplicate-trigger error.
-
-#### Two layers of bounds, and why both
-
-Zod cannot know an image's aspect ratio, so `cropWriteSchema` enforces the SHAPE (integer, within
-an absolute ceiling no legitimate crop can exceed) and the Server Action re-runs `clampCrop`
-against the row's real `width`/`height`. Neither alone is sufficient: a schema cannot know the
-aspect ratio, and a clamp cannot reject `scale: "banana"`.
-
-#### `folderPathSchema` validates a canonical path. It does not normalise one.
-
-It is **not a second regex** — it wraps `validateFolderPath` from `filetree.ts`, the repo's one
-folder-path grammar, and adds the identity comparison that turns a normaliser into a validator:
-
-```ts
-const result = validateFolderPath(value)
-return result.ok && result.path === value
-```
-
-`validateFolderPath` normalises before it judges, which is exactly right on the client and exactly
-wrong as a server's only check: on its own it would ACCEPT `/Nina`, `Nina/`, `Nina//2026`,
-`Nina\2026` and `"trip "` by quietly rewriting them. Normalisation belongs in the BROWSER, before a
-single byte is PUT, because that is where the diff is computed and where the mess actually is.
-
-Silently rewriting here would be the worse failure, and the invisible kind: the row would land in a
-folder the client does not believe it asked for, its dedupe key — derived from the path it *did*
-ask for — would be stored against it, and every later diff would compare a key from path A against
-a row sitting at path B. Forever, and only for the paths that needed rewriting. A refusal is a bug
-in the caller and shows up the first time it runs.
-
-`''` (the album root) is VALID: every pre-F34 row has it by column DEFAULT, and it is still where
-the singular upload path lands. `.max()` runs before `.refine()` so a megabyte of string is
-rejected before it is split into a million segments.
-
-#### `albumFilenameSchema` is not `folderPathSchema` applied to one segment
-
-The two have different length bounds, deliberately. A folder segment is capped at 64 because a
-human typed it and a tree pane has to render it; a filename is capped at 200 because it came off a
-disk — `IMG_20240817_101112_BURST003_COVER_TOP.jpg` is a real camera filename and refusing it would
-refuse the operator's own photographs.
-
-Three refusals sit on top of the shared character class:
-
-- **`/` explicitly.** `NINA_FOLDER_FORBIDDEN_RE` forbids `\` and not `/`, because in `filetree.ts`
-  the forward slash is the separator and has already been split on. Here nothing has split it, so
-  `Bali/IMG_1.jpg` would otherwise pass — a filename carrying a path is exactly the client bug this
-  catches.
-- **Trailing space and trailing dot.** Win32 silently strips both, so `"beach "` and `"beach"` are
-  one file on the machine the upload came from and would be two rows here.
-- **`.` and `..`** by name.
-
-#### `sourceKeySchema` — the dedupe key as a shape
-
-Its derivation is `filetree.ts`'s `sourceKeyFor`: `(normalised relative path, size, lastModified)`
-folded into one string, because a browser reads all three off a `File` for free and hashing
-hundreds of megabytes to answer "have I seen this?" costs more than the upload it saves.
-
-The exclusion is `\p{Cc}` and not a positive character class, matching the deny-list posture: a
-folder called `naïve` must round-trip. The 800-character cap is a STORAGE bound, not taste —
-`(user_id, source_key)` is a unique b-tree index and a b-tree tuple cannot exceed ~2704 bytes, so
-an unbounded client string there is an `INSERT` that fails inside Postgres at some unpredictable
-path length instead of failing validation at the boundary. The computed worst case is 745.
-
-#### `avatarBatchRecordSchema` / `avatarBatchRegisterSchema`
-
-A record's six blob fields are spelled exactly as `avatarRegisterSchema` spells them and bounded by
-the same constants — a record that passes here and would fail there is a record that means two
-things. There is no `makeCurrent`: a folder upload never makes three hundred photos her face.
-
-`thumb` is a nullable OBJECT (`{ url, pathname }`) rather than two loose columns, so "has a
-thumbnail" cannot be half-true. **Nullable is deliberate**: if the browser's canvas encode fails
-for one file out of three hundred, the ORIGINAL has already been PUT, and refusing the row would
-throw away a completed upload and orphan its blob to save a 20 KB optimisation. A tile falls back
-to `blobUrl` when `thumbUrl` is NULL, which every pre-F34 row needs anyway. No thumbnail
-`width`/`height`/`bytes`: nothing reads them, and the only bound a thumbnail needs is enforced by
-Blob at PUT time via the Route Handler's token, not by a number a client reported afterwards.
-
-The envelope is an object holding one array rather than a bare array, so a future field is an
-additive change. The `NINA_ADMIN_BATCH_MAX` (50) cap has three independent justifications: parameter
-count and blast radius (a failed request loses one chunk, not the upload); the 1 MB Server Action
-body cap, against which a ~450-byte record leaves two orders of magnitude of margin; and
-`insertNinaAvatars` throwing above that number — this is the check that makes that throw
-unreachable.
-
-**All-or-nothing at the schema boundary, on purpose.** One bad record fails the whole call, because
-`planFolderUpload` has already partitioned the walk before anything was PUT and the client only
-submits records whose blob landed. So a record that fails this schema is not user data — it is a
-bug in the client, and a partial-success path would let that bug write half a batch and stay
-invisible. Per-file refusals belong on the client, beside the file's name.
+Two layers of bounds, and why both: Zod cannot know an image's aspect ratio, so `cropWriteSchema`
+enforces the SHAPE and the action re-runs `clampCrop` against the row's real `width`/`height`.
+Neither alone is sufficient.
 
 ### `ninaAlbumActions.ts` — the album's write side
 
 ```ts
-export interface AdminActionResult { ok: boolean; error?: string; id?: string; description?: string }
-export interface AdminManifestEntry { id: string; folder: string; sourceKey: string }
-export interface AdminBatchRegisterResult extends AdminActionResult {
-  inserted?: { sourceKey: string; id: string }[]
-  skipped?: number
-}
-export interface AdminManifestResult extends AdminActionResult {
-  entries?: AdminManifestEntry[]
-  truncated?: boolean
+export interface AdminActionResult {
+  ok: boolean; error?: string
+  id?: string; description?: string   // describe/edit actions, so a caller can render without a refetch
+  folder?: string; count?: number     // folder ops: where to look now, how many rows actually moved
+  note?: string                       // a true sentence about a non-failure (e.g. what keepCurrent left)
 }
 
-export async function describeNinaAvatarAction(rawId: string): Promise<AdminActionResult>
-export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminActionResult>
-export async function saveNinaAvatarCropAction(input: unknown): Promise<AdminActionResult>
-export async function deleteNinaAvatarAction(rawId: string): Promise<AdminActionResult>
-export async function ensureNinaAvatarDescriptionAction(rawId: string): Promise<AdminActionResult>
-export async function registerNinaAvatarsAction(input: unknown): Promise<AdminBatchRegisterResult>
-export async function listNinaAlbumManifestAction(input: unknown): Promise<AdminManifestResult>
+// describe / prose
+export async function describeNinaAvatarAction(rawId): Promise<AdminActionResult>
+export async function editNinaAvatarDescriptionAction(input): Promise<AdminActionResult>
+export async function ensureNinaAvatarDescriptionAction(rawId): Promise<AdminActionResult>
+// face
+export async function setCurrentNinaAvatarAction(rawId): Promise<AdminActionResult>
+export async function setChatPhotoAsAvatarAction(input): Promise<AdminActionResult>
+// crop, delete
+export async function saveNinaAvatarCropAction(input): Promise<AdminActionResult>
+export async function deleteNinaAvatarAction(rawId): Promise<AdminActionResult>
+// folder upload
+export async function registerNinaAvatarsAction(input): Promise<AdminBatchRegisterResult>  // result type module-private
+export async function listNinaAlbumManifestAction(input): Promise<AdminManifestResult>     // result type module-private
+// folder maintenance (planners in folderOps.ts)
+export async function createNinaAlbumFolderAction(input): Promise<AdminActionResult>
+export async function renameNinaAlbumFolderAction(input): Promise<AdminActionResult>
+export async function moveNinaAlbumFolderAction(input): Promise<AdminActionResult>
+export async function deleteNinaAlbumFolderAction(input): Promise<AdminActionResult>
+export async function moveNinaAvatarsAction(input): Promise<AdminActionResult>
+export async function removeNinaAvatarsAction(input): Promise<AdminActionResult>
 ```
 
-Every action opens with `requireAdmin()` and is scoped to the id it returns.
+Every action opens with `requireAdmin()` and is scoped to the ids it returns. `AdminManifestEntry`,
+`AdminBatchRegisterResult` and `AdminManifestResult` are module-private shapes (unexported
+2026-09-11); callers consume them structurally off the actions' return types — prefer
+`Awaited<ReturnType<typeof …>>` over re-exporting.
 
-**What this file does not do**: it writes no `nina_messages` row and composes no line of Nina's
-dialogue (a new current avatar is left with `announced_at = NULL` for the `avatar_changed`
-trigger); it does not touch `assets/nina/_anchor.png` (a committed repo file on a read-only
-serverless filesystem); and it generates nothing.
+**Where a description is earned.** `describeNinaImages` is OFF every upload path. It runs at
+exactly the moments `nina_avatars.description` is read by anyone: promotion (`setCurrentNinaAvatarAction`
+and the batch's empty-album promotion, both via the `after()`-based private `scheduleDescribe`,
+which skips an already-described row), the share path (`ensureNinaAvatarDescriptionAction`), and
+on demand (`describeNinaAvatarAction` — also the manual re-describe, which OVERWRITES hand-written
+prose). A describe call is ~8–11 s and Server Actions dispatch one at a time per client, so
+awaiting it per upload would add three hundred latencies instead of overlapping them. The album
+describe uses the `'self'` subject (via `describeSubjectForSide('hers')`) — every album row is a
+photograph of HER; the runner-default prompt went looking for a man who is not in the frame.
 
-#### The describe pre-pass is OFF the upload path
+**`editNinaAvatarDescriptionAction`** is the album twin of the media collection's hand-written
+edit: no model call, no `after()`, empty box clears to NULL (D1), and it revalidates
+`/admin/nina`. An empty description degrades honestly — her context's avatar block omits it.
 
-It used to be awaited on every single upload, and that was correct at F33's scale: an uploaded
-image has no generation prompt, so a vision model is the only way `nina_avatars.description` ever
-gets filled. What changed is the scale — *"i will put hundreds of profile pics in there"*.
+**`setChatPhotoAsAvatarAction`** adopts a media-collection photograph as her face: it refuses
+reference rows (`source_avatar_id`/`source_image_id` — make the original hers instead), clamps
+the framing against the row's REAL dimensions server-side, copies the row into the album under
+the stable `sourceKey` `` `chat-photo:<id>` `` (idempotent — a second adoption finds the existing
+row via `getNinaAvatarBySourceKey`), and schedules a describe only if the copied row has none.
 
-A describe call is ~8-11 s typical. Awaited once per upload, three hundred uploads is 40 minutes to
-1.4 hours of wall clock the operator sits through, three hundred serverless invocations held open,
-and three hundred vendor bills — for photographs Nina may never be shown. Server Actions dispatch
-one at a time per client, so those latencies do not overlap; they add.
+**`registerNinaAvatarsAction`** — the album's *only* writer of new rows (the singular action was
+deleted with `UploadAvatar.tsx`; nothing lands a row without a `folder` and a `source_key`).
+**Parallel bytes, batched bookkeeping**: blob PUTs go through the Route Handler in parallel;
+Server Actions serialise, so registration batches at `NINA_ADMIN_BATCH_MAX` (50). Verified
+mechanics: intra-batch dedupe on `sourceKey` (first writer wins); ONE read per batch for "does a
+current row exist"; `declareNinaFolders` once per batch BEFORE the insert (a declared-but-empty
+folder after a throw is a harmless leftover; the reverse order leaves photographs in a folder
+nothing declared); `insertNinaAvatars` is `ON CONFLICT (user_id, source_key) DO NOTHING …
+RETURNING` so idempotence is a constraint, not a convention — `skipped = submitted - rows.length`;
+the result joins on `pathname` because `sourceKey` is deliberately not on `NinaAvatarRow`.
 
-`description` has exactly one reader — her prompt — so it is now produced at exactly the two
-moments it is needed:
+**`deleteNinaAvatarAction`** — row first, blob second, TWO `del()` targets in one call: the row
+is the only record that the thumbnail object exists (its stored pathname carries Blob's random
+suffix and is not derivable). The current photo cannot be removed — the query's WHERE refuses it,
+which makes "zero current avatars" unreachable rather than repaired. A failed `del` logs and still
+reports success: a recoverable orphan beats a permanently broken image under a live row.
 
-- **It becomes her face**: `setCurrentNinaAvatarAction`, plus the one remaining path that makes a
-  row current without going through it (the batch's empty-album promotion).
-- **It is handed to her**: the share-to-Nina path, via `ensureNinaAvatarDescriptionAction`.
+**`listNinaAlbumManifestAction`** — every stored dedupe key under a folder subtree, called before
+walking a drop so `planFolderUpload` has something to diff against. A Server Action (not a Route
+Handler) because it runs once per drop and keeps `requireAdmin()` as the gate with no new `/api`
+surface. `truncated` is `>=` and not `>`: a subtree holding exactly `NINA_ADMIN_MANIFEST_MAX`
+(2000) reports truncated when it was not — the error is in the safe direction, and truncation is
+survivable because a short manifest OVER-reports, the extra files are re-PUT, and their inserts
+are discarded by `ON CONFLICT DO NOTHING`. Slower, never wrong.
 
-Plus on demand, forever, via `describeNinaAvatarAction` — the button that was always there.
-
-Within this package `describeNinaImages` therefore has exactly two call sites,
-`describeNinaAvatarAction` and the private `scheduleDescribe`, and **neither is on a register
-path**: no vision call happens on any upload.
-
-Both automatic triggers are non-fatal, exactly as the old pre-pass was. What is knowingly given up:
-a photo uploaded and never promoted or shared has `description = null` indefinitely — which is
-precisely why the share path fires the ensure before opening the chat tab.
-
-`scheduleDescribe(userId, id)` is module-private (a `'use server'` module may export only async
-functions, and this is a synchronous scheduler). It uses `after()` rather than `await` — the repo's
-idiom for a second model call the caller must not wait on — and re-reads the row inside the
-callback so the caller pays nothing and the "already described, skip the vendor call" test is
-authoritative at the moment the work would run. It deliberately does not call `revalidatePath`:
-`after()` runs once the response is finished, so there is no re-render left to attach to, and
-`/admin/nina` is `force-dynamic` anyway. `ensureNinaAvatarDescriptionAction` is the in-band variant
-for a caller that needs the prose in its own return value; it delegates to `describeNinaAvatarAction`
-rather than repeating its body, because two spellings of one vendor call is how one of them ends up
-not writing the row.
-
-#### `registerNinaAvatarsAction` — the only register path
-
-Registers a whole chunk of a folder upload in ONE action call. As of phase 5 it is the album's
-*only* writer of new rows: `registerNinaAvatarAction` (singular) was deleted along with its last
-caller, `components/admin/UploadAvatar.tsx`, so there is no longer a path that lands a row without a
-`folder` and a `source_key`, and nothing new can be invisible to the manifest diff.
-
-The split it embodies: **parallel bytes, batched bookkeeping.** The blob PUTs go through the Route
-Handler and genuinely run in parallel under the client's bounded-concurrency queue; Server Actions
-do not, so the bookkeeping batches at `NINA_ADMIN_BATCH_MAX`.
-
-It uses `insertNinaAvatars`, not `insertNinaAvatarAsCurrent`, because the latter un-currents and
-re-currents on every insert (the partial unique index makes the statement order load-bearing).
-Three hundred calls would rewrite the current row three hundred times, re-arm `announced_at` three
-hundred times, and make her comment on a face nobody chose. `insertNinaAvatars` writes
-`isCurrent: false` for every row and never reads that column.
-
-**Idempotence is a constraint, not a convention.** `insertNinaAvatars` is
-`ON CONFLICT (user_id, source_key) DO NOTHING ... RETURNING`, so the array it returns holds only
-genuinely new rows. A re-sent batch — a retry after a network blip, a double-clicked drop, the same
-folder dragged in twice, two tabs — returns `[]` and writes nothing. Nothing is compared in
-application code and nothing races: the unique index decides, and `skipped` is
-`submitted - rows.length`. The intra-batch dedupe (first writer wins, on the key) is separate and
-deliberate: two records with the same key inside one `VALUES` list is a client bug, and dropping
-the duplicate here beats depending on how Postgres resolves a speculative-insertion conflict
-against a tuple from the same command.
-
-**`declareNinaFolders` runs once per batch, BEFORE the insert.** Once, not per file — the batch's
-folders are collected through a `Set`, and the root is filtered inside `declareNinaFolders`, so a
-batch of root-level files passes `['']` and writes nothing. It is `ON CONFLICT DO NOTHING` on the
-composite primary key, so it costs one statement and never conflicts. Without it a dropped folder
-would still appear (the folder listing UNIONs the photograph rows in) but would silently cease to
-exist the moment its last photograph was removed. Before the insert, because if the insert throws,
-a declared-but-empty folder is a harmless and now-legal leftover the operator can see and delete —
-where the reverse order would leave photographs in a folder nothing declared.
-
-**`is_current` is touched in exactly one case.** If the album has no current row at all (a fresh
-database, before any seed), a plain batch insert would leave it with none, and "exactly one current
-avatar, always" is invariant 7. So the current row is read ONCE per batch — a single-row lookup on
-the partial unique index, not once per file — and only if it was absent is one inserted row
-promoted through `setCurrentNinaAvatar`, the function that owns the un-current/current ordering, so
-this path adds no third opinion about that index.
-
-The result joins on `pathname` and not on `sourceKey`, because `sourceKey` is deliberately not on
-`NinaAvatarRow`. `pathname` is the STORED Blob pathname (`addRandomSuffix: true` plus
-`allowOverwrite: false` make it unique per object) and is the same string the client already holds.
-Array position would work today and is not used, because "the order `RETURNING` gives back after
-skipping conflicts" is not a promise worth depending on.
-
-#### `deleteNinaAvatarAction` — row first, blob second, and TWO objects now
-
-The row is deleted first and the `del` is best-effort and logged: a failed `del` leaves a
-recoverable orphan, while a deleted blob under a live row is a permanently broken image in her
-album. The current photo cannot be removed — the query's WHERE clause refuses it, which is what
-makes "zero current avatars" unreachable rather than repaired.
-
-What is new is the **second `del()` target**. The ROW is the only record that the thumbnail object
-exists — its stored pathname carries Blob's random suffix and is not derivable — so a delete that
-removed one reference would leak an object nothing could ever find again. Both thumbnail fields are
-NULL for every pre-F34 row and for any row whose canvas encode failed, and NULL means "there is
-nothing to delete" rather than "something went wrong". It is one `del([...])` and not two calls:
-`del` takes an array, both objects belong to the same photo, and a partial success has no meaning
-worth reporting separately.
-
-#### `listNinaAlbumManifestAction`
-
-Every dedupe key already stored under a folder subtree, called BEFORE walking a dropped folder so
-`planFolderUpload` has something to diff against. A Server Action and not a Route Handler even
-though it is a read: it runs exactly once per drop, so serial dispatch costs nothing, and an action
-keeps `requireAdmin()` as the gate with no new `/api` surface to secure.
-
-It returns a view model (`AdminManifestEntry`), not rows. `truncated` is `>=` and not `>`, so a
-subtree holding exactly the cap reports `truncated: true` when it was not — the error is in the
-safe direction, and truncation is survivable at all because a short manifest makes the diff
-OVER-report, the extra files are re-PUT, and their inserts are discarded by
-`ON CONFLICT DO NOTHING`. Slower, never wrong — and only because the dedupe key is a constraint.
-
-### `chatPhotos.ts` / `chatPhotoSchema.ts` / `chatPhotoActions.ts` — `/admin/photos`
+### `chatPhotos.ts` / `chatPhotoSchema.ts` / `chatPhotoActions.ts` — the media collection
 
 ```ts
 // chatPhotos.ts — the ceilings and the shapes
-export const ADMIN_CHAT_PHOTOS_PATH = '/admin/photos'
+export const ADMIN_CHAT_PHOTOS_PATH = '/admin/nina'   // the collection lives in the explorer now
+export const ADMIN_CHAT_PHOTO_PURPOSE = 'selfie'
+export const ADMIN_CHAT_PHOTO_EXT = 'jpg'
+export const ADMIN_CHAT_PHOTO_CONTENT_TYPE = 'image/jpeg'
+export const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12}$/
+export const ADMIN_CHAT_PHOTO_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
 export const ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 export const ADMIN_CHAT_PHOTO_MAX_EDGE_PX = 12_000
 export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
 export const ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000
 export function adminChatPhotoPathname(userId: string, id: string): string
 export function isAdminChatPhotoPathname(pathname: string, userId: string): boolean
+export function isHttpsBlobUrl(value: string): boolean
 export function blobUrlMatchesPathname(blobUrl: string, pathname: string): boolean
+export function isNinaPhotoCarrierMessage(message): boolean
+export interface ChatPhotoActionResult { ok; error?; id?; description?; note? }
+export interface ChatPhotoKeeper { … }   // the row a duplicate points at, incl. its own contentHash
+export interface ChatPhotoAddPlan { … }  // what add writes, and the blob to release afterwards
+export function planChatPhotoAddWrite(input): ChatPhotoAddPlan
 
 // chatPhotoSchema.ts
 export const chatPhotoAddSchema
 export const chatPhotoReplaceSchema
-export const chatPhotoRemoveSchema
-export const chatPhotoDescriptionSchema   // { id, description } — max, then normalise
+export const chatPhotoRemoveSchema         // { id }
+export const chatPhotoDescribeSchema       // { id }
+export const chatPhotoDescriptionField     // .max(2000) then transform
+export const chatPhotoDescriptionSchema    // { id, description }
+export const chatPhotoSetAvatarSchema      // { id, scale, x, y } — adoption framing, all required
 
 // chatPhotoActions.ts
-export async function addChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult>
-export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult>
-export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult>
-export async function editChatPhotoDescriptionAction(input: unknown): Promise<ChatPhotoActionResult>
+export async function addChatPhotoAction(input): Promise<ChatPhotoActionResult>
+export async function replaceChatPhotoAction(input): Promise<ChatPhotoActionResult>
+export async function findChatPhotoDuplicateAction(contentHash, sourceHash?): Promise<{id, blobUrl, pathname} | null>
+export async function removeChatPhotoAction(input): Promise<ChatPhotoActionResult>
+export async function editChatPhotoDescriptionAction(input): Promise<ChatPhotoActionResult>
+export async function describeChatPhotoAction(input): Promise<ChatPhotoActionResult>
 ```
 
-#### `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS` is measured, and the vendor could never reach it
+**Write-time dedupe** (`planChatPhotoAddWrite` + `findChatPhotoDuplicateAction`, the
+media-dedupe set): the browser pre-checks `findChatPhotoDuplicateAction(contentHash, sourceHash)`
+before PUTting; the action re-checks by hash at write time. Three answers — `pinned` (the
+client-named keeper, re-read owner-scoped at action time), `hit` (the race: fresh bytes PUT, a
+concurrent original claimed them), or a new original with its hash claim. A duplicate row is a
+REFERENCE (`source_avatar_id`/`source_image_id`) that copies the keeper's `blobUrl`/`pathname`
+**and its `description`** (a second vision call over identical pixels is a second bill for a fact
+already in hand), and the loser's fresh PUT is released after the row lands (ROW FIRST, BLOB
+SECOND). A row's `content_hash` describes the bytes its `blob_url` serves — a reference carries
+the KEEPER's measured hash, even when that is NULL, never the claim's.
 
-2000, and both halves of that number are written down at the declaration. The *measurement*:
-production holds three described `nina_message_images` rows (85 / 362 / 461 chars) and thirteen
-`nina_avatars` rows (mean 415, max 550) — every description in the store is under 40% of the cap.
-The *ceiling*: `NINA_DESCRIBE_SYSTEM_PROMPT` asks for 60-140 words and `NINA_DESCRIBE_MAX_TOKENS`
-(500) at `NINA_DESCRIBE_CHARS_PER_TOKEN = 3` caps the describe pass at 1500 characters, so 2000 lets
-an operator say *more* than `glm-4.6v` ever can — without minting a new size for this surface, since
-`NINA_NOTES_MAX` is already 2000 for a reason that applies verbatim here.
+**Remove** resolves the empty-bubble problem: when the last image on a message that exists only
+to carry it goes, the MESSAGE goes too (in the same transaction — `message_id` is `ON DELETE SET
+NULL` since the orphan work, so a deleted SESSION cannot take photographs with it; a
+runner-authored carrier message is protected by `isNinaPhotoCarrierMessage`). Orphan rows
+(`messageId` NULL — every photograph from every deleted conversation) take the plain branch. The
+blob is released via `releaseBlobIfUnreferenced` — the same object may sit behind another row or
+her current profile picture, and the shared case is reported in the result's `note`.
 
-It is prompt text, not metadata: `lib/nina/actions.ts` copies the string into
-`NinaBackgroundTurnInput.imageDescriptions` unchanged, so the cap is a per-turn token bill
-(~670 tokens at the full 2000, against the ~150 a real row costs today).
+**Describe/prose**: `describeChatPhotoAction` is the on-demand vision pass (refuses reference
+rows — describe the original instead; the token-floor error is logged LOUDLY, its own class of
+incident). `editChatPhotoDescriptionAction` is the hand-written one: NO model call, NO
+`after()`, no re-caption — **editing what she SAW is not editing what she SAID** — and an empty
+box clears to NULL (D1: refusing empty would make a wrong description un-erasable).
+`chatPhotoDescriptionField` caps the RAW string (`.max()`) BEFORE normalising (`.transform()`) —
+a 4000-char paste is refused and reported, never sliced into range. No `.min(1)`: an
+all-whitespace box normalises to `''` and parses clean — the schema hands that decision to the
+action.
 
-#### `chatPhotoDescriptionSchema` caps the raw string *before* it normalises
-
-`.max()` then `.transform()`, in that order and deliberately. A 4000-character paste is **refused**
-and reported inline rather than sliced into range — truncation is the one outcome that puts half a
-sentence into Nina's prompt while telling the operator it saved fine. `coerceNinaNotes`
-(`lib/nina/tuning.ts`) slices instead and is right to: it coerces a stored blob at read time and has
-no operator to answer to.
-
-The transform is `coerceNinaNotes` minus the slice: CRLF to LF, three-or-more newlines to one blank
-line, trim. No sentence casing, no digit stripping, no length floor. The model's own rules (no
-digits, one paragraph) are instructions to a vendor, not validation of a human — this description is
-a witness statement and here the operator *is* the witness.
-
-There is no `.min(1)`, so an all-whitespace box normalises to `''` and parses clean. That is the
-schema handing a decision to the action, which is this package's standing division of labour: the
-schema knows shapes, the action owns policy and ownership.
-
-#### `editChatPhotoDescriptionAction` — no model call, and no re-caption
-
-The other three actions in the file change the *bytes*, so each schedules `scheduleChatPhotoCaption`
-inside `after()` to re-earn the prose. This one changes the prose, so re-earning it would overwrite
-the human who just typed it: there is no `after()` pass here, no vision call, no caption call, and
-`scripts/check-llm-payload-boundary.mjs` gains no entry.
-
-It also does not rewrite the bubble. `scheduleChatPhotoCaption` derives `nina_messages.text` from
-the description, and running it here would rewrite a sentence Nina has already said in the runner's
-conversation because an operator fixed a private note the runner never saw. **Editing what she saw
-is not editing what she said.** That remains its own decision, not an omission.
-
-Order of checks, unchanged from every other action here: `requireAdmin()` above any use of the
-argument, then the Zod shape (which knows no user id), then an owner-scoped re-read via
-`getNinaMessageImage`, then a write whose own `WHERE` carries `user_id` **and** `kind = 'generated'`.
-The `existing.kind !== 'generated'` guard is load-bearing rather than defensive: `getNinaMessageImage`
-does not filter on `kind`, so without it an id belonging to one of *his* composer uploads would reach
-a write nobody can see or undo from this screen — `replaceChatPhotoAction` refuses the same case with
-the same sentence, on purpose. There is no `isAdminChatPhotoPathname` call and nothing is missing:
-that predicate binds an uploaded blob to the session, and this action receives no blob, no pathname
-and no URL.
-
-#### An empty box clears the description to `NULL` (decision D1)
-
-The normalised string being empty maps to `null`, and the operator is *told* so in the result's
-`note`. Refusing empty was the alternative and it is worse: it would make a wrong description
-un-erasable — replaceable with different prose, never retractable. `NULL` is not a new state (a
-Replace writes it, every Add starts there) and it degrades honestly downstream, where
-`NINA_DESCRIPTION_UNAVAILABLE` is substituted and she asks him what the picture is instead of
-inventing something.
-
-### `users.ts` — the memory page's user picker
+### `users.ts` — the unscoped read, behind the boundary
 
 ```ts
 export interface AdminUserRow { id: string; name: string | null; email: string | null; slots: number; facts: number }
@@ -603,108 +463,91 @@ export async function getAdminUser(userId: string): Promise<AdminUserRow | null>
 ```
 
 `listAdminUsers()` is the one unscoped read in the app, and it lives here rather than in
-`lib/db/queries.ts` on purpose: `scripts/check-data-layer-invariants.mjs` fails on any export there
-whose first parameter is not `userId`, and adding a fifth exception whose reason is "an admin page
-needs to enumerate accounts" would blunt the guard for every future reader. So the unscoped read
-sits behind `requireAdmin()`, and `lib/db/queries.ts`'s rule stays literally true. Everything the
-page does after the pick is `userId`-first.
+`lib/db/queries.ts` on purpose: `scripts/check-data-layer-invariants.mjs` fails on any export
+there whose first parameter is not `userId`, and a fifth exception would blunt the guard. The
+unscoped read sits behind `requireAdmin()`. `::int` on the counts is load-bearing — Postgres
+`count(*)` is `bigint`, which the Neon driver hands back as a string. Ordered by email.
 
-`::int` on the counts is load-bearing — Postgres `count(*)` is `bigint`, which the Neon driver hands
-back as a string. Ordered by email so the picker's order is stable.
+### `tuningActions.ts` / `tuningModel.ts` — the character panel
 
-### `tuningActions.ts` — the character panel's write side
+One action: **`saveNinaTuningAction`** — `requireAdmin()` → Zod (`ninaTuningWriteSchema`) →
+`writeNinaTuning` → `revalidatePath('/admin/personality')`, result object never a throw. The
+reset action is gone (auto-save set); the defaults live server-side in `lib/nina/tuning.ts` and a
+client that re-implemented them would be a second definition.
 
-Two actions, both the same four-line shape every action in this package has: `requireAdmin()` first,
-Zod second, one write third, `revalidatePath` last, and a result object returned rather than an
-exception thrown.
-
-- **`saveNinaTuningAction`** — validates the whole tuning, writes one row.
-- **`resetNinaTuningAction`** — writes `NINA_TUNING_DEFAULTS` back over the row. Server-side,
-  because the defaults are defined in `lib/nina/tuning.ts` and a client that re-implements them is a
-  second definition.
-
-`requireAdmin()` is line 1 of both, and it is not belt-and-braces: `proxy.ts` matches neither
-`/admin` nor `/api/*` (ruling D3), so these two calls are the entire gate between a signed-in
-stranger and Nina's personality.
-
-**`revalidatePath('/admin/personality')` is how the *panel* re-renders, and it is not how the edit
-reaches Nina.** (It was `/admin/nina` until the panel moved off the album onto its own route; the
-target is the page the panel is actually mounted on, so the two must be changed together.)
-`memoryActions.ts` under `lib/admin/` already records the general fact and it holds here without
-qualification: there is no cache anywhere on the turn path, the tuning is read live on every
-turn, and a committed row is in her next prompt with no invalidation step at all. Move a slider,
-save, and the very next thing she says is tuned.
+`tuningModel.ts` is the panel's client-safe half — the copy for every trait/dial/relationship
+(`tuningCopy`, `relationshipCopy`), `toTuningDraft`, the unsaved-field diff (`changedTuningFields`,
+`tuningDraftEquals`), `loudestDials`, `TUNING_DIAL_COMMIT_DEBOUNCE_MS` (600) and
+`mergeTuningAfterSave` (a field still equal to what was dispatched takes the canonical value; a
+field edited since keeps the newer local value). **It imports exactly one module —
+`@/lib/nina/tuning` — and a test asserts that.** Values as well as types, which is safe because
+`tuning.ts` is zero-import and its own test proves it. It carries no `server-only` pill (a client
+component imports it); `memoryModel.ts` next door is stricter because its vocabulary lives behind
+a pill.
 
 **The tuning is not a memory slot, and the reason is structural.** The distiller may overwrite any
 slot not marked `source: 'admin'`, so a tuning in `nina_memory_slots` is a character that could
-eventually rewrite itself; and `/admin/memory`'s card builder would render twenty dials as free-text
-prose. It gets its own table.
+eventually rewrite itself; and `/admin/memory`'s row builder would render twenty dials as
+free-text prose. It gets its own table. `revalidatePath` re-renders the panel and is NOT how the
+edit reaches Nina: the tuning is read live on every turn, no cache on that path.
 
-### `tuningModel.ts` — the panel's vocabulary, client-safe
+### `memoryModel.ts` / `memoryVocab.ts` / `memoryStore.ts` / `memoryActions.ts` — `/admin/memory`
 
-The same split `memoryModel.ts` established, for the same reason: `app/admin/personality/page.tsx`
-is a Server Component and `components/admin/CharacterPanel.tsx` is `'use client'`, and a Server
-Component cannot read a plain export out of a `'use client'` module. So the copy for every trait,
-dial and relationship, the `TuningDraft` shape the panel edits, the unsaved-field diff
-(`changedTuningFields`) and the summary line's `loudestDials` all live here rather than in the
-panel.
+`memoryModel.ts` (zero value imports, client-safe): `ADMIN_FACT_TEXT_MAX` (400),
+`ADMIN_SLOT_VALUE_MAX` (400), `ADMIN_LEDGER_PAGE` (200), the seven `ADMIN_FACT_CATEGORIES`
+(retyped as a tuple with `satisfies` — `NinaFactCategory` is a type union, not a const tuple), and
+**`MemoryRow`** — slots, ledger facts and `pending_promises` entries flattened into the one
+serializable shape the table renders, with the fields that carry meaning (`editable`, `deletable`,
+`reappears`, `note`). `reappears` is the honest-delete flag: only the closed vocabulary's slot
+keys come back as blank rows, and the table has to say so or it reads as a failed delete.
 
-**It imports exactly one module — `@/lib/nina/tuning` — and a test asserts that.** Values as well as
-types, which is safe precisely because phase 1's `tuning.ts` has zero imports of its own and its own
-test reads the source to prove it. `memoryModel.ts` next door is type-imports-only because its
-vocabulary lives in a `server-only` module; this one's does not, and re-declaring phase 1's labels
-here to preserve a type-only rule would be exactly the drift the file exists to prevent.
+`memoryVocab.ts` is the only file here that imports `lib/nina/memory.ts`, and only as a READER:
+`slotEditKind`, `slotProtection`, `describeSlot`, `canonicaliseSlotValue` (the round trip runs on
+the WRITER — a refused value is reported, not converted) and `buildMemoryRows`, the page's
+server-side row builder.
 
-### `memoryModel.ts` / `memoryVocab.ts` / `memoryStore.ts` / `memoryActions.ts`
+`memoryStore.ts` — `server-only`, the only file naming a phase-1 memory writer
+(`adminUpsertSlot`, `adminDeleteSlot`, `adminAppendFact`, `adminUpdateFact`, `adminDeleteFact`,
+`adminReadSlot(s)`, `adminReadFacts`). It exists to make one invisible failure impossible: the
+underlying writers would default `source` to the distiller's value when omitted, and the
+admin-preservation ruling keys off that column — so `AdminFactDraft`/`AdminSlotDraft` simply have
+no `source`/`sourceMessageId` field. A caller cannot mislabel a row because there is nowhere to
+put the label. It is under `lib/admin/` (not `lib/nina/`) because a test asserts the distiller's
+modules do not import the mutating ledger queries.
 
-`memoryModel.ts` holds the bounds and shapes: `ADMIN_FACT_TEXT_MAX`, `ADMIN_RETRACTION_TEXT_MAX`,
-`ADMIN_SLOT_VALUE_MAX`, `ADMIN_LEDGER_PAGE`, `ADMIN_PURGE_CONFIRMATION`, `ADMIN_FACT_CATEGORIES`,
-the `SlotCard` / `FactCard` / `FactPermissions` view models, and the pure helpers `factPermissions`,
-`composeRetraction`, `composeSlotRetirement`, `isPurgeConfirmed`.
+`memoryActions.ts` — **four** actions (`saveSlotAction`, `insertFactAction`, `editFactAction`,
+`deleteMemoryRowAction`), each the same four lines: `requireAdmin()` first, Zod second, the write
+through `memoryStore.ts` only, `revalidatePath` last. There were nine; the five that went were
+each a second step (a quoting record before delete, a typed confirmation, a second button after a
+refusal) and the owner has ruled: no confirmation whatsoever. Consequences worth recording:
 
-`memoryVocab.ts` is the only file in the phase that imports `lib/nina/memory.ts`, and it does so as
-a READER: it never coins a key, never redefines a policy, and never writes a second canonicaliser.
-Exports `slotEditKind`, `slotProtection`, `describeSlot`, `slotFactCategory`,
-`canonicaliseSlotValue`, `buildSlotCards`.
-
-`memoryStore.ts` is **the only file in `/admin/memory` that names a phase-1 memory writer**, and it
-exists to make one invisible failure impossible. The underlying writers default the `source` column
-to the distiller's value when it is omitted, and the whole admin-preservation ruling keys off that
-column — so an admin write that omits the field does not fail, it silently disables its own
-protection and the next thing the runner says in chat quietly re-breaks the memory he came here to
-fix. The fix is to remove the field from the vocabulary: `AdminFactDraft` and `AdminSlotDraft`
-simply have no `source` or `sourceMessageId` parameter, so a caller cannot mislabel a row because
-there is nowhere to put the label. It is under `lib/admin/` and not `lib/nina/` because a test
-asserts that the distiller's modules do not import the two mutating ledger queries — this file
-imports both, and a directory boundary keeps that test unedited.
-
-`memoryActions.ts` exports the eight actions (`saveSlotAction`, `recordSlotAsFactAction`,
-`retireSlotAction`, `removePendingPromiseAction`, `insertFactAction`, `editFactAction`,
-`retractFactAction`, `purgeFactAction`) and `AdminMemoryResult`. Each follows the same four lines in
-the same order: `requireAdmin()` first, Zod second, the write through `memoryStore.ts` only, then
-`revalidatePath` — which re-renders the page and is **not** how the edit reaches Nina (her context
-is read live on every turn with no cache).
-
-**The one thing not to reorder**: `retractFactAction` and `retireSlotAction` each perform two
-statements that are not in one transaction, and **the append comes first, always**. The appended row
-contains the original text verbatim, so a crash between the two leaves a recoverable duplicate
-rather than a hole.
+- `editFactAction` edits ANY ledger row, including distilled ones: the edit sets
+  `source = 'admin'`, `source_message_id = NULL` in the same statement, so the row stops claiming
+  to be a quotation and the old permissions predicate had nothing left to decide. The row's note
+  says the edit makes it his.
+- `deleteMemoryRowAction` is the one destructive action and it destroys on the first click;
+  `memoryDeleteSchema`'s union makes the three branches exhaustive. A **slot** row is gone but
+  the KEY comes back blank (closed vocabulary); a **promise** entry leaves the slot and does not
+  reappear unless the runner states it again; a **fact** is gone for good. No quoting record is
+  written for any of the three — the record was the confirmation.
+- The old "the append comes first, always" two-statement invariant is GONE, deliberately: no
+  surviving action writes twice, and the invariant is removed rather than left as folklore.
+- `revalidatePath` re-renders the page and is not how the edit reaches Nina — `loadNinaContext`
+  reads both tables live every turn.
 
 ### `shortcutModel.ts` / `shortcutStore.ts` / `shortcutActions.ts` — `/admin/shortcuts`
 
 ```ts
-// shortcutModel.ts — no directive, client-safe
-export { NINA_SHORTCUT_EXPANSION_MAX, NINA_SHORTCUT_LABEL_MAX, NINA_TRIGGER_MAX }
-  from '@/lib/nina/shortcuts'          // the ONE value import in the file
+// shortcutModel.ts — pure, client-safe
+export { NINA_SHORTCUT_EXPANSION_MAX, NINA_SHORTCUT_LABEL_MAX, NINA_TRIGGER_MAX } from '@/lib/nina/shortcuts'
 export const ADMIN_SHORTCUT_PAGE = 200
 export const SHORTCUT_FIELDS = ['trigger', 'label', 'expansion'] as const
 export type ShortcutField = (typeof SHORTCUT_FIELDS)[number]
-export type AdminShortcutKind = NinaShortcutMatchable['kind']   // 'glyph' | 'word', a TYPE read
-export interface ShortcutRow      { id, trigger, matchKey, kind, label, expansion,
-                                    enabled, uses, lastUsedAt: string | null, createdAt: string }
-export interface ShortcutSource   { …the same columns, with Date }
-export function buildShortcutRows(sources: readonly ShortcutSource[]): ShortcutRow[]
-export function formatFired(uses: number, lastUsedAt: string | null): string
+export type AdminShortcutKind = NinaShortcutMatchable['kind']   // a TYPE read of phase 1's union
+export interface ShortcutRow { … }  // id, trigger, matchKey, kind, label, expansion, enabled, uses, lastUsedAt, createdAt
+export interface ShortcutSource { … }
+export function buildShortcutRows(sources): ShortcutRow[]   // the one Date→ISO conversion
+export function formatFired(uses, lastUsedAt): string       // 'never', not '0'
 
 // shortcutStore.ts — 'server-only'
 export interface AdminShortcutDraft { trigger: string; label: string; expansion: string }
@@ -723,157 +566,84 @@ export async function toggleShortcutAction(input): Promise<AdminShortcutResult>
 export async function deleteShortcutAction(input): Promise<AdminShortcutResult>
 ```
 
-#### `shortcutModel.ts` is the one door, and the door is one file wide
+The load-bearing facts (all still verified in source):
 
-It is `memoryModel.ts`'s split with `memoryModel.ts`'s value-import ban — and **one argued
-exception**. The table needs three NUMBERS in the browser, the caps `maxLength` is set from, and
-they live in `lib/nina/shortcuts.ts`. That module is held to zero imports and is therefore
-client-safe, so `ShortcutTable.tsx` could have imported them directly; it deliberately does not.
-Under a direct import the safety rests on a property of a file in another directory that a
-`'use client'` component now names, and the next person who wants "something else from `lib/nina`"
-in an admin table copies that import line straight into `lib/nina/memory.ts`, which reaches zod and
-`lib/db/schema.ts`. So this module re-exports them and **`ShortcutTable.tsx` names no `@/lib/nina/`
-specifier at all** — a boundary `tests/admin.shortcuts.test.ts` asserts three ways: the table names
-no such specifier, the re-export is the only non-type import here, and `lib/nina/shortcuts.ts` still
-has zero imports of its own.
+- **`shortcutModel.ts` is the one door, one file wide.** `ShortcutTable.tsx` names no
+  `@/lib/nina/` specifier at all; the single re-export of the three caps is the only value import
+  in the file, and `tests/admin.shortcuts.test.ts` asserts the boundary three ways. Otherwise it
+  is `memoryModel.ts`'s value-import ban.
+- **`shortcutStore.ts` reaches no table and derives nothing.** Every statement is
+  `lib/nina/queries.ts`'s; `match_key`/`kind` are computed inside those writes and the patch types
+  have no field for either; `classifyNinaTrigger` is not imported. The one `normalizeNinaTrigger`
+  call is a QUESTION (does what he typed survive folding?), answered with `'empty'`.
+- **A duplicate is caught, never checked for.** `(user_id, match_key)` is unique; a pre-flight
+  SELECT races itself. `isUniqueViolation` (from `lib/db/queries.ts`) turns the 23505 into
+  `'duplicate'`; when the Neon HTTP driver drops the constraint name, `nina_shortcuts_user_match_unq`
+  is the only constraint a form here can reach.
+- **The read is bare** — every row, disabled included (`{ onlyEnabled: true }` is the turn path's
+  narrowing). Ordering (`createdAt DESC, id DESC`) and the ceiling are applied in this module, in
+  memory, on a fresh copy — a row lands directly under the form that made it.
+- **Four actions, no fifth; no confirmation anywhere.** `tests/admin.shortcuts.test.ts` asserts
+  the absence of every second-click API by name. A successful delete returns no `note` — the row
+  being gone is the message. The `'duplicate'` refusal quotes the trigger and says the folding
+  out loud (`✌️` and `✌` fold to one key), because that is the most confusing five seconds this
+  page can produce.
 
-`AdminShortcutKind` is indexed off phase 1's `NinaShortcutMatchable['kind']` rather than retyped.
-`memoryModel.ts` had to retype its seven categories because `NinaFactCategory` has no const tuple
-behind it; this one does not need to, and a pure type read cannot drift and cannot put a value in
-the bundle.
+### `imageGenModel.ts` / `imageGenActions.ts` / `imageGenTestView.ts` — `/admin/image-generation`
 
-`buildShortcutRows` is the whole boundary transform, and it is exactly one conversion: `Date` to ISO
-string, the same one `MemoryRow` makes and for the same reason — nothing about serialization then
-depends on how the RSC boundary treats `Date` today. It is declared here rather than in the store so
-that a test can drive it without a database.
+Three actions, each opening with `await requireAdmin()`:
 
-`formatFired` says `'never'` and not `'0'`, because zero is the answer to a question the operator is
-not asking: what he wants at a glance is which codes are dead. `describeKind`, which explained the
-glyph/word boundary under every trigger cell, was removed on 2026-09-09 at the owner's request — on
-a phone the sentence wrapped the table's narrowest column into five lines.
+- **`saveNinaImagePrefsAction`** — the ONE save. Every control commits at its own moment and
+  every commit carries the WHOLE draft (dial debounced 600 ms, focus checkboxes and reference on
+  change, text fields on blur). The template's verdict is surfaced BEFORE the generic parse so the
+  operator learns WHICH placeholder is broken. The success result carries `prefs: ImageGenDraft`
+  — the row AFTER `coerceNinaImagePrefs` — adopted via `mergeImageGenAfterSave` without a
+  refetch. `revalidatePath` is for the preview; there is no cache on the image path.
+- **`runNinaImageTestAction`** — spends one generation, takes NO arguments (everything it needs
+  is the saved row and the admin identity, so there is no shape to forge), returns
+  `{ ok, jobId, quotaLeft }` without waiting (a test runs 78–235 s; the daily cap
+  `NINA_IMAGE_DAILY_CAP`, default 30, counts failures too). No `revalidatePath` — nothing has
+  landed.
+- **`readNinaImageTestAction(jobId)`** — the id is a CLAIM turned into a fact by `isValidId`
+  plus an owner-scoped read. Returns the live quota, the prompt preview assembled from the SAVED
+  prefs, the saved reference URL, and the job view.
 
-#### `shortcutStore.ts` — the only writer, and it reaches no table
+`imageGenModel.ts` is the panel's pure half (draft, copy, `referenceKey`/`parseReferenceKey` —
+the picker seam is an opaque `${source}:${id}` string, never a Blob URL, because
+`updateNinaChatPhotoBlob` swaps a photo's `blob_url` while keeping its `id`; `reference.id` is
+`''` for none, never `null` — a `.min(1).nullable()` spelling once rejected the default state at
+the boundary). `imageGenTestView.ts` is the verdict lookup: `refused` is reachable from
+`error_code === 'policy'` and nothing else; `timeout`/`transport`/`stale` are `inconclusive`
+(NOT refusals — telling the operator his prompt was banned when the network dropped would send
+him rewriting a prompt that was fine); the pending phase (not the `attempts` counter) separates
+`running` from `retrying`, because the claim bumps `attempts` in the same statement that starts
+the attempt (measured in production 2026-09-11). Poll schedule 3 s/5 s/8 s by band;
+`NINA_IMAGE_TEST_GIVE_UP_MS` = 480 s — derived (two attempts × 235 s + margin) and deliberately
+thinner than the server's twenty-minute stale deadline; its expiry says STILL OPEN, not failed.
 
-It names no drizzle table and holds no `db` handle: every statement is `lib/nina/queries.ts`'s
-(`insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`, `listNinaShortcuts`). It derives
-nothing either — `match_key` and `kind` are computed inside those writes, and
-`NinaShortcutInsert` / `NinaShortcutPatch` have no field for either. That is
-`memoryStore.ts`'s property enforced by a type rather than by this module remembering two function
-calls: *a caller cannot mislabel a row because there is nowhere to put the label.*
-`classifyNinaTrigger` is not imported at all.
+### `textModelActions.ts` — the narrative text model
 
-The one `normalizeNinaTrigger` call here is a **question, not a derivation**: *does what he typed
-survive folding?* A trigger of nothing but whitespace or variation selectors is a row that can never
-match anything, and the operator gets `'empty'` and a sentence rather than a mystery.
+One action: **`saveNarrativeTextModelAction({ model })`** — `requireAdmin()` →
+`z.enum(NARRATIVE_TEXT_MODEL_IDS)` (from `@/lib/llm/catalog`) → `writeNarrativeTextModel`
+(`app_settings`, not `nina_tuning`) → `revalidatePath('/admin/personality')`. A second action
+FILE, not a fourth export on `tuningActions.ts`: that file's structural test pins it to one
+export, the tuning is one row, and this is a different store with a different blast radius (every
+text call in the app). There is no cache on the resolution path — `narrativeModel()` reads the
+row live, so the write is live on the next call; the revalidation is for the page's select.
 
-**A duplicate is caught, never checked for.** `(user_id, match_key)` is a unique index and phase 1
-lets the 23505 throw on purpose, because a pre-flight `SELECT` races itself — two dispatches both
-read "free", both insert, and the loser gets a 500 where it should have got a sentence. So
-`isUniqueViolation` (from `lib/db/queries.ts`) turns it into `'duplicate'`, and
-`violatedConstraint` walks `.constraint` through `.cause` / `.sourceError` the same way. When the
-Neon HTTP driver hands back no constraint name the answer is still yes: `nina_shortcuts_user_match_unq`
-is the only constraint a form on this page can reach, and the primary key reported as *"that trigger
-is taken"* would send the operator hunting for a row that does not exist.
+### `shareToNina.ts` — the album→chat pointer
 
-**The read is `listNinaShortcuts(userId)`, bare** — every row, disabled included, which is exactly
-this page's question: a disabled shortcut is still a row the operator edits and re-enables, and
-hiding it would make "off" look like "deleted". `{ onlyEnabled: true }` is the turn path's narrowing
-and this page does not pass it. The record already carries `uses` and `lastUsedAt`, so there is no
-second `SELECT` here and no second `WHERE` to keep `user_id`-first. What *is* this page's is the
-**ordering and the ceiling, done in memory**: `listNinaShortcuts` sorts by folded key because a
-registry is scanned by trigger, while this page wants `createdAt DESC, id DESC` so a row lands
-directly under the add form that made it — the same tiebreak `listNinaMemoryFacts` uses, arbitrary
-but stable, which is all a re-render needs to stop rows swapping under a cursor. The sort runs on a
-fresh `[...rows]`, then `.slice(0, limit)`.
+```ts
+export function ninaPhotoShareUrl(origin: string, avatarId: string): string
+```
 
-A write's returned record is discarded on purpose: `revalidatePath` re-renders the page from
-`adminReadShortcuts` in the same response, so what is on screen has one source.
-
-#### `shortcutActions.ts` — four actions, and no fifth
-
-Add, save a cell, toggle, delete. Every one is this package's same four lines in the same order:
-`requireAdmin()` first (a Server Action is a POST endpoint whether or not a button exists, and
-`proxy.ts` does not match `/admin`), Zod second, the write through `shortcutStore.ts` only, and
-`revalidatePath('/admin/shortcuts')` last.
-
-**There is no confirmation anywhere** — no typed word, no panel, no dialog. That is the standing
-ruling of this admin surface, carried in `memoryActions.ts`'s header in the owner's words, and
-`tests/admin.shortcuts.test.ts` asserts the absence of every second-click API by name, because "no
-second step" is a property a future edit can quietly reintroduce. A successful delete returns no
-`note`: the row being gone is the message, and a sentence under a row that no longer exists has
-nowhere to render.
-
-`refusal()` turns the store's four-state union into one sentence, and the `'duplicate'` sentence
-**quotes the trigger** and says the folding out loud — `✌️` and `✌` fold to the same key, which is
-the point of the design and also the most confusing five seconds this page can produce. Anything
-that is not one of the four states is a real fault: `failed()` logs it under `[f36]` and returns one
-flat sentence.
-
-`revalidatePath` here is how the *page* re-renders and is **not** how the edit reaches Nina: nothing
-on the turn path caches a shortcut, so a committed row is live on her next matching message with no
-invalidation step at all.
-
-### `imageGenModel.ts` / `imageGenActions.ts` — `/admin/image-generation`
-
-`tuningModel.ts` / `tuningActions.ts`'s shape, for the Image Generation tab. Three Server Actions,
-each opening with `await requireAdmin()`: `saveNinaImagePrefsAction`, `runNinaImageTestAction`,
-`readNinaImageTestAction`.
-
-**One save, not eleven.** A slider, six focus checkboxes, four free-text fields and a photograph
-is eleven controls, and they travel as ONE object — plan invariant 7, and the same reason
-`tuningActions` batches: Next dispatches Server Actions one at a time per client, so eleven
-actions would be eleven serialised round trips and eleven chances to half-save.
-
-**Auto-save since the simplify set (P1-RI-A028), on `CharacterPanel`'s pattern.** There is no
-Save/Discard/Reset row and no confirm block: every control commits at its own moment and every
-commit is the one save above carrying the WHOLE draft — the prompt-length dial debounced through
-`IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS` (600, exported by `imageGenModel.ts` so a test can pin it), the
-six focus checkboxes and the photo reference on change, the four text fields on blur. Nothing is
-disabled while a commit is in flight: `pending` drives only the tri-state `aria-live` status line
-("Saving…" / "Saved" / "Unsaved edits"), because locking on every debounce settle would flicker the
-whole panel uneditable for the length of a round trip. An immediate commit carries any dial still
-waiting in the debounce and disarms the timer, and a commit whose draft already equals the saved
-row is a no-op.
-
-**The save returns the row it wrote.** `saveNinaImagePrefsAction`'s success result carries
-`prefs: ImageGenDraft` — `toImageGenDraft` over what `writeNinaImagePrefs` returned, i.e. AFTER
-`coerceNinaImagePrefs`, so the panel reads the stored truth without a refetch. The panel adopts it
-through `mergeImageGenAfterSave` (`imageGenModel.ts`, the structural twin of `tuningModel.ts`'s
-`mergeTuningAfterSave`): a field still equal to what was dispatched takes the canonical value — a
-collapsed whitespace run appears, a clamped dial snaps — while a field edited since keeps the newer
-local value and rides the next commit. `revision` used to ride along as display copy until phase 2
-of the set (`P1-RI-A029`) purged it; the merge now moves only the fields the type still carries.
-
-**`imageGenModel.ts` imports two modules and it has to.** `@/lib/nina/imageprefs` for the bounds
-and the vocabulary, and `@/lib/nina/tuning` for `ninaBand` — because `ninaPromptLengthRungFor`
-takes a *band index*, not a raw 0–100 score, and `imageprefs.ts` deliberately keeps no second copy
-of the band boundaries. Re-deriving the five bands locally is forbidden: a private scale is a
-slider the operator cannot predict. Both modules are zero-import and client-safe, on
-`tuningModel.ts`'s precedent.
-
-**The photo reference crosses the panel/picker seam as an opaque string.** `referenceKey({source,
-id})` produces `` `${source}:${id}` `` and `parseReferenceKey` decodes it, both here. The picker
-never parses it, and its tile type carries no `source` at all — which is what makes *"nothing in
-the grid announces which set a photograph came from"* structural. The stored form is the
-`{ source, id }` pair, never a Blob URL, because `updateNinaChatPhotoBlob` swaps a chat
-photograph's `blob_url` while keeping its `id`.
-
-**`reference.id` is `''` for none, never `null`.** Its Zod field is
-`z.string().trim().max(NINA_IMAGE_REFERENCE_ID_MAX)` with a `refine` that rejects `{album,''}` and
-`{none,'av_1'}`. It was specified as `.min(1).nullable()` against that same refine, under which **no
-unselected reference validated at all** — the default state and the reset were both rejected at the
-boundary. Fixed when the tab landed; the `''` spelling is `lib/nina/imageprefs.ts`'s, and the
-declaring module owns it.
-
-**The test action reads the SAVED prefs, never the panel's state.** The dispatch resolves
-`resolveNinaPhotoReference(userId, prefs.reference)?.blobUrl ?? null` from the row, so the only
-window in which a just-made edit is not what a test would draw is the commit still in flight —
-the state the status line names "Unsaved edits", which the pending commit closes on its own. The
-verdict lookup lives in `imageGenTestView.ts`: `policy` is the only classification that renders as
-a provider refusal; `timeout` / `transport` / `stale` are inconclusive.
-
-**`schema.ts` gained the prefs boundary with every bound imported**, not restated — see its
-`nina-image-generation-tab phase 4` section.
+One function, and the whole pointer: `/nina?photo=avatar:<id>`, built with `new URL` (which
+percent-encodes the `:` and throws on a malformed origin — the right failures). The formatter is
+imported from `lib/nina/attach` (`formatNinaPhotoParam`/`PHOTO_PARAM`) rather than inlined, so
+the writing half (`/admin`) and the parsing half (`/nina`) cannot disagree about the grammar. No
+bytes move and no blob is copied; `sendNinaMessage`'s `resolveAttachment` turns the id back into
+a row, owner-scoped, when the message is actually sent. The `origin` argument is
+`shareOrigin()`'s output, never `window.location.origin`.
 
 ## Internal Architecture
 
@@ -883,7 +653,7 @@ a provider refusal; `timeout` / `transport` / `stale` are inconclusive.
 browser: drop / picker
    │
    ├─ listNinaAlbumManifestAction({ folder })      ← requireAdmin, once per drop
-   │      → AdminManifestEntry[] (+ truncated)
+   │      → { id, folder, sourceKey }[] (+ truncated)
    │
    ├─ planFolderUpload({ base, files, manifest, maxBytes })   ← pure, in the browser
    │      → upload[] / existing[] / rejected[] / refused[] / folders[] / counts
@@ -894,30 +664,33 @@ browser: drop / picker
    │        · nina/<uid>/thumb-<id>.<ext>   → 512 KB cap
    │      PUT bytes straight to Blob (never through the Function)
    │
-   └─ in CHUNKS of NINA_ADMIN_BATCH_MAX, SERIALLY:
+   └─ in CHUNKS of NINA_ADMIN_BATCH_MAX (50), SERIALLY:
           registerNinaAvatarsAction({ records })   ← requireAdmin
              1. Zod: avatarBatchRegisterSchema (all-or-nothing)
              2. intra-batch dedupe on sourceKey, first writer wins
              3. one read: does a current avatar exist?
              4. declareNinaFolders(uid, [...new Set(folders)])   ← BEFORE the insert
              5. insertNinaAvatars — ON CONFLICT (user_id, source_key) DO NOTHING
-             6. if there was no current row, promote one + scheduleDescribe
+             6. if there was no current row, promote one + scheduleDescribe (after())
              7. revalidatePath('/admin/nina')
              → { inserted: [{ sourceKey, id }], skipped }
 ```
 
-The vision model appears nowhere on that path. It runs only when a photo becomes her face or is
-handed to her, and then through `after()`.
+The vision model appears nowhere on that path. It runs when a photo becomes her face, is handed
+to her, is described on demand — and then either in-band (the two describe actions) or inside
+`after()` (the two private schedulers).
 
 ### Where each check lives, and why it lives there
 
-| Concern | Client (`filetree.ts`) | Route Handler | Server Action |
+| Concern | Client (`filetree.ts`/`folderOps.ts`) | Route Handler | Server Action |
 |---|---|---|---|
 | Path normalisation | yes — the mess is here | — | **never** (refuse instead) |
 | Path validity | yes | — | yes, as identity against the normaliser |
 | Filename / extension | yes | extension vs. declared content type | yes |
 | Byte cap | yes (`maxBytes` arg) | enforced by the minted token | yes (`bytes` field) |
 | Dedupe | yes, against the manifest | — | intra-batch, then the unique index |
+| Folder-op geometry (cycle, merge, depth) | yes (`folderOps` planners) | — | re-checked with the LIVE folder list |
+| Current-photo protection | refusal text (`currentPhotoRefusal`) | — | SQL `isCurrent = false` in every delete's WHERE |
 | Authorization | — | `requireAdminApi` (401/404) | `requireAdmin` (redirect/404) |
 | Crop range | — | — | Zod shape, then `clampCrop` |
 
@@ -925,150 +698,127 @@ handed to her, and then through `after()`.
 
 ### External
 
-- `zod` — every boundary schema in `schema.ts`.
-- `@vercel/blob` — `del()` in `ninaAlbumActions.ts`, for the original and its thumbnail.
+- `zod` — `schema.ts`, `folderOps.ts`, `chatPhotoSchema.ts`, `textModelActions.ts`.
+- `@vercel/blob` — `del()` in `ninaAlbumActions.ts` and the media remove path.
 - `drizzle-orm` — `users.ts` only (`asc`, `eq`, `sql`).
-- `next/cache`, `next/navigation`, `next/server` — `revalidatePath`, `redirect`/`notFound`,
-  `after`.
-- `server-only` — the pill on `requireAdmin.ts`, `users.ts`, `memoryStore.ts`.
+- `next/cache`, `next/navigation`, `next/server` — `revalidatePath`, `redirect`/`notFound`, `after`.
+- `server-only` — the pill on exactly `requireAdmin.ts`, `users.ts`, `memoryStore.ts`,
+  `shortcutStore.ts` (the others that mention the pill in prose are client-imported and carry none).
 
 ### Internal
 
-- `@/auth`, `@/lib/env` (`isAdminEmail`, `blobEnv` at the route) — the boundary's inputs.
+- `@/auth`, `@/lib/env` — the boundary's inputs (`isAdminEmail`, `blobEnv` at the route).
 - `@/lib/auth/requireUserId` — `UnauthorizedError`, imported rather than redefined.
-- `@/lib/nina/queries` — every album, chat-photo, memory and shortcut read/write. The shortcut four
-  (`insertNinaShortcut`, `updateNinaShortcut`, `deleteNinaShortcut`, `listNinaShortcuts`) are named
-  in `shortcutStore.ts` and nowhere else under `lib/admin`, which a test asserts.
-  `chatPhotoActions.ts`'s
-  description edit goes through `updateNinaChatPhotoDescription(userId, id, description | null)`,
-  whose `WHERE` carries `user_id`, `id` **and** `kind = 'generated'` and which returns the updated
-  row or `null`, so "not yours", "not there" and "his upload, not hers" collapse into one branch the
-  action already has.
-- `@/lib/nina/crop` — `clampCrop`, `cropForWrite`, `resolveCrop`, and the crop bounds.
-- `@/lib/nina/album` — `NINA_ADMIN_BATCH_MAX`, `NINA_ADMIN_MANIFEST_MAX`.
-- `@/lib/nina/images` — `NINA_BLOB_PREFIX`, the one definition of the store layout.
-- `@/lib/nina/vision` — `describeNinaImages` and `NinaVisionTokenFloorError`, reached from three
-  places here: `describeNinaAvatarAction`, the private `scheduleDescribe`, and
-  `chatPhotoActions.ts`'s `scheduleChatPhotoCaption`. **None is on a response path** — the latter
-  two run inside `after()`. `chatPhotoActions.ts` is the only caller that passes
-  `{ subject: 'self' }`: the default prompt is a witness written about the RUNNER, and pointed at
-  a photograph of Nina it looks for a man who is not in the frame.
-- `@/lib/nina/caption` — `captionNinaPhoto`, from `chatPhotoActions.ts` alone. One `glm-5.3` call
-  that turns a description into one line in her voice. It never throws and returns `null` for
-  every refusal, which is what lets every failure branch simply keep the canned line.
-- `@/lib/nina/memory` — read-only, from `memoryVocab.ts` alone.
-- `@/lib/nina/shortcuts` — phase 1's pure matcher module, reached from exactly two places:
-  `shortcutModel.ts` re-exports its three caps (the only value import in that file) and type-imports
-  `NinaShortcutMatchable`; `shortcutStore.ts` calls `normalizeNinaTrigger` as a question. Nothing
-  here imports `classifyNinaTrigger` — the classification is the query layer's.
-- `@/lib/db/queries` — `isUniqueViolation`, from `shortcutStore.ts`, which is how a 23505 on
-  `(user_id, match_key)` becomes a sentence instead of a 500.
-- `@/lib/db`, `@/lib/db/schema` — `users.ts` and the memory type imports.
+- `@/lib/nina/queries` — every album, chat-photo, memory and shortcut read/write; the four
+  shortcut writes are named in `shortcutStore.ts` and nowhere else under `lib/admin` (a test
+  asserts it).
+- `@/lib/nina/{crop,album,images,vision,caption,memory,shortcuts,attach}` — clamp/bounds, batch
+  and manifest caps, the blob prefix, the two model-call families (`describeNinaImages`,
+  `captionNinaPhoto`), the slot vocabulary read, the trigger caps and normaliser, the
+  photo-param grammar.
+- `@/lib/nina/{imageprefs,imagerecipe,imagetest,imagejobs,imagefail,jobview,sessionResolve,blobRelease}`
+  — the image-generation row's bounds and template validator, the daily cap, the test dispatch,
+  job reads, the failure-kind vocabulary the test view looks up, the carrier/orphan rules, the
+  blob release on remove.
+- `@/lib/llm/{catalog,textModel}` — the narrative text model's id list and its store
+  (`textModelActions.ts` only).
+- `@/lib/photos/contentHash` — the dedupe hash (`chatPhotoActions.ts`).
+- `@/lib/id` — `isValidId` shape checks on claimed ids.
+- `@/lib/db`, `@/lib/db/schema`, `@/lib/db/queries` — `users.ts` and the memory type imports;
+  `isUniqueViolation` (shortcuts' 23505 catch).
 
 `filetree.ts` imports **nothing**.
 
 ## Reverse Dependencies
 
-### Primary consumers
+Import-site census (`grep "from '@/lib/admin/<m>'"` over `app/ components/ lib/ tests/`):
 
-- `components/admin/explorer/SelectionPane.tsx` — `deleteNinaAvatarAction`,
-  `describeNinaAvatarAction`, `saveNinaAvatarCropAction`, `setCurrentNinaAvatarAction`, plus
-  `folderBreadcrumbs`. Inherited these from `AlbumManager.tsx`, which phase 5 deleted.
-- `components/admin/explorer/useFolderUpload.ts` — the only caller of `registerNinaAvatarsAction`
-  and `listNinaAlbumManifestAction`; also `planFolderUpload`, `AvatarBatchRecord`, and the
-  `avatars.ts` pathname helpers and bounds. Replaced `UploadAvatar.tsx` as the upload path.
-- `components/admin/FileExplorer.tsx`, `explorer/FolderTree.tsx`, `explorer/UploadQueue.tsx`,
-  `explorer/dropWalk.ts`, `explorer/model.ts` — `filetree.ts` (`buildTree`, `folderAncestors`,
-  `folderBreadcrumbs`, `LocalFileLike`, `UploadRefusal`) and the `avatars.ts` bounds — the client
-  half, all type-or-pure imports.
+| Module | Importers | Module | Importers |
+|---|---|---|---|
+| `filetree` | 17 | `chatPhotoSchema` | 5 |
+| `requireAdmin` | 15 | `imageGenTestView` | 4 |
+| `schema` | 10 | `imageGenActions` | 4 |
+| `ninaAlbumActions` | 10 | `chatPhotoActions` | 4 |
+| `chatPhotos` | 10 | `memoryVocab` | 3 |
+| `avatars` | 8 | everything else | ≤2 each |
+| `tuningModel` / `shortcutModel` / `imageGenModel` | 7 each | | |
+| `memoryModel` | 6 | | |
+| `users` | 5 | | |
+
+Named primary consumers:
+
+- `components/admin/FileExplorer.tsx` + `explorer/{FolderTree,UploadQueue,useFolderUpload,dropWalk,model,PhotoGrid,SelectionPane,MediaPane,MediaAdd,MediaControls,PhotoDescription,chatPhotoUpload,thumbnail}` — the client half: `filetree`'s pure surface, the `avatars`/`chatPhotos` bounds, and the six media actions.
+- `components/admin/{FolderMenu,PhotoMoveBar,ShareToNinaItem}.tsx` — folder maintenance, bulk
+  move/remove, and the share link (`shareToNina.ts`).
 - `app/api/admin/nina/upload/route.ts` — the whole `avatars.ts` surface plus `requireAdminApi`,
-  `forbiddenJson`, `AdminIdentity`.
-- `app/admin/memory/page.tsx` — `memoryModel`, `memoryStore`, `memoryVocab`, `users`, `requireAdmin`.
-- `components/admin/MemoryLedger.tsx` / `MemorySlots.tsx` — `memoryActions` + `memoryModel`.
-- `components/admin/ChatPhotoDescription.tsx` — `editChatPhotoDescriptionAction` and
-  `ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS`. The only caller of the description edit, mounted
-  `key={photo.id}` by `ChatPhotoDetail.tsx`, which itself imports no Server Action.
-- `components/admin/ChatPhotoAdd.tsx` / `ChatPhotoControls.tsx` — the other three chat-photo
-  actions plus the `chatPhotos.ts` pathname helpers and ceilings.
-- `app/admin/shortcuts/page.tsx` — `requireAdmin`, `users` (`listAdminUsers` / `getAdminUser`),
-  `adminReadShortcuts`, and `buildShortcutRows` + `ADMIN_SHORTCUT_PAGE`. It is `force-dynamic`,
-  defaults `?user=` to the signed-in admin, and builds every row server-side so the table gets plain
-  serializable props.
-- `components/admin/ShortcutTable.tsx` — the four shortcut actions and `AdminShortcutResult`, plus
-  `shortcutModel.ts`'s three caps, `ADMIN_SHORTCUT_PAGE`, `formatFired` and the
-  `ShortcutField` / `ShortcutRow` types. It imports **no other** `lib/` module in either directory.
+  `forbiddenJson`, `AdminIdentity`, and the `chatPhotos` pathname/ceiling vocabulary.
+- `app/admin/nina/page.tsx` — `requireAdmin`, `filetree` (`readExplorerView`), `ninaAlbumActions`.
+- `app/admin/{memory,shortcuts,personality,image-generation}/page.tsx` — their module groups as
+  in the map above, plus `users.ts`' pickers.
+- `lib/admin/folderOps.ts` → imported by `ninaAlbumActions.ts` (the folder actions call the
+  planners); `lib/admin/schema.ts` imports `chatPhotoSchema.ts`.
+- `components/admin/{TextModelSelect,ImageGenTestPanel,ImageGenPanel,CharacterPanel,ShortcutTable,MemoryTable}.tsx` — their action/model pairs.
 
-### Secondary consumers
-
-- `app/admin/layout.tsx`, `app/admin/page.tsx`, `app/admin/nina/page.tsx` — `requireAdmin`,
-  `getAdminUser`.
-- `app/admin/personality/page.tsx` — `requireAdmin` and `toTuningDraft`; the only page that renders
-  `CharacterPanel`, and therefore the only correct `revalidatePath` target for `tuningActions.ts`.
-- `components/admin/UserPicker.tsx` — `AdminUserRow` as a type only.
-
-### Test consumers
-
-- `tests/admin.avatars.test.ts` — `avatars.ts`, `filetree.ts` and `schema.ts` (29 tests).
-- `tests/admin.filetree.test.ts` — `filetree.ts` against the `avatars.ts` caps.
-- `tests/admin.memory.test.ts` — `memoryModel.ts`, `memoryVocab.ts`.
-- `tests/admin.chatPhotos.test.ts` — `chatPhotos.ts`, `chatPhotoSchema.ts` and, through the mock
-  harness, `chatPhotoActions.ts` (54 tests).
-- `tests/nina.chatPhotoDescription.test.ts` — `updateNinaChatPhotoDescription`'s owner and `kind`
-  scoping, from the query side.
-- `tests/admin.shortcuts.test.ts` — `shortcutModel.ts`'s pure half by call, and the three structural
-  properties by reading source: that `shortcutStore.ts` is the only `lib/admin` module naming a
-  shortcut write, that no schema or draft carries `match_key` or `kind`, and that
-  `ShortcutTable.tsx` names no `@/lib/nina/` specifier (28 tests).
+Test consumers — every suite under `tests/` whose name starts `admin.` (24 files:
+`admin.avatars`, `admin.filetree`, `admin.folderOps`, `admin.albumAvatarActions`,
+`admin.chatPhotos`, `admin.chatPhotoDedupe`, `admin.chatPhotoAdoption`, `admin.memory`,
+`admin.memoryActions`, `admin.tuning`, `admin.shortcuts`, `admin.shortcutActions`,
+`admin.imagegen`, `admin.imageGenActions`, `admin.imagegenTest`, `admin.photoGrid`,
+`admin.photoReference`, `admin.mediaPane`, `admin.requireAdmin`, `admin.settingsActions`,
+`admin.shareToNina`, `admin.shell`, `admin.users`, `env.admin`), plus the co-located
+`components/admin/**/*.test.tsx` suites, many of which reach `lib/admin` through `vi.mock`
+factories — a factory's export list is a real dependency: it must name every export the
+component imports. This readme deliberately carries no per-suite test counts; they rot within a
+week. Ask the suite.
 
 ## Concurrency
 
-There are no goroutine-style primitives here; the relevant concurrency facts are the runtime's.
+No thread primitives; the relevant facts are the runtime's:
 
-- **Server Actions are dispatched one at a time per client.** That is the entire reason the folder
-  register is batched rather than called per file, and it is why the parallel work (the blob PUTs)
-  goes through a Route Handler instead.
-- **`after()`** defers the deferred-describe callback until the response is finished. Nothing in it
-  is awaited by a caller, nothing in it revalidates, and every failure is swallowed and logged.
-- **Races are settled by Postgres, not by application code.** `(user_id, source_key)` is a unique
-  index and `insertNinaAvatars` is `ON CONFLICT DO NOTHING`, so two tabs submitting the same batch
-  cannot double-write. `nina_avatars_user_current_unq` is a partial unique index, so the
-  un-current/current ordering is owned by `setCurrentNinaAvatar` and by nothing here.
-- The pure modules (`filetree.ts`, `avatars.ts`, `schema.ts`, `memoryModel.ts`, `memoryVocab.ts`)
-  hold no state and are safe to call from anywhere. `NINA_FOLDER_FORBIDDEN_RE` has no `g` flag
-  specifically so that sharing one regex object across callers is safe.
+- **Server Actions are dispatched one at a time per client.** That is why the folder register
+  batches instead of calling per file, and why the parallel work (blob PUTs) goes through a Route
+  Handler.
+- **`after()`** defers both private schedulers (`scheduleDescribe`, `scheduleChatPhotoCaption`)
+  until the response is finished. Nothing awaits them, nothing in them revalidates, every failure
+  is swallowed and logged.
+- **Races are settled by Postgres, not by application code.** `(user_id, source_key)` unique +
+  `ON CONFLICT DO NOTHING` makes two tabs submitting the same batch idempotent;
+  `nina_avatars_user_current_unq` (partial unique) means the un-current/current ordering is owned
+  by `setCurrentNinaAvatar` and nothing here; `(user_id, match_key)` unique + 23505 catch decides
+  shortcut duplicates. The chat-photo add path closes its race the same way: the client pre-check
+  is an optimisation, the hash lookup at write time is the decision.
+- The pure modules (`filetree.ts`, `avatars.ts`, `folderOps.ts`, `schema.ts`, `chatPhotos.ts`,
+  `chatPhotoSchema.ts`, `memoryModel.ts`, `shortcutModel.ts`, `imageGenModel.ts`,
+  `imageGenTestView.ts`, `shareToNina.ts`) hold no state. `NINA_FOLDER_FORBIDDEN_RE` has no `g`
+  flag specifically so sharing one regex object across callers is safe.
 
 ## Error Handling
 
-- **Actions return, they do not throw.** Every album and memory action returns `{ ok, error? }`, so
-  the client has one branch and no `unknown`. Error strings are operator-readable sentences.
-- **The boundary throws framework control flow.** `requireAdmin()` calls `redirect()` or
-  `notFound()`; never wrap it in a bare try/catch.
-- **The API boundary throws typed errors.** `UnauthorizedError` (401) and `AdminForbiddenError`
-  (404, `readonly status = 404`), so a Route Handler keeps one catch for both and answers a
-  signed-in stranger exactly as the pages do.
-- **Vendor and blob failures are non-fatal and logged.** A failed describe leaves a visible
-  "Describe it" button; a failed `del` logs `[f34]` with the orphaned URLs and still reports
-  success, because the row is already gone.
-- **The orphan window is named, not fixed.** A blob PUT and never registered — tab closed, call
-  failed, token outlived the page — stays in the store. A folder upload widens that window from one
-  object to hundreds, and to two objects per file now that a thumbnail rides along. The reaper card
-  (teaching `scripts/blob-reap.mjs` the `nina/` prefix) is open and is deliberately out of scope
-  here; it is written down so the next reader finds the card instead of rediscovering the hole.
+- **Actions return, they do not throw.** Every action returns a result object, so the client has
+  one branch and no `unknown`. Error strings are operator-readable sentences.
+- **The page boundary throws framework control flow** (`redirect()`/`notFound()`); the API
+  boundary throws typed errors (`UnauthorizedError` 401, `AdminForbiddenError` 404) so one catch
+  serves both.
+- **Vendor and blob failures are non-fatal and logged** (with distinct log levels for "the vendor
+  answered 200 and dropped the image" — the token floor — versus a dead socket).
+- **A failed `del` still reports success** after logging: the row is already gone, and a
+  recoverable orphan beats a broken image under a live row. The orphan window is named, not
+  fixed — the blob reaper owns it, deliberately out of scope here.
+- **Refusals are sentences, not field errors**, wherever the sentence is the product: the folder
+  merge refusal names both paths and offers the explicit alternative; the current-photo refusal
+  names the photo and both ways out.
 
 ## Performance
 
-- **The describe pre-pass is the only expensive operation, and it is off the hot path.** ~8-11 s per
-  call, now reached only on promotion, on share, or on demand.
-- **One read per batch, not one per file.** The "is there a current avatar" lookup and the folder
-  declaration each run once for a whole chunk.
-- **Single-row lookups replaced list-and-find.** The chat-side `resolveAttachment` used to read the
-  entire album and `.find()` the id; it now uses the primary-key read `getNinaAvatar(userId, id)`
-  (and its mirror for conversation photos). The ownership property is unchanged — `user_id` is in
-  the WHERE, so "not his" and "does not exist" are still the same `null` — only the read shrank.
-- **The thumbnail is the grid's whole performance story.** A derived 256 px blob beside each
-  original, because `next/image` on Blob-hosted photos costs a paid transform quota and downscaling
-  the original would ruin the crop zoom.
-- `planFolderUpload` is O(files) with two `Set`s; `folderCounts` and `buildTree` are single passes.
+- **The describe pre-pass is off the hot path** (~8–11 s per call; promotion, share, or on demand
+  only). The image TEST is the one long operation on a response path, and it is split into
+  dispatch (returns immediately) and poll.
+- **One read per batch, not one per file** (current-row lookup, folder declaration).
+- **The thumbnail is the grid's whole performance story** (a derived 256 px blob beside each
+  original; `next/image` transforms on Blob cost paid quota).
+- `planFolderUpload` is O(files) with two `Set`s; `folderCounts`/`buildTree` are single passes;
+  `planRelocation` is one pass over the folder list. A folder rename writes N rows and copies
+  zero bytes.
 - Benchmark coverage: none. The unit suites are correctness suites.
 
 ## Usage
@@ -1084,217 +834,57 @@ export default async function Page() {
 
 ### Gotchas
 
-- **Do not add an import to `filetree.ts`.** Not even for the byte cap — that is what the `maxBytes`
-  parameter is for. One server-side import and the client explorer stops compiling.
-- **Do not make `folderPathSchema` normalise.** It validates a canonical path; normalisation is the
-  browser's job, and a server-side rewrite is the invisible-corruption failure the identity check
-  exists to prevent.
-- **Do not re-spell a bound in `schema.ts`.** Every one is imported. A duplicated number is a number
-  that will one day disagree.
-- **Do not put a describe call on a register path.** It was there, it was measured, and it was
-  moved for stated reasons.
-- **Do not schedule a captioner from `editChatPhotoDescriptionAction`.** A hand-written description
-  exists to override the vision pass; re-running it overwrites the operator, and re-captioning the
-  bubble rewrites a sentence Nina already said. Both are decisions, and neither has been made.
-- **Do not add `.min(1)` to `chatPhotoDescriptionSchema`.** The empty box is the clear (D1), and
-  refusing it makes a wrong description un-erasable.
-- **Keep `.max()` ahead of `.transform()` in that schema.** Reversed, an over-long paste normalises
-  first and then gets refused for a length the operator cannot see; sliced, it stores half a
-  sentence and reports success.
-- **Do not delete a photo's row without both blob references.** The row is the only record the
-  thumbnail exists; its stored pathname is not derivable.
-- **`declareNinaFolders` goes before the insert**, and once per batch. Reversing the order leaves
-  photographs in a folder nothing declared.
-- **Do not derive `match_key` or `kind` in `shortcutStore.ts`.** Both are computed inside
-  `lib/nina/queries.ts`'s write statements, and the patch types have no field for either. A row
-  whose folded key disagrees with its trigger renders one thing and fires on another — invisible
-  until the operator wonders why his emoji stopped working.
-- **Do not add a pre-flight `SELECT` before inserting a shortcut.** `(user_id, match_key)` is the
-  authority on "this code already exists"; a check-then-write races itself across two tabs. Catch
-  the 23505 through `isUniqueViolation`.
-- **Do not narrow the shortcut read to enabled rows.** `/admin/shortcuts` wants every row —
-  a disabled shortcut is one the operator edits and re-enables, and hiding it makes "off" look like
-  "deleted". `{ onlyEnabled: true }` belongs to the turn path.
-- **Do not add a value import to `shortcutModel.ts`.** The single re-export of phase 1's three caps
-  is the whole door, and it is what keeps `ShortcutTable.tsx` from naming a `lib/nina` specifier.
-- **Do not add a confirmation step to any shortcut action.** The `✕` deletes on the first click; the
-  test asserts the absence of every second-click API by name.
-- **Do not reintroduce a singular register action.** `registerNinaAvatarAction` existed to land one
-  file at a time and wrote no `folder` and no `source_key`, which made its rows invisible to the
-  manifest diff; phase 5 deleted it with its last caller. `registerNinaAvatarsAction` handles a
-  batch of one perfectly well, and a second insert path is how two of them end up disagreeing about
-  the partial unique index.
+- **Do not add an import to `filetree.ts`.** Not even for the byte cap — that is what the
+  `maxBytes` parameter is for. One server-side import and the client explorer stops compiling.
+- **Do not make `folderPathSchema` normalise.** It validates a canonical path; a server-side
+  rewrite is the invisible-corruption failure the identity check exists to prevent.
+- **Do not re-spell a bound in `schema.ts`.** Every one is imported.
+- **Do not put a describe call on a register path.** It was there, it was measured, it was moved.
+- **Do not re-caption after a hand-written edit** — `editChatPhotoDescriptionAction`,
+  `editNinaAvatarDescriptionAction`. A hand-written description exists to override the vision
+  pass; re-captioning the bubble rewrites a sentence Nina already said.
+- **Keep `.max()` ahead of `.transform()`** in `chatPhotoDescriptionField`, and do not add
+  `.min(1)` — the empty box is the clear (D1).
+- **Do not delete a photo's row without considering both blob references and shared objects** —
+  the row is the only record a thumbnail exists, and `releaseBlobIfUnreferenced` decides the
+  release.
+- **`declareNinaFolders` goes before the insert**, once per batch.
+- **Do not reintroduce a singular register action.** A second insert path is how two paths end up
+  disagreeing about the partial unique index.
+- **Do not derive `match_key` or `kind` in `shortcutStore.ts`,** do not add a pre-flight SELECT,
+  do not narrow the read to enabled rows, do not add a value import to `shortcutModel.ts`, and do
+  not add a confirmation step to any shortcut action — the test asserts the absence of every
+  second-click API by name.
+- **Do not add a confirmation to a memory action either.** Four actions, first-click deletes, and
+  `editFactAction` making a row his IS the data-integrity answer (the row stops claiming to quote
+  its source message).
+- **Do not "fix" the manifest `truncated` `>=`.** The error is in the safe direction and the
+  cheap fix would need a second `COUNT(*)`.
+- **Do not read `attempts` alone as "a retry happened"** in the image test view — the claim
+  increments it when an attempt STARTS. The phase discriminates.
+- **Do not widen the media dedupe to trust a claim's hash on a reference row.** A row's
+  `content_hash` describes the bytes its `blob_url` serves — the keeper's own measured hash wins.
+- **Renaming a folder onto an occupied path must stay refused.** A merge of the folder column is
+  the one operation here with no inverse.
 
 ## Notes
 
-The singular/batch register coexistence is over. Phase 5 replaced the whole `/admin/nina` screen
-with `components/admin/FileExplorer.tsx`, which deleted `UploadAvatar.tsx` — the singular action's
-only caller — and so `registerNinaAvatarAction` went with it in the same commit rather than
-lingering as a dangling export. Removing it also orphaned two imports here
-(`avatarRegisterSchema`, `insertNinaAvatarAsCurrent`), both since dropped;
-`avatarRegisterSchema` itself remains in `schema.ts`, still covered by `tests/admin.avatars.test.ts`.
-There is now exactly one path that lands a new album row, and it is folder-aware.
+Known, filed limitations: lexicographic rather than natural folder sort; `truncated`
+over-reports at exactly the manifest cap; empty directories in a dropped tree are invisible to
+the browser and so never survive an upload; the orphaned-blob window (blob PUT and never
+registered) is real and belongs to the reaper, not to this package.
 
-Known, filed limitations: lexicographic rather than natural folder sort; `truncated` over-reports at
-exactly the manifest cap; empty directories in a dropped tree are invisible to the browser and so
-never survive an upload (only *"New subfolder"* can create one).
+## Recent Changes
 
-## Documentation Created
-
-2026-09-04 — updated for task **P1-RI-A003** (`admin-album-file-manager` phase 5, the file-manager
-screen). That task owns `components/admin`, not this package; the single change here was the
-deletion of `registerNinaAvatarAction` (singular) along with its last caller,
-`components/admin/UploadAvatar.tsx`. Refreshed: the `ninaAlbumActions.ts` signature list, the
-describe-pre-pass trigger list, the register-path section, the `avatarRegisterSchema` annotation,
-the reverse-dependency list (now the `explorer/**` consumers), the pitfall that described the
-singular action's `source_key` behaviour, and the note that had the two register paths coexisting.
-
-2026-09-04 — initial creation via `/update-readme`, following task **P1-RI-A002**
-(`admin-album-file-manager` phase 4, the folder-aware upload boundary). That task added the
-folder-path / filename / dedupe-key / batch-register schemas to `schema.ts`;
-`registerNinaAvatarsAction`, `listNinaAlbumManifestAction` and `ensureNinaAvatarDescriptionAction`
-to `ninaAlbumActions.ts`, along with the second `del()` on delete and the move of the describe
-pre-pass onto `after()`; the thumbnail pathname shape and its 512 KB token cap to the upload Route
-Handler; the single-row reads in the chat-side `resolveAttachment`; and 21 tests to
-`tests/admin.avatars.test.ts` (29 in that suite).
-
-2026-09-05 — updated following `nina-character-tuning` phase 6 of 6 (R6, the sweep and the record),
-documenting phase 5's work (R1, R2, R3). Phase 5 added `tuningActions.ts` (one whole-tuning save
-plus a reset to defaults, both `requireAdmin()` -> Zod -> write -> `revalidatePath`),
-`tuningModel.ts` (the panel's client-safe copy and draft-diff layer, one import), and appended
-`ninaTuningWriteSchema` / `ninaTuningResetSchema` to `schema.ts`, importing every bound from
-`lib/nina/tuning.ts` rather than re-spelling any. Nothing above the append changed, and no existing
-action, schema or export in this package was touched.
-
-2026-09-07 — updated following task **P2-CA-A002** (`nina-personality-tab` phase 1, R1: the
-character panel moved out of Nina's album onto a new `/admin/personality` route). Nothing in this
-package's logic changed except the two `revalidatePath` targets in `tuningActions.ts`, which now
-name `/admin/personality` — the page the panel is mounted on — instead of `/admin/nina`. The album's
-own actions in `ninaAlbumActions.ts` still revalidate `/admin/nina`, which is still where the album
-is; the two targets are now genuinely different pages rather than one shared screen. No action,
-schema, bound, or export was added, removed or renamed.
-
-2026-09-07 — updated following task **P1-ADM-A000** (`nina-photo-caption-from-image` phase 3 of 4,
-R1: *"a photo added to the Chat photos collection must arrive with a chat message that says
-something true about **that** photograph"*).
-
-The bug was never in the multimodal call — that call already existed and had already run on the
-photograph the user complained about. `scheduleChatPhotoDescribe` was sending the picture to
-`glm-4.6v` and storing a good paragraph in `nina_message_images.description`, a column that on this
-path nothing reads (`dbNinaSourceGateway.readConversation` maps every window row with a literal
-`imageDescriptions: []`). The one text the runner sees came from `ninaImageCaption`, an FNV-1a hash
-of a fresh nanoid over a five-string array — no model, no image, no prompt. So an underwater
-photograph of her in fins was captioned `ini gw abis lari tadi`.
-
-The change here is the second half of that `after()`. `scheduleChatPhotoDescribe` became
-`scheduleChatPhotoCaption`: `glm-4.6v` looks with `{ subject: 'self' }`, `readNinaTuning` is read
-live, `captionNinaPhoto` speaks, and `updateNinaMessage` rewrites `nina_messages.text` and nothing
-else — not `seq`, not `sent_at`, not `read_at`, not `turn_id`, because rewriting a bubble is not
-re-sending it. Both call sites were renamed, `addChatPhotoAction` and `replaceChatPhotoAction`; the
-replace site carries a note saying its gap behaviour falls out of the shared scheduler rather than
-being designed for, and is its own card.
-
-Nothing moved onto a response path. Two model calls in one segment is ~15-25 s, and Server Actions
-are dispatched one at a time per client — the same arithmetic this package's describe pre-pass
-already refused for one call alone (see *"The describe pre-pass is OFF the upload path"*). The
-placeholder the action writes synchronously is one of `NINA_IMAGE_CAPTION_POOL`'s scene-agnostic
-lines, and phase 1 removed the one scene-asserting member from that pool, so **every** failure
-branch below leaves a sentence that is true of any photograph rather than a wrong one: the row gone,
-the token floor tripped, a transport failure, `captionNinaPhoto` returning `null`,
-`updateNinaMessage` returning `null` or throwing. The description is stored first and on its own, so
-a caption failure never costs the paragraph. The floor gets `console.error` and a transport failure
-`console.warn`, because a vendor that answers 200 with the image silently dropped is a different
-incident from a dead socket.
-
-No action, schema, bound or export in this package was added, removed or renamed;
-`scheduleChatPhotoCaption` is private, as its predecessor was. `tests/admin.chatPhotos.test.ts` grew
-its first mock harness (it had been pure-function only) and 8 cases, 32 -> 40.
-
-2026-09-07 — updated following task **P1-ADM-B130** (`nina-photo-refs-and-bubble-actions` phase 2 of
-4, R2: *"there is a 'what she can see in it' field. make this field editable by user"*).
-
-`nina_message_images.description` is `glm-4.6v`'s prose and, per phase 3 of the previous set, the
-only text on that row that reaches Nina's prompt. Nothing could write it by hand, so a wrong
-description was a wrong belief with no correction available. This task is the correction:
-`ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS = 2000` (measured against production, argued against the
-vendor's own 1500-character ceiling) in `chatPhotos.ts`; `chatPhotoDescriptionSchema` in
-`chatPhotoSchema.ts`, capping the raw string before normalising it; the owner- and `kind`-scoped
-`updateNinaChatPhotoDescription` in `lib/nina/queries.ts`; and `editChatPhotoDescriptionAction` in
-`chatPhotoActions.ts`, which ends at `revalidatePath(ADMIN_CHAT_PHOTOS_PATH)`. An empty save clears
-the field to `NULL` and says so in the result's `note` (decision D1).
-
-Deliberately absent: no vision or caption call, no `after()` pass, no bubble re-caption, no new entry
-in `scripts/check-llm-payload-boundary.mjs`, no DDL and no migration — the column already existed and
-only its write path was missing. The client half is one new control,
-`components/admin/ChatPhotoDescription.tsx`, mounted `key={photo.id}` in `ChatPhotoDetail`'s rail so
-switching tiles cannot carry unsaved text across; it keeps that rail's rule that the detail component
-imports no Server Action itself. Nothing under `components/nina/` was touched.
-
-Refreshed here: the module map (which had no rows for the chat-photo trio at all), a new Exported API
-section for `/admin/photos` covering the cap, the schema, the action and D1, the
-`@/lib/nina/queries` dependency bullet, the test-consumer list, and four gotchas. No existing action,
-schema, bound or export in this package was renamed or removed. `tests/admin.chatPhotos.test.ts` grew
-14 cases, 40 -> 54 (6 on the schema, 8 on the action), and `tests/nina.chatPhotoDescription.test.ts`
-is new, with 4 on the query's scoping.
-
-2026-09-07 — updated following task **P1-ADM-A001** (`nina-emoji-shortcuts` phase 3 of 4, R1: *"i
-want a mechanism that is more explicit, that is shortcuts. in shortcuts admin can add shortcuts that
-entails some situations or what miftah and nina were doing."*).
-
-Three new modules and one appended schema section, and no existing action, schema, bound or export
-in this package was renamed, removed or reordered. `shortcutModel.ts` is the client-safe half — the
-`ShortcutRow` / `ShortcutSource` pair, `buildShortcutRows`, `formatFired`, `describeKind`,
-`SHORTCUT_FIELDS`, `ADMIN_SHORTCUT_PAGE`, and the single re-export of phase 1's three caps that lets
-`components/admin/ShortcutTable.tsx` name no `@/lib/nina/` specifier at all. `shortcutStore.ts` is
-`server-only` and is the only module here that writes a shortcut; it reaches no drizzle table and no
-`db` handle, derives neither `match_key` nor `kind` (both are computed inside
-`lib/nina/queries.ts`'s writes, which have no field for either), and owns the duplicate catch via
-`isUniqueViolation`, the empty-trigger refusal, and the admin read's newest-first ordering and
-ceiling over a bare `listNinaShortcuts(userId)`. `shortcutActions.ts` adds four actions — add, save
-one cell, toggle `enabled`, delete — each `requireAdmin()` -> Zod -> store -> `revalidatePath`, with
-no confirmation anywhere.
-
-`schema.ts` gained four zod schemas appended after `ninaTuningResetSchema`, importing every bound
-through `shortcutModel.ts`; `shortcutCellSchema` is a discriminated union on `field` because the
-three cells have three different caps. Deliberately absent from all four: any field for `match_key`
-or `kind`, so a forged POST cannot supply a folded key that disagrees with its own trigger.
-
-Refreshed here: the overview's surface list, a new key responsibility, three module-map rows, the
-`schema.ts` export block and a new subsection under it, a new Exported API section for the trio, the
-`@/lib/nina/queries` and two new dependency bullets, two reverse-dependency entries, the
-test-consumer list, and five gotchas. `tests/admin.shortcuts.test.ts` is new, with 28 cases — the
-pure half by call, and the module boundaries by reading source.
-
-2026-09-09 — updated following task **P1-RI-A040** (`simplify-personality-settings` phase 1 of 2,
-the prompt-revision purge). `saveNinaTuningAction` no longer reads a revision off
-`writeNinaTuning`'s returned row and no longer returns one — `AdminTuningResult.revision` is
-deleted and the success note no longer names one — and `toTuningWrite` returns `NinaTuning`
-rather than `NinaTuningWrite`, because `lib/nina/tuning.ts` deleted the alias this file imported.
-Nothing else here moved: the two actions, the four-line shape and `ninaTuningWriteSchema` (which
-never carried a revision field) are untouched, and phase 2 of the set owns replacing the
-Save/Discard/Reset button model. Migration `drizzle/0016_retire_tuning_revision.sql` (dropping
-`nina_tuning.revision` and `nina_turns.tuning_revision`) is committed but NOT applied — applying it
-is the post-deploy `npm run db:migrate`. Refreshed here: one clause of the `tuningActions.ts`
-action list.
-
-2026-09-09 — updated following task **P1-RI-A028** (`admin-imagegen-simplify` phase 1 of 3, the
-auto-save panel: the Personality commit pipeline, buttons removed).
-
-The Image Generation tab's panel is rewritten onto `CharacterPanel.tsx`'s auto-save draft/saved
-pattern. The prefs half of `imageGenActions.ts` is one action again — the reset action and its
-userId-only reset schema are deleted outright from `imageGenActions.ts` and `schema.ts`, and the
-panel's Save/Discard/Reset row, its confirm block, `confirmingReset` and the `run()` wrapper are
-gone with it. `saveNinaImagePrefsAction` now returns the canonical row: `prefs: ImageGenDraft` —
-`toImageGenDraft` over what `writeNinaImagePrefs` stored — adopted by the panel through
-`mergeImageGenAfterSave` (new in `imageGenModel.ts`, alongside `IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS`
-= 600, the dial's settle window; the six focus checkboxes and the photo reference commit on
-change, the four text fields on blur). `disabled={pending}` is removed from every control —
-`pending` drives only the tri-state `aria-live` status line ("Saving…" / "Saved" / "Unsaved
-edits") — and `AdminImageGenResult.revision` was display copy that phase 2 of the set (`P1-RI-A029`)
-has since removed.
-
-Refreshed here: the `Last Updated` line, the imageGen section's action census (four actions ->
-three) and its test-action paragraph, which had told the operator to save first. No schema, bound
-or export outside the image prefs trio was touched. `tests/admin.imagegen.test.ts` grew 13 cases,
-43 -> 56, including two negatives that fail if the deleted action's identifier or the removed
-confirm state reappears in the source.
+- **2026-09-12** — full compaction/verification pass (token-maxxing session
+  `pkg-readme-lib-admin`, worker branch `token-maxxing-2026-09-12-pkg-readme-lib-admin`): every
+  export block, signature, constant, dependency and reverse dependency re-verified against the
+  tree; the module map completed (added `folderOps`, `imageGenModel`, `imageGenActions`,
+  `imageGenTestView`, `textModelActions`, `shareToNina`); sections for deleted mechanisms
+  removed (the eight-action memory era, `resetNinaTuningAction`, the `/admin/photos` route, the
+  four retired memory schemas, the "append comes first" invariant, the stale
+  `AdminManifest*`/`FolderUploadPlan` export lines left by the 2026-09-11 dead-exports sweep);
+  new material documented (folder maintenance, media-view switch, write-time dedupe, chat-photo
+  adoption, the text-model action, the image-test verdict view). Per-task history now lives in
+  `git log -- lib/admin` — this file stopped carrying the inline changelog that kept re-loading
+  ~160 lines of merged history into every context that opened it.
