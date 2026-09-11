@@ -117,6 +117,11 @@ const GUARDED_CALLS = [
       join('lib', 'nina', 'turn.ts'),
       join('lib', 'nina', 'actions.ts'),
       join('lib', 'nina', 'proactive.ts'),
+      // nina-offline-reply phase 2 moved `runNinaBackgroundTurn` here (a server-only module,
+      // not a Server Action module — its input carries a raw userId and must not become a
+      // POST endpoint). Same caller it always was, one file over; scheduled by after(), never
+      // awaited by a render.
+      join('lib', 'nina', 'turnrun.ts'),
       join('app', 'api', 'cron', 'nina', 'route.ts'),
     ],
     advice:
@@ -159,6 +164,8 @@ const GUARDED_CALLS = [
       // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
       join('lib', 'nina', 'autotitle.ts'),
       join('lib', 'nina', 'actions.ts'),
+      // Moved here with `runNinaBackgroundTurn` (nina-offline-reply phase 2) — see that entry.
+      join('lib', 'nina', 'turnrun.ts'),
     ],
     advice:
       'The session titler is a third model call in an invocation that already made two (F35 R3). ' +

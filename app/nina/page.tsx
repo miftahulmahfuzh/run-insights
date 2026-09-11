@@ -19,6 +19,7 @@ import {
   type RunAttachment,
 } from '@/lib/nina/attach'
 import { getPendingNinaChatTurn } from '@/lib/nina/chatturn'
+import { reviveNinaChatTurn } from '@/lib/nina/turnrevive'
 import { SESSION_PARAM, chooseActiveSession, parseNinaSessionParam } from '@/lib/nina/active'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import { reviveNinaImageJobs } from '@/lib/nina/imagerun'
@@ -183,6 +184,29 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    */
   const sessions = await listNinaSessions(userId)
   const activeSessionId = chooseActiveSession(sessions, parseNinaSessionParam(sessionParam))
+
+  /*
+   * ── G3's SELF-REPAIR, AND THE ORDERING THAT MAKES IT VISIBLE ─────────────────────────────────
+   * A message whose turn died (its `after()` invocation evicted, its segment ceiling reached) is
+   * answered HERE, with no tap: the revive sweeps the stale claim, and if the newest row is still
+   * his, no fresh claim blocks and the attempt cap allows, it opens a new claim and schedules
+   * `runNinaBackgroundTurn` inside `after()` — the same shape `reviveNinaImageJobs` below already
+   * ships for photographs ("arriving on this page is the pipeline's self-repair"). The model call
+   * is always inside that callback; what THIS await costs the render is a few indexed reads and,
+   * on the rare hit, one claim INSERT (invariant 3).
+   *
+   * AWAITED HERE, BEFORE THE `Promise.all` BELOW, AND THAT ORDER IS THE FIX (the G1 × G3 trap):
+   * the claim read is the `Promise.all`'s sixth element (`pendingTurn`), and the flight view
+   * consumes it — both must see what this revive just did. A revive that JOINED the
+   * `Promise.all` would race the claim read; awaited above it, the read observes the sweep and
+   * any fresh claim this opened, `awaiting` reads true for the turn that is about to run, the
+   * poll starts, and her answer lands into a tab that is looking (R2, no refresh).
+   *
+   * `null` means he has no sessions — nothing to revive, nothing to sweep, zero queries.
+   */
+  if (activeSessionId !== null) {
+    await reviveNinaChatTurn(userId, activeSessionId)
+  }
 
   /*
    * Two reads, concurrently — and the second one is here for its SIDE EFFECT.
