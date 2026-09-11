@@ -51,17 +51,20 @@ import { NinaJobElapsed } from './NinaJobElapsed'
  * icon beside it (the `no-message` case — that job still produced its photograph); a sentence
  * alone is byte-for-byte what this row always rendered.
  *
- * ── WHY THE PROMPT IS RENDERED AT ALL ─────────────────────────────────────────────────────────
- * R1 asks for it by name. It is Nina's own generated text about her own photograph, not the private
- * `nina_message_images.description` prose that invariant 5 keeps on the server — and the runner
- * asking "why did that come out like that" has no other way to find out.
+ * ── WHY THE CARD HAS ONE SECTION, NOT TWO ─────────────────────────────────────────────────────
+ * R1 asks for the exact prompt by name, and `sidecarText()` already ships it: every writer composes
+ * `args.sidecar` as the metadata block, a `--- prompt as sent ---` rule and the prompt verbatim —
+ * so a separate Prompt section repeated half the card inside the other half. It is gone
+ * (2026-09-11): the sidecar IS the prompt display. A row that somehow carries only the bare prompt
+ * still shows that — `toJobRecord` parses the two fields independently, though every writer since
+ * d61cdba writes them together, so the arm is type-honesty rather than a data case — and when
+ * neither exists, the line says so instead of rendering an empty card.
  */
 export function NinaJobDetail({
   stage,
   stageLabel,
   errorLabel,
   purpose,
-  scene,
   mood,
   prompt,
   sidecar,
@@ -80,7 +83,6 @@ export function NinaJobDetail({
   stageLabel: string
   errorLabel: string | null
   purpose: 'selfie' | 'avatar'
-  scene: string | null
   mood: string | null
   prompt: string | null
   sidecar: string | null
@@ -193,28 +195,24 @@ export function NinaJobDetail({
       </Card>
 
       <Card className="p-5">
+        {/*
+          ONE section, not two: `sidecarText()` composes `args.sidecar` as the metadata block plus
+          `--- prompt as sent ---` and the prompt verbatim, so a separate Prompt section repeated
+          half this card inside the other half. `sidecar ?? prompt` is the type-honesty arm — every
+          writer writes both args fields together (d61cdba onward), so the bare prompt renders only
+          where a sidecar genuinely never existed.
+        */}
         <h2 className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-          Prompt
+          Catatan foto
         </h2>
-        {scene !== null && <p className="mb-2 text-[13px] font-semibold text-ink-2">{scene}</p>}
-        {prompt === null ? (
+        {sidecar === null && prompt === null ? (
           <p className="text-[13px] font-medium text-ink-3">
-            Job ini nggak nyimpen prompt-nya — barisnya dibuat sebelum kolom itu ada.
+            Job ini nggak nyimpen catatan fotonya — barisnya dibuat sebelum catatan itu ada.
           </p>
         ) : (
-          <p className="text-[13px] leading-[1.55] font-medium whitespace-pre-wrap text-ink">
-            {prompt}
+          <p className="text-[13px] leading-[1.55] font-medium whitespace-pre-wrap text-ink-2">
+            {sidecar ?? prompt}
           </p>
-        )}
-        {sidecar !== null && sidecar !== prompt && (
-          <>
-            <h2 className="mt-4 mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-              Catatan foto
-            </h2>
-            <p className="text-[13px] leading-[1.55] font-medium whitespace-pre-wrap text-ink-2">
-              {sidecar}
-            </p>
-          </>
         )}
       </Card>
     </div>

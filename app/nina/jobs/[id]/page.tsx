@@ -97,7 +97,6 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
         stageLabel={NINA_JOB_STAGE_LABEL[stage]}
         errorLabel={stage === 'failed' ? jobErrorLabel(job.errorCode) : null}
         purpose={job.purpose}
-        scene={job.scene}
         mood={job.mood}
         prompt={job.prompt}
         sidecar={job.sidecar}
