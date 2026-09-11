@@ -2,7 +2,7 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-10
+**Last Updated**: 2026-09-11
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 33
+- Completed: 34
 
 ---
 
@@ -123,6 +123,25 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A034** Phase 1: Idempotent reveal append (pure helper + call site + tests)
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns: the append decision inside `revealBubbles` (`components/nina/ChatScreen.tsx`), a pure `appendNewBubbles`-style helper in `lib/nina/reveal.ts` or `lib/nina/live.ts`, and its unit tests. Does not touch: `pollNinaReply`, the cursor protocol, `mergeServerMessages`, `planReveal`'s schedule arithmetic, any server module, any DB migration. Exit criteria: for every interleaving of (poll batch, merge delivery) — none, partial overlap, full overlap — the rendered list contains each `nina_messages.id` at most once; `appendNewBubbles` returns the same array reference when nothing is new; `npm test` and `npx tsc --noEmit` pass.
+  - **Status**: completed
+  - **Plan Set**: `NINA_DUP_BUBBLE_REVEAL_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Find the root cause of Nina's duplicate answer bubbles in prod chat "gj" (4 expected, last 3 duplicated → 7 shown)
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A034.md`
+  - **Completed**: 2026-09-11 12:27
+  - **Method**: /do
+  - **Files**: lib/nina/live.ts, lib/nina/live.test.ts, components/nina/ChatScreen.tsx
+  - **Drift**:
+    - prettier collapsed the plan's expanded `fresh.map((bubble) => ({...}))` call in lib/nina/live.ts to its single-argument one-line form — the plan's code block failed the plan's own format gate (`npx prettier --check`); formatting-only, zero semantic change
+  - **Decided**:
+    - TaskID mint -> P1-NIN-A034 (rung 6: nina client phases mint under the NIN counter in lib/nina even with components/nina call sites, per P1-NIN-A028/A023/A027 precedent; verified free via todos.py mint on both roots, repo-wide todos grep, and git log -S)
+    - TaskID NOT written into the git-tracked shared orchestration PLAN.md at /home/miftah/run-insights/.workflows/orchestration/nina-dup-bubble-reveal/PLAN.md (recorded precedent lib/nina/.workflows/todos.md line ~280: shared tracked index, pathspec hazard); the swarm ledger's task_id field carries it via the swarm report instead. The worktree copy NINA_DUP_BUBBLE_REVEAL_PLAN.md phase table DID get the TaskID.
+    - prettier reformat of the plan's map() call (the plan's own Verification format gate wins over its code block's cosmetic form; no check relaxed)
 
 - [x] **P1-NIN-A033** Phase 3: Write-time dedup: jalur generated + admin
   - **Difficulty**: HARD

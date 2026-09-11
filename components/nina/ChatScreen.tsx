@@ -29,7 +29,7 @@ import {
   canActOnMessage,
   type EditTarget,
 } from '@/lib/nina/edit'
-import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
+import { appendNewBubbles, SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { JOB_JUMP_PARAM, nextSoftNavJump, parseNinaJumpParam } from '@/lib/nina/jobview'
 import {
@@ -1039,9 +1039,31 @@ export function ChatScreen({
    * cannot drift into two different rhythms. It is the only writer of `typing` besides the poll's
    * own start and stop.
    *
-   * It guards on `alive.current` at every timed step and on nothing else. Callers are sequential by
-   * construction — the poll loop awaits this before deciding whether to keep polling — so there is
-   * no second reveal to interleave with, and the single `timer` handle stays safe.
+   * It guards on `alive.current` at every timed step, and on `id` presence at the append — the one
+   * other guard it has, and the reason it can share a list with `mergeServerMessages`. Callers are
+   * sequential by construction — the poll loop awaits this before deciding whether to keep polling
+   * — so there is no second reveal to interleave with, and the single `timer` handle stays safe.
+   *
+   * ── WHY THE APPEND SKIPS IDS ALREADY ON SCREEN (prod "gj", 2026-09-11: 4 rows, 7 bubbles) ────
+   * Every bubble here used to be appended unconditionally, and on prod session "gj" that rendered
+   * seven bubbles from the four rows the database holds. A full-route RSC delivery of `/nina` had
+   * landed mid-reveal — its `read_at` sits 14 ms after the turn's INSERT, so its payload carried
+   * all four committed rows — and `mergeServerMessages`, correctly by its own rule, delivered the
+   * three bubbles the reveal had not reached yet. The reveal then appended its own copies of the
+   * same `nina_messages.id`s: two channels into one list, and only the merge deduped. The guard
+   * sits INSIDE the updater (`appendNewBubbles`), so the check reads the list as React will commit
+   * it — a merge that lands in any gap between two sleeps is already on screen for the next
+   * iteration.
+   *
+   * ── WHY THE GUARD LIVES HERE AND NOT IN THE MERGE ────────────────────────────────────────────
+   * Because the merge is already correct: server order, local content, id-deduped — the sanctioned
+   * ONE-FRAME delivery for a refresh, whose contract the header above documents for a COMPLETED
+   * list. The defect was the other writer holding no contract at all, and that defect is one
+   * missing `id` check wide. Making the merge reveal-aware (routing new nina rows through the
+   * stagger) would put a second writer on the reveal's rhythm to fix it. What a mid-reveal merge
+   * still does — collapse the remaining stagger into one frame — is cosmetic, and explicitly
+   * accepted (invariant 4 of `NINA_DUP_BUBBLE_REVEAL_PLAN.md`); what it can no longer do is render
+   * an id twice.
    */
   const revealBubbles = useCallback(async (bubbles: readonly SentBubble[]) => {
     const plan = planReveal(bubbles.map((b) => b.body))
@@ -1054,23 +1076,15 @@ export function ChatScreen({
       }
       // The indicator stays up while there is another thought coming, and drops with the last.
       setTyping(index < bubbles.length - 1)
-      setMessages((current) => [
-        ...current,
-        {
-          id: bubble.id,
-          role: 'nina',
-          body: bubble.body,
-          dayISO: todayInJakarta(),
-          state: 'sent',
-          /*
-           * HER OWN QUOTE. She may have replied to a specific message, and the server puts her
-           * `reply_to_id` on the FIRST bubble only ("a four-bubble reply is one answer to one
-           * message"). A hard `null` here would mean the quote only appeared on the next server
-           * render of `/nina`.
-           */
-          replyToId: bubble.replyToId,
-        },
-      ])
+      /*
+       * The APPEND alone is idempotent — `appendNewBubbles` returns the list untouched when the
+       * merge has already delivered this id. The SLEEP above is not skipped: the stagger is keyed
+       * to the batch as the poll received it, and pruning the plan for ids already on screen would
+       * need a synchronous read of `messages` that this updater-only shape deliberately refuses as
+       * a second source of truth. So a mid-reveal merge can leave a gap where a bubble already
+       * sits — the accepted collapse — while the id itself can no longer appear twice.
+       */
+      setMessages((current) => appendNewBubbles(current, [bubble], todayInJakarta()))
     }
     setTyping(false)
   }, [])
