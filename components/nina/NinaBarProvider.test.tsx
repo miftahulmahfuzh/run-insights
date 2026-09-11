@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest'
 
 // Real `nextBarState`: the provider's whole job is to hold ONE state and forward the machine's own
 // events to it — mocking the machine would test that the provider forwards a function name.
-import { NinaBarProvider, useNinaBar, type NinaBarContextValue } from './NinaBarProvider'
+import { NinaBarProvider, useNinaBar } from './NinaBarProvider'
 import { nextBarState } from '@/lib/nina/chrome'
 
-let latest: NinaBarContextValue | null = null
+let latest: ReturnType<typeof useNinaBar> | null = null
 
 /** Reads the context every render, so assertions see the provider's state as consumers do. */
 function Probe({ id }: { id?: string }) {
