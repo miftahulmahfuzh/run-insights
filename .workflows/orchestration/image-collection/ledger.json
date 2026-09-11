@@ -3,6 +3,12 @@
   "coordinator": "orch-image-collection",
   "coordinator_session_id": "d87837c5-ea06-4949-ad46-73383bb0aee8",
   "created": "2026-09-10T09:51:52+00:00",
+  "landed": {
+    "at": "2026-09-11T01:55:11+00:00",
+    "base": "main",
+    "commit": "92328d7cf9cd0fad0360a9d406060190f1471da6",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -84,7 +90,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/image-collection/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "image-collection",
-  "updated": "2026-09-11T01:44:33+00:00",
+  "updated": "2026-09-11T01:55:11+00:00",
   "verified_at": "2026-09-11T01:40:46+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/image-collection"
 }
