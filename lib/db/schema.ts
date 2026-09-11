@@ -20,7 +20,7 @@ import {
  * The whole database, in one file. ROADMAP_v0.1.0.md §4.3 is authoritative for every column;
  * RECONCILIATION_v0.1.0.md amends it in six places and each amendment is marked with its ruling
  * (R-1, R-5, R-7, R-8, R-9, R-11, R-12, R-22). Where this file and a feature plan disagree, the
- * roadmap-plus-reconciliation pair wins — see docs/plans/F03-data-layer.md §10.
+ * roadmap-plus-reconciliation pair wins — see docs/plans/archive/F03-data-layer.md §10.
  *
  * Two rules that are invisible in the column list but govern the whole schema:
  *

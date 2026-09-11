@@ -14,7 +14,7 @@
  * upload decides in place: `onPick` chose from INSIDE a `setTiles` updater, `reactStrictMode: true`
  * double-invoked the updater in dev, and one picked file minted two upload tokens, wrote two blobs
  * and left one orphaned in the store for good — one file, one tile, two objects billed. See
- * `docs/plans/F17-onpick-purity.md` and `planNinaPicked` in `lib/nina/images.ts`, whose header says
+ * `docs/plans/archive/F17-onpick-purity.md` and `planNinaPicked` in `lib/nina/images.ts`, whose header says
  * the same thing in fewer words: decide here, hand `setState` a value, run the effects afterwards.
  * A drop of three hundred files is that bug multiplied by three hundred.
  *

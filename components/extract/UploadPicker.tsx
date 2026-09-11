@@ -169,7 +169,7 @@ export function UploadPicker() {
    * too. `next.config.ts` sets `reactStrictMode: true`, and Strict Mode double-invokes updaters on
    * purpose to surface impure ones — so in dev one picked file minted two upload tokens and wrote
    * **two** blobs, one of them orphaned in the store for good, plus a stray `File` in `filesRef`
-   * under an id no tile has. Measured on card #6; see docs/plans/F17-onpick-purity.md §1.
+   * under an id no tile has. Measured on card #6; see docs/plans/archive/F17-onpick-purity.md §1.
    *
    * So: decide purely (`planPicked`), hand `setTiles` a **value** rather than an updater, and run
    * the effects afterwards. There is then nothing for Strict Mode to double-invoke. Reading

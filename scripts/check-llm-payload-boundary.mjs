@@ -105,7 +105,7 @@ const GUARDED_CALLS = [
       join('app', 'api', 'cron', 'rollup', 'route.ts'),
     ],
     advice:
-      'On a cache miss that is a 10-35 s model call — see docs/plans/F07-insights.md §7.2. ' +
+      'On a cache miss that is a 10-35 s model call — see docs/plans/archive/F07-insights.md §7.2. ' +
       'Call it from lib/insights/actions.ts (a Server Action, fired from a client effect) or ' +
       'from the cron route, never from a render path.',
   },

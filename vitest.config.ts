@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config'
  * The single test-runner config for this repo (F01 owns it; do not write a second one).
  *
  *   - F03/F04/F06/F07/F09 write co-located `lib/**\/*.test.ts` and `app/**\/*.test.ts`.
- *   - F01 writes `tests/research/*.test.ts` — see docs/plans/F01-foundation.md section 4.
+ *   - F01 writes `tests/research/*.test.ts` — see docs/plans/archive/F01-foundation.md section 4.
  *   - `tests/integration/**` (F03, opt-in via VITEST_INTEGRATION=1) is excluded by default
  *     so a plain `npm test` never reaches a real database.
  */

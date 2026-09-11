@@ -27,7 +27,7 @@ import { EXPLORER_THUMB_CONTENT_TYPE, measureAndThumbnail } from './thumbnail'
  * One gesture, from "he let go of the mouse" to "the rows exist".
  *
  * ── THE SHAPE IS F17'S, AND THAT IS NOT A STYLE CHOICE ──────────────────────────────────────
- * `docs/plans/F17-onpick-purity.md` measured what happens when a decision is made inside a
+ * `docs/plans/archive/F17-onpick-purity.md` measured what happens when a decision is made inside a
  * `setState` updater: `reactStrictMode: true` double-invokes updaters in dev, so one picked file
  * minted **two** upload tokens and wrote **two** blobs, one of them orphaned in the store forever.
  * Nothing in `run()` below is inside an updater. It gathers, it awaits the manifest, it calls one

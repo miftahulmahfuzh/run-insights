@@ -23,7 +23,7 @@ const deletePath = /\.delete\(\s*extractions\s*\)/.exec(source)
 if (deletePath) {
   failures.push(
     `${QUERIES} contains a delete path for extractions ("${deletePath[0]}"). ` +
-      'The audit trail is append-only — see docs/plans/F03-data-layer.md D3.',
+      'The audit trail is append-only — see docs/plans/archive/F03-data-layer.md D3.',
   )
 }
 
@@ -49,7 +49,7 @@ if (unscoped.length > 0) {
   failures.push(
     `${QUERIES} exports ${unscoped.length} function(s) that do not take userId first: ` +
       `${unscoped.join(', ')}. Every query is ownership-scoped; the only sanctioned exception is ` +
-      'getRunByShareToken. See docs/plans/F03-data-layer.md §8.',
+      'getRunByShareToken. See docs/plans/archive/F03-data-layer.md §8.',
   )
 }
 

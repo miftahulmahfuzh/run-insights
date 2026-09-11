@@ -8,7 +8,7 @@
  *
  * Numbers with a MEASURED tag come from `IMPLEMENTATION_PLAN.md` §1 / `research/downscale.mjs`.
  * Numbers with a DESIGNED tag were chosen, not measured, and say so — see
- * `docs/plans/F04-ingest-extraction.md` §4.6.
+ * `docs/plans/archive/F04-ingest-extraction.md` §4.6.
  */
 
 /* ── The three screens ───────────────────────────────────────────────────────────────────── */
@@ -37,7 +37,7 @@ export const SCREEN_KIND_LABEL: Record<ScreenKind, string> = {
  * "the order the screens appear in the iOS Fitness app itself" — the same false premise F16 had
  * already recorded (`lib/extract/reassignKind.ts` §1): the app's own screen order is not the order
  * the OS photo picker hands files over in. Re-aliasing this to `SCREEN_KINDS` to tidy it up would
- * restore the defect. See docs/plans/F29-default-kind-order.md.
+ * restore the defect. See docs/plans/archive/F29-default-kind-order.md.
  *
  * `satisfies` rather than a `readonly ScreenKind[]` annotation, so the elements are checked against
  * `ScreenKind` while the tuple stays literal — a widened annotation would let a mistyped

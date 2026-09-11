@@ -14,7 +14,7 @@ import { RunDateLink } from '@/components/ui/RunDateLink'
  * What this catches: that the shell renders nothing while shut, that the band and the footer are
  * where the panel's layout says they are, and that `RunDateLink`'s two branches really are a link
  * and not-a-link. What it cannot catch — no jsdom, so no `showModal`, no Escape, no backdrop tap,
- * no back gesture — is listed in `docs/plans/F24-detail-panel-history.md` §5.
+ * no back gesture — is listed in `docs/plans/archive/F24-detail-panel-history.md` §5.
  */
 const ART = { src: '/badges/x.deadbeef.webp', twill: '#0a152c', width: 768, height: 576 }
 

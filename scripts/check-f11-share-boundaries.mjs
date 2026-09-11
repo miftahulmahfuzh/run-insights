@@ -1,4 +1,4 @@
-// F11's grep-able invariants, each with a real exit code. docs/plans/F11-sharing.md §3.4/§3.7/§10.
+// F11's grep-able invariants, each with a real exit code. docs/plans/archive/F11-sharing.md §3.4/§3.7/§10.
 //
 // `/s/[token]` is the only route in this application that answers to somebody with no account. Every
 // guarantee it makes is a NEGATIVE — a module it must not reach, a field it must not carry, a value
@@ -88,7 +88,7 @@ for (const path of shareRoute) {
     failures.push(
       `${path} is a NEW file under app/(public)/s/. The public route is meant to be exactly four files ` +
         '(page, layout, not-found, copy). A route handler here would also sit outside D7 fixed ' +
-        'list. If this is deliberate, reason about it in docs/plans/F11-sharing.md and add it to ' +
+        'list. If this is deliberate, reason about it in docs/plans/archive/F11-sharing.md and add it to ' +
         'EXPECTED in this script.',
     )
   }

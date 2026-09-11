@@ -17,7 +17,7 @@ import {
  * `node` environment with no jsdom, so a tap, a `popstate` and a back gesture cannot be simulated
  * here at all; what CAN be pinned down is that every string the URL might hold maps to exactly one
  * selection or to none. The gesture itself is verified by driving a real browser — see
- * `docs/plans/F24-detail-panel-history.md` §5.
+ * `docs/plans/archive/F24-detail-panel-history.md` §5.
  */
 describe('the panel parameter', () => {
   it('is one parameter for the whole page', () => {

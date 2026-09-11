@@ -6,7 +6,7 @@
     python3 tools/gen_badge_art.py metronome --note "the pendulum arm is leaning; stand it upright"
     python3 tools/gen_badge_art.py --dry-run --all
 
-Design record: docs/plans/F10-badge-art-skill.md §5.1 and §6; roadmap §4.6 (the
+Design record: docs/plans/archive/F10-badge-art-skill.md §5.1 and §6; roadmap §4.6 (the
 22 keys), §4.7 (the style), D12 (offline generation, committed, no runtime image
 calls).
 

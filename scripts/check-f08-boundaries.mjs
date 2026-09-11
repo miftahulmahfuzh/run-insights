@@ -54,7 +54,7 @@ for (const path of sources) {
   if (!RECHARTS_ALLOWED.test(path)) {
     failures.push(
       `${path} imports recharts. Only components/charts/*Inner.tsx may — see ` +
-        'docs/plans/F08-views-charts.md §7. Put the drawing in an Inner and lazy-import it.',
+        'docs/plans/archive/F08-views-charts.md §7. Put the drawing in an Inner and lazy-import it.',
     )
   }
 }
