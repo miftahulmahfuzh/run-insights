@@ -14,7 +14,7 @@ import { NinaJobElapsed } from './NinaJobElapsed'
 /**
  * **R1's image-generation detail page: "the exact prompt of image generation, how long the job has
  * been going on, what is the error status, etc." — plus the controls to what the job produced: the
- * bubble that asked, and the photograph itself.**
+ * earliest bubble carrying the photograph, and the photograph itself.**
  *
  * ── EVERY PROP IS SERIALIZABLE, AND BOTH FACTS ARRIVE ALREADY DECIDED ──────────────────────────
  * `planJobJump` and `planJobPhoto` ran on the server, against ownership-scoped reads. This
@@ -137,14 +137,15 @@ export function NinaJobDetail({
         )}
 
         {/*
-          The jump AND the photograph — R1 and R2, two independent facts on one row. `'ready'` is a
-          control; the other three jump kinds are a sentence, because a button that navigates
-          nowhere is the one thing R1's degradations must not become (see `planJobJump` — and note
-          the sentence is the COMMON case here, not the rare one: phase 6 measured fourteen image
-          jobs whose `args.replyToId` resolves to nothing). The photo control is drawn exactly when
-          the server proved the row (`planJobPhoto`), and no sentence stands in for it when it is
-          absent — an absent photograph is stated by the icon's absence, which is the honesty the
-          admin Remove case demands.
+          The jump AND the photograph — two independent facts on one row. `'ready'` is a control;
+          the other two jump kinds are a sentence, because a button that navigates nowhere is the
+          one thing this row's degradations must not become (see `planJobJump`). The target is the
+          earliest bubble carrying the photograph, so the measured fourteen jobs whose
+          `args.replyToId` dangles are exactly the rows this button GAINED a working target for —
+          the request can be gone while the photograph still sits in a live bubble. The photo
+          control is drawn exactly when the server proved the row (`planJobPhoto`), and no sentence
+          stands in for it when it is absent — an absent photograph is stated by the icon's
+          absence, which is the honesty the admin Remove case demands.
         */}
         <div className="mt-4 flex items-center gap-2">
           {jump.kind === 'ready' ? (
@@ -237,7 +238,7 @@ export function NinaJobDetail({
  * which is what the tap does: the job's photograph in the existing `/nina/about` viewer.
  */
 
-/** "Buka chat-nya" — the bubble that asked for this photograph. Lucide's `message-circle`, verbatim. */
+/** "Buka chat-nya" — the earliest bubble carrying this photograph. Lucide's `message-circle`, verbatim. */
 function MessageCircleIcon() {
   return (
     <svg

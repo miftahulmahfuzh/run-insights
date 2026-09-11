@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 34
+- Completed: 35
 
 ---
 
@@ -81,6 +81,23 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A037** Phase 1: Jump targets the earliest bubble carrying the photo
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the new earliest-bubble read `getNinaJobPhotoBubble` (lib/nina/queries.ts, appended after getNinaJobPhoto), planJobJump's new input shape (`bubble` replaces `replyToId`/`replySessionId`), the refusal vocabulary collapse (`no-message`+`gone` → one `no-photo` arm; `avatar` kept), the dead second read's removal from getNinaImageJobDetail (NinaImageJobDetail interface deleted), page wiring in app/nina/jobs/[id]/page.tsx, comment updates in components/nina/NinaJobDetail.tsx, and both test files (tests/nina.jobview.test.ts, tests/nina.photoRefs.test.ts). Does not touch: the landing side (?s=/?jump=, nextSoftNavJump, the flash), getNinaJobPhoto/planJobPhoto behavior, the composer attach path, /admin, the schema, the redo path (args.replyToId stays in job args). Exit criteria: a completed selfie job's button href names the earliest live bubble over (original ∪ references); args.replyToId no longer appears anywhere in the jump path; the union is ready | avatar | no-photo with a two-key note map; vitest + tsc --noEmit green.
+  - **Status**: completed
+  - **Plan Set**: `JOB_JUMP_PHOTO_BUBBLE_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — The Detail foto jump button targets the earliest chat bubble, across ALL chat sessions, whose message attached this job's image — Nina's bubble or the runner's own bubble alike.
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-RI-A037.md`
+  - **Completed**: 2026-09-11 12:13
+  - **Method**: /implement (plan set phase 1 of 1, worktree `job-jump-photo-bubble`)
+  - **Files**: lib/nina/queries.ts, lib/nina/jobview.ts, lib/nina/imagejobs.ts, app/nina/jobs/[id]/page.tsx, components/nina/NinaJobDetail.tsx, tests/nina.jobview.test.ts, tests/nina.photoRefs.test.ts
+  - **Verification**: `npx vitest run tests/nina.jobview.test.ts tests/nina.photoRefs.test.ts tests/nina.softDelete.test.ts` 80/80; full `npm test` 3896/3896 across 182 files; `npm run typecheck` (next typegen && tsc --noEmit) exit 0; prettier clean on all seven touched files. Exit-criterion greps verified by hand: `args.replyToId` appears nowhere in the executable jump path (`planJobJump` takes `bubble`); `replySessionId` survives only in the two mandated docstrings (see Drift).
+  - **Drift**: tests/nina.photoRefs.test.ts: the plan's expected SQL substring `"nina_message_images"."source_image_id" = $))` can never match — drizzle numbers its placeholders, so the real output is `= $4))`. Replaced with `toMatch(/"nina_message_images"\."source_image_id" = \$\d+\)\)/)` — same property pinned (the reference arm sits inside the bracketed OR group, so owner scope applies to both arms; both closing parens still required). A comment in the test explains the numbered-placeholder form.
+  - **Drift**: The plan's optional sanity check `grep -rn replySessionId app lib components returns nothing` is unsatisfiable by the plan's own code blocks: the mandated docstrings in lib/nina/jobview.ts:412 and lib/nina/imagejobs.ts:953 name the field in prose explaining why it was deleted. The executable jump path carries zero references, which is what the exit criterion actually states.
+  - **Drift**: Pre-existing, NOT this phase and deliberately left alone: lib/nina/queries.ts is prettier-dirty at lines 2254 and 2451 (two and(...) blocks) — verified dirty on the HEAD blob from inside the repo; outside this phase's hunks (the phase's queries.ts edits sit at ~4430/4454), which is also why no repo-wide `npm run format` was run at landing.
 
 - [x] **P1-RI-A036** Phase 4: "Image collection": rename + borderless grid
   - **Difficulty**: NORMAL

@@ -4427,8 +4427,9 @@ export interface NinaJobPhotoRow {
  * `nina_message_images_user_created_idx (user_id, created_at desc)`, the join is on
  * `nina_messages`' primary key, and one user's photographs number in the dozens — not the
  * thousands that would make an unindexed `turn_id` scan visible. One statement, on a page opened a
- * handful of times a day, behind a read (`getNinaImageJobDetail`) that already accepts a second
- * sequential round trip for exactly these economics.
+ * handful of times a day — and the page now adds exactly one sequential read beside it
+ * (`getNinaJobPhotoBubble`, the jump's target), which is the economics this paragraph already
+ * accepted.
  */
 export async function getNinaJobPhoto(
   userId: string,
@@ -4447,6 +4448,95 @@ export async function getNinaJobPhoto(
       ),
     )
     .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/**
+ * The facts the Detail foto jump needs to build its href: which conversation to open, which bubble
+ * in it to pinpoint. See `getNinaJobPhotoBubble` for why that is all it selects.
+ */
+export interface NinaJobPhotoBubbleRow {
+  /** The `nina_messages.session_id` the deep link opens — `ninaJumpHref`'s `?s=` leg. */
+  sessionId: string
+  /** The `nina_messages.id` the deep link pinpoints — `ninaJumpHref`'s `?jump=` leg. */
+  messageId: string
+}
+
+/**
+ * **The earliest bubble, across every session, that attached the given photograph — the Detail
+ * foto jump's target.**
+ *
+ * The photograph is `getNinaJobPhoto`'s row (the page resolves it for the icon and hands the id
+ * here), and the bubbles that can be showing it are exactly two kinds of row in
+ * `nina_message_images`: the ORIGINAL itself (`i.id = imageId` — Nina's carrier bubble, the
+ * message whose `turn_id` names the job) and every REFERENCE copied from it
+ * (`i.source_image_id = imageId` — the runner's own re-attach, written by `resolveAttachment`).
+ *
+ * ── WHY THE CANDIDATE SET IS EXACTLY TWO PREDICATES, AND NOT A RECURSION ─────────────────────
+ * `ninaPhotoProvenance` (`lib/nina/attach.ts`) flattens `source_image_id ?? row.id`, so a copy of
+ * a copy points at the ORIGINAL row — no reference names another reference, so there is no chain
+ * to walk. Two predicates are the whole set; a recursive CTE would be answering a question this
+ * schema cannot ask.
+ *
+ * ── WHY `isOriginalPhoto()` IS DELIBERATELY ABSENT, AND `kind` WITH IT ────────────────────────
+ * A reference IS a valid target — "it could be nina's bubble, or user's own bubble" is the
+ * requirement's own sentence, and the runner's re-attach is exactly such a reference row.
+ * Filtering references here would take back the case this read exists for. No `kind` arm either:
+ * the two id predicates already pin the photograph's bytes (the original arrived through
+ * `getNinaJobPhoto`'s `kind = 'generated'` read, and a re-attach inherits its keeper's kind —
+ * `resolveAttachment` in `lib/nina/actions.ts`), so the filter has no work to do here. Both
+ * absences are asserted in `tests/nina.photoRefs.test.ts`, so a "consistency" cleanup that adds
+ * either fails loudly instead of silently narrowing the target.
+ *
+ * ── WHY THE JOIN, AND WHY AN ORPHANED PHOTOGRAPH ANSWERS `null` ───────────────────────────────
+ * A bubble is a message: `message_id` is nullable (`ON DELETE SET NULL`), and the `innerJoin`
+ * skips a NULL by construction — a photograph whose conversation was removed has no bubble to
+ * jump to, and `null` is the honest answer (`getNinaJobPhoto`'s second null, now answered on THIS
+ * read). That join also implies `message_id IS NOT NULL`, so no such predicate is spelled.
+ *
+ * ── OWNER SCOPE ON BOTH TABLES ────────────────────────────────────────────────────────────────
+ * `nina_message_images.user_id` is this module's standing rule; `nina_messages.user_id` is spelled
+ * too, although the page has already owner-verified the job through `getNinaImageJobDetail`: a
+ * join's WHERE is where this module proves ownership, and an image id is a claim wherever it
+ * arrives from. The redundancy costs one predicate, not one round trip.
+ *
+ * ── WHY THIS ORDER ────────────────────────────────────────────────────────────────────────────
+ * `nina_messages.seq` is the schema's stated total order of the whole conversation — sessions
+ * slice it, `MessageList` renders in it — so "earliest across all sessions" is simply `seq ASC`,
+ * and no timestamp ever compares two writers' clocks. `nina_message_images.id ASC` is the
+ * tiebreak for the one shape that can produce equal seqs: two image rows on ONE carrier message.
+ * `LIMIT 1` under a total order is deterministic.
+ *
+ * ── WHY THE PARAMETER IS THE PHOTOGRAPH'S ID AND NOT THE JOB'S ─────────────────────────────────
+ * The page already resolved the photograph for the icon; a `jobId` input here would re-derive
+ * `getNinaJobPhoto`'s join to name the same row. The read takes the fact and answers the question
+ * it is actually asked — the same economics `getNinaJobPhoto`'s header states for its own
+ * projection.
+ *
+ * ── WHY THERE IS NO INDEX AND NO MIGRATION ────────────────────────────────────────────────────
+ * `source_image_id` is a residual predicate over a read that enters through
+ * `nina_message_images_user_created_idx (user_id, created_at desc)` and joins `nina_messages` on
+ * its primary key — the exact access path `getNinaJobPhoto` runs beside it on the same page load,
+ * and the one that table's own header argues is enough at one user's photograph count. No
+ * migration, no index (plan invariant 2); nothing has measured a need for either.
+ */
+export async function getNinaJobPhotoBubble(
+  userId: string,
+  imageId: string,
+): Promise<NinaJobPhotoBubbleRow | null> {
+  const rows = await db
+    .select({ sessionId: ninaMessages.sessionId, messageId: ninaMessages.id })
+    .from(ninaMessageImages)
+    .innerJoin(ninaMessages, eq(ninaMessages.id, ninaMessageImages.messageId))
+    .where(
+      and(
+        eq(ninaMessageImages.userId, userId),
+        eq(ninaMessages.userId, userId),
+        or(eq(ninaMessageImages.id, imageId), eq(ninaMessageImages.sourceImageId, imageId)),
+      ),
+    )
+    .orderBy(asc(ninaMessages.seq), asc(ninaMessageImages.id))
     .limit(1)
   return rows[0] ?? null
 }

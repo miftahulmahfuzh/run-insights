@@ -19,12 +19,7 @@ import {
 } from './imagerecipe'
 import { coerceNinaImageModel } from './imageprefs'
 import type { NinaJobRefusal } from './jobview'
-import {
-  countNinaTurnsSince,
-  getNinaMessagesByIds,
-  insertNinaMessages,
-  insertNinaTurn,
-} from './queries'
+import { countNinaTurnsSince, insertNinaMessages, insertNinaTurn } from './queries'
 import { resolveNinaSessionForMessage } from './sessionResolve'
 
 /**
@@ -861,20 +856,14 @@ export interface NinaImageJobRecord {
   seed: number | null
   attempts: number
   source: NinaImageJobArgs['source'] | null
-  /** The runner message that asked, per `NinaImageJobArgs`. `null` for every avatar job. */
-  replyToId: string | null
-}
-
-export interface NinaImageJobDetail extends NinaImageJobRecord {
   /**
-   * The session `replyToId` lives in — **resolved, not assumed.**
+   * The runner message that asked, per `NinaImageJobArgs`. `null` for every avatar job.
    *
-   * `null` means one of two things and they need the same answer: the message was deleted
-   * (`reply_to_id` is `ON DELETE SET NULL`, so the jsonb keeps pointing at nothing) or its session
-   * was removed and the cascade took it. `planJobJump` turns both into `{ kind: 'gone' }`, and its
-   * docstring records why they must not be split into two sentences.
+   * Read today by the redo path alone (`redoNinaImageJob` re-fires it as the new attempt's
+   * `args.replyToId`); the jump stopped consulting it — its target is now the earliest bubble
+   * carrying the photograph, resolved by `getNinaJobPhotoBubble` (see `planJobJump`).
    */
-  replySessionId: string | null
+  replyToId: string | null
 }
 
 const JOB_COLUMNS = {
@@ -959,21 +948,19 @@ export async function listNinaImageJobs(
  * `isValidId` first, on `/r/[id]`'s precedent — a segment that cannot be one of ours should 404
  * without a query.
  *
- * The second read resolves the triggering message. `getNinaMessagesByIds` is owner-scoped too, so
- * a `replyToId` belonging to another runner — or to a message that has since been deleted, or whose
- * session was removed — comes back empty and `replySessionId` stays `null`. That is deliberately
- * the SAME mechanism `resolveNinaSessionForMessage` uses to place an apology, so the two features
- * cannot disagree about which conversation a job belongs to.
- *
- * It is a second round trip rather than a join, for the reason `postNinaApologyMessage` gives about
- * the same lookup: it is one indexed read, on a page that is already one indexed read, opened at
- * most a handful of times a day. A hand-written join against a `jsonb` field would buy a
- * millisecond and cost the ownership scope being visible in one place.
+ * ── WHY THERE IS ONE READ AND NOT TWO ANY MORE ────────────────────────────────────────────────
+ * This function used to spend a second owner-scoped round trip (`getNinaMessagesByIds`) resolving
+ * `replySessionId` — the session of `args.replyToId`, the bubble that ASKED. The jump no longer
+ * targets the asking bubble: `planJobJump` takes the earliest bubble carrying the photograph,
+ * which the page resolves beside its photo read (`getNinaJobPhotoBubble`). With `args.replyToId`
+ * out of the jump path, the second read bought nothing and is gone — the return type is the
+ * record, and the `NinaImageJobDetail` name that only wrapped it goes with it. One indexed read,
+ * on a page opened a handful of times a day.
  */
 export async function getNinaImageJobDetail(
   userId: string,
   jobId: string,
-): Promise<NinaImageJobDetail | null> {
+): Promise<NinaImageJobRecord | null> {
   const [row] = await db
     .select(JOB_COLUMNS)
     .from(ninaTurns)
@@ -990,12 +977,7 @@ export async function getNinaImageJobDetail(
     )
 
   if (row == null) return null
-
-  const record = toJobRecord(row)
-  if (record.replyToId === null) return { ...record, replySessionId: null }
-
-  const [message] = await getNinaMessagesByIds(userId, [record.replyToId])
-  return { ...record, replySessionId: message?.sessionId ?? null }
+  return toJobRecord(row)
 }
 
 /**

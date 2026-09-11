@@ -22,7 +22,8 @@ import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
  *      that adds the filter to `getNinaMessageImagesForMessages` blanks a photograph in a live
  *      conversation, and this is the only thing that would notice. (The job-photo link set added a
  *      fifth render read, `getNinaJobPhoto` — the Detail foto row's link fact — asserted below on
- *      the same absence.)
+ *      the same absence, and this set added `getNinaJobPhotoBubble` — the jump's target, where a
+ *      reference row IS the answer — on it too.)
  *   3. Every INSERT names both columns, so an original binds NULL rather than omitting the column.
  *
  * The assertions match `"source_avatar_id" is null` rather than the fully-qualified spelling,
@@ -304,6 +305,70 @@ describe('getNinaJobPhoto — the job→photo join (this set)', () => {
      * caller's discipline, it is never selected. */
     expect(sql.startsWith('select "nina_message_images"."id" from')).toBe(true)
     expect(sql).not.toContain('description')
+  })
+})
+
+describe('getNinaJobPhotoBubble — the earliest bubble carrying the photograph (this set)', () => {
+  it('scopes BOTH tables, joins on the carrier message, and takes the original OR its references', async () => {
+    fake.enqueue([])
+    await expect(queries.getNinaJobPhotoBubble('u1', IMAGE)).resolves.toBeNull()
+
+    const { sql } = fake.only()
+    /* The same join `getNinaJobPhoto` walks. `message_id` is nullable (`ON DELETE SET NULL`), and
+     * the inner join is what makes "a bubble" true: an orphaned photograph has no bubble to jump
+     * to, which is also why no `IS NOT NULL` predicate is spelled. */
+    expect(sql).toContain(
+      'inner join "nina_messages" on "nina_messages"."id" = "nina_message_images"."message_id"',
+    )
+    const where = whereOf(sql)
+    /* Invariant 1, spelled on both sides — `getNinaJobPhoto`'s rule. */
+    expect(where).toContain('"nina_message_images"."user_id" = $')
+    expect(where).toContain('"nina_messages"."user_id" = $')
+    /* The candidate set is EXACTLY the original plus every reference pointing at it: drizzle
+     * parenthesizes the OR inside the AND, so the owner scope provably applies to BOTH arms —
+     * unbracketed, `a and b and c or d` would scope only the first. The second arm is matched
+     * with a numbered placeholder (`= $4` in this statement) followed by BOTH closing parens —
+     * the OR group's and the AND group's — so the arm provably sits inside the bracketed group.
+     * `ninaPhotoProvenance` flattens copies-of-copies to name the original, so two predicates
+     * are the whole set and there is no recursion to write. */
+    expect(where).toContain('("nina_message_images"."id" = $')
+    expect(where).toMatch(/"nina_message_images"\."source_image_id" = \$\d+\)\)/)
+    expect(fake.only().params).toContain(IMAGE)
+  })
+
+  it('earliest first, by the conversation order, one row, and nothing but the two link facts', async () => {
+    fake.enqueue([])
+    await queries.getNinaJobPhotoBubble('u1', IMAGE)
+
+    const { sql } = fake.only()
+    /* `seq` is the schema's stated total order of the whole conversation (sessions slice it) —
+     * the order `MessageList` renders in, so "earliest across all sessions" is `seq ASC`. The id
+     * tiebreak covers the one shape with equal seqs: two image rows on ONE carrier message. */
+    expect(sql).toContain('order by "nina_messages"."seq" asc, "nina_message_images"."id" asc')
+    expect(sql).toContain('limit $')
+    /* The jump needs exactly two facts — the session to open and the message to pinpoint — and
+     * the projection names those and nothing else. */
+    const projection = 'select "nina_messages"."session_id", "nina_messages"."id" from'
+    expect(sql.startsWith(projection)).toBe(true)
+  })
+
+  it('carries NO isOriginalPhoto predicate and NO kind arm — a reference IS a valid target', async () => {
+    /* ABSENCE on purpose, `getNinaJobPhoto`'s precedent. The runner's own re-attach of her photo
+     * is itself a reference row; filtering it here would take back the exact case this read
+     * exists for ("it could be nina's bubble, or user's own bubble"). Note `source_image_id` DOES
+     * appear — as the `= $` arm — so the absence is asserted against the `is null` spellings,
+     * which is what `isOriginalPhoto()` is made of. */
+    fake.enqueue([])
+    await queries.getNinaJobPhotoBubble('u1', IMAGE)
+
+    const where = whereOf(fake.only().sql)
+    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).not.toContain(predicate)
+    expect(where).not.toContain('"source_avatar_id"')
+    /* And no `kind` arm: the two id predicates already pin the photograph's bytes — the original
+     * arrived through `getNinaJobPhoto`'s `kind = 'generated'` read, and a re-attach inherits its
+     * keeper's kind (`resolveAttachment`) — so the filter has no work to do here, and a future
+     * "consistency" cleanup must not give it any. */
+    expect(where).not.toContain('"kind" =')
   })
 })
 
