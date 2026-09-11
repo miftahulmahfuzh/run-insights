@@ -424,10 +424,7 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
 
   it('§8: the model is a closed enum — every declared id in, everything else out', () => {
     for (const id of NINA_IMAGE_MODEL_IDS) {
-      expect(
-        ninaImagePrefsWriteSchema.safeParse(payload({ model: id })).success,
-        id,
-      ).toBe(true)
+      expect(ninaImagePrefsWriteSchema.safeParse(payload({ model: id })).success, id).toBe(true)
     }
     for (const forged of ['gpt-image-1', 'qwen/qwen-image-3-ultra', '', null, 42]) {
       expect(
@@ -451,8 +448,9 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
       return base + 'p'.repeat(n - base.length)
     }
     expect(
-      ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: validAt(NINA_PROMPT_TEMPLATE_MAX) }))
-        .success,
+      ninaImagePrefsWriteSchema.safeParse(
+        payload({ promptTemplate: validAt(NINA_PROMPT_TEMPLATE_MAX) }),
+      ).success,
     ).toBe(true)
     expect(
       ninaImagePrefsWriteSchema.safeParse(
@@ -474,7 +472,9 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
       /* The refusal is SPECIFIC — the action surfaces the validator's own sentence, which names
        * the offending placeholder, so the operator can fix it in one pass. */
       if (!verdict.success) {
-        const issue = verdict.error.issues.find((candidate) => candidate.path.includes('promptTemplate'))
+        const issue = verdict.error.issues.find((candidate) =>
+          candidate.path.includes('promptTemplate'),
+        )
         expect(issue?.message.length ?? 0, broken).toBeGreaterThan(0)
       }
     }

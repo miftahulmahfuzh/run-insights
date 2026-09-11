@@ -106,9 +106,9 @@ describe('memoryStore — the writes carry the admin label', () => {
   it('adminUpdateFact re-labels in the SAME statement: source admin, pointer NULL, user-scoped', async () => {
     fake.enqueue([{ id: FACT_ID }])
 
-    expect(await store.adminUpdateFact(USER, FACT_ID, { category: 'goal', text: 'rewritten' })).toBe(
-      true,
-    )
+    expect(
+      await store.adminUpdateFact(USER, FACT_ID, { category: 'goal', text: 'rewritten' }),
+    ).toBe(true)
 
     const update = fake.only()
     expect(update.sql).toContain('update "nina_memory_facts"')
@@ -352,7 +352,11 @@ describe('deleteMemoryRowAction — one control, three row kinds', () => {
 
   it('a missing fact and a missing slot each get their own sentence', async () => {
     fake.enqueue([])
-    const fact = await actions.deleteMemoryRowAction({ userId: USER, kind: 'fact', target: FACT_ID })
+    const fact = await actions.deleteMemoryRowAction({
+      userId: USER,
+      kind: 'fact',
+      target: FACT_ID,
+    })
     expect(fact).toEqual({ ok: false, error: 'That row is no longer in the ledger.' })
 
     fake.enqueue([])
@@ -367,7 +371,11 @@ describe('deleteMemoryRowAction — one control, three row kinds', () => {
   it('a slot delete removes the ROW — the closed vocabulary brings the key back blank', async () => {
     fake.enqueue([{ key: 'goals' }])
 
-    const result = await actions.deleteMemoryRowAction({ userId: USER, kind: 'slot', target: 'goals' })
+    const result = await actions.deleteMemoryRowAction({
+      userId: USER,
+      kind: 'slot',
+      target: 'goals',
+    })
 
     expect(result).toEqual({ ok: true })
     expect(fake.only().sql).toContain('delete from "nina_memory_slots"')

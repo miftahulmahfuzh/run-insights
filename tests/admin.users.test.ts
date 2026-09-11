@@ -45,10 +45,7 @@ function userRow(overrides: Record<string, unknown> = {}): unknown[] {
 
 describe('listAdminUsers', () => {
   it('merges slot and fact counts onto every account, and 0 where a user has none', async () => {
-    fake.enqueue([
-      userRow(),
-      userRow({ id: 'otherUser12345', name: null, email: 'a@gmail.com' }),
-    ])
+    fake.enqueue([userRow(), userRow({ id: 'otherUser12345', name: null, email: 'a@gmail.com' })])
     fake.enqueue([
       projectedRow(USER, 3), // { userId, n } — slots
     ])

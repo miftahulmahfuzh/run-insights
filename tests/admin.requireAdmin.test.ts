@@ -97,7 +97,10 @@ describe('getAdminIdentity — the branch flavour', () => {
     // The allowlist match is exact — `isAdminEmail` lowercases and trims, and this asserts the
     // guard inherited that rather than re-implementing a looser comparison.
     auth.mockResolvedValue(sessionOf('OPS@EXAMPLE.COM ', 'user123XYZ_-'))
-    expect(await mod.getAdminIdentity()).toEqual({ userId: 'user123XYZ_-', email: 'OPS@EXAMPLE.COM ' })
+    expect(await mod.getAdminIdentity()).toEqual({
+      userId: 'user123XYZ_-',
+      email: 'OPS@EXAMPLE.COM ',
+    })
 
     auth.mockResolvedValue(sessionOf(null, 'user123XYZ_-'))
     expect(await mod.getAdminIdentity()).toBeNull()

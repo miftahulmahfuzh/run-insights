@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { toTuningDraft } from '@/lib/admin/tuningModel'
+import type { NinaTuning } from '@/lib/nina/tuning'
 
 /**
  * **The two whole-row saves on `/admin/personality`, executing for the first time.**
@@ -44,31 +45,46 @@ vi.mock('@/lib/llm/textModel', async (importOriginal) => ({
 
 type Tuning = typeof import('@/lib/admin/tuningActions')
 type Text = typeof import('@/lib/admin/textModelActions')
+type TuningInput = Parameters<Tuning['saveNinaTuningAction']>[0]
 let tuning: Tuning
 let text: Text
 
 const TRAIT_KEYS = [
-  'anger', 'chill', 'sad', 'flirty', 'steamy', 'wise', 'annoying', 'funny', 'happy', 'anxious',
-  'concerned', 'horny',
+  'anger',
+  'chill',
+  'sad',
+  'flirty',
+  'steamy',
+  'wise',
+  'annoying',
+  'funny',
+  'happy',
+  'anxious',
+  'concerned',
+  'horny',
 ] as const
 const DIAL_KEYS = ['profanity', 'clinginess', 'photoEagerness', 'verbosity'] as const
-const TUNING_KEYS = [
-  'relationship', ...TRAIT_KEYS, ...DIAL_KEYS,
-] as const
+const TUNING_KEYS = ['relationship', ...TRAIT_KEYS, ...DIAL_KEYS] as const
 
 /** The stored `NinaTuning` the write hands back, already coerced below this action. */
 const STORED_TUNING = {
-  traits: Object.fromEntries(TRAIT_KEYS.map((key) => [key, key === 'flirty' ? 80 : 20])),
-  dials: Object.fromEntries(DIAL_KEYS.map((key) => [key, key === 'profanity' ? 70 : 30])),
-  enabled: Object.fromEntries(TUNING_KEYS.map((key) => [key, key !== 'horny'])),
+  traits: Object.fromEntries(
+    TRAIT_KEYS.map((key) => [key, key === 'flirty' ? 80 : 20]),
+  ) as NinaTuning['traits'],
+  dials: Object.fromEntries(
+    DIAL_KEYS.map((key) => [key, key === 'profanity' ? 70 : 30]),
+  ) as NinaTuning['dials'],
+  enabled: Object.fromEntries(
+    TUNING_KEYS.map((key) => [key, key !== 'horny']),
+  ) as NinaTuning['enabled'],
   relationship: 'girlfriend' as const,
   // `coerceNinaTuning` lives in the real write below this action — so the STORED fixture carries
   // the coerced notes, while the INPUT below sends the raw keystrokes. The result must carry
   // this, not the input.
   notes: 'collapse these',
-}
+} satisfies NinaTuning
 
-function tuningInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function tuningInput(overrides: Partial<TuningInput> = {}): TuningInput {
   return {
     userId: USER,
     traits: Object.fromEntries(TRAIT_KEYS.map((key) => [key, 50])),
@@ -111,12 +127,20 @@ describe('saveNinaTuningAction', () => {
     expect(writeNinaTuning).toHaveBeenCalledTimes(1)
     const [writeUser, write] = writeNinaTuning.mock.calls[0] as [string, Record<string, unknown>]
     expect(writeUser).toBe(USER)
-    expect(Object.keys(write).sort()).toEqual(['dials', 'enabled', 'notes', 'relationship', 'traits'])
+    expect(Object.keys(write).sort()).toEqual([
+      'dials',
+      'enabled',
+      'notes',
+      'relationship',
+      'traits',
+    ])
   })
 
   it('a forged trait or dial key saves NOTHING, not fifteen keys and a success', async () => {
     const result = await tuning.saveNinaTuningAction(
-      tuningInput({ traits: { ...Object.fromEntries(TRAIT_KEYS.map((key) => [key, 50])), flirtyy: 90 } }),
+      tuningInput({
+        traits: { ...Object.fromEntries(TRAIT_KEYS.map((key) => [key, 50])), flirtyy: 90 },
+      }),
     )
 
     expect(result).toEqual({

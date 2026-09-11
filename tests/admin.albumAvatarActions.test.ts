@@ -135,10 +135,9 @@ describe('describeNinaAvatarAction', () => {
     // self witness — `describeSubjectForSide('hers')` — and never the runner default this action
     // originally shipped with.
     expect(describeNinaImages).toHaveBeenCalledTimes(1)
-    expect(describeNinaImages).toHaveBeenCalledWith(
-      [{ blobUrl: BLOB_URL, pathname: PATHNAME }],
-      { subject: 'self' },
-    )
+    expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
+      subject: 'self',
+    })
     const update = fake.last()
     expect(update.sql).toContain('update "nina_avatars"')
     expect(update.sql).toContain('"description"')
@@ -239,10 +238,9 @@ describe('setCurrentNinaAvatarAction', () => {
     await afterCallbacks[0]?.()
 
     expect(describeNinaImages).toHaveBeenCalledTimes(1)
-    expect(describeNinaImages).toHaveBeenCalledWith(
-      [{ blobUrl: BLOB_URL, pathname: PATHNAME }],
-      { subject: 'self' },
-    )
+    expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
+      subject: 'self',
+    })
     expect(fake.last().sql).toContain('update "nina_avatars"')
     expect(fake.last().params).toEqual(['fresh prose', USER, ID])
   })
@@ -324,10 +322,9 @@ describe('ensureNinaAvatarDescriptionAction', () => {
 
     expect(result).toEqual({ ok: true, description: 'fresh prose' })
     expect(describeNinaImages).toHaveBeenCalledTimes(1)
-    expect(describeNinaImages).toHaveBeenCalledWith(
-      [{ blobUrl: BLOB_URL, pathname: PATHNAME }],
-      { subject: 'self' },
-    )
+    expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
+      subject: 'self',
+    })
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
   })
 
@@ -479,10 +476,9 @@ describe('registerNinaAvatarsAction', () => {
     fake.enqueue([avatarRow({ description: null })]) // the callback's own re-read
     fake.enqueue([{ id: ID }])
     await afterCallbacks[0]?.()
-    expect(describeNinaImages).toHaveBeenCalledWith(
-      [{ blobUrl: BLOB_URL, pathname: PATHNAME }],
-      { subject: 'self' },
-    )
+    expect(describeNinaImages).toHaveBeenCalledWith([{ blobUrl: BLOB_URL, pathname: PATHNAME }], {
+      subject: 'self',
+    })
   })
 
   it('re-sent batches write nothing and skip everything — the constraint is the idempotence', async () => {

@@ -59,6 +59,7 @@ vi.mock('@/lib/nina/imagetest', async (importOriginal) => ({
 }))
 
 type Actions = typeof import('@/lib/admin/imageGenActions')
+type PrefsInput = Parameters<Actions['saveNinaImagePrefsAction']>[0]
 let actions: Actions
 
 /** The stored row shape `NinaImagePrefs` and `toImageGenDraft` agree on. */
@@ -75,7 +76,7 @@ const STORED_PREFS = {
 }
 
 /** A complete, valid payload — what the panel sends on every commit. */
-function prefsInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function prefsInput(overrides: Partial<PrefsInput> = {}): PrefsInput {
   return {
     userId: USER,
     promptLength: 50,
@@ -126,7 +127,10 @@ describe('saveNinaImagePrefsAction', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/admin/image-generation')
     // The adaptation seam: exactly the nine fields, picked explicitly — `userId` cannot ride.
     expect(writeNinaImagePrefs).toHaveBeenCalledTimes(1)
-    const [writeUser, write] = writeNinaImagePrefs.mock.calls[0] as [string, Record<string, unknown>]
+    const [writeUser, write] = writeNinaImagePrefs.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ]
     expect(writeUser).toBe(USER)
     expect(Object.keys(write).sort()).toEqual([
       'focus',
@@ -265,9 +269,7 @@ describe('readNinaImageTestAction — the poll', () => {
 
   it('resolves the anchor through the owner-scoped resolver, null for none and for deleted', async () => {
     resolveNinaPhotoReference.mockResolvedValue({ blobUrl: 'https://store/x.jpg' })
-    expect((await actions.readNinaImageTestAction(null)).referenceUrl).toBe(
-      'https://store/x.jpg',
-    )
+    expect((await actions.readNinaImageTestAction(null)).referenceUrl).toBe('https://store/x.jpg')
     expect(resolveNinaPhotoReference).toHaveBeenCalledWith(USER, STORED_PREFS.reference)
 
     resolveNinaPhotoReference.mockResolvedValue(null)

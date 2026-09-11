@@ -698,19 +698,16 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
     const result = await actions.addChatPhotoAction({ ...goodBlob, contentHash: HASH })
 
     expect(result).toEqual({ ok: true, id: IMAGE_ID })
-    expect(insertNinaMessageImages).toHaveBeenCalledWith(
-      USER,
-      [
-        expect.objectContaining({
-          blobUrl: KEEPER.blobUrl,
-          pathname: KEEPER.pathname,
-          sourceImageId: KEEPER.id,
-          sourceAvatarId: null,
-          contentHash: HASH,
-          description: KEEPER.description,
-        }),
-      ],
-    )
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({
+        blobUrl: KEEPER.blobUrl,
+        pathname: KEEPER.pathname,
+        sourceImageId: KEEPER.id,
+        sourceAvatarId: null,
+        contentHash: HASH,
+        description: KEEPER.description,
+      }),
+    ])
   })
 
   it('releases the fresh loser bytes after the reference row is in (row first, blob second)', async () => {
@@ -748,10 +745,9 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
 
     expect(result).toEqual({ ok: true, id: IMAGE_ID })
     expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
-    expect(insertNinaMessageImages).toHaveBeenCalledWith(
-      USER,
-      [expect.objectContaining({ pathname: keeperUploadPathname, sourceImageId: KEEPER.id })],
-    )
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({ pathname: keeperUploadPathname, sourceImageId: KEEPER.id }),
+    ])
   })
 
   it('a pinned row that vanished between pre-check and action is a refusal, not a dead row', async () => {
@@ -780,10 +776,9 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
       duplicateOfId: KEEPER.id,
     })
 
-    expect(insertNinaMessageImages).toHaveBeenCalledWith(
-      USER,
-      [expect.objectContaining({ sourceImageId: 'origin12XYZ_' })],
-    )
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({ sourceImageId: 'origin12XYZ_' }),
+    ])
   })
 
   it('a malformed hash claim is a NULL and a normal add, never an error (invariant 9)', async () => {
@@ -791,10 +786,9 @@ describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
 
     expect(result).toEqual({ ok: true, id: IMAGE_ID })
     expect(findNinaImageByContentHash).not.toHaveBeenCalled()
-    expect(insertNinaMessageImages).toHaveBeenCalledWith(
-      USER,
-      [expect.objectContaining({ contentHash: null, sourceImageId: null })],
-    )
+    expect(insertNinaMessageImages).toHaveBeenCalledWith(USER, [
+      expect.objectContaining({ contentHash: null, sourceImageId: null }),
+    ])
   })
 })
 
@@ -929,12 +923,31 @@ describe('editChatPhotoDescriptionAction', () => {
  *      upload the runner prompt — and overwrites, because the panel's textarea is the correction.
  * ═════════════════════════════════════════════════════════════════════════════════════════ */
 
-const queriesMock = vi.mocked(await import('@/lib/nina/queries'))
-const { releaseBlobIfUnreferenced } = vi.mocked(await import('@/lib/nina/blobRelease'))
-const deleteNinaMessage = vi.mocked(queriesMock.deleteNinaMessage)
-const deleteNinaMessageImage = vi.mocked(queriesMock.deleteNinaMessageImage)
-const getNinaMessagesByIds = vi.mocked(queriesMock.getNinaMessagesByIds)
-const getNinaMessageImagesForMessages = vi.mocked(queriesMock.getNinaMessageImagesForMessages)
+/**
+ * Loose vi.fn handles, retrieved from the mock module: the fixture rows below are PARTIAL (the
+ * actions read three fields, and `isNinaPhotoCarrierMessage` needs role/body only), and typing
+ * these as the full `NinaMessageRow`/`NinaImageRow` would force fixtures of eleven columns to
+ * assertions that never read them.
+ */
+const queriesMock = (await import('@/lib/nina/queries')) as unknown as Record<
+  string,
+  ReturnType<typeof vi.fn>
+>
+const { releaseBlobIfUnreferenced } = (await import('@/lib/nina/blobRelease')) as unknown as {
+  releaseBlobIfUnreferenced: ReturnType<typeof vi.fn>
+}
+
+/** The mock factory's vi.fn by name — a missing name is a suite bug, and fails loudly here. */
+function handle(name: string): ReturnType<typeof vi.fn> {
+  const fn = queriesMock[name]
+  if (fn == null) throw new Error(`the queries mock factory has no ${name}`)
+  return fn
+}
+
+const deleteNinaMessage = handle('deleteNinaMessage')
+const deleteNinaMessageImage = handle('deleteNinaMessageImage')
+const getNinaMessagesByIds = handle('getNinaMessagesByIds')
+const getNinaMessageImagesForMessages = handle('getNinaMessageImagesForMessages')
 
 const HASH = 'a'.repeat(64)
 const SOURCE_HASH = 'b'.repeat(64)
@@ -943,7 +956,7 @@ beforeEach(() => {
   // The caption suite's shared beforeEach leaves `setNinaMessageImageDescription` resolving
   // `undefined` (its callback never reads the answer); these actions DO, so they need the row.
   setNinaMessageImageDescription.mockResolvedValue({ id: IMAGE_ID })
-  releaseBlobIfUnreferenced.mockResolvedValue('released')
+  releaseBlobIfUnreferenced.mockResolvedValue('deleted')
   deleteNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
   deleteNinaMessageImage.mockResolvedValue({ id: IMAGE_ID })
   getNinaMessagesByIds.mockResolvedValue([
@@ -990,14 +1003,20 @@ describe('findChatPhotoDuplicateAction — the pre-PUT diff key', () => {
 
 describe('removeChatPhotoAction — the one destructive action on this surface', () => {
   it('removes one of several siblings: the image row, and the blob if nothing points at it', async () => {
-    getNinaMessageImagesForMessages.mockResolvedValue([{ ...imageRow }, { ...imageRow, id: 'otherImg1234' }])
+    getNinaMessageImagesForMessages.mockResolvedValue([
+      { ...imageRow },
+      { ...imageRow, id: 'otherImg1234' },
+    ])
 
     const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
 
     expect(result).toEqual({ ok: true, id: IMAGE_ID })
     expect(deleteNinaMessageImage).toHaveBeenCalledWith(USER, IMAGE_ID)
     expect(deleteNinaMessage).not.toHaveBeenCalled() // her message keeps its other photograph
-    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(USER, expect.objectContaining({ id: IMAGE_ID }))
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ id: IMAGE_ID }),
+    )
     expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
   })
 
@@ -1014,7 +1033,9 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
   })
 
   it('the last image on a RUNNER message never takes his words with it', async () => {
-    getNinaMessagesByIds.mockResolvedValue([{ id: MESSAGE_ID, role: 'runner', body: 'nih fotonya' }])
+    getNinaMessagesByIds.mockResolvedValue([
+      { id: MESSAGE_ID, role: 'runner', body: 'nih fotonya' },
+    ])
 
     const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
 
@@ -1047,7 +1068,11 @@ describe('removeChatPhotoAction — the one destructive action on this surface',
   })
 
   it('a REFERENCE row is refused above the carrier load — even an orphaned one', async () => {
-    getNinaMessageImage.mockResolvedValue({ ...imageRow, messageId: null, sourceAvatarId: 'avaOrigin12' })
+    getNinaMessageImage.mockResolvedValue({
+      ...imageRow,
+      messageId: null,
+      sourceAvatarId: 'avaOrigin12',
+    })
 
     const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
 
