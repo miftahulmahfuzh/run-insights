@@ -9,17 +9,30 @@ import { addChatPhotoAction } from '@/lib/admin/chatPhotoActions'
 import { uploadChatPhoto } from './chatPhotoUpload'
 
 /**
- * *"or add a new photo (so it is like nina generated them, but actually it is manually added by
- * user)"*. One control, at the collection level, because the thing being added does not belong to
- * any photograph already there.
+ * The Media view's "Add photos" — *"add a new photo (so it is like nina generated them, but
+ * actually it is manually added by user)"*. Migrated from the purged `/admin/photos` surface's
+ * `ChatPhotoAdd`, unchanged in behavior: browser JPEG encode -> `findChatPhotoDuplicateAction`
+ * pre-check -> PUT through `/api/admin/nina/upload` -> `addChatPhotoAction`.
+ *
+ * ── WHAT THE ACTION WRITES, CARRIED FORWARD FROM `chatPhotoModel.ts` ────────────────────────
+ * Every row this flow creates hangs off a carrier message `addChatPhotoAction` mints
+ * (`photoOnly: true`), because "add a photo" is still "add a message with a photo on it" — a NULL
+ * `message_id` is the residue of a DELETE, never something a writer asks for, and a photograph the
+ * operator adds on purpose has never been in a conversation. The ORPHAN is therefore still a
+ * first-class member of the Media folder — every photograph whose conversation was deleted sits
+ * here with `messageId: null`, listed and verbable like any other row — but this button never
+ * makes one.
+ *
+ * ── `userId` COMES FROM THE SERVER PROP ─────────────────────────────────────────────────────
+ * Threaded `app/admin/nina/page.tsx` -> `FileExplorer` -> here. It builds
+ * `adminChatPhotoPathname(userId, id)`, and a user id that reaches a Blob pathname comes from
+ * `requireAdmin()`, never from a client-side session read.
  *
  * ── SEQUENTIAL, NOT `Promise.all` ───────────────────────────────────────────────────────────
  * Next 16's Server Actions guide: *"Next.js dispatches Server Actions one at a time per client… do
  * not rely on `Promise.all` to parallelize Server Actions from the client."* So a multi-file pick is
- * a `for` loop, and the loop is honest about it — the counter below is what the operator watches.
- * The uploads are serialized with it, which is fine at this scale: this is "drop the three photos
- * you actually want in her chat", not `/admin/nina`'s three hundred, and that is exactly why this
- * file has no lanes, no queue model and no register-in-chunks machinery.
+ * a `for` loop, and the loop is honest about it — the `loading` dots are the whole progress display
+ * and the per-file failures below are named in full.
  *
  * A per-file failure is not a batch failure: the loop records the message and continues, so one bad
  * frame does not lose the rest. Same rule as `useFolderUpload`'s lanes, one order of magnitude
@@ -27,7 +40,7 @@ import { uploadChatPhoto } from './chatPhotoUpload'
  *
  * No confirmation, here either — picking files IS the gesture.
  */
-export function ChatPhotoAdd({ userId }: { userId: string }) {
+export function MediaAdd({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<readonly string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
@@ -58,23 +71,21 @@ export function ChatPhotoAdd({ userId }: { userId: string }) {
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">
       {/*
-       * R1: icon, no text. The words moved into `aria-label`/`title`, and the sequential loop's
-       * honest counter ("Adding 1/3…") went with them — the button's `loading` dots are the whole
-       * progress display now, and the per-file failures below are still named in full. The label
-       * words survive in the tooltip; they just stopped being layout.
+       * Icon, no text — the words live in `aria-label`/`title`, the same rule the album toolbar's
+       * icon-only buttons state (`AdminNavLinks.tsx`). The counter text is gone with the old
+       * surface; the dots and the failure list carry it.
        */}
       <Button
         type="button"
         size="md"
         variant="secondary"
-        aria-label="Add a photo"
-        title="Add a photo"
-        className="w-11 px-0"
+        aria-label="Add photos"
+        title="Add photos"
         loading={busy}
         disabled={busy}
         onClick={() => fileRef.current?.click()}
       >
-        <PlusIcon className="size-4" />
+        <PlusIcon className="size-5" />
       </Button>
 
       <input

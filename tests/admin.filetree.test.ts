@@ -20,6 +20,7 @@ import {
   isFolderAncestorOf,
   isInFolderTree,
   joinFolderPath,
+  mediaViewNode,
   normaliseFolderPath,
   NINA_FILENAME_MAX_CHARS,
   NINA_FOLDER_MAX_DEPTH,
@@ -27,9 +28,13 @@ import {
   NINA_FOLDER_MAX_SEGMENT_CHARS,
   NINA_FOLDER_ROOT,
   NINA_FOLDER_ROOT_LABEL,
+  NINA_MEDIA_NODE_LABEL,
+  NINA_MEDIA_VIEW_PARAM,
+  NINA_MEDIA_VIEW_VALUE,
   NINA_SOURCE_KEY_MAX_CHARS,
   NINA_SOURCE_KEY_VERSION,
   planFolderUpload,
+  readExplorerView,
   sanitiseFolderSegment,
   sourceKeyFor,
   splitFolderPath,
@@ -773,5 +778,57 @@ describe('findFolderNode', () => {
 
   it('returns null for a folder that is not in the tree', () => {
     expect(findFolderNode(root, 'Faces/2028')).toBeNull()
+  })
+})
+
+/* ── The Media view ───────────────────────────────────────────────────────────────────────── */
+
+describe('readExplorerView', () => {
+  it('reads ?view=media and falls back to the album for everything else', () => {
+    expect(readExplorerView(NINA_MEDIA_VIEW_VALUE)).toBe('media')
+    for (const notMedia of [undefined, '', 'Media', 'media ', 'album', 'albums', 'chat']) {
+      // Strict value match, and the fallback is the album — the bare URL's meaning since forever.
+      // A view that degraded to an error would turn one stale link into a broken screen.
+      expect(readExplorerView(notMedia)).toBe('album')
+    }
+  })
+
+  it('takes the first of a repeated parameter, the readOne idiom the page uses', () => {
+    expect(readExplorerView(['media', 'album'])).toBe('media')
+    expect(readExplorerView(['album', 'media'])).toBe('album')
+    expect(readExplorerView([])).toBe('album')
+  })
+
+  it('binds the writer to the reader: the constant is what the parser matches', () => {
+    // `hrefForMediaView` (FileExplorer) writes this pair and this parser reads it; if they drift,
+    // the tree row navigates to a URL the page reads as the album. One assertion, both ends.
+    expect(NINA_MEDIA_VIEW_PARAM).toBe('view')
+    expect(readExplorerView(NINA_MEDIA_VIEW_VALUE)).toBe('media')
+  })
+})
+
+describe('mediaViewNode', () => {
+  it('pins the label and clamps the count the way buildTree clamps an entry', () => {
+    expect(mediaViewNode(0)).toEqual({ view: 'media', name: NINA_MEDIA_NODE_LABEL, count: 0 })
+    expect(mediaViewNode(137)?.count).toBe(137)
+    expect(mediaViewNode(Number.NaN)?.count).toBe(0)
+    expect(mediaViewNode(-5)?.count).toBe(0)
+    expect(mediaViewNode(3.9)?.count).toBe(3)
+  })
+
+  it('is NOT a FolderNode: no path, no children, no depth', () => {
+    const node = mediaViewNode(4)
+    expect('path' in node).toBe(false)
+    expect('children' in node).toBe(false)
+    expect('depth' in node).toBe(false)
+    // The structural reason the view cannot leak into the folder world: findFolderNode,
+    // isFolderAncestorOf and FolderMenu all consume a `path`, and this node has none to give.
+  })
+
+  it('leaves the folder grammar unreserved: "Media" stays a legal folder path', () => {
+    // The view is distinguished by KEY (?view= vs ?folder=), never by a reserved path value — so
+    // an operator who genuinely wants a folder called "Media" can still create one, and nothing
+    // in validateFolderPath needed an exception to allow it.
+    expect(validateFolderPath(NINA_MEDIA_NODE_LABEL)).toMatchObject({ ok: true })
   })
 })

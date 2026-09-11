@@ -6,11 +6,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { PhotoMoveBar } from '@/components/admin/PhotoMoveBar'
 import { Button } from '@/components/ui'
-import { folderBreadcrumbs } from '@/lib/admin/filetree'
+import {
+  folderBreadcrumbs,
+  NINA_MEDIA_NODE_LABEL,
+  NINA_MEDIA_VIEW_PARAM,
+  NINA_MEDIA_VIEW_VALUE,
+  type ExplorerView,
+} from '@/lib/admin/filetree'
 import { cn } from '@/lib/cn'
 
 import { entriesFromDrop, filesFromDropList, filesFromPicker } from './explorer/dropWalk'
 import { FolderTree } from './explorer/FolderTree'
+import { MediaAdd } from './explorer/MediaAdd'
 import { PhotoGrid } from './explorer/PhotoGrid'
 import { SelectionPane } from './explorer/SelectionPane'
 import { UploadQueue } from './explorer/UploadQueue'
@@ -31,6 +38,15 @@ export type { ExplorerFolder, ExplorerPageInfo, ExplorerPhoto } from './explorer
  * `?folder=` and `?page=` are in the URL because they decide **which rows exist**: the page has to
  * re-run `listNinaAvatarsInFolder` for them, so a folder click is a real `<Link>` navigation and a
  * folder is deep-linkable and back-button-able, which a file manager owes its user.
+ *
+ * ── THE MEDIA VIEW IS THE SAME CHROME OVER A DIFFERENT TABLE ─────────────────────────────────
+ * `?view=media` swaps the content pane to the conversation's photographs (`nina_message_images`,
+ * both kinds) while the tree, the breadcrumb and the layout stay put — a pinned sibling in the
+ * tree, not a route. That is why `view` arrives as a PROP and not as a `useSearchParams` read: the
+ * page already awaited the parameter, and a second parse would be a second opinion about the URL.
+ * On this view the album's verbs stand down — the drop handlers are not attached, the queue and
+ * the move bar are album-only — and the toolbar's Add is the conversation-collection upload
+ * (`MediaAdd`), because the verbs a conversation photograph has are not the album's folder verbs.
  *
  * The **selected photo is `useState`**, deliberately, and for precisely the reason
  * `components/ui/usePanelParam.ts` gives for `/me`'s panel: putting it in the URL would re-run a
@@ -73,6 +89,8 @@ export function FileExplorer({
   folders,
   photos,
   page,
+  view,
+  mediaCount,
   shareOrigin,
 }: {
   userId: string
@@ -80,7 +98,19 @@ export function FileExplorer({
   photos: readonly ExplorerPhoto[]
   page: ExplorerPageInfo
   /**
-   * Phase 7 / R2. Where a "Share link to Nina" link points — `shareOrigin()`'s answer, resolved in
+   * Which collection the URL has open — the tree's active row, the pager's target and the
+   * toolbar's copy all follow it. `app/admin/nina/page.tsx` reads `?view=` and hands it down; this
+   * component never parses the parameter itself, for the same reason it never parses `?folder=`.
+   */
+  view: ExplorerView
+  /**
+   * How many original conversation photographs exist in total. The tree pane's Media badge shows
+   * it on BOTH views, so the album view pays one aggregate for a number its grid never uses — the
+   * badge is the rail's whole point, and a badge without a count is decoration.
+   */
+  mediaCount: number
+  /**
+   * Phase 7 / R2. Where a "Share link to Nina" link points — `shareOrigin()`'s output, resolved in
    * `app/admin/nina/page.tsx` because `lib/share/origin.ts` is `server-only` and invariant 9
    * forbids a build-time public environment variable for it. Threaded through, UNREAD, to
    * `SelectionPane`; nothing in the explorer itself may substitute `window.location.origin` for it.
@@ -112,6 +142,12 @@ export function FileExplorer({
    */
   const [treeOpen, setTreeOpen] = useState(false)
 
+  /** One sentence about the last media removal that kept a shared blob. Held HERE — the pane
+   * unmounts under it — and rendered under the toolbar until the next removal replaces it. */
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const isMediaView = view === 'media'
+
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -129,12 +165,26 @@ export function FileExplorer({
     router.refresh()
   }, [router])
 
+  /*
+   * The upload hook stays MOUNTED on both views (it is a hook; it cannot be conditional) but the
+   * media view never starts it: the album Add buttons are hidden there, the drop handlers are not
+   * attached, and the media view's own Add (`MediaAdd`) is a different flow that never touches
+   * this hook — so `upload` is idle chrome in media view.
+   */
   const upload = useFolderUpload({ userId, destination: folder, onFinished })
 
   const selected = photos.find((photo) => photo.id === selectedId) ?? null
 
   const hrefFor = useCallback((next: string) => hrefForFolder(next, 1), [])
-  const hrefForPage = useCallback((next: number) => hrefForFolder(folder, next), [folder])
+  /* The pager follows the view: a media page 2 must link to `?view=media&page=2`, not silently
+     drop the operator back into the album. */
+  const hrefForPage = useCallback(
+    (next: number) => (view === 'media' ? hrefForMediaView(next) : hrefForFolder(folder, next)),
+    [view, folder],
+  )
+  /* The tree's Media row always targets page 1 — the same rule the folder rows follow. Built by
+     the same grammar family below, so the URL keeps exactly one home even with two arms. */
+  const mediaHref = hrefForMediaView(1)
 
   /**
    * PHASE 6. Folders the operator created in this session, held until a server read names them.
@@ -166,14 +216,16 @@ export function FileExplorer({
   }, [folders, pendingFolders])
 
   /* `hrefFor` builds a URL; a folder operation decides where to go only once the server has
-   * answered, so it needs a navigator rather than a link. */
+   * answered, so it needs a navigator rather than a link. A folder operation fired while Media is
+   * open lands on the folder's ALBUM view — the only place its rows can be drawn. */
   const navigateToFolder = useCallback(
     (next: string) => router.push(hrefFor(next)),
     [router, hrefFor],
   )
 
   /* Selecting IS opening the pane — there is no separate details toggle: the pane mounts for the
-   * selection, and its × hands the selection back (see the render at the bottom of the file). */
+   * selection, and its × hands the selection back (see the render at the bottom of the file). On
+   * the media arm the pane is `MediaPane` (SelectionPane dispatches on `isMediaRow`). */
   function select(id: string) {
     setSelectedId(id)
   }
@@ -187,6 +239,10 @@ export function FileExplorer({
 
   function onDragEnter(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault()
+    /* Media is a read view in this phase: the drag is absorbed (preventDefault here and in
+       onDragOver is what stops the browser navigating away to open the dropped file) but no overlay
+       is drawn and no upload starts. Phase 2 migrates the Add flow into this view. */
+    if (view === 'media') return
     dragDepth.current += 1
     setDragging(true)
   }
@@ -208,6 +264,11 @@ export function FileExplorer({
     dragDepth.current = 0
     setDragging(false)
 
+    /* Phase 2 owns the media Add flow (carrier-message upload with a dedupe pre-check). Until it
+       lands, a drop into Media must not start the FOLDER upload — which would write album rows
+       this grid will never show, i.e. bytes the operator cannot see leaving. */
+    if (view === 'media') return
+
     /*
      * SYNCHRONOUS, BEFORE ANYTHING AWAITS. `dropWalk.ts`'s header has the full argument: a
      * `DataTransferItemList` is only valid during its own event's dispatch, so an `async` handler
@@ -223,9 +284,23 @@ export function FileExplorer({
     if (flat.length > 0) upload.start(flat)
   }
 
+  /* The album is a drop target; the Media view is not — its upload path is the picker + the
+   * browser encode (`MediaAdd`), and a folder walk has nothing to walk onto. */
+  const dropHandlers = isMediaView
+    ? {}
+    : {
+        onDragEnter,
+        onDragOver,
+        onDragLeave,
+        onDrop,
+      }
+
   /* Phase 2's `folderBreadcrumbs`: `{ path, name, depth, isCurrent }` per crumb, root first and
    * always present, and `isCurrent` is carried so the last crumb renders as text without this
-   * component recomputing which one it is. */
+   * component recomputing which one it is. On the media arm `page.folder` is `''`, so the trail is
+   * exactly the Album crumb — and the Media crumb is appended in the JSX below rather than faked
+   * into a `FolderCrumb`, because a fake path in the type would be a lie the breadcrumb then had
+   * to special-case. */
   const trail = folderBreadcrumbs(folder)
 
   return (
@@ -252,7 +327,8 @@ export function FileExplorer({
                   /* A crumb is the primary way back up the tree on a phone, so it is a tap target
                      and not a 16 px word. `py-*` and not `TOUCH_ICON`: `truncate` needs a block,
                      and a flex box would make the text an anonymous flex item that `text-overflow`
-                     never reaches. */
+                     never reaches. On the media arm this is how the operator leaves: the Album
+                     crumb links to the album root. */
                   <Link
                     href={hrefFor(crumb.path)}
                     className="block min-w-0 truncate py-3 text-accent"
@@ -262,34 +338,48 @@ export function FileExplorer({
                 )}
               </li>
             ))}
+            {/* The media arm's second crumb: Album (link, above) / Media (text). Rendered here and
+                not folded into `trail`, because it is not a folder crumb and must never be fed back
+                into `hrefFor` as a path. */}
+            {view === 'media' && (
+              <li className="flex min-w-0 items-center gap-1">
+                <span className="text-ink-3">/</span>
+                <span className="truncate font-semibold text-ink" aria-current="page">
+                  {NINA_MEDIA_NODE_LABEL}
+                </span>
+              </li>
+            )}
           </ol>
         </nav>
 
         <div className="flex flex-wrap items-center gap-2 lg:contents">
           <span className="shrink-0 text-[12px] font-semibold text-ink-3 tabular-nums">
-            {page.total} in this folder
+            {view === 'media'
+              ? `${page.total} in ${NINA_MEDIA_NODE_LABEL}`
+              : `${page.total} in this folder`}
           </span>
 
-          <input
-            ref={folderInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={onPickFolder}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={onPickFolder}
-          />
+          {!isMediaView && (
+            <>
+              <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={onPickFolder}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={onPickFolder}
+              />
+            </>
+          )}
 
-          {/* The drawer's handle. It does not exist at `lg`, where the rail is a column that is
-              always on screen — so `aria-expanded` never lies about a control the operator can
-              still see. */}
           {/* The drawer's handle. It does not exist at `lg`, where the rail is a column that is
               always on screen — so `aria-expanded` never lies about a control the operator can
               still see. The toolbar's buttons are icon-only (one row on a 414 px screen), so the
@@ -307,23 +397,34 @@ export function FileExplorer({
             <PanelLeftIcon className="size-5" />
           </Button>
 
-          <Button
-            size="md"
-            variant="secondary"
-            aria-label="Add photos"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <ImagePlusIcon className="size-5" />
-          </Button>
-          <Button
-            size="md"
-            aria-label="Add a folder"
-            onClick={() => folderInputRef.current?.click()}
-          >
-            <FolderPlusIcon className="size-5" />
-          </Button>
+          {isMediaView ? (
+            /* The Media view's "Add photos": the conversation-collection upload flow (browser
+             * JPEG encode -> dedupe pre-check -> PUT -> addChatPhotoAction). No folders, no
+             * drop-walk — a conversation photograph is not filed. */
+            <MediaAdd userId={userId} />
+          ) : (
+            <>
+              <Button
+                size="md"
+                variant="secondary"
+                aria-label="Add photos"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImagePlusIcon className="size-5" />
+              </Button>
+              <Button
+                size="md"
+                aria-label="Add a folder"
+                onClick={() => folderInputRef.current?.click()}
+              >
+                <FolderPlusIcon className="size-5" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {notice !== null && <p className="mb-4 text-[13px] font-medium text-ink-2">{notice}</p>}
 
       {/* ── THE COLUMNS ─────────────────────────────────────────────────────────────────────
           Two rails and a canvas at `lg`, exactly as `app/admin/layout.tsx` argued for. ONE column
@@ -342,20 +443,17 @@ export function FileExplorer({
           <FolderTree
             folders={folders}
             current={folder}
+            view={view}
             hrefFor={hrefFor}
+            mediaHref={mediaHref}
+            mediaCount={mediaCount}
             allFolders={allFolders}
             onNavigate={navigateToFolder}
             onFolderCreated={addPendingFolder}
           />
         </div>
 
-        <div
-          className="min-w-0"
-          onDragEnter={onDragEnter}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        >
+        <div className="min-w-0" {...dropHandlers}>
           <div
             className={cn(
               'rounded-card border p-4 transition-colors',
@@ -370,40 +468,49 @@ export function FileExplorer({
               </p>
             )}
 
-            {/* PHASE 6. Move / remove for the selection. Returns `null` when nothing is
-                selected, so the grid's layout does not shift on an empty selection. */}
-            <PhotoMoveBar
-              selectedId={selected?.id ?? null}
-              folders={allFolders}
-              folder={folder}
-              currentId={photos.find((photo) => photo.isCurrent)?.id ?? null}
-              onDone={() => setSelectedId(null)}
-            />
+            {/* PHASE 6. Move / remove for the selection — an album verb set (folder move, album
+                delete). A media row's Remove is carrier-aware and lives in its pane. */}
+            {!isMediaView && (
+              <PhotoMoveBar
+                selectedId={selected?.id ?? null}
+                folders={allFolders}
+                folder={folder}
+                currentId={photos.find((photo) => photo.isCurrent)?.id ?? null}
+                onDone={() => setSelectedId(null)}
+              />
+            )}
 
             <PhotoGrid
               photos={photos}
               page={page}
+              view={view}
               selectedId={selected?.id ?? null}
               onSelect={select}
               hrefForPage={hrefForPage}
             />
           </div>
 
-          <UploadQueue
-            phase={upload.phase}
-            items={upload.items}
-            report={upload.report}
-            error={upload.error}
-            onDismiss={upload.dismiss}
-          />
+          {!isMediaView && (
+            <UploadQueue
+              phase={upload.phase}
+              items={upload.items}
+              report={upload.report}
+              error={upload.error}
+              onDismiss={upload.dismiss}
+            />
+          )}
         </div>
 
         {selected != null && (
           <SelectionPane
             photo={selected}
+            userId={userId}
             shareOrigin={shareOrigin}
             onClose={() => setSelectedId(null)}
-            onRemoved={() => setSelectedId(null)}
+            onRemoved={(note) => {
+              setSelectedId(null)
+              setNotice(note)
+            }}
           />
         )}
       </div>
@@ -425,6 +532,20 @@ function hrefForFolder(folder: string, page: number): string {
   if (page > 1) params.set('page', String(page))
   const query = params.toString()
   return query === '' ? '/admin/nina' : `/admin/nina?${query}`
+}
+
+/**
+ * The grammar's media arm: `?view=media&page=N`. The KEY comes from `lib/admin/filetree.ts` and the
+ * value is matched by `readExplorerView` there, so the writer and the reader of the parameter
+ * cannot drift — the same reason `hrefForFolder` and `validateFolderPath` agree by construction.
+ * Page 1 is the absence of `?page=`, as in the album arm, so the canonical
+ * `/admin/nina?view=media` and a navigated-back-to first page are the same URL.
+ */
+function hrefForMediaView(page: number): string {
+  const params = new URLSearchParams()
+  params.set(NINA_MEDIA_VIEW_PARAM, NINA_MEDIA_VIEW_VALUE)
+  if (page > 1) params.set('page', String(page))
+  return `/admin/nina?${params.toString()}`
 }
 
 /*

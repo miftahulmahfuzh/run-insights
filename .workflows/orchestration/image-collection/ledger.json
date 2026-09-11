@@ -43,21 +43,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "f5cb107",
       "depends_on": [
         2
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "One describe control everywhere; window read carries imageDescriptions. Decided: gateway sorts window images by sortOrder itself (Step-12 test pins it at the boundary; fix the code, not the check). Dropped plan's unused vision.ts import (lint). Adoption-test pin follows the new self subject. Two plan-test fixtures fixed, assertions unchanged (distinct ticket pathnames vs shipped pathname dedupe; patterns mock gains the new query). PHASE 4 LANDED FIRST in this shared worktree (b0126db, its 13 files) \u2014 both commits scoped by explicit per-file pathspec, zero cross-contamination; p4's root .workflows/package_readme.md edit remains dirty, it is p4's to land.",
       "package": "components/admin`, `lib/admin`, `lib/nina",
       "plan": ".workflows/plan/image-collection/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T01:44:33+00:00",
       "satisfies": [
         "R3"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-CA-A005",
       "title": "One describe control everywhere; described photos reach Nina's context"
     },
     {
@@ -84,7 +84,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/image-collection/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "image-collection",
-  "updated": "2026-09-11T01:40:46+00:00",
+  "updated": "2026-09-11T01:44:33+00:00",
   "verified_at": "2026-09-11T01:40:46+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/image-collection"
 }

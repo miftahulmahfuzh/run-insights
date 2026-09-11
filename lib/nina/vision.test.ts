@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { describeSubjectForSide } from './album'
 import {
   NINA_DESCRIBE_REQUEST_TEXT,
   NINA_DESCRIBE_SYSTEM_PROMPT,
@@ -189,6 +190,32 @@ describe('which witness is sent', () => {
     await expect(
       describeNinaImagesWithFetch(fetchImpl, [IMAGE], { subject: 'self' }),
     ).rejects.toBeInstanceOf(NinaVisionTokenFloorError)
+  })
+})
+
+describe('subject by side reaches the prompt, not around it (R3)', () => {
+  /** The envelope-reading idiom this file already uses, named once. */
+  const bodyOf = (fetchImpl: typeof fetch) => {
+    const [, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit]
+    return JSON.parse(String(init.body))
+  }
+
+  const ok = () =>
+    respond({
+      usage: { prompt_tokens: 2_800, completion_tokens: 100 },
+      choices: [{ message: { content: 'ok' } }],
+    })
+
+  it('hers really sends the self prompt — the mapping is on the wire, not beside the call', async () => {
+    // The pure mapping's both directions are pinned in lib/nina/album.test.ts
+    // (describeSubjectForSide); this ties it to what glm-4.6v is actually asked, so an action
+    // hardcoding a subject beside the helper cannot drift from the suite.
+    const fetchImpl = ok()
+    await describeNinaImagesWithFetch(fetchImpl, [IMAGE], {
+      subject: describeSubjectForSide('hers'),
+    })
+    expect(bodyOf(fetchImpl).messages[0].content).toBe(NINA_SELF_DESCRIBE_SYSTEM_PROMPT)
   })
 })
 

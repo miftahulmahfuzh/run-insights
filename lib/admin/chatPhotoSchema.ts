@@ -94,41 +94,57 @@ export const chatPhotoReplaceSchema = z
 export const chatPhotoRemoveSchema = z.object({ id: chatPhotoId })
 
 /**
- * **"Rewrite what she can see in it."** R2 of `nina-photo-refs-and-bubble-actions`, verbatim:
- * *"there is a 'what she can see in it' field. make this field editable by user"*.
+ * **"Look at this photograph with the vision model."** The bare-id shape `describeChatPhotoAction`
+ * validates. An object rather than a bare string, for the reason `chatPhotoRemoveSchema` states: a
+ * later field is additive on an action the panel already calls. Existence, ownership and the
+ * reference refusal are the action's job, as the header above says.
+ */
+export const chatPhotoDescribeSchema = z.object({ id: chatPhotoId })
+
+/**
+ * **"What she can see in it", as a field.** Exported so the ALBUM's hand-edit schema
+ * (`lib/admin/schema.ts`'s `avatarDescriptionSchema`) reuses the one normalizer instead of growing
+ * a second copy of it — the two tables' descriptions are the same kind of sentence written into
+ * the same kind of prompt, and they must normalise the same way.
  *
  * ── THE MAX IS ON THE RAW STRING, THE NORMALISE COMES AFTER IT ────────────────────────────
  * `.max()` before `.transform()`, deliberately. A 4000-character paste is REFUSED and reported
- * inline — this file's rule: a Zod refusal is a validation failure, not a confirmation — rather than
- * silently truncated into range, which is the one outcome that would put half a sentence into Nina's
- * prompt and tell the operator it saved fine. `coerceNinaNotes` (`lib/nina/tuning.ts:742-748`)
+ * inline — this file's rule: a Zod refusal is a validation failure, not a confirmation — rather
+ * than silently truncated into range, which is the one outcome that would put half a sentence into
+ * Nina's prompt and tell the operator it saved fine. `coerceNinaNotes` (`lib/nina/tuning.ts`)
  * slices instead, and is right to: it coerces a stored blob at read time and has no operator to
  * report to.
  *
  * ── WHAT THE TRANSFORM DOES, AND WHY IT IS ALL IT DOES ─────────────────────────────────
- * `coerceNinaNotes` minus the slice: CRLF to LF so a Windows paste does not store carriage returns
- * in prompt text, three-or-more newlines collapsed to one blank line, then trimmed. Nothing else.
- * No sentence casing, no digit stripping, no length floor. The model's own rules
- * (`lib/nina/prompts/describe.ts` — no digits, 60-140 words, one paragraph) are instructions to a
- * vendor, not validation of a human: this description is a WITNESS statement and here the operator
- * IS the witness. He is allowed to write a number if the number is true.
+ * CRLF to LF so a Windows paste does not store carriage returns in prompt text, three-or-more
+ * newlines collapsed to one blank line, then trimmed. Nothing else. No sentence casing, no digit
+ * stripping, no length floor. The model's own rules (`lib/nina/prompts/describe.ts` — no digits,
+ * 60-140 words, one paragraph) are instructions to a vendor, not validation of a human: this
+ * description is a WITNESS statement and here the operator IS the witness. He is allowed to write
+ * a number if the number is true.
  *
- * ── AN EMPTY RESULT IS LEGAL AND MEANS SOMETHING IN THE ACTION ────────────────────────
- * No `.min(1)`. An all-whitespace box normalises to `''`, this accepts it, and
- * `editChatPhotoDescriptionAction` turns it into `NULL` — the phase's D1. That split is this file's
- * stated division of labour: the schema knows shapes, the action owns policy and ownership.
+ * ── AN EMPTY RESULT IS LEGAL AND MEANS SOMETHING TO THE ACTION ────────────────────────
+ * No `.min(1)`. An all-whitespace box normalises to `''`, this accepts it, and the action turns it
+ * into `NULL` — D1. That split is this file's stated division of labour: the schema knows shapes,
+ * the action owns policy and ownership.
+ */
+export const chatPhotoDescriptionField = z
+  .string()
+  .max(ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS)
+  .transform((value) =>
+    value
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  )
+
+/**
+ * **"Rewrite what she can see in it."** R2 of `nina-photo-refs-and-bubble-actions`, verbatim:
+ * *"there is a 'what she can see in it' field. make this field editable by user"*.
  */
 export const chatPhotoDescriptionSchema = z.object({
   id: chatPhotoId,
-  description: z
-    .string()
-    .max(ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS)
-    .transform((value) =>
-      value
-        .replace(/\r\n?/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim(),
-    ),
+  description: chatPhotoDescriptionField,
 })
 
 /**
@@ -150,5 +166,6 @@ export const chatPhotoSetAvatarSchema = z.object({
 export type ChatPhotoAddInput = z.infer<typeof chatPhotoAddSchema>
 export type ChatPhotoReplaceInput = z.infer<typeof chatPhotoReplaceSchema>
 export type ChatPhotoRemoveInput = z.infer<typeof chatPhotoRemoveSchema>
+export type ChatPhotoDescribeInput = z.infer<typeof chatPhotoDescribeSchema>
 export type ChatPhotoDescriptionInput = z.infer<typeof chatPhotoDescriptionSchema>
 export type ChatPhotoSetAvatarInput = z.infer<typeof chatPhotoSetAvatarSchema>

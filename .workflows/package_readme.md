@@ -1,13 +1,22 @@
 # Package: run-insights (application root)
 
 **Location**: `.`
-**Last Updated**: 2026-09-09 (task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set
-— the focus-card hint purge: the six "Focus on" cards render their label and nothing else,
-`imageFocusCopy` in `lib/admin/imageGenModel.ts` returns the label as a plain string, and
-`NinaImageFocusSpec.userSaid` leaves `lib/nina/imageprefs.ts`; the free-text spec's `userSaid`
-stays; previously task `P1-RI-A025`, phase 1 of 2 of the simplify-personality-settings
-set — the tuning revision mechanism purged stack-wide; its migration committed but deliberately not
-yet applied)
+**Last Updated**: 2026-09-11 (task `P1-CA-A005`, phase 3 of 4 of the `IMAGE_COLLECTION_PLAN.md`
+set — one describe control on every photo of the page, and the window's described photographs now
+reach Nina's context on every turn; with phase 4 (`P1-RI-A036`) the set is complete; previously
+2026-09-11, task `P1-RI-A036`, phase 4 of the same set — every user-visible "Nina's album"
+renamed to "Image collection" (nav label + phone-bar
+`short: 'Photos'`, the overview card, `/admin/nina`'s `h1`, the personality page's copy,
+`ADMIN_INSTALL.description`) and the explorer grid restyled to the Photo-reference picker's
+borderless sheet, pinned by the new `tests/admin.photoGrid.test.ts`; previously 2026-09-10, task
+`P1-RI-A034`, phase 1 of the same set —
+the Media read path: a virtual `Media` tree node pinned under the album root and addressed by the
+`?view=media` parameter, never by a folder path; the paginated all-kinds originals read
+`listNinaMediaPhotos` / `countNinaMediaPhotos` behind it; `ExplorerPhoto` becomes a discriminated
+union; read-only, no Server Action touched; previously task `P1-RI-A031` — the focus-card hint
+purge, `imageFocusCopy` returning a plain string and `NinaImageFocusSpec.userSaid` deleted; before
+that `P1-RI-A025` — the tuning revision mechanism purged stack-wide, its migration committed but
+deliberately not yet applied)
 
 ## Overview
 
@@ -841,6 +850,150 @@ per-feature plans in `docs/plans/` (`F01`–`F33`). `TABBAR_NEW_TAB_COMPOSER_SEA
 (the `New` tab) and `R2` (the composer seam), landed as `P1-RI-A015` and `P1-RI-A016`;
 `NINA_CHAT_AVATAR_PROFILE_PLAN.md` is the current branch's plan set, its single `R1` landed as
 `P1-RI-A019`.
+
+### Recent changes — P1-CA-A005 (2026-09-11)
+
+*Phase 3 of 4 of the `IMAGE_COLLECTION_PLAN.md` set (R3) — with this phase, the set is complete.
+One describe control everywhere: the unified `PhotoDescription` panel is mounted inside BOTH arms
+of phase 2's dispatcher (`AlbumSelectionPane` for album rows, `MediaPane` for media rows), each
+passing its own table's closures, which retires the interim `MediaDescription` seam, every
+icon-row describe button and every `<dl>` null-ness row. The describe subject follows the photo:
+`describeSubjectForSide` sends `'self'` for photographs of Nina — album describes stop using the
+runner prompt — and `'runner'` for his uploads; the describe/re-describe button is always
+available and overwrites, while stored prose stays hand-editable
+(`editNinaAvatarDescriptionAction`; `ChatPhotoActionResult` gained the optional `description` the
+panel round-trips).*
+
+The root-recorded slice is the context path: `readMessageWindow` populates `imageDescriptions`
+from the window's rows — described rows only, in `sort_order` — so a photograph attached earlier
+in the conversation still reaches every later turn's context. The previously hardcoded `[]` is
+gone, and the stale coverage claim in `lib/nina/actions.ts` is corrected to describe what
+actually crosses (bounded: window rows, prose ≤ 2000 chars). The schema for the describe round
+trip lives in `lib/admin/chatPhotoSchema.ts`; `lib/nina/vision.ts` imports the one mapping from
+`lib/nina/album.ts` rather than minting a second, and both context paths are pinned by new
+regression tests (turn input, and the assembled window context).
+
+### Recent changes — P1-RI-A036 (2026-09-11)
+
+*Phase 4 of 4 of the `IMAGE_COLLECTION_PLAN.md` set (R4, the rename and the borderless grid):
+every user-visible "Nina's album" now reads "Image collection", and the explorer's photo grid is
+the Photo-reference picker's borderless sheet. The set's phase 3 (the marked `SEAM — PHASE 3`
+unified describe panel) landed as `f5cb107` in this same worktree after this entry was written;
+its slice is the section above.*
+
+**The rename.** The nav cell is `{ label: 'Image collection', short: 'Photos' }`. The `short` is
+the phone bar's accessible name, and the one collision the rename had to dodge is "Images" — the
+image-generation route's own cell — so the collection took "Photos", free since the chat-photos
+route merged away in this set's phase 2. Distinctness is pinned, not trusted to review:
+`tests/admin.shell.test.ts` derives every `short` off the source and refuses two cells announcing
+the same name. The post-purge comments phase 2 left stale on purpose are rewritten with
+post-rename labels: the `ImagesIcon` docstring (the trio "Nina's album / Image Generation / Chat
+photos" is now the pair "Image collection / Image Generation", still told apart by silhouette and
+not by words) and the shell test's glyph-count case, whose title and trio comment now say six
+since the camera left with `/admin/photos`. The rest of the root slice: `/admin/nina`'s `h1` and
+the overview card's heading are "Image collection", the card's count line disambiguates to
+"**N album photos**, one current" (the Media badge counts a different table) and its link is
+"Manage the collection →", the empty-album notice says "The album **folder** is empty" (the
+collection is no longer the folder), and the personality page's body copy points at the
+collection her photographs stayed behind on. `lib/pwa.ts`'s `ADMIN_INSTALL.description` follows —
+*"The image collection, her personality and the memory store"* — because a manifest
+`description` is user-visible in the installed admin app's metadata and it still named the purged
+chat-photos surface. The remainder is the stale-comment sweep: `lib/db/schema.ts`'s
+filtered-reads line no longer names the retired `listNinaChatPhotos` (the COLLECTION reads are
+now `listNinaMessageImages`; `countNinaChatPhotos`, the reference picker's chat-side total; and
+`listNinaMediaPhotos` + `countNinaMediaPhotos`, the Media view and its badge), and the same class
+of comment in `lib/nina/imagetest.ts`, `components/nina/SessionRow.tsx` and
+`lib/admin/requireAdmin.ts` now names the Image collection's Media folder where it named
+`/admin/photos` or "Chat photos".
+
+**The borderless sheet.** `components/admin/explorer/PhotoGrid.tsx` borrows
+`PhotoReferencePicker`'s recipe whole (the owner cited that page by name). One sheet of touching
+squares: `gap-[3px]` gutters inside a single `overflow-hidden rounded-field` on the `<ul>` — the
+one pair of rounded corners, so the gutters read as hairlines cut into one surface —
+`aspect-square` tiles on a `bg-ink-3/20` bed, and no per-tile border, radius, padding or accent
+wash; the tile floor stays `minmax(88px, 1fr)`, this grid's own density dial. Selection is a
+`scale-[0.9]` inset plus an `aria-hidden` `bg-ink text-card` check badge — `bg-ink`, not
+`bg-accent`: white type on the cyan accent measured near 2:1, where ink-on-card is ~14:1 and
+inverts correctly in dark mode — and `focus-visible:ring-inset` is what keeps a ring visible
+inside a sheet whose corners that one `overflow-hidden` clips. The filename left the tile — a
+caption under every square is what broke the borrowed idiom — into the button's `aria-label` and
+`title`, with the selection pane's heading the place a tapped tile's name is *read*. The "Hers"
+ribbon became a top-left corner badge, the check badge's twin, still real text and spelled into
+the `aria-label` (`${photo.filename} — her current profile picture`) because an `aria-label`
+overrides a button's subtree text and the visible badge alone would be silent.
+`thumbUrl ?? url`, `loading="lazy"`, the plain `<img>` and the view-aware empty state are
+untouched, and `view` now has exactly one rendering consequence — the empty copy — which the
+docstring says plainly. **New: `tests/admin.photoGrid.test.ts`**, the source-text suite pinning
+the sheet where it landed, mirroring `tests/admin.photoReference.test.ts`'s helpers (`codeLines`
+strips comments; JSX comment continuations start with `*` so a comment can neither satisfy nor
+trip an assertion): the borderless invariants are scoped to the TILE rather than the file (the
+pager keeps its `border-t`, the empty state its padded button), the caption's absence is asserted
+as "no text child printing `{photo.filename}`" so the `aria-label` expression cannot satisfy it,
+the byte source and lazy-loading are pinned unchanged, and nothing that a grid has no business
+reaching is imported, read or written.
+
+**In packages with readmes of their own** — the same phase, one slice each. `components/admin`:
+the `PhotoGrid` restyle above, `AdminNavLinks`' relabelled cell and its rewritten docstrings, and
+`ImageGenTestPanel`'s copy (a successful test "lands in the Image collection's Media folder", not
+"Chat photos"). `lib/admin` and `lib/db` carry comment-only edits, noted above.
+
+### Recent changes — P1-RI-A034 (2026-09-10)
+
+*Phase 1 of the `IMAGE_COLLECTION_PLAN.md` set (R1, the read half): `/admin/nina` gains a second,
+virtual collection — the tree pane pins a **Media** row below "Album" (with the total count), and
+`?view=media` swaps the grid to every original conversation photograph, both kinds, orphans
+included, newest first, 48 to a page. Read path only: no Server Action was touched, and selection
+opens the pane with download as its one verb.*
+
+The root-owned slice is `app/admin/nina/page.tsx`, the Server Component that now serves both
+collections. It reads the view **first** — `readExplorerView(params.view)`, from
+`lib/admin/filetree.ts` — because the view decides which table the page reads at all: the media
+arm never consults `?folder=` (a folder on a media URL is a stale parameter, not a destination;
+the breadcrumb draws from `view` alone), while the folder is still validated unconditionally so a
+refused path falls back to the root on both arms rather than throwing. The two arms fill the same
+four slots (`folders`, `photos`, `pageInfo`, `mediaTotal`) and fall through to ONE render — the
+same header, tree and explorer over either table — and the folder list is read on BOTH arms,
+because both views draw the same tree pane and the pane shows the Media badge on both.
+
+The media arm calls `listNinaMediaPhotos(userId, { offset })` with **no `limit` argument on
+purpose**: `NINA_CHAT_PHOTO_PAGE_SIZE` (48) is that read's own default *and* ceiling, so no call
+site can quietly widen one page into the unpaginated read the constant exists to prevent. Rows map
+to `MediaExplorerPhoto` on the server, field by field — `thumbUrl` is `null` permanently (the
+table has no thumbnail column, so the grid's `thumbUrl ?? url` fallback is the only render path),
+`folder` is the root's `''` and unread (a message image is filed nowhere), `filename` is
+**derived** (`YYYY-MM-DD <id>`) because the table has no filename column and is never parsed out
+of `pathname`, `source` is the row's own `kind`, `isCurrent` is `false` (adoption copies the bytes
+into `nina_avatars` and the copy carries `is_current`), and the crop is the identity. `side` is
+`photoSideOf(kind)` computed here — the same call `galleryPhotos` makes, which keeps the his/hers
+discriminator in one place. The `(row): MediaExplorerPhoto` / `(row): AlbumExplorerPhoto`
+annotations are load-bearing: without them `origin: 'album'` widens to `string` and the union
+stops being discriminable.
+
+The album arm gained one parallel read, `countNinaMediaPhotos(userId)`: the tree's Media badge
+shows the count on BOTH views, so the album view pays one `count(*)` for a number its grid never
+uses — the badge is the rail's whole point, and a badge without a count is decoration. The header
+body copy follows the view (the `h1`'s own rename is a later phase's edit, kept out so this phase
+ships no label churn), and the empty-album notice became an album-view fact: on Media the grid's
+own empty state speaks instead, so the operator is never told to drop a folder over conversation
+photographs.
+
+**Changed:** `app/admin/nina/page.tsx` — the arm split above; `page={pageInfo}` replaces the
+inline page object, and two new props (`view`, `mediaCount`) thread down to `FileExplorer`.
+
+**In packages with readmes of their own** — the same phase, one slice each. `lib/admin`: the
+virtual node (`NINA_MEDIA_VIEW_PARAM` / `NINA_MEDIA_VIEW_VALUE`, `ExplorerView`,
+`readExplorerView`, `NINA_MEDIA_NODE_LABEL`, `MediaViewNode` / `mediaViewNode`) — it carries a
+`view` discriminant and no `path`, so `findFolderNode`, `isFolderAncestorOf` and `FolderMenu`
+cannot even ask whether Media is in the tree, and the view is told apart by parameter KEY, never
+by a reserved path, so a real folder named "Media" stays legal. `lib/nina`: `NinaMediaPage`,
+`mediaCollectionScope` (`user_id` + `isOriginalPhoto()` with deliberately **no `kind` arm**, so
+his composer uploads are members), `listNinaMediaPhotos` and `countNinaMediaPhotos`.
+`components/admin`: `ExplorerPhoto` is now the discriminated union `AlbumExplorerPhoto |
+MediaExplorerPhoto` narrowed on `origin`; `FileExplorer` takes `view` / `mediaCount`, hides the
+album-only Add buttons and absorbs drops while Media is open; `FolderTree` renders the pinned row
+through a `menu={null}` slot so it gets no folder verbs; `PhotoGrid` branches only its empty copy;
+`SelectionPane` opens a read-only media arm placed after every hook. Tests pinning the phase:
+`tests/admin.filetree.test.ts` and `tests/nina.photoRefs.test.ts`.
 
 ### Recent changes — P1-RI-A031 (2026-09-09)
 

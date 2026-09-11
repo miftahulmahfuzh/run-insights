@@ -6,6 +6,7 @@ import { after } from 'next/server'
 import {
   chatPhotoAddSchema,
   chatPhotoDescriptionSchema,
+  chatPhotoDescribeSchema,
   chatPhotoRemoveSchema,
   chatPhotoReplaceSchema,
 } from '@/lib/admin/chatPhotoSchema'
@@ -19,6 +20,7 @@ import {
 } from '@/lib/admin/chatPhotos'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { isValidId, newId } from '@/lib/id'
+import { describeSubjectForSide, photoSideOf } from '@/lib/nina/album'
 import { captionNinaPhoto } from '@/lib/nina/caption'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
@@ -129,12 +131,17 @@ import { isValidContentHash } from '@/lib/photos/contentHash'
  * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REPLACEABLE ───────────────────────────────
  * F37's `source_avatar_id` / `source_image_id` mark a row that RE-SHOWS a photograph which already
  * exists elsewhere — an album row (F34 R2's share) or another chat row. `isOriginalPhoto()` is
- * inside `generatedChatPhotoScope`, so such a row is not on `/admin/photos` at all and an id for one
- * is a stale link or a hand-typed claim. `getNinaMessageImage` above deliberately does NOT filter
- * references (it is the bubble/viewer read too), so the refusal has to be here. Replacing a
- * reference's bytes would change what one bubble shows while the photograph it re-shows stayed as it
- * was: two pictures where the operator asked for one, and no way to see the second one from this
- * screen. The refusal is a sentence, in the same shape as the `kind` refusal above it.
+ * inside every collection read's WHERE, so such a row is not in the Media folder at all and an id
+ * for one is a stale link or a hand-typed claim. `getNinaMessageImage` above deliberately does NOT
+ * filter references (it is the bubble/viewer read too), so the refusal has to be here — and
+ * `updateNinaChatPhotoBlob`'s own `isOriginalPhoto()` clause is the second agreeing check.
+ * Replacing a reference's bytes would change what one bubble shows while the photograph it re-shows
+ * stayed as it was: two pictures where the operator asked for one, and no way to see the second one
+ * from this screen.
+ *
+ * The old `kind !== 'generated'` refusal is GONE (the merge's whole point): one of HIS uploads is
+ * now replaceable like any other original. `kind` is not written by the replace — the row keeps its
+ * side, gains selfie-shaped bytes, and the describe pass below follows the side it still has.
  */
 export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -149,9 +156,6 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
 
   const existing = await getNinaMessageImage(userId, id)
   if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
-  if (existing.kind !== 'generated') {
-    return { ok: false, error: 'That one is his upload, not hers.' }
-  }
   if (isChatPhotoReference(existing)) {
     return {
       ok: false,
@@ -524,11 +528,14 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
  * ── THE TWO CHECKS, AGAIN AND FOR THE SAME REASON ─────────────────────────────────────────
  * `requireAdmin()` first, above any use of the argument. Then the SHAPE (Zod, which knows no user
  * id — *"A well-formed `Item` object can still refer to a row the caller does not own"*), then the
- * owner-scoped re-read, then a write whose own WHERE carries `user_id` AND `kind = 'generated'`.
+ * owner-scoped re-read, then a write whose own WHERE carries `user_id` AND `isOriginalPhoto()`.
  *
- * The `existing.kind` guard is not decoration: `getNinaMessageImage` does not filter on `kind`, so
- * without it an id for one of HIS composer uploads would reach a write nobody can see or undo from
- * this screen. `replaceChatPhotoAction` refuses the same case with the same sentence, on purpose.
+ * The write's WHERE used to carry `kind = 'generated'` and the action refused his uploads with the
+ * same sentence Replace used. Both halves of that pair are gone with the surface merge: every
+ * ORIGINAL row is describable now, and the clause that replaced the kind check — the reference
+ * backstop — is the one that still matters. References keep their refusal below the fold of the
+ * shared grammar: this action's write cannot reach one, and the sentence the operator sees for a
+ * reference id here is the write's miss, reported as a not-in-the-collection.
  *
  * And there is no `isAdminChatPhotoPathname` call here, with nothing missing: that predicate binds
  * an UPLOADED BLOB to the session, and this action receives no blob, no pathname and no URL.
@@ -549,9 +556,6 @@ export async function editChatPhotoDescriptionAction(
 
   const existing = await getNinaMessageImage(userId, id)
   if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
-  if (existing.kind !== 'generated') {
-    return { ok: false, error: 'That one is his upload, not hers.' }
-  }
 
   /* The empty box IS the clear. D1, and this line is the only place that policy lives. */
   const next = description.length === 0 ? null : description
@@ -568,6 +572,90 @@ export async function editChatPhotoDescriptionAction(
           note: 'Cleared. If this photo comes up again she will say she could not see it and ask him what it is.',
         }
       : {}),
+  }
+}
+
+/**
+ * **Look at the photograph again, and overwrite what she can see in it.** R3's media half of "one
+ * describe control everywhere": the vision-model button the unified panel mounts, one action for
+ * BOTH kinds over `nina_message_images`.
+ *
+ * ── IT OVERWRITES, AND THAT IS THE DECISION, NOT AN OVERSIGHT ────────────────────────────────
+ * `describeNinaAvatarAction` has always overwritten unconditionally — it is the album's "Describe
+ * it" retry button and the same human is on both sides of the click. The panel pairs this action
+ * with the hand-edit textarea, which is the way to correct a re-describe back; a confirmation
+ * would be the second click R1's ruling forbids ("no need for all these bullshit confirmation").
+ * The one guard that matters is a structural one instead: a reference row is refused below, so a
+ * re-describe can never stamp prose onto a row that merely RE-SHOWS a photograph whose original
+ * owns the truth.
+ *
+ * ── NO `kind` GUARD, ON PURPOSE ──────────────────────────────────────────────────────────────
+ * Phase 2 lifted the describability refusals: his uploads are members of the Media folder with the
+ * same verb set, and an operator describing one is the whole point of R1's "even images the user
+ * uploaded manually". The reference check below is the only membership question this action asks —
+ * `getNinaMessageImage` does not filter, so this is where the rule is enforced, exactly as
+ * `removeChatPhotoAction` and `setChatPhotoAsAvatarAction` do at their own seams.
+ *
+ * ── THE SUBJECT FOLLOWS THE PHOTO ────────────────────────────────────────────────────────────
+ * `photoSideOf` + `describeSubjectForSide` (both already imported here — Phase 2) — hers gets
+ * `NINA_SELF_DESCRIBE_SYSTEM_PROMPT` (`scheduleChatPhotoCaption`'s HALF ONE already describes her
+ * photographs this way; this is the manual button arriving at the same answer), his gets the
+ * runner prompt. One helper, one suite.
+ *
+ * ── THE WRITE IS `setNinaMessageImageDescription`, NOT THE "CHAT PHOTO" EDIT ─────────────────
+ * A vision pass that produced nothing writes nothing, and a NULL is not among its outcomes — the
+ * exact reading `updateNinaChatPhotoDescription`'s docstring gives for why the `after()` pass uses
+ * this statement and the operator's edit uses the other. This action IS an `after()`-pass-shaped
+ * caller, so it takes the `after()`-pass-shaped statement. It also deliberately does NOT
+ * re-caption the bubble: `editChatPhotoDescriptionAction`'s header owns that argument (*"Editing
+ * what she SAW is not editing what she SAID"*) and this action changes the prose by machine
+ * instead of by hand, which is the same category of change.
+ *
+ * `ADMIN_CHAT_PHOTOS_PATH` is what every action in this file revalidates; since Phase 2 it spells
+ * `/admin/nina`, which is where the Media folder lives — this action inherits it by calling the
+ * constant, never a literal.
+ */
+export async function describeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = chatPhotoDescribeSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Not a photo id.' }
+  const { id } = parsed.data
+
+  const row = await getNinaMessageImage(userId, id)
+  if (row == null) return { ok: false, error: 'That photo is not in the collection.' }
+  if (isChatPhotoReference(row)) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Describe the original instead.',
+    }
+  }
+
+  try {
+    const { description } = await describeNinaImages(
+      [{ blobUrl: row.blobUrl, pathname: row.pathname }],
+      { subject: describeSubjectForSide(photoSideOf(row.kind)) },
+    )
+    const written = await setNinaMessageImageDescription(userId, id, description)
+    if (!written) return { ok: false, error: 'That photo is not in the collection.' }
+
+    revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
+    return { ok: true, id, description }
+  } catch (cause) {
+    /* The floor tripping is its own class and is logged LOUDLY — `scheduleChatPhotoCaption`'s
+     * posture: it means the vendor answered 200 with an image it silently dropped, and the text of
+     * such a response is exactly where an invented description would be. Either way the operator
+     * gets one retryable sentence and the stored prose is untouched. */
+    if (cause instanceof NinaVisionTokenFloorError) {
+      console.error('[f36] TOKEN FLOOR TRIPPED on a manual media describe', {
+        id,
+        pathname: row.pathname,
+        message: cause.message,
+      })
+    } else {
+      console.error('[f36] admin media describe failed', { id }, cause)
+    }
+    return { ok: false, error: 'The description call failed. Try again.' }
   }
 }
 
@@ -643,10 +731,11 @@ async function loadPhotoCarrier(
  * and fins, captioned `ini gw abis lari tadi`. That sentence was never about that photograph. It is
  * element index 2 of a five-string array and `pickLine` hashed a fresh nanoid onto it — no model,
  * no image, no prompt. Meanwhile THIS function was already sending the picture to `glm-4.6v` and
- * storing a perfectly good paragraph about it in a column that, on this path, nothing reads
- * (`dbNinaSourceGateway.readConversation` maps every window row with a literal
- * `imageDescriptions: []`). The multimodal call existed; its answer just never reached the one text
- * the runner sees.
+ * storing a perfectly good paragraph about it in a column that, at the time, nothing read back
+ * into her context (`dbNinaSourceGateway.readMessageWindow` then mapped every window row to a
+ * literal `imageDescriptions: []`; R3, 2026-09-10, made it carry the stored prose). The
+ * multimodal call existed; its answer just was not reaching her — the caption below is still why
+ * this function runs both halves.
  *
  * So this function now does both halves: `glm-4.6v` looks, `glm-5.3` speaks, and the bubble is
  * rewritten. `nina_message_images.description` is still written first and on its own, so the
@@ -696,16 +785,17 @@ function scheduleChatPhotoCaption(userId: string, id: string): void {
       if (row == null) return
 
       /* ── HALF ONE: LOOK AT IT ──────────────────────────────────────────────────────────────
-       * `subject: 'self'` is not optional here and it is not cosmetic. The default prompt is
-       * written about the RUNNER — *"The state of him. Drenched or dry"*, and rule 6 is *"'Him' for
-       * whoever is clearly the runner"*. Pointed at a photograph of Nina it looks for a man who is
-       * not in the frame. See `NINA_SELF_DESCRIBE_SYSTEM_PROMPT`. */
+       * The subject follows the photograph's side: `photoSideOf('generated')` is 'hers', described
+       * by the self witness (`NINA_SELF_DESCRIBE_SYSTEM_PROMPT` — the runner prompt would look for
+       * a man who is not in the frame); one of HIS uploads is 'his', described by the runner
+       * witness, because the subject of THAT photograph is him. `describeSubjectForSide` is the
+       * pinned mapping; keeping it beside `photoSideOf` is what makes the two one edit apart. */
       let description = row.description
       if (description == null) {
         try {
           const result = await describeNinaImages(
             [{ blobUrl: row.blobUrl, pathname: row.pathname }],
-            { subject: 'self' },
+            { subject: describeSubjectForSide(photoSideOf(row.kind)) },
           )
           description = result.description
           await setNinaMessageImageDescription(userId, id, description)

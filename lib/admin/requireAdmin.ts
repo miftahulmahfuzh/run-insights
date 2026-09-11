@@ -13,7 +13,7 @@ import { isAdminEmail } from '@/lib/env'
  * ACTUAL security boundary. `proxy.ts` does not match `/admin` (ruling D3 decided it never will —
  * its own header says it is a UX redirect list, not authorization), and it does not match `/api/*`
  * at all, so the checks in here and in the Route Handler are the only thing between a signed-in
- * stranger and Nina's album.
+ * stranger and the Image collection.
  *
  * ── WHY A NON-ADMIN GETS A 404 ───────────────────────────────────────────────────────────────
  * Three refusals were on the table:

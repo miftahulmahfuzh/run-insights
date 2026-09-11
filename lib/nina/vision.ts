@@ -129,9 +129,13 @@ export interface NinaDescribeResult {
 export interface NinaDescribeOptions {
   timeoutMs?: number
   /**
-   * Whose photograph this is. **Defaults to `'runner'`, which is the shipped behaviour**, so every
-   * existing caller — the composer pre-pass, both avatar paths, the chat-photo describe — is
-   * byte-identical without being edited.
+   * Whose photograph this is. **Defaults to `'runner'`** — the composer pre-pass
+   * (`describeNinaImage`, his uploads) and the runner-side media describe pass the default or
+   * `'runner'` explicitly; every caller that describes a photograph OF NINA — the album's button
+   * and its `after()` pass, and the chat-photo caption pass — passes `'self'` (R3, 2026-09-10;
+   * until then the album paths pointed the runner prompt at her faces). Pick it with
+   * `describeSubjectForSide` (`lib/nina/album.ts`), which owns the mapping from `photoSideOf` —
+   * do not spell the ternary at a call site.
    *
    * `'self'` selects `NINA_SELF_DESCRIBE_SYSTEM_PROMPT`. It is a different SUBJECT, not a
    * different mode: the request shape, the data URI, the timeout and the floor are all the same,

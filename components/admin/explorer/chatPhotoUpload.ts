@@ -9,7 +9,19 @@ import { newId } from '@/lib/id'
 
 /**
  * A picked file -> an object in Blob at `nina/<userId>/selfie-<id>.jpg` -> the claims
- * `addChatPhotoAction` / `replaceChatPhotoAction` need.
+ * `addChatPhotoAction` / `replaceChatPhotoAction` need. The Media view's upload path — Add and
+ * Replace — migrated here from the purged `/admin/photos` surface (`components/admin/
+ * chatPhotoUpload.ts`), unchanged in behavior and re-homed beside `thumbnail.ts`, its own cited
+ * precedent for a client encode module.
+ *
+ * ── THE PATHNAME IS BOUND HERE, AND NOWHERE IS IT PARSED ───────────────────────────────────
+ * `adminChatPhotoPathname` is the ONLY producer of the chat-photo pathname shape, and nothing in
+ * the explorer ever parses one: the row's stored pathname is never split, matched or inferred-from
+ * — the served content type is the only authority for what the bytes are (`lib/nina/vision.ts`'s
+ * `toDataUri` reads it back rather than guessing). The collection is mixed-container by design —
+ * `selfie-<id>.png` from the worker, `selfie-<id>.jpg` from this module — and
+ * `NINA_IMAGE_PATHNAME_RE` admits both, which is why the pathname predicate checks segment shapes
+ * and not a single container.
  *
  * ── THE TWO NUMBERS BELOW ARE THE CLIENT'S OWN ──────────────────────────────────────────────
  * `components/admin/explorer/thumbnail.ts:30-40`'s rule, applied: nothing on the server re-encodes
@@ -21,7 +33,7 @@ import { newId } from '@/lib/id'
  * so the "same size class as her generated photographs" claim below is checked rather than merely
  * intended.
  *
- * ── WHY THIS RE-ENCODES WHEN `UploadAvatar` REFUSES TO ──────────────────────────────────────
+ * ── WHY THIS RE-ENCODES WHEN `UploadAvatar` REFUSES TO ─────────────────────────────────────
  * `UploadAvatar.tsx:26-33` is a ruling and it still holds where it was made: an avatar is
  * crop-zoomed 4x inside a circular frame, so a 768 px source would show her face at 192 px of real
  * detail. A chat photograph is never crop-zoomed — the bubble draws it small and `PhotoViewer`
@@ -117,8 +129,8 @@ export async function encodeChatPhotoJpeg(
  * hold them.
  *
  * `adminChatPhotoPathname` is what the client may ASK for; Blob rewrites it with a random suffix and
- * the STORED pathname is whatever `upload` returned — 43 symbols in the id segment, not 12 — which is
- * why `lib/admin/chatPhotos.ts` carries a SECOND pattern, `ADMIN_CHAT_PHOTO_STORED_ID_RE`, and why
+ * the STORED pathname is whatever `upload` returned — 43 symbols in the id segment, not 12 — which
+ * is why `lib/admin/chatPhotos.ts` carries a SECOND pattern, `ADMIN_CHAT_PHOTO_STORED_ID_RE`, and why
  * the actions re-validate the returned pathname rather than the requested one.
  *
  * `handleUploadUrl` is the ADMIN route and not `/api/upload`: that route mints tokens for a
@@ -141,12 +153,12 @@ export async function encodeChatPhotoJpeg(
  * encode's claim never reaches the database as a byte description.
  *
  * ── WHY DEDUPE IS OPT-IN, AND WHY REPLACE MUST NEVER PASS IT ─────────────────────────────────
- * `opts.dedupe` defaults to OFF so every existing caller keeps today's behavior, and
- * `ChatPhotoAdd` is the only caller that turns it on. Replace must NOT: its contract is "swap the
- * bytes behind THIS row", and a deduped replace would point the row at another row's object and
- * strip its provenance to a reference — which the collection reads then hide, making the
- * photograph the operator can see vanish from `/admin/photos`. Replace gets the hash for free
- * (it claims it through `chatPhotoReplaceSchema`) but never the skip.
+ * `opts.dedupe` defaults to OFF so every existing caller keeps today's behavior, and `MediaAdd` is
+ * the only caller that turns it on. Replace must NOT: its contract is "swap the bytes behind THIS
+ * row", and a deduped replace would point the row at another row's object and strip its provenance
+ * to a reference — which the collection reads then hide, making the photograph the operator can
+ * see vanish from the Media folder. Replace gets the hash for free (it claims it through
+ * `chatPhotoReplaceSchema`) but never the skip.
  */
 export async function uploadChatPhoto(
   userId: string,
