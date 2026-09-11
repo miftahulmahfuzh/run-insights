@@ -13,7 +13,6 @@ import { getAdminUser } from '@/lib/admin/users'
 import { NINA_IMAGE_FOCUS_KEYS } from '@/lib/nina/imageprefs'
 import {
   countNinaAvatars,
-  countNinaChatPhotos,
   getCurrentNinaAvatar,
   readNinaImagePrefs,
   readNinaTuning,
@@ -41,7 +40,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminHomePage() {
   const { userId, email } = await requireAdmin()
-  const [albumCount, current, me, chatPhotoCount, tuning, imagePrefs] = await Promise.all([
+  const [albumCount, current, me, tuning, imagePrefs] = await Promise.all([
     /*
      * A COUNT, not the album. This page renders `albumCount` and nothing else about the rows, and
      * F34 R1 makes the album *"hundreds of profile pics"* — so `listNinaAvatars(userId)` here was
@@ -51,13 +50,6 @@ export default async function AdminHomePage() {
     countNinaAvatars(userId),
     getCurrentNinaAvatar(userId),
     getAdminUser(userId),
-    /*
-     * R2's count, and it is a count for the same reason the one above it is: this card prints one
-     * integer. `countNinaChatPhotos` shares its `kind = 'generated'` predicate with
-     * `listNinaChatPhotos` through one private function, so the number here and the number on
-     * `/admin/photos` cannot disagree.
-     */
-    countNinaChatPhotos(userId),
     /*
      * The tuning row, for the character card below. It joins the existing `Promise.all` rather
      * than adding a further sequential await, and it is a single indexed read of one row.
@@ -111,23 +103,6 @@ export default async function AdminHomePage() {
             className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
           >
             Manage the album &rarr;
-          </Link>
-        </Card>
-
-        <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-ink">Chat photos</h2>
-          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
-            {chatPhotoCount === 0
-              ? 'She has not sent a photo in the chat yet.'
-              : `${chatPhotoCount} photo${
-                  chatPhotoCount === 1 ? '' : 's'
-                } she has generated in the conversation.`}
-          </p>
-          <Link
-            href="/admin/photos"
-            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
-          >
-            Open the collection &rarr;
           </Link>
         </Card>
 

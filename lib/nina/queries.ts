@@ -290,28 +290,15 @@ export interface NinaImageInsert {
 }
 
 /**
- * One page of `/admin/photos` — R2's *"all the photos in in user chat collection with nina (nina
- * generated images)"*.
- *
- * The mirror of `NinaAvatarFolderPage` (:379) and the same argument for `total` being here rather
- * than inferred: the pager renders "1-48 of 137" and offers Newer as well as Older, and an
- * over-shot `?page=` has to be distinguishable from an empty collection. `rows` is `NinaImageRow`
- * unchanged — `imageColumns` is the projection, so the admin surface reads exactly what every
- * other reader of this table reads and no second row shape enters the module.
- */
-export interface NinaChatPhotoPage {
-  rows: NinaImageRow[]
-  total: number
-}
-
-/**
  * One page of the Media view — `/admin/nina?view=media` (R1, image-collection phase 1).
  *
- * Structurally the twin of `NinaChatPhotoPage` above and deliberately NOT a rename of it: that
- * interface's docstring is `/admin/photos`' contract, and the purge that deletes that surface
- * deletes its type with it. `rows` is `NinaImageRow` unchanged, for the same reason as there —
- * `imageColumns` is the projection, so the admin surface reads exactly what every other reader of
- * this table reads and no second row shape enters the module.
+ * The mirror of `NinaAvatarFolderPage` and the same argument for `total` being here rather than
+ * inferred: the pager renders "1-48 of 137" and offers Newer as well as Older, and an over-shot
+ * `?page=` has to be distinguishable from an empty collection. It is deliberately not a rename of
+ * the retired `/admin/photos` page type — that surface's contract died with the surface, in the
+ * image-collection merge. `rows` is `NinaImageRow` unchanged — `imageColumns` is the projection,
+ * so the admin surface reads exactly what every other reader of this table reads and no second row
+ * shape enters the module.
  */
 export interface NinaMediaPage {
   rows: NinaImageRow[]
@@ -1891,10 +1878,7 @@ export async function findNinaImageByContentHash(
  * ── THE COLLECTION READS IT FILTERS, AND THE ONES IT MUST NEVER ───────────────────────
  * Filtered — the COLLECTION reads, which describe a set of photographs to a human:
  *   · `listNinaMessageImages`   → /nina/about's Media feed
- *   · `listNinaChatPhotos`      → /admin/photos, via `generatedChatPhotoScope`
- *   · `countNinaChatPhotos`     → /admin's hub card, via the same scope — which is why there are
- *                                 only TWO call sites for three reads, and why the listing and
- *                                 the count still cannot disagree about the total.
+ *   · `countNinaChatPhotos`     → the reference picker's chat-side total, via the same scope
  *   · `listNinaMediaPhotos` + `countNinaMediaPhotos` → /admin/nina?view=media and its tree badge,
  *                                 via `mediaCollectionScope` — the all-kinds superset of the
  *                                 generated pair, sharing THIS predicate so a reference cannot
@@ -1946,11 +1930,12 @@ function isOriginalPhoto(): SQL | undefined {
  * this plan forbids a migration, and nothing has measured a need for one.
  *
  * ── AND SINCE F37, NOT A REFERENCE ───────────────────────────────────────────
- * `isOriginalPhoto()` joins the `and(...)` here rather than in `listNinaChatPhotos` and
- * `countNinaChatPhotos` separately, which is the same argument this docstring already makes for
- * `kind`: the page and the total are one predicate or they are two chances to disagree about how
- * many photographs the collection holds. R1's duplicate leaves /admin/photos and the /admin hub
- * card in one edit.
+ * `isOriginalPhoto()` joins the `and(...)` here rather than at the call sites, which is the same
+ * argument this docstring already makes for `kind`: every statement that reads this scope reads the
+ * same set by construction. After the image-collection merge the scope's callers are the
+ * image-reference picker's — `listNinaPhotoReferences` (page side) and `countNinaChatPhotos` (its
+ * total) and `resolveNinaPhotoReference` (the stored selection) — a picker grid that shows her
+ * GENERATED photographs only, which is the one set this scope still names.
  */
 function generatedChatPhotoScope(userId: string) {
   return and(
@@ -1961,57 +1946,12 @@ function generatedChatPhotoScope(userId: string) {
 }
 
 /**
- * One page of HER photographs in the conversation, newest first, plus the total — the read behind
- * `/admin/photos`.
- *
- * The paginated sibling of `listNinaMessageImages` (:1240) and NOT a replacement for it: that one
- * is "the newest N, his and hers together" and `/nina/about` needs exactly that. This one is a
- * different question — one page of one side of the collection, with a total — and the analysis
- * recorded that no existing read of this table could answer it (there is no `count` query and no
- * `offset` reader on `nina_message_images`).
- *
- * `kind` is NOT a parameter; see `generatedChatPhotoScope`. Widening this function is how an admin
- * listing quietly becomes "the whole conversation" without anyone deciding to.
- *
- * ── TWO STATEMENTS, RUN CONCURRENTLY ────────────────────────────────────────────────────────
- * Same call as `listNinaAvatarsInFolder` (:1902-1908): a `count(*) OVER ()` window would be one
- * round trip and would report `total: 0` for an over-shot `?page=`, which the pager has to tell
- * apart from an empty collection. So the count is its own statement, in the same `Promise.all`,
- * and it is literally `countNinaChatPhotos` rather than a second copy of the predicate.
- *
- * `NINA_CHAT_PHOTO_PAGE_SIZE` is both the default and the ceiling for `limit`; `offset` is floored
- * at 0 because a negative offset is a Postgres error, not a query.
- */
-export async function listNinaChatPhotos(
-  userId: string,
-  opts: { limit?: number; offset?: number } = {},
-): Promise<NinaChatPhotoPage> {
-  const limit = Math.max(
-    1,
-    Math.min(opts.limit ?? NINA_CHAT_PHOTO_PAGE_SIZE, NINA_CHAT_PHOTO_PAGE_SIZE),
-  )
-  const offset = Math.max(0, Math.trunc(opts.offset ?? 0))
-
-  const [rows, total] = await Promise.all([
-    db
-      .select(imageColumns)
-      .from(ninaMessageImages)
-      .where(generatedChatPhotoScope(userId))
-      .orderBy(desc(ninaMessageImages.createdAt), desc(ninaMessageImages.id))
-      .limit(limit)
-      .offset(offset),
-    countNinaChatPhotos(userId),
-  ])
-
-  return { rows, total }
-}
-
-/**
  * How many photographs the collection holds, as a number rather than as a list of rows.
  *
- * Two callers, and they are different questions asked of the same predicate: `/admin`'s hub card
- * needs the integer and nothing else — the mistake `countNinaAvatars` (:2336) was written to undo —
- * and `listNinaChatPhotos` needs it beside a page of rows.
+ * One caller needs the integer and nothing else: `listNinaPhotoReferences`, whose picker total is
+ * the album count plus this one — the mistake `countNinaAvatars` (:2336) was written to undo, not
+ * repeated here. (The `/admin` hub card and the `/admin/photos` page that used to read it are gone
+ * with the surface merge; the Media view counts with its own all-kinds read.)
  *
  * `id` is the final tiebreak in the sibling's ORDER BY because `created_at` ties for rows written
  * in one statement; it has no bearing here, and is noted so the two are not "fixed" into agreement.
@@ -2119,9 +2059,10 @@ export async function countNinaMediaPhotos(userId: string): Promise<number> {
 /* ============================================================================
  * §5b Conversation photographs — the admin write side (R2, phase 3)
  *
- * `/admin/photos` is the only caller. Every statement here is owner-scoped and none of them is
- * reachable from a runner-facing path, which is why they sit in their own block rather than in §5:
- * §5 is what the chat reads and what the worker writes, and this is what the operator changes.
+ * The image-collection explorer's Media view (`/admin/nina?view=media`) is the only surface these
+ * statements answer to. Every statement here is owner-scoped and none of them is reachable from a
+ * runner-facing path, which is why they sit in their own block rather than in §5: §5 is what the
+ * chat reads and what the worker writes, and this is what the operator changes.
  * ==========================================================================*/
 
 /** The four measurements plus the two references a replaced photograph carries. */
@@ -2156,8 +2097,12 @@ export interface NinaChatPhotoBlobPatch {
  *     bumping it would silently re-sort `/nina/about`. Replacing a photograph is not taking a new
  *     one.
  *   · `sort_order` — its place inside a multi-image bubble.
- *   · `kind` — and the WHERE below carries `kind = 'generated'` as well, so this statement cannot
- *     reach one of HIS uploads even if an id for one arrives. `/admin/photos` lists only hers.
+ *   · `kind` — never written by this statement. A replaced upload row stays `kind: 'upload'`,
+ *     now storing selfie-shaped JPEG bytes at a `selfie-` pathname: pathname is display/admin-only
+ *     and `kind` drives behavior (`photoSideOf`, the describe subject, the runner's display). The
+ *     WHERE carries `isOriginalPhoto()` instead of the old `kind = 'generated'`: every original is
+ *     replaceable since the merge, and a REFERENCE row is still unreachable — the action refuses
+ *     it first and this clause is the second agreeing check.
  *
  * ── WHY `description` AND `prompt` GO TO NULL IN THE SAME STATEMENT ─────────────────────────
  * They described the OLD picture. `description` is not decorative: `lib/nina/gateway.ts:162` puts
@@ -2208,7 +2153,7 @@ export async function updateNinaChatPhotoBlob(
       and(
         eq(ninaMessageImages.userId, userId),
         eq(ninaMessageImages.id, id),
-        eq(ninaMessageImages.kind, 'generated'),
+        isOriginalPhoto(),
       ),
     )
     .returning(imageColumns)
@@ -2358,13 +2303,14 @@ export async function setNinaMessageImageDescription(
  * ── WHY THIS IS NOT `setNinaMessageImageDescription` WITH A WIDER SIGNATURE ────────────────
  * Three differences, and each one is load-bearing:
  *
- *   · `kind = 'generated'` is in the WHERE, exactly as `updateNinaChatPhotoBlob` carries it, and
- *     that sibling's reason applies unchanged: `/admin/photos` lists only HERS, so a write reachable
- *     from that screen must not be able to land on one of HIS composer uploads even if an id for one
- *     arrives. `getNinaMessageImage` does not filter on `kind`, so this clause is not redundant with
- *     the action's guard — it is the second of the two agreeing checks this admin surface uses
- *     everywhere. `setNinaMessageImageDescription` has no such clause and must NOT grow one: its
- *     caller is `after()`'s describe pass, which legitimately describes both sides.
+ *   · The WHERE carries `isOriginalPhoto()` — both provenance columns must be NULL. Since the
+ *     image-collection merge, EVERY original row of this table is describable from the admin
+ *     surface: hers AND his, which is why the old `kind = 'generated'` clause is gone. What the
+ *     clause is replaced with is the reference backstop: a row carrying `source_avatar_id` /
+ *     `source_image_id` is a re-SHOW of a photograph that lives elsewhere, the action refuses it
+ *     first, and this clause is the second of the two agreeing checks — a stale client that slips
+ *     the refusal updates nothing. `setNinaMessageImageDescription` has no such clause and must NOT
+ *     grow one: its caller is `after()`'s describe pass, which legitimately describes both sides.
  *   · `description` is `string | null` here. NULL is the operator CLEARING the field (the phase's
  *     D1), and it is not a new state for the row — `updateNinaChatPhotoBlob` writes it in the same
  *     breath as a replace, and every `addChatPhotoAction` row starts there.
@@ -2375,9 +2321,11 @@ export async function setNinaMessageImageDescription(
  *     whose only options are "log a miss" and "log a write".
  *
  * ── IT TOUCHES ONE COLUMN, AND THE ABSENCES ARE THE CONTRACT ──────────────────────────────
+ *   · NOT `kind` — a hand-corrected description does not turn one of his uploads into one of hers;
+ *     `kind` is the his/hers discriminator and only the bytes' origin writes it.
  *   · NOT `prompt` — the generation sidecar for bytes that have not changed.
- *   · NOT `created_at` — `nina_message_images_user_created_idx` orders both `/nina/about` and
- *     `/admin/photos` by it. Correcting a sentence about a photograph is not taking a new one.
+ *   · NOT `created_at` — `nina_message_images_user_created_idx` orders the gallery and the Media
+ *     view by it. Correcting a sentence about a photograph is not taking a new one.
  *   · NOT `blob_url`, `pathname`, or the four measurements — the picture is the same picture.
  *   · NOTHING on `nina_messages`. The bubble's caption is what she SAID; this column is what she
  *     SAW. Rewriting the second from `/admin` must not silently rewrite the first in the runner's
@@ -2402,7 +2350,7 @@ export async function updateNinaChatPhotoDescription(
       and(
         eq(ninaMessageImages.userId, userId),
         eq(ninaMessageImages.id, id),
-        eq(ninaMessageImages.kind, 'generated'),
+        isOriginalPhoto(),
       ),
     )
     .returning(imageColumns)

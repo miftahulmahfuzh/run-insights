@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { MAX_RUNNER_MESSAGE_CHARS } from './schema'
 import {
   albumPhotos,
+  describeSubjectForSide,
   galleryPhotos,
   NINA_ALBUM_MAX,
   NINA_ATTACH_MAX_CHARS,
@@ -116,6 +117,22 @@ describe('photoSideOf', () => {
   it('an unknown kind is his, never hers', () => {
     expect(photoSideOf('')).toBe('his')
     expect(photoSideOf('screenshot')).toBe('his')
+  })
+})
+
+describe('describeSubjectForSide', () => {
+  it("sends the self witness for a photograph of Nina ('hers')", () => {
+    expect(describeSubjectForSide(photoSideOf('generated'))).toBe('self')
+  })
+
+  it("sends the runner witness for one of his uploads ('his')", () => {
+    expect(describeSubjectForSide(photoSideOf('upload'))).toBe('runner')
+  })
+
+  it('defaults an unknown kind to his, and his to the runner witness', () => {
+    // `photoSideOf`'s documented default, and the reason it points the safe way: describing a
+    // stranger's photograph with the SELF prompt would put her name on it.
+    expect(describeSubjectForSide(photoSideOf('something-else'))).toBe('runner')
   })
 })
 

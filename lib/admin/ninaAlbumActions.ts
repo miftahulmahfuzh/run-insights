@@ -10,6 +10,7 @@ import {
   contentTypeForAvatarExt,
   type AdminAvatarExt,
 } from '@/lib/admin/avatars'
+import { ADMIN_CHAT_PHOTOS_PATH } from '@/lib/admin/chatPhotos'
 import { chatPhotoSetAvatarSchema } from '@/lib/admin/chatPhotoSchema'
 import { folderAncestors, folderParent, isInFolderTree } from '@/lib/admin/filetree'
 import {
@@ -192,12 +193,15 @@ export async function setCurrentNinaAvatarAction(rawId: string): Promise<AdminAc
  *
  * ── THE GUARDS ARE REPLACE'S AND REMOVE'S, VERBATIM ──────────────────────────────────────────
  * `getNinaMessageImage` deliberately does not filter (it is the bubble and viewer read too), so
- * this action enforces here what the other two enforce at their own seams: `kind !== 'generated'`
- * is HIS upload, and a row carrying `source_avatar_id`/`source_image_id` is a re-SHOW of a
- * photograph that lives elsewhere — adopting it would file a second copy of bytes the original
- * still owns. `isChatPhotoReference` stays private to `lib/admin/chatPhotoActions.ts` (a `'use
- * server'` module exports actions, not predicates), so the two-field test is spelled here; the
- * three actions' refusals stay one rule by tests, not by imports.
+ * this action enforces here what Replace and Remove enforce at their own seams. The old
+ * `kind !== 'generated'` refusal is gone with the merge — one of HIS uploads is adoptable like any
+ * other original, which is R1's literal ask ("bahkan image yang diupload user secara manual di
+ * chat session bisa ... di jadiin profpic nina juga"). What still refuses, before any bytes move,
+ * is a row carrying `source_avatar_id`/`source_image_id`: a re-SHOW of a photograph that lives
+ * elsewhere, and adopting it would file a second copy of bytes the original still owns.
+ * `isChatPhotoReference` stays private to `lib/admin/chatPhotoActions.ts` (a `'use server'` module
+ * exports actions, not predicates), so the two-field test is spelled here; the actions' refusals
+ * stay one rule by tests, not by imports.
  *
  * ── THE DESCRIPTION IS SEEDED, AND ONLY A NULL EARNS A VENDOR CALL ───────────────────────────
  * `insertNinaAvatars` writes the chat row's own `description` into the album row — the same
@@ -214,9 +218,6 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
 
   const row = await getNinaMessageImage(userId, id)
   if (row == null) return { ok: false, error: 'That photo is not in the collection.' }
-  if (row.kind !== 'generated') {
-    return { ok: false, error: 'That one is his upload, not hers.' }
-  }
   if (row.sourceAvatarId != null || row.sourceImageId != null) {
     return {
       ok: false,
@@ -248,8 +249,7 @@ export async function setChatPhotoAsAvatarAction(input: unknown): Promise<AdminA
   await setCurrentNinaAvatar(userId, avatar.id)
   if (avatar.description == null) scheduleDescribe(userId, avatar.id)
 
-  revalidatePath('/admin/photos')
-  revalidatePath('/admin/nina')
+  revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
   return { ok: true, id: avatar.id }
 }
 

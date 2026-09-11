@@ -2,17 +2,17 @@
 
 **Package Path**: `.`
 **Package Code**: RI
-**Last Updated**: 2026-09-10
-**Total Active Tasks**: 2
+**Last Updated**: 2026-09-11
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 1
-- Completed: 32
+- Completed: 33
 
 ---
 
@@ -21,16 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-RI-A035** Phase 2: Media verbs on both kinds; purge the Chat photos surface
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns lifting the `kind !== 'generated'` refusals (`replaceChatPhotoAction`, `editChatPhotoDescriptionAction` + `updateNinaChatPhotoDescription`'s WHERE, `setChatPhotoAsAvatarAction`) so every ORIGINAL media row is replaceable, describable, adoptable; the ONE side→subject mapping `describeSubjectForSide` in `lib/nina/album.ts`; the migrated client upload flow (ChatPhotoAdd/chatPhotoUpload → explorer/, Media view's 'Add photos', Replace) mounted through SelectionPane restructured into a two-line dispatcher over a private AlbumSelectionPane and a new MediaPane (narrowing Phase 1's `origin` union via the `isMediaRow` type guard), with adopt-with-crop draft, Replace, Remove, Download and NO FileExplorer prop changes (Phase 1's `view: ExplorerView` + `mediaCount: number` stand); the prompt toggle rendered ONLY when `prompt != null` (R2); and the purge: `app/admin/photos/page.tsx`, every ChatPhoto* component, `chatPhotoModel.ts`, `chatPhotoUpload` (re-homed into explorer/, not lost), `listNinaChatPhotos` + `NinaChatPhotoPage`, the nav entry + dashboard card, `tests/admin.chatPhotosRail.test.ts`, with `ADMIN_CHAT_PHOTOS_PATH`'s VALUE re-homed to '/admin/nina' (constant stays). `countNinaChatPhotos` and `generatedChatPhotoScope` are deliberately KEPT (the image-reference picker is their remaining caller). `MediaDescription.tsx` is created as a marked seam for Phase 3. Exit criteria: every verb from the old rail works in the Media folder for both kinds; /admin/photos, its nav entry and card are gone; tests/admin.shell.test.ts updated and green; no ChatPhoto* component remains; the mapping has one definition and one suite; the whole suite passes.
-  - **Status**: pending
-  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 2 of 4)
-  - **Satisfies**: R1 (verbs half) — manually-uploaded chat images become replaceable and adoptable as her profile picture; R2 — a replaced photo no longer offers the view-prompt affordance.
-  - **Depends on**: `P1-RI-A034`
-  - **Plan**: `.workflows/plan/P1-RI-A035.md`
 
 - [ ] **P1-RI-A036** Phase 4: "Image collection": rename + borderless grid
   - **Difficulty**: NORMAL
@@ -101,6 +91,29 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A035** Phase 2: Media verbs on both kinds; purge the Chat photos surface
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns lifting the `kind !== 'generated'` refusals (`replaceChatPhotoAction`, `editChatPhotoDescriptionAction` + `updateNinaChatPhotoDescription`'s WHERE, `setChatPhotoAsAvatarAction`) so every ORIGINAL media row is replaceable, describable, adoptable; the ONE side→subject mapping `describeSubjectForSide` in `lib/nina/album.ts`; the migrated client upload flow (ChatPhotoAdd/chatPhotoUpload → explorer/, Media view's 'Add photos', Replace) mounted through SelectionPane restructured into a two-line dispatcher over a private AlbumSelectionPane and a new MediaPane (narrowing Phase 1's `origin` union via the `isMediaRow` type guard), with adopt-with-crop draft, Replace, Remove, Download and NO FileExplorer prop changes (Phase 1's `view: ExplorerView` + `mediaCount: number` stand); the prompt toggle rendered ONLY when `prompt != null` (R2); and the purge: `app/admin/photos/page.tsx`, every ChatPhoto* component, `chatPhotoModel.ts`, `chatPhotoUpload` (re-homed into explorer/, not lost), `listNinaChatPhotos` + `NinaChatPhotoPage`, the nav entry + dashboard card, `tests/admin.chatPhotosRail.test.ts`, with `ADMIN_CHAT_PHOTOS_PATH`'s VALUE re-homed to '/admin/nina' (constant stays). `countNinaChatPhotos` and `generatedChatPhotoScope` are deliberately KEPT (the image-reference picker is their remaining caller). `MediaDescription.tsx` is created as a marked seam for Phase 3. Exit criteria: every verb from the old rail works in the Media folder for both kinds; /admin/photos, its nav entry and card are gone; tests/admin.shell.test.ts updated and green; no ChatPhoto* component remains; the mapping has one definition and one suite; the whole suite passes.
+  - **Status**: completed
+  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 2 of 4)
+  - **Satisfies**: R1 (verbs half) — manually-uploaded chat images become replaceable and adoptable as her profile picture; R2 — a replaced photo no longer offers the view-prompt affordance.
+  - **Depends on**: `P1-RI-A034`
+  - **Plan**: `.workflows/plan/P1-RI-A035.md`
+  - **Completed**: 2026-09-11 07:21
+  - **Method**: /do
+  - **Files**: lib/admin/chatPhotos.ts, lib/nina/album.ts, lib/nina/queries.ts, lib/admin/chatPhotoActions.ts, lib/admin/ninaAlbumActions.ts, lib/admin/imageGenActions.ts, components/admin/explorer/SelectionPane.tsx, components/admin/explorer/chatPhotoUpload.ts, components/admin/explorer/MediaAdd.tsx, components/admin/explorer/MediaControls.tsx, components/admin/explorer/MediaDescription.tsx, components/admin/explorer/MediaPane.tsx, components/admin/FileExplorer.tsx, components/admin/AdminNavLinks.tsx, app/admin/page.tsx, app/admin/photos/page.tsx, components/admin/ChatPhotoGrid.tsx, components/admin/ChatPhotoDetail.tsx, components/admin/ChatPhotoControls.tsx, components/admin/ChatPhotoAdd.tsx, components/admin/ChatPhotoDescription.tsx, components/admin/ChatPhotoProfilePicture.tsx, components/admin/chatPhotoUpload.ts, components/admin/chatPhotoModel.ts, tests/admin.chatPhotosRail.test.ts, tests/admin.mediaPane.test.ts, tests/admin.shell.test.ts, tests/admin.chatPhotos.test.ts, tests/nina.chatPhotoDescription.test.ts, tests/admin.chatPhotoAdoption.test.ts, tests/nina.photoRefs.test.ts, lib/nina/album.test.ts
+  - **Verification**: `npm run typecheck` clean; `npm run lint` 0 errors (4 pre-existing warnings in untouched files); `npm run test` 3781/3781 across 177 files.
+  - **Drift**: queries.ts line anchors had shifted from Phase 1's media read; all plan anchors located by content, plan text applied verbatim
+  - **Drift**: MediaPane: dropped the plan's dead `dirty` computation and its now-unused isIdentityCrop import — the old rail's Reset-framing gate; the plan's own icon row has no Reset button (reset is the keyed remount)
+  - **Drift**: tests/admin.mediaPane.test.ts: the SEAM pin reads readRepoFile (raw source) because readRepoCode strips the docstring that deliberately carries the mark
+  - **Drift**: tests/nina.chatPhotoDescription.test.ts: the new blob-write SET-clause assertions re-spelled to drizzle's real grammar (one `set`, comma-joined assignments: `"description" = $`), same property pinned
+  - **Drift**: SelectionPane: `trail` simplified to the album-only form — the media ternary branch became a ts2367 no-overlap compile error once the body narrowed to AlbumExplorerPhoto; part of deleting Phase 1's read-only media arm as ordered
+  - **Drift**: Adjacent docstrings falsified by this phase's own edits reworded minimally: NinaMediaPage's twin-of-NinaChatPhotoPage sentence, FileExplorer's verb-less-media-view header paragraph + useFolderUpload comment + select comment, AdminNavLinks' 'All seven routes'/'three routes' counts, and same-class stale figures in directly adjacent shell-test comment lines (:155-157, :247-249, :313-315). Regions the reconciler explicitly assigned to Phase 4 were left untouched (ImagesIcon docstring, shell-test trio comment, AdminNavLinks grid arithmetic block)
+  - **Decided**: Plan's MediaPane carried a dead `dirty` variable (old Reset-framing gate its own JSX omits) → dropped with the unused isIdentityCrop import (rung 3: the plan's code-block JSX is the exhaustive control statement; a dead variable cannot pass lint)
+  - **Decided**: mediaPane SEAM pin vs comment-stripping reader → pin reads raw file; the SEAM mark is prose by design, addressed to Phase 3's author (rung 3: the two plan blocks conflicted; the test's intent decides)
+  - **Decided**: blob-write SET grammar in the new SQL test → drizzle emits `set` once; assertions re-spelled to `"column" = $` without relaxing any pinned property (verification failure settled by fixing the assertion spelling, not the check's strength)
 
 - [x] **P1-RI-A034** Phase 1: Media folder in the Image collection explorer (read path)
   - **Difficulty**: HARD

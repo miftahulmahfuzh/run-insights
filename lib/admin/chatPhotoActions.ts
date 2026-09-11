@@ -19,6 +19,7 @@ import {
 } from '@/lib/admin/chatPhotos'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { isValidId, newId } from '@/lib/id'
+import { describeSubjectForSide, photoSideOf } from '@/lib/nina/album'
 import { captionNinaPhoto } from '@/lib/nina/caption'
 import { releaseBlobIfUnreferenced } from '@/lib/nina/blobRelease'
 import { ninaImageCaption } from '@/lib/nina/imagefail'
@@ -129,12 +130,17 @@ import { isValidContentHash } from '@/lib/photos/contentHash'
  * ── A REFERENCE ROW IS NOT A MEMBER, SO IT IS NOT REPLACEABLE ───────────────────────────────
  * F37's `source_avatar_id` / `source_image_id` mark a row that RE-SHOWS a photograph which already
  * exists elsewhere — an album row (F34 R2's share) or another chat row. `isOriginalPhoto()` is
- * inside `generatedChatPhotoScope`, so such a row is not on `/admin/photos` at all and an id for one
- * is a stale link or a hand-typed claim. `getNinaMessageImage` above deliberately does NOT filter
- * references (it is the bubble/viewer read too), so the refusal has to be here. Replacing a
- * reference's bytes would change what one bubble shows while the photograph it re-shows stayed as it
- * was: two pictures where the operator asked for one, and no way to see the second one from this
- * screen. The refusal is a sentence, in the same shape as the `kind` refusal above it.
+ * inside every collection read's WHERE, so such a row is not in the Media folder at all and an id
+ * for one is a stale link or a hand-typed claim. `getNinaMessageImage` above deliberately does NOT
+ * filter references (it is the bubble/viewer read too), so the refusal has to be here — and
+ * `updateNinaChatPhotoBlob`'s own `isOriginalPhoto()` clause is the second agreeing check.
+ * Replacing a reference's bytes would change what one bubble shows while the photograph it re-shows
+ * stayed as it was: two pictures where the operator asked for one, and no way to see the second one
+ * from this screen.
+ *
+ * The old `kind !== 'generated'` refusal is GONE (the merge's whole point): one of HIS uploads is
+ * now replaceable like any other original. `kind` is not written by the replace — the row keeps its
+ * side, gains selfie-shaped bytes, and the describe pass below follows the side it still has.
  */
 export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
   const { userId } = await requireAdmin()
@@ -149,9 +155,6 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
 
   const existing = await getNinaMessageImage(userId, id)
   if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
-  if (existing.kind !== 'generated') {
-    return { ok: false, error: 'That one is his upload, not hers.' }
-  }
   if (isChatPhotoReference(existing)) {
     return {
       ok: false,
@@ -524,11 +527,14 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
  * ── THE TWO CHECKS, AGAIN AND FOR THE SAME REASON ─────────────────────────────────────────
  * `requireAdmin()` first, above any use of the argument. Then the SHAPE (Zod, which knows no user
  * id — *"A well-formed `Item` object can still refer to a row the caller does not own"*), then the
- * owner-scoped re-read, then a write whose own WHERE carries `user_id` AND `kind = 'generated'`.
+ * owner-scoped re-read, then a write whose own WHERE carries `user_id` AND `isOriginalPhoto()`.
  *
- * The `existing.kind` guard is not decoration: `getNinaMessageImage` does not filter on `kind`, so
- * without it an id for one of HIS composer uploads would reach a write nobody can see or undo from
- * this screen. `replaceChatPhotoAction` refuses the same case with the same sentence, on purpose.
+ * The write's WHERE used to carry `kind = 'generated'` and the action refused his uploads with the
+ * same sentence Replace used. Both halves of that pair are gone with the surface merge: every
+ * ORIGINAL row is describable now, and the clause that replaced the kind check — the reference
+ * backstop — is the one that still matters. References keep their refusal below the fold of the
+ * shared grammar: this action's write cannot reach one, and the sentence the operator sees for a
+ * reference id here is the write's miss, reported as a not-in-the-collection.
  *
  * And there is no `isAdminChatPhotoPathname` call here, with nothing missing: that predicate binds
  * an UPLOADED BLOB to the session, and this action receives no blob, no pathname and no URL.
@@ -549,9 +555,6 @@ export async function editChatPhotoDescriptionAction(
 
   const existing = await getNinaMessageImage(userId, id)
   if (existing == null) return { ok: false, error: 'That photo is not in the collection.' }
-  if (existing.kind !== 'generated') {
-    return { ok: false, error: 'That one is his upload, not hers.' }
-  }
 
   /* The empty box IS the clear. D1, and this line is the only place that policy lives. */
   const next = description.length === 0 ? null : description
@@ -696,16 +699,17 @@ function scheduleChatPhotoCaption(userId: string, id: string): void {
       if (row == null) return
 
       /* ── HALF ONE: LOOK AT IT ──────────────────────────────────────────────────────────────
-       * `subject: 'self'` is not optional here and it is not cosmetic. The default prompt is
-       * written about the RUNNER — *"The state of him. Drenched or dry"*, and rule 6 is *"'Him' for
-       * whoever is clearly the runner"*. Pointed at a photograph of Nina it looks for a man who is
-       * not in the frame. See `NINA_SELF_DESCRIBE_SYSTEM_PROMPT`. */
+       * The subject follows the photograph's side: `photoSideOf('generated')` is 'hers', described
+       * by the self witness (`NINA_SELF_DESCRIBE_SYSTEM_PROMPT` — the runner prompt would look for
+       * a man who is not in the frame); one of HIS uploads is 'his', described by the runner
+       * witness, because the subject of THAT photograph is him. `describeSubjectForSide` is the
+       * pinned mapping; keeping it beside `photoSideOf` is what makes the two one edit apart. */
       let description = row.description
       if (description == null) {
         try {
           const result = await describeNinaImages(
             [{ blobUrl: row.blobUrl, pathname: row.pathname }],
-            { subject: 'self' },
+            { subject: describeSubjectForSide(photoSideOf(row.kind)) },
           )
           description = result.description
           await setNinaMessageImageDescription(userId, id, description)

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ADMIN_CHAT_PHOTO_LONG_EDGE_PX } from '@/components/admin/chatPhotoUpload'
+import { ADMIN_CHAT_PHOTO_LONG_EDGE_PX } from '@/components/admin/explorer/chatPhotoUpload'
 import { ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
 import {
   chatPhotoAddSchema,
@@ -374,10 +374,10 @@ const CAPTION = 'eh gw nyelam tadi'
 
 /**
  * `instanceof` is the whole point of the class, so the mock exports a real one to be an instance of.
- * Hoisted because media-dedupe P3 gave `components/admin/chatPhotoUpload` a server-action import,
- * so this file's static import of that client module now transitively loads `chatPhotoActions` →
- * `vision` while the module body is still evaluating — and the `vi.mock` factory needs the class
- * to exist by then, not by `beforeEach`.
+ * Hoisted because media-dedupe P3 gave `components/admin/explorer/chatPhotoUpload` a server-action
+ * import, so this file's static import of that client module now transitively loads
+ * `chatPhotoActions` → `vision` while the module body is still evaluating — and the `vi.mock`
+ * factory needs the class to exist by then, not by `beforeEach`.
  */
 const { FakeVisionTokenFloorError } = vi.hoisted(() => ({
   FakeVisionTokenFloorError: class extends Error {
@@ -637,6 +637,28 @@ describe('replaceChatPhotoAction schedules the same captioner', () => {
     expect(describeNinaImages).toHaveBeenCalledWith(expect.anything(), { subject: 'self' })
     expect(updateNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID, CAPTION)
   })
+
+  it('replaces one of HIS uploads — the row, not its kind, is the address (R1)', async () => {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, kind: 'upload' })
+
+    const result = await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(updateNinaChatPhotoBlob).toHaveBeenCalledWith(
+      USER,
+      IMAGE_ID,
+      expect.objectContaining({ blobUrl: storedUrl, pathname: storedPathname }),
+    )
+  })
+
+  it('describes HIS upload with the runner witness — subject follows the side', async () => {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, kind: 'upload' })
+
+    await actions.replaceChatPhotoAction({ id: IMAGE_ID, ...goodBlob })
+    await runTheAfterCallback()
+
+    expect(describeNinaImages).toHaveBeenCalledWith(expect.anything(), { subject: 'runner' })
+  })
 })
 
 describe('addChatPhotoAction write-time dedup (media-dedupe P3)', () => {
@@ -792,7 +814,7 @@ describe('editChatPhotoDescriptionAction', () => {
     })
 
     expect(updateNinaChatPhotoDescription).toHaveBeenCalledWith(USER, IMAGE_ID, PROSE)
-    expect(revalidatePath).toHaveBeenCalledWith('/admin/photos')
+    expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
     expect(result).toEqual({ ok: true, id: IMAGE_ID })
   })
 
@@ -833,17 +855,19 @@ describe('editChatPhotoDescriptionAction', () => {
     expect(revalidatePath).not.toHaveBeenCalled()
   })
 
-  it('refuses one of HIS uploads, because this screen lists only hers', async () => {
-    // `getNinaMessageImage` does not filter on `kind`, so this guard is what stops an id for a
-    // composer upload reaching a write nobody could see or undo from /admin/photos.
+  it('describes one of HIS uploads — the kind refusal is lifted (R1)', async () => {
+    // `getNinaMessageImage` does not filter on `kind`, and nothing above the write does either
+    // now: every ORIGINAL row is describable, which is the merge's whole point. The write's own
+    // `isOriginalPhoto()` clause is what still stops a reference.
     getNinaMessageImage.mockResolvedValue({ ...imageRow, kind: 'upload' })
     const result = await actions.editChatPhotoDescriptionAction({
       id: IMAGE_ID,
       description: PROSE,
     })
 
-    expect(result).toEqual({ ok: false, error: 'That one is his upload, not hers.' })
-    expect(updateNinaChatPhotoDescription).not.toHaveBeenCalled()
+    expect(updateNinaChatPhotoDescription).toHaveBeenCalledWith(USER, IMAGE_ID, PROSE)
+    expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
   })
 
   it('refuses an over-long description without reading the row at all', async () => {

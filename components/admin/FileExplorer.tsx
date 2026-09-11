@@ -17,6 +17,7 @@ import { cn } from '@/lib/cn'
 
 import { entriesFromDrop, filesFromDropList, filesFromPicker } from './explorer/dropWalk'
 import { FolderTree } from './explorer/FolderTree'
+import { MediaAdd } from './explorer/MediaAdd'
 import { PhotoGrid } from './explorer/PhotoGrid'
 import { SelectionPane } from './explorer/SelectionPane'
 import { UploadQueue } from './explorer/UploadQueue'
@@ -43,9 +44,9 @@ export type { ExplorerFolder, ExplorerPageInfo, ExplorerPhoto } from './explorer
  * both kinds) while the tree, the breadcrumb and the layout stay put — a pinned sibling in the
  * tree, not a route. That is why `view` arrives as a PROP and not as a `useSearchParams` read: the
  * page already awaited the parameter, and a second parse would be a second opinion about the URL.
- * On this view the explorer is deliberately verb-less — no Add buttons, no drop, no move bar —
- * because every media verb is an avatar action today, and an action refused is quieter than an
- * action misfiled. Phase 2 lifts the guards and the buttons return.
+ * On this view the album's verbs stand down — the drop handlers are not attached, the queue and
+ * the move bar are album-only — and the toolbar's Add is the conversation-collection upload
+ * (`MediaAdd`), because the verbs a conversation photograph has are not the album's folder verbs.
  *
  * The **selected photo is `useState`**, deliberately, and for precisely the reason
  * `components/ui/usePanelParam.ts` gives for `/me`'s panel: putting it in the URL would re-run a
@@ -141,6 +142,12 @@ export function FileExplorer({
    */
   const [treeOpen, setTreeOpen] = useState(false)
 
+  /** One sentence about the last media removal that kept a shared blob. Held HERE — the pane
+   * unmounts under it — and rendered under the toolbar until the next removal replaces it. */
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const isMediaView = view === 'media'
+
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -160,8 +167,9 @@ export function FileExplorer({
 
   /*
    * The upload hook stays MOUNTED on both views (it is a hook; it cannot be conditional) but the
-   * media view never starts it: the Add buttons below are album-only and the drop handler refuses,
-   * so `upload` is idle chrome in media view until the media Add flow lands (phase 2).
+   * media view never starts it: the album Add buttons are hidden there, the drop handlers are not
+   * attached, and the media view's own Add (`MediaAdd`) is a different flow that never touches
+   * this hook — so `upload` is idle chrome in media view.
    */
   const upload = useFolderUpload({ userId, destination: folder, onFinished })
 
@@ -217,7 +225,7 @@ export function FileExplorer({
 
   /* Selecting IS opening the pane — there is no separate details toggle: the pane mounts for the
    * selection, and its × hands the selection back (see the render at the bottom of the file). On
-   * the media arm the pane is read-only (SelectionPane decides, off `photo.origin`). */
+   * the media arm the pane is `MediaPane` (SelectionPane dispatches on `isMediaRow`). */
   function select(id: string) {
     setSelectedId(id)
   }
@@ -275,6 +283,17 @@ export function FileExplorer({
     const flat = filesFromDropList(event.dataTransfer)
     if (flat.length > 0) upload.start(flat)
   }
+
+  /* The album is a drop target; the Media view is not — its upload path is the picker + the
+   * browser encode (`MediaAdd`), and a folder walk has nothing to walk onto. */
+  const dropHandlers = isMediaView
+    ? {}
+    : {
+        onDragEnter,
+        onDragOver,
+        onDragLeave,
+        onDrop,
+      }
 
   /* Phase 2's `folderBreadcrumbs`: `{ path, name, depth, isCurrent }` per crumb, root first and
    * always present, and `isCurrent` is carried so the last crumb renders as text without this
@@ -340,22 +359,26 @@ export function FileExplorer({
               : `${page.total} in this folder`}
           </span>
 
-          <input
-            ref={folderInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={onPickFolder}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={onPickFolder}
-          />
+          {!isMediaView && (
+            <>
+              <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={onPickFolder}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={onPickFolder}
+              />
+            </>
+          )}
 
           {/* The drawer's handle. It does not exist at `lg`, where the rail is a column that is
               always on screen — so `aria-expanded` never lies about a control the operator can
@@ -374,12 +397,12 @@ export function FileExplorer({
             <PanelLeftIcon className="size-5" />
           </Button>
 
-          {/* The two Add buttons are album verbs in this phase: they walk a laptop folder and
-              register `nina_avatars` rows in the open folder, which is not what Media is. They
-              return with the migrated carrier-message upload (phase 2), which is a different flow
-              with a different pre-check — hidden here, not disabled, because a disabled button
-              advertises an action that does not exist yet. */}
-          {view === 'album' && (
+          {isMediaView ? (
+            /* The Media view's "Add photos": the conversation-collection upload flow (browser
+             * JPEG encode -> dedupe pre-check -> PUT -> addChatPhotoAction). No folders, no
+             * drop-walk — a conversation photograph is not filed. */
+            <MediaAdd userId={userId} />
+          ) : (
             <>
               <Button
                 size="md"
@@ -400,6 +423,8 @@ export function FileExplorer({
           )}
         </div>
       </div>
+
+      {notice !== null && <p className="mb-4 text-[13px] font-medium text-ink-2">{notice}</p>}
 
       {/* ── THE COLUMNS ─────────────────────────────────────────────────────────────────────
           Two rails and a canvas at `lg`, exactly as `app/admin/layout.tsx` argued for. ONE column
@@ -428,13 +453,7 @@ export function FileExplorer({
           />
         </div>
 
-        <div
-          className="min-w-0"
-          onDragEnter={onDragEnter}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        >
+        <div className="min-w-0" {...dropHandlers}>
           <div
             className={cn(
               'rounded-card border p-4 transition-colors',
@@ -449,19 +468,17 @@ export function FileExplorer({
               </p>
             )}
 
-            {/* PHASE 6. Move / remove for the selection. Returns `null` when nothing is
-                selected, so the grid's layout does not shift on an empty selection. MEDIA rows are
-                excluded by `origin`, not by id-matching, because the bar's two verbs are
-                `nina_avatars` actions and a message-image id is not one of theirs — handing it
-                over would be offering a move of a row that is not filed anywhere. Phase 2 lifts
-                the media verbs; until then the bar is album-only. */}
-            <PhotoMoveBar
-              selectedId={selected != null && selected.origin === 'album' ? selected.id : null}
-              folders={allFolders}
-              folder={folder}
-              currentId={photos.find((photo) => photo.isCurrent)?.id ?? null}
-              onDone={() => setSelectedId(null)}
-            />
+            {/* PHASE 6. Move / remove for the selection — an album verb set (folder move, album
+                delete). A media row's Remove is carrier-aware and lives in its pane. */}
+            {!isMediaView && (
+              <PhotoMoveBar
+                selectedId={selected?.id ?? null}
+                folders={allFolders}
+                folder={folder}
+                currentId={photos.find((photo) => photo.isCurrent)?.id ?? null}
+                onDone={() => setSelectedId(null)}
+              />
+            )}
 
             <PhotoGrid
               photos={photos}
@@ -473,21 +490,27 @@ export function FileExplorer({
             />
           </div>
 
-          <UploadQueue
-            phase={upload.phase}
-            items={upload.items}
-            report={upload.report}
-            error={upload.error}
-            onDismiss={upload.dismiss}
-          />
+          {!isMediaView && (
+            <UploadQueue
+              phase={upload.phase}
+              items={upload.items}
+              report={upload.report}
+              error={upload.error}
+              onDismiss={upload.dismiss}
+            />
+          )}
         </div>
 
         {selected != null && (
           <SelectionPane
             photo={selected}
+            userId={userId}
             shareOrigin={shareOrigin}
             onClose={() => setSelectedId(null)}
-            onRemoved={() => setSelectedId(null)}
+            onRemoved={(note) => {
+              setSelectedId(null)
+              setNotice(note)
+            }}
           />
         )}
       </div>

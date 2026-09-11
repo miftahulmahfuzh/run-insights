@@ -7,11 +7,11 @@ import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
  * be, how big they may get, and which message a photograph's removal takes with it. R2, phase 3.
  *
  * The counterpart of `lib/admin/avatars.ts` for `nina_message_images`, and pure for the same stated
- * reason: `components/admin/ChatPhotoControls.tsx`, `components/admin/ChatPhotoAdd.tsx` and
- * `components/admin/chatPhotoUpload.ts` (client modules), `app/api/admin/nina/upload/route.ts` (a
- * Route Handler), `lib/admin/chatPhotoActions.ts` (Server Actions) and
- * `tests/admin.chatPhotos.test.ts` all have to agree, and a constant that is agreed rather than
- * shared is a constant that will one day disagree.
+ * reason: `components/admin/explorer/chatPhotoUpload.ts`, `components/admin/explorer/MediaAdd.tsx`
+ * and `components/admin/explorer/MediaControls.tsx` (client modules),
+ * `app/api/admin/nina/upload/route.ts` (a Route Handler), `lib/admin/chatPhotoActions.ts` (Server
+ * Actions) and `tests/admin.chatPhotos.test.ts` all have to agree, and a constant that is agreed
+ * rather than shared is a constant that will one day disagree.
  *
  * ── THE PREFIX IS IMPORTED, NOT DECLARED ────────────────────────────────────────────────────
  * RULING A6: `NINA_BLOB_PREFIX = 'nina/'` has exactly one definition, in `lib/nina/images.ts`,
@@ -87,10 +87,16 @@ import { NINA_BLOB_PREFIX } from '@/lib/nina/images'
  */
 
 /**
- * The route every action here revalidates. Phase 2 owns the page; this is the single place phase 3
- * spells its path, so a route rename is one edit.
+ * The route every action here revalidates.
+ *
+ * Named for the COLLECTION, not for a URL: the chat photographs this module writes were rehomed
+ * from `/admin/photos` into the explorer's Media view (`/admin/nina?view=media`, the image-collection
+ * page) when that surface was purged, and the constant is what kept that move a one-line change.
+ * `/admin/nina` is the page route — `revalidatePath` re-renders the whole page, so the Media view
+ * arrives fresh with it — and `lib/admin/imageGenActions.ts` rides the same constant to invalidate
+ * the collection when the background selfie finisher lands a new photograph.
  */
-export const ADMIN_CHAT_PHOTOS_PATH = '/admin/photos'
+export const ADMIN_CHAT_PHOTOS_PATH = '/admin/nina'
 
 /**
  * `'selfie'` — `NinaImagePurpose`'s chat value, spelled here rather than imported so this module

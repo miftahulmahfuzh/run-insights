@@ -177,6 +177,21 @@ export function photoSideOf(kind: string): NinaPhotoSide {
   return kind === 'generated' ? 'hers' : 'his'
 }
 
+/**
+ * Which witness prompt a describe pass uses for a photograph of this side.
+ *
+ * `'hers'` — a generated photograph, which is a photograph OF NINA — is described with
+ * `NINA_SELF_DESCRIBE_SYSTEM_PROMPT`; the runner prompt would look for a man who is not in the
+ * frame. `'his'` — one of the runner's own uploads — is described with the default runner witness,
+ * because the subject is him. `scheduleChatPhotoCaption` reads this off the row's `kind` through
+ * `photoSideOf`, which is what makes the admin describe pass side-aware without the admin surface
+ * learning the prompts. Kept beside `photoSideOf` so the discriminator and its consequence are one
+ * edit apart, and pure so `lib/nina/album.test.ts` can pin the pair.
+ */
+export function describeSubjectForSide(side: NinaPhotoSide): 'self' | 'runner' {
+  return side === 'hers' ? 'self' : 'runner'
+}
+
 /** A `nina_avatars` row, structurally. `NinaAvatarRow` assigns to this. */
 export interface AvatarLike {
   id: string

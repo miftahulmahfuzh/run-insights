@@ -296,10 +296,11 @@ export async function readNinaImageTestAction(
 
   /*
    * R12's "automatically", made literal. The photograph is written by the selfie finisher on a
-   * background invocation that has no idea `/admin/photos` exists, so its cached render would keep
-   * showing the old collection until something invalidated it. Doing it HERE — once, on the
-   * poll that first sees `status='ok'` — costs nothing and means the operator finds the
-   * picture already there.
+   * background invocation that has no idea where the collection is rendered, so its cached render
+   * would keep showing the old collection until something invalidated it. Doing it HERE — once, on
+   * the poll that first sees `status='ok'` — costs nothing and means the operator finds the
+   * picture already there. `ADMIN_CHAT_PHOTOS_PATH` has named `/admin/nina` since the collection
+   * moved into the explorer's Media view.
    */
   if (imageTestVerdict(job) === 'allowed') revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
 

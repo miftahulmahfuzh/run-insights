@@ -14,8 +14,9 @@ import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
  *
  * Three properties, and the SECOND is the one most likely to rot:
  *
- *   1. The three COLLECTION reads skip a reference. Two call sites for three statements, because
- *      `generatedChatPhotoScope` is shared by the page and the count on purpose.
+ *   1. The three COLLECTION reads skip a reference. The listing read and the picker count —
+ *      `listNinaPhotoReferences`' page side and `countNinaChatPhotos`, its total — share
+ *      `generatedChatPhotoScope` on purpose, so the page and the total cannot drift.
  *   2. The reads that make a photograph RENDER, or that build Nina's context, carry NO such
  *      predicate — invariant 2, written as an ABSENCE on purpose. A future "consistency" cleanup
  *      that adds the filter to `getNinaMessageImagesForMessages` blanks a photograph in a live
@@ -82,20 +83,7 @@ describe('the collection listings skip a reference (R1, R3)', () => {
     expect(sql).toContain('limit')
   })
 
-  it('listNinaChatPhotos — BOTH of its statements carry it, so the pager cannot lie', async () => {
-    fake.enqueue([], [[0]])
-    await queries.listNinaChatPhotos('u1')
-
-    expect(fake.queries).toHaveLength(2)
-    for (const query of fake.queries) {
-      const where = whereOf(query.sql)
-      for (const predicate of REFERENCE_SKIPPED) expect(where, query.sql).toContain(predicate)
-      // The page and the total share `generatedChatPhotoScope`, which is why they cannot drift.
-      expect(where).toContain('"kind" = $')
-    }
-  })
-
-  it('countNinaChatPhotos — /admin’s hub card counts what /admin/photos lists', async () => {
+  it('countNinaChatPhotos — the reference picker’s chat-side total still skips a reference', async () => {
     fake.enqueue([[0]])
     await expect(queries.countNinaChatPhotos('u1')).resolves.toBe(0)
 

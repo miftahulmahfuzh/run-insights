@@ -2,7 +2,7 @@
 
 **Package Path**: `components/admin`
 **Package Code**: CA
-**Last Updated**: 2026-09-10
+**Last Updated**: 2026-09-11
 **Total Active Tasks**: 1
 
 ## Quick Stats
@@ -11,7 +11,7 @@
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
+- Blocked: 0
 - Completed: 5
 
 ---
@@ -24,7 +24,7 @@
   - **Difficulty**: NORMAL
   - **Type**: Feature
   - **Context**: Owns the unified describe panel `PhotoDescription.tsx` — one component serving album rows AND media rows, mounted inside BOTH arms of Phase 2's dispatcher (no discriminant read remains); it retires Phase 2's interim seam `MediaDescription.tsx`, both arms' <dl> null-ness rows and AlbumSelectionPane's null-guarded describe button; stored prose rendered and editable by hand plus a describe/re-describe button that runs the vision model and overwrites (no confirmations); describe subject follows the photo through Phase 2's `describeSubjectForSide` (hers/album → 'self', his → 'runner'); `ChatPhotoActionResult` gains an OPTIONAL `description?: string` (additive); `lib/nina/gateway.ts:162-164` stops hardcoding `imageDescriptions: []` so the conversation window's described photos reach every turn's context (bounded: window-bounded rows, prose ≤ 2000 chars); the stale coverage claim at `lib/nina/actions.ts:1535-1540` corrected; regression tests pin both context paths. Does not touch runner-facing photo surfaces (invariant 5), replace/add/remove flows, or styling. Exit criteria: one describe UI/UX on every photo of the page; no describe control left in any icon row and no null-ness row in any facts <dl>; MediaDescription.tsx gone; album describes use the self prompt; window rows carry imageDescriptions in the context read; invariant-5 tests still green.
-  - **Status**: blocked
+  - **Status**: pending
   - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 3 of 4)
   - **Satisfies**: R3 — One uniform describe UI/UX for every photo on the page; a described photo attached to a chat carries its describe result into Nina's context — for the attaching turn and for the rest of the conversation.
   - **Depends on**: `P1-RI-A035`

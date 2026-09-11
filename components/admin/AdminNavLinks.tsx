@@ -45,12 +45,12 @@ import { usePathname } from 'next/navigation'
  *
  * The match itself: `/admin` is compared EXACT — a prefix match there would mark every cell
  * active — and every other href by prefix, so a route keeps its cell through whatever nested
- * paths grow under it later. All seven routes are flat today; `startsWith` is the forward-safe
+ * paths grow under it later. All six routes are flat today; `startsWith` is the forward-safe
  * spelling, not a current necessity.
  */
 
 /**
- * The seven routes, longest label first in each pair.
+ * The six routes, longest label first in each pair.
  *
  * **`short` stopped being rendered text and became the accessible name** (`admin-bottom-bar-icons`
  * R2): below `lg` it is the sr-only span beside each glyph — the string a screen reader announces
@@ -71,8 +71,9 @@ const LINKS = [
   /*
    * The character tuning, which used to be a shut disclosure on the album route until the user
    * asked for it as its own tab: *"move it as a new tab with name: Personality"*. It sits between
-   * the album and the chat photos because it is the third thing about HER, and the two photo
-   * routes stay adjacent below it.
+   * the album and the image-generation tab: the two configuration surfaces — who she is, and how
+   * she is photographed — are neighbours, and the routes above and below them are the things you
+   * look AT.
    *
    * The phone name is "Persona" and not "Personality": a true short form of the word rather than
    * an invented abbreviation — `docs/nina/persona.md` is what this page edits. It was the label
@@ -84,12 +85,10 @@ const LINKS = [
    * personality tab, rather than appended at the end, and the reason is a move that has to be
    * findable: the Wardrobe field leaves the personality tab and arrives on this page, so the two
    * tabs are neighbours. They are the pair of configuration surfaces — who she is, and how she is
-   * photographed — and the three routes above and below them are the things you look AT.
+   * photographed — and the routes above and below them are the things you look AT.
    *
-   * `short` is "Images". Note that it is adjacent to "Photos", and that the two are not the same
-   * word by accident: this page is how a photograph is MADE, and the chat-photos route is the
-   * photographs that were. The full labels at `lg` carry the distinction outright, and below `lg`
-   * the glyphs do — a wand for making, a camera for what was (see the trio note on the icons).
+   * Its `short` is "Images", and the photo-ish routes left in the bar are this one and the album —
+   * a wand for making, a stack for what is kept.
    */
   {
     href: '/admin/image-generation',
@@ -97,14 +96,6 @@ const LINKS = [
     short: 'Images',
     icon: WandSparklesIcon,
   },
-  /*
-   * Deliberately named for the CONVERSATION and not for the person: the album route is
-   * `nina_avatars` (her profile album) and this one is `nina_message_images` (the photographs in
-   * the chat). Two different tables, near each other in the nav so the distinction is legible —
-   * carried by the `lg` labels in words and by the phone bar's camera-vs-wand-vs-stack
-   * silhouettes in glyphs.
-   */
-  { href: '/admin/photos', label: 'Chat photos', short: 'Photos', icon: CameraIcon },
   { href: '/admin/memory', label: 'Memory', short: 'Memory', icon: BrainIcon },
   /*
    * `nina-emoji-shortcuts` R1's route, and it goes LAST because it is the newest surface and
@@ -160,7 +151,7 @@ export function AdminNavLinks() {
      * `grid-cols-7` is inert at `lg`, where `lg:block` takes the list out of grid layout
      * entirely — the same way `grid-cols-4` was before it.
      */
-    <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-7 px-[7px] lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1 lg:px-0">
+    <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-6 px-[7px] lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1 lg:px-0">
       {LINKS.map((link) => {
         const Icon = link.icon
         /* `/admin` exact: a prefix match there would light every cell. See the file header. */
@@ -313,25 +304,6 @@ function WandSparklesIcon({ className }: { className: string }) {
       <path d="M7 8H3" />
       <path d="M21 16h-4" />
       <path d="M11 3H9" />
-    </svg>
-  )
-}
-
-/** Photos: the photographs that were — the camera, third silhouette of the trio. */
-function CameraIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
-      <circle cx="12" cy="13" r="3" />
     </svg>
   )
 }
