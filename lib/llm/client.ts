@@ -47,7 +47,3 @@ export function narrativeClient(): Anthropic {
   return client
 }
 
-/** The model id, read once at the call site so a test can pass its own. */
-export function narrativeModel(): string {
-  return env.LLM_MODEL
-}

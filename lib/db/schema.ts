@@ -2311,6 +2311,26 @@ export const ninaImagePrefsRelations = relations(ninaImagePrefs, ({ one }) => ({
 }))
 
 /* ============================================================================
+ * App-wide settings. One row per KEY, and the POINT of the table is that a value the
+ * code needs at runtime can be changed by the operator from an admin page with no
+ * deploy — the same "a Vercel env edit without the deploy" shape `ninaImageDailyCap()`
+ * gives the quota, for values that are decisions rather than infrastructure. `key` is
+ * `text` and the vocabulary of keys is spelled where they are read; `value` is `text`
+ * and every reader coerces or refuses it, so a hand-run SQL edit degrades instead of
+ * breaking a turn.
+ */
+export const appSettings = pgTable('app_settings', {
+  /** The setting's name. Lowercase snake, one row each — `text_model` is the first. */
+  key: text('key').primaryKey(),
+  /** The stored value. Every reader validates it against the vocabulary it owns. */
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+})
+
+/* ============================================================================
  * Row types. Import these instead of re-deriving $inferSelect at call sites.
  * ==========================================================================*/
 
@@ -2376,6 +2396,8 @@ export type NewNinaTuningRow = typeof ninaTuning.$inferInsert
  * nested `reference`, coerced). The row is the flat, unvalidated storage shape and only
  * `lib/nina/queries.ts` should ever name it. Same suffix, same reason, as `NinaTuningRow`.
  */
+export type AppSettingRow = typeof appSettings.$inferSelect
+export type NewAppSettingRow = typeof appSettings.$inferInsert
 export type NinaImagePrefsRow = typeof ninaImagePrefs.$inferSelect
 export type NewNinaImagePrefsRow = typeof ninaImagePrefs.$inferInsert
 /**

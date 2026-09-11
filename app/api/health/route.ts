@@ -17,7 +17,10 @@ export async function GET() {
       // Safe to expose: model ids and base URLs, no key, no DSN. See Contract delta 1 for
       // why the payload stays this small (learned from expense-tracking's own R-27).
       vision: { baseUrl: env.LLM_VISION_BASE_URL, model: env.LLM_VISION_MODEL },
-      narrative: { baseUrl: env.LLM_BASE_URL, model: env.LLM_MODEL },
+      // `envModel`, honestly: since the 2026-09-10 text-model dropdown the EFFECTIVE narrative
+      // model is whatever `app_settings.text_model` holds, read live per call — this payload is
+      // the deploy's fallback, not a promise about the next turn.
+      narrative: { baseUrl: env.LLM_BASE_URL, envModel: env.LLM_MODEL },
       commit: process.env.VERCEL_GIT_COMMIT_SHA ?? 'local',
     })
   } catch (error) {

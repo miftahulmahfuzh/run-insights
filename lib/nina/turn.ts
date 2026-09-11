@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { narrativeClient } from '@/lib/llm/client'
+import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
 import { buildNinaRunFact, type NinaContext, type NinaRunFact } from './context'
@@ -1103,10 +1104,10 @@ async function attemptNinaRepair(
  * is precisely the drift this function exists to prevent. So the keyword lands in THIS phase's
  * commit, at creation, rather than as a later phase reaching in.
  */
-export function productionDeps(): NinaTurnDeps {
+export async function productionDeps(): Promise<NinaTurnDeps> {
   return {
     client: ninaClient(),
-    model: ninaModel(),
+    model: await ninaModel(),
     toolSet: NINA_CORE_TOOL_SET,
     gateway: dbNinaToolGateway,
     store: dbNinaTurnStore,
@@ -1139,8 +1140,11 @@ export function productionDeps(): NinaTurnDeps {
  */
 export async function runNinaTurn(
   input: NinaTurnInput,
-  deps: NinaTurnDeps = productionDeps(),
+  deps: NinaTurnDeps | undefined = undefined,
 ): Promise<NinaTurnResult> {
+  /* The model id now resolves the app_settings override, so production deps are async; a default
+   * parameter cannot await, so the fallback resolves here — still once, still per call. */
+  deps ??= await productionDeps()
   const result = await runNinaTurnWith(deps, input)
 
   if (deps.store != null) {

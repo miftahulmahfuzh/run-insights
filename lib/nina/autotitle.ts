@@ -1,7 +1,8 @@
 import 'server-only'
 
 import type { NinaSessionTitleSource } from '@/lib/db/schema'
-import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { narrativeClient } from '@/lib/llm/client'
+import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
 import { getNinaSession, listNinaMessages, setNinaSessionTitleIfUntitled } from './queries'
@@ -220,7 +221,7 @@ export async function titleNinaSessionIfNeeded(
     if (!spoke || !answered) return
 
     const title = await titleNinaSessionWith(deps.client ?? narrativeClient(), turns, {
-      model: deps.model ?? narrativeModel(),
+      model: deps.model ?? (await narrativeModel()),
     })
     if (title === null) return
 

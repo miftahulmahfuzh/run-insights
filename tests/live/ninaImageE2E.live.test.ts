@@ -148,7 +148,7 @@ describe.skipIf(!enabled)('nina image pipeline, live', () => {
     /* ── The REAL model, the REAL tool set, the REAL handler. ─────────────────────────────── */
     const result = await turn.runNinaTurnWith(
       fx.fakeTurnDeps(turn.ninaClient(), {
-        model: turn.ninaModel(),
+        model: await turn.ninaModel(),
         toolSet: avatarTools.NINA_FULL_TOOL_SET,
       }),
       {

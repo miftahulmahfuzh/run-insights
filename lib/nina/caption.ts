@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { narrativeClient } from '@/lib/llm/client'
+import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
 import {
@@ -158,7 +159,7 @@ export async function captionNinaPhoto(
 ): Promise<string | null> {
   try {
     return await captionNinaPhotoWith(deps.client ?? narrativeClient(), request, {
-      model: deps.model ?? narrativeModel(),
+      model: deps.model ?? (await narrativeModel()),
     })
   } catch (cause) {
     /* `narrativeClient()` itself can throw — it reads `@/lib/env`. Belt and braces, because this

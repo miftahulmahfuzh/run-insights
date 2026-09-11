@@ -2,7 +2,8 @@ import 'server-only'
 
 import type Anthropic from '@anthropic-ai/sdk'
 
-import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { narrativeClient } from '@/lib/llm/client'
+import { narrativeModel } from '@/lib/llm/textModel'
 import { extractJsonObject } from '@/lib/llm/extractJson'
 import {
   SEARCH_RESULT_MAX,
@@ -177,5 +178,5 @@ export async function rankNinaSearchHits(input: {
   query: string
   candidates: readonly NinaSearchCandidate[]
 }): Promise<number[] | null> {
-  return rankNinaSearchHitsWith(narrativeClient(), narrativeModel(), input)
+  return rankNinaSearchHitsWith(narrativeClient(), await narrativeModel(), input)
 }

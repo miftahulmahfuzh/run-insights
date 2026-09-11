@@ -4,7 +4,8 @@ import './loadEnvLocal'
 
 import { describe, expect, it } from 'vitest'
 
-import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { narrativeClient } from '@/lib/llm/client'
+import { narrativeModel } from '@/lib/llm/textModel'
 import { buildSessionFacts } from '@/lib/llm/facts'
 import { narrateWith } from '@/lib/llm/narrate'
 import { InsightPayloadSchema } from '@/lib/llm/schema'
@@ -71,7 +72,7 @@ describe.skipIf(!HAS_KEY)('live: glm-5.3 narrates the canonical run', () => {
     const factsJson = JSON.stringify(facts)
 
     const result = await narrateWith(narrativeClient(), 'session', facts, {
-      model: narrativeModel(),
+      model: await narrativeModel(),
     })
 
     expect(result.source).not.toBe('unavailable')
@@ -115,7 +116,7 @@ describe.skipIf(!HAS_KEY)('live: glm-5.3 narrates the canonical run', () => {
     // pattern rule 7 exists for. Asserted loosely (a question mark, plus length) because the
     // WORDING varies and only the presence of a real question is contractual.
     const result = await narrateWith(narrativeClient(), 'session', canonicalFacts(), {
-      model: narrativeModel(),
+      model: await narrativeModel(),
     })
 
     expect(result.payload?.questionForRunner ?? '').toContain('?')

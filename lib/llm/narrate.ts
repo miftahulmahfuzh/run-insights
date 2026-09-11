@@ -4,7 +4,8 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 import { getLatestInsight, saveInsight } from '@/lib/db/queries'
 import type { InsightScope } from '@/lib/db/schema'
-import { narrativeClient, narrativeModel } from './client'
+import { narrativeClient } from './client'
+import { narrativeModel } from './textModel'
 import { factsHash } from './factsHash'
 import type { NarrateFacts } from './facts'
 import { promptVersionFor, REPAIR_PREAMBLE, REPORT_TOOL, systemPromptFor } from './prompts/narrate'
@@ -328,8 +329,8 @@ export interface NarrateDeps {
   now?: () => number
 }
 
-function productionDeps(): NarrateDeps {
-  return { client: narrativeClient(), store: dbInsightStore, model: narrativeModel() }
+async function productionDeps(): Promise<NarrateDeps> {
+  return { client: narrativeClient(), store: dbInsightStore, model: await narrativeModel() }
 }
 
 /**
@@ -382,8 +383,11 @@ export async function getOrCreateInsight(
   scope: InsightScope,
   scopeKey: string,
   facts: NarrateFacts,
-  deps: NarrateDeps = productionDeps(),
+  deps: NarrateDeps | undefined = undefined,
 ): Promise<InsightResult> {
+  /* Async production deps (the app_settings model override) cannot await in a parameter
+   * initializer, so the fallback resolves here — still once, still per call. */
+  deps ??= await productionDeps()
   const hash = factsHash(facts)
 
   const latest = await deps.store.latest(userId, scope, scopeKey)

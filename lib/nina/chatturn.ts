@@ -165,7 +165,7 @@ export async function openNinaChatTurn(
     /* Stamped at open, not at close, for `openNinaImageJob`'s reason: a row that failed should
      * still say which model it was reaching for. `ninaChatTurnStore` overwrites it with the model
      * the call actually used, which is the same string unless the env changed mid-turn. */
-    model: ninaModel(),
+    model: await ninaModel(),
     status: 'pending',
     errorCode: CHAT_TURN_PHASE_RUNNING,
     args,

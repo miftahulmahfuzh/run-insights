@@ -41,7 +41,7 @@ const HAS_KEY =
 
 describe.skipIf(!HAS_KEY)('nina live', () => {
   it('live: completes a real tool round trip and returns a valid send payload', async () => {
-    const result = await runNinaTurnWith(fakeTurnDeps(ninaClient(), { model: ninaModel() }), {
+    const result = await runNinaTurnWith(fakeTurnDeps(ninaClient(), { model: await ninaModel() }), {
       userId: 'live',
       context: ninaContextFixture(),
       /* The DEFAULT tuning: this case is measuring the endpoint's tool loop, not the character. */
@@ -56,7 +56,7 @@ describe.skipIf(!HAS_KEY)('nina live', () => {
 
   it('live: accepts tool_choice { type: "any" } without a 400', async () => {
     const message = await ninaClient().messages.create({
-      model: ninaModel(),
+      model: await ninaModel(),
       max_tokens: 256,
       system: 'Call a tool. Say nothing else.',
       messages: [{ role: 'user', content: 'What did I run on 2026-09-01?' }],
@@ -75,7 +75,7 @@ describe.skipIf(!HAS_KEY)('nina live', () => {
    */
   it('live: emits an ISO date from an Indonesian reference, with no parser on our side', async () => {
     const message = await ninaClient().messages.create({
-      model: ninaModel(),
+      model: await ninaModel(),
       max_tokens: 256,
       system: 'Today is Wednesday 2026-09-03. Call a tool. Say nothing else.',
       messages: [{ role: 'user', content: 'na, lari gw kemaren gimana?' }],

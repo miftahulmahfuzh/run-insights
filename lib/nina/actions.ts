@@ -1406,7 +1406,7 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
         recentRunnerTexts,
         earlierRunnerTexts,
       },
-      { ...productionDeps(), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
+      { ...(await productionDeps()), toolSet: NINA_FULL_TOOL_SET, store: ninaChatTurnStore(turnId) },
     )
     source = result.source
 

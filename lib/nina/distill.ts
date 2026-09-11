@@ -8,7 +8,8 @@ import type {
   NinaSlotValue,
 } from '@/lib/db/schema'
 import { newId } from '@/lib/id'
-import { narrativeClient, narrativeModel } from '@/lib/llm/client'
+import { narrativeClient } from '@/lib/llm/client'
+import { narrativeModel } from '@/lib/llm/textModel'
 import type Anthropic from '@anthropic-ai/sdk'
 
 import {
@@ -260,7 +261,7 @@ export async function distillNinaMemory(deps: {
   now?: () => number
 }): Promise<DistillResult> {
   return distillWith(deps.client ?? narrativeClient(), deps.input, {
-    model: deps.model ?? narrativeModel(),
+    model: deps.model ?? (await narrativeModel()),
     now: deps.now,
   })
 }

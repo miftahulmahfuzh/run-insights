@@ -1,6 +1,8 @@
 import { CharacterPanel } from '@/components/admin/CharacterPanel'
+import { TextModelSelect } from '@/components/admin/TextModelSelect'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
 import { toTuningDraft } from '@/lib/admin/tuningModel'
+import { narrativeModel } from '@/lib/llm/textModel'
 import { buildNinaSystemPrompt } from '@/lib/nina/prompts'
 import { readNinaTuning } from '@/lib/nina/queries'
 import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
@@ -68,6 +70,14 @@ export default async function AdminPersonalityPage() {
 
   const tuning = await readNinaTuning(userId)
 
+  /*
+   * The EFFECTIVE text model, not the raw stored one: `narrativeModel()` is the same resolver
+   * every text call makes, so the dropdown shows what the next turn will actually dial. It is a
+   * one-row indexed SELECT, not a model call — `ci:llm-payload-guard`'s table has no entry for it
+   * and needs none.
+   */
+  const textModel = await narrativeModel()
+
   return (
     <div>
       <header className="mb-5 lg:mb-6">
@@ -79,6 +89,15 @@ export default async function AdminPersonalityPage() {
           from.
         </p>
       </header>
+
+      {/*
+       * The text model (the 2026-09-10 ask). It sits ABOVE the character panel because it is the
+       * wider setting: the panel below configures what she says, this select configures which
+       * brain says it — her replies, captions, titles and the insights rollup together. It edits
+       * `app_settings`, not the tuning row, which is why it is its own component and its own
+       * action file (`lib/admin/textModelActions.ts`) rather than a control on the panel.
+       */}
+      <TextModelSelect model={textModel} />
 
       {/*
        * The tuning crosses to the client as a plain `TuningDraft` — `toTuningDraft` is the one
