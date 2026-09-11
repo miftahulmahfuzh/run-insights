@@ -3,6 +3,28 @@
   "coordinator": "orch-nina-dup-bubble-reveal",
   "coordinator_session_id": "f4c04fa2-0226-4ef7-86f5-4019e77aef48",
   "created": "2026-09-11T05:16:34+00:00",
+  "landed": {
+    "at": "2026-09-11T05:45:30+00:00",
+    "base": "main",
+    "commit": "30cf006c3118ef6c6d757c8bd627f5e24ead5a27",
+    "machine": "pc"
+  },
+  "decisions": [
+    {
+      "at": "2026-09-11T05:44:30+00:00",
+      "by": "orch-nina-dup-bubble-reveal",
+      "choice": "union — both entries kept newest-first (P1-NIN-A034, then peer's P1-RI-A037), shared tail from P1-RI-A033 on; peer's entry left byte-verbatim",
+      "fork": "merge conflict lib/nina/.workflows/package_readme.md — readme-updater changelog line, both sets landed (job-jump-photo-bubble @ b58598f, this set @ cfddcce)",
+      "rung": "6: surrounding convention — the readme's own Last Updated newest-first chain"
+    },
+    {
+      "at": "2026-09-11T05:46:00+00:00",
+      "by": "orch-nina-dup-bubble-reveal",
+      "choice": "left verbatim in the union — peer's published prose; noted for orch-job-jump-photo-bubble",
+      "fork": "peer's P1-RI-A037 changelog entry as landed on main carries an unbalanced ')' (line paren depth 1)",
+      "rung": "observation, not a fork"
+    }
+  ],
   "phases": [
     {
       "card": null,
@@ -25,6 +47,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-dup-bubble-reveal/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-dup-bubble-reveal",
-  "updated": "2026-09-11T05:37:09+00:00",
+  "updated": "2026-09-11T05:45:30+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-dup-bubble-reveal"
 }
