@@ -79,6 +79,8 @@ function image(id: string, messageId: string, description: string | null, sortOr
     sourceAvatarId: null,
     sourceImageId: null,
     contentHash: null,
+    perceptualHash: null,
+    perceptualSig: null,
     sortOrder,
     createdAt: new Date('2026-09-10T02:14:00.000Z'),
   }
