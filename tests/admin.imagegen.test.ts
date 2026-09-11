@@ -34,7 +34,6 @@ import {
   NINA_IMAGE_TIME_MAX,
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
-  NINA_PROMPT_TEMPLATE_DEFAULT,
   NINA_PROMPT_TEMPLATE_MAX,
 } from '@/lib/nina/imageprefs'
 
@@ -216,7 +215,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       venue: 'Kuta streets in Bali',
       time: 'rainy night',
       notes: 'nina is full of sweat',
-      promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT,
+      promptTemplate: '{{bodyFacts}}\n\n{{scene}}',
       model: 'qwen/qwen-image-3',
     }
     expect(changedImageGenFields(edited, DEFAULTS)).toEqual([
@@ -433,16 +432,17 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     }
   })
 
-  it('bounds the template at the same number the textarea spells, and accepts the default and empty', () => {
+  it('bounds the template at the same number the textarea spells, and accepts a valid shell', () => {
     expect(ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: '' })).success).toBe(true)
     expect(
-      ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT }))
-        .success,
+      ninaImagePrefsWriteSchema.safeParse(
+        payload({ promptTemplate: '{{bodyFacts}}\n\nHer outfit: {{wardrobe}}\n\n{{scene}}' }),
+      ).success,
     ).toBe(true)
     /* The boundary cases must be VALID templates — prose padding around the required tokens, not
      * bare filler, which the validator refuses for its own (missing-placeholder) reason. */
     const validAt = (n: number): string => {
-      const base = '{{camera}}\n\n{{scene}}\n\n{{subject}}'
+      const base = '{{bodyFacts}}\n\n{{scene}}'
       return base + 'p'.repeat(n - base.length)
     }
     expect(
@@ -476,7 +476,9 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     /* Reordered, duplicated and prose-decorated shells are all FINE — that is the control. */
     expect(
       ninaImagePrefsWriteSchema.safeParse(
-        payload({ promptTemplate: '{{scene}}\n\nSHOT ON FILM.\n\n{{camera}}\n\n{{subject}}\n\n{{scene}}' }),
+        payload({
+          promptTemplate: '{{scene}}\n\nSHOT ON FILM.\n\n{{bodyFacts}}\n\n{{scene}}',
+        }),
       ).success,
     ).toBe(true)
   })

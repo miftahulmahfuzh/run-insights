@@ -387,6 +387,16 @@ export const NINA_BODY_SENTENCES: readonly string[] = [
   `Her calves are very long and full, defined all the way down to a narrow ankle, on legs that are unusually long for her height. She is curvy and heavy-bodied, never lean and never slight.`,
 ]
 
+/**
+ * **The four facts, as the enumeration the canon spends them in** — *"big boobs, a bubble butt,
+ * big thighs and very long calves"*, the user's own list. Extracted so the editable template's
+ * `{{bodyFacts}}` slot can expand to the SAME words the built-in assembly used, instead of a
+ * second spelling drifting away from the canon; `tests/nina.imagerecipe.test.ts` asserts this
+ * string really is the enumeration inside `NINA_BODY_SENTENCES[0]`, so the extraction cannot
+ * silently stop agreeing with the sentence it came from.
+ */
+export const NINA_BODY_FACTS = 'big boobs, a bubble butt, big thighs and very long calves'
+
 /** The full render. Every sentence, in order. */
 export const NINA_BODY = NINA_BODY_SENTENCES.join(' ')
 
@@ -438,6 +448,29 @@ export const NINA_FACE = `A woman in her late twenties, mixed Southeast Asian an
 export const NINA_DEFAULT_OUTFIT = `Her default outfit is a heather-grey racerback tank, black fitted running shorts, white running shoes, and a black digital watch on her left wrist. Often a white towel over one shoulder and a blue water bottle in one hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`
 
 /**
+ * **The default outfit as a VALUE**, for the template's `{{wardrobe}}` slot: what fills
+ * "Her outfit for this photograph: {{wardrobe}}" when the operator left the Wardrobe field empty,
+ * so the sentence always has a subject. The same three garments `NINA_DEFAULT_OUTFIT` names, in
+ * the same order, minus the watch (the template's own next sentence carries the watch) and the
+ * towel. Not derived from `NINA_DEFAULT_OUTFIT` by slicing — prose surgery on prose is how the
+ * two drift — but asserted in `tests/nina.imagerecipe.test.ts` to be covered by it, so a canon
+ * outfit change fails a test here instead of quietly leaving the template dressing her in last
+ * season's kit.
+ */
+export const NINA_DEFAULT_OUTFIT_VALUE =
+  'a heather-grey racerback tank, black fitted running shorts and white running shoes'
+
+/**
+ * The two sentences that follow an outfit wherever it is stated — the watch and her home ground.
+ * Extracted from `ninaAppearance` so the editable template interpolates the SAME sentences the
+ * built-in assembly writes, rather than a hand-copied second spelling; `ninaAppearance` uses this
+ * constant directly, so there is one home and no drift to check.
+ */
+export const NINA_OUTFIT_SUFFIX =
+  'She still has the black digital watch on her left wrist unless the outfit says otherwise. ' +
+  'Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.'
+
+/**
  * The whole canon, at full detail, with no wardrobe override. **BODY FIRST** — that reorder is R1's
  * other half: the user does not care about her face, so the face no longer opens the paragraph the
  * model reads first.
@@ -462,7 +495,12 @@ ${NINA_DEFAULT_OUTFIT}`
  * doubled one. A trailing `,` or `;` is NOT an ending: a comma before `She still has` is the same
  * run-on with a different mark.
  */
-function withSentenceStop(text: string): string {
+/**
+ * Append a full stop unless the text already ends with one — exported for `imagegen.ts`'s
+ * `{{wardrobe}}` expansion, which must give the operator's wardrobe the same sentence stop the
+ * built-in assembly gives it, so the two paths cannot disagree about a period.
+ */
+export function withSentenceStop(text: string): string {
   if (text.length === 0) return text
   return /[.!?]$/.test(text) ? text : `${text}.`
 }
@@ -538,7 +576,7 @@ export function ninaAppearance(
   const wardrobe = withSentenceStop(prefs.wardrobe.trim())
   if (wardrobe.length > 0) {
     paragraphs.push(
-      `Her outfit for this photograph: ${wardrobe} She still has the black digital watch on her left wrist unless the outfit says otherwise. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`,
+      `Her outfit for this photograph: ${wardrobe} ${NINA_OUTFIT_SUFFIX}`,
     )
   } else if (detail.outfit) {
     paragraphs.push(NINA_DEFAULT_OUTFIT)

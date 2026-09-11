@@ -37,7 +37,6 @@ import {
   NINA_IMAGE_TIME_MAX,
   NINA_IMAGE_VENUE_MAX,
   NINA_IMAGE_WARDROBE_MAX,
-  NINA_PROMPT_TEMPLATE_DEFAULT,
   NINA_PROMPT_TEMPLATE_MAX,
 } from '@/lib/nina/imageprefs'
 
@@ -181,6 +180,14 @@ export interface ImageGenPanelProps {
    */
   promptPreview: string
   /**
+   * `NINA_PROMPT_TEMPLATE_DEFAULT`, assembled on the SERVER — the textarea's content before the
+   * operator touches it, and the Reset button's target. A prop rather than an import because
+   * this file is `'use client'` and the default template is canon-interpolated in
+   * `lib/nina/imagegen.ts`: importing the assembler here would ship the whole persona canon to
+   * the browser to save one string, which this file's own header forbids.
+   */
+  defaultTemplate: string
+  /**
    * Every photograph the reference grid may offer, newest first, already mapped to a plain
    * serializable shape on the server.
    *
@@ -205,6 +212,7 @@ export function ImageGenPanel({
   prefs,
   defaults,
   promptPreview,
+  defaultTemplate,
   references,
   photoTotal,
 }: ImageGenPanelProps) {
@@ -402,7 +410,7 @@ export function ImageGenPanel({
    * box the next time the page loads.
    */
   function resetTemplate() {
-    commitImmediate({ ...draft, promptTemplate: NINA_PROMPT_TEMPLATE_DEFAULT })
+    commitImmediate({ ...draft, promptTemplate: defaultTemplate })
   }
 
   return (
@@ -683,12 +691,12 @@ export function ImageGenPanel({
             </Button>
           </div>
           <p className="mb-3 mt-1 max-w-[70ch] text-[11px] font-medium text-ink-3">
-            The skeleton every photograph is assembled from. Each{' '}
-            <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> stands
-            for one whole block from the controls above — labels included — and a block that is
-            empty takes its whole line with it. Reorder them, delete them, or write your own prose
-            around them; it saves when you leave the field, and the placeholder spelling itself
-            cannot be saved broken.
+            This is the prompt she is photographed by — every word of it, editable. A{' '}
+            <code className="font-mono text-[11px] text-ink-2">{'{{placeholder}}'}</code> is where
+            a changing value lands: the Wardrobe field, the ticked Focus terms, the scene she
+            picks per photograph. A line whose value is empty takes the whole line with it, and a
+            placeholder can never be saved broken — rewrite any sentence, delete any line, add
+            your own; it saves when you leave the field.
           </p>
           <textarea
             className={cn(

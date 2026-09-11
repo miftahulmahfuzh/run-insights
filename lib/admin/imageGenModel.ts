@@ -348,7 +348,9 @@ export function imageFocusCopy(key: string): string {
  * the assembled prompt is rendered a few centimetres below the slider, from the same assembler the
  * camera is handed, so the honest hint points at it.
  */
-const LENGTH_BAND_NOTE = 'The assembled prompt below is what this rung actually produces.'
+const LENGTH_BAND_NOTE =
+  'The prompt template below governs her photographs; this dial drives the built-in ' +
+  'assembly the avatar path is assembled from.'
 
 export function promptLengthCopy(value: number): ImageGenCopy {
   /* PHASE 1'S HANDOFF, VERBATIM: "It must render the band caption via

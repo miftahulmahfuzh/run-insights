@@ -1,14 +1,18 @@
 import {
   NINA_BODY_AVATAR,
+  NINA_BODY_FACTS,
+  NINA_BODY_SENTENCES,
+  NINA_DEFAULT_OUTFIT_VALUE,
+  NINA_FACE,
+  NINA_OUTFIT_SUFFIX,
   ninaAppearance,
-  ninaBodyBlock,
+  withSentenceStop,
   type NinaAppearanceDetail,
 } from '@/lib/nina/persona'
 import {
   NINA_IMAGE_FOCUS_KEYS,
   NINA_IMAGE_PREFS_DEFAULTS,
   NINA_IMAGE_TEMPLATE_TOKEN_RE,
-  NINA_PROMPT_TEMPLATE_DEFAULT,
   validateNinaImageTemplate,
   type NinaImageFocusKey,
   type NinaImagePrefs,
@@ -18,7 +22,6 @@ import { ninaBand, type NinaBandName, type NinaTuning } from '@/lib/nina/tuning'
 
 import {
   NINA_IMAGE_ASPECT,
-  NINA_IMAGE_MODEL,
   NINA_IMAGE_RESOLUTION,
   type NinaImagePurpose,
 } from './imagerecipe'
@@ -412,14 +415,90 @@ function ninaMoodBlock(mood: string | null | undefined): string {
 }
 
 /* ============================================================================
- * THE EDITABLE TEMPLATE SHELL (the 2026-09-10 ask)
+ * THE EDITABLE PROMPT TEMPLATE (the 2026-09-10 ask, second revision: the template IS the prompt)
  * ==========================================================================*/
+
+/**
+ * **The shell that ships — the user's own sketch, canon-interpolated.** This is the string the
+ * template field holds before the operator touches it: the REAL prompt prose (camera paragraph,
+ * body canon, face paragraph, the outfit and watch sentences, every label) with a placeholder
+ * only where a per-generation or per-preference VALUE is spliced in. The prose pieces are
+ * INTERPOLATED from the canon constants (`NINA_SELFIE_STYLE`, `NINA_BODY_SENTENCES`, `NINA_FACE`,
+ * `NINA_OUTFIT_SUFFIX`) rather than hand-copied, so the template cannot drift from the words the
+ * built-in assembly uses — there is one home for each sentence.
+ *
+ * The body paragraph carries the first THREE canon sentences: sentence 0 with its enumeration
+ * replaced by `{{bodyFacts}}`, then sentences 1 and 2 — the mid-rung body, which is the shipped
+ * default. The length dial no longer re-cuts THIS text; the template is the prompt, and the dial
+ * drives the avatar path's built-in assembly.
+ *
+ * Line semantics (the renderer below): a line containing a token that expanded to empty is
+ * dropped ENTIRE, so the FOCUS line vanishes when nothing is ticked, POSE AND PRESENCE vanishes
+ * when the dials are quiet, and VENUE / TIME / NOTES / EXPRESSION AND ENERGY vanish when their
+ * fields are empty — the omit-when-empty rule the built-in assembly always had.
+ */
+export const NINA_PROMPT_TEMPLATE_DEFAULT = [
+  NINA_SELFIE_STYLE,
+  '',
+  'SUBJECT:',
+  'She is voluptuous: {{bodyFacts}}. This silhouette is the point of the photograph and it must ' +
+    'be visible in it. ' +
+    `${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[2]}`,
+  '',
+  NINA_FACE,
+  '',
+  `Her outfit for this photograph: {{wardrobe}} ${NINA_OUTFIT_SUFFIX}`,
+  '',
+  'FOCUS: Emphasise {{focus}} above everything else in this photograph.',
+  '',
+  'POSE AND PRESENCE: {{presence}}',
+  '',
+  'VENUE: {{venue}}',
+  '',
+  'TIME: {{time}}',
+  '',
+  'SCENE: {{scene}}',
+  '',
+  'EXPRESSION AND ENERGY: {{mood}}',
+  '',
+  'NOTES: {{notes}}',
+].join('\n')
+
+/**
+ * **The avatar's shell — and the one template the operator does not edit.** The stored template
+ * is her PHOTOGRAPH prompt: the field, the preview and the test button are all the selfie path.
+ * The avatar is a head-and-shoulders crop rendered inside a 28-44 px circle, and the selfie prose
+ * would argue with that crop — full-body pose clauses and a wardrobe line under a face framing.
+ * So `purpose === 'avatar'` keeps the built-in block assembly (this nine-token shell over the
+ * block builders below, byte-identical to the pre-template render), and the length dial's rungs
+ * stay live THERE. Making the avatar template editable is a deliberate later decision, not an
+ * oversight; the camera choice and the reference still apply to both paths.
+ */
+const NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT = [
+  '{{camera}}',
+  '',
+  '{{subject}}',
+  '',
+  '{{focus}}',
+  '',
+  '{{pose}}',
+  '',
+  '{{venue}}',
+  '',
+  '{{time}}',
+  '',
+  '{{scene}}',
+  '',
+  '{{mood}}',
+  '',
+  '{{notes}}',
+].join('\n')
 
 /**
  * The template this render goes through. `coerceNinaImageTemplate` has already made every STORED
  * template `''` or valid, but `buildNinaImagePrompt` accepts any `NinaImagePrefs`-shaped argument
  * — a fixture, a hand-run SQL row that skipped the coercion — so the validator runs HERE too, and
- * a template that would fail the save fails the render into the shipping shell. The warning is
+ * a template that would fail the save fails the render into the shipped shell. The warning is
  * the only trace such a row leaves, which is the point: an operator should be able to discover a
  * hand-edited template was discarded rather than silently honoured.
  */
@@ -432,20 +511,27 @@ function effectiveNinaImageTemplate(prefs: NinaImagePrefs): string {
 }
 
 /**
- * Substitute the nine blocks into a validated template, then normalise the whitespace the empty
- * blocks leave behind. **The collapse of every run of three or more newlines back down to the
- * blank-line separator is what makes the default template byte-identical to the hand-rolled
- * `parts.join('\n')` it replaced**: an absent block leaves its whole template line empty, and
- * `\n\n` + `\n\n` collapses to exactly the separator the parts list used. Duplicated tokens
- * render twice — legal, deliberate control.
+ * Substitute the value blocks into a validated template, **line by line: a line containing a
+ * token that expanded to empty is dropped entire**. That per-line rule is what makes labels safe
+ * in the template — "VENUE: {{venue}}" cannot dangle when the field is empty, because the label
+ * and the empty value share the line and the line goes with them. Static lines (no tokens) ship
+ * verbatim; duplicated tokens render twice — legal, deliberate control. What whitespace the
+ * dropped lines leave behind is collapsed back to the blank-line separator and trimmed.
  */
-function renderNinaImagePrompt(
-  template: string,
-  blocks: Record<NinaImageTemplateKey, string>,
-): string {
-  const filled = template.replace(NINA_IMAGE_TEMPLATE_TOKEN_RE, (_match, name: string) => {
-    return blocks[name as NinaImageTemplateKey] ?? ''
+function renderNinaImagePrompt(template: string, blocks: Record<string, string>): string {
+  const keptLines = template.split('\n').filter((line) => {
+    let emptyTokenOnLine = false
+    line.replace(NINA_IMAGE_TEMPLATE_TOKEN_RE, (_match, name: string) => {
+      if ((blocks[name as NinaImageTemplateKey] ?? '') === '') emptyTokenOnLine = true
+      return ''
+    })
+    return !emptyTokenOnLine
   })
+  const filled = keptLines
+    .join('\n')
+    .replace(NINA_IMAGE_TEMPLATE_TOKEN_RE, (_match, name: string) => {
+      return blocks[name as NinaImageTemplateKey] ?? ''
+    })
   return filled.replace(/\n{3,}/g, '\n\n').trim()
 }
 
@@ -505,44 +591,69 @@ export function buildNinaImagePrompt(input: {
   const rung = ninaPromptRung(prefs.promptLength)
   const isAvatar = input.purpose === 'avatar'
 
-  const camera = isAvatar
-    ? rung.camera === 'full'
-      ? NINA_AVATAR_STYLE
-      : NINA_AVATAR_STYLE_SHORT
-    : rung.camera === 'full'
-      ? NINA_SELFIE_STYLE
-      : NINA_SELFIE_STYLE_SHORT
+  /*
+   * TWO SHELLS, ONE RENDERER. The avatar keeps the built-in BLOCK assembly (see
+   * `NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT` for why the stored template does not reach it); the
+   * selfie goes through the operator's template — full prose with the value tokens of §6. The
+   * length dial's rungs stay live on the avatar path and are superseded by the template on the
+   * selfie path, which is the honest reading of "the template IS the prompt".
+   */
+  if (isAvatar) {
+    const camera =
+      rung.camera === 'full' ? NINA_AVATAR_STYLE : NINA_AVATAR_STYLE_SHORT
 
-  const detail: NinaAppearanceDetail = {
-    /* One sentence on the avatar path at EVERY rung. More body prose under a head-and-shoulders
-     * crop is more contradiction, not more detail — see `NINA_BODY_AVATAR`. */
-    body: isAvatar ? NINA_BODY_AVATAR : ninaBodyBlock(rung.bodySentences),
-    /* The avatar IS a face crop, so the face paragraph is never what the ladder saves on it. */
-    face: isAvatar ? true : rung.face,
-    outfit: rung.outfit,
+    const detail: NinaAppearanceDetail = {
+      /* One sentence on the avatar path at EVERY rung. More body prose under a head-and-shoulders
+       * crop is more contradiction, not more detail — see `NINA_BODY_AVATAR`. */
+      body: NINA_BODY_AVATAR,
+      /* The avatar IS a face crop, so the face paragraph is never what the ladder saves on it. */
+      face: true,
+      outfit: rung.outfit,
+    }
+
+    const focusText = ninaFocusBlock('avatar', prefs, rung)
+    const presenceText = rung.presence ? ninaPhotoPresence('avatar', tuning) : null
+
+    const avatarBlocks: Record<string, string> = {
+      camera,
+      subject: `SUBJECT:\n${ninaAppearance(prefs, detail)}`,
+      focus: focusText != null ? `FOCUS: ${focusText}` : '',
+      pose: presenceText != null ? `POSE AND PRESENCE: ${presenceText}` : '',
+      venue: ninaFreeTextBlock('VENUE', prefs.venue) ?? '',
+      time: ninaFreeTextBlock('TIME', prefs.time) ?? '',
+      scene: `SCENE: ${input.scene.trim()}`,
+      mood: ninaMoodBlock(input.mood),
+      notes: ninaFreeTextBlock('NOTES', prefs.notes) ?? '',
+    }
+
+    return renderNinaImagePrompt(NINA_AVATAR_PROMPT_TEMPLATE_DEFAULT, avatarBlocks)
   }
 
   /*
-   * The nine blocks, each exactly what the pre-template assembly pushed for it — the template
-   * COMPOSES them and never re-derives them, which is why the ladder, the focus emphasis, the
-   * dials and the canon all keep working unchanged inside the shell. An empty string is the
-   * "block absent" spelling, and `renderNinaImagePrompt` is what erases the line that absence
-   * empties. Every position argument in this function's docblock above survives: the DEFAULT
-   * shell lists the blocks in that order, byte for byte.
+   * THE SELFIE PATH — the operator's template, the one the field edits. The value blocks are
+   * exactly §6's vocabulary: the four-facts enumeration (invariant 4's slot), the wardrobe (with
+   * the canon default outfit standing in when the field is empty, so the sentence always has a
+   * subject), the ticked focus terms as the emphasis sentence's object, the dials' pose clauses,
+   * the three free-text fields verbatim, and the per-photograph scene and mood. Labels are
+   * TEMPLATE text now — "VENUE:" lives in the shell, so only the bare values are blocks.
    */
-  const focusText = ninaFocusBlock(input.purpose, prefs, rung)
-  const presenceText = rung.presence ? ninaPhotoPresence(input.purpose, tuning) : null
+  const focusTerms = joinTerms(
+    NINA_IMAGE_FOCUS_KEYS.filter((key) => prefs.focus[key] === true).map(
+      (key) => NINA_FOCUS_EMPHASIS[key].term,
+    ),
+  )
+  const wardrobe = prefs.wardrobe.trim()
 
-  const blocks: Record<NinaImageTemplateKey, string> = {
-    camera,
-    subject: `SUBJECT:\n${ninaAppearance(prefs, detail)}`,
-    focus: focusText != null ? `FOCUS: ${focusText}` : '',
-    pose: presenceText != null ? `POSE AND PRESENCE: ${presenceText}` : '',
-    venue: ninaFreeTextBlock('VENUE', prefs.venue) ?? '',
-    time: ninaFreeTextBlock('TIME', prefs.time) ?? '',
-    scene: `SCENE: ${input.scene.trim()}`,
-    mood: ninaMoodBlock(input.mood),
-    notes: ninaFreeTextBlock('NOTES', prefs.notes) ?? '',
+  const blocks: Record<string, string> = {
+    bodyFacts: NINA_BODY_FACTS,
+    wardrobe: wardrobe.length > 0 ? withSentenceStop(wardrobe) : NINA_DEFAULT_OUTFIT_VALUE,
+    focus: focusTerms,
+    presence: ninaPhotoPresence('selfie', tuning) ?? '',
+    venue: prefs.venue.trim(),
+    time: prefs.time.trim(),
+    scene: input.scene.trim(),
+    mood: input.mood?.trim() ?? '',
+    notes: prefs.notes.trim(),
   }
 
   return renderNinaImagePrompt(effectiveNinaImageTemplate(prefs), blocks)

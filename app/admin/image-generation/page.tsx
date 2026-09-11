@@ -5,7 +5,7 @@ import {
   toImageReferenceOption,
 } from '@/lib/admin/imageGenModel'
 import { requireAdmin } from '@/lib/admin/requireAdmin'
-import { buildNinaImagePrompt } from '@/lib/nina/imagegen'
+import { buildNinaImagePrompt, NINA_PROMPT_TEMPLATE_DEFAULT } from '@/lib/nina/imagegen'
 import { NINA_IMAGE_PREFS_DEFAULTS } from '@/lib/nina/imageprefs'
 import { listNinaPhotoReferences, readNinaImagePrefs, readNinaTuning } from '@/lib/nina/queries'
 
@@ -147,6 +147,7 @@ export default async function AdminImageGenerationPage() {
           tuning,
           prefs,
         })}
+        defaultTemplate={NINA_PROMPT_TEMPLATE_DEFAULT}
         references={referencePage.rows.map(toImageReferenceOption)}
         photoTotal={referencePage.total}
       />
