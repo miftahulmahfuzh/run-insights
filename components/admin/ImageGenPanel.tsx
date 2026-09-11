@@ -230,6 +230,13 @@ export function ImageGenPanel({
   /* The one debounce. A ref because it is a timer handle, not render state; armed/disarmed above
    * is the render-visible half. */
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /* Refs for the four text controls' own ✕ — `SessionRow.tsx`'s pattern: the click handler
+   * refocuses the control itself so the on-screen keyboard never drops. */
+  const wardrobeInputRef = React.useRef<HTMLInputElement | null>(null)
+  const venueInputRef = React.useRef<HTMLInputElement | null>(null)
+  const timeInputRef = React.useRef<HTMLInputElement | null>(null)
+  const notesInputRef = React.useRef<HTMLTextAreaElement | null>(null)
   /* The latest draft and saved row, for code that runs outside render (the timer's callback).
    * Mirrored in an effect — the sanctioned home for a ref write, and the shape `CharacterPanel.tsx`
    * uses for the same pipeline. NOT setState: the `react-hooks/set-state-in-effect` rule this repo
@@ -401,6 +408,20 @@ export function ImageGenPanel({
     disarmCommit()
     if (imageGenDraftEquals(draft, saved)) return
     dispatchSave(draft)
+  }
+
+  /**
+   * The four text fields' ✕ — clears the draft and puts focus straight back on the control, the
+   * same shape as `SessionRow.tsx`'s rename ✕. It does NOT call `commitText` itself: clearing is
+   * an edit like any keystroke, so it rides the normal blur commit above rather than a second,
+   * redundant write path.
+   */
+  function clearTextField(
+    key: 'wardrobe' | 'venue' | 'time' | 'notes',
+    ref: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
+  ) {
+    setDraft((current) => ({ ...current, [key]: '' }))
+    ref.current?.focus()
   }
 
   /**
@@ -577,16 +598,30 @@ export function ImageGenPanel({
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
-            <input
-              className={CONTROL_CLASS}
-              value={draft.wardrobe}
-              maxLength={NINA_IMAGE_WARDROBE_MAX}
-              placeholder={NINA_IMAGE_TEXT_SPECS.wardrobe.placeholder}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, wardrobe: event.target.value }))
-              }
-              onBlur={commitText}
-            />
+            <div className="relative">
+              <input
+                ref={wardrobeInputRef}
+                className={cn(CONTROL_CLASS, draft.wardrobe !== '' && 'pr-11')}
+                value={draft.wardrobe}
+                maxLength={NINA_IMAGE_WARDROBE_MAX}
+                placeholder={NINA_IMAGE_TEXT_SPECS.wardrobe.placeholder}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, wardrobe: event.target.value }))
+                }
+                onBlur={commitText}
+              />
+              {draft.wardrobe !== '' && (
+                <button
+                  type="button"
+                  aria-label="Kosongkan wardrobe"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => clearTextField('wardrobe', wardrobeInputRef)}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               What she is wearing. Leave it empty and she wears what the canon says.
             </span>
@@ -599,16 +634,30 @@ export function ImageGenPanel({
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
-            <input
-              className={CONTROL_CLASS}
-              value={draft.venue}
-              maxLength={NINA_IMAGE_VENUE_MAX}
-              placeholder={NINA_IMAGE_TEXT_SPECS.venue.placeholder}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, venue: event.target.value }))
-              }
-              onBlur={commitText}
-            />
+            <div className="relative">
+              <input
+                ref={venueInputRef}
+                className={cn(CONTROL_CLASS, draft.venue !== '' && 'pr-11')}
+                value={draft.venue}
+                maxLength={NINA_IMAGE_VENUE_MAX}
+                placeholder={NINA_IMAGE_TEXT_SPECS.venue.placeholder}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, venue: event.target.value }))
+                }
+                onBlur={commitText}
+              />
+              {draft.venue !== '' && (
+                <button
+                  type="button"
+                  aria-label="Kosongkan venue"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => clearTextField('venue', venueInputRef)}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Where she is. This is a standing preference; the scene she picks per photograph still
               sits above it.
@@ -622,16 +671,30 @@ export function ImageGenPanel({
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
-            <input
-              className={CONTROL_CLASS}
-              value={draft.time}
-              maxLength={NINA_IMAGE_TIME_MAX}
-              placeholder={NINA_IMAGE_TEXT_SPECS.time.placeholder}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, time: event.target.value }))
-              }
-              onBlur={commitText}
-            />
+            <div className="relative">
+              <input
+                ref={timeInputRef}
+                className={cn(CONTROL_CLASS, draft.time !== '' && 'pr-11')}
+                value={draft.time}
+                maxLength={NINA_IMAGE_TIME_MAX}
+                placeholder={NINA_IMAGE_TEXT_SPECS.time.placeholder}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, time: event.target.value }))
+                }
+                onBlur={commitText}
+              />
+              {draft.time !== '' && (
+                <button
+                  type="button"
+                  aria-label="Kosongkan time"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => clearTextField('time', timeInputRef)}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Time of day and weather, in your own words.
             </span>
@@ -644,16 +707,34 @@ export function ImageGenPanel({
                 <span className="ml-2 font-semibold text-accent">unsaved</span>
               )}
             </span>
-            <textarea
-              className={cn(CONTROL_CLASS, 'min-h-[76px] resize-y py-2 leading-snug')}
-              value={draft.notes}
-              maxLength={NINA_IMAGE_NOTES_MAX}
-              placeholder={NINA_IMAGE_TEXT_SPECS.notes.placeholder}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, notes: event.target.value }))
-              }
-              onBlur={commitText}
-            />
+            <div className="relative">
+              <textarea
+                ref={notesInputRef}
+                className={cn(
+                  CONTROL_CLASS,
+                  'min-h-[76px] resize-y py-2 leading-snug',
+                  draft.notes !== '' && 'pr-11',
+                )}
+                value={draft.notes}
+                maxLength={NINA_IMAGE_NOTES_MAX}
+                placeholder={NINA_IMAGE_TEXT_SPECS.notes.placeholder}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, notes: event.target.value }))
+                }
+                onBlur={commitText}
+              />
+              {draft.notes !== '' && (
+                <button
+                  type="button"
+                  aria-label="Kosongkan notes"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => clearTextField('notes', notesInputRef)}
+                  className="absolute right-0 top-0 grid h-11 w-11 place-items-center rounded-pill text-[19px] font-semibold text-ink-3 active:opacity-70"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <span className="mt-1.5 block max-w-[46ch] text-[11px] font-medium text-ink-3">
               Anything no other field can say. Handed to the camera verbatim — this is the image
               prompt, not her system prompt. It saves when you leave the field.
