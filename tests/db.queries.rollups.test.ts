@@ -54,72 +54,6 @@ describe('range predicates, not functional ones', () => {
   })
 })
 
-describe('getMonthlyTotals', () => {
-  it('groups by to_char in the SELECT while still range-scanning in the WHERE', async () => {
-    fake.enqueue([])
-    await q.getMonthlyTotals('u1', 6, '2026-08')
-    const { sql, params } = fake.only()
-    const whereClause = sql.slice(sql.indexOf('where'), sql.indexOf('group by'))
-    expect(whereClause).not.toContain('to_char')
-    expect(sql).toContain('group by')
-    expect(params).toContain('2026-03-01') // six months back, inclusive
-    expect(params).toContain('2026-09-01')
-  })
-
-  it('maps every aggregate through Number — SUM(integer) arrives as a STRING over the wire', async () => {
-    // This is the gotcha integer columns do NOT protect you from: Postgres widens SUM(int) to
-    // bigint, and @neondatabase/serverless hands bigint back as a string. Without .mapWith,
-    // '10670' + '5330' is '106705330'.
-    fake.enqueue([['2026-08', '2', '16000', '7200']])
-    const totals = await q.getMonthlyTotals('u1', 1, '2026-08')
-    expect(totals).toEqual([{ month: '2026-08', runCount: 2, distanceM: 16000, durationSec: 7200 }])
-    expect(typeof totals[0]!.distanceM).toBe('number')
-  })
-
-  it('zero-fills a month with no runs instead of dropping it', async () => {
-    fake.enqueue([['2026-08', '1', '10670', '4716']])
-    const totals = await q.getMonthlyTotals('u1', 3, '2026-08')
-    expect(totals.map((t) => t.month)).toEqual(['2026-06', '2026-07', '2026-08'])
-    expect(totals[0]).toEqual({ month: '2026-06', runCount: 0, distanceM: 0, durationSec: 0 })
-    expect(totals[2]!.distanceM).toBe(10670)
-  })
-
-  it('validates the window instead of building an unbounded query', async () => {
-    await expect(q.getMonthlyTotals('u1', 0, '2026-08')).rejects.toThrow(RangeError)
-    await expect(q.getMonthlyTotals('u1', 61, '2026-08')).rejects.toThrow(RangeError)
-    await expect(q.getMonthlyTotals('u1', 1.5, '2026-08')).rejects.toThrow(RangeError)
-    expect(fake.queries).toHaveLength(0)
-  })
-})
-
-describe('fillZeroMonths (pure)', () => {
-  it('returns exactly N entries, oldest to newest, anchored inclusively', () => {
-    const out = q.fillZeroMonths([], '2026-01', 3)
-    expect(out.map((r) => r.month)).toEqual(['2025-11', '2025-12', '2026-01'])
-  })
-
-  it('keeps supplied months and zeroes the rest', () => {
-    const out = q.fillZeroMonths(
-      [{ month: '2026-01', runCount: 4, distanceM: 40000, durationSec: 18000 }],
-      '2026-02',
-      2,
-    )
-    expect(out).toEqual([
-      { month: '2026-01', runCount: 4, distanceM: 40000, durationSec: 18000 },
-      { month: '2026-02', runCount: 0, distanceM: 0, durationSec: 0 },
-    ])
-  })
-
-  it('ignores rows outside the window rather than misplacing them', () => {
-    const out = q.fillZeroMonths(
-      [{ month: '2025-01', runCount: 9, distanceM: 1, durationSec: 1 }],
-      '2026-02',
-      2,
-    )
-    expect(out.every((r) => r.runCount === 0)).toBe(true)
-  })
-})
-
 describe('getAllTimeTotals', () => {
   it('returns numbers and date strings, with null dates for an empty account', async () => {
     fake.enqueue([['0', '0', '0', null, null]])
@@ -138,19 +72,5 @@ describe('getAllTimeTotals', () => {
     const totals = await q.getAllTimeTotals('u1')
     expect(totals.distanceM).toBe(0)
     expect(fake.only().sql).toContain('coalesce')
-  })
-})
-
-describe('getObservedMaxHr', () => {
-  it('returns a number when a max exists', async () => {
-    fake.enqueue([['189']])
-    await expect(q.getObservedMaxHr('u1')).resolves.toBe(189)
-  })
-
-  it('returns null — never 0 — when no run has an HR, so the caller can degrade', async () => {
-    // Roadmap §4.4: "no birth_year and no observed max -> null; the caller must degrade, not
-    // default". A 0 here would silently become a divide-by-zero %HRmax.
-    fake.enqueue([[null]])
-    await expect(q.getObservedMaxHr('u1')).resolves.toBeNull()
   })
 })

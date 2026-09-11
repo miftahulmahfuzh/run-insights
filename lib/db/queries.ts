@@ -17,7 +17,6 @@ import {
 import { getTableColumns } from 'drizzle-orm'
 
 import {
-  addMonths,
   isoWeekRange,
   monthRange,
   type DateISO,
@@ -697,80 +696,6 @@ export async function getReviewedRunsWithChildren(
   }))
 }
 
-export interface MonthlyTotal extends RunAggregate {
-  month: MonthKey
-}
-
-/**
- * The last `months` months ending at `anchorMonth` inclusive, oldest → newest, zero-filled.
- *
- * `anchorMonth` is an explicit parameter and is never derived from the wall clock here: the
- * caller computes a Jakarta "today" once, so a render that straddles midnight cannot produce two
- * different answers for the same page.
- *
- * `SUM(integer)` returns `bigint`, which `@neondatabase/serverless` hands back as a **string** —
- * storing metres as an integer does not make the aggregate immune. Hence `.mapWith(Number)` on
- * every aggregate in this section; the integration suite asserts `typeof === 'number'`.
- */
-export async function getMonthlyTotals(
-  userId: string,
-  months: number,
-  anchorMonth: MonthKey,
-): Promise<MonthlyTotal[]> {
-  if (!Number.isInteger(months) || months < 1 || months > 60) {
-    throw new RangeError(`months must be an integer in 1..60, got ${months}`)
-  }
-  const firstMonth = addMonths(anchorMonth, -(months - 1))
-  const { startISO } = monthRange(firstMonth)
-  const { endExclusiveISO } = monthRange(anchorMonth)
-  const monthExpr = sql<string>`to_char(${runs.occurredOn}, 'YYYY-MM')`
-
-  const rows = await db
-    .select({
-      month: monthExpr,
-      runCount: sql<number>`count(*)`.mapWith(Number),
-      distanceM: sql<number>`coalesce(sum(${runs.distanceM}), 0)`.mapWith(Number),
-      durationSec: sql<number>`coalesce(sum(${runs.durationSec}), 0)`.mapWith(Number),
-    })
-    .from(runs)
-    .where(
-      and(
-        eq(runs.userId, userId),
-        isNotNull(runs.reviewedAt),
-        gte(runs.occurredOn, startISO),
-        lt(runs.occurredOn, endExclusiveISO),
-      ),
-    )
-    .groupBy(monthExpr)
-
-  return fillZeroMonths(rows, anchorMonth, months)
-}
-
-/**
- * Pure, exported, and unit-tested without a database. A month with no runs must appear as a zero
- * rather than be absent: a trend chart that silently drops empty months draws a flat line
- * through a lay-off instead of showing it.
- */
-export function fillZeroMonths(
-  rows: ReadonlyArray<{ month: string; runCount: number; distanceM: number; durationSec: number }>,
-  anchorMonth: MonthKey,
-  months: number,
-): MonthlyTotal[] {
-  const byMonth = new Map(rows.map((r) => [r.month, r]))
-  const out: MonthlyTotal[] = []
-  for (let i = months - 1; i >= 0; i--) {
-    const month = addMonths(anchorMonth, -i)
-    const row = byMonth.get(month)
-    out.push({
-      month,
-      runCount: row?.runCount ?? 0,
-      distanceM: row?.distanceM ?? 0,
-      durationSec: row?.durationSec ?? 0,
-    })
-  }
-  return out
-}
-
 export interface AllTimeTotals extends RunAggregate {
   firstRunOn: DateISO | null
   lastRunOn: DateISO | null
@@ -791,38 +716,6 @@ export async function getAllTimeTotals(userId: string): Promise<AllTimeTotals> {
   return rows[0] ?? { runCount: 0, distanceM: 0, durationSec: 0, firstRunOn: null, lastRunOn: null }
 }
 
-/**
- * Roadmap §4.4 rule 2 — the highest `runs.max_hr` ever observed. F02's `resolveHrMax` is the only
- * caller; no feature may compute HRmax any other way. Reads `runs_user_maxhr_idx` (R-12).
- */
-export async function getObservedMaxHr(userId: string): Promise<number | null> {
-  const rows = await db
-    .select({ value: sql<number | null>`max(${runs.maxHr})` })
-    .from(runs)
-    .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt)))
-  const value = rows[0]?.value
-  return value == null ? null : Number(value)
-}
-
-/**
- * The same lookup with one run held out. R-3 is emphatic that metrics resolve observed-first,
- * including the run's own max — so this exists for exactly one caller: F09's `new_ceiling` badge,
- * which asks "did this run beat the previous best?" and genuinely needs the previous best.
- * **Not for metrics.** Using it there would reintroduce the formula estimate precisely where the
- * measurement is strongest.
- */
-export async function getObservedMaxHrExcludingRun(
-  userId: string,
-  runId: string,
-): Promise<number | null> {
-  const rows = await db
-    .select({ value: sql<number | null>`max(${runs.maxHr})` })
-    .from(runs)
-    .where(and(eq(runs.userId, userId), isNotNull(runs.reviewedAt), sql`${runs.id} <> ${runId}`))
-  const value = rows[0]?.value
-  return value == null ? null : Number(value)
-}
-
 /** Which run holds the observed max, not just what it was. See `getObservedMaxHrRun`. */
 export interface ObservedMaxHr {
   runId: string
@@ -831,8 +724,8 @@ export interface ObservedMaxHr {
 }
 
 /**
- * The attributed form of `getObservedMaxHr`, and the only query `lib/metrics/hrMax.ts` uses for
- * rule 2 of roadmap §4.4. Three things it does that the plain `max()` above cannot:
+ * The observed-max read that names its run, and the only query `lib/metrics/hrMax.ts` uses for
+ * rule 2 of roadmap §4.4. Three things it does that a plain `max()` cannot:
  *
  *   - **Names the run.** F02 §4.5's transition banner says *"your watch recorded 189 bpm on this
  *     run"*; that sentence needs an id and a date, not a number.
@@ -1193,24 +1086,6 @@ export async function getExtraction(userId: string, id: string): Promise<Extract
   return rows[0] ?? null
 }
 
-/** Newest first. The upload screen offers "you have an extraction still waiting" from this. */
-export async function listExtractions(
-  userId: string,
-  opts: { limit?: number; status?: ExtractionStatus } = {},
-): Promise<Extraction[]> {
-  return db
-    .select()
-    .from(extractions)
-    .where(
-      and(
-        eq(extractions.userId, userId),
-        opts.status ? eq(extractions.status, opts.status) : undefined,
-      ),
-    )
-    .orderBy(desc(extractions.createdAt))
-    .limit(opts.limit ?? 20)
-}
-
 async function markExtraction(
   userId: string,
   id: string,
@@ -1452,18 +1327,6 @@ export async function updatePhotoBlobLocation(
     .where(and(eq(runPhotos.id, photoId), runPhotoOwnedBy(userId)))
     .returning({ id: runPhotos.id })
   if (rows.length === 0) throw new NotFoundError('Photo not found')
-}
-
-/** Returns the pathname so the caller can delete the blob itself — the row goes first. */
-export async function deletePhoto(
-  userId: string,
-  photoId: string,
-): Promise<{ pathname: string } | null> {
-  const rows = await db
-    .delete(runPhotos)
-    .where(and(eq(runPhotos.id, photoId), runPhotoOwnedBy(userId)))
-    .returning({ pathname: runPhotos.pathname })
-  return rows[0] ?? null
 }
 
 /* ============================================================================

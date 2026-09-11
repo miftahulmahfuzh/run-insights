@@ -29,16 +29,10 @@ if (deletePath) {
 
 // Deliberate exceptions, each documented at its definition:
 //   getRunByShareToken — roadmap D9, the token IS the credential
-//   fillZeroMonths     — pure function, no database access at all
 //   isUniqueViolation  — pure predicate over an error object
 //   listActiveUserIds  — F07's cron has no session; it returns ids and nothing else, and every
 //                        read inside its loop is scoped to one of them
-const ALLOWED_UNSCOPED = new Set([
-  'getRunByShareToken',
-  'fillZeroMonths',
-  'isUniqueViolation',
-  'listActiveUserIds',
-])
+const ALLOWED_UNSCOPED = new Set(['getRunByShareToken', 'isUniqueViolation', 'listActiveUserIds'])
 
 const unscoped = [...source.matchAll(/export (?:async )?function (\w+)\(([^)]*)/g)]
   .filter(([, , args]) => !/^\s*userId/.test(args))

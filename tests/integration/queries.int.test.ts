@@ -265,16 +265,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
       expect(runs).toHaveLength(3)
     })
 
-    it('hides the draft run from the August total, which would otherwise be 9 999 m heavier', async () => {
-      const [august] = await q.getMonthlyTotals(U1, 1, '2026-08')
-      expect(august?.runCount).toBe(2)
-      expect(august?.distanceM).toBe(10670 + 5330)
-    })
-
-    it('hides the draft run from getObservedMaxHr — a 200 bpm draft must not become a ceiling', async () => {
-      await expect(q.getObservedMaxHr(U1)).resolves.toBe(189)
-    })
-
     it('still shows the draft through getRunDetail, which is draft-visible by design', async () => {
       const detail = await q.getRunDetail(U1, draftRunId)
       expect(detail?.id).toBe(draftRunId)
@@ -297,11 +287,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
 
     it('assertRunOwned throws NotFoundError for a run that is not yours', async () => {
       await expect(q.assertRunOwned(U2, fixtureRunId)).rejects.toBeInstanceOf(q.NotFoundError)
-    })
-
-    it('getObservedMaxHr is per user — U2’s 210 does not raise U1’s ceiling', async () => {
-      await expect(q.getObservedMaxHr(U1)).resolves.toBe(189)
-      await expect(q.getObservedMaxHr(U2)).resolves.toBe(210)
     })
 
     it('applyRunCorrections cannot touch another user’s run', async () => {
@@ -371,26 +356,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
   })
 
   describe('rollups', () => {
-    it('getMonthlyTotals zero-fills and returns NUMBERS, not the strings the wire carries', async () => {
-      const totals = await q.getMonthlyTotals(U1, 12, '2026-08')
-      expect(totals).toHaveLength(12)
-      expect(totals.map((t) => t.month).at(-1)).toBe('2026-08')
-      for (const total of totals) {
-        expect(typeof total.distanceM, total.month).toBe('number')
-        expect(typeof total.runCount, total.month).toBe('number')
-        expect(typeof total.durationSec, total.month).toBe('number')
-      }
-      const byMonth = new Map(totals.map((t) => [t.month, t]))
-      expect(byMonth.get('2026-07')).toEqual({
-        month: '2026-07',
-        runCount: 0,
-        distanceM: 0,
-        durationSec: 0,
-      })
-      expect(byMonth.get('2026-08')?.distanceM).toBe(16000)
-      expect(byMonth.get('2026-06')?.distanceM).toBe(8000)
-    })
-
     it('getAllTimeTotals sums the reviewed runs and reports the real date bounds', async () => {
       const totals = await q.getAllTimeTotals(U1)
       expect(totals.runCount).toBe(3)
@@ -411,10 +376,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
       expect(rolling28).toHaveLength(2)
       const rolling7 = await q.getRunsBetween(U1, '2026-08-19', '2026-08-26')
       expect(rolling7).toHaveLength(2)
-    })
-
-    it('getObservedMaxHrExcludingRun answers "what was the ceiling BEFORE this run" (R-3)', async () => {
-      await expect(q.getObservedMaxHrExcludingRun(U1, fixtureRunId)).resolves.toBe(175)
     })
   })
 

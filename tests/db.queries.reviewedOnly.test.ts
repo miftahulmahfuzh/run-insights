@@ -64,31 +64,10 @@ describe('reviewed-only queries', () => {
     expect(fake.only().sql).toContain('"reviewed_at" is not null')
   })
 
-  it('getMonthlyTotals filters on reviewed_at', async () => {
-    fake.enqueue([])
-    await q.getMonthlyTotals('u1', 6, '2026-08')
-    expect(fake.only().sql).toContain('"reviewed_at" is not null')
-  })
-
   it('getAllTimeTotals filters on reviewed_at', async () => {
     fake.enqueue([[0, 0, 0, null, null]])
     await q.getAllTimeTotals('u1')
     expect(fake.only().sql).toContain('"reviewed_at" is not null')
-  })
-
-  it('getObservedMaxHr filters on reviewed_at — a hallucinated 210 must never become a ceiling', async () => {
-    fake.enqueue([[null]])
-    await q.getObservedMaxHr('u1')
-    expect(fake.only().sql).toContain('"reviewed_at" is not null')
-  })
-
-  it('getObservedMaxHrExcludingRun filters on reviewed_at and excludes the run', async () => {
-    fake.enqueue([[null]])
-    await q.getObservedMaxHrExcludingRun('u1', 'r1')
-    const { sql, params } = fake.only()
-    expect(sql).toContain('"reviewed_at" is not null')
-    expect(sql).toContain('<>')
-    expect(params).toContain('r1')
   })
 
   it('getObservedMaxHrRun filters on reviewed_at — F02’s resolver reads this one, not the max()', async () => {
@@ -294,7 +273,6 @@ describe('reviewed-only queries', () => {
       () => q.getRunsInIsoWeek('u1', '2026-W34'),
       () => q.getRunsInMonth('u1', '2026-08'),
       () => q.getRunsBetween('u1', '2026-08-01', '2026-08-08'),
-      () => q.getMonthlyTotals('u1', 3, '2026-08'),
       () => q.countReviewedRunsStartedBefore('u1', '06:00:00'),
       () => q.hasOtherReviewedRunAtLocation('u1', 'Tangerang', 'r1'),
     ]
@@ -338,7 +316,7 @@ describe('the invariant is complete', () => {
     // without a reviewed_at assertion above, or one was renamed. Both need a human.
     const exportedRollups = Object.keys(q)
       .filter((name) =>
-        /^(list|get)Runs|^getReviewedRun|^getMonthlyTotals$|^getAllTimeTotals$|^getObservedMaxHr|^countReviewedRuns|^hasOtherReviewedRun/.test(
+        /^(list|get)Runs|^getReviewedRun|^getAllTimeTotals$|^getObservedMaxHr|^countReviewedRuns|^hasOtherReviewedRun/.test(
           name,
         ),
       )
@@ -346,9 +324,6 @@ describe('the invariant is complete', () => {
     expect(exportedRollups).toEqual([
       'countReviewedRunsStartedBefore',
       'getAllTimeTotals',
-      'getMonthlyTotals',
-      'getObservedMaxHr',
-      'getObservedMaxHrExcludingRun',
       'getObservedMaxHrRun',
       'getReviewedRunWindow',
       'getReviewedRunsBefore',

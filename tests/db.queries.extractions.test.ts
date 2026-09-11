@@ -107,15 +107,6 @@ describe('lifecycle', () => {
     await expect(q.getExtraction('u1', 'x1')).resolves.toBeNull()
     expect(fake.only().sql).toContain('"extractions"."user_id" = $')
   })
-
-  it('listExtractions is newest-first and can filter by status', async () => {
-    fake.enqueue([])
-    await q.listExtractions('u1', { status: 'pending', limit: 5 })
-    const { sql, params } = fake.only()
-    expect(sql).toContain('order by "extractions"."created_at" desc')
-    expect(params).toContain('pending')
-    expect(params).toContain(5)
-  })
 })
 
 describe('corrections (R-7)', () => {
