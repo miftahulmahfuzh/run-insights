@@ -7,14 +7,14 @@
  * single source of truth.
  *
  * THIS FILE IS THE REFERENCE COPY, NOT THE ONE THE APP LOADS. app/globals.css re-declares these
- * same values and maps them into Tailwind v4's @theme. When the design changes: re-pull, update
- * this file, then mirror it into app/globals.css. Keep the two in step.
+ * same values and maps them into Tailwind v4's @theme — with one naming wrinkle: the four radii
+ * exist there only as `--radius-*` literals (`--radius-card`, not `var(--r-card)`), so a radius
+ * change is mirrored by editing that literal. When the design changes: re-pull, update this
+ * file, then mirror it into app/globals.css. Keep the two in step.
  *
- * v2 replaced v1 wholesale — warm cream + Georgia + system-mono + no-shadows became sky blue +
- * white cards + Poppins-only + soft shadows. Rulings R-41 - R-46 covered what that cost; their
- * full text is in the retired v0.1.0 arbitration record, i.e.
- * `git show 204fd34^:RECONCILIATION_v0.1.0.md`. docs/design/DESIGN_INTEGRATION.md holds the v1
- * record and the same pointer.
+ * v2 replaced v1 wholesale (warm cream + Georgia + no-shadows became sky blue + white cards +
+ * Poppins-only + soft shadows); R-41 - R-46 covered what that cost — full text:
+ * `git show 204fd34^:RECONCILIATION_v0.1.0.md`. docs/design/DESIGN_INTEGRATION.md holds the v1 record.
  *
  * Rules that ride along with these values and are not expressible as tokens:
  *   - Colour never carries meaning alone. Every zone shows its number.
@@ -51,9 +51,10 @@
   --warn: #ffaa2b;
   --warn-soft: #fff3dc;
 
-  /* the five heart-rate zones, cool to warm: easy is water, maximum is ember.
-     Thresholds are fixed and match the canonical fixture:
-     Z1 <140 · Z2 141-151 · Z3 152-163 · Z4 164-174 · Z5 175+ */
+  /* the five heart-rate zones, cool to warm: easy is water, maximum is ember. The canonical
+     fixture prints Z1 <140 · Z2 141-151 · Z3 152-163 · Z4 164-174 · Z5 175+, but the app's
+     bounds are per-run screenshot data that move with the runner's HRmax (lib/charts/zones.ts) —
+     these numbers are not constants the code enforces. */
   --z1: #38c3ee;
   --z2: #3fd68f;
   --z3: #ffc531;
@@ -94,7 +95,8 @@
     --warn: #ffb84d;
     --warn-soft: #3a2f16;
 
-    /* zone hues are identical in both schemes: they encode data, not chrome */
+    /* zone hues are identical in both schemes — they encode data, not chrome — so only chrome
+       tokens are redeclared here */
     --sh: 0 10px 24px rgba(0, 0, 0, 0.35);
     --sh-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
   }

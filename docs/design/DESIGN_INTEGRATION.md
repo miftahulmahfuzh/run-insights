@@ -45,10 +45,9 @@ numbering.
 > | **R-34 / R-36** keep the navy patches | **stands; rationale restated by R-43** — the cream-paper argument is gone, the decision is not |
 > | **R-35** adopted without comment | stands |
 >
-> New with v2, ruled in the record's Part IV (git history; retrieval above): **R-41**
-> (extraction progress may not claim
-> per-screenshot state — the design changed, D4 stands), **R-44** (locked badge tiles show
-> progress only where progress is a number), **R-45** (field provenance is by section).
+> New with v2, ruled in the record's Part IV (git history; retrieval above): **R-41** (extraction
+> progress may not claim per-screenshot state — the design changed, D4 stands). R-42 – R-46 are
+> carried by the components named above and glossed in the table where they amend a v1 ruling.
 
 
 > **Note on project type.** This is a `PROJECT_TYPE_PROJECT` (design *canvas*), not a
@@ -63,13 +62,11 @@ numbering.
 > Superseded by the v2 revamp; see the banner above. Kept because F10's patch decision
 > (R-43) is still argued against it.
 
-Warm paper (`#f0ede4`) and near-black ink, not white-and-grey. **Georgia** for anything that is
-*language* — the coach's prose, screen titles, flags, empty states — and the **system monospace**
-for anything that is a *measurement* — every pace, heart rate, distance, duration, label and
-button. Numbers are mono, which delivers tabular figures by construction rather than by CSS
-trick, and produces the whole hierarchy from one rule. Five heart-rate zones run cool-to-warm,
-water to ember. **No shadows anywhere** — a raised surface is `card` over `paper` plus a hairline.
-Four radii, a 4pt spacing base.
+Warm paper (`#f0ede4`) and near-black ink; **Georgia** for anything that is *language* and the
+**system monospace** for anything that is a *measurement* — numbers in mono deliver tabular
+figures by construction rather than by CSS trick. Zones cool-to-warm, water to ember; **no
+shadows anywhere** — a raised surface is `card` over `paper` plus a hairline. The full v1 detail
+— palette hexes, zone sequence, input sizes — is in R-34 and R-35 below; it is not restated here.
 
 ---
 
@@ -141,8 +138,9 @@ extraction prompt for this. F04 gains a `lib/photos/regions.ts`; F05 gains the c
 
 `02 Components.dc.html`'s locked BadgeTile reads *"Century Club — 200 km in a calendar month"*.
 Roadmap §4.6 defined `century_club` as **100 km** and `double_century` as 200 km. The design
-conflated them. (The ruling held: the live conditions are `lib/badges/meta.ts`, the thresholds
-`lib/badges/rules.ts`.)
+conflated them. (The ruling held, and R-42 later made it structural: the 100 km lives only as
+`BADGE_THRESHOLDS.centuryM` in `lib/badges/catalog.ts`; `lib/badges/rules.ts` compares against it
+and `lib/badges/meta.ts` interpolates it into the condition sentence.)
 
 **The catalog wins** — this is a data contract, not a visual choice. The tile's *form* (condition
 stated, plus your current distance from it: "you're at 141") is excellent and is adopted; the
@@ -208,15 +206,18 @@ real `#f0ede4` / `#131311` paper values.
 - **Extraction skeleton states progress in words** — *"reading the splits table · 2 of 3
   screenshots"* — never a fake percentage. Matches F04's plan, which independently refused a
   progress bar.
-- **4-tab bar**, Upload centre and raised.
+- **4-tab bar**, Upload centre and raised. (The shipped bar is five tabs now — Nina joined as a
+  tab at v1.0.0 and the centre tab reads *New*; `components/ui/TabBar.tsx`.)
 - **Inputs at 22px in the sheet, 17px in fields** — both comfortably over the 16px Safari-zoom
   floor. No iOS constraint is violated anywhere in the pull.
 - **`--miss: #bfb9a9`** is defined but unused in the three artboards. Presumably intended for
   absent/unextracted values. F05 should use it for exactly that rather than inventing another.
+  (It did, via a later change: `bg-miss` is now the fallback for a zone segment the run's data
+  doesn't report — both `ZoneBar`s and `SplitsTable`.)
 
 ---
 
-## Still open
+## Open items — none
 
 1. ~~R-34~~ — **closed, navy (R-36).**
 2. ~~**R-31's region maps** need hand-authoring against the three fixture screenshots once F04
