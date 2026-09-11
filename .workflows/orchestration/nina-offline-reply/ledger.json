@@ -1,0 +1,50 @@
+{
+  "branch": "feature/nina-offline-reply",
+  "coordinator": "orch-nina-offline-reply",
+  "coordinator_session_id": "0f4707a7-f4f4-4a89-9f1c-4235f37145cf",
+  "created": "2026-09-11T06:29:21+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina` + page/screen",
+      "plan": ".workflows/plan/nina-offline-reply/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "In-flight truth on reopen: claim-read cold load + honest give-up"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina` + page",
+      "plan": ".workflows/plan/nina-offline-reply/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Self-repair on arrival: revive dead chat turns when the session opens"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-offline-reply/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-offline-reply",
+  "updated": "2026-09-11T06:29:21+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-offline-reply"
+}
