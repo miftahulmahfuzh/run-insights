@@ -4,7 +4,7 @@ Screenshot your Apple Watch run. A vision model reads it. Get coaching-grade ana
 run, that week, and that month — and, since September, a coach who lives in the app, reads every
 run you log, and tells you what she thinks without being asked.
 
-**[runins.site](https://runins.site)** · Next.js 16 · 3,566 tests
+**[runins.site](https://runins.site)** · Next.js 16 · 5,093 tests
 
 <p align="center">
   <img src="docs/media/hero.gif" width="320" alt="Picking three Apple Fitness screenshots, the model reading them, and the review screen appearing with every field filled in.">
@@ -94,7 +94,7 @@ screenshots travel with it ([`docs/media/12-share.png`](docs/media/12-share.png)
 runs ──► Nina — glm-5.3 turns with tools (the chat tab)
    │        ├── lookup_runs / compare_runs: numbers handed over pre-formatted, never computed
    │        ├── memory: what-is-true-now slots + an append-only fact ledger
-   │        └── her photos: qwen-image-3-pro on OpenRouter, an async job queue (~90 s, 6/day)
+   │        └── her photos: qwen-image-3-pro on OpenRouter, an async job queue (~90 s, cap 30/day)
    └── she also speaks first: five triggers, at most one message per Jakarta day
 ```
 
@@ -144,8 +144,8 @@ types like it, lowercase Jakarta register, in whatever language you typed at her
   <img src="docs/media/nina-jobs.gif" alt="The photo queue at Proses foto: a job ticking through Lagi digambar, a refresh, Selesai, and the job's detail page.">
   <p><strong>Her photographs are a queue, not a spinner.</strong> Asking her for a photo opens a
   real job — <code>qwen-image-3-pro</code> on OpenRouter, ~90 s, ~$0.04 — tracked at
-  <code>/nina/jobs</code> with stage, cost and attempts, capped at six a day. A refusal still
-  arrives as her own apology.</p>
+  <code>/nina/jobs</code> with stage, cost and attempts, capped by <code>NINA_IMAGE_DAILY_CAP</code>
+  (default 30/day). A refusal still arrives as her own apology.</p>
 </td>
 </tr>
 </table>
@@ -176,10 +176,11 @@ What else is in there:
 ### The workshop behind her
 
 `/admin` — "the workshop behind the runner's five tabs", says its own sidebar — is where the
-operator configures all of this. Seven tabs — an overview, her album (a file manager), her
-character (twelve trait sliders, a relationship setting, and a live render of the exact system
-prompt her next turn will receive), how she is photographed, the chat's photographs, her memory,
-and his shortcuts. There is not a Save button in the building — every control commits itself — and the hub page
+operator configures all of this. Six tabs — an overview; her Image collection, the album-cum-file-
+manager that holds her portraits and the chat's photographs in one tree; her character (twelve
+trait sliders, a relationship setting, and a live render of the exact system prompt her next turn
+will receive); how she is photographed; her memory; and his shortcuts. There is not a Save button
+in the building — every control commits itself — and the hub page
 states the price of that out loud: *everything here writes production.* A signed-in address that
 is not on `ADMIN_EMAILS` gets a 404, deliberately: the existence of the surface is never
 confirmed.
@@ -467,7 +468,7 @@ Since then the app grew a second product. The full ledger is
 | **F12**–**F19** | the badge panel and its award ledger, mobile keyboards that could not type a colon, the screenshot gallery — and this README, plus the harness that photographs it |
 | **F20**–**F27** | the records shelf as a product: eleven personal-record patches on their own deck, one row per record, a detail panel, earn dates; reduced motion, axis ticks past 20 splits, the detail panel that became a history entry |
 | **F28**–**F32** | the session narrative reads the last eight runs instead of three scalars; clock times normalised; the picker defaults to the device's kind order; `earliest_start` becomes the eleventh record |
-| **F33** and after | **Nina** — the chat tab, memory, her photographs and their job queue, proactivity, Web Push, sessions, search that jumps to the bubble, her tunable character, and the admin workshop. The road to v0.2.0 |
+| **F33** and after | **Nina** — the chat tab, memory, her photographs and their job queue, proactivity, Web Push, sessions, search that jumps to the bubble, her tunable character, and the admin workshop. The road to v1.0.0 |
 
 ## The stack
 
@@ -490,7 +491,7 @@ node research/show-metrics.mjs # deterministic metrics, no API key needed
 
 npm run db:smoke               # is Neon reachable on the pooled string?
 npm run db:migrate             # apply drizzle/ to the database
-npm test                       # 3,566 unit tests; never touches a database, never calls an LLM
+npm test                       # 5,093 unit tests; never touches a database, never calls an LLM
 TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
 npm run test:live              # opt-in: vision, narration and Nina live against real models. Costs money
 

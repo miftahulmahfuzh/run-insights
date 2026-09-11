@@ -1,6 +1,9 @@
 # Run Insights — Current-State Architecture
 
-**Written 2026-09-11.** This is the one document that describes the system **as it actually
+**Written 2026-09-11; drift-corrected 2026-09-12** — the same-day dead-code sweeps over `lib/db`,
+`lib/nina`, `lib/admin` and `components/ui` landed after the first write and invalidated a
+handful of this document's citations; each is fixed in place below, and the Scale row was
+re-measured. This is the one document that describes the system **as it actually
 exists today** — not as any plan proposed it. Every plan under `docs/plans/archive/` is a
 point-in-time artifact; several of them were overruled by reconciliation rulings, by measurements
 taken during execution, or by later features. Where a plan and this document disagree, this
@@ -16,7 +19,7 @@ execution records, and `.workflows/plan/*/` for everything after that set.
 
 | | |
 |---|---|
-| **What it is** | A single-user (per-account) running app: Apple Watch screenshots → vision-model extraction → human review → coaching-grade metrics, records, badges, weekly/monthly narratives — plus, since v0.2.0, **Nina**, a chatbot who lives in the app, remembers the runner, and comments unprompted. |
+| **What it is** | A single-user (per-account) running app: Apple Watch screenshots → vision-model extraction → human review → coaching-grade metrics, records, badges, weekly/monthly narratives — plus, since v1.0.0, **Nina**, a chatbot who lives in the app, remembers the runner, and comments unprompted. |
 | **Production origin** | `https://runins.site` (Vercel, Hobby plan, `sin1` region, Fluid compute) |
 | **Framework** | Next.js 16.3.1, App Router, React 19.2.8, TypeScript 5.9 strict + `noUncheckedIndexedAccess`. **No route groups except `(app)` and `(public)`**; `proxy.ts` (Next 16's renamed middleware) guards authenticated routes. |
 | **Database** | One Neon Postgres (`ep-winter-bonus-azjhv7a4`, `ap-southeast-1`). **There is no "dev" database — `.env.local`'s `DATABASE_URL` is the instance production reads.** Pooled URL at runtime, unpooled for drizzle-kit only. `neon-http` driver: no `db.transaction()`, every multi-statement write is `db.batch([...])`. |
@@ -24,7 +27,7 @@ execution records, and `.workflows/plan/*/` for everything after that set.
 | **Models** | Vision: `glm-4.6v` via z.ai coding endpoint (plain fetch). Text: `glm-5.3` / `glm-5.3-flash` via z.ai Anthropic-compatible endpoint (`@anthropic-ai/sdk`, runtime-selectable per account). Images: `qwen/qwen-image-3` / `-3-pro` via OpenRouter. Badge/record art generation is an **offline tool** (`tools/*.py`) — `OPENROUTER_API_KEY` is CI-guarded out of `app/`, `lib/`, `components/`. |
 | **Crons** | `/api/cron/rollup` `0 20 * * *` (insights week/month sweep) · `/api/cron/nina` `0 12 * * *` (= 19:00 WIB; Nina proactivity + promise resolution) |
 | **Route handlers** | Exactly seven, by decision D7 + one Nina addition: `auth/[...nextauth]`, `upload`, `extract`, `extract/[id]`, `health`, `cron/rollup`, `cron/nina` (plus `admin/manifest.webmanifest` and `api/admin/nina/upload` added by the admin console). |
-| **Scale (2026-09-11)** | 672 commits since 2026-08-20 · 204 lib modules · 165 component files · 28 tables · 21 migration files · 192 test files, ~3.6k tests · 7 bespoke CI guards. |
+| **Scale (2026-09-12)** | 762 commits since 2026-08-20 · 203 lib modules · 133 component files (non-test) · 28 tables · 21 migration files · 265 unit-test files, 5,093 tests, all green · 7 bespoke CI guards. |
 | **Tests** | Vitest, `environment: 'node'`, `*.test.ts` only — **no jsdom** by design until the 2026-09-11 component-test sessions added `.test.tsx` DOM tests under `components/`. Integration tests opt-in via `VITEST_INTEGRATION=1`; live LLM suites are tagged `LLM_LIVE_TEST=1` (vision, narrate, nina, nina-vision, nina-image). |
 
 ---
@@ -110,9 +113,10 @@ one was judged too important to leave to review:
 
 1. **userId scoping** — every read/write carries `user_id`; child tables (`run_splits`,
    `run_zones`, `run_photos`) reach it via correlated `EXISTS` predicates. Exactly three
-   sanctioned exceptions, all allow-listed in `scripts/check-data-layer-invariants.mjs`:
-   `getRunByShareToken` (the 96-bit token is the credential), `listActiveUserIds` (cron), and
-   the admin console's operator reads (`requireAdmin()`).
+   sanctioned exceptions, allow-listed in `scripts/check-data-layer-invariants.mjs`:
+   `getRunByShareToken` (the 96-bit token is the credential), `isUniqueViolation` (a pure
+   predicate over an error object), and `listActiveUserIds` (cron). The admin console's
+   operator reads live in `lib/admin/*`, outside the one file that guard scans.
 2. **Reviewed-only derived data** — every rollup, record recompute, badge evaluation and
    insight fact is built from rows with `reviewed_at IS NOT NULL`. A hallucination that reached
    `runs` can therefore never reach a chart, a record, or a badge. Enforced per-query by
@@ -229,8 +233,11 @@ outside state updaters with a per-generation guard (F17 — StrictMode double-fi
   misleading ratio).
 - **HRmax** — `resolveHrMax` (measured → observed-beats-estimate → Tanaka → null) is the only
   door to a max HR; `null` callers omit the field, never substitute 220−age. Transition banner
-  announces observed-overtakes-estimated. F06's requested self-excluding resolver exists but
-  belongs to `new_ceiling` only (R-3).
+  announces observed-overtakes-estimated. One observed read survives, `getObservedMaxHrRun` —
+  it names the run the peak came from and takes the Tanaka floor and an `asOf` cutoff in SQL,
+  which is how a run keeps itself out of its own resolution (R-3's self-exclusion); the plain
+  max() read and the exclude-one-run variant it superseded were removed as dead in the
+  2026-09-11 YAGNI sweeps.
 - **Flags** — 7 session codes + `VOLUME_JUMP` + `ACWR_OUT_OF_RANGE`, fixed thresholds,
   `lib/flags/copy.ts` gives each one English sentence. Boundary tests pin every threshold from
   both sides.
@@ -259,7 +266,7 @@ outside state updaters with a per-generation guard (F17 — StrictMode double-fi
 
 ---
 
-## 7. Nina (v0.2.0 — the largest single body of code in the repo)
+## 7. Nina (v1.0.0 — the largest single body of code in the repo)
 
 Canon: `docs/nina/persona.md` (the intent) + `lib/nina/persona.ts` / `lib/nina/tuning.ts` (what
 ships — per-account dials in `nina_tuning`, read live with no cache anywhere on the path).
@@ -287,12 +294,14 @@ Nina's live gates: `npm run test:live:nina`, `test:live:nina-vision`, `test:live
 
 ## 8. The admin console
 
-`/admin` (requireAdmin — separate from the runner's session) with five surfaces:
+`/admin` (requireAdmin — separate from the runner's session) with five surfaces beyond the
+overview hub:
 
-- **`/admin/nina`** — her avatar album, circular crop, current-face management.
-- **`/admin/photos`** — the chat-photo rail: icon-only controls in ONE flex row (2026-09-10
-  redesign), expandable description/prompt sections, set-as-profile-picture (adoption), file
-  explorer (`FileExplorer`, folder maintenance actions, move bar).
+- **`/admin/nina`** — the **Image collection**: her avatar album, circular crop, current-face
+  management, and — image-collection p2 having purged the separate chat-photos route — the
+  chat-photo rail too: icon-only controls in ONE flex row (2026-09-10 redesign), expandable
+  description/prompt sections, set-as-profile-picture (adoption), the `FileExplorer` with
+  folder maintenance actions and the move bar.
 - **`/admin/memory`** — hand-editing the memory slots and facts.
 - **`/admin/personality`** — the character dials (relationship register, traits incl. `horny`,
   anger model) + the text-model dropdown.
@@ -406,7 +415,9 @@ born reviewed; F05's commit creates them**), R-5 forced the `coalesce` dedupe in
 (now far more) exported queries; `lib/id.ts` (no nanoid dep), `lib/date/ranges.ts` (zero-dep
 ISO-week math), `fakeDb` recording driver for unit suites; `getRunDetail` = one `db.batch` round
 trip (N+1 regression-guarded); the two-insight-query additions (`getInsight`/`getLatestInsight`/
-`saveInsight`), `getRunsBetween`, `getObservedMaxHrExcludingRun`; `db:push` deliberately absent.
+`saveInsight`) and `getRunsBetween`; `db:push` deliberately absent. (Its HRmax reads later
+collapsed into the one surviving `getObservedMaxHrRun`; the monthly-totals pair and
+`listExtractions`/`deletePhoto` went caller-less and were removed in the 2026-09-11 sweeps.)
 Today the file is shared by seven domains and guarded by `ci:data-layer-guard` +
 `tests/db.queries.reviewedOnly.test.ts`'s completeness test. The `shares` partial index and the
 `runs` coalesce index are live and asserted against the migration *file*, not just the schema.
@@ -583,9 +594,11 @@ surfaces, and the `RECONCILIATION_RULINGS.md` three-repeal set (RU-1 weight, RU-
 OpenRouter in `lib/nina/` only, RU-3 push). The plan index (`NINA_CHATBOT_PLAN.md`) itself no
 longer sits in `.workflows/plan/nina-chatbot/` — the phase files and rulings do; the index's
 content survives in `CHANGELOG.md` and the tree.
-### 2026-09-10 — `/admin/photos` redesign · **SHIPPED** — icon-only one-row controls, compact
-rail, chat-photo→avatar adoption with byte-copy + `source_key` idempotence (verified:
-`components/admin/*`, `lib/admin/ninaAlbumActions.ts`, `chatPhotoActions.ts`).
+### 2026-09-10 — `/admin/photos` redesign · **SHIPPED, route since merged** — icon-only one-row
+controls, compact rail, chat-photo→avatar adoption with byte-copy + `source_key` idempotence
+(verified: `components/admin/*`, `lib/admin/ninaAlbumActions.ts`, `chatPhotoActions.ts`). The
+`/admin/photos` route itself was purged into `/admin/nina`'s Image collection by image-collection
+p2; the work lives on there (see §8).
 ### 2026-09-10 — Image-gen controls · **SHIPPED** — `NINA_IMAGE_DAILY_CAP` env (default 30),
 block-token `prompt_template` with three protection layers, per-pref image model,
 `app_settings.text_model` + async `narrativeModel()` (verified: `lib/nina/imageprefs.ts`,

@@ -33,7 +33,7 @@ import { AdminNavLinks } from '@/components/admin/AdminNavLinks'
  * `app/admin/layout.tsx` refuses `AppShell` partly because that component pairs itself with the
  * runner's five-cell `<TabBar />`, and *"an admin tool that borrows it invites the runner to tap
  * into it"*. That argument is about the runner's five tabs appearing on an admin page, not about
- * the shape of a bottom bar, and it still stands: this bar carries the seven admin routes and
+ * the shape of a bottom bar, and it still stands: this bar carries the six admin routes and
  * nothing else. What it does borrow, deliberately, is `components/ui/TabBar.tsx`'s MECHANICS —
  * `fixed inset-x-0 bottom-0 z-30`, `border-t border-rule`, `bg-card/95 backdrop-blur-sm`, and
  * the 470 px centred row — because a second way of pinning a bar to the bottom of an iPhone is a
