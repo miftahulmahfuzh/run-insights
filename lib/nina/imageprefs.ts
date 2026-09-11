@@ -830,8 +830,8 @@ export const NINA_IMAGE_MODEL_SPECS: Readonly<Record<NinaImageModelId, NinaImage
       id: 'qwen/qwen-image-3-pro',
       label: 'Qwen Image 3 Pro',
       hint:
-        'The measured camera: ~80 s unanchored, ~150 s anchored, about $0.04 a generation, ' +
-        'honours the seed and the 3:4 frame.',
+        'The measured camera: ~80 s unanchored, 150-235 s anchored (recently running to the ' +
+        'ceiling), about $0.04 a generation, honours the seed and the 3:4 frame.',
     }),
   })
 

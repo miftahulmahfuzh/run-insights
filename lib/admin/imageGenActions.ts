@@ -188,7 +188,7 @@ export async function saveNinaImagePrefsAction(input: {
  *
  * Two actions, and the split is the whole design: one SPENDS a generation and returns without
  * waiting for it, and one READS what happened. The index's Decisions table settles why they are not
- * one action that blocks — a Server Action's timeout is the page segment's, and 78-220 s inside a
+ * one action that blocks — a Server Action's timeout is the page segment's, and 78-235 s inside a
  * browser POST is precisely what `after()` exists to avoid.
  *
  * NEITHER TAKES A PAYLOAD WORTH VALIDATING, and that is deliberate rather than lazy.
@@ -221,7 +221,7 @@ export interface NinaImageTestReadResult {
  * job id.
  *
  * **No `revalidatePath` here.** Nothing has landed: the photograph does not exist for another
- * 78-220 s. The quota HAS changed, and the panel gets the new number in this very result rather
+ * 78-235 s. The quota HAS changed, and the panel gets the new number in this very result rather
  * than by re-rendering a page.
  */
 export async function runNinaImageTestAction(): Promise<NinaImageTestDispatchResult> {

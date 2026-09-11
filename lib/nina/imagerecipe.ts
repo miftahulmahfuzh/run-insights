@@ -49,7 +49,8 @@
  * was 150 s, so shipping R10 against that ceiling would have aborted about half of its own
  * generations after the money was spent. That is why there is now a SECOND in-platform timeout —
  * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS`, used only when a reference is present — and why
- * `NINA_IMAGE_RUN_BUDGET_MS` moved from 200 s to 240 s. The threshold block below derives both.
+ * `NINA_IMAGE_RUN_BUDGET_MS` has moved twice (200 s → 240 s with R10, → 255 s with the 2026-09-11
+ * anchored drift). The threshold block below derives both.
  *
  * **WHAT `input_references` ACTUALLY DOES ON THIS MODEL, measured elsewhere in this repo and not
  * to be re-learned at $0.04 a probe:** it *"behaves like a strong img2img, not a style reference:
@@ -213,7 +214,7 @@ export const NINA_TURN_SPENT_MS = 45_000
 /**
  * **The in-platform OpenRouter call's timeout, WITHOUT a reference.** 1.9x the measured 78.2 s.
  *
- * Not `NINA_WORKER_CALL_TIMEOUT_MS`: on a GitHub runner there is no ceiling to race, so 240 s is
+ * Not `NINA_WORKER_CALL_TIMEOUT_MS`: on a GitHub runner there is no ceiling to race, so 290 s is
  * free there and would be reckless here. 45 + 150 + 20 = 215 s inside a 300 s invocation, with
  * 85 s of slack for a cold start and a slow Blob write.
  *
@@ -224,21 +225,26 @@ export const NINA_TURN_SPENT_MS = 45_000
 export const NINA_IMAGE_CALL_TIMEOUT_MS = 150_000
 
 /**
- * **The in-platform timeout WITH a reference, and the whole price of R10.** 1.5x the measured
- * 148.9 s anchored generation (`gen_badge_art.py`'s own `urlopen` ceiling for the same shape is
- * 300 s, and its comment says the ceiling "is doing real work rather than guarding a
- * hypothetical").
+ * **The in-platform timeout WITH a reference, and the whole price of R10.** Chosen against two
+ * measurements that disagree, and the disagreement is the point: RU-18 measured 148.9 s anchored,
+ * and 192-197 s completions through 2026-09-10 09:41 UTC sat comfortably under the 220 s that
+ * R10 derived from it — then every anchored attempt from 2026-09-10 13:23 UTC onward died AT that
+ * ceiling (`nina_turns` latency 220002-220004, four jobs, two hosts). A ceiling set exactly at a
+ * stale measurement turns provider drift into requeues and double bills, so the drift moved it to
+ * 235 s: strictly above the value that failed, and the largest value the inequality below allows
+ * at all (`tests/nina.imagerecipe.test.ts` pins the floor at 220_000 for exactly that reason).
  *
  *   NINA_TURN_SPENT_MS + this + NINA_IMAGE_FINISH_RESERVE_MS <= NINA_HOST_MAX_DURATION_MS
- *   45 + 220 + 20 = 285 <= 300                                        ✔ 15 s of slack
+ *   45 + 235 + 20 = 300 <= 300                                        ✔ exact
  *
- * versus 215 <= 300 unanchored. **The slack fell from 85 s to 15 s and that is the cost of the
- * anchor**, paid only on jobs that carry one. Worst case is reached only when all three worst
- * cases coincide — a turn that really spent its measured 45 s high end, a provider that runs to
- * the full ceiling, and finish writes that need their whole reserve — and the consequence is the
- * invocation being killed with a `running` row, which `reviveNinaImageJobs` re-fires on the next
- * `/nina` render and `sweepStaleNinaImageJobs` apologises for at twenty minutes. Three nets, all
- * unchanged.
+ * versus 215 <= 300 unanchored. **The slack fell from 85 s to 15 s to none, and that is the cost
+ * of the anchor on a slower provider**, paid only on jobs that carry one. Worst case is reached
+ * only when all three worst cases coincide — a turn that really spent its measured 45 s high end,
+ * a provider that runs to the full ceiling, and finish writes that need their whole reserve — and
+ * the consequence is the invocation being killed with a `running` row, which `reviveNinaImageJobs`
+ * re-fires on the next `/nina` render and `sweepStaleNinaImageJobs` apologises for at twenty
+ * minutes. Three nets, all unchanged; on the ADMIN test path the turn term is ~0, so the real
+ * slack there is the whole 45 s.
  *
  * **IT BOUNDS THE WHOLE OF `callNinaImageModel`, fetch included.** The reference is fetched from
  * Blob inside that function, before the POST, and the POST's `AbortSignal` gets what is LEFT of
@@ -246,7 +252,7 @@ export const NINA_IMAGE_CALL_TIMEOUT_MS = 150_000
  * above needs no fourth term — `NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS` is a sub-bound inside it,
  * not an addition to it.
  */
-export const NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS = 220_000
+export const NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS = 235_000
 
 /** The Blob `put` plus three indexed writes, with slack. Reserved out of the run budget. */
 export const NINA_IMAGE_FINISH_RESERVE_MS = 20_000
@@ -256,34 +262,38 @@ export const NINA_IMAGE_FINISH_RESERVE_MS = 20_000
  * loop refuses to begin an attempt that would not fit inside what is left of this — a retry killed
  * halfway spends $0.04 and leaves a `running` row for a sweep to apologise for.
  *
- * **Two inequalities pin it, and R10 moved it from 200 s to 240 s.**
+ * **Two inequalities pin it, and twice moved: R10 took it from 200 s to 240 s, and the 2026-09-11
+ * anchored drift took it from 240 s to 255 s.**
  *
  *   1. It must hold ONE WHOLE ANCHORED ATTEMPT, or the loop refuses even the first one and the
  *      reference feature generates nothing:
  *        NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS <= this
- *        220 + 20 = 240 <= 240                                              ✔ exactly
+ *        235 + 20 = 255 <= 255                                              ✔ exactly
  *   2. It must still fit under the host ceiling with a whole chat turn already spent — the
  *      inequality the whole in-platform design rests on:
  *        NINA_TURN_SPENT_MS + this <= NINA_HOST_MAX_DURATION_MS
- *        45 + 240 = 285 <= 300                                              ✔ 15 s of slack
+ *        45 + 255 = 300 <= 300                                              ✔ exact
  *
- * The unanchored attempt is unchanged at 150 + 20 = 170 <= 240.
+ * The unanchored attempt is unchanged at 150 + 20 = 170 <= 255.
  *
  * **What (1) being EXACT means, said plainly: an anchored job gets one attempt per invocation.**
  * After any anchored failure, `Date.now() - start` is already positive, so
- * `elapsed + 220 + 20 > 240` and the loop declines the retry and returns `'retry'`. That is the
- * correct answer rather than a limitation — two 220 s attempts cannot fit under a 300 s ceiling by
+ * `elapsed + 235 + 20 > 255` and the loop declines the retry and returns `'retry'`. That is the
+ * correct answer rather than a limitation — two 235 s attempts cannot fit under a 300 s ceiling by
  * any arithmetic — and the second attempt still happens: the row is left `queued`,
  * `NINA_IMAGE_MAX_ATTEMPTS` is still 2, and `reviveNinaImageJobs` re-fires it on the next `/nina`
  * render with a fresh 300 s. An unanchored job keeps its same-invocation retry and gets a more
- * generous one than before: it now retries after any failure inside the first 70 s (240 - 170)
- * where the old 200 s budget allowed 30 s.
+ * generous one than before: it now retries after any failure inside the first 85 s (255 - 170)
+ * where the 240 s budget allowed 70 s.
  */
-export const NINA_IMAGE_RUN_BUDGET_MS = 240_000
+export const NINA_IMAGE_RUN_BUDGET_MS = 255_000
 
-/** The backstop worker's own OpenRouter timeout. 3x the measured 78.2 s; off Vercel, nothing to
- *  race. Unchanged by the migration, because that host's ceiling did not move. */
-export const NINA_WORKER_CALL_TIMEOUT_MS = 240_000
+/** The backstop worker's own OpenRouter timeout. Strictly above the 240 s at which its own
+ *  anchored attempt died on 2026-09-10 (latency 240002) — that is what a backstop is for — and
+ *  still the largest value the chain below allows: `timeout-minutes: 6` (360 s) must stay above
+ *  call + 60 s of setup (290 + 60 = 350), and `NINA_IMAGE_RECLAIM_MS` (420 s) must stay above the
+ *  workflow ceiling, so no host's generation is ever reclaimed while it may still be running. */
+export const NINA_WORKER_CALL_TIMEOUT_MS = 290_000
 
 /** `timeout-minutes` on the backstop workflow's job. Must exceed the call timeout plus setup. */
 export const NINA_WORKER_TIMEOUT_MINUTES = 6
@@ -294,7 +304,7 @@ export const NINA_WORKER_TIMEOUT_MINUTES = 6
  * A Blob object is on a public CDN in the same region, so ten seconds is generous for the 8 MiB
  * worst case; the ordinary case is a ~1.2 MB generated PNG. It is a SUB-BOUND of
  * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS`, not an addition to it — `callNinaImageModel` gives the
- * POST whatever is left of the 220 s after the fetch — which is why the threshold arithmetic has
+ * POST whatever is left of the 235 s after the fetch — which is why the threshold arithmetic has
  * three terms and not four.
  *
  * Missing this deadline costs an ANCHOR, never a job: the fetch degrades to an unanchored

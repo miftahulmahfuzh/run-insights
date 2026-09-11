@@ -599,17 +599,18 @@ export async function fetchReference(url: string): Promise<string | null> {
  * from having imports.
  *
  * ── ONE TIMEOUT HERE, TWO ON VERCEL, AND THAT ASYMMETRY IS DELIBERATE ─────────────────────────
- * `NINA_WORKER_CALL_TIMEOUT_MS` (240 s) covers BOTH the anchored and the unanchored call on this
- * host: three times the measured 78.2 s unanchored, 1.6x the measured 148.9 s anchored. The app
- * needs a second, larger constant because it is racing a 300 s invocation ceiling; this host is
- * racing `timeout-minutes: 6` (360 s), and raising the call timeout above 240 s would mean raising
- * that ceiling too — which would mean re-deriving `NINA_IMAGE_RECLAIM_MS` (420 s, chosen to exceed
- * BOTH host ceilings) and editing the workflow. That is a large blast radius for a backstop that
- * the normal path never reaches, so the residual is accepted and named: an anchored generation
- * slower than 240 s fails here as `timeout` — the same failure the app would have had before R10,
- * and one `reviveNinaImageJobs` retries.
+ * `NINA_WORKER_CALL_TIMEOUT_MS` (290 s) covers BOTH the anchored and the unanchored call on this
+ * host: 3.7x the measured 78.2 s unanchored, and strictly above the 240 s at which this host's
+ * own anchored attempt died on 2026-09-10 — the drift that moved the in-platform ceilings the
+ * same day. The app needs a second, larger constant because it is racing a 300 s invocation
+ * ceiling; this host is racing `timeout-minutes: 6` (360 s), and 290 s is the largest call
+ * timeout that keeps the whole derived chain honest without touching it: 360 s must stay above
+ * call + 60 s of setup (290 + 60 = 350), and `NINA_IMAGE_RECLAIM_MS` (420 s, chosen to exceed
+ * BOTH host ceilings) must stay above the workflow ceiling. The residual is still accepted and
+ * named: an anchored generation slower than 290 s fails here as `timeout` — and one
+ * `reviveNinaImageJobs` retries.
  *
- * The reference is fetched before the POST and inside the same 240 s wall, which is bounded by
+ * The reference is fetched before the POST and inside the same 290 s wall, which is bounded by
  * `NINA_IMAGE_REFERENCE_FETCH_TIMEOUT_MS` (10 s) and degrades to unanchored on any failure.
  */
 export async function generate(
@@ -642,7 +643,7 @@ export async function generate(
       body: JSON.stringify(
         buildImageRequestBody({ prompt, seed, referenceDataUrl, model }),
       ),
-      /* What is left of the 240 s after the reference fetch, floored so a slow fetch cannot hand
+      /* What is left of the 290 s after the reference fetch, floored so a slow fetch cannot hand
        * `AbortSignal.timeout` a zero. */
       signal: AbortSignal.timeout(
         Math.max(1_000, NINA_WORKER_CALL_TIMEOUT_MS - (Date.now() - startedAt)),

@@ -33,7 +33,7 @@ import { formatJobLatency, formatMicroUsd } from '@/lib/nina/jobview'
  * ── ONE SEQUENTIAL ASYNC LOOP, NOT A `setInterval` ───────────────────────────────────────────
  * `components/nina/ChatScreen.tsx` states the rule and this is the same situation: a tick
  * must not fire while the previous request is in flight, and a poll here is a Server Action round
- * trip against a job that takes 78-220 s. `components/extract/useExtractionStatus.ts` is
+ * trip against a job that takes 78-235 s. `components/extract/useExtractionStatus.ts` is
  * the same loop with the same three parts — a `cancelled` flag, one `setTimeout` handle cleared on
  * unmount, and a wall-clock give-up. A single failed poll is NOT a failed test: the generation is
  * still running on the server, so it is reported quietly and the loop continues.

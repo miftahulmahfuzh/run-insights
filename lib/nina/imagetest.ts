@@ -177,7 +177,7 @@ export async function dispatchNinaImageTest(userId: string): Promise<NinaImageTe
 
     /*
      * The generation, on this server, in `after()`. Identical handoff to `generateNinaSelfie`'s,
-     * and the reason the button can return immediately: 78-220 s inside a browser POST is what
+     * and the reason the button can return immediately: 78-235 s inside a browser POST is what
      * `after()` exists to avoid, and a Server Action's ceiling is the PAGE SEGMENT's.
      *
      * `purpose: 'selfie'` and `replyToId: null` are passed as they are stored, so the run path

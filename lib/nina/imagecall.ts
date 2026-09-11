@@ -56,9 +56,9 @@ import {
  *              not. `readReportedCostMicroUsd` owns that preference.
  *
  * ── THE TIMEOUTS ARE NOT THE WORKER'S, AND THERE ARE TWO OF THEM ──────────────────────────────
- * `NINA_WORKER_CALL_TIMEOUT_MS` is 240 s because a GitHub runner has six hours and no ceiling to
+ * `NINA_WORKER_CALL_TIMEOUT_MS` is 290 s because a GitHub runner has six hours and no ceiling to
  * race. Here there IS a ceiling — the route segment's `maxDuration` — so the timeout comes from
- * `ninaImageCallTimeoutMs(anchored)`: **150 s unanchored, 220 s with a reference**, because RU-18
+ * `ninaImageCallTimeoutMs(anchored)`: **150 s unanchored, 235 s with a reference**, because RU-18
  * measured an anchored generation at 148.9 s against 78.2 s and a 150 s ceiling would have aborted
  * about half of R10's own generations. Both are derived in `imagerecipe.ts`'s threshold block and
  * asserted in `tests/nina.imagerecipe.test.ts`. Two hosts, three ceilings, one payload.

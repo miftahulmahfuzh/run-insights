@@ -84,7 +84,7 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     # NINA_WORKER_TIMEOUT_MINUTES in lib/nina/imagerecipe.ts. It must exceed
-    # NINA_WORKER_CALL_TIMEOUT_MS (240 s) plus setup, and NINA_IMAGE_RECLAIM_MS (7 min) must exceed
+    # NINA_WORKER_CALL_TIMEOUT_MS (290 s) plus setup, and NINA_IMAGE_RECLAIM_MS (7 min) must exceed
     # BOTH this and the Vercel ceiling (NINA_HOST_MAX_DURATION_MS, 300 s), so a job killed on
     # EITHER host cannot be mistaken for one still running. tests/nina.imagerecipe.test.ts asserts
     # that chain.

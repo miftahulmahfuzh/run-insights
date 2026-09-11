@@ -30,7 +30,11 @@ import { jobStage } from '@/lib/nina/jobview'
  * observable state is `status='pending'`, `error_code='queued'`, `attempts >= 1`, and the only
  * honest reading of it is *"the first attempt failed and it is being retried; what failed is not
  * recorded until the retry budget is spent"*. Rendering that as `'running'` would hide a failure;
- * rendering it as `'refused'` would invent one.
+ * rendering it as `'refused'` would invent one. **And the converse bit, measured in production
+ * on 2026-09-11:** `claimNinaImageJob` increments `attempts` when an attempt STARTS — in the same
+ * statement that sets `error_code='running'` — so `attempts >= 1` alone is also the state of a
+ * first attempt that has never failed at all. The phase, not the counter, is what separates the
+ * two; the test named "reads a claim as running" pins it.
  */
 
 export const NINA_IMAGE_TEST_VERDICTS = [
@@ -90,9 +94,14 @@ export function imageTestVerdict(job: NinaImageTestJobView | null): NinaImageTes
     return job.status === 'ok' ? 'allowed' : 'unknown'
   }
 
-  /* Still pending. `attempts` is incremented by `claimNinaImageJob`, so `>= 1` on a row that is
-   * back in a pending stage means an attempt has already been made and requeued. */
-  return job.attempts >= 1 ? 'retrying' : 'running'
+  /* Still pending. The PHASE is the discriminator, and it has to be: `claimNinaImageJob` bumps
+   * `attempts` to 1 in the SAME statement that sets error_code to 'running', so `attempts >= 1`
+   * holds on every in-flight attempt — including the first. Reading the counter alone as "an
+   * attempt has already been made and requeued" showed the requeue headline seconds after every
+   * click (measured 2026-09-11, job jyMH4MGw-x8k: the message at t+5 s, latency still NULL, the
+   * genuine requeue only landing at t+225 s). 'retrying' is reachable from the requeued 'queued'
+   * phase — `requeueNinaImageJob`'s — and from nothing else that is still open. */
+  return job.attempts >= 1 && job.errorCode === 'queued' ? 'retrying' : 'running'
 }
 
 /** True while the answer can still change — the only states a poll is honest for. */
@@ -115,12 +124,13 @@ export const NINA_IMAGE_TEST_VERDICT_LINE: Record<NinaImageTestVerdict, string> 
 export const NINA_IMAGE_TEST_VERDICT_WHY: Record<NinaImageTestVerdict, string> = {
   idle: 'One test spends one of today’s generations, and the daily cap counts failures too.',
   running:
-    'A generation measured 78 s without a reference photo and up to 220 s with one. Nothing has ' +
-    'been refused and nothing has succeeded yet.',
+    'A generation measured 78 s without a reference photo and up to 235 s with one — anchored ' +
+    'ones have been running longer still, which is why the ceiling moved. Nothing has been ' +
+    'refused and nothing has succeeded yet.',
   retrying:
     'Two attempts are allowed, so this is not a verdict yet. What went wrong on the first attempt ' +
-    'is not written to the database until the retry budget is spent — it is in the server ' +
-    'log now, and the verdict here will name it if the retry fails too.',
+    'is not written to the database until the retry budget is spent — the runner logged it, and ' +
+    'the verdict here will name the kind if the retry fails too.',
   allowed:
     'The photograph is in Chat photos, and a caption bubble from Nina is in the conversation — ' +
     'a chat photo cannot exist without a message to hang on.',
@@ -182,9 +192,10 @@ export function imageTestPollDelayFor(attempts: number): number {
 }
 
 /**
- * **The bound, and it is derived rather than chosen.** `NINA_IMAGE_MAX_ATTEMPTS = 2` and phase 3's
- * anchored call ceiling is 220 s, so two legitimate attempts can take 440 s before anything is
- * terminal. 480 s clears that with slack.
+ * **The bound, and it is derived rather than chosen.** `NINA_IMAGE_MAX_ATTEMPTS = 2` and the
+ * anchored call ceiling is 235 s, so two legitimate attempts can take 470 s before anything is
+ * terminal. 480 s clears that by ten seconds — thin, on purpose: this bound's only job is to stop
+ * the poll, and its expiry message says the job is STILL OPEN rather than failed.
  *
  * ── AND WHY IT IS NOT `NINA_IMAGE_STALE_MS` ──────────────────────────────────────────────────
  * `NINA_TURN_POLL_GIVE_UP_MS` is deliberately set to the server's own deadline, because a chat turn

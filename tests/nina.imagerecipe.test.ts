@@ -935,6 +935,22 @@ describe('the threshold chain', () => {
     expect(NINA_WORKER_CALL_TIMEOUT_MS).toBeGreaterThanOrEqual(160_000)
   })
 
+  it('the anchored ceiling sits strictly above the 220 s that aborted real generations', () => {
+    /* Measured 2026-09-10/11: four anchored attempts died AT the 220_000 AbortSignal ceiling
+     * (nina_turns latency 220002-220004) after the same pipeline had completed the same shape at
+     * 192-197 s days earlier. A ceiling set exactly at a stale measurement turns provider drift
+     * into requeues and double bills — it must sit strictly above the value that failed. */
+    expect(NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS).toBeGreaterThan(220_000)
+  })
+
+  it('the backstop worker outwaits the 240 s that aborted its own attempt', () => {
+    /* The worker exists to finish what a 300 s Vercel segment cannot hold. Its own attempt died
+     * AT the 240_000 ceiling on 2026-09-10 (latency 240002), so it inherited the same drift — it
+     * must sit strictly above the value that failed, and the chain below keeps the workflow's
+     * timeout-minutes and NINA_IMAGE_RECLAIM_MS honest about wherever it lands. */
+    expect(NINA_WORKER_CALL_TIMEOUT_MS).toBeGreaterThan(240_000)
+  })
+
   it("the workflow's job ceiling exceeds the call timeout plus setup", () => {
     expect(NINA_WORKER_TIMEOUT_MINUTES * 60_000).toBeGreaterThan(
       NINA_WORKER_CALL_TIMEOUT_MS + 60_000,
@@ -942,7 +958,8 @@ describe('the threshold chain', () => {
   })
 
   it('the in-platform run fits inside the host ceiling with a full turn already spent', () => {
-    // THE inequality the whole in-platform design rests on. R10 moved it: 45 + 240 = 285 <= 300.
+    // THE inequality the whole in-platform design rests on. R10 moved it to 240 s; the
+    // 2026-09-11 anchored drift moved it again: 45 + 255 = 300 <= 300.
     expect(NINA_TURN_SPENT_MS + NINA_IMAGE_RUN_BUDGET_MS).toBeLessThanOrEqual(
       NINA_HOST_MAX_DURATION_MS,
     )
@@ -951,7 +968,7 @@ describe('the threshold chain', () => {
   it('one whole attempt plus its finish writes fits inside the run budget — BOTH kinds', () => {
     // Otherwise `runNinaImageJob` could never start even its FIRST attempt without overrunning,
     // and for the anchored kind that would mean R10 generating nothing at all.
-    // Unanchored: 150 + 20 = 170 <= 240. Anchored: 220 + 20 = 240 <= 240, exactly — which is why
+    // Unanchored: 150 + 20 = 170 <= 255. Anchored: 235 + 20 = 255 <= 255, exactly — which is why
     // an anchored job gets one attempt per invocation and its retry comes from a fresh render.
     expect(NINA_IMAGE_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS).toBeLessThanOrEqual(
       NINA_IMAGE_RUN_BUDGET_MS,
@@ -962,7 +979,7 @@ describe('the threshold chain', () => {
   })
 
   it('the in-platform call timeout is above the measured 78.2 s and below the worker’s', () => {
-    // Above, or a merely slow day throws away $0.04 and a photograph. Below the worker's 240 s,
+    // Above, or a merely slow day throws away $0.04 and a photograph. Below the worker's 290 s,
     // because THIS host has a ceiling to race and that one does not.
     expect(NINA_IMAGE_CALL_TIMEOUT_MS).toBeGreaterThan(78_200)
     expect(NINA_IMAGE_CALL_TIMEOUT_MS).toBeLessThan(NINA_WORKER_CALL_TIMEOUT_MS)

@@ -561,10 +561,10 @@ async function closeFailed(
  * What one attempt did, and whether the job it did it to carried an anchor.
  *
  * The second field exists for `runNinaImageJob`'s deadline check and for nothing else: an anchored
- * attempt needs 220 s + 20 s of wall clock and an unanchored one needs 170 s, and the loop cannot
+ * attempt needs 235 s + 20 s of wall clock and an unanchored one needs 170 s, and the loop cannot
  * ask the claim itself — `claimNinaImageJob` is what has the args, and it is one layer down.
  * Reserving the anchored figure for every job would silently delete the unanchored retry; reserving
- * the unanchored figure for every job would start an anchored retry that gets killed at 240 s with
+ * the unanchored figure for every job would start an anchored retry that gets killed at 255 s with
  * the money spent.
  */
 interface AttemptResult {
@@ -681,9 +681,9 @@ async function attemptOnce(
  * 300 s.
  *
  * **THE DEADLINE IS SIZED BY THIS JOB'S CEILING, WHICH R10 MADE TWO.** An anchored attempt needs
- * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS` = 240 s, which is the whole
+ * `NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS + NINA_IMAGE_FINISH_RESERVE_MS` = 255 s, which is the whole
  * of `NINA_IMAGE_RUN_BUDGET_MS`, so **an anchored job gets exactly one attempt per invocation** and
- * its second one comes from `reviveNinaImageJobs` on a fresh clock. Two 220 s attempts do not fit
+ * its second one comes from `reviveNinaImageJobs` on a fresh clock. Two 235 s attempts do not fit
  * under a 300 s host ceiling by any arithmetic, so this is the answer and not a shortfall. An
  * unanchored attempt needs 170 s and retries after any failure inside the first 70 s.
  */

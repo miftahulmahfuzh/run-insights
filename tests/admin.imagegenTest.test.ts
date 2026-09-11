@@ -20,6 +20,7 @@ import {
 import { NINA_IMAGE_FAILURES } from '@/lib/nina/imagefail'
 import {
   NINA_HOST_MAX_DURATION_MS,
+  NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS,
   NINA_IMAGE_MAX_ATTEMPTS,
   NINA_IMAGE_STALE_MS,
 } from '@/lib/nina/imagerecipe'
@@ -103,8 +104,21 @@ describe('R11 — the verdict never lies in either direction', () => {
      * 'queued', attempts incremented. That is a different fact from "still running". */
     expect(NINA_IMAGE_MAX_ATTEMPTS).toBe(2)
     expect(imageTestVerdict(job({ attempts: 1, errorCode: 'queued' }))).toBe('retrying')
-    expect(imageTestVerdict(job({ attempts: 1, errorCode: 'running' }))).toBe('retrying')
     expect(NINA_IMAGE_TEST_VERDICT_LINE.retrying).not.toContain('refus')
+  })
+
+  it('reads a claim as running, not as a requeue — attempts counts starts, not failures', () => {
+    /* `claimNinaImageJob` bumps `attempts` to 1 in the SAME statement that sets error_code to
+     * 'running', so EVERY in-flight attempt — including the first — carries attempts >= 1. The
+     * old reading of that counter as "an attempt has already been made and requeued" showed the
+     * requeue headline seconds after every click: measured in production on 2026-09-11, job
+     * jyMH4MGw-x8k said "The first attempt failed" at t+5 s with latency still NULL and the
+     * genuine requeue only landing at t+225 s. The PHASE is the discriminator — 'retrying' is
+     * reachable from the requeued 'queued' phase and from nothing else that is still open. */
+    expect(imageTestVerdict(job({ attempts: 1, errorCode: 'running' }))).toBe('running')
+    expect(imageTestVerdict(job({ attempts: 2, errorCode: 'running' }))).toBe('running')
+    /* A row that is open but not yet claimed is on its first attempt too. */
+    expect(imageTestVerdict(job({ attempts: 0, errorCode: 'queued' }))).toBe('running')
   })
 
   it('is idle before anything has been dispatched', () => {
@@ -141,8 +155,12 @@ describe('R11 — the verdict never lies in either direction', () => {
 
 describe('the poll is bounded, and the bound is derived', () => {
   it('covers two anchored attempts and stops well before the server gives up', () => {
-    /* Two attempts at phase 3's anchored ceiling (220 s) is 440 s of legitimate work. */
-    expect(NINA_IMAGE_TEST_GIVE_UP_MS).toBeGreaterThan(NINA_IMAGE_MAX_ATTEMPTS * 220_000)
+    /* Two attempts at the anchored ceiling is 2 x 235 s = 470 s of legitimate work. The ceiling is
+     * the CONSTANT and not a literal, so a ceiling move cannot desync this bound again — the
+     * 220 s literal that stood here before read as if 480 s covered drift it no longer covered. */
+    expect(NINA_IMAGE_TEST_GIVE_UP_MS).toBeGreaterThan(
+      NINA_IMAGE_MAX_ATTEMPTS * NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS,
+    )
     /* And it must stop long before a stale job is given up, or "stopped watching" would be read
      * as "failed" — see the constant's docstring on why this is NOT NINA_IMAGE_STALE_MS. */
     expect(NINA_IMAGE_TEST_GIVE_UP_MS).toBeLessThan(NINA_IMAGE_STALE_MS)
