@@ -4,9 +4,22 @@ All notable changes to Run Insights are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Feature codes (`F01`–`F33`) refer to the plan files in [`docs/plans/`](docs/plans/). Ruling codes
+Feature codes (`F01`–`F33`) refer to the plan files in [`docs/plans/archive/`](docs/plans/archive/). Ruling codes
 (`R-nn`) refer to `RECONCILIATION_v0.1.0.md`, the v0.1.0 arbitration record — removed from the
 tree in September 2026, readable in git history.
+
+## [Unreleased]
+
+### Changed
+
+- **`docs/plans/` archived to [`docs/plans/archive/`](docs/plans/archive/).** All 36 remaining
+  plan documents (F01–F33 plus the two 2026-09-10 design docs) are SHIPPED or SHIPPED+AMENDED
+  per the plan-by-plan cross-reference in `docs/architecture.md` §13, so the primary docs tree
+  now holds only living references. The plan-number race's residue is settled in the filename:
+  the second `F16` claimer (upload kind swap, committed 23 minutes after the splits-gutters
+  F16 on 2026-08-21) is renumbered `F16b-upload-kind-swap.md`. Content is byte-identical —
+  nothing was deleted — and every live reference (this changelog, README, the CI guards' error
+  strings, source comments, the badge-art tools and skill) points at the archive location.
 
 ## [v1.0.0] - 2026-09-11
 
@@ -23,7 +36,7 @@ up from 1,199 tests at v0.1.0. Live at **[runins.site](https://runins.site)**.
 **Nina — a chatbot who lives in the app (F33)**
 
 - **A companion character with a name, a memory, a face and eleven traits**, built across
-  sixteen phases (`docs/plans/F33-nina.md`). `/nina` becomes the fifth tab; her system prompt
+  sixteen phases (`docs/plans/archive/F33-nina.md`). `/nina` becomes the fifth tab; her system prompt
   (`lib/nina/persona.ts`, `lib/nina/prompts/`) is assembled fresh on every turn from a stored
   `nina_tuning` row rather than a frozen `const`, read live with no cache anywhere on the path.
   Six relationship registers ship — nobody, casual friend, sister, best friend, girlfriend, and
@@ -199,7 +212,7 @@ up from 1,199 tests at v0.1.0. Live at **[runins.site](https://runins.site)**.
   glyphs, one 5rem floor); its own PWA install target, so the `/admin` home-screen tile opens
   `/admin` rather than the runner's app; its own status-bar tint; and its own home-screen icon
   deck, "so it is not the runner's."
-- **`docs/plans/` and the orchestration bookkeeping tree were purged of landed work** — the
+- **`docs/plans/archive/` and the orchestration bookkeeping tree were purged of landed work** — the
   v0.1.0 contract trio (roadmap, feasibility record, reconciliation), 53 root plan-set files
   (18.4k lines), and 25 landed orchestration sets — leaving only the feature-pointer stubs (like
   `F33-nina.md`) and two active design docs. The full reasoning behind every repealed rule and

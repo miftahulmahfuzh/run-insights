@@ -1,14 +1,14 @@
 # Run Insights — Current-State Architecture
 
 **Written 2026-09-11.** This is the one document that describes the system **as it actually
-exists today** — not as any plan proposed it. Every plan under `docs/plans/` is a point-in-time
-artifact; several of them were overruled by reconciliation rulings, by measurements taken during
-execution, or by later features. Where a plan and this document disagree, this document wins,
-and §15 says exactly where and why, plan by plan.
+exists today** — not as any plan proposed it. Every plan under `docs/plans/archive/` is a
+point-in-time artifact; several of them were overruled by reconciliation rulings, by measurements
+taken during execution, or by later features. Where a plan and this document disagree, this
+document wins, and §13 says exactly where and why, plan by plan.
 
 Sources for every claim here, in order of authority: the code (read and grepped on 2026-09-11),
-`CHANGELOG.md`, the 36 plan documents and their own execution records, and
-`.workflows/plan/*/` for everything after `docs/plans/`.
+`CHANGELOG.md`, the 36 plan documents (now archived under `docs/plans/archive/`) and their own
+execution records, and `.workflows/plan/*/` for everything after that set.
 
 ---
 
@@ -51,12 +51,16 @@ Sources for every claim here, in order of authority: the code (read and grepped 
 2026-09-10  /admin/photos redesign + image-gen controls (env-tunable quota, editable prompt
             template, model dropdowns) — the two 2026-09-10 design docs.
 2026-09-11  v1.0.0. 291 commits / 755 files / +507k lines for the Nina release window alone.
-            Today: five token-maxxing test-coverage sessions + this document.
+            Today: five token-maxxing test-coverage sessions + this document, and the
+            archival of docs/plans/ into docs/plans/archive/ (all 36 plans SHIPPED or
+            SHIPPED+AMENDED per §13; the F16 race's second claimer renumbered F16b).
 ```
 
-The `docs/plans/` numbering itself is a record: two `F16` files and a `F20→F21/F22` renumber
-exist because `F<N+1>` is not race-safe across parallel sessions; the F23–F27 set switched to
-`F<card-number + 1>` and stopped colliding.
+The archived numbering itself is a record: two `F16` files and a `F20→F21/F22` renumber once
+existed because `F<N+1>` is not race-safe across parallel sessions; the F23–F27 set switched to
+`F<card-number + 1>` and stopped colliding. At the 2026-09-11 archival the tree's `F16` residue
+was settled: the race's second claimer (upload kind swap, committed 23 minutes after the first)
+is `F16b-upload-kind-swap.md`.
 
 ---
 
@@ -158,7 +162,7 @@ its reversals in place rather than pretending they didn't happen.
 
 ```
 /upload          1–3 screenshots, per-tile kind (default order = DEVICE hand-off order:
-                 heartrate → splits → summary, F29; wrong label = one-tap swap, F16)
+                 heartrate → splits → summary, F29; wrong label = one-tap swap, F16b)
    │ client: compressForExtraction — JPEG q80, short edge 560 (long-edge arithmetic,
    │         resizeTarget.ts; verified in pixels by scripts/shipped-image-recipe.py)
    ▼
@@ -353,8 +357,8 @@ held by an unrelated process that 302s to `/login`).
 | Path | What it is |
 |---|---|
 | `docs/architecture.md` | **this document** — the current-state reference |
-| `docs/plans/*.md` | 36 point-in-time plans F01–F33 + two 2026-09-10 design docs; each carries its own execution record where it has one. **Not current.** §15 is the reconciliation. |
-| `.workflows/plan/<set>/` | ~35 plan sets after `docs/plans/` — Nina (16 phases), admin console, media dedupe, composer, search, image pipeline, and more. `RECONCILIATION_RULINGS.md` in `nina-chatbot/` is the binding cross-phase record for Nina. |
+| `docs/plans/archive/*.md` | the 36 point-in-time plans F01–F33 + two 2026-09-10 design docs, archived 2026-09-11 (the race's second `F16` renumbered `F16b`); each carries its own execution record where it has one. **Not current.** §13 is the reconciliation. |
+| `.workflows/plan/<set>/` | ~35 plan sets after the `docs/plans/archive/` set — Nina (16 phases), admin console, media dedupe, composer, search, image pipeline, and more. `RECONCILIATION_RULINGS.md` in `nina-chatbot/` is the binding cross-phase record for Nina. |
 | `CHANGELOG.md` | the authoritative narrative history; v0.1.0 → v1.0.0. Notes that `RECONCILIATION_v0.1.0.md` (the 39 v0.1.0 rulings, R-1..R-45) was **removed from the tree** in Sept 2026 — read it from git history. |
 | `README.md` | visitor-facing, with capture-harness media (`docs/media/`, seeded demo data — it says so) |
 | `docs/nina/persona.md` | Nina's canon (intent; `lib/nina/persona.ts` ships it) |
@@ -369,7 +373,9 @@ The part this document exists for. Status vocabulary: **SHIPPED** = in the tree 
 today; **SHIPPED+AMENDED** = shipped with deltas that later work changed again; **SUPERSEDED** =
 a later ruling/feature replaced the plan's central mechanism. Verification was by reading the
 plan's own execution record and spot-checking the code (grep/read on 2026-09-11), not by
-re-running suites.
+re-running suites. The plans themselves live under `docs/plans/archive/` (archived 2026-09-11).
+The two `F16` entries below are two different files: `F16-splits-column-gutters.md` and
+`F16b-upload-kind-swap.md`, the latter renamed from its race-duplicate name at archival.
 
 ### F01 — Foundation & Deployment · **SHIPPED+AMENDED**
 Planned the scaffold, `lib/env.ts` (six-var eager core + lazy groups), CI, Vercel/Neon/Blob
@@ -414,7 +420,7 @@ about what the primary costs; on Hobby the repair is *usually skipped*, by desig
 `FIELD_OWNERSHIP` became `FIELD_SOURCES` (avg HR lives on two screens). The canonical
 screenshots are committed (`research/fixtures/`) with a golden 108/108 response wired into CI.
 `/x/[extractionId]` (R-1's pre-commit route) replaced the planned `/r/new/review` shape. The
-kind picker's defaults are now the device order (F29) and mislabels swap in one tap (F16).
+kind picker's defaults are now the device order (F29) and mislabels swap in one tap (F16b).
 
 ### F05 — Review & Correction · **SHIPPED+AMENDED (route superseded)**
 Four arithmetic consistency checks (tolerances seeded from the fixture), the corrections log
@@ -516,7 +522,7 @@ The records deck later superseded *the tool's necessity* (F25 generates native 4
 ### F16 (splits gutters) · **SHIPPED** — `pl-3` gutters + `whitespace-nowrap`; the paired
 structural+class tests exist because the structural test alone **passed on the broken
 component** (the honest lesson recorded in the plan).
-### F16 (upload kind swap) · **SHIPPED** — `reassignKind` pure function, `taken` prop deleted,
+### F16b (upload kind swap) · **SHIPPED** — `reassignKind` pure function, `taken` prop deleted,
 no dimming, per-tile `gen` race guard; re-upload-not-relabel decision stands (the signed token's
 kind is read by nothing *today*, and the comment anticipates the day it is).
 ### F17 — onPick purity · **SHIPPED** — `planPicked` in `lib/`, value-not-updater `setTiles`,
@@ -608,7 +614,8 @@ block-token `prompt_template` with three protection layers, per-pref image model
 2. **The migration numbering has a fork scar** (two `0011_*`, no `0014`). Derive the next
    number from `origin/main`, never from a local checkout or a plan doc.
 3. **Plan-number races** (`F16` ×2, `F20→F21/F22`) — settled by the `F<card+1>` convention and
-   by re-checking `origin/main` immediately before committing.
+   by re-checking `origin/main` immediately before committing. The tree's `F16` residue was
+   renamed `F16b` at the 2026-09-11 archival.
 4. **STYLE BLOCK v2 is frozen.** Per-deck or per-patch wording rides in scene lines, `--note`,
    and sidecars; bumping the block means regenerating both decks (and appending anything was
    measured to be worse than either).

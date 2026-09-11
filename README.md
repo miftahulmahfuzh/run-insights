@@ -435,7 +435,7 @@ dropped after a side-by-side showed it indistinguishable at 64 colours on this f
 | File | What it is |
 |---|---|
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, release by release, in Keep-a-Changelog form. |
-| [`docs/plans/F01`–`F33`](docs/plans/) | One comprehensive plan per feature, foundation to Nina. 34 files — F16 is two features sharing a number. |
+| [`docs/plans/archive/F01`–`F33`](docs/plans/archive/) | One comprehensive plan per feature, foundation to Nina. 34 files; F16 was two features sharing a number until the 2026-09-11 archival renumbered the second one `F16b`. |
 | [`docs/nina/persona.md`](docs/nina/persona.md) | Nina's canon: who she is, how she types, what she is allowed to say. |
 | [`docs/design/DESIGN_INTEGRATION.md`](docs/design/DESIGN_INTEGRATION.md) | What came back from Claude Design and how it overrode the plans. |
 | [`docs/google-auth-setup.md`](docs/google-auth-setup.md) | Google OAuth + DomaiNesia DNS, step by step. |
@@ -449,7 +449,7 @@ that arbitrated the eleven plans written in parallel — were removed from the t
 roadmap they were built against — a duplicate-upload guard that stopped guarding on NULL, an
 acute:chronic workload ratio algebraically pinned at 0.25 that could never fire, and a %HRmax
 figure computed against a formula the runner's own watch had already disproved. **The Nina era has
-its own front door:** start at [`docs/plans/F33-nina.md`](docs/plans/F33-nina.md), which indexes
+its own front door:** start at [`docs/plans/archive/F33-nina.md`](docs/plans/archive/F33-nina.md), which indexes
 its sixteen phases and the RU rulings that supersede the phase plans.
 
 ## What has shipped
@@ -512,7 +512,7 @@ measured failure body without a network.
 The live suites need only real keys: the three canonical screenshots are committed under
 `research/fixtures/screenshots/`, both as captured (739×1600) and at the 560w/q80 recipe the
 browser actually uploads. Vision last scored **108/108 three runs running**, median 38 s — see
-`docs/plans/F04-ingest-extraction.md` §13 for the full measurement table. The Nina live suites
+`docs/plans/archive/F04-ingest-extraction.md` §13 for the full measurement table. The Nina live suites
 (`test:live:nina*`) exercise a real turn, a real photo description and a real generation; every
 one of them spends money by design.
 

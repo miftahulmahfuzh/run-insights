@@ -632,4 +632,4 @@ The app's real tokens appear in exactly one place in this feature — `check_bad
 strip, which composites the patch against `--paper` in both schemes so a human can see it in
 situ — and nowhere in the prompt.
 
-Full argument for the script rebuild is §5 and §6 of `docs/plans/F10-badge-art-skill.md`.
+Full argument for the script rebuild is §5 and §6 of `docs/plans/archive/F10-badge-art-skill.md`.
