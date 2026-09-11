@@ -3,6 +3,9 @@
   "coordinator": "orch-nina-offline-reply",
   "coordinator_session_id": "0f4707a7-f4f4-4a89-9f1c-4235f37145cf",
   "created": "2026-09-11T06:29:21+00:00",
+  "notes": [
+    "LANDING HAZARD (from p1 completion-handler): origin/main moved 4 commits past base c6a56b7; peer set cfddcce (nina-dup-bubble-reveal) edited ChatScreen.tsx in hunks ADJACENT to phase 1's (theirs end ~line 1091, ours begin 1092) and rewrote the same lib/nina/.workflows/package_readme.md. Expect textual conflicts on both at land --step merge; run the union gate (next typegen && tsc --noEmit && vitest run) in the merge worktree before push."
+  ],
   "phases": [
     {
       "card": null,
@@ -23,28 +26,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "a17da5c7c12eff29634a31e5a914b7cebdbf1c61",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "Revive dead chat turns on arrival; runner moved to server-only turnrun.ts; set complete \u2014 drift: turnrun.ts import block gained loadNinaContext + openNinaChatTurn (plan step 1b omitted both); tests repaired: open-throws asserts called-once (not never) and server-directive check via trimStart().startsWith",
       "package": "lib/nina` + page",
       "plan": ".workflows/plan/nina-offline-reply/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T07:46:20+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A039",
       "title": "Self-repair on arrival: revive dead chat turns when the session opens"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-offline-reply/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-offline-reply",
-  "updated": "2026-09-11T07:02:34+00:00",
+  "updated": "2026-09-11T07:46:20+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-offline-reply"
 }

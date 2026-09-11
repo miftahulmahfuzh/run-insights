@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-offline-reply`
 **Branch:** `feature/nina-offline-reply` (base: `origin/main` @ `c6a56b7`)
 **Phases:** 2
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 ## Why
@@ -43,8 +43,8 @@ The persist-then-background-turn architecture this asks for already ships (`nina
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | In-flight truth on reopen: claim-read cold load + honest give-up | R2 | `lib/nina` + page/screen | 5 | — | NORMAL | `.workflows/plan/nina-offline-reply/phase-1.md` | — | — |
-| 2 | Self-repair on arrival: revive dead chat turns when the session opens | R1, R2 | `lib/nina` + page | 6 (3 new: 2 modules + 1 test) | 1 | HARD | `.workflows/plan/nina-offline-reply/phase-2.md` | — | — |
+| 1 ✅ | In-flight truth on reopen: claim-read cold load + honest give-up | R2 | `lib/nina` + page/screen | 5 | — | NORMAL | `.workflows/plan/nina-offline-reply/phase-1.md` | P1-RI-A038 | — |
+| 2 ✅ | Self-repair on arrival: revive dead chat turns when the session opens | R1, R2 | `lib/nina` + page | 6 (3 new: 2 modules + 1 test) | 1 | HARD | `.workflows/plan/nina-offline-reply/phase-2.md` | P1-RI-A039 | — |
 
 ### Phase 1 — In-flight truth on reopen
 **Satisfies:** R2
