@@ -33,7 +33,7 @@ export async function PushSetup() {
 }
 
 /** Shown when the environment has no VAPID keys. Says so plainly; it is a deploy problem. */
-export function PushSetupFallback() {
+function PushSetupFallback() {
   return (
     <p className="text-[13px] font-medium text-ink-2">
       Push notifications are not configured on this deployment.
