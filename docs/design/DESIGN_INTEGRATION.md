@@ -5,14 +5,35 @@ files `01 Foundations.dc.html`, `02 Components.dc.html`, `Run Insights.dc.html`.
 Pulled via `DesignSync`. Normalised tokens live in `docs/design/tokens.css`.
 
 **The design wins over the feature plans wherever they disagree**, except where an iOS constraint
-is at stake. Rulings continue `RECONCILIATION_v0.1.0.md`'s numbering from **R-29**.
+is at stake. Rulings here are **R-29 – R-35**, continuing the v0.1.0 arbitration record's
+numbering.
+
+> **Where the retired citations point.** `RECONCILIATION_v0.1.0.md` and `ROADMAP_v0.1.0.md` no
+> longer sit in the tree — they were retired on 2026-09-10 (commit `204fd34`, "retire the v0.1.0
+> contract trio"), on the reasoning that the shipped code and `CHANGELOG.md` are the record now.
+> Both files' final text is one command away:
+>
+> ```bash
+> git show 204fd34^:RECONCILIATION_v0.1.0.md   # the arbitration record: R-1 – R-28, then R-36 – R-46
+> git show 204fd34^:ROADMAP_v0.1.0.md          # the roadmap; this doc cites §4.6 (badge catalog), §4.7 (badge art)
+> ```
+>
+> The ruling numbering is shared across the two documents. The record ran R-1 – R-28; this pull
+> continued it at R-29; the record's Part IV then picked the sequence up again at R-36 and states
+> that R-29 – R-35 live *here*. Between them the two files hold the complete R-1 – R-46 set — so
+> every `R-nn` and "Roadmap §" citation below resolves in that history, not to a missing file.
+> Current-state authority: `docs/architecture.md`. Narrative record: `CHANGELOG.md`.
 
 > ## ⚠️ Superseded on the aesthetics by the v2 revamp
 >
 > This file records the **v1 pull**. On 2026-08-20 the Claude Design project was fully revamped:
 > warm cream + Georgia + system-mono + no-shadows became **sky blue + white cards + Poppins-only
 > + soft shadows**. Everything below about *colour, typeface, radii and elevation is historical.*
-> `docs/design/tokens.css` and `RECONCILIATION_v0.1.0.md` **R-41 – R-46** are current.
+> `docs/design/tokens.css` — mirrored into `app/globals.css` — is the current token sheet, and
+> rulings **R-41 – R-46** stand. Their full text is in the git-history copy of the record
+> (retrieval above); the shipped components also carry each one in its header comment:
+> `ExtractingSkeleton` (R-41), `BadgeShelf` / `BadgeDialog` (R-42 – R-44), `ProvenanceMark` /
+> `SplitsTable` (R-45), `HonestyChip` (R-46).
 >
 > | v1 ruling | status after v2 |
 > |---|---|
@@ -20,11 +41,12 @@ is at stake. Rulings continue `RECONCILIATION_v0.1.0.md`'s numbering from **R-29
 > | **R-30** partial-km bar shortened | **stands**, and v2 elaborates it (bar length = pace, colour = dominant zone) |
 > | **R-31** correction sheet shows a screenshot crop | **narrowed by R-45** — the whole source screenshot, zoomable, not a per-field crop; no bounding boxes were ever measured |
 > | **R-32** Century Club is 100 km | **regressed in v2, repaired by R-42** — the locked-tile example is now `double_century` |
-> | **R-33** catalog is 22 keys | **regressed in v2 ("9 of 20"), repaired by R-42** — 44 stale "twenty"/"20" references corrected across ROADMAP, design-brief, F09, F10 |
+> | **R-33** catalog is 22 keys | **regressed in v2 ("9 of 20"), repaired by R-42** — 44 stale "twenty"/"20" references corrected across the roadmap (since retired), design-brief, F09, F10 |
 > | **R-34 / R-36** keep the navy patches | **stands; rationale restated by R-43** — the cream-paper argument is gone, the decision is not |
 > | **R-35** adopted without comment | stands |
 >
-> New with v2, ruled in `RECONCILIATION`: **R-41** (extraction progress may not claim
+> New with v2, ruled in the record's Part IV (git history; retrieval above): **R-41**
+> (extraction progress may not claim
 > per-screenshot state — the design changed, D4 stands), **R-44** (locked badge tiles show
 > progress only where progress is a number), **R-45** (field provenance is by section).
 
@@ -118,8 +140,9 @@ extraction prompt for this. F04 gains a `lib/photos/regions.ts`; F05 gains the c
 ## R-32 · Century Club is 100 km, not 200. Design copy is wrong.
 
 `02 Components.dc.html`'s locked BadgeTile reads *"Century Club — 200 km in a calendar month"*.
-Roadmap §4.6 defines `century_club` as **100 km** and `double_century` as 200 km. The design
-conflated them.
+Roadmap §4.6 defined `century_club` as **100 km** and `double_century` as 200 km. The design
+conflated them. (The ruling held: the live conditions are `lib/badges/meta.ts`, the thresholds
+`lib/badges/rules.ts`.)
 
 **The catalog wins** — this is a data contract, not a visual choice. The tile's *form* (condition
 stated, plus your current distance from it: "you're at 141") is excellent and is adopted; the
@@ -127,7 +150,8 @@ number is corrected to 100 km.
 
 ## R-33 · The badge shelf drifted from the catalog. ⚠️ three badges to resolve
 
-The design ships twenty badges, but not the twenty in roadmap §4.6. It **drops** three and
+The design ships twenty badges, but not the twenty in roadmap §4.6 — retired now; the live
+catalog is `lib/badges/catalog.ts`. It **drops** three and
 **invents** three:
 
 | Dropped by the design | Verdict |
@@ -143,9 +167,10 @@ The design ships twenty badges, but not the twenty in roadmap §4.6. It **drops*
 | **Rain Tax** | **Cut. It is not implementable.** Apple Fitness screenshots carry no weather data — not in the summary, not in the splits, not in the heart-rate screen. There is no field to derive it from and no API in scope to fetch it from. A badge that can never fire is worse than no badge. |
 
 **Net: the catalog grows from 20 to 22 keys.** Roadmap §4.6, F09's rules and F10's twenty scene
-lines all need updating — and F10 has not generated any art yet, so this costs nothing but the
-edit. `gen_badge_art.py`'s key-diff guard will catch any file that misses the change, which is
-exactly what it is for.
+lines all needed updating, and were updated — R-42 closed the count regressions the v2 design
+re-introduced. `lib/badges/catalog.ts` holds the 22-key catalog today.
+`tools/gen_badge_art.py`'s key-diff guard will catch any file that misses a future change, which
+is exactly what it is for.
 
 ## R-34 · The palette is shared with two other projects. Flagged, not ruled.
 
@@ -154,8 +179,9 @@ exactly what it is for.
 apps will look like the same app.
 
 That may be exactly what you want — a personal house style is a legitimate thing to have, and it
-is unusually coherent. **But it collides with a decision already locked.** Roadmap §4.7 requires
-badge art that is *vastly different* from the daily-words letterpress deck, and F10 specced
+is unusually coherent. **But it collides with a decision already locked.** Roadmap §4.7 required
+badge art that is *vastly different* from the daily-words letterpress deck — a requirement that
+now lives in `.claude/skills/generate-badge/style.md`, which F10's tools parse — and F10 specced
 **dark navy twill patches with five saturated threads**. Those will sit on warm cream paper
 alongside a pine-green accent that is literally the daily-words badge ink.
 
@@ -193,7 +219,9 @@ real `#f0ede4` / `#131311` paper values.
 ## Still open
 
 1. ~~R-34~~ — **closed, navy (R-36).**
-2. **R-31's region maps** need hand-authoring against the three fixture screenshots once F04
-   starts.
-3. The GitHub association in the project points at `miftahulmahfuzh/run-insights`, currently
-   empty. First push will let the design project map screens to files.
+2. ~~**R-31's region maps** need hand-authoring against the three fixture screenshots once F04
+   starts.~~ — **closed by R-45**: provenance is by section, with the whole source screenshot
+   pinned and zoomable; no rects were ever authored (`components/runs/ProvenanceMark.tsx`).
+3. ~~The GitHub association in the project points at `miftahulmahfuzh/run-insights`, currently
+   empty. First push will let the design project map screens to files.~~ — **stale**: the repo
+   was pushed long ago and is live (v1.0.0 shipped 2026-09-11).

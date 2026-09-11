@@ -11,8 +11,10 @@
  * this file, then mirror it into app/globals.css. Keep the two in step.
  *
  * v2 replaced v1 wholesale — warm cream + Georgia + system-mono + no-shadows became sky blue +
- * white cards + Poppins-only + soft shadows. See RECONCILIATION_v0.1.0.md R-41 - R-46 for what
- * that cost, and docs/design/DESIGN_INTEGRATION.md for the v1 record.
+ * white cards + Poppins-only + soft shadows. Rulings R-41 - R-46 covered what that cost; their
+ * full text is in the retired v0.1.0 arbitration record, i.e.
+ * `git show 204fd34^:RECONCILIATION_v0.1.0.md`. docs/design/DESIGN_INTEGRATION.md holds the v1
+ * record and the same pointer.
  *
  * Rules that ride along with these values and are not expressible as tokens:
  *   - Colour never carries meaning alone. Every zone shows its number.
