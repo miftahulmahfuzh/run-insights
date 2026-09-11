@@ -32,6 +32,13 @@ export interface FakeDb {
   batches: number[]
   /** Queue a result for the next statement. Rows must be arrays for mapped selects. */
   enqueue(...results: unknown[][]): void
+  /**
+   * Queue the next statement to REJECT with each error, in order. This is how a unique-index
+   * violation reaches a store's catch block for real — the 23505 travels through drizzle exactly
+   * as it does from Postgres, so `isUniqueViolation`'s walk over `.cause`/`.sourceError` is
+   * exercised, not simulated by a spy.
+   */
+  enqueueError(...errors: unknown[]): void
   reset(): void
   /** The single statement, asserting there was exactly one. */
   only(): RecordedQuery
@@ -53,6 +60,7 @@ function makeFake(): { client: unknown; fake: FakeDb } {
   const queries: RecordedQuery[] = []
   const batches: number[] = []
   const pending: unknown[][] = []
+  const pendingErrors: unknown[] = []
   let batchDepth = 0
 
   const respond = (rows: unknown[], arrayMode: boolean): QueryResult => ({
@@ -69,6 +77,8 @@ function makeFake(): { client: unknown; fake: FakeDb } {
     opts: { arrayMode?: boolean } = {},
   ) => {
     queries.push({ sql: sqlText, params, batched: batchDepth > 0 })
+    const error = pendingErrors.shift()
+    if (error !== undefined) throw error
     const rows = pending.shift() ?? []
     return respond(rows, opts.arrayMode ?? false)
   }) as ((sql: string, params?: unknown[], opts?: unknown) => Promise<QueryResult>) & {
@@ -87,10 +97,12 @@ function makeFake(): { client: unknown; fake: FakeDb } {
     queries,
     batches,
     enqueue: (...results) => pending.push(...results),
+    enqueueError: (...errors) => pendingErrors.push(...errors),
     reset: () => {
       queries.length = 0
       batches.length = 0
       pending.length = 0
+      pendingErrors.length = 0
     },
     only: () => {
       if (queries.length !== 1) {
