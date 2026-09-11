@@ -1,0 +1,30 @@
+{
+  "branch": "feature/fix-cross-resolution-perceptual-dedupe",
+  "coordinator": "orch-fix-cross-resolution-perceptual-dedupe",
+  "coordinator_session_id": "e80559d6-5be6-46ef-80e8-b7e5b4b2a796",
+  "created": "2026-09-11T08:49:43+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina`, `scripts`, `tests",
+      "plan": ".workflows/plan/fix-cross-resolution-perceptual-dedupe/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Cross-resolution perceptual twin gate + production merge"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/fix-cross-resolution-perceptual-dedupe/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "fix-cross-resolution-perceptual-dedupe",
+  "updated": "2026-09-11T08:49:43+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/fix-cross-resolution-perceptual-dedupe"
+}
