@@ -15,8 +15,11 @@ import {
   normalizeClaimedPerceptualHash,
   normalizeClaimedPerceptualSig,
   parseDhashHex,
+  PERCEPTUAL_ASPECT_TOLERANCE,
+  PERCEPTUAL_CROSS_RES_MAX_DHASH,
   PERCEPTUAL_MAX_DHASH,
   PERCEPTUAL_MAX_SIG16,
+  PERCEPTUAL_MIN_SIZE_RATIO,
   sig16FromBase64,
   sig16MeanAbs,
   sig16ToBase64,
@@ -95,7 +98,7 @@ describe('dhashHamming / sig16MeanAbs', () => {
   })
 })
 
-describe('isPerceptualTwin — the three gates, ALL required', () => {
+describe('isPerceptualTwin — the same-dimensions path, unchanged', () => {
   const uniform = (n: number) => new Uint8Array(256).fill(n)
   const candidate = (over: {
     width?: number | null
@@ -114,7 +117,11 @@ describe('isPerceptualTwin — the three gates, ALL required', () => {
     // both signatures measured integral here; the real pair differed by 0.043 — comfortably in
     expect(isPerceptualTwin(candidate({}), candidate({}))).toBe(true)
   })
-  it('different dimensions — the same pixels at another size are NOT a twin', () => {
+  it('different dimensions AND a different aspect ratio — not a twin', () => {
+    // These two were "different dimensions ⇒ false" before the cross-resolution path existed and
+    // are STILL false after it: the default is 736x981 (ratio 0.750), so 576x981 is 0.587 and
+    // 736x800 is 0.920 — 21% and 18% off, far beyond PERCEPTUAL_ASPECT_TOLERANCE (1%). A
+    // different aspect ratio is a different crop, not a resize.
     expect(isPerceptualTwin(candidate({}), candidate({ width: 576 }))).toBe(false)
     expect(isPerceptualTwin(candidate({}), candidate({ height: 800 }))).toBe(false)
   })
@@ -128,6 +135,89 @@ describe('isPerceptualTwin — the three gates, ALL required', () => {
   it('mean-abs exactly at the gate passes, beyond it fails', () => {
     expect(isPerceptualTwin(candidate({}), candidate({ sig16: uniform(102) }))).toBe(true)
     expect(isPerceptualTwin(candidate({}), candidate({ sig16: uniform(103) }))).toBe(false)
+  })
+})
+
+describe('isPerceptualTwin — the cross-resolution path', () => {
+  const uniform = (n: number) => new Uint8Array(256).fill(n)
+
+  /* The measured production pair (2026-09-11): `QbZH2v65ZeKE` 714x1270 (upload) and
+   * `VW04cyH9omoX` 576x1024 (generated) — the same photograph at two final resolutions. Ratios
+   * 0.5622 vs 0.5625; dHash Hamming 2 of 64; 16x16 mean-abs 1.52 of 255. The dHash pair below
+   * spells that distance by flipping the low two bits of the upload's stored hash; the signature
+   * pair spells 1.52 as 133 cells two levels apart and 123 one level apart (389/256 = 1.5195). */
+  const UPLOAD_DHASH = 0x9f9f3b4a8e0f5333n
+  const GENERATED_DHASH = 0x9f9f3b4a8e0f5330n // two bits from UPLOAD_DHASH
+  const CROSS_RES_SIG = Uint8Array.from({ length: 256 }, (_, i) => (i < 133 ? 102 : 101))
+
+  const upload = {
+    width: 714,
+    height: 1270,
+    dhash: UPLOAD_DHASH,
+    sig16: uniform(100),
+  }
+  const generated = {
+    width: 576,
+    height: 1024,
+    dhash: GENERATED_DHASH,
+    sig16: CROSS_RES_SIG,
+  }
+
+  it('pins the vector it is built from: dHash 2 of 64, mean-abs 1.52 of 255', () => {
+    expect(dhashHamming(UPLOAD_DHASH, GENERATED_DHASH)).toBe(2)
+    expect(sig16MeanAbs(uniform(100), CROSS_RES_SIG)).toBeCloseTo(1.52, 2)
+  })
+
+  it('the measured production pair is a twin — same photograph, two resolutions', () => {
+    expect(isPerceptualTwin(upload, generated)).toBe(true)
+    expect(isPerceptualTwin(generated, upload)).toBe(true) // the predicate is symmetric
+  })
+
+  it('the cross-resolution dHash ceiling is its own, and stricter than "anything close"', () => {
+    // 3 bits apart (0x…5333 ^ 0x…5334 = 0b0111) — at PERCEPTUAL_CROSS_RES_MAX_DHASH, inclusive.
+    const atGate = { ...generated, dhash: 0x9f9f3b4a8e0f5334n, sig16: uniform(100) }
+    // 4 bits apart (0x…5333 ^ 0x…533c = 0b1111) — one past it.
+    const pastGate = { ...generated, dhash: 0x9f9f3b4a8e0f533cn, sig16: uniform(100) }
+    expect(PERCEPTUAL_CROSS_RES_MAX_DHASH).toBe(3)
+    expect(dhashHamming(UPLOAD_DHASH, atGate.dhash)).toBe(3)
+    expect(dhashHamming(UPLOAD_DHASH, pastGate.dhash)).toBe(4)
+    expect(isPerceptualTwin(upload, atGate)).toBe(true)
+    expect(isPerceptualTwin(upload, pastGate)).toBe(false)
+  })
+
+  it('the same-dimensions path keeps ITS ceiling — 2 bits is a twin only across resolutions', () => {
+    // The exact vector that passes at 714x1270-vs-576x1024 is refused when both sides are 576x1024:
+    // PERCEPTUAL_MAX_DHASH is still 1, and the cross-res ceiling never reaches the same-dims path.
+    const sameDims = { ...upload, width: 576, height: 1024 }
+    expect(PERCEPTUAL_MAX_DHASH).toBe(1)
+    expect(isPerceptualTwin(sameDims, generated)).toBe(false)
+  })
+
+  it('a thumbnail is not a twin of the photo it was cut from, however identical the pixels', () => {
+    // 144x256 is EXACTLY the 0.5625 ratio of 576x1024 and carries an identical signature — the
+    // aspect gate has nothing to object to. The size-ratio guard is the only thing refusing it.
+    const thumbnail = { width: 144, height: 256, dhash: GENERATED_DHASH, sig16: CROSS_RES_SIG }
+    expect(144 / 256).toBe(576 / 1024) // same ratio, so this is the size guard talking
+    expect(isPerceptualTwin(generated, thumbnail)).toBe(false)
+  })
+
+  it('the size-ratio guard is inclusive at exactly PERCEPTUAL_MIN_SIZE_RATIO', () => {
+    const half = { width: 288, height: 512, dhash: GENERATED_DHASH, sig16: CROSS_RES_SIG }
+    expect(PERCEPTUAL_MIN_SIZE_RATIO).toBe(0.5)
+    expect(288 / 576).toBe(PERCEPTUAL_MIN_SIZE_RATIO)
+    expect(isPerceptualTwin(generated, half)).toBe(true)
+  })
+
+  it('a different aspect ratio is a different crop — refused before any hash is read', () => {
+    // Identical signature, rotated dimensions: 1270x714 is ratio 1.778 against 0.562.
+    const rotated = { width: 1270, height: 714, dhash: UPLOAD_DHASH, sig16: uniform(100) }
+    expect(PERCEPTUAL_ASPECT_TOLERANCE).toBe(0.01)
+    expect(isPerceptualTwin(upload, rotated)).toBe(false)
+  })
+
+  it('a null dimension still refuses before the aspect ratio is computable', () => {
+    expect(isPerceptualTwin(upload, { ...generated, width: null })).toBe(false)
+    expect(isPerceptualTwin({ ...upload, height: null }, generated)).toBe(false)
   })
 })
 

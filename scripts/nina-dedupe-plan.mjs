@@ -411,10 +411,23 @@ export function releaseDecision(counts) {
  * hash 0/64, 16x16 grayscale mean-abs 0.1/255. A recode is perceptually the SAME image.
  *
  * The pass is deliberately CONSERVATIVE, because a perceptual merge can destroy a near-miss
- * (two shots of the same court are not duplicates). Three gates, ALL required, all measured:
- *   1. same `width` AND `height`, both non-null — a recode passes through at its own size;
- *   2. dHash distance ≤ `PERCEPTUAL_MAX_DHASH` (of 64);
- *   3. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16` (of 255).
+ * (two shots of the same court are not duplicates). TWO paths, every gate on a path required:
+ *
+ *   SAME DIMENSIONS — the recode case above (`DfeYafysbVAe` + `zGGxRerRI_jS`, 0/64 and 0.1/255):
+ *     1. dHash distance ≤ `PERCEPTUAL_MAX_DHASH` (of 64);
+ *     2. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16` (of 255).
+ *
+ *   CROSS-RESOLUTION (dimensions differ) — 2026-09-11's measured defect: the SAME photograph
+ *   reaching the collection twice through two pipelines that each resize to their own target.
+ *   Measured on `QbZH2v65ZeKE` (714x1270, upload) + `VW04cyH9omoX` (576x1024, generated): aspect
+ *   ratios 0.5622 vs 0.5625, dHash 2/64, 16x16 mean-abs 1.52/255 — the same picture, and the old
+ *   dimension-equality gate rejected the pair before ever reading how close the hashes were.
+ *     1. relative aspect-ratio difference ≤ `PERCEPTUAL_ASPECT_TOLERANCE`;
+ *     2. BOTH per-dimension size ratios ≥ `PERCEPTUAL_MIN_SIZE_RATIO` (no thumbnail twins);
+ *     3. dHash distance ≤ `PERCEPTUAL_CROSS_RES_MAX_DHASH` — its OWN ceiling; the
+ *        same-dimensions ceiling stays 1;
+ *     4. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16` — the same ceiling both paths use.
+ *
  * Only ORIGINALS participate — a reference is already hidden from the collection reads, so it is
  * not a tile anybody sees twice. Merges never cross users. A row whose bytes were never signed
  * (failed GET, undecodable file) simply does not participate.
@@ -434,6 +447,16 @@ export function releaseDecision(counts) {
 /** Measured 2026-09-10 on `DfeYafysbVAe` + `zGGxRerRI_jS`: 0 and 0.1. Pinned one step above. */
 export const PERCEPTUAL_MAX_DHASH = 1
 export const PERCEPTUAL_MAX_SIG16 = 2
+
+/* ── THE CROSS-RESOLUTION GATES ────────────────────────────────────────────────────────────────
+ * Measured 2026-09-11 on `QbZH2v65ZeKE` (714x1270) + `VW04cyH9omoX` (576x1024): aspect ratios
+ * 0.5622 vs 0.5625 (0.05% apart), size ratios 0.807 / 0.806, dHash 2/64, mean-abs 1.52/255.
+ * Each is pinned above its measurement the way the two gates above were. These five constants
+ * are mirrored VERBATIM in `lib/nina/perceptual.ts` — if one number moves, move BOTH.
+ */
+export const PERCEPTUAL_ASPECT_TOLERANCE = 0.01
+export const PERCEPTUAL_MIN_SIZE_RATIO = 0.5
+export const PERCEPTUAL_CROSS_RES_MAX_DHASH = 3
 
 /** Hamming distance between two 64-bit difference hashes (bigints). */
 export function dhashHamming(a, b) {
@@ -455,15 +478,30 @@ export function sig16MeanAbs(a, b) {
   return total / a.length
 }
 
-/** The three gates of the header, as one predicate. `false` for anything unsigned or undimensioned. */
+/** The two paths of the header, as one predicate. `false` for anything unsigned or undimensioned. */
 export function isPerceptualTwin(a, b) {
   if (a?.width == null || a?.height == null || b?.width == null || b?.height == null) return false
-  if (a.width !== b.width || a.height !== b.height) return false
+  const sameDims = a.width === b.width && a.height === b.height
+  let maxDhash
+  if (sameDims) {
+    maxDhash = PERCEPTUAL_MAX_DHASH
+  } else {
+    const ratioA = a.width / a.height
+    const ratioB = b.width / b.height
+    const aspectDelta = Math.abs(ratioA - ratioB) / Math.max(ratioA, ratioB)
+    if (aspectDelta > PERCEPTUAL_ASPECT_TOLERANCE) return false
+    const widthRatio = Math.min(a.width, b.width) / Math.max(a.width, b.width)
+    const heightRatio = Math.min(a.height, b.height) / Math.max(a.height, b.height)
+    if (widthRatio < PERCEPTUAL_MIN_SIZE_RATIO || heightRatio < PERCEPTUAL_MIN_SIZE_RATIO) {
+      return false
+    }
+    maxDhash = PERCEPTUAL_CROSS_RES_MAX_DHASH
+  }
   const asig = a.sig
   const bsig = b.sig
   if (asig == null || bsig == null) return false
   if (typeof asig.dhash !== 'bigint' || typeof bsig.dhash !== 'bigint') return false
-  if (dhashHamming(asig.dhash, bsig.dhash) > PERCEPTUAL_MAX_DHASH) return false
+  if (dhashHamming(asig.dhash, bsig.dhash) > maxDhash) return false
   return sig16MeanAbs(asig.sig16, bsig.sig16) <= PERCEPTUAL_MAX_SIG16
 }
 
@@ -478,9 +516,13 @@ export function isPerceptualTwin(a, b) {
  * protects a value from being CLOBBERED, it does not protect against one that was wrong from the
  * moment it was written (an old buggy run, a partial fetch, anything).
  *
- * `perceptualVerifyCandidates` names the population worth a re-GET: perceptual twins MUST share
- * (user, width, height) (gate 1), so a row whose dimensions are unique among its user's originals
- * has no candidate twin to have silently missed — re-verifying it buys nothing. Only a row that
+ * `perceptualVerifyCandidates` names the population worth a re-GET: a row sharing (user, width,
+ * height) with another original has a same-dimensions candidate twin it may have silently missed.
+ * NARROWED 2026-09-11: `isPerceptualTwin` now also matches CROSS-RESOLUTION pairs, so this
+ * shortlist no longer covers every possible twin — a stale signature on a cross-resolution pair
+ * is not surfaced here. That is a known, separate gap (aspect-ratio bucketing would close it),
+ * deliberately out of scope for the cross-resolution fix: neither production row involved carries
+ * a stale signature. What this pass DOES cover is unchanged. Only a row that
  * shares dimensions with another original, AND whose signature came from storage rather than this
  * run's own measurement (`perceptualSource === 'stored'` — a value `fill-perceptual` just wrote
  * cannot yet be stale), is a candidate. The ops script GETs and re-signs each candidate into

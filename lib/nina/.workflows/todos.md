@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 34
+- Completed: 35
 
 ---
 
@@ -123,6 +123,24 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-NIN-A035** Phase 1: Cross-resolution perceptual twin gate + production merge
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns `lib/nina/perceptual.ts` and `scripts/nina-dedupe-plan.mjs` (the identical `isPerceptualTwin` predicate — extend it with a cross-resolution path: aspect-ratio tolerance + minimum size-ratio guard + a stricter, separately-pinned dHash ceiling, new exported constants, updated header comment; same-dimensions path byte-for-byte unchanged), `tests/nina.perceptual.test.ts` and `tests/nina.dedupeMedia.test.ts` (extend the existing `isPerceptualTwin` test blocks with the measured cross-resolution known-answer vector `QbZH2v65ZeKE`/`VW04cyH9omoX` and a synthetic size-ratio-guard case), and the production `nina:dedupe-media` dry run + `--apply` that merges the two live rows. Does not touch `lib/nina/perceptualSign.ts`, `perceptualVerifyCandidates`, any schema file, `lib/nina/actions.ts` or `lib/nina/queries.ts`. Exit criteria: `npx tsc --noEmit` clean; `npx vitest run tests/nina.perceptual.test.ts tests/nina.dedupeMedia.test.ts` green including the new cross-resolution vector; production dry-run report shows the two rows proposed as a perceptual merge; `-- --apply` executed and a follow-up select on `nina_message_images` shows one of the two rows carrying the other's `source_image_id`.
+  - **Status**: completed
+  - **Plan Set**: `FIX_CROSS_RESOLUTION_PERCEPTUAL_DEDUPE_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Fix the dedup gate to catch same-photo/different-resolution duplicates (write-time and sweep), and merge the two live production rows as part of the fix
+  - **Depends on**: (none)
+  - **Plan**: `.workflows/plan/P1-NIN-A035.md`
+  - **Completed**: 2026-09-11 16:07
+  - **Method**: /implement
+  - **Files**: lib/nina/perceptual.ts, scripts/nina-dedupe-plan.mjs, tests/nina.perceptual.test.ts, tests/nina.dedupeMedia.test.ts, tests/nina.chatDedupe.test.ts
+  - **Verification**: `npx prettier --check` clean (4 planned files + chatDedupe); `npx tsc --noEmit` exit 0; `npx vitest run` 3948/3948 across 183 files, including the new cross-resolution known-answer vectors in tests/nina.perceptual.test.ts and tests/nina.dedupeMedia.test.ts; production dry run proposed the pair (PERCEPTUAL FINDING, keeper VW04cyH9omoX, measured dHash 2/64, mean-abs 1.52/255); `--apply` applied 5/5 ops; post-apply DB select shows exactly one non-null `source_image_id` (QbZH2v65ZeKE -> VW04cyH9omoX) with the keeper's blob_url/width/height/bytes.
+  - **Drift**: `tests/nina.chatDedupe.test.ts` was not in the plan's Files table, but its 'a non-twin lands FRESH' fixture (640x853 vs keeper 736x981 — the SAME 0.750 aspect ratio at ~87% size) became a twin under the new cross-resolution gate BY DESIGN, flipping the test to a reference landing. Fixed the fixture vector, not the assertion: re-spelled to 640x1138 (ratio 0.562 — a genuinely different SHAPE, 25% beyond PERCEPTUAL_ASPECT_TOLERANCE) with a comment explaining why. The test's intent (a non-twin lands FRESH with its measured signature) and every assertion are unchanged.
+  - **Drift**: The plan assumed this worktree's node_modules is a symlink to the main checkout; it is in fact a real npm install (no impact on any step).
+  - **Drift**: Cosmetic, not fixed (scripts/nina-dedupe-media.mjs is run, never edited): the dry-run report's PERCEPTUAL FINDING line prints a stale '(gates: <=1, <=2)' annotation from the byte pass while the merge itself correctly used the new cross-resolution ceiling.
+  - **Decided**: chatDedupe non-twin fixture became a twin under the new gate -> re-spell the fixture vector to a different aspect ratio, keep the test's name and assertions (rung 3: the plan's Interface Contract states isPerceptualTwin now returns true for same-shape/different-size pairs, so the old vector was a twin by design; the test's own name pins the intent)
 
 - [x] **P1-NIN-A034** Phase 1: Idempotent reveal append (pure helper + call site + tests)
   - **Difficulty**: NORMAL

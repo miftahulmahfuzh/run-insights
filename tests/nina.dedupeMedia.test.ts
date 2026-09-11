@@ -20,8 +20,11 @@ import {
   parseDhashHex,
   partitionGroup,
   perceptualVerifyCandidates,
+  PERCEPTUAL_ASPECT_TOLERANCE,
+  PERCEPTUAL_CROSS_RES_MAX_DHASH,
   PERCEPTUAL_MAX_DHASH,
   PERCEPTUAL_MAX_SIG16,
+  PERCEPTUAL_MIN_SIZE_RATIO,
   releaseDecision,
   sha256Hex,
   sig16FromBase64,
@@ -500,7 +503,11 @@ describe('isPerceptualTwin', () => {
     expect(isPerceptualTwin(a, prow({ id: 'b', sig: sigOf(0b11n, uniform16(100)) }))).toBe(false) // two differing bits — one past the dHash gate
     expect(isPerceptualTwin(a, prow({ id: 'b', sig: sigOf(0n, uniform16(103)) }))).toBe(false)
   })
-  it('refuses different or missing dimensions — a recode keeps dims, a different crop does not', () => {
+  it('refuses a different aspect ratio or a missing dimension — a different crop is not a twin', () => {
+    // `prow`'s default is 679x1024 (ratio 0.663). These stay false after the cross-resolution
+    // path landed: 768x1024 is 0.750 (12% off) and 679x1152 is 0.589 (11% off), both far beyond
+    // PERCEPTUAL_ASPECT_TOLERANCE's 1%. Different dimensions alone no longer refuses a pair —
+    // a different SHAPE does.
     const a = prow({ id: 'a' })
     expect(isPerceptualTwin(a, prow({ id: 'b', width: 768 }))).toBe(false)
     expect(isPerceptualTwin(a, prow({ id: 'b', height: 1152 }))).toBe(false)
@@ -508,6 +515,97 @@ describe('isPerceptualTwin', () => {
   })
   it('refuses a row whose bytes were never signed', () => {
     expect(isPerceptualTwin(prow({ id: 'a' }), prow({ id: 'b', sig: undefined }))).toBe(false)
+  })
+})
+
+/* ── the cross-resolution path (2026-09-11's measured defect) ──────────────────────────────────
+ * `QbZH2v65ZeKE` (714x1270, upload) and `VW04cyH9omoX` (576x1024, generated) are the same
+ * photograph at two final resolutions: aspect 0.5622 vs 0.5625, dHash 2/64, 16x16 mean-abs
+ * 1.52/255. The old gate 1 (exact width/height equality) rejected the pair before ever reading
+ * how close the hashes were, which is why it survived every dedup layer. CROSS_RES_SIG16 spells
+ * 1.52 as 133 cells two levels apart and 123 one level apart: 389/256 = 1.5195.
+ */
+const CROSS_RES_UPLOAD_DHASH = 0x9f9f3b4a8e0f5333n
+const CROSS_RES_GENERATED_DHASH = 0x9f9f3b4a8e0f5330n // two bits away
+const CROSS_RES_SIG16 = Uint8Array.from({ length: 256 }, (_, i) => (i < 133 ? 102 : 101))
+
+type ProwOver = Parameters<typeof prow>[0]
+
+const crossResUpload = (over: Partial<ProwOver> = {}) =>
+  prow({
+    id: 'QbZH2v65ZeKE',
+    width: 714,
+    height: 1270,
+    sig: sigOf(CROSS_RES_UPLOAD_DHASH, uniform16(100)),
+    ...over,
+  })
+const crossResGenerated = (over: Partial<ProwOver> = {}) =>
+  prow({
+    id: 'VW04cyH9omoX',
+    kind: 'generated',
+    width: 576,
+    height: 1024,
+    sig: sigOf(CROSS_RES_GENERATED_DHASH, CROSS_RES_SIG16),
+    contentHash: H_SELFIE,
+    createdAt: '2026-09-11T07:18:19.280Z',
+    ...over,
+  })
+
+describe('isPerceptualTwin — the cross-resolution path', () => {
+  it('pins the vector: dHash 2 of 64, 16x16 mean-abs 1.52 of 255', () => {
+    expect(dhashHamming(CROSS_RES_UPLOAD_DHASH, CROSS_RES_GENERATED_DHASH)).toBe(2)
+    expect(sig16MeanAbs(uniform16(100), CROSS_RES_SIG16)).toBeCloseTo(1.52, 2)
+  })
+  it('accepts the measured production pair — same photograph, 714x1270 vs 576x1024', () => {
+    expect(isPerceptualTwin(crossResUpload(), crossResGenerated())).toBe(true)
+    expect(isPerceptualTwin(crossResGenerated(), crossResUpload())).toBe(true)
+  })
+  it('has its own dHash ceiling, inclusive at 3 and refusing at 4', () => {
+    expect(PERCEPTUAL_CROSS_RES_MAX_DHASH).toBe(3)
+    const atGate = crossResGenerated({
+      id: 'atGate',
+      sig: sigOf(0x9f9f3b4a8e0f5334n, uniform16(100)), // 0b0111 from the upload — 3 bits
+    })
+    const pastGate = crossResGenerated({
+      id: 'pastGate',
+      sig: sigOf(0x9f9f3b4a8e0f533cn, uniform16(100)), // 0b1111 from the upload — 4 bits
+    })
+    expect(isPerceptualTwin(crossResUpload(), atGate)).toBe(true)
+    expect(isPerceptualTwin(crossResUpload(), pastGate)).toBe(false)
+  })
+  it('never loosens the same-dimensions path — 2 bits at one size is still not a twin', () => {
+    expect(PERCEPTUAL_MAX_DHASH).toBe(1)
+    const sameSize = crossResUpload({ id: 'sameSize', width: 576, height: 1024 })
+    expect(isPerceptualTwin(sameSize, crossResGenerated())).toBe(false)
+  })
+  it('refuses a thumbnail of the same ratio — the size-ratio guard, not the aspect gate', () => {
+    expect(PERCEPTUAL_MIN_SIZE_RATIO).toBe(0.5)
+    expect(144 / 256).toBe(576 / 1024) // identical ratio, so only the size guard can refuse
+    const thumb = crossResGenerated({ id: 'thumb', width: 144, height: 256 })
+    expect(isPerceptualTwin(crossResGenerated(), thumb)).toBe(false)
+  })
+  it('is inclusive at exactly PERCEPTUAL_MIN_SIZE_RATIO', () => {
+    const half = crossResGenerated({ id: 'half', width: 288, height: 512 })
+    expect(isPerceptualTwin(crossResGenerated(), half)).toBe(true)
+  })
+  it('refuses a different aspect ratio however identical the signature', () => {
+    expect(PERCEPTUAL_ASPECT_TOLERANCE).toBe(0.01)
+    const rotated = crossResUpload({ id: 'rotated', width: 1270, height: 714 })
+    expect(isPerceptualTwin(crossResUpload(), rotated)).toBe(false)
+  })
+})
+
+describe('buildPerceptualMergePlan — the cross-resolution pair', () => {
+  it('clusters the two production rows into one merge group', () => {
+    // The offline proxy of this phase's production step: if the sweep does not cluster these two
+    // here, the dry run against production will not propose them either.
+    const { groups, ops } = buildPerceptualMergePlan([crossResUpload(), crossResGenerated()])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.perceptual).toBe(true)
+    expect([...(groups[0]?.ids ?? [])].sort()).toEqual(['QbZH2v65ZeKE', 'VW04cyH9omoX'])
+    expect(groups[0]?.loserIds).toHaveLength(1)
+    // One merge-row for the loser, one release-blob for its object — rows first, blob second.
+    expect(ops.map((o) => o.op)).toEqual(['merge-row', 'release-blob'])
   })
 })
 
