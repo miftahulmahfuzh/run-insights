@@ -374,66 +374,62 @@ export function formatJobLatency(latencyMs: number | null | undefined): string {
   return formatDuration(Math.round(latencyMs / 1000))
 }
 
-/* ── the jump, and its three honest failures ──────────────────────────────────────────────── */
+/* ── the jump, and its two honest failures ────────────────────────────────────────────────── */
 
 export type NinaJobJump =
   | { kind: 'ready'; href: string }
-  /** An avatar job. `args.replyToId` is null BY CONSTRUCTION — see `lib/nina/avatargen.ts`. */
+  /** An avatar job — no carrier message ever exists for one, so there is no bubble at all. */
   | { kind: 'avatar' }
-  /** A selfie job whose `args` never carried a reply target, or a row written before `args` did. */
-  | { kind: 'no-message' }
-  /** There was a message and it is gone: deleted, or its session was removed. */
-  | { kind: 'gone' }
+  /** The photograph resolves to no live bubble: not made yet, removed, or its chat is gone. */
+  | { kind: 'no-photo' }
 
 /**
- * **R1's "button that will redirect us to the chat, at the exact bubble that trigger this job" —
- * and the three ways there is no such bubble.**
+ * **The jump's target is the EARLIEST bubble carrying the job's photograph — and the two ways
+ * there is no such bubble.**
  *
- * Named rather than discovered, because each one is reachable today:
+ * The original rule targeted `args.replyToId`, the bubble that ASKED. The runner replaced the rule
+ * in as many words: *"logicnya diganti jadi — the earliest chat bubble across all chat sessions
+ * that attached this image (it could be nina's bubble, or user's own bubble)."* So the input is no
+ * longer the request; it is the photograph's BUBBLE — `{ sessionId, messageId }`, resolved by
+ * `getNinaJobPhotoBubble` over the photograph row `getNinaJobPhoto` already produced, earliest
+ * first across every session. `null` arrives from the page as one value for several causes, and
+ * the sentence (`NINA_JOB_JUMP_NOTE['no-photo']`) names them without asserting one — the old
+ * `gone` arm's honesty, kept.
  *
- *   - **`avatar`.** `lib/nina/avatargen.ts` opens its job with `replyToId: null` and generates with
- *     `replyToId: null`. Nobody asked for an avatar in the chat; `failNinaImageJob` already skips
- *     the apology for these for the same structural reason. There is nothing to jump to and that
- *     is not a fault.
- *   - **`no-message`.** A selfie job whose `args` carry no `replyToId`, or one of the three
- *     pre-sessions rows whose `args` are null altogether. Rare, real, and a button that navigates
- *     to `/nina?s=&jump=` would be worse than a sentence.
- *   - **`gone`.** `replyToId` names a message the owner-scoped read did not return. **MEASURED:
- *     phase 6 counted FOURTEEN `kind='image'` rows in production whose `args.replyToId` resolves to
- *     nothing, so this is the common case on this screen and not an edge.** Two causes and ONE
- *     answer: the message was deleted (`nina_messages.reply_to_id` is `ON DELETE SET NULL`, so a
- *     delete leaves `args.replyToId` in the jsonb pointing at nothing), or its session was removed
- *     and the cascade took the row with it. **This survives phase 6**: phase 6 purges the memory
- *     ledger and does not change the fact that a removed session's messages are gone, so the
- *     resolution still comes back empty and still lands here.
+ *   - **`avatar`.** `finishAvatar` writes an `nina_avatars` row and NO carrier message, so no job
+ *     id ever reaches the conversation and no bubble can exist — the same decided rule
+ *     `planJobPhoto`'s avatar arm states. Checked HERE first, so a caller that forgot the page's
+ *     read-skip still cannot draw a button: the arm is the rule, the skip is its cost half.
+ *   - **`no-photo`.** The photograph is not made yet (queued, running, failed), was removed (admin
+ *     Remove, single-message delete), or its chat is gone (session cascade). MEASURED: fourteen
+ *     `kind='image'` rows in production whose `args.replyToId` resolves to nothing — under the old
+ *     rule that was this screen's common refusal; under this rule most of those rows have a live
+ *     bubble to jump to, because the target follows the photograph and not the request.
  *
- * ── WHY `gone` DOES NOT SPLIT INTO "MESSAGE DELETED" AND "SESSION DELETED" ────────────────────
- * Phase 6 suggested collapsing `gone` with a session-removed state on the grounds that the cascade
- * means no message survives a deleted session. That is the converse of what the collapse needs:
- * it would also have to be true that no message is gone while its session survives, and
- * `deleteNinaMessage` does exactly that — unchanged by phase 6 (deliberately, per
- * `lib/db/schema.ts`), reachable in production from `lib/admin/chatPhotoActions.ts`. Collapsing
- * them would tell the runner "the session was removed" about a job whose session is alive and
- * whose message they deleted through `/admin`. So one `gone` arm, and its sentence names both
- * causes without asserting either.
+ * ── WHY THERE IS NO `replyToId` FALLBACK ─────────────────────────────────────────────────────
+ * A failed job used to keep a button when the photograph did not exist but the request did. That
+ * asymmetry is gone deliberately: the user said the logic is REPLACED ("diganti"), and a fallback
+ * would keep alive exactly the second read (`replySessionId`'s) that the replacement deletes. Open
+ * and failed jobs now show the sentence — which is also the honest answer, because the button's
+ * name says nothing about a request; it opens a bubble that SHOWS the photograph.
  *
- * The resolution itself is a fact and not a claim: `replySessionId` is non-null only when an
- * owner-scoped read returned a row. See `getNinaImageJobDetail`.
+ * `bubble` is a fact and not a claim: non-null only when an owner-scoped read returned a live
+ * message in a live session. See `getNinaJobPhotoBubble`.
  */
 export function planJobJump(input: {
   purpose: 'selfie' | 'avatar'
-  replyToId: string | null
-  replySessionId: string | null
+  /** The earliest live bubble carrying the photograph, or `null` when no read proved one. */
+  bubble: { sessionId: string; messageId: string } | null
+  /** `SESSION_PARAM` from `lib/nina/active.ts`. Passed in so this module declares no second `'s'`. */
   sessionParam: string
 }): NinaJobJump {
-  if (input.purpose === 'avatar' && input.replyToId === null) return { kind: 'avatar' }
-  if (input.replyToId === null) return { kind: 'no-message' }
-  if (input.replySessionId === null) return { kind: 'gone' }
+  if (input.purpose === 'avatar') return { kind: 'avatar' }
+  if (input.bubble === null) return { kind: 'no-photo' }
   return {
     kind: 'ready',
     href: ninaJumpHref({
-      sessionId: input.replySessionId,
-      messageId: input.replyToId,
+      sessionId: input.bubble.sessionId,
+      messageId: input.bubble.messageId,
       sessionParam: input.sessionParam,
     }),
   }
@@ -443,8 +439,8 @@ export function planJobJump(input: {
 export const NINA_JOB_JUMP_NOTE: Record<Exclude<NinaJobJump['kind'], 'ready'>, string> = {
   avatar:
     'Foto ini bukan dari chat — Nina ganti foto profilnya sendiri, jadi nggak ada bubble yang memicunya.',
-  'no-message': 'Job ini nggak nyimpen pesan pemicunya, jadi nggak ada bubble yang bisa dituju.',
-  gone: 'Pesan yang minta foto ini sudah nggak ada — kehapus, atau chatnya dihapus.',
+  'no-photo':
+    'Fotonya belum jadi, kehapus, atau chatnya dihapus — nggak ada bubble yang bisa dituju.',
 }
 
 /* ── the photograph link ─────────────────────────────────────────────────────────────────── */
@@ -467,7 +463,7 @@ export const NINA_JOB_JUMP_NOTE: Record<Exclude<NinaJobJump['kind'], 'ready'>, s
  *      no photograph, the union grows an arm and nothing downstream changes shape; `string | null`
  *      would have to become this union anyway.
  *
- * What it deliberately does NOT have is the jump's THREE refusal arms: each of those carries a
+ * What it deliberately does NOT have is the jump's TWO refusal arms: each of those carries a
  * sentence (`NINA_JOB_JUMP_NOTE`), while the photograph's absence carries NONE — the plan index's
  * decided rule is that the icon is simply not drawn ("never a link the server has not proved"), so
  * `{ kind: 'none' }` is the renderer's signal to draw nothing. An arm with no sentence is not
@@ -493,8 +489,8 @@ export type NinaJobPhoto = { kind: 'ready'; href: string } | { kind: 'none' }
  * the conversation photographs: there is no job→avatar key, and matching one by `description` or
  * date would be a guess that can name the wrong face (plan index, *Decisions*). So an avatar job
  * answers `{ kind: 'none' }` EVEN IF a row id somehow arrived — this arm is the rule, and the
- * page's skip of the read is merely the rule's cost half, exactly as `getNinaImageJobDetail`'s
- * `replyToId === null` early return is the cost half of `planJobJump`'s avatar arm.
+ * page's skip of the reads is merely the rule's cost half, exactly as its skip of the jump's
+ * bubble read is the cost half of `planJobJump`'s avatar arm.
  *
  * ── WHY `'chat'` IS A LITERAL HERE AND NOT A PARAMETER ──────────────────────────────────────────
  * A job photograph is by construction a conversation photograph — the read filters

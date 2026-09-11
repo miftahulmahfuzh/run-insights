@@ -214,52 +214,56 @@ describe('jobCanRedo is R1’s one rule, and it is narrow', () => {
 describe('planJobJump names each way there is no bubble', () => {
   const p = { sessionParam: SESSION_PARAM }
 
-  it('jumps when the message resolved', () => {
+  it('jumps to the earliest bubble carrying the photograph, in whatever session it lives', () => {
     const jump = planJobJump({
       ...p,
       purpose: 'selfie',
-      replyToId: 'bbbbbbbbbbbb',
-      replySessionId: 'cccccccccccc',
+      bubble: { sessionId: 'cccccccccccc', messageId: 'bbbbbbbbbbbb' },
     })
     expect(jump.kind).toBe('ready')
     expect(jump.kind === 'ready' && jump.href).toContain('bbbbbbbbbbbb')
     expect(jump.kind === 'ready' && jump.href).toContain('cccccccccccc')
   })
 
-  it('an avatar job never had a triggering message', () => {
+  it('an avatar job never has a bubble to jump to', () => {
+    /* `finishAvatar` writes no carrier message, so there is nothing to resolve — the page skips
+     * the reads and hands `bubble: null`. */
+    expect(planJobJump({ ...p, purpose: 'avatar', bubble: null }).kind).toBe('avatar')
+  })
+
+  it('never links an avatar job, even if a bubble somehow arrived', () => {
+    /* `planJobPhoto`'s avatar arm is the RULE and the page's read-skip is its cost half — the
+     * same arrangement here, checked first, so a future caller cannot draw a button by
+     * forgetting the skip. */
     expect(
-      planJobJump({ ...p, purpose: 'avatar', replyToId: null, replySessionId: null }).kind,
+      planJobJump({
+        ...p,
+        purpose: 'avatar',
+        bubble: { sessionId: 'cccccccccccc', messageId: 'bbbbbbbbbbbb' },
+      }).kind,
     ).toBe('avatar')
   })
 
-  it('a selfie job with no reply target says so separately', () => {
-    expect(
-      planJobJump({ ...p, purpose: 'selfie', replyToId: null, replySessionId: null }).kind,
-    ).toBe('no-message')
+  it('a selfie whose photograph resolves to no live bubble is the one refusal', () => {
+    /* MEASURED: fourteen `kind='image'` rows whose `args.replyToId` resolves to nothing — under
+     * the old rule that was the common refusal on this screen; under the new one most of those
+     * rows have a live bubble, because the target follows the photograph and not the request.
+     * What remains here: open and failed jobs (photo not made yet), a removed photo, a removed
+     * chat. */
+    expect(planJobJump({ ...p, purpose: 'selfie', bubble: null }).kind).toBe('no-photo')
   })
 
-  it('an unresolvable message is gone, whether it or its session was deleted', () => {
-    /*
-     * MEASURED: phase 6 counted fourteen `kind='image'` rows in production whose `args.replyToId`
-     * resolves to nothing. This arm is the common case on the detail page, not an edge.
-     */
-    expect(
-      planJobJump({ ...p, purpose: 'selfie', replyToId: 'bbbbbbbbbbbb', replySessionId: null })
-        .kind,
-    ).toBe('gone')
-  })
-
-  it('does not tell the runner a live session was removed', () => {
-    /*
-     * `deleteNinaMessage` deletes a message while its session survives (reachable from
-     * `lib/admin/chatPhotoActions.ts`), so `gone` cannot claim the session went with it. One arm,
-     * one sentence, and it names both causes without asserting either.
-     */
-    expect(NINA_JOB_JUMP_NOTE.gone).toContain('kehapus')
+  it('the refusal sentence names all three causes without asserting one', () => {
+    /* The old `gone` arm's honesty, kept: `bubble: null` arrives for a job still drawing, a
+     * photograph the runner removed, and a chat the cascade took — one sentence, no cause
+     * asserted, because the runner cannot tell which from this screen. */
+    expect(NINA_JOB_JUMP_NOTE['no-photo']).toContain('belum jadi')
+    expect(NINA_JOB_JUMP_NOTE['no-photo']).toContain('kehapus')
+    expect(NINA_JOB_JUMP_NOTE['no-photo']).toContain('chatnya dihapus')
   })
 
   it('every refusal has a sentence', () => {
-    for (const kind of ['avatar', 'no-message', 'gone'] as const) {
+    for (const kind of ['avatar', 'no-photo'] as const) {
       expect(NINA_JOB_JUMP_NOTE[kind].length).toBeGreaterThan(0)
     }
   })

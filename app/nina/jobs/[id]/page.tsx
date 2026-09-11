@@ -17,7 +17,7 @@ import {
   planJobJump,
   planJobPhoto,
 } from '@/lib/nina/jobview'
-import { getNinaJobPhoto } from '@/lib/nina/queries'
+import { getNinaJobPhoto, getNinaJobPhotoBubble } from '@/lib/nina/queries'
 
 /**
  * `/nina/jobs/[id]` — R1's image-generation detail page.
@@ -35,10 +35,14 @@ import { getNinaJobPhoto } from '@/lib/nina/queries'
  * route is new, so a bare `tsc --noEmit` against a stale `.next/types` will not know this literal.
  *
  * ── WHERE THE JUMP IS DECIDED ─────────────────────────────────────────────────────────────────
- * HERE, on the server, from an ownership-scoped resolution — never in the component. `planJobJump`
- * turns the four cases (a live bubble, an avatar job that never had one, a job whose args carry no
- * reply target, and a message that has been deleted or whose session was removed) into one value
- * the client renders without re-deriving anything.
+ * HERE, on the server, from an ownership-scoped resolution — never in the component. The target is
+ * the EARLIEST bubble, across every session, whose message attached this job's photograph: the
+ * photograph row `getNinaJobPhoto` already resolved for the icon is handed to
+ * `getNinaJobPhotoBubble`, which walks the original and every reference of it forward in
+ * conversation order. `planJobJump` turns what is left (a live bubble; an avatar job that never
+ * has one; a selfie whose photograph resolves to no live bubble — not made yet, removed, or its
+ * chat gone) into one value the client renders without re-deriving anything. `args.replyToId` is
+ * no longer consulted on this page at all; the redo path still carries it in the job args.
  *
  * ── WHERE THE PHOTOGRAPH IS DECIDED ───────────────────────────────────────────────────────────
  * HERE too, from an owner-scoped read (`getNinaJobPhoto`) — the same split the jump keeps, for the
@@ -48,13 +52,14 @@ import { getNinaJobPhoto } from '@/lib/nina/queries'
  * ── WHY SEQUENTIAL-AND-SKIPPED FOR AVATAR, AND NOT `Promise.all` ──────────────────────────────
  * `purpose` is a fact only the detail read produces, so "run the photo read in parallel with the
  * detail read" and "run no query at all for an avatar job" cannot both hold. The skip wins: an
- * avatar job's read is empty BY CONSTRUCTION (`finishAvatar` writes no carrier message, so no
+ * avatar job's reads are empty BY CONSTRUCTION (`finishAvatar` writes no carrier message, so no
  * `turn_id` ever names one), and avatar jobs are the common case on this page — every avatar
  * generation is one, while chat selfies are capped at six a day — so the unconditional parallel
- * spelling would spend the query exactly where it is worth least. One sequential round trip on a
- * page opened a handful of times a day is the economics `getNinaImageJobDetail` already states for
- * its own second read. The RULE (an avatar job never gets the icon) does not depend on the skip —
- * `planJobPhoto`'s avatar arm holds it where a test reaches it.
+ * spelling would spend the query exactly where it is worth least. Two sequential reads for a
+ * selfie (photograph, then its earliest bubble) is the page's whole cost, on a screen opened a
+ * handful of times a day. The RULES (an avatar job never gets the icon, never gets the jump) do
+ * not depend on the skip — `planJobPhoto`'s and `planJobJump`'s avatar arms hold them where a test
+ * reaches them.
  *
  * `SESSION_PARAM` is imported HERE and passed down, so `?s=`'s spelling still lives in exactly one
  * place — `app/nina/page.tsx` concentrates its cross-phase dependencies the same way and says so.
@@ -80,6 +85,10 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
 
   /* Skipped outright for an avatar job — see the docstring's `Promise.all` paragraph. */
   const photoRow = job.purpose === 'avatar' ? null : await getNinaJobPhoto(userId, id)
+  /* The jump's target, from the photograph the icon already named: the earliest live bubble
+   * carrying it, in any session. `null` for an avatar job by the same skip, and for a selfie
+   * whose photograph resolves to no live bubble — `planJobJump` owns the sentence for both. */
+  const bubble = photoRow === null ? null : await getNinaJobPhotoBubble(userId, photoRow.id)
   const photo = planJobPhoto({ jobId: job.id, purpose: job.purpose, imageId: photoRow?.id ?? null })
 
   return (
@@ -108,12 +117,7 @@ export default async function NinaJobDetailPage({ params }: PageProps<'/nina/job
         createdAtMs={job.createdAt.getTime()}
         createdAtLabel={formatDayCompact(jakartaDayOf(job.createdAt))}
         nowMs={nowMs}
-        jump={planJobJump({
-          purpose: job.purpose,
-          replyToId: job.replyToId,
-          replySessionId: job.replySessionId,
-          sessionParam: SESSION_PARAM,
-        })}
+        jump={planJobJump({ purpose: job.purpose, bubble, sessionParam: SESSION_PARAM })}
         photo={photo}
       />
     </AppShell>
