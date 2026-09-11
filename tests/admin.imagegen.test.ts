@@ -7,10 +7,13 @@ import {
   changedImageGenFields,
   focusOnKeys,
   hasImageFocusCopy,
+  hasImageModelCopy,
   IMAGE_REFERENCE_NONE,
   imageFocusCopy,
   imageGenDraftEquals,
   IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS,
+  imageModelHint,
+  imageModelLabel,
   mergeImageGenAfterSave,
   parseReferenceKey,
   prettifyFocusKey,
@@ -825,5 +828,33 @@ describe('the photo reference round-trips before the picker exists (R10)', () =>
      * array. The mapper is what the assertion is about; the local's name is not. */
     const source = codeOnly(PAGE)
     expect(source).toContain('.rows.map(toImageReferenceOption)')
+  })
+})
+
+/* ── the model picker's copy pair — the half the panel renders from ─────────────────────────── */
+
+describe('hasImageModelCopy / imageModelLabel / imageModelHint', () => {
+  it('answers the closed two-id enum and nothing else', () => {
+    expect(hasImageModelCopy('qwen/qwen-image-3')).toBe(true)
+    expect(hasImageModelCopy('qwen/qwen-image-3-pro')).toBe(true)
+    expect(hasImageModelCopy('qwen/qwen-image-4')).toBe(false)
+    expect(hasImageModelCopy('')).toBe(false)
+  })
+
+  it('labels the two cameras and degrades an unknown id to the prettified fallback', () => {
+    expect(imageModelLabel('qwen/qwen-image-3')).toBe('Qwen Image 3')
+    expect(imageModelLabel('qwen/qwen-image-3-pro')).toBe('Qwen Image 3 Pro')
+    // The degrade path is `prettifyFocusKey`'s — a stale client's model id still renders as a
+    // word, never as raw `provider/slash-name`.
+    expect(imageModelLabel('mystery/model')).toBe(prettifyFocusKey('mystery/model'))
+  })
+
+  it('hints only where there is measured copy, and the two cameras say different things', () => {
+    const base = imageModelHint('qwen/qwen-image-3')
+    const pro = imageModelHint('qwen/qwen-image-3-pro')
+    expect(base).not.toBe('')
+    expect(pro).not.toBe('')
+    expect(base).not.toBe(pro) // the pro hint exists because its latency story is different
+    expect(imageModelHint('mystery/model')).toBe('')
   })
 })
