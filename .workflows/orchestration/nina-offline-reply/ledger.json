@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-offline-reply",
   "coordinator_session_id": "0f4707a7-f4f4-4a89-9f1c-4235f37145cf",
   "created": "2026-09-11T06:29:21+00:00",
+  "landed": {
+    "at": "2026-09-11T07:55:31+00:00",
+    "base": "main",
+    "commit": "d08c56c4101caed697e53252b41900aa80620abe",
+    "machine": "pc"
+  },
   "notes": [
     "LANDING HAZARD (from p1 completion-handler): origin/main moved 4 commits past base c6a56b7; peer set cfddcce (nina-dup-bubble-reveal) edited ChatScreen.tsx in hunks ADJACENT to phase 1's (theirs end ~line 1091, ours begin 1092) and rewrote the same lib/nina/.workflows/package_readme.md. Expect textual conflicts on both at land --step merge; run the union gate (next typegen && tsc --noEmit && vitest run) in the merge worktree before push."
   ],
@@ -48,6 +54,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-offline-reply/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-offline-reply",
-  "updated": "2026-09-11T07:46:20+00:00",
+  "updated": "2026-09-11T07:55:31+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-offline-reply"
 }
