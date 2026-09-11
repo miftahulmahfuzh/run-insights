@@ -1,0 +1,30 @@
+{
+  "branch": "feature/job-jump-photo-bubble",
+  "coordinator": "orch-job-jump-photo-bubble",
+  "coordinator_session_id": "85b3b22a-3a13-4cd6-a0a9-c7d418a776ce",
+  "created": "2026-09-11T04:56:28+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/nina`, `app/nina/jobs/[id]`, `components/nina`, `tests",
+      "plan": ".workflows/plan/job-jump-photo-bubble/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Jump targets the earliest bubble carrying the photo"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/job-jump-photo-bubble/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "job-jump-photo-bubble",
+  "updated": "2026-09-11T04:56:28+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/job-jump-photo-bubble"
+}
