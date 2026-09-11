@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/job-jump-photo-bubble`
 **Branch:** `feature/job-jump-photo-bubble` (base: `origin/main` @ `f1b0394`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 <The Coordinator line is the peer address of the session driving this set, filled in by
@@ -45,7 +45,7 @@ The jump button on Detail foto currently targets `args.replyToId` — the bubble
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Jump targets the earliest bubble carrying the photo | R1 | `lib/nina`, `app/nina/jobs/[id]`, `components/nina`, `tests` | 7 | — | NORMAL | `.workflows/plan/job-jump-photo-bubble/phase-1.md` | — | — |
+| 1 | Jump targets the earliest bubble carrying the photo | R1 | `lib/nina`, `app/nina/jobs/[id]`, `components/nina`, `tests` | 7 | — | NORMAL | `.workflows/plan/job-jump-photo-bubble/phase-1.md` | P1-RI-A037 | — |
 
 ### Phase 1 — Jump targets the earliest bubble carrying the photo
 **Satisfies:** R1

@@ -6,25 +6,25 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "93d981a",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "jump targets earliest bubble over original\u222areferences via getNinaJobPhotoBubble; refusals avatar|no-photo; photoRefs expected-SQL corrected for drizzle numbered placeholders (same bracketing property)",
       "package": "lib/nina`, `app/nina/jobs/[id]`, `components/nina`, `tests",
       "plan": ".workflows/plan/job-jump-photo-bubble/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T05:27:17+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A037",
       "title": "Jump targets the earliest bubble carrying the photo"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/job-jump-photo-bubble/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "job-jump-photo-bubble",
-  "updated": "2026-09-11T04:56:28+00:00",
+  "updated": "2026-09-11T05:27:17+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/job-jump-photo-bubble"
 }
