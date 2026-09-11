@@ -265,12 +265,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
       expect(runs).toHaveLength(3)
     })
 
-    it('hides the draft run from the August total, which would otherwise be 9 999 m heavier', async () => {
-      const [august] = await q.getMonthlyTotals(U1, 1, '2026-08')
-      expect(august?.runCount).toBe(2)
-      expect(august?.distanceM).toBe(10670 + 5330)
-    })
-
     it('hides the draft run from getObservedMaxHr — a 200 bpm draft must not become a ceiling', async () => {
       await expect(q.getObservedMaxHr(U1)).resolves.toBe(189)
     })
@@ -371,26 +365,6 @@ describe.skipIf(!enabled)('data layer against a real database', () => {
   })
 
   describe('rollups', () => {
-    it('getMonthlyTotals zero-fills and returns NUMBERS, not the strings the wire carries', async () => {
-      const totals = await q.getMonthlyTotals(U1, 12, '2026-08')
-      expect(totals).toHaveLength(12)
-      expect(totals.map((t) => t.month).at(-1)).toBe('2026-08')
-      for (const total of totals) {
-        expect(typeof total.distanceM, total.month).toBe('number')
-        expect(typeof total.runCount, total.month).toBe('number')
-        expect(typeof total.durationSec, total.month).toBe('number')
-      }
-      const byMonth = new Map(totals.map((t) => [t.month, t]))
-      expect(byMonth.get('2026-07')).toEqual({
-        month: '2026-07',
-        runCount: 0,
-        distanceM: 0,
-        durationSec: 0,
-      })
-      expect(byMonth.get('2026-08')?.distanceM).toBe(16000)
-      expect(byMonth.get('2026-06')?.distanceM).toBe(8000)
-    })
-
     it('getAllTimeTotals sums the reviewed runs and reports the real date bounds', async () => {
       const totals = await q.getAllTimeTotals(U1)
       expect(totals.runCount).toBe(3)

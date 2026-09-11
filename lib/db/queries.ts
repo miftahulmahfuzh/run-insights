@@ -17,7 +17,6 @@ import {
 import { getTableColumns } from 'drizzle-orm'
 
 import {
-  addMonths,
   isoWeekRange,
   monthRange,
   type DateISO,
@@ -695,80 +694,6 @@ export async function getReviewedRunsWithChildren(
     splits: splitsByRun.get(run.id) ?? [],
     zones: zonesByRun.get(run.id) ?? [],
   }))
-}
-
-export interface MonthlyTotal extends RunAggregate {
-  month: MonthKey
-}
-
-/**
- * The last `months` months ending at `anchorMonth` inclusive, oldest → newest, zero-filled.
- *
- * `anchorMonth` is an explicit parameter and is never derived from the wall clock here: the
- * caller computes a Jakarta "today" once, so a render that straddles midnight cannot produce two
- * different answers for the same page.
- *
- * `SUM(integer)` returns `bigint`, which `@neondatabase/serverless` hands back as a **string** —
- * storing metres as an integer does not make the aggregate immune. Hence `.mapWith(Number)` on
- * every aggregate in this section; the integration suite asserts `typeof === 'number'`.
- */
-export async function getMonthlyTotals(
-  userId: string,
-  months: number,
-  anchorMonth: MonthKey,
-): Promise<MonthlyTotal[]> {
-  if (!Number.isInteger(months) || months < 1 || months > 60) {
-    throw new RangeError(`months must be an integer in 1..60, got ${months}`)
-  }
-  const firstMonth = addMonths(anchorMonth, -(months - 1))
-  const { startISO } = monthRange(firstMonth)
-  const { endExclusiveISO } = monthRange(anchorMonth)
-  const monthExpr = sql<string>`to_char(${runs.occurredOn}, 'YYYY-MM')`
-
-  const rows = await db
-    .select({
-      month: monthExpr,
-      runCount: sql<number>`count(*)`.mapWith(Number),
-      distanceM: sql<number>`coalesce(sum(${runs.distanceM}), 0)`.mapWith(Number),
-      durationSec: sql<number>`coalesce(sum(${runs.durationSec}), 0)`.mapWith(Number),
-    })
-    .from(runs)
-    .where(
-      and(
-        eq(runs.userId, userId),
-        isNotNull(runs.reviewedAt),
-        gte(runs.occurredOn, startISO),
-        lt(runs.occurredOn, endExclusiveISO),
-      ),
-    )
-    .groupBy(monthExpr)
-
-  return fillZeroMonths(rows, anchorMonth, months)
-}
-
-/**
- * Pure, exported, and unit-tested without a database. A month with no runs must appear as a zero
- * rather than be absent: a trend chart that silently drops empty months draws a flat line
- * through a lay-off instead of showing it.
- */
-export function fillZeroMonths(
-  rows: ReadonlyArray<{ month: string; runCount: number; distanceM: number; durationSec: number }>,
-  anchorMonth: MonthKey,
-  months: number,
-): MonthlyTotal[] {
-  const byMonth = new Map(rows.map((r) => [r.month, r]))
-  const out: MonthlyTotal[] = []
-  for (let i = months - 1; i >= 0; i--) {
-    const month = addMonths(anchorMonth, -i)
-    const row = byMonth.get(month)
-    out.push({
-      month,
-      runCount: row?.runCount ?? 0,
-      distanceM: row?.distanceM ?? 0,
-      durationSec: row?.durationSec ?? 0,
-    })
-  }
-  return out
 }
 
 export interface AllTimeTotals extends RunAggregate {
