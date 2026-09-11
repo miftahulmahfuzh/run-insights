@@ -6,25 +6,25 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "cfddcce",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "appendNewBubbles guard landed (lib/nina/live.ts + ChatScreen revealBubbles); mergeServerMessages untouched. Drift: prettier collapsed plan's map() call \u2014 plan's own format gate, formatting-only. Decisions: TaskID P1-NIN-A034 minted on NIN counter + verified free on both roots; git-tracked orchestration PLAN.md left untouched (todos line-280 precedent), ledger carries the id.",
       "package": "components/nina`, `lib/nina",
       "plan": ".workflows/plan/nina-dup-bubble-reveal/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T05:37:09+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A034",
       "title": "Idempotent reveal append (pure helper + call site + tests)"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-dup-bubble-reveal/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-dup-bubble-reveal",
-  "updated": "2026-09-11T05:16:34+00:00",
+  "updated": "2026-09-11T05:37:09+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-dup-bubble-reveal"
 }
