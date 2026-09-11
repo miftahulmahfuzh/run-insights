@@ -8,7 +8,7 @@ import type { DefaultSession } from 'next-auth'
  * read. Without this augmentation the id is `string | undefined` and `requireUserId()` would push
  * a narrowing branch onto every call site in the app.
  *
- * See docs/plans/F02-auth-profile.md §1 (INVARIANT A).
+ * See docs/plans/archive/F02-auth-profile.md §1 (INVARIANT A).
  */
 declare module 'next-auth' {
   interface Session {
