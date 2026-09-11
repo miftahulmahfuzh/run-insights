@@ -35,7 +35,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: false,
-    include: ['tests/**/*.test.ts', 'lib/**/*.test.ts', 'app/**/*.test.ts'],
+    include: [
+      'tests/**/*.test.ts',
+      'lib/**/*.test.ts',
+      'app/**/*.test.ts',
+      'components/**/*.test.tsx',
+    ],
     exclude: [
       'node_modules/**',
       '.next/**',

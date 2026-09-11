@@ -1,6 +1,16 @@
+import { cleanup } from '@testing-library/react'
+import { afterEach } from 'vitest'
+
+import '@testing-library/jest-dom/vitest'
+
 /**
  * Shared Vitest setup. F01 created this file so F03/F04/F07 have one place to put process-wide
  * test defaults instead of each writing their own.
+ *
+ * The jest-dom import and `afterEach(cleanup)` above are for `components/**\/*.test.tsx`
+ * (happy-dom, per-file environment pragma): jest-dom's matchers are inert until a test calls
+ * them, and `cleanup()` is a no-op when nothing rendered — so both are harmless for every
+ * `node`-environment test in this file's much larger audience.
  *
  * DATABASE_URL: lib/db/index.ts constructs the Neon client eagerly at import time, so that a
  * missing connection string is a loud boot crash in production rather than a silent `undefined`
@@ -39,3 +49,7 @@ const LLM_DEFAULTS: Record<string, string> = {
 for (const [key, value] of Object.entries(LLM_DEFAULTS)) {
   process.env[key] ??= value
 }
+
+afterEach(() => {
+  cleanup()
+})
