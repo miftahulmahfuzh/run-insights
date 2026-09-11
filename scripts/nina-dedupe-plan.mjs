@@ -467,16 +467,79 @@ export function isPerceptualTwin(a, b) {
   return sig16MeanAbs(asig.sig16, bsig.sig16) <= PERCEPTUAL_MAX_SIG16
 }
 
+/* ── PERCEPTUAL-REPAIR (2026-09-11's measured defect) ────────────────────────────────────────────
+ * `decodeStoredSignature`'s own comment calls a stored signature "the signature", never
+ * re-measured — correct for cost, wrong for trust: measured on production, `I1v6qeHJBMwv`'s stored
+ * `perceptual_hash` (`74749c8c8e9a9c98`) was 26/64 bits from its true re-upload twin
+ * `YnIGDDwYH4HT` (`f0c29c64c4060604`), while a fresh GET + sign of the SAME live blob measured
+ * `f0c69c64c4060604` — 1 bit from the twin, inside the gate. STEP 1b compared a genuinely matching
+ * re-upload against a corrupted stored value and silently let a duplicate through. Nothing before
+ * this pass ever asked "is the stored value still true" — `fill-perceptual`'s `is null` guard
+ * protects a value from being CLOBBERED, it does not protect against one that was wrong from the
+ * moment it was written (an old buggy run, a partial fetch, anything).
+ *
+ * `perceptualVerifyCandidates` names the population worth a re-GET: perceptual twins MUST share
+ * (user, width, height) (gate 1), so a row whose dimensions are unique among its user's originals
+ * has no candidate twin to have silently missed — re-verifying it buys nothing. Only a row that
+ * shares dimensions with another original, AND whose signature came from storage rather than this
+ * run's own measurement (`perceptualSource === 'stored'` — a value `fill-perceptual` just wrote
+ * cannot yet be stale), is a candidate. The ops script GETs and re-signs each candidate into
+ * `row.verifiedSig`; `buildPerceptualMergePlan` below is what acts on the comparison.
+ */
+export function perceptualVerifyCandidates(rows) {
+  const byDims = new Map()
+  for (const row of rows) {
+    if (!isOriginalRow(row) || row.width == null || row.height == null) continue
+    const key = `${row.userId}|${row.width}x${row.height}`
+    const members = byDims.get(key)
+    if (members) members.push(row)
+    else byDims.set(key, [row])
+  }
+  const candidates = []
+  for (const members of byDims.values()) {
+    if (members.length < 2) continue
+    for (const row of members) {
+      if (row.perceptualSource === 'stored') candidates.push(row)
+    }
+  }
+  return candidates
+}
+
 /**
- * rows (+ `sig` where the ops script measured one) → `{ ops, groups }`, the byte pass's shape.
- * `excludeIds` — ids the byte plan is already repointing THIS run; a row must never be repointed
- * twice in one run. Clusters are per-user components over `isPerceptualTwin` edges; the keeper is
- * `electKeeper`'s standing order; ops are `merge-row`s (with the keeper's byte-facts) before
- * `release-blob`s, releases deduplicated by pathname+URL — all as `buildMergePlan` does it.
+ * rows (+ `sig` where the ops script measured one, + `verifiedSig` where the verify gate
+ * re-measured a stored one) → `{ ops, groups }`, the byte pass's shape. `excludeIds` — ids the
+ * byte plan is already repointing THIS run; a row must never be repointed twice in one run.
+ *
+ * A `verifiedSig` that disagrees with the decoded `sig` is a `perceptual-repair` op — the stored
+ * column was wrong, so the corrected value (never the stale one) is what clusters this run. A
+ * `verifiedSig` that agrees confirms the stored value and writes nothing. Clusters are per-user
+ * components over `isPerceptualTwin` edges; the keeper is `electKeeper`'s standing order; ops are
+ * `merge-row`s (with the keeper's byte-facts) before `release-blob`s, releases deduplicated by
+ * pathname+URL — all as `buildMergePlan` does it.
  */
 export function buildPerceptualMergePlan(rows, excludeIds) {
   const excluded = excludeIds ?? new Set()
-  const eligible = rows.filter((r) => !excluded.has(r.id) && isOriginalRow(r) && r.sig != null)
+
+  const repairs = []
+  for (const row of rows) {
+    if (row.verifiedSig == null) continue
+    const confirmed =
+      row.sig != null &&
+      row.sig.dhash === row.verifiedSig.dhash &&
+      sig16MeanAbs(row.sig.sig16, row.verifiedSig.sig16) === 0
+    if (!confirmed) {
+      repairs.push({
+        op: 'perceptual-repair',
+        id: row.id,
+        dhash: dhashHexOf(row.verifiedSig.dhash),
+        sig: Buffer.from(row.verifiedSig.sig16).toString('base64'),
+      })
+    }
+  }
+  const effectiveSig = (row) => row.verifiedSig ?? row.sig
+  const eligible = rows
+    .filter((r) => !excluded.has(r.id) && isOriginalRow(r) && effectiveSig(r) != null)
+    .map((r) => (r.verifiedSig != null ? { ...r, sig: effectiveSig(r) } : r))
 
   /* Per-user union over twin edges — small n, so growth-by-scan beats a real union-find. */
   const byUser = new Map()
@@ -548,5 +611,5 @@ export function buildPerceptualMergePlan(rows, excludeIds) {
   }
 
   groups.sort((a, b) => a.keeperId.localeCompare(b.keeperId))
-  return { ops: mutations, groups }
+  return { ops: [...repairs, ...mutations], groups }
 }

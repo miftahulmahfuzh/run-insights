@@ -36,6 +36,15 @@
  *      `IGwGhWzPNmaR`, same gates). A signature measured THIS RUN gets a `fill-perceptual` op —
  *      the measurement is persisted, not left in the console: the first landing computed fills
  *      and wrote nothing, and this script has been down that road before.
+ *  3d. PERCEPTUAL VERIFY GATE: every stored signature that shares (user, width, height) with
+ *      another original is re-fetched and re-signed. A stored value a fresh GET contradicts is a
+ *      `perceptual-repair` op — measured 2026-09-11 on production `I1v6qeHJBMwv`: its stored dHash
+ *      was 26/64 from its true re-upload twin `YnIGDDwYH4HT`, while a fresh sign of the same live
+ *      blob measured 1/64 (inside the gate). A stored signature was never re-verified before this
+ *      pass, so a value that was wrong from the moment it was written — an old buggy run, a
+ *      partial fetch, anything — stayed wrong forever and silently defeated STEP 1b for that
+ *      photograph. Only rows sharing dimensions with another original are checked: a row with no
+ *      candidate twin cannot have missed one, so re-verifying it buys nothing.
  *  4. PASS 2 (merge): `buildMergePlan` groups by (user_id, content_hash), elects keepers among
  *      originals, and returns the ordered ops; `buildPerceptualMergePlan` then clusters the
  *      remaining originals at conservative gates (same dimensions, dHash ≤ 1, mean-abs ≤ 2 —
@@ -60,7 +69,9 @@
  * ── IDEMPOTENCE ───────────────────────────────────────────────────────────────────────────────
  * A second run: pass 1 finds nothing to fill (its UPDATE guards `content_hash is null`), pass 3c
  * re-signs nothing (stored signatures are decoded, never re-measured; `fill-perceptual` guards
- * `perceptual_hash is null` the same way), the previously-merged groups are now
+ * `perceptual_hash is null` the same way), pass 3d re-verifies the same dimension-sharing rows
+ * again and finds them confirmed (a `perceptual-repair` writes the true value, so the next run's
+ * GET agrees with it and proposes nothing), the previously-merged groups are now
  * one-original-plus-same-URL-references = `tidy` (no ops), and releases only exist for rows that
  * were merged this run. Summary says 0 findings, 0 writes.
  */
@@ -76,6 +87,7 @@ import {
   isOriginalRow,
   isStoreUrl,
   parseArgs,
+  perceptualVerifyCandidates,
   releaseDecision,
   sha256Hex,
 } from './nina-dedupe-plan.mjs'
@@ -259,6 +271,25 @@ async function main() {
     }
   }
 
+  /* ── 3d. PERCEPTUAL VERIFY GATE — re-sign every stored signature that shares dims with another
+   * original (measured 2026-09-11: `I1v6qeHJBMwv`'s stored dHash was 26/64 from its true twin;
+   * the row's own live bytes measured 1/64. A stored signature is not proof it was ever correct —
+   * only a group where it would actually matter is worth the GET; see the plan module's header. */
+  const verifyCandidates = perceptualVerifyCandidates(rows)
+  let verifyFailed = 0
+  for (const row of verifyCandidates) {
+    const got = await fetchRowBytes(row)
+    if (!got.ok) {
+      verifyFailed++
+      continue
+    }
+    try {
+      row.verifiedSig = await signBytes(got.bytes)
+    } catch {
+      verifyFailed++ // undecodable bytes — the stored value stands, no worse than before this gate
+    }
+  }
+
   /* ── 4. PASS 2 — the merge plan (byte-exact first, then the perceptual pass on the remainder) ─ */
   const plannable = rows.filter((r) => r.contentHash != null)
   const plan = buildMergePlan(plannable)
@@ -306,6 +337,12 @@ async function main() {
       `perceptual signatures        ${signedCount} of ${originalCount} originals${
         unsigned ? ` (${unsigned} unsigned — they do not participate)` : ''
       }`,
+    )
+    const repairedCount = perceptual.ops.filter((o) => o.op === 'perceptual-repair').length
+    console.log(
+      `stored signatures re-verified ${verifyCandidates.length}` +
+        `${repairedCount ? `  (${repairedCount} contradicted by a fresh GET — repaired)` : ''}` +
+        `${verifyFailed ? `  (${verifyFailed} fetch/decode failures — stored value stands)` : ''}`,
     )
   }
 
@@ -383,6 +420,10 @@ async function main() {
       console.log(
         `UPDATE nina_message_images SET content_hash = '${op.to}' WHERE id = '${op.id}'  (was '${op.from}')`,
       )
+    if (op.op === 'perceptual-repair')
+      console.log(
+        `UPDATE nina_message_images SET perceptual_hash = '${op.dhash}', perceptual_sig = '<${op.sig.length} chars base64>' WHERE id = '${op.id}'  (perceptual repair — stored signature contradicted by a fresh GET)`,
+      )
     if (op.op === 'merge-row')
       console.log(
         `UPDATE nina_message_images SET blob_url = '${op.blobUrl}', pathname = '${op.pathname}', source_image_id = '${op.keeperId}' WHERE id = '${op.id}'`,
@@ -425,6 +466,10 @@ async function main() {
         await sql`update nina_message_images set perceptual_hash = ${op.dhash}, perceptual_sig = ${op.sig} where id = ${op.id} and perceptual_hash is null`
       } else if (op.op === 'hash-repair') {
         await sql`update nina_message_images set content_hash = ${op.to} where id = ${op.id}`
+      } else if (op.op === 'perceptual-repair') {
+        /* No `is null` guard, same as `hash-repair`: this is a deliberate overwrite of a value
+         * this run measured and found wrong, not a fill racing a concurrent writer. */
+        await sql`update nina_message_images set perceptual_hash = ${op.dhash}, perceptual_sig = ${op.sig} where id = ${op.id}`
       } else if (op.op === 'merge-row') {
         await sql`
           update nina_message_images

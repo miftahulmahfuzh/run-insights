@@ -19,6 +19,7 @@ import {
   parseArgs,
   parseDhashHex,
   partitionGroup,
+  perceptualVerifyCandidates,
   PERCEPTUAL_MAX_DHASH,
   PERCEPTUAL_MAX_SIG16,
   releaseDecision,
@@ -434,7 +435,13 @@ const sigOf = (dhash: bigint, sig16: Uint8Array) => ({ dhash, sig16 })
 /** A minimal verified original WITH the byte-facts and signature the perceptual pass reads. */
 const prow = (
   over: Partial<Row> &
-    Pick<Row, 'id'> & { width?: number | null; height?: number | null; sig?: unknown },
+    Pick<Row, 'id'> & {
+      width?: number | null
+      height?: number | null
+      sig?: unknown
+      verifiedSig?: unknown
+      perceptualSource?: string
+    },
 ): Row =>
   row({
     width: 679,
@@ -582,6 +589,84 @@ describe('buildPerceptualMergePlan', () => {
     expect(ops.filter((o) => o.op === 'merge-row')).toHaveLength(2)
     expect(ops.filter((o) => o.op === 'release-blob')).toHaveLength(1)
     expect(mergeIdx).toBeLessThan(releaseIdx)
+  })
+})
+
+/* ── perceptual-repair (2026-09-11's measured defect) ────────────────────────────────────────────
+ * `I1v6qeHJBMwv` (production) carried a stored `perceptual_hash` of `74749c8c8e9a9c98` — 26/64
+ * bits from its true re-upload twin `YnIGDDwYH4HT` (`f0c29c64c4060604`), so STEP 1b rejected a
+ * pixel-identical re-upload as a stranger. A fresh GET + sign of `I1v6qeHJBMwv`'s own live blob
+ * measured `f0c69c64c4060604` — 1 bit from the twin, inside the gate. The stored value was simply
+ * wrong; nothing before this pass ever re-measured a signature once it was decoded from storage.
+ */
+describe('perceptualVerifyCandidates — which stored signatures get re-verified', () => {
+  it('selects rows sharing (user, width, height) with another original, only when stored', () => {
+    const a = prow({ id: 'a', perceptualSource: 'stored' })
+    const b = prow({ id: 'b', perceptualSource: 'stored' })
+    expect(
+      perceptualVerifyCandidates([a, b])
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['a', 'b'])
+  })
+  it("excludes a row whose dimensions are unique among its user's originals", () => {
+    const a = prow({ id: 'a', perceptualSource: 'stored' })
+    const b = prow({ id: 'b', width: 768, perceptualSource: 'stored' })
+    expect(perceptualVerifyCandidates([a, b])).toEqual([])
+  })
+  it('excludes a row this run already measured fresh — nothing could have written it since', () => {
+    const a = prow({ id: 'a', perceptualSource: 'measured' })
+    const b = prow({ id: 'b', perceptualSource: 'stored' })
+    expect(perceptualVerifyCandidates([a, b]).map((r) => r.id)).toEqual(['b'])
+  })
+  it('excludes a reference — only originals participate', () => {
+    const a = prow({ id: 'a', perceptualSource: 'stored' })
+    const ref = prow({ id: 'ref', sourceImageId: 'a', perceptualSource: 'stored' })
+    expect(perceptualVerifyCandidates([a, ref])).toEqual([])
+  })
+  it('never crosses users', () => {
+    const a = prow({ id: 'a', perceptualSource: 'stored' })
+    const b = prow({ id: 'b', userId: 'another-user', perceptualSource: 'stored' })
+    expect(perceptualVerifyCandidates([a, b])).toEqual([])
+  })
+})
+
+describe('buildPerceptualMergePlan — perceptual-repair', () => {
+  it('emits a repair when a fresh GET contradicts the stored signature, and merges on the corrected value', () => {
+    const stale = prow({
+      id: 'I1v6qeHJBMwv',
+      sig: sigOf(BigInt('0x' + '7'.repeat(16)), uniform16(200)), // the wrong, stored value
+      verifiedSig: sigOf(0n, uniform16(100)), // the true, freshly-measured value
+      perceptualSource: 'stored',
+      createdAt: '2026-09-11T04:34:00Z',
+    })
+    const upload = prow({
+      id: 'YnIGDDwYH4HT',
+      sig: sigOf(0n, uniform16(100)), // the twin's own (correct) signature
+      createdAt: '2026-09-11T06:29:00Z',
+      messageId: 'm',
+    })
+
+    const { ops, groups } = buildPerceptualMergePlan([stale, upload])
+
+    expect(ops[0]).toEqual({
+      op: 'perceptual-repair',
+      id: 'I1v6qeHJBMwv',
+      dhash: dhashHexOf(0n),
+      sig: Buffer.from(uniform16(100)).toString('base64'),
+    })
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ action: 'merge', perceptual: true })
+  })
+  it('writes nothing when the fresh GET confirms the stored signature', () => {
+    const a = prow({ id: 'a', verifiedSig: sigOf(0n, uniform16(100)) })
+    expect(buildPerceptualMergePlan([a]).ops).toEqual([])
+  })
+  it('a row nobody re-verified this run is trusted exactly as before', () => {
+    const a = prow({ id: 'a' })
+    const b = prow({ id: 'b', createdAt: '2026-09-10T00:00:00Z' })
+    const { ops } = buildPerceptualMergePlan([a, b])
+    expect(ops.some((o) => o.op === 'perceptual-repair')).toBe(false)
   })
 })
 
