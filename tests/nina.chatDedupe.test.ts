@@ -475,7 +475,10 @@ describe('STEP 1b perceptual twins: a re-encode of a stored photograph becomes a
 
   it('a non-twin lands FRESH and carries its measured signature, so the next re-upload matches', async () => {
     spies.findNinaSignedOriginals.mockResolvedValue([
-      { ...TWIN_KEEPER_ROW, width: 640, height: 853 }, // different dimensions — gate 1 fails
+      // 1138/640 = 0.562 against the keeper's 736/981 = 0.750 — a different SHAPE. (Dimensions
+      // alone stopped refusing pairs when the cross-resolution path landed: 640x853 — the same
+      // 0.750 ratio at ~87% size — is now correctly merged as a twin.)
+      { ...TWIN_KEEPER_ROW, width: 640, height: 1138 },
     ])
 
     await actions.sendNinaMessage({

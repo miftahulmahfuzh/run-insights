@@ -18,13 +18,15 @@
  * `tests/nina.perceptual.test.ts` assert it with no database, no sharp and no mock.
  *
  * ── THE GATES ARE THE SWEEP'S, VERBATIM, AND MUST STAY THAT WAY ───────────────────────────────
- * `PERCEPTUAL_MAX_DHASH` and `PERCEPTUAL_MAX_SIG16` mirror `scripts/nina-dedupe-plan.mjs`'s
- * constants of the same names. The sweep is `.mjs` and cannot import this file, so the two copies
- * stand next to each other with this paragraph between them: if one number moves, move BOTH, and
- * re-read the sweep's header first — the gates were measured (0 and 0.1 on a real re-encode pair)
- * and pinned one step above the measurement, because a perceptual merge can destroy a near-miss
- * (two shots of the same court are not duplicates). A write-time twin that only the sweep's gates
- * would reject is a row the sweep would refuse to merge; the two answers must not disagree.
+ * `PERCEPTUAL_MAX_DHASH`, `PERCEPTUAL_MAX_SIG16`, `PERCEPTUAL_ASPECT_TOLERANCE`,
+ * `PERCEPTUAL_MIN_SIZE_RATIO` and `PERCEPTUAL_CROSS_RES_MAX_DHASH` mirror
+ * `scripts/nina-dedupe-plan.mjs`'s constants of the same names. The sweep is `.mjs` and cannot
+ * import this file, so the two copies stand next to each other with this paragraph between them:
+ * if one number moves, move BOTH, and re-read the sweep's header first — every gate here was
+ * measured on a real production pair and pinned one step above the measurement, because a
+ * perceptual merge can destroy a near-miss (two shots of the same court are not duplicates). A
+ * write-time twin that only the sweep's gates would reject is a row the sweep would refuse to
+ * merge; the two answers must not disagree.
  */
 
 /** dHash distance allowed for a twin, of 64 bits. Sweep-pinned; see the header before touching. */
@@ -32,6 +34,34 @@ export const PERCEPTUAL_MAX_DHASH = 1
 
 /** 16x16 grayscale mean absolute difference allowed, of 255. Sweep-pinned; see the header. */
 export const PERCEPTUAL_MAX_SIG16 = 2
+
+/**
+ * Relative aspect-ratio tolerance for the CROSS-RESOLUTION path. Measured 2026-09-11 on the
+ * production pair `QbZH2v65ZeKE` (714x1270, upload) + `VW04cyH9omoX` (576x1024, generated): the
+ * same photograph at two final resolutions, ratios 0.5622 vs 0.5625 — 0.05% apart. Pinned with
+ * roughly 20x headroom over that measurement. Aspect-ratio closeness, not dimension equality, is
+ * the real precondition: `lib/nina/perceptualSign.ts` resizes with `fit:'fill'` to a FIXED grid,
+ * so the signatures are resolution-independent by construction but NOT ratio-independent.
+ */
+export const PERCEPTUAL_ASPECT_TOLERANCE = 0.01
+
+/**
+ * Minimum size ratio (smaller/larger, per dimension) required for the cross-resolution path —
+ * the guard that stops a small thumbnail from spuriously matching a much larger photo of the same
+ * aspect ratio. Measured on the same pair: 576/714 = 0.807 (width), 1024/1270 = 0.806 (height).
+ * No production row has ever needed this guard; it exists because the aspect relaxation would
+ * otherwise admit that case unbounded.
+ */
+export const PERCEPTUAL_MIN_SIZE_RATIO = 0.5
+
+/**
+ * dHash distance allowed on the cross-resolution path ONLY, of 64 — looser than
+ * `PERCEPTUAL_MAX_DHASH` (which stays 1 for the same-dimensions path) because two independent
+ * resize passes carry more resampling noise than a recode at one size. Measured on
+ * `QbZH2v65ZeKE` + `VW04cyH9omoX`: 2/64. Pinned one step above, the same methodology
+ * `PERCEPTUAL_MAX_DHASH` itself was set by (measured 0 → pinned 1).
+ */
+export const PERCEPTUAL_CROSS_RES_MAX_DHASH = 3
 
 const DHASH_HEX_RE = /^[0-9a-f]{16}$/
 
@@ -121,21 +151,51 @@ export interface PerceptualCandidate {
 }
 
 /**
- * The sweep's three gates as one predicate, ALL required:
+ * The sweep's gates as one predicate. Two paths, and a pair must clear EVERY gate on its path:
  *
- *   1. same `width` AND `height`, both non-null — a recode passes through at its own size, and a
- *      resized one (the phone downscaled during save) is honestly a different entry here: the
- *      sweep would not merge it either, and a write-time check stricter than the sweep is how a
- *      "conservative" layer stops being conservative;
- *   2. dHash distance ≤ `PERCEPTUAL_MAX_DHASH`;
- *   3. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16`.
+ *   0. both sides dimensioned — a null `width`/`height` on either side is `false`, always.
+ *
+ *   SAME DIMENSIONS (`width === width && height === height`) — the recode case the layer was
+ *   built for (`bjNniaR6_0dY` + `IGwGhWzPNmaR`, both 736x981, dHash 0/64, mean-abs 0.043):
+ *     1. dHash distance ≤ `PERCEPTUAL_MAX_DHASH`;
+ *     2. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16`.
+ *
+ *   CROSS-RESOLUTION (dimensions differ) — the same photograph reaching the collection twice
+ *   through two paths that each resize to their OWN target (`QbZH2v65ZeKE` 714x1270 upload +
+ *   `VW04cyH9omoX` 576x1024 generated, measured 2026-09-11: aspect 0.5622 vs 0.5625, dHash 2/64,
+ *   mean-abs 1.52/255). Strictly more conservative than "the ratios match":
+ *     1. relative aspect-ratio difference ≤ `PERCEPTUAL_ASPECT_TOLERANCE` — `fit:'fill'` makes a
+ *        signature resolution-independent but not ratio-independent, so this is the precondition
+ *        the hash comparison actually needs;
+ *     2. BOTH per-dimension size ratios ≥ `PERCEPTUAL_MIN_SIZE_RATIO` — a thumbnail is not a twin
+ *        of the photo it was cut from;
+ *     3. dHash distance ≤ `PERCEPTUAL_CROSS_RES_MAX_DHASH` (a separate, measured ceiling — the
+ *        same-dimensions ceiling is untouched at 1);
+ *     4. 16x16 mean-abs ≤ `PERCEPTUAL_MAX_SIG16` — the SAME ceiling both paths use. It already
+ *        clears the measured cross-res value (1.52 of 2) and is the stronger signal of the two,
+ *        so it needs no cross-res variant.
  *
  * `false` is also the answer for anything unsigned or undimensioned — this predicate is never
  * reached with those by the write-time caller, but a pure function answers for its whole domain.
  */
 export function isPerceptualTwin(a: PerceptualCandidate, b: PerceptualCandidate): boolean {
   if (a.width == null || a.height == null || b.width == null || b.height == null) return false
-  if (a.width !== b.width || a.height !== b.height) return false
-  if (dhashHamming(a.dhash, b.dhash) > PERCEPTUAL_MAX_DHASH) return false
+  const sameDims = a.width === b.width && a.height === b.height
+  let maxDhash: number
+  if (sameDims) {
+    maxDhash = PERCEPTUAL_MAX_DHASH
+  } else {
+    const ratioA = a.width / a.height
+    const ratioB = b.width / b.height
+    const aspectDelta = Math.abs(ratioA - ratioB) / Math.max(ratioA, ratioB)
+    if (aspectDelta > PERCEPTUAL_ASPECT_TOLERANCE) return false
+    const widthRatio = Math.min(a.width, b.width) / Math.max(a.width, b.width)
+    const heightRatio = Math.min(a.height, b.height) / Math.max(a.height, b.height)
+    if (widthRatio < PERCEPTUAL_MIN_SIZE_RATIO || heightRatio < PERCEPTUAL_MIN_SIZE_RATIO) {
+      return false
+    }
+    maxDhash = PERCEPTUAL_CROSS_RES_MAX_DHASH
+  }
+  if (dhashHamming(a.dhash, b.dhash) > maxDhash) return false
   return sig16MeanAbs(a.sig16, b.sig16) <= PERCEPTUAL_MAX_SIG16
 }
