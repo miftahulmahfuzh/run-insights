@@ -274,6 +274,12 @@ describe('the prompt', () => {
     /* `imagerecipe.ts` cannot import `imageprefs.ts` (zero-import), so the default id is spelled
      * twice on purpose — and asserted here, the same mitigation `ninaImagePathname` has. */
     expect(NINA_IMAGE_MODEL).toBe(NINA_IMAGE_MODEL_DEFAULT)
+    /* The default itself is pinned to the MEASURED camera. 2026-09-11's A/B, same prompt, seed
+     * and reference: Pro anchored 257 s — past every in-platform ceiling, which is why a day of
+     * anchored attempts died at 220 s and 235 s — against Qwen Image 3 anchored at 107 s and
+     * $0.033. A default that costs every anchored attempt its photograph is not a default; flip
+     * it back only with a measurement that beats this one. */
+    expect(NINA_IMAGE_MODEL_DEFAULT).toBe('qwen/qwen-image-3')
     expect((NINA_IMAGE_MODEL_IDS as readonly string[]).includes(NINA_IMAGE_MODEL)).toBe(true)
   })
 

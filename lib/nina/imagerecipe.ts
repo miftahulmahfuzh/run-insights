@@ -107,7 +107,11 @@
  *
  */
 
-export const NINA_IMAGE_MODEL = 'qwen/qwen-image-3-pro'
+/** The default camera, and the value every unreadable job args degrades to. Measured 2026-09-11
+ * (same prompt, seed, reference, A/B against the Pro): 107 s anchored and 60 s unanchored here,
+ * against Pro's 257 s anchored — a number past every in-platform ceiling, which is what a full
+ * day of 220 s and 235 s aborts was measuring. Flip back only with a better measurement. */
+export const NINA_IMAGE_MODEL = 'qwen/qwen-image-3'
 export const OPENROUTER_IMAGE_URL = 'https://openrouter.ai/api/v1/images/generations'
 /** Enum, not a pixel count. See fact 2. */
 export const NINA_IMAGE_RESOLUTION = '1K'

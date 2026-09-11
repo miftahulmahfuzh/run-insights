@@ -427,7 +427,9 @@ describe('the defaults, and the coercion that never throws', () => {
       time: '',
       notes: '',
       promptTemplate: '',
-      model: 'qwen/qwen-image-3-pro',
+      /* The measured camera (2026-09-11 A/B: 107 s anchored against the Pro's 257 s — past every
+       * in-platform ceiling). Pinned as a literal so a default flip is always a witnessed one. */
+      model: 'qwen/qwen-image-3',
       reference: { source: 'none', id: '' },
     })
   })

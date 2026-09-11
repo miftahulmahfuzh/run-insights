@@ -216,7 +216,9 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       time: 'rainy night',
       notes: 'nina is full of sweat',
       promptTemplate: '{{bodyFacts}}\n\n{{scene}}',
-      model: 'qwen/qwen-image-3',
+      /* The id that is NOT the default — DEFAULTS.model rides NINA_IMAGE_MODEL_DEFAULT, so an
+       * edit equal to the default is by definition not a changed field. */
+      model: 'qwen/qwen-image-3-pro',
     }
     expect(changedImageGenFields(edited, DEFAULTS)).toEqual([
       'promptLength',

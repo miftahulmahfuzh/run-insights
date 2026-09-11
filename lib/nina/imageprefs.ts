@@ -806,8 +806,10 @@ export const NINA_IMAGE_MODEL_IDS = ['qwen/qwen-image-3', 'qwen/qwen-image-3-pro
 
 export type NinaImageModelId = (typeof NINA_IMAGE_MODEL_IDS)[number]
 
-/** The measured camera, and the value everything unreadable degrades to. */
-export const NINA_IMAGE_MODEL_DEFAULT: NinaImageModelId = 'qwen/qwen-image-3-pro'
+/** The measured camera, and the value everything unreadable degrades to. 2026-09-11's A/B moved
+ * it off the Pro: anchored, the Pro needed 257 s — past every in-platform ceiling — while this
+ * finished in 107 s at ~75% of the price and took the reference without complaint. */
+export const NINA_IMAGE_MODEL_DEFAULT: NinaImageModelId = 'qwen/qwen-image-3'
 
 export interface NinaImageModelSpec {
   readonly id: NinaImageModelId
@@ -823,15 +825,16 @@ export const NINA_IMAGE_MODEL_SPECS: Readonly<Record<NinaImageModelId, NinaImage
       id: 'qwen/qwen-image-3',
       label: 'Qwen Image 3',
       hint:
-        'The lighter sibling. Never run here — seed, resolution and reference behaviour are ' +
-        'measured on the Pro only — so send a Test after switching.',
+        'The measured camera: 107 s anchored, 60 s unanchored, about $0.03 a generation ' +
+        '(A/B 2026-09-11). Takes the photo reference; honours the seed and the 3:4 frame.',
     }),
     'qwen/qwen-image-3-pro': Object.freeze({
       id: 'qwen/qwen-image-3-pro',
       label: 'Qwen Image 3 Pro',
       hint:
-        'The measured camera: ~80 s unanchored, 150-235 s anchored (recently running to the ' +
-        'ceiling), about $0.04 a generation, honours the seed and the 3:4 frame.',
+        'The heavier brush: 257 s anchored (A/B 2026-09-11) — past every in-platform ceiling, ' +
+        'so anchored generations abort on Vercel and only the backstop worker finishes them. ' +
+        '61 s unanchored. For days likeness quality beats latency.',
     }),
   })
 
