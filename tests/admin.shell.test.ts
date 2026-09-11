@@ -113,7 +113,6 @@ describe('the admin nav', () => {
       '/admin/nina',
       '/admin/personality',
       '/admin/image-generation',
-      '/admin/photos',
       '/admin/memory',
       '/admin/shortcuts',
     ])
@@ -127,9 +126,10 @@ describe('the admin nav', () => {
      * `admin-bottom-bar-icons` R2 took the words off the bar, so `short` stopped being rendered
      * text and became each link's sr-only accessible name -- the string VoiceOver announces where
      * the glyph is `aria-hidden` decor. The 8-character CELL ceiling this test used to hold is
-     * retired with the text it measured: it existed because 414px / 7 = 59.1px was a 51.1px
-     * content box, the exact width of eight characters of Poppins semibold at 11px -- and a glyph
-     * has no character count. What the new role still needs caught: seven entries, one per cell
+     * retired with the text it measured: it existed because the text bar's 414px / 7 = 59.1px cell
+     * was a 51.1px content box, the exact width of eight characters of Poppins semibold at 11px --
+     * and a glyph has no character count (the row is six cells now, 414px / 6 = 69px, wider
+     * still). What the new role still needs caught: six entries, one per cell
      * (counted against the grid in `the bar and the padding that clears it`), and non-empty -- an
      * empty accessible name is worse than none, announced as "link" with nothing after it.
      *
@@ -138,10 +138,27 @@ describe('the admin nav', () => {
      * cannot see that.
      */
     const shorts = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
-    expect(shorts).toHaveLength(7)
+    expect(shorts).toHaveLength(6)
     for (const short of shorts) {
       expect(short.length, `"${short}" is an empty accessible name`).toBeGreaterThan(0)
     }
+  })
+
+  it('names the collection route "Image collection" and keeps every accessible name distinct', () => {
+    /*
+     * R4 renamed the album page. The `short` is the phone bar's accessible name, and the one
+     * collision the rename had to avoid is "Images" -- the image-generation route -- so the
+     * collection took "Photos", free since the chat-photos route merged away (this set's phase 2;
+     * the assertion below FAILS until that entry is gone). Two cells announcing the same name
+     * would make "Photos" ambiguous to a screen reader, so distinctness is pinned here
+     * rather than trusted to review. The count is derived, never hardcoded: the cell count is
+     * the other test's to hold.
+     */
+    expect(adminNavLinks).toContain(
+      "{ href: '/admin/nina', label: 'Image collection', short: 'Photos', icon: ImagesIcon },",
+    )
+    const shorts = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
+    expect(new Set(shorts).size, 'two cells share an accessible name').toBe(shorts.length)
   })
 
   it('renders every phone cell as one aria-hidden glyph plus one sr-only name', () => {
@@ -152,14 +169,14 @@ describe('the admin nav', () => {
      * because its classes are a literal but its content is JSX -- `classNames()` joins only the
      * `className="..."` literals and cannot carry the `{link.short}` part.
      *
-     * The span is ONE template, not seven literals: the cell lives inside `LINKS.map()`, so the
-     * source spells the sr-only name once and the seven rendered names are that template times
-     * the seven `short` strings -- counted, and held non-empty, in the accessible-names `it`
+     * The span is ONE template, not six literals: the cell lives inside `LINKS.map()`, so the
+     * source spells the sr-only name once and the six rendered names are that template times
+     * the six `short` strings -- counted, and held non-empty, in the accessible-names `it`
      * above. `toHaveLength(1)` is therefore the exact-fit form here: two spans would mean a
      * second cell template somewhere, zero means the bar lost its names.
      */
     const svgTags = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?>/g)].map((m) => m[0]!)
-    expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(7)
+    expect(svgTags, 'the bar no longer inlines one glyph per cell').toHaveLength(6)
     for (const tag of svgTags) {
       expect(tag, 'a glyph is not aria-hidden decor').toContain('aria-hidden="true"')
     }
@@ -169,17 +186,16 @@ describe('the admin nav', () => {
     expect(names, 'the cell template lost its sr-only accessible-name span').toHaveLength(1)
   })
 
-  it('inlines seven DISTINCT glyphs', () => {
+  it('inlines six DISTINCT glyphs', () => {
     /*
-     * The Album/Images/Photos trio is the hard part of an icon bar: three routes a reader tells
-     * apart by words alone ("Nina's album" / "Image Generation" / "Chat photos"), which is why
-     * they were never allowed to become two photo outlines that differ by a corner. Lucide's
-     * `images` (a stack) / `wand-sparkles` (how a photo is MADE) / `camera` (the photographs
-     * that were) are three different silhouettes; this holds the line, because a copy-pasted
-     * glyph body would pass the count above and fail here.
+     * The photograph pair is the hard part of an icon bar: two routes a reader tells apart by
+     * words alone ("Image collection" / "Image Generation"), which is why they were never
+     * allowed to become two picture outlines that differ by a corner. Lucide's `images` (a
+     * stack) / `wand-sparkles` (how a photo is MADE) are two different silhouettes; this holds
+     * the line, because a copy-pasted glyph body would pass the count above and fail here.
      */
     const glyphs = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
-    expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(7)
+    expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(6)
   })
 
   it('pins itself to the bottom of the phone viewport and pads HALF the home indicator', () => {
@@ -224,9 +240,10 @@ describe('the admin nav', () => {
   it('paints the active cell accent and names it with aria-current', () => {
     /*
      * `admin-bottom-bar-active-tab`: the owner's order, spelled — the active tab's icon in the
-     * same blue as the *"Manage the album"* link (`text-accent`, `app/admin/page.tsx`). The
-     * accent sits on the GLYPH's conditional — where its `lg:hidden` scopes it to the phone bar
-     * — and not on the link's own class string, so the `lg` sidebar's labels cannot inherit it;
+     * same blue as the *"Manage the album"* link (`text-accent`, `app/admin/page.tsx`) — the
+     * collection card's link, renamed "Manage the collection" by R4. The accent sits on the
+     * GLYPH's conditional — where its `lg:hidden` scopes it to the phone bar — and not on the
+     * link's own class string, so the `lg` sidebar's labels cannot inherit it;
      * `aria-current` is the accessible half, `UserPicker`'s precedent. Asserted on the source
      * because both live in JSX expressions, which `classNames()` does not join.
      */
@@ -244,9 +261,10 @@ describe('the bar and the padding that clears it', () => {
    * bar grows and the padding does not, the last card of every admin page sits under it, on the one
    * device this phase was written for.
    *
-   * The bar is ONE ROW again (`admin-bottom-bar-icons` R3): `grid-cols-7` at `h-14`, which is the
-   * shape the 4x2 text grid replaced when seven LABELS would not fit across -- 59.1px a cell is a
-   * 51.1px content box, exactly eight characters with nothing to spare, and a 24px glyph does not
+   * The bar is ONE ROW again (`admin-bottom-bar-icons` R3): `grid-cols-6` at `h-14`, which is the
+   * shape the 4x2 text grid replaced when seven LABELS would not fit across -- 59.1px a cell was a
+   * 51.1px content box then, exactly eight characters with nothing to spare; the six-cell row is
+   * wider (66.7px at `px-[7px]`), and a 24px glyph does not
    * measure characters. The matched shape is `TabBar`'s own formatted row with this bar's numbers
    * in it, so the class sorter produces it rather than breaking it -- verified against
    * `prettier-plugin-tailwindcss` 0.8.1 / `tailwindcss` 4.3.3, which sorted `grid-rows-*`
@@ -273,18 +291,19 @@ describe('the bar and the padding that clears it', () => {
     expect(clearance, 'the admin layout lost its --safe-bottom clearance on <main>').not.toBeNull()
   })
 
-  it('is one row of exactly seven cells', () => {
+  it('is one row of exactly six cells', () => {
     /*
      * The exact-fit assertion RETURNS from its relaxed form. It was `cols * rows === cellCount`
-     * and held while six routes sat in a 3x2 grid; seven made 7 prime, so the only uniform grid
-     * with no empty cell was one row of seven -- rejected for TEXT (59.1px a cell, a 51.1px
-     * content box, exactly the eight characters the ceiling allowed), which is how the bar went
-     * 4x2 with one empty cell and this guard was relaxed to "no blank row". Icons un-reject the
-     * one-row layout, so every cell is spoken for again and the fit is exact.
+     * and held while six routes sat in a 3x2 grid; the seventh route made the count prime, so the
+     * only uniform grid with no empty cell was one row of seven -- rejected for TEXT (59.1px a
+     * cell, a 51.1px content box, exactly the eight characters the ceiling allowed), which is how
+     * the bar went 4x2 with one empty cell and this guard was relaxed to "no blank row". Icons
+     * un-reject the one-row layout, and the surface merge took the bar back to six routes -- so
+     * every cell is spoken for again and the fit is exact, at the wider 414px / 6 = 69px cell.
      *
      * The row count is held by ABSENCE, on the class literals (see `classNames` for why not the
      * whole file, whose comments narrate the 4x2 as history): a bar that regains a second row
-     * needs the layout's reserve to grow with it, and a test that read only "at least seven
+     * needs the layout's reserve to grow with it, and a test that read only "at least six
      * cells" would pass while the last card sat under the bar.
      */
     expect(Number(bar![2]), 'the grid does not have a cell per route').toBe(cellCount)
@@ -311,8 +330,8 @@ describe('the bar and the padding that clears it', () => {
     // docs/design-brief.md:175 — "Minimum 44 × 44pt tap targets", and the iOS constraints win over
     // any conflicting design output (line 18). The bar is one row (no `grid-rows`, asserted
     // above), so a cell's height is the bar's height; a column is 414px -- the XS Max portrait
-    // width -- minus the row's own `px` dial (see `rowPad`) over its column count: 57.1px at
-    // `px-[7px]`, still past the minimum with 13px to spare.
+    // width -- minus the row's own `px` dial (see `rowPad`) over its column count: 66.7px at
+    // `px-[7px]`, still past the minimum with 22px to spare.
     expect(Number(bar![1]) * 4).toBeGreaterThanOrEqual(44)
     expect((414 - rowPad) / Number(bar![2])).toBeGreaterThanOrEqual(44)
   })

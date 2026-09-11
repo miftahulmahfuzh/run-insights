@@ -1,0 +1,855 @@
+# Phase 4: "Image collection" — rename + borderless grid
+
+**Plan set:** `IMAGE_COLLECTION_PLAN.md`
+**Analysis:** `20260910-154651-53D2_code_analyzer.md`
+**Satisfies:** R4 — the page reads "Image collection" everywhere it read "Nina's album", and the photo grid is borderless in the Photo-reference idiom
+**Depends on:** Phase 1, Phase 2 (both quoted as landed; Phase 3 runs CONCURRENTLY and none of its files are touched)
+**Difficulty:** NORMAL
+**Package:** `components/admin` (primary), `app/admin`
+
+---
+
+## Goal
+
+Every user-visible "Nina's album" becomes "Image collection" — nav label and phone short, dashboard
+card, page `h1`, the personality page's cross-reference, the PWA manifest description — with a
+short label that collides with nothing else on the bar. `explorer/PhotoGrid.tsx` is restyled to
+`PhotoReferencePicker`'s borderless recipe (one sheet, `gap-[3px]`, square tiles on a grey bed,
+selection as scale-down plus a check badge) with no change to what a tile reads, what an action
+does, or what the pager does. No behavior changes anywhere; no test of another phase's surface
+moves.
+
+## Interface Contract
+
+The reconciler reads this section to detect cross-phase conflicts. Be exact and exhaustive.
+
+**Deletes:** nothing.
+
+**Renames:** no symbol renames. Copy renames only:
+- `AdminNavLinks.tsx` LINKS entry for `/admin/nina`: `label: "Nina's album", short: 'Album'` -> `label: 'Image collection', short: 'Photos'`
+- `app/admin/page.tsx` collection card: h2 `Nina&rsquo;s album` -> `Image collection`; card copy `N photo(s)` -> `N album photo(s)`; link `Manage the album &rarr;` -> `Manage the collection &rarr;`
+- `app/admin/nina/page.tsx`: `h1` `Nina&rsquo;s album` -> `Image collection`; empty notice `The album is empty` -> `The album folder is empty`
+- `app/admin/personality/page.tsx:77`: `stayed behind on Nina&rsquo;s album` -> `stayed behind on the Image collection`
+- `lib/pwa.ts` `ADMIN_INSTALL.description`: `"Nina's album, her personality, the chat photos and the memory store."` -> `'The image collection, her personality and the memory store.'`
+- `components/admin/ImageGenTestPanel.tsx:191-194` (user-visible copy, taken because the analysis buckets this file as opportunistic doc): `lands in Chat photos` -> `lands in the Image collection&rsquo;s Media folder`
+
+**Creates:** `tests/admin.photoGrid.test.ts` (source-text suite over `components/admin/explorer/PhotoGrid.tsx`, mirroring `tests/admin.photoReference.test.ts`'s helpers)
+
+**Signature changes:** none OF THIS PHASE'S MAKING. `PhotoGrid`'s props are exactly as Phase 1
+delivered them (`photos, page, view: ExplorerView, selectedId, onSelect, hrefForPage` — Phase 1
+added `view` for the media empty state); the restyle keeps every one, and `FileExplorer`'s mount
+needs no edit.
+
+**Requires (from earlier phases):**
+- Phase 2 has deleted the Chat photos LINKS entry (`AdminNavLinks.tsx:107`) and `CameraIcon` —
+  the `Photos` short this phase gives `/admin/nina` is the one that entry frees, and the new
+  distinct-shorts assertion FAILS until the purge has landed.
+- Phase 2 has deleted `app/admin/photos/page.tsx` — the `ImageGenTestPanel` copy and the
+  `imagetest.ts` comment edits name it only as a merged-away surface.
+- Phase 1 has landed the `?view=media` arm and the `ExplorerPhoto` extension — `PhotoGrid`
+  renders media tiles through the unchanged props, so media rows must carry a non-empty
+  `filename` for the new `aria-label`. They do: Phase 1's page DERIVES it for every media row
+  (`${row.createdAt.toISOString().slice(0, 10)} ${row.id}` — date plus id, deliberately never a
+  pathname parse), so every arm renders a real accessible name and no fallback is needed here.
+- Phase 3 owns `SelectionPane`'s describe panel internals, `lib/nina/gateway.ts`,
+  `lib/nina/vision.ts`, `lib/admin/chatPhotoActions.ts` — untouched here.
+
+**Leaves alone (owned by others):**
+- `components/admin/PhotoReferencePicker.tsx` and `tests/admin.photoReference.test.ts` — read,
+  never edited (invariant 9). This phase's whole restyle lives in `explorer/PhotoGrid.tsx`.
+- `components/admin/explorer/SelectionPane.tsx`, `FolderTree.tsx`, `FileExplorer.tsx` — no edit.
+  The tree pane's `aria-label="Album folders"` (`FolderTree.tsx:89`) is deliberate: it names the
+  folder tree whose root folder is still "Album", not the page surface, so the rename does not
+  force it.
+- Any Server Action, any data read, `lib/nina/queries.ts` reads, the dashboard card's
+  `countNinaAvatars` read.
+- User QUOTES in comments (the repo's convention: verbatim quotes are records, never rewritten) —
+  `imagerecipe.ts:42-43,276`, `imageprefs.ts:384`, `queries.ts:943,3956,3980`,
+  `CharacterPanel.tsx:42`, `AdminNavLinks.tsx:14-16`, `AdminNav.tsx:46`, `schema.ts` runner quotes.
+- `.workflows/` residue and `docs/plans/*` — historical records.
+
+**Concurrency surface (reconciled with Phase 2):** this phase and Phase 2 both edit
+`components/admin/AdminNavLinks.tsx` and `tests/admin.shell.test.ts`; run Phase 2 first (the DAG
+has 2 → 4). The regions are disjoint by OWNER, verified line by line:
+Phase 2 owns the LINKS entry at `:107`, `CameraIcon` (`:320-337`), the purge comments
+(`:74`, `:71-75`, `:83-93`, `:100-106`), and the grid-cols/cell-count; this phase owns `:70`
+(label+short), the `:38-41` / `:58-60` / `:186` / `:295` comments, **and the `:249-253`
+`ImagesIcon` docstring — Phase 2 was told to leave it stale** (its trio wording names the
+post-rename labels only Phase 4 can write; between the phases it names a deleted `CameraIcon` in
+a comment, which is prose-stale, not build-broken). In `tests/admin.shell.test.ts`, Phase 2 owns
+the href array, both `toHaveLength(7)` → `6` moves, `toBe(7)` → `6`, the grid-cols-source
+arithmetic and the `:128-135` docstring; this phase owns the new distinct-shorts `it` and the two
+comment rewrites (`:172-180` — Phase 2 leaves the camera clause for THIS phase's rewrite — and
+`:224-232`). Both phases also touch `app/admin/page.tsx`: Phase 2 deletes the Chat photos card
+(`:117-132`, after this phase's `:100-115` album card — the ranges do not even shift each other)
+and its `countNinaChatPhotos` read; this phase edits only the album card. `app/admin/page.tsx`'s
+module docstring (`:27-30`) narrating the chat-photos card is a historical record — Phase 2 ruled
+it "leave it", so nobody edits it.
+
+## Files
+
+| File | Action | What changes |
+|---|---|---|
+| `components/admin/explorer/PhotoGrid.tsx` | modify | borderless restyle (whole tile markup + docstring); props, pager, empty state untouched |
+| `components/admin/AdminNavLinks.tsx` | modify | LINKS entry `:70` label+short; five stale-comment sites |
+| `app/admin/page.tsx` | modify | collection card h2, copy word, link text (`:100-115`) |
+| `app/admin/nina/page.tsx` | modify | `h1`, empty-album notice, header docstring rename note |
+| `app/admin/personality/page.tsx` | modify | one body-copy sentence (`:75-80`) |
+| `lib/pwa.ts` | modify | `ADMIN_INSTALL.description` (`:126`) |
+| `lib/admin/requireAdmin.ts` | modify | comment `:16` |
+| `lib/nina/imagetest.ts` | modify | comment `:24-27` |
+| `lib/db/schema.ts` | modify | comments `:1069-1071` + the filtered-reads list `:1123` (JS block comments only — no drizzle metadata, no migration) |
+| `components/nina/SessionRow.tsx` | modify | comment `:73-74` (docstring only; zero rendered output) |
+| `components/admin/ImageGenTestPanel.tsx` | modify | user-visible copy sentence (`:191-194`) |
+| `tests/admin.shell.test.ts` | modify | new distinct-shorts + rename-pin `it`; two comment blocks |
+| `tests/admin.photoGrid.test.ts` | create | source-text assertions mirroring the photo-reference recipe |
+
+## Implementation Steps
+
+Line numbers are as the tree stands at the base commit; Phases 1-2 shift lines only inside the
+files they restructure, and every replacement below is given as an exact old-string/new-string
+pair so it lands correctly regardless of shift.
+
+### Step 1: The rename in the nav — label, short, and the comments the rename stales
+**File:** `components/admin/AdminNavLinks.tsx:70` (entry), `:59`, `:39-40`, `:186`, `:249-252`, `:295` (comments)
+**Change:** The `/admin/nina` entry's pair. `Photos` is the short because it is free (Phase 2
+purged the chat-photos entry that owned it), it is the word an operator says for this page, and it
+does not collide with `Images` (image generation) — the collision invariant 10 names. The new
+distinct-shorts assertion in Step 10 is what pins that.
+
+**Code — the LINKS entry:**
+```tsx
+  { href: '/admin/nina', label: 'Image collection', short: 'Photos', icon: ImagesIcon },
+```
+
+**Code — the `short` docstring sentence (`:58-60`), which names the pair it edits together:**
+```
+ * renditions drifting: the sidebar's "Image collection" and the phone's "Photos" are the same
+ * route, and the two strings are still edited together.
+```
+
+**Code — the file header's `bg-accent-soft` sentence (`:38-41`), staled by THIS phase's restyle
+(the tiles no longer select with `bg-accent-soft`; `ChatPhotoGrid`, the other name it cited, is
+Phase 2's deletion and is dropped with it):**
+```
+ * branch fills the same rounded pill the hover treatment already drew, with `bg-accent-soft` and
+ * `text-ink` — and carries explicit `lg:hover:` twins of itself, because the
+```
+
+**Code — the sr-only JSX comment's last line (`:186`):**
+```
+               * "Photos" over a sidebar that says "Image collection".
+```
+
+**Code — `ImagesIcon`'s docstring (`:248-253`), rewritten post-purge (it must not reference
+`CameraIcon`, which Phase 2 deletes):**
+```tsx
+/**
+ * Image collection: a STACK of pictures — the photograph routes are still told apart by
+ * silhouette and not by words ("Image collection" / "Image Generation"), so this stays a stack
+ * while `WandSparklesIcon` below is how a photograph is MADE. Two different silhouettes, never
+ * two picture outlines that differ by a corner.
+ */
+```
+
+**Code — `WandSparklesIcon`'s docstring (`:295`):**
+```tsx
+/** Images: how a photograph is MADE — the wand, the other silhouette of the photograph pair. */
+```
+
+**Impact:** The phone bar announces "Photos" for `/admin/nina`; the sidebar reads "Image
+collection". No test asserts the old label except via Step 10's new pin. Do NOT touch `:74`,
+`:89-93`, `:100-106`, `:107`, `:320-337` — Phase 2's purge regions.
+
+### Step 2: The dashboard card
+**File:** `app/admin/page.tsx:100-115`
+**Change:** h2, one copy word, link text. The card's count stays `countNinaAvatars` — a data-read
+change is out of bounds (see Handoffs) — so the copy says "album photo(s)" to stay honest under
+the renamed heading while the Media folder's rows are not counted. The empty-case sentence
+("Empty — she is still using the committed photo.") stays: still exactly true when the album
+folder is empty.
+
+**Code:**
+```tsx
+        <Card className="p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Image collection</h2>
+          <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
+            {albumCount === 0
+              ? 'Empty — she is still using the committed photo.'
+              : `${albumCount} album photo${albumCount === 1 ? '' : 's'}, ${
+                  current ? 'one current' : 'none current'
+                }.`}
+          </p>
+          <Link
+            href="/admin/nina"
+            className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
+          >
+            Manage the collection &rarr;
+          </Link>
+        </Card>
+```
+
+**Impact:** None on reads. The page header's docstring (`:27-30`) narrates the chat-photos card's
+history — Phase 2 ruled it a historical record and left it (see the Concurrency surface note), so
+nobody edits it in this set.
+
+### Step 3: The page itself
+**File:** `app/admin/nina/page.tsx:10-13` (docstring), `:121` (h1), `:131` (empty notice)
+**Change:** h1 and the empty-album sentence; one docstring line recording the rename. The
+how-to body copy (`:122-126`) carries no surface name and stays. The notice keeps "album
+folder" because the sentence is about the Album folder's emptiness (`albumTotal` counts folder
+rows only) — the Media folder can be non-empty while it shows.
+
+**Code — docstring opening:**
+```tsx
+/**
+ * `/admin/nina` — the Image collection (R4's rename of F33 R23's album), still the file manager
+ * that round's R1 asked for: *"can we make it
+ * so that the in /admin/nina profile album, it looks like a file manager instead? this way i can
+ * upload nested folders, and make the photos much more structured and easier to maintain. i will
+ * put hundreds of profile pics in there."*
+```
+
+**Code — h1:**
+```tsx
+        <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Image collection</h1>
+```
+
+**Code — empty notice:**
+```tsx
+          The album folder is empty, so she is still showing the committed photo (
+          <code className="text-ink">{NINA_AVATAR_FALLBACK_SRC}</code>). Add a folder below and the
+          first photo you make hers becomes her face.
+```
+
+**Impact:** Copy only; Phase 1's `?view=media` arm and this header block do not intersect.
+
+### Step 4: The personality page's cross-reference
+**File:** `app/admin/personality/page.tsx:75-80`
+**Change:** The sentence that names where her photographs live.
+
+**Code:**
+```tsx
+        <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
+          Who she is, not what she looks like. Her relationship to you, every dial and the notes she
+          is handed verbatim. Her photographs stayed behind on the Image collection and what she
+          wears in them moved to Image Generation; this page is the row her system prompt is
+          assembled from.
+        </p>
+```
+
+**Impact:** Copy only.
+
+### Step 5: The PWA manifest description
+**File:** `lib/pwa.ts:126`
+**Change:** The analysis buckets this as a doc site, but it is a STRING, not a comment — the
+admin install prompt's `description`, user-visible — so it is renamed with the rest. The
+"chat photos" clause dies with the purged surface (Phase 2). `tests/pwa.install.test.ts` pins
+`shortName`, colors and icons but never `description`, so nothing moves there.
+
+**Code:**
+```ts
+  description: 'The image collection, her personality and the memory store.',
+```
+
+**Impact:** Manifest text only; no test reads this field.
+
+### Step 6: The borderless grid
+**File:** `components/admin/explorer/PhotoGrid.tsx` (whole file)
+**Change:** The tile markup moves to `PhotoReferencePicker`'s recipe
+(`components/admin/PhotoReferencePicker.tsx:151-193`), quoted here as it stands (invariant 9:
+never edited):
+- sheet: `<ul className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-[3px] overflow-hidden rounded-field">`
+- tile: `<li key={tile.key} className="relative aspect-square bg-ink-3/20">`
+- button: `className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset disabled:opacity-50"`
+- image: `cn('size-full object-cover transition-transform', tile.selected && 'scale-[0.9]')`
+- badge: `<span aria-hidden="true" className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-pill bg-ink text-[11px] font-bold text-card">&#10003;</span>`
+
+Decisions this phase owns (both asked for by the brief, both documented in the file header):
+1. **Filename label moves off the tile** into `aria-label` + `title`. The picker's sheet carries
+   no captions and the visible label under every tile is what broke the sheet look; the name is
+   not lost — it is the button's accessible name, it survives hover via `title`, and
+   `SelectionPane.tsx:151-152` prints it as its heading the moment a tile is selected. The old
+   header's "which file is this" answer is re-answered, not dropped.
+2. **The "Hers" ribbon becomes a corner badge** — top-left pill, the check badge's twin
+   (bottom-right), so one tile can wear both without collision. It stays real text because which
+   photograph is her face is information; because an `aria-label` OVERRIDES a button's subtree
+   text, the announcement spells it out instead (`aria-label` gains `— her current profile
+   picture` when `photo.isCurrent`).
+3. **Tile floor stays `minmax(88px,1fr)`,** the file manager's own density — the picker's
+   `minmax(92px,1fr)` is `PHOTO_REFERENCE_MIN_TILE_PX`, its own dial for its own surface.
+4. `isCurrent`/selection state, `thumbUrl ?? photo.url`, `loading="lazy"`, `decoding="async"`,
+   `draggable={false}`, `alt=""`, `aria-pressed`, the pager and the empty state are all kept.
+
+**Code — the complete replacement file** (props and empty state are Phase 1's, byte for byte — the
+`view` prop and the media-aware empty copy land in Phase 1 and MUST survive this restyle; only the
+tile markup, the docstring and the sheet classes are this phase's):
+```tsx
+'use client'
+
+import Link from 'next/link'
+
+import { TOUCH_ICON } from '@/components/admin/touch'
+import { ButtonLink, EmptyState } from '@/components/ui'
+import { cn } from '@/lib/cn'
+
+import type { ExplorerView } from '@/lib/admin/filetree'
+import type { ExplorerPageInfo, ExplorerPhoto } from './model'
+
+/**
+ * One folder's page of photographs.
+ *
+ * ── THE BORDERLESS SHEET IS `PhotoReferencePicker`'s RECIPE, BORROWED WHOLE ───────────────────
+ * R4: *"buat tampilan foto-fotonya ini lebih clean. buat supaya foto-fotonya ini borderless kaya
+ * di Photo reference di Image generation page."* So the grid is the picker's idiom
+ * (`components/admin/PhotoReferencePicker.tsx:151-193`), which R10 argued for and
+ * `tests/admin.photoReference.test.ts` pins THERE — this file mirrors it and that suite must stay
+ * green untouched. One sheet of touching squares: `gap-[3px]`, a single `overflow-hidden
+ * rounded-field` on the `<ul>`, `aspect-square` tiles on a `bg-ink-3/20` bed, no per-tile border,
+ * radius or padding; and a selection drawn as a slight inset (`scale-[0.9]`) plus a `bg-ink
+ * text-card` check badge rather than a coloured frame around a padded card. (`bg-ink`/`text-card`
+ * and not `bg-accent`: `components/ui/Button.tsx:46-54` measured white type on the cyan accent at
+ * near 2:1, well under WCAG's 4.5:1, where ink-on-card is ~14:1 and inverts correctly in dark
+ * mode.) `focus-visible:ring-inset` is what makes a focus ring visible at all inside a sheet whose
+ * corners are clipped by that one `overflow-hidden`. The tile floor stays `minmax(88px,1fr)` —
+ * this grid's own density, dialed when it was a file manager first — where the picker's
+ * `PHOTO_REFERENCE_MIN_TILE_PX` is its own dial for its own page.
+ *
+ * ── THE FILENAME LEFT THE TILE, AND WHERE IT WENT ────────────────────────────────────────────
+ * The sheet carries no captions, and a text label under every tile is what broke it. The name is
+ * not lost: it is the button's `aria-label` — the accessible name, the picker's
+ * `aria-label={tile.label}` is the precedent — and its `title`, so a pointing cursor still answers
+ * *"which file is this"*, and the selection pane prints it as its heading (`SelectionPane.tsx:151`)
+ * the moment a tile is tapped. `CircleFrame` moved to that pane for the same reason once: the pane
+ * is where questions about one photograph get answered.
+ *
+ * ── "HERS" IS A CORNER BADGE NOW ─────────────────────────────────────────────────────────────
+ * The ribbon was a full-width strip across the tile's bottom edge — a caption, in the idiom this
+ * sheet borrows. It becomes a small pill badge in the top-left corner, the check badge's twin
+ * (bottom-right), so one tile can wear both without collision. It stays real text, because which
+ * photograph is her face is information and not decoration. But an `aria-label` OVERRIDES a
+ * button's subtree text, so the visible badge alone would be silent to a screen reader — the
+ * label spells it out instead: `${photo.filename} — her current profile picture` when
+ * `photo.isCurrent`, the bare filename otherwise.
+ *
+ * ── THE GRID NEVER LOADS AN ORIGINAL ────────────────────────────────────────────────────────
+ * `photo.thumbUrl ?? photo.url` is the one expression that makes *"hundreds of profile pics"*
+ * survivable, and the fallback half of it is not defensive padding: album rows written before the
+ * thumbnail column existed have none, and the Media folder's rows (`nina_message_images`) have no
+ * thumbnail column at all, so those tiles load originals. `loading="lazy"` is the other half —
+ * fetched as tiles approach the viewport, which is what makes the page size a question about
+ * bytes rather than about layout.
+ *
+ * ── A PLAIN `<img>`, FOR THE REASON THIS REPO HAS ALREADY RULED ─────────────────────────────
+ * `components/nina/NinaPhotoGrid.tsx:56-58` rejects `next/image` for Blob-hosted photos outright —
+ * it would re-optimise finished files on a paid transform quota. `PhotoReferencePicker` makes the
+ * same call. The derived thumbnail is this repo's answer to image optimisation for these blobs,
+ * and it is written at upload time rather than bought per request.
+ */
+
+export function PhotoGrid({
+  photos,
+  page,
+  view,
+  selectedId,
+  onSelect,
+  hrefForPage,
+}: {
+  photos: readonly ExplorerPhoto[]
+  page: ExplorerPageInfo
+  /** Phase 1's: which collection this grid is. Only the EMPTY copy branches on it. */
+  view: ExplorerView
+  selectedId: string | null
+  onSelect: (id: string) => void
+  hrefForPage: (page: number) => string
+}) {
+  const first = (page.page - 1) * page.pageSize + 1
+  const last = Math.min(page.page * page.pageSize, page.total)
+  const lastPage = Math.max(1, Math.ceil(page.total / page.pageSize))
+
+  if (photos.length === 0) {
+    /* Phase 1's empty state, byte for byte — the media arm's copy is view-aware. */
+    const onFirstPage = page.page <= 1
+    return (
+      <EmptyState
+        title={
+          onFirstPage
+            ? view === 'media'
+              ? 'Nothing in Media yet'
+              : 'Nothing in this folder yet'
+            : 'Nothing on this page'
+        }
+        description={
+          onFirstPage
+            ? view === 'media'
+              ? 'Photographs from the conversation land here — hers and his, newest first.'
+              : 'Drop a folder from Explorer, or add photos with the buttons above.'
+            : 'This folder is not that long any more.'
+        }
+        action={
+          page.page > 1 ? (
+            /* `ButtonLink`, not a `Button` inside a `Link`: a <button> nested in an <a> is
+               invalid HTML and the barrel exports this exact component for this exact case. */
+            <ButtonLink href={hrefForPage(1)} size="md" variant="secondary">
+              Go to the first page
+            </ButtonLink>
+          ) : undefined
+        }
+      />
+    )
+  }
+
+  return (
+    <div>
+      {/*
+       * One sheet, one pair of rounded corners: `overflow-hidden rounded-field` sits HERE and
+       * nowhere else, so the `gap-[3px]` gutters read as hairlines cut into one surface. Every
+       * JSX comment in this file starts its continuation lines with `*` — the same
+       * load-bearing detail `tests/admin.photoReference.test.ts`'s `codeLines` records, so a
+       * comment can never satisfy (or trip) a source assertion.
+       */}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-[3px] overflow-hidden rounded-field">
+        {photos.map((photo) => {
+          const selected = photo.id === selectedId
+          return (
+            <li key={photo.id} className="relative aspect-square bg-ink-3/20">
+              <button
+                type="button"
+                onClick={() => onSelect(photo.id)}
+                aria-pressed={selected}
+                aria-label={
+                  photo.isCurrent
+                    ? `${photo.filename} — her current profile picture`
+                    : photo.filename
+                }
+                title={photo.filename}
+                className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted and
+                 * deliberately un-transformed; see the header. */}
+                <img
+                  src={photo.thumbUrl ?? photo.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className={cn(
+                    'size-full object-cover transition-transform',
+                    selected && 'scale-[0.9]',
+                  )}
+                />
+                {photo.isCurrent && (
+                  <span className="absolute top-1 left-1 rounded-pill bg-ink px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-card uppercase">
+                    Hers
+                  </span>
+                )}
+                {/*
+                 * `bg-ink text-card` and not `bg-accent`: see the header. `aria-hidden` because
+                 * `aria-pressed` on the button is already the announced state.
+                 */}
+                {selected && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-pill bg-ink text-[11px] font-bold text-card"
+                  >
+                    &#10003;
+                  </span>
+                )}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-rule pt-3">
+        {page.page > 1 ? (
+          <Link
+            href={hrefForPage(page.page - 1)}
+            className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
+            rel="prev"
+          >
+            &lsaquo; Newer
+          </Link>
+        ) : (
+          /* The disabled end of the pager keeps the same box, so the row does not resize and the
+             live control does not move under a thumb when the page changes. */
+          <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
+            &lsaquo; Newer
+          </span>
+        )}
+
+        <span className="text-[12px] font-semibold text-ink-2 tabular-nums">
+          {first}&ndash;{last} of {page.total}
+        </span>
+
+        {page.page < lastPage ? (
+          <Link
+            href={hrefForPage(page.page + 1)}
+            className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-accent')}
+            rel="next"
+          >
+            Older &rsaquo;
+          </Link>
+        ) : (
+          <span className={cn(TOUCH_ICON, 'px-2 text-[12px] font-semibold text-ink-3')}>
+            Older &rsaquo;
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+After writing the file, run the scoped prettier pass in Verification — the `top-1 left-1` /
+`rounded-pill bg-ink` orderings follow the sorted shapes the picker's own source proves, but the
+sorter is the authority and the tests below never assert order. Note the `selected` badge's JSX
+comment sits ABOVE the conditional, not inside it: an expression container cannot hold a comment
+element between `{selected && (` and the `<span>`, and the picker puts it there too.
+
+**Impact:** Visual only. No action fires differently (`onSelect` unchanged), no bytes change
+(`thumbUrl ?? photo.url` untouched), the pane's contract with `FileExplorer` is untouched. The
+pager's `border-t` survives — which is why the new test scopes its no-border assertion to the
+tile, not the file.
+
+### Step 7: The remaining comment/copy sites from the analysis's reference list
+**Files:** `lib/admin/requireAdmin.ts:16`, `lib/nina/imagetest.ts:24-27`, `lib/db/schema.ts:1069-1071`, `components/nina/SessionRow.tsx:73-74`, `components/admin/ImageGenTestPanel.tsx:191-194`
+**Change:** Comments only, except `ImageGenTestPanel` (user-visible copy — the sentence tells the
+operator where a test image lands, and the surface it names is purged). The runner quotes inside
+these blocks (`*"we must allow 'orphaned' photos…"*` etc.) are records and stay verbatim. The
+quoted-but-still-true sites — `imageprefs.ts:384`, `queries.ts:943,3956,3980`,
+`imagerecipe.ts:42-43,276`, `CharacterPanel.tsx:42` — are user quotes and stay (see Interface
+Contract).
+
+**Code — `lib/admin/requireAdmin.ts:14-16`:**
+```
+ * at all, so the checks in here and in the Route Handler are the only thing between a signed-in
+ * stranger and the Image collection.
+```
+
+**Code — `lib/nina/imagetest.ts:24-27`:**
+```
+ *   · "added to Chat photos" — the Image collection's Media folder, since that surface merged
+ *     away — is the selfie finisher in `lib/nina/imagerun.ts`, which writes the `nina_messages` +
+ *     generated-image pair that folder lists. So `purpose` is `'selfie'` and R12 needs no new
+ *     writer at all. A second writer of that pair would violate plan invariant 12.
+```
+
+**Code — `lib/db/schema.ts:1068-1070` (JS block comment inside the `messageId` column doc; no
+drizzle metadata, so no migration implications):**
+```
+ * is not a fact."* That is now false, and the reversal is the whole of R1. A chat photograph IS
+ * a fact: `finishSelfie` spends a model call and real money to make one, the Image collection's
+ * Media folder is a COLLECTION of them, and the operator replaces them by hand there. A
+```
+
+**Code — same file, the filtered-reads list at `:1123` (Phase 2 retired `listNinaChatPhotos`, so
+the trio it names is stale; the Media read replaced the listing):**
+```
+     * (`listNinaMessageImages`, `countNinaChatPhotos` — the reference picker's chat-side total,
+     * `listNinaMediaPhotos` + `countNinaMediaPhotos` — the Media view and its badge) skip it — one
+```
+
+**Code — `components/nina/SessionRow.tsx:73-74` (docstring only — nothing here renders):**
+```
+ * `nina_message_images.message_id` is `ON DELETE SET NULL` since R1, so they outlive the
+ * conversation and stay in the Image collection's Media folder. So the asymmetry between this
+```
+
+**Code — `components/admin/ImageGenTestPanel.tsx:191-195`:**
+```tsx
+        Sends the prompt below to the provider and reports whether it was allowed. It spends one
+        generation off today&rsquo;s cap, plus its caption, and the daily cap counts failures too. A
+        successful test lands in the Image collection&rsquo;s Media folder &mdash; along with a
+        caption bubble from Nina in the conversation, because a chat photo cannot exist without a
+        message to hang on.
+```
+
+**Impact:** None behavioral. `tests/admin.imagegenTest.test.ts` does not pin the panel's copy;
+`tests/db.schema.*` do not pin comment prose; `npm run db:check` reads drizzle metadata, which a
+JS comment cannot change.
+
+### Step 8: The new source-text suite for the restyled grid
+**File:** `tests/admin.photoGrid.test.ts` (new)
+**Change:** Mirror `tests/admin.photoReference.test.ts`'s helpers and assertions over
+`components/admin/explorer/PhotoGrid.tsx`. That suite is scoped to the picker BY ITS `read()`
+PATHS — deliberately, so this restyle never had to touch it — which is why the mirror is a new
+file and not an extension of it. Same rules as there: read the source as text (vitest is
+node-only, no jsdom), strip comment lines before negative assertions, never assert class ORDER.
+
+**Code — the complete file:**
+```ts
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+/**
+ * R4's borderless sheet, pinned where it landed: `components/admin/explorer/PhotoGrid.tsx`.
+ *
+ * `tests/admin.photoReference.test.ts` pins the same recipe over `PhotoReferencePicker.tsx` and is
+ * the reason THIS file exists rather than an extension of that one: that suite is scoped to the
+ * picker by its `read()` paths, deliberately, so the explorer could mirror the recipe without
+ * ever editing the picker (the image-collection set's invariant 9). The mirror is therefore pinned
+ * here, with the same helpers and the same reasons — a class list and an absent caption are
+ * invisible to `tsc` and to `eslint`, vitest runs `environment: 'node'` with no jsdom, so it is
+ * asserted here or not at all.
+ */
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const read = (path: string) => readFileSync(`${ROOT}${path}`, 'utf8')
+
+const grid = read('components/admin/explorer/PhotoGrid.tsx')
+
+/**
+ * Executable lines only. The rule is `scripts/check-client-secret-boundary.mjs`'s `isComment`, plus
+ * `{/*` for a JSX comment's opening line — which is why every continuation line inside a JSX
+ * comment in this component starts with `*`.
+ */
+function codeLines(source: string): string {
+  return source
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim()
+      return !(
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('{/*')
+      )
+    })
+    .join('\n')
+}
+
+/**
+ * Every class this component asks for: the `className="…"` literals and the string literals inside
+ * `className={cn(…)}`. Class ORDER is never asserted — `prettier-plugin-tailwindcss` owns it and a
+ * test that fights the formatter is a test that gets deleted (`tests/admin.shell.test.ts:20-27`).
+ */
+function classNames(source: string): string {
+  const attrs = [...source.matchAll(/className="([^"]*)"/g)].map((m) => m[1] ?? '')
+  const dynamic = [...source.matchAll(/className=\{cn\(([\s\S]*?)\)\}/g)].map((m) => m[1] ?? '')
+  return [...attrs, ...dynamic].join(' ')
+}
+
+/** One tile of the sheet, raw and comment-stripped. */
+const tileRaw = grid.slice(grid.indexOf('<li key={photo.id}'), grid.indexOf('</li>'))
+const tile = codeLines(tileRaw)
+
+/** The whole sheet, `<ul>` through `</ul>`. */
+const sheet = grid.slice(grid.indexOf('<ul'), grid.indexOf('</ul>'))
+
+const classes = classNames(grid)
+
+describe('the explorer grid is the Photo-reference idiom (R4)', () => {
+  it('is a client component', () => {
+    expect(grid.startsWith("'use client'")).toBe(true)
+  })
+
+  it('draws one borderless sheet: near-zero gutters, one rounded clipped surface', () => {
+    // The picker's recipe: the sheet carries the rounding and the clipping ONCE, the gutters are
+    // hairlines cut into it, and a tile is a square on a mid-grey bed that shows while bytes load.
+    expect(sheet).toContain('gap-[3px]')
+    expect(sheet).toContain('overflow-hidden rounded-field')
+    expect(tile).toContain('aspect-square')
+    expect(tile).toContain('bg-ink-3/20')
+    expect(tile).toContain('object-cover')
+  })
+
+  it('keeps no card chrome on a tile: no border, no chip, no padding, no accent wash', () => {
+    // Scoped to the tile, NOT the file: the pager below the sheet keeps its `border-t` rule and
+    // the empty state keeps its padded button, so the picker's whole-file `not.toContain('border')`
+    // is not available here.
+    expect(tile).not.toContain('border')
+    expect(tile).not.toContain('rounded-chip')
+    expect(tile).not.toContain('p-1')
+    expect(tile).not.toContain('bg-accent-soft')
+    expect(tile).not.toContain('hover:')
+  })
+
+  it('selects by scale-down plus a check badge, not a coloured frame', () => {
+    expect(tile).toContain('transition-transform')
+    expect(tile).toContain('scale-[0.9]')
+    expect(tile).toContain('rounded-pill bg-ink')
+    expect(tile).toContain('text-card')
+    expect(tile).toContain('&#10003;')
+    expect(tile).toContain('aria-hidden="true"')
+    expect(tile).toContain('aria-pressed={selected}')
+  })
+
+  it('still names every tile, announces its pressed state, and keeps the ring visible', () => {
+    // The filename moved OFF the tile and into the accessible name; the ring is inset because the
+    // sheet's own `overflow-hidden` would clip an outset ring.
+    expect(tile).toMatch(/aria-label=\{/)
+    expect(tile).toContain('photo.filename')
+    expect(tile).toContain('title={photo.filename}')
+    expect(tile).toContain('focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset')
+  })
+
+  it('says "Hers" only as the corner badge, and spells it into the announcement', () => {
+    // An aria-label overrides a button's subtree text, so the visible badge alone would be silent.
+    expect(tile).toContain('Hers')
+    expect(tile).toContain('her current profile picture')
+  })
+
+  it('loads lazily and un-optimised, and the byte source is untouched', () => {
+    expect(tile).toContain('loading="lazy"')
+    expect(tile).toContain('decoding="async"')
+    expect(tile).toContain('draggable={false}')
+    expect(tile).toContain('photo.thumbUrl ?? photo.url')
+    // `tileRaw`, not `tile`: the disable IS a comment, and the reason must travel with it.
+    expect(tileRaw).toContain('eslint-disable-next-line @next/next/no-img-element')
+    // `codeLines`, not the whole file: the header CITES `next/image` in order to record that this
+    // repo has already ruled against it for Blob-hosted photographs; the property asserted is that
+    // nothing IMPORTS it. Same rule as the picker's suite.
+    expect(codeLines(grid)).not.toContain('next/image')
+  })
+
+  it('carries no visible caption in the tile', () => {
+    // The old tile ended with a truncated `{photo.filename}` text node under the image. The match
+    // is `> {photo.filename}` — a text CHILD — so the `aria-label={photo.filename}` expression,
+    // which is `= {photo.filename}`, cannot satisfy or trip it.
+    expect(tileRaw).not.toMatch(/>\s*\{photo\.filename\}/)
+  })
+
+  it('reads nothing and writes nothing', () => {
+    const code = codeLines(grid)
+    expect(code).not.toContain('@/lib/db')
+    expect(code).not.toContain('@/lib/nina/queries')
+    expect(code).not.toContain("'use server'")
+    expect(code).not.toContain('Action(')
+    expect(code).not.toContain('useEffect')
+  })
+
+  it('keeps the pager and the empty state working', () => {
+    expect(grid).toContain('rel="prev"')
+    expect(grid).toContain('rel="next"')
+    expect(grid).toContain('<EmptyState')
+    expect(grid).toContain('<ButtonLink')
+  })
+})
+```
+
+**Impact:** New file only; nothing else reads it.
+
+### Step 9: Keep `tests/admin.photoReference.test.ts` green — by not touching it
+**File:** `tests/admin.photoReference.test.ts` — NO EDIT
+**Change:** None. It reads only `components/admin/photoReferenceModel.ts`,
+`components/admin/PhotoReferencePicker.tsx`, and (existsSync-guarded)
+`components/admin/ImageGenPanel.tsx`. None of the three is edited in this phase, so its green
+status is structural, not hoped-for. Run it in Verification to prove the negative.
+
+**Impact:** Invariant 9 holds by construction.
+
+### Step 10: The shell test — pin the rename, pin the distinct shorts
+**File:** `tests/admin.shell.test.ts` (insert a new `it` inside `describe('the admin nav')`, immediately after the accessible-names `it` that ends at `:145`; update two comment blocks)
+**Change:** The rename is pinned as one exact LINKS line (label, short, href, icon together), and
+the collision the rename had to avoid becomes a pinned property: every short on the bar is
+distinct. The count is DERIVED (`shorts.length`), never hardcoded — Phase 2 owns the 7-to-6 cell
+count and this assertion must not fight it.
+
+**Code — the new `it`:**
+```ts
+  it('names the collection route "Image collection" and keeps every accessible name distinct', () => {
+    /*
+     * R4 renamed the album page. The `short` is the phone bar's accessible name, and the one
+     * collision the rename had to avoid is "Images" -- the image-generation route -- so the
+     * collection took "Photos", free since the chat-photos route merged away (this set's phase
+     * 2; the assertion below FAILS until that entry is gone). Two cells announcing the same name
+     * would make "activate Photos" ambiguous to a screen reader, so distinctness is pinned here
+     * rather than trusted to review. The count is derived, never hardcoded: the cell count is
+     * the other test's to hold.
+     */
+    expect(adminNavLinks).toContain(
+      "{ href: '/admin/nina', label: 'Image collection', short: 'Photos', icon: ImagesIcon },",
+    )
+    const shorts = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
+    expect(new Set(shorts).size, 'two cells share an accessible name').toBe(shorts.length)
+  })
+```
+
+**Code — the distinct-glyphs comment (`:173-180`), rewritten for the post-purge pair (the names
+it quoted staled from BOTH the purge and the rename; the `toHaveLength` below it stays Phase 2's
+to adjust):**
+```ts
+    /*
+     * The photograph pair is the hard part of an icon bar: two routes a reader tells apart by
+     * words alone ("Image collection" / "Image Generation"), which is why they were never
+     * allowed to become two picture outlines that differ by a corner. Lucide's `images` (a
+     * stack) / `wand-sparkles` (how a photo is MADE) are two different silhouettes; this holds
+     * the line, because a copy-pasted glyph body would pass the count above and fail here.
+     */
+```
+
+**Code — the active-cell comment (`:225-232`), quoting the ruling verbatim and annotating the
+link's current text:**
+```ts
+    /*
+     * `admin-bottom-bar-active-tab`: the owner's order, spelled — the active tab's icon in the
+     * same blue as the *"Manage the album"* link (`text-accent`, `app/admin/page.tsx`) — the
+     * collection card's link, renamed "Manage the collection" by R4. The accent sits on the
+     * GLYPH's conditional — where its `lg:hidden` scopes it to the phone bar — and not on the
+     * link's own class string, so the `lg` sidebar's labels cannot inherit it; `aria-current` is
+     * the accessible half, `UserPicker`'s precedent. Asserted on the source because both live in
+     * JSX expressions, which `classNames()` does not join.
+     */
+```
+
+**Impact:** Green only after Phase 2's purge (the `Photos` short must be unique). The href array,
+`toHaveLength(7)`, and grid-cols assertions are NOT touched here — Phase 2 owns them.
+
+## Verification
+
+**Build:**
+```
+npm run typecheck && npm run lint
+```
+**Tests:**
+```
+npx vitest run tests/admin.photoGrid.test.ts tests/admin.shell.test.ts tests/admin.photoReference.test.ts tests/pwa.install.test.ts tests/admin.imagegenTest.test.ts
+npm run test
+```
+**Formatting (scoped — never repo-wide `npm run format`):**
+```
+npx prettier --write components/admin/explorer/PhotoGrid.tsx tests/admin.photoGrid.test.ts tests/admin.shell.test.ts components/admin/AdminNavLinks.tsx app/admin/page.tsx app/admin/nina/page.tsx app/admin/personality/page.tsx lib/pwa.ts lib/admin/requireAdmin.ts lib/nina/imagetest.ts lib/db/schema.ts components/nina/SessionRow.tsx components/admin/ImageGenTestPanel.tsx
+```
+**Manual check:** `/admin/nina` — header reads "Image collection"; the grid is one clipped sheet
+of touching squares, tiles dim on selection with a bottom-right check and the current face's tile
+wears a top-left "Hers" pill; keyboard Tab draws an inset ring; the filename still shows in the
+selection pane and on hover; the pager still pages. `/admin` card reads "Image collection" /
+"Manage the collection". The phone bar announces the cell as "Photos". `npx drizzle-kit check`
+(or `npm run db:check`) still passes — the schema edit is a JS comment.
+
+**Exit criteria:** The page reads "Image collection" in the nav (sidebar label + phone
+accessible name), the dashboard card, the page `h1` and the personality page's cross-reference;
+`grep -rn "Nina.s album" app components lib --include='*.tsx' --include='*.ts'` returns only
+verbatim user quotes and historical `.workflows`/`docs/plans` records; the grid is borderless in
+the picker's idiom; `tests/admin.photoReference.test.ts` is untouched and green; suite + lint +
+typecheck pass.
+
+## Handoffs
+
+- **Phase 2** — purge-adjacent comment sites it owns and edits: `AdminNavLinks.tsx` `:74`, `:71-75`,
+  `:83-93` (the Images/"Photos" adjacency note), `:100-106` (the "named for the conversation"
+  comment). Also Phase 2's: the LINKS entry `:107`, `CameraIcon` `:320-337`, the shell test's href
+  array and cell counts. `app/admin/page.tsx:27-30` is left by BOTH phases (Phase 2 ruled it a
+  historical record). This phase's Step 10 new `it` FAILS until Phase 2's purge lands — that is
+  the sequencing guard, not a bug, and the DAG (2 → 4) orders it.
+- **Deliberately not done, and by nobody:** the dashboard card still counts Album-folder rows
+  only (`countNinaAvatars`), so under the "Image collection" heading it does not count the Media
+  folder. Saying "album photo(s)" keeps it honest; making it count media would be a data-read
+  change no phase in this set owns. If the owner wants the union count, it is a new requirement,
+  not this set's residue.
+- **Phase 3 (concurrent, no dependency):** nothing. Its files
+  (`SelectionPane` internals, `lib/nina/gateway.ts`, `lib/nina/vision.ts`,
+  `lib/admin/chatPhotoActions.ts`) are untouched; the pane's filename heading
+  (`SelectionPane.tsx:151`) that Step 6's decision leans on is today's code and stays.
+
+## Rollback
+
+`git revert` of this phase's commit(s) on `feature/image-collection` restores the ribbon, the
+card-chip tiles, the "Nina's album" strings and the old manifest description in one move. No
+data, no schema, no migration, no cross-phase coupling: every edit is markup or copy in files no
+other phase's logic imports by symbol (the one shared-file overlap with Phase 2 is comment/entry
+regions the reconciler has already been told about, and a revert of only this phase's hunks
+restores them cleanly).

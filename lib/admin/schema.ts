@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { chatPhotoDescriptionField } from '@/lib/admin/chatPhotoSchema'
 import {
   NINA_FILENAME_MAX_CHARS,
   NINA_FOLDER_FORBIDDEN_RE,
@@ -82,6 +83,25 @@ export const cropWriteSchema = z.object({
   y: z.number().int().min(-NINA_CROP_MAX_ABS_OFFSET).max(NINA_CROP_MAX_ABS_OFFSET),
 })
 export type CropWrite = z.infer<typeof cropWriteSchema>
+
+/**
+ * **"Rewrite what she can see in one of her album photographs."** R3 — the album's
+ * `nina_avatars.description` joins the media side's in being hand-editable, and this is the shape
+ * check for it. The bounds are `chatPhotoDescriptionField`'s, imported rather than re-spelled: the
+ * two tables' descriptions are one kind of sentence (a witness statement, ≤ 2000 characters,
+ * `lib/admin/chatPhotos.ts`'s measured ceiling) reaching the same prompt, and a normalizer that
+ * disagreed between them would be a difference with no reason.
+ *
+ * The id is `avatarIdSchema` and not the chat-photo one because the tables mint their ids from the
+ * same `newId()` but validate them against their own RE — the same one-definition rule
+ * `cropWriteSchema` follows one block up. Existence and ownership are the action's job.
+ */
+export const avatarDescriptionSchema = z.object({
+  id: avatarIdSchema,
+  description: chatPhotoDescriptionField,
+})
+
+export type AvatarDescriptionInput = z.infer<typeof avatarDescriptionSchema>
 
 /**
  * What the browser reports after a successful PUT. Every field is checked, including the two the

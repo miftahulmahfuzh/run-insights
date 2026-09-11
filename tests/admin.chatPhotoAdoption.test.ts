@@ -15,9 +15,8 @@ import { chatPhotoSetAvatarSchema, type ChatPhotoSetAvatarInput } from '@/lib/ad
  * The properties, in the order they would hurt if they were wrong:
  *
  *   1. **Every guard fires before any blob call and before any row write.** `requireAdmin` first;
- *      then the owner-scoped re-read; then the `kind = 'generated'` and reference-row refusals —
- *      the same two guards Replace and Remove enforce, because an id for one of HIS uploads or for
- *      a re-share reaches this action exactly as it reaches those.
+ *      then the owner-scoped re-read; then the reference-row refusal (the kind refusal is lifted
+ *      with the merge — his uploads are adoptable now).
  *   2. **Re-adoption does not re-copy.** The album row carries `source_key =
  *      'chat-photo:<imageId>'`, the same constraint-backed idempotence the folder upload uses: a
  *      second "Set as her profile picture" finds the existing row BEFORE any bytes move and just
@@ -295,7 +294,7 @@ describe('setChatPhotoAsAvatarAction — the fresh adoption', () => {
 
     await actions.setChatPhotoAsAvatarAction(FRAMED)
 
-    expect(revalidatePath).toHaveBeenCalledWith('/admin/photos')
+    // One revalidate: the constant and the page route are the same path since the merge.
     expect(revalidatePath).toHaveBeenCalledWith('/admin/nina')
   })
 
@@ -324,9 +323,12 @@ describe('setChatPhotoAsAvatarAction — the fresh adoption', () => {
     fake.enqueue([{ id: AVATAR_ID }]) // setNinaAvatarDescription RETURNING
     await afterCallbacks[0]?.()
 
-    expect(describeNinaImages).toHaveBeenCalledWith([
-      { blobUrl: adoptedUrl, pathname: adoptedPathname },
-    ])
+    /* R3: the adopted row is a photograph of HERS, so the deferred describe carries the self
+     * witness — `describeSubjectForSide('hers')`, the same subject the album button passes. */
+    expect(describeNinaImages).toHaveBeenCalledWith(
+      [{ blobUrl: adoptedUrl, pathname: adoptedPathname }],
+      { subject: 'self' },
+    )
     expect(fake.queries.some((query) => query.sql.includes('set "description"'))).toBe(true)
   })
 })
@@ -372,14 +374,20 @@ describe('setChatPhotoAsAvatarAction — the guards, before any bytes move', () 
     expect(revalidatePath).not.toHaveBeenCalled()
   })
 
-  it('refuses HIS upload with the same sentence family as Replace', async () => {
-    fake.enqueue([imageRow({ kind: 'upload' })])
+  it('adopts one of HIS uploads — the kind refusal is lifted (R1)', async () => {
+    // Same fresh-adoption sequence as the generated fixture, one column different: kind. The
+    // copy is kind-blind — `avatarExtFor` reads the container, nothing reads the side.
+    fake.enqueue([imageRow({ kind: 'upload' })]) // getNinaMessageImage
+    fake.enqueue([]) // getNinaAvatarBySourceKey — not adopted yet
+    fake.enqueue([avatarRow()]) // insertNinaAvatars RETURNING
+    fake.enqueue([{ id: AVATAR_ID }]) // updateNinaAvatarCrop RETURNING
+    fake.enqueue([avatarRow()]) // setCurrentNinaAvatar's pre-read
 
     const result = await actions.setChatPhotoAsAvatarAction(FRAMED)
 
-    expect(result.ok).toBe(false)
-    expect(fake.queries).toHaveLength(1)
-    expect(put).not.toHaveBeenCalled()
+    expect(result).toEqual({ ok: true, id: AVATAR_ID })
+    expect(put).toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalled()
   })
 
   it('refuses a reference row — a re-share is not a photograph of its own', async () => {

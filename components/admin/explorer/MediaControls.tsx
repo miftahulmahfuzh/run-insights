@@ -9,7 +9,11 @@ import { removeChatPhotoAction, replaceChatPhotoAction } from '@/lib/admin/chatP
 import { uploadChatPhoto } from './chatPhotoUpload'
 
 /**
- * Replace and Remove, for one of Nina's chat photographs. R2's two per-photo verbs.
+ * Replace and Remove, for one row of the Media folder — the purged `/admin/photos` rail's
+ * `ChatPhotoControls`, migrated with its fragment idiom intact: the two buttons are FRAGMENT
+ * children so the selection pane's single icon row is their flex parent, the hidden input rides
+ * along invisibly, and the inline messages carry `basis-full` so a flex-wrap parent pushes them
+ * onto their own line under the icons instead of squeezing them between buttons.
  *
  * ── NO CONFIRMATION, AND THAT IS THE REQUIREMENT ────────────────────────────────────────────
  * *"i am the only one using this app, no need for all these bullshit confirmation"*. Remove calls
@@ -18,30 +22,32 @@ import { uploadChatPhoto } from './chatPhotoUpload'
  * `busy` state below exists only to stop a double-click firing two uploads, which is a different
  * thing entirely.
  *
- * ── PROPS ARE TWO STRINGS AND A CALLBACK ON PURPOSE ─────────────────────────────────────────
- * Phase 2 owns the photo model and this component deliberately does not read it. A prop rename over
- * there cannot break this file, and this file cannot constrain phase 2's card shape.
+ * ── BOTH VERBS WORK ON BOTH KINDS ───────────────────────────────────────────────────────────
+ * The kind refusal the old rail's actions carried is lifted (`replaceChatPhotoAction`'s docstring
+ * has the argument); the reference refusal is not — a row that re-shows a photograph living
+ * elsewhere answers with its exact sentence, inline here.
  *
  * ── `note` GOES UP, NOT DOWN ────────────────────────────────────────────────────────────────
  * A removed photograph whose Blob object is still referenced by another row keeps its bytes in the
  * store, and the action says so. `ok` is true and the operation did what was asked; the operator
- * gets the sentence anyway (the phase plan's D5). But this rail unmounts the instant
- * `revalidatePath`'s RSC payload arrives without the removed row, so a note rendered HERE would be
- * destroyed before it could be read. `onRemoved(note)` hands it to `ChatPhotoGrid`, which does not
- * unmount — the seam phase 2 wired end to end for exactly this. Replace does not unmount anything,
- * so its note stays local.
+ * gets the sentence anyway. But this pane unmounts the instant `revalidatePath`'s RSC payload
+ * arrives without the removed row, so a note rendered HERE would be destroyed before it could be
+ * read. `onRemoved(note)` hands it to `FileExplorer`, which does not unmount. Replace does not
+ * unmount anything, so its note stays local.
  *
  * ── NO `router.refresh()` ───────────────────────────────────────────────────────────────────
  * Next 16's Server Actions guide: *"When `updateTag`, `revalidatePath`, or `refresh` runs, Next.js
  * re-renders the current route server-side and includes a newly rendered RSC Payload in the action's
  * response, so the page reflects the change in the same roundtrip."* Every action here ends with
- * `revalidatePath(ADMIN_CHAT_PHOTOS_PATH)`, so the grid updates with no second request.
+ * `revalidatePath(ADMIN_CHAT_PHOTOS_PATH)` — `/admin/nina` since the merge — so the grid updates
+ * with no second request.
  */
-export function ChatPhotoControls({
+export function MediaControls({
   userId,
   photoId,
   onRemoved,
 }: {
+  /** The signed-in admin's id, from the server prop chain — it builds the Blob pathname. */
   userId: string
   photoId: string
   /** Called on a successful remove, carrying the action's `note` (`null` when there is none). */
@@ -92,15 +98,9 @@ export function ChatPhotoControls({
   return (
     <>
       {/*
-       * R1: icons, no text — the verbs live in `aria-label`/`title`, the destructive red stays on
+       * Icons, no text — the verbs live in `aria-label`/`title`, the destructive red stays on
        * the trash, and `loading` keeps each square box while its dots run. `w-11 px-0` squares the
-       * `md` button: 44 px of tap target either way.
-       *
-       * R4: the two buttons are a FRAGMENT, so the rail's single icon row is their flex parent —
-       * they are row siblings of the eye, brush and person toggles, not a stacked column of their
-       * own. The hidden input rides along invisibly, and the inline messages below carry
-       * `basis-full`, which is what makes a flex-wrap row push them onto their own full-width line
-       * under the icons instead of squeezing them between buttons.
+       * `md` button: 44 px of tap target either way — the pane's own `RAIL_BUTTON` idiom.
        */}
       <Button
         type="button"

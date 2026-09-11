@@ -190,8 +190,9 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
       <p className="mb-6 max-w-[70ch] text-[13px] font-medium text-ink-2">
         Sends the prompt below to the provider and reports whether it was allowed. It spends one
         generation off today&rsquo;s cap, plus its caption, and the daily cap counts failures too. A
-        successful test lands in Chat photos &mdash; along with a caption bubble from Nina in the
-        conversation, because a chat photo cannot exist without a message to hang on.
+        successful test lands in the Image collection&rsquo;s Media folder &mdash; along with a
+        caption bubble from Nina in the conversation, because a chat photo cannot exist without a
+        message to hang on.
       </p>
 
       {dirty && (
