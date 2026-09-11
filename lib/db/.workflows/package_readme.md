@@ -1,7 +1,8 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-10
+**Last Updated**: 2026-09-12 (compacted from 1,098 lines; every claim re-verified against the tree
+and against production — see Notes for the documentation history)
 
 ## Overview
 
@@ -14,7 +15,8 @@ It is a *declaration-plus-access* package with one deliberate asymmetry worth kn
 go looking for a function: `schema.ts` declares tables for the whole product, including features
 whose queries live elsewhere, while `queries.ts` covers only the run / extraction / insight /
 share domain. Nina's reads and writes live in `lib/nina/queries.ts` against tables declared here —
-`lib/db/queries.ts` touches no `nina_*` table at all.
+`lib/db/queries.ts` touches no `nina_*` table at all — and `app_settings`' reader is
+`lib/llm/textModel.ts`.
 
 **Key Responsibilities:**
 
@@ -40,7 +42,8 @@ export * from './schema'
 `DATABASE_URL` is a loud boot crash rather than an `undefined` that fails on the first production
 query. The instance is memoised on `globalThis.__runInsightsDb`, which serves two purposes: Next's
 dev-mode module reloading does not accumulate clients, and a test can install a recording fake by
-seeding that key before the first import.
+seeding that key before the first import. Set `DRIZZLE_LOG=1` to make the driver log every SQL
+statement it sends.
 
 Two deliberate choices are documented in the file and both are load-bearing:
 
@@ -59,9 +62,10 @@ The URL must be the **pooled** one (`-pooler` in the host). `DATABASE_URL_UNPOOL
 
 ### `schema.ts` — the whole database
 
-`ROADMAP_v0.1.0.md` §4.3 is authoritative for every column; `RECONCILIATION_v0.1.0.md` amends it in
-six places and each amendment is marked with its ruling (R-1, R-5, R-7, R-8, R-9, R-11, R-12,
-R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliation pair wins.
+The v0.1.0 contract docs (`ROADMAP_v0.1.0.md` §4.3 for every column; `RECONCILIATION_v0.1.0.md`)
+are retired — the rulings survive in `.workflows/plan/nina-chatbot/RECONCILIATION_RULINGS.md`, and
+each amendment is marked in `schema.ts` with its ruling (R-1, R-5, R-7, R-8, R-9, R-11, R-12,
+R-13, R-22, R-28 — ten in all). Where this file and a feature plan disagree, the rulings win.
 
 #### Table inventory
 
@@ -81,7 +85,7 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `records` | `records` | Current personal-best value per record key | PK `(user_id, key)` |
 | `badges` | `badges` | Append-only badge award ledger | PK `(user_id, key, dedupe_key)`, `badges_user_run_idx` |
 | `shares` | `shares` | Public share-page credential for a run | PK `token`, `shares_run_id_active_unq` (partial) |
-| `ninaTurns` | `nina_turns` | Audit/job row for every Nina model call | `nina_turns_user_created_idx` |
+| `ninaTurns` | `nina_turns` | Audit/job row for every Nina model call (soft-delete column `deleted_at`) | `nina_turns_user_created_idx` |
 | `ninaChatSessions` | `nina_chat_sessions` | The conversation's partition — one row per topic he started | `nina_chat_sessions_user_created_idx` |
 | `ninaMessages` | `nina_messages` | One bubble of the runner↔Nina conversation | `nina_messages_user_seq_idx`, `nina_messages_user_unread_idx` (partial), `nina_messages_reply_to_idx`, `nina_messages_user_run_idx`, `nina_messages_session_seq_idx`, `nina_messages_user_session_runner_idx` (partial) |
 | `ninaMessageImages` | `nina_message_images` | One image attached to a message, plus where its bytes came from | `nina_message_images_message_idx`, `nina_message_images_user_created_idx`, `nina_message_images_user_content_hash_idx` (partial) |
@@ -92,7 +96,8 @@ R-22). Where this file and a feature plan disagree, the roadmap-plus-reconciliat
 | `ninaAvatars` | `nina_avatars` | Nina's photo album: folder, crop transform, thumbnail, dedupe key | `nina_avatars_user_current_unq` (partial), `nina_avatars_user_created_idx`, `nina_avatars_user_folder_created_idx`, `nina_avatars_user_source_key_unq` |
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
 | `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field | PK `user_id` |
-| `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, the chosen photo reference | PK `user_id` |
+| `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
+| `appSettings` | `app_settings` | Operator decisions persisted without a redeploy — first key `text_model`, read by `lib/llm/textModel.ts` | PK `key` |
 | `pushSubscriptions` | `push_subscriptions` | Web Push subscription per browser endpoint | `push_subscriptions_endpoint_unq`, `push_subscriptions_user_idx` |
 
 #### Schema-wide conventions
@@ -124,11 +129,12 @@ Clock-time-without-date uses `time()` and compares as a string. The Auth.js colu
 omit `withTimezone`, consistent with keeping that block verbatim.
 
 **No `pgEnum` anywhere.** Constrained columns are `text().$type<Union>()`, so adding a member is a
-TypeScript change and not a migration. The unions are exported alongside the tables:
-`AdapterAccountType`, `Sex`, `ExtractionStatus`, `PhotoKind`, `RunIntent`, `RunSource`,
-`InsightScope`, `NinaTurnKind`, `NinaTurnStatus`, `NinaRole`, `NinaMessageSource`, `NinaImageKind`,
-`NinaMemorySource`, `NinaPromiseMetric`, `NinaFactCategory`, `NinaAvatarSource`,
-`NinaSessionTitleSource`. `badges.key`, `records.key`, `nina_turns.trigger`/`error_code`,
+TypeScript change and not a migration. The exported unions are `Sex`, `ExtractionStatus`,
+`PhotoKind`, `RunIntent`, `RunSource`, `InsightScope`, `NinaTurnKind`, `NinaTurnStatus`,
+`NinaRole`, `NinaMessageSource`, `NinaImageKind`, `NinaMemorySource`, `NinaPromiseMetric`,
+`NinaPromiseReward`, `NinaFactCategory`, `NinaAvatarSource` and `NinaSessionTitleSource`
+(`AdapterAccountType`, the `account.type` union, is deliberately not exported — nothing outside
+the file narrows it). `badges.key`, `records.key`, `nina_turns.trigger`/`error_code`,
 `nina_shortcuts.kind`, `nina_tuning.relationship` and `nina_image_prefs.reference_source` are left
 as plain `text` pointing at an external catalog, for the same "adding a member is not a migration"
 reason taken one step further — `relationship`'s catalog is `NINA_RELATIONSHIPS` in
@@ -143,24 +149,24 @@ happens on read in `lib/nina/queries.ts`, where an unrecognised value is re-deri
 rejected. Their neighbours `nina_tuning.notes` and `nina_image_prefs.wardrobe` / `.venue` /
 `.time_of_day` / `.notes` are not catalog pointers at all: they are free operator text, `NOT NULL`
 with `''` as the empty value, because "no override" and "not set" are the same fact.
-(`nina_tuning.wardrobe` was one of them until F41 R3 moved the wardrobe to `nina_image_prefs`,
-where it is free operator text on exactly the same terms.)
 
-**Cascade is the default for ownership FKs**, with three documented exceptions: `badges.run_id` is
+**Cascade is the default for ownership FKs**, with documented exceptions: `badges.run_id` is
 `set null` (R-22 — "a badge is a fact about the past; deleting the run that earned it must not
 delete the history that it happened"), `nina_messages.reply_to_id` / `run_id` are `set null` so
 a deleted parent degrades a quote bubble or run card instead of deleting conversation, and
 `nina_message_images.source_avatar_id` / `source_image_id` are `set null` so deleting the original
-photograph leaves the copy holding the picture rather than losing it (F37 — see the P1-DB-A003 note).
-`nina_messages.turn_id` carries **no** FK at all, because an audit pointer must not be able to block
-a delete, and `nina_image_prefs.reference_source` / `reference_id` carry none either — the chosen
-photograph lives in `nina_avatars` *or* `nina_message_images`, and no single foreign key can point
-at one of two tables. Nor would one be wanted: a cascade would delete a whole preferences row
-because one photograph was deleted. `resolveNinaPhotoReference` in `lib/nina/queries.ts` is where a
-dangling id becomes `null` and the generation degrades to unanchored. One cascade is not a default
-but a stated requirement: `nina_messages.session_id` →
-`nina_chat_sessions.id`, which chains through `nina_message_images.message_id` so removing a session
-takes its messages and their image rows in one `DELETE`.
+photograph leaves the copy holding the picture rather than losing it (F37).
+`nina_message_images.message_id` is `set null` too (`0013_fixed_serpent_society`): deleting a
+bubble leaves its photograph rows in place rather than destroying them — see the session-removal
+gotcha for the consequence. `nina_messages.turn_id` carries **no** FK at all, because an audit
+pointer must not be able to block a delete, and `nina_image_prefs.reference_source` /
+`reference_id` carry none either — the chosen photograph lives in `nina_avatars` *or*
+`nina_message_images`, and no single foreign key can point at one of two tables. Nor would one be
+wanted: a cascade would delete a whole preferences row because one photograph was deleted.
+`resolveNinaPhotoReference` in `lib/nina/queries.ts` is where a dangling id becomes `null` and the
+generation degrades to unanchored. One cascade is not a default but a stated requirement:
+`nina_messages.session_id` → `nina_chat_sessions.id`, so removing a session takes its messages in
+one `DELETE` — and there the chain **stops**, because the images' FK is `set null`.
 
 **Unique indexes are how invariants are enforced.** `shares_run_id_active_unq` (partial, `where
 revoked_at is null`) is the stated precedent, and later tables cite it by name: the alternative to a
@@ -187,34 +193,42 @@ place): `run_splits`, `run_zones`, `records`, `badges`, `nina_memory_slots`, `ni
 (untyped on purpose, so adding a job field is not a migration) and `nina_memory_slots.value`
 (`NinaSlotValue`).
 
+**`app_settings` is the escape hatch for values that are decisions rather than infrastructure.**
+`key` is `text` and the vocabulary of keys is spelled where they are read; `value` is `text` and
+every reader coerces or refuses it, so a hand-run SQL edit degrades instead of breaking a turn.
+
 #### Row types
 
-Every table re-exports its inferred types — `User`, `Profile`/`NewProfile`, `Run`/`NewRun`,
-`NinaAvatar`/`NewNinaAvatar`, `NinaFolder`/`NewNinaFolder`, and so on. Import these rather than
-re-deriving `$inferSelect` at a call site. Four naming carve-outs, all `…Row`-suffixed. The push
-row is `PushSubscriptionRow`, not `PushSubscription`, because the latter is a DOM lib global that
-client code uses by that exact name. `NinaTuningRow` and `NinaImagePrefsRow` are suffixed because
-`NinaTuning` and `NinaImagePrefs` are the *model* types in `lib/nina/tuning.ts` and
-`lib/nina/imageprefs.ts` — nested and coerced, and what every consumer actually holds; the flat,
-unvalidated storage shapes should be named only by `lib/nina/queries.ts`. `NinaShortcutRow` /
-`NewNinaShortcutRow` carry the suffix for the same reason — the raw row is not the shape callers
-want, because `kind` is bare `string` here. That table has **three** names across three layers and
-no duplication: `NinaShortcutRow` (this file, the drizzle row), `NinaShortcutRecord`
-(`lib/nina/queries.ts`, the same fields with `kind` narrowed to the union), and
-`NinaShortcutMatchable` (`lib/nina/shortcuts.ts`, the structural minimum the matcher needs — a
-subset the record satisfies with no mapping step).
+Every app table re-exports its inferred types — `User`, `Profile`/`NewProfile`, `Run`/`NewRun`,
+`NinaAvatar`/`NewNinaAvatar`, `NinaFolder`/`NewNinaFolder`, and so on (the three Auth.js adapter
+tables export none). Import these rather than re-deriving `$inferSelect` at a call site. Six
+families are `…Row`-suffixed. The push row is `PushSubscriptionRow`, not `PushSubscription`,
+because the latter is a DOM lib global that client code uses by that exact name. `NinaTuningRow`
+and `NinaImagePrefsRow` are suffixed because `NinaTuning` and `NinaImagePrefs` are the *model*
+types in `lib/nina/tuning.ts` and `lib/nina/imageprefs.ts` — nested and coerced, and what every
+consumer actually holds; the flat, unvalidated storage shapes should be named only by the query
+modules. `RecordRow`/`NewRecordRow` are suffixed because a bare `Record` would shadow
+TypeScript's own `Record` utility type in every file that imported it, and `AppSettingRow` follows
+the same suffix with no model twin today. `NinaShortcutRow` / `NewNinaShortcutRow` carry the
+suffix for a further
+reason — the raw row is not the shape callers want, because `kind` is bare `string` here. That
+table has **three** names across three layers and no duplication: `NinaShortcutRow` (this file,
+the drizzle row), `NinaShortcutRecord` (`lib/nina/queries.ts`, the same fields with `kind`
+narrowed to the union), and `NinaShortcutMatchable` (`lib/nina/shortcuts.ts`, the structural
+minimum the matcher needs — a subset the record satisfies with no mapping step).
 
 ### `queries.ts` — every run-domain read and write
 
 Two invariants govern the file:
 
-**1. The userId-scoping invariant (roadmap D8).** Every exported function takes `userId` as its
-first parameter and that value appears in the `WHERE` of every statement it runs. There is exactly
-one exception — `getRunByShareToken`, unscoped by contract because the 96-bit token *is* the
-credential. Never add a second. `userId` must come from the session (`requireUserId()`), never from
-a Server Action argument, a form field or a URL segment. A row that exists but is not yours and a
-row that does not exist are the same outcome (`NotFoundError` → 404); distinguishing them is an
-id-enumeration oracle.
+**1. The userId-scoping invariant (roadmap D8).** Every exported function that reads or writes one
+user's data takes `userId` as its first parameter and that value appears in the `WHERE` of every
+statement it runs. There are exactly two exceptions: `getRunByShareToken` (§9), unscoped by
+contract because the 96-bit token *is* the credential, and `listActiveUserIds` (§8), a directory
+read over all users with nothing to scope. Never add a third. `userId` must come from the session
+(`requireUserId()`), never from a Server Action argument, a form field or a URL segment. A row
+that exists but is not yours and a row that does not exist are the same outcome (`NotFoundError` →
+404); distinguishing them is an id-enumeration oracle.
 
 **2. The reviewed-data invariant (roadmap D16 / R-13).** Every rollup, list, chart input, record
 input and badge input filters `runs.reviewed_at IS NOT NULL`. The split between draft-visible and
@@ -277,7 +291,7 @@ which imports `db` and the `nina_*` tables from here directly.
 treats an empty list as a no-op so callers need no `if (statements.length)`.
 
 **Exit** — plain row objects and the exported `interface`s (`RunDetail`, `RunWithPhotoCount`,
-`MonthlyTotal`, `AllTimeTotals`, `SharedRun`, `RunAttachmentRow`, …). No ORM entity, no lazy
+`AllTimeTotals`, `ReviewedRunWindowRow`, `SharedRun`, `RunAttachmentRow`, …). No ORM entity, no lazy
 relation and no live handle escapes the package, so a caller cannot accidentally issue a query by
 touching a property.
 
@@ -304,21 +318,27 @@ Notably **not** a dependency: `@/lib/env`. See the client notes above.
 
 ## Reverse Dependencies
 
-68 files import from this package, all through the `@/lib/db*` alias — there is not one relative
-import of it anywhere. 54 are source files, 14 are tests.
+72 files import from this package statically — 60 source files plus 12 test-side (eleven suites
+and the `tests/fixtures/ninaTurn.ts` fixture) — and most of the rest of the test suite loads it
+with a dynamic `import()` in the test body instead, taking the total to 90 files. All of them go
+through the `@/lib/db*` alias; there is not one relative import of it anywhere.
 
 ### Primary consumers
 
 - **`lib/nina/queries.ts`** — the heaviest consumer in the repo, and architecturally the most
-  important: it imports `db` itself plus eleven tables and ten union types, and it is the **only**
-  production file that imports `ninaAvatars`, `ninaFolders`, `ninaChatSessions`, `ninaShortcuts` or
-  `ninaImagePrefs`. It is the choke point for all avatar, folder, session, shortcut and
-  image-prefs access — the session statements are its §4a, and the pure
-  ordering rules they feed are `lib/nina/sessions.ts`, which imports nothing from this package at
-  all. Every other avatar-touching file
+  important: it imports `db` itself plus tables and union types, and it is the **only**
+  production file that imports `ninaAvatars`, `ninaFolders`, `ninaShortcuts` or `ninaImagePrefs`.
+  It is the choke point for all avatar, folder, session, shortcut and image-prefs access — the
+  session statements are its §4a, and the pure ordering rules they feed are `lib/nina/sessions.ts`,
+  which imports nothing from this package at all. Every other avatar-touching file
   (`lib/admin/ninaAlbumActions.ts`, `app/admin/page.tsx`, `lib/nina/album.ts`, `avatargen.ts`,
   `avatartools.ts`, `proactive.ts`, `imagegen.ts`) calls its exported functions rather than
-  reaching for a table.
+  reaching for a table. The one structural exception is the **turn pipeline** (below), which
+  reaches for `ninaChatSessions` directly.
+- **`lib/nina/chatturn.ts`, `turnrevive.ts`, `searchActions.ts`** — the Nina turn lifecycle's
+  store half: these import `db` and write `nina_turns` / read `nina_chat_sessions` and
+  `nina_messages` directly rather than going through `lib/nina/queries.ts` (`turnrun.ts` and
+  `turn.ts` drive them without touching this package).
 - **`lib/nina/*`** (`gateway`, `load`, `distill`, `memory`, `promises`, `actions`, `context`,
   `tools`) — heavy consumers of the run-domain rollups (`getAllTimeTotals`,
   `getReviewedRunsWithChildren`, `getReviewedRunWindow`, `getBadgeAwards`, `getRecords`,
@@ -339,24 +359,28 @@ import of it anywhere. 54 are source files, 14 are tests.
 Roughly a dozen files import one or two symbols, almost always a row type or union for prop
 typing: `components/profile/ProfileForm.tsx` (`SEX_VALUES`, `Sex`), `components/runs/IntentChips.tsx`
 (`RunIntent`), `components/review/RetryExtraction.tsx` (`ExtractionBlobRefRow`),
-`components/admin/MemorySlots.tsx` (`NinaPendingPromise`), `lib/derived/invalidate.ts`,
+`app/admin/memory/page.tsx` (`NinaPendingPromise`), `lib/derived/invalidate.ts`,
 `lib/llm/*`, `lib/metrics/hrMax.ts`, `lib/profile/*`, `lib/runs/actions.ts`.
 
 ### Test consumers
 
-Thirteen files under `tests/` plus `lib/nina/promise.test.ts`. The notable ones:
-`tests/db.schema.test.ts` and `tests/db.schema.nina.test.ts` assert on the schema *objects*
-themselves — table names, column names and SQL types, index names, FK on-delete behaviour — via
-`getTableConfig`, with no database involved. `tests/support/fakeDb.ts` builds the recording fake
-that the wider suite uses. `tests/db.client.test.ts` asserts that `@/lib/db` re-exports the schema.
+Twelve test-side files import statically. The notable ones: `tests/db.schema.test.ts` and
+`tests/db.schema.nina.test.ts` assert on the schema *objects* themselves — table names, column
+names and SQL types, index names, FK on-delete behaviour — via `getTableConfig`, with no database
+involved. `tests/support/fakeDb.ts` builds the recording fake that the wider suite uses, and
+`tests/db.client.test.ts` asserts that `@/lib/db` re-exports the schema — those two (like most of
+the suite) load the package with a dynamic `import()` inside the test body.
 
 ### Two facts worth knowing
 
-**Direct `db` use outside this package is the exception.** Only five files import the instance:
-`auth.ts` (the NextAuth adapter tables), `lib/admin/users.ts`, `lib/push/queries.ts`,
-`lib/nina/imagejobs.ts` and `lib/nina/queries.ts`. Everything else — 50-plus files — calls named
-functions. The four small cases are self-contained query modules that did not warrant their own
-indirection; `lib/nina/queries.ts` *is* that indirection for the Nina subsystem.
+**Direct `db` use outside this package is the exception, but no longer a short list.** Ten files
+import the instance: `auth.ts` (the NextAuth adapter tables), `lib/admin/users.ts`,
+`lib/admin/memoryStore.ts` (admin memory-ledger writes beside `lib/nina/queries.ts`'s),
+`lib/push/queries.ts`, `lib/llm/textModel.ts` (the `app_settings` reader), `lib/nina/imagejobs.ts`,
+`lib/nina/queries.ts`, and the turn pipeline's `lib/nina/chatturn.ts`, `lib/nina/turnrevive.ts` and
+`lib/nina/searchActions.ts` — the one place the queries.ts indirection is not used. The other
+fifty source files call named functions; `lib/nina/queries.ts` remains the choke point for
+conversation, avatar, folder, shortcut and image-prefs access.
 
 **`scripts/` imports nothing from here.** Every script that touches Postgres (`db-smoke.mjs`, the
 two backfills, `nina-profpic.mjs`, `nina-image-worker.ts`, `blob-reap.mjs`, the probes and capture
@@ -368,7 +392,8 @@ checks.
 
 `NinaAvatar`, `NewNinaAvatar`, `NinaFolder`, `NewNinaFolder`, `NinaChatSession`,
 `NewNinaChatSession`, `NinaShortcutRow` and `NewNinaShortcutRow` currently have **no importers** —
-callers pass around the shapes `lib/nina/queries.ts` returns instead. (The string `NinaAvatar` also
+callers pass around the shapes `lib/nina/queries.ts` returns instead (`lib/nina/queries.ts`'s own
+comment explains why it names `NinaShortcutRecord`, not the row). (The string `NinaAvatar` also
 names an unrelated React component, `components/nina/NinaAvatar.tsx`; that is a coincidence, not an
 import of the row type.)
 
@@ -487,21 +512,41 @@ that was generated and then **hand-edited**, because generation cannot express a
 emits `ADD COLUMN … NOT NULL`, which simply fails on a populated table. The pattern: add the column
 nullable, backfill it, then `SET NOT NULL`, and add the FK after the rows are valid — all inside the
 file drizzle produced, so the snapshot it wrote still describes the end state and `db:check` stays
-clean.
-
-`0009_nina_message_photo_only.sql` and `0010_nina_image_provenance.sql` follow the same arrangement
-for the other reason a backfill is needed — a new *nullable* column whose meaning is retroactive, so
-production's existing rows have to be marked. `0011_natural_nico_minoru.sql` is the third reason: a
-brand-new table whose data step **moves** a column out of another table (`nina_tuning.wardrobe` →
-`nina_image_prefs.wardrobe`), and the copy has to live in the migration that creates the destination
-rather than in the later one that drops the source — on a fresh database the files replay in order,
-so a copy written later would read a column an earlier-numbered migration had already removed. All
-three keep the generated DDL at the top and put the hand-written statements below a
+clean. Later migrations repeat the arrangement for the other reasons a hand-written step is needed —
+`0009`/`0010` (marking production's existing rows for a retroactive nullable column),
+`0011_natural_nico_minoru` (moving `nina_tuning.wardrobe` into the new `nina_image_prefs` inside the
+migration that creates the destination, because on a fresh database the files replay in order and a
+copy written later would read a column an earlier migration had already dropped), and
+`0001_badge_award_ledger` (filling `dedupe_key` before the PK that requires it). All of them keep
+the generated DDL at the top and put the hand-written statements below a
 `--> statement-breakpoint` under a banner saying so, because
 **`npm run db:generate` will silently drop them if the file is regenerated**: diff the old file
 against the new one and re-append before deleting anything. A backfill also states its rule inline
 rather than importing it — a migration is a historical record and must not follow later edits to the
 TypeScript that once matched it.
+
+**The journal and the file names diverged during the 2026-09-05 collision era** — two concurrent
+plan sets each minted the same migration numbers, and the resolution kept *both* files as separate
+journal entries and renumbered later ones. Concretely: the journal holds two `0011_*` migrations
+(`0011_rare_blockbuster` at idx 11, `0011_natural_nico_minoru` at idx 12), `0012_nina_shortcuts`
+was regenerated as `0012_messy_carlie_cooper` (the `nina_shortcuts` `CREATE TABLE` lives there
+now), and there is no `0014`. **Do not trust an old document's migration file name — read the
+journal (`drizzle/meta/_journal.json`) and the file it names.** A renamed-but-not-regenerated
+migration is silently skipped by the migrator; regeneration restamps `when`, which is what makes it
+apply.
+
+**Deploy state (verified 2026-09-12 against production, by the migrations table and
+`information_schema`):** 20 of the 21 journal entries are applied. Production has no
+`nina_tuning.revision`, no `nina_turns.tuning_revision`, no `nina_image_prefs.revision`; it does
+have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model` and
+`app_settings`. The one unapplied entry is **`0011_rare_blockbuster`**
+(`ALTER TABLE nina_memory_facts DROP COLUMN confidence`) — and it is not "pending" but
+**skipped**: its journal `when` is older than the newest applied row, and the migrator only applies
+entries beyond that watermark, so `db:migrate` will never apply it and will never complain.
+Production still holds the orphaned `nina_memory_facts.confidence` column — schema.ts declares none
+(the table's own comment records the drop), and nothing reads or writes it, so it is inert. If it
+is ever to go, that is a hand-run `DROP COLUMN` plus a constructed journal fix — `db:generate`
+cannot see it and will not emit it.
 
 ### Gotchas
 
@@ -516,7 +561,8 @@ TypeScript that once matched it.
 - **Do not add an aggregate without the reviewed filter.** The failure is silent and looks like a
   plausible wrong number.
 - **`folder = ''` is the album root**, not a missing value; the path grammar is slash-separated
-  segments with no leading or trailing slash, so the root is the path with zero segments.
+  segments with no leading or trailing slash (`lib/admin/filetree.ts`'s grammar), so the root is
+  the path with zero segments. `nina_folders` itself never stores `''` — the root is never stored.
 - **Neither folder source is authoritative.** `nina_avatars.folder` and `nina_folders` are UNIONed
   by `listNinaAvatarFolders`; nothing may read `nina_folders` alone, because a query trusting only
   those rows would hide every folder created by dropping one.
@@ -539,11 +585,12 @@ TypeScript that once matched it.
   may invent one that reads NULL as "definitely unique". The index is deliberately **not UNIQUE**:
   the duplicate this mechanism writes is the reference row above, which must stay, so uniqueness is
   the write path's decision after the lookup and the index only makes the lookup cheap.
-- **Removing a session is a hard delete, and the cascade stops at the database.** Messages and their
-  `nina_message_images` rows go; the Vercel Blob objects behind those rows stay, and the
-  `source_message_id` pointers in `nina_memory_slots` / `nina_memory_facts` are left dangling on
-  purpose — her long-term memory is global, and a distilled fact outlives the sentence that produced
-  it.
+- **Removing a session is a hard delete, and the cascade stops at the images.** Messages go with
+  the session; their `nina_message_images` rows **stay**, `message_id` NULL (`0013` made that FK
+  `set null` so a photograph outlives the bubble that carried it), and the pathname reaper is what
+  eventually frees the bytes. The `source_message_id` pointers in `nina_memory_slots` /
+  `nina_memory_facts` are left dangling on purpose — her long-term memory is global, and a
+  distilled fact outlives the sentence that produced it.
 - **A session's `title` and `title_source` travel together.** Both NULL means nobody has named it
   yet, which is the only state an automatic titler may write into; `'backfill'` is not `'manual'`
   but must be treated as if it were.
@@ -560,539 +607,51 @@ TypeScript that once matched it.
   `blob_url` while keeping its `id`: a stored URL would silently go stale or point at bytes that
   have since been replaced. Resolve it at read time (`resolveNinaPhotoReference`); a deleted
   photograph yields `null` rather than an error, because there is no FK that could enforce it.
-- **`nina_image_prefs` has no SQL defaults, and that is the point.** `NINA_IMAGE_PREFS_DEFAULTS` in
-  `lib/nina/imageprefs.ts` is the one definition of "unset"; a `DEFAULT 50` here would be a second
-  copy of it in a second language, drifting silently. No row means the defaults — `revision`, which
-  used to prove that the operator actually saved something, is gone, purged by the
-  `admin-imagegen-simplify` set. `updated_at` is the one exception, because a timestamp is not part
-  of the contract.
+- **`nina_image_prefs` has no schema-declared defaults, and that is the point.**
+  `NINA_IMAGE_PREFS_DEFAULTS` in `lib/nina/imageprefs.ts` is the one definition of "unset"; a
+  `DEFAULT 50` here would be a second copy of it in a second language, drifting silently. No row
+  means the defaults. The two image-gen controls, `prompt_template` and `model`, are `.notNull()`
+  with no schema default either — the `DEFAULT ''` / `DEFAULT 'qwen/qwen-image-3-pro'` clauses in
+  `0020` are migration-time backstops for the one row that already existed, not part of the
+  contract. `updated_at` is the one intentional exception, because a timestamp is not part of the
+  contract.
 - **Auth.js tables are verbatim.** Singular names and camelCase columns are the adapter's
   convention, which is why `drizzle()` is built *without* `casing: 'snake_case'` and every app
   table spells its snake_case names out explicitly.
 
 ## Notes
 
-### Documentation created: 2026-09-04
-
-Initial creation, prompted by task **P1-DB-A000** — phase 1 of 7 in
-`ADMIN_ALBUM_FILE_MANAGER_PLAN.md`, the plan set that turns `/admin/nina` into a file manager
-(F34 R1).
-
-### Recent changes — P1-DB-A004 (2026-09-07)
-
-Phase 1 of 4 in `NINA_EMOJI_SHORTCUTS_PLAN.md` (F36) — *"the table and the matcher"*. **Nothing
-user-visible ships in this phase**: no route, no component, no prompt change, and typing an emoji in
-the chat still does exactly what it did yesterday. Phases 2, 3 and 4 (the turn-path read, the admin
-registry, the ledger importer) build on the contract laid down here.
-
-Within this package the task touched `schema.ts` and `drizzle/` only. The matcher that decides
-whether a trigger fired is `lib/nina/shortcuts.ts` and every read and write is
-`lib/nina/queries.ts`.
-
-**New table `nina_shortcuts`**, placed beside `ninaMemoryFacts` — twelve columns: `id`, `user_id`
-(cascading FK to `user`), `trigger`, `match_key`, `kind`, `label`, `expansion`, `enabled`, `uses`,
-`last_used_at`, `created_at`, `updated_at`. Plus `ninaShortcutsRelations` and the row types
-`NinaShortcutRow` / `NewNinaShortcutRow`.
-
-The point of a **separate table** rather than more `nina_memory_facts` rows is that a shortcut is a
-*directive she must act on*, and the ledger is framed to her as colour rather than structure. Four
-things go wrong when the ledger holds one, and all four were live: `MEMORY_FACT_LIMIT = 60` ages the
-oldest shortcut out of the prompt, every expansion travels on every turn whether or not it fired,
-`ADMIN_FACT_TEXT_MAX = 400` already truncates the longest triggers' expansions, and the framing is
-wrong for a directive. The part no other arrangement achieves: a separate table makes a shortcut
-**structurally unreachable by `lib/nina/distill.ts`**, which writes facts. The distiller cannot
-rewrite what it has no query for. `removeNinaSession`'s memory purge is out of reach for the same
-structural reason — it matches on `source_message_id`, and this table deliberately has no such
-column.
-
-**`trigger` and `match_key` are two columns and the second one is the key.** `trigger` is what the
-admin typed and what a table renders (`✌️`, `Plak!`, `nom nom`); `match_key` is
-`normalizeNinaTrigger(trigger)` and is what matching and the unique index compare. Storing only the
-raw trigger would mean normalising on every read of every turn *and* would let `✌️` and `✌` be two
-rows; storing only the key would show him a peace sign stripped of its variation selector in his own
-table.
-
-**Three absences and one presence are decisions**, each asserted by the seven new cases in
-`tests/db.schema.nina.test.ts`:
-
-- **No `source_message_id`, no `source`, no `confidence`.** Every shortcut is authored by a human or
-  lifted from the ledger by phase 4's importer. There is no distilled shortcut and there never will
-  be, so a provenance discriminator would be a column with one value.
-- **`kind` is plain `text` with no `.$type<>()`** — see the `pgEnum` note above for the two reasons.
-- **`uses` and `last_used_at` are telemetry, not state.** Nothing reads them on the turn path; they
-  exist so an admin screen can show a dead code as dead. `uses` is incremented in SQL, never
-  read-then-written, because two turns in flight are a real pair.
-- **`enabled` is a real column and not a delete.** A disabled code stays visible so it can be
-  re-enabled, which is why the registry read and the turn read are two different calls.
-
-**Two indexes:**
-
-- `nina_shortcuts_user_match_unq` on `(user_id, match_key)` — **UNIQUE**, and it is the authority on
-  "this trigger already exists". `shares_run_id_active_unq`'s argument: the alternative is a
-  check-then-write that is correct until two tabs race. It is *also* the total order the registry
-  read sorts by, so that read is an index scan and not a sort.
-- `nina_shortcuts_user_enabled_idx` on `(user_id, enabled)` — it exists for **phase 2's every-turn
-  read**, `listNinaShortcuts(userId, { onlyEnabled: true })` → `WHERE user_id = $1 AND enabled`.
-  This is the one index in the table that is not paying for a constraint, and the read it serves runs
-  on every single turn.
-
-**Migration `drizzle/0012_nina_shortcuts.sql`** plus its meta snapshot and journal entry (`idx: 12`,
-tag `0012_nina_shortcuts`). Purely generated, additive only — one `CREATE TABLE`, one FK constraint,
-one `CREATE UNIQUE INDEX`, one `CREATE INDEX`. Nothing drops, renames, retypes or narrows anything,
-and there is no data-migration statement, so it applies to a populated database without a rewrite
-and reverting the code leaves an unread empty table, which is inert.
-
-> **`npm run db:check` is clean, but NOT applied to any database.** Applying `0012` is an open
-> deploy action (`npm run db:migrate`). Nothing in the app reads or writes the table yet, so an
-> unapplied migration is invisible until phase 2 lands.
-
-The half of the contract that lives outside this package, and is worth knowing from here: the
-matcher `lib/nina/shortcuts.ts` is **zero-import by rule** (its own test reads its source and fails
-on an `import` line), which is what keeps it safe for the browser bundle *and* is the precondition
-for phase 4's `.mjs` importer to load it under `--experimental-strip-types` and compute `match_key`
-with literally the same function. That is why `NinaShortcutMatchable` is declared there as a plain
-interface instead of being imported from this file.
-Phase 1 of 7 of the `nina-image-generation-tab` plan set — the Image Generation tab in
-`/admin/personality`. Within this package the task touched `schema.ts` and `drizzle/` only, purely
-additively; the vocabulary it stores lives in the new `lib/nina/imageprefs.ts` and the four queries
-that read and write it in `lib/nina/queries.ts`. **`nina_tuning` was deliberately not touched** —
-phase 7 owns retiring `nina_tuning.wardrobe`.
-
-**New table `nina_image_prefs`** — one row per user, sixteen columns, `user_id` as the sole primary
-key with a cascading FK to `user`, **no secondary index and no CHECK constraint**. It is
-`nina_tuning`'s sibling and not its extension, and the split is the plan's: `nina_tuning` is *who
-she is* and reaches the system prompt on every turn; this is *how she is photographed* and reaches
-the image prompt only when a generation happens.
-
-| Column | Meaning |
-|---|---|
-| `prompt_length` | `integer`, 0-100, 50 unset — the slider, read through the repo's five bands |
-| `focus_face` … `focus_calves` | six `boolean NOT NULL` emphasis flags (`face`, `skin`, `boobs`, `butt`, `thighs`, `calves`), all false unset |
-| `wardrobe`, `venue`, `time_of_day`, `notes` | free operator text, `NOT NULL` with `''` as the empty value |
-| `reference_source` + `reference_id` | the chosen photograph, as a `{ source, id }` pair — no FK |
-| `updated_at` | the one column that is *not* part of the contract, and the one with a `DEFAULT` |
-
-Four shape decisions, each asserted by `tests/db.schema.nina.test.ts`:
-
-- **Columns, not one `jsonb` blob.** `nina_tuning`'s argument applies word for word, with its first
-  clause biting hardest here: a misspelt key in a blob is indistinguishable from an unset one, the
-  coercer reads an unset focus key as `false`, so the failure mode would be *a checkbox that
-  silently does nothing* — the one failure a control panel cannot survive. `focus_bobs` fails at
-  `db:generate`.
-- **The six flags are `NOT NULL`, the opposite of `nina_tuning`'s `*_enabled`.** Those are nullable
-  because NULL there means "a row written before the toggles existed"; no such row can exist here,
-  since the table arrives with all six columns in one migration.
-- **No SQL defaults** except `updated_at` — see the gotcha above. "No row means the defaults" is
-  what makes every downstream caller unconditional.
-- **`reference_source` / `reference_id` have no foreign key and cannot have one.** Two possible
-  parents (`nina_avatars` for `'album'`, `nina_message_images` for `'chat'`), and the pair is a
-  `{ source, id }` rather than a `blob_url` because `updateNinaChatPhotoBlob` replaces a chat
-  photo's bytes while keeping its id.
-
-`NinaImagePrefsRow` / `NewNinaImagePrefsRow` are the row types; the `…Row` suffix is load-bearing,
-because `NinaImagePrefs` is the nested, coerced model type in `lib/nina/imageprefs.ts`.
-
-**Migration `drizzle/0011_natural_nico_minoru.sql`** plus its snapshot and journal entry
-(`idx: 11`) — generated by `npm run db:generate`, never hand-named and never renamed. The generated
-half is the `CREATE TABLE` and the FK. Below a `--> statement-breakpoint`, under the same banner
-`0009` and `0010` carry, is a **hand-written one-statement data step**: it copies every non-empty
-`nina_tuning.wardrobe` into a new prefs row at `revision = 1` — a literal the statement still
-carries even though the `admin-imagegen-simplify` set has since dropped the column
-(`drizzle/0017_retire_imageprefs_revision.sql`), because an applied migration is a fact about what
-happened — and every other value is `NINA_IMAGE_PREFS_DEFAULTS` transcribed as a SQL literal. Two
-details are deliberate — a user whose wardrobe is `''` gets **no** row, because a row of pure
-defaults would claim `revision = 1` for someone who never saved anything; and
-`tests/nina.imageprefs.test.ts` reads this file and asserts every transcribed literal against the
-TypeScript constant (the trailing `1` excepted — it is pinned as `0011` ran, not reinterpreted to
-match today's schema), so the copy is checked rather than trusted. `ON CONFLICT DO NOTHING` cannot
-fire on replay; while `revision` existed that made the statement re-runnable by hand, and after
-`0017` applies a hand replay fails on the dropped column — acceptable, because the journal means
-`db:migrate` never re-runs an applied migration.
-
-Four functions landed in `lib/nina/queries.ts` against this table:
-`readNinaImagePrefs` (returns `NINA_IMAGE_PREFS_DEFAULTS` when the user has no row),
-`writeNinaImagePrefs` (a single whole-row `ON CONFLICT DO UPDATE` on `user_id` — with `revision`
-purged there is no SQL-side bump left; a save replaces every column the caller supplies),
-`listNinaPhotoReferences` (the bounded, newest-first union that feeds the picker — album rows plus
-**original** `kind='generated'` chat rows) and `resolveNinaPhotoReference`.
-
-One cross-package invariant is worth knowing from here (plan invariant 13): **the picker union
-contains no reference row**, so no photograph appears in it twice. The chat half of that union must
-call `generatedChatPhotoScope`, which already carries the `isOriginalPhoto()` conjunct, rather than
-spelling an `eq(kind, 'generated')` comparison of its own; a source-level test in
-`tests/nina.imageprefs.test.ts` enforces it, because inlining the predicate is the one edit that
-would reintroduce the F37 duplicate through a different door.
-
-> **`npm run db:check` is clean, but NOT applied to production.** Applying `0011` is an open deploy
-> action (`npm run db:migrate`) — a manual step, as with `0010`, because the file carries a data
-> migration over live rows.
-
-### Recent changes — P1-DB-A003 (2026-09-07)
-
-Phase 1 of `NINA_PHOTO_REFS_AND_BUBBLE_ACTIONS` (F37), the plan set whose one sentence is **"a
-re-attached photo is a reference, not a copy."** Within this package the task touched `schema.ts` and
-`drizzle/` only; the rule that decides which column a new row carries lives in `lib/nina/attach.ts`
-and every read and write that honours it in `lib/nina/queries.ts`.
-
-The defect: re-attaching an album face or an earlier chat photo copies `blob_url` and `pathname`
-onto a **new** `nina_message_images` row — no bytes are copied, the Blob object is shared — and
-nothing on the row said where they came from. So `/nina/about`'s Media section and the chat-photo
-listing showed the same picture twice.
-
-**`nina_message_images` gained two nullable provenance columns:**
-
-- `source_avatar_id` → `nina_avatars.id`, `ON DELETE SET NULL`
-- `source_image_id` → `nina_message_images.id` — self-referencing, `ON DELETE SET NULL`
-
-A row is a **reference** when *either* column is non-null. Both can be non-null on one row (an album
-face re-attached twice); that is two true facts, not a conflict.
-
-Four things about the shape are decisions, and `tests/db.schema.nina.test.ts` asserts each:
-
-- **Two columns, not one polymorphic pointer.** Two targets are two tables, and a real foreign key
-  on each is the only thing that makes `SET NULL` possible at all. The shape is
-  `nina_messages.reply_to_id`'s — a nullable self-referencing FK — applied twice.
-- **`ON DELETE SET NULL` is the interesting half.** When the original is deleted the copy stops
-  being a copy: the column goes NULL, the row becomes an original, and the collection *keeps* the
-  picture instead of losing it. `CASCADE` would delete a photograph out of a conversation because an
-  unrelated row was tidied away — the same data loss `isBlobPathnameReferenced` exists to prevent.
-- **The row is never dropped.** Marking, not deleting, is the fix. Every bubble, photo-viewer open,
-  download control and Nina's own prompt reads this table by `message_id`, so a message with no
-  image row of its own is a blank bubble. Only the three **collection** reads skip a reference
-  (`listNinaMessageImages`, `listNinaChatPhotos`, `countNinaChatPhotos`, via the module-private
-  `isOriginalPhoto()`); every bubble, context and reaper read stays unfiltered on purpose.
-- **No index.** Both are residual predicates on reads that already range-scan
-  `nina_message_images_user_created_idx`, at the same table size that argument was accepted for
-  `kind`. Nothing has measured a need for one.
-
-No new union type, no new table, no new index, and no row type changed name — `NinaMessageImage` /
-`NewNinaMessageImage` simply widened.
-
-**Migration `drizzle/0010_nina_image_provenance.sql`** plus its meta snapshot and journal entry
-(`idx: 10`). The generated half is two `ADD COLUMN`s and the two FKs. Below a
-`--> statement-breakpoint` it carries a **hand-written two-statement backfill** that marks the
-duplicates production already has — see the Migrations note above for why that half is fragile:
-
-1. **R1, the duplicate chat photographs.** "Duplicate" is an equal `blob_url` within one `user_id`,
-   because re-attach is the only writer that *reuses* a URL — two separate uploads of the same
-   picture write two Blob objects and are two photographs as far as anything can tell. The earliest
-   row wins (`ORDER BY created_at ASC, id ASC`; `id` breaks the tie that `created_at` cannot for
-   rows written in one statement), and every later row points at *that* row rather than its
-   predecessor, so the column always names the **original**. This matches
-   `ninaPhotoProvenance`'s flatten (`sourceImageId ?? row.id`), so a row backfilled here and a row
-   written tomorrow mean the same thing — and a `SET NULL` on an intermediate row cannot make a
-   duplicate reappear.
-2. **R3, an album face attached into the chat.** No "not the earliest" clause, deliberately: the
-   *first* chat row whose bytes are an album face is already a reference, because the photograph was
-   never a chat photograph. `DISTINCT ON` runs over `nina_avatars` too — nothing stops two album
-   rows sharing a `blob_url`, since `nina_avatars_user_source_key_unq` is unique on `source_key`,
-   not on the URL, and the profpic re-seed writes a fresh row for an anchor already stored. Without
-   it an `UPDATE … FROM` whose subquery matches a target twice would pick arbitrarily.
-
-Both statements are guarded `IS NULL`, so they are idempotent: no-ops on a fresh column, and running
-one by hand a second time cannot move a pointer that has since been set.
-
-> **`npm run db:check` is clean, but NOT applied to production.** Applying `0010` is an open deploy
-> action (`npm run db:migrate`), deliberately a manual step because the file carries a data
-> migration over live rows.
-
-Two writes outside this package complete the invariant and are worth knowing from here:
-`lib/nina/queries.ts` coalesces both fields to NULL on insert (a fresh upload and one of her
-generations say "original" by saying nothing), and `updateNinaChatPhotoBlob` nulls them in the *same*
-statement that swaps the bytes — a Replace applied to a reference would otherwise leave a unique
-photograph that no listing ever shows.
-
-### Recent changes — P1-DB-A001 (2026-09-05)
-
-Phase 1 of 9 in `NINA_CHAT_SESSIONS_PLAN.md`, the plan set that gives the Nina conversation
-sessions. Within this package the task touched `schema.ts` and `drizzle/` only; the session
-statements and the pure ordering rules it enables live in `lib/nina/queries.ts` (§4a) and
-`lib/nina/sessions.ts`. Nothing on screen changed and no call site anywhere in the repo moved.
-
-**New table `nina_chat_sessions`** — `id`, `user_id`, `title`, `title_source`, `pinned_at`,
-`created_at`, cascading FK to `user`, and one index
-`nina_chat_sessions_user_created_idx` on `(user_id, created_at desc)`, the
-`nina_avatars_user_created_idx` shape. The point of the table is that it is *not* a UI feature: the
-message window is what Nina is given to read on every turn, so without a partition column a new
-session would look new and behave identically to the old one.
-
-Three absences are decisions, and each is asserted by `tests/db.schema.nina.test.ts`:
-
-- **No `last_user_message_at`.** Sessions sort by the most recent message *from him*, and a stored
-  watermark would be `nina_folders`'s "cache with two writers" with four instead — his turn writes
-  it, two proactive writers must remember not to, and a later phase's message delete would move it
-  backwards from a file that does not own this table. The sort key is derived at read time and
-  `nina_messages_user_session_runner_idx` pays for that.
-- **No `archived_at`.** Removing a session is a hard delete, because an archived session that still
-  answered the message-window read would defeat the point of removing it.
-- **No `updated_at`.** Nothing reads it. `created_at` earns its place twice — the sort key of a
-  session with no message yet, and the instant `0004` stamps from `min(sent_at)`.
-
-`pinned_at` is an instant rather than an `is_pinned` boolean: NULL is unpinned so the column needs
-no default, and storing *when* keeps one decision reversible without a migration — a pin currently
-partitions the list rather than sorting it.
-
-**New union `NinaSessionTitleSource`** = `'auto' | 'manual' | 'backfill'`, nullable and travelling
-with `title`. NULL/NULL is the fourth and most important member: nobody has named this session yet.
-
-**`nina_messages` gained `session_id`** — `text NOT NULL`, FK to `nina_chat_sessions.id`
-**`ON DELETE CASCADE`**. `NOT NULL` rather than nullable-means-legacy so that a writer which forgets
-a session fails loudly instead of writing a row that quietly stops appearing on his screen. Sessions
-*slice* `seq`; they do not replace it, and there is no per-session sequence.
-
-**Two new indexes on `nina_messages`**, taking it from four to six:
-
-- `nina_messages_session_seq_idx` on `(session_id, seq)` — both the per-session slice and the
-  foreign key's own index, `session_id` leading because Postgres does not index the referencing side
-  of an FK and the cascade's lookup has no user in it. `nina_messages_user_seq_idx` still answers
-  every user-wide read, so nothing is duplicated.
-- `nina_messages_user_session_runner_idx` on `(user_id, session_id, sent_at)` **`where role =
-  'runner'`** — the derived sort key, partial on `nina_messages_user_unread_idx`'s precedent and
-  index-only because `sent_at` rides along as a payload column.
-
-Also `ninaChatSessionsRelations`, a `session` relation on `ninaMessagesRelations`, and the row types
-`NinaChatSession` / `NewNinaChatSession`.
-
-**Migration `drizzle/0004_nina_chat_sessions.sql`** plus its meta snapshot and journal entry
-(`idx: 4`). It is the first migration in this repo that is **not purely generated** — see the
-Migrations note above for the pattern. It files every existing row into one session per user
-(`id = substr(md5(user_id),1,12)`, `created_at = min(sent_at)`, title `'Semua chat sebelumnya'`,
-`title_source = 'backfill'`) and carries **no `ON CONFLICT DO NOTHING`**, deliberately: on an
-md5-prefix collision `DO NOTHING` would file the second user's messages into the first user's
-session, where removing it would cascade away a stranger's conversation. A unique violation aborts
-the migration instead, and a failed migration is recoverable where a merged conversation is not.
-
-> **Verified, but NOT applied to production.** Applying `0004` is still an open deploy action
-> (`npm run db:migrate`). It was run against a throwaway Postgres 16 holding a populated
-> conversation, not merely generated: zero rows left with a NULL `session_id`, one session for every
-> user who has messages and none for the user who has none, no message filed into another user's
-> session, and deleting a session cascaded its messages and their `nina_message_images` rows with
-> zero orphans. What the cascade leaves behind on purpose: the Blob objects behind the removed image
-> rows, and the unenforced `source_message_id` pointers in `nina_memory_slots` /
-> `nina_memory_facts`.
-
-### Recent changes — P1-DB-A000 (2026-09-04)
-
-Within this package the task touched `schema.ts` only; the folder-aware data layer it enables lives
-in `lib/nina/queries.ts`.
-
-**`nina_avatars` gained five columns**, taking it to twenty:
-
-- `folder` — `NOT NULL DEFAULT ''`. Folder structure is *metadata, not blob layout*: pathnames keep
-  the flat `nina/<userId>/avatar-<id>.<ext>` shape, so renaming a folder of three hundred photos is
-  one `UPDATE` instead of three hundred cross-network copy-and-deletes. The `NOT NULL DEFAULT ''`
-  pairing is the whole migration story — Postgres applies a constant default at `ADD COLUMN` time
-  without rewriting the table, so every pre-F34 row appears at the root with no backfill. (Contrast
-  `419167d`, which needed a script because a new `records` key changed what a derived table *should*
-  hold; here there is nothing to derive, since "no folder" and "the root" are the same fact.)
-- `filename` — the file's name on the laptop, from `File.webkitRelativePath`'s last segment.
-  Nullable, because the three pre-F34 writers were handed bytes rather than a file.
-- `source_key` — the client-computed dedupe key folding `(normalised relative path, size,
-  lastModified)` into one string, so "have I uploaded this?" never becomes a content hash over
-  hundreds of megabytes. Nullable, and that nullability is what made the new unique index safe to
-  add to a populated table.
-- `thumb_url`, `thumb_pathname` — a second, small blob written beside the original at upload time.
-  Two columns and not one, because the pathname is the only thing that lets a delete remove both
-  objects. Both NULL means no thumbnail and a renderer falls back to `blob_url`.
-
-**Two new indexes on `nina_avatars`:**
-
-- `nina_avatars_user_folder_created_idx` on `(user_id, folder, created_at desc)` makes the
-  explorer's page an index range scan. It does *not* replace `nina_avatars_user_created_idx`, which
-  stays because "the whole album, newest first" puts no equality on `folder`.
-- `nina_avatars_user_source_key_unq` on `(user_id, source_key)` — UNIQUE and **non-partial**. The
-  client-side upload diff is advisory (a double-clicked drop, a retried Server Action or two tabs
-  all re-submit an approved batch), so the index makes the second insert impossible and the batch
-  insert writes `ON CONFLICT (user_id, source_key) DO NOTHING`. It is non-partial and still safe on
-  a populated table because Postgres treats NULLs as distinct by default: every pre-F34 row is
-  exempt and only a row that actually claims a dedupe key is held to it. `NULLS NOT DISTINCT` would
-  have failed on the second existing row.
-
-**New table `nina_folders`** — three columns, composite primary key `(user_id, folder)`, cascading
-FK to `user`. It holds exactly one fact: *this path is a folder, even if it is empty* — the one
-thing the `folder` column cannot say, and the operator filing hundreds of photographs makes the
-empty directory first. The composite key is what lets `declareNinaFolders` be an `ON CONFLICT DO
-NOTHING` upsert rather than a racy read-then-insert, and it gives the subtree predicate an index to
-walk. The root is never stored. There is no `blob_url`, no count and no `is_current`: a folder owns
-no bytes, and a stored count would be a cache with two writers.
-
-**Migration `drizzle/0003_nina_avatar_folders.sql`** plus its meta snapshot and journal entry.
-Additive only — one `CREATE TABLE`, five `ADD COLUMN`, one `ADD CONSTRAINT`, one `CREATE INDEX`,
-one `CREATE UNIQUE INDEX`. Nothing drops, renames, retypes or narrows anything, and there is no
-data-migration statement.
-
-> **Not yet applied to any database.** `db:check` is clean and the journal lists
-> `0003_nina_avatar_folders` as idx 3, but applying it is a deploy action (`npm run db:migrate`).
-> The phase's verification check 5 — the `nina_folders` UNION probe against a live database — must
-> run at deploy time.
-
-`is_current` still has exactly three writers, all in `lib/nina/queries.ts`.
-
-### Recent changes — `nina-character-tuning` phase 1 (2026-09-05)
-
-Within this package the phase touched `schema.ts` only; the reads and writes live in
-`lib/nina/queries.ts` and the prompt assembly in `lib/nina/persona.ts` and
-`lib/nina/prompts/system.ts`.
-
-**New table `nina_tuning`** — one row per user, primary-keyed on `user_id` with a cascading FK to
-`user`, holding Nina's whole character: the eleven trait dials as `0-100` integers, the relationship
-as a text column over five values, the four extra dials the request's *"among other things (you can
-define more comprehensively)"* asked for, a free-text notes field, a revision integer and an
-`updated_at`. (It also held a one-line `wardrobe` until F41 R3, which dropped the column after
-copying every value into `nina_image_prefs.wardrobe`, and the `revision` integer until the
-`simplify-personality-settings` set purged the prompt-revision mechanism —
-`drizzle/0016_retire_tuning_revision.sql`, committed and not yet applied.)
-
-**The dials are flat columns, not a JSON blob.** Twenty named `integer NOT NULL` columns rather than
-one `jsonb`, so the column list *is* the vocabulary: a dial that does not exist cannot be written,
-`drizzle-kit` diffs a rename, and a hand-run `UPDATE nina_tuning SET anger = 100` is the whole of
-the operator escape hatch. The domain is enforced by `clampNinaScore` and not by a `CHECK`, because
-a `CHECK` would make widening the scale a migration, and a value outside `0-100` is a bug in one
-writer rather than a state the reader cannot survive.
-
-Three more things about the shape are decisions rather than defaults:
-
-- **A row per user, not a row per dial.** The panel saves the whole tuning in one Server Action —
-  actions dispatch one at a time per client — so a normalised `(user_id, key, value)` table would be
-  one action writing twenty rows for no gain, and every read would be an aggregation. It is one
-  object with one lifetime.
-- **`readNinaTuning` returns the DEFAULTS when the row is absent**, and no phase writes a row on
-  sign-up. That is what makes the feature a provable superset of what shipped: until the operator
-  saves something, every user is on `NINA_TUNING_DEFAULTS`, and
-  `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` is asserted to equal the prompt that shipped before
-  the dials existed. No column carries a SQL `DEFAULT` for the same reason every other table here
-  does not: the one writer always supplies every value, and a default is a second opinion about it.
-- **The tuning is not a memory slot.** `nina_memory_slots` is written by the distiller for anything
-  not marked `source: 'admin'`, which would eventually let her rewrite her own character; and the
-  nine-key slot vocabulary in `lib/nina/memory.ts` is deliberately unchanged by this set.
-
-**`nina_turns` gained a nullable `tuning_revision` column.** `prompt_version` identifies the
-*assembler*; with a per-user tuning it no longer identifies the *output*, so without the revision
-beside it the audit trail cannot answer *"what was she set to when she said that"*. Nullable, and
-NULL means the turn predates the dials. `revision` itself is computed as `revision + 1` inside the
-upsert rather than supplied by a caller — a revision the client sends is a revision a stale tab can
-move backwards. *(Retired: the `simplify-personality-settings` set purged the mechanism, and
-`drizzle/0016_retire_tuning_revision.sql` drops this column and `nina_tuning.revision` — committed,
-not yet applied, so the post-deploy migrate is what finishes it.)*
-
-**Migration `drizzle/0005_nina_persona_tuning.sql`** plus its meta snapshot and journal entry
-(`_journal.json` idx 5). Additive only — one `CREATE TABLE`, one nullable `ADD COLUMN`, one FK.
-Nothing drops, renames, retypes or narrows anything, and there is no data-migration statement, so it
-applies to a populated table without a rewrite and reverting the code leaves an unread table and an
-unread column, which is inert.
-
-> **APPLIED to production**, and the count is 6. `nina_tuning` exists with its 21 columns and
-> `nina_turns.tuning_revision` is present — still true of the database until `0016` applies (see
-> the P1-RI-A040 entry below).
->
-> **It was `0004` on the branch, and the renumber this section predicted is what happened.** `main`
-> gained an unrelated `0004_nina_chat_sessions` while this set was in flight, so both sets minted an
-> idx-4 migration. The fix kept main's journal and `0004` snapshot, dropped this set's `0004_*.sql`,
-> and **regenerated** it as `0005` from the merged `schema.ts` — so the snapshot genuinely chains
-> onto main's `0004` instead of merely claiming to.
->
-> **Renaming the file by hand would have been silently wrong**, which is the part worth keeping.
-> The migrator applies journal entries whose `when` exceeds the newest applied row. This set's
-> `0004` was stamped 1788535743971 (14:49) and main's applied `0004` was 1788553112306 (20:18), so a
-> renamed-but-not-regenerated entry would have been *older than the watermark* and skipped in
-> silence: no error, a clean-looking deploy, and `nina_tuning` simply never created — discovered on
-> the first turn that read it. Regenerating restamps `when`, which is why it applied.
-
-### Recent changes — P1-RI-A040 (2026-09-09)
-
-Phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge. Within this
-package the task touched `schema.ts` and `drizzle/` only: `nina_tuning` lost its `revision` column
-and `nina_turns` lost `tuning_revision`, and with them the audit pair that answered *"what was she
-set to when she said that"*. The reads and writes live in `lib/nina/queries.ts` —
-`writeNinaTuning` is the same upsert minus the SQL-side bump, and the turn writes carry no revision
-— so `NINA_PROMPT_VERSION` alone now dates an assembler change.
-
-**Migration `drizzle/0016_retire_tuning_revision.sql`** plus its meta snapshot and journal entry
-(`idx: 16`). Generated by `npm run db:generate`; two statements, two `DROP COLUMN`s, nothing else —
-no data step, no index, no retype.
-
-> **Committed but NOT applied to any database.** Applying `0016` is an open deploy action
-> (`npm run db:migrate`, post-deploy). Until it runs, production still holds both columns, so the
-> older entries on this page that describe them describe the database correctly and the code no
-> longer.
-
-`nina_image_prefs.revision` was a **different mechanism** on the image-generation surface — bumped
-in SQL by its own upsert, read by the photo pipeline — and this set deliberately did not touch it.
-It has since gone the same way: the `admin-imagegen-simplify` set's phase 2 purged it, so the rows,
-gotchas and column-table entries above that speak of it describe the code no longer, and the entry
-below records the drop.
-
-### Recent changes — P1-RI-A029 (2026-09-09)
-
-Phase 2 of 3 of the `admin-imagegen-simplify` set — the image-generation side of the same
-prompt-revision purge. Within this package the task touched `schema.ts` and `drizzle/` only:
-`nina_image_prefs` lost its `revision` column. The reads and writes live in `lib/nina/queries.ts` —
-`writeNinaImagePrefs` is the same upsert minus the SQL-side bump, and `NinaImagePrefsWrite`
-collapses to `NinaImagePrefs` — so a row now records what was set, not whether it was ever saved.
-
-**Migration `drizzle/0017_retire_imageprefs_revision.sql`** plus its meta snapshot and journal entry
-(`idx: 17`). Generated by `npm run db:generate`; one statement, one `DROP COLUMN`, nothing else —
-no data step, no index, no retype. (`0011`'s hand-written data step still stamps `revision = 1`
-into the rows it creates; the statement stays as it ran, and its test pins that literal as history
-rather than reinterpreting it against today's schema.)
-
-> **Committed but NOT applied to any database.** Applying `0017` is an open deploy action
-> (`npm run db:migrate`, post-deploy). Until it runs, production still holds the column, so the
-> older entries on this page that describe it describe the database correctly and the code no
-> longer.
-
-### Recent changes — P1-DB-A006 (2026-09-10)
-
-Phase 1 of 4 in `MEDIA_DEDUPE_PLAN.md` — the write-time content-dedup foundation. Within this
-package the task touched `schema.ts` and `drizzle/` only, and **nothing writes a hash yet**: no
-caller sends one, so the column is inert until the plan's later phases arm the writers. The hash
-function is `lib/photos/contentHash.ts`, every read and write is `lib/nina/queries.ts`, and the
-worker binds raw SQL in `scripts/nina-image-worker.ts` — the half of the contract that lives
-outside this package is described below.
-
-**`nina_message_images` gained `content_hash text`** — nullable, no default, no FK — and every
-part of that shape is the decision:
-
-- **NULL is a permanent state, not a gap to fill.** It means "dedup is inactive for this row",
-  which SQL `=` already expresses (a NULL never matches), so no consumer needs a special case and
-  none may invent one that reads NULL as "definitely unique". The plan's phase-4 sweep backfills
-  the historical rows once, from the Blob itself; nothing writes the column after insert.
-- **The index is deliberately not UNIQUE** — the one place this table's story inverts. The
-  duplicate row the dedup mechanism writes is a *reference* (F37: copy `blob_url`, set
-  `source_image_id`, keep the latecomer), so a unique index would turn the race-close into a thrown
-  INSERT and force reference rows either to lie (NULL hash) or to collide. Uniqueness is a decision
-  the write path makes *after* a lookup; `nina_message_images_user_content_hash_idx` on
-  `(user_id, content_hash)` exists only to make that lookup cheap, and it is partial on
-  `content_hash IS NOT NULL` — a NULL row can never match, so leaving it out keeps the index down
-  to the rows the question can be asked about.
-- **User-scoped, never global.** The lookup key is `(user_id, content_hash)`: dedup must not link
-  one user's bytes to another's, because ownership and the Blob release path
-  (`isBlobPathnameReferenced`) are user-scoped, and a shared pointer would let one user's delete
-  free bytes another user still renders.
-- **The hash is over the exact stored bytes** — sha-256 as 64 lowercase hex — not over the file he
-  picked (the server never sees upload bytes) and not a perceptual hash: cross-encoding dedup is
-  YAGNI, the measured duplicates were the same file picked twice.
-
-**Migration `drizzle/0018_real_madame_web.sql`** plus its meta snapshot and journal entry
-(`idx: 18`). Generated; two statements — one nullable `ADD COLUMN`, one partial `CREATE INDEX` —
-no data step, no retype, applies to a populated table without a rewrite.
-
-> **APPLIED to production** — unlike `0016`/`0017` above — and catalog-verified there: the column
-> exists and the index is partial. There is no open deploy action left in this migration.
-
-Outside this package, the contract this schema serves: `lib/photos/contentHash.ts` is the one
-intended producer — `contentHashOf` (WebCrypto sha-256, so the same function runs in the browser,
-on the server and under `--experimental-strip-types`; **zero imports by rule**, which is the
-script-host constraint) and `isValidContentHash` (64-lowercase-hex, the gate for a client
-*claim*). `lib/nina/queries.ts` widened `NinaImageRow` / `NinaImageInsert`, coalesces any claim
-that fails the validator to NULL at the one insert every write path shares (a bad claim is
-dedup-inactive for that row, never a send error), and added
-`findNinaImageByContentHash(userId, hash)` — originals only via `isOriginalPhoto()` (a reference
-row carries the keeper's hash, so counting references would answer "yes" forever) and newest-first
-with the `id` tiebreak, so the attach target is the row least likely to be deleted between the
-lookup and the write that follows. `scripts/nina-image-worker.ts` names `content_hash` in
-`REQUIRED_COLUMNS` — the raw-SQL preflight is what makes a future rename of the column red — and
-`finishSelfie` binds it, NULL until phase 3.
-
-`tests/db.schema.nina.test.ts`'s absence-assertion ("adds no index for them") now expects the
-three-index list: the new index is exactly the deliberate decision that test exists to force.
+### Deploy state of the journal
+
+Kept short because it is the fact most likely to have changed since this page was written (and
+twice has): see **Migrations → Deploy state** above — verified 2026-09-12: 20 of 21 entries
+applied; `0011_rare_blockbuster` unapplied and watermark-skipped; production still holds the
+orphaned `nina_memory_facts.confidence`.
+
+### Documentation history
+
+This page was created 2026-09-04 (task **P1-DB-A000**, phase 1 of 7 of
+`ADMIN_ALBUM_FILE_MANAGER_PLAN.md`). Until 2026-09-12 it also carried a full narrative entry per
+landed task; those stories live in the plan documents under `docs/plans/archive/` and in git
+history, and the decisions worth keeping are folded into the sections above. The compact record:
+
+| Date | Task / set | What changed in this package | Migration (current file) |
+|---|---|---|---|
+| 2026-09-04 | P1-DB-A000 (album file manager) | `nina_avatars` +folder/filename/source_key/thumb_url/thumb_pathname; new `nina_folders` | `0003_nina_avatar_folders` |
+| 2026-09-05 | nina-character-tuning p1 | new `nina_tuning`; `nina_turns.tuning_revision` (since dropped) | `0005_nina_persona_tuning` (minted as a second `0004`, regenerated after the collision — the restamp story lives in git history) |
+| 2026-09-05 | P1-DB-A001 (chat sessions) | new `nina_chat_sessions`; `nina_messages.session_id` + two indexes; the md5-substr session-filing backfill | `0004_nina_chat_sessions` (first hand-edited migration) |
+| 2026-09-07 | P1-DB-A003 (photo refs, F37) | `nina_message_images` +source_avatar_id/source_image_id, with the duplicate-marking backfill | `0010_nina_image_provenance` |
+| 2026-09-07 | P1-DB-A004 (emoji shortcuts) | new `nina_shortcuts` and its matcher-side contract | `0012_messy_carlie_cooper` (minted as `0012_nina_shortcuts`) |
+| 2026-09-08 | imagegen p1 (F41 R3) | new `nina_image_prefs`; the wardrobe copy out of `nina_tuning` | `0011_natural_nico_minoru` |
+| — | F13 (badge ledger) | `badges.dedupe_key` backfilled, then made the third PK column | `0001_badge_award_ledger` |
+| — | early Nina tables | `nina_avatars` base table; `nina_tuning` enable toggles; `horny` dial | `0002_nina`, `0006`, `0007` |
+| — | turn soft delete | `nina_turns.deleted_at` | `0008_thankful_cardiac` |
+| — | drop shortcut/ledger confidence | `nina_memory_facts` − `confidence` | `0011_rare_blockbuster` — **unapplied; see Deploy state** |
+| 2026-09-09 | — | `nina_message_images.message_id` becomes nullable, FK `set null` | `0013_fixed_serpent_society` |
+| 2026-09-09 | F41 R3 | `nina_tuning` − `wardrobe` | `0015_retire_nina_tuning_wardrobe` |
+| 2026-09-09 | P1-RI-A040 (simplify-personality p1) | `nina_tuning` − `revision`; `nina_turns` − `tuning_revision` | `0016_retire_tuning_revision` (applied) |
+| 2026-09-09 | P1-RI-A029 (admin-imagegen-simplify p2) | `nina_image_prefs` − `revision` | `0017_retire_imageprefs_revision` (applied) |
+| 2026-09-10 | P1-DB-A006 (media-dedupe p1) | `nina_message_images` + `content_hash` + partial non-unique index | `0018_real_madame_web` (applied) |
+| 2026-09-10 | media-dedupe p2 | `nina_message_images` + `perceptual_hash`/`perceptual_sig` | `0019_massive_dracula` (applied) |
+| 2026-09-10 | image-gen controls | new `app_settings`; `nina_image_prefs` + `prompt_template`/`model` | `0020_image_gen_controls` (applied) |
+| 2026-09-11 | lib-db-queries-yagni | removed dead code: `getMonthlyTotals`/`fillZeroMonths` (and `MonthlyTotal`), `getObservedMaxHr`/`getObservedMaxHrExcludingRun`, `listExtractions`, `deletePhoto` | — |

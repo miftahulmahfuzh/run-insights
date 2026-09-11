@@ -64,11 +64,13 @@ import {
  *
  * ## Two invariants govern this file
  *
- * **1. The userId-scoping invariant (roadmap D8).** Every exported function takes `userId` as its
- * first parameter and that value appears in the `WHERE` of every statement it runs. There is
- * exactly ONE exception — `getRunByShareToken` (§9), which is unscoped by contract because the
- * 96-bit token *is* the credential. Never add a second. `userId` must come from the session
- * (F02's `requireUserId()`), never from a Server Action argument, a form field or a URL segment.
+ * **1. The userId-scoping invariant (roadmap D8).** Every exported function that reads or writes
+ * one user's data takes `userId` as its first parameter and that value appears in the `WHERE` of
+ * every statement it runs. Exactly TWO exceptions: `getRunByShareToken` (§9), unscoped by
+ * contract because the 96-bit token *is* the credential, and `listActiveUserIds` (§8), a
+ * directory read over all users with nothing to scope. Never add a third. `userId` must come
+ * from the session (F02's `requireUserId()`), never from a Server Action argument, a form field
+ * or a URL segment.
  *
  * A row that exists but is not yours and a row that does not exist are the SAME outcome
  * (`NotFoundError` → 404). Distinguishing them is an id-enumeration oracle.

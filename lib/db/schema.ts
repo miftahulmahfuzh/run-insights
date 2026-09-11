@@ -17,10 +17,11 @@ import {
 } from 'drizzle-orm/pg-core'
 
 /**
- * The whole database, in one file. ROADMAP_v0.1.0.md §4.3 is authoritative for every column;
- * RECONCILIATION_v0.1.0.md amends it in six places and each amendment is marked with its ruling
- * (R-1, R-5, R-7, R-8, R-9, R-11, R-12, R-22). Where this file and a feature plan disagree, the
- * roadmap-plus-reconciliation pair wins — see docs/plans/archive/F03-data-layer.md §10.
+ * The whole database, in one file. The v0.1.0 contract docs (ROADMAP_v0.1.0.md, §4.3 for every
+ * column; RECONCILIATION_v0.1.0.md) are retired — the rulings survive in
+ * `.workflows/plan/nina-chatbot/RECONCILIATION_RULINGS.md`, and each amendment is marked in this
+ * file with its ruling (R-1, R-5, R-7, R-8, R-9, R-11, R-12, R-13, R-22, R-28). Where this file
+ * and a feature plan disagree, the rulings win — see docs/plans/archive/F03-data-layer.md §10.
  *
  * Two rules that are invisible in the column list but govern the whole schema:
  *
