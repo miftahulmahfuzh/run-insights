@@ -20,86 +20,6 @@
 
 ### [P1] High
 
-- [x] **P1-NIN-A025** Phase 1: Search hits deep-link through `?jump=` and the landing survives a same-session soft nav
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `lib/nina/search.ts` (`searchHitHref` + doc), `lib/nina/search.test.ts` (href suite), `lib/nina/jobview.ts` (the soft-nav one-shot guard, appended), `tests/nina.jobview.test.ts` (guard tests, appended), `components/nina/ChatScreen.tsx` (landing extraction + watcher). Exit criteria: a message hit's href is `/nina?s=<sid>&jump=<mid>` (session hit: `/nina?s=<sid>`), produced by `ninaJumpHref`; a jump arriving on a soft nav (no remount) scrolls instantly and flashes exactly as the mount path does, once, and strips itself from the entry; the mount path's behaviour is unchanged; all gates green.
-  - **Status**: completed
-  - **Plan Set**: `SEARCH_JUMP_PINPOINT_PLAN.md` (phase 1 of 1)
-  - **Satisfies**: R1 — Klik item di search result → masuk ke chat session terkait → auto-scroll ke bubble yang direferensikan; R2 — Outline biru pada bubble yang direferensikan, efek yang sama dengan klik kotak reply-to
-  - **Depends on**: —
-  - **Plan**: `.workflows/plan/P1-NIN-A025.md`
-  - **Completed**: 2026-09-08 14:59
-  - **Method**: /do
-  - **Files**: lib/nina/jobview.ts, lib/nina/search.ts, lib/nina/search.test.ts, tests/nina.jobview.test.ts, components/nina/ChatScreen.tsx, tests/nina.chatPhoto.test.ts
-  - **Drift**: `tests/nina.chatPhoto.test.ts` was not in the plan's Files table: its "adds no second writer of the query string" source-contract test asserted exactly ONE `replaceState` in ChatScreen and failed against the watcher's sanctioned strip (expected 1, received 2). Updated to assert the decided rule — two sanctioned writers, exactly one per commit — with the comment restating that rule; the guard against a third writer is intact.
-  - **Drift**: The plan's manual smoke checklist (dev server on :3100, browser taps) was not run — it needs an authenticated browser session and asserts visual scroll/flash behaviour; the plan itself assigns the watcher's automated coverage to the pure guard tests, which pass.
-  - **Decided**: chatPhoto replaceState count 1→2 → test updated to the sanctioned-two-writers rule, not deleted or loosened (Rung 1: plan index Decisions row 4 — "the watcher's strip is a sanctioned second writer; the header's real rule is never two writers in ONE commit")
-
-- [x] **P1-NIN-A030** Phase 1: Orphan-able photographs: the FK, the migration, and every reader that assumed a message
-  - **Difficulty**: HARD
-  - **Type**: Bug
-  - **Context**: `nina_message_images.message_id` nullable + `ON DELETE SET NULL`, so deleting a chat session orphans its photographs instead of destroying them. `deleteNinaMessage` keeps taking its own, explicitly, images first in one batch. Every reader degrades to `string | null`; the runner's delete confirmation stops threatening the photographs.
-  - **Status**: completed
-  - **Plan Set**: `CHAT_PHOTO_ORPHANS_AND_UNIQUENESS_PLAN.md` (phase 1 of 3)
-  - **Satisfies**: R1 — deleting a chat session must stop deleting the chat photographs, the hand-replaced ones included
-  - **Depends on**: —
-  - **Plan**: `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md`
-  - **Card**: miftahulmahfuzh/run-insights#140
-  - **Notes**: Commit `86891a9`. Migration generated on the branch as `0012_nina_photo_orphans` and **regenerated at landing as `0013_fixed_serpent_society`** (`when` 1788812808829) per coordinator ruling C10 — three statements, `nina_message_images` only, no destructive DDL. The branch's `0012` collided with main's `0012_messy_carlie_cooper` on `idx` and on snapshot lineage (both `0012_snapshot.json` files carried `prevId 81e07f7d-3d60-4f84-b3c7-32e7511815d4`), and neither is reported by any tool — `land --step check` said `migrations.added: []` while the branch plainly added three drizzle artefacts. The number was **derived by merging first and generating second, never named**; the regenerated SQL diffed byte-identical to the discarded `0012`, so nothing was dropped, and `0013_snapshot.json`'s `prevId` now equals `0012_snapshot.json`'s `id`. `is_reference` deliberately NOT declared (coordinator ruling C7, rung 5): `origin/main`'s F37 (P1-DB-A003) already serves R2/R3 via `source_avatar_id`/`source_image_id` + `isOriginalPhoto()`, so the column would have been dead in production and a second vocabulary for "reference"; phase 1's exit criterion naming it is superseded, not unmet. `NinaImageRow` and `tests/db.schema.nina.test.ts` edited surgically rather than block-replaced, preserving F37's provenance fields and its test. Main's F36 `scheduleChatPhotoCaption` gained an orphan guard (postdates the plan). Exit-criteria greps intentionally still match: every hit is the old text quoted inside the correction that replaced it. Verified 154 files / 3104 tests (+1/+10 over the post-merge 153/3094 baseline), typecheck + `db:check` clean, lint 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched), all 17 paths prettier-clean; `nina.sessionPurge`, `admin.chatPhotos` and `nina.photoRefs` pass unedited.
-
-- [x] **P1-NIN-A031** Phase 2: Re-parent an orphaned chat photograph instead of copying it
-  - **Difficulty**: HARD
-  - **Type**: Bug
-  - **Context**: Owns `adoptNinaMessageImage(userId, id, { messageId, sortOrder })` in `lib/nina/queries.ts` §5 — one owner-scoped UPDATE with `message_id IS NULL` in the WHERE (not in a branch above it), `created_at`, the F37 provenance pair, `description` and `kind` all outside the SET; `resolveAttachment`'s new module-private `adoptableId`; the attached-photo block in `sendNinaMessage`, now adopt-or-reference; and a reference-row refusal in `replaceChatPhotoAction` and `removeChatPhotoAction` via the module-local `isChatPhotoReference`. **RESCOPED to R4 only by coordinator ruling C8**: R2/R3 are served on `origin/main` by F37's `source_avatar_id`/`source_image_id` + `isOriginalPhoto()`, so `is_reference` was never declared (ruling C7) and plan exit criteria 1 and 3 are **superseded, not unmet**; criterion 6 was reframed onto the provenance pair. Phase 1 is what made this defect reachable — orphans could not exist while `message_id` was `NOT NULL`, and main's `resolveAttachment` COPIES, so a re-attached orphan got a reference row pointing at a parentless row and stayed parentless forever.
-  - **Status**: completed
-  - **Plan Set**: `CHAT_PHOTO_ORPHANS_AND_UNIQUENESS_PLAN.md` (phase 2 of 3)
-  - **Satisfies**: R4 — "make sure these 'orphaned' photos got 'parent' chat session again if user attach a photo to another chat session"
-  - **Depends on**: `P1-NIN-A030`
-  - **Plan**: `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md`
-  - **Method**: /implement (swarm, phase 2 of 3; phase 3 cancelled by ruling C9)
-  - **Card**: miftahulmahfuzh/run-insights#141
-  - **Files**: lib/nina/queries.ts, lib/nina/actions.ts, lib/admin/chatPhotoActions.ts, tests/nina.chatPhotoAdoption.test.ts, tests/nina.chatPhotoReattach.test.ts
-  - **Notes**: No migration and `drizzle/` untouched — R4 needs no schema change. Criterion 6 was **not** already served by F37: because `getNinaMessageImage` deliberately carries no reference filter, both admin actions could still reach a row `/admin/photos` never lists, so the refusal was implemented here (purely additive, 0 deletions in that file; phase 1's carrier block and docstring paragraphs untouched). Decisions: (1) `isChatPhotoReference` uses `!= null` not `!== null` (rung 3, safe direction) — a refusal must fire on evidence, and a pre-F37-shaped row has both fields `undefined`, which the strict form read as "re-share"; it turned `tests/admin.chatPhotos.test.ts` red and was fixed in this phase's own code rather than in another suite's fixture. (2) The row-level predicate is module-local to `lib/admin/chatPhotoActions.ts` rather than a new export from `lib/nina/attach.ts` — narrower blast radius, and a shared export invites a fourth caller to filter a read `lib/db/schema.ts:1091` and `tests/nina.photoRefs.test.ts` say must never be filtered. (3) Test files named `nina.chatPhotoAdoption` (the statement + the two admin refusals) and `nina.chatPhotoReattach` (the send path's four outcomes) instead of the plan's `nina.chatPhotoUniqueness` (rung 2 — that name described the R2/R3 half C7 struck); two files because the send-path suite mocks `@/lib/nina/queries` module-wide and would shadow the real `adoptNinaMessageImage`. Verified: typecheck clean, lint 0 errors (2 pre-existing warnings in the untouched `scripts/capture/shoot.mjs`), 156 test files / 3119 tests passing (+2 files / +15 tests over the 154/3104 baseline), all five paths prettier-clean.
-  - **Completed**: 2026-09-08
-  - **Commit**: `5a07dc5`
-
-- [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns `'instructor'` appended to `NINA_RELATIONSHIPS`; `NINA_ADDRESS.instructor`; `NINA_RELATIONSHIP_BLOCKS.instructor`; `RELATIONSHIP_NOTE.instructor`; `RELATIONSHIP_GLOSS.instructor`; the prose address list at `distill.ts:105`; **`NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6)**; the `nina_tuning.relationship` docstring; the grid's equal-height cells in `CharacterPanel.tsx`; and the test files that count or enumerate the levels. Exit: six cards render three-across two-down with equal-height cells at `xl` via `sm:auto-rows-fr` and **no `h-full`** on the cards; all four `Record<NinaRelationship, ...>` sites and all four prose sites filled; `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests **including the frozen snapshot, unregenerated**; `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` byte-identical; `NINA_PROMPT_VERSION === 4` still and `NINA_DISTILL_PROMPT_VERSION === 3`.
-  - **Status**: completed
-  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 1 of 3)
-  - **Satisfies**: R1 — "to make it a nice 3 columns x 2 rows"; R2 — "add a new character: Instructor", a professional and knowledgeable instructor whose primary objective is to improve the performance of miftah's running
-  - **Depends on**: —
-  - **Plan**: `.workflows/plan/nina-instructor-character/phase-1.md`
-  - **Method**: /implement (swarm wave 0, concurrent with phase 2)
-  - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/admin/tuningModel.ts, lib/nina/prompts/distill.ts, lib/db/schema.ts, components/admin/CharacterPanel.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/nina.prompts.test.ts
-  - **Completed**: 2026-09-07 12:35
-  - **Commit**: `f1bdbc7`
-  - **Verification**: 145 test files / 2845 tests green, run after phase 2 had landed. `tsc --noEmit` clean, prettier clean. Frozen snapshot byte-identical to base `f839116`, never regenerated; the `it()` title at `:220` untouched, `instructor` excluded in the loop body only. `NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6, its bump alone); `NINA_PROMPT_VERSION` untouched at 4. R1 measured on a local production build (port 3457) driven with Playwright at `/admin/personality`: 3x2 with all six cards 93px at 1440px, 2x3 at 1024/800, one content-sized column at 420px. Counterfactual run: removing `sm:auto-rows-fr` returns rows to 77/93, so the fix is load-bearing and the plan's row-to-row diagnosis was right.
-  - **Decisions**: 15 `PageProps`/`LayoutProps` tsc errors are absent Next-generated types cleared by one `next build`, none in its nine files — pre-existing, not drift (rung 6) · Did NOT run the plan's manual select-Instructor-and-Save step: `.env.local` points at the production Neon database, so saving would have flipped Nina's live relationship for real users. The prompt content is asserted by tests instead (tie-break: reversibility, narrower blast radius). Coordinator concurs — a live production write is not a phase's side effect.
-  - **Drift**: none — every anchor the plan quoted matched.
-  - **Handoff to phase 3**: locate insertion points in `lib/nina/persona.ts` and `tests/nina.prompts.test.ts` by ANCHOR TEXT, not line number — this phase shifted `persona.ts` by ~+13 inside `NINA_RELATIONSHIP_BLOCKS` and `tests/nina.prompts.test.ts` by ~+50 below `:220`.
-
-- [x] **P1-NIN-A017** Phase 2: A schedule she can keep
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns the tenth `NINA_SLOT_KEYS` member for the training plan — spelled **`training_plan`**, at index 3 immediately after `running_days` — its `NINA_SLOT_SPECS` entry (`policy: 'replace'`, `category: 'training'`, `canonicalise: prose(raw, 400)`, `prompt`), its `SLOT_LABELS` entry and refusal reason in `lib/admin/memoryVocab.ts`, the slot-count prose in `lib/admin/memoryModel.ts` and `lib/admin/schema.ts` (comments only), and the two slot-count test files. Exit: `NINA_SLOT_KEYS` has ten members with `training_plan` fourth and `pending_promises` last; the slot round-trips through `canonicalise`, refuses an empty value to a ledger fact rather than storing it, appears at `/admin/memory` with a label, hint and editable value, and is described to the distiller by **exactly one** rendered line from `SLOT_VOCABULARY_BLOCK`. **Neither `lib/nina/prompts/system.ts` nor `lib/nina/prompts/distill.ts` appears in `git diff --name-only`.** `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests; frozen snapshot byte-identical.
-  - **Status**: completed
-  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 2 of 3)
-  - **Satisfies**: R3 (the "set up schedules" half) — "she will set up schedules"
-  - **Depends on**: —
-  - **Plan**: `.workflows/plan/nina-instructor-character/phase-2.md`
-  - **Method**: /implement (swarm wave 0, concurrent with phase 1)
-  - **Files**: lib/nina/memory.ts, lib/admin/memoryVocab.ts, lib/admin/memoryModel.ts, lib/admin/schema.ts, tests/nina.memory.test.ts, tests/admin.memory.test.ts
-  - **Completed**: 2026-09-07 12:14
-  - **Commit**: `814fe8a`
-  - **Verification**: 145 test files / 2845 tests green (baseline 145/2834; +8 its own, +3 residual from phase 1's concurrent in-flight edits). Frozen snapshot unregenerated. `lib/nina/prompts/system.ts` and `lib/nina/prompts/distill.ts` both absent from its diff; `instructor` and `relationship` grep 0 across its six paths. `SLOT_VOCABULARY_BLOCK` verified at runtime to render exactly 10 lines with `training_plan —` fourth. prettier and eslint clean on all six.
-  - **Decisions**: `buildMemoryRows` docstring item 2 read "after the eight" — a fourth slot-count sentence the plan's Step 6 did not enumerate, two lines below one it does correct. Corrected to "after the nine" (rung 4, the deliverable: false the moment `NINA_SLOT_KEYS` grows, comment-only, inside this phase's stated Owns for slot-count prose in that file).
-  - **Drift**: none — every anchor the plan quoted was present as quoted.
-  - **Outstanding**: the manual `/admin/memory` browser check (plan's Manual check 1-4) was deliberately not run — a production build of the shared worktree would compile phase 1's in-flight edits, making the result attributable to neither phase. Every automated criterion is met; do the browser confirmation once the wave has landed.
-
 - [ ] **P1-NIN-A018** Phase 3: The coaching register and the insight path
   - **Difficulty**: HARD
   - **Type**: Feature
@@ -222,6 +142,51 @@
   - **Drift**: `tests/nina.burstCancel.test.ts` — the `bumpNinaShortcutUses` spy needed `mockResolvedValue(undefined)`: the action voids `.catch` off the returned promise, so a bare `vi.fn()` (returning `undefined`) killed any turn with a fired shortcut as "crashed".
   - **Drift**: `tests/nina.burstCancel.test.ts` — the plan's `loadNinaContext` fixture `{ conversation: { window: [] } }` under-specified `runNinaDistillation`'s reads (`memory.slots`, `runner.fullName`/`nickname`, `conversation.olderMessageCount`); the happy-path test threw `undefined.map` after the close. Fixture enriched.
   - **Drift**: `lib/nina/chatturn.test.ts` — the freshness-bound UPDATE param reaches the fake client as the driver-serialized ISO string, not a `Date`; `expect.any(Date)` replaced with an ISO-timestamp string matcher (same assertion intent).
+- [x] **P1-NIN-A025** Phase 1: Search hits deep-link through `?jump=` and the landing survives a same-session soft nav
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/search.ts` (`searchHitHref` + doc), `lib/nina/search.test.ts` (href suite), `lib/nina/jobview.ts` (the soft-nav one-shot guard, appended), `tests/nina.jobview.test.ts` (guard tests, appended), `components/nina/ChatScreen.tsx` (landing extraction + watcher). Exit criteria: a message hit's href is `/nina?s=<sid>&jump=<mid>` (session hit: `/nina?s=<sid>`), produced by `ninaJumpHref`; a jump arriving on a soft nav (no remount) scrolls instantly and flashes exactly as the mount path does, once, and strips itself from the entry; the mount path's behaviour is unchanged; all gates green.
+  - **Status**: completed
+  - **Plan Set**: `SEARCH_JUMP_PINPOINT_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Klik item di search result → masuk ke chat session terkait → auto-scroll ke bubble yang direferensikan; R2 — Outline biru pada bubble yang direferensikan, efek yang sama dengan klik kotak reply-to
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/P1-NIN-A025.md`
+  - **Completed**: 2026-09-08 14:59
+  - **Method**: /do
+  - **Files**: lib/nina/jobview.ts, lib/nina/search.ts, lib/nina/search.test.ts, tests/nina.jobview.test.ts, components/nina/ChatScreen.tsx, tests/nina.chatPhoto.test.ts
+  - **Drift**: `tests/nina.chatPhoto.test.ts` was not in the plan's Files table: its "adds no second writer of the query string" source-contract test asserted exactly ONE `replaceState` in ChatScreen and failed against the watcher's sanctioned strip (expected 1, received 2). Updated to assert the decided rule — two sanctioned writers, exactly one per commit — with the comment restating that rule; the guard against a third writer is intact.
+  - **Drift**: The plan's manual smoke checklist (dev server on :3100, browser taps) was not run — it needs an authenticated browser session and asserts visual scroll/flash behaviour; the plan itself assigns the watcher's automated coverage to the pure guard tests, which pass.
+  - **Decided**: chatPhoto replaceState count 1→2 → test updated to the sanctioned-two-writers rule, not deleted or loosened (Rung 1: plan index Decisions row 4 — "the watcher's strip is a sanctioned second writer; the header's real rule is never two writers in ONE commit")
+
+- [x] **P1-NIN-A031** Phase 2: Re-parent an orphaned chat photograph instead of copying it
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: Owns `adoptNinaMessageImage(userId, id, { messageId, sortOrder })` in `lib/nina/queries.ts` §5 — one owner-scoped UPDATE with `message_id IS NULL` in the WHERE (not in a branch above it), `created_at`, the F37 provenance pair, `description` and `kind` all outside the SET; `resolveAttachment`'s new module-private `adoptableId`; the attached-photo block in `sendNinaMessage`, now adopt-or-reference; and a reference-row refusal in `replaceChatPhotoAction` and `removeChatPhotoAction` via the module-local `isChatPhotoReference`. **RESCOPED to R4 only by coordinator ruling C8**: R2/R3 are served on `origin/main` by F37's `source_avatar_id`/`source_image_id` + `isOriginalPhoto()`, so `is_reference` was never declared (ruling C7) and plan exit criteria 1 and 3 are **superseded, not unmet**; criterion 6 was reframed onto the provenance pair. Phase 1 is what made this defect reachable — orphans could not exist while `message_id` was `NOT NULL`, and main's `resolveAttachment` COPIES, so a re-attached orphan got a reference row pointing at a parentless row and stayed parentless forever.
+  - **Status**: completed
+  - **Plan Set**: `CHAT_PHOTO_ORPHANS_AND_UNIQUENESS_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R4 — "make sure these 'orphaned' photos got 'parent' chat session again if user attach a photo to another chat session"
+  - **Depends on**: `P1-NIN-A030`
+  - **Plan**: `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-2.md`
+  - **Method**: /implement (swarm, phase 2 of 3; phase 3 cancelled by ruling C9)
+  - **Card**: miftahulmahfuzh/run-insights#141
+  - **Files**: lib/nina/queries.ts, lib/nina/actions.ts, lib/admin/chatPhotoActions.ts, tests/nina.chatPhotoAdoption.test.ts, tests/nina.chatPhotoReattach.test.ts
+  - **Notes**: No migration and `drizzle/` untouched — R4 needs no schema change. Criterion 6 was **not** already served by F37: because `getNinaMessageImage` deliberately carries no reference filter, both admin actions could still reach a row `/admin/photos` never lists, so the refusal was implemented here (purely additive, 0 deletions in that file; phase 1's carrier block and docstring paragraphs untouched). Decisions: (1) `isChatPhotoReference` uses `!= null` not `!== null` (rung 3, safe direction) — a refusal must fire on evidence, and a pre-F37-shaped row has both fields `undefined`, which the strict form read as "re-share"; it turned `tests/admin.chatPhotos.test.ts` red and was fixed in this phase's own code rather than in another suite's fixture. (2) The row-level predicate is module-local to `lib/admin/chatPhotoActions.ts` rather than a new export from `lib/nina/attach.ts` — narrower blast radius, and a shared export invites a fourth caller to filter a read `lib/db/schema.ts:1091` and `tests/nina.photoRefs.test.ts` say must never be filtered. (3) Test files named `nina.chatPhotoAdoption` (the statement + the two admin refusals) and `nina.chatPhotoReattach` (the send path's four outcomes) instead of the plan's `nina.chatPhotoUniqueness` (rung 2 — that name described the R2/R3 half C7 struck); two files because the send-path suite mocks `@/lib/nina/queries` module-wide and would shadow the real `adoptNinaMessageImage`. Verified: typecheck clean, lint 0 errors (2 pre-existing warnings in the untouched `scripts/capture/shoot.mjs`), 156 test files / 3119 tests passing (+2 files / +15 tests over the 154/3104 baseline), all five paths prettier-clean.
+  - **Completed**: 2026-09-08 03:22
+  - **Commit**: `5a07dc5`
+
+- [x] **P1-NIN-A030** Phase 1: Orphan-able photographs: the FK, the migration, and every reader that assumed a message
+  - **Difficulty**: HARD
+  - **Type**: Bug
+  - **Context**: `nina_message_images.message_id` nullable + `ON DELETE SET NULL`, so deleting a chat session orphans its photographs instead of destroying them. `deleteNinaMessage` keeps taking its own, explicitly, images first in one batch. Every reader degrades to `string | null`; the runner's delete confirmation stops threatening the photographs.
+  - **Status**: completed
+  - **Plan Set**: `CHAT_PHOTO_ORPHANS_AND_UNIQUENESS_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — deleting a chat session must stop deleting the chat photographs, the hand-replaced ones included
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/chat-photo-orphans-and-uniqueness/phase-1.md`
+  - **Card**: miftahulmahfuzh/run-insights#140
+  - **Notes**: Commit `86891a9`. Migration generated on the branch as `0012_nina_photo_orphans` and **regenerated at landing as `0013_fixed_serpent_society`** (`when` 1788812808829) per coordinator ruling C10 — three statements, `nina_message_images` only, no destructive DDL. The branch's `0012` collided with main's `0012_messy_carlie_cooper` on `idx` and on snapshot lineage (both `0012_snapshot.json` files carried `prevId 81e07f7d-3d60-4f84-b3c7-32e7511815d4`), and neither is reported by any tool — `land --step check` said `migrations.added: []` while the branch plainly added three drizzle artefacts. The number was **derived by merging first and generating second, never named**; the regenerated SQL diffed byte-identical to the discarded `0012`, so nothing was dropped, and `0013_snapshot.json`'s `prevId` now equals `0012_snapshot.json`'s `id`. `is_reference` deliberately NOT declared (coordinator ruling C7, rung 5): `origin/main`'s F37 (P1-DB-A003) already serves R2/R3 via `source_avatar_id`/`source_image_id` + `isOriginalPhoto()`, so the column would have been dead in production and a second vocabulary for "reference"; phase 1's exit criterion naming it is superseded, not unmet. `NinaImageRow` and `tests/db.schema.nina.test.ts` edited surgically rather than block-replaced, preserving F37's provenance fields and its test. Main's F36 `scheduleChatPhotoCaption` gained an orphan guard (postdates the plan). Exit-criteria greps intentionally still match: every hit is the old text quoted inside the correction that replaced it. Verified 154 files / 3104 tests (+1/+10 over the post-merge 153/3094 baseline), typecheck + `db:check` clean, lint 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched), all 17 paths prettier-clean; `nina.sessionPurge`, `admin.chatPhotos` and `nina.photoRefs` pass unedited.
+  - **Completed**: 2026-09-07 23:06
+
 - [x] **P1-NIN-A023** Phase 2: Firing a shortcut into the turn
   - **Difficulty**: HARD
   - **Type**: Feature
@@ -405,6 +370,24 @@
   - **Decided**: Dropped a drafted test asserting that a THROWN `captionNinaPhoto` fails the job. It passed, but it would have encoded the wrong behaviour as correct — `captionNinaPhoto` is contractually non-throwing (its own top-level `try`), and the phase plan trusts that contract rather than defending against it, which is exactly why it says to wrap `readNinaTuning` *alone* rather than widen the function's failure surface. Rung 3: the phase plan's code blocks.
   - **Notes**: Verified green at 147 files / 2910 tests, up from 146 / 2893 at 31a542e; 8 of the 17 new tests are this phase's and the other 9 are phase 3's uncommitted work, which shares this worktree. `npm run lint` reports 0 errors (2 pre-existing warnings in `scripts/capture/shoot.mjs`, untouched). The payload-boundary guard passes with `captionNinaPhoto` confined — phase 1 had already sanctioned `lib/nina/imagerun.ts` as a caller, so no guard edit was needed. Phase 2's INSERT comment in `scripts/nina-image-worker.ts` already states the canned caption is permanent on that host and why, so Step 3 needed nothing placed. `replaceChatPhotoAction` and `gateway.ts`'s empty `imageDescriptions` remain deliberately out of scope.
 
+- [x] **P1-NIN-A016** Phase 1: The sixth character, and the 3x2 grid
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `'instructor'` appended to `NINA_RELATIONSHIPS`; `NINA_ADDRESS.instructor`; `NINA_RELATIONSHIP_BLOCKS.instructor`; `RELATIONSHIP_NOTE.instructor`; `RELATIONSHIP_GLOSS.instructor`; the prose address list at `distill.ts:105`; **`NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6)**; the `nina_tuning.relationship` docstring; the grid's equal-height cells in `CharacterPanel.tsx`; and the test files that count or enumerate the levels. Exit: six cards render three-across two-down with equal-height cells at `xl` via `sm:auto-rows-fr` and **no `h-full`** on the cards; all four `Record<NinaRelationship, ...>` sites and all four prose sites filled; `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests **including the frozen snapshot, unregenerated**; `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)` byte-identical; `NINA_PROMPT_VERSION === 4` still and `NINA_DISTILL_PROMPT_VERSION === 3`.
+  - **Status**: completed
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 1 of 3)
+  - **Satisfies**: R1 — "to make it a nice 3 columns x 2 rows"; R2 — "add a new character: Instructor", a professional and knowledgeable instructor whose primary objective is to improve the performance of miftah's running
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-1.md`
+  - **Method**: /implement (swarm wave 0, concurrent with phase 2)
+  - **Files**: lib/nina/tuning.ts, lib/nina/persona.ts, lib/admin/tuningModel.ts, lib/nina/prompts/distill.ts, lib/db/schema.ts, components/admin/CharacterPanel.tsx, tests/nina.tuning.test.ts, tests/admin.tuning.test.ts, tests/nina.prompts.test.ts
+  - **Completed**: 2026-09-07 12:35
+  - **Commit**: `f1bdbc7`
+  - **Verification**: 145 test files / 2845 tests green, run after phase 2 had landed. `tsc --noEmit` clean, prettier clean. Frozen snapshot byte-identical to base `f839116`, never regenerated; the `it()` title at `:220` untouched, `instructor` excluded in the loop body only. `NINA_DISTILL_PROMPT_VERSION` 2 -> 3 (D6, its bump alone); `NINA_PROMPT_VERSION` untouched at 4. R1 measured on a local production build (port 3457) driven with Playwright at `/admin/personality`: 3x2 with all six cards 93px at 1440px, 2x3 at 1024/800, one content-sized column at 420px. Counterfactual run: removing `sm:auto-rows-fr` returns rows to 77/93, so the fix is load-bearing and the plan's row-to-row diagnosis was right.
+  - **Decisions**: 15 `PageProps`/`LayoutProps` tsc errors are absent Next-generated types cleared by one `next build`, none in its nine files — pre-existing, not drift (rung 6) · Did NOT run the plan's manual select-Instructor-and-Save step: `.env.local` points at the production Neon database, so saving would have flipped Nina's live relationship for real users. The prompt content is asserted by tests instead (tie-break: reversibility, narrower blast radius). Coordinator concurs — a live production write is not a phase's side effect.
+  - **Drift**: none — every anchor the plan quoted matched.
+  - **Handoff to phase 3**: locate insertion points in `lib/nina/persona.ts` and `tests/nina.prompts.test.ts` by ANCHOR TEXT, not line number — this phase shifted `persona.ts` by ~+13 inside `NINA_RELATIONSHIP_BLOCKS` and `tests/nina.prompts.test.ts` by ~+50 below `:220`.
+
 - [x] **P1-NIN-A019** Phase 1: Her eyes for her own photo, and her voice for the caption
   - **Difficulty**: NORMAL
   - **Type**: Bug
@@ -419,6 +402,24 @@
   - **Drift**: None in the source tree. The phase plan quoted every site accurately.
   - **Decided**: sanitizeNinaCaption stripped wrapping quotes BEFORE markdown edges, so the plan's own test input `Caption: **"nih, dari bawah laut"**` kept its quotes and failed. Two of the phase plan's code blocks contradicted each other (the sanitiser's step order vs the test asserting bare text). Resolved by stripping quotes and markdown to a FIXED POINT via a new `stripEdgeDecoration` helper, since either wraps the other. Rung 3: the phase plan's code blocks. Relaxes no check, adds no scope.
   - **Decided**: Wrote CONTROL_RE/INVISIBLE_RE as \u escape sequences and carried NO eslint-disable directive, matching lib/nina/title.ts:98 which records that a directive there is an unused-directive warning rather than a suppression. Rung 6: surrounding convention, stated at the precedent file.
+
+- [x] **P1-NIN-A017** Phase 2: A schedule she can keep
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the tenth `NINA_SLOT_KEYS` member for the training plan — spelled **`training_plan`**, at index 3 immediately after `running_days` — its `NINA_SLOT_SPECS` entry (`policy: 'replace'`, `category: 'training'`, `canonicalise: prose(raw, 400)`, `prompt`), its `SLOT_LABELS` entry and refusal reason in `lib/admin/memoryVocab.ts`, the slot-count prose in `lib/admin/memoryModel.ts` and `lib/admin/schema.ts` (comments only), and the two slot-count test files. Exit: `NINA_SLOT_KEYS` has ten members with `training_plan` fourth and `pending_promises` last; the slot round-trips through `canonicalise`, refuses an empty value to a ledger fact rather than storing it, appears at `/admin/memory` with a label, hint and editable value, and is described to the distiller by **exactly one** rendered line from `SLOT_VOCABULARY_BLOCK`. **Neither `lib/nina/prompts/system.ts` nor `lib/nina/prompts/distill.ts` appears in `git diff --name-only`.** `npx tsc --noEmit` clean; `npx vitest run` green at **145 test files** and >= 2834 tests; frozen snapshot byte-identical.
+  - **Status**: completed
+  - **Plan Set**: `NINA_INSTRUCTOR_CHARACTER_PLAN.md` (phase 2 of 3)
+  - **Satisfies**: R3 (the "set up schedules" half) — "she will set up schedules"
+  - **Depends on**: —
+  - **Plan**: `.workflows/plan/nina-instructor-character/phase-2.md`
+  - **Method**: /implement (swarm wave 0, concurrent with phase 1)
+  - **Files**: lib/nina/memory.ts, lib/admin/memoryVocab.ts, lib/admin/memoryModel.ts, lib/admin/schema.ts, tests/nina.memory.test.ts, tests/admin.memory.test.ts
+  - **Completed**: 2026-09-07 12:14
+  - **Commit**: `814fe8a`
+  - **Verification**: 145 test files / 2845 tests green (baseline 145/2834; +8 its own, +3 residual from phase 1's concurrent in-flight edits). Frozen snapshot unregenerated. `lib/nina/prompts/system.ts` and `lib/nina/prompts/distill.ts` both absent from its diff; `instructor` and `relationship` grep 0 across its six paths. `SLOT_VOCABULARY_BLOCK` verified at runtime to render exactly 10 lines with `training_plan —` fourth. prettier and eslint clean on all six.
+  - **Decisions**: `buildMemoryRows` docstring item 2 read "after the eight" — a fourth slot-count sentence the plan's Step 6 did not enumerate, two lines below one it does correct. Corrected to "after the nine" (rung 4, the deliverable: false the moment `NINA_SLOT_KEYS` grows, comment-only, inside this phase's stated Owns for slot-count prose in that file).
+  - **Drift**: none — every anchor the plan quoted was present as quoted.
+  - **Outstanding**: the manual `/admin/memory` browser check (plan's Manual check 1-4) was deliberately not run — a production build of the shared worktree would compile phase 1's in-flight edits, making the result attributable to neither phase. Every automated criterion is met; do the browser confirmation once the wave has landed.
 
 - [x] **P1-NIN-A013** Phase 1: Model the random suffix as its own group, in both predicates, and pin the fixtures to a measured one
   - **Difficulty**: NORMAL
