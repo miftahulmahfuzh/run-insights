@@ -198,11 +198,13 @@ export function imageTestPollDelayFor(attempts: number): number {
  * the poll, and its expiry message says the job is STILL OPEN rather than failed.
  *
  * ── AND WHY IT IS NOT `NINA_IMAGE_STALE_MS` ──────────────────────────────────────────────────
- * `NINA_TURN_POLL_GIVE_UP_MS` is deliberately set to the server's own deadline, because a chat turn
- * that has not answered by then never will. This one must NOT be: the server's deadline for an
- * image job is twenty minutes, and a tab that read the database for twenty minutes to learn
- * something already visible on `/nina/jobs` would be a poll with no bound in practice. So when this
- * clock runs out the panel says the job is STILL OPEN — which is true — rather than "failed", which
- * would not be. `STALE_PENDING_MS` makes the same distinction for extractions.
+ * The chat poll's give-up pairs with the server's honest wall clock (`NINA_BACKGROUND_BUDGET_MS`),
+ * because the server's own claim read is what actually stops a dead turn — but a give-up must
+ * still be SHORTER than the thing it watches is allowed to run, or it is no backstop at all. This
+ * one must NOT be `NINA_IMAGE_STALE_MS`: the server's deadline for an image job is twenty minutes,
+ * and a tab that read the database for twenty minutes to learn something already visible on
+ * `/nina/jobs` would be a poll with no bound in practice. So when this clock runs out the panel
+ * says the job is STILL OPEN — which is true — rather than "failed", which would not be.
+ * `STALE_PENDING_MS` makes the same distinction for extractions.
  */
 export const NINA_IMAGE_TEST_GIVE_UP_MS = 480_000

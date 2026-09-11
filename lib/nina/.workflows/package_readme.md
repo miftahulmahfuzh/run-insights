@@ -1,7 +1,7 @@
 # Package: `lib/nina`
 
 **Location**: `lib/nina`
-**Last Updated**: 2026-09-11 (task `P1-RI-A037`, phase 1 of 1 of the `JOB_JUMP_PHOTO_BUBBLE_PLAN.md` set — the Detail-foto jump retargeted: the button opens the EARLIEST chat bubble, across ALL sessions, carrying the job's photograph — Nina's carrier bubble or the runner's own re-attach alike — replacing the old `args.replyToId` rule; new `getNinaJobPhotoBubble` in `queries.ts`, appended after `getNinaJobPhoto` (owner-scoped on BOTH tables, candidate set `i.id = photo OR i.source_image_id = photo` with `isOriginalPhoto()` and any `kind` arm deliberately absent, `nina_messages.seq ASC` with the image id as tiebreak behind `LIMIT 1`, projecting exactly the two href facts), `planJobJump` in `jobview.ts` takes `bubble: { sessionId, messageId } | null` instead of `replyToId`/`replySessionId` so the refusal union collapses `ready|avatar|no-message|gone` to `ready|avatar|no-photo` and `NINA_JOB_JUMP_NOTE` becomes a two-key map, and `getNinaImageJobDetail` loses its dead second read — the `replySessionId` resolution and the `NinaImageJobDetail` wrapper go with it; `args.replyToId` stays in the job args for the redo path; previously **Last Updated**: 2026-09-11 (task `P1-NIN-A034`, phase 1 of 1 of the `NINA_DUP_BUBBLE_REVEAL_PLAN.md` set — the root cause of prod chat "gj"'s duplicate answer bubbles (four `nina_messages` rows rendered as seven bubbles): `revealBubbles` (`components/nina/ChatScreen.tsx`) appended every polled bubble unconditionally while a full-route RSC delivery landing mid-reveal pre-delivered the same committed rows through `mergeServerMessages` — two channels into one list, and only the merge was idempotent — fixed by `appendNewBubbles` in `live.ts` (see *"Two deliveries, one list, both idempotent"* below), the id-idempotent append-decision the reveal runs inside its state updater, against the list as React will commit it; the merge's contract, the stagger and the accepted mid-reveal collapse are untouched, and what the list can no longer do is hold one id twice; no schema change, no prompt change, no server change); previously task `P1-RI-A033`, phase 2 of 2 of the `JOB_PHOTO_LINK_PLAN.md` set — the Detail-foto row's photograph link: `getNinaJobPhoto` in `queries.ts` (§12) resolves a job's photograph through the schema's only job→photo key (`nina_messages.turn_id` → the `kind='generated'` image row, owner-scoped on BOTH tables, the gallery's own order behind `LIMIT 1`, projection `{ id }` so `description` is never selected), `NinaJobPhoto` / `planJobPhoto` beside `planJobJump` in `jobview.ts` build the `/nina/about?photo=chat.<id>` href through `album.ts`'s `aboutPhotoHref` — the codec's first outbound writer — an avatar job answers `{ kind: 'none' }` and skips the read outright, the link survives an admin Replace and dies on an admin Remove, and `NinaJobDetail` renders the two icon-only controls ("Buka chat-nya" and "Lihat foto ukuran penuh"); previously task `P1-RI-A032`, phase 1 of 2 of the `JOB_PHOTO_LINK_PLAN.md` set — the `/nina/about` viewer's `?photo=` codec lifted out of `NinaAboutScreen.tsx` into `album.ts` (`NINA_ABOUT_HREF`, `NINA_ABOUT_PHOTO_PARAM`, `NinaViewerSection`, `encodeAboutPhoto` / `decodeAboutPhoto`, the `aboutPhotoHref` deep-link builder, `NinaAboutViewerLists` / `aboutViewerLists`, and the membership-miss predicate `aboutPhotoIdOutsideGallery`), and an any-age photo deep link: `app/nina/about/page.tsx` now awaits Next 16's `searchParams` and resolves a `chat.<id>` the 200-newest gallery window dropped through the single-row `getNinaMessageImage` read, mapped through `galleryPhotos([row])[0]` on the server so `description` never crosses into client props — a deleted id is a closed viewer, not an error; previously task `P1-NIN-A032`, phase 2 of 2 of the `nina-burst-cancel` set — the burst framing in the turn prompt: `NinaTurnInput.earlierRunnerTexts` plus the exported `NINA_BURST_MAX_MESSAGES = 6` and the module-private `burstBlock` in `turn.ts` — a protocol header, one single-line bullet per still-unanswered message, and a trailer — rendered after the shortcut block and immediately before `HE JUST SAID:`, the trailer dropped when the newest message is a photo and that heading does not exist; the unanswered-burst walk lives in `runNinaBackgroundTurn` (`actions.ts`), computed from the context window it already loaded with no new query — a row of hers ends the walk, the message being answered is excluded by id, a photo-only row is skipped without ending it — so the supersede-restart turn, a chained follow-up and a resend all frame the burst identically from one computation; a turn with no unanswered burst renders zero burst bytes (invariant 2); no system text moved, no tool schema moved, and `NINA_PROMPT_VERSION` 6 → 7 is the set's single bump; previously task `P1-NIN-A028`, phase 1 of 2 of the `nina-burst-cancel` set — the burst cancel: a send arriving between the sweep and the open in `sendNinaMessage` calls `supersedeNinaChatTurn` in `chatturn.ts`, which closes a still-thinking claim — `status='pending' AND error_code='running'`, still fresh — as `failed`/`superseded` so `openNinaChatTurn` opens a fresh turn answering the whole burst, while `chatTurnWasSuperseded` makes the superseded invocation in `runNinaBackgroundTurn` persist nothing (no bubbles, no distillation, no auto-title, no chain) and `ninaChatTurnStore.record` splits into a conditional phase-advance arm plus a metrics-only arm, so the winner advances and the loser's token usage still lands on its row; no schema change, no prompt change, no client change; (task `P1-NIN-A033`, phase 3 of 4 of the `media-dedupe` set — write-time content-hash dedup on the generated image path and the admin chat-photo path: new zero-import `imageDedupe.ts` hosting `planNinaImageWrite` for BOTH generated hosts (`imagerun.ts` and `scripts/nina-image-worker.ts`), `storeNinaImage` hashing the bytes before the `put` and skipping the upload on a hit, the race re-checked at `finishSelfie`'s insert with the loser blob released row-first, `updateNinaChatPhotoBlob` in `queries.ts` carrying the claimed hash on a blob patch, and — framed as what this package provides to them — `lib/admin`'s add path via `planChatPhotoAddWrite` + `findNinaImageByContentHash`; previously task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
+**Last Updated**: 2026-09-11 (task `P1-RI-A039`, phase 2 of 2 of the `NINA_OFFLINE_REPLY_PLAN.md` set — self-repair on arrival, the dead-turn revive (analysis gap G3): `runNinaBackgroundTurn` + `NinaBackgroundTurnInput` + `SentBubble` + the private `runNinaDistillation` move **byte-for-byte** out of `actions.ts` into the new server-only `turnrun.ts`, because the runner is now exported and every export of a `'use server'` module is an untrusted POST endpoint while the runner's input carries a raw `userId` (invariant 4) — `actions.ts` re-imports the runner for its `startNinaBackgroundTurn` `after()` seam and type-re-exports `SentBubble` for `ChatScreen` (erased at compile time, so no new endpoint), and `scripts/check-llm-payload-boundary.mjs` gains `lib/nina/turnrun.ts` in its two sanctioned lists for the moved `runNinaTurn` / `titleNinaSessionIfNeeded` call sites; the new server-only `turnrevive.ts` — `reviveNinaChatTurn(userId, sessionId)`: on the `/nina` render of a session, sweep stale chat claims and, if the newest row is HIS, no fresh claim blocks and the attempt cap allows, open the claim and schedule `runNinaBackgroundTurn` inside `after()` — the render-path recovery `sweepStaleNinaChatTurns`' header deliberately declined, now specified by the runner's own words ("nina harus menjawabnya regardless user udah nutup app nya / offline"), bounded one candidate per render, suppressed entirely by `openNinaChatTurn`'s fresh-claim refusal (the revive never reads the claim itself), and capped by `NINA_TURN_REVIVE_ATTEMPT_CAP = 3` attempts per runner message, the send included — at most two revives per message, ever; the count runs BEFORE the open (the open INSERTs the attempt row it opens, and a cap-abandon after it would strand a fresh claim with no process behind it), walks the ONE pinned `nina_turns_user_created_idx` with `since = the message's own created_at` making it proportional rather than historical, and a failed count read degrades OPEN on `chatTurnWasSuperseded`'s rule while every other failure degrades toward silence — the revive never throws; the page composition is PINNED: sessions read → `chooseActiveSession` → `await reviveNinaChatTurn` (only when a session is active) → `Promise.all` (phase 1's claim read stays its sixth element) → flight view — hoisted ABOVE the block because a revive joined into it would race the claim read, and the read plus `ninaFlightView` must observe what the revive just did (the G1×G3 ordering trap); no migration, no cron, `resendNinaMessage` unchanged as the manual override outside the cap; new `tests/nina.turnrevive.test.ts`; previously task `P1-RI-A038`, phase 1 of 2 of the `NINA_OFFLINE_REPLY_PLAN.md` set — in-flight truth on reopen: `app/nina/page.tsx` now reads the active session's pending `nina_turns` claim (`getPendingNinaChatTurn` from `chatturn.ts` — the same indexed read `pollNinaReply` makes — as the sixth element of the page's `Promise.all`) and hands it to `ninaFlightView`'s new `liveClaimCreatedAt` parameter, so the cold load's `awaiting` is the poll's own disjunct — a FRESH claim OR `ninaAwaitingByMessage`'s message window — instead of the 90 s heuristic alone, and a runner reopening at t ∈ (90 s, 240 s) starts the poll on a turn honestly still running (analysis gap G1); `NINA_TURN_POLL_GIVE_UP_MS` moves from its life-long identity with `NINA_TURN_STALE_MS` to `NINA_BACKGROUND_BUDGET_MS`, pairing the open tab's give-up backstop with the server's own background budget — the server's `awaiting: false` is what actually stops a dead turn's poll, and the backstop's remaining job is the poll that cannot reach the server at all (analysis gap G2); `lib/nina/turnflight.test.ts` asserts the page/poll agreement and the budget pairing, and the prose the change made false — `ChatScreen`'s zero-extra-queries flight-prop docstring and `lib/admin/imageGenTestView.ts`'s identical-deadline argument — is corrected, comments only; the set is NOT finished: phase 2 (`P1-RI-A039`) relocates the runner and owns the dead-turn revive; previously task `P1-RI-A037`, phase 1 of 1 of the `JOB_JUMP_PHOTO_BUBBLE_PLAN.md` set — the Detail-foto jump retargeted: the button opens the EARLIEST chat bubble, across ALL sessions, carrying the job's photograph — Nina's carrier bubble or the runner's own re-attach alike — replacing the old `args.replyToId` rule; new `getNinaJobPhotoBubble` in `queries.ts`, appended after `getNinaJobPhoto` (owner-scoped on BOTH tables, candidate set `i.id = photo OR i.source_image_id = photo` with `isOriginalPhoto()` and any `kind` arm deliberately absent, `nina_messages.seq ASC` with the image id as tiebreak behind `LIMIT 1`, projecting exactly the two href facts), `planJobJump` in `jobview.ts` takes `bubble: { sessionId, messageId } | null` instead of `replyToId`/`replySessionId` so the refusal union collapses `ready|avatar|no-message|gone` to `ready|avatar|no-photo` and `NINA_JOB_JUMP_NOTE` becomes a two-key map, and `getNinaImageJobDetail` loses its dead second read — the `replySessionId` resolution and the `NinaImageJobDetail` wrapper go with it; `args.replyToId` stays in the job args for the redo path; previously **Last Updated**: 2026-09-11 (task `P1-NIN-A034`, phase 1 of 1 of the `NINA_DUP_BUBBLE_REVEAL_PLAN.md` set — the root cause of prod chat "gj"'s duplicate answer bubbles (four `nina_messages` rows rendered as seven bubbles): `revealBubbles` (`components/nina/ChatScreen.tsx`) appended every polled bubble unconditionally while a full-route RSC delivery landing mid-reveal pre-delivered the same committed rows through `mergeServerMessages` — two channels into one list, and only the merge was idempotent — fixed by `appendNewBubbles` in `live.ts` (see *"Two deliveries, one list, both idempotent"* below), the id-idempotent append-decision the reveal runs inside its state updater, against the list as React will commit it; the merge's contract, the stagger and the accepted mid-reveal collapse are untouched, and what the list can no longer do is hold one id twice; no schema change, no prompt change, no server change); previously task `P1-RI-A033`, phase 2 of 2 of the `JOB_PHOTO_LINK_PLAN.md` set — the Detail-foto row's photograph link: `getNinaJobPhoto` in `queries.ts` (§12) resolves a job's photograph through the schema's only job→photo key (`nina_messages.turn_id` → the `kind='generated'` image row, owner-scoped on BOTH tables, the gallery's own order behind `LIMIT 1`, projection `{ id }` so `description` is never selected), `NinaJobPhoto` / `planJobPhoto` beside `planJobJump` in `jobview.ts` build the `/nina/about?photo=chat.<id>` href through `album.ts`'s `aboutPhotoHref` — the codec's first outbound writer — an avatar job answers `{ kind: 'none' }` and skips the read outright, the link survives an admin Replace and dies on an admin Remove, and `NinaJobDetail` renders the two icon-only controls ("Buka chat-nya" and "Lihat foto ukuran penuh"); previously task `P1-RI-A032`, phase 1 of 2 of the `JOB_PHOTO_LINK_PLAN.md` set — the `/nina/about` viewer's `?photo=` codec lifted out of `NinaAboutScreen.tsx` into `album.ts` (`NINA_ABOUT_HREF`, `NINA_ABOUT_PHOTO_PARAM`, `NinaViewerSection`, `encodeAboutPhoto` / `decodeAboutPhoto`, the `aboutPhotoHref` deep-link builder, `NinaAboutViewerLists` / `aboutViewerLists`, and the membership-miss predicate `aboutPhotoIdOutsideGallery`), and an any-age photo deep link: `app/nina/about/page.tsx` now awaits Next 16's `searchParams` and resolves a `chat.<id>` the 200-newest gallery window dropped through the single-row `getNinaMessageImage` read, mapped through `galleryPhotos([row])[0]` on the server so `description` never crosses into client props — a deleted id is a closed viewer, not an error; previously task `P1-NIN-A032`, phase 2 of 2 of the `nina-burst-cancel` set — the burst framing in the turn prompt: `NinaTurnInput.earlierRunnerTexts` plus the exported `NINA_BURST_MAX_MESSAGES = 6` and the module-private `burstBlock` in `turn.ts` — a protocol header, one single-line bullet per still-unanswered message, and a trailer — rendered after the shortcut block and immediately before `HE JUST SAID:`, the trailer dropped when the newest message is a photo and that heading does not exist; the unanswered-burst walk lives in `runNinaBackgroundTurn` (`actions.ts`), computed from the context window it already loaded with no new query — a row of hers ends the walk, the message being answered is excluded by id, a photo-only row is skipped without ending it — so the supersede-restart turn, a chained follow-up and a resend all frame the burst identically from one computation; a turn with no unanswered burst renders zero burst bytes (invariant 2); no system text moved, no tool schema moved, and `NINA_PROMPT_VERSION` 6 → 7 is the set's single bump; previously task `P1-NIN-A028`, phase 1 of 2 of the `nina-burst-cancel` set — the burst cancel: a send arriving between the sweep and the open in `sendNinaMessage` calls `supersedeNinaChatTurn` in `chatturn.ts`, which closes a still-thinking claim — `status='pending' AND error_code='running'`, still fresh — as `failed`/`superseded` so `openNinaChatTurn` opens a fresh turn answering the whole burst, while `chatTurnWasSuperseded` makes the superseded invocation in `runNinaBackgroundTurn` persist nothing (no bubbles, no distillation, no auto-title, no chain) and `ninaChatTurnStore.record` splits into a conditional phase-advance arm plus a metrics-only arm, so the winner advances and the loser's token usage still lands on its row; no schema change, no prompt change, no client change; (task `P1-NIN-A033`, phase 3 of 4 of the `media-dedupe` set — write-time content-hash dedup on the generated image path and the admin chat-photo path: new zero-import `imageDedupe.ts` hosting `planNinaImageWrite` for BOTH generated hosts (`imagerun.ts` and `scripts/nina-image-worker.ts`), `storeNinaImage` hashing the bytes before the `put` and skipping the upload on a hit, the race re-checked at `finishSelfie`'s insert with the loser blob released row-first, `updateNinaChatPhotoBlob` in `queries.ts` carrying the claimed hash on a blob patch, and — framed as what this package provides to them — `lib/admin`'s add path via `planChatPhotoAddWrite` + `findNinaImageByContentHash`; previously task `P1-RI-A031`, phase 3 of 3 of the `admin-imagegen-simplify` set — the focus-card hint purge: `NinaImageFocusSpec.userSaid` and its six literal values are deleted from `NINA_IMAGE_FOCUS_SPECS` in `imageprefs.ts`, leaving `label` — the user's own focus words — the one home for them on this record, while `NINA_FOCUS_EMPHASIS` in `imagegen.ts`, which never read the member, keeps the prompt's emphasis vocabulary; previously task `P1-RI-A029`, phase 2 of 3 of the `admin-imagegen-simplify` set — the image-prompt-revision purge: `NinaImagePrefs` loses `revision` and the defaults' `revision: 0` with it, `NinaImagePrefsWrite` collapses to an alias of `NinaImagePrefs` in `imageprefs.ts`, and `writeNinaImagePrefs` in `queries.ts` is a plain whole-row upsert with no SQL-side bump; migration `drizzle/0017_retire_imageprefs_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-RI-A025`, phase 1 of 2 of the `simplify-personality-settings` set — the prompt-revision purge: `NinaTuning.revision` and the `NinaTuningWrite` alias are gone from `tuning.ts`, `writeNinaTuning` no longer computes a bump in `queries.ts`, and every turn-path `tuningRevision` field is gone with `nina_turns.tuning_revision` — `turn.ts`, `chatturn.ts`, `gateway.ts`; `NINA_PROMPT_VERSION` alone now dates an assembler change; migration `drizzle/0016_retire_tuning_revision.sql` is committed but **NOT applied** — applying it is the post-deploy `npm run db:migrate`; previously task `P1-NIN-A025`, phase 1 of 1 of the search-jump-pinpoint set — search hits deep-link through the existing `?jump=` pinpoint; previously tasks `P1-NIN-A024`, `P1-NIN-A026`, `P1-NIN-A027` and `P1-NIN-A029`, the `nina-image-generation-tab` set — `imageprefs.ts`, the body canon and the five-rung ladder in `persona.ts` / `imagegen.ts`, `input_references` plus the anchored timeout in `imagerecipe.ts` / `imagecall.ts`, `imagetest.ts`, and the retirement of `nina_tuning.wardrobe`; previously task `P1-NIN-A023`, firing a shortcut into the turn — `shortcutHits` / `shortcutBlock` and `NinaTurnResult.firedShortcutIds` in `turn.ts`, the live read and the usage bump in `actions.ts`, `NINA_PROMPT_VERSION` 5 → 6; previously `P1-DB-A004`, the shortcut matcher and its queries — `shortcuts.ts` plus five functions in `queries.ts`, both **unwired** at the time; previously `P1-RI-A023`, the composer's geometry — `composerPadBottomCss` beside `composerBottomCss` in `chatview.ts`, and in `chrome.ts` both `COMPOSER_RESTING_PX` 68 -> 60 and `controlBottomCss`'s now-gated inset; previously `P1-NIN-A022`, resending a message she never answered — `resendNinaMessage` in `actions.ts` and `canResendMessage` in `edit.ts`; `P1-NIN-A021`, the pointer opener for the message-actions sheet — `decideMessageActionTap` in `edit.ts`; `P1-NIN-A020`, the generated-selfie caption — `finishSelfie` now writes from `args.scene`; and `P1-NIN-A019`, the caption engine)
 **Documentation Created**: 2026-09-05 (task `P1-NIN-A001`, phase 2 of the `NINA_CHARACTER_TUNING_PLAN.md` set)
 
 ## Overview
@@ -586,7 +586,9 @@ caption call**, and the panel says so before the click.
 ### Chat turn pipeline
 | File | Purpose |
 |---|---|
-| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. Since `P1-NIN-A023` it also reads the live shortcut table (fourth entry in the turn's `Promise.all`) and bumps the fired rows fire-and-forget. Since the `nina-burst-cancel` set's phase 1 it also attempts the cancel of a still-thinking claim between the sweep and the open, and `runNinaBackgroundTurn` discards a superseded turn's answer whole; since its phase 2 `runNinaBackgroundTurn` also walks `earlierRunnerTexts` — the burst's still-unanswered messages — out of the window it already loaded. |
+| `actions.ts` | Server Actions — `sendNinaMessage`, `describeNinaImage`, `pollNinaReply`, and (since `P1-NIN-A022`) `resendNinaMessage`. The one entry point a user message goes through. Since `P1-NIN-A023` it also reads the live shortcut table (fourth entry in the turn's `Promise.all`) and bumps the fired rows fire-and-forget. Since the `nina-burst-cancel` set's phase 1 it also attempts the cancel of a still-thinking claim between the sweep and the open, and `runNinaBackgroundTurn` discards a superseded turn's answer whole; since its phase 2 `runNinaBackgroundTurn` also walks `earlierRunnerTexts` — the burst's still-unanswered messages — out of the window it already loaded. Since the offline-reply set's phase 2 (`P1-RI-A039`) the runner itself lives in `turnrun.ts` and this file re-imports it for the private `startNinaBackgroundTurn` seam (`after(() => runNinaBackgroundTurn(input))`) and type-re-exports `SentBubble` for `ChatScreen`; the send, resend and poll logic never moved. |
+| `turnrun.ts` | **Server-only, deliberately NOT a Server Action module** (since `P1-RI-A039`). The background chat turn as one importable module: `runNinaBackgroundTurn` (the supersede discard, the burst walk, the chain — steps 2–7 of what `sendNinaMessage` used to run inline), `NinaBackgroundTurnInput`, `SentBubble` and the private `runNinaDistillation`, all moved byte-for-byte from `actions.ts` — the one token change is `export` on the runner. It calls no `after()` itself: the seam in `actions.ts` and the revive in `turnrevive.ts` each own their scheduling, and the chain's direct `await` is legal too, so a revive scheduled from a render and a chain inside an existing turn share one definition of "run the turn". The budget pairing stays on the caller — every current caller sits behind a segment whose `maxDuration` is the literal 300. |
+| `turnrevive.ts` | **Server-only, NOT a Server Action module** (since `P1-RI-A039`). `reviveNinaChatTurn` — the chat turn's self-repair on arrival: on the `/nina` render of a session, sweep stale claims, and if the newest row is his, no fresh claim blocks and `NINA_TURN_REVIVE_ATTEMPT_CAP = 3` allows, open the claim and schedule the runner inside `after()`. Returns 1 or 0, never throws; see *"The turn revives itself when the session opens"* below. Called only by the page render. |
 | `turn.ts` *(T)* | The Anthropic tool-use loop: system prompt → tool rounds → validated `send` payload, with budgets and a repair pass. Also the **one** place shortcuts are matched (`shortcutHits`, once per turn) and rendered into the user turn (`shortcutBlock`), and — since the burst-cancel set's phase 2 — the one place the burst framing is rendered (`burstBlock`, capped by `NINA_BURST_MAX_MESSAGES`). |
 | `tools.ts` *(T)* | Tool *dispatch*. Gateway-injected, so it tests with no DB. |
 | `schema.ts` *(T)* | Zod output contract for `SEND_TOOL` and the tool arg schemas. |
@@ -681,7 +683,12 @@ now"* below); since `P1-RI-A033` its `aboutPhotoHref` has the codec's first outb
 deliveries, one list, both idempotent"* below), `edit.ts` *(T)* (the edit/delete rules for one
 message, all three bubble gestures —
 see *"Tapping a bubble opens the actions sheet"* below — **and** `canResendMessage`, R5's
-his-bubbles-only gate for the sheet's third item), `chrome.ts` *(T)*.
+his-bubbles-only gate for the sheet's third item), `chrome.ts` *(T)* — plus `turnflight.ts` *(T)*,
+the flight numbers the chat screen and the poll must not restate: the poll's backoff schedule, the
+give-up and the `ninaFlightView` `awaiting`/`cursor` view shared by `app/nina/page.tsx`,
+`ChatScreen` and `pollNinaReply`. **Zero imports** — no database, no env reader, no `server-only` —
+so all three runtimes read one copy of every constant (since `P1-RI-A038` the cold-load view carries
+the live-claim disjunct too; see *"The chat turn is asynchronous"* below).
 
 **Two of those own `/nina`'s geometry, and they own it as strings.** `chatview.ts` carries the
 composer's own box — `keyboardOverlapPx`, then the pair `composerBottomCss` (its `bottom`) and
@@ -1101,8 +1108,12 @@ a route handler, because `after()` inherits the segment's `maxDuration` and a ne
 silently inherit a smaller one.
 
 An open tab learns she has answered through **`pollNinaReply`**, a bounded poll whose schedule lives
-in `lib/nina/turnflight.ts` beside the server's own stale deadline, so the two cannot drift. A closed
-tab needs nothing at all: the rows are committed and the next render reads them. That is R6 — send is
+in `lib/nina/turnflight.ts` beside the server's own deadlines, so no runtime restates a number another
+one owns. A closed tab needs nothing at all — **as long as the invocation behind the turn
+survives**: the rows are committed and the next render reads them. If it did not survive (eviction,
+deploy, crash, the segment's 300 s ceiling), the next render of the session now repairs the damage
+outright — `reviveNinaChatTurn`, since `P1-RI-A039`; see the revive subsection below. That is R6 —
+send is
 instant, and her reply arrives whether or not the app is open.
 
 **The push seam is deliberately not used for this.** `lib/nina/live.ts` still serves proactive pushes
@@ -1115,9 +1126,16 @@ his own phone; and a push arrives as `router.refresh()`, landing all four bubble
 `ChatScreen`'s header spends a paragraph forbidding.
 
 `lib/nina/chatturn.ts` owns the claim's lifecycle — open, read, cancel, record, close, sweep.
-`sweepStaleNinaChatTurns` closes a turn whose process died as `failed`/`stale`; it **never retries and
-never writes an apology bubble**, because app-authored prose in Nina's mouth is forbidden (invariant
-7). The retry is the runner's to ask for, and since `P1-NIN-A022` he has a way to ask that does not
+`sweepStaleNinaChatTurns` closes a turn whose process died as `failed`/`stale`; it **still never
+retries itself and never writes an apology bubble**, because app-authored prose in Nina's mouth is
+forbidden (invariant
+7). Its header's recorded refusal of an automatic render-path retry — *"a model call the runner did
+not ask for, on a path that just proved it can die, with no bound on how often a page load can fire
+it"* — was made against a spec that said best-effort; the runner's own words (*"nina harus
+menjawabnya regardless user udah nutup app nya / offline"*) have since outranked it, and the bounded
+recovery that note demanded lives in `turnrevive.ts` (below), with every bound it asked for priced
+in one place. The manual override is unchanged: since `P1-NIN-A022` he has a way to ask for the
+retry himself that does not
 retype his sentence — see *"Resending a message she never answered"* below. A turn whose session was deleted mid-flight abandons and closes as `'session-gone'` rather than
 re-creating the orphaned memory rows the session purge just removed — that guard is the other half of
 R8, and it lives here rather than in the purge because backgrounding the distillation is what
@@ -1128,6 +1146,173 @@ serialises Server Actions per client, so only two *different* clients within ~50
 cost of a collision is one duplicate reply — both replies real, nothing fabricated, the conversation
 still coherent — which is cheaper than the unique index it would take to prevent, and that index
 would have been this set's only migration.
+
+### The cold load reads the claim, and the give-up is the background budget (`P1-RI-A038`, phase 1 of 2 of `NINA_OFFLINE_REPLY_PLAN.md`)
+
+Two measured gaps, both about a turn that outlives a 90-second window. A runner who sent a message,
+locked his phone and came back at t ∈ (90 s, 240 s) — inside a chained burst's honest run — reopened
+to a quiet screen whose `awaiting` came from the message window alone, started no poll, and let her
+replies land unobserved until a refresh (gap G1). An OPEN tab waiting on the same burst hit
+`NINA_TURN_POLL_GIVE_UP_MS` at 90 s, raised the 'no-reply' notice over a turn that was alive, and
+stopped polling (gap G2) — because the give-up had spent its whole life identical to
+`NINA_TURN_STALE_MS`, on the argument that the poll that gives up has already been told the row is
+dead. That argument holds only while no honest run outlasts the stale deadline, and the chain broke
+it. Phase 1 closes both gaps without touching the runner. **The set is finished now**: phase 2
+(`P1-RI-A039`, next subsection) relocated the runner to `turnrun.ts` and owns the dead-turn revive.
+
+**The cold load's `awaiting` is now the poll's own disjunct, never the message window alone.**
+`app/nina/page.tsx` reads the active session's pending `nina_turns` claim — `getPendingNinaChatTurn`
+from `chatturn.ts`, the same indexed read `pollNinaReply` makes — as the sixth element of the page's
+`Promise.all` (`Promise.resolve(null)` when there is no active session, on the `?photo=` branch's
+idiom, so a runner with no conversation pays nothing) and hands `pendingTurn?.createdAt ?? null` to
+`ninaFlightView(rows, Date.now(), liveClaimCreatedAt)`. The view ORs exactly what the poll ORs: a
+FRESH claim — `nowMs - createdAt < NINA_TURN_STALE_MS`, exclusive at the boundary like the window —
+OR `ninaAwaitingByMessage`'s newest-row-is-his-and-younger window, which survives as the other
+disjunct because it covers the half-second hand-off between two chained turns, where one claim has
+closed and the next has not yet opened. One definition of "unanswered" for the cold load and the
+poll.
+
+**The freshness comparison is load-bearing, because `getPendingNinaChatTurn` deliberately hands back
+an EXPIRED pending row too.** Trusting the row's existence would re-create G1's mirror — a screen
+stuck awaiting on a turn the sweep already closed. The page stays read-only: an expired claim is
+passed through and declined, never swept (a sweep is a write, and this render remains indexed reads
+plus `after()`). Which also makes the quiet screen honest: with no fresh claim AND an old message
+there is nothing in flight, and the dead turn is phase 2's revive, not this view's business. The
+third parameter defaults to `null`, so every two-argument call — the suite's whole pre-phase surface
+— behaves exactly as before.
+
+**The give-up moves from the stale deadline to `NINA_BACKGROUND_BUDGET_MS`.** What stops a DEAD
+turn's poll was never the backstop: the sweep closes the claim inside `NINA_TURN_STALE_MS`, and the
+next poll's claim read answers the authoritative `awaiting: false` — so the backstop's one
+irreplaceable job is the poll that cannot reach the server at all (`ok: false` forever, an offline
+phone), and THAT number must span the longest honest run rather than the longest dead delay: first
+turn plus `NINA_TURN_CHAIN_MAX` (2) follow-up links at ~50–70 s each is ~150–210 s, inside 240 s.
+Raising it stretches no outage — a failed poll is a "try again", and the server's `awaiting: false`
+still ends every wait it can reach.
+
+**Asserted where the numbers live.** `lib/nina/turnflight.test.ts` rewrites the give-up case as the
+pairing — `NINA_TURN_POLL_GIVE_UP_MS` to be `NINA_BACKGROUND_BUDGET_MS` — so the old identity cannot
+quietly return, and adds *"the cold load and the poll agree on 'unanswered'"*, which transcribes the
+poll's disjunct (a pure unit test cannot import a `'use server'` module; if the poll's disjunct
+changes, the transcription changes in the same commit) and walks both halves through the same five
+cases: the G1 reopen, the dead turn's honest quiet, the expired claim neither side trusts, the window
+answering alone with no claim, and the persisting tail where a fresh claim outranks her newest row.
+`ninaFlightView`'s block gains the fresh-claim flip with the cursor unmoved, the expired-claim
+refusal, and the default pinning the two-argument calls. The prose the change made false went with
+it: `ChatScreen`'s flight-prop docstring no longer argues "zero extra queries" — the page's
+`Promise.all` has a sixth read — and `lib/admin/imageGenTestView.ts`'s give-up comparison no longer
+claims the chat poll's give-up "is deliberately set to the server's own deadline". Comments only, no
+behaviour.
+
+### The turn revives itself when the session opens (`P1-RI-A039`, phase 2 of 2 of `NINA_OFFLINE_REPLY_PLAN.md`)
+
+Phase 1 made a live turn visible on reopen; this phase closes the third measured gap, **G3 — the
+turn that is not live and never finished**. If the `after()` invocation behind a turn dies
+(eviction, deploy, crash, the segment's 300 s ceiling), `sweepStaleNinaChatTurns` closes the claim
+`failed`/`stale` and — by a decision recorded in its own header — retried nothing: the only
+recoveries were his resend tap or his next send. The user's raw input — *"nina harus menjawabnya
+regardless user udah nutup app nya / offline"* — is the specification, and it outranks that old
+decision: **arriving on `/nina` is now the chat turn's self-repair**, the shipped shape
+`reviveNinaImageJobs` already gives photographs. On the render of a session, sweep the stale
+claims, and if the newest row is HIS, no fresh claim blocks and the attempt cap allows, open a
+claim and schedule `runNinaBackgroundTurn` inside `after()` — no tap, and the answer is part of the
+same session's history (R2).
+
+**The move came first, because of invariant 4.** Scheduling the runner from a SERVER COMPONENT
+render means importing it where no Server Action boundary exists — and every export of a `'use
+server'` module is an untrusted POST endpoint, while `runNinaBackgroundTurn`'s input carries a raw
+`userId`. So the runner left `actions.ts` for the new server-only `turnrun.ts`, and the move is a
+move, not a rewrite: `SentBubble`, `NinaBackgroundTurnInput`, `runNinaBackgroundTurn` and the
+private `runNinaDistillation` arrived byte-for-byte (the one token change is `export` on the
+runner; `runNinaDistillation` stays private because exporting it from `actions.ts` would have
+widened the action surface for the same invariant-4 reason). `actions.ts` re-imports the runner for
+its `startNinaBackgroundTurn` seam and re-exports `SentBubble` as a **type** — erased at compile
+time, which is why a `'server-only'` module may keep `ChatScreen`'s import address without gaining
+an endpoint, the same reason `NinaResendRefusal` ships from that file. The payload-boundary guard
+`scripts/check-llm-payload-boundary.mjs` gains `lib/nina/turnrun.ts` in its two sanctioned lists —
+the guard scans every non-test file for guarded call sites (`runNinaTurn`,
+`titleNinaSessionIfNeeded`) and
+fails on a file not sanctioned, so the honest fix for a moved call site is the array entry, not a
+rename. Nothing in `turnrun.ts` calls `after()` itself: the seam and the revive each own their own
+scheduling, and a direct `await` — what the chain does for its follow-up links — is equally legal,
+so a revive scheduled from a render and a chain inside an existing turn share one definition of
+"run the turn". The budget pairing stays on the caller: every current caller sits behind a segment
+whose `maxDuration` is the literal 300, and `NINA_BACKGROUND_BUDGET_MS` documents why that must not
+shrink.
+
+**The revive is a linear read-decide-schedule over ONE candidate.** Sweep first — unconditional
+ledger hygiene, and the one moment a dead claim's deadness starts to matter, the same reasoning
+that puts the sweep first on the send path and on a resend (`openNinaChatTurn` applies
+`NINA_TURN_STALE_MS` itself, so even a failed sweep cannot block the open below). Then the
+candidate: the newest row of THIS session, `limit: 1`, owner-scoped — read HERE rather than reused
+from the page's history list because the revive's own sweep may just have changed what "the turn
+state" is, and because the page's list is capped at `CHAT_HISTORY_LIMIT` while this is the
+authoritative newest at this instant. Her bubble on top means the last thing that happened was an
+answer; an empty session is the same answer. The input is rebuilt **field by field from the row** —
+`resendNinaMessage`'s spell, for the same reason: his photographs come off THE ROW
+(`getNinaMessageImagesForMessages`), not the 40-row window, because the newest unanswered row can
+be days old; an undescribed row becomes `NINA_DESCRIPTION_UNAVAILABLE` (invariant 5: text, never an
+image part); the quote re-resolves owner-scoped with the resend's degradation; and `depth: 0` with
+`startedAtMs = Date.now()` — this is a turn answering HIS message, not a chained follow-up, and the
+chain budget dates from NOW rather than a `created_at` that could be a week old. One check is
+deliberately absent: no `ninaSessionExists` read — `chooseActiveSession` already degrades a forged
+or deleted `?s=` to his newest live session before the revive is reached, and the runner re-checks
+the session anyway before persisting.
+
+**Three bounds, priced — every demand the sweep's old note made, in one place.** (1) **One
+candidate per render**: the newest row of the one session being painted, the same bound
+`NINA_IMAGE_REVIVE_BUDGET = 1` gives the image revive; a buried unanswered message is recovered by
+the conversation moving, not by a scan. (2) **The claim, not a counter**: `openNinaChatTurn`
+refuses while a FRESH claim lives, and that refusal is the whole of the live-turn suppression — the
+revive never calls `getPendingNinaChatTurn` and adds no second claim read; a genuinely running turn
+will chain this message itself. (3) **`NINA_TURN_REVIVE_ATTEMPT_CAP = 3` per runner message, the
+send included** — at most two revives per message, ever, then never again without his tap, so a
+permanently-`unavailable` vendor cannot turn every page load into a model call. The cap's walk,
+`countPriorChatTurnAttempts`, counts prior `kind='chat'` turns whose `args->>'runnerMessageId'`
+matches, newest-first — and it runs **BEFORE the open**, because the open INSERTs the attempt row
+it opens (a count after it would count the row being opened) and, sharper, an open-then-abandon
+would strand a FRESH claim with no process behind it and block his next real send for
+`NINA_TURN_STALE_MS` with nothing running to chain onto it: counting first can only refuse, never
+strand. The walk is shaped for the table's ONE pinned index — `user_id =` equality +
+`created_at >= since` range + `created_at DESC` order are the index itself; `kind='chat'` and the
+jsonb match are heap filters on tuples the walk fetches anyway; `since = the message's own
+created_at` is what makes it PROPORTIONAL rather than historical, because no turn answering a
+message can predate it; and `LIMIT` is the cap itself. No migration, no new index (invariant 2).
+
+**Every failure degrades toward silence, except one — and the exception is deliberate.** The
+sweep, the newest-row read, the images read, the quote re-resolve and the open each swallow their
+own failure with a log line, because a recovery path must never be able to 500 the render that
+hosts it. The attempt-count read is the exception: if IT fails, the revive PROCEEDS, on
+`chatTurnWasSuperseded`'s recorded rule — a failed read can cost at most a duplicate answer, while
+a failed revive costs the whole reply the user asked for by name, and duplicates are the accepted
+blast radius, lost replies are not — with the open's fresh-claim refusal still the net. The
+function returns 1 when a turn was scheduled and 0 on every other outcome, and never throws.
+
+**The ordering contract with the page is the fix's other half (G1 × G3).** The page AWAITS
+`reviveNinaChatTurn` between `chooseActiveSession` and the `Promise.all` — hoisted above the block,
+with phase 1's claim read staying its sixth element. A revive joined INTO the `Promise.all` would
+race the claim read and could lose; awaited above it, the read and the `ninaFlightView` call that
+consumes it both observe what the revive just did — the swept dead claim is gone, any fresh claim
+it opened is exactly what the read finds, `awaiting` reads true for the turn about to run, the poll
+starts, and her answer lands into a tab that is looking. Without the hoist, phase 2's own fix would
+have re-created phase 1's G1. The cost of a render with nothing to revive is a few indexed reads
+(`sessionId === null` — he has no sessions — costs zero queries); the cost of a hit is those reads
+plus one claim INSERT, with the model call always inside the `after()` callback (invariant 3).
+There is no cron: Hobby caps schedules at the two already used, and page arrival is the trigger.
+`resendNinaMessage` is untouched and stays the manual override that outruns the cap.
+
+**Asserted in `tests/nina.turnrevive.test.ts`** (repo-level, module-edge mocking on the
+`tests/nina.resend.test.ts` arrangement — `turnrevive.ts` and `turnrun.ts` are the real modules
+under test, which is the point), seven properties in the order they would hurt if they were wrong:
+the revive runs the turn when the newest row is his and the claim was swept (sweep, ONE claim at
+`depth: 0`, exactly ONE task handed to `after()`, and the drained task carries the row-rebuilt
+input — his text, his photos with the unavailable-description substitution, his quote, his run);
+a live turn suppresses it through the open's refusal alone; her bubble on top suppresses it though
+the arrival sweep still ran; the cap stops the spend with two attempts still reviving (the second
+revive is the cap's allowance, not an off-by-one); a failed count read degrades OPEN; no read's
+failure can throw into the render; and the move's invariant 4 asserted against the produced
+sources — both new modules start with `import 'server-only'`, carry no `'use server'` directive,
+and `actions.ts` declares no runner while still exporting the `SentBubble` type.
 
 ### The burst cancels the thinking turn (`P1-NIN-A028`, phase 1 of 2 of the `nina-burst-cancel` set)
 
@@ -2604,6 +2789,16 @@ path up at step 4 with **nothing from steps 1–2 repeated**: owner-scoped row r
 `runner_message_id` → newest-`seq` cursor → `startNinaBackgroundTurn`. No row is written; the client
 raises `cursorRef` by `Math.max` and re-enters the shipped awaiting/poll/reveal loop at step 7.
 
+**His turn died unanswered and he reopens the chat (G3, `P1-RI-A039`).** The render of `/nina`
+awaits `reviveNinaChatTurn(userId, activeSessionId)` between `chooseActiveSession` and the
+`Promise.all` — sweep → newest row of the session → attempt cap (before the open) → images and
+quote off the row → `openNinaChatTurn` → `after(() => runNinaBackgroundTurn(input))`, with the
+input rebuilt field by field from the row exactly as the resend rebuilds it. It returns 1 or 0 and
+never throws; the model call is inside the callback, and because the await sits ABOVE the block,
+the claim read (sixth element) and `ninaFlightView` observe what the revive just did — `awaiting`
+reads true for the turn about to run, and the poll delivers her answer as ordinary rows (R2, no
+refresh).
+
 **A proactive message.** `app/api/cron/nina/route.ts` per user calls `resolveNinaPromises`, then
 `evaluateAndEmitForUser` → `decideProactive` picks one candidate by `PROACTIVE_PRIORITY` →
 `emitProactiveMessage` builds a `triggerBlock`, calls `runNinaTurn`, writes the bubbles and pushes.
@@ -2618,7 +2813,8 @@ step.
 **External:** `@anthropic-ai/sdk` (type-only at all five sites; the client comes from
 `@/lib/llm/client`), `zod` (payload and arg validation), `drizzle-orm` (`queries.ts`,
 `imagejobs.ts`), `next/server`'s `after()`, `next/cache`'s `revalidatePath` (`jobActions.ts` only),
-`server-only` (a side-effect guard in 13 server modules),
+`server-only` (a side-effect guard in 29 server modules — `turnrun.ts` and `turnrevive.ts` the two
+the offline-reply set added),
 `node:crypto` (`createHmac`/`timingSafeEqual` for the image ticket).
 
 **Internal:** `@/lib/db` and `@/lib/db/schema` (heaviest), `@/lib/date/ranges` (the Jakarta-timezone
@@ -2639,8 +2835,11 @@ of the pure-logic path.
 
 ## Reverse dependencies
 
-30 files outside the package import from it, across `app/`, `components/`, `lib/{admin,photos,push,review}`
-and `scripts/`.
+68 files outside the package import from it, across `app/`, `components/`, `lib/{admin,photos,push,review}`
+and `scripts/` (50 more under `tests/`). Since `P1-RI-A039` `app/nina/page.tsx` also imports
+`reviveNinaChatTurn` from `turnrevive.ts`, while `components/nina/ChatScreen.tsx` still imports
+`type SentBubble` from `@/lib/nina/actions` — the type re-export keeps that address after the
+runner's move to `turnrun.ts`, because a client bundle cannot touch a `'server-only'` module.
 
 **Primary consumers:** `components/nina/ChatScreen.tsx` (6 modules — the widest),
 `lib/admin/ninaAlbumActions.ts` (4 modules, 22 symbols — the heaviest by symbol count),
@@ -2661,7 +2860,11 @@ Not a concurrent package in the threading sense; it is request-scoped async Type
 are worth knowing:
 
 - **`after()` work outlives the response.** `runTurnDistillation` and the image dispatch run after
-  the Server Action returns. They must never throw into the response path.
+  the Server Action returns. They must never throw into the response path. Since `P1-RI-A039` the
+  revive schedules the chat turn's runner the same way from a **Server Component render** —
+  `after()` is legal there too, with the Request-time values (`userId`, `sessionId`) resolved
+  before the callback and closed over — which is exactly why `reviveNinaChatTurn` returns 0/1
+  instead of throwing: nothing an `after()` callback does may reach the render that scheduled it.
 - **The write-time dedup race is closed by asking twice, not by a lock** (`P1-NIN-A033`). A sweep
   runner and an in-platform `after()` share no lock and can both answer "no original holds these
   bytes" before either inserts, and a seeded re-generation produces identical bytes BY DESIGN — so
@@ -2692,6 +2895,14 @@ are worth knowing:
   anyway; `chatTurnWasSuperseded` catches its own read errors and answers `false`. The worst case
   either way is the pre-feature path — the running turn chains the message, or one duplicate
   answer. Losing a whole 45-second reply is the one outcome neither may produce.
+- **The revive never throws, and exactly one of its failures degrades the other way on purpose**
+  (`P1-RI-A039`). `reviveNinaChatTurn` returns 1 when a turn was scheduled and 0 on every other
+  outcome; the sweep, the newest-row read, the images read, the quote re-resolve and the open each
+  swallow their own failure with a log line, because a recovery path must never be able to 500 the
+  render hosting it. The attempt-count read is the deliberate exception: if IT fails, the revive
+  PROCEEDS — `chatTurnWasSuperseded`'s rule again, a failed read costs at most a duplicate while a
+  failed revive costs the reply the user asked for by name — with `openNinaChatTurn`'s fresh-claim
+  refusal as the net.
 - `vision.ts` has two named error classes — `NinaVisionTokenFloorError`, `NinaVisionTransportError`.
 - `imagefail.ts` classifies generation failures into `NINA_IMAGE_FAILURES` and picks what she says
   about each; a failure is a message from Nina, not a stack trace.
@@ -2960,7 +3171,8 @@ field absent, `[]`, every entry empty; the header, the bullets and the trailer; 
 run → shortcut → burst → `HE JUST SAID:`; the trailer dropped when the newest message is a photo
 and there is no heading to point at; one line per bullet; and `NINA_BURST_MAX_MESSAGES + 3` entries
 all rendered, because the cap is the CALLER's).
-Repo-level: 39 `tests/nina.*` files,
+Repo-level: 48 `tests/nina.*` files, the newest
+`tests/nina.turnrevive.test.ts` (the revive, below),
 including `tests/nina.tuning.test.ts` (phase 1's model, and the band-count/rung-count coupling
 asserted by length), `tests/nina.prompts.test.ts` (walks `JAKARTA_SLANG`, `ANGER_LADDER`,
 `NEVER_SAY` and `VOICE_EXAMPLES` against the assembled prompt) and `tests/nina.burstCancel.test.ts`

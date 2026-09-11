@@ -1,0 +1,1113 @@
+# Phase 2 — Self-repair on arrival: revive dead chat turns when the session opens
+
+**Plan set:** `NINA_OFFLINE_REPLY_PLAN.md` (2 phases)
+**Satisfies:** R1 (she answers regardless of the app), R2 (the answer is in the history on reopen)
+**Depends on:** Phase 1 (`phase-1.md` — claim-read cold load + honest give-up)
+**Worktree:** `/home/miftah/.worktrees/run-insights/nina-offline-reply` (branch `feature/nina-offline-reply`, base `origin/main` @ `c6a56b7` — `file:line` anchors into `lib/nina/*` are read from this base, which this phase is the first to edit; `app/nina/page.tsx` anchors in step 4 are written against the page AS PHASE 1 LEAVES IT, per the reconciliation)
+
+## Files this phase touches
+
+| File | Change |
+|---|---|
+| `lib/nina/turnrun.ts` | **NEW** — server-only, non-action module; receives `runNinaBackgroundTurn` + `NinaBackgroundTurnInput` + `SentBubble` + `runNinaDistillation`, moved verbatim out of `actions.ts` |
+| `lib/nina/actions.ts` | The move's deletions + import-list shrink + one type re-export. `startNinaBackgroundTurn` (the `after()` seam) stays. Zero behavior change. |
+| `lib/nina/turnrevive.ts` | **NEW** — server-only, non-action module; `reviveNinaChatTurn` |
+| `app/nina/page.tsx` | One import + one awaited call, between `chooseActiveSession` and the `Promise.all`; phase 1's claim read (the `pendingTurn` sixth element) stays inside it, untouched |
+| `scripts/check-llm-payload-boundary.mjs` | Two sanctioned-list entries for the moved call sites (the guard itself is untouched) |
+| `tests/nina.turnrevive.test.ts` | **NEW** — the revive suite |
+
+**Must NOT touch:** `lib/nina/turnflight.ts` (Phase 1 owns it), `components/nina/ChatScreen.tsx`, the send path's synchronous half (`sendNinaMessage` STEP 0–1c stays byte-for-byte), `resendNinaMessage`'s logic (it stays the manual override), `lib/nina/chatturn.ts` (claim WRITER bodies and everything else — this phase only CALLS `openNinaChatTurn`/`sweepStaleNinaChatTurns`), the cron routes, the prompt/tuning layers, `drizzle/` (invariant 2: no migration; `nina_turns` keeps exactly the one index pinned by `tests/db.schema.nina.test.ts:839`).
+
+## What this phase builds (analysis gap G3)
+
+If the `after()` invocation behind a turn dies (eviction, deploy, crash, ceiling), `sweepStaleNinaChatTurns` (`lib/nina/chatturn.ts:413`) closes the claim `failed`/`stale` **and deliberately retries nothing** — `chatturn.ts`'s header records why ("an automatic retry on a render path is a model call the runner did not ask for"). The only recoveries today are his 'resend' tap or his next send. The user's raw input — *"nina harus menjawabnya regardless user udah nutup app nya / offline"* — is the specification and it outranks that old decision (plan index *Decisions*, rung 6). This phase ships the bounded render-path recovery the note declined: on `/nina` render of a session, sweep stale claims, and if the newest row is his, no fresh claim blocks, and the attempt cap allows, open a claim and schedule `runNinaBackgroundTurn` inside `after()`.
+
+The shipped precedent is `reviveNinaImageJobs` (`lib/nina/imagerun.ts:786`, called from the page at `app/nina/page.tsx:258`): arriving on this page **is** the pipeline's self-repair.
+
+The relocation (step 1) exists because of plan invariant 4: every export of a `'use server'` module is an untrusted POST endpoint, and `runNinaBackgroundTurn`'s input carries a raw `userId`. It must be importable by a non-action module without becoming client-callable, so it moves to a `'server-only'` module that is not a Server Action module.
+
+## Decisions taken in this plan (with the rung that decided them)
+
+| Fork | Chosen | Why |
+|---|---|---|
+| Attempt count before or after `openNinaChatTurn` | **BEFORE the open** | `openNinaChatTurn` INSERTs the attempt row itself, so a count taken after it would count the row being opened. Worse: a count taken AFTER the open could read the cap, abandon the turn, and strand a **fresh claim with no process behind it** — `openNinaChatTurn` would then refuse the runner's own next send for `NINA_TURN_STALE_MS` (90 s) and *nothing* would pick his new message up. Count-before-open is load-bearing, not a style choice. |
+| Count-read failure: block or degrade open | **Degrade open** | `chatTurnWasSuperseded`'s recorded rule (`lib/nina/chatturn.ts:320–326`): a failed read costs at most a duplicate, a failed revive costs a whole lost reply, and duplicates are acceptable while lost replies are not. The open's own fresh-claim refusal remains the safety net; the exposure is one candidate per render. |
+| Where the revive call goes in the page | **Hoisted above the `Promise.all`, awaited inline; phase 1's claim read stays its sixth element** | The G1×G3 ordering trap: Phase 1's claim read and the flight view must see what the revive just did (swept dead claim, possibly opened a fresh one). A revive joined INTO the `Promise.all` would race the claim read and can lose the ordering. Reconciled against phase 1's final page (its claim read IS a sixth `Promise.all` element): hoisting the revive above the block is the whole fix and the read does not move — see step 4's pinned sequence. |
+| Where `NINA_TURN_REVIVE_ATTEMPT_CAP` lives | The revive module (precedent: `NINA_IMAGE_REVIVE_BUDGET` lives in `lib/nina/imagerecipe.ts:502`, beside its revive's feature, not in `turnflight.ts`) | Phase 1 owns `turnflight.ts`; a new export there would be a cross-phase edit to a file this phase must not touch. |
+| Where `SentBubble` lives after the move | Moves to `turnrun.ts`; `actions.ts` re-exports it as a type | `components/nina/ChatScreen.tsx:16` imports `type SentBubble` from `@/lib/nina/actions`, and ChatScreen must not change (and cannot import a `'server-only'` module). A type-only re-export is erased at compile time, so the `'use server'` module gains no new endpoint (the file already ships `export type NinaResendRefusal` at `actions.ts:1737`). |
+| `runNinaDistillation` (actions.ts:2206–2255) | Moves too | It is a private helper whose only two call sites are inside `runNinaBackgroundTurn` (`actions.ts:1515`, `:1592`). It cannot be exported from `actions.ts` to keep the move working — it takes a raw `userId`+`context`, and exporting it would widen the action surface (invariant 4). |
+| `scripts/check-llm-payload-boundary.mjs` | Add `lib/nina/turnrun.ts` to two sanctioned lists | The guard scans every non-test `.ts` under `app/ lib/ components/` for guarded call sites (`\brunNinaTurn\s*\(` etc.) and fails on a file not in its `sanctioned` array. The move relocates a `runNinaTurn` call and a `titleNinaSessionIfNeeded` call into `turnrun.ts`; the honest fix is the two array entries, not a rename. No test pins the table. |
+
+---
+
+## Step 1 — `lib/nina/turnrun.ts` (NEW): the mechanical move
+
+**This is a move, not a rewrite.** The four regions below travel byte-for-byte — docstrings and inline comments included — and the only token-level change in any of them is the word `export` added to `runNinaBackgroundTurn`'s declaration. Everything else in this step is the new file header and its import block.
+
+### 1a. The moved regions, by exact boundary (all anchors `lib/nina/actions.ts` @ base `c6a56b7`)
+
+| # | Region | Source lines | Destination |
+|---|---|---|---|
+| 1 | `SentBubble` interface + docstring (`export interface SentBubble {` … the `replyToId: string \| null` field and its closing `}`) | **120–141** | turnrun.ts, verbatim, stays `export interface` |
+| 2 | `NinaBackgroundTurnInput` docstring + interface (`/** Everything "sendNinaMessage" used to do between STEP 2 and STEP 7, as one value. */` … closing `}`) | **1207–1230** | turnrun.ts, verbatim, stays `export interface` |
+| 3 | `runNinaBackgroundTurn` docstring + function (`/** **The turn, after the response has gone out.** */` through the chain's final `}` after its `catch`) | **1232–1698** | turnrun.ts, verbatim, **`async function` → `export async function`** (the one token change) |
+| 4 | `runNinaDistillation` docstring + function (`/** One identical distillation pass for the two exit paths of the background turn. */` — the `/**` is at line **2203** — through end of file at 2255) | **2203–2255** | turnrun.ts, verbatim, stays **private** (no `export`) |
+
+Delete bottom-up (region 4 first, then 3, then 2, then 1) so the earlier line anchors stay valid while you work. After the deletions, verify with `git diff lib/nina/actions.ts` that NOTHING between the deleted regions changed — in particular `startNinaBackgroundTurn` (its docstring `actions.ts:1170–1202` and body `:1203–1205`) stays exactly where it is, docstring verbatim, still private (it needs no export: both its callers — `sendNinaMessage` at `:979` and `resendNinaMessage` at `:1919` — are in this file).
+
+### 1b. The complete new file, with the moved regions marked
+
+Create `lib/nina/turnrun.ts`:
+
+```ts
+import 'server-only'
+
+import { titleNinaSessionIfNeeded } from './autotitle'
+import { NINA_FULL_TOOL_SET } from './avatartools'
+import {
+  chatTurnWasSuperseded,
+  closeNinaChatTurn,
+  ninaChatTurnStore,
+  ninaSessionExists,
+} from './chatturn'
+import type { NinaContext } from './context'
+import { runTurnDistillation } from './distill'
+import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
+import {
+  bumpNinaShortcutUses,
+  insertNinaMessages,
+  listNinaMessages,
+  listNinaShortcuts,
+  readNinaTuning,
+  type NinaMessageRow,
+} from './queries'
+import type { QuotedMessageInput } from './reply'
+import type { NinaMemoryWrite } from './schema'
+import { NINA_SHORTCUT_LOOKBACK } from './shortcuts'
+import {
+  NINA_BURST_MAX_MESSAGES,
+  NINA_TURN_BUDGET,
+  productionDeps,
+  runNinaTurn,
+  type NinaTurnSource,
+} from './turn'
+import { NINA_BACKGROUND_BUDGET_MS, NINA_TURN_CHAIN_MAX } from './turnflight'
+import type { NinaRelationship } from './tuning'
+
+/**
+ * **The background chat turn, as one importable server module — and deliberately NOT a Server
+ * Action module.**
+ *
+ * `runNinaBackgroundTurn` lived inside `lib/nina/actions.ts` from the burst-cancel set until the
+ * nina-offline-reply set moved it here, unchanged, for one reason: every export of a `'use server'`
+ * module is an untrusted POST endpoint (the Server Actions guide, quoted in `actions.ts`'s header),
+ * and the turn's input carries a raw `userId`. `reviveNinaChatTurn` (`./turnrevive`) needs to
+ * schedule this exact function from a SERVER COMPONENT render, where no Server Action boundary
+ * exists — so the runner moved to a `'server-only'` module instead of gaining an export on the
+ * action file. **Nothing else changed**: the four regions this module holds arrived byte-for-byte
+ * from `actions.ts` (its `SentBubble`, `NinaBackgroundTurnInput`, `runNinaBackgroundTurn` and
+ * `runNinaDistillation`), and `actions.ts` re-imports the runner for its `startNinaBackgroundTurn`
+ * seam and re-exports the `SentBubble` type for `ChatScreen`.
+ *
+ * ── THE BUDGET PAIRING STILL LIVES ON THE CALLER, NOT HERE ────────────────────────────────────
+ * `after()` runs for the INVOKING segment's `maxDuration`. Every current caller sits behind a
+ * segment that carries the literal `300` — `app/nina/page.tsx` (the page render, the resend
+ * action, and now the revive all inherit it). A caller that did not carry 300 would truncate a
+ * 240 s background budget silently; `NINA_BACKGROUND_BUDGET_MS` documents the pairing.
+ *
+ * Nothing here calls `after()` itself: the seam (`startNinaBackgroundTurn`, in `actions.ts`) and
+ * the revive (in `./turnrevive`) each own their own scheduling. A direct `await` of
+ * `runNinaBackgroundTurn` is also legal and is exactly what the chain does for its follow-up
+ * links, so a revive scheduled from a render and a chain running inside an existing turn share one
+ * definition of "run the turn".
+ */
+
+/* ── MOVED VERBATIM from lib/nina/actions.ts:120–141 (nina-offline-reply phase 2) ──────────── */
+export interface SentBubble {
+  /* … lines 120–141 exactly, docstring included … */
+}
+
+/* ── MOVED VERBATIM from lib/nina/actions.ts:1207–1230 ─────────────────────────────────────── */
+export interface NinaBackgroundTurnInput {
+  /* … lines 1207–1230 exactly, docstring included … */
+}
+
+/* ── MOVED VERBATIM from lib/nina/actions.ts:1232–1698; the ONLY change is `export` below ──── */
+export async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<void> {
+  /* … lines 1245–1698 exactly (the body under its docstring), byte-for-byte … */
+}
+
+/* ── MOVED VERBATIM from lib/nina/actions.ts:2203–2255 — still private ─────────────────────── */
+async function runNinaDistillation(input: {
+  /* … lines 2203–2255 exactly, docstring included … */
+}
+```
+
+**Do not retype the four regions** — cut them from `actions.ts` and paste them at the four marked slots (transcription is how NULs and dropped escapes happen). After the paste, `git diff --stat` should show `actions.ts` losing ~540 lines net (566 moved lines, minus the ~30-line import-and-re-export addition) and `turnrun.ts` gaining ~630 (566 moved lines + header + imports); `grep -c "STEP" lib/nina/turnrun.ts` should match the same count in the deleted range.
+
+### 1c. `actions.ts` import changes (the complete diff of the import block)
+
+Deletions — these whole lines go (their only remaining uses traveled with the move; verified against base `c6a56b7`):
+
+```ts
+// DELETE each of these lines:
+import { titleNinaSessionIfNeeded } from './autotitle'          // :10  (only use :1609, moved)
+import type { NinaContext } from './context'                     // :22  (only use :2231, moved)
+import { runTurnDistillation } from './distill'                  // :32  (only use :2240, moved)
+import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway' // :33 (uses :1266-1267, moved)
+import { NINA_FULL_TOOL_SET } from './avatartools'               // :35  (only use :1409, moved)
+import { loadNinaContext } from './load'                         // :37  (only use :1266, moved)
+import type { QuotedMessageInput } from './reply'                // :61  (only use :1307, moved)
+import { NINA_SHORTCUT_LOOKBACK } from './shortcuts'             // :63  (only use :1339, moved)
+import type { NinaRelationship } from './tuning'                 // :77  (only use :2238, moved)
+// and the whole './turn' import block (:70–76) — productionDeps/runNinaTurn/NINA_BURST_MAX_MESSAGES/
+// NINA_TURN_BUDGET/NinaTurnSource had no other code use (:1394/:1409/:1380/:1650/:1247, all moved)
+```
+
+Rewrites — four import lists shrink to what this file still uses (send path, resend, `pollNinaReply`):
+
+```ts
+// chatturn (:12–21) — chatTurnWasSuperseded, closeNinaChatTurn, ninaChatTurnStore and
+// ninaSessionExists had no other use (:1463, :1513/:1578/:1622, :1409, :1496/:1656 — all moved)
+import {
+  getPendingNinaChatTurn,
+  openNinaChatTurn,
+  supersedeNinaChatTurn,
+  sweepStaleNinaChatTurns,
+} from './chatturn'
+
+// queries (:41–57) — remove `bumpNinaShortcutUses` (:1437, moved), `listNinaShortcuts` (:1291,
+// moved) and `readNinaTuning` (:1271, moved). The other TWELVE names stay exactly as they are
+// (the block has fifteen today; `listNinaMessages` itself stays — the send path's history read
+// and `pollNinaReply`'s newest-row read are staying code).
+import {
+  adoptNinaMessageImage,
+  findNinaImageByContentHash,
+  findNinaSignedOriginals,
+  getNinaAvatar,
+  getNinaMessageImage,
+  getNinaMessageImagesForMessages,
+  getNinaMessagesByIds,
+  getNinaSession,
+  insertNinaMessageImages,
+  insertNinaMessages,
+  listNinaMessages,
+  listNinaMessagesAfter,
+} from './queries'
+
+// schema (:62) — `NinaMemoryWrite` traveled with `runNinaDistillation`; MAX_RUNNER_MESSAGE_CHARS
+// stays (send-path validation)
+import { MAX_RUNNER_MESSAGE_CHARS } from './schema'
+
+// turnflight (:64–69) — the chain's constants traveled; the poll's stay
+import { NINA_TURN_STALE_MS, ninaAwaitingByMessage } from './turnflight'
+```
+
+Additions — one import and one erased-at-compile-time re-export, placed directly after the (now one-line) `turnflight` import:
+
+```ts
+import {
+  runNinaBackgroundTurn,
+  type NinaBackgroundTurnInput,
+  type SentBubble,
+} from './turnrun'
+
+/**
+ * `ChatScreen` (a client component) imports this type from here, and a client bundle cannot touch a
+ * `'server-only'` module — so the type keeps its public address after the move. Type-only: erased
+ * at compile time, the same reason `NinaResendRefusal` may be exported from this file. Invariant 4
+ * is untouched: no new runtime export, no new POST endpoint.
+ */
+export type { SentBubble }
+```
+
+### 1d. What must still be true of `actions.ts` after step 1
+
+- `'use server'` is still line 1; every remaining `export` is an async function or a type.
+- `startNinaBackgroundTurn` unchanged: `function startNinaBackgroundTurn(input: NinaBackgroundTurnInput): void { after(() => runNinaBackgroundTurn(input)) }`.
+- `grep -n "runNinaDistillation\|runNinaBackgroundTurn" lib/nina/actions.ts` shows only the import, the seam's one call, and docstring mentions.
+- `npx tsc --noEmit` finds no unused imports (the lists above are exhaustive — every name removed was verified to have all its uses inside the moved regions).
+
+---
+
+## Step 2 — `scripts/check-llm-payload-boundary.mjs`: sanction the moved call sites
+
+The guard fails the build on a guarded symbol called from a file not in its `sanctioned` array. Two entries change; nothing else in the script does.
+
+```js
+  {
+    symbol: 'runNinaTurn',
+    sanctioned: [
+      // Its own module, because a guard that fails on the definition site is a guard that
+      // forces the definition to be renamed. `lib/db/queries.ts` is greppable the same way.
+      join('lib', 'nina', 'turn.ts'),
+      join('lib', 'nina', 'actions.ts'),
+      join('lib', 'nina', 'proactive.ts'),
+      // nina-offline-reply phase 2 moved `runNinaBackgroundTurn` here (a server-only module,
+      // not a Server Action module — its input carries a raw userId and must not become a
+      // POST endpoint). Same caller it always was, one file over; scheduled by after(), never
+      // awaited by a render.
+      join('lib', 'nina', 'turnrun.ts'),
+      join('app', 'api', 'cron', 'nina', 'route.ts'),
+    ],
+    advice: /* unchanged */,
+  },
+```
+
+```js
+  {
+    symbol: 'titleNinaSessionIfNeeded',
+    sanctioned: [
+      // Its own module, because a guard that fails on the definition site is a guard that forces
+      // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
+      join('lib', 'nina', 'autotitle.ts'),
+      join('lib', 'nina', 'actions.ts'),
+      // Moved here with `runNinaBackgroundTurn` (nina-offline-reply phase 2) — see that entry.
+      join('lib', 'nina', 'turnrun.ts'),
+    ],
+    advice: /* unchanged */,
+  },
+```
+
+(`distillNinaMemory`, the third guarded symbol the moved code indirectly reaches, needs nothing: `actions.ts` and `turnrun.ts` both call only `runTurnDistillation`, which is not guarded, and `distillNinaMemory`'s code call sites stay inside `lib/nina/distill.ts`.)
+
+Verify: `npm run ci:llm-payload-guard` passes.
+
+---
+
+## Step 3 — `lib/nina/turnrevive.ts` (NEW): the revive itself
+
+The complete module:
+
+```ts
+import 'server-only'
+
+import { after } from 'next/server'
+import { and, desc, eq, gte, sql } from 'drizzle-orm'
+
+import { db } from '@/lib/db'
+import { ninaTurns } from '@/lib/db/schema'
+
+import { openNinaChatTurn, sweepStaleNinaChatTurns } from './chatturn'
+import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
+import {
+  getNinaMessageImagesForMessages,
+  getNinaMessagesByIds,
+  listNinaMessages,
+  type NinaMessageRow,
+} from './queries'
+import { runNinaBackgroundTurn, type NinaBackgroundTurnInput } from './turnrun'
+
+/**
+ * **The chat turn's self-repair: arriving at `/nina` answers what an invocation dropped.**
+ *
+ * > "nina harus menjawabnya regardless user udah nutup app nya / offline"
+ *
+ * `sweepStaleNinaImageJobs`'s chat sibling, `sweepStaleNinaChatTurns` (`lib/nina/chatturn.ts:390`),
+ * closes a dead claim and **deliberately retries nothing** — its header records the decision and
+ * its reason: "an automatic retry on a render path is a model call the runner did not ask for, on a
+ * path that just proved it can die, with no bound on how often a page load can fire it." That
+ * decision was made against a spec that said best-effort. The runner's own words above are the spec
+ * now, and they ask for the render-path recovery by name — so this module exists, and every bound
+ * the old note demanded is here, in one place, priced:
+ *
+ *   1. **One candidate per render** — the newest row of the ONE session being painted, the same
+ *      bound `NINA_IMAGE_REVIVE_BUDGET = 1` gives the image revive. A buried unanswered message is
+ *      recovered by the conversation moving, not by a scan.
+ *   2. **The claim, not a counter** — `openNinaChatTurn` refuses while a FRESH claim lives
+ *      (`lib/nina/chatturn.ts:161`), so a turn that is genuinely running suppresses this entirely.
+ *      A duplicate she answers twice remains the priced-and-accepted race it has always been.
+ *   3. **`NINA_TURN_REVIVE_ATTEMPT_CAP` per runner message, counting the original send** — so a
+ *      permanently-`unavailable` vendor cannot turn every page load into a model call: at most two
+ *      revives per message, ever, then never again. His tap (`resendNinaMessage`) stays outside the
+ *      cap as the manual override.
+ *
+ * ── THE PRECEDENT, AND THE ONE WAY IT IS DIFFERENT ─────────────────────────────────────────────
+ * `reviveNinaImageJobs` (`lib/nina/imagerun.ts:786`) is the shipped pattern this follows: arriving
+ * is the repair, the work goes to `after()`, the result is a log line. It differs in one load-bearing
+ * way: an image job's row carries its own reproducible args, so a revive RE-FIRES the row. A chat
+ * claim is only a LEASE on a process — the reproducible thing is the `nina_messages` row underneath
+ * it — so a chat revive reads the MESSAGE and re-derives the turn input the way `resendNinaMessage`
+ * does (`lib/nina/actions.ts:1919–1933`), field by field, with the same `NINA_DESCRIPTION_UNAVAILABLE`
+ * substitution for an undescribed photograph (invariant 5: text, never an image part).
+ *
+ * ── WHY THE COUNT RUNS BEFORE THE OPEN ─────────────────────────────────────────────────────────
+ * `openNinaChatTurn` INSERTs the attempt row it opens, so a count taken after it would count the
+ * row being opened. The sharper reason is the failure mode the other order creates: open, THEN
+ * count, then abandon on the cap — that strands a FRESH claim with no process behind it, and
+ * `openNinaChatTurn`'s own refusal would then block the runner's next real send for
+ * `NINA_TURN_STALE_MS` with nothing running to chain onto it. Counting first can only refuse; it
+ * can never strand.
+ *
+ * ── EVERY FAILURE DEGRADES TOWARD SILENCE, EXCEPT ONE ──────────────────────────────────────────
+ * The sweep, the newest-row read, the images read, the quote re-resolve and the open each swallow
+ * their own failure with a log line, because a recovery path must never be able to 500 the render
+ * that hosts it (`reviveNinaImageJobs`' catch at `lib/nina/imagerun.ts:791` is the precedent). The
+ * one deliberate exception is the attempt-count read: if IT fails, the revive PROCEEDS —
+ * `chatTurnWasSuperseded`'s recorded rule (`lib/nina/chatturn.ts:320`): a failed read can cost at
+ * most a duplicate answer, which is acceptable, while a failed revive costs the whole reply the
+ * user just asked for by name. The open's fresh-claim refusal is still the safety net; the worst
+ * case of a flapping database is one extra attempt per render, capped on the next successful read.
+ *
+ * ── WHO MAY CALL THIS ──────────────────────────────────────────────────────────────────────────
+ * The server render of `app/nina/page.tsx` (userId already in hand from `requireUserId()`), and
+ * nothing else. This module is `'server-only'` and deliberately NOT a Server Action module — its
+ * caller hands it a trusted `userId` and the input to the model call is rebuilt server-side from
+ * owner-scoped rows, so there is no request shape to validate and no export to defend (invariant 4).
+ *
+ * ── THE ORDERING CONTRACT WITH THE PAGE (G1 × G3) ─────────────────────────────────────────────
+ * The page AWAITS this before it reads the pending claim and computes the flight view. Otherwise a
+ * revive that just swept a dead claim and opened a fresh one would be invisible to the very render
+ * that caused it: `awaiting` would read false, no poll would start, and her answer would land into
+ * a tab that is not looking — Phase 1's G1, re-created by this phase's own fix. Her reply then
+ * arrives as ordinary rows the poll delivers, which is R2's whole mechanism.
+ */
+
+/**
+ * Total `nina_turns` chat attempts allowed per runner message — the send's own turn included, so
+ * this allows at most **two** revives of any one message. Walked against the table's single pinned
+ * index (see `countPriorChatTurnAttempts`); no migration, no new index (invariant 2).
+ */
+export const NINA_TURN_REVIVE_ATTEMPT_CAP = 3
+
+/**
+ * **Revive the newest dead turn of one session, or do nothing.** Returns 1 when a turn was
+ * scheduled, 0 on every other outcome — the count is a log line, exactly as
+ * `reviveNinaImageJobs`' is. Never throws.
+ *
+ * `sessionId === null` is the page's real "he has no sessions" state, not an error: nothing to
+ * revive and nothing to sweep, so the revive costs zero queries.
+ */
+export async function reviveNinaChatTurn(
+  userId: string,
+  sessionId: string | null,
+  now: Date = new Date(),
+): Promise<number> {
+  if (sessionId === null) return 0
+
+  /*
+   * (a) The sweep. The page render is the one moment a dead claim's deadness starts to matter —
+   * the same reasoning that puts it first on the send path (`actions.ts:917`) and on a resend
+   * (`actions.ts:1861`). `openNinaChatTurn` applies `NINA_TURN_STALE_MS` itself, so even a failed
+   * sweep cannot block the open below; the sweep is what makes the LEDGER honest.
+   */
+  try {
+    await sweepStaleNinaChatTurns(userId, now)
+  } catch (cause) {
+    console.warn('[nina] chat turn sweep failed on revive', { error: String(cause) })
+  }
+
+  /*
+   * (b) The candidate: the newest row of THIS session. `limit: 1`, owner-scoped, newest first —
+   * the same single read the chain uses to pick up a burst (`actions.ts:1658`). Read here rather
+   * than reused from the page's history list because the revive's own sweep may have just changed
+   * what "the turn state" is, and because the page's list is capped at CHAT_HISTORY_LIMIT while
+   * this is the authoritative newest at this instant.
+   */
+  let newestRows: NinaMessageRow[]
+  try {
+    newestRows = await listNinaMessages(userId, { limit: 1, sessionId })
+  } catch (cause) {
+    console.warn('[nina] could not read the newest row for a revive', { error: String(cause) })
+    return 0
+  }
+  const newest = newestRows[0]
+  /* Her bubble on top means the last thing that happened was an answer — nothing to revive. An
+   * empty session is the same answer. */
+  if (newest === undefined || newest.role !== 'runner') return 0
+
+  /*
+   * (c) The attempt cap, BEFORE the open — see the module docstring for why that order is
+   * load-bearing. A count-read failure degrades OPEN, not shut.
+   */
+  let attempts: number
+  try {
+    attempts = await countPriorChatTurnAttempts(userId, newest.id, newest.createdAt)
+  } catch (cause) {
+    console.warn('[nina] could not count prior chat attempts; reviving anyway', {
+      runnerMessageId: newest.id,
+      error: String(cause),
+    })
+    attempts = 0
+  }
+  if (attempts >= NINA_TURN_REVIVE_ATTEMPT_CAP) {
+    /* The honest stop. `resendNinaMessage` remains the tap that overrides this, exactly as it
+     * overrides a dead turn today. */
+    console.info('[nina] revive capped for this message', {
+      sessionId,
+      runnerMessageId: newest.id,
+      attempts,
+    })
+    return 0
+  }
+
+  /*
+   * (d) His photographs, read off THE ROW exactly as a resend reads them (`actions.ts:1810`): the
+   * 40-row window would carry them for a recent message, but the newest unanswered row can be
+   * days old, and a turn rebuilt from the row must not depend on window membership. An undescribed
+   * row becomes the honest "her eyes failed" sentence (invariant 5). A failed read degrades to []
+   * — she still sees the photographs through the window's own `readMessageWindow`, so the revive
+   * never withholds the answer over a description.
+   */
+  let images: Awaited<ReturnType<typeof getNinaMessageImagesForMessages>> = []
+  try {
+    images = await getNinaMessageImagesForMessages(userId, [newest.id])
+  } catch (cause) {
+    console.warn('[nina] could not read a revived message’s photos', { error: String(cause) })
+  }
+
+  /*
+   * (e) `resendNinaMessage`'s 'empty' guard, asked of the row (`actions.ts:1837`): a runner row
+   * with no text, no photograph and no run is nothing for her to answer, and a revive that spent a
+   * model call to be told nothing would be the one unbounded-feeling spend left on this path.
+   * Reachable without any client bug — an operator can strip the photo from a caption-less message.
+   */
+  const runnerText = newest.body.trim().length > 0 ? newest.body : null
+  if (runnerText === null && images.length === 0 && newest.runId === null) return 0
+
+  /*
+   * (f) The quote, re-resolved against owner scope — resend's shape and its degradation
+   * (`actions.ts:1849`): a since-deleted target (`reply_to_id` is `ON DELETE SET NULL`) or a read
+   * that fails both mean "no quote", and the answer still happens.
+   */
+  let quotedRow: NinaMessageRow | null = null
+  if (newest.replyToId !== null) {
+    try {
+      const found = await getNinaMessagesByIds(userId, [newest.replyToId])
+      quotedRow = found[0] ?? null
+    } catch (cause) {
+      console.warn('[nina] could not resolve the reply target for a revive', {
+        error: String(cause),
+      })
+    }
+  }
+
+  /*
+   * (g) The claim. A non-null return is what makes this a revive instead of a second concurrent
+   * turn: `openNinaChatTurn` refuses while a FRESH claim lives (`chatturn.ts:161`), which is the
+   * whole of the live-turn suppression — a turn that is genuinely running will chain this message
+   * itself, and the render's claim read (AFTER this await — the ordering contract) will already
+   * see the truth.
+   */
+  let turnId: string | null = null
+  try {
+    turnId = await openNinaChatTurn(userId, { sessionId, runnerMessageId: newest.id, depth: 0 })
+  } catch (cause) {
+    console.warn('[nina] could not open a chat turn for a revive', { error: String(cause) })
+    return 0
+  }
+  if (turnId === null) return 0
+
+  /*
+   * (h) The turn, rebuilt field by field from the row — `resendNinaMessage`'s spell, and for the
+   * same reason: every field has a reason and `tsc` should be what notices if
+   * `NinaBackgroundTurnInput` ever gains one this path forgot.
+   *
+   * `depth: 0` — this is a turn answering HIS message, not a chained follow-up; the chain bound is
+   * measured from `startedAtMs`, which is NOW, not the message's `created_at` (the message may be
+   * days old — dating the budget from it would exhaust it before the first link ran, which is
+   * exactly the arithmetic the resend's note rejects at `actions.ts:1929`).
+   */
+  const input: NinaBackgroundTurnInput = {
+    userId,
+    sessionId,
+    turnId,
+    runnerMessageId: newest.id,
+    runnerText,
+    imageDescriptions: images.map((image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE),
+    quotedRow,
+    attachedRunId: newest.runId,
+    depth: 0,
+    startedAtMs: Date.now(),
+  }
+
+  /*
+   * (i) Schedule. `after()` in a Server Component render is documented Next behavior (`after`'s
+   * reference: usable in Server Components; no Request-time APIs inside the callback — `userId`
+   * and `sessionId` are resolved above and closed over, the page's own `after()` pattern at
+   * `app/nina/page.tsx:458`). The model call is ALWAYS inside this callback (invariant 3); the
+   * segment's literal `maxDuration = 300` is the budget it runs on.
+   */
+  after(() => runNinaBackgroundTurn(input))
+
+  console.warn('[nina] revived a dead chat turn', {
+    userId,
+    sessionId,
+    runnerMessageId: newest.id,
+    attempt: attempts + 1,
+    cap: NINA_TURN_REVIVE_ATTEMPT_CAP,
+  })
+  return 1
+}
+
+/**
+ * How many `nina_turns` chat attempts this runner message has already had, up to the cap.
+ *
+ * ── THE WALK, AND WHY IT IS CHEAP WITHOUT A NEW INDEX ──────────────────────────────────────────
+ * `nina_turns` keeps exactly one index — `nina_turns_user_created_idx` on `(user_id, created_at
+ * desc)` (`lib/db/schema.ts:711`), pinned by `tests/db.schema.nina.test.ts:839` — so the query is
+ * shaped to be served by exactly that index and nothing else:
+ *
+ *   · `user_id =` equality + `created_at >= since` range + `created_at DESC` order — all three
+ *     are the index itself;
+ *   · `kind = 'chat'` and the `args ->> 'runnerMessageId'` match are HEAP filters on the tuples
+ *     the walk fetches anyway (the same shape the deleted-at discussion priced at
+ *     `lib/db/schema.ts:694`), and the jsonb key cannot be indexed without the migration this set
+ *     forbids;
+ *   · `since = the message's own created_at` is what makes the walk PROPORTIONAL instead of
+ *     historical: no turn answering this message can predate the message — a claim is opened after
+ *     the runner's row is committed (the send path's documented contract) — so the range bound can
+ *     never exclude a match, and a message from this morning walks a morning's rows, not a
+ *     lifetime's.
+ *
+ * `LIMIT` is the cap itself: the walk stops at three matching rows, which is the exact question —
+ * "have three attempts already been spent?" — and nothing more.
+ *
+ * THROWS on a database problem. The caller degrades OPEN on purpose (see the module docstring):
+ * `chatTurnWasSuperseded`'s rule — duplicates are acceptable, lost replies are not — with the
+ * open's own fresh-claim refusal as the net.
+ */
+async function countPriorChatTurnAttempts(
+  userId: string,
+  runnerMessageId: string,
+  since: Date,
+): Promise<number> {
+  const rows = await db
+    .select({ id: ninaTurns.id })
+    .from(ninaTurns)
+    .where(
+      and(
+        eq(ninaTurns.userId, userId),
+        eq(ninaTurns.kind, 'chat'),
+        gte(ninaTurns.createdAt, since),
+        sql`${ninaTurns.args} ->> 'runnerMessageId' = ${runnerMessageId}`,
+      ),
+    )
+    .orderBy(desc(ninaTurns.createdAt))
+    .limit(NINA_TURN_REVIVE_ATTEMPT_CAP)
+  return rows.length
+}
+```
+
+**Why no `ninaSessionExists` check:** `activeSessionId` is `chooseActiveSession`'s output — a forged or deleted `?s=` degrades to his newest live session before the revive is ever reached (`app/nina/page.tsx:170–184`), so the id in hand is always a live session of this user, and `runNinaBackgroundTurn` re-checks the session anyway before persisting (`actions.ts:1496`). One read saved per render.
+
+---
+
+## Step 4 — `app/nina/page.tsx`: the revive, hoisted above the reads
+
+**The page this diff applies to is the page AS PHASE 1 LEAVES IT** (reconciled: phase 1's plan
+pins this layout, and phase 2 changes nothing in it). Quoted from phase-1.md's diffs:
+
+- The import block gains, directly after `} from '@/lib/nina/attach'`:
+  `import { getPendingNinaChatTurn } from '@/lib/nina/chatturn'`
+- The `Promise.all` destructure becomes
+  `const [rows, , avatarRow, photoRow, , pendingTurn] = await Promise.all([` — element 2
+  (`listOpenNinaImageJobs`) was already skipped, and element 5 (`reviveNinaImageJobs(userId)`)
+  now is too.
+- The SIXTH `Promise.all` element, added after `reviveNinaImageJobs(userId),`, is the claim
+  read, carrying phase 1's SEAM FOR PHASE 2 comment:
+
+  ```ts
+      activeSessionId === null
+        ? Promise.resolve(null)
+        : getPendingNinaChatTurn(userId, activeSessionId),
+  ```
+
+- After the `Promise.all`, the flight block is ONE call:
+  `const flight = ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null)`.
+
+**The composition is PINNED — one way, no fork.** Phase 2 adds ONE import and ONE awaited
+statement between `chooseActiveSession` and the `Promise.all`, and relocates NOTHING: the claim
+read STAYS the sixth element inside the `Promise.all`. The ordering is already correct without
+any move — the revive is awaited to completion before the `Promise.all` begins, so its claim
+read and the `ninaFlightView` call that consumes it both observe what the revive just did (the
+swept dead claim is gone before the read; a fresh claim the revive opened is exactly what the
+read finds). The final page sequence is:
+
+> sessions read → `chooseActiveSession` → `await reviveNinaChatTurn` (only when
+> `activeSessionId !== null`) → `Promise.all` (including the `pendingTurn` claim read) →
+> `ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null)`
+
+A revive joined INTO the `Promise.all` would race the claim read and can lose that ordering —
+which is why it is hoisted above the block instead, and why the read does not move.
+
+### The diff
+
+Import — one line, directly below phase 1's `getPendingNinaChatTurn` import:
+
+```ts
+import { getPendingNinaChatTurn } from '@/lib/nina/chatturn'
+import { reviveNinaChatTurn } from '@/lib/nina/turnrevive'
+```
+
+The call — inserted after `const activeSessionId = chooseActiveSession(...)` and before the
+`Promise.all`'s comment block (`/* Two reads, concurrently …`):
+
+```ts
+  const sessions = await listNinaSessions(userId)
+  const activeSessionId = chooseActiveSession(sessions, parseNinaSessionParam(sessionParam))
+
+  /*
+   * ── G3's SELF-REPAIR, AND THE ORDERING THAT MAKES IT VISIBLE ─────────────────────────────────
+   * A message whose turn died (its `after()` invocation evicted, its segment ceiling reached) is
+   * answered HERE, with no tap: the revive sweeps the stale claim, and if the newest row is still
+   * his, no fresh claim blocks and the attempt cap allows, it opens a new claim and schedules
+   * `runNinaBackgroundTurn` inside `after()` — the same shape `reviveNinaImageJobs` below already
+   * ships for photographs ("arriving on this page is the pipeline's self-repair"). The model call
+   * is always inside that callback; what THIS await costs the render is a few indexed reads and,
+   * on the rare hit, one claim INSERT (invariant 3).
+   *
+   * AWAITED HERE, BEFORE THE `Promise.all` BELOW, AND THAT ORDER IS THE FIX (the G1 × G3 trap):
+   * the claim read is the `Promise.all`'s sixth element (`pendingTurn`), and the flight view
+   * consumes it — both must see what this revive just did. A revive that JOINED the
+   * `Promise.all` would race the claim read; awaited above it, the read observes the sweep and
+   * any fresh claim this opened, `awaiting` reads true for the turn that is about to run, the
+   * poll starts, and her answer lands into a tab that is looking (R2, no refresh).
+   *
+   * `null` means he has no sessions — nothing to revive, nothing to sweep, zero queries.
+   */
+  if (activeSessionId !== null) {
+    await reviveNinaChatTurn(userId, activeSessionId)
+  }
+```
+
+Nothing else in the page changes: phase 1's sixth element and its SEAM FOR PHASE 2 comment stay
+exactly as phase 1 wrote them, `maxDuration = 300` stays literal (the revive's `after()` runs on
+it — invariant 3), `reviveNinaImageJobs` stays where it is (inside the `Promise.all`, element
+5), the unread `after()` stays.
+
+---
+
+## Step 5 — `tests/nina.turnrevive.test.ts` (NEW)
+
+Conventions copied from `tests/nina.resend.test.ts` (module-edge mocking, the `deferred` drain) and `tests/nina.jobActions.test.ts` (the `@/lib/db` stand-in). The complete file:
+
+```ts
+import { readFileSync } from 'node:fs'
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { NINA_DESCRIPTION_UNAVAILABLE } from '@/lib/nina/prompts/describe'
+
+/**
+ * **G3: a dead chat turn is revived by the act of opening its session — bounded, suppressed, and
+ * never at the render's expense.**
+ *
+ * Seven properties, in the order they would hurt if they were wrong:
+ *
+ *   1. **The revive runs the turn when the newest row is his and the claim was swept** — sweep,
+ *      ONE claim at `depth: 0` against the newest row's id, and exactly ONE task handed to
+ *      `after()` whose drain carries the row-rebuilt input.
+ *   2. **A live turn suppresses it.** `openNinaChatTurn`'s fresh-claim refusal is the whole
+ *      mechanism — the revive adds no second claim read of its own.
+ *   3. **Her bubble on top suppresses it** — the last thing that happened was an answer. The
+ *      arrival sweep still ran: that part is unconditional ledger hygiene.
+ *   4. **The cap stops the spend.** Three prior attempts per message (the send included) and the
+ *      revive opens nothing and schedules nothing — while two still revive, so the cap is the
+ *      second revive's allowance and not an off-by-one.
+ *   5. **A failed count read degrades OPEN** — `chatTurnWasSuperseded`'s rule: a duplicate costs
+ *      less than a lost reply, and the open's refusal is the safety net.
+ *   6. **It can never take the render down.** Every read's failure resolves 0 instead of throwing.
+ *   7. **Invariant 4 held through the move.** `turnrun.ts` and `turnrevive.ts` are `'server-only'`
+ *      and neither is a Server Action module; `actions.ts` declares no runner and still exports
+ *      the `SentBubble` type `ChatScreen` imports.
+ *
+ * ── WHAT IS MOCKED, AND WHY IT IS ONLY THE EDGES ──────────────────────────────────────────────
+ * `next/server`, `@/lib/db`, `@/lib/nina/queries`, `@/lib/nina/chatturn` and — to DRAIN the
+ * deferred turn — `@/lib/nina/load`, `@/lib/nina/gateway`, `@/lib/nina/turn`, `@/lib/nina/distill`
+ * and `@/lib/nina/autotitle`. `turnrevive.ts` and `turnrun.ts` are the real modules under test,
+ * which is the point: `tests/nina.resend.test.ts` established this exact arrangement and its
+ * reason applies verbatim — mocking the module under test would make every property above
+ * untestable.
+ */
+
+/* ── the edges ─────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * `vi.hoisted`, because `vi.mock`'s factory is lifted above every declaration in this file.
+ * `deferred` collects what the revive hands `after()`; `dbRows` backs the ONE raw read this
+ * feature makes — the attempt-count walk over `nina_turns` — with `failAttempts` as its fault
+ * injector.
+ */
+const { deferred, dbRows } = vi.hoisted(() => ({
+  deferred: [] as Array<() => unknown>,
+  dbRows: { attempts: [] as unknown[], failAttempts: false },
+}))
+
+vi.mock('next/server', () => ({
+  after: (task: () => unknown) => {
+    deferred.push(task)
+  },
+}))
+
+vi.mock('@/lib/db', () => {
+  /* The drizzle chain the revive builds: select → from → where → orderBy → limit → await. The
+   * two-line thenable is `tests/nina.jobActions.test.ts`'s stand-in, one `.orderBy()` deeper. */
+  const thenable = () => ({
+    then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+      (
+        dbRows.failAttempts
+          ? Promise.reject(new Error('neon: connection reset'))
+          : Promise.resolve(dbRows.attempts)
+      ).then(ok, err),
+  })
+  return {
+    db: {
+      select: () => ({
+        from: () => ({ where: () => ({ orderBy: () => ({ limit: () => thenable() }) }) }),
+      }),
+    },
+  }
+})
+
+const getPendingNinaChatTurn = vi.fn()
+const insertNinaMessages = vi.fn()
+const listNinaMessages = vi.fn()
+const getNinaMessagesByIds = vi.fn()
+const getNinaMessageImagesForMessages = vi.fn()
+
+vi.mock('@/lib/nina/queries', () => ({
+  /* Every name the two real modules import. A missing one is an import error, not an undefined. */
+  bumpNinaShortcutUses: vi.fn(),
+  getNinaMessageImagesForMessages: (...a: unknown[]) => getNinaMessageImagesForMessages(...a),
+  getNinaMessagesByIds: (...a: unknown[]) => getNinaMessagesByIds(...a),
+  insertNinaMessages: (...a: unknown[]) => insertNinaMessages(...a),
+  listNinaMessages: (...a: unknown[]) => listNinaMessages(...a),
+  listNinaShortcuts: vi.fn(async () => []),
+  readNinaTuning: vi.fn(),
+}))
+
+const openNinaChatTurn = vi.fn()
+const sweepStaleNinaChatTurns = vi.fn()
+const chatTurnWasSuperseded = vi.fn()
+const closeNinaChatTurn = vi.fn()
+const ninaSessionExists = vi.fn()
+
+vi.mock('@/lib/nina/chatturn', () => ({
+  chatTurnWasSuperseded: (...a: unknown[]) => chatTurnWasSuperseded(...a),
+  closeNinaChatTurn: (...a: unknown[]) => closeNinaChatTurn(...a),
+  getPendingNinaChatTurn: (...a: unknown[]) => getPendingNinaChatTurn(...a),
+  ninaChatTurnStore: () => ({ record: vi.fn() }),
+  ninaSessionExists: (...a: unknown[]) => ninaSessionExists(...a),
+  openNinaChatTurn: (...a: unknown[]) => openNinaChatTurn(...a),
+  supersedeNinaChatTurn: vi.fn(),
+  sweepStaleNinaChatTurns: (...a: unknown[]) => sweepStaleNinaChatTurns(...a),
+}))
+
+/* The drained turn's own edges — the resend suite's arrangement, for the same reason. */
+const loadNinaContext = vi.fn()
+const runNinaTurn = vi.fn()
+
+vi.mock('@/lib/nina/load', () => ({ loadNinaContext: (...a: unknown[]) => loadNinaContext(...a) }))
+vi.mock('@/lib/nina/gateway', () => ({
+  dbNinaSourceGateway: {},
+  dbNinaToolGateway: { loadRunHistory: () => Promise.resolve([]) },
+}))
+vi.mock('@/lib/nina/turn', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/nina/turn')>()
+  return {
+    ...actual,
+    /* Everything real EXCEPT the model call and the production deps. `runNinaTurn` answers
+     * `payload: null` — the honest "she could not answer" — so the drain writes no rows of hers
+     * and property 7's sibling assertion stays clean end to end. */
+    productionDeps: () => ({}),
+    runNinaTurn: (...a: unknown[]) => runNinaTurn(...a),
+  }
+})
+vi.mock('@/lib/nina/distill', () => ({ runTurnDistillation: vi.fn() }))
+vi.mock('@/lib/nina/autotitle', () => ({ titleNinaSessionIfNeeded: vi.fn() }))
+
+/* ── the fixture ───────────────────────────────────────────────────────────────────────────── */
+
+const USER = 'u1'
+/** 12 chars, so `isValidId` would pass if one were checked. */
+const HIS = 'msgrunner001'
+const HERS = 'msgnina00001'
+const QUOTED = 'msgquoted001'
+const SESSION = 'ses000000001'
+const TURN = 'turn00000001'
+const RUN = 'run000000001'
+
+/** The one row the newest-row read comes back with. `messageColumns`' shape. */
+function runnerRow(over: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: HIS,
+    seq: 40,
+    sessionId: SESSION,
+    role: 'runner' as const,
+    body: 'lari gw kemaren gimana menurut lo?',
+    createdAt: new Date('2026-09-10T01:14:00.000Z'),
+    source: 'chat' as const,
+    turnId: null,
+    replyToId: null,
+    runId: null,
+    readAt: null,
+    photoOnly: false,
+    ...over,
+  }
+}
+
+type TurnRevive = typeof import('@/lib/nina/turnrevive')
+let revive: TurnRevive
+
+beforeEach(async () => {
+  deferred.length = 0
+  vi.clearAllMocks()
+  /* One prior attempt — the original send's dead claim — is the ordinary arrive-and-revive state. */
+  dbRows.attempts = [{ id: TURN }]
+  dbRows.failAttempts = false
+
+  listNinaMessages.mockResolvedValue([runnerRow()])
+  getNinaMessagesByIds.mockResolvedValue([])
+  getNinaMessageImagesForMessages.mockResolvedValue([])
+  openNinaChatTurn.mockResolvedValue(TURN)
+  sweepStaleNinaChatTurns.mockResolvedValue(0)
+  chatTurnWasSuperseded.mockResolvedValue(false)
+  closeNinaChatTurn.mockResolvedValue(undefined)
+  ninaSessionExists.mockResolvedValue(true)
+  loadNinaContext.mockResolvedValue({ conversation: { window: [] } })
+  runNinaTurn.mockResolvedValue({ source: 'unavailable', payload: null, firedShortcutIds: [] })
+
+  revive = await import('@/lib/nina/turnrevive')
+})
+
+/* ── the revive, the suppression, the cap ──────────────────────────────────────────────────── */
+
+describe('reviveNinaChatTurn', () => {
+  it('does nothing at all for a render with no active session', async () => {
+    await expect(revive.reviveNinaChatTurn(USER, null)).resolves.toBe(0)
+
+    expect(sweepStaleNinaChatTurns).not.toHaveBeenCalled()
+    expect(listNinaMessages).not.toHaveBeenCalled()
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
+  it('runs the turn when the newest row is his: sweep, ONE claim at depth 0, one task', async () => {
+    const revived = await revive.reviveNinaChatTurn(USER, SESSION)
+
+    expect(revived).toBe(1)
+    expect(sweepStaleNinaChatTurns).toHaveBeenCalledTimes(1)
+    expect(sweepStaleNinaChatTurns).toHaveBeenCalledWith(USER, expect.any(Date))
+    expect(listNinaMessages).toHaveBeenCalledWith(USER, { limit: 1, sessionId: SESSION })
+    expect(openNinaChatTurn).toHaveBeenCalledOnce()
+    expect(openNinaChatTurn).toHaveBeenCalledWith(USER, {
+      sessionId: SESSION,
+      runnerMessageId: HIS,
+      depth: 0,
+    })
+    /* THE after-queue receives exactly one task. */
+    expect(deferred).toHaveLength(1)
+  })
+
+  it('rebuilds the turn input from the row: his text, his photos, his quote, his run', async () => {
+    listNinaMessages.mockResolvedValue([runnerRow({ replyToId: QUOTED, runId: RUN })])
+    getNinaMessagesByIds.mockResolvedValue([
+      runnerRow({ id: QUOTED, seq: 12, role: 'nina', body: 'gimana?' }),
+    ])
+    getNinaMessageImagesForMessages.mockResolvedValue([
+      { id: 'img000000001', description: 'a man in a blue singlet, mid-stride', sortOrder: 0 },
+      /* An undescribed row: the vision pass failed, or has not run. */
+      { id: 'img000000002', description: null, sortOrder: 1 },
+    ])
+
+    await revive.reviveNinaChatTurn(USER, SESSION)
+    expect(deferred).toHaveLength(1)
+    /* The chain inside the drained turn re-reads the newest row and, if it is still HIS, opens
+     * another claim and re-fires `runNinaTurn` down to `NINA_TURN_CHAIN_MAX` — three calls, not
+     * one. The revive has already consumed its candidate read, so re-pointing the mock at HER row
+     * here only affects the drain, whose chain read then exits on `role !== 'runner'`. This is the
+     * resend suite's own fixture (tests/nina.resend.test.ts mocks her row as newest for exactly
+     * this reason). */
+    listNinaMessages.mockResolvedValue([runnerRow({ id: HERS, seq: 57, role: 'nina' })])
+    await deferred[0]!()
+
+    expect(runNinaTurn).toHaveBeenCalledOnce()
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    expect(turnInput.sourceMessageId).toBe(HIS)
+    expect(turnInput.runnerText).toBe('lari gw kemaren gimana menurut lo?')
+    expect(turnInput.attachedRunId).toBe(RUN)
+    expect((turnInput.quoted as { id: string } | null)?.id).toBe(QUOTED)
+    const descriptions = turnInput.imageDescriptions as readonly string[]
+    /* The substitution is the resend's: an undescribed photograph becomes the honest sentence. */
+    expect(descriptions).toHaveLength(2)
+    expect(descriptions[0]).toBe('a man in a blue singlet, mid-stride')
+    expect(descriptions[1]).toBe(NINA_DESCRIPTION_UNAVAILABLE)
+
+    /* Nothing of HIS was written by the revive or the drained turn — she said nothing. */
+    expect(insertNinaMessages).not.toHaveBeenCalled()
+  })
+
+  it('skips a row that has nothing for her to answer', async () => {
+    listNinaMessages.mockResolvedValue([runnerRow({ body: '   ' })])
+    getNinaMessageImagesForMessages.mockResolvedValue([])
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(0)
+
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
+  it('is suppressed when the newest row is hers, though the arrival sweep still ran', async () => {
+    listNinaMessages.mockResolvedValue([runnerRow({ id: HERS, seq: 57, role: 'nina' })])
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(0)
+
+    expect(sweepStaleNinaChatTurns).toHaveBeenCalledTimes(1)
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
+  it('is suppressed while a fresh claim lives, and reads the claim only through the open', async () => {
+    /* `openNinaChatTurn` returning null IS the fresh-claim refusal (`chatturn.ts:161`). */
+    openNinaChatTurn.mockResolvedValue(null)
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(0)
+
+    expect(openNinaChatTurn).toHaveBeenCalledOnce()
+    expect(deferred).toHaveLength(0)
+    /* No duplicated claim read: the open's own refusal is the suppression, so the revive never
+     * calls `getPendingNinaChatTurn` itself. */
+    expect(getPendingNinaChatTurn).not.toHaveBeenCalled()
+  })
+
+  it('opens no claim and schedules nothing once the cap of three attempts is reached', async () => {
+    dbRows.attempts = [{ id: 't1' }, { id: 't2' }, { id: 't3' }]
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(0)
+
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
+  it('still revives at two attempts — the second revive is the cap’s allowance, not an off-by-one', async () => {
+    dbRows.attempts = [{ id: 't1' }, { id: 't2' }]
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(1)
+
+    expect(openNinaChatTurn).toHaveBeenCalledOnce()
+    expect(deferred).toHaveLength(1)
+  })
+
+  it('degrades OPEN when the count read fails, because lost replies are the worse outcome', async () => {
+    dbRows.failAttempts = true
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(1)
+
+    expect(openNinaChatTurn).toHaveBeenCalledOnce()
+    expect(deferred).toHaveLength(1)
+  })
+})
+
+/* ── the render's bodyguard ────────────────────────────────────────────────────────────────── */
+
+describe('a recovery path can never take the render down with it', () => {
+  it('resolves 1 when the sweep throws — the open still applies staleness itself', async () => {
+    sweepStaleNinaChatTurns.mockRejectedValue(new Error('neon: statement timeout'))
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(1)
+    expect(openNinaChatTurn).toHaveBeenCalledOnce()
+  })
+
+  it('resolves 0 when the newest-row read throws, and schedules nothing', async () => {
+    listNinaMessages.mockRejectedValue(new Error('neon: connection reset'))
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(0)
+    expect(openNinaChatTurn).not.toHaveBeenCalled()
+    expect(deferred).toHaveLength(0)
+  })
+
+  it('resolves 0 when the open throws, and schedules nothing', async () => {
+    openNinaChatTurn.mockRejectedValue(new Error('neon: connection reset'))
+
+    await expect(revive.reviveNinaChatTurn(USER, SESSION)).resolves.toBe(0)
+    expect(deferred).toHaveLength(0)
+  })
+})
+
+/* ── invariant 4, asserted against the sources the move produced ───────────────────────────── */
+
+describe('the move left the action surface exactly as wide as it was', () => {
+  it('turnrun.ts and turnrevive.ts are server-only and neither is a Server Action module', () => {
+    for (const path of ['lib/nina/turnrun.ts', 'lib/nina/turnrevive.ts']) {
+      const source = readFileSync(path, 'utf8')
+      expect(source.trimStart().startsWith("import 'server-only'"), path).toBe(true)
+      expect(source.includes("'use server'"), path).toBe(false)
+    }
+  })
+
+  it('actions.ts no longer declares the runner, and still exports the SentBubble type', () => {
+    const source = readFileSync('lib/nina/actions.ts', 'utf8')
+    expect(source).not.toMatch(/function runNinaBackgroundTurn\(/)
+    expect(source).toMatch(/export type \{ SentBubble \}/)
+  })
+})
+```
+
+---
+
+## What this phase deliberately does NOT do
+
+- **No retry inside `chatturn.ts`.** The sweep keeps its no-retry stance for the send, poll and resend paths; the revive is a separate module with its own bounds, so the old note's reasoning stays readable where it still applies and the reversal stays local to where the user's input reversed it.
+- **No new definition of "unanswered".** The revive does not read the pending claim and does not touch `turnflight.ts`; suppression is `openNinaChatTurn`'s refusal, visibility is Phase 1's disjunct.
+- **No cron.** Hobby caps schedules at the two already used; page arrival is the trigger, per the plan index's decision (rung 7).
+- **No change to `resendNinaMessage`.** It remains the manual override and the only cap-exempt recovery.
+- **No migration, no schema change.** `drizzle/` gains no file; the attempt count walks the one pinned index.
+
+## Verification
+
+```bash
+cd /home/miftah/.worktrees/run-insights/nina-offline-reply
+npm install                # fresh worktree: no node_modules yet (a symlinked one fails Turbopack)
+npx next typegen && npx tsc --noEmit
+npx vitest run tests/nina.turnrevive.test.ts tests/nina.resend.test.ts tests/nina.burstCancel.test.ts tests/nina.sendDescriptions.test.ts tests/nina.jobActions.test.ts
+npx vitest run
+npm run ci:llm-payload-guard   # the boundary script, now with two new sanctioned files
+npm run db:check               # must be clean: this phase generates no migration
+npx prettier --check lib/nina/turnrun.ts lib/nina/turnrevive.ts tests/nina.turnrevive.test.ts app/nina/page.tsx lib/nina/actions.ts
+```
+
+(`tests/nina.resend|burstCancel|sendDescriptions` are listed explicitly because they drain the deferred turn — they are the suites that must prove the move was invisible to them.)
+
+## Exit criteria
+
+1. A runner message whose turn died is answered automatically the next time its session is opened — no tap, no resend (G3 closed, R1).
+2. The answer is part of the same render's flight view: `awaiting` is true through the fresh claim the revive opened, the poll delivers the bubbles, no refresh (R2, composed with Phase 1).
+3. A live turn suppresses the revive entirely; her newest bubble on top suppresses it; a permanently-unavailable message costs at most `NINA_TURN_REVIVE_ATTEMPT_CAP` (3) attempts including the original send, then never again without his tap.
+4. A render with nothing to revive pays a few indexed reads; the revive can throw nothing into the render.
+5. `nina_turns` still has exactly one index; `drizzle/` unchanged; typegen + tsc + vitest + the boundary guard all green.
+
+## Rollback
+
+Stop calling the revive from the page (delete the `if (activeSessionId !== null)` block and the import) — `turnrun.ts` and `turnrevive.ts` are inert without a caller, and `startNinaBackgroundTurn`/`resendNinaMessage`/the send path never changed. Or revert the phase commit range; the two sanctioned-list entries revert with it.
+
+## Interface contract (for the reconciler)
+
+```ts
+// lib/nina/turnrun.ts  ('server-only', NOT a Server Action module)
+export interface SentBubble { id: string; body: string; replyToId: string | null }  // moved verbatim
+export interface NinaBackgroundTurnInput {                                          // moved verbatim
+  userId: string; sessionId: string; turnId: string; runnerMessageId: string;
+  runnerText: string | null; imageDescriptions: readonly string[];
+  quotedRow: NinaMessageRow | null; attachedRunId: string | null; depth: number; startedAtMs: number
+}
+export async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<void>  // now exported
+
+// lib/nina/turnrevive.ts  ('server-only', NOT a Server Action module)
+export const NINA_TURN_REVIVE_ATTEMPT_CAP = 3
+export async function reviveNinaChatTurn(
+  userId: string, sessionId: string | null, now?: Date
+): Promise<number>   // 1 turn scheduled | 0 otherwise | never throws
+
+// lib/nina/actions.ts
+import { runNinaBackgroundTurn, type NinaBackgroundTurnInput, type SentBubble } from './turnrun'
+export type { SentBubble }          // erased at compile time; ChatScreen's import keeps working
+// startNinaBackgroundTurn unchanged and still private; send/resend/poll logic unchanged
+
+// app/nina/page.tsx  (as phase 1 leaves it: the claim read is the Promise.all's SIXTH element,
+//                     `pendingTurn`, consumed by ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null))
+import { reviveNinaChatTurn } from '@/lib/nina/turnrevive'
+// between chooseActiveSession and the Promise.all — hoisted ABOVE it, so the claim read inside it
+// and the flight view both observe the sweep and any fresh claim:
+if (activeSessionId !== null) { await reviveNinaChatTurn(userId, activeSessionId) }
+```

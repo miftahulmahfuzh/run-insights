@@ -18,6 +18,8 @@ import {
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
+import { getPendingNinaChatTurn } from '@/lib/nina/chatturn'
+import { reviveNinaChatTurn } from '@/lib/nina/turnrevive'
 import { SESSION_PARAM, chooseActiveSession, parseNinaSessionParam } from '@/lib/nina/active'
 import { listOpenNinaImageJobs } from '@/lib/nina/imagejobs'
 import { reviveNinaImageJobs } from '@/lib/nina/imagerun'
@@ -184,6 +186,29 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const activeSessionId = chooseActiveSession(sessions, parseNinaSessionParam(sessionParam))
 
   /*
+   * ── G3's SELF-REPAIR, AND THE ORDERING THAT MAKES IT VISIBLE ─────────────────────────────────
+   * A message whose turn died (its `after()` invocation evicted, its segment ceiling reached) is
+   * answered HERE, with no tap: the revive sweeps the stale claim, and if the newest row is still
+   * his, no fresh claim blocks and the attempt cap allows, it opens a new claim and schedules
+   * `runNinaBackgroundTurn` inside `after()` — the same shape `reviveNinaImageJobs` below already
+   * ships for photographs ("arriving on this page is the pipeline's self-repair"). The model call
+   * is always inside that callback; what THIS await costs the render is a few indexed reads and,
+   * on the rare hit, one claim INSERT (invariant 3).
+   *
+   * AWAITED HERE, BEFORE THE `Promise.all` BELOW, AND THAT ORDER IS THE FIX (the G1 × G3 trap):
+   * the claim read is the `Promise.all`'s sixth element (`pendingTurn`), and the flight view
+   * consumes it — both must see what this revive just did. A revive that JOINED the
+   * `Promise.all` would race the claim read; awaited above it, the read observes the sweep and
+   * any fresh claim this opened, `awaiting` reads true for the turn that is about to run, the
+   * poll starts, and her answer lands into a tab that is looking (R2, no refresh).
+   *
+   * `null` means he has no sessions — nothing to revive, nothing to sweep, zero queries.
+   */
+  if (activeSessionId !== null) {
+    await reviveNinaChatTurn(userId, activeSessionId)
+  }
+
+  /*
    * Two reads, concurrently — and the second one is here for its SIDE EFFECT.
    * `listOpenNinaImageJobs` sweeps stale image jobs first (phase 12), so ARRIVING ON THIS PAGE IS
    * ITSELF R22's LAST GUARANTEE: a job that GitHub never ran gets its apology written by the act of
@@ -196,14 +221,14 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * rather than this one — which is the same one-load lag this screen already accepts for a photo
    * that lands while the tab is open (there is no live-refresh, by design).
    *
-   * Invariant 4 holds, and it holds for a longer reason than it used to. FIVE reads now, all
-   * indexed; on the rare stale path a handful of UPDATEs; and — new — `reviveNinaImageJobs`, which
+   * Invariant 4 holds, and it holds for a longer reason than it used to. SIX reads now, all
+   * indexed; on the rare stale path a handful of UPDATEs; and `reviveNinaImageJobs`, which
    * SCHEDULES a generation and awaits nothing. No model call is awaited in a render path. The
    * generation itself no longer runs on a GitHub runner: it runs on THIS invocation, inside
    * `after()`, which is why `maxDuration` above is 300 and why the runner may close the tab the
    * moment this page paints (R7). `.github/workflows/nina-image.yml` is the backstop behind it.
    */
-  const [rows, , avatarRow, photoRow] = await Promise.all([
+  const [rows, , avatarRow, photoRow, , pendingTurn] = await Promise.all([
     /*
      * F35 R2. ONE session's messages. `Promise.resolve` on the empty branch rather than a
      * conditional `await` after the block, on the `?photo=` branch's precedent below: keeping it
@@ -256,6 +281,41 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
      * the count is a log line, and what the screen shows is `listOpenNinaImageJobs`' business.
      */
     reviveNinaImageJobs(userId),
+    /*
+     * **The claim read (offline-reply set, R2 — analysis gap G1).** The session's pending
+     * `nina_turns` row: the SAME indexed read `pollNinaReply` makes as the third leg of its own
+     * `Promise.all` (`lib/nina/actions.ts:2016`), so the cold load answers "is she thinking" from
+     * the same truth the open tab polls. `null` when there is no active session, on the
+     * `?photo=` branch's `Promise.resolve(null)` idiom right above — a runner with no conversation
+     * pays nothing at all.
+     *
+     * `ninaFlightView` below applies the freshness, because `getPendingNinaChatTurn` deliberately
+     * returns an EXPIRED pending row too (its docstring says so). The fresh claim is the disjunct
+     * the message window could never be: the window expires at `NINA_TURN_STALE_MS` while a turn
+     * — a chained burst especially — honestly runs to `NINA_BACKGROUND_BUDGET_MS`, so a runner
+     * who reopened at t ∈ (90 s, 240 s) got a quiet screen, no poll, and a reply that landed
+     * unobserved. With the claim, the cold load and the poll share one definition of
+     * "unanswered", which `lib/nina/turnflight.test.ts` asserts (plan invariant 5).
+     *
+     * ── SEAM FOR PHASE 2 — THE ORDERING IS ALREADY PINNED ────────────────────────────────────────
+     * Phase 2's chat-turn revive must speak BEFORE this read: it sweeps stale claims and may open
+     * a fresh one, and a read that raced it could compute "not awaiting" for a turn it just
+     * re-fired — G1 re-created by the fix for G3. RESOLVED IN RECONCILIATION, one way, no fork:
+     * phase 2 inserts `await reviveNinaChatTurn(...)` ABOVE the `Promise.all` below, and THIS read
+     * STAYS its sixth element, exactly where it is. That is the whole fix — the `Promise.all` is
+     * awaited after the revive, so this read already observes what revive did, and nothing in
+     * phase 1's layout moves. (The read is kept in this ONE named element (`pendingTurn`) with
+     * this ONE consumption site — the `ninaFlightView` call below — so the guarantee is checkable
+     * by eye.)
+     *
+     * READ-ONLY, like everything else in this render: an expired claim is passed through as-is
+     * and `ninaFlightView` declines to trust it. Sweeping it is a write, and this page stays
+     * "indexed reads + `after()`" — the write belongs to phase 2's revive (and
+     * `sweepStaleNinaChatTurns`'s own docstring already rules the page out as its caller).
+     */
+    activeSessionId === null
+      ? Promise.resolve(null)
+      : getPendingNinaChatTurn(userId, activeSessionId),
   ])
   const avatar = ninaAvatarView(avatarRow)
 
@@ -271,24 +331,29 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
   const todayISO = todayInJakarta()
 
   /*
-   * **F36 R6. Is a turn already in flight for the conversation this render is painting?**
+   * **F36 R6 + offline-reply R2. Is a turn already in flight for the conversation this render is
+   * painting?**
    *
-   * ZERO EXTRA QUERIES. `rows` is `listNinaMessages`'s output — oldest first — and the question is
-   * answered by its last element: the newest row is his, and it is younger than
-   * `NINA_TURN_STALE_MS`. `ninaFlightView` is that predicate as a pure function so the page, the
-   * poll action and the client cannot come to disagree about what "unanswered" means; its suite
-   * asserts the agreement.
-   *
-   * A HEURISTIC, and knowingly. This render cannot see the `nina_turns` claim without a further
-   * read, and it does not need to: `ChatScreen` starts a poll on the strength of it, and the poll's
-   * first answer — which DOES read the claim — is authoritative within two seconds. The one
-   * direction it errs in is starting a poll that finds nothing, which is a single indexed batch.
-   * The opposite error, hiding a reply that is on its way, is the one that would matter.
+   * Two disjuncts, and `ninaFlightView` owns both, spelled exactly the way `pollNinaReply` spells
+   * its own answer (`lib/nina/actions.ts:2052`): a FRESH live claim for this session —
+   * `pendingTurn` above, whose expiry the flight view applies because `getPendingNinaChatTurn`
+   * hands back expired rows too — OR the message window (the newest row is his and younger than
+   * `NINA_TURN_STALE_MS`, which covers the half-second hand-off gap between two chained turns
+   * where no claim is open). One definition of "unanswered" for the cold load and the poll, and
+   * the suite asserts the agreement. One honest silence too: with no fresh claim AND an old
+   * message there is nothing in flight, so the screen opens quiet — the dead turn is phase 2's
+   * revive, not this render's business.
    *
    * `cursor` rides along because the screen needs somewhere to resume from, and the newest row's
-   * `seq` is exactly that. Invariant 4 is untouched: this is arithmetic over rows already in hand.
+   * `seq` is exactly that. Invariant 4 is untouched: one extra indexed read inside the
+   * `Promise.all` above, arithmetic over rows already in hand, no model call anywhere near the
+   * render.
+   *
+   * `Date.now()` stays in ARGUMENT position on purpose: `react-hooks/purity` lets a Server
+   * Component's one-shot render read the clock there and would flag a binding —
+   * `app/nina/jobs/page.tsx` quotes this exact call as its own precedent.
    */
-  const flight = ninaFlightView(rows, Date.now())
+  const flight = ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null)
 
   /*
    * The sidebar's rows — F35 R6/R4/R11, phase 5.

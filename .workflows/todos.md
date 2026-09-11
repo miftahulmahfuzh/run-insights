@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 35
+- Completed: 37
 
 ---
 
@@ -81,6 +81,40 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A039** Phase 2: Self-repair on arrival: revive dead chat turns when the session opens
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new server-only (non-`'use server'`) revive module that, on `/nina` render of a session, sweeps stale chat claims and — if the newest row is his, no fresh claim exists, and the attempt cap allows — opens a claim and schedules `runNinaBackgroundTurn` via `after()` (G3); `runNinaBackgroundTurn` + `NinaBackgroundTurnInput` + `SentBubble` + the private `runNinaDistillation` moving to the non-action server module `lib/nina/turnrun.ts` so the revive shares the runner without exporting a new action endpoint (invariant 4), with `actions.ts` re-importing the runner for its `after()` seam and type-re-exporting `SentBubble` for `ChatScreen`; `scripts/check-llm-payload-boundary.mjs` gaining `lib/nina/turnrun.ts` in two sanctioned lists; the page composition pinned: sessions read → `chooseActiveSession` → `await reviveNinaChatTurn` → `Promise.all` (incl. phase 1's claim read, its sixth element) → flight view; the attempt cap counts prior `kind='chat'` turns whose `args->>'runnerMessageId'` matches, newest-first over the one pinned index, cap 3 total attempts per runner message (send included). Does not touch `turnflight.ts`'s flight predicates, `ChatScreen`, phase 1's claim read and its seam comment, the cron routes, `resendNinaMessage`. Exit criteria: a message whose turn died (claim swept `stale`) is answered automatically the next time its session is opened, with no tap; a permanently-unavailable message costs at most the cap, then never again; a live claim suppresses revive entirely; renders with nothing to revive pay a few indexed reads; typegen + tsc + vitest green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_OFFLINE_REPLY_PLAN.md` (phase 2 of 2)
+  - **Satisfies**: R1 — Nina answers a sent message regardless of the app being closed / device offline — no client involvement in answering; R2 — On reopening the chat, her answer is immediately visible as part of that session's history
+  - **Depends on**: `P1-RI-A038`
+  - **Plan**: `.workflows/plan/P1-RI-A039.md`
+  - **Completed**: 2026-09-11 14:30
+  - **Method**: /implement (swarm phase 2/2, worktree `nina-offline-reply`)
+  - **Files**: lib/nina/turnrun.ts, lib/nina/turnrevive.ts, tests/nina.turnrevive.test.ts, lib/nina/actions.ts, app/nina/page.tsx, scripts/check-llm-payload-boundary.mjs
+  - **Verification**: `npx next typegen` ✓; `npx tsc --noEmit` exit 0; targeted vitest (tests/nina.turnrevive.test.ts, tests/nina.resend.test.ts, tests/nina.burstCancel.test.ts, tests/nina.sendDescriptions.test.ts, nina.jobActions) 63/63; full `npx vitest run` 3918/3918 across 183 files; `npm run ci:llm-payload-guard` passed; `npm run db:check` clean ("Everything's fine"); `git status --porcelain drizzle/` empty (no migration, per plan invariant 2); prettier --check clean on all six touched files.
+  - **Drift**: lib/nina/turnrun.ts import block: plan step 1b omitted `loadNinaContext` (./load) and `openNinaChatTurn` (./chatturn), both real code uses inside the moved chain (base actions.ts:1266 and the chain's openNinaChatTurn call); added, mirroring the reconciler's own listNinaMessages fix. Verified complete by npx tsc --noEmit.
+  - **Drift**: tests/nina.turnrevive.test.ts 'resolves 0 when the open throws' asserted openNinaChatTurn was never called, contradicting step 3's own module code where the open IS the scenario (called once, throw swallowed); now asserts called-once and nothing deferred. Rung 3: the module code block defines the behavior; the test title's stated property (resolves 0, schedules nothing) is unchanged.
+  - **Drift**: tests/nina.turnrevive.test.ts 'neither is a Server Action module' used substring includes("'use server'"), which false-trips on turnrun.ts's own planned header prose quoting the directive; now checks the effective directive form (trimStart().startsWith("'use server'")), parallel to the sibling server-only assertion. Rung 1: invariant 4 is the property.
+  - **Drift**: Prettier --write on actions.ts (plan's 5-line turnrun import collapsed to one line), turnrun.ts (one moved-region line was already prettier-dirty at HEAD inside actions.ts; prettier reflowed it — the only delta to the byte-for-byte move, which was diff-verified before formatting), and the test file (ternary reflow).
+  - **Decided**: Plan step 1b's turnrun.ts import block incomplete vs the moved regions' code uses → add loadNinaContext and openNinaChatTurn (rung 3: step 1c's own deletion annotations say both imports' only uses moved)
+
+- [x] **P1-RI-A038** Phase 1: In-flight truth on reopen: claim-read cold load + honest give-up
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `app/nina/page.tsx` reading `getPendingNinaChatTurn` for the active session so the cold-load `awaiting` becomes the poll's own disjunct (`fresh claim || ninaAwaitingByMessage`) instead of the 90 s heuristic alone (G1); `NINA_TURN_POLL_GIVE_UP_MS` moving from the 90 s identity to `NINA_BACKGROUND_BUDGET_MS` (G2); `ChatScreen`'s give-up comment rewritten to the new rationale (the server's `awaiting: false` is the real stop; the backstop's remaining job is the unreachable server); `lib/nina/turnflight.test.ts` asserting the new agreement and the budget pairing. Does not touch the send path, `chatturn.ts` writers, the revive, the reveal/poll mechanics, any constant except the give-up. Exit criteria: reopening `/nina` while a turn or chain is genuinely live (any age up to the budget) starts the typing indicator and the poll, and bubbles land without a refresh; a dead turn still stops the poll via the server's own `awaiting: false` within ~90 s; typegen + tsc + vitest green.
+  - **Status**: completed
+  - **Plan Set**: `NINA_OFFLINE_REPLY_PLAN.md` (phase 1 of 2)
+  - **Satisfies**: R2 — On reopening the chat, her answer is immediately visible as part of that session's history
+  - **Depends on**: (none)
+  - **Plan**: `.workflows/plan/P1-RI-A038.md`
+  - **Completed**: 2026-09-11 13:43
+  - **Method**: /implement (swarm phase 1/2, worktree `nina-offline-reply`)
+  - **Files**: lib/nina/turnflight.ts, app/nina/page.tsx, components/nina/ChatScreen.tsx, lib/nina/turnflight.test.ts, lib/admin/imageGenTestView.ts
+  - **Verification**: `npx next typegen` ✓; `npx tsc --noEmit` exit 0; `npx vitest run` targeted (lib/nina/turnflight.test.ts, tests/nina.burstCancel.test.ts, lib/nina/chatturn.test.ts) 39/39; full `npm test` 3904/3904 across 182 files; `git status --porcelain drizzle/` empty (no migration, per plan invariant 2).
+  - **Drift**: app/nina/page.tsx ~line 199: the file's old text read 'and — new — `reviveNinaImageJobs`, which' where the plan's replacement block read 'and `reviveNinaImageJobs`, which'. Small quote drift only; the plan's replacement block was applied verbatim (FIVE→SIX, and the now-stale '— new —' absorbed). Meaning unchanged.
 
 - [x] **P1-RI-A037** Phase 1: Jump targets the earliest bubble carrying the photo
   - **Difficulty**: NORMAL

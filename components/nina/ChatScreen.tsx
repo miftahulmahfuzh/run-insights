@@ -265,19 +265,19 @@ export function ChatScreen({
    * **F36 R6. Whether a turn is already in flight when this screen mounts, and where the poll
    * resumes from.**
    *
-   * Computed on the server by `ninaFlightView` from the rows `app/nina/page.tsx` has ALREADY read —
-   * zero extra queries, which is why it is a pure function over `listNinaMessages`'s output and not
-   * a fifth read in that page's `Promise.all`.
+   * Computed on the server by `ninaFlightView` from the rows `app/nina/page.tsx` has ALREADY read
+   * plus the session's pending `nina_turns` claim — the same indexed read the poll itself makes.
    *
    * It is what makes "the app does not care whether user close the app" true for the case that
    * actually happens: he sends, locks his phone, comes back forty seconds later. Without it the
    * reopened screen would show his message with no indicator and no poll, and her reply would only
    * appear if he happened to reload again. With it, the screen mounts already awaiting.
    *
-   * `awaiting` is a HEURISTIC here — a cold load has no claim row in hand, so it is "the newest row
-   * is his and it is younger than `NINA_TURN_STALE_MS`". The first poll's answer is authoritative
-   * and corrects it inside two seconds. `ninaAwaitingByMessage`'s docstring carries the argument
-   * for why that direction of error is the safe one.
+   * `awaiting` is the POLL'S OWN disjunct — a fresh live claim OR "the newest row is his and it is
+   * younger than `NINA_TURN_STALE_MS`" — so a turn honestly still running past the 90 s window (a
+   * chained burst runs to ~210 s) starts the poll on a cold load, and a dead turn (claim swept,
+   * message old) starts nothing. The first poll's answer remains authoritative and corrects either
+   * seed inside two seconds.
    *
    * REQUIRED rather than optional, on RULING E2b's habit and for the reason `sessionId` and
    * `pendingPhoto` are: `app/nina/page.tsx` is the one caller and `tsc` should be what notices if
@@ -1106,10 +1106,17 @@ export function ChatScreen({
    * "is anything of his unanswered", not "did I just receive something".
    *
    * ── THE GIVE-UP ─────────────────────────────────────────────────────────────────────────────
-   * `NINA_TURN_POLL_GIVE_UP_MS` is the same number as the server's `NINA_TURN_STALE_MS`, asserted
-   * in `lib/nina/turnflight.test.ts`. By the time it fires, the server has already closed the row
-   * as dead, so the notice it raises is a fact. It exists for the case where the poll ITSELF cannot
-   * reach the server — an offline phone — where no server answer is coming at all.
+   * `NINA_TURN_POLL_GIVE_UP_MS` is `NINA_BACKGROUND_BUDGET_MS` — the server's honest wall clock —
+   * and no longer the 90 s stale deadline it was identical to before (asserted as the pairing in
+   * `lib/nina/turnflight.test.ts`). The real stop for a DEAD turn is the server's own
+   * `awaiting: false`: the claim read is authoritative, the sweep closes a dead row within
+   * `NINA_TURN_STALE_MS`, and the next poll says stop within ~90 s without this backstop's help.
+   * What is left for the backstop is the poll that cannot reach the server at all — an offline
+   * phone, where every request fails and no server answer is ever coming — and it must span the
+   * longest HONEST run so it never fires over a living turn: the first turn plus
+   * `NINA_TURN_CHAIN_MAX` (2) chained follow-ups at ~50 s each is ~210 s, inside
+   * `NINA_BACKGROUND_BUDGET_MS` = 240 s. At the old 90 s this loop called a living chain dead,
+   * raised the notice, and her remaining replies landed unobserved.
    */
   useEffect(() => {
     if (!awaiting) return

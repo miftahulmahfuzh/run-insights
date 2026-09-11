@@ -22,14 +22,16 @@
  * mid-flight, or cut off by the segment's ceiling. `sweepStaleNinaChatTurns` closes it, and both
  * the client and the poll stop waiting for it.
  *
- * **It is also the client's give-up**, deliberately: the poll that gives up is the poll that has
- * already been told the row is dead, so the runner's last request is the one that makes the screen
- * honest. `lib/extract/constants.ts` states the identity for the extraction path in the same words.
+ * **It is no longer the client's give-up.** For its whole life it was, on the argument that the
+ * poll that gives up is the poll that has already been told the row is dead — and the argument had
+ * a hole the measured data closed: a chained burst legitimately runs two to three times longer
+ * than 90 s, so a tab that gave up here called a LIVING turn dead. The give-up now pairs with
+ * `NINA_BACKGROUND_BUDGET_MS` below; what stops a dead turn's poll is the server's own
+ * `awaiting: false`, back within this deadline. `lib/extract/constants.ts` still states the old
+ * identity for the extraction path, and it still holds there: a polled extraction's honest wall
+ * clock IS its stale deadline.
  */
 export const NINA_TURN_STALE_MS = 90_000
-
-/** The client's give-up. Identical to the server's deadline, on purpose — see above. */
-export const NINA_TURN_POLL_GIVE_UP_MS = NINA_TURN_STALE_MS
 
 /**
  * The backoff. Fifteen live `glm-5.3` calls measured 10.2–16.4 s (the reveal module's own note), so
@@ -93,6 +95,36 @@ export const NINA_BACKGROUND_BUDGET_MS = 240_000
  */
 export const NINA_TURN_CHAIN_MAX = 2
 
+/**
+ * The client's give-up, and since the offline-reply set it is the server's HONEST WALL CLOCK —
+ * `NINA_BACKGROUND_BUDGET_MS`, the budget the background turn actually runs inside — not the
+ * stale deadline it was identical to before (see `NINA_TURN_STALE_MS`'s note for why that
+ * identity died). It sits below the budget here for a mechanical reason as well as a logical one:
+ * the initializer reads it, and a `const` cannot lean on a declaration that comes later.
+ *
+ * ── WHO STOPS THE POLL, AND WHEN ──────────────────────────────────────────────────────────────
+ *
+ *   A DEAD turn — the server stops it, inside ~90 s. The sweep closes the claim at
+ *               `NINA_TURN_STALE_MS`, the next poll reads `getPendingNinaChatTurn`, finds no fresh
+ *               claim and an old message, and answers the authoritative `awaiting: false`
+ *               (`pollNinaReply`, `lib/nina/actions.ts:2045` + `:2052`). The give-up is not needed
+ *               and does not fire.
+ *   A LIVE turn — the server stops it too, when her rows land and nothing of his is unanswered.
+ *   NO SERVER   — the give-up is the only thing that ends it: the poll that cannot reach the
+ *               server at all (`ok: false` forever — an offline phone) has learned nothing from
+ *               anyone.
+ *
+ * So the number must cover the longest HONEST run, which is a full chained burst: the first turn
+ * plus `NINA_TURN_CHAIN_MAX` follow-up links, each a `NINA_TURN_BUDGET.overall` model call plus
+ * loads, inserts and a distillation (~50–70 s per link) — ~150–210 s, inside 240 s. At the old
+ * 90 s the tab raised the 'no-reply' notice for a turn that was alive and stopped polling; her
+ * chained replies landed unobserved until a refresh (analysis gap G2). Raising the backstop does
+ * not stretch an outage: the client treats a failed poll as "try again", and the server's
+ * `awaiting: false` still ends every wait it can reach. The backstop now only stops the tab
+ * lying about a live chain.
+ */
+export const NINA_TURN_POLL_GIVE_UP_MS = NINA_BACKGROUND_BUDGET_MS
+
 /** The delay before poll number `attempts` (0-based). Pure; `pollDelayFor` one feature over. */
 export function ninaPollDelayFor(attempts: number): number {
   if (attempts >= NINA_TURN_POLL_LATE_AFTER_ATTEMPTS) return NINA_TURN_POLL_INTERVALS_MS.late
@@ -115,9 +147,14 @@ export interface NinaFlightRow {
  * second, a message she never answered a week ago would put a typing indicator on the screen
  * forever and start a poll on every page load for the rest of time.
  *
- * This is a HEURISTIC where `app/nina/page.tsx` uses it (a cold load has no claim row in hand) and
- * it is exactly right where `pollNinaReply` uses it (the poll ORs it with the live claim). The two
- * can disagree for at most one poll interval: a turn that died at 5 s leaves the heuristic saying
+ * **It is one disjunct of the shared answer, never the whole answer.** `pollNinaReply` ORs it
+ * with the live claim (`lib/nina/actions.ts:2052`) and, since the offline-reply set, so does the
+ * cold load — `ninaFlightView` takes the claim's `createdAt` and ORs the same way. The claim
+ * covers a turn honestly still running past this deadline (a chained burst runs to
+ * `NINA_BACKGROUND_BUDGET_MS`); this window covers the half-second hand-off gap between two
+ * chained turns, where one claim has closed and the next has not yet opened.
+ *
+ * Alone it errs in one direction only: a turn that died at 5 s leaves the window saying
  * "awaiting" until 90 s, and the first poll's authoritative answer corrects the screen inside two
  * seconds. That direction of error is the safe one — it starts a poll that finds the truth, rather
  * than hiding a reply that is already on the way.
@@ -137,21 +174,44 @@ export interface NinaFlightView {
 }
 
 /**
- * The cold-load view, computed from rows the page has already read. **Zero extra queries** — the
- * whole reason this is a pure function over `listNinaMessages`'s output rather than a fifth read in
- * the page's `Promise.all`.
+ * The cold-load view: the rows the page has already read, PLUS the session's pending `nina_turns`
+ * claim. Pure and zero-import, so `app/nina/page.tsx` and this suite share it with the poll's
+ * answer.
  *
  * `rows` is OLDEST FIRST, which is what `listNinaMessages` returns and what the page renders
  * straight down; the newest row is therefore the last one.
  *
- * `cursor: 0` for an empty conversation. `nina_messages.seq` is a `bigserial` starting at 1, so 0 is
- * below every row that can exist and "everything after 0" is "everything" — which is the correct
- * answer for a screen holding nothing.
+ * `liveClaimCreatedAt` is `getPendingNinaChatTurn`'s hit for the SAME session — `null` when there
+ * is no claim or no session at all. That read returns an EXPIRED pending row too (its docstring
+ * says so), so the freshness comparison below is load-bearing, and it is the same one
+ * `pollNinaReply` applies before trusting its own claim read: fresh claim OR the message window —
+ * exactly the disjunct at `lib/nina/actions.ts:2052`. ONE definition of "unanswered" for the cold
+ * load and the poll, asserted as page/poll agreement in `lib/nina/turnflight.test.ts` (plan
+ * invariant 5).
+ *
+ * The claim disjunct is what closes analysis gap G1: the message window expires at
+ * `NINA_TURN_STALE_MS` while a turn — a chained burst especially — honestly runs to
+ * `NINA_BACKGROUND_BUDGET_MS`, so a runner who reopened at t ∈ (90 s, 240 s) used to get a quiet
+ * screen, no poll, and a reply that landed unobserved. The parameter's default is equally
+ * deliberate: with no fresh claim AND an old message there is nothing in flight, and the screen
+ * opens quiet — the dead turn is phase 2's revive, not this view's business.
+ *
+ * `cursor: 0` for an empty conversation. `nina_messages.seq` is a `bigserial` starting at 1, so 0
+ * is below every row that can exist and "everything after 0" is "everything" — which is the
+ * correct answer for a screen holding nothing.
  */
-export function ninaFlightView(rows: readonly NinaFlightRow[], nowMs: number): NinaFlightView {
+export function ninaFlightView(
+  rows: readonly NinaFlightRow[],
+  nowMs: number,
+  liveClaimCreatedAt: Date | null = null,
+): NinaFlightView {
   const newest = rows.length === 0 ? null : (rows[rows.length - 1] ?? null)
+  /* The poll's own freshness line (`actions.ts:2029`), pointed at the claim instead of the row —
+   * exclusive at the boundary, exactly like `ninaAwaitingByMessage`'s. */
+  const claimLive =
+    liveClaimCreatedAt !== null && nowMs - liveClaimCreatedAt.getTime() < NINA_TURN_STALE_MS
   return {
-    awaiting: ninaAwaitingByMessage(newest, nowMs),
+    awaiting: claimLive || ninaAwaitingByMessage(newest, nowMs),
     cursor: newest?.seq ?? 0,
   }
 }
