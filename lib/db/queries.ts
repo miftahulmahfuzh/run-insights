@@ -1086,24 +1086,6 @@ export async function getExtraction(userId: string, id: string): Promise<Extract
   return rows[0] ?? null
 }
 
-/** Newest first. The upload screen offers "you have an extraction still waiting" from this. */
-export async function listExtractions(
-  userId: string,
-  opts: { limit?: number; status?: ExtractionStatus } = {},
-): Promise<Extraction[]> {
-  return db
-    .select()
-    .from(extractions)
-    .where(
-      and(
-        eq(extractions.userId, userId),
-        opts.status ? eq(extractions.status, opts.status) : undefined,
-      ),
-    )
-    .orderBy(desc(extractions.createdAt))
-    .limit(opts.limit ?? 20)
-}
-
 async function markExtraction(
   userId: string,
   id: string,
