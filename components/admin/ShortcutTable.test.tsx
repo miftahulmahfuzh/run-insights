@@ -43,6 +43,7 @@ function row(overrides?: Partial<ShortcutRow>): ShortcutRow {
     enabled: true,
     uses: 3,
     lastUsedAt: '2026-09-10T02:11:00Z',
+    createdAt: '2026-09-01T00:00:00Z',
     ...overrides,
   }
 }
@@ -132,7 +133,7 @@ describe('ShortcutTable — the add row', () => {
     // The chord commits from inside it.
     fireEvent.keyDown(expansion, { key: 'Enter', metaKey: true })
     await waitFor(() => expect(addAction).toHaveBeenCalledTimes(1))
-    expect(addAction.mock.calls[0][0].expansion).toBe('Gym time')
+    expect(addAction.mock.calls[0]![0]!.expansion).toBe('Gym time')
   })
 
   it('shows the empty-table sentence only when there are no rows', () => {

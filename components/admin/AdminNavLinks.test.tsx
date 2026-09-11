@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { usePathname } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -18,10 +18,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 const pathnameMock = vi.mocked(usePathname)
-
-function links() {
-  return at('/admin').querySelectorAll('a')
-}
 
 function at(path: string) {
   pathnameMock.mockReturnValue(path)
@@ -94,14 +90,14 @@ describe('AdminNavLinks', () => {
     const container = at('/admin')
     const currents = container.querySelectorAll('a[aria-current="page"]')
     expect(currents).toHaveLength(1)
-    expect(currents[0].getAttribute('href')).toBe('/admin')
+    expect(currents[0]!.getAttribute('href')).toBe('/admin')
   })
 
   it('keeps a route’s cell active through nested paths — the forward-safe startsWith', () => {
     const container = at('/admin/nina/album/42')
     const currents = container.querySelectorAll('a[aria-current="page"]')
     expect(currents).toHaveLength(1)
-    expect(currents[0].getAttribute('href')).toBe('/admin/nina')
+    expect(currents[0]!.getAttribute('href')).toBe('/admin/nina')
   })
 
   it('goes dark on a path that merely starts with /admin as a string', () => {

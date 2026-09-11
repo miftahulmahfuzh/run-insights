@@ -76,8 +76,8 @@ function panel(p: ImageGenDraft = prefs(), defaults: ImageGenDraft = prefs()) {
  * labels carry hint sentences, so accessible names are the whole label — index, not name.
  */
 const textboxes = () => screen.getAllByRole('textbox') as HTMLInputElement[]
-const wardrobeBox = () => textboxes()[0]
-const templateBox = () => textboxes()[textboxes().length - 1]
+const wardrobeBox = () => textboxes()[0]!
+const templateBox = () => textboxes()[textboxes().length - 1]!
 
 async function advance(ms: number) {
   await act(async () => {
@@ -148,7 +148,7 @@ describe('ImageGenPanel — the commit moments', () => {
     await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS)
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].promptLength).toBe(70)
+    expect(saveAction.mock.calls[0]![0]!.promptLength).toBe(70)
     // The length dial has no toggle: the control count above already proves the checkbox absence.
     await advance(0)
     expect(screen.getByText('Saved')).toBeInTheDocument()
@@ -159,12 +159,12 @@ describe('ImageGenPanel — the commit moments', () => {
     const stored = prefs({ focus: { [NINA_IMAGE_FOCUS_KEYS[0]]: true } })
     saveAction.mockResolvedValue({ ok: true, prefs: stored })
     panel()
-    fireEvent.click(screen.getAllByRole('checkbox')[0])
+    fireEvent.click(screen.getAllByRole('checkbox')[0]!)
     await advance(0)
     await advance(0) // second flush: the save's own promise chain settles here
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].focus[NINA_IMAGE_FOCUS_KEYS[0]]).toBe(true)
+    expect(saveAction.mock.calls[0]![0]!.focus[NINA_IMAGE_FOCUS_KEYS[0]]).toBe(true)
     // No settle window was needed: the dispatch happened without advancing the timer.
     expect(screen.getByText('Saved')).toBeInTheDocument()
     expect(screen.getByText(/1 of 6 emphasised/)).toBeInTheDocument()
@@ -176,7 +176,7 @@ describe('ImageGenPanel — the commit moments', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: NINA_IMAGE_MODEL_IDS[1] } })
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].model).toBe(NINA_IMAGE_MODEL_IDS[1])
+    expect(saveAction.mock.calls[0]![0]!.model).toBe(NINA_IMAGE_MODEL_IDS[1]!)
   })
 
   it('the reference pick commits on CHANGE through the picker’s opaque key', async () => {
@@ -185,7 +185,7 @@ describe('ImageGenPanel — the commit moments', () => {
     fireEvent.click(screen.getByTestId('ref-pick'))
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].reference).toEqual({ source: 'album', id: 'abc' })
+    expect(saveAction.mock.calls[0]![0]!.reference).toEqual({ source: 'album', id: 'abc' })
   })
 
   it('text fields commit on BLUR only — typing sends nothing', async () => {
@@ -200,7 +200,7 @@ describe('ImageGenPanel — the commit moments', () => {
     fireEvent.blur(box)
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].wardrobe).toBe('oversized hoodie')
+    expect(saveAction.mock.calls[0]![0]!.wardrobe).toBe('oversized hoodie')
   })
 
   it('the ✕ clears the field, refocuses it, and rides the ordinary blur — no second write path', async () => {
@@ -218,7 +218,7 @@ describe('ImageGenPanel — the commit moments', () => {
     // The blur persists the clearing: the SAVED row still holds 'hoodie', so the cleared draft
     // differs from it and the ordinary blur commit is what writes the empty value.
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].wardrobe).toBe('')
+    expect(saveAction.mock.calls[0]![0]!.wardrobe).toBe('')
   })
 
   it('the ✕ buttons only exist for non-empty fields', () => {
@@ -230,12 +230,12 @@ describe('ImageGenPanel — the commit moments', () => {
     saveAction.mockResolvedValue({ ok: true, prefs: prefs() })
     panel()
     fireEvent.change(screen.getByRole('slider'), { target: { value: '80' } })
-    fireEvent.click(screen.getAllByRole('checkbox')[1])
+    fireEvent.click(screen.getAllByRole('checkbox')[1]!)
     await advance(0)
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].promptLength).toBe(80) // subsumed
-    expect(saveAction.mock.calls[0][0].focus[NINA_IMAGE_FOCUS_KEYS[1]]).toBe(true)
+    expect(saveAction.mock.calls[0]![0]!.promptLength).toBe(80) // subsumed
+    expect(saveAction.mock.calls[0]![0]!.focus[NINA_IMAGE_FOCUS_KEYS[1]]).toBe(true)
     await advance(IMAGEGEN_DIAL_COMMIT_DEBOUNCE_MS * 2)
     expect(saveAction).toHaveBeenCalledTimes(1) // and not double-sent
   })
@@ -270,7 +270,7 @@ describe('ImageGenPanel — template and pipeline answers', () => {
     await advance(0)
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].promptTemplate).toBe('SHELL {{scene}}')
+    expect(saveAction.mock.calls[0]![0]!.promptTemplate).toBe('SHELL {{scene}}')
     expect(templateBox()).toHaveValue('SHELL {{scene}}')
   })
 

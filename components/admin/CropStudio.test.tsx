@@ -23,7 +23,7 @@ beforeEach(() => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      constructor(callback: () => void) {
+      constructor(callback: (entries?: unknown[]) => void) {
         fireResize = () => callback([])
       }
       observe() {}
@@ -54,13 +54,13 @@ function studio(crop: NinaCrop = { scale: 2, x: 0, y: 0 }, disabled = false) {
   return { onChange, frame, view }
 }
 
-function down(frame: HTMLElement, pointerId: number, x: number, y: number, button = 0) {
+function down(frame: Element, pointerId: number, x: number, y: number, button = 0) {
   fireEvent.pointerDown(frame, { pointerId, clientX: x, clientY: y, button })
 }
-function move(frame: HTMLElement, pointerId: number, x: number, y: number) {
+function move(frame: Element, pointerId: number, x: number, y: number) {
   fireEvent.pointerMove(frame, { pointerId, clientX: x, clientY: y })
 }
-function up(frame: HTMLElement, pointerId: number) {
+function up(frame: Element, pointerId: number) {
   fireEvent.pointerUp(frame, { pointerId })
 }
 

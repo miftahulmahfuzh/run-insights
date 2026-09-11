@@ -77,7 +77,7 @@ describe('ShareToNinaItem', () => {
     const open = openSpy()
     item({ photoId: 'abc123' })
     await user.click(screen.getByRole('button', { name: 'Share link to Nina' }))
-    expect(open.mock.calls[0][0]).toBe('https://runins.site/nina?photo=avatar%3Aabc123')
+    expect(open.mock.calls[0]![0]!).toBe('https://runins.site/nina?photo=avatar%3Aabc123')
   })
 
   it('never reads window.location — the origin arrives as a prop from the server', async () => {
@@ -87,7 +87,7 @@ describe('ShareToNinaItem', () => {
     const open = openSpy()
     item({ shareOrigin: 'https://origin-from-server.example' })
     await user.click(screen.getByRole('button', { name: 'Share link to Nina' }))
-    expect(String(open.mock.calls[0][0]).startsWith('https://origin-from-server.example/nina')).toBe(
+    expect(String(open.mock.calls[0]![0]!).startsWith('https://origin-from-server.example/nina')).toBe(
       true,
     )
   })

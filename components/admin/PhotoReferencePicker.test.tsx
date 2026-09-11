@@ -193,7 +193,17 @@ describe('PhotoReferencePicker', () => {
 })
 
 /** Second render surface for one-off assertions; cleanup runs between tests, not between renders. */
-function pickerRender(props: Parameters<typeof PhotoReferencePicker>[0]): HTMLElement {
-  const { container } = render(<PhotoReferencePicker {...props} />)
+function pickerRender(
+  props: Partial<Parameters<typeof PhotoReferencePicker>[0]>,
+): HTMLElement {
+  const { container } = render(
+    <PhotoReferencePicker
+      items={[]}
+      total={0}
+      value={PHOTO_REFERENCE_NONE}
+      onChange={vi.fn()}
+      {...props}
+    />,
+  )
   return container
 }

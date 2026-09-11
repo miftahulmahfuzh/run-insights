@@ -3,11 +3,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ImageGenTestPanel } from './ImageGenTestPanel'
-import { readNinaImageTestAction, runNinaImageTestAction } from '@/lib/admin/imageGenActions'
+import {
+  readNinaImageTestAction,
+  runNinaImageTestAction,
+  type NinaImageTestReadResult,
+} from '@/lib/admin/imageGenActions'
 import {
   NINA_IMAGE_TEST_VERDICT_LINE,
   type NinaImageTestJobView,
-  type NinaImageTestReadResult,
 } from '@/lib/admin/imageGenTestView'
 
 /*

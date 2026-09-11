@@ -67,7 +67,7 @@ describe('DialSlider', () => {
     const { container, onChange } = dial()
     fireEvent.change(container.querySelector('input[type="range"]')!, { target: { value: '42' } })
     expect(onChange).toHaveBeenCalledWith(42)
-    expect(onChange.mock.calls[0][0]).toBeTypeOf('number')
+    expect(onChange.mock.calls[0]![0]!).toBeTypeOf('number')
   })
 
   it('wires the hint through aria-describedby, and omits the attribute when there is no hint', () => {

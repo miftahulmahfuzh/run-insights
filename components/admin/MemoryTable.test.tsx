@@ -320,7 +320,7 @@ describe('MemoryTable — ledger rows', () => {
     const user = userEvent.setup()
     table([fact(), fact({ rowId: 'fact:2', target: 'f2', text: 'Second row.' })])
 
-    await user.click(screen.getAllByRole('button', { name: 'Delete this ledger row' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Delete this ledger row' })[0]!)
     expect(screen.queryByLabelText('Ledger row text')).not.toBeNull() // the survivor remains
     await act(async () => {
       gate.resolve({ ok: true })

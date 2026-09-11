@@ -61,8 +61,7 @@ function sliders(): HTMLInputElement[] {
   return screen.getAllByRole('slider') as HTMLInputElement[]
 }
 
-const traitSlider = (key: NinaTrait) => sliders()[NINA_TRAITS.indexOf(key)]
-const dialSlider = (key: NinaDial) => sliders()[NINA_TRAITS.length + NINA_DIALS.indexOf(key)]
+const traitSlider = (key: NinaTrait) => sliders()[NINA_TRAITS.indexOf(key)]!
 
 async function advance(ms: number) {
   await act(async () => {
@@ -130,7 +129,7 @@ describe('CharacterPanel — the commit moments', () => {
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
     // The whole tuning, every time: traits, dials, enabled map, relationship, notes together.
-    expect(saveAction.mock.calls[0][0]).toEqual({
+    expect(saveAction.mock.calls[0]![0]!).toEqual({
       userId: 'u1',
       traits: draft().traits,
       dials: draft().dials,
@@ -161,7 +160,7 @@ describe('CharacterPanel — the commit moments', () => {
 
     await advance(TUNING_DIAL_COMMIT_DEBOUNCE_MS)
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].traits.anger).toBe(55)
+    expect(saveAction.mock.calls[0]![0]!.traits.anger).toBe(55)
     await advance(0)
     expect(screen.getByText('Saved')).toBeInTheDocument()
   })
@@ -176,7 +175,7 @@ describe('CharacterPanel — the commit moments', () => {
     await advance(TUNING_DIAL_COMMIT_DEBOUNCE_MS)
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].traits.anger).toBe(60)
+    expect(saveAction.mock.calls[0]![0]!.traits.anger).toBe(60)
   })
 
   it('an immediate commit carries the dial still waiting and DISARMS the timer', async () => {
@@ -188,8 +187,8 @@ describe('CharacterPanel — the commit moments', () => {
     await advance(0)
 
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].traits.anger).toBe(55) // subsumed, not lost
-    expect(saveAction.mock.calls[0][0].enabled.anger).toBe(false)
+    expect(saveAction.mock.calls[0]![0]!.traits.anger).toBe(55) // subsumed, not lost
+    expect(saveAction.mock.calls[0]![0]!.enabled.anger).toBe(false)
 
     await advance(TUNING_DIAL_COMMIT_DEBOUNCE_MS * 2)
     expect(saveAction).toHaveBeenCalledTimes(1) // and not double-sent
@@ -204,8 +203,8 @@ describe('CharacterPanel — the commit moments', () => {
     fireEvent.click(flirty)
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].enabled.flirty).toBe(false)
-    expect(saveAction.mock.calls[0][0].traits.flirty).toBe(50) // parked, not cleared
+    expect(saveAction.mock.calls[0]![0]!.enabled.flirty).toBe(false)
+    expect(saveAction.mock.calls[0]![0]!.traits.flirty).toBe(50) // parked, not cleared
     // The toggle renders the draft immediately: off means the parameter is out of the prompt.
     expect(flirty).not.toBeChecked()
   })
@@ -214,10 +213,10 @@ describe('CharacterPanel — the commit moments', () => {
     saveAction.mockResolvedValue({ ok: true, tuning: draft({ relationship: 'nobody' }) })
     panel()
     const radios = screen.getAllByRole('radio')
-    fireEvent.click(radios[0]) // 'nobody', the first in NINA_RELATIONSHIPS order
+    fireEvent.click(radios[0]!) // 'nobody', the first in NINA_RELATIONSHIPS order
     await advance(0)
     expect(saveAction).toHaveBeenCalledTimes(1)
-    expect(saveAction.mock.calls[0][0].relationship).toBe('nobody')
+    expect(saveAction.mock.calls[0]![0]!.relationship).toBe('nobody')
   })
 
   it('a dial dragged back to the saved value disarms and never saves', async () => {
