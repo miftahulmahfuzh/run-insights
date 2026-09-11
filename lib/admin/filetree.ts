@@ -141,8 +141,8 @@ export const NINA_SOURCE_KEY_MAX_CHARS = 800
  * where phase 12 spells `nina/` inline and "asserts the two agree in a test that imports this
  * constant".
  */
-export type NinaImageExt = 'jpg' | 'png' | 'webp'
-export type NinaImageContentType = 'image/jpeg' | 'image/png' | 'image/webp'
+type NinaImageExt = 'jpg' | 'png' | 'webp'
+type NinaImageContentType = 'image/jpeg' | 'image/png' | 'image/webp'
 
 interface UploadableImage {
   ext: NinaImageExt
@@ -229,14 +229,14 @@ const UNDECIDED_MIME: ReadonlySet<string> = new Set([
 ])
 
 /** Why a file is not going anywhere, when the reason is the file's own kind. */
-export type FileRejection = 'not_an_image' | 'unsupported_image'
+type FileRejection = 'not_an_image' | 'unsupported_image'
 
 /**
  * `decidedBy` is carried because it is the one thing worth logging when a folder uploads
  * differently on two machines: `'extension'` means the shell told us nothing and we guessed from
  * the name.
  */
-export type FileVerdict =
+type FileVerdict =
   | {
       ok: true
       ext: NinaImageExt
@@ -337,11 +337,11 @@ export function normaliseFolderPath(raw: string): string {
 /** Why a folder path is not storable. `'traversal'` is named apart from `'bad_segment'` because a
  * `..` is a different kind of problem from a `<` and phase 4's Zod message should be able to say
  * so. */
-export type FolderPathRejection =
+type FolderPathRejection =
   'too_deep' | 'path_too_long' | 'segment_too_long' | 'bad_segment' | 'traversal'
 
 /** `segment` names the offending piece when there is one, so an error message can quote it. */
-export type FolderPathResult =
+type FolderPathResult =
   { ok: true; path: string } | { ok: false; reason: FolderPathRejection; segment: string | null }
 
 /**
@@ -447,7 +447,7 @@ export function folderAncestors(path: string): string[] {
 
 /** One breadcrumb. `isCurrent` is carried so the last crumb can render as text rather than as a
  * link, without the component recomputing which one it is. */
-export interface FolderCrumb {
+interface FolderCrumb {
   path: string
   name: string
   depth: number
@@ -641,7 +641,7 @@ export type UploadRefusal =
  * and waste a blob for the loser. Distinguishing the two reasons costs one union member and lets
  * phase 5 report "already in the album" separately from "you dropped it twice".
  */
-export type ExistingReason = 'already_uploaded' | 'duplicate_in_batch'
+type ExistingReason = 'already_uploaded' | 'duplicate_in_batch'
 
 /**
  * A file that is going up. `source` is the caller's own object, handed straight back, so phase 5
@@ -666,13 +666,13 @@ export interface PlannedUpload<T> {
 
 /** A file that is not. `name` is the best display name we could derive, so the UI never has to
  * re-derive one. */
-export interface SkippedFile<T, R> {
+interface SkippedFile<T, R> {
   source: T
   name: string
   reason: R
 }
 
-export interface FolderUploadPlan<T> {
+interface FolderUploadPlan<T> {
   upload: PlannedUpload<T>[]
   existing: SkippedFile<T, ExistingReason>[]
   rejected: SkippedFile<T, FileRejection>[]
@@ -892,7 +892,7 @@ export function planFolderUpload<T extends LocalFileLike>(input: {
  * id is not read here, because a count is over rows and asking for less is what makes this
  * assignable from any row shape (`AvatarLike` again).
  */
-export interface FolderRowLike {
+interface FolderRowLike {
   folder: string | null
 }
 
@@ -1131,7 +1131,7 @@ export const NINA_MEDIA_NODE_LABEL = 'Media'
  * `count` is the whole collection (all pages), which is what a folder row's `totalCount` shows and
  * what a badge is for.
  */
-export interface MediaViewNode {
+interface MediaViewNode {
   view: 'media'
   name: string
   count: number
