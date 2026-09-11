@@ -1329,18 +1329,6 @@ export async function updatePhotoBlobLocation(
   if (rows.length === 0) throw new NotFoundError('Photo not found')
 }
 
-/** Returns the pathname so the caller can delete the blob itself — the row goes first. */
-export async function deletePhoto(
-  userId: string,
-  photoId: string,
-): Promise<{ pathname: string } | null> {
-  const rows = await db
-    .delete(runPhotos)
-    .where(and(eq(runPhotos.id, photoId), runPhotoOwnedBy(userId)))
-    .returning({ pathname: runPhotos.pathname })
-  return rows[0] ?? null
-}
-
 /* ============================================================================
  * §8 Profile, insights, records, badges, shares
  * ==========================================================================*/

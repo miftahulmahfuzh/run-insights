@@ -153,16 +153,6 @@ describe('the ownership predicate is present on every child-table mutation', () 
     expect(fake.queries).toHaveLength(1)
   })
 
-  it('deletePhoto carries the predicate and returns the pathname for blob cleanup', async () => {
-    fake.enqueue([['screens/abc.jpg']])
-    const result = await q.deletePhoto('u1', 'p1')
-    expect(result).toEqual({ pathname: 'screens/abc.jpg' })
-    const { sql } = fake.only()
-    expect(sql).toMatch(/^delete from "run_photos"/)
-    expect(sql).toContain('"user_id" = $')
-    expect(sql).toContain('returning')
-  })
-
   it('updatePhotoBlobLocation (R-15 rotation) carries the predicate', async () => {
     fake.enqueue([['p1']])
     await q.updatePhotoBlobLocation('u1', 'p1', { blobUrl: 'https://b/x', pathname: 'x' })
