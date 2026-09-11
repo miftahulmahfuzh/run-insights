@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSavePhoto } from './useSavePhoto'
 
@@ -29,22 +29,22 @@ function okFetch() {
 }
 
 interface Harness {
-  result: ReturnType<typeof renderHook<ReturnType<typeof useSavePhoto>>>['result']
+  result: { current: ReturnType<typeof useSavePhoto> }
   rerender: (url: string | null, prefix?: string) => void
-  fetchMock: ReturnType<typeof vi.fn>
-  shareMock: ReturnType<typeof vi.fn>
-  canShareMock: ReturnType<typeof vi.fn>
-  windowOpenMock: ReturnType<typeof vi.fn>
-  createObjectURLMock: ReturnType<typeof vi.fn>
+  fetchMock: Mock
+  shareMock: Mock
+  canShareMock: Mock
+  windowOpenMock: Mock
+  createObjectURLMock: Mock
   anchorClicks: HTMLAnchorElement[]
 }
 
 function installHarness(initial: { url: string | null; prefix?: string }): Harness {
-  const fetchMock = vi.fn()
-  const shareMock = vi.fn()
-  const canShareMock = vi.fn(() => false)
-  const windowOpenMock = vi.fn(() => ({}))
-  const createObjectURLMock = vi.fn(() => 'blob:object-url')
+  const fetchMock: Mock = vi.fn()
+  const shareMock: Mock = vi.fn()
+  const canShareMock: Mock = vi.fn(() => false)
+  const windowOpenMock: Mock = vi.fn(() => ({}))
+  const createObjectURLMock: Mock = vi.fn(() => 'blob:object-url')
   const anchorClicks: HTMLAnchorElement[] = []
 
   vi.stubGlobal('fetch', fetchMock)
@@ -55,12 +55,11 @@ function installHarness(initial: { url: string | null; prefix?: string }): Harne
     createObjectURLMock as unknown as typeof URL.createObjectURL,
   )
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
     this: HTMLAnchorElement,
   ) {
     anchorClicks.push(this)
   })
-  void click
 
   // `(pointer: coarse)` decides the share/download split; coarse defaults off.
   vi.spyOn(window, 'matchMedia').mockImplementation(
@@ -286,7 +285,7 @@ describe('useSavePhoto', () => {
       ['a rejected fetch', () => Promise.reject(new Error('offline'))],
     ])('%s falls to window.open and reports it', async (_name, fetchResult) => {
       const h = installHarness({ url: PHOTO_URL })
-      h.fetchMock.mockReturnValue(fetchResult() as ReturnType<typeof vi.fn>)
+      h.fetchMock.mockReturnValue(fetchResult())
 
       await act(async () => {
         await h.result.current.save()
@@ -298,7 +297,7 @@ describe('useSavePhoto', () => {
 
     it('a blocked popup reports "unavailable" — the one thing worth saying', async () => {
       const h = installHarness({ url: PHOTO_URL })
-      h.fetchMock.mockReturnValue({ ok: false } as ReturnType<typeof vi.fn>)
+      h.fetchMock.mockReturnValue({ ok: false })
       h.windowOpenMock.mockReturnValue(null)
 
       await act(async () => {
@@ -313,7 +312,7 @@ describe('useSavePhoto', () => {
     it('is keyed to the photo it was reported for: paging away clears it, paging back restores it', async () => {
       const otherUrl = 'https://blob.example/other.jpg'
       const h = installHarness({ url: PHOTO_URL })
-      h.fetchMock.mockReturnValue({ ok: false } as ReturnType<typeof vi.fn>)
+      h.fetchMock.mockReturnValue({ ok: false })
 
       await act(async () => {
         await h.result.current.save()
@@ -336,7 +335,7 @@ describe('useSavePhoto', () => {
 
     it('the next save clears it before deciding anything', async () => {
       const h = installHarness({ url: PHOTO_URL })
-      h.fetchMock.mockReturnValue({ ok: false } as ReturnType<typeof vi.fn>)
+      h.fetchMock.mockReturnValue({ ok: false })
       await act(async () => {
         await h.result.current.save()
       })

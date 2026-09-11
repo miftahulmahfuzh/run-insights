@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { DetailPanel } from './DetailPanel'
+import { DetailPanel, type PanelArt } from './DetailPanel'
 
 /**
  * `/me`'s detail panel: a native `<dialog>` driven declaratively, and deliberately NOT a `Sheet`.
@@ -45,7 +45,7 @@ const ART = {
 
 function renderPanel(props: {
   open?: boolean
-  art?: typeof ART | null
+  art?: PanelArt | null
   onClose?: () => void
   children?: (titleId: string) => React.ReactNode
 } = {}) {
@@ -63,7 +63,7 @@ function renderPanel(props: {
       )}
     </DetailPanel>,
   )
-  return { ...utils, onClose, dialog: utils.container.querySelector('dialog')! }
+  return { ...utils, onClose, dialog: utils.container.querySelector('dialog') as HTMLDialogElement }
 }
 
 describe('DetailPanel', () => {
@@ -175,7 +175,7 @@ describe('DetailPanel', () => {
       </DetailPanel>,
     )
 
-    const dialog = screen.getByRole('dialog', { hidden: true })
+    const dialog = screen.getByRole('dialog', { hidden: true }) as HTMLDialogElement
     expect(dialog.open).toBe(false)
     expect(screen.queryByTestId('panel-title')).not.toBeInTheDocument()
   })

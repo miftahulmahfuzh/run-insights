@@ -67,7 +67,15 @@ describe('Button', () => {
 
   it('forwards a ref to the button element — DetailPanel focuses its Close through one', () => {
     let ref: HTMLButtonElement | null = null
-    render(<Button ref={(el) => (ref = el)}>Close</Button>)
+    render(
+      <Button
+        ref={(el) => {
+          ref = el
+        }}
+      >
+        Close
+      </Button>,
+    )
 
     expect(ref).toBeInstanceOf(HTMLButtonElement)
     expect(ref).toBe(screen.getByRole('button', { name: 'Close' }))

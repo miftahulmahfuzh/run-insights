@@ -19,6 +19,12 @@ const SHARES: ZoneShare[] = [
   { zone: 3, durationSec: 1500, pct: 63, minBpm: 154, maxBpm: 164 },
 ]
 
+/** The drawn segments inside the bar. They are HTMLElements at runtime; the query's static
+ * type is the wider Element, and their inline styles are what several tests assert on. */
+function segmentsOf(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll('[role="img"] > span')] as HTMLElement[]
+}
+
 describe('ZoneBar', () => {
   it('no zone rows renders the empty slot with the default sentence — never five 0% segments', () => {
     render(<ZoneBar shares={[]} />)
@@ -59,7 +65,7 @@ describe('ZoneBar', () => {
   it('one segment per zone with time in it, sized to its true share', () => {
     const { container } = render(<ZoneBar shares={SHARES} />)
 
-    const segments = [...container.querySelectorAll('[role="img"] > span')]
+    const segments = segmentsOf(container)
     expect(segments).toHaveLength(3)
     expect(parseFloat(segments[0]!.style.width)).toBeCloseTo(25) // 600 / 2400
     expect(parseFloat(segments[1]!.style.width)).toBeCloseTo(12.5) // 300 / 2400
@@ -83,7 +89,7 @@ describe('ZoneBar', () => {
   it('every segment carries the 3px minimum, so a real slice can never vanish', () => {
     const { container } = render(<ZoneBar shares={SHARES} />)
 
-    for (const segment of container.querySelectorAll('[role="img"] > span')) {
+    for (const segment of segmentsOf(container)) {
       expect(segment.style.minWidth).toBe('3px')
     }
   })
@@ -91,7 +97,7 @@ describe('ZoneBar', () => {
   it('each segment wears its own zone colour', () => {
     const { container } = render(<ZoneBar shares={SHARES} />)
 
-    const segments = [...container.querySelectorAll('[role="img"] > span')]
+    const segments = segmentsOf(container)
     expect(segments[0]).toHaveClass('bg-z1')
     expect(segments[1]).toHaveClass('bg-z2')
     expect(segments[2]).toHaveClass('bg-z3')

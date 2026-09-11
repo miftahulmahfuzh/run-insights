@@ -51,7 +51,7 @@ vi.mock('@/components/nina/NinaSidebar', () => ({
   ),
 }))
 
-function renderAppShell(props: React.ComponentProps<typeof AppShell> = {}) {
+function renderAppShell(props: Omit<React.ComponentProps<typeof AppShell>, 'children'> = {}) {
   return render(
     <AppShell {...props}>
       <p data-testid="page-content">Runs this week</p>

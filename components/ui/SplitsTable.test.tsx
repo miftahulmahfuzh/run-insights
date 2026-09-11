@@ -47,7 +47,8 @@ const POINTS: PaceHrPoint[] = [
 ]
 
 function bodyRows(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll('tbody tr')]
+  // tbody rows are HTMLElements at runtime; the query's static type is the wider Element.
+  return [...container.querySelectorAll('tbody tr')] as HTMLElement[]
 }
 
 function barOf(row: HTMLElement): { track: HTMLElement; fill: HTMLElement } {
