@@ -49,10 +49,14 @@ describe('the poll backoff schedule', () => {
     expect(attempts).toBeLessThan(14)
   })
 
-  it('gives up exactly where the server declares the turn dead', () => {
-    /* They are the same number on purpose: the poll that gives up is the poll that has already
-     * been told the row is stale, so the notice it raises is a fact and not a timeout. */
-    expect(NINA_TURN_POLL_GIVE_UP_MS).toBe(NINA_TURN_STALE_MS)
+  it('gives up at the background budget, not at the stale deadline', () => {
+    /* The pairing, and it is new. The give-up spent its life identical to NINA_TURN_STALE_MS on
+     * the argument that the poll that gives up has already been told the row is dead. A chained
+     * burst honestly runs past 90 s, so the notice was a lie for a live chain (analysis G2). The
+     * server's `awaiting: false` — the claim read — stops a dead turn's poll; the backstop's
+     * remaining job is the poll that cannot reach the server at all, and it now spans the
+     * server's full honest wall clock. */
+    expect(NINA_TURN_POLL_GIVE_UP_MS).toBe(NINA_BACKGROUND_BUDGET_MS)
   })
 
   it('does not stop asking before a healthy turn could possibly have finished', () => {
@@ -119,6 +123,75 @@ describe('ninaAwaitingByMessage', () => {
   })
 })
 
+describe('the cold load and the poll agree on "unanswered"', () => {
+  /**
+   * `pollNinaReply`'s disjunct, transcribed from `lib/nina/actions.ts:2045` and `:2052`:
+   *
+   *     const expired = pending !== null && now - pending.createdAt.getTime() >= NINA_TURN_STALE_MS
+   *     const live = pending !== null && !expired
+   *     const awaiting = live || ninaAwaitingByMessage(newest, now)
+   *
+   * A pure unit test cannot import a `'use server'` module, so this transcription stands in for
+   * the action. **If you change the poll's disjunct, change this helper in the same commit** —
+   * this file is what asserts the page and the poll cannot disagree (plan invariant 5).
+   */
+  const pollAwaiting = (claimCreatedAt: Date | null, newest: NinaFlightRow | null): boolean => {
+    const expired = claimCreatedAt !== null && NOW - claimCreatedAt.getTime() >= NINA_TURN_STALE_MS
+    const live = claimCreatedAt !== null && !expired
+    return live || ninaAwaitingByMessage(newest, NOW)
+  }
+
+  /** The page's half: `ninaFlightView(rows, Date.now(), pendingTurn?.createdAt ?? null)`. */
+  const pageAwaiting = (
+    rows: readonly NinaFlightRow[],
+    claimCreatedAt: Date | null,
+  ): boolean => ninaFlightView(rows, NOW, claimCreatedAt).awaiting
+
+  /** A claim opened `ageMs` ago, or `null` for "no pending row for this session". */
+  const claim = (ageMs: number | null): Date | null =>
+    ageMs === null ? null : new Date(NOW - ageMs)
+
+  it('a FRESH claim says awaiting even with the message window expired — the G1 case', () => {
+    /* Reopen at t ∈ (90 s, 240 s), mid-turn or mid-chain. The heuristic alone says quiet; the
+     * claim is the disjunct that starts the poll and lands her bubbles without a refresh. */
+    const rows = [row('runner', NINA_TURN_STALE_MS + 30_000, 3)]
+    expect(pageAwaiting(rows, claim(60_000))).toBe(true)
+    expect(pollAwaiting(claim(60_000), rows[rows.length - 1] ?? null)).toBe(true)
+  })
+
+  it('no claim and an old message says quiet — the dead turn, which only phase 2 revives', () => {
+    const rows = [row('runner', NINA_TURN_STALE_MS + 30_000, 3)]
+    expect(pageAwaiting(rows, null)).toBe(false)
+    expect(pollAwaiting(null, rows[rows.length - 1] ?? null)).toBe(false)
+  })
+
+  it('an EXPIRED claim is trusted by neither side — getPendingNinaChatTurn returns one anyway', () => {
+    const rows = [row('runner', NINA_TURN_STALE_MS + 30_000, 3)]
+    expect(pageAwaiting(rows, claim(NINA_TURN_STALE_MS + 1_000))).toBe(false)
+    expect(pollAwaiting(claim(NINA_TURN_STALE_MS + 1_000), rows[rows.length - 1] ?? null)).toBe(
+      false,
+    )
+  })
+
+  it('with no claim at all, the message window alone answers — both directions', () => {
+    const fresh = [row('runner', 5_000, 3)]
+    expect(pageAwaiting(fresh, null)).toBe(true)
+    expect(pollAwaiting(null, fresh[fresh.length - 1] ?? null)).toBe(true)
+
+    const hers = [row('nina', 1_000)]
+    expect(pageAwaiting(hers, null)).toBe(false)
+    expect(pollAwaiting(null, hers[hers.length - 1] ?? null)).toBe(false)
+  })
+
+  it('a fresh claim outranks her newest row — the persisting tail, where both are true', () => {
+    /* Reachable for a moment while her rows are going in: her bubbles exist, the claim is still
+     * `pending`+`persisting`. The window alone would say "answered"; the claim says "not yet". */
+    const rows = [row('runner', NINA_TURN_STALE_MS + 30_000, 2), row('nina', 1_000, 3)]
+    expect(pageAwaiting(rows, claim(5_000))).toBe(true)
+    expect(pollAwaiting(claim(5_000), rows[rows.length - 1] ?? null)).toBe(true)
+  })
+})
+
 describe('ninaFlightView', () => {
   it('reads the LAST row, because the page renders oldest first', () => {
     const view = ninaFlightView([row('runner', 5_000, 7), row('nina', 4_000, 8)], NOW)
@@ -132,5 +205,30 @@ describe('ninaFlightView', () => {
 
   it('answers cursor 0 for an empty conversation — below every seq a bigserial can assign', () => {
     expect(ninaFlightView([], NOW)).toEqual({ awaiting: false, cursor: 0 })
+  })
+
+  it('flips awaiting on a FRESH claim alone, cursor unmoved', () => {
+    /* The G1 case as a unit: window expired, claim live, poll starts. */
+    const view = ninaFlightView(
+      [row('runner', NINA_TURN_STALE_MS + 30_000, 7)],
+      NOW,
+      new Date(NOW - 60_000),
+    )
+    expect(view).toEqual({ awaiting: true, cursor: 7 })
+  })
+
+  it('ignores an EXPIRED claim — the read hands one back deliberately', () => {
+    /* Exclusive at the boundary, exactly like the message window: at exactly STALE the claim is
+     * not fresh. */
+    const view = ninaFlightView(
+      [row('runner', NINA_TURN_STALE_MS + 30_000, 7)],
+      NOW,
+      new Date(NOW - NINA_TURN_STALE_MS),
+    )
+    expect(view).toEqual({ awaiting: false, cursor: 7 })
+  })
+
+  it('defaults the claim to null, so every two-argument call behaves exactly as before', () => {
+    expect(ninaFlightView([row('runner', 5_000, 7)], NOW)).toEqual({ awaiting: true, cursor: 7 })
   })
 })
