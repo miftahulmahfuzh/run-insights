@@ -97,7 +97,12 @@ describe('NinaSearchField', () => {
         hits: [
           hit({ mine: true }),
           hit({ messageId: 'msg000000002', mine: false, snippet: '…hers…' }),
-          hit({ kind: 'session', messageId: null, snippet: 'Sunday long run', href: '/nina?s=sess-1' }),
+          hit({
+            kind: 'session',
+            messageId: null,
+            snippet: 'Sunday long run',
+            href: '/nina?s=sess-1',
+          }),
         ],
       }),
     )
@@ -180,7 +185,9 @@ describe('NinaSearchField', () => {
 
     await user.type(field(), 'run')
     expect(
-      await screen.findByText('Showing the most recent matches — narrow the search to see older ones.'),
+      await screen.findByText(
+        'Showing the most recent matches — narrow the search to see older ones.',
+      ),
     ).toBeInTheDocument()
   })
 
@@ -231,7 +238,9 @@ describe('NinaSearchField', () => {
     searchNinaChats.mockImplementationOnce(() => slow)
     searchNinaChats.mockImplementationOnce(() =>
       Promise.resolve(
-        response({ hits: [hit({ snippet: '…fresh answer…', href: '/nina?s=sess-1&at=msg000000002' })] }),
+        response({
+          hits: [hit({ snippet: '…fresh answer…', href: '/nina?s=sess-1&at=msg000000002' })],
+        }),
       ),
     )
     render(<NinaSearchField />)

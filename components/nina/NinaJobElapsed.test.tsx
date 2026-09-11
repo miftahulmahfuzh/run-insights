@@ -75,7 +75,14 @@ describe('NinaJobElapsed', () => {
   })
 
   it('className rides the span', () => {
-    render(<NinaJobElapsed startedAtMs={START} nowMs={RENDER_NOW} running={false} className="tabular-nums" />)
+    render(
+      <NinaJobElapsed
+        startedAtMs={START}
+        nowMs={RENDER_NOW}
+        running={false}
+        className="tabular-nums"
+      />,
+    )
     expect(elapsed().className).toContain('tabular-nums')
   })
 })

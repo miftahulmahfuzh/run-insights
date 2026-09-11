@@ -61,7 +61,10 @@ describe('NinaPhotoGrid', () => {
 
   it('only the current photo wears the ring — the album’s one addition', () => {
     const { container } = render(
-      <NinaPhotoGrid cells={[cell({ isCurrent: true }), cell({ id: 'img-2' })]} onOpen={() => {}} />,
+      <NinaPhotoGrid
+        cells={[cell({ isCurrent: true }), cell({ id: 'img-2' })]}
+        onOpen={() => {}}
+      />,
     )
     const [current, other] = container.querySelectorAll('button')
     expect(current?.className).toContain('ring-2')

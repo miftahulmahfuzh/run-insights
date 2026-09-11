@@ -47,10 +47,7 @@ describe('NinaUnreadBadge', () => {
   it('singularises the announcement for exactly one unread message', async () => {
     countUnreadNinaMessages.mockResolvedValue(1)
     render(await NinaUnreadBadge())
-    expect(screen.getByRole('status')).toHaveAttribute(
-      'aria-label',
-      '1 unread message from Nina',
-    )
+    expect(screen.getByRole('status')).toHaveAttribute('aria-label', '1 unread message from Nina')
   })
 
   it('floats over the tab icon without nudging the label, and reads as a dot', async () => {

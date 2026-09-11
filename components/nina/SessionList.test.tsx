@@ -36,7 +36,12 @@ function rowsList(activeId: string | null = null): SidebarList {
         active: activeId === 'sess-1',
       },
       {
-        session: session({ id: 'sess-2', title: 'Photo talk', href: '/nina?s=sess-2', dayLabel: null }),
+        session: session({
+          id: 'sess-2',
+          title: 'Photo talk',
+          href: '/nina?s=sess-2',
+          dayLabel: null,
+        }),
         active: activeId === 'sess-2',
       },
     ],
@@ -45,7 +50,9 @@ function rowsList(activeId: string | null = null): SidebarList {
 
 function renderList(list: SidebarList, activeSessionId: string | null = null) {
   const onClose = vi.fn()
-  const utils = render(<SessionList list={list} activeSessionId={activeSessionId} onClose={onClose} />)
+  const utils = render(
+    <SessionList list={list} activeSessionId={activeSessionId} onClose={onClose} />,
+  )
   return { ...utils, onClose }
 }
 
@@ -57,7 +64,9 @@ describe('SessionList', () => {
   it('the empty shape is the app’s one absence card: dashed, titled, one sentence', () => {
     renderList({ kind: 'empty' })
     expect(screen.getByText('Belum ada chat')).toBeInTheDocument()
-    expect(screen.getByText('Chat baru akan muncul di sini, yang terbaru di atas.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Chat baru akan muncul di sini, yang terbaru di atas.'),
+    ).toBeInTheDocument()
     expect(document.querySelector('[data-testid="session-row"]')).toBeNull()
   })
 

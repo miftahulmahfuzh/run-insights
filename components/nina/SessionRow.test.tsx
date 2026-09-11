@@ -3,11 +3,13 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { setNinaChatSessionPinned, renameNinaChatSession, removeNinaChatSession } = vi.hoisted(() => ({
-  setNinaChatSessionPinned: vi.fn(),
-  renameNinaChatSession: vi.fn(),
-  removeNinaChatSession: vi.fn(),
-}))
+const { setNinaChatSessionPinned, renameNinaChatSession, removeNinaChatSession } = vi.hoisted(
+  () => ({
+    setNinaChatSessionPinned: vi.fn(),
+    renameNinaChatSession: vi.fn(),
+    removeNinaChatSession: vi.fn(),
+  }),
+)
 vi.mock('@/lib/nina/sessionActions', () => ({
   setNinaChatSessionPinned,
   renameNinaChatSession,
@@ -48,7 +50,11 @@ function session(overrides?: Partial<SidebarSession>): SidebarSession {
   }
 }
 
-function renderRow(overrides?: { session?: Partial<SidebarSession>; active?: boolean; activeSessionId?: string | null }) {
+function renderRow(overrides?: {
+  session?: Partial<SidebarSession>
+  active?: boolean
+  activeSessionId?: string | null
+}) {
   const onClose = vi.fn()
   const utils = render(
     <SessionRow
@@ -144,7 +150,9 @@ describe('SessionRow', () => {
     await user.click(disclosure())
     await user.click(screen.getByRole('button', { name: 'Pin ke atas' }))
 
-    await waitFor(() => expect(setNinaChatSessionPinned).toHaveBeenCalledWith({ sessionId: 'sess-1', pinned: true }))
+    await waitFor(() =>
+      expect(setNinaChatSessionPinned).toHaveBeenCalledWith({ sessionId: 'sess-1', pinned: true }),
+    )
     await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(disclosure().getAttribute('aria-expanded')).toBe('false'))
     expect(routerReplace).not.toHaveBeenCalled()
@@ -197,7 +205,9 @@ describe('SessionRow', () => {
     await user.type(input, 'Renamed')
     await user.click(screen.getByRole('button', { name: 'Simpan' }))
 
-    await waitFor(() => expect(renameNinaChatSession).toHaveBeenCalledWith({ sessionId: 'sess-1', title: 'Renamed' }))
+    await waitFor(() =>
+      expect(renameNinaChatSession).toHaveBeenCalledWith({ sessionId: 'sess-1', title: 'Renamed' }),
+    )
     await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.queryByLabelText('Nama chat')).not.toBeInTheDocument())
   })
@@ -233,7 +243,10 @@ describe('SessionRow', () => {
     await user.click(screen.getByRole('button', { name: 'Hapus' }))
 
     await waitFor(() =>
-      expect(removeNinaChatSession).toHaveBeenCalledWith({ sessionId: 'sess-1', activeSessionId: 'sess-9' }),
+      expect(removeNinaChatSession).toHaveBeenCalledWith({
+        sessionId: 'sess-1',
+        activeSessionId: 'sess-9',
+      }),
     )
   })
 

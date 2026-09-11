@@ -10,7 +10,12 @@ vi.mock('./NinaJobActions', () => ({
 }))
 
 import { NinaJobList } from './NinaJobList'
-import { formatJobLatency, formatJobSeconds, jobElapsedSeconds, type NinaJobListItem } from '@/lib/nina/jobview'
+import {
+  formatJobLatency,
+  formatJobSeconds,
+  jobElapsedSeconds,
+  type NinaJobListItem,
+} from '@/lib/nina/jobview'
 
 const NOW_MS = 1_790_000_000_000
 
@@ -107,20 +112,30 @@ describe('NinaJobList', () => {
   })
 
   it('the purpose line and the retry count, and the count only when there were retries', () => {
-    const { container: never } = render(<NinaJobList items={[item({ attempts: 0 })]} nowMs={NOW_MS} emptyText="x" />)
+    const { container: never } = render(
+      <NinaJobList items={[item({ attempts: 0 })]} nowMs={NOW_MS} emptyText="x" />,
+    )
     expect(never.textContent).toContain('Selfie')
     expect(never.textContent).not.toContain('dicoba')
 
-    const { container: once } = render(<NinaJobList items={[item({ attempts: 1 })]} nowMs={NOW_MS} emptyText="x" />)
+    const { container: once } = render(
+      <NinaJobList items={[item({ attempts: 1 })]} nowMs={NOW_MS} emptyText="x" />,
+    )
     expect(once.textContent).toContain('1x dicoba')
 
-    const { container: twice } = render(<NinaJobList items={[item({ attempts: 2 })]} nowMs={NOW_MS} emptyText="x" />)
+    const { container: twice } = render(
+      <NinaJobList items={[item({ attempts: 2 })]} nowMs={NOW_MS} emptyText="x" />,
+    )
     expect(twice.textContent).toContain('2x dicoba')
   })
 
   it('READ-ONLY (the /nina/about summary): bare rows, no controls, surface on the link', () => {
     const { container } = render(
-      <NinaJobList items={[item({ stage: 'running', open: true, latencyMs: null })]} nowMs={NOW_MS} emptyText="x" />,
+      <NinaJobList
+        items={[item({ stage: 'running', open: true, latencyMs: null })]}
+        nowMs={NOW_MS}
+        emptyText="x"
+      />,
     )
     const li = container.querySelector('li') as HTMLElement
     // Invariant 5 of the phase plan: with `actions` absent the markup is what shipped before —
@@ -148,7 +163,11 @@ describe('NinaJobList', () => {
     expect((openLi?.querySelector('a') as HTMLElement).className).not.toContain('bg-card')
     // One controls cluster per row, and always a SIBLING of the link, never a child of it.
     expect(container.querySelectorAll('[data-testid="job-actions"]').length).toBe(2)
-    expect(openLi?.querySelector('a')?.contains(openLi?.querySelector('[data-testid="job-actions"]') ?? null)).toBe(false)
+    expect(
+      openLi
+        ?.querySelector('a')
+        ?.contains(openLi?.querySelector('[data-testid="job-actions"]') ?? null),
+    ).toBe(false)
   })
 
   it('className rides the ul — or the empty sentence, whichever shape this render took', () => {

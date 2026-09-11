@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { routerPush, routerRefresh } = vi.hoisted(() => ({ routerPush: vi.fn(), routerRefresh: vi.fn() }))
+const { routerPush, routerRefresh } = vi.hoisted(() => ({
+  routerPush: vi.fn(),
+  routerRefresh: vi.fn(),
+}))
 // `useSearchParams` reads the LIVE location each render, which is exactly the integration the
 // screen depends on: the open photo is DERIVED from the URL, never mirrored into state, so a
 // test re-renders after a history write the way Next's patched history re-renders for real.
@@ -147,7 +150,9 @@ describe('NinaAboutScreen — the page', () => {
   it('the hero names her, and the album face renders the view the server threaded down', () => {
     renderScreen()
     expect(screen.getByText('Nina')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Lihat foto profil Nina ukuran penuh' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Lihat foto profil Nina ukuran penuh' }),
+    ).toBeInTheDocument()
     const img = document.querySelector('img') as HTMLImageElement
     expect(img.getAttribute('src')).toBe(AVATAR.src)
   })
@@ -161,12 +166,16 @@ describe('NinaAboutScreen — the page', () => {
 
   it('an empty Media section says so in its own sentence', () => {
     renderScreen({ gallery: [] })
-    expect(screen.getByText('Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.'),
+    ).toBeInTheDocument()
   })
 
   it('the job section is the /nina/jobs list with this surface’s own empty words', () => {
     renderScreen({ jobs: [] })
-    expect(screen.getByText('Belum ada foto yang dibuat. Minta Nina kirim foto lewat chat.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Belum ada foto yang dibuat. Minta Nina kirim foto lewat chat.'),
+    ).toBeInTheDocument()
     // "Semua" goes to the full list only when there is something to summarise — no count claims.
     expect(screen.queryByRole('link', { name: 'Semua' })).not.toBeInTheDocument()
   })
@@ -294,7 +303,9 @@ describe('NinaAboutScreen — the attach strip', () => {
     )
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/nina?s=sess-9'))
     expect(routerRefresh).toHaveBeenCalled()
-    expect(routerRefresh.mock.invocationCallOrder[0]).toBeLessThan(routerPush.mock.invocationCallOrder[0]!)
+    expect(routerRefresh.mock.invocationCallOrder[0]).toBeLessThan(
+      routerPush.mock.invocationCallOrder[0]!,
+    )
   })
 
   it('an album face attaches as the avatar kind', async () => {
@@ -323,19 +334,25 @@ describe('NinaAboutScreen — the attach strip', () => {
     const user = userEvent.setup()
     let release!: (value: { ok: boolean; next: string | null }) => void
     attachNinaPhotoToChat.mockReturnValue(
-      new Promise((res) => (release = res as (value: { ok: boolean; next: string | null }) => void)),
+      new Promise(
+        (res) => (release = res as (value: { ok: boolean; next: string | null }) => void),
+      ),
     )
     openStrip()
     await user.click(screen.getByRole('button', { name: 'Kirim ke chat' }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Kirim ke chat baru' })).toBeDisabled())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Kirim ke chat baru' })).toBeDisabled(),
+    )
     expect(screen.getByRole('button', { name: 'Kirim ke chat' })).toBeDisabled()
     // The whole strip shares the flight: nothing on it is reachable mid-send. Only the LOADING
     // dots are per-control — the download's `busy` is useSavePhoto's, not this row's.
     expect(screen.getByRole('button', { name: 'Unduh foto' })).toBeDisabled()
 
     release({ ok: true, next: '/nina?s=sess-9' })
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Kirim ke chat baru' })).toBeEnabled())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Kirim ke chat baru' })).toBeEnabled(),
+    )
     expect(screen.getByRole('button', { name: 'Unduh foto' })).toBeEnabled()
   })
 

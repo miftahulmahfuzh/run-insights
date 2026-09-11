@@ -56,7 +56,11 @@ describe('QuoteStub', () => {
 
   it('is a real button when the target is on screen, named for VoiceOver', () => {
     const { container } = render(
-      <QuoteStub quote={quote({ author: 'you', preview: 'pace note' })} mine={true} onJump={vi.fn()} />,
+      <QuoteStub
+        quote={quote({ author: 'you', preview: 'pace note' })}
+        mine={true}
+        onJump={vi.fn()}
+      />,
     )
     const button = stubRoot(container)
     expect(button.tagName).toBe('BUTTON')

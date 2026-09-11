@@ -59,7 +59,7 @@ describe('ChatImages', () => {
   })
 
   it('one of her generated selfies opens under her name', () => {
-    render(<ChatImages urls={[URLS[0]!] } kinds={['generated']} onOpen={() => {}} />)
+    render(<ChatImages urls={[URLS[0]!]} kinds={['generated']} onOpen={() => {}} />)
     expect(screen.getByRole('button', { name: 'Buka foto nina' })).toBeInTheDocument()
   })
 
@@ -87,7 +87,11 @@ describe('ChatImages', () => {
     const onOpen = vi.fn()
     render(<ChatImages urls={URLS} kinds={['generated', 'upload', 'generated']} onOpen={onOpen} />)
     // The lowercase suffix comes from NINA_SIDE_LABEL — assert the shipped strings, per photo.
-    expect(screen.getByRole('button', { name: `Buka ${NINA_SIDE_LABEL.his.toLowerCase()}` })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: `Buka ${NINA_SIDE_LABEL.hers.toLowerCase()}` }).length).toBe(2)
+    expect(
+      screen.getByRole('button', { name: `Buka ${NINA_SIDE_LABEL.his.toLowerCase()}` }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('button', { name: `Buka ${NINA_SIDE_LABEL.hers.toLowerCase()}` }).length,
+    ).toBe(2)
   })
 })

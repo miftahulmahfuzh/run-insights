@@ -7,7 +7,13 @@ import { describe, expect, it } from 'vitest'
 // so the tests hand it decided facts and pin what it does with each one. The pure formatters are
 // imported to compute expected strings, never retyped.
 import { NinaJobDetail } from './NinaJobDetail'
-import { NINA_JOB_JUMP_NOTE, formatJobLatency, formatJobSeconds, formatMicroUsd, jobElapsedSeconds } from '@/lib/nina/jobview'
+import {
+  NINA_JOB_JUMP_NOTE,
+  formatJobLatency,
+  formatJobSeconds,
+  formatMicroUsd,
+  jobElapsedSeconds,
+} from '@/lib/nina/jobview'
 import { MISSING } from '@/lib/format'
 
 const CREATED_AT_MS = 1_790_000_000_000
@@ -41,7 +47,9 @@ function props(overrides?: Partial<Props>): Props {
 describe('NinaJobDetail', () => {
   it('an open job ticks and says since when; a closed one shows its latency and its opening time', () => {
     const { unmount } = render(<NinaJobDetail {...props({ stage: 'running' })} />)
-    expect(screen.getByText(formatJobSeconds(jobElapsedSeconds(CREATED_AT_MS, NOW_MS)))).toBeInTheDocument()
+    expect(
+      screen.getByText(formatJobSeconds(jobElapsedSeconds(CREATED_AT_MS, NOW_MS))),
+    ).toBeInTheDocument()
     expect(screen.getByText('Jalan sejak 20 Aug, 17:02')).toBeInTheDocument()
     unmount()
 
@@ -53,7 +61,11 @@ describe('NinaJobDetail', () => {
   it('a failure is red, and its words are the server’s errorLabel and nothing else', () => {
     render(
       <NinaJobDetail
-        {...props({ stage: 'failed', stageLabel: 'Gagal', errorLabel: 'The model was overloaded.' })}
+        {...props({
+          stage: 'failed',
+          stageLabel: 'Gagal',
+          errorLabel: 'The model was overloaded.',
+        })}
       />,
     )
     const heading = screen.getByText('Gagal')
@@ -135,7 +147,9 @@ describe('NinaJobDetail', () => {
   it('a row with neither says so instead of rendering an empty card', () => {
     render(<NinaJobDetail {...props({ sidecar: null, prompt: null })} />)
     expect(
-      screen.getByText('Job ini nggak nyimpen catatan fotonya — barisnya dibuat sebelum catatan itu ada.'),
+      screen.getByText(
+        'Job ini nggak nyimpen catatan fotonya — barisnya dibuat sebelum catatan itu ada.',
+      ),
     ).toBeInTheDocument()
   })
 })

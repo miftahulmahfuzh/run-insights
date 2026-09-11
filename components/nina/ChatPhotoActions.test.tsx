@@ -21,9 +21,18 @@ function renderActions(overrides?: {
   url?: string
   label?: string
   onAttach?: (() => void) | null
-  hook?: Partial<{ busy: boolean; notice: 'opened' | 'unavailable' | null; warm: () => void; save: () => void }>
+  hook?: Partial<{
+    busy: boolean
+    notice: 'opened' | 'unavailable' | null
+    warm: () => void
+    save: () => void
+  }>
 }) {
-  const { url = 'https://blob.example/photo.jpg', label = 'Foto kamu', onAttach = vi.fn() } = overrides ?? {}
+  const {
+    url = 'https://blob.example/photo.jpg',
+    label = 'Foto kamu',
+    onAttach = vi.fn(),
+  } = overrides ?? {}
   const warm = vi.fn()
   const save = vi.fn()
   const hook = { busy: false, notice: null, warm, save, ...overrides?.hook }

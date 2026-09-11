@@ -54,13 +54,19 @@ describe('NinaJobActions', () => {
 
   it('the name falls back with the title, because they are one string', () => {
     render(<NinaJobActions item={item({ scene: null, purpose: 'avatar' })} />)
-    expect(screen.getByRole('button', { name: `Coba lagi ${ninaJobTitle({ scene: null, purpose: 'avatar' })}` })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: `Coba lagi ${ninaJobTitle({ scene: null, purpose: 'avatar' })}`,
+      }),
+    ).toBeInTheDocument()
   })
 
   it('redo draws only where the server said a redo is possible; delete draws on EVERY row', () => {
     const failed = render(<NinaJobActions item={item()} />)
     expect(failed.getByRole('button', { name: 'Coba lagi sore di kos' })).toBeInTheDocument()
-    expect(failed.getByRole('button', { name: 'Hapus sore di kos dari daftar' })).toBeInTheDocument()
+    expect(
+      failed.getByRole('button', { name: 'Hapus sore di kos dari daftar' }),
+    ).toBeInTheDocument()
     failed.unmount()
 
     // A done row: keep-the-list-tidy is about the whole list, so the trash is not gated at all.
