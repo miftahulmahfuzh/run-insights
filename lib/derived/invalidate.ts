@@ -10,8 +10,9 @@ import { recomputeRecords, type RecomputeResult } from '@/lib/records/recompute'
 import type { RecordKey } from '@/lib/records/types'
 
 /**
- * **The invalidation contract.** Shipped by F05 as a real, exported, currently-no-op function —
- * not as a TODO comment, and not as a hook each downstream feature bolts on when it lands.
+ * **The invalidation contract.** Shipped by F05 as a real, exported function — a deliberate
+ * no-op that F06, F07 and F09 have since filled in below — not as a TODO comment, and not as a
+ * hook each downstream feature bolts on when it lands.
  *
  * WHY IT EXISTS BEFORE ANYTHING IT INVALIDATES. F05 is the only place a run's numbers can ever
  * change: the first commit and every later correction both go through `commitReviewAction`. The
