@@ -6,6 +6,7 @@ import { after } from 'next/server'
 import {
   chatPhotoAddSchema,
   chatPhotoDescriptionSchema,
+  chatPhotoDescribeSchema,
   chatPhotoRemoveSchema,
   chatPhotoReplaceSchema,
 } from '@/lib/admin/chatPhotoSchema'
@@ -574,6 +575,90 @@ export async function editChatPhotoDescriptionAction(
   }
 }
 
+/**
+ * **Look at the photograph again, and overwrite what she can see in it.** R3's media half of "one
+ * describe control everywhere": the vision-model button the unified panel mounts, one action for
+ * BOTH kinds over `nina_message_images`.
+ *
+ * ── IT OVERWRITES, AND THAT IS THE DECISION, NOT AN OVERSIGHT ────────────────────────────────
+ * `describeNinaAvatarAction` has always overwritten unconditionally — it is the album's "Describe
+ * it" retry button and the same human is on both sides of the click. The panel pairs this action
+ * with the hand-edit textarea, which is the way to correct a re-describe back; a confirmation
+ * would be the second click R1's ruling forbids ("no need for all these bullshit confirmation").
+ * The one guard that matters is a structural one instead: a reference row is refused below, so a
+ * re-describe can never stamp prose onto a row that merely RE-SHOWS a photograph whose original
+ * owns the truth.
+ *
+ * ── NO `kind` GUARD, ON PURPOSE ──────────────────────────────────────────────────────────────
+ * Phase 2 lifted the describability refusals: his uploads are members of the Media folder with the
+ * same verb set, and an operator describing one is the whole point of R1's "even images the user
+ * uploaded manually". The reference check below is the only membership question this action asks —
+ * `getNinaMessageImage` does not filter, so this is where the rule is enforced, exactly as
+ * `removeChatPhotoAction` and `setChatPhotoAsAvatarAction` do at their own seams.
+ *
+ * ── THE SUBJECT FOLLOWS THE PHOTO ────────────────────────────────────────────────────────────
+ * `photoSideOf` + `describeSubjectForSide` (both already imported here — Phase 2) — hers gets
+ * `NINA_SELF_DESCRIBE_SYSTEM_PROMPT` (`scheduleChatPhotoCaption`'s HALF ONE already describes her
+ * photographs this way; this is the manual button arriving at the same answer), his gets the
+ * runner prompt. One helper, one suite.
+ *
+ * ── THE WRITE IS `setNinaMessageImageDescription`, NOT THE "CHAT PHOTO" EDIT ─────────────────
+ * A vision pass that produced nothing writes nothing, and a NULL is not among its outcomes — the
+ * exact reading `updateNinaChatPhotoDescription`'s docstring gives for why the `after()` pass uses
+ * this statement and the operator's edit uses the other. This action IS an `after()`-pass-shaped
+ * caller, so it takes the `after()`-pass-shaped statement. It also deliberately does NOT
+ * re-caption the bubble: `editChatPhotoDescriptionAction`'s header owns that argument (*"Editing
+ * what she SAW is not editing what she SAID"*) and this action changes the prose by machine
+ * instead of by hand, which is the same category of change.
+ *
+ * `ADMIN_CHAT_PHOTOS_PATH` is what every action in this file revalidates; since Phase 2 it spells
+ * `/admin/nina`, which is where the Media folder lives — this action inherits it by calling the
+ * constant, never a literal.
+ */
+export async function describeChatPhotoAction(input: unknown): Promise<ChatPhotoActionResult> {
+  const { userId } = await requireAdmin()
+
+  const parsed = chatPhotoDescribeSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Not a photo id.' }
+  const { id } = parsed.data
+
+  const row = await getNinaMessageImage(userId, id)
+  if (row == null) return { ok: false, error: 'That photo is not in the collection.' }
+  if (isChatPhotoReference(row)) {
+    return {
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Describe the original instead.',
+    }
+  }
+
+  try {
+    const { description } = await describeNinaImages(
+      [{ blobUrl: row.blobUrl, pathname: row.pathname }],
+      { subject: describeSubjectForSide(photoSideOf(row.kind)) },
+    )
+    const written = await setNinaMessageImageDescription(userId, id, description)
+    if (!written) return { ok: false, error: 'That photo is not in the collection.' }
+
+    revalidatePath(ADMIN_CHAT_PHOTOS_PATH)
+    return { ok: true, id, description }
+  } catch (cause) {
+    /* The floor tripping is its own class and is logged LOUDLY — `scheduleChatPhotoCaption`'s
+     * posture: it means the vendor answered 200 with an image it silently dropped, and the text of
+     * such a response is exactly where an invented description would be. Either way the operator
+     * gets one retryable sentence and the stored prose is untouched. */
+    if (cause instanceof NinaVisionTokenFloorError) {
+      console.error('[f36] TOKEN FLOOR TRIPPED on a manual media describe', {
+        id,
+        pathname: row.pathname,
+        message: cause.message,
+      })
+    } else {
+      console.error('[f36] admin media describe failed', { id }, cause)
+    }
+    return { ok: false, error: 'The description call failed. Try again.' }
+  }
+}
+
 /* ── The two helpers ─────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -646,10 +731,11 @@ async function loadPhotoCarrier(
  * and fins, captioned `ini gw abis lari tadi`. That sentence was never about that photograph. It is
  * element index 2 of a five-string array and `pickLine` hashed a fresh nanoid onto it — no model,
  * no image, no prompt. Meanwhile THIS function was already sending the picture to `glm-4.6v` and
- * storing a perfectly good paragraph about it in a column that, on this path, nothing reads
- * (`dbNinaSourceGateway.readConversation` maps every window row with a literal
- * `imageDescriptions: []`). The multimodal call existed; its answer just never reached the one text
- * the runner sees.
+ * storing a perfectly good paragraph about it in a column that, at the time, nothing read back
+ * into her context (`dbNinaSourceGateway.readMessageWindow` then mapped every window row to a
+ * literal `imageDescriptions: []`; R3, 2026-09-10, made it carry the stored prose). The
+ * multimodal call existed; its answer just was not reaching her — the caption below is still why
+ * this function runs both halves.
  *
  * So this function now does both halves: `glm-4.6v` looks, `glm-5.3` speaks, and the bubble is
  * rewritten. `nina_message_images.description` is still written first and on its own, so the

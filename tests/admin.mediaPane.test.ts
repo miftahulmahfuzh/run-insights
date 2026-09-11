@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { readRepoCode, readRepoFile, repoFileExists } from './support/importGraph'
+import { readRepoCode, repoFileExists } from './support/importGraph'
 
 /**
  * **The Media rail, migrated — read as structure, because the suite has no DOM.**
@@ -19,12 +19,11 @@ import { readRepoCode, readRepoFile, repoFileExists } from './support/importGrap
 const PANE = 'components/admin/explorer/MediaPane.tsx'
 const CONTROLS = 'components/admin/explorer/MediaControls.tsx'
 const ADD = 'components/admin/explorer/MediaAdd.tsx'
-const DESCRIPTION = 'components/admin/explorer/MediaDescription.tsx'
 const PANE_DISPATCH = 'components/admin/explorer/SelectionPane.tsx'
 
 describe('the media rail exists where the verbs migrated to', () => {
-  it('has all four migrated modules', () => {
-    for (const file of [PANE, CONTROLS, ADD, DESCRIPTION]) {
+  it('has all three migrated modules', () => {
+    for (const file of [PANE, CONTROLS, ADD]) {
       expect(repoFileExists(file), `${file} is missing`).toBe(true)
     }
   })
@@ -56,13 +55,20 @@ describe('the media rail exists where the verbs migrated to', () => {
     expect(source).not.toContain('useSession')
   })
 
-  it('MediaDescription is the marked Phase 3 seam and drives the hand-edit action', () => {
-    // The seam mark is deliberately PROSE — Phase 3 replaces this file wholesale, so the marker
-    // addresses the author of its replacement, not the compiler. Read the raw file for it:
-    // `readRepoCode` would strip the very docstring paragraph that carries the pin.
-    const source = readRepoFile(DESCRIPTION)
-    expect(source).toContain('editChatPhotoDescriptionAction')
-    expect(source).toContain('SEAM')
+  it('both arms mount the unified panel with their own table’s actions', () => {
+    const pane = readRepoCode(PANE)
+    const dispatcher = readRepoCode(PANE_DISPATCH)
+    expect(pane).toContain('<PhotoDescription')
+    expect(dispatcher).toContain('<PhotoDescription')
+    expect(pane).toContain('describeChatPhotoAction')
+    expect(dispatcher).toContain('editNinaAvatarDescriptionAction')
+    // The seam is gone and no describe affordance remains in an icon row.
+    expect(
+      repoFileExists('components/admin/explorer/MediaDescription.tsx'),
+      'MediaDescription.tsx survived its own seam',
+    ).toBe(false)
+    expect(pane).not.toContain('MediaDescription')
+    expect(pane).not.toContain('EyeIcon')
   })
 })
 
@@ -75,9 +81,8 @@ describe('R2 — the prompt affordance exists only while the sidecar does', () =
   it('no dim state exists for prompt — the old defect spelled as an absence', () => {
     const source = readRepoCode(PANE)
     // The old rail dimmed on `prompt == null` while always rendering. That expression must not
-    // exist anywhere in the pane; the eye's dim (description == null) is the only one.
+    // exist anywhere in the pane.
     expect(source).not.toMatch(/prompt == null/)
-    expect(source).toMatch(/description == null/)
   })
 
   it('the expanded prompt block re-checks the sidecar', () => {

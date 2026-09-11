@@ -330,6 +330,12 @@ export interface ChatPhotoActionResult {
   /** The `nina_message_images.id` the operation touched or created. */
   id?: string
   /**
+   * The description the operation WROTE, set by `describeChatPhotoAction` so the describe panel
+   * can show fresh prose in the same round trip — `AdminActionResult.description`'s stated
+   * purpose, spelled on this side too. Absent on every action that writes none.
+   */
+  description?: string
+  /**
    * A true thing about the outcome that is NOT a failure — `AdminActionResult.note`'s stated
    * purpose. Today it has one use: saying that the Blob object was kept because another row still
    * points at it (D5). `ok` is still `true`; the photograph is out of the collection, which is what

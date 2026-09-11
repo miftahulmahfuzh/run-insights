@@ -1533,11 +1533,14 @@ async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<vo
      * `NINA_BACKGROUND_BUDGET_MS` is the segment's, not the callback's.
      *
      * `imageDescriptions: []` and `quotedRow: null` are correct rather than lossy. Those two inputs
-     * describe what is attached to THIS message right now; the photographs themselves reach her
-     * through `loadNinaContext`, which reads `nina_messages` joined to `nina_message_images` for
-     * the whole window (see STEP 1b's note in `sendNinaMessage`). So she can still see a photo sent
-     * mid-burst. A quote is genuinely absent: the runner armed it against a send that has already
-     * been answered, and re-quoting it on a follow-up would put the same quote header on two turns.
+     * describe what is attached to THIS message right now; the message itself is already
+     * PERSISTED, so its photographs reach her the way every window row's do — through
+     * `dbNinaSourceGateway.readMessageWindow`, which reads each window row's images with
+     * `getNinaMessageImagesForMessages` and carries their `description` (R3, 2026-09-10; it mapped
+     * every window row to a literal `[]` before that). So she can still see a photo sent mid-burst,
+     * described or not. A quote is genuinely absent: the runner armed it against a send that has
+     * already been answered, and re-quoting it on a follow-up would put the same quote header on
+     * two turns.
      */
     await runNinaBackgroundTurn({
       userId,
@@ -1668,14 +1671,14 @@ export async function resendNinaMessage(input: {
   /*
    * HIS PHOTOS, AND WHY THEY ARE READ RATHER THAN ASSUMED ABSENT.
    *
-   * `runNinaBackgroundTurn`'s own chain passes `imageDescriptions: []` and argues the photographs
-   * reach her through `loadNinaContext`. They do not: `lib/nina/gateway.ts:164` hardcodes
-   * `imageDescriptions: []` for every window row. That gap is real and is out of scope for this
-   * set — it changes what she knows in every conversation — so this path carries the descriptions
-   * itself, exactly as `sendNinaMessage` does, and the substitution is the same one: a row whose
-   * description is null becomes `NINA_DESCRIPTION_UNAVAILABLE`, which tells her honestly that her
-   * eyes failed on that one rather than letting her invent what was in it (invariant 5: text, never
-   * an image part).
+   * The window now carries descriptions for the rows inside it (R3, 2026-09-10:
+   * `dbNinaSourceGateway.readMessageWindow` reads `nina_message_images.description`), but this
+   * path still reads the photographs itself, exactly as `sendNinaMessage` does: a resent row can
+   * be OLDER than the 40-row window, and a turn rebuilt from THE ROW must not depend on window
+   * membership to know what he sent. The substitution is the same one: a row whose description is
+   * null becomes `NINA_DESCRIPTION_UNAVAILABLE`, which tells her honestly that her eyes failed on
+   * that one rather than letting her invent what was in it (invariant 5: text, never an image
+   * part).
    *
    * `getNinaMessageImagesForMessages` is ordered by `sort_order`, which is the order the bubble
    * renders them in, so she is told about them in the order he sees them.

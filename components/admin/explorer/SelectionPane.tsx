@@ -9,7 +9,6 @@ import {
   DownloadIcon,
   PersonFrameIcon,
   RotateCcwIcon,
-  SparklesIcon,
   TrashIcon,
 } from '@/components/admin/photoIcons'
 import { ShareToNinaItem } from '@/components/admin/ShareToNinaItem'
@@ -19,6 +18,7 @@ import { useSavePhoto, type SaveNotice } from '@/components/ui/useSavePhoto'
 import {
   deleteNinaAvatarAction,
   describeNinaAvatarAction,
+  editNinaAvatarDescriptionAction,
   saveNinaAvatarCropAction,
   setCurrentNinaAvatarAction,
 } from '@/lib/admin/ninaAlbumActions'
@@ -27,6 +27,7 @@ import { cn } from '@/lib/cn'
 import { isIdentityCrop, resolveCrop, type NinaCrop } from '@/lib/nina/crop'
 
 import { isMediaRow, MediaPane } from './MediaPane'
+import { PhotoDescription } from './PhotoDescription'
 import type { AlbumExplorerPhoto, ExplorerPhoto } from './model'
 
 /**
@@ -64,10 +65,15 @@ import type { AlbumExplorerPhoto, ExplorerPhoto } from './model'
  * page is `force-dynamic`, so the photos arrive from the server on every render and there is
  * nothing here to keep in sync.
  *
- * ── `description` IS NEVER RENDERED ─────────────────────────────────────────────────────────
- * Invariant 5. `AlbumManager.tsx:167-169` printed the prose into the page, which this pane
- * deliberately does not do: the row says *whether* she can talk about this photo, not what a
- * vision model wrote. It is her prompt's private input.
+ * ── `description` IS RENDERED HERE — AND NOWHERE RUNNER-FACING ─────────────────────────────
+ * R3 (2026-09-10): the describe result is exactly the thing this rail exists to show and correct,
+ * so `PhotoDescription` below renders and edits the stored prose for BOTH arms — the album's here,
+ * the Media arm's in `MediaPane.tsx`, same component. That is an ADMIN-surface change only, and
+ * invariant 5 is untouched by construction: the description's one runner-facing path is still the
+ * text block `userTurnText` renders (`lib/nina/turn.ts:577-586`), `glm-5.3` is still never sent an
+ * image part, and no runner component gained a reader. The old null-ness row ("Cannot talk about
+ * this photo yet") is gone from both arms — the panel's empty state and its auto-describe note say
+ * the same thing where the operator can act on it.
  *
  * ── TWO KINDS OF ROW, ONE PANE MOUNT ────────────────────────────────────────────────────────
  * Since the image-collection merge this mount serves the album's rows AND the Media view's rows.
@@ -262,21 +268,14 @@ function AlbumSelectionPane({
             {photo.thumbUrl == null ? 'None — the grid loads the original' : 'Derived'}
           </dd>
         </div>
-        <div className="flex gap-2">
-          <dt>Nina</dt>
-          <dd className="text-ink-2">
-            {photo.description == null
-              ? 'Cannot talk about this photo yet'
-              : 'Can talk about this photo'}
-          </dd>
-        </div>
       </dl>
 
       {/*
        * THE ONE ICON ROW (R6). Left of the hairline: the crop's own two verbs — save the drag,
        * reset to the original. Right of it: what can be DONE to the photograph, in the grammar
-       * `/admin/photos`' rail already established — make it hers, send it to her chat, have her
-       * given eyes on it (only when she has none yet), take a copy of it, and destructive LAST.
+       * `/admin/photos`' rail already established — make it hers, send it to her chat, take a copy
+       * of it, and destructive LAST. The describe verb is NOT in this row any more — R3 moved it
+       * into the labelled `PhotoDescription` section below, next to the prose it rewrites.
        * Every control names itself with `aria-label` and `title`; the words survive nowhere as
        * children of a button.
        *
@@ -351,21 +350,6 @@ function AlbumSelectionPane({
           shareOrigin={shareOrigin}
         />
 
-        {photo.description == null && (
-          <Button
-            size="md"
-            variant="secondary"
-            className={RAIL_BUTTON}
-            loading={pending}
-            disabled={pending}
-            aria-label="Describe it"
-            title="Describe it"
-            onClick={() => run(() => describeNinaAvatarAction(photo.id))}
-          >
-            <SparklesIcon className="size-4" />
-          </Button>
-        )}
-
         <Button
           size="md"
           variant="secondary"
@@ -407,6 +391,20 @@ function AlbumSelectionPane({
           </p>
         )}
       </div>
+
+      {/*
+       * THE DESCRIBE SECTION (R3). The stored prose, editable by hand, and the vision model one
+       * click away — always available, overwriting, no confirmation. The ALBUM closures are
+       * spelled here because this component already knows its table: `AlbumSelectionPane` receives
+       * an `AlbumExplorerPhoto` (Phase 2's dispatcher narrowed it), so no `origin` read and no
+       * branch is needed — the media arm's twin mount lives in `MediaPane.tsx`.
+       */}
+      <PhotoDescription
+        description={photo.description}
+        emptyNote="She cannot talk about this photo until it is described — it fills in on its own once the photo is hers, or write it yourself."
+        onSave={(text) => editNinaAvatarDescriptionAction({ id: photo.id, description: text })}
+        onRedescribe={() => describeNinaAvatarAction(photo.id)}
+      />
     </aside>
   )
 }

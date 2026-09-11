@@ -3,16 +3,16 @@
 **Package Path**: `.`
 **Package Code**: RI
 **Last Updated**: 2026-09-11
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
-- Completed: 33
+- Blocked: 0
+- Completed: 34
 
 ---
 
@@ -21,16 +21,6 @@
 ### [P0] Critical
 
 ### [P1] High
-
-- [ ] **P1-RI-A036** Phase 4: "Image collection": rename + borderless grid
-  - **Difficulty**: NORMAL
-  - **Type**: Update
-  - **Context**: Owns every user-visible 'Nina's album' → 'Image collection' (nav label + short, dashboard card, page h1 + body copy, app/admin/personality/page.tsx copy), with a short label that does not collide with 'Images'; the post-purge nav comment rewrites Phase 2 left stale on purpose (ImagesIcon's docstring, the shell test's trio comment); `explorer/PhotoGrid.tsx` restyled to the Photo-reference recipe — gap-[3px] sheet with one rounded-field overflow-hidden, aspect-square tiles on a bg-ink-3/20 bed, no per-tile border/radius/padding, selection as scale-down + badge (Phase 1's `view` prop and view-aware media empty state kept byte for byte); opportunistically the stale comments in the analysis reference list (including schema.ts's filtered-reads line naming the retired listNinaChatPhotos). Does not touch PhotoReferencePicker.tsx and its test, any action, any data read, or Phase 3's describe panel internals. Exit criteria: the page reads 'Image collection' everywhere; the grid is borderless in the picker's idiom and tests/admin.photoReference.test.ts is untouched and green; suite + lint + typecheck pass.
-  - **Status**: blocked
-  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 4 of 4)
-  - **Satisfies**: R4 — Rename the page "Image collection"; borderless photo grid, Photo-reference style.
-  - **Depends on**: `P1-RI-A034`, `P1-RI-A035`
-  - **Plan**: `.workflows/plan/P1-RI-A036.md`
 
 - [x] **P1-RI-A032** Phase 1: About-viewer codec + any-age photo deep link
   - **Difficulty**: NORMAL
@@ -91,6 +81,28 @@
 ## Completed Tasks
 
 ### [P1] High
+
+- [x] **P1-RI-A036** Phase 4: "Image collection": rename + borderless grid
+  - **Difficulty**: NORMAL
+  - **Type**: Update
+  - **Context**: Owns every user-visible 'Nina's album' → 'Image collection' (nav label + short, dashboard card, page h1 + body copy, app/admin/personality/page.tsx copy), with a short label that does not collide with 'Images'; the post-purge nav comment rewrites Phase 2 left stale on purpose (ImagesIcon's docstring, the shell test's trio comment); `explorer/PhotoGrid.tsx` restyled to the Photo-reference recipe — gap-[3px] sheet with one rounded-field overflow-hidden, aspect-square tiles on a bg-ink-3/20 bed, no per-tile border/radius/padding, selection as scale-down + badge (Phase 1's `view` prop and view-aware media empty state kept byte for byte); opportunistically the stale comments in the analysis reference list (including schema.ts's filtered-reads line naming the retired listNinaChatPhotos). Does not touch PhotoReferencePicker.tsx and its test, any action, any data read, or Phase 3's describe panel internals. Exit criteria: the page reads 'Image collection' everywhere; the grid is borderless in the picker's idiom and tests/admin.photoReference.test.ts is untouched and green; suite + lint + typecheck pass.
+  - **Status**: completed
+  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 4 of 4)
+  - **Satisfies**: R4 — Rename the page "Image collection"; borderless photo grid, Photo-reference style.
+  - **Depends on**: `P1-RI-A034`, `P1-RI-A035`
+  - **Plan**: `.workflows/plan/P1-RI-A036.md`
+  - **Completed**: 2026-09-11 08:23
+  - **Method**: /do (swarm phase 4/4)
+  - **Files**: components/admin/explorer/PhotoGrid.tsx, components/admin/AdminNavLinks.tsx, components/admin/ImageGenTestPanel.tsx, app/admin/page.tsx, app/admin/nina/page.tsx, app/admin/personality/page.tsx, lib/pwa.ts, lib/admin/requireAdmin.ts, lib/nina/imagetest.ts, lib/db/schema.ts, components/nina/SessionRow.tsx, tests/admin.shell.test.ts, tests/admin.photoGrid.test.ts
+  - **Verification**: Whole-tree gates verified in a throwaway detached worktree at HEAD (746e454) containing only this phase's 13 files — phase 3 is concurrently live in the shared worktree and its in-flight tests/nina.gateway.window.test.ts currently fails tsc (fixture `kind: string` vs `NinaImageKind`). Clean-room result: typecheck 0 errors; lint 0 errors / 0 new warnings; vitest 3792/3792 across 178 files; db:check fine; tests/admin.photoReference.test.ts untouched and green; the phase's exit-grep leaves only verbatim user quotes.
+  - **Drift**: tests/admin.photoGrid.test.ts: dropped the plan-drafted `classes` const and unused `classNames` helper (repo eslint flags them; the helper was never called); the class-ORDER reasoning moved into the file docstring.
+  - **Drift**: tests/admin.photoGrid.test.ts: `not.toContain('p-1')` became `not.toMatch(/\bp-1\b/)` — the plan's own `top-1` corner-badge class contains the substring 'p-1' and falsified the bare form; \b-bounding is the shell test's precedent (tests/admin.shell.test.ts:97). Intent (no per-tile padding utility) preserved.
+  - **Drift**: app/admin/personality/page.tsx:15 — docstring prose 'beside "Nina's album"' → 'beside the album tab'. The plan listed only the body-copy sentence (:75-80) for this file, but its exit-criteria grep requires every non-quote hit of "Nina.s album" to be gone; line 15 was prose, not a verbatim user quote.
+  - **Drift**: tests/admin.shell.test.ts — also retitled `it('inlines seven DISTINCT glyphs')` → 'six DISTINCT glyphs' (P4-owned comment region :172-180; phase 2's 7→6 count change had staled the title; the plan's rewrite covered only the comment body).
+  - **Decided**: Personality-page docstring :15 edit → demanded by the phase's exit-criteria grep (rung 2: exit criteria outrank the Files-table enumeration).
+  - **Decided**: Whole-tree gates verified in a clean-room detached worktree carrying only this phase's 13 files, because phase 3 is concurrently live in the shared worktree — attribution, not check-relaxation (rung 1: phase invariants).
+  - **Decided**: p-1 → \bp-1\b in the new suite (rung 2: the exit criterion is 'borderless in the picker's idiom'; the stricter substring form contradicted the plan's own Step 6 component code).
+  - **Decided**: 'seven' → 'six' in the shell-test glyph it-title (rung 3: P4 owns :172-180; the count change was phase 2's).
 
 - [x] **P1-RI-A035** Phase 2: Media verbs on both kinds; purge the Chat photos surface
   - **Difficulty**: HARD

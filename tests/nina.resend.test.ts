@@ -18,8 +18,9 @@ import { NINA_BURST_MAX_MESSAGES } from '@/lib/nina/turn'
  *      `imageDescriptions` from the message's own `nina_message_images` with the
  *      `NINA_DESCRIPTION_UNAVAILABLE` substitution, `quotedRow` from `reply_to_id`,
  *      `attachedRunId` from `run_id`. Passing `[]` for the descriptions would re-answer a photo
- *      message as if the photo were not there, because `lib/nina/gateway.ts:164` hardcodes
- *      `imageDescriptions: []` for window rows.
+ *      message as if the photo were not there: the window carries the rows INSIDE it since R3
+ *      (`readMessageWindow` reads `nina_message_images.description`), but the resent row may have
+ *      fallen out of it, so this path reads its own.
  *   4. **Ownership is proved before anything happens**, and "not his" reads identically to "not
  *      there" (invariant 4). `requireUserId` is called above the shape check.
  *   5. **The cursor is the newest `seq`, not the resent row's.** `pollNinaReply` polls
@@ -368,11 +369,11 @@ describe('the background turn is rebuilt from the persisted row', () => {
     expect((turnInput.quoted as { id: string } | null)?.id).toBe(QUOTED)
 
     /*
-     * THE SUBSTITUTION, and why this array is not `[]`. `runNinaBackgroundTurn`'s chain passes `[]`
-     * on the argument that photographs reach her through `loadNinaContext` — but
-     * `lib/nina/gateway.ts:164` hardcodes `imageDescriptions: []` for every window row, so on a
-     * resend `[]` would mean she is never told the photo exists. An undescribed row becomes the
-     * honest sentence rather than silence.
+     * THE SUBSTITUTION, and why this array is not `[]`. The window now carries descriptions for
+     * the rows inside it (R3), but a resend must not depend on window membership — the resent row
+     * may be older than the 40-row window, and the turn is being rebuilt from THE ROW. So this
+     * path carries the descriptions itself, and an undescribed row becomes the honest sentence
+     * rather than silence.
      */
     const descriptions = turnInput.imageDescriptions as readonly string[]
     expect(descriptions).toHaveLength(2)

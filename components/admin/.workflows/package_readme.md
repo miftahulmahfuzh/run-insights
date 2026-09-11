@@ -1,7 +1,7 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-11 (task `P1-RI-A035`, `image-collection` phase 2 of 4 — the Chat-photos merge: the standalone `/admin/photos` surface is purged and its eight files with it, the media rail is re-hosted inside the explorer as `MediaPane`/`MediaAdd`/`MediaControls`/`MediaDescription` plus `explorer/chatPhotoUpload.ts`, `SelectionPane` became a two-arm dispatcher over the `isMediaRow` guard, every original `nina_message_images` row — generated AND hand-added — is now replaceable/describable/adoptable/downloadable from `/admin/nina`, the Chat-photos cell left `AdminNavLinks` (`grid-cols-7` -> `grid-cols-6`), and `MediaDescription` carries the set's marked Phase 3 seam; previously 2026-09-10, owner request, no task id — `/admin/shortcuts`' two-word on/off dropdown became a one-click checkbox in the table's FIRST column, `DialSlider`'s per-dial idiom whole, still non-optimistic, with a disabled checked box in the add row and a guard test keeping the dropdown from coming back; previously 2026-09-09, task `P1-RI-A031`, `admin-imagegen-simplify` phase 3 of 3 — the focus-card hint purge: each of the six "Focus on" cards is now its label and nothing else — the hint `<span>` under the checkbox is gone, and the card's single span still carries the "unsaved" marker; previously task `P1-RI-A029`, `admin-imagegen-simplify` phase 2 of 3 — the image-prefs revision purge: `ImageGenPanel` takes no `revision` prop and prints no "revision N" copy anywhere, and the column leaves `nina_image_prefs` in `drizzle/0017_retire_imageprefs_revision.sql` (committed, NOT applied — the post-deploy `npm run db:migrate`); previously task `P1-RI-A028`, phase 1 of the same set — `ImageGenPanel` adopted the Personality auto-save pipeline and its Save/Discard/Reset row went with the reset action; before that, task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
+**Last Updated**: 2026-09-11 (task `P1-CA-A005`, `image-collection` phase 3 of 4 — one describe control everywhere: `explorer/PhotoDescription.tsx` is the ONE describe panel and it mounts inside BOTH arms of `SelectionPane`'s dispatcher — the album closures in `AlbumSelectionPane`, the media ones in `MediaPane`, which lost its eye toggle, `showDescription` and its null-ness `<dl>` row, while the album pane lost its null-guarded describe button and its own null-ness row; `MediaDescription.tsx`, the seam Phase 2 marked, is deleted; the describe verb is always available, runs the vision model and OVERWRITES with no confirmation, its subject follows the photo through `describeSubjectForSide` (`lib/nina/album.ts`), and `lib/nina/gateway.ts`'s `readMessageWindow` stopped hardcoding `imageDescriptions: []`, so the conversation window's described photos reach every turn's context; previously 2026-09-11, task `P1-RI-A035`, `image-collection` phase 2 of 4 — the Chat-photos merge: the standalone `/admin/photos` surface is purged and its eight files with it, the media rail is re-hosted inside the explorer as `MediaPane`/`MediaAdd`/`MediaControls`/`MediaDescription` plus `explorer/chatPhotoUpload.ts`, `SelectionPane` became a two-arm dispatcher over the `isMediaRow` guard, every original `nina_message_images` row — generated AND hand-added — is now replaceable/describable/adoptable/downloadable from `/admin/nina`, the Chat-photos cell left `AdminNavLinks` (`grid-cols-7` -> `grid-cols-6`), and `MediaDescription` carries the set's marked Phase 3 seam; previously 2026-09-10, owner request, no task id — `/admin/shortcuts`' two-word on/off dropdown became a one-click checkbox in the table's FIRST column, `DialSlider`'s per-dial idiom whole, still non-optimistic, with a disabled checked box in the add row and a guard test keeping the dropdown from coming back; previously 2026-09-09, task `P1-RI-A031`, `admin-imagegen-simplify` phase 3 of 3 — the focus-card hint purge: each of the six "Focus on" cards is now its label and nothing else — the hint `<span>` under the checkbox is gone, and the card's single span still carries the "unsaved" marker; previously task `P1-RI-A029`, `admin-imagegen-simplify` phase 2 of 3 — the image-prefs revision purge: `ImageGenPanel` takes no `revision` prop and prints no "revision N" copy anywhere, and the column leaves `nina_image_prefs` in `drizzle/0017_retire_imageprefs_revision.sql` (committed, NOT applied — the post-deploy `npm run db:migrate`); previously task `P1-RI-A028`, phase 1 of the same set — `ImageGenPanel` adopted the Personality auto-save pipeline and its Save/Discard/Reset row went with the reset action; before that, task `P1-RI-A026`, `simplify-personality-settings` phase 2 of 2: `/admin/personality` went auto-save — `CharacterPanel` commits every control at the moment its edit is finished (dials debounced, toggles and radios on change, notes on blur), the Save / Discard / Reset row and the "N unsaved" counter are gone, and `lib/admin`'s tuning write side is down to one whole-row action; same day, task `P1-CA-A004`, `admin-bottom-bar-icons`: `AdminNav`'s phone bar went icon-only — one `grid-cols-7`/`h-14` row of seven inlined Lucide glyphs with sr-only `short` names, and `app/admin/layout.tsx`'s `<main>` reserve back to `5rem`; previously tasks `P1-CA-A003` and `P1-ADM-C410`, the `nina-image-generation-tab` set — `/admin/image-generation`: `ImageGenPanel`, `PhotoReferencePicker` + `photoReferenceModel`, `ImageGenTestPanel`, and `AdminNav`'s move to a seven-cell 4x2 bar)
 
 ## Overview
 
@@ -86,16 +86,18 @@ and are unit-tested there.
 - Run a bounded, resumable upload queue that registers rows in chunks as files land.
 - Serve the Media view — the conversation's photographs, her generated selfies and his composer
   uploads alike — with the full verb set the purged `/admin/photos` rail had: adopt as her profile
-  picture under a draft framing, replace, remove, download, hand-edit the description, read the
+  picture under a draft framing, replace, remove, download, hand-edit the description or re-run
+  the vision describe on it, read the
   generation prompt, and add new photographs on a carrier message.
 - Own the framing studio and the sanity circles, at the sizes the chat actually draws.
 - Hand a photo to her chat as a **pointer, in a new tab**, getting the order inside one click right:
   fire the describe, then open the tab, await neither before the other.
 - Render `/admin/memory`'s ledger and slot editor.
-- Never render `description` on an ALBUM row. Invariant 5 — it is her prompt's private input, and
-  the album arm shows only *whether* it exists. The Media arm is the deliberate exception the purged
-  surface carried over: its description is operator-authored prose, so `MediaDescription` renders
-  and edits it, and `MediaPane` prints the generation prompt.
+- Render `description` as editable prose on BOTH arms, through the one `PhotoDescription` panel
+  (R3). The admin surface is the deliberate exception to invariant 5, which still governs every
+  runner-facing path untouched: her prompt's private input is corrected here by the one human
+  allowed to, the old show-only-*whether*-it-exists null-ness `<dl>` rows are gone from both arms,
+  and `MediaPane` still prints the generation prompt.
 
 ## Module map
 
@@ -109,11 +111,11 @@ and are unit-tested there.
 | `explorer/useFolderUpload.ts` | `'use client'` hook | One gesture end to end: walk, diff, four-lane upload, chunked register. |
 | `explorer/FolderTree.tsx` | `'use client'` | The folder rail. Every row is a `<Link>`, and every row is 44 px — including the pinned Media row, which is a link to a view and carries a count badge but no `…` menu. |
 | `explorer/PhotoGrid.tsx` | `'use client'` | One folder's — or, on the media arm, the Media view's — page of square tiles, plus the pager. |
-| `explorer/SelectionPane.tsx` | `'use client'` | The details rail, as a two-line dispatcher: an album row renders the private `AlbumSelectionPane` (framing, facts, action list — unchanged), a media row renders `MediaPane`, narrowed by the `isMediaRow` guard. |
-| `explorer/MediaPane.tsx` | `'use client'` | One Media row in full — the purged `/admin/photos` rail re-hosted, in the album pane's own idiom (one icon row, 44 px squares, `aria-label` is the name). The eye opens `MediaDescription`, the brush prints the generation prompt ONLY while `prompt != null` — no dim state — the person frame adopts as her profile picture under a DRAFT framing, the download rides `useSavePhoto`, and `MediaControls`' Replace / Remove drop into the same row. `description` and `prompt` are printed here, which the album arm never does. |
+| `explorer/SelectionPane.tsx` | `'use client'` | The details rail, as a two-line dispatcher: an album row renders the private `AlbumSelectionPane` (framing, facts, action list, and since R3 the unified describe panel's album closures — otherwise unchanged), a media row renders `MediaPane`, narrowed by the `isMediaRow` guard. The dispatcher pre-narrows the arms, so neither arm reads the `origin` discriminant — which is what lets one `PhotoDescription` serve both with no branch. |
+| `explorer/MediaPane.tsx` | `'use client'` | One Media row in full — the purged `/admin/photos` rail re-hosted, in the album pane's own idiom (one icon row, 44 px squares, `aria-label` is the name). The brush prints the generation prompt ONLY while `prompt != null` — no dim state — the person frame adopts as her profile picture under a DRAFT framing, the download rides `useSavePhoto`, and `MediaControls`' Replace / Remove drop into the same row. `prompt` is printed here; the description story lives in the `PhotoDescription` section below the icon row — the eye toggle, its `showDescription` state and the pane's null-ness `<dl>` row retired with the seam they fed. |
 | `explorer/MediaAdd.tsx` | `'use client'` | The Media toolbar's "Add photos": browser JPEG encode -> dedupe pre-check -> PUT -> `addChatPhotoAction`, on a carrier message, sequential per file, no confirmation. |
 | `explorer/MediaControls.tsx` | `'use client'` | Replace and Remove for one Media row, as a fragment dropped into `MediaPane`'s icon row. No confirmation; a successful remove's `note` goes UP to `FileExplorer`, because this pane unmounts under the revalidation that carries it. |
-| `explorer/MediaDescription.tsx` | `'use client'` | "What she can see in it", editable — the Media arm's description block, and the **marked `SEAM — PHASE 3`**: the set's next phase replaces it, and the eye toggle around it, with one unified describe panel. |
+| `explorer/PhotoDescription.tsx` | `'use client'` | "What she can see in it" — THE one describe control, for every photograph on the page, album row or media row (R3). Stored prose rendered in full and editable by hand (the textarea idiom `ChatPhotoDescription` carried through the seam); a describe/re-describe button ALWAYS available that runs the vision model and OVERWRITES, no confirmation. It imports no server action — the host arm hands in `onSave` / `onRedescribe` closures over its own table's actions — which is what made `MediaDescription.tsx`'s replacement wholesale. |
 | `explorer/chatPhotoUpload.ts` | `'use client'` | The encode-and-PUT path both Add and Replace share: decode once, 1024 px long edge, JPEG 0.90, hash the encode before the PUT, skip the PUT on a dedupe hit (Add only — never Replace). Re-homed from `components/admin/chatPhotoUpload.ts` beside `thumbnail.ts`, its cited precedent. |
 | `explorer/UploadQueue.tsx` | `'use client'` | One honest line about what the upload is doing. |
 | `FolderMenu.tsx` | `'use client'` | One folder's four verbs: New subfolder / Rename / Move to… / Delete. A `mode` union, four `absolute` panels. Decides nothing. |
@@ -121,7 +123,7 @@ and are unit-tested there.
 | `ShareToNinaItem.tsx` | `'use client'` | "Share link to Nina". Opens the chat in a new tab; fires the describe and never awaits it. |
 | `CropStudio.tsx` | `'use client'` | Drag / pinch / wheel / slider / arrow keys. Multi-pointer: every contact is tracked by `pointerId`, one pans and two pinch. Contains one subtraction and one `Math.hypot`. |
 | `CircleFrame.tsx` | **no directive** | A stored crop rendered as a circle at any size. Stateless, pure imports. |
-| `photoIcons.tsx` | **no directive** | The shared inline SVG glyph set (plus, swap, trash, check, eye, brush, person-frame, download, rotate, …) — one home so one trash can cannot end up with two silhouettes. `aria-hidden` always; the accessible name is the control's `aria-label`. Born on the purged `/admin/photos` surface, kept by its successors. |
+| `photoIcons.tsx` | **no directive** | The shared inline SVG glyph set (plus, swap, trash, check, sparkles, brush, person-frame, download, rotate, …) — one home so one trash can cannot end up with two silhouettes. `aria-hidden` always; the accessible name is the control's `aria-label`. Born on the purged `/admin/photos` surface, kept by its successors. The eye glyph outlived its toggle (R3 took `MediaPane`'s eye with the describe seam) and is exported with no consumer today. |
 | `AdminNav.tsx` | **no directive** | The `/admin` nav's shell: the `<nav>` element, the desktop eyebrow and footer paragraph, and the breakpoint mechanics — `fixed bottom-0` below `lg` with `pb-[calc(var(--safe-bottom)/2)]` (the home-indicator pad halved by the owner's order, `admin-bottom-bar-active-tab`), `lg:sticky lg:top-8` above it. The list itself — links, glyphs, sidebar labels — is `AdminNavLinks.tsx`, the one client leaf. |
 | `AdminNavLinks.tsx` | `'use client'` | The nav's LIST, both renditions from one markup: `grid-cols-6` at `h-14` below `lg` — one row of six 56 px-tall icon cells, each a 24 px inlined Lucide glyph (`layout-dashboard` · `images` · `smile` · `wand-sparkles` · `brain` · `zap`) named by its sr-only `short` string — and the sticky text rail's long labels at `lg`. Six, not seven: the Chat-photos cell (the camera) left the bar with `/admin/photos` when that surface merged into the explorer (2026-09-11), and the row went `grid-cols-7` -> `grid-cols-6`. It exists because the owner ordered the active tab's icon highlighted in the album link's blue (*"mewarnai icon nya dengan warna biru yang sama dengan text 'Manage the album'"*): `usePathname()` finds the active cell, paints its glyph `text-accent` (scoped by the glyph's `lg:hidden`) and sets `aria-current="page"`. At `lg` the active cell fills the hover pill `bg-accent-soft` with a `text-ink` label — the owner's *"make the active tab highlighted… no difference between an active tab and the others"* (2026-09-10), the selected-tile vocabulary `PhotoGrid` uses — with explicit `lg:hover:` twins so the pointer cannot repaint it inactive. `px-[7px]` on the row is the owner's *"kurangi saja padding nya by 1px"* dial — one pixel off each glyph's side-air, cluster still centred; `app/admin/layout.tsx`'s `pb-[calc(5rem+var(--safe-bottom))]` is the paired reserve and `tests/admin.shell.test.ts` is what stops the two drifting. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — the trigger registry as one table. `MemoryTable`'s mechanics with different columns: blur-to-save cells, optimistic delete, no confirmation. |
@@ -402,13 +404,18 @@ dispatcher**: `isMediaRow(photo)` hands the row to `MediaPane` (its own section 
 else renders the album pane — now a private `AlbumSelectionPane`, its content unchanged. That
 pane's action surface is ONE `flex-wrap` icon row (2026-09-10, *"kalau tombol tombolnya bisa
 dijejerin dalam satu row, maka jejerkan mereka dalam satu row saja"*): framing's two verbs left of
-the hairline, then Set as her profile picture, `ShareToNinaItem`, Describe it, the download — on
+the hairline, then Set as her profile picture, `ShareToNinaItem`, the download — on
 `useSavePhoto`'s shared ladder, the same machinery the chat viewer and `/nina/about` use, not a
-third — and Remove last. There is **no optimistic copy of the album**: every action calls
+third — and Remove last. The describe verb left that row with R3: it lives in the
+`PhotoDescription` section below, next to the prose it rewrites. There is **no optimistic copy of
+the album**: every action calls
 `revalidatePath('/admin/nina')` and the page is `force-dynamic`, so there is nothing here to keep in
-sync. `description` is shown as *"Can talk about this photo"* / *"Cannot talk about this photo yet"*
-and never as prose — that rule is the album arm's, and the media arm's exception is
-`MediaDescription`'s whole reason to exist.
+sync. `description` used to be shown only as *"Can talk about this photo"* / *"Cannot talk about
+this photo yet"* — that null-ness `<dl>` row and the null-guarded "Describe it" button both went
+with R3, and the pane now mounts `PhotoDescription` with the album closures
+(`editNinaAvatarDescriptionAction` / `describeNinaAvatarAction`), rendering and editing the prose
+itself. That is an admin-surface change only: invariant 5 still keeps the prose off every
+runner-facing path, whose one image route remains the text block `userTurnText` renders.
 
 **`UploadQueue`** — the sentence this component exists for is *"Nothing new. All 313 files are
 already here."* "Upload only the new files" has a failure mode the requirement does not mention and
@@ -490,20 +497,47 @@ the removed row, so a note rendered HERE would be destroyed before it could be r
 `onRemoved(note)` hands it to `FileExplorer`, which does not unmount, and it renders under the
 toolbar until the next removal replaces it.
 
-**`MediaDescription` — the hand-edit, and the package's one open seam.** A vision pass that failed,
-or a wrong paragraph, is correctable by the operator for either kind of row. It is a SAVE button,
-not commit-on-blur — the no-confirmation ruling is about a SECOND click on something, and this is
-the FIRST click of the write; a stray blur must not silently store a half-finished sentence into
-her prompt. `draft === null` means untouched, which is why there is no effect: the box shows the
-server's prose until the operator types, so a describe pass landing under `after()` while the pane
-is open simply appears on the next payload, and once he has typed, nothing from the server can
-overwrite him. The field also tells the truth about a row that is ABOUT to be fine — after an Add
-or a Replace it is NULL for the few seconds the `after()` caption pass takes, and *"reload in a
-moment"* beats an empty field that reads as a permanent defect. And the file opens with
-**`SEAM — PHASE 3`**: it is the interim describe control, and the plan set's next phase replaces
-it — and `MediaPane`'s eye toggle around it — with ONE unified describe panel serving album rows
-and media rows alike. Replace it wholesale; nothing else in the explorer needs to change when that
-happens, which is the whole reason it is its own file.
+**`PhotoDescription` — the one describe control, on both arms.** R3's whole point: one component
+serves every photograph on the page, album row or media row, and the host arm picks the actions.
+It **imports no server action**: `onSave` and `onRedescribe` arrive as closures from
+`AlbumSelectionPane` (`editNinaAvatarDescriptionAction` / `describeNinaAvatarAction`) or from
+`MediaPane` (`editChatPhotoDescriptionAction` / `describeChatPhotoAction`), each of which already
+knows its table because Phase 2's dispatcher narrowed it — so a rename in either action family
+fails at the call site in that arm instead of silently inside a component that guessed. The
+interaction is `ChatPhotoDescription`'s idiom, carried through the seam this component replaced:
+
+- **The prose is editable by hand, and it is a SAVE button, not commit-on-blur.** The
+  no-confirmation ruling is about a SECOND click on something, and this is the FIRST click of the
+  write; a stray blur must not silently store a half-finished sentence into her prompt.
+- **The describe button is ALWAYS rendered.** The null guard the panes used to put around the verb
+  was the defect R3 exists to remove — a described photo with wrong prose had no way to re-run the
+  eyes. It OVERWRITES, machine- or hand-written prose alike, and the accessible name says so once
+  the row has prose (*"Re-describe it — it overwrites"*); there is no confirmation, because the
+  hand-edit box above is the correction path. An emptied box is a CLEAR — the save button's
+  accessible name flips to *"Clear the description"* so that write names itself too.
+- **`draft === null` means untouched, which is why there is no effect.** The box shows the
+  server's prose until the operator types, and once he has typed, nothing from the server can
+  overwrite him — which is what makes a re-describe safe to fire under unsaved text: the fresh
+  prose arrives in the `revalidatePath` payload and is simply not shown while his draft stands.
+  After a successful SAVE the draft drops to `null` so the saved text reads as saved; after a
+  DESCRIBE it is deliberately left alone.
+- **One flight at a time.** A save and a describe running concurrently would interleave two writes
+  to one column with no meaning attached to the winner, so while either is in flight the other is
+  disabled. The textarea is disabled during a SAVE — the value being written must not change under
+  the write — and left ENABLED during a DESCRIBE: an 8–11 s vendor call must not lock him out of
+  typing.
+- **The empty state is worded by the host, and only the host can.** `emptyNote` is the honest
+  sentence about a row that is ABOUT to be fine — the album arm says the prose fills in once the
+  photo is hers; the media arm says reload in a moment if it was just added or replaced, because
+  after an Add or a Replace the field is NULL for the few seconds the `after()` caption pass takes,
+  and *"reload in a moment"* beats an empty field that reads as a permanent defect.
+
+The font size stays `CONTROL_CLASS`'s `text-base` — the Safari 16 px rule — with the character
+count and the `unsaved` marker beside the buttons. The describe subject follows the photo: the
+album's every row is hers, and `describeChatPhotoAction` picks through `describeSubjectForSide`
+(`lib/nina/album.ts`) — hers gets the self prompt, his the runner prompt — so neither arm ever
+points the runner prompt at her face. The keyed remount per selection resets the draft, which is
+what keeps one tile's unsaved text out of the next tile's box.
 
 **`MediaAdd` — "Add photos", on a carrier message.** *"add a new photo (so it is like nina
 generated them, but actually it is manually added by user)."* Every row this flow creates hangs off
@@ -658,7 +692,7 @@ inside a single click**, and all three rules exist because the obvious implement
   takes to type — comfortably more than 11 s. If it loses, or z.ai is down, the send still works and
   she has nothing to say about the picture, which is what already happens for any un-described
   photo. Failures are `console.error`'d and never surfaced: the tab he asked for is already open,
-  and the explorer's existing "Describe it" button is the retry.
+  and the pane's `PhotoDescription` describe button is the retry.
 - **`'noopener'` is not optional, and it is what makes it a tab.** Without it the new tab holds a
   live `window.opener` handle back onto `/admin/nina`, the app's only privileged screen, for no
   gain. Per the spec's `window.open` steps `noopener` is stripped from the feature string *before*
@@ -674,7 +708,7 @@ carry it is a compile error rather than a silent vendor call on every share. `sh
 **required string from the server** for the reason under Gotchas below.
 
 It calls `ensureNinaAvatarDescriptionAction` and not `describeNinaAvatarAction`: the latter
-re-describes unconditionally (it is the album's retry button), while `ensure…` returns after one
+re-describes unconditionally (it is `PhotoDescription`'s always-available re-describe), while `ensure…` returns after one
 indexed single-row read for any photo that already has a description. So the common case costs a
 read, the `described` guard skips even that, and only a never-promoted never-shared photo pays the
 8–11 s. It sends **nothing** — `attachNinaPhotoToChat` would send immediately and await the whole
@@ -1137,9 +1171,11 @@ belong to `/admin/memory`.
   module — plus `NINA_MEDIA_NODE_LABEL` and `mediaViewNode`, the pinned tree row stated as a
   deliberately-not-`FolderNode`. **A zero-import module**, which is why a `'use client'` file may
   import it.
-- `@/lib/admin/chatPhotoActions` — the Media view's five writes: `addChatPhotoAction`,
-  `replaceChatPhotoAction`, `removeChatPhotoAction`, `editChatPhotoDescriptionAction`, and
-  `findChatPhotoDuplicateAction` (the dedupe pre-check). A `'use server'` module, so it crosses
+- `@/lib/admin/chatPhotoActions` — the media arm's six writes: `addChatPhotoAction`,
+  `replaceChatPhotoAction`, `removeChatPhotoAction`, `editChatPhotoDescriptionAction`,
+  `findChatPhotoDuplicateAction` (the dedupe pre-check), and R3's `describeChatPhotoAction` — the
+  vision overwrite the unified panel's media closure fires, which refuses a reference row, picks
+  its subject through `describeSubjectForSide`, and answers with the fresh prose. A `'use server'` module, so it crosses
   into the media components as a client reference the same way the tuning action does — its own
   imports, Zod included, stay on the server.
 - `@/lib/admin/chatPhotos` — the media collection's pure model, and the reason a client component
@@ -1152,13 +1188,16 @@ belong to `/admin/memory`.
   have been) PUT.
 - `@/lib/admin/ninaAlbumActions` — every write: `registerNinaAvatarsAction`,
   `listNinaAlbumManifestAction`, `setCurrentNinaAvatarAction`, `saveNinaAvatarCropAction`,
-  `describeNinaAvatarAction`, `ensureNinaAvatarDescriptionAction`, `deleteNinaAvatarAction`, and
+  `describeNinaAvatarAction`, `editNinaAvatarDescriptionAction` (R3's album hand-edit — the media
+  side had one since `nina-photo-refs`, the album never did, because nothing on that surface
+  rendered the prose to edit), `ensureNinaAvatarDescriptionAction`, `deleteNinaAvatarAction`, and
   phase 6's six: `createNinaAlbumFolderAction`, `renameNinaAlbumFolderAction`,
   `moveNinaAlbumFolderAction`, `deleteNinaAlbumFolderAction`, `moveNinaAvatarsAction`,
   `removeNinaAvatarsAction`. The Media view's adoption lives here too —
   `setChatPhotoAsAvatarAction`, which takes a message image's id plus a DRAFT `scale`/`x`/`y` and
   copies the bytes into a fresh `avatar-` object. `AdminActionResult` comes from here too, as a
-  type.
+  type — since R3 it carries the optional `description` the describe actions return, so the panel
+  can show fresh prose in the same round trip.
 - `@/lib/admin/folderOps` — **not imported, deliberately.** It holds every folder-operation refusal
   and the Zod schemas behind them, so the components here call the actions and render the sentences
   rather than re-deciding anything. The path helpers that *look* like they live there live in
@@ -1271,7 +1310,9 @@ was written to be — the origin is what cannot cross.
   column, and of `MediaAdd`, mounted in the toolbar in its place while `view === 'media'`.
   `allFolders` and `navigateToFolder` are derived in `FileExplorer` and used by both
   phase-6 components, so `FolderTree` forwards them through its recursion without reading them.
-- `MediaPane` is the only consumer of `MediaControls` and `MediaDescription`; `MediaAdd` and
+- `MediaPane` is the only consumer of `MediaControls`; `PhotoDescription` has TWO consumers —
+  `AlbumSelectionPane` and `MediaPane`, one mount each, each handing in its own table's closures;
+  `MediaAdd` and
   `MediaControls` are the only consumers of `explorer/chatPhotoUpload.ts`; and `MediaPane` is the
   only consumer of its own `isMediaRow` guard besides the dispatcher — every other consumer of the
   union narrows through the one function.
@@ -1319,12 +1360,16 @@ the deepest descendant rather than the destination, and the current-photo refusa
 `lib/admin/folderOps.ts` and covered by `tests/admin.folderOps.test.ts`.
 
 The media merge added the newest text-reading suite and retired one. `tests/admin.mediaPane.test.ts`
-reads the five migrated files with comments stripped and pins the properties a later edit could
+reads the four files the media rail is spread across (`MediaPane`, `MediaControls`, `MediaAdd`,
+`SelectionPane`) with comments stripped and pins the properties a later edit could
 quietly reverse: the prompt toggle INSIDE the `photo.prompt != null` conditional with no dim state
 for prompt (the defect the owner named), the dispatcher on `isMediaRow` with the pane keyed by
 `photo.id`, `MediaControls`' fragment idiom and its `basis-full` inline messages, `MediaAdd`'s
-`{ dedupe: true }` and a `userId` prop that never comes from a client session, and
-`MediaDescription`'s seam mark. `tests/admin.chatPhotosRail.test.ts` retired with the surface it
+`{ dedupe: true }` and a `userId` prop that never comes from a client session — and, since R3,
+that BOTH arms mount `<PhotoDescription` with their own table's actions while
+`MediaDescription.tsx` is gone (the suite asserts the file's absence) and no eye icon remains in
+`MediaPane`; the suite's two interim seam pins retired with the seam itself.
+`tests/admin.chatPhotosRail.test.ts` retired with the surface it
 read — its components are gone, and the suite's job moved with the verbs.
 
 ## Data flow
@@ -1342,7 +1387,9 @@ FileExplorer  ─── FolderTree ──────────► <Link href=
       │                    │            removeNinaAvatarsAction([selectedId], keepCurrent)
       │                    │              └─► onDone() clears phase 5's selection
       │      ─── PhotoGrid ───────────► <Link href="?page=…">     (server re-read)
-      │      └── SelectionPane ───────► setCurrent / saveCrop / describe / delete
+      │      └── SelectionPane ───────► setCurrent / saveCrop / delete
+      │                    │      └─ PhotoDescription ► editNinaAvatarDescriptionAction /
+      │                    │          describeNinaAvatarAction   (subject 'self', always)
       │                    │                   └─► revalidatePath('/admin/nina')
       │                    └── ShareToNinaItem  (one click, in this order)
       │                            1. ensureNinaAvatarDescriptionAction  ← FIRED, never awaited
@@ -1359,7 +1406,9 @@ FileExplorer  ─── FolderTree ──────────► <Link href=
       │                   ├─ setChatPhotoAsAvatarAction({ id, scale, x, y })  ← adoption, DRAFT crop
       │                   ├─ replaceChatPhotoAction / removeChatPhotoAction   ← MediaControls
       │                   │      └─ a remove's note ──► onRemoved ──► FileExplorer.notice
-      │                   └─ editChatPhotoDescriptionAction                 ← MediaDescription
+      │                   └─ editChatPhotoDescriptionAction / describeChatPhotoAction
+      │                      ← PhotoDescription (hand edit + vision overwrite; subject follows
+      │                        the photo through describeSubjectForSide)
       │                          └─► revalidatePath(ADMIN_CHAT_PHOTOS_PATH) — '/admin/nina'
       │
       │  drop ──► entriesFromDrop()   ← SYNCHRONOUS, before any await
@@ -1439,8 +1488,9 @@ human can act on:
   and is then *converted into an affordance*: `FolderMenu` sets `keepOffer` when a refusal lands
   with the delete panel open, `PhotoMoveBar` warns from `currentId` before the click, and either
   way the follow-up is a button the operator presses rather than a state the client guessed.
-- **Per media action**, inline on the control that fired it — `MediaControls`' and
-  `MediaDescription`'s `basis-full` lines under the icon row, `MediaAdd`'s per-file failure list —
+- **Per action in a pane**, inline where it fired — `MediaControls`' `basis-full` lines under the
+  icon row, `PhotoDescription`'s own `error` / `note` paragraphs inside its section (both arms),
+  `MediaAdd`'s per-file failure list —
   never a route-level error surface. The one message that cannot render where it happened is a
   successful REMOVE's `note` ("the bytes are still in the store; another row references them"): the
   pane unmounts under the revalidation that carries it, so `FileExplorer` holds it in `notice` and
@@ -1464,9 +1514,11 @@ be moved to `lib/` is the minimum-edge check in `uploadOne`, because only a deco
 - **The register path is batched, the byte path is parallel** — parallel bytes, batched bookkeeping.
   Server Actions dispatch one at a time per client, so their latencies add rather than overlap; blob
   PUTs go through a Route Handler and genuinely overlap.
-- **No vision call is on any path in this package.** The `glm-4.6v` describe (~8–11 s) was moved off
+- **No vision call is on any upload path in this package.** The `glm-4.6v` describe (~8–11 s) was moved off
   the upload path entirely; it is scheduled by the promote action on `after()`. Three hundred awaited
-  describes would have been 40 minutes to 1.4 hours of wall clock.
+  describes would have been 40 minutes to 1.4 hours of wall clock. The ONE vendor call a click can
+  start here is `PhotoDescription`'s describe button — user-initiated, one row, spinner-bounded,
+  overwriting by design — which is not an upload path.
 - **A folder operation moves no bytes.** A rename or a move is one UPDATE of the `folder` column, so
   reorganising four hundred photographs costs one statement and zero blob traffic. That is the whole
   reason the album stores a path in a column rather than in the blob pathname.
@@ -1522,7 +1574,20 @@ down the string.
 - **Do not import `zod`, `server-only`, or anything database-shaped into this directory.** A
   constant needed on both sides belongs in a pure module (`lib/nina/album.ts`, `lib/admin/filetree.ts`);
   a type may be imported freely because it erases.
-- **Do not render `description`.** Invariant 5. Show whether it exists.
+- **Do not render `description` on any runner-facing surface.** Invariant 5 — the description's one
+  image path into her turn is still the text block `userTurnText` renders, never an image part.
+  The admin surface is the deliberate exception since R3: `PhotoDescription` renders and edits the
+  prose on BOTH arms, because the description is exactly the thing the rail exists to correct, and
+  the one human on both sides of the click is the same witness. Runner components gained no reader.
+- **Do not import a server action into `PhotoDescription.tsx`.** The host arm hands in
+  `onSave` / `onRedescribe` closures precisely so a rename in either action family fails at the
+  call site in that arm — and so the one panel cannot grow a guess about which table it is mounted
+  over. The album closures live in `AlbumSelectionPane`, the media ones in `MediaPane`.
+- **Do not re-grow a describe button in an icon row, or a null-ness row in a facts `<dl>`.** R3
+  removed all four — the album arm's null-guarded "Describe it" button, both arms' *"Cannot talk
+  about this photo yet"* rows, and `MediaPane`'s eye toggle — in favour of the one panel;
+  `tests/admin.mediaPane.test.ts` asserts `MediaDescription.tsx` no longer exists and no eye icon
+  remains in the pane.
 - **Do not add a second upload path to this screen.** Two upload paths in one screen is exactly what
   `UploadAvatar.tsx` became and why it was deleted.
 - **Do not pass `dedupe` to a Replace.** `uploadChatPhoto`'s opt-in exists for Add alone: a deduped
@@ -1620,7 +1685,7 @@ down the string.
 
 ## Notes
 
-Ten files have been retired from this package, and none of them should come back. Two went when
+Eleven files have been retired from this package, and none of them should come back. Two went when
 this screen landed: `AlbumManager.tsx` (superseded by `FileExplorer` plus the five `explorer/`
 modules; its framing half was moved verbatim into `SelectionPane`) and `UploadAvatar.tsx`
 (superseded by the folder-aware queue, which also retired the singular
@@ -1628,12 +1693,15 @@ modules; its framing half was moved verbatim into `SelectionPane`) and `UploadAv
 `P1-RI-A035`): `ChatPhotoGrid.tsx`, `ChatPhotoDetail.tsx`, `ChatPhotoControls.tsx`,
 `ChatPhotoAdd.tsx`, `ChatPhotoDescription.tsx`, `ChatPhotoProfilePicture.tsx`, `chatPhotoModel.ts`
 and `chatPhotoUpload.ts` retired with the `/admin/photos` route — their verbs migrated into
-`explorer/MediaPane` / `MediaAdd` / `MediaControls` / `MediaDescription` /
+`explorer/MediaPane` / `MediaAdd` / `MediaControls` /
 `explorer/chatPhotoUpload.ts`, and the route itself is gone, so a second photos surface must not
-grow back next to the explorer's Media view.
+grow back next to the explorer's Media view. The eleventh is `explorer/MediaDescription.tsx`
+(task `P1-CA-A005`): Phase 2 built it as a marked interim seam, and Phase 3 retired it with its
+own replacement — `ChatPhotoDescription`'s textarea idiom, which it carried through the seam, now
+lives in `explorer/PhotoDescription.tsx`.
 
-Three seams have been marked in the source for phases beyond the one that wrote them. Two are
-closed:
+Three seams have been marked in the source for phases beyond the one that wrote them, and all
+three are now closed:
 
 - **Phase 6, folder maintenance** — **closed**, and it took the seam's second half rather than its
   first. `FolderTree.tsx`'s note is now `SEAM — PHASE 6, TAKEN` and records why: the sketched "New
@@ -1649,11 +1717,15 @@ closed:
   above the item it now renders; the paragraph explaining the leading-`*` comment style is still
   load-bearing and must stay, but the seam's own "phase 7 will need to…" prose now describes work
   that is done and reads as stale next to the `<ShareToNinaItem …>` three lines below it.
-- **Phase 3, the unified describe panel — OPEN.** `MediaDescription.tsx` opens with
-  `SEAM — PHASE 3`: it is the interim describe control, and the image-collection set's next phase
-  replaces it — and `MediaPane`'s eye toggle around it — with one `PhotoDescription` panel serving
-  album rows and media rows alike. The file exists so that replacement is wholesale; nothing else
-  in the explorer is supposed to change when it happens.
+- **Phase 3, the unified describe panel — closed** (task `P1-CA-A005`). `MediaDescription.tsx`
+  carried `SEAM — PHASE 3` and is gone; the replacement was wholesale exactly as the seam asked.
+  `PhotoDescription.tsx` is the one panel, `MediaPane` lost the eye toggle, its `showDescription`
+  state and its null-ness `<dl>` row around it — the part the seam itself predicted — and the
+  album arm gave up its null-guarded "Describe it" button and its own null-ness row to the same
+  panel, the part the seam could not predict because the dispatcher that made the shared mount
+  possible is Phase 2's. The old claim that *nothing else in the explorer needs to change* held
+  for the file's own arm and not for the album's; the panel being its own file is still what made
+  both halves one move.
 
 Known, accepted limitations: folder sort is lexicographic rather than natural; a tile can repeat
 across two consecutive pages while an upload is in flight (nothing is ever skipped); empty
@@ -1841,3 +1913,38 @@ concurrency sections, one error-handling bullet, three new dependency bullets an
 ones, both reverse-dependency lists, the test-consumer section (a fourth text-reading suite;
 `tests/admin.chatPhotosRail.test.ts` retired with its surface), the dataflow diagram's second arm,
 five new gotchas, the retired-files and seams notes, and this log.
+
+2026-09-11 — updated following task **`P1-CA-A005`** (`image-collection` phase 3 of 4, R3: one
+describe control everywhere; described photos reach Nina's context). `explorer/PhotoDescription.tsx`
+is the ONE describe panel, mounted inside BOTH arms of the dispatcher — `AlbumSelectionPane` hands
+it the album closures (`editNinaAvatarDescriptionAction`, new in `lib/admin/ninaAlbumActions.ts`,
+and `describeNinaAvatarAction`), `MediaPane` the media ones (`editChatPhotoDescriptionAction` and
+the new `describeChatPhotoAction` in `lib/admin/chatPhotoActions.ts`) — and it imports no server
+action itself, so no `origin` discriminant is read anywhere below the dispatcher.
+`MediaDescription.tsx` (Phase 2's interim seam) is deleted; `MediaPane` lost its eye toggle, its
+`showDescription` state and its null-ness `<dl>` row; `AlbumSelectionPane` lost its null-guarded
+describe button and its own null-ness row, and the describe verb left both icon rows. The
+describe button is always available, runs the vision model and OVERWRITES with no confirmation;
+the album's describe stopped pointing the runner prompt at photos of Nina — every describe path
+now picks its subject through `describeSubjectForSide` (`lib/nina/album.ts`: hers → `'self'`,
+his → `'runner'`), and `lib/nina/vision.ts`'s `subject` docstring was de-staled to name the one
+mapping. The Zod boundary for the new action (`chatPhotoDescribeSchema`) and the shared
+`chatPhotoDescriptionField` live in `lib/admin/chatPhotoSchema.ts`, whose normalizer
+`lib/admin/schema.ts`'s `avatarDescriptionSchema` now reuses instead of a second copy; and
+`ChatPhotoActionResult` and `AdminActionResult` both gained an OPTIONAL `description?: string`,
+so fresh prose reaches the panel in the describe round trip. On the runner side of the task,
+`lib/nina/gateway.ts`'s `readMessageWindow` stopped hardcoding `imageDescriptions: []` —
+described rows in the conversation window now carry their prose into EVERY turn's assembled
+context (described rows only, reference rows included, bounded by the column's 2000-character
+ceiling at the write side), the stale coverage claim in `lib/nina/actions.ts` was corrected, and
+the related reads moved in `lib/admin/chatPhotos.ts`, `lib/admin/schema.ts` and
+`lib/admin/ninaAlbumActions.ts`. Tests: `tests/nina.gateway.window.test.ts` and
+`tests/nina.sendDescriptions.test.ts` new; `lib/nina/vision.test.ts`,
+`tests/admin.mediaPane.test.ts`, `tests/nina.resend.test.ts`,
+`tests/admin.chatPhotoAdoption.test.ts` and `tests/nina.gateway.patterns.test.ts` adjusted; full
+suite 3801 green. Refreshed here: the header, two Key Responsibilities bullets, four module-map
+rows (one deleted, one added), the `SelectionPane` paragraph and the describe paragraph of the
+Media-view section, the dataflow diagram's both arms, one error-handling bullet, the vision-call
+performance bullet, two dependency bullets, the internal reverse-dependency list, the
+test-consumer paragraph, three gotchas (one rewritten, two new), the retired-files and seams
+notes, and this log.

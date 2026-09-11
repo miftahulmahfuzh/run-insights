@@ -41,6 +41,9 @@ vi.mock('@/lib/nina/queries', () => ({
   getNinaIdentity: vi.fn(),
   getNinaMemorySlot: vi.fn(),
   getNinaMemorySlots: vi.fn(),
+  /* R3 made `readMessageWindow` read the window's photographs; these tests own the session-id
+   * passthrough and the count, so an empty image read is the honest answer here. */
+  getNinaMessageImagesForMessages: vi.fn(async () => []),
   getNinaMessageWindow: vi.fn(),
   getNinaNags: vi.fn(),
   insertNinaTurn: vi.fn(),

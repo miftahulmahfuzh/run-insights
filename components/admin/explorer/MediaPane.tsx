@@ -4,24 +4,29 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { CircleFrame } from '@/components/admin/CircleFrame'
 import { CropStudio } from '@/components/admin/CropStudio'
-import { BrushIcon, DownloadIcon, EyeIcon, PersonFrameIcon } from '@/components/admin/photoIcons'
+import { BrushIcon, DownloadIcon, PersonFrameIcon } from '@/components/admin/photoIcons'
 import { TOUCH_ICON } from '@/components/admin/touch'
 import { Button } from '@/components/ui'
 import { useSavePhoto, type SaveNotice } from '@/components/ui/useSavePhoto'
+import {
+  describeChatPhotoAction,
+  editChatPhotoDescriptionAction,
+} from '@/lib/admin/chatPhotoActions'
 import { setChatPhotoAsAvatarAction } from '@/lib/admin/ninaAlbumActions'
 import { cn } from '@/lib/cn'
 import { resolveCrop, type NinaCrop } from '@/lib/nina/crop'
 
 import { MediaControls } from './MediaControls'
-import { MediaDescription } from './MediaDescription'
+import { PhotoDescription } from './PhotoDescription'
 import type { ExplorerPhoto, MediaExplorerPhoto } from './model'
 
 /**
  * **One row of the Media folder, in full** — the purged `/admin/photos` rail (`ChatPhotoDetail` +
  * `ChatPhotoProfilePicture`), re-hosted as the explorer's media selection pane. Every verb the old
- * rail had is here, for BOTH kinds of row: the eye (hand-edit what she can see in it), the brush
- * (the generation prompt — see R2 below), the person (adopt as her profile picture, draft framing),
- * download, replace, remove.
+ * rail had is here, for BOTH kinds of row: the brush (the generation prompt — see R2 below), the
+ * person (adopt as her profile picture, draft framing), download, replace, remove — and the
+ * describe story lives in the `PhotoDescription` section below the icon row (R3's unified panel;
+ * the old eye toggle retired with the seam it fed).
  *
  * ── THE FRAMING HALF IS ADOPTION, AND THE DRAFT HAS NOWHERE TO PERSIST ──────────────────────
  * A media row has no crop columns (`nina_message_images` has none — no migration), so there is
@@ -99,7 +104,6 @@ export function MediaPane({
   /** The adoption draft. `null` means identity — a media row has no stored crop to fall back to. */
   const [draft, setDraft] = useState<NinaCrop | null>(null)
   const [worn, setWorn] = useState(false)
-  const [showDescription, setShowDescription] = useState(false)
   const [showPrompt, setShowPrompt] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -142,13 +146,8 @@ export function MediaPane({
     })
   }
 
-  /** The row-toggle look: 44 px of tap target, hover, and a dim state ONLY for the eye below. */
-  const rowToggle = (dimmed: boolean) =>
-    cn(
-      TOUCH_ICON,
-      '-my-1 rounded-field hover:bg-paper-2',
-      dimmed ? 'text-ink-3 opacity-50' : 'text-ink-2',
-    )
+  /** The row-toggle look: 44 px of tap target and hover. (The eye's dim retired with the eye.) */
+  const rowToggle = () => cn(TOUCH_ICON, '-my-1 rounded-field hover:bg-paper-2', 'text-ink-2')
 
   return (
     <aside ref={paneRef} className="rounded-card border border-rule bg-card p-4 lg:p-5">
@@ -203,36 +202,17 @@ export function MediaPane({
           <dt>Thumbnail</dt>
           <dd className="text-ink-2">None — the grid loads the original</dd>
         </div>
-        <div className="flex gap-2">
-          <dt>Nina</dt>
-          <dd className="text-ink-2">
-            {photo.description == null
-              ? 'Cannot talk about this photo yet'
-              : 'Can talk about this photo'}
-          </dd>
-        </div>
       </dl>
 
       {/*
        * THE ONE ICON ROW — the old rail's grammar, in the pane's idiom. Left of the hairline: what
-       * the photograph IS to her (the eye; the brush ONLY while a prompt exists — R2). Right of it:
-       * what the operator can DO — make it hers, download a copy, replace its bytes, remove it,
-       * destructive last. Every control names itself with `aria-label`/`title`; MediaControls's
-       * fragment drops Replace and Remove straight into this flex row, and its inline messages wrap
-       * beneath (basis-full).
+       * the photograph IS to her (the brush ONLY while a prompt exists — R2; the describe story
+       * lives in the panel section below). Right of it: what the operator can DO — make it hers,
+       * download a copy, replace its bytes, remove it, destructive last. Every control names itself
+       * with `aria-label`/`title`; MediaControls's fragment drops Replace and Remove straight into
+       * this flex row, and its inline messages wrap beneath (basis-full).
        */}
       <div className="mt-5 flex flex-wrap items-center gap-1 border-t border-rule pt-4">
-        <button
-          type="button"
-          onClick={() => setShowDescription((value) => !value)}
-          aria-expanded={showDescription}
-          aria-label="What she can see in it"
-          title="What she can see in it"
-          className={cn(rowToggle(photo.description == null), '-ml-2')}
-        >
-          <EyeIcon className="size-4" />
-        </button>
-
         {/* R2. The conditional IS the feature: no prompt, no button — not a dimmed one. The
             expanded block re-checks, so a selection swap under a reused pane cannot print a stale
             sidecar. */}
@@ -243,7 +223,7 @@ export function MediaPane({
             aria-expanded={showPrompt}
             aria-label="What she was asked to draw"
             title="What she was asked to draw"
-            className={rowToggle(false)}
+            className={cn(rowToggle(), '-ml-2')}
           >
             <BrushIcon className="size-4" />
           </button>
@@ -292,16 +272,23 @@ export function MediaPane({
       </div>
 
       {/* THE EXPANDED BLOCKS, in button order — only the asked-for one takes the room. */}
-      {showDescription && (
-        <div className="mt-3">
-          <MediaDescription key={photo.id} photoId={photo.id} description={photo.description} />
-        </div>
-      )}
       {showPrompt && photo.prompt != null && (
         <p className="mt-3 text-[12px] leading-relaxed font-medium break-words text-ink-2">
           {photo.prompt}
         </p>
       )}
+
+      {/*
+       * THE DESCRIBE SECTION (R3) — the media arm's twin of `AlbumSelectionPane`'s mount. Same
+       * component, same section, this table's actions; after an Add or Replace the `after()` pass
+       * fills the field in moments, which is what the empty note promises.
+       */}
+      <PhotoDescription
+        description={photo.description}
+        emptyNote="She cannot talk about this photo until it is described — reload in a moment if it was just added or replaced, or write it yourself."
+        onSave={(text) => editChatPhotoDescriptionAction({ id: photo.id, description: text })}
+        onRedescribe={() => describeChatPhotoAction({ id: photo.id })}
+      />
     </aside>
   )
 }

@@ -3,32 +3,22 @@
 **Package Path**: `components/admin`
 **Package Code**: CA
 **Last Updated**: 2026-09-11
-**Total Active Tasks**: 1
+**Total Active Tasks**: 0
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 0
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 5
+- Completed: 6
 
 ---
 
 ## Active Tasks
 
 ### [P1] High
-
-- [ ] **P1-CA-A005** Phase 3: One describe control everywhere; described photos reach Nina's context
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns the unified describe panel `PhotoDescription.tsx` — one component serving album rows AND media rows, mounted inside BOTH arms of Phase 2's dispatcher (no discriminant read remains); it retires Phase 2's interim seam `MediaDescription.tsx`, both arms' <dl> null-ness rows and AlbumSelectionPane's null-guarded describe button; stored prose rendered and editable by hand plus a describe/re-describe button that runs the vision model and overwrites (no confirmations); describe subject follows the photo through Phase 2's `describeSubjectForSide` (hers/album → 'self', his → 'runner'); `ChatPhotoActionResult` gains an OPTIONAL `description?: string` (additive); `lib/nina/gateway.ts:162-164` stops hardcoding `imageDescriptions: []` so the conversation window's described photos reach every turn's context (bounded: window-bounded rows, prose ≤ 2000 chars); the stale coverage claim at `lib/nina/actions.ts:1535-1540` corrected; regression tests pin both context paths. Does not touch runner-facing photo surfaces (invariant 5), replace/add/remove flows, or styling. Exit criteria: one describe UI/UX on every photo of the page; no describe control left in any icon row and no null-ness row in any facts <dl>; MediaDescription.tsx gone; album describes use the self prompt; window rows carry imageDescriptions in the context read; invariant-5 tests still green.
-  - **Status**: pending
-  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 3 of 4)
-  - **Satisfies**: R3 — One uniform describe UI/UX for every photo on the page; a described photo attached to a chat carries its describe result into Nina's context — for the attaching turn and for the rest of the conversation.
-  - **Depends on**: `P1-RI-A035`
-  - **Plan**: `.workflows/plan/P1-CA-A005.md`
 
 ### [P2] Medium
 
@@ -39,6 +29,28 @@
 ---
 
 ## Completed Tasks
+
+- [x] **P1-CA-A005** Phase 3: One describe control everywhere; described photos reach Nina's context
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns the unified describe panel `PhotoDescription.tsx` — one component serving album rows AND media rows, mounted inside BOTH arms of Phase 2's dispatcher (no discriminant read remains); it retires Phase 2's interim seam `MediaDescription.tsx`, both arms' <dl> null-ness rows and AlbumSelectionPane's null-guarded describe button; stored prose rendered and editable by hand plus a describe/re-describe button that runs the vision model and overwrites (no confirmations); describe subject follows the photo through Phase 2's `describeSubjectForSide` (hers/album → 'self', his → 'runner'); `ChatPhotoActionResult` gains an OPTIONAL `description?: string` (additive); `lib/nina/gateway.ts:162-164` stops hardcoding `imageDescriptions: []` so the conversation window's described photos reach every turn's context (bounded: window-bounded rows, prose ≤ 2000 chars); the stale coverage claim at `lib/nina/actions.ts:1535-1540` corrected; regression tests pin both context paths. Does not touch runner-facing photo surfaces (invariant 5), replace/add/remove flows, or styling. Exit criteria: one describe UI/UX on every photo of the page; no describe control left in any icon row and no null-ness row in any facts <dl>; MediaDescription.tsx gone; album describes use the self prompt; window rows carry imageDescriptions in the context read; invariant-5 tests still green.
+  - **Status**: completed
+  - **Plan Set**: `IMAGE_COLLECTION_PLAN.md` (phase 3 of 4)
+  - **Satisfies**: R3 — One uniform describe UI/UX for every photo on the page; a described photo attached to a chat carries its describe result into Nina's context — for the attaching turn and for the rest of the conversation.
+  - **Depends on**: `P1-RI-A035`
+  - **Plan**: `.workflows/plan/P1-CA-A005.md`
+  - **Completed**: 2026-09-11 08:22
+  - **Method**: /do
+  - **Files**: lib/nina/vision.ts, lib/admin/chatPhotos.ts, lib/admin/chatPhotoSchema.ts, lib/admin/chatPhotoActions.ts, lib/admin/schema.ts, lib/admin/ninaAlbumActions.ts, lib/nina/gateway.ts, lib/nina/actions.ts, components/admin/explorer/PhotoDescription.tsx, components/admin/explorer/SelectionPane.tsx, components/admin/explorer/MediaPane.tsx, components/admin/explorer/MediaDescription.tsx (deleted), lib/nina/vision.test.ts, tests/admin.mediaPane.test.ts, tests/nina.gateway.window.test.ts, tests/nina.sendDescriptions.test.ts, tests/nina.resend.test.ts, tests/admin.chatPhotoAdoption.test.ts, tests/nina.gateway.patterns.test.ts
+  - **Drift**: Plan listed tests/admin.chatPhotoAdoption.test.ts nowhere, but its exact-call pin on scheduleDescribe's describeNinaImages call was made stale by the phase's own Step 6 subject change; assertion updated to expect { subject: 'self' } (strict, not relaxed).
+  - **Drift**: Plan listed tests/nina.gateway.patterns.test.ts nowhere; its @/lib/nina/queries mock factory lacked getNinaMessageImagesForMessages, which the new window read calls. Added vi.fn(async () => []).
+  - **Drift**: Plan Step 1 imports describeSubjectForSide into lib/nina/vision.ts but nothing in the module calls it — a new lint unused-var warning. Import dropped; the docstring pointer remains. The real import lives in the Step 11 test file, where it is used.
+  - **Drift**: MediaPane mounts PhotoDescription after the expanded prompt block (before </aside>) rather than literally 'directly after the icon row's </div>', so the brush toggle's expansion stays adjacent to its toggle; both of the plan's placement constraints (after the icon row, before </aside>) hold.
+  - **Drift**: Phase 4 (P1-RI-A036) is editing this same worktree concurrently (coordinator-acked), so this phase's commit is staged by explicit per-file pathspec — the 19 paths above plus the two todos.md bookkeeping files — never `git add -A`/`-u`.
+  - **Decided**: Gateway sort_order: plan Step-7 body relied on the query's ORDER BY while Step-12's own test pins sort_order at the gateway boundary → readMessageWindow sorts images by sortOrder itself (stable, per-message buckets). Rung 3 + tie-break: a failing verification is never settled by relaxing the check.
+  - **Decided**: sendDescriptions fixture: plan signed two imageTickets with the SAME pathname, which sendNinaMessage's shipped dedupe-by-pathname correctly collapses → fixture parameterizes the nanoid prefix; assertion unchanged. Rung 3 (code block intent: two different photographs) + tie-break (fix the fixture, not the assertion).
+  - **Decided**: vision.ts unused import: plan's import block vs lint invariant 1 → import dropped, docstring pointer kept. Rung 1 (invariant 1: lint passes).
+  - **Decided**: chatPhotoAdoption pin: old exact-call assertion vs phase's specified Step 6 behavior → assertion follows the new call ({ subject: 'self' }). Exit criterion 'album describes use the self prompt'.
 
 - [x] **P1-CA-A004** Phase 1: Icon-only one-row bottom bar
   - **Difficulty**: NORMAL

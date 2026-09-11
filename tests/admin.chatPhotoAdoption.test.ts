@@ -323,9 +323,12 @@ describe('setChatPhotoAsAvatarAction — the fresh adoption', () => {
     fake.enqueue([{ id: AVATAR_ID }]) // setNinaAvatarDescription RETURNING
     await afterCallbacks[0]?.()
 
-    expect(describeNinaImages).toHaveBeenCalledWith([
-      { blobUrl: adoptedUrl, pathname: adoptedPathname },
-    ])
+    /* R3: the adopted row is a photograph of HERS, so the deferred describe carries the self
+     * witness — `describeSubjectForSide('hers')`, the same subject the album button passes. */
+    expect(describeNinaImages).toHaveBeenCalledWith(
+      [{ blobUrl: adoptedUrl, pathname: adoptedPathname }],
+      { subject: 'self' },
+    )
     expect(fake.queries.some((query) => query.sql.includes('set "description"'))).toBe(true)
   })
 })

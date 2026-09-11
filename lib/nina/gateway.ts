@@ -31,6 +31,7 @@ import {
   getNinaIdentity,
   getNinaMemorySlot,
   getNinaMemorySlots,
+  getNinaMessageImagesForMessages,
   getNinaMessageWindow,
   getNinaNags,
   insertNinaTurn,
@@ -58,7 +59,8 @@ import {
  * resolving had to land somewhere, and ruling G6 put it here: phase 10 is the phase that needs the
  * codes to actually fire, because `pattern_crossed` is one of its five triggers. Both bodies are
  * below, and `tests/nina.gateway.patterns.test.ts` is the exit test that they no longer stub.
- * `imageDescriptions` is still `[]` here — phase 6 populates it from `nina_message_images`.
+ * `imageDescriptions` is populated from `nina_message_images.description` (R3, 2026-09-10; it read
+ * a literal `[]` until then) — `readMessageWindow` below carries the argument.
  */
 
 /* ============================================================================
@@ -124,16 +126,11 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
 
   async readMessageWindow(userId, limit, sessionId) {
     /*
-     * ── ONE CALL. This is the DTO boundary, and this map is the whole of it. ──────────────────
+     * ── ONE CALL FOR THE ROWS, ONE FOR THEIR PHOTOGRAPHS. This is the DTO boundary. ─────────────
      *
-     * `getNinaMessageWindow` returns `{ messages, olderCount }` — which is *exactly* the shape
-     * phase 2's `readMessageWindow` declares, so there is nothing to assemble. This file's draft
-     * ran `listNinaMessages` and a `countNinaMessages` concurrently and subtracted; the second of
-     * those does not exist, and the first is now redundant, because phase 1 already does the
-     * `COUNT` inside this one query. The property the draft cared about is preserved and is now
-     * phase 1's to keep: `olderCount` is a SQL `COUNT`, not `all.length - limit`, which would need
-     * the whole history in memory to answer a question about its size and would report 0 for a
-     * 500-message history the moment the window happened to be short.
+     * `getNinaMessageWindow` returns `{ messages, olderCount }`; the translation to
+     * `MessageInput` is the map below, and `olderCount` stays the SQL `COUNT` phase 1 promised
+     * (see that function's header for why it is user-wide by design).
      *
      * **F35 PHASE 3 (R2, ASSUMPTION A1): `sessionId` IS THE POINT OF THAT PHASE.** This line is the
      * one that makes a new session a new topic rather than a new tab on the same conversation.
@@ -141,17 +138,56 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
      * `listNinaMessages` had been scoped, the screen would show a fresh chat while Nina went on
      * reading the last forty messages of the old one.
      *
-     * `olderCount` comes back user-wide by design — see `getNinaMessageWindow`'s header. It is
-     * "history you cannot see", which is what `prompts/system.ts` says it is, and what keeps her
-     * from re-introducing herself in every new session.
-     *
      * **The three-spelling translation happens here and ONLY here** (RULING A1): the columns are
-     * `text` / `sent_at`, `queries.ts`'s DTO is `body` / `createdAt` uniformly in every function
-     * because they all select through one shared `messageColumns`, and phase 2's `MessageInput` is
-     * `text` / `sentAt`. Two lines below are that boundary. Neither side is to be "fixed" to match
-     * the other.
+     * `text` / `sent_at`, `queries.ts`'s DTO is `body` / `createdAt` uniformly, and phase 2's
+     * `MessageInput` is `text` / `sentAt`. Neither side is to be "fixed" to match the other.
+     *
+     * ── THE PHOTOGRAPHS (R3, 2026-09-10) ────────────────────────────────────────────────────────
+     * This read hardcoded `imageDescriptions: []` from the day it landed, so a photograph attached
+     * to an EARLIER message never reached her again — while `lib/nina/actions.ts`'s chain comment
+     * claimed `loadNinaContext` covered it, and `tests/nina.resend.test.ts` documented the lie.
+     * RU-12 exists precisely so `glm-5.3` can react to photographs; the hardcoded `[]` defeated it
+     * for every turn after the attaching one.
+     *
+     * One extra indexed read over the window's own ids — `getNinaMessageImagesForMessages`, the
+     * read the resend path and the bubble renderer already share — grouped by `messageId`, each
+     * row's descriptions in `sort_order` (the order he sees them in the bubble).
+     *
+     * DESCRIBED rows only, and that is a decision, not an omission: substituting
+     * `NINA_DESCRIPTION_UNAVAILABLE` for every undescribed historical row would put a "your eyes
+     * failed, ask him what it is" instruction into her context about photographs nobody ever
+     * attempted — a sentence that is FALSE about the past and invites her to re-ask about old
+     * pictures on every turn, paid for in prompt tokens that carry no information. The
+     * substitution exists on the send and resend paths because THERE the row is the message being
+     * answered right now; here the row is history. A described photo carries its prose into every
+     * turn of the conversation, which is exactly what R3 asks; an undescribed one is silent, which
+     * is what every turn before this phase read.
+     *
+     * Reference rows are NOT filtered out: a re-show carries its own copied `description`
+     * (`resolveAttachment` copies it, `planChatPhotoAddWrite` copies it) and it describes the same
+     * bytes, so its prose is as true as the original's.
+     *
+     * `[]`, never null — phase 2's `MessageInput` says so, and an empty array is what "no images
+     * on this message" is.
      */
     const { messages: rows, olderCount } = await getNinaMessageWindow(userId, limit, sessionId)
+
+    const images = await getNinaMessageImagesForMessages(
+      userId,
+      rows.map((row) => row.id),
+    )
+    /* Sort_order is THIS read's contract, not the query's courtesy (`getNinaMessageImagesForMessages`
+     * happens to ORDER BY it today) — the stable sort keeps the bubble order even if that clause
+     * ever moves. Rows land in per-message buckets, so cross-message interleaving is harmless. */
+    const ordered = [...images].sort((a, b) => a.sortOrder - b.sortOrder)
+    const describedByMessage = new Map<string, string[]>()
+    for (const image of ordered) {
+      if (image.messageId == null || image.description == null) continue
+      const bucket = describedByMessage.get(image.messageId)
+      if (bucket == null) describedByMessage.set(image.messageId, [image.description])
+      else bucket.push(image.description)
+    }
+
     const messages: MessageInput[] = rows.map((row) => ({
       id: row.id,
       role: row.role,
@@ -159,9 +195,7 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
       sentAt: row.createdAt,
       replyToId: row.replyToId,
       runId: row.runId,
-      /* Phase 6 populates this from `nina_message_images.description`. `[]`, never null — phase
-       * 2's `MessageInput` says so, and an empty array is what "no images on this message" is. */
-      imageDescriptions: [],
+      imageDescriptions: describedByMessage.get(row.id) ?? [],
     }))
     return { messages, olderCount }
   },
