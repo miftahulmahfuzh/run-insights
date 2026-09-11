@@ -6,25 +6,25 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "c2c2ca5",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "chatDedupe non-twin fixture re-spelled: its 640x853-vs-736x981 vector (same 0.750 ratio) became a twin BY DESIGN under the new gate, so the fixture became 640x1138 (different shape), assertions untouched. Production pair merged: dry run proposed it, keeper VW04cyH9omoX (described, message-anchored), --apply 5/5, DB-verified one non-null source_image_id.",
       "package": "lib/nina`, `scripts`, `tests",
       "plan": ".workflows/plan/fix-cross-resolution-perceptual-dedupe/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T09:24:13+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A035",
       "title": "Cross-resolution perceptual twin gate + production merge"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/fix-cross-resolution-perceptual-dedupe/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "fix-cross-resolution-perceptual-dedupe",
-  "updated": "2026-09-11T08:49:43+00:00",
+  "updated": "2026-09-11T09:24:13+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/fix-cross-resolution-perceptual-dedupe"
 }
