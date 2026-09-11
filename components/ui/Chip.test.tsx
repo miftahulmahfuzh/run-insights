@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { CHIP_CLASS, Chip, chipClasses } from './Chip'
+import { CHIP_CLASS, Chip } from './Chip'
 
 /**
  * A pill that is either a filter or a fact — two states, no third. The load-bearing assertion
@@ -80,21 +80,26 @@ describe('Chip', () => {
   })
 })
 
-describe('chipClasses', () => {
+// `chipClasses` is module-private (only `Chip` renders it), so these pin the same rules through
+// the public component's rendered output.
+describe('Chip state classes', () => {
   it('both states share the chip shape; only the fill pair differs', () => {
-    const off = chipClasses(false)
-    const on = chipClasses(true)
+    const off = render(<Chip>Easy</Chip>).container.firstElementChild!
+    const on = render(<Chip selected>Easy</Chip>).container.firstElementChild!
 
-    for (const token of ['h-11', 'rounded-pill']) {
-      expect(off).toContain(token)
-      expect(on).toContain(token)
+    for (const chip of [off, on]) {
+      expect(chip).toHaveClass('h-11', 'rounded-pill')
     }
-    expect(on).toContain('bg-ink')
-    expect(off).toContain('bg-paper-2')
+    expect(on).toHaveClass('bg-ink')
+    expect(off).toHaveClass('bg-paper-2')
   })
 
   it('CHIP_CLASS is the shared shape both states are built from', () => {
-    expect(chipClasses(false)).toContain(CHIP_CLASS)
-    expect(chipClasses(true)).toContain(CHIP_CLASS)
+    const off = render(<Chip>Easy</Chip>).container.firstElementChild!
+    const on = render(<Chip selected>Easy</Chip>).container.firstElementChild!
+
+    for (const chip of [off, on]) {
+      expect(chip).toHaveClass(...CHIP_CLASS.split(' '))
+    }
   })
 })

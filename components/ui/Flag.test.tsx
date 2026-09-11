@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { Flag as FlagData } from '@/lib/metrics/flags'
 
-import { Flag, FlagList } from './Flag'
+import { FlagList } from './Flag'
 
 /**
  * F08's rendering half of F06's flags: the sentence comes from `lib/flags/copy.ts` and this
@@ -17,11 +17,13 @@ import { Flag, FlagList } from './Flag'
 const WARN: FlagData = { code: 'HIGH_DECOUPLING', severity: 'warn', value: 7.2 }
 const INFO: FlagData = { code: 'POSITIVE_SPLIT', severity: 'info', value: 41 }
 
-describe('Flag', () => {
+// `Flag` itself is module-private (only `FlagList` renders it), so these reach the same DOM
+// through the public `FlagList`.
+describe('Flag (via FlagList)', () => {
   it('a warn flag: ▲ glyph, the warn tint, and "Worth attention" in the accessible name', () => {
-    const { container } = render(<Flag flag={WARN} />)
+    render(<FlagList flags={[WARN]} />)
 
-    const item = container.firstElementChild!
+    const item = screen.getByRole('listitem')
     expect(item.tagName).toBe('LI')
     expect(item).toHaveClass('bg-warn-soft')
 
@@ -34,16 +36,16 @@ describe('Flag', () => {
   })
 
   it('an info flag: • glyph, no tint, "Note" in the accessible name', () => {
-    const { container } = render(<Flag flag={INFO} />)
+    render(<FlagList flags={[INFO]} />)
 
-    const item = container.firstElementChild!
+    const item = screen.getByRole('listitem')
     expect(item).not.toHaveClass('bg-warn-soft')
     expect(item.firstElementChild).toHaveTextContent('•')
     expect(screen.getByText('Note:')).toHaveClass('sr-only')
   })
 
   it('renders the copy module’s sentence verbatim — the number quoted, not re-worded', () => {
-    render(<Flag flag={INFO} />)
+    render(<FlagList flags={[INFO]} />)
 
     expect(screen.getByText('Positive split')).toBeInTheDocument()
     expect(
@@ -52,7 +54,7 @@ describe('Flag', () => {
   })
 
   it('the copy for a warn flag quotes its value through the format authority', () => {
-    render(<Flag flag={WARN} />)
+    render(<FlagList flags={[WARN]} />)
 
     expect(screen.getByText('Aerobic drift')).toBeInTheDocument()
     // formatPercent(7.2, 1) — one decimal, from lib/format.ts.
@@ -64,8 +66,8 @@ describe('Flag', () => {
   })
 
   it('greyscale survives: the glyph and the word both differ between severities', () => {
-    const warn = render(<Flag flag={WARN} />).container.firstElementChild!
-    const info = render(<Flag flag={INFO} />).container.firstElementChild!
+    const warn = render(<FlagList flags={[WARN]} />).container.querySelector('li')!
+    const info = render(<FlagList flags={[INFO]} />).container.querySelector('li')!
 
     expect(warn.firstElementChild!.textContent).not.toBe(info.firstElementChild!.textContent)
     expect(warn.className).not.toBe(info.className)

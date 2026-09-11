@@ -12,7 +12,7 @@ interface FieldContextValue {
 
 const FieldContext = React.createContext<FieldContextValue | null>(null)
 
-export interface FieldProps {
+interface FieldProps {
   label: string
   hint?: string
   /** Present = the field is in an error state; the string renders below it. */
@@ -92,7 +92,7 @@ export const CONTROL_CLASS =
   'outline-none placeholder:font-medium placeholder:text-ink-3 ' +
   'focus-visible:ring-2 focus-visible:ring-accent aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-red'
 
-export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   ref?: React.Ref<HTMLInputElement>
 }
 

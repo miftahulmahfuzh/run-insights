@@ -9,11 +9,11 @@ import { cn } from '@/lib/cn'
  * public share page gets a `ButtonLink` with no React shipped at all.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive'
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive'
 /** `lg` = 52px, the design's normal button. `md` = 44px — the iOS minimum tap target, never less. */
-export type ButtonSize = 'md' | 'lg'
+type ButtonSize = 'md' | 'lg'
 
-export interface ButtonBaseProps {
+interface ButtonBaseProps {
   variant?: ButtonVariant
   size?: ButtonSize
   fullWidth?: boolean
@@ -27,8 +27,7 @@ export interface ButtonBaseProps {
  * button explicitly after `showModal()` rather than find it by position. `ButtonLinkProps` below
  * has always taken `ComponentProps`; this is the same shape, not a new one.
  */
-export interface ButtonProps
-  extends ButtonBaseProps, Omit<React.ComponentProps<'button'>, 'color'> {
+interface ButtonProps extends ButtonBaseProps, Omit<React.ComponentProps<'button'>, 'color'> {
   /** Disables the button, keeps its exact width, swaps the label for pulsing dots. */
   loading?: boolean
 }
@@ -121,7 +120,7 @@ export function Button({
   )
 }
 
-export interface ButtonLinkProps
+interface ButtonLinkProps
   extends ButtonBaseProps, Omit<React.ComponentProps<typeof Link>, 'className'> {
   className?: string
 }

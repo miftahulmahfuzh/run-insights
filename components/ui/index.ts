@@ -7,6 +7,11 @@
  * **F08 adds the run-domain and chrome half** — `ZoneBar`, `SplitsTable`, `Flag`, `EmptyState`,
  * `Chip`, `TabBar`, `AppShell`. `Toast` has no caller yet and is not written on spec.
  *
+ * Only the names screens actually pull through the barrel are re-exported here. `Chip`,
+ * `EmptySlot`, `Input` and `TabBar` are imported by direct path today, `Flag` is internal to
+ * `FlagList`, and the Button/Field prop types have no external consumer — so none of them are
+ * re-exported. Re-add one only when a screen imports it from here.
+ *
  * Note the two `SplitsTable`s and the two `ZoneBar`s in this repo, which is deliberate and not a
  * duplication to collapse: `components/review/*` are F05's **editable** controls (a sheet per row, a
  * draft state, correction chips) and these are F08's **read-only** presentations of committed data.
@@ -30,13 +35,10 @@
  * anyway, so nothing loses a legitimate call site. Do not add it back.
  */
 export { Button, ButtonLink, LoadingDots, buttonClasses } from './Button'
-export type { ButtonProps, ButtonLinkProps, ButtonSize, ButtonVariant } from './Button'
 export { Card, Eyebrow, Stat } from './Card'
-export { Chip, chipClasses, CHIP_CLASS } from './Chip'
-export { EmptySlot, EmptyState } from './EmptyState'
-export { CONTROL_CLASS, Field, Input, NumberInput } from './Field'
-export type { FieldProps, InputProps } from './Field'
-export { Flag, FlagList } from './Flag'
+export { CHIP_CLASS } from './Chip'
+export { EmptyState } from './EmptyState'
+export { CONTROL_CLASS, Field, NumberInput } from './Field'
+export { FlagList } from './Flag'
 export { SplitsTable } from './SplitsTable'
-export { TabBar } from './TabBar'
 export { ZoneBar } from './ZoneBar'
