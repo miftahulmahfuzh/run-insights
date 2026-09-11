@@ -24,7 +24,8 @@ import {
 import { shareOrigin } from '@/lib/share/origin'
 
 /**
- * `/admin/nina` — F33 R23's album, now the file manager this round's R1 asked for: *"can we make it
+ * `/admin/nina` — the Image collection (R4's rename of F33 R23's album), still the file manager
+ * that round's R1 asked for: *"can we make it
  * so that the in /admin/nina profile album, it looks like a file manager instead? this way i can
  * upload nested folders, and make the photos much more structured and easier to maintain. i will
  * put hundreds of profile pics in there."*
@@ -237,7 +238,7 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
   return (
     <div>
       <header className="mb-5 lg:mb-6">
-        <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Nina&rsquo;s album</h1>
+        <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Image collection</h1>
         <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
           {/*
            * The body copy follows the view; the h1 does not (its rename is a later phase's edit,
@@ -255,7 +256,7 @@ export default async function AdminNinaPage(props: PageProps<'/admin/nina'>) {
           operator is never told to drop a folder over a grid of conversation photographs. */}
       {view === 'album' && albumTotal === 0 ? (
         <p className="mb-6 max-w-[70ch] rounded-card border border-rule bg-card p-5 text-[13px] font-medium text-ink-2">
-          The album is empty, so she is still showing the committed photo (
+          The album folder is empty, so she is still showing the committed photo (
           <code className="text-ink">{NINA_AVATAR_FALLBACK_SRC}</code>). Add a folder below and the
           first photo you make hers becomes her face.
         </p>

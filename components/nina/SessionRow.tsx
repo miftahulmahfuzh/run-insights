@@ -71,7 +71,7 @@ import { planSessionRemoval, type SidebarSession } from '@/lib/nina/sidebar'
  * — unlike `nina_turns.deleted_at`, where a mis-tap is one `update … set deleted_at = null` away
  * from being reversed. The PHOTOGRAPHS are no longer part of that loss:
  * `nina_message_images.message_id` is `ON DELETE SET NULL` since R1, so they outlive the
- * conversation and stay in the Chat photos collection. So the asymmetry between this control and
+ * conversation and stay in the Image collection's Media folder. So the asymmetry between this control and
  * the job list's is real and stays on the record; what changed is the judgement about what is
  * worth spending on it, and it is the runner's own chats he made that call about.
  *

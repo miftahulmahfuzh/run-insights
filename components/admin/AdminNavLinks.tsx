@@ -36,8 +36,7 @@ import { usePathname } from 'next/navigation'
  * others"*: the sidebar's desktop labels had inherited only the unconditional `text-ink-2`, so
  * the mobile highlight was being painted on an element that is not rendered there. The active
  * branch fills the same rounded pill the hover treatment already drew, with `bg-accent-soft` and
- * `text-ink` — the selected vocabulary the album's photo tiles use (`bg-accent-soft` in
- * `ChatPhotoGrid`/`PhotoGrid`) — and carries explicit `lg:hover:` twins of itself, because the
+ * `text-ink` — and carries explicit `lg:hover:` twins of itself, because the
  * hover variant outranks the plain class and would otherwise repaint the active cell as an
  * inactive one under the pointer. `aria-current="page"` rides on the `<Link>` and is the
  * accessible half of both changes: it is how `UserPicker` has always conveyed its selection,
@@ -56,8 +55,8 @@ import { usePathname } from 'next/navigation'
  * R2): below `lg` it is the sr-only span beside each glyph — the string a screen reader announces
  * where the icon is `aria-hidden` decoration — and at `lg` it is `display: none`, leaving the
  * visible `label` as the link's name. The pair stays, because it is still what stops the two
- * renditions drifting: the sidebar's "Nina's album" and the phone's "Album" are the same route,
- * and the two strings are still edited together.
+ * renditions drifting: the sidebar's "Image collection" and the phone's "Photos" are the same
+ * route, and the two strings are still edited together.
  *
  * The 8-character CELL ceiling is retired with the text it measured. It existed because
  * 414 / 7 = 59.1 px leaves a 51.1 px content box — the exact width of eight characters of Poppins
@@ -67,7 +66,7 @@ import { usePathname } from 'next/navigation'
  */
 const LINKS = [
   { href: '/admin', label: 'Overview', short: 'Overview', icon: LayoutDashboardIcon },
-  { href: '/admin/nina', label: "Nina's album", short: 'Album', icon: ImagesIcon },
+  { href: '/admin/nina', label: 'Image collection', short: 'Photos', icon: ImagesIcon },
   /*
    * The character tuning, which used to be a shut disclosure on the album route until the user
    * asked for it as its own tab: *"move it as a new tab with name: Personality"*. It sits between
@@ -174,7 +173,7 @@ export function AdminNavLinks() {
                * the glyph are both `display: none` and the visible `label` is the name. An
                * `aria-label` on the `<Link>` would have been the shorter spelling and the wrong
                * one: it would override the `lg` rendition's visible label too, announcing
-               * "Album" over a sidebar that says "Nina's album".
+               * "Photos" over a sidebar that says "Image collection".
                *
                * `font-semibold` and `text-ink-2` stay in the base classes on purpose: below `lg`
                * the weight is inert while the colour is what the glyph's `currentColor` stroke
@@ -237,10 +236,10 @@ function LayoutDashboardIcon({ className }: { className: string }) {
 }
 
 /**
- * Album: a STACK of pictures, and the anchor of the photo-ish trio — this glyph, `WandSparklesIcon`
- * and `CameraIcon` below are the three routes a reader cannot tell apart by words alone at 11 px
- * ("Nina's album" / "Image Generation" / "Chat photos"), so they are three different silhouettes
- * rather than two picture outlines that differ by a corner.
+ * Image collection: a STACK of pictures — the photograph routes are still told apart by
+ * silhouette and not by words ("Image collection" / "Image Generation"), so this stays a stack
+ * while `WandSparklesIcon` below is how a photograph is MADE. Two different silhouettes, never
+ * two picture outlines that differ by a corner.
  */
 function ImagesIcon({ className }: { className: string }) {
   return (
@@ -283,7 +282,7 @@ function SmileIcon({ className }: { className: string }) {
   )
 }
 
-/** Images: how a photograph is MADE — the wand, second silhouette of the trio. */
+/** Images: how a photograph is MADE — the wand, the other silhouette of the photograph pair. */
 function WandSparklesIcon({ className }: { className: string }) {
   return (
     <svg

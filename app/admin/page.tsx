@@ -90,11 +90,11 @@ export default async function AdminHomePage() {
           above them, so the taller control does not make every card 26 px longer. */}
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-ink">Nina&rsquo;s album</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Image collection</h2>
           <p className="mt-1 mb-3 text-[13px] font-medium text-ink-2">
             {albumCount === 0
               ? 'Empty — she is still using the committed photo.'
-              : `${albumCount} photo${albumCount === 1 ? '' : 's'}, ${
+              : `${albumCount} album photo${albumCount === 1 ? '' : 's'}, ${
                   current ? 'one current' : 'none current'
                 }.`}
           </p>
@@ -102,7 +102,7 @@ export default async function AdminHomePage() {
             href="/admin/nina"
             className="inline-flex min-h-11 items-center text-[13px] font-semibold text-accent"
           >
-            Manage the album &rarr;
+            Manage the collection &rarr;
           </Link>
         </Card>
 

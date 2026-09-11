@@ -1066,8 +1066,8 @@ export const ninaMessageImages = pgTable(
      *
      * This comment used to read *"Cascade: an image with no message is nothing. Unlike a badge, it
      * is not a fact."* That is now false, and the reversal is the whole of R1. A chat photograph IS
-     * a fact: `finishSelfie` spends a model call and real money to make one, `/admin/photos` is a
-     * COLLECTION of them with its own name, and the operator replaces them by hand there. A
+     * a fact: `finishSelfie` spends a model call and real money to make one, the Image collection's
+     * Media folder is a COLLECTION of them, and the operator replaces them by hand there. A
      * conversation is one place a photograph can be shown, not the reason it exists — so the
      * pointer is optional and `ON DELETE SET NULL` is what makes a deleted session leave the
      * collection intact. The runner's words: *"we must allow 'orphaned' photos in Chat photos
@@ -1120,7 +1120,8 @@ export const ninaMessageImages = pgTable(
      * (`getNinaMessageImagesForMessages`, `getNinaMessageImage`,
      * `dbNinaSourceGateway.readMessageWindow`). A message with no image row of its own is a blank
      * bubble. So the row stays, these columns mark it, and only the three COLLECTION reads
-     * (`listNinaMessageImages`, `listNinaChatPhotos`, `countNinaChatPhotos`) skip it — one
+     * (`listNinaMessageImages`, `countNinaChatPhotos` — the reference picker's chat-side total,
+     * `listNinaMediaPhotos` + `countNinaMediaPhotos` — the Media view and its badge) skip it — one
      * predicate, `isOriginalPhoto()` in `lib/nina/queries.ts`.
      *
      * **Two columns and not one polymorphic pointer**, because the two targets are two tables and

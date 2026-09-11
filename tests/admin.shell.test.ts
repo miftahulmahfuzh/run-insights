@@ -144,6 +144,23 @@ describe('the admin nav', () => {
     }
   })
 
+  it('names the collection route "Image collection" and keeps every accessible name distinct', () => {
+    /*
+     * R4 renamed the album page. The `short` is the phone bar's accessible name, and the one
+     * collision the rename had to avoid is "Images" -- the image-generation route -- so the
+     * collection took "Photos", free since the chat-photos route merged away (this set's phase 2;
+     * the assertion below FAILS until that entry is gone). Two cells announcing the same name
+     * would make "Photos" ambiguous to a screen reader, so distinctness is pinned here
+     * rather than trusted to review. The count is derived, never hardcoded: the cell count is
+     * the other test's to hold.
+     */
+    expect(adminNavLinks).toContain(
+      "{ href: '/admin/nina', label: 'Image collection', short: 'Photos', icon: ImagesIcon },",
+    )
+    const shorts = [...adminNavLinks.matchAll(/short: '([^']*)'/g)].map((m) => m[1]!)
+    expect(new Set(shorts).size, 'two cells share an accessible name').toBe(shorts.length)
+  })
+
   it('renders every phone cell as one aria-hidden glyph plus one sr-only name', () => {
     /*
      * R2's shape, held per cell: the glyph is decoration (`aria-hidden`), the `<span>` is the
@@ -169,14 +186,13 @@ describe('the admin nav', () => {
     expect(names, 'the cell template lost its sr-only accessible-name span').toHaveLength(1)
   })
 
-  it('inlines seven DISTINCT glyphs', () => {
+  it('inlines six DISTINCT glyphs', () => {
     /*
-     * The Album/Images/Photos trio is the hard part of an icon bar: three routes a reader tells
-     * apart by words alone ("Nina's album" / "Image Generation" / "Chat photos"), which is why
-     * they were never allowed to become two photo outlines that differ by a corner. Lucide's
-     * `images` (a stack) / `wand-sparkles` (how a photo is MADE) / `camera` (the photographs
-     * that were) are three different silhouettes; this holds the line, because a copy-pasted
-     * glyph body would pass the count above and fail here.
+     * The photograph pair is the hard part of an icon bar: two routes a reader tells apart by
+     * words alone ("Image collection" / "Image Generation"), which is why they were never
+     * allowed to become two picture outlines that differ by a corner. Lucide's `images` (a
+     * stack) / `wand-sparkles` (how a photo is MADE) are two different silhouettes; this holds
+     * the line, because a copy-pasted glyph body would pass the count above and fail here.
      */
     const glyphs = [...adminNavLinks.matchAll(/<svg\b[\s\S]*?<\/svg>/g)].map((m) => m[0]!)
     expect(new Set(glyphs).size, 'two cells render the same glyph').toBe(6)
@@ -224,9 +240,10 @@ describe('the admin nav', () => {
   it('paints the active cell accent and names it with aria-current', () => {
     /*
      * `admin-bottom-bar-active-tab`: the owner's order, spelled — the active tab's icon in the
-     * same blue as the *"Manage the album"* link (`text-accent`, `app/admin/page.tsx`). The
-     * accent sits on the GLYPH's conditional — where its `lg:hidden` scopes it to the phone bar
-     * — and not on the link's own class string, so the `lg` sidebar's labels cannot inherit it;
+     * same blue as the *"Manage the album"* link (`text-accent`, `app/admin/page.tsx`) — the
+     * collection card's link, renamed "Manage the collection" by R4. The accent sits on the
+     * GLYPH's conditional — where its `lg:hidden` scopes it to the phone bar — and not on the
+     * link's own class string, so the `lg` sidebar's labels cannot inherit it;
      * `aria-current` is the accessible half, `UserPicker`'s precedent. Asserted on the source
      * because both live in JSX expressions, which `classNames()` does not join.
      */

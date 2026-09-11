@@ -123,7 +123,7 @@ export const ADMIN_INSTALL = {
   name: 'Run Insights Admin',
   /** 8 characters. iOS truncates past ~12; see `INSTALL.shortName`. */
   shortName: 'RI Admin',
-  description: "Nina's album, her personality, the chat photos and the memory store.",
+  description: 'The image collection, her personality and the memory store.',
   /** --paper-2, light. The admin shell's ground, so the splash matches the first screen. */
   paper: '#f1f7fb',
   /**

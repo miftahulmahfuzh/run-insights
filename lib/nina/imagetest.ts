@@ -21,10 +21,10 @@ import type { NinaTuning } from './tuning'
  *   · "allowed by the guardrails" is `classifyImageFailure`'s `'policy'`
  *     (`lib/nina/imagefail.ts`), which already lands in `nina_turns.error_code` via
  *     `failNinaImageJob`. This phase SURFACES it; it does not compute it a second time.
- *   · "added to Chat photos" is the selfie finisher in `lib/nina/imagerun.ts`, which writes the
- *     `nina_messages` + generated-image pair that `/admin/photos` lists. So `purpose` is
- *     `'selfie'` and R12 needs no new writer at all. A second writer of that pair would violate
- *     plan invariant 12.
+ *   · "added to Chat photos" — the Image collection's Media folder, since that surface merged
+ *     away — is the selfie finisher in `lib/nina/imagerun.ts`, which writes the `nina_messages` +
+ *     generated-image pair that folder lists. So `purpose` is `'selfie'` and R12 needs no new
+ *     writer at all. A second writer of that pair would violate plan invariant 12.
  *
  * ── IT IS `selfiegen.ts`'s SIBLING, AND NOT A FLAG ON IT ──────────────────────────────────────
  * `avatargen.ts` argues the shape and `selfiegen.ts` repeats it: a different caller with a

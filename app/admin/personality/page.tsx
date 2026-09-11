@@ -12,7 +12,7 @@ import { NINA_TUNING_DEFAULTS } from '@/lib/nina/tuning'
  * ── WHY A ROUTE, AND WHY A FLAT SIBLING OF THE ALBUM ────────────────────────────────────────
  * `/admin` has no in-page tab component anywhere. What it has is `components/admin/AdminNav.tsx`,
  * whose own docstring calls its cells the admin counterpart of `components/ui/TabBar.tsx` — so "a
- * new tab" beside "Nina's album" is a fifth NAV CELL and a fifth route, and this file is it.
+ * new tab" beside the album tab is a fifth NAV CELL and a fifth route, and this file is it.
  *
  * It is `/admin/personality` and not `/admin/nina/personality` because the user asked for the
  * panel to LEAVE the album; nesting it under the album's segment would leave it inside the thing
@@ -74,9 +74,9 @@ export default async function AdminPersonalityPage() {
         <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Personality</h1>
         <p className="mt-1 max-w-[70ch] text-[13px] font-medium text-ink-2">
           Who she is, not what she looks like. Her relationship to you, every dial and the notes she
-          is handed verbatim. Her photographs stayed behind on Nina&rsquo;s album and what she wears
-          in them moved to Image Generation; this page is the row her system prompt is assembled
-          from.
+          is handed verbatim. Her photographs stayed behind on the Image collection and what she
+          wears in them moved to Image Generation; this page is the row her system prompt is
+          assembled from.
         </p>
       </header>
 
