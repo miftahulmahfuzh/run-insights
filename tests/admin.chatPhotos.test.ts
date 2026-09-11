@@ -4,11 +4,14 @@ import { ADMIN_CHAT_PHOTO_LONG_EDGE_PX } from '@/components/admin/explorer/chatP
 import { ADMIN_AVATAR_MAX_UPLOAD_BYTES } from '@/lib/admin/avatars'
 import {
   chatPhotoAddSchema,
+  chatPhotoDescribeSchema,
+  chatPhotoDescriptionField,
   chatPhotoDescriptionSchema,
   chatPhotoRemoveSchema,
   chatPhotoReplaceSchema,
 } from '@/lib/admin/chatPhotoSchema'
 import {
+  ADMIN_CHAT_PHOTOS_PATH,
   ADMIN_CHAT_PHOTO_MAX_DESCRIPTION_CHARS,
   ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES,
   adminChatPhotoPathname,
@@ -903,5 +906,282 @@ describe('editChatPhotoDescriptionAction', () => {
 
     expect(result).toEqual({ ok: false, error: 'That photo is not in the collection.' })
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+/* ═════════════════════════════════════════════════════════════════════════════════════════════
+ *  THE THREE ACTIONS THE CAPTION SUITE NEVER RAN — 2026-09-11's follow-up, closed.
+ *
+ *  `addChatPhotoAction`, `replaceChatPhotoAction` and `editChatPhotoDescriptionAction` execute
+ *  above. `removeChatPhotoAction`, `describeChatPhotoAction` and `findChatPhotoDuplicateAction`
+ *  had only mock-only cameos in component tests (or nothing at all), and Remove is the one
+ *  DESTRUCTIVE action on this surface. What only execution pins:
+ *
+ *    - the empty-bubble rule fires as a DELETE OF THE MESSAGE, not a second statement — and a
+ *      RUNNER message survives even when its last photograph is being removed, because the
+ *      message is his and carries his words;
+ *    - an ORPHAN (message_id NULL — every photograph from every deleted conversation) skips the
+ *      carrier lookups entirely rather than passing a null id into an owner-scoped query;
+ *    - a reference row is refused ABOVE the carrier load, so even an orphaned reference cannot
+ *      slide into the plain-delete branch;
+ *    - the blob is released only after the row is gone, and a SHARED object is kept with a note;
+ *    - the describe button follows the PHOTO'S SIDE — her photograph gets the self prompt, HIS
+ *      upload the runner prompt — and overwrites, because the panel's textarea is the correction.
+ * ═════════════════════════════════════════════════════════════════════════════════════════ */
+
+const queriesMock = vi.mocked(await import('@/lib/nina/queries'))
+const { releaseBlobIfUnreferenced } = vi.mocked(await import('@/lib/nina/blobRelease'))
+const deleteNinaMessage = vi.mocked(queriesMock.deleteNinaMessage)
+const deleteNinaMessageImage = vi.mocked(queriesMock.deleteNinaMessageImage)
+const getNinaMessagesByIds = vi.mocked(queriesMock.getNinaMessagesByIds)
+const getNinaMessageImagesForMessages = vi.mocked(queriesMock.getNinaMessageImagesForMessages)
+
+const HASH = 'a'.repeat(64)
+const SOURCE_HASH = 'b'.repeat(64)
+
+beforeEach(() => {
+  // The caption suite's shared beforeEach leaves `setNinaMessageImageDescription` resolving
+  // `undefined` (its callback never reads the answer); these actions DO, so they need the row.
+  setNinaMessageImageDescription.mockResolvedValue({ id: IMAGE_ID })
+  releaseBlobIfUnreferenced.mockResolvedValue('released')
+  deleteNinaMessage.mockResolvedValue({ id: MESSAGE_ID })
+  deleteNinaMessageImage.mockResolvedValue({ id: IMAGE_ID })
+  getNinaMessagesByIds.mockResolvedValue([
+    { id: MESSAGE_ID, role: 'nina', body: NINA_IMAGE_CAPTIONS[0] },
+  ])
+  getNinaMessageImagesForMessages.mockResolvedValue([{ ...imageRow }])
+})
+
+describe('findChatPhotoDuplicateAction — the pre-PUT diff key', () => {
+  it('hands the finder both valid keys and answers with the keeper triplet', async () => {
+    findNinaImageByContentHash.mockResolvedValue({
+      id: IMAGE_ID,
+      blobUrl: storedUrl,
+      pathname: storedPathname,
+    })
+
+    const found = await actions.findChatPhotoDuplicateAction(HASH, SOURCE_HASH)
+
+    expect(found).toEqual({ id: IMAGE_ID, blobUrl: storedUrl, pathname: storedPathname })
+    expect(findNinaImageByContentHash).toHaveBeenCalledWith(USER, [HASH, SOURCE_HASH])
+  })
+
+  it('filters a malformed source hash rather than refusing both', async () => {
+    findNinaImageByContentHash.mockResolvedValue(null)
+
+    await actions.findChatPhotoDuplicateAction(HASH, 'not-a-hash')
+
+    expect(findNinaImageByContentHash).toHaveBeenCalledWith(USER, [HASH])
+  })
+
+  it('answers null for hashes that are not hashes, without reaching the store', async () => {
+    expect(await actions.findChatPhotoDuplicateAction('', undefined)).toBeNull()
+    expect(findNinaImageByContentHash).not.toHaveBeenCalled()
+  })
+
+  it('answers null when nothing matches, and gates on requireAdmin', async () => {
+    findNinaImageByContentHash.mockResolvedValue(null)
+    expect(await actions.findChatPhotoDuplicateAction(HASH)).toBeNull()
+
+    requireAdmin.mockRejectedValue(new Error('not an admin'))
+    await expect(actions.findChatPhotoDuplicateAction(HASH)).rejects.toThrow('not an admin')
+  })
+})
+
+describe('removeChatPhotoAction — the one destructive action on this surface', () => {
+  it('removes one of several siblings: the image row, and the blob if nothing points at it', async () => {
+    getNinaMessageImagesForMessages.mockResolvedValue([{ ...imageRow }, { ...imageRow, id: 'otherImg1234' }])
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID })
+    expect(deleteNinaMessageImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(deleteNinaMessage).not.toHaveBeenCalled() // her message keeps its other photograph
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledWith(USER, expect.objectContaining({ id: IMAGE_ID }))
+    expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
+  })
+
+  it('the LAST image on her caption-only bubble deletes the MESSAGE — no empty bubble, ever', async () => {
+    // beforeEach's carrier message is hers carrying a caption: the whole definition of carrier.
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result.ok).toBe(true)
+    expect(deleteNinaMessage).toHaveBeenCalledWith(USER, MESSAGE_ID)
+    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
+    // The row is gone by cascade inside the same transaction — the release is asked about the
+    // ROW's object either way, after the rows are gone.
+    expect(releaseBlobIfUnreferenced).toHaveBeenCalledTimes(1)
+  })
+
+  it('the last image on a RUNNER message never takes his words with it', async () => {
+    getNinaMessagesByIds.mockResolvedValue([{ id: MESSAGE_ID, role: 'runner', body: 'nih fotonya' }])
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result.ok).toBe(true)
+    expect(deleteNinaMessageImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+    expect(deleteNinaMessage).not.toHaveBeenCalled()
+  })
+
+  it('an ORPHAN skips the carrier lookups — no null id reaches an owner-scoped query', async () => {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, messageId: null })
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result.ok).toBe(true)
+    expect(getNinaMessagesByIds).not.toHaveBeenCalled()
+    expect(getNinaMessageImagesForMessages).not.toHaveBeenCalled()
+    expect(deleteNinaMessageImage).toHaveBeenCalledWith(USER, IMAGE_ID)
+  })
+
+  it('refuses a photo that is not in the collection before anything is deleted', async () => {
+    getNinaMessageImage.mockResolvedValue(null)
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({ ok: false, error: 'That photo is not in the collection.' })
+    expect(deleteNinaMessage).not.toHaveBeenCalled()
+    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('a REFERENCE row is refused above the carrier load — even an orphaned one', async () => {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, messageId: null, sourceAvatarId: 'avaOrigin12' })
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Remove the original instead.',
+    })
+    expect(getNinaMessagesByIds).not.toHaveBeenCalled()
+    expect(deleteNinaMessageImage).not.toHaveBeenCalled()
+    expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled()
+  })
+
+  it('a row that vanished between the read and the delete is the miss sentence, not a crash', async () => {
+    // Two siblings so the plain delete branch runs; then the delete finds nothing.
+    getNinaMessageImagesForMessages.mockResolvedValue([
+      { ...imageRow },
+      { ...imageRow, id: 'otherImg1234' },
+    ])
+    deleteNinaMessageImage.mockResolvedValue(null)
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({ ok: false, error: 'That photo is not in the collection.' })
+    expect(releaseBlobIfUnreferenced).not.toHaveBeenCalled() // and the object is NOT released
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('a blob something else points at is KEPT, and the operator is told', async () => {
+    releaseBlobIfUnreferenced.mockResolvedValue('shared')
+
+    const result = await actions.removeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({
+      ok: true,
+      id: IMAGE_ID,
+      note: 'The file is still used elsewhere, so it was kept in the store.',
+    })
+  })
+
+  it('refuses a malformed payload, and gates on requireAdmin first', async () => {
+    expect(await actions.removeChatPhotoAction({ id: 'nope' })).toEqual({
+      ok: false,
+      error: 'Not a photo id.',
+    })
+    expect(getNinaMessageImage).not.toHaveBeenCalled()
+
+    requireAdmin.mockRejectedValue(new Error('not an admin'))
+    await expect(actions.removeChatPhotoAction({ id: IMAGE_ID })).rejects.toThrow('not an admin')
+  })
+})
+
+describe('describeChatPhotoAction — the vision button, for both kinds', () => {
+  it('her photograph is described with the SELF subject, and the prose is stored', async () => {
+    const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({ ok: true, id: IMAGE_ID, description: STORED_DESCRIPTION })
+    expect(describeNinaImages).toHaveBeenCalledWith(
+      [{ blobUrl: storedUrl, pathname: storedPathname }],
+      { subject: 'self' },
+    )
+    expect(setNinaMessageImageDescription).toHaveBeenCalledWith(USER, IMAGE_ID, STORED_DESCRIPTION)
+    expect(revalidatePath).toHaveBeenCalledWith(ADMIN_CHAT_PHOTOS_PATH)
+    expect(afterCallbacks).toHaveLength(0) // no re-caption: what she SAID is not rewritten
+  })
+
+  it('HIS upload gets the RUNNER prompt — the subject follows the photo, there is no kind guard', async () => {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, kind: 'upload' as const })
+
+    const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result.ok).toBe(true)
+    expect(describeNinaImages).toHaveBeenCalledWith(
+      [{ blobUrl: storedUrl, pathname: storedPathname }],
+      { subject: 'runner' },
+    )
+  })
+
+  it('a reference row is refused with the describe-specific sentence', async () => {
+    getNinaMessageImage.mockResolvedValue({ ...imageRow, sourceImageId: 'imgOriginal12' })
+
+    const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'That one re-shows a photo that lives elsewhere. Describe the original instead.',
+    })
+    expect(describeNinaImages).not.toHaveBeenCalled()
+  })
+
+  it('a write that misses is the not-in-the-collection refusal', async () => {
+    setNinaMessageImageDescription.mockResolvedValue(undefined)
+
+    const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({ ok: false, error: 'That photo is not in the collection.' })
+  })
+
+  it('a vendor failure — including a tripped token floor — leaves the stored prose untouched', async () => {
+    describeNinaImages.mockRejectedValue(new FakeVisionTokenFloorError('floor tripped'))
+
+    const result = await actions.describeChatPhotoAction({ id: IMAGE_ID })
+
+    expect(result).toEqual({ ok: false, error: 'The description call failed. Try again.' })
+    expect(setNinaMessageImageDescription).not.toHaveBeenCalled()
+
+    describeNinaImages.mockRejectedValue(new Error('vendor 500'))
+    expect(await actions.describeChatPhotoAction({ id: IMAGE_ID })).toEqual({
+      ok: false,
+      error: 'The description call failed. Try again.',
+    })
+  })
+
+  it('refuses a malformed id and gates on requireAdmin', async () => {
+    expect(await actions.describeChatPhotoAction({ id: 'short' })).toEqual({
+      ok: false,
+      error: 'Not a photo id.',
+    })
+    expect(getNinaMessageImage).not.toHaveBeenCalled()
+
+    requireAdmin.mockRejectedValue(new Error('not an admin'))
+    await expect(actions.describeChatPhotoAction({ id: IMAGE_ID })).rejects.toThrow('not an admin')
+  })
+})
+
+describe('chatPhotoDescribeSchema and chatPhotoDescriptionField — the shared grammar', () => {
+  it('the describe schema is an id and nothing else', () => {
+    expect(chatPhotoDescribeSchema.safeParse({ id: IMAGE_ID }).success).toBe(true)
+    expect(chatPhotoDescribeSchema.safeParse({ id: 'short' }).success).toBe(false)
+    expect(chatPhotoDescribeSchema.safeParse({}).success).toBe(false)
+  })
+
+  it('the description field is the one normaliser both tables reuse', () => {
+    // CRLF folds to LF, three newlines fold to two — the same sentence written into the same kind
+    // of prompt, normalised once, whichever table it lands in.
+    expect(chatPhotoDescriptionField.parse('a\r\nb\n\n\n\nc')).toBe('a\nb\n\nc')
   })
 })
