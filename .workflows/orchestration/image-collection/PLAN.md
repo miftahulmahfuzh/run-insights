@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/image-collection`
 **Branch:** `feature/image-collection` (base: `origin/main` @ `f429986`)
 **Phases:** 4
-**Status:** phase 2/4 complete
+**Status:** phase 4/4 complete
 **Coordinator:** orch-image-collection
 
 ---
@@ -65,8 +65,8 @@ The user's rationale, verbatim — this is the specification for what may be rem
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 ✅ | Media folder in the Image collection explorer (read path) | R1 | `app/admin`, `components/admin/explorer`, `lib/admin`, `lib/nina` | ~10 | — | HARD | `.workflows/plan/image-collection/phase-1.md` | `P1-RI-A034` | — |
 | 2 ✅ | Media verbs on both kinds; purge the Chat photos surface | R1, R2 | `lib/admin`, `lib/nina`, `components/admin`, `app/admin` | ~23 | 1 | HARD | `.workflows/plan/image-collection/phase-2.md` | `P1-RI-A035` | — |
-| 3 | One describe control everywhere; described photos reach Nina's context | R3 | `components/admin`, `lib/admin`, `lib/nina` | ~16 | 2 | NORMAL | `.workflows/plan/image-collection/phase-3.md` | `P1-CA-A005` | — |
-| 4 | "Image collection": rename + borderless grid | R4 | `app/admin`, `components/admin` | ~13 | 1, 2 | NORMAL | `.workflows/plan/image-collection/phase-4.md` | `P1-RI-A036` | — |
+| 3 ✅ | One describe control everywhere; described photos reach Nina's context | R3 | `components/admin`, `lib/admin`, `lib/nina` | ~16 | 2 | NORMAL | `.workflows/plan/image-collection/phase-3.md` | `P1-CA-A005` | — |
+| 4 ✅ | "Image collection": rename + borderless grid | R4 | `app/admin`, `components/admin` | ~13 | 1, 2 | NORMAL | `.workflows/plan/image-collection/phase-4.md` | `P1-RI-A036` | — |
 
 ### Phase 1 — Media folder in the Image collection explorer (read path)
 **Satisfies:** R1

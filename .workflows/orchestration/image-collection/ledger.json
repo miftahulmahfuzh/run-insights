@@ -56,34 +56,35 @@
       "satisfies": [
         "R3"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "One describe control everywhere; described photos reach Nina's context"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "b0126db",
       "depends_on": [
         1,
         2
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "Rename+borderless grid landed; clean-room gates green (typecheck/lint/3792 tests/db:check, photoReference untouched) \u2014 whole-tree gates run in a detached HEAD worktree holding ONLY p4's 13 files because p3 is live in the shared tree (its gateway window test fails tsc mid-write; attribution, not relaxation). Decisions: photoGrid suite p-1 assertion \\b-bounded (plan's own top-1 badge contains 'p-1'; shell-test precedent); personality docstring :15 prose 'beside the album tab' to satisfy exit-grep (rung 2); shell glyph it-title seven\u2192six (P4-owned :172-180); plan-drafted unused classes/classNames helper dropped from new suite. todos.md+package_readme.md updated but left UNCOMMITTED for the set's landing sweep (13-file pathspec constraint); orchestration index ticked (phase 4/4, phase 3 in flight).",
       "package": "app/admin`, `components/admin",
       "plan": ".workflows/plan/image-collection/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-11T01:39:43+00:00",
       "satisfies": [
         "R4"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-RI-A036",
       "title": "\"Image collection\": rename + borderless grid"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/image-collection/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "image-collection",
-  "updated": "2026-09-11T00:53:29+00:00",
+  "updated": "2026-09-11T01:40:46+00:00",
+  "verified_at": "2026-09-11T01:40:46+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/image-collection"
 }
