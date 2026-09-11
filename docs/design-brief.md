@@ -1,7 +1,7 @@
 # Claude Design brief — Run Insights
 
-**Domain:** [runins.site](https://runins.site) · **Version:** v2, rewritten 2026-08-20 after
-`ROADMAP_v0.1.0.md` and `RECONCILIATION_v0.1.0.md` landed.
+**Domain:** [runins.site](https://runins.site) · **Version:** v2, rewritten 2026-08-20 after the
+v0.1.0 contract trio landed (retired 2026-09-10 — `git show 204fd34^:RECONCILIATION_v0.1.0.md`).
 
 > v1 covered eight screens. This version adds the profile, the badge shelf, the records table and
 > the public share page, and corrects the route names to match R-1.
@@ -12,8 +12,8 @@
 2. Paste everything below the rule as your first message.
 3. Iterate there until you're happy.
 4. Come back to Claude Code and say *"pull the design"* — it reads the project through the
-   `DesignSync` tool (`list_projects` → `list_files` → `get_file`) and maps it onto the tokens
-   and primitives in the feature plans. No copy-paste.
+   `DesignSync` tool (`list_projects` → `list_files` → `get_file`; the existing Run Insights
+   canvas is `PROJECT_TYPE_PROJECT`, filtered out of `list_projects` — fetch by id). No copy-paste.
 
 > The iOS constraints below (16px minimum input font-size, safe-area insets, 44pt tap targets,
 > `100dvh`) **win** over any conflicting design output. Everything else follows the design.
@@ -211,3 +211,9 @@ Two things below survived both runs unchanged and should be treated as settled, 
 the **iOS constraints** (16 px minimum inputs, safe-area insets, 44 pt tap targets, `100dvh`) and
 the **number formats** (`10.67 km`, `1:18:36`, `7'22"`, `173`, `144 spm`, period decimal
 separator). The **honesty marks** survived too, re-expressed from underlines to chips — see R-46.
+
+What has moved since v2 shipped, so the prompt above reads as history: the tab bar is five tabs —
+Nina joined as a tab at v1.0.0 and the centre tab is labelled **New**, not Upload
+(`components/ui/TabBar.tsx`) — and the records table carries an eleventh record, `earliest_start`,
+beyond the ten asked for above (`lib/records/catalog.ts`). The Nina surface (`/nina`) postdates
+both design runs entirely; `docs/architecture.md` is the current screen map.
