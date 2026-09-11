@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PhotoReferencePicker } from './PhotoReferencePicker'
 import {
+  PHOTO_REFERENCE_MIN_TILE_PX,
   PHOTO_REFERENCE_NONE,
   PHOTO_REFERENCE_REVEAL_STEP,
   type PhotoReferenceItem,
@@ -54,10 +55,9 @@ describe('PhotoReferencePicker', () => {
 
   it('treats an empty-string thumbnail as absent — the chat half after a serialization round trip', () => {
     pickerRender({ items: [item('e', '')], total: 1, value: PHOTO_REFERENCE_NONE })
-    expect(screen.getByRole('button', { name: 'Nina photo 1' }).querySelector('img')).toHaveAttribute(
-      'src',
-      'https://blob.example/e.jpg',
-    )
+    expect(
+      screen.getByRole('button', { name: 'Nina photo 1' }).querySelector('img'),
+    ).toHaveAttribute('src', 'https://blob.example/e.jpg')
   })
 
   it('says "No reference" in the status line when nothing is chosen', () => {
@@ -129,12 +129,7 @@ describe('PhotoReferencePicker', () => {
 
   it('renders the empty state and no grid when the union has no photographs', () => {
     render(
-      <PhotoReferencePicker
-        items={[]}
-        total={0}
-        value={PHOTO_REFERENCE_NONE}
-        onChange={vi.fn()}
-      />,
+      <PhotoReferencePicker items={[]} total={0} value={PHOTO_REFERENCE_NONE} onChange={vi.fn()} />,
     )
     expect(screen.getByText('No photos to choose from')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Nina photo/ })).not.toBeInTheDocument()
@@ -190,12 +185,53 @@ describe('PhotoReferencePicker', () => {
     }
     expect(screen.getByRole('button', { name: 'Clear reference' })).toBeDisabled()
   })
+
+  it('names no caption and no provenance anywhere in a tile — only the check glyph when selected', () => {
+    // `tests/admin.photoReference.test.ts` asserted this by grepping the JSX source; that never
+    // renders, so a conditional that only LOOKS like it strips this text would still pass. This
+    // renders the real tile and reads its accessible text and img alt directly.
+    picker({ value: 'a' })
+    const unselected = screen.getByRole('button', { name: 'Nina photo 2' })
+    expect(unselected).toHaveTextContent('')
+    const selected = screen.getByRole('button', { name: 'Nina photo 1' })
+    expect(selected).toHaveTextContent('✓')
+    expect(selected.querySelector('img')).toHaveAttribute('alt', '')
+    for (const tile of [unselected, selected]) {
+      for (const word of ['album', 'Album', 'chat', 'Chat', 'Hers']) {
+        expect(tile.textContent ?? '', `the tile must not announce ${word}`).not.toContain(word)
+      }
+    }
+  })
+
+  it('loads every tile image lazily, un-optimised', () => {
+    picker()
+    for (const tile of screen.getAllByRole('button', { name: /Nina photo/ })) {
+      const img = tile.querySelector('img')
+      expect(img).toHaveAttribute('loading', 'lazy')
+    }
+  })
+
+  it('draws a touching sheet of square tiles with no card chrome, at the 92px tap-target floor', () => {
+    // The Tailwind classes are asserted on the rendered elements, not grepped from source — a
+    // class assigned to the wrong element, or gated behind a condition that never fires, would
+    // read identically to source text but would fail here.
+    picker()
+    const grid = screen.getByRole('button', { name: 'Nina photo 1' }).closest('ul')
+    expect(grid).toHaveClass('gap-[3px]', 'overflow-hidden', 'rounded-field')
+    expect(grid?.className).toContain(`minmax(${PHOTO_REFERENCE_MIN_TILE_PX}px,1fr)`)
+    expect(grid).not.toHaveClass('border')
+
+    const cell = screen.getByRole('button', { name: 'Nina photo 1' }).closest('li')
+    expect(cell).toHaveClass('aspect-square')
+    expect(cell).not.toHaveClass('border', 'bg-accent-soft')
+
+    const img = screen.getByRole('button', { name: 'Nina photo 1' }).querySelector('img')
+    expect(img).toHaveClass('object-cover')
+  })
 })
 
 /** Second render surface for one-off assertions; cleanup runs between tests, not between renders. */
-function pickerRender(
-  props: Partial<Parameters<typeof PhotoReferencePicker>[0]>,
-): HTMLElement {
+function pickerRender(props: Partial<Parameters<typeof PhotoReferencePicker>[0]>): HTMLElement {
   const { container } = render(
     <PhotoReferencePicker
       items={[]}

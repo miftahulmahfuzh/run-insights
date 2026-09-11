@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -18,16 +18,23 @@ import {
 import type { PhotoReferenceItem } from '@/components/admin/photoReferenceModel'
 
 /**
- * R10's UI half: the picker's rules, and the two properties of its markup that no type and no lint
- * rule can see — that a tile carries no caption, and that a tile is never smaller than the app's
- * minimum tap target.
+ * R10's model half — `photoReferenceModel.ts`'s pure functions, exercised directly — plus the
+ * handful of the picker's properties that no render, no type, and no lint rule can see: the
+ * `'use client'` boundary (erases before runtime), the `eslint-disable` comment's reason (a
+ * comment compiles away), and the absence of certain imports (`next/image`, `@/lib/db`, a Server
+ * Action — nothing a render can observe the lack of).
  *
- * `tests/admin.shell.test.ts` is the precedent for asserting a component's markup as text and
- * states the reason: a media query and an absent `<span>` are invisible to `tsc` and to `eslint`,
- * vitest runs `environment: 'node'` with no jsdom, and so it is asserted here or not at all. It is
- * also the precedent for reading only the parts of a source that are code: this file's components
- * carry docstrings that QUOTE the very field names they must not render, and a whole-file
- * `not.toContain` would fail on the explanation of the property it is asserting.
+ * This file used to also assert the picker's rendered markup — classes, `aria-*`, `loading`,
+ * visible text — as JSX source text, on the reasoning that `environment: 'node'` vitest has no
+ * DOM. That reasoning no longer holds: happy-dom and React Testing Library are wired in (see
+ * `tests/admin.file-explorer` and this component's own `PhotoReferencePicker.test.tsx`), and 29
+ * `readFileSync`/`toContain` assertions that never rendered anything were exposed as a second
+ * "string-matching stood in for coverage" case, after `admin.mediaPane.test.ts`. Every one of
+ * those assertions now has a real DOM equivalent in `PhotoReferencePicker.test.tsx`; only what a
+ * render genuinely cannot express remains here. `tests/admin.shell.test.ts` is the precedent for
+ * reading only the parts of a source that are code: this file's components carry docstrings that
+ * QUOTE the very field names they must not render, and a whole-file `not.toContain` would fail on
+ * the explanation of the property it is asserting.
  */
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
@@ -54,17 +61,6 @@ function codeLines(source: string): string {
       )
     })
     .join('\n')
-}
-
-/**
- * Every class this component asks for: the `className="…"` literals and the string literals inside
- * `className={cn(…)}`. Class ORDER is never asserted — `prettier-plugin-tailwindcss` owns it and a
- * test that fights the formatter is a test that gets deleted (`tests/admin.shell.test.ts:20-27`).
- */
-function classNames(source: string): string {
-  const attrs = [...source.matchAll(/className="([^"]*)"/g)].map((m) => m[1] ?? '')
-  const dynamic = [...source.matchAll(/className=\{cn\(([\s\S]*?)\)\}/g)].map((m) => m[1] ?? '')
-  return [...attrs, ...dynamic].join(' ')
 }
 
 /**
@@ -204,13 +200,18 @@ describe('photoReferenceView', () => {
 describe('invariant 5 — "without any captions", enforced by the shape', () => {
   it('gives PhotoReferenceItem exactly three fields', () => {
     // The rule `lib/nina/chatphotos.ts:13-17` states for its own type: there is no caption field
-    // here and there must never be one. A tile that never receives a date cannot render one.
+    // here and there must never be one. A tile that never receives a date cannot render one. This
+    // is a TS-interface check, invisible to any render — the interface erases before runtime, so
+    // there is no DOM equivalent to move it to.
     const body = /export interface PhotoReferenceItem \{([\s\S]*?)\n\}/.exec(model)?.[1] ?? ''
     const fields = [...codeLines(body).matchAll(/^\s*(\w+)\??:/gm)].map((m) => m[1])
     expect(fields).toEqual(['key', 'url', 'thumbUrl'])
   })
 
   it('names no caption field anywhere in the tile markup', () => {
+    // A source-text check, deliberately kept alongside the type check above: the interface having
+    // only three fields makes referencing a fourth a compile error, so this mostly restates that
+    // guarantee — but it is cheap and it is the only thing that would also catch an `as any` cast.
     for (const forbidden of [
       'createdAt',
       'filename',
@@ -226,30 +227,29 @@ describe('invariant 5 — "without any captions", enforced by the shape', () => 
     }
   })
 
-  it('renders no text and no provenance badge in the tile — only the check glyph', () => {
-    // `ChatPhotoGrid`'s tile ends with `{photo.createdAt.slice(0, 10)}`; this one has no text node
-    // at all beyond the aria-hidden check, and nothing says "album" or "chat" or "hers".
-    expect(tile).not.toContain('slice(0, 10)')
-    expect(tile).not.toContain('Hers')
-    for (const word of ['album', 'Album', 'chat', 'Chat']) {
-      expect(tile, `the tile must not announce the set (${word})`).not.toContain(word)
-    }
-    expect(tile).toContain('alt=""')
-  })
-
-  it('names the tile without describing it, and announces its pressed state', () => {
-    expect(tile).toContain('aria-label={tile.label}')
-    expect(tile).toContain('aria-pressed={tile.selected}')
+  it('names PHOTO_REFERENCE_TILE_LABEL and photoReferenceLabel — pure functions, not markup', () => {
     expect(PHOTO_REFERENCE_TILE_LABEL).toBe('Nina photo')
     // The same phrase for both sets, so the announcement carries no provenance either.
     expect(photoReferenceLabel(0)).toBe('Nina photo 1')
   })
 })
 
-describe('the grid is the iOS idiom, and it is bounded', () => {
-  const classes = classNames(picker)
+/*
+ * The tile's rendered text, its `aria-label`/`aria-pressed` wiring, `loading="lazy"`, and its
+ * Tailwind classes (`aspect-square`, `object-cover`, `gap-[3px]`, the `minmax()` tap-target floor,
+ * no `border`, no `bg-accent-soft`) used to be asserted here as JSX source text — 29
+ * `readFileSync`/`toContain` assertions that never rendered anything, so a conditional that only
+ * LOOKED like it applied a class or stripped a string would still have passed. They are now
+ * asserted on the actual rendered DOM in `PhotoReferencePicker.test.tsx`, which is the only place
+ * they can catch that failure mode. What remains below is only what a render genuinely cannot
+ * express: the `'use client'` boundary (a build-time-only marker, invisible to any runtime
+ * render), the `eslint-disable` comment's reason, and the absence of imports.
+ */
 
+describe('the grid is the iOS idiom, and it is bounded', () => {
   it('is a client component whose model is not', () => {
+    // A directive is invisible to a runtime render — Vitest never sees the RSC/client boundary
+    // either way — so this stays a source-text check; there is no DOM equivalent.
     expect(picker.startsWith("'use client'")).toBe(true)
     /*
      * No directive on the model, so a Server Component can import its type while mapping rows.
@@ -264,32 +264,18 @@ describe('the grid is the iOS idiom, and it is bounded', () => {
     expect(codeLines(model)).not.toContain("'use client'")
   })
 
-  it('draws square tiles with no card chrome and near-zero gutters', () => {
-    expect(classes).toContain('aspect-square')
-    expect(classes).toContain('object-cover')
-    expect(classes).toContain('gap-[3px]')
-    // No per-tile border and no padded card — `ChatPhotoGrid`'s tile is deliberately not reused.
-    expect(classes).not.toContain('border')
-    expect(classes).not.toContain('bg-accent-soft')
-  })
-
   it('cannot draw a tile below the app minimum tap target', () => {
-    // `docs/design-brief.md`'s 44 pt floor, on a grid that is dense by requirement: `auto-fill`
-    // drops a column rather than shrink a tile past this number.
+    // The constant itself, not the class it produces — `PhotoReferencePicker.test.tsx` renders the
+    // grid and asserts the class literally carries this number.
     expect(PHOTO_REFERENCE_MIN_TILE_PX).toBeGreaterThanOrEqual(44)
-    expect(classes).toContain(`minmax(${PHOTO_REFERENCE_MIN_TILE_PX}px,1fr)`)
   })
 
-  it('loads lazily and un-optimised, as this repo has already ruled for Blob photos', () => {
-    expect(tile).toContain('loading="lazy"')
-    // `tileRaw`, not `tile`: the disable IS a comment, and the reason must travel with it.
+  it('carries the eslint-disable reason for the plain <img>, and imports no next/image', () => {
+    // The DISABLE COMMENT and the IMPORT LIST are both invisible at runtime — a comment compiles
+    // away and an unused import can't be observed by rendering — so these stay source-text checks.
+    // `loading="lazy"` itself moved to `PhotoReferencePicker.test.tsx`, which can observe it.
     expect(tileRaw).toContain('eslint-disable-next-line @next/next/no-img-element')
     expect(tileRaw).toContain('no thumbnail')
-    /*
-     * `codeLines`, not the whole file: the header CITES `next/image` in order to record that this
-     * repo has already ruled against it for Blob-hosted photographs, and the property being
-     * asserted is that nothing IMPORTS it. Same rule as the directive assertion above.
-     */
     expect(codeLines(picker)).not.toContain('next/image')
   })
 
@@ -303,17 +289,9 @@ describe('the grid is the iOS idiom, and it is bounded', () => {
   })
 })
 
-describe('the mount at phase 4 seam', () => {
-  it('replaces the seam with the picker once ImageGenPanel exists', () => {
-    /*
-     * Phases 4 and 5 run in the same wave, so this file may be read before the panel exists. The
-     * guard is the concurrency, not the requirement: when the panel is there it must mount the
-     * picker and must no longer carry this phase's seam marker. Once phase 4 has landed the
-     * reconciler may drop the `existsSync` and assert unconditionally.
-     */
-    const path = 'components/admin/ImageGenPanel.tsx'
-    if (!existsSync(`${ROOT}${path}`)) return
-    const panel = read(path)
+describe('the mount in ImageGenPanel', () => {
+  it('mounts the picker, unconditionally — phases 4 and 5 have both long since landed', () => {
+    const panel = read('components/admin/ImageGenPanel.tsx')
     expect(panel).toContain('<PhotoReferencePicker')
     expect(panel).toContain("from '@/components/admin/PhotoReferencePicker'")
     expect(panel).not.toContain('SEAM — PHASE 5')
