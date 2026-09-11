@@ -16,7 +16,7 @@ export const CHIP_CLASS =
   'inline-flex h-11 select-none items-center justify-center rounded-pill px-4 ' +
   'text-[13px] font-semibold transition-[background-color,color] disabled:opacity-50'
 
-export function chipClasses(selected: boolean): string {
+function chipClasses(selected: boolean): string {
   // Selected is a solid ink slab, unselected a tint of the page — the same pair as Button's
   // primary/secondary, so a chip and a button never disagree about what "chosen" looks like.
   return cn(CHIP_CLASS, selected ? 'bg-ink text-card' : 'bg-paper-2 text-ink-2')

@@ -14,7 +14,7 @@ import type { Flag as FlagData } from '@/lib/metrics'
  * No exclamation marks, no emoji, no "⚠️". `POSITIVE_SPLIT — the second half averaged +41 s/km
  * slower than the first` is the whole design.
  */
-export function Flag({ flag }: { flag: FlagData }) {
+function Flag({ flag }: { flag: FlagData }) {
   const { title, detail } = flagCopy(flag)
   const warn = flag.severity === 'warn'
 
