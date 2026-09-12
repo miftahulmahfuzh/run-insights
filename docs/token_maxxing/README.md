@@ -6,6 +6,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 |------|-------|-------------|-----|
 | 2026-09-12 | Google Auth Setup Doc Drift Audit | Audited the Google sign-in setup doc against current code and closed all four drifts from its three-week gap. | [link](./2026-09-12-google-auth-doc-audit.md) |
 | 2026-09-12 | Nina Persona Monolith Split | Split Nina's persona monolith into nine cohesive modules behind a barrel, a contract test pinning its exports. | [link](./2026-09-12-nina-persona-split.md) |
+| 2026-09-12 | DB Schema Split Into Domain Modules | Split the monolithic database schema into domain modules behind an unchanged barrel, proven no-op by drizzle-kit. | [link](./2026-09-12-db-schema-split.md) |
 | 2026-09-12 | Charts Pair Package Readme (Half-Stale Premise) | Wrote the charting pair's first combined package readme, verifying its assigned consolidation was already landed. | [link](./2026-09-12-charts-readme-yagni.md) |
 | 2026-09-12 | Nina Memory/ImagePrefs YAGNI Sweep | knip-swept lib/nina memory+imageprefs: 3 dead symbols deleted, 17 un-exported; zero flags left; 317 targeted tests green | [link](./2026-09-12-nina-memory-prefs-yagni.md) |
 | 2026-09-12 | App Tree YAGNI Sweep & Citation Repair | Swept the app tree for dead code and repaired false design-brief citations, one born wrong at birth. | [link](./2026-09-12-app-tree-yagni.md) |
