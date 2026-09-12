@@ -273,6 +273,33 @@ describe('FolderMenu', () => {
     await waitFor(() => expect(trigger()).toBeInTheDocument())
   })
 
+  it('puts focus on the move panel’s select when it opens — the clicked menu row is gone', async () => {
+    /*
+     * The menu row that opened this panel unmounts with the menu; without an explicit focus the
+     * keyboard operator lands on <body> and the next Tab restarts from the top of the document.
+     * The create and rename panels have always autoFocused their field — the move panel owes the
+     * same courtesy to its select.
+     */
+    menu({ folder: 'a/child' })
+    const user = await openMenu()
+    await user.click(screen.getByText('Move to…'))
+
+    expect(screen.getByLabelText('Move child into')).toHaveFocus()
+  })
+
+  it('puts focus on the delete panel’s Cancel — never on the destructive verb', async () => {
+    /*
+     * The delete panel's first control in DOM order is "Delete the folder", so resting focus
+     * there would make a stray Enter fire the destructive action. Cancel is the safe default,
+     * and the next Tab reaches the destructive verb deliberately.
+     */
+    menu({ folder: 'a/trip' })
+    const user = await openMenu()
+    await user.click(screen.getByText('Delete…'))
+
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+  })
+
   it('resets the error and the keep offer when a panel is reopened', async () => {
     deleteFolderAction.mockResolvedValue({ ok: false, error: 'refused' })
     menu()

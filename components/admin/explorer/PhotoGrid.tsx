@@ -136,6 +136,9 @@ export function PhotoGrid({
                     : photo.filename
                 }
                 title={photo.filename}
+                /* The hook `FileExplorer`'s pane-close focus restoration queries by. Invisible
+                   to everything else; ids are server-minted and need no escaping. */
+                data-photo-id={photo.id}
                 className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted and
