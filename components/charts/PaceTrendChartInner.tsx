@@ -15,6 +15,8 @@ import {
 import { dayIndexToISO, paceTrendLine, type PaceTrendPoint } from '@/lib/charts'
 import { formatDayCompact, formatDistanceM, formatPace } from '@/lib/format'
 
+import { PACE_AXIS_LABEL } from './paceAxisLabel'
+
 /**
  * §3.6 — one distance band's runs over the last twelve weeks, as a scatter.
  *
@@ -73,7 +75,7 @@ export function PaceTrendChartInner({
           axisLine={false}
           width={46}
           tickFormatter={(sec: number) => formatPace(sec)}
-          label={{ value: 'PACE (FASTER ↑)', angle: -90, position: 'insideLeft', offset: 8 }}
+          label={PACE_AXIS_LABEL}
         />
         {/* Bubble radius, not a colour ramp: distance is a magnitude, and the palette is spoken for. */}
         <ZAxis type="number" dataKey="distanceM" range={[36, 150]} domain={zDomain} />

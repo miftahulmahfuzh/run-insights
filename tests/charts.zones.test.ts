@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { canonicalSession } from './fixtures/canonicalRun'
-import { aggregateZones, toZoneShares, zoneOfHr, zoneTotalSec } from '@/lib/charts'
+import { aggregateZones, toZoneShares, zoneOfHr } from '@/lib/charts'
 
 /**
  * §11: the fixture's zone rows must produce the design brief's worked example — Z1 2%, Z2 1%,
@@ -20,9 +20,15 @@ describe('toZoneShares — the canonical fixture, and the design brief’s own n
 
   it('divides by the zone rows’ own total, not by runs.duration_sec', () => {
     // 4595 s of zone time against a 4716 s run: the watch's own tables disagree by 121 s. A bar
-    // that does not fill because its denominator disagrees with its parts is the worse bug.
-    expect(zoneTotalSec(canonicalSession.zones)).toBe(4595)
-    expect(zoneTotalSec(canonicalSession.zones)).not.toBe(canonicalSession.durationSec)
+    // that does not fill because its denominator disagrees with its parts is the worse bug. The
+    // denominator itself is the fixture's own row sum — every production would-be caller of the
+    // old test-only `zoneTotalSec` export computed exactly this local reduction, so the export
+    // died and the sum lives here where the assertion is.
+    const zoneSecTotal = canonicalSession.zones.reduce((sum, z) => sum + z.durationSec, 0)
+    expect(zoneSecTotal).toBe(4595)
+    expect(zoneSecTotal).not.toBe(canonicalSession.durationSec)
+    // The worked example above is reachable only with this denominator: from durationSec, zone 4
+    // would print 46 (2160 of 4716 s) and zone 5 42, not the brief's 47 and 43.
   })
 
   it('carries each zone’s printed bounds through, open-ended at both ends', () => {

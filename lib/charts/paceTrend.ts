@@ -1,5 +1,10 @@
 import { addDays, daysBetween, type DateISO } from '@/lib/date/ranges'
-import { bucketForDistanceM, type DistanceBucket } from '@/lib/metrics/week'
+import {
+  bucketForDistanceM,
+  type AssertTrue,
+  type DistanceBucket,
+  type EveryBucketListed,
+} from '@/lib/metrics/week'
 import type { ChartRun, PaceTrendPoint } from './types'
 import { TREND_WEEKS } from './volumeTrend'
 import { lastIsoWeeks } from './window'
@@ -27,7 +32,16 @@ import { lastIsoWeeks } from './window'
  * exactly; only the enum it named is F06's rather than a new one. Recorded in the execution log at
  * the foot of `docs/plans/archive/F08-views-charts.md`.
  */
-export const BUCKET_ORDER: readonly DistanceBucket[] = ['other', '5k', '10k', 'half', 'full']
+/**
+ * The chip row's left-to-right reading order, shortest to longest ('other' is "Short", the
+ * sub-3.5 km grab bag), and it must stay that way. A display order, kept here rather than derived
+ * from `DISTANCE_BUCKETS` — that list is the union's member set, not a reading order — and guarded
+ * below, so the day `DistanceBucket` grows, a chip left un-added is a compile error rather than a
+ * band the reader can no longer select.
+ */
+export const BUCKET_ORDER = ['other', '5k', '10k', 'half', 'full'] as const
+/** Completeness assertion — exported so `no-unused-vars` cannot eat it (see `DISTANCE_BUCKETS`). */
+export type _bucketOrderComplete = AssertTrue<EveryBucketListed<typeof BUCKET_ORDER>>
 
 /** Chip labels and the range caption. The ranges restate `bucketForDistanceM`; the test pins them. */
 export const BUCKET_LABELS: Record<DistanceBucket, { label: string; range: string }> = {
@@ -82,7 +96,9 @@ export function dayIndexToISO(startISO: DateISO, dayIndex: number): DateISO {
  * to sort first is not, which is why this order exists separately from `BUCKET_ORDER` (that one is
  * the chip row's left-to-right reading order, shortest to longest, and must stay that way).
  */
-const TIE_PREFERENCE: readonly DistanceBucket[] = ['10k', '5k', 'half', 'other', 'full']
+const TIE_PREFERENCE = ['10k', '5k', 'half', 'other', 'full'] as const
+/** Completeness assertion — exported so `no-unused-vars` cannot eat it (see `DISTANCE_BUCKETS`). */
+export type _tiePreferenceComplete = AssertTrue<EveryBucketListed<typeof TIE_PREFERENCE>>
 
 /**
  * The bucket the filter opens on: whichever has the most runs in the window, ties breaking toward

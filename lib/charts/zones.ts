@@ -23,11 +23,6 @@ export function toZoneShares(zones: readonly ZoneRow[]): ZoneShare[] {
   }))
 }
 
-/** Total zone seconds — the denominator above, exported so a caller can test it for zero. */
-export function zoneTotalSec(zones: readonly ZoneRow[]): number {
-  return zones.reduce((sum, z) => sum + z.durationSec, 0)
-}
-
 /**
  * Zone rows summed across many runs, for `/trends`'s month-aggregate bar (§2.3).
  *

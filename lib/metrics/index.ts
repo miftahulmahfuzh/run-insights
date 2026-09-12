@@ -34,6 +34,7 @@ export {
   bucketForDistanceM,
   computeVolumeDelta,
   computeWeekMetrics,
+  DISTANCE_BUCKETS,
   paceByBucket,
   VOLUME_JUMP,
   type DistanceBucket,
