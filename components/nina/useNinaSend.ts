@@ -7,7 +7,7 @@ import { todayInJakarta } from '@/lib/date/ranges'
 import type { NinaExistingPhoto, RunAttachment } from '@/lib/nina/attach'
 import type { QuoteView } from '@/lib/nina/reply'
 
-import type { ComposerDraftImage } from './Composer'
+import type { ComposerDraftImage } from './useComposerPhotos'
 import type { Notice } from './chatScreenCopy'
 import type { ChatMessage } from './types'
 

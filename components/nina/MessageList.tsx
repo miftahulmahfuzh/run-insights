@@ -1,22 +1,17 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 
 import { formatDayCompact } from '@/lib/format'
-import {
-  decideAutoScroll,
-  groupIntoDays,
-  isNearBottom,
-  type ScrollCause,
-} from '@/lib/nina/chatview'
+import { groupIntoDays } from '@/lib/nina/chatview'
 import { resolveQuote, type QuoteCandidate } from '@/lib/nina/reply'
-import { resolveRestoreTop, type ChatScrollMark } from '@/lib/nina/scroll'
+import type { ChatScrollMark } from '@/lib/nina/scroll'
 import { ChatImages } from './ChatImages'
 import { MessageBubble } from './MessageBubble'
 import { RunAttachmentCard } from './RunAttachmentCard'
 import { TypingIndicator } from './TypingIndicator'
 import type { ChatAvatar, ChatMessage } from './types'
-import { readAnchorRows } from './useChatScroll'
+import { useChatPageScroll } from './useChatPageScroll'
 
 /**
  * The conversation, grouped by day, newest at the bottom.
@@ -28,13 +23,13 @@ import { readAnchorRows } from './useChatScroll'
  * back to the platform, and it is also the reading-app answer — a conversation is a document with
  * the composer as its last row, not a viewport with a feed inside it.
  *
- * ── WHY THE "WAS HE AT THE BOTTOM" ANSWER IS SAMPLED, NOT MEASURED IN THE EFFECT ──────────────
- * By the time an effect runs, the new bubble is already in the DOM and `scrollHeight` already
- * includes it, so measuring the distance to the bottom *then* always says "far away" and would
- * turn rule 3 of `decideAutoScroll` into "never follow". A passive `scroll` listener keeps the
- * answer up to date instead, and the effect reads the last sample. The listener does no work
- * beyond one comparison, and it holds a ref rather than state so a scroll never re-renders the
- * list.
+ * ── WHAT THE SPLIT MOVED (2026-09-12) ─────────────────────────────────────────────────────────
+ * The scroll machinery — the reader-position sampler, the R14 restore-to-mark, and the
+ * follow-new-content effect — lives in `useChatPageScroll`, fed primitives (`messageCount`,
+ * `lastMessageIsFromUser`) rather than the messages array, so this stays the one module that
+ * knows `ChatMessage`'s field names (RULING E2b, and it is still true: the quote candidates below
+ * are the only field derivation left here). The arithmetic is `lib/nina/chatview.ts`'s, the URL
+ * mark is `useChatScroll.ts`'s; see the hook's header for the three-way split.
  *
  * The day divider reuses `RunList`'s week-divider recipe exactly — `text-[11px] font-semibold
  * tracking-[0.06em] text-ink-3 uppercase`, and "Today" in place of a date for the current day for
@@ -116,130 +111,13 @@ export function MessageList({
    */
   avatar: ChatAvatar
 }) {
-  const readerNearBottom = useRef(true)
-  const mounted = useRef(false)
-  const lastCount = useRef(messages.length)
-  const lastTyping = useRef(typing)
-  const lastOverlap = useRef(keyboardOverlapPx)
-
-  // Sample where the reader is, continuously and cheaply, so the effect below has an answer that
-  // predates the DOM change it is reacting to.
-  useEffect(() => {
-    const sample = () => {
-      readerNearBottom.current = isNearBottom({
-        scrollTop: window.scrollY,
-        scrollHeight: document.documentElement.scrollHeight,
-        clientHeight: window.innerHeight,
-      })
-    }
-    sample()
-    window.addEventListener('scroll', sample, { passive: true })
-    window.addEventListener('resize', sample)
-    return () => {
-      window.removeEventListener('scroll', sample)
-      window.removeEventListener('resize', sample)
-    }
-  }, [])
-
-  /**
-   * R14's restore. Did we honour the mark? `null` = not decided yet, `true` = we scrolled,
-   * `false` = there was no mark or its anchor is gone. Read by the effect below, which must not
-   * jump to the newest message on a mount we already positioned.
-   *
-   * A LAYOUT effect, unlike everything else on this screen: it runs before the browser paints, so
-   * the runner never sees the bottom of the conversation flash past on the way to where they were.
-   * The `requestAnimationFrame` re-application is not belt-and-braces — a web font settling or
-   * phase 6's images finishing decode moves the anchor after layout, and re-deriving the same pure
-   * number from the anchor's new position is the entire reason the mark stores a message and an
-   * offset instead of a pixel.
-   */
-  const restoredRef = useRef<boolean | null>(null)
-
-  useLayoutEffect(() => {
-    if (restoreMark === null) {
-      restoredRef.current = false
-      return
-    }
-
-    const apply = (): boolean => {
-      const anchor = readAnchorRows().find((row) => row.messageId === restoreMark.messageId)
-      const top = resolveRestoreTop({
-        mark: restoreMark,
-        anchorTop: anchor?.top ?? null,
-        geometry: {
-          scrollHeight: document.documentElement.scrollHeight,
-          clientHeight: window.innerHeight,
-        },
-      })
-      if (top === null) return false
-      window.scrollTo({ top, behavior: 'instant' })
-      return true
-    }
-
-    restoredRef.current = apply()
-    if (restoredRef.current !== true) return
-
-    const frame = window.requestAnimationFrame(() => {
-      apply()
-    })
-    return () => {
-      window.cancelAnimationFrame(frame)
-    }
-  }, [restoreMark])
-
-  useEffect(() => {
-    const grew = messages.length > lastCount.current
-    const startedTyping = typing && !lastTyping.current
-    const viewportMoved = keyboardOverlapPx !== lastOverlap.current
-    const first = !mounted.current
-
-    const cause: ScrollCause | null = first
-      ? 'mount'
-      : grew && messages[messages.length - 1]?.role === 'user'
-        ? 'own-message'
-        : grew || startedTyping
-          ? 'incoming'
-          : viewportMoved
-            ? 'viewport'
-            : null
-
-    mounted.current = true
-    lastCount.current = messages.length
-    lastTyping.current = typing
-    lastOverlap.current = keyboardOverlapPx
-    if (cause === null) return
-
-    /*
-     * R14. The layout effect above already put this screen where the runner left it, so the
-     * mount's jump to the newest message must not run. Only 'mount' is suppressed: a bubble
-     * arriving after the restore, or the keyboard opening, is a live event and still moves the
-     * page under phase 4's rules. `isNearBottom` is re-sampled because the restore moved us
-     * without firing a scroll event the sampler could see.
-     */
-    if (cause === 'mount' && restoredRef.current === true) {
-      readerNearBottom.current = isNearBottom({
-        scrollTop: window.scrollY,
-        scrollHeight: document.documentElement.scrollHeight,
-        clientHeight: window.innerHeight,
-      })
-      return
-    }
-
-    const decision = decideAutoScroll({
-      cause,
-      readerNearBottom: readerNearBottom.current,
-      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    })
-    if (decision === 'none') return
-
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
-      behavior: decision === 'jump' ? 'instant' : 'smooth',
-    })
-    // A jump lands at the bottom, so the sample is stale by one frame; correct it now rather than
-    // wait for a scroll event that an 'instant' scroll may not fire.
-    readerNearBottom.current = true
-  }, [messages, typing, keyboardOverlapPx])
+  useChatPageScroll({
+    messageCount: messages.length,
+    lastMessageIsFromUser: messages[messages.length - 1]?.role === 'user',
+    typing,
+    keyboardOverlapPx,
+    restoreMark,
+  })
 
   /*
    * The candidate set every quote resolves against: the rows on this screen and nothing else. A
