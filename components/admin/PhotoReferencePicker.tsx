@@ -74,7 +74,6 @@ export function PhotoReferencePicker({
   total,
   value,
   onChange,
-  disabled = false,
 }: {
   /**
    * One bounded page of the union — album rows and `kind = 'generated'` chat rows together, newest
@@ -88,8 +87,12 @@ export function PhotoReferencePicker({
   value: string
   /** Called with the next value — a `key`, or `PHOTO_REFERENCE_NONE` to clear. */
   onChange: (next: string) => void
-  /** True while phase 4's save transition runs. */
-  disabled?: boolean
+  /**
+   * No `disabled` prop (2026-09-12 sweep): it was born for "while the save transition runs" but
+   * the one call site never armed it, and a prop with no caller is a second way to render,
+   * waiting (the `RunDateLink` round-3 rule). The save keeps its protection one level up — the
+   * transition state lives with the form that owns the save.
+   */
 }) {
   const headingId = React.useId()
 
@@ -153,11 +156,10 @@ export function PhotoReferencePicker({
               <li key={tile.key} className="relative aspect-square bg-ink-3/20">
                 <button
                   type="button"
-                  disabled={disabled}
                   onClick={() => onChange(nextPhotoReferenceValue(value, tile.key))}
                   aria-pressed={tile.selected}
                   aria-label={tile.label}
-                  className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset disabled:opacity-50"
+                  className="block size-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- Blob-hosted,
                    * deliberately un-transformed, and the chat half of this union has no thumbnail
@@ -204,7 +206,6 @@ export function PhotoReferencePicker({
                   type="button"
                   size="md"
                   variant="secondary"
-                  disabled={disabled}
                   onClick={() => setReveal(view.revealed + PHOTO_REFERENCE_REVEAL_STEP)}
                 >
                   Show more
@@ -215,7 +216,6 @@ export function PhotoReferencePicker({
                   type="button"
                   size="md"
                   variant="ghost"
-                  disabled={disabled}
                   onClick={() => onChange(PHOTO_REFERENCE_NONE)}
                 >
                   Clear reference

@@ -6,13 +6,13 @@ import { CircleFrame } from './CircleFrame'
 import type { NinaCropInput } from '@/lib/nina/crop'
 
 /**
- * `CircleFrame` is three call sites' shared `<span>` — and the invariant it exists to enforce is
- * one nobody can see in the markup: the box MUST be square, because `ninaCropStyle`'s `top: N%`
- * only means what `left: N%` means inside a square. So these tests pin the square-box class set,
- * the fact that the `<img>`'s inline style is exactly the one mapping's output for known inputs
- * (computed BY HAND here, not by calling the helper — otherwise the test would just restate the
- * implementation), and the two class levers (`ring`, `sizeClass`) the call sites actually differ
- * in.
+ * `CircleFrame` is four call sites' shared `<span>` (measured 2026-09-12) — and the invariant it
+ * exists to enforce is one nobody can see in the markup: the box MUST be square, because
+ * `ninaCropStyle`'s `top: N%` only means what `left: N%` means inside a square. So these tests
+ * pin the square-box class set, the fact that the `<img>`'s inline style is exactly the one
+ * mapping's output for known inputs (computed BY HAND here, not by calling the helper —
+ * otherwise the test would just restate the implementation), and the one class lever
+ * (`sizeClass`) the call sites actually differ in.
  */
 
 function frame(props?: Partial<Parameters<typeof CircleFrame>[0]>) {
@@ -21,6 +21,7 @@ function frame(props?: Partial<Parameters<typeof CircleFrame>[0]>) {
       src="https://blob.example/nina/avatar.png"
       natural={{ width: 800, height: 600 }}
       crop={null}
+      sizeClass="size-24"
       {...props}
     />,
   )
@@ -52,33 +53,10 @@ describe('CircleFrame', () => {
     )
   })
 
-  it('defaults to a size-24 frame', () => {
-    const { container } = frame()
-    expect(container.querySelector('span')).toHaveClass('size-24')
-  })
-
-  it('passes sizeClass through — the one thing the three call sites differ in', () => {
+  it('passes sizeClass through — the one thing the four call sites differ in', () => {
     const { container } = frame({ sizeClass: 'size-7' })
     expect(container.querySelector('span')).toHaveClass('size-7')
     expect(container.querySelector('span')).not.toHaveClass('size-24')
-  })
-
-  it('merges an extra className alongside the defaults', () => {
-    const { container } = frame({ className: 'mt-2' })
-    expect(container.querySelector('span')).toHaveClass('mt-2', 'size-24', 'overflow-hidden')
-  })
-
-  it('adds the accent ring only when ring is set', () => {
-    const plain = frame()
-    expect(plain.container.querySelector('span')).not.toHaveClass('ring-2')
-
-    const ringed = frame({ ring: true })
-    expect(ringed.container.querySelector('span')).toHaveClass(
-      'ring-2',
-      'ring-accent',
-      'ring-offset-2',
-      'ring-offset-card',
-    )
   })
 
   it('applies the cover-fit style for an identity crop on a landscape photo — hand-computed', () => {

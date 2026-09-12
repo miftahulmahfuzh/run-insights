@@ -92,25 +92,6 @@ export function CheckIcon({ className }: { className: string }) {
   )
 }
 
-/** "What she can see in it" — the vision model's (or the operator's) prose about the photograph. */
-export function EyeIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  )
-}
-
 /** "What she was asked to draw" — the generation sidecar. */
 export function BrushIcon({ className }: { className: string }) {
   return (
@@ -146,42 +127,6 @@ export function PersonFrameIcon({ className }: { className: string }) {
       <circle cx="12" cy="12" r="10" />
       <circle cx="12" cy="10" r="3" />
       <path d="M7 20.5a6 6 0 0 1 10 0" />
-    </svg>
-  )
-}
-
-/** The pager's newer page. */
-export function ChevronLeftIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  )
-}
-
-/** The pager's older page. */
-export function ChevronRightIcon({ className }: { className: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m9 18 6-6-6-6" />
     </svg>
   )
 }
