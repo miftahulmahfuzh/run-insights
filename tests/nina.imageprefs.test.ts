@@ -543,7 +543,7 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
      * again as the chat row that points at it. Inlining `eq(kind, 'generated')` here would be the
      * obvious simplification (this read needs its own projection anyway) and would silently
      * re-create the duplicate the F37 set just removed. So the shortcut is a failing test. */
-    const source = readSource('lib/nina/queries.ts')
+    const source = readSource('lib/nina/queries/imageprefs.ts')
     const fn = source.slice(source.indexOf('export async function listNinaPhotoReferences'))
     const body = fn.slice(0, fn.indexOf('\nexport '))
     expect(body).toContain('generatedChatPhotoScope(userId)')
