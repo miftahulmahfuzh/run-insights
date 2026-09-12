@@ -4,29 +4,24 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { env } from '@/lib/env'
-import {
-  coerceNarrativeTextModel,
-  NARRATIVE_TEXT_MODEL_DEFAULT,
-  NARRATIVE_TEXT_MODEL_IDS,
-  NARRATIVE_TEXT_MODEL_SPECS,
-} from '@/lib/llm/catalog'
+import { NARRATIVE_TEXT_MODEL_IDS, NARRATIVE_TEXT_MODEL_SPECS } from '@/lib/llm/catalog'
 import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
 
 describe('the text-model catalog (the 2026-09-10 ask)', () => {
   it('offers exactly the two ids verified live on the Anthropic-compatible endpoint', () => {
     expect([...NARRATIVE_TEXT_MODEL_IDS].sort()).toEqual(['glm-5.3', 'glm-5.3-flash'])
-    expect(NARRATIVE_TEXT_MODEL_DEFAULT).toBe('glm-5.3')
     for (const id of NARRATIVE_TEXT_MODEL_IDS) {
       expect(NARRATIVE_TEXT_MODEL_SPECS[id].label.length).toBeGreaterThan(0)
       expect(NARRATIVE_TEXT_MODEL_SPECS[id].hint.length).toBeGreaterThan(0)
     }
   })
 
-  it('coerces anything unreadable to the default', () => {
-    expect(coerceNarrativeTextModel('glm-5.3-flash')).toBe('glm-5.3-flash')
-    for (const bad of [undefined, null, '', 'glm-9', 42]) {
-      expect(coerceNarrativeTextModel(bad), String(bad)).toBe(NARRATIVE_TEXT_MODEL_DEFAULT)
-    }
+  it('the deployed fallback env.LLM_MODEL is an id this catalog declares', () => {
+    /* `narrativeModel` degrades every unreadable or absent setting to `env.LLM_MODEL`, so the env
+     * value and the dropdown's vocabulary must describe the same set — an env model the catalog
+     * refuses would make the no-row and unknown-row degrades pick a model no admin could have
+     * chosen. This is the pin the catalog's header has always claimed. */
+    expect(NARRATIVE_TEXT_MODEL_IDS).toContain(env.LLM_MODEL)
   })
 })
 

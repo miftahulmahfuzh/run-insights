@@ -8,7 +8,7 @@ import { narrativeClient } from './client'
 import { narrativeModel } from './textModel'
 import { factsHash } from './factsHash'
 import type { NarrateFacts } from './facts'
-import { promptVersionFor, REPAIR_PREAMBLE, REPORT_TOOL, systemPromptFor } from './prompts/narrate'
+import { REPAIR_PREAMBLE, REPORT_TOOL, systemPromptFor } from './prompts/narrate'
 import {
   describeInsightIssues,
   InsightPayloadSchema,
@@ -68,14 +68,14 @@ export const MIN_REPAIR_BUDGET_MS = 3_000
 /** Exported for the deadline-gate test, which must not hardcode a number this file may change. */
 export const SESSION_OVERALL_MS = BUDGET.session.overall
 
-export type InsightSource = 'llm' | 'llm_repair' | 'unavailable'
+type InsightSource = 'llm' | 'llm_repair' | 'unavailable'
 
-export interface Usage {
+interface Usage {
   inputTokens: number
   outputTokens: number
 }
 
-export interface InsightResult {
+interface InsightResult {
   /** null only when `source === 'unavailable'`. F08 renders the metrics with no prose. */
   payload: InsightPayload | null
   source: InsightSource
@@ -305,7 +305,7 @@ export interface InsightStore {
   ): Promise<void>
 }
 
-export const dbInsightStore: InsightStore = {
+const dbInsightStore: InsightStore = {
   async latest(userId, scope, scopeKey) {
     const row = await getLatestInsight(userId, scope, scopeKey)
     return row == null
@@ -322,7 +322,7 @@ export const dbInsightStore: InsightStore = {
   },
 }
 
-export interface NarrateDeps {
+interface NarrateDeps {
   client: LlmClientLike
   store: InsightStore
   model: string
@@ -437,5 +437,3 @@ function readStoredPayload(payload: unknown): InsightPayload | null {
   const parsed = InsightPayloadSchema.safeParse(payload)
   return parsed.success ? parsed.data : null
 }
-
-export { promptVersionFor }

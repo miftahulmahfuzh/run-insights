@@ -32,7 +32,7 @@ import {
  * genuinely unexpected error, which the job wrapper turns into `failed` / `transport` anyway.
  */
 
-export interface ExtractOutcome {
+interface ExtractOutcome {
   status: 'ok' | 'repaired' | 'failed'
   session: ExtractedSession | null
   errorCode: ExtractionErrorCode | null
