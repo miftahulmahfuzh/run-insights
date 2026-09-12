@@ -4,6 +4,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 
 | Date | Title | Achievement | Doc |
 |------|-------|-------------|-----|
+| 2026-09-12 | Nina Composer & MessageList Split | Split Nina's composer and message list into cohesive hook modules, cutting along the seams their own comments drew. | [link](./2026-09-12-nina-composer-messagelist-split.md) |
 | 2026-09-12 | Google Auth Setup Doc Drift Audit | Audited the Google sign-in setup doc against current code and closed all four drifts from its three-week gap. | [link](./2026-09-12-google-auth-doc-audit.md) |
 | 2026-09-12 | Nina Persona Monolith Split | Split Nina's persona monolith into nine cohesive modules behind a barrel, a contract test pinning its exports. | [link](./2026-09-12-nina-persona-split.md) |
 | 2026-09-12 | DB Schema Split Into Domain Modules | Split the monolithic database schema into domain modules behind an unchanged barrel, proven no-op by drizzle-kit. | [link](./2026-09-12-db-schema-split.md) |
