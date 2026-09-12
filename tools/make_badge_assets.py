@@ -205,11 +205,13 @@ def emit_manifest(deck, entries, style_versions):
     """The deck's manifest module, as text.
 
     DECK-AWARE PROSE, NOT A TEMPLATE WITH THE NOUNS SWAPPED. The `twill` and
-    `small` fields do different jobs in the two decks — the badge shelf paints a
-    square tile behind a square mark, the record panel does not have a shelf at
-    all yet — so each deck's docblock says what is true for it. Regenerating the
-    badge deck with this function produces the file that was already on disk,
-    byte for byte; that is the property to preserve when editing here.
+    `small` fields — and the sizes block, which carries the records deck's
+    `_SMALL_SIZE` keep-decision — do different jobs in the two decks — the badge
+    shelf paints a square tile behind a square mark, the record panel does not
+    have a shelf at all yet — so each deck's docblock says what is true for it.
+    Regenerating the badge deck with this function produces the file that was
+    already on disk, byte for byte; that is the property to preserve when editing
+    here.
     """
     versions = sorted({v for v in style_versions.values() if v})
     ver_note = (
@@ -228,6 +230,9 @@ def emit_manifest(deck, entries, style_versions):
             f"  /** {SMALL}×{SMALL} WebP for the shelf mark, drawn at 56 css px. A CENTRE",
             "   *  SQUARE CROP of the master, not a squash of it: the shelf tile is square,",
             "   *  and the crop restores exactly the patch fraction the square masters had. */",
+        ]
+        sizes_doc = [
+            "/** Intrinsic pixel sizes, so a consumer never has to restate them. */",
         ]
         twill_doc = [
             "  /**",
@@ -267,6 +272,18 @@ def emit_manifest(deck, entries, style_versions):
             "   * own frame its own colour.",
             "   */",
         ]
+        sizes_doc = [
+            "/** Intrinsic pixel sizes, so a consumer never has to restate them.",
+            " *",
+            f" *  `{deck.const_name}_SMALL_SIZE` is zero-reference today and KEPT on purpose. It",
+            " *  is the contract half of the same F25 bet the `small` field above makes: the",
+            " *  derivative ships whether or not the not-yet-built records shelf draws it,",
+            " *  because adding it later would re-hash every master's filename. When that shelf",
+            " *  exists, its shelf-mark component imports this constant exactly as `BadgeShelf`",
+            " *  imports the badge deck's; deleting it now would leave that component restating",
+            f" *  {SMALL} by hand — the exact thing this block exists to prevent. Verified",
+            " *  zero-reference 2026-09-12; recorded here so no sweep re-litigates it. */",
+        ]
 
     lines = [
         "/**",
@@ -305,7 +322,7 @@ def emit_manifest(deck, entries, style_versions):
         "  styleVersion: string",
         "}",
         "",
-        "/** Intrinsic pixel sizes, so a consumer never has to restate them. */",
+        *sizes_doc,
         f"export const {deck.const_name}_WIDTH = {PANEL_W}",
         f"export const {deck.const_name}_HEIGHT = {PANEL_H}",
         f"export const {deck.const_name}_SMALL_SIZE = {SMALL}",
