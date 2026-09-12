@@ -2,14 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { TRUTH } from '../../research/schema.mjs'
 import {
-  ALL_SESSION_FIELDS,
   FIELD_SOURCES,
-  emptyExtractedSession,
-  fieldIsReachable,
   makeExtractedSessionSchema,
   normalizeClockTime,
   RawExtractedSession,
-  sectionForField,
   type ScreenKind,
 } from './extractedSession'
 
@@ -162,48 +158,39 @@ describe('FIELD_SOURCES is complete and consistent', () => {
     // If a field is added to the schema without a row here, `fieldIsReachable` would throw at
     // runtime on a partial upload — inside the background job, where nobody is watching.
     const schemaKeys = Object.keys(RawExtractedSession.shape).sort()
-    expect(ALL_SESSION_FIELDS.slice().sort()).toEqual(schemaKeys)
+    expect(Object.keys(FIELD_SOURCES).slice().sort()).toEqual(schemaKeys)
   })
 
   it('gives every field at least one source, and only real screen kinds', () => {
-    for (const field of ALL_SESSION_FIELDS) {
+    for (const field of Object.keys(FIELD_SOURCES) as Array<keyof typeof FIELD_SOURCES>) {
       expect(FIELD_SOURCES[field].length).toBeGreaterThan(0)
       for (const kind of FIELD_SOURCES[field]) {
         expect(['summary', 'splits', 'heartrate']).toContain(kind)
       }
       // With all three screens uploaded, nothing is ever nulled out.
-      expect(fieldIsReachable(field, ALL_KINDS)).toBe(true)
+      expect(FIELD_SOURCES[field].some((kind) => ALL_KINDS.has(kind))).toBe(true)
     }
   })
 
-  it('R-45: resolves a field’s provenance section, preferring the summary for avgHrBpm', () => {
-    expect(sectionForField('avgHrBpm')).toBe('summary')
-    expect(sectionForField('maxHrBpm')).toBe('heartrate')
-    expect(sectionForField('restingHrBpm')).toBe('heartrate')
-    expect(sectionForField('splits')).toBe('splits')
-    expect(sectionForField('distanceKm')).toBe('summary')
+  it('R-45: a field’s provenance section is its first source, preferring the summary for avgHrBpm', () => {
+    expect(FIELD_SOURCES.avgHrBpm[0]).toBe('summary')
+    expect(FIELD_SOURCES.maxHrBpm[0]).toBe('heartrate')
+    expect(FIELD_SOURCES.restingHrBpm[0]).toBe('heartrate')
+    expect(FIELD_SOURCES.splits[0]).toBe('splits')
+    expect(FIELD_SOURCES.distanceKm[0]).toBe('summary')
   })
 })
 
 describe('emptyExtractedSession', () => {
   it('is a valid session with nothing in it — §8.1’s all-blank review form', () => {
-    const empty = emptyExtractedSession()
-    expect(RawExtractedSession.safeParse(empty).success).toBe(true)
-    expect(empty.splits).toEqual([])
-    expect(empty.distanceKm).toBeNull()
-  })
-
-  it('returns a fresh object each call, so one caller cannot mutate another’s blank form', () => {
-    const a = emptyExtractedSession()
-    a.splits.push({
-      km: 1,
-      timeSec: 1,
-      paceSecPerKm: 1,
-      hrBpm: null,
-      cadenceSpm: null,
-      partial: false,
-    })
-    expect(emptyExtractedSession().splits).toEqual([])
+    // The all-empty session IS the raw schema's own default: every scalar null, every array
+    // empty. Parsed through the provenance guard below, this is what a failed extraction's
+    // blank review form holds.
+    const parsed = RawExtractedSession.safeParse({})
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.splits).toEqual([])
+    expect(parsed.data.distanceKm).toBeNull()
   })
 })
 
@@ -276,7 +263,6 @@ describe('F30: clock-time normalisation', () => {
 
   it('applies the transform through the schema, on both fields, on every screen set', () => {
     const parsed = schemaFor('summary').safeParse({
-      ...emptyExtractedSession(),
       startTime: '5.32 PM',
       endTime: '6.46 PM',
     })
