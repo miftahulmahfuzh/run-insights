@@ -39,8 +39,7 @@
     exactly FOUR hand-kept enumeration sites exist for the `DistanceBucket` union, each either
     canonical or compiler-guarded, and no fifth list anywhere.
 - **Branch:** `token-maxxing-2026-09-12-charts-readme-yagni`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator owns
-  landing worker branches.
+- **Merge status:** merged (commit `174a4c4`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** moderate (est. ~0.5M, input-dominated) — 22 full-file reads across the
   pair, two prior session docs digested in full, the exhaustive literal sweep, and a 391-line
   readme written in the house style. 🔥
