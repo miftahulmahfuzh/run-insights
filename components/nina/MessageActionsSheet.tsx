@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Button } from '@/components/ui'
 import { Sheet } from '@/components/ui/Sheet'
@@ -113,6 +113,7 @@ export function MessageActionsSheet({
   const [mode, setMode] = useState<Mode>('menu')
   const [value, setValue] = useState(target?.body ?? '')
   const [pending, setPending] = useState(false)
+  const editFieldRef = useRef<HTMLTextAreaElement>(null)
   /** A refusal `planMessageEdit` decided locally, so the runner is not made to wait for a POST. */
   const [refusal, setRefusal] = useState<string | null>(null)
 
@@ -320,26 +321,52 @@ export function MessageActionsSheet({
           <label className="sr-only" htmlFor="nina-message-edit">
             Message text
           </label>
-          <textarea
-            id="nina-message-edit"
-            rows={5}
-            value={value}
-            maxLength={max}
-            onChange={(event) => {
-              setValue(event.target.value)
-              setRefusal(null)
-            }}
-            /* No Enter-to-submit, unlike the composer. Enter there sends a chat message and a
-               newline needs Shift; here the runner is repairing prose that may already contain
-               newlines, and a stray Enter must not commit a half-finished correction. Save is a
-               button. */
-            className={cn(
-              'w-full resize-y rounded-field bg-paper-2 px-4 py-3',
-              'font-medium text-ink outline-none placeholder:font-medium placeholder:text-ink-3',
-              'focus-visible:ring-2 focus-visible:ring-accent',
+          <div className="relative">
+            <textarea
+              ref={editFieldRef}
+              id="nina-message-edit"
+              rows={5}
+              value={value}
+              maxLength={max}
+              onChange={(event) => {
+                setValue(event.target.value)
+                setRefusal(null)
+              }}
+              /* No Enter-to-submit, unlike the composer. Enter there sends a chat message and a
+                 newline needs Shift; here the runner is repairing prose that may already contain
+                 newlines, and a stray Enter must not commit a half-finished correction. Save is a
+                 button. */
+              className={cn(
+                'w-full resize-y rounded-field bg-paper-2 py-3 pr-11 pl-4',
+                'font-medium text-ink outline-none placeholder:font-medium placeholder:text-ink-3',
+                'focus-visible:ring-2 focus-visible:ring-accent',
+              )}
+              placeholder={picked.mine ? 'What you meant to say' : 'What she should have said'}
+            />
+            {value.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setValue('')
+                  setRefusal(null)
+                  /* The click blurs the textarea before this runs, which would dismiss the
+                     keyboard — refocus explicitly so it stays up for the next word. */
+                  editFieldRef.current?.focus()
+                }}
+                aria-label="Clear text"
+                className="absolute top-3 right-2 grid size-7 place-items-center rounded-pill text-ink-3 active:scale-[0.97]"
+              >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+                  <path
+                    d="M6 6l12 12M18 6L6 18"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
             )}
-            placeholder={picked.mine ? 'What you meant to say' : 'What she should have said'}
-          />
+          </div>
 
           <p className="text-[11px] font-medium text-ink-3">
             {picked.mine
