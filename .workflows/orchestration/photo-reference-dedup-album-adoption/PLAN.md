@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/photo-reference-dedup-album-adoption`
 **Branch:** `feature/photo-reference-dedup-album-adoption` (base: `origin/main` @ `78f1a9c`)
 **Phases:** 1
-**Status:** planned
+**Status:** complete
 **Coordinator:** —
 
 ---
@@ -62,7 +62,7 @@ Docstrings and tests that describe/assert this scope's behaviour.
 
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
-| 1 | Exclude album-adopted photographs from the chat side of the reference picker | R1 | `lib/nina` | 3 | — | NORMAL | `.workflows/plan/photo-reference-dedup-album-adoption/phase-1.md` | — | — |
+| 1 | [x] Exclude album-adopted photographs from the chat side of the reference picker | R1 | `lib/nina` | 3 | — | NORMAL | `.workflows/plan/photo-reference-dedup-album-adoption/phase-1.md` | P1-NIN-A039 | — |
 
 ### Phase 1 — Exclude album-adopted photographs from the chat side of the reference picker
 **Satisfies:** R1

@@ -1,0 +1,30 @@
+{
+  "branch": "feature/photo-reference-dedup-album-adoption",
+  "coordinator": "orch-photo-reference-dedup-album-adoption",
+  "coordinator_session_id": "bf48c5e5-92cb-4321-8229-dccb130da9f1",
+  "created": "2026-09-12T05:12:39+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": "0d7ac9d",
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": "correlated NOT EXISTS on nina_avatars.source_key added to shared generatedChatPhotoScope (all 3 callers); read-path only, no migration; 4 prod tiles deduplicated (measured 2026-09-12)",
+      "package": "lib/nina",
+      "plan": ".workflows/plan/photo-reference-dedup-album-adoption/phase-1.md",
+      "reported_at": "2026-09-12T05:36:36+00:00",
+      "satisfies": [
+        "R1"
+      ],
+      "status": "done",
+      "task_id": "P1-NIN-A039",
+      "title": "Exclude album-adopted photographs from the chat side of the reference picker"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/photo-reference-dedup-album-adoption/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "photo-reference-dedup-album-adoption",
+  "updated": "2026-09-12T05:36:36+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/photo-reference-dedup-album-adoption"
+}
