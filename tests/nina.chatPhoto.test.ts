@@ -18,6 +18,10 @@ const VIEWER = 'components/ui/PhotoViewer.tsx'
 const IMAGES = 'components/nina/ChatImages.tsx'
 const LIST = 'components/nina/MessageList.tsx'
 const SCREEN = 'components/nina/ChatScreen.tsx'
+/* The 2026-09-12 ChatScreen split moved the viewer derivation into its own hook. */
+const VIEWER_HOOK = 'components/nina/usePhotoViewer.ts'
+/* ...and moved one of the two sanctioned replaceState writers into this one. */
+const QUOTE_LANDING = 'components/nina/useQuoteLanding.ts'
 const ACTIONS = 'components/nina/ChatPhotoActions.tsx'
 const SAVE = 'components/ui/useSavePhoto.ts'
 const ABOUT = 'components/nina/NinaAboutScreen.tsx'
@@ -49,7 +53,7 @@ describe('a chat photo is a tap target that opens the one overlay', () => {
   it('derives the overlay from the message rather than snapshotting its photos', () => {
     // A snapshot would keep showing a photo whose row a delete or a refresh has removed, and
     // PhotoViewer's `photos[index]!` would then call nameOf(undefined).
-    const source = readRepoCode(SCREEN)
+    const source = readRepoCode(VIEWER_HOOK)
     expect(source).toContain('chatViewerPhotos(viewerMessage)')
     expect(source).toContain('viewerIndex(viewer.index, viewerPhotos.length)')
   })
@@ -97,9 +101,11 @@ describe('attaching reuses the machinery instead of re-uploading', () => {
     // together, because two independent replaceState calls in one commit would race. R10 must not
     // add a third caller. The ONE sanctioned second writer is the soft-nav watcher's strip: it
     // deletes ?jump= by name in the commit where the navigation arrived — a commit the mount-time
-    // effect (deps `[]`) does not run in — so there is still exactly one writer per commit. See
-    // the strip effect's header in ChatScreen, which states the same rule.
-    expect(source.match(/replaceState/g)?.length).toBe(2)
+    // effect (deps `[]`) does not run in — so there is still exactly one writer per commit. The
+    // 2026-09-12 split moved the strip's effect into useQuoteLanding.ts, so the two sanctioned
+    // writers now live one per file rather than both in ChatScreen.
+    expect(source.match(/replaceState/g)?.length).toBe(1)
+    expect(readRepoCode(QUOTE_LANDING).match(/replaceState/g)?.length).toBe(1)
     expect(source).not.toContain('router.push')
     expect(source).not.toContain('photo=image:')
   })

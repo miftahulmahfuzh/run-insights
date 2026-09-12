@@ -137,9 +137,11 @@ describe('`/upload` is a normal tab, in the centre cell', () => {
  * scan the text, because it proves the rule for every branch rather than for the one that ran.
  */
 
-/* `BAR` is phase 1's, declared at the top of this file; these two are new. */
+/* `BAR` is phase 1's, declared at the top of this file; these two are new. `SCREEN_SRC` points at
+ * `useQuoteLanding.ts`, not `ChatScreen.tsx` itself — the 2026-09-12 ChatScreen split moved
+ * `COMPOSER_CLEARANCE_PX`'s declaration there; `ChatScreen.tsx` only imports it now. */
 const CHROME_SRC = 'components/nina/ChatChrome.tsx'
-const SCREEN_SRC = 'components/nina/ChatScreen.tsx'
+const SCREEN_SRC = 'components/nina/useQuoteLanding.ts'
 
 describe("the tab bar's outer height is the grid plus its border", () => {
   it('spells the border as 1 px', () => {
