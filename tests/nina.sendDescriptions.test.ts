@@ -108,7 +108,11 @@ const USER = 'u1'
 const SESSION_ID = 'sesAAAAAAAAA'
 const RUNNER_MESSAGE_ID = 'msgRUNNER001'
 const AVATAR_ID = 'avaAAAAAAAAA'
-const TICKET_SECRET = 'unit-secret'
+/* Must be the SAME value `authEnv().AUTH_SECRET` resolves to when `sendNinaMessage` verifies the
+ * ticket — reading it back off `process.env` (rather than repeating the 'unit-secret' literal)
+ * keeps signing and verifying in sync even when CI's job-level env already set AUTH_SECRET to
+ * something else before this file's `??=` above ran (making the seed a no-op). */
+const TICKET_SECRET = process.env.AUTH_SECRET!
 
 /**
  * A ticket for one composer upload. The pathname shape is `isNinaChatRequestPathname`'s

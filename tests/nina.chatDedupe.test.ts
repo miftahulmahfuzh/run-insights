@@ -76,7 +76,11 @@ const RUNNER_MESSAGE_ID = 'msgRUNNER001'
 /** sha256("test") — a known-answer vector. */
 const HASH = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
 
-const TICKET_SECRET = 'unit-secret'
+/* Must be the SAME value `authEnv().AUTH_SECRET` resolves to when `sendNinaMessage` verifies the
+ * ticket — reading it back off `process.env` (rather than repeating the 'unit-secret' literal)
+ * keeps signing and verifying in sync even when CI's job-level env already set AUTH_SECRET to
+ * something else before this file's `??=` above ran (making the seed a no-op). */
+const TICKET_SECRET = process.env.AUTH_SECRET!
 
 function ticketFor(pathname: string, blobUrl: string, description: string | null): string {
   return signNinaImageTicket(
