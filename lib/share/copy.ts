@@ -4,10 +4,10 @@
  *
  * PURE — imported by Client Components, so no `server-only` and no env.
  *
- * The public page's own strings live in `app/s/[token]/copy.ts` and this file is never imported
- * from there: owner copy speaks to the runner ("your screenshots", "stop sharing"), public copy
- * speaks to a stranger, and one module holding both is how a "your" ends up on a page whose reader
- * is not you.
+ * The public page's own strings live in `app/(public)/s/[token]/copy.ts` and this file is never
+ * imported from there: owner copy speaks to the runner ("your screenshots", "stop sharing"), public
+ * copy speaks to a stranger, and one module holding both is how a "your" ends up on a page whose
+ * reader is not you.
  */
 
 export const SHARE_TITLE = 'Share this run'
@@ -83,10 +83,10 @@ export const PHOTO_TOGGLE_FAILED = 'Could not save that just now.'
  * The hint that teaches the split target on each row (card #8): the left of the row opens the
  * screenshot, the right of it toggles whether the screenshot is shared.
  *
- * Worded identically to the hint `components/review/SheetSource` already shows, so the two places
- * a screenshot can be tapped teach the same gesture in the same words rather than each inventing
- * a phrasing. It sits on the status line because that line is already per-row and already reads as
- * a description of this row rather than an instruction for the list.
+ * Worded identically to the hint `SheetSource` in `components/review/ScreenshotStrip.tsx` already
+ * shows, so the two places a screenshot can be tapped teach the same gesture in the same words
+ * rather than each inventing a phrasing. It sits on the status line because that line is already
+ * per-row and already reads as a description of this row rather than an instruction for the list.
  */
 export const PHOTO_ZOOM_HINT = 'tap to zoom'
 
