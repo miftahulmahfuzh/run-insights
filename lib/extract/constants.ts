@@ -110,8 +110,6 @@ export const SHOT_STORED_PATHNAME_RE = /^shots\/[A-Za-z0-9_-]{12,24}-[A-Za-z0-9_
 export const BLOB_CACHE_MAX_AGE = 60 * 60 * 24 * 365
 /** Client upload tokens are short-lived. */
 export const UPLOAD_TOKEN_TTL_MS = 10 * 60 * 1000
-/** Two at a time: enough to hide latency, few enough not to thrash a cellular uplink. */
-export const UPLOAD_CONCURRENCY = 2
 
 /* ── The background job's time budget (plan §4.6, amended by R-2) ────────────────────────── */
 

@@ -49,7 +49,6 @@ interface Tile {
   error: string | null
   /** Set once the PUT lands. A tile without this cannot be submitted. */
   blob: ExtractionBlobRef | null
-  originalBytes: number
   compressedBytes: number | null
 }
 
@@ -199,7 +198,6 @@ export function UploadPicker() {
         state: 'compressing',
         error: null,
         blob: null,
-        originalBytes: file.size,
         compressedBytes: null,
       }
       return { tile, file }

@@ -40,8 +40,3 @@ export function longEdgeTargetFor(width: number, height: number, shortEdgeTarget
   if (shortEdge <= shortEdgeTarget) return Math.round(longEdge)
   return Math.round(shortEdgeTarget * (longEdge / shortEdge))
 }
-
-/** The short edge an output of these dimensions actually has — what the QA assertion checks. */
-export function shortEdgeOf(width: number, height: number): number {
-  return Math.min(width, height)
-}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { TARGET_SHORT_EDGE_PX } from '@/lib/extract/constants'
-import { longEdgeTargetFor, shortEdgeOf } from './resizeTarget'
+import { longEdgeTargetFor } from './resizeTarget'
 
 /**
  * **The test the compressor exists for** (plan §3.1, Task 13, acceptance criterion 7).
@@ -27,8 +27,8 @@ describe('the width-vs-long-edge trap', () => {
     // asks for: 1212 × (739/1600) = 559.8 → 560.
     const outWidth = Math.round(target * (739 / 1600))
     const outHeight = target
-    expect(shortEdgeOf(outWidth, outHeight)).toBeGreaterThanOrEqual(TARGET_SHORT_EDGE_PX - 5)
-    expect(shortEdgeOf(outWidth, outHeight)).toBeLessThanOrEqual(TARGET_SHORT_EDGE_PX + 5)
+    expect(Math.min(outWidth, outHeight)).toBeGreaterThanOrEqual(TARGET_SHORT_EDGE_PX - 5)
+    expect(Math.min(outWidth, outHeight)).toBeLessThanOrEqual(TARGET_SHORT_EDGE_PX + 5)
   })
 
   it('is never the naive value — the bug, stated as an assertion', () => {
