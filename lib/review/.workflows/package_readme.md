@@ -447,9 +447,10 @@ concern (R-30's pace bar) into the review screen. The barrel's comment says the 
 **Prose mentions that are NOT imports:** `components/ui/index.ts` (the twins note),
 `components/ui/PhotoViewer.tsx` (its "why it lives here" history),
 `components/share/PhotoInclusionList.tsx` (the same `<img>` eslint waiver), and
-`lib/share/copy.ts:86`, which still names `components/review/SheetSource` — a component that no
-longer exists under that name — recorded as a stale-comment follow-up by the `review-yagni`
-session, deliberately out of any review-scoped sweep's line.
+`lib/share/copy.ts:86`, which cites `SheetSource` by symbol and file — the share screen's
+shared-screenshot hint is worded identically to this package's, on purpose. (An older revision
+of that comment cited a wrong path; the citation was repaired same-day in `95c99e1`, so the
+`review-yagni` session's stale-comment follow-up is closed, not carried.)
 
 ## Concurrency
 
@@ -644,5 +645,3 @@ the chat half lives in `lib/nina/.workflows/package_readme.md`.
   until then.
 - The check tolerances are seeded against one ground-truth fixture; the tightening mechanism
   (`getExtractionErrorProfile`) exists but has no consumer yet.
-- `lib/share/copy.ts:86` cites the no-longer-existent `components/review/SheetSource` component
-  (prose only; a stale-comment fix outside every review-scoped sweep's line so far).

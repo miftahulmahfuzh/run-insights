@@ -247,7 +247,9 @@ detail page and R-30's pace bar into the review screen.
   prose edit in `lib/review/.workflows/package_readme.md` (say: fixed by `95c99e1`; the
   keep-in-sync warning itself stands — `SheetSource` is a live export of `ScreenshotStrip.tsx`,
   and `PHOTO_ZOOM_HINT` still is not imported by it). Not fixed here: this doc session must
-  not touch `lib/review`.
+  not touch `lib/review`. **Fixed in-session by the worker immediately after this doc landed**
+  — the same session owns the readme, so the two spots were reworded (fixed by `95c99e1`;
+  closed, not carried) and committed together with this closure line.
 - **Carried known gaps, accepted in writing** (recorded in the readme's Known-gaps section):
   `components/review` has no rendered-component (happy-dom) interaction tests — the natural
   next target, with the mask/`ParsedInput` logic deliberately kept in pure modules until
