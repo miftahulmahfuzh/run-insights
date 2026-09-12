@@ -1,7 +1,8 @@
 # Package: scripts
 
 **Location**: `scripts`
-**Last Updated**: 2026-09-11
+**Last Updated**: 2026-09-12 (verification pass — every claim re-checked against the tree; see
+Notes for the documentation history)
 
 ## Overview
 
@@ -71,8 +72,9 @@ The pure half of the sweep: grouping by `(user_id, content_hash)`, keeper electi
 list, and the perceptual twin gates. No database, no Blob client, no env — every input is an
 argument — which is what lets `tests/nina.dedupeMedia.test.ts` hold the merge rules against
 measured production groups. The twin-gate constants exist in BOTH this file and
-`lib/nina/perceptualSign.ts` and must move together (the move-BOTH rule); read this file's header
-before loosening either number.
+`lib/nina/perceptual.ts` — the write-time twin check, which adds `PERCEPTUAL_MAX_SIG16` of its
+own — and must move together (the move-BOTH rule); read this file's header before loosening either
+number.
 
 ### `nina-memory-reap.mjs` — `npm run nina:memory-reap`
 Deletes distilled memory rows — `nina_memory_facts`, `nina_memory_slots`, entries inside
@@ -129,39 +131,46 @@ extraction accuracy — only that every seam holds. Spends real money.
 
 ### `nina-image-worker.ts` — `npm run nina:worker` / `npm run nina:worker:dry`
 Nina's camera, off-platform (RU-19/RU-20): shipping generation measured 78.2 s against Vercel
-Hobby's 60 s cap, so GitHub Actions hosts the worker. `--job <id>` runs one job (the
-`workflow_dispatch` path); no flag drains up to `NINA_IMAGE_SWEEP_BUDGET` actionable jobs (the
-`schedule:` backstop for a lost dispatch). Imports the zero-import lib modules so the payload
-shape, pathname convention and thresholds are not duplicated; writes its own SQL and validates
-env by hand, with the `information_schema` preflight as the drift alarm. `main()` runs only when
-this file is the process entry point, which is what lets the test drive `parseArgv` and
-`generate` with no network. The only `.ts` in the directory, and the precedent for the
-strip-types import rule.
+Hobby's 60 s cap, so GitHub Actions hosts the worker (`.github/workflows/nina-image.yml`). `--job
+<id>` runs one job (the `workflow_dispatch` path); no flag drains up to `NINA_IMAGE_SWEEP_BUDGET`
+actionable jobs (the `schedule:` backstop for a lost dispatch). Imports the zero-import lib
+modules so the payload shape, pathname convention and thresholds are not duplicated; writes its
+own SQL and validates env by hand, with the `information_schema` preflight as the drift alarm.
+`main()` runs only when this file is the process entry point, which is what lets the test drive
+`parseArgv` and `generate` with no network. The only `.ts` in the directory, and the precedent for
+the strip-types import rule.
 
 ## CI boundary guards
 
 Each is a grep-shaped assertion with a real exit code, wired into CI via the `ci:*` / `badges:check`
-npm scripts. Shared law: guards police CODE, not comments (comments are stripped before matching —
-a guard that fires on its own explanation gets silenced and then protects nothing), and the fix is
-always in the code, never in the check.
+npm scripts. Shared law: guards police CODE, not prose — by stripping comments before matching, or
+by scoping the grep to source extensions (both rules earned the hard way, after prose that merely
+MENTIONED a name turned a guard red) — and the fix is always in the code, never in the check.
 
 - `check-data-layer-invariants.mjs` (`ci:data-layer-guard`) — `extractions` stays append-only (the
   model's wrongness is the signal that tightens the prompt), and `getRunByShareToken` remains the
-  ONLY unscoped read in `lib/db/queries.ts`.
+  only unscoped READ of user data in `lib/db/queries.ts` — the guard's allowlist also holds
+  `isUniqueViolation` (a pure predicate over an error object) and `listActiveUserIds` (F07's cron,
+  ids only), each documented at its definition.
 - `check-openrouter-boundary.mjs` (`ci:openrouter-guard`) — `OPENROUTER_API_KEY` may appear only
   in `lib/nina/` and `lib/env.ts` (RU-2's narrowed boundary: runtime image generation is Nina-only,
-  badge/record art stays offline). Exported as well as run; `check-badge-art.mjs` imports it
-  rather than keeping a second copy of a security grep.
+  badge/record art stays offline). The grep is scoped to source extensions (2026-09-12, after an
+  adopted plan copy under `lib/db/.workflows/plan/` tripped the bare grep by mentioning the name
+  in prose). Exported as well as run; `check-badge-art.mjs` imports it rather than keeping a
+  second copy of a security grep.
 - `check-client-secret-boundary.mjs` (`ci:client-secret-guard`) — no secret name in a `'use
-  client'` module, no raw `process.env.<SECRET>` outside `lib/env.ts` and `lib/db/index.ts`, and
-  `NEXT_PUBLIC_` nowhere at all.
+  client'` module, no raw `process.env.<SECRET>` outside `lib/env.ts`, `lib/db/index.ts` and
+  `lib/nina/vision.test.ts` (a colocated test's dummy-key default; exempted 2026-09-12 in
+  `78f1a9c` after breaking the guard on every push), and `NEXT_PUBLIC_` nowhere in `app/`, `lib/`
+  or `components/`.
 - `check-f08-boundaries.mjs` (`ci:f08-guard`) — Recharts is imported only from
   `components/charts/*Inner.tsx`; exactly one file carries the dual-y-axis waiver; no chart or
   screen hand-rolls a unit outside `lib/format.ts`.
 - `check-f11-share-boundaries.mjs` (`ci:f11-guard`) — the public `/s/[token]` route's negatives:
-  no second page under it, no analytics EVER (the pathname is the bearer token), owner-side share
-  components never leave the authenticated tree, nobody re-derives an HR denominator, and no
-  Suspense boundary above the token page (a `loading.tsx` turns every `notFound()` into a 200).
+  no second page under it (exactly four files: page, layout, not-found, copy), no analytics EVER
+  (the pathname is the bearer token), owner-side share components never leave the authenticated
+  tree, nobody re-derives an HR denominator, and no Suspense boundary above the token page (a
+  `loading.tsx` turns every `notFound()` into a 200).
 - `check-llm-payload-boundary.mjs` (`ci:llm-payload-guard`) — a model call is never awaited from a
   page render. Nine named entry points, each documented in the file with its measured latency and
   the correct fire shape (client event handler, or `after()` inside the route segment).
@@ -191,11 +200,11 @@ real money on a real generation.
   review screen's consistency checks — the green banner is what lets `shoot.mjs` commit 26 runs
   one tap each. NOTHING here invents a metric: the payload is transcribed-screenshot-shaped input,
   and the app computes every derived number at commit.
-- `seed-demo.mjs` (`capture:seed`, `--purge`, `--status`) — seeds the `demo-*` user the README's
-  screenshots show: one user, profile, three Blob objects, 26 extractions with photos — and
-  deliberately NO runs, splits, zones, records or badges, which only the app's own commit path may
-  write. `--purge` deletes the user row and prints counts back (15 of the 17 FKs cascade, so that
-  one delete is the whole cleanup).
+- `seed-demo.mjs` (`capture:seed` / `capture:purge` / `capture:status`) — seeds the `demo-*` user
+  the README's screenshots show: one user, profile, three Blob objects, 26 extractions with
+  photos — and deliberately NO runs, splits, zones, records or badges, which only the app's own
+  commit path may write. `--purge` deletes the user row and prints counts back (15 of the 17 FKs
+  cascade, so that one delete is the whole cleanup).
 - `session-cookie.mjs` — mints the demo user's Auth.js session cookie for headless capture.
   Possible, and not a back door, because strategy `jwt` means the session IS the cookie and
   anything holding `AUTH_SECRET` can mint one; `token.sub` is the one contract that matters.
@@ -224,3 +233,22 @@ real money on a real generation.
   quotes, and `vercel env add KEY production preview` treats the third positional as a git BRANCH.
   Values go over stdin, `--sensitive` where Vercel allows it, and `AUTH_URL` is production-only at
   the canonical origin.
+
+## Notes
+
+**Recent changes** — one paragraph per landing wave; no per-phase entries. Durable statements
+live in the body sections and in each script's own header; narrative lives in git history, which
+is complete and ordered and costs a session no context to load.
+
+- **2026-09-12 — verification pass** (token-maxxing worker `scripts-readme-compact`, closing the
+  day's seven-readme set): every npm-script mapping, file-inventory entry, guard rule, flag
+  default and negative claim re-checked against the tree. Corrected: the client-secret raw-read
+  exemptions are now THREE (`lib/nina/vision.test.ts`, `78f1a9c`); the twin-gate constants'
+  second home is `lib/nina/perceptual.ts`, not the signer `perceptualSign.ts` (which never held
+  them — `git log -S` proves it); the data-layer allowlist wording; the guards' two prose-defense
+  mechanisms (comment stripping vs source-extension scoping); `seed-demo.mjs`'s npm entries; and
+  the worker's workflow file is now named. "Nothing here is imported by the app" re-proved by
+  grep over `lib/`, `app/`, `components/`.
+- **2026-09-11 — file written** (`b049bb7`) mapping the package after P1-SC-A000's bookkeeping
+  closed out. Dated measurements in this file (the dedupe sweep's 48/52 and 17, the shortcuts'
+  25/3, the worker's 78.2 s) are production measurements from that date, stamped as such.
