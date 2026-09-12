@@ -38,7 +38,7 @@ import { maskTimeInput, type TimeMaskShape } from '@/lib/review/inputs'
  * are untouched.
  */
 
-export interface ParsedInputProps<T> {
+interface ParsedInputProps<T> {
   value: T
   toText: (value: T) => string
   parse: (text: string) => { value: T; invalid?: true }

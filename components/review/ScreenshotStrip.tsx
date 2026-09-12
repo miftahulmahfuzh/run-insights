@@ -31,7 +31,7 @@ import type { ReviewPhoto } from '@/lib/review/loadReview'
  * check against is strictly better off than a reviewer looking at a blank panel, which is what a
  * strict `kind` match would give them on the common one-screenshot upload.
  */
-export function sourcePhotosFor(photos: ReviewPhoto[], section: ScreenKind): ReviewPhoto[] {
+function sourcePhotosFor(photos: ReviewPhoto[], section: ScreenKind): ReviewPhoto[] {
   const exact = photos.filter((p) => p.kind === section)
   return exact.length > 0 ? exact : photos
 }

@@ -16,7 +16,7 @@ import { cn } from '@/lib/cn'
  * so a colour-blind reader and a screen-reader user get the same information as everyone else.
  */
 
-export type HonestyState = 'scan' | 'check' | 'edited'
+type HonestyState = 'scan' | 'check' | 'edited'
 
 const STYLES: Record<HonestyState, string> = {
   // Quiet by construction: "read from a screenshot" is the normal case, and a mark that shouts
