@@ -4,12 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  parseIntInput,
-  parseDurationInput,
-  toDurationInput,
-  toIntInput,
-} from '@/lib/review/inputs'
+import { parseIntInput, parseDurationInput, toDurationInput, toIntInput } from '@/lib/review/inputs'
 
 import { ParsedInput } from './ParsedInput'
 
@@ -53,9 +48,7 @@ function renderInt(props: Partial<Parameters<typeof ParsedInput<number | null>>[
   return { onChange, input: screen.getByLabelText('field') as HTMLInputElement }
 }
 
-function renderDuration(
-  props: Partial<Parameters<typeof ParsedInput<number | null>>[0]> = {},
-) {
+function renderDuration(props: Partial<Parameters<typeof ParsedInput<number | null>>[0]> = {}) {
   const onChange = vi.fn()
   render(
     <ParsedInput<number | null>

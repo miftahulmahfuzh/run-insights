@@ -47,7 +47,10 @@ describe('ConsistencyBanner — the all-clear', () => {
   it('passing checks are not listed even when a sibling fails', () => {
     render(
       <ConsistencyBanner
-        checks={[...CLEAN, check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] })]}
+        checks={[
+          ...CLEAN,
+          check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] }),
+        ]}
         onJump={vi.fn()}
       />,
     )
@@ -63,7 +66,9 @@ describe('ConsistencyBanner — failures', () => {
   it('singular: one failing check reads as one thing, as an interrupting alert', () => {
     render(
       <ConsistencyBanner
-        checks={[check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] })]}
+        checks={[
+          check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] }),
+        ]}
         onJump={vi.fn()}
       />,
     )
@@ -78,7 +83,11 @@ describe('ConsistencyBanner — failures', () => {
       <ConsistencyBanner
         checks={[
           check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] }),
-          check({ id: 'zones_sum_vs_duration', message: 'Zones total 4595 — looks off.', fieldPaths: ['hrZones'] }),
+          check({
+            id: 'zones_sum_vs_duration',
+            message: 'Zones total 4595 — looks off.',
+            fieldPaths: ['hrZones'],
+          }),
         ]}
         onJump={vi.fn()}
       />,
@@ -95,7 +104,11 @@ describe('ConsistencyBanner — failures', () => {
         checks={[
           check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] }),
           // A check that can name no field gets no Jump — pointing at nothing is the honest state.
-          check({ id: 'distance_pace_vs_duration', message: 'Check the numbers above.', fieldPaths: [] }),
+          check({
+            id: 'distance_pace_vs_duration',
+            message: 'Check the numbers above.',
+            fieldPaths: [],
+          }),
         ]}
         onJump={onJump}
       />,
@@ -113,15 +126,15 @@ describe('ConsistencyBanner — failures', () => {
   it('the save-anyway posture is stated on the failing state, not just the clean one', () => {
     render(
       <ConsistencyBanner
-        checks={[check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] })]}
+        checks={[
+          check({ id: 'splits_sum_vs_duration', message: CHK1_MESSAGE, fieldPaths: ['splits'] }),
+        ]}
         onJump={vi.fn()}
       />,
     )
 
     // F05's whole stance: the checks are hints from arithmetic, not rules. This sentence is the
     // permission the sticky bar's never-disabled button relies on.
-    expect(
-      screen.getByText(/These are hints from arithmetic, not rules/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/These are hints from arithmetic, not rules/)).toBeInTheDocument()
   })
 })

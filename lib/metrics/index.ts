@@ -7,12 +7,7 @@
  * from.
  */
 
-export {
-  resolveHrMax,
-  tanakaEstimate,
-  type HrMax,
-  type HrMaxSource,
-} from './hrMax'
+export { resolveHrMax, tanakaEstimate, type HrMax, type HrMaxSource } from './hrMax'
 
 export type {
   FastestSlowestKm,

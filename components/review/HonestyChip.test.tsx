@@ -21,15 +21,18 @@ describe('HonestyChip', () => {
     ['scan', 'scan', 'Read from a screenshot'],
     ['check', 'check', 'Worth checking'],
     ['edited', 'edited', 'Corrected by hand'],
-  ] as const)('state %s shows its word and its explanation twice — title and sr-only', (state, word, description) => {
-    render(<HonestyChip state={state} />)
+  ] as const)(
+    'state %s shows its word and its explanation twice — title and sr-only',
+    (state, word, description) => {
+      render(<HonestyChip state={state} />)
 
-    const chip = screen.getByText(word)
-    expect(chip).toHaveAttribute('title', description)
-    // The announced reading is the description first, then the word — "Worth checking: check" —
-    // so the state is explained even when the bare word alone would be cryptic.
-    expect(chip.textContent).toBe(`${description}: ${word}`)
-  })
+      const chip = screen.getByText(word)
+      expect(chip).toHaveAttribute('title', description)
+      // The announced reading is the description first, then the word — "Worth checking: check" —
+      // so the state is explained even when the bare word alone would be cryptic.
+      expect(chip.textContent).toBe(`${description}: ${word}`)
+    },
+  )
 
   it('a `label` override replaces the word but not the explanation', () => {
     // The docstring's own example: a section header's chip reads "from Splits", and the

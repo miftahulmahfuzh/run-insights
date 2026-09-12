@@ -153,7 +153,10 @@ describe('MoreDetails — the intent pills', () => {
     expect(screen.getByRole('button', { name: 'Tempo' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Long' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Race' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Not sure' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Not sure' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 
   it('the draft’s own intent is pressed', () => {
@@ -270,7 +273,10 @@ describe('MoreDetails — the positional post-workout slots (R-9)', () => {
       target: { value: '' },
     })
     expect(onChange).toHaveBeenLastCalledWith({
-      postWorkoutHr: [{ label: 'End', bpm: null }, { label: '1 MIN', bpm: 162 }],
+      postWorkoutHr: [
+        { label: 'End', bpm: null },
+        { label: '1 MIN', bpm: 162 },
+      ],
     })
 
     fireEvent.change(screen.getByLabelText('Heart rate one minute after the run'), {

@@ -38,9 +38,7 @@ function context(overrides: Partial<ReviewContext> = {}): ReviewContext {
     extractionId: 'x1234567890',
     runId: null,
     baseline: hydrateDraftFromExtraction(JSON.parse(JSON.stringify(TRUTH)) as never, NOW),
-    photos: [
-      { url: 'https://blob.test/summary.png', kind: 'summary', width: 739, height: 1600 },
-    ],
+    photos: [{ url: 'https://blob.test/summary.png', kind: 'summary', width: 739, height: 1600 }],
     extractionStatus: 'ok',
     errorCode: null,
     rawVendorResponse: { vendor: { choices: [] }, attempts: 1 },
@@ -51,7 +49,10 @@ function context(overrides: Partial<ReviewContext> = {}): ReviewContext {
   }
 }
 
-function renderScreen(ctx: ReviewContext = context(), state: CommitReviewState = IDLE_COMMIT_STATE) {
+function renderScreen(
+  ctx: ReviewContext = context(),
+  state: CommitReviewState = IDLE_COMMIT_STATE,
+) {
   render(<ReviewScreen context={ctx} />)
   void state
 }
@@ -83,9 +84,7 @@ describe('ReviewScreen — the golden path, on the canonical fixture', () => {
     expect(screen.getByRole('status')).toHaveTextContent('The numbers agree with each other')
     // D1, stated; the bar offers the one tap.
     expect(screen.getByText('Nothing has been saved yet.')).toBeInTheDocument()
-    expect(
-      screen.getByText('Everything checks out. Nothing corrected.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Everything checks out. Nothing corrected.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm & save' })).toBeEnabled()
   })
 
@@ -142,10 +141,9 @@ describe('ReviewScreen — a keystroke re-runs the checks', () => {
 
     // '802' lays out as 8:02 = 482 s/km: distance x pace now implies 85:43 against a 78:36
     // run — CHK-3 fires, and the banner becomes an alert.
-    fireEvent.change(
-      screen.getByLabelText('Average pace, minutes and seconds per kilometre'),
-      { target: { value: '802' } },
-    )
+    fireEvent.change(screen.getByLabelText('Average pace, minutes and seconds per kilometre'), {
+      target: { value: '802' },
+    })
 
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('1 thing worth checking')
@@ -172,9 +170,7 @@ describe('ReviewScreen — a keystroke re-runs the checks', () => {
     })
 
     expect(screen.getAllByText('edited')).toHaveLength(1)
-    expect(
-      screen.getByText('Everything checks out · 1 correction.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Everything checks out · 1 correction.')).toBeInTheDocument()
   })
 
   it('a second keystroke back to the fixture’s own value clears everything again', () => {
@@ -189,9 +185,7 @@ describe('ReviewScreen — a keystroke re-runs the checks', () => {
     fireEvent.change(pace, { target: { value: '722' } })
 
     expect(screen.getByRole('status')).toHaveTextContent('The numbers agree with each other')
-    expect(
-      screen.getByText('Everything checks out. Nothing corrected.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Everything checks out. Nothing corrected.')).toBeInTheDocument()
     expect(screen.queryByText('edited')).not.toBeInTheDocument()
   })
 })
@@ -207,7 +201,11 @@ describe('ReviewScreen — the two states that can come back from the action', (
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm & save' }))
 
-    const alert = await screen.findByText('That draft is missing a duration.', {}, { timeout: 4000 })
+    const alert = await screen.findByText(
+      'That draft is missing a duration.',
+      {},
+      { timeout: 4000 },
+    )
     expect(alert).toBeInTheDocument()
     // The field error says it twice on purpose: once at the field that caused it, once in
     // the summary card's list.

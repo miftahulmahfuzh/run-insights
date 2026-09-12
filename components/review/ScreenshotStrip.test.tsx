@@ -127,15 +127,11 @@ describe('SheetSource — the section resolver (R-45)', () => {
   it('an exact-kind match shows ONLY that photo, under the matching-kind caption', () => {
     render(<SheetSource photos={PHOTOS} section="splits" />)
 
-    expect(
-      screen.getByText('From your Splits screenshot'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('From your Splits screenshot')).toBeInTheDocument()
     expect(screen.getAllByRole('button')).toHaveLength(1)
     // alt="" makes the thumbnails presentational — query the button's img, not the role.
     expect(
-      screen
-        .getByRole('button', { name: 'Open this screenshot full screen' })
-        .querySelector('img'),
+      screen.getByRole('button', { name: 'Open this screenshot full screen' }).querySelector('img'),
     ).toHaveAttribute('src', 'https://blob.test/splits.png')
   })
 

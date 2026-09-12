@@ -133,9 +133,7 @@ describe('HeroFields — the seven fields', () => {
   it('the date guess carries its evidence — the year-less label the guess came from', () => {
     renderFields()
 
-    expect(
-      screen.getByText(/The screenshot says “Thu, 20 Aug” — no year/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/The screenshot says “Thu, 20 Aug” — no year/)).toBeInTheDocument()
   })
 
   it('no evidence, no claim — the date line is absent when there is no label', () => {

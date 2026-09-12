@@ -57,8 +57,9 @@ describe('RetryExtraction', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read these screenshots again' }))
 
     expect(screen.getByText('Read them again?')).toBeInTheDocument()
-    expect(screen.getByText(/about half a minute, and it may come back with the same answer/))
-      .toBeInTheDocument()
+    expect(
+      screen.getByText(/about half a minute, and it may come back with the same answer/),
+    ).toBeInTheDocument()
     expect(screen.getByText(/correcting it by hand is faster and certain/)).toBeInTheDocument()
   })
 
@@ -87,9 +88,7 @@ describe('RetryExtraction', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read these screenshots again' }))
     fireEvent.click(screen.getByRole('button', { name: 'Read again' }))
 
-    await waitFor(() =>
-      expect(routerPush).toHaveBeenCalledWith('/x/xnew12345678'),
-    )
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/x/xnew12345678'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('/api/extract')
@@ -112,17 +111,12 @@ describe('RetryExtraction', () => {
     expect(starting).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Keep these' })).toBeDisabled()
 
-    resolveFetch(
-      new Response(JSON.stringify({ extractionId: 'xnew12345678' }), { status: 200 }),
-    )
+    resolveFetch(new Response(JSON.stringify({ extractionId: 'xnew12345678' }), { status: 200 }))
     await waitFor(() => expect(routerPush).toHaveBeenCalled())
   })
 
   it('a refused start is a message and a re-armed button, not a dead end', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response('rate limited', { status: 429 })),
-    )
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('rate limited', { status: 429 })))
     renderRetry()
 
     fireEvent.click(screen.getByRole('button', { name: 'Read these screenshots again' }))
@@ -131,9 +125,7 @@ describe('RetryExtraction', () => {
     expect(
       await screen.findByText('That could not be started. Try again in a moment.'),
     ).toBeInTheDocument()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Read again' })).toBeEnabled(),
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Read again' })).toBeEnabled())
     expect(routerPush).not.toHaveBeenCalled()
   })
 

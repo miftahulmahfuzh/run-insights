@@ -98,10 +98,7 @@ vi.mock('./ZoneBar', () => ({
 }))
 vi.mock('./RawResponseDisclosure', () => ({
   RawResponseDisclosure: (props: { raw: unknown }) => (
-    <div
-      data-testid="section-raw"
-      data-props={JSON.stringify({ raw: props.raw ?? null })}
-    />
+    <div data-testid="section-raw" data-props={JSON.stringify({ raw: props.raw ?? null })} />
   ),
 }))
 vi.mock('./RetryExtraction', () => ({
@@ -172,11 +169,7 @@ describe('ReviewClient — derivation from one draft', () => {
     // CHK-3 fails too because duration is one of its three inputs. The edited set names
     // exactly the field the stub moved.
     expect(propsOf(section('banner'))).toMatchObject({
-      failing: [
-        'splits_sum_vs_duration',
-        'zones_sum_vs_duration',
-        'distance_pace_vs_duration',
-      ],
+      failing: ['splits_sum_vs_duration', 'zones_sum_vs_duration', 'distance_pace_vs_duration'],
     })
     expect(propsOf(section('hero'))).toMatchObject({
       edited: ['durationSec'],
@@ -210,8 +203,9 @@ describe('ReviewClient — the three banner states', () => {
     renderClient()
 
     expect(screen.getByText('Nothing has been saved yet.')).toBeInTheDocument()
-    expect(screen.queryByText('We could not read these screenshots automatically'))
-      .not.toBeInTheDocument()
+    expect(
+      screen.queryByText('We could not read these screenshots automatically'),
+    ).not.toBeInTheDocument()
   })
 
   it('a failed extraction is the SAME screen with a blank draft and an honest alert', () => {
@@ -228,8 +222,9 @@ describe('ReviewClient — the three banner states', () => {
       'We could not read these screenshots automatically',
     )
     // errorCopy(llm_overloaded) plus the photos-still-above promise, since there ARE photos.
-    expect(screen.getByText(/Enter the numbers by hand below — your screenshots are still above/))
-      .toBeInTheDocument()
+    expect(
+      screen.getByText(/Enter the numbers by hand below — your screenshots are still above/),
+    ).toBeInTheDocument()
     expect(screen.queryByText('Nothing has been saved yet.')).not.toBeInTheDocument()
   })
 
@@ -267,9 +262,7 @@ describe('ReviewClient — the sticky bar', () => {
 
     const button = screen.getByRole('button', { name: 'Confirm & save' })
     expect(button).toBeEnabled()
-    expect(
-      screen.getByText('Everything checks out. Nothing corrected.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Everything checks out. Nothing corrected.')).toBeInTheDocument()
   })
 
   it('edit mode saves corrections — and says when nothing has changed yet', () => {
@@ -318,7 +311,10 @@ describe('ReviewClient — what a failed commit looks like', () => {
       state: {
         status: 'error',
         message: 'That draft is missing a duration.',
-        fieldErrors: { durationSec: 'Duration is required', occurredOn: 'That date is in the future.' },
+        fieldErrors: {
+          durationSec: 'Duration is required',
+          occurredOn: 'That date is in the future.',
+        },
       },
     })
 
@@ -349,7 +345,11 @@ describe('ReviewClient — what a failed commit looks like', () => {
 
   it('a duplicate without a run id to link still explains the situation', () => {
     renderClient({
-      state: { status: 'duplicate', message: 'A run from this extraction already exists.', existingRunId: null },
+      state: {
+        status: 'duplicate',
+        message: 'A run from this extraction already exists.',
+        existingRunId: null,
+      },
     })
 
     expect(screen.getByRole('alert')).toBeInTheDocument()

@@ -86,7 +86,9 @@ describe('SplitsTable — the always-open table', () => {
     const last = screen.getAllByRole('row')[11]!
     expect(within(last).getByText('11')).toBeInTheDocument()
     expect(
-      screen.getByText(/The partial final kilometre is marked and is left out of every pace average/),
+      screen.getByText(
+        /The partial final kilometre is marked and is left out of every pace average/,
+      ),
     ).toBeInTheDocument()
   })
 
@@ -94,9 +96,7 @@ describe('SplitsTable — the always-open table', () => {
     const splits = baselineSplits().map((s) => ({ ...s, partial: false }))
     renderTable({ splits })
 
-    expect(
-      screen.getByText(/Mark a short final kilometre as partial/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Mark a short final kilometre as partial/)).toBeInTheDocument()
   })
 
   it('each edit button quotes the row’s own values — never eleven identical labels', () => {

@@ -68,10 +68,7 @@ export async function resolveHrMax(userId: string): Promise<HrMax | null> {
   return resolveFromProfile(userId, profile)
 }
 
-async function resolveFromProfile(
-  userId: string,
-  profile: Profile | null,
-): Promise<HrMax | null> {
+async function resolveFromProfile(userId: string, profile: Profile | null): Promise<HrMax | null> {
   if (profile?.maxHr != null) return { bpm: profile.maxHr, source: 'measured' }
 
   const estimated = profile?.birthYear != null ? tanakaEstimate(profile.birthYear) : null

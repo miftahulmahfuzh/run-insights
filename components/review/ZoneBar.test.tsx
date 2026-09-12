@@ -70,10 +70,7 @@ describe('ZoneBar — the bar and its rows', () => {
 
     const rows = screen.getAllByRole('button')
     expect(rows).toHaveLength(5)
-    expect(rows[0]).toHaveAttribute(
-      'aria-label',
-      'Edit zone 1, 1:44, 2 percent, under 140 bpm',
-    )
+    expect(rows[0]).toHaveAttribute('aria-label', 'Edit zone 1, 1:44, 2 percent, under 140 bpm')
     expect(within(rows[1]!).getByText('141–151 bpm')).toBeInTheDocument()
     expect(within(rows[4]!).getByText('175 bpm and up')).toBeInTheDocument()
     expect(within(rows[3]!).getByText('47%')).toBeInTheDocument()

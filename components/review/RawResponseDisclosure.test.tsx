@@ -35,11 +35,7 @@ describe('RawResponseDisclosure', () => {
   })
 
   it('opens on toggle, flips the label to "hide" and shows the pretty-printed payload', () => {
-    render(
-      <RawResponseDisclosure
-        raw={{ parsedSession: { durationSec: 4716 }, attempts: 1 }}
-      />,
-    )
+    render(<RawResponseDisclosure raw={{ parsedSession: { durationSec: 4716 }, attempts: 1 }} />)
 
     fireEvent.click(screen.getByText('What the reader actually returned'))
 
