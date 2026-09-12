@@ -508,10 +508,15 @@ React tree; the suites are ~270 flat files — ~160 under `tests/`, ~40 co-locat
 operational scripts and the seven `check-*` CI guards; `tools/` holds the Python badge and icon
 art pipeline; `drizzle/` holds generated SQL migrations; `types/` holds one module augmentation;
 `docs/plans/archive/` holds the landed feature plans; `research/` is the pre-build feasibility
-harness (excluded from `tsconfig` and `eslint`). Seven packages have package readmes of their own:
-`lib/db`, `lib/admin`, `lib/nina`, `components/admin`, `components/nina`, `scripts`, and the
-combined review surface (`lib/review` + `components/review`, one file at
-`lib/review/.workflows/package_readme.md`).
+harness (excluded from `tsconfig` and `eslint`). `lib/db`, `lib/admin`, `lib/nina`,
+`components/admin`, `components/nina`, `scripts`, `tools`, `lib/llm`, `components/ui`, and
+`lib/schema` each have their own package readme; several combined estates are also documented
+in one shared file: the review surface (`lib/review` + `components/review`), the photo/extract
+pipeline (`lib/extract` + `lib/photos` + `components/extract`), the badges/records pair
+(`lib/badges` + `lib/records`), the date/flags/derived utilities (`lib/.workflows/package_readme.md`),
+the profile/share estate (`lib/share` + `lib/profile` + `components/profile` + `components/share`),
+and the insights/metrics dashboard layer (`lib/metrics` + `lib/insights` + `components/insights` +
+`lib/panel`).
 
 ### Internal (root → packages)
 
