@@ -21,8 +21,16 @@ const FULL_PAYLOAD = {
   verdict: 'hard',
   whatHappened: 'You ran 32 km across four sessions, most of it steady.',
   observations: [
-    { title: 'Long run anchored the week', detail: '18 km on Sunday at an easy shuffle.', metric: '18.0 km' },
-    { title: 'Heart rate drifted late', detail: 'The last 3 km sat 6 bpm above pace-equivalent.', metric: '172 bpm' },
+    {
+      title: 'Long run anchored the week',
+      detail: '18 km on Sunday at an easy shuffle.',
+      metric: '18.0 km',
+    },
+    {
+      title: 'Heart rate drifted late',
+      detail: 'The last 3 km sat 6 bpm above pace-equivalent.',
+      metric: '172 bpm',
+    },
   ],
   doNext: ['Keep Tuesday intervals', 'Take Friday fully off'],
   questionForRunner: 'Did the Sunday long run feel harder than the pace says?',
@@ -34,14 +42,18 @@ describe('InsightCard — a complete payload', () => {
 
     expect(screen.getByText('This run')).toBeInTheDocument()
     expect(screen.getByText('A controlled week')).toBeInTheDocument()
-    expect(screen.getByText('You ran 32 km across four sessions, most of it steady.')).toBeInTheDocument()
+    expect(
+      screen.getByText('You ran 32 km across four sessions, most of it steady.'),
+    ).toBeInTheDocument()
     expect(screen.getByText('Long run anchored the week')).toBeInTheDocument()
     expect(screen.getByText('18 km on Sunday at an easy shuffle.')).toBeInTheDocument()
     expect(screen.getByText('18.0 km')).toBeInTheDocument()
     expect(screen.getByText('Next')).toBeInTheDocument()
     expect(screen.getByText('Keep Tuesday intervals')).toBeInTheDocument()
     expect(screen.getByText('Take Friday fully off')).toBeInTheDocument()
-    expect(screen.getByText('Did the Sunday long run feel harder than the pace says?')).toBeInTheDocument()
+    expect(
+      screen.getByText('Did the Sunday long run feel harder than the pace says?'),
+    ).toBeInTheDocument()
   })
 
   it.each([
@@ -69,7 +81,9 @@ describe('InsightCard — a complete payload', () => {
       </InsightCard>,
     )
 
-    const card = screen.getByText('Did the Sunday long run feel harder than the pace says?').parentElement
+    const card = screen.getByText(
+      'Did the Sunday long run feel harder than the pace says?',
+    ).parentElement
     expect(card).toContainElement(screen.getByTestId('flag'))
   })
 })
@@ -97,15 +111,22 @@ describe('InsightCard — the absent and the unusable', () => {
   })
 
   it('an object with nothing usable in it is no insight either — not an empty card with a heading', () => {
-    render(<InsightCard payload={{ headline: '   ', observations: [{ metric: '5 km' }] }} scopeLabel="This run" />)
+    render(
+      <InsightCard
+        payload={{ headline: '   ', observations: [{ metric: '5 km' }] }}
+        scopeLabel="This run"
+      />,
+    )
 
     expect(screen.getByText(/not ready for this one yet/)).toBeInTheDocument()
     expect(screen.queryByText('5 km')).not.toBeInTheDocument()
   })
 
   it('the reserved height holds in BOTH states, so the charts below never jump', () => {
-    const filled = render(<InsightCard payload={FULL_PAYLOAD} scopeLabel="This run" />).container.firstElementChild!
-    const waiting = render(<InsightCard payload={null} scopeLabel="This run" />).container.firstElementChild!
+    const filled = render(<InsightCard payload={FULL_PAYLOAD} scopeLabel="This run" />).container
+      .firstElementChild!
+    const waiting = render(<InsightCard payload={null} scopeLabel="This run" />).container
+      .firstElementChild!
 
     expect(filled).toHaveClass('min-h-[168px]')
     expect(waiting).toHaveClass('min-h-[168px]')
@@ -142,7 +163,10 @@ describe('InsightCard — tolerant reading of a partial payload', () => {
 
   it('whitespace-only doNext entries are dropped from the list', () => {
     render(
-      <InsightCard payload={{ headline: 'H', doNext: ['Run easy', '   ', ''] }} scopeLabel="This run" />,
+      <InsightCard
+        payload={{ headline: 'H', doNext: ['Run easy', '   ', ''] }}
+        scopeLabel="This run"
+      />,
     )
 
     expect(screen.getByText('Run easy')).toBeInTheDocument()
@@ -151,7 +175,10 @@ describe('InsightCard — tolerant reading of a partial payload', () => {
 
   it('a verdict pill renders above observations even when the headline is missing', () => {
     render(
-      <InsightCard payload={{ verdict: 'easy', observations: [{ title: 'Steady' }] }} scopeLabel="This run" />,
+      <InsightCard
+        payload={{ verdict: 'easy', observations: [{ title: 'Steady' }] }}
+        scopeLabel="This run"
+      />,
     )
 
     expect(screen.getByText('easy')).toBeInTheDocument()

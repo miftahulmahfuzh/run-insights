@@ -51,9 +51,7 @@ describe('IntentChips', () => {
 
   it('the fill is optimistic: the chip answers before the server does, then the row busy-marks', async () => {
     let resolve!: (value: { ok: true }) => void
-    setRunIntentAction.mockImplementation(
-      () => new Promise<{ ok: true }>((res) => (resolve = res)),
-    )
+    setRunIntentAction.mockImplementation(() => new Promise<{ ok: true }>((res) => (resolve = res)))
     const { container } = render(<IntentChips runId="r1" intent={null} />)
     const row = container.firstElementChild as HTMLElement
 
@@ -77,9 +75,7 @@ describe('IntentChips', () => {
     // component with the new intent, so the revert is invisible; here, where nothing re-renders
     // the prop, the revert is exactly what a runner would see if the write failed.)
     let resolve!: (value: { ok: true }) => void
-    setRunIntentAction.mockImplementation(
-      () => new Promise<{ ok: true }>((res) => (resolve = res)),
-    )
+    setRunIntentAction.mockImplementation(() => new Promise<{ ok: true }>((res) => (resolve = res)))
     render(<IntentChips runId="r1" intent={null} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Easy' }))
@@ -97,9 +93,7 @@ describe('IntentChips', () => {
 
   it('chips are disabled and the row announces busy for the whole flight, and only the flight', async () => {
     let resolve!: (value: { ok: true }) => void
-    setRunIntentAction.mockImplementation(
-      () => new Promise<{ ok: true }>((res) => (resolve = res)),
-    )
+    setRunIntentAction.mockImplementation(() => new Promise<{ ok: true }>((res) => (resolve = res)))
     const { container } = render(<IntentChips runId="r1" intent={null} />)
     // aria-busy sits on the chip row (the inner div), not the component's outer wrapper.
     const chipRow = container.firstElementChild?.firstElementChild as HTMLElement
@@ -123,9 +117,7 @@ describe('IntentChips', () => {
     // Controlled promise, resolved inside act: the settle only lands when the action resolves
     // inside React's own flush (a pre-resolved mock leaves the optimistic value stuck).
     let resolve!: (value: { ok: true }) => void
-    setRunIntentAction.mockImplementation(
-      () => new Promise<{ ok: true }>((res) => (resolve = res)),
-    )
+    setRunIntentAction.mockImplementation(() => new Promise<{ ok: true }>((res) => (resolve = res)))
     render(<IntentChips runId="r1" intent="race" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Race' }))

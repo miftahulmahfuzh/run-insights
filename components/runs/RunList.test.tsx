@@ -21,7 +21,15 @@ import { RunList } from './RunList'
 const TODAY = '2026-08-19'
 
 function run(id: string, occurredOn: string, distanceM: number) {
-  return { id, occurredOn, distanceM, durationSec: 3600, avgPaceSec: 400, avgHr: null, location: null }
+  return {
+    id,
+    occurredOn,
+    distanceM,
+    durationSec: 3600,
+    avgPaceSec: 400,
+    avgHr: null,
+    location: null,
+  }
 }
 
 const RUNS = [

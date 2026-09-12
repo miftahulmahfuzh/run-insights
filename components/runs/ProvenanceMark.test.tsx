@@ -18,16 +18,37 @@ import { ProvenanceMark } from './ProvenanceMark'
 
 describe('ProvenanceMark', () => {
   it('spells the source: screenshot reads as read, manual reads as entered by hand', () => {
-    const scanned = render(<ProvenanceMark source="screenshot" reviewedAt={null} correctedAt={null} correctedFieldCount={0} />).container
+    const scanned = render(
+      <ProvenanceMark
+        source="screenshot"
+        reviewedAt={null}
+        correctedAt={null}
+        correctedFieldCount={0}
+      />,
+    ).container
     expect(scanned.textContent).toContain('Read from screenshot')
     expect(scanned.textContent).not.toContain('Entered by hand')
 
-    const manual = render(<ProvenanceMark source="manual" reviewedAt={null} correctedAt={null} correctedFieldCount={0} />).container
+    const manual = render(
+      <ProvenanceMark
+        source="manual"
+        reviewedAt={null}
+        correctedAt={null}
+        correctedFieldCount={0}
+      />,
+    ).container
     expect(manual.textContent).toContain('Entered by hand')
   })
 
   it('no corrections, no corrections clause — 0 renders nothing between the words', () => {
-    render(<ProvenanceMark source="screenshot" reviewedAt={null} correctedAt={null} correctedFieldCount={0} />)
+    render(
+      <ProvenanceMark
+        source="screenshot"
+        reviewedAt={null}
+        correctedAt={null}
+        correctedFieldCount={0}
+      />,
+    )
 
     expect(screen.queryByText(/corrected/)).not.toBeInTheDocument()
   })
@@ -36,9 +57,18 @@ describe('ProvenanceMark', () => {
     [1, '1 field corrected'],
     [3, '3 fields corrected'],
   ])('counts %i corrected field(s) with the plural the count demands', (count, phrase) => {
-    render(<ProvenanceMark source="screenshot" reviewedAt={null} correctedAt={null} correctedFieldCount={count} />)
+    render(
+      <ProvenanceMark
+        source="screenshot"
+        reviewedAt={null}
+        correctedAt={null}
+        correctedFieldCount={count}
+      />,
+    )
 
-    expect(screen.getByText(new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument()
+    expect(
+      screen.getByText(new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
+    ).toBeInTheDocument()
   })
 
   it('prints the reviewed day in Jakarta time', () => {
@@ -88,7 +118,14 @@ describe('ProvenanceMark', () => {
   })
 
   it('the ⌁ glyph is aria-hidden — the words are the whole announcement', () => {
-    render(<ProvenanceMark source="manual" reviewedAt={null} correctedAt={null} correctedFieldCount={0} />)
+    render(
+      <ProvenanceMark
+        source="manual"
+        reviewedAt={null}
+        correctedAt={null}
+        correctedFieldCount={0}
+      />,
+    )
 
     const glyph = screen.getByText('⌁', { exact: false })
     expect(glyph).toHaveAttribute('aria-hidden', 'true')

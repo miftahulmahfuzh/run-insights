@@ -30,7 +30,9 @@ describe('ScopeSwitcher', () => {
   })
 
   it('the two tabs are the only controls — no client state, no buttons', () => {
-    const { container } = render(<ScopeSwitcher scope="week" weekKey="2026-W34" monthKey="2026-08" />)
+    const { container } = render(
+      <ScopeSwitcher scope="week" weekKey="2026-W34" monthKey="2026-08" />,
+    )
 
     expect(container.querySelectorAll('button')).toHaveLength(0)
     expect(screen.getAllByRole('link')).toHaveLength(2)
@@ -40,7 +42,11 @@ describe('ScopeSwitcher', () => {
 describe('PeriodNav', () => {
   it('renders the label between a previous and a next chevron, each an aria-labelled link', () => {
     render(
-      <PeriodNav label="Week of 10 Aug 2026" previousHref="/trends?scope=week&key=2026-W33" nextHref="/trends?scope=week&key=2026-W35" />,
+      <PeriodNav
+        label="Week of 10 Aug 2026"
+        previousHref="/trends?scope=week&key=2026-W33"
+        nextHref="/trends?scope=week&key=2026-W35"
+      />,
     )
 
     expect(screen.getByText('Week of 10 Aug 2026')).toBeInTheDocument()
@@ -56,7 +62,11 @@ describe('PeriodNav', () => {
 
   it('at the present period the forward chevron is ABSENT, not disabled', () => {
     const { container } = render(
-      <PeriodNav label="This week" previousHref="/trends?scope=week&key=2026-W33" nextHref={null} />,
+      <PeriodNav
+        label="This week"
+        previousHref="/trends?scope=week&key=2026-W33"
+        nextHref={null}
+      />,
     )
 
     expect(screen.queryByRole('link', { name: 'Next period' })).not.toBeInTheDocument()

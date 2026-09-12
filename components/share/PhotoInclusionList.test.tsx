@@ -73,7 +73,9 @@ describe('PhotoInclusionList', () => {
 
   it('the toggle is optimistic: the row answers before the server does, and the action gets all three ids', async () => {
     let resolve!: (value: { ok: true }) => void
-    setPhotoSharingAction.mockImplementation(() => new Promise<{ ok: true }>((res) => (resolve = res)))
+    setPhotoSharingAction.mockImplementation(
+      () => new Promise<{ ok: true }>((res) => (resolve = res)),
+    )
     render(<PhotoInclusionList runId="run-1" photos={PHOTOS} />)
 
     fireEvent.click(checkboxFor('Summary'))

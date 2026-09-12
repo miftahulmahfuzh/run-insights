@@ -34,7 +34,9 @@ describe('AcwrTile', () => {
 
     expect(screen.getByText('—')).toBeInTheDocument()
     expect(
-      screen.getByText('Needs four weeks of history before a 7-day-to-28-day ratio means anything.'),
+      screen.getByText(
+        'Needs four weeks of history before a 7-day-to-28-day ratio means anything.',
+      ),
     ).toBeInTheDocument()
     // The band is not printed here — there is no ratio for it to describe.
     expect(screen.queryByText(/usual/)).not.toBeInTheDocument()
@@ -64,12 +66,15 @@ describe('AcwrTile', () => {
   it.each([
     ['below the band', acwr({ ratio: 0.6 })],
     ['above the band', acwr({ ratio: 1.8 })],
-  ])('%s: the tile says "outside the usual 0.8–1.3 range" and wears the soft-amber wash', (_name, a) => {
-    const { container } = render(<AcwrTile acwr={a} />)
+  ])(
+    '%s: the tile says "outside the usual 0.8–1.3 range" and wears the soft-amber wash',
+    (_name, a) => {
+      const { container } = render(<AcwrTile acwr={a} />)
 
-    expect(screen.getByText(/outside the usual 0\.8–1\.3 range/)).toBeInTheDocument()
-    expect(container.firstElementChild).toHaveClass('bg-warn-soft')
-  })
+      expect(screen.getByText(/outside the usual 0\.8–1\.3 range/)).toBeInTheDocument()
+      expect(container.firstElementChild).toHaveClass('bg-warn-soft')
+    },
+  )
 
   it.each([
     ['the lower bound 0.8 is inside (flagged only OUTSIDE 0.8–1.3)', 0.8],

@@ -25,7 +25,7 @@ describe('CompactRunRow', () => {
     expect(link).toHaveAttribute('href', '/r/run-1')
     // Order matters — the columns only read as columns if the text lines up in this order.
     const text = link.textContent ?? ''
-    expect(text).toBe("Tue 18 Aug10.00 km7'22\"/km")
+    expect(text).toBe('Tue 18 Aug10.00 km7\'22"/km')
   })
 
   it('formats through the shared formatters — metres to two decimals, pace with its unit', () => {
@@ -37,7 +37,7 @@ describe('CompactRunRow', () => {
 
     const text = screen.getByRole('link').textContent ?? ''
     expect(text).toContain('42.20 km') // formatDistanceM: metres → '42.20 km'
-    expect(text).toContain("6'00\"/km") // formatPace: sec/km → minutes'seconds"/km
+    expect(text).toContain('6\'00"/km') // formatPace: sec/km → minutes'seconds"/km
   })
 
   it('lives inside a list item — it is a row of the week’s runs, not a standalone card', () => {

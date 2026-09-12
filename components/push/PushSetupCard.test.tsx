@@ -10,7 +10,11 @@ const { subscribeToPushAction, unsubscribeFromPushAction, sendTestPushAction } =
 // The three Server Actions cross cookies + Postgres; every behaviour pinned here is the card's own
 // decision tree about them — which of the five support states it lands in, and what each button
 // does to the subscription and the row behind it.
-vi.mock('@/lib/push/actions', () => ({ subscribeToPushAction, unsubscribeFromPushAction, sendTestPushAction }))
+vi.mock('@/lib/push/actions', () => ({
+  subscribeToPushAction,
+  unsubscribeFromPushAction,
+  sendTestPushAction,
+}))
 
 import { PushSetupCard } from './PushSetupCard'
 
@@ -107,7 +111,8 @@ async function click(label: string) {
 }
 
 beforeEach(() => {
-  for (const mock of [subscribeToPushAction, unsubscribeFromPushAction, sendTestPushAction]) mock.mockReset()
+  for (const mock of [subscribeToPushAction, unsubscribeFromPushAction, sendTestPushAction])
+    mock.mockReset()
   subscribeToPushAction.mockResolvedValue({ ok: true })
   unsubscribeFromPushAction.mockResolvedValue({ ok: true })
   sendTestPushAction.mockResolvedValue({ ok: true })
@@ -124,7 +129,9 @@ afterEach(() => {
 describe('PushSetupCard — the support states', () => {
   it('a browser with no push APIs at all says "cannot", plainly', async () => {
     installBrowser({ pushable: false })
-    const { container } = render(<PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />)
+    const { container } = render(
+      <PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />,
+    )
 
     expect(
       screen.getByText(
@@ -136,10 +143,14 @@ describe('PushSetupCard — the support states', () => {
 
   it('iOS in a tab is NOT "cannot" — it is the install instruction, rendered instead of a button', async () => {
     installBrowser({ iOS: true, pushable: false })
-    const { container } = render(<PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />)
+    const { container } = render(
+      <PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />,
+    )
 
     expect(screen.getByText(/Add to Home Screen/)).toBeInTheDocument()
-    expect(screen.getByText(/Safari does not deliver notifications to a browser tab/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Safari does not deliver notifications to a browser tab/),
+    ).toBeInTheDocument()
     expect(container.querySelector('button')).toBeNull()
   })
 
@@ -153,7 +164,9 @@ describe('PushSetupCard — the support states', () => {
 
   it('a denied permission points at Settings — a button cannot re-ask what the OS refused', async () => {
     installBrowser({ permission: 'denied' })
-    const { container } = render(<PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />)
+    const { container } = render(
+      <PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />,
+    )
 
     expect(screen.getByText(/Notifications are blocked for this app/)).toBeInTheDocument()
     expect(screen.getByText(/Only your device settings can change that/)).toBeInTheDocument()
@@ -169,7 +182,10 @@ describe('PushSetupCard — the support states', () => {
 
     await act(async () => {})
     expect(screen.getByText(/This browser cannot do push notifications/)).toBeInTheDocument()
-    expect(warn).toHaveBeenCalledWith('[push] service worker registration failed', expect.any(Error))
+    expect(warn).toHaveBeenCalledWith(
+      '[push] service worker registration failed',
+      expect.any(Error),
+    )
   })
 })
 
@@ -178,7 +194,9 @@ describe('PushSetupCard — ready, and the probing phase before it', () => {
     installBrowser({ holdRegistration: true })
     render(<PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />)
 
-    expect(screen.getByText('Off. Nina writes anyway; you just will not know until you open the app.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Off. Nina writes anyway; you just will not know until you open the app.'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Turn on notifications' })).toBeDisabled()
   })
 
@@ -217,7 +235,9 @@ describe('PushSetupCard — ready, and the probing phase before it', () => {
 describe('PushSetupCard — subscribe', () => {
   function subscribeRegistration() {
     const registration = makeRegistration(null)
-    registration.pushManager.subscribe = vi.fn().mockResolvedValue(makeSubscription('https://push.example/new'))
+    registration.pushManager.subscribe = vi
+      .fn()
+      .mockResolvedValue(makeSubscription('https://push.example/new'))
     return registration
   }
 
@@ -230,7 +250,7 @@ describe('PushSetupCard — subscribe', () => {
 
     const subscribe = registration.pushManager.subscribe as ReturnType<typeof vi.fn>
     expect(subscribe).toHaveBeenCalledTimes(1)
-    const args = subscribe.mock.calls[0][0] as {
+    const args = subscribe.mock.calls[0]![0] as {
       userVisibleOnly: boolean
       applicationServerKey: Uint8Array
     }
@@ -270,7 +290,9 @@ describe('PushSetupCard — subscribe', () => {
 
   it('a NotAllowedError is the runner saying no — the card moves to the Settings state, quietly', async () => {
     const registration = makeRegistration(null)
-    registration.pushManager.subscribe = vi.fn().mockRejectedValue(Object.assign(new Error('nope'), { name: 'NotAllowedError' }))
+    registration.pushManager.subscribe = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('nope'), { name: 'NotAllowedError' }))
     installBrowser({ registration })
     render(<PushSetupCard vapidPublicKey="key-123" initiallySubscribed={false} />)
     await act(async () => {})
@@ -332,7 +354,9 @@ describe('PushSetupCard — unsubscribe', () => {
     // browser reports null — the exact race the `endpoint ?? null` guard exists for.
     const subscription = makeSubscription('https://push.example/1')
     const registration = makeRegistration(null)
-    registration.pushManager.getSubscription.mockResolvedValueOnce(subscription).mockResolvedValue(null)
+    registration.pushManager.getSubscription
+      .mockResolvedValueOnce(subscription)
+      .mockResolvedValue(null)
     installBrowser({ registration })
     render(<PushSetupCard vapidPublicKey="key-123" initiallySubscribed />)
     await act(async () => {})

@@ -72,7 +72,7 @@ describe('ShareButton — the happy path', () => {
     expect(share).toHaveBeenCalledWith({ title: 'A run', url: LIVE_URL })
     expect(createShareLinkAction).not.toHaveBeenCalled()
     // No title/text beside the URL — WhatsApp renders its own preview card from the link.
-    expect(share.mock.calls[0][0]).not.toHaveProperty('text')
+    expect(share.mock.calls[0]![0]).not.toHaveProperty('text')
   })
 
   it('an unshared run warms the mint on pointerdown, and the click spends the SAME promise — one action call', async () => {

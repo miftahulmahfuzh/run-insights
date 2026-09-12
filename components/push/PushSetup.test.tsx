@@ -10,7 +10,11 @@ const { requireUserId, pushEnv, countLivePushSubscriptions, PushSetupCard } = vi
   // server, read the database, and hand both down as props. The card's own behaviour (probing,
   // subscribe, the iOS states) is its own file's business.
   PushSetupCard: (props: { vapidPublicKey: string; initiallySubscribed: boolean }) => (
-    <div data-testid="card" data-key={props.vapidPublicKey} data-subscribed={String(props.initiallySubscribed)} />
+    <div
+      data-testid="card"
+      data-key={props.vapidPublicKey}
+      data-subscribed={String(props.initiallySubscribed)}
+    />
   ),
 }))
 

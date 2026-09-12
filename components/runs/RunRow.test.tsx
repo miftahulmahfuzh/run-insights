@@ -22,9 +22,18 @@ const RUN = {
   location: 'Senayan',
 }
 
-function rowText(run = RUN, photoCount?: number) {
+// The row's own prop shape (nullable fields included) so the omission cases type-check as data.
+type RunRowRun = Parameters<typeof RunRow>[0]['run']
+
+function rowText(run: RunRowRun = RUN, photoCount?: number) {
   const { container } = render(
-    <ul>{photoCount === undefined ? <RunRow run={run} /> : <RunRow run={run} photoCount={photoCount} />}</ul>,
+    <ul>
+      {photoCount === undefined ? (
+        <RunRow run={run} />
+      ) : (
+        <RunRow run={run} photoCount={photoCount} />
+      )}
+    </ul>,
   )
   return container.querySelector('a')!.textContent ?? ''
 }
@@ -47,10 +56,10 @@ describe('RunRow', () => {
 
     expect(text).toContain('Tue 18 Aug') // formatDayShort — the identity line
     expect(text).toContain('10.00 km · 1:18:36') // what the run WAS, one separator
-    expect(text).toContain("7'22\"/km avg · 173 bpm avg · Senayan") // how it FELT
+    expect(text).toContain('7\'22"/km avg · 173 bpm avg · Senayan') // how it FELT
     // …and in that order, top to bottom.
     expect(text.indexOf('Tue 18 Aug')).toBeLessThan(text.indexOf('10.00 km'))
-    expect(text.indexOf('10.00 km')).toBeLessThan(text.indexOf("7'22\""))
+    expect(text.indexOf('10.00 km')).toBeLessThan(text.indexOf('7\'22"'))
   })
 
   it('hours appear in the duration only when they exist — 41:23, never 0:41:23', () => {
@@ -70,7 +79,7 @@ describe('RunRow', () => {
   it('omits the heart-rate and location segments when the run has neither', () => {
     const text = rowText({ ...RUN, avgHr: null, location: null })
 
-    expect(text).toContain("7'22\"/km avg") // pace still there…
+    expect(text).toContain('7\'22"/km avg') // pace still there…
     expect(text).not.toContain('bpm') // …with no bpm slot after it
     expect(text).not.toContain('Senayan')
     // And no dangling separator where the missing fields would have been.
