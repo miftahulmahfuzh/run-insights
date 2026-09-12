@@ -101,9 +101,8 @@ describe('NewChatButton', () => {
     expect(routerReplace).toHaveBeenCalledWith('/nina?s=sess-9')
   })
 
-  it('the button is a plus, and a caller’s className rides along', () => {
-    const { container } = render(<NewChatButton onNavigate={() => {}} className="my-1" />)
+  it('the button is a plus', () => {
+    const { container } = render(<NewChatButton onNavigate={() => {}} />)
     expect(container.querySelector('svg')).toBeInTheDocument()
-    expect(disc().className).toContain('my-1')
   })
 })

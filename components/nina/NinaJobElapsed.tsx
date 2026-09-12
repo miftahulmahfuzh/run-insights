@@ -25,18 +25,21 @@ import { formatJobSeconds, jobElapsedSeconds } from '@/lib/nina/jobview'
  * counting up from `created_at` forever would be a lie that gets worse every second. The caller
  * passes `running: false` for a closed job and renders `latency_ms` beside this instead — see the
  * phase plan's D4. This component then renders one frozen string and starts no timer.
+ *
+ * ── NO `className` PROP ────────────────────────────────────────────────────────────────────────
+ * Both callers (`NinaJobDetail`, `NinaJobList`) render the bare span — neither has ever passed a
+ * class — so the prop was a second way to render a number, waiting, and came back out (the rule
+ * `RunDateLink` applied when its `label` override came back out).
  */
 export function NinaJobElapsed({
   startedAtMs,
   nowMs,
   running,
-  className,
 }: {
   startedAtMs: number
   /** The clock at render, from the server. Both first renders use it; see the header. */
   nowMs: number
   running: boolean
-  className?: string
 }) {
   const [seconds, setSeconds] = React.useState(() => jobElapsedSeconds(startedAtMs, nowMs))
 
@@ -68,9 +71,5 @@ export function NinaJobElapsed({
     }
   }, [running, startedAtMs])
 
-  return (
-    <span className={className} suppressHydrationWarning>
-      {formatJobSeconds(seconds)}
-    </span>
-  )
+  return <span suppressHydrationWarning>{formatJobSeconds(seconds)}</span>
 }

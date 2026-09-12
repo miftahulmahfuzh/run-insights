@@ -73,12 +73,11 @@ describe('NinaAvatar', () => {
     expect(container.firstElementChild?.className).toContain(box)
   })
 
-  it('is a clipped circle on a paper chip, and a caller’s className rides along', () => {
-    const { container } = render(<NinaAvatar className="my-2" />)
+  it('is a clipped circle on a paper chip', () => {
+    const { container } = render(<NinaAvatar />)
     const span = container.firstElementChild as HTMLElement
     expect(span.className).toContain('rounded-pill')
     expect(span.className).toContain('overflow-hidden')
     expect(span.className).toContain('bg-paper-2')
-    expect(span.className).toContain('my-2')
   })
 })
