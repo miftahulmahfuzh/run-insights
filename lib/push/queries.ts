@@ -15,12 +15,12 @@ import {
  * functions on purpose so that this phase — the only thing in the app with an opinion about
  * VAPID — owns them all.
  *
- * ── WHY HERE AND NOT `lib/db/queries.ts` ──────────────────────────────────────────────────────
- * `scripts/check-data-layer-invariants.mjs` parses that file and would pass these either way:
+ * ── WHY HERE AND NOT `lib/db/queries` ─────────────────────────────────────────────────────────
+ * `scripts/check-data-layer-invariants.mjs` parses that layer and would pass these either way:
  * every function below takes `userId` first and scopes on it (invariant 7). The reason is
  * vocabulary. Phase 1 put Nina's reads in `lib/nina/queries.ts` rather than the shared module, and
- * push is a third bounded context — endpoints, VAPID, revocation. `lib/db/queries.ts` is 1500
- * lines of run and badge and record vocabulary and this does not belong in it.
+ * push is a third bounded context — endpoints, VAPID, revocation. `lib/db/queries/` is run and
+ * badge and record vocabulary and this does not belong in it.
  *
  * **Every function takes `userId` first and scopes on it, including the ones keyed by a globally
  * unique endpoint.** `endpoint` is unique by RFC 8030, so `WHERE endpoint = $1` alone would be

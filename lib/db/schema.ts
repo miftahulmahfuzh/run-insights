@@ -31,7 +31,7 @@
  *     `numeric` for the same reason a zoom factor is not an integer. Floats summed over a month
  *     drift visibly; integers do not.
  *   - **`runs.reviewed_at IS NOT NULL` gates every aggregate** (roadmap D16 / R-13). The column
- *     is declared in schema/runs.ts; the filter is enforced in lib/db/queries.ts and asserted by
+ *     is declared in schema/runs.ts; the filter is enforced in lib/db/queries/ and asserted by
  *     tests/db.queries.reviewedOnly.test.ts.
  */
 

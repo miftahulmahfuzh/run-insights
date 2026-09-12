@@ -29,10 +29,11 @@ afterEach(() => {
 })
 
 describe('append-only, enforced not just documented', () => {
-  it('lib/db/queries.ts contains no delete path for extractions', () => {
-    const source = readFileSync('lib/db/queries.ts', 'utf8')
+  it('lib/db/queries/extractions.ts contains no delete path for extractions', () => {
+    const source = readFileSync('lib/db/queries/extractions.ts', 'utf8')
     expect(source).not.toMatch(/delete\(\s*extractions\s*\)/)
-    // The same grep runs in CI via scripts/check-extractions-append-only.mjs.
+    // The same grep runs in CI via scripts/check-data-layer-invariants.mjs, over the barrel and
+    // every queries/ module.
   })
 })
 
@@ -156,9 +157,9 @@ describe('getExtractionErrorProfile', () => {
   it('counts EVENTS per field, tolerating a pre-R-7 object-shaped row', async () => {
     // jsonb_array_length raises on a non-array, which would take the whole query down for one
     // legacy row; the jsonb_typeof guard counts it as a single event instead.
-    expect((await import('node:fs')).readFileSync('lib/db/queries.ts', 'utf8')).toContain(
-      "jsonb_typeof(kv.value) = 'array'",
-    )
+    expect(
+      (await import('node:fs')).readFileSync('lib/db/queries/extractions.ts', 'utf8'),
+    ).toContain("jsonb_typeof(kv.value) = 'array'")
     fake.enqueue([
       {
         field: 'distanceM',
