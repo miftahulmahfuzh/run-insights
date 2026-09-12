@@ -18,7 +18,7 @@ export interface MonthRunSummary {
   zones: readonly ZoneRow[]
 }
 
-export interface PaceComparison {
+interface PaceComparison {
   thisMonthSecPerKm: number
   /** null iff no run landed in this bucket last month — there is nothing to compare against. */
   previousMonthSecPerKm: number | null
@@ -26,7 +26,7 @@ export interface PaceComparison {
   deltaSecPerKm: number | null
 }
 
-export interface MonthMetrics {
+interface MonthMetrics {
   /** 'YYYY-MM'. */
   monthKey: string
   volumeM: number

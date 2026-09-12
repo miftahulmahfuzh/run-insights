@@ -79,8 +79,8 @@ export function encodePanelDates(expanded: boolean): string | null {
   return expanded ? PANEL_DATES_OPEN : null
 }
 
-/** Which surface's panel is open. `record` arrives with #25. */
-export type PanelKind = 'badge' | 'record'
+/** Which surface's panel is open. */
+type PanelKind = 'badge' | 'record'
 
 export interface PanelSelection {
   kind: PanelKind

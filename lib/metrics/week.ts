@@ -78,7 +78,7 @@ export interface WeekRunSummary {
   zones: readonly ZoneRow[]
 }
 
-export interface WeekMetrics {
+interface WeekMetrics {
   /** ISO week key, '2026-W34'. See `lib/date/ranges.ts` for why 2026-W01 starts in 2025. */
   weekKey: string
   volumeM: number

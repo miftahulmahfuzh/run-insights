@@ -141,7 +141,7 @@ function inRange<T extends { occurredOn: string }>(
  */
 const BUCKET_ORDER: DistanceBucket[] = ['10k', '5k', 'half', 'full', 'other']
 
-export function dominantBucket(runs: readonly { distanceM: number }[]): DistanceBucket | null {
+function dominantBucket(runs: readonly { distanceM: number }[]): DistanceBucket | null {
   if (runs.length === 0) return null
   const tally = new Map<DistanceBucket, { count: number; distanceM: number }>()
   for (const run of runs) {
@@ -203,7 +203,7 @@ function narrativeProfileOf(
  * `insights_latest_idx`, and deliberately ignores `facts_hash`: what matters is *what we told the
  * runner*, whichever version of the facts produced it.
  */
-export async function getPreviousInsight(
+async function getPreviousInsight(
   userId: string,
   scope: InsightScope,
   precedingScopeKey: string,

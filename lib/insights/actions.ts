@@ -38,7 +38,7 @@ import { loadMonthFacts, loadSessionFacts, loadWeekFacts } from './load'
  * eventually diverge.
  */
 
-export interface EnsureInsightResult {
+interface EnsureInsightResult {
   /** True when a new insight row was written and the page should re-render to pick it up. */
   changed: boolean
   /** True when the model was unreachable or answered twice with something invalid (§7.3). */

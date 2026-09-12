@@ -19,7 +19,6 @@ export {
 
 export type {
   FastestSlowestKm,
-  RecoveryInput,
   SessionInput,
   SessionMetrics,
   SplitRow,
@@ -35,7 +34,6 @@ export {
   FLAG_THRESHOLDS,
   type Flag,
   type FlagCode,
-  type FlagSeverity,
 } from './flags'
 export {
   bucketForDistanceM,
@@ -45,14 +43,11 @@ export {
   VOLUME_JUMP,
   type DistanceBucket,
   type VolumeDelta,
-  type WeekMetrics,
   type WeekRunSummary,
 } from './week'
 export {
   computeMonthMetrics,
-  type MonthMetrics,
   type MonthRunSummary,
-  type PaceComparison,
 } from './month'
 export {
   ACWR_OUT_OF_RANGE,
