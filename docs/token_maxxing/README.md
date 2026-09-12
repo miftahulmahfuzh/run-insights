@@ -4,6 +4,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 
 | Date | Title | Achievement | Doc |
 |------|-------|-------------|-----|
+| 2026-09-12 | Nina Queries Split | Split the repo's largest file — the Nina query layer — into domain modules behind an unchanged public barrel. | [link](./2026-09-12-nina-queries-split.md) |
 | 2026-09-12 | Charts Pair Package Readme (Half-Stale Premise) | Wrote the charting pair's first combined package readme, verifying its assigned consolidation was already landed. | [link](./2026-09-12-charts-readme-yagni.md) |
 | 2026-09-12 | Nina Memory/ImagePrefs YAGNI Sweep | knip-swept lib/nina memory+imageprefs: 3 dead symbols deleted, 17 un-exported; zero flags left; 317 targeted tests green | [link](./2026-09-12-nina-memory-prefs-yagni.md) |
 | 2026-09-12 | App Tree YAGNI Sweep & Citation Repair | Swept the app tree for dead code and repaired false design-brief citations, one born wrong at birth. | [link](./2026-09-12-app-tree-yagni.md) |
