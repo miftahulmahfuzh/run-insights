@@ -59,8 +59,6 @@ export const ExtractRequestSchema = z
     ({ images }) => new Set(images.map((i) => i.kind)).size === images.length,
     'each screenshot must have a different kind',
   )
-export type ExtractRequest = z.infer<typeof ExtractRequestSchema>
-
 /** 202 body. An extraction id, never a run id — R-1: no run exists yet. */
 export interface ExtractAcceptedResponse {
   extractionId: string
@@ -96,8 +94,9 @@ export interface ExtractionResult {
    * The uploaded screenshots, **guaranteed ordered by `sort_order`** (then `created_at`), which
    * `listExtractionPhotos` enforces in SQL.
    *
-   * That ordering is load-bearing for **R-45 as amended**: a field's source photo is the one whose
-   * `kind` matches `sectionForField(field)`, but a 1- or 2-screenshot run has no such photo — and
+   * That ordering is load-bearing for **R-45 as amended**: a field's source photo is the one
+   * whose `kind` matches the field's section in `FIELD_SOURCES`, but a 1- or 2-screenshot run
+   * has no such photo — and
    * `/upload` accepts 1–3, so that is the common case rather than an edge one. The amended rule
    * falls back to whichever photos exist, *in `sort_order`*, so the reviewer always has something
    * to check a value against instead of a blank panel. F05 can take this array's order as given.
@@ -110,7 +109,7 @@ export interface ExtractionResult {
   completedAt: string | null
 }
 
-export const TERMINAL_STATUSES: readonly ExtractionStatus[] = ['ok', 'repaired', 'failed']
+const TERMINAL_STATUSES: readonly ExtractionStatus[] = ['ok', 'repaired', 'failed']
 
 export function isTerminal(status: ExtractionStatus): boolean {
   return TERMINAL_STATUSES.includes(status)

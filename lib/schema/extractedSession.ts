@@ -16,7 +16,6 @@ import { SCREEN_KINDS, type ScreenKind } from '@/lib/extract/constants'
  * poll-result renderer are client components and both need these types.
  */
 
-export { SCREEN_KINDS }
 export type { ScreenKind }
 
 export const ScreenKindSchema = z.enum(SCREEN_KINDS)
@@ -124,7 +123,7 @@ const transcribedClockTime = z.string().nullable().default(null).transform(norma
  * §1.6 measured, and it must fail Zod so the repair round-trip fires — not be silently defaulted
  * into a run a human then confirms without ever seeing what was lost.
  */
-export const ExtractedSplit = z.object({
+const ExtractedSplit = z.object({
   km: z.number().int().positive(),
   timeSec: z.number().int().positive(),
   paceSecPerKm: z.number().int().positive(),
@@ -133,9 +132,9 @@ export const ExtractedSplit = z.object({
   /** D14 — the final sub-kilometre row. Never averaged into a pace. */
   partial: z.boolean(),
 })
-export type ExtractedSplit = z.infer<typeof ExtractedSplit>
+type ExtractedSplit = z.infer<typeof ExtractedSplit>
 
-export const ExtractedZone = z.object({
+const ExtractedZone = z.object({
   zone: z.number().int().min(1).max(5),
   durationSec: z.number().int().nonnegative(),
   /** null is legitimate for zone 1 only — it has no lower bound. */
@@ -143,7 +142,7 @@ export const ExtractedZone = z.object({
   /** null is legitimate for zone 5 only — it has no upper bound. */
   maxBpm: z.number().int().nullable(),
 })
-export type ExtractedZone = z.infer<typeof ExtractedZone>
+type ExtractedZone = z.infer<typeof ExtractedZone>
 
 /** R-9: `[0]` is `runs.end_hr_bpm`, `[1]` is `runs.hr_1min_post_bpm`. F05 maps them. */
 export const ExtractedPostWorkoutHr = z.object({
@@ -180,7 +179,7 @@ export const RawExtractedSession = z.object({
 })
 
 export type ExtractedSession = z.infer<typeof RawExtractedSession>
-export type ExtractedSessionField = keyof ExtractedSession
+type ExtractedSessionField = keyof ExtractedSession
 
 /**
  * Which screens can show which field — **settled by R-4, which read the three source
@@ -214,7 +213,9 @@ export const FIELD_SOURCES: Record<ExtractedSessionField, readonly ScreenKind[]>
   elevationGainM: ['summary'],
   avgCadenceSpm: ['summary'],
   avgPaceSecPerKm: ['summary'],
-  // R-4: present on BOTH, agreed at 173 in the fixture. Summary is preferred (see below).
+  // R-4: present on BOTH, agreed at 173 in the fixture. Summary is preferred — if the two
+  // screens ever disagree, that is a genuine extraction fault the reviewer should see rather
+  // than a tie the code quietly breaks, so the summary's row comes first.
   avgHrBpm: ['summary', 'heartrate'],
   // R-4: the chart's top-of-axis label. Incidental chrome on one screen, never a labelled field.
   maxHrBpm: ['heartrate'],
@@ -258,24 +259,10 @@ function emptyFieldValues(): { [K in ExtractedSessionField]: ExtractedSession[K]
   }
 }
 
-export const ALL_SESSION_FIELDS = Object.keys(FIELD_SOURCES) as ExtractedSessionField[]
-
-/**
- * R-45's provenance resolver, and the whole of it: a field's source photo is the photo whose
- * `kind` matches the field's section. Derived, never stored, no new model output, no bounding
- * boxes — R-45 rejected those because nothing measured what the coordinates cost and a wrong box
- * is worse than no box.
- *
- * For the one two-screen field, this returns `'summary'`, per R-4's merge rule: **prefer the
- * summary screen.** They agreed at 173 in the fixture, and if they ever disagree that is a
- * genuine extraction fault the reviewer should see rather than a tie the code quietly breaks.
- */
-export function sectionForField(field: ExtractedSessionField): ScreenKind {
-  return FIELD_SOURCES[field][0]!
-}
+const ALL_SESSION_FIELDS = Object.keys(FIELD_SOURCES) as ExtractedSessionField[]
 
 /** True when at least one uploaded screen could legitimately have shown this field. */
-export function fieldIsReachable(
+function fieldIsReachable(
   field: ExtractedSessionField,
   kindsPresent: ReadonlySet<ScreenKind>,
 ): boolean {
@@ -306,11 +293,6 @@ export function makeExtractedSessionSchema(kindsPresent: ReadonlySet<ScreenKind>
     }
     return out
   })
-}
-
-/** An all-empty session — what F05's review screen renders for a `failed` extraction (§8.1). */
-export function emptyExtractedSession(): ExtractedSession {
-  return emptyFieldValues()
 }
 
 /**

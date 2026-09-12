@@ -24,7 +24,7 @@ import { formatBpm, formatCadence, formatPaceDelta, formatPercent } from '@/lib/
  * the title alone is jargon and the detail alone is a number with no handle.
  */
 
-export interface FlagCopy {
+interface FlagCopy {
   title: string
   detail: string
 }

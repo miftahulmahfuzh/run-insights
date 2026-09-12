@@ -72,7 +72,7 @@ export interface InvalidateDeps {
  * for free. After the redirect it costs a query for badges and is unrecoverable for records,
  * because `changed` is only true at this instant.
  */
-export interface InvalidateOutcome {
+interface InvalidateOutcome {
   newlyEarned: BadgeAwardResult['newlyEarned']
   recordsMovedToThisRun: readonly RecordKey[]
 }
