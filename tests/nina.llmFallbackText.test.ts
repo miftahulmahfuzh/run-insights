@@ -75,7 +75,15 @@ describe('toOpenRouterChatBody', () => {
 
     expect(out.model).toBe(NINA_FALLBACK_TEXT_MODEL)
     expect(out.max_tokens).toBe(2_400)
-    expect(out.reasoning).toEqual({ enabled: false })
+    /*
+     * Measured 2026-09-12 13:11 WIB: OpenRouter rejected `reasoning: { enabled: false }` for
+     * `z-ai/glm-5.3-flash` with `400 "Reasoning is mandatory for this endpoint and cannot be
+     * disabled."` — the safety net this incident exists for was itself down. Sending no
+     * reasoning-control field at all is `vision.ts:112-117`'s already-established precedent for
+     * this same provider/model: OpenRouter's reasoning controls have never been probed from this
+     * codebase, so nothing here should assume a shape it can reject.
+     */
+    expect(out).not.toHaveProperty('reasoning')
     expect(out.messages).toEqual([
       { role: 'system', content: 'You are Nina.' },
       { role: 'user', content: 'pagi' },
@@ -371,6 +379,8 @@ describe('ninaFallbackTextClient', () => {
       const sent = JSON.parse(String(init?.body)) as { model: string; tool_choice: string }
       expect(sent.model).toBe(NINA_FALLBACK_TEXT_MODEL)
       expect(sent.tool_choice).toBe('required')
+      /* The actual wire payload — not just `toOpenRouterChatBody`'s return type. */
+      expect(sent).not.toHaveProperty('reasoning')
 
       const send = message.content[0]
       if (send?.type !== 'tool_use') throw new Error('expected a tool_use block')
