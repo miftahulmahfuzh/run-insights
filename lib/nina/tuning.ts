@@ -501,7 +501,7 @@ export const NINA_DIAL_SPECS: Readonly<Record<NinaDial, NinaDialSpec>> = {
     key: 'profanity',
     label: 'Profanity',
     axis: 'How freely she swears. Separate from anger on purpose: anger is volume and CAPS, this is vocabulary — a Nina who swears calmly and a Nina who shouts politely are both reachable.',
-    path: 'lib/nina/persona.ts JAKARTA_SLANG — the "anjir" gloss ("mild expletive of astonishment. Sparingly.") and the "bego" gloss ("idiot. RUNG 4 ONLY, and about the decision, never about him."). Those two glosses are the fence this dial moves.',
+    path: 'lib/nina/persona/voice.ts JAKARTA_SLANG — the "anjir" gloss ("mild expletive of astonishment. Sparingly.") and the "bego" gloss ("idiot. RUNG 4 ONLY, and about the decision, never about him."). Those two glosses are the fence this dial moves.',
     defaultScore: 30,
     defaultBecause:
       'Today she swears, but sparingly and fenced: "anjir" is marked Sparingly and "bego" is rung 4 only. That is genuinely below the middle of the axis. Phase 2 leaves the two glosses exactly as they are in the "low" band; "off" strips them and "high"/"max" unfence them.',

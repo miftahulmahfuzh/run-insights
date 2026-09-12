@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -1250,8 +1250,22 @@ describe('buildNinaSystemPrompt — the horny trait (R3)', () => {
  * value the operator parked rather than the value the prompt uses.
  */
 describe('the prompt side never reads a tuning value past the gate (R4)', () => {
+  /* The persona split (2026-09-12) moved the canon into `lib/nina/persona/*.ts` behind the
+   * `persona.ts` barrel, so a hand-listed array would have watched an empty barrel while the
+   * real text went unscanned. The directory is DISCOVERED instead: a module added later is
+   * scanned the moment it exists, not when somebody remembers to extend this list. */
+  const PERSONA_DIR = '../lib/nina/persona/'
+  const personaDir = fileURLToPath(new URL(PERSONA_DIR, import.meta.url))
+  const personaModules = existsSync(personaDir)
+    ? readdirSync(personaDir)
+        .filter((f) => f.endsWith('.ts'))
+        .sort()
+        .map((f) => `${PERSONA_DIR}${f}`)
+    : []
+
   const GATED = [
     '../lib/nina/persona.ts',
+    ...personaModules,
     '../lib/nina/prompts/system.ts',
     '../lib/nina/proactive.ts',
   ]
