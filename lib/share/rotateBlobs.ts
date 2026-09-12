@@ -33,14 +33,14 @@ import { newId } from '@/lib/id'
  * That is why `REVOKE_BODY` says so in the confirm dialog rather than only in this comment.
  */
 
-export interface RotatablePhoto {
+interface RotatablePhoto {
   id: string
   blobUrl: string
   /** The stored pathname. Needed to put a photo back at its exact old URL if the row write fails. */
   pathname: string
 }
 
-export interface RotationResult {
+interface RotationResult {
   rotated: number
   /** Photo ids whose old URL is still live. Non-empty means the caller must say so — §REVOKE_PARTIAL. */
   failed: string[]

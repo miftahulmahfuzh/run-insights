@@ -16,7 +16,7 @@ import {
   PHOTO_ZOOM_HINT,
 } from '@/lib/share/copy'
 
-export interface InclusionPhoto {
+interface InclusionPhoto {
   id: string
   blobUrl: string
   kind: string
