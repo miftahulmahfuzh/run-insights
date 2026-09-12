@@ -21,12 +21,8 @@ export const ROLLING_MEAN_WEEKS = 4
  * index-based rather than history-based on purpose: the line is a statement about the twelve weeks
  * ON THIS CHART, so every value it plots must be derivable from bars the reader can see.
  */
-export function toVolumeTrend(
-  runs: readonly ChartRun[],
-  anchorISO: DateISO,
-  weeks = TREND_WEEKS,
-): VolumeTrendPoint[] {
-  const window = lastIsoWeeks(anchorISO, weeks)
+export function toVolumeTrend(runs: readonly ChartRun[], anchorISO: DateISO): VolumeTrendPoint[] {
+  const window = lastIsoWeeks(anchorISO, TREND_WEEKS)
 
   const totals = window.map((week) => {
     const inWeek = runs.filter(

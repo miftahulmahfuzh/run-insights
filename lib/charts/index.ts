@@ -27,8 +27,8 @@ export {
 } from './paceHr'
 export { aggregateZones, toZoneShares, zoneOfHr, zoneTotalSec } from './zones'
 export { monthWeekBucketRanges, weeksInMonth } from './weeksInMonth'
-export { lastIsoWeeks, type TrendWeek } from './window'
-export { ROLLING_MEAN_WEEKS, TREND_WEEKS, toVolumeTrend, weeksWithRuns } from './volumeTrend'
+export { lastIsoWeeks } from './window'
+export { ROLLING_MEAN_WEEKS, toVolumeTrend, weeksWithRuns } from './volumeTrend'
 export {
   BUCKET_LABELS,
   BUCKET_ORDER,
@@ -36,6 +36,5 @@ export {
   defaultBucket,
   paceTrendLine,
   toPaceTrendPoints,
-  type PaceTrendLine,
 } from './paceTrend'
 export { toZoneDrift, ZONES } from './zoneDrift'

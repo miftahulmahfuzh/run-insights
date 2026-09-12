@@ -17,12 +17,8 @@ export const ZONES = [1, 2, 3, 4, 5] as const
  * Five zeros rendered as an area would read as "an easy week", which is the exact misreport §9
  * forbids for a run with no heart-rate data — the same rule one scope up.
  */
-export function toZoneDrift(
-  runs: readonly ChartRun[],
-  anchorISO: DateISO,
-  weeks = TREND_WEEKS,
-): ZoneDriftWeek[] {
-  return lastIsoWeeks(anchorISO, weeks).map((week) => {
+export function toZoneDrift(runs: readonly ChartRun[], anchorISO: DateISO): ZoneDriftWeek[] {
+  return lastIsoWeeks(anchorISO, TREND_WEEKS).map((week) => {
     const inWeek = runs.filter(
       (r) => r.occurredOn >= week.weekStartISO && r.occurredOn <= week.weekEndISO,
     )
