@@ -21,7 +21,8 @@ vi.mock('@/lib/photos/contentHash', () => ({ contentHashOf }))
 // Real modules below: lib/nina/dedupe.ts, lib/nina/images.ts and lib/id.ts are pure, and the
 // pick/dedupe DECISIONS they make are exactly what these tests exercise — mocking them would just
 // re-implement the thing under test inside the mock.
-import { Composer, type ComposerDraftImage } from './Composer'
+import { Composer } from './Composer'
+import type { ComposerDraftImage } from './useComposerPhotos'
 import type { NinaExistingPhoto, RunAttachment } from '@/lib/nina/attach'
 import type { QuoteView } from '@/lib/nina/reply'
 
