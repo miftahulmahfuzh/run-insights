@@ -36,7 +36,10 @@ const postgresUrl = (name: string) =>
 
 /** Always required. Parsed eagerly at module load -> a missing value fails the build. */
 const coreSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // NODE_ENV is deliberately NOT a member (verified with knip + a repo-wide grep, 2026-09-12):
+  // nothing in the app branches on the runtime environment. Its only readers here used to be
+  // the isProduction/isDevelopment conveniences below, and nothing read those either. Next
+  // itself consumes the variable at build time; this contract never needs to.
 
   // One z.ai key, both endpoints (R-40). F04 sends it as a Bearer token to the coding
   // endpoint; F07 hands it to @anthropic-ai/sdk for the Anthropic-compatible one.
@@ -232,7 +235,12 @@ export function pushEnv(): z.infer<typeof pushSchema> {
 }
 
 let adminCache: z.infer<typeof adminSchema> | null = null
-export function adminEnv(): z.infer<typeof adminSchema> {
+/**
+ * Internal (un-exported 2026-09-12, knip-verified): `isAdminEmail` is the admin group's only
+ * consumer, and it lives in this file. The other groups keep exported accessors because code
+ * outside this file reads them; this one would just be a second door into the same room.
+ */
+function adminEnv(): z.infer<typeof adminSchema> {
   adminCache ??= load('admin', adminSchema)
   return adminCache
 }
@@ -255,14 +263,3 @@ export function isAdminEmail(email: string | null | undefined): boolean {
     .filter((entry) => entry.length > 0)
     .includes(needle)
 }
-
-export const isProduction = env.NODE_ENV === 'production'
-export const isDevelopment = env.NODE_ENV === 'development'
-
-export type CoreEnv = z.infer<typeof coreSchema>
-export type AuthEnv = z.infer<typeof authSchema>
-export type BlobEnv = z.infer<typeof blobSchema>
-export type CronEnv = z.infer<typeof cronSchema>
-export type NinaEnv = z.infer<typeof ninaSchema>
-export type PushEnv = z.infer<typeof pushSchema>
-export type AdminEnv = z.infer<typeof adminSchema>
