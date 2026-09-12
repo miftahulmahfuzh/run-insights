@@ -92,6 +92,32 @@ import { useTurnArrival } from './useTurnArrival'
  * Its existing copy is now more true than it was: his message really was persisted before the model
  * was called, and `loadNinaContext` reads the session window, so "send another and she will pick it
  * up" describes a mechanism rather than a hope.
+ *
+ * ── WHAT THE SPLIT MOVED WHERE (2026-09-12) ──────────────────────────────────────────────────
+ * This file was 1645 lines before it was decomposed along the concerns its comments already
+ * drew. What remains here is the skeleton: the props' contracts, the conversation state and its
+ * server merge, the one-shot URL strip, the composer arms, and the render that wires it all.
+ * The machinery now lives beside it, one concern per module, every comment travelling with the
+ * code it explains:
+ *
+ *   - `chatScreenCopy.ts` — every sentence this screen says (`Notice`, `NOTICE_TEXT`,
+ *     `RESEND_REFUSAL_TEXT`).
+ *   - `usePhotoViewer.ts` — R10's overlay: which photos are showing, derived so a row vanishing
+ *     underneath closes or clamps.
+ *   - `useQuoteLanding.ts` — R1's `?jump=` deep link (mount and soft-nav arrivals, with their
+ *     deliberately different cleanup policies), R12's quote tap, the landing flash, and the
+ *     composer-clearance geometry `planQuoteScroll` measures against.
+ *   - `useTurnArrival.ts` — F36 R6's arrival half: `awaiting` and `typing`, the live session id,
+ *     the poll cursor, the staggered reveal, and the sequential poll loop.
+ *   - `useNinaSend.ts` — the send: busy window, optimistic row, id adoption, and the composer
+ *     arms a typed send reads and unpins.
+ *   - `useMessageActions.ts` — R8's sheet: the acting row and the edit/delete/resend/retry
+ *     gestures.
+ *
+ * The hooks share nothing mutable: the message list and the notice strip are this component's,
+ * patched through setters, and each hook keeps its own mount-alive flag (a `useRef` created at
+ * the owner — the one shape both react-hooks rules accept, and indistinguishable from one shared
+ * flag because it is only ever written at mount and unmount).
  */
 
 export function ChatScreen({
