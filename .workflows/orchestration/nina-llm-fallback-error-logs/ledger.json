@@ -24,22 +24,22 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "7e2945c",
       "depends_on": [
         1,
         3
       ],
       "difficulty": "HARD",
       "n": 2,
-      "note": null,
+      "note": "text-chat fallback landed: wrap-client covers all 5 call sites; per-attempt nina_error_logs rows; double-failure still 'unavailable'. Decided: plan test had index slip (assistant at msg[1] not [2]) \u2014 fixed indices, assertions unchanged; repo lint has 4 pre-existing HEAD errors in files no phase owns, phase files lint-clean. All 5 phases now landed on the branch.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-12T02:56:32+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A036",
       "title": "OpenRouter fallback \u2014 text chat"
     },
     {
@@ -103,7 +103,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-llm-fallback-error-logs",
-  "updated": "2026-09-12T02:34:58+00:00",
+  "updated": "2026-09-12T02:56:32+00:00",
   "verified_at": "2026-09-12T02:31:23+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
 }
