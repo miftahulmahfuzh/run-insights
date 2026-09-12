@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -181,13 +181,27 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     expect(screen.getByRole('button', { name: 'Save framing' })).toBeEnabled()
   })
 
+  /*
+   * The rail's verbs run inside `useTransition` (`run()`), whose settle React commits in two
+   * passes — the results render, then the `isPending` flip. `await user.click(...)` usually
+   * out-waits both, but under a loaded machine the second pass can land after the click returns,
+   * and a bare `expect(action).toHaveBeenCalledWith(...)` then fails without a retry. Every
+   * assertion below that depends on an action's flight is therefore waited for, not assumed.
+   */
   it('saves the dragged crop values on Save framing', async () => {
     const user = userEvent.setup()
     render(<SelectionPane {...baseProps()} photo={albumPhoto({ id: 'crop-me' })} />)
     await user.click(screen.getByText('drag'))
     await user.click(screen.getByRole('button', { name: 'Save framing' }))
 
-    expect(saveNinaAvatarCropAction).toHaveBeenCalledWith({ id: 'crop-me', scale: 2, x: 5, y: 5 })
+    await waitFor(() =>
+      expect(saveNinaAvatarCropAction).toHaveBeenCalledWith({
+        id: 'crop-me',
+        scale: 2,
+        x: 5,
+        y: 5,
+      }),
+    )
   })
 
   it('shows the refusal sentence and leaves the crop dirty when the save action refuses', async () => {
@@ -197,7 +211,7 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
     await user.click(screen.getByText('drag'))
     await user.click(screen.getByRole('button', { name: 'Save framing' }))
 
-    expect(screen.getByText('crop rejected')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('crop rejected')).toBeInTheDocument())
     // Still dirty: the Save button is still enabled.
     expect(screen.getByRole('button', { name: 'Save framing' })).toBeEnabled()
   })
@@ -227,7 +241,7 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
       <SelectionPane {...baseProps()} photo={albumPhoto({ id: 'promote-me', isCurrent: false })} />,
     )
     await user.click(screen.getByRole('button', { name: 'Set as her profile picture' }))
-    expect(setCurrentNinaAvatarAction).toHaveBeenCalledWith('promote-me')
+    await waitFor(() => expect(setCurrentNinaAvatarAction).toHaveBeenCalledWith('promote-me'))
   })
 
   it('disables the profile-picture control when the photo is already current', () => {
@@ -242,8 +256,9 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
       <SelectionPane {...baseProps()} onRemoved={onRemoved} photo={albumPhoto({ id: 'del-me' })} />,
     )
     await user.click(screen.getByRole('button', { name: 'Remove this photo' }))
-    expect(deleteNinaAvatarAction).toHaveBeenCalledWith('del-me')
-    expect(onRemoved).toHaveBeenCalledWith(null)
+    await waitFor(() => expect(deleteNinaAvatarAction).toHaveBeenCalledWith('del-me'))
+    // `onRemoved` fires only after the action resolves inside the same transition.
+    await waitFor(() => expect(onRemoved).toHaveBeenCalledWith(null))
   })
 
   it('disables Remove when the photo is her current profile picture, so she is never left without one', () => {
@@ -271,15 +286,17 @@ describe('AlbumSelectionPane (via SelectionPane)', () => {
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Re-describe it — it overwrites' }))
-    expect(describeNinaAvatarAction).toHaveBeenCalledWith('desc-me')
+    await waitFor(() => expect(describeNinaAvatarAction).toHaveBeenCalledWith('desc-me'))
 
     const textarea = screen.getByLabelText('What she can see in it')
     await user.type(textarea, ' more')
     await user.click(screen.getByRole('button', { name: 'Save the description' }))
-    expect(editNinaAvatarDescriptionAction).toHaveBeenCalledWith({
-      id: 'desc-me',
-      description: 'old text more',
-    })
+    await waitFor(() =>
+      expect(editNinaAvatarDescriptionAction).toHaveBeenCalledWith({
+        id: 'desc-me',
+        description: 'old text more',
+      }),
+    )
   })
 
   it('shows the source, pixel dimensions and thumbnail-presence facts', () => {
