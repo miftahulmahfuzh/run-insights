@@ -9,6 +9,7 @@ import { contentHashOf } from '@/lib/photos/contentHash'
 
 import { releaseBlobIfUnreferenced } from './blobRelease'
 import { captionNinaPhoto } from './caption'
+import { logNinaError } from './errorlogs'
 import { callNinaImageModel, type NinaImageCallResult } from './imagecall'
 import { planNinaImageWrite, type NinaImageDedupHit } from './imageDedupe'
 import { ninaImageCaption, type NinaImageFailure } from './imagefail'
@@ -572,6 +573,81 @@ interface AttemptResult {
   anchored: boolean
 }
 
+/**
+ * **R2's Image-generation row, and the only place the raw provider text survives.**
+ *
+ * ── WHAT IT RESCUES ───────────────────────────────────────────────────────────────────────────
+ * `callNinaImageModel`'s `detail` is commented *"Never rendered. Log only."* and that was literally
+ * true: `closeFailed` `console.warn`s it, `failNinaImageJob` `console.warn`s it again, and neither
+ * `.set({...})` has ever included it. `nina_turns.error_code` keeps only the four-value
+ * classification (`timeout | policy | transport | stale`), so the day OpenRouter starts answering
+ * `HTTP 429 rate limit exceeded for qwen/qwen-image-3` the database says `transport` and the
+ * sentence is gone with the Vercel log. This writes it down.
+ *
+ * ── IT IS CALLED ON EVERY FAILED CALL, NOT EVERY FAILED JOB ───────────────────────────────────
+ * The user asked to log *"setiap failure call"*. `closeFailed` below either REQUEUES (budget left —
+ * the attempt is billed and invisible, since the requeue UPDATE writes only latency and cost) or
+ * gives up. Both are failed calls, so the call site is ABOVE that branch, in `attemptOnce`, where
+ * the choice cannot be forgotten in one of the two arms. A job that burns both attempts therefore
+ * writes two rows, differing in `errorMessage`, `timeoutMs` and `created_at`.
+ *
+ * ── AND ONLY FOR A FAILED *MODEL CALL* ────────────────────────────────────────────────────────
+ * `closeFailed` is also entered with `detail: 'store: …'` and `detail: 'finish: …'` — a Blob put or
+ * a Neon insert that threw AFTER a generation we were billed for. Those are our failures, not the
+ * provider's, and filing them under a tab titled "log setiap failure call to LLM" would make the
+ * tab answer a different question than the one an operator is asking it. They keep their existing
+ * `console.warn` and their `nina_turns.error_code = 'transport'`, and nothing else.
+ *
+ * ── IT CANNOT COST THE JOB ────────────────────────────────────────────────────────────────────
+ * Its own `try/catch`, matching the plan's invariant and this codebase's
+ * `try { await deps.store.record(...) } catch { console.warn(...) }` idiom. `logNinaError` is
+ * documented as best-effort by phase 1, and this catch does not rely on that: a log table is not
+ * worth one photograph, and the outer `after()` has no second net for a throw from here.
+ */
+async function recordImageCallFailure(input: {
+  userId: string
+  jobId: string
+  args: NinaImageJobArgs
+  /** Already normalised by `ninaImageReferenceUrl` — the ANCHOR, which is the input image. */
+  referenceUrl: string | null
+  /** Already normalised by `coerceNinaImageModel`; the same value the call was made with. */
+  model: string
+  outcome: Extract<NinaImageCallResult, { ok: false }>
+}): Promise<void> {
+  const { userId, jobId, args, referenceUrl, model, outcome } = input
+  try {
+    await logNinaError({
+      userId,
+      category: 'image_generation',
+      /* Image generation has always been OpenRouter and this plan set adds no fallback to it —
+       * see the index's Decisions. A constant, not a parameter. */
+      provider: 'openrouter',
+      model,
+      /* `args.prompt` is the fully-assembled generation prompt, stored verbatim when the job was
+       * opened — "the load-bearing choice in this whole design" (`NinaImageJobArgs`). It is
+       * exactly what `buildImageRequestBody` sent. */
+      fullInput: args.prompt,
+      /* The classification first, then the provider's own words untouched. `nina_error_logs` has
+       * no `kind` column and carries no job id to join back to `nina_turns.error_code`, so this
+       * prefix is where the timeout/policy/transport distinction survives to the admin screen. */
+      errorMessage: `[${outcome.kind}] ${outcome.detail}`,
+      /* The budget the AbortSignal actually got, reported by the call itself. `null` only when no
+       * request was sent at all. */
+      timeoutMs: outcome.timeoutMs,
+      /* The anchor photo — an INPUT image. A failed generation produces no output image at all
+       * (`finishSelfie` never runs), which is why this is never an output URL. `null` for an
+       * unanchored job, and the admin row then simply has no image affordance. */
+      imageUrl: referenceUrl,
+    })
+  } catch (cause) {
+    console.warn('[nina] image failure could not be logged', {
+      jobId,
+      kind: outcome.kind,
+      error: String(cause),
+    })
+  }
+}
+
 /** One attempt: claim, call, store, finish. Returns what happened, and whether it was anchored. */
 async function attemptOnce(
   userId: string,
@@ -592,14 +668,25 @@ async function attemptOnce(
     anchored,
   })
 
+  /* The job's own camera, normalised — an old jsonb row without the key rides the default.
+   * HOISTED out of the argument list so the log row below names the camera the call was ACTUALLY
+   * made with, rather than re-deriving it and risking the two drifting apart. */
+  const model = coerceNinaImageModel(args.model)
+
   const outcome: NinaImageCallResult = await callNinaImageModel(
     args.prompt,
     args.seed,
     referenceUrl,
-    /* The job's own camera, normalised — an old jsonb row without the key rides the default. */
-    coerceNinaImageModel(args.model),
+    model,
   )
   if (!outcome.ok) {
+    /*
+     * R2. ABOVE `closeFailed`, deliberately: `closeFailed` either requeues (retry budget left) or
+     * gives up, and BOTH are failed calls the operator asked to see. Awaited rather than floated —
+     * this runs inside `after()`, where a floating promise can be cut off — and its own try/catch
+     * is inside `recordImageCallFailure`, so nothing here can change what the job does next.
+     */
+    await recordImageCallFailure({ userId, jobId, args, referenceUrl, model, outcome })
     return { outcome: await closeFailed(userId, jobId, args, attempts, outcome), anchored }
   }
 

@@ -6,6 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 import { buildNinaRunFact, type NinaContext, type NinaRunFact } from './context'
 import { dbNinaToolGateway, dbNinaTurnStore } from './gateway'
+import { ninaFallbackTextClient } from './llmFallbackText'
 import { NINA_REPAIR_PREAMBLE, SEND_TOOL, buildNinaSystemPrompt } from './prompts'
 import { quoteContextBlock, type QuotedMessageInput } from './reply'
 import { NinaSendPayloadSchema, describeNinaIssues, type NinaSendPayload } from './schema'
@@ -1103,10 +1104,23 @@ async function attemptNinaRepair(
  * or to re-spell all five deps at its own call site — a second definition of "production", which
  * is precisely the drift this function exists to prevent. So the keyword lands in THIS phase's
  * commit, at creation, rather than as a later phase reaching in.
+ *
+ * ── AND THE CLIENT IS WRAPPED, WHICH IS THE WHOLE OF R1's TEXT PATH ───────────────────────────
+ * `ninaFallbackTextClient` tries `ninaClient()` (z.ai) first and OpenRouter's
+ * `z-ai/glm-5.3-flash` second, logging each failed attempt to `nina_error_logs`. **This one line
+ * covers every model call a turn makes** — primary, both continuations, the prose re-ask and
+ * `attemptNinaRepair`'s — because all five go through `deps.client.messages.create`, and none of
+ * them can tell the difference: the fallback synthesizes an `Anthropic.Message` that
+ * `findSendBlock`, `findToolUses`, `usageOf` and the `stop_reason` check read unchanged.
+ *
+ * `userId` is optional and defaults to null so the one production caller can attribute its log
+ * rows while nothing else has to know the parameter exists. It is NOT part of `NinaTurnDeps`: a
+ * turn's deps are provider-shaped, the user is turn-shaped, and `runNinaTurn` already has
+ * `input.userId` in hand at the only place that constructs deps implicitly.
  */
-export async function productionDeps(): Promise<NinaTurnDeps> {
+export async function productionDeps(userId: string | null = null): Promise<NinaTurnDeps> {
   return {
-    client: ninaClient(),
+    client: ninaFallbackTextClient(ninaClient(), { userId }),
     model: await ninaModel(),
     toolSet: NINA_CORE_TOOL_SET,
     gateway: dbNinaToolGateway,
@@ -1143,8 +1157,9 @@ export async function runNinaTurn(
   deps: NinaTurnDeps | undefined = undefined,
 ): Promise<NinaTurnResult> {
   /* The model id now resolves the app_settings override, so production deps are async; a default
-   * parameter cannot await, so the fallback resolves here — still once, still per call. */
-  deps ??= await productionDeps()
+   * parameter cannot await, so the fallback resolves here — still once, still per call. The user
+   * id rides along so the OpenRouter fallback's `nina_error_logs` rows are attributable. */
+  deps ??= await productionDeps(input.userId)
   const result = await runNinaTurnWith(deps, input)
 
   if (deps.store != null) {

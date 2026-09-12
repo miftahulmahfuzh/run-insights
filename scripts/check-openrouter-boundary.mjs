@@ -8,8 +8,11 @@
 // unchanged: still generated offline by a skill and committed, still $0.04 and 4-5 minutes an
 // image, still no reason whatsoever to do at request time.
 //
-// So this check is NARROWED, not removed. It still greps app/, lib/ and components/, and it still
-// fails for every hit outside two exempt paths:
+// So this check is NARROWED, not removed. It still greps app/, lib/ and components/, restricted to
+// SOURCE files (ts/tsx/js/jsx/mjs/cjs — 2026-09-12, after an adopted plan copy under
+// lib/db/.workflows/plan/ tripped the bare grep by merely MENTIONING the name in prose; a markdown
+// plan cannot read a key, and the question this script answers is "what started READING it"), and
+// it still fails for every hit outside two exempt paths:
 //
 //   · `lib/nina/`  — the ruling's own boundary. Her generation client lives here.
 //   · `lib/env.ts` — the app's single environment contract, which is where every other
@@ -31,6 +34,20 @@ import { execSync } from 'node:child_process'
 const DIRS = ['app', 'lib', 'components']
 
 /**
+ * Only file types that can READ an environment variable can violate the boundary. Restricting the
+ * grep to them keeps prose (adopted plan copies under lib/<pkg>/.workflows/plan/, package readmes) out
+ * of a check whose subject is code — without exempting any PATH a future source file could hide in.
+ */
+const SRC_INCLUDES = [
+  '--include=*.ts',
+  '--include=*.tsx',
+  '--include=*.js',
+  '--include=*.jsx',
+  '--include=*.mjs',
+  '--include=*.cjs',
+]
+
+/**
  * Paths the key is allowed to appear in, as PREFIXES of a repo-relative path. RU-2.
  *
  * Prefix-matched in JS rather than handed to `grep --exclude-dir`, because `--exclude-dir=nina`
@@ -50,7 +67,9 @@ function isExempt(line) {
 export function checkOpenRouterBoundary() {
   let raw
   try {
-    raw = execSync(`grep -rnE 'OPENROUTER_API_KEY' ${DIRS.join(' ')}`, { encoding: 'utf8' })
+    raw = execSync(`grep -rnE ${SRC_INCLUDES.join(' ')} 'OPENROUTER_API_KEY' ${DIRS.join(' ')}`, {
+      encoding: 'utf8',
+    })
   } catch (err) {
     // grep exits 1 when it finds nothing — that's a success path, and still is.
     if (err.status === 1) return { ok: true }

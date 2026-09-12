@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { callNinaImageModel } from '../lib/nina/imagecall.ts'
-import { NINA_IMAGE_MODEL, OPENROUTER_IMAGE_URL } from '../lib/nina/imagerecipe.ts'
+import {
+  NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS,
+  NINA_IMAGE_CALL_TIMEOUT_MS,
+  NINA_IMAGE_MODEL,
+  OPENROUTER_IMAGE_URL,
+} from '../lib/nina/imagerecipe.ts'
 
 /**
  * A `fetch` stub that answers by URL: the Blob GET and the OpenRouter POST are two different calls
@@ -207,5 +212,54 @@ describe('callNinaImageModel', () => {
     /* The Blob is not even asked for: a job with no reference does no extra I/O. */
     expect(fn.mock.calls.length).toBe(1)
     expect(String(fn.mock.calls[0]?.[0])).toBe(OPENROUTER_IMAGE_URL)
+  })
+
+  it('R2: a failure reports the abort budget that actually applied', async () => {
+    /* `ninaEnv()` MEMOIZES its parse (`ninaCache ??=` in `lib/env.ts`), and the cases above have
+     * already warmed it with a key — so within this file's registry the key is never really
+     * absent, and the unsent path is unreachable by unsetting the env var alone. A fresh module
+     * registry gives this case the cold cache the 2026-09-04 incident actually had. */
+    vi.resetModules()
+    const { callNinaImageModel: cold } = await import('../lib/nina/imagecall.ts')
+
+    /* No key: nothing was sent, so there is no ceiling to report. */
+    vi.stubGlobal('fetch', vi.fn())
+    const unsent = await cold('x', 1)
+    expect(unsent.ok).toBe(false)
+    if (!unsent.ok) expect(unsent.timeoutMs).toBeNull()
+    vi.unstubAllGlobals()
+
+    process.env.OPENROUTER_API_KEY = 'sk-or-unit-test-never-sent'
+
+    /* Unanchored: the 150 s ceiling, minus whatever the (absent) reference fetch spent. */
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('upstream exploded', { status: 500 })),
+    )
+    const plain = await cold('x', 1)
+    expect(plain.ok).toBe(false)
+    if (!plain.ok) {
+      expect(plain.timeoutMs).toBeLessThanOrEqual(NINA_IMAGE_CALL_TIMEOUT_MS)
+      expect(plain.timeoutMs).toBeGreaterThan(NINA_IMAGE_CALL_TIMEOUT_MS - 5_000)
+    }
+    vi.unstubAllGlobals()
+
+    /* Anchored: the 235 s ceiling, because the reference really went on the wire. */
+    stubTwoHostFetch(blobPng(), new Response('upstream exploded', { status: 500 }))
+    const anchored = await cold('x', 1, 'https://blob.test/nina/a.png')
+    expect(anchored.ok).toBe(false)
+    if (!anchored.ok) {
+      expect(anchored.timeoutMs).toBeLessThanOrEqual(NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS)
+      expect(anchored.timeoutMs).toBeGreaterThan(NINA_IMAGE_ANCHORED_CALL_TIMEOUT_MS - 5_000)
+    }
+
+    /* An anchor that could NOT be fetched is an unanchored call, and gets the unanchored ceiling —
+     * which is exactly why the number is reported from inside the call and not re-derived by
+     * `imagerun.ts`, whose `anchored` flag means "did the JOB request one". */
+    vi.unstubAllGlobals()
+    stubTwoHostFetch(new Response('nope', { status: 404 }), new Response('boom', { status: 500 }))
+    const degraded = await cold('x', 1, 'https://blob.test/nina/a.png')
+    expect(degraded.ok).toBe(false)
+    if (!degraded.ok) expect(degraded.timeoutMs).toBeLessThanOrEqual(NINA_IMAGE_CALL_TIMEOUT_MS)
   })
 })

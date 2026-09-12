@@ -1,19 +1,47 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { describeSubjectForSide } from './album'
+import { NINA_FALLBACK_TEXT_MODEL, OPENROUTER_CHAT_URL } from './openrouter'
 import {
   NINA_DESCRIBE_REQUEST_TEXT,
   NINA_DESCRIBE_SYSTEM_PROMPT,
   NINA_SELF_DESCRIBE_SYSTEM_PROMPT,
 } from './prompts/describe'
 import {
+  NINA_DESCRIBE_FALLBACK_TIMEOUT_MS,
+  NINA_DESCRIBE_TIMEOUT_MS,
   NINA_TOKEN_FLOOR_PER_IMAGE,
   NinaVisionTokenFloorError,
   NinaVisionTransportError,
+  describeErrorText,
+  describeLogInput,
+  describeNinaImagesWithFallback,
   describeNinaImagesWithFetch,
   describeTokenFloor,
   estimateTextTokens,
 } from './vision'
+
+/*
+ * `OPENROUTER_API_KEY` is NOT in `tests/support/setup.ts`'s `LLM_DEFAULTS`, and this phase
+ * deliberately does not add it there: that list is documented as mirroring `.github/workflows`' env
+ * block byte for byte, and editing one without the other leaves `npm test` and CI testing different
+ * things. The fallback reads the key lazily through `ninaEnv()` at call time, so a module-scope
+ * default in the one file that needs it is enough — and `??=` means a real `.env` never loses.
+ *
+ * Nothing is sent anywhere: every case below drives an injected `fetch`.
+ */
+process.env.OPENROUTER_API_KEY ??= 'unit-test-openrouter-key-never-sent'
+
+/*
+ * `lib/nina/vision.ts` now imports `logNinaError` from `./errorlogs`, which talks to the database.
+ * Mocked at the module boundary so the fallback cases assert the ROW THAT WOULD BE WRITTEN without
+ * a database, and so the eleven pre-existing cases below — which never reach a log call — keep
+ * running exactly as they did.
+ */
+const logNinaError = vi.fn<(entry: unknown) => Promise<void>>(async () => {})
+vi.mock('./errorlogs', () => ({
+  logNinaError: (entry: unknown) => logNinaError(entry),
+}))
 
 const IMAGE = { dataUri: 'data:image/jpeg;base64,AAAA' }
 
@@ -226,5 +254,221 @@ describe('the self describe prompt', () => {
 
   it('names swimwear as flatly as a coat, so she does not caption a hole', () => {
     expect(NINA_SELF_DESCRIBE_SYSTEM_PROMPT).toContain('You are not a moderator')
+  })
+})
+
+describe('the OpenRouter fallback (R1)', () => {
+  /**
+   * A fake `fetch` that routes on the URL, the way the real world does. The primary path posts to
+   * `env.LLM_VISION_BASE_URL` (`api.z.ai/...`), the fallback to `OPENROUTER_CHAT_URL` — so one fake
+   * can give the two providers different answers, which is the whole point: the single-answer fake
+   * the cases above use is exactly why the fallback is a separate function.
+   */
+  function route(
+    zai: () => Response | Promise<Response>,
+    openrouter: () => Response | Promise<Response>,
+  ): typeof fetch {
+    return vi.fn(async (input: RequestInfo | URL) =>
+      String(input).includes('openrouter.ai') ? openrouter() : zai(),
+    ) as unknown as typeof fetch
+  }
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+  /** A z.ai body carrying the measured drop signature: 200, plausible text, 141 prompt tokens. */
+  const zaiDropped = () =>
+    json({
+      usage: { prompt_tokens: 141, completion_tokens: 40 },
+      choices: [{ message: { content: 'He is soaked and grinning on wet asphalt.' } }],
+    })
+
+  /** A z.ai body that clears the floor and really arrived. */
+  const zaiOk = () =>
+    json({
+      usage: { prompt_tokens: 2_800, completion_tokens: 180 },
+      choices: [{ message: { content: 'Soaked through, dark tee stuck to his chest.' } }],
+    })
+
+  /**
+   * An OpenRouter body with prompt tokens FAR BELOW any floor this module would compute. That is
+   * the fixture's job: if the floor were ever applied to the fallback, this case fails.
+   */
+  const openRouterOk = () =>
+    json({
+      usage: { prompt_tokens: 12, completion_tokens: 90 },
+      choices: [
+        { message: { content: '  Low sun behind him on a wet track.  ' }, finish_reason: 'stop' },
+      ],
+    })
+
+  const callsOf = (fetchImpl: typeof fetch) =>
+    (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+
+  beforeEach(() => {
+    logNinaError.mockClear()
+  })
+
+  it('never calls OpenRouter, and never logs, when z.ai succeeds', async () => {
+    const fetchImpl = route(zaiOk, openRouterOk)
+    const result = await describeNinaImagesWithFallback(fetchImpl, [IMAGE])
+
+    expect(result.description).toBe('Soaked through, dark tee stuck to his chest.')
+    expect(callsOf(fetchImpl)).toHaveLength(1)
+    expect(String(callsOf(fetchImpl)[0]![0])).not.toContain('openrouter.ai')
+    expect(logNinaError).not.toHaveBeenCalled()
+  })
+
+  it('retries on a token-floor trip, and the floor does NOT gate the fallback', async () => {
+    // 12 prompt tokens is under every floor this module can compute. It is accepted anyway,
+    // because the glm-4.6v-calibrated floor is deliberately not applied to a different model —
+    // see `describeNinaImagesWithOpenRouter`'s header and the 2026-09-09 re-calibration.
+    const fetchImpl = route(zaiDropped, openRouterOk)
+    const result = await describeNinaImagesWithFallback(fetchImpl, [IMAGE])
+
+    expect(result.description).toBe('Low sun behind him on a wet track.')
+    expect(result.promptTokens).toBe(12)
+    expect(result.floor).toBe(0) // "no floor was applied", and the log line says so
+  })
+
+  it('retries on a transport failure (non-2xx)', async () => {
+    const fetchImpl = route(
+      () => json({ usage: { prompt_tokens: 2_800 }, error: 'nope' }, 502),
+      openRouterOk,
+    )
+    const result = await describeNinaImagesWithFallback(fetchImpl, [IMAGE])
+    expect(result.description).toBe('Low sun behind him on a wet track.')
+  })
+
+  it('retries when the z.ai fetch itself throws', async () => {
+    const fetchImpl = route(() => Promise.reject(new Error('socket hang up')), openRouterOk)
+    const result = await describeNinaImagesWithFallback(fetchImpl, [IMAGE])
+    expect(result.description).toBe('Low sun behind him on a wet track.')
+  })
+
+  it('sends the same OpenAI-shaped envelope to OpenRouter, with the fallback model', async () => {
+    const fetchImpl = route(zaiDropped, openRouterOk)
+    await describeNinaImagesWithFallback(fetchImpl, [IMAGE], { subject: 'self' })
+
+    const [url, init] = callsOf(fetchImpl)[1]!
+    expect(String(url)).toBe(OPENROUTER_CHAT_URL)
+    expect((init.headers as Record<string, string>).Authorization).toMatch(/^Bearer /)
+
+    const body = JSON.parse(String(init.body))
+    expect(body.model).toBe(NINA_FALLBACK_TEXT_MODEL)
+    expect(body.thinking).toBeUndefined() // a z.ai vendor extension; never sent here
+    expect(body.messages[0].content).toBe(NINA_SELF_DESCRIBE_SYSTEM_PROMPT)
+    expect(body.messages[1].content[0]).toEqual({
+      type: 'image_url',
+      image_url: { url: IMAGE.dataUri },
+    })
+    expect(body.messages[1].content.at(-1)).toEqual({
+      type: 'text',
+      text: NINA_DESCRIBE_REQUEST_TEXT,
+    })
+  })
+
+  it('logs both attempts and rethrows the ORIGINAL error when both providers fail', async () => {
+    const fetchImpl = route(zaiDropped, () => json({ error: 'upstream unavailable' }, 503))
+
+    await expect(
+      describeNinaImagesWithFallback(fetchImpl, [IMAGE], {
+        imageUrl: 'https://blob.example/nina/chat/abc.jpg',
+      }),
+      // The ORIGINAL class, not the fallback's transport error: `describeNinaImage` branches on
+      // `instanceof NinaVisionTokenFloorError` to choose `reason: 'dropped'` and its loud
+      // console.error. Rethrowing the fallback's error would silently reclassify every floor trip.
+    ).rejects.toBeInstanceOf(NinaVisionTokenFloorError)
+
+    expect(logNinaError).toHaveBeenCalledTimes(2)
+
+    const first = logNinaError.mock.calls[0]![0] as Record<string, unknown>
+    expect(first.category).toBe('multimodal')
+    expect(first.provider).toBe('zai')
+    expect(first.model).toBe('glm-4.6v')
+    expect(first.timeoutMs).toBe(NINA_DESCRIBE_TIMEOUT_MS)
+    expect(first.imageUrl).toBe('https://blob.example/nina/chat/abc.jpg')
+    expect(String(first.errorMessage)).toContain('NinaVisionTokenFloorError')
+    expect(String(first.errorMessage)).toContain('promptTokens=141')
+
+    const second = logNinaError.mock.calls[1]![0] as Record<string, unknown>
+    expect(second.category).toBe('multimodal')
+    expect(second.provider).toBe('openrouter')
+    expect(second.model).toBe(NINA_FALLBACK_TEXT_MODEL)
+    expect(second.timeoutMs).toBe(NINA_DESCRIBE_FALLBACK_TIMEOUT_MS)
+    expect(second.imageUrl).toBe('https://blob.example/nina/chat/abc.jpg')
+    expect(String(second.errorMessage)).toContain('503')
+  })
+
+  it('logs the z.ai attempt even when the fallback then succeeds', async () => {
+    const fetchImpl = route(zaiDropped, openRouterOk)
+    await describeNinaImagesWithFallback(fetchImpl, [IMAGE])
+
+    expect(logNinaError).toHaveBeenCalledTimes(1)
+    expect((logNinaError.mock.calls[0]![0] as Record<string, unknown>).provider).toBe('zai')
+  })
+
+  it('a broken log writer costs nothing — the outer call is unaffected', async () => {
+    logNinaError.mockRejectedValueOnce(new Error('nina_error_logs is on fire'))
+    const fetchImpl = route(zaiDropped, openRouterOk)
+
+    // The z.ai row fails to write. The retry still happens and the photo is still described.
+    const result = await describeNinaImagesWithFallback(fetchImpl, [IMAGE])
+    expect(result.description).toBe('Low sun behind him on a wet track.')
+  })
+
+  it('an empty image array is one throw and zero rows, not a programmer error logged twice', async () => {
+    const fetchImpl = route(zaiOk, openRouterOk)
+    await expect(describeNinaImagesWithFallback(fetchImpl, [])).rejects.toThrow(
+      'describeNinaImages expects at least one image',
+    )
+    expect(logNinaError).not.toHaveBeenCalled()
+    expect(callsOf(fetchImpl)).toHaveLength(0)
+  })
+})
+
+describe('what the log row carries', () => {
+  it('stores the real prompt and instruction, and never a base64 payload', () => {
+    const input = describeLogInput('runner', 1)
+
+    // The row is `JSON.stringify`d, so its multi-line prompt is newline-escaped inside the string
+    // and a raw `toContain(prompt)` can never match. Parse the row back open and compare the
+    // field EXACTLY — a stronger check than a substring, not a looser one.
+    const row = JSON.parse(input) as { system: string; user: unknown[]; imageCount: number }
+    expect(row.system).toBe(NINA_DESCRIBE_SYSTEM_PROMPT)
+    expect(input).toContain(NINA_DESCRIBE_REQUEST_TEXT)
+    expect(input).toContain('image_url')
+    // The one property that matters: ~1.2 MB of base64 per image must never reach a text column.
+    expect(input).not.toContain('base64')
+    expect(input).toContain('data: URI omitted')
+  })
+
+  it('selects the same witness prompt the request did', () => {
+    const row = JSON.parse(describeLogInput('self', 1)) as { system: string }
+    expect(row.system).toBe(NINA_SELF_DESCRIBE_SYSTEM_PROMPT)
+    expect(row.system).not.toBe(NINA_DESCRIBE_SYSTEM_PROMPT)
+  })
+
+  it('keeps a floor trip diagnosable — the three fields String(cause) throws away', () => {
+    const text = describeErrorText(new NinaVisionTokenFloorError(141, 1_649, 1))
+    expect(text).toContain('NinaVisionTokenFloorError')
+    expect(text).toContain('promptTokens=141')
+    expect(text).toContain('floor=1649')
+    expect(text).toContain('imageCount=1')
+  })
+
+  it('keeps a transport error’s detail, which String(cause) never reaches', () => {
+    const text = describeErrorText(
+      new NinaVisionTransportError('request failed', new Error('ETIMEDOUT')),
+    )
+    expect(text).toContain('NinaVisionTransportError: request failed')
+    expect(text).toContain('ETIMEDOUT')
+  })
+
+  it('survives a non-Error throw', () => {
+    expect(describeErrorText('just a string')).toBe('just a string')
   })
 })
