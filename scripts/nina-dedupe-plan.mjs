@@ -68,7 +68,7 @@ export function isStoreUrl(url) {
   return typeof url === 'string' && STORE_URL_RE.test(url)
 }
 
-/** F37's predicate, verbatim: `isOriginalPhoto()` in `lib/nina/queries.ts:1812`. */
+/** F37's predicate, verbatim: `isOriginalPhoto()` in `lib/nina/queries/images.ts:486`. */
 export function isOriginalRow(row) {
   return row.sourceAvatarId == null && row.sourceImageId == null
 }
@@ -90,7 +90,7 @@ export function createdMs(row) {
  *      "not described", which is what NULL means).
  *   3. Oldest `created_at` wins — the first arrival is the canonical copy.
  *   4. `id` ascending — the same final tiebreak `getNinaMessageImagesForMessages` documents for
- *      rows written in one statement (`lib/nina/queries.ts:1757`), and the only step that makes
+ *      rows written in one statement (`lib/nina/queries/images.ts:290`), and the only step that makes
  *      the order total.
  * Returns < 0 when `a` is the better keeper. Pure and unit-testable by contract.
  *

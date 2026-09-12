@@ -37,7 +37,7 @@ import { rankNinaSearchHits } from './semantic'
  * ── WHY THE QUERY IS HERE AND NOT IN `lib/nina/queries.ts` ────────────────────────────────────
  * Two reasons, and the first is the binding one. `lib/nina/search.ts` is imported by a **client**
  * component, so it cannot reach `db` — invariant 7 and `lib/nina/reply.ts`'s stated rule. And
- * phase 1 owns `lib/nina/queries.ts` §4; this set's whole concurrency discipline is that two phases
+ * phase 1 owns the conversation query modules (`lib/nina/queries/sessions.ts`, `messages.ts`); this set's whole concurrency discipline is that two phases
  * never want the same file, because a shared git index across concurrent sessions has already
  * destroyed committed work on this repo once. So the narrowing lives here, as a private
  * non-exported helper, which is exactly `lib/nina/turnrun.ts`'s shape for `scheduleDistillation`.

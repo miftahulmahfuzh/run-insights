@@ -317,7 +317,7 @@ export function describeCurrentPhoto(current: CurrentPhotoRef): string {
 /**
  * ── THE CURRENT PHOTO CANNOT BE REMOVED ─────────────────────────────────────────────────────
  * `deleteNinaAvatar`'s WHERE clause has refused it since F33 and says why in as many words
- * (`lib/nina/queries.ts:1116-1128`): *"`eq(ninaAvatars.isCurrent, false)` in the WHERE clause is
+ * (`lib/nina/queries/avatars.ts`): *"`eq(ninaAvatars.isCurrent, false)` in the WHERE clause is
  * what makes 'zero current avatars' unreachable rather than repaired."* The avatar action file's
  * `deleteNinaAvatarAction` repeats it (`lib/admin/ninaAlbumAvatarActions.ts`): *"the current photo
  * cannot be removed... which is what makes 'zero current avatars' unreachable rather than

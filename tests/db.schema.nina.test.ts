@@ -522,7 +522,7 @@ describe('nina_tuning', () => {
     /* A nullable column is optional in `NewNinaTuningRow`, so a key forgotten in `tuningToColumns`
      * is not a compile error — it is a toggle that never persists. This is the guard for that, and
      * it is what makes the next dial's toggle land with its row mapping or not at all. */
-    const source = readFileSync('lib/nina/queries.ts', 'utf8')
+    const source = readFileSync('lib/nina/queries/tuning.ts', 'utf8')
     for (const key of NINA_TUNING_KEYS) {
       /* The READ side nests under `enabled`, so it is keyed by the TUNING key and valued by the
        * COLUMN — `relationship: row.relationshipEnabled`. The write side is flat columns, so it is
@@ -702,7 +702,7 @@ describe('nina_image_prefs — how she is photographed (R4-R10)', () => {
      * `imagePrefsFromRow` is `undefined`, which `coerceNinaImageFocus` reads as `false`: a checkbox
      * that persists and then silently does nothing. This is the guard for that direction, the same
      * shape as the `*_enabled` guard above. */
-    const source = readFileSync('lib/nina/queries.ts', 'utf8')
+    const source = readFileSync('lib/nina/queries/imageprefs.ts', 'utf8')
     for (const key of NINA_IMAGE_FOCUS_KEYS) {
       const pascal = key.charAt(0).toUpperCase() + key.slice(1)
       expect(source, `${key} is not read out of the row`).toContain(`${key}: row.focus${pascal}`)

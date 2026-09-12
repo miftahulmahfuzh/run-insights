@@ -453,7 +453,7 @@ export const NINA_PHOTO_REF_PAGE_SIZE = 48
  * `listNinaAvatarFolders` and `lib/admin/filetree.ts` already use. The price of that split is that
  * `listNinaPhotoReferences` must read `offset + limit` rows from EACH side before it can merge, so
  * the depth has to be capped or the read stops being bounded — which is precisely the mistake
- * `countNinaAvatars` exists to undo, and `listNinaAvatars` (`lib/nina/queries.ts:2314`) is the
+ * `countNinaAvatars` exists to undo, and `listNinaAvatars` (`lib/nina/queries/avatars.ts`) is the
  * unbounded read this must not reuse.
  *
  * 480 is ten pages. The honest cost, stated rather than hidden: a photograph older than the newest

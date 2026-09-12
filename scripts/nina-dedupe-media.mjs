@@ -57,7 +57,7 @@
  *      runs) and deletes only at zero references.
  *
  * ── WHY THE REFERENCE GATE IS RE-IMPLEMENTED IN SQL ───────────────────────────────────────────
- * `isBlobPathnameReferenced` (`lib/nina/queries.ts:2073`) is the one reference-checked delete in
+ * `isBlobPathnameReferenced` (`lib/nina/queries/images.ts:864`) is the one reference-checked delete in
  * the app, but it lives behind `server-only`/alias imports a `.mjs` script cannot reach. The
  * mirror below counts ROWS over the same six columns the reaper counts
  * (`nina_message_images.pathname/blob_url`, `nina_avatars.pathname/blob_url/thumb_pathname/
