@@ -51,6 +51,7 @@ vi.mock('@vercel/blob', () => ({ put: putBlob }))
 vi.mock('@/lib/env', () => ({ blobEnv: () => ({ BLOB_READ_WRITE_TOKEN: 'test-token' }) }))
 vi.mock('@/lib/nina/blobRelease', () => ({ releaseBlobIfUnreferenced: releaseLoser }))
 vi.mock('@/lib/nina/caption', () => ({ captionNinaPhoto: vi.fn() }))
+vi.mock('@/lib/nina/errorlogs', () => ({ logNinaError: vi.fn() }))
 vi.mock('@/lib/nina/imagecall', () => ({ callNinaImageModel: vi.fn() }))
 vi.mock('@/lib/nina/imagejobs', () => ({
   claimNinaImageJob: vi.fn(),

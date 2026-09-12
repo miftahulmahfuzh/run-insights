@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-12
-**Total Active Tasks**: 4
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 4
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 1
-- Completed: 35
+- Blocked: 0
+- Completed: 37
 - Archived: 35
 
 ---
@@ -37,31 +37,11 @@
   - **Difficulty**: HARD
   - **Type**: Feature
   - **Context**: Owns a new OpenRouter-backed `NinaLlmClientLike` implementation in `lib/nina/llmFallbackText.ts` (Anthropic⇄OpenAI-Chat-Completions request/response translation, including forced single-tool `tool_choice` and tool-result round-trips), wired into `productionDeps(userId)` so both of `turn.ts`'s existing catch sites transparently retry via OpenRouter on a z.ai throw; writes a `nina_error_logs` row (`category:'text'`) for each failed attempt (z.ai and/or OpenRouter). Does not touch `turn.ts`'s loop/repair control flow itself, `nina_turns` writes, any admin UI, `lib/nina/openrouter.ts` (read-only here — Phase 3 owns and writes it; this phase must not redeclare either constant, it imports `OPENROUTER_CHAT_URL` / `NINA_FALLBACK_TEXT_MODEL` from the `lib/nina/openrouter.ts` module Phase 3 creates). Exit: existing `lib/nina/turn.ts`/`chatturn` tests still pass unmodified in behavior when the fallback is never exercised (z.ai succeeds); a new test simulates a z.ai throw and asserts the OpenRouter path is called and its result flows through `findSendBlock`/`findToolUses` unchanged; a double-failure test asserts both attempts are logged and the turn still ends `'unavailable'`.
-  - **Status**: blocked
+  - **Status**: open
   - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 2 of 5)
   - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
   - **Depends on**: `P1-DB-A007`, `P1-NIN-A037`
   - **Plan**: `.workflows/plan/P1-NIN-A036.md`
-
-- [ ] **P1-NIN-A037** Phase 3: OpenRouter fallback — vision/multimodal
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns retry logic inside the vision/describe path: on a z.ai throw, `NinaVisionTokenFloorError`, or `NinaVisionTransportError`, retry once against OpenRouter (`z-ai/glm-5.3-flash`, same OpenAI-Chat-Completions shape, no translation layer needed) without applying the glm-4.6v-calibrated token floor to the fallback's response; logs a `nina_error_logs` row (`category:'multimodal'`, with `imageUrl`, `userId` NULL) for each failed attempt. Also owns `lib/nina/openrouter.ts` — the new zero-import constants module holding `OPENROUTER_CHAT_URL` and `NINA_FALLBACK_TEXT_MODEL`, shared with Phase 2, created here and written by no one else. Does not touch `lib/llm/vision.ts` (the unrelated `extractions`/screenshot feature), `describeNinaImagesWithFetch` (byte-identical), any admin UI. Exit: existing vision tests pass unmodified when z.ai succeeds; a new test simulates a z.ai token-floor trip and a transport failure, asserting the OpenRouter retry fires and its plain non-empty check (not the floor) gates acceptance; a double-failure test asserts both attempts are logged with the photo's Blob URL.
-  - **Status**: pending
-  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 3 of 5)
-  - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
-  - **Depends on**: `P1-DB-A007`
-  - **Plan**: `.workflows/plan/P1-NIN-A037.md`
-
-- [ ] **P1-NIN-A038** Phase 4: Image-generation error logging
-  - **Difficulty**: NORMAL
-  - **Type**: Feature
-  - **Context**: Owns threading the currently-discarded `detail` (raw provider text) and the actual configured timeout through `failNinaImageJob`'s call chain into a `nina_error_logs` write (`category:'image_generation'`, `fullInput` = `args.prompt`, `imageUrl` = `args.referenceUrl` when present). Does not touch the retry/requeue/revival logic itself, `nina_turns`'s own `error_code` classification, any provider/model choice. Exit: a test that forces a terminal image-generation failure asserts a `nina_error_logs` row is written with the raw detail text and the correct timeout value for that host/anchoring combination; existing image-job tests unaffected.
-  - **Status**: pending
-  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 4 of 5)
-  - **Satisfies**: R2 — New admin "Error logs" tab, 3 sub-tabs, with the specified columns/behaviors
-  - **Depends on**: `P1-DB-A007`
-  - **Plan**: `.workflows/plan/P1-NIN-A038.md`
 
 ### [P2] Medium
 
@@ -76,6 +56,43 @@
 (all thirty-five completed tasks were archived on 2026-09-12 — see Archive; full
 per-task detail — Context, Drift, Decided, Files — survives in git history and in
 `.workflows/package_readme.md`)
+
+- [x] **P1-NIN-A037** Phase 3: OpenRouter fallback — vision/multimodal
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns retry logic inside the vision/describe path: on a z.ai throw, `NinaVisionTokenFloorError`, or `NinaVisionTransportError`, retry once against OpenRouter (`z-ai/glm-5.3-flash`, same OpenAI-Chat-Completions shape, no translation layer needed) without applying the glm-4.6v-calibrated token floor to the fallback's response; logs a `nina_error_logs` row (`category:'multimodal'`, with `imageUrl`, `userId` NULL) for each failed attempt. Also owns `lib/nina/openrouter.ts` — the new zero-import constants module holding `OPENROUTER_CHAT_URL` and `NINA_FALLBACK_TEXT_MODEL`, shared with Phase 2, created here and written by no one else. Does not touch `lib/llm/vision.ts` (the unrelated `extractions`/screenshot feature), `describeNinaImagesWithFetch` (byte-identical), any admin UI. Exit: existing vision tests pass unmodified when z.ai succeeds; a new test simulates a z.ai token-floor trip and a transport failure, asserting the OpenRouter retry fires and its plain non-empty check (not the floor) gates acceptance; a double-failure test asserts both attempts are logged with the photo's Blob URL.
+  - **Status**: done
+  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
+  - **Depends on**: `P1-DB-A007`
+  - **Plan**: `.workflows/plan/P1-NIN-A037.md`
+  - **Completed**: 2026-09-12 09:12
+  - **Method**: /do
+  - **Files**: lib/nina/openrouter.ts, lib/nina/vision.ts, lib/nina/vision.test.ts
+  - **Drift**: Plan's test code needed three type-level fixes to compile (runtime behavior unchanged): (1) `route()`'s fixture params widened from `() => Promise<Response>` to `() => Response | Promise<Response>` because the fixtures return Response synchronously; (2) the mocked `logNinaError` typed as `vi.fn<(entry: unknown) => Promise<void>>(async () => {})` with a single-arg forwarding wrapper — the plan's zero-arg `vi.fn` made `mock.calls` empty tuples (TS2493) and its `(...args)` spread wrapper tripped TS2556; the `vi.fn<T>` generic is this repo's existing convention (cf. `tests/nina.jobActions.test.ts`); (3) eslint flagged the plan's unused rest param, gone with the typed generic.
+    Two "what the log row carries" assertions could never pass as written: `describeLogInput` returns `JSON.stringify` output, so a multi-line system prompt is newline-escaped inside it and `toContain(prompt)` cannot match. Changed to `JSON.parse` the row and assert exact field equality (`row.system === prompt`) — a stronger check than the substring, not a looser one; all other assertions of those tests kept.
+    Plan said "replace lines 1-18" of vision.test.ts but its own replacement block extends through the `respond()` helper (old line 28); applied the block as the new file head, so `respond()` is not duplicated.
+    SHARED WORKTREE — scoped verification, peers live: this worktree concurrently hosts in-flight phase 4 (`lib/nina/imagecall.ts`, `imagerun.ts`, `tests/nina.image*.test.ts`) and phase 5 (`app/admin/error-logs/`, `components/admin/ErrorLogList*`, `LogTextDialog`, `lib/admin/errorLogModel.ts`, `AdminNavLinks*`, `tests/admin.shell.test.ts`). Repo-wide gates therefore carry THEIR in-flight state: `tsc` has exactly 1 error (`app/admin/error-logs/page.tsx` — missing Next typegen for the new route, their file); `npm test` has exactly 3 failures (`components/admin/ErrorLogList.test.tsx`, a file that does not exist at HEAD, their file). ZERO errors/failures in any file this phase touches. Scoped checks all green: tsc clean on the 3 files, `vision.test.ts` 32/32, the three pin suites (admin.chatPhotos / admin.albumAvatarActions / admin.chatPhotoAdoption) 134/134 unmodified, `ci:openrouter-guard` OK, prettier+eslint clean on the 3 files.
+  - **Decided**: log-row prompt assertion fails on JSON newline escaping → parse the row and assert exact field equality (`row.system === prompt`) (rung 2: the phase's exit criteria demand the row carry the exact prompt variant; parse-and-compare is the exact check; "a failing verification is never settled by relaxing the check" — this tightened it).
+    Plan's mock/call typings do not compile under this repo's tsconfig → typed via the repo's `vi.fn<sig>()` convention, runtime identical (rung 6: surrounding convention).
+
+- [x] **P1-NIN-A038** Phase 4: Image-generation error logging
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns threading the currently-discarded `detail` (raw provider text) and the actual configured timeout through `failNinaImageJob`'s call chain into a `nina_error_logs` write (`category:'image_generation'`, `fullInput` = `args.prompt`, `imageUrl` = `args.referenceUrl` when present). Does not touch the retry/requeue/revival logic itself, `nina_turns`'s own `error_code` classification, any provider/model choice. Exit: a test that forces a terminal image-generation failure asserts a `nina_error_logs` row is written with the raw detail text and the correct timeout value for that host/anchoring combination; existing image-job tests unaffected.
+  - **Status**: done
+  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R2 — New admin "Error logs" tab, 3 sub-tabs, with the specified columns/behaviors
+  - **Depends on**: `P1-DB-A007`
+  - **Plan**: `.workflows/plan/P1-NIN-A038.md`
+  - **Completed**: 2026-09-12 09:20
+  - **Method**: /do
+  - **Files**: lib/nina/imagecall.ts, lib/nina/imagerun.ts, tests/nina.imagelog.test.ts, tests/nina.imagerun.test.ts, tests/nina.imagecall.test.ts
+  - **Drift**: Step 6's new imagecall test case: the plan's code assumed unsetting `process.env.OPENROUTER_API_KEY` reaches the key-absent ("nothing sent", `timeoutMs` null) path. It does not inside that file — `ninaEnv()` memoizes its parse (`ninaCache ??=`, lib/env.ts:222-226) and the file's earlier cases have already warmed the cache, so the call proceeded to fetch, got the bare `vi.fn()`'s undefined, and died at `res.text()`. Fixed inside the test only (`vi.resetModules()` + dynamic re-import gives the case the cold registry the 2026-09-04 incident actually had); the asserted intent — `timeoutMs` null when nothing was sent, 150s/235s/degraded ceilings otherwise — is unchanged and passes.
+    Full-sweep `npm test` shows the documented MemoryTable add-row flake (`components/admin/MemoryTable.test.tsx`, varying failure counts 2→4→2 across runs, passes 20/20 in isolation, zero import contact with this diff — no shared files): not attributable to this phase; it also runs red with these exact signatures under swarm machine load.
+    `npm run lint` reports 4 errors + 8 warnings, all in files ABSENT from this branch's diff vs origin/main (`components/nina/NinaBarProvider.test.tsx`, `components/nina/useChatScroll.test.tsx`, `components/ui/Card.test.tsx` + unused-var warnings) — pre-existing state inherited from main, not moved by this phase; this phase's five files produce no lint findings.
+  - **Decided**: Step 6 no-key sub-case unreachable via env var (`ninaEnv` memoizes) → `vi.resetModules()` + fresh dynamic import in the test, preserving the plan's asserted intent (`timeoutMs` null when nothing was sent) — rung 3: the plan's code-block intent kept; mechanism corrected to the file's memoized reality; recorded as a comment in the test.
+  - **Verified**: `npm run typecheck` clean (next typegen + `tsc --noEmit`); `npx vitest run` over the five image suites 96/96 (`nina.imagelog` 6 new tests, `nina.imagecall` 8 incl. the new R2-timeout case, `nina.imagerun`, `nina.jobActions`, `nina.imageworker`); `npm test` 5132+ passed with only the pre-existing MemoryTable flake red; `npm run format:check`, `ci:openrouter-guard`, `ci:llm-payload-guard`, `db:check` all green. Store ('store: …') and finish ('finish: …') failures deliberately do NOT log (D2 — the model call succeeded); `scripts/nina-image-worker.ts` out of scope per Handoffs.
 
 ---
 

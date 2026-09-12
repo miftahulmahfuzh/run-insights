@@ -8,7 +8,12 @@ include: the tuning-aware exports and `captionNinaPhoto` ARE wired; the live tun
 reads moved from `actions.ts` into `turnrun.ts`'s `Promise.all`; the anchored image call is
 235 s (was 220 s) and `NINA_IMAGE_RUN_BUDGET_MS` 255 s; the daily image cap is 30 by fallback
 constant and env-tunable (the old "six a day"); `maxDuration = 300` now sits on FOUR segments;
-the soft-delete predicate is ten `WHERE`s across nine functions.)
+the soft-delete predicate is ten `WHERE`s across nine functions.) Restated later the same day for
+P1-NIN-A037 (LLM-fallback phase 3): `openrouter.ts` added, `vision.ts` gained the OpenRouter
+describe fallback, `errorlogs.ts` gained its first writer — see Vision. Restated again the same
+day for P1-NIN-A038 (phase 4): every failed image-generation CALL writes a `nina_error_logs` row
+(`imagerun.ts`'s `recordImageCallFailure`) and `NinaImageCallResult`'s failure variant reports the
+abort budget that actually applied (`timeoutMs`) — see Images.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -41,8 +46,9 @@ modules into `'use client'` components.
 1. **No barrel.** Import the submodule, not the package.
 2. **The zero-import roster is load-bearing.** `tuning.ts`, `shortcuts.ts`, `images.ts`,
    `imagefail.ts`, `imageDedupe.ts`, `perceptual.ts`, `turnflight.ts`, `imagerecipe.ts`,
-   `imageprefs.ts` and `crop.ts` import NOTHING — no value, no type, no `server-only`. Two
-   kinds of host reach for them where an import would break: `scripts/nina-image-worker.ts` and
+   `imageprefs.ts`, `openrouter.ts` and `crop.ts` import NOTHING — no value, no type, no
+   `server-only`. Two kinds of host reach for them where an import would break:
+   `scripts/nina-image-worker.ts` and
    `scripts/nina-shortcuts-import.mjs` load them by relative path under
    `--experimental-strip-types` (one runtime-value import stops the worker booting), and
    `'use client'` panels (`/admin/nina`, `/admin/shortcuts`) need the constants in the browser.
@@ -337,6 +343,30 @@ photograph — original OR reference) and `planJobPhoto` (the Detail-foto icon; 
 answers `none` — no job→avatar key exists, and matching one by description or date would be a
 guess). `getNinaJobPhoto` projects `{ id }`: `description` is structurally never selected.
 
+**Every failed generation CALL leaves a `nina_error_logs` row** (`imagerun.ts`'s module-private
+`recordImageCallFailure`, since 2026-09-12), not merely every failed JOB. The call site sits in
+`attemptOnce`, ABOVE `closeFailed`, deliberately: `closeFailed` either requeues (the attempt was
+billed and, before this, invisible — the requeue UPDATE writes only latency and cost) or gives up,
+and BOTH are failed calls, so a job that burns every attempt writes one row per attempt. The row:
+`category` `'image_generation'`; `provider` `'openrouter'` as a CONSTANT (generation has no
+fallback — the plan index's Decisions); `model` = the job's own coerced camera; `fullInput` =
+`args.prompt` verbatim, exactly what `buildImageRequestBody` sent; `errorMessage` = the kind in
+square brackets then the detail verbatim (`'[kind] detail'`) — the four-value classification PLUS
+the raw provider text, which until now survived only in an expiring `console.warn`
+(`nina_turns.error_code` keeps the kind and loses the sentence);
+`imageUrl` = the normalised anchor URL (an INPUT image — a failed generation produces no output
+one); `timeoutMs` = the abort budget the attempt actually got, reported by
+`NinaImageCallResult`'s failure variant because the caller cannot re-derive it
+(`ninaImageCallTimeoutMs` picks 235 s only when a reference truly went on the wire, so a job that
+REQUESTED an anchor may have run a 150 s call, and the reference fetch's own time is already
+subtracted). `timeoutMs` is `null` on exactly one path — the key was absent, nothing was sent.
+Two failures never log: the store (`store: …`) and finish (`finish: …`) arms of `closeFailed` —
+the model call succeeded there, so the Error-logs tab must not claim it failed. And the GitHub
+worker writes no row at all: it cannot import `imagecall.ts` (out of scope by the plan's
+Handoffs), so anyone re-promoting it to primary ports this writer too. Best-effort like every
+writer — own try/catch, awaited inside `after()` — so it cannot cost the job its requeue or its
+apology.
+
 **Dedup** — three decision modules, deliberately not merged (`dedupe.ts` runner-upload,
 `imageDedupe.ts` generated-hosts, `planChatPhotoAddWrite` in `lib/admin`): each host needs a
 different import posture. `imageDedupe.ts` is zero-import so the worker strips and runs it;
@@ -383,6 +413,55 @@ said), alt-text vocabulary, over `NINA_CAPTION_MAX_CHARS` 120 — REFUSED, not t
 captions from `args.scene`, the runner's upload captions from the witness, and the GitHub-worker
 path permanently uses the canned fallback (no z.ai key) — all three are true sentences.
 
+## Vision
+
+**`vision.ts` describes the photographs, and since 2026-09-12 it falls back.** The primary attempt
+(`describeNinaImagesWithFetch`) is one `glm-4.6v` call to z.ai under the TEXT-AWARE token floor
+(`NINA_TOKEN_FLOOR_PER_IMAGE` 150 since the measured 2026-09-09 false trip). Production enters
+through `describeNinaImagesWithFallback`: on ANY z.ai throw — transport, non-200, empty completion,
+or a floor trip — it writes a log row and retries ONCE against OpenRouter (`z-ai/glm-5.3-flash` over
+`OPENROUTER_CHAT_URL`), then gives up to the existing degraded path. No backoff, no chain. Four
+contracts:
+
+- **The token floor gates the z.ai response ONLY.** The floor is a measurement of `glm-4.6v`'s
+  tokens-per-pixel, not a property of images (150 exists because 500 false-tripped a real 612×862
+  card). Nobody has measured the fallback model's prompt-token accounting, and a false trip there
+  would convert a recoverable outage back into the undescribed photo the fallback exists to
+  prevent — so the fallback's whole acceptance test is the plain non-empty trimmed completion, with
+  the raw response snippet carried in the error for the log row. `NinaDescribeResult.floor` comes
+  back `0` from that path: the honest "no floor was applied", and how a reader of the success log
+  line knows the paragraph came from the fallback.
+- **Both providers failing rethrows the PRIMARY error.** Every caller branches on the original
+  class (`NinaVisionTokenFloorError` ⇒ `dropped`, else `transport` — `actions.ts`' composer
+  pre-pass and the admin chat-photo/album actions alike), and the fallback only ever raises
+  transport errors; rethrowing IT would silently reclassify every floor trip. Today's failure
+  behaviour is preserved exactly — a total failure costs two log rows and nothing else.
+- **The fallback's ceilings are its own, not borrowed.** `NINA_DESCRIBE_FALLBACK_TIMEOUT_MS` (30 s)
+  — the z.ai 25 s was measured on a different vendor, and OpenRouter adds a broker hop;
+  `NINA_DESCRIBE_FALLBACK_MAX_TOKENS` (900) budgets for a reasoning preamble instead of sending the
+  z.ai-only `thinking` field nobody has probed against OpenRouter. The two endpoints are BOTH OpenAI
+  Chat Completions, so the fallback is a URL/key/model swap with NO translation layer. A `toDataUri`
+  blob-fetch failure is neither retried nor logged: the app's own storage failing is not a model
+  failing.
+- **Every failed attempt writes one best-effort `nina_error_logs` row** (`recordDescribeFailure` →
+  `logNinaError`, category `'multimodal'`). Best-effort twice over: `logNinaError` cannot throw,
+  and the writer wraps it in its own catch, so a phase-1 regression cannot cost a description.
+  `fullInput` is the real prompt with the data URI replaced by a marker (`describeLogInput` — a
+  base64 payload never reaches a row); `imageUrl` is the hosted Blob URL, filled in by
+  `describeNinaImages` because it is the last layer still holding a link; `userId` is NULL by
+  design — the describe seam has no user id, and the option exists so a caller that has one can
+  hand it over without another signature change.
+
+**`openrouter.ts` is the constants' single home** — `OPENROUTER_CHAT_URL` and
+`NINA_FALLBACK_TEXT_MODEL`, zero imports like the rest of the roster. The vision fallback is its
+sole owner today; the text-chat fallback (phase 2 of `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md`) will
+import from it and must not redeclare — `imagerecipe.ts`' standing rule for
+`OPENROUTER_IMAGE_URL`/`NINA_IMAGE_MODEL`, now package-wide. The `OPENROUTER_API_KEY` read stays
+inside `lib/nina/` (`ninaEnv()`, inside the function and inside a try, so a missing key costs the
+fallback and never an import-time crash of the working z.ai path);
+`scripts/check-openrouter-boundary.mjs` (`ci:openrouter-guard`) enforces that boundary on source
+files.
+
 ## Memory, promises, patterns, proactive
 
 - **Deleting a session takes what it taught her.** `removeNinaSession` (`queries.ts`) purges the
@@ -418,12 +497,13 @@ path permanently uses the canned fallback (no z.ai key) — all three are true s
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
 | Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
+| Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `NINA_FALLBACK_TEXT_MODEL` — the vision fallback reads it today, the text fallback next) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; nothing calls it until the fallback phases land) |
+| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, and `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, both 2026-09-12) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (28 of them, all over the pure
-modules; integration lives in 49 `tests/nina.*.test.ts` files).
+modules; integration lives in 50 `tests/nina.*.test.ts` files, both counted 2026-09-12).
 
 ## Dataflow
 
@@ -455,7 +535,7 @@ dynamic import: `distill.ts` → `./gateway`.
 ## Reverse dependencies
 
 101 files outside the package import from it (measured 2026-09-12): `app/`, `components/`,
-`lib/{admin,photos,push,review}`, `scripts/` — plus the 49 `tests/nina.*` files. Widest:
+`lib/{admin,photos,push,review}`, `scripts/` — plus the 50 `tests/nina.*` files. Widest:
 `components/nina/ChatScreen.tsx` (ten submodules), `app/nina/page.tsx`,
 `scripts/nina-image-worker.ts`, `lib/admin/*` (memory, album, chat photos, shortcuts, image-gen
 test view). `persona.ts` and `tuning.ts` are the least-depended-upon modules — the point of the
@@ -481,9 +561,12 @@ which degrades OPEN); a superseded turn's metrics still land; a dedup fault degr
 put+original; a failed blob release leaves the object for the reaper (`releaseBlobIfUnreferenced`
 errs toward keep — an orphan is recoverable, a dead reference is not). `vision.ts` has two named
 error classes (`NinaVisionTokenFloorError` — text-aware, computed AFTER the prompt is chosen so
-the longer self prompt raises it toward "I could not see it"; `NinaVisionTransportError`);
-`imagefail.ts` classifies failures and picks what she says — a failure is a message from Nina,
-never a stack trace.
+the longer self prompt raises it toward "I could not see it"; `NinaVisionTransportError`); when
+the z.ai attempt and the OpenRouter fallback have BOTH failed, the describe orchestrator rethrows
+the PRIMARY error — every caller's `instanceof` branching survives unchanged — and each failed
+attempt has already written its best-effort `nina_error_logs` row (see Vision); a failed
+image-generation call has already written its own (see Images); `imagefail.ts` classifies failures
+and picks what she says — a failure is a message from Nina, never a stack trace.
 
 ## Gotchas
 
@@ -532,13 +615,28 @@ never a stack trace.
 - **`*/10` inside a JSDoc block closes the comment.** Write `*\/10` (the worker and the render
   tests carry the convention). Harmless in `//` comments and YAML; escaping it there is noise a
   later reader will try to "fix".
-- **`logNinaError` cannot throw, and nothing calls it yet.** It is invoked from inside the catch
-  blocks of the very calls it records, so it is one try/catch, one `console.warn`, no rethrow —
-  and it is awaited rather than fired and forgotten, because Vercel can drop an un-awaited
-  promise inside `after()`. Its writers (the text fallback, the vision fallback, the
-  image-generation failure) and the `/admin/error-logs` reader are later phases of
-  `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md`; until they land, no code path writes or reads
-  `nina_error_logs`.
+- **`logNinaError` cannot throw, and every writer wraps it in its own try/catch.** It is invoked
+  from inside the failure path of the very call it records (a catch block in `vision.ts`, the
+  `!outcome.ok` branch in `imagerun.ts`), so it is one try/catch, one `console.warn`, no rethrow —
+  and it is awaited rather than fired and forgotten, because Vercel can drop an un-awaited promise
+  inside `after()`. The vision fallback became its first writer on 2026-09-12 (`vision.ts`, with a
+  second catch of its own so a phase-1 regression cannot cost a description); the image-generation
+  call became its second the same day (`imagerun.ts`'s `recordImageCallFailure`); the text
+  fallback and the `/admin/error-logs` reader are the remaining phases of
+  `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md`.
+- **The `glm-4.6v` token floor gates the z.ai describe response ONLY.** It is a measurement of one
+  model's tokens-per-pixel, not a property of images; the OpenRouter fallback's response is
+  accepted on a plain non-empty check and returns `floor: 0`. Porting the floor to a new provider
+  repeats the 2026-09-09 false trip in the worst place — a path that only runs when the primary
+  has already failed.
+- **`openrouter.ts` is the ONE home of the OpenRouter chat constants.** Import
+  `OPENROUTER_CHAT_URL`/`NINA_FALLBACK_TEXT_MODEL`, never redeclare them (the rule
+  `imagerecipe.ts` already applies to the image constants), and read `OPENROUTER_API_KEY` through
+  `ninaEnv()` inside `lib/nina/` only — `ci:openrouter-guard`
+  (`scripts/check-openrouter-boundary.mjs`) enforces that boundary on source files.
+- **The describe fallback rethrows the PRIMARY error, never the fallback's** — every caller
+  branches on the original class (`dropped` vs `transport`), and the fallback only ever raises
+  transport errors.
 - **The error-log read is unscoped on purpose and bounded twice.** `listNinaErrorLogs` filters by
   category only — no `userId` parameter — and `NINA_ERROR_LOG_PAGE_SIZE` (25) is the read's
   CEILING as well as its default, so a hand-edited `?limit=` cannot unpaginate it.
@@ -548,7 +646,8 @@ never a stack trace.
 
 ## Tests
 
-28 colocated suites over the pure modules; 49 repo-level `tests/nina.*.test.ts`. The guards that
+28 colocated suites over the pure modules; 50 repo-level `tests/nina.*.test.ts` (counted
+2026-09-12; phase 4 added `nina.imagelog.test.ts`). The guards that
 can actually catch a regression, by mechanism:
 
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
@@ -569,6 +668,24 @@ can actually catch a regression, by mechanism:
   to best-effort (`logNinaError` RESOLVES on a failed insert and sends NULL, not undefined, for
   the optional columns) and the reader to its ceiling (a `?limit=` above 25 clamps; an over-shot
   page returns `rows: []` with a truthful total).
+- **The image-generation writer is pinned through the one door it has.**
+  `tests/nina.imagelog.test.ts` (since 2026-09-12) cannot call `recordImageCallFailure` directly —
+  it is module-private — so every case drives `runNinaImageJob` with everything leaving the process
+  mocked, and pins: a row per failed CALL (requeued attempt included), the `[kind] detail` prefix,
+  the anchor's URL and the anchored ceiling, the coerced camera, NO row for a Blob store failure,
+  and a throwing `logNinaError` still costing the job neither its requeue nor its apology.
+  Technique worth copying: the no-key sub-case is UNREACHABLE by unsetting the env var in-process,
+  because `ninaEnv()` memoizes its parse (`ninaCache ??=` in `lib/env.ts`) and any earlier case in
+  the same registry has warmed it with a key — the test gets the cold registry with
+  `vi.resetModules()` plus a dynamic re-import.
+- **The describe fallback is driven by a fake that routes on URL** (`vision.test.ts`, 32 cases as
+  of 2026-09-12): the single-provider core keeps its own cases untouched, and the orchestrator's
+  cases hand it a fake that answers `LLM_VISION_BASE_URL` one way and `OPENROUTER_CHAT_URL`
+  another, the way the real world does. That split is WHY the orchestrator is a separate function —
+  a fallback inlined into `describeNinaImagesWithFetch` would retry against a fake answering every
+  call with the same body, and its floor-tripping body would sail through the (correctly)
+  floor-free fallback check, green for the wrong reason. `describeLogInput`/`describeErrorText` are
+  pinned so no data URI ever reaches a row and a floor trip stays diagnosable weeks later.
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`

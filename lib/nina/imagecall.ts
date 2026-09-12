@@ -97,6 +97,22 @@ export type NinaImageCallResult =
       costMicroUsd: number | null
       /** Never rendered. Log only. */
       detail: string
+      /**
+       * **The abort budget this attempt actually got, in milliseconds** — R2's `timeout_ms` column.
+       *
+       * It is reported from HERE and not re-derived by the caller, because the caller cannot know
+       * it. `ninaImageCallTimeoutMs(anchored)` picks 235 s only when a reference ACTUALLY went on
+       * the wire, and a reference that could not be fetched from Blob degrades to an unanchored
+       * 150 s call (`fetchNinaImageReference` returns null and the job proceeds) — so
+       * `imagerun.ts`'s `anchored` flag, which means "did this JOB request an anchor", would
+       * over-report 235 s for a call that really got 150 s. The figure also has the reference
+       * fetch's own elapsed time already subtracted, because that is what the `AbortSignal` was
+       * handed.
+       *
+       * `null` on exactly one path: the key was absent, so no request was sent and there was no
+       * timeout to apply. `nina_error_logs.timeout_ms` is nullable for this case.
+       */
+      timeoutMs: number | null
     }
 
 /**
@@ -219,6 +235,9 @@ export async function callNinaImageModel(
       latencyMs: Date.now() - startedAt,
       costMicroUsd: 0,
       detail: `image config: ${String(cause)}`,
+      /* Nothing was sent, so no ceiling applied. Not `ninaImageCallTimeoutMs(...)`: recording the
+       * budget a call would have had is a number about a call that never happened. */
+      timeoutMs: null,
     }
   }
 
@@ -261,6 +280,7 @@ export async function callNinaImageModel(
        * probably billed, so this is `null` ("unknown, guess high") and not `0`. */
       costMicroUsd: null,
       detail: String(cause),
+      timeoutMs: postTimeoutMs,
     }
   }
 
@@ -273,6 +293,7 @@ export async function callNinaImageModel(
       latencyMs: Date.now() - startedAt,
       costMicroUsd: null,
       detail: `HTTP ${res.status} ${raw.slice(0, 500)}`,
+      timeoutMs: postTimeoutMs,
     }
   }
 
@@ -298,6 +319,7 @@ export async function callNinaImageModel(
       latencyMs: Date.now() - startedAt,
       costMicroUsd: reportedCost,
       detail: raw.slice(0, 500),
+      timeoutMs: postTimeoutMs,
     }
   }
 
