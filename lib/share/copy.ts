@@ -83,9 +83,9 @@ export const PHOTO_TOGGLE_FAILED = 'Could not save that just now.'
  * The hint that teaches the split target on each row (card #8): the left of the row opens the
  * screenshot, the right of it toggles whether the screenshot is shared.
  *
- * Worded identically to the hint `SheetSource` in `components/review/ScreenshotStrip.tsx` already
- * shows, so the two places a screenshot can be tapped teach the same gesture in the same words
- * rather than each inventing a phrasing. It sits on the status line because that line is already
+ * `SheetSource` in `components/review/ScreenshotStrip.tsx` renders this same constant, so the two
+ * places a screenshot can be tapped teach the same gesture in the same words by construction —
+ * there is no second string left to drift. It sits on the status line because that line is already
  * per-row and already reads as a description of this row rather than an instruction for the list.
  */
 export const PHOTO_ZOOM_HINT = 'tap to zoom'
