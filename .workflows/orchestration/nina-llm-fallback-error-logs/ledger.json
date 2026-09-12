@@ -38,27 +38,27 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "OpenRouter fallback \u2014 text chat"
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "2569604",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 3,
-      "note": null,
+      "note": "vision fallback landed (commit 2569604): zai throw/floor-trip/transport -> one OpenRouter retry, floor NOT applied to fallback, rethrows ORIGINAL error, 2 rows on double failure; openrouter.ts constants module created (phase 2 imports it); WithFetch byte-identical, 11 old cases + 134 pin assertions unmodified. Decided: log-row prompt assertions JSON.parse-exact (JSON.stringify escapes newlines, toContain could never match) \u2014 stronger check, rung 2; plan's mock typings re-typed per repo vi.fn<sig> convention, rung 6. Verification scoped: repo-wide tsc 1 error + npm test 3 fails are ALL phase-5 in-flight files in this shared worktree, zero in phase-3 files.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-3.md",
-      "reported_at": null,
+      "reported_at": "2026-09-12T02:25:24+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A037",
       "title": "OpenRouter fallback \u2014 vision/multimodal"
     },
     {
@@ -76,7 +76,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Image-generation error logging"
     },
@@ -95,7 +95,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "Admin Error Logs page"
     }
@@ -103,6 +103,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-llm-fallback-error-logs",
-  "updated": "2026-09-12T01:57:54+00:00",
+  "updated": "2026-09-12T02:26:31+00:00",
+  "verified_at": "2026-09-12T02:26:06+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
 }
