@@ -145,11 +145,10 @@ const ExtractedZone = z.object({
 type ExtractedZone = z.infer<typeof ExtractedZone>
 
 /** R-9: `[0]` is `runs.end_hr_bpm`, `[1]` is `runs.hr_1min_post_bpm`. F05 maps them. */
-export const ExtractedPostWorkoutHr = z.object({
+const ExtractedPostWorkoutHr = z.object({
   label: z.string().min(1),
   bpm: z.number().int().min(40).max(230),
 })
-export type ExtractedPostWorkoutHr = z.infer<typeof ExtractedPostWorkoutHr>
 
 /**
  * The scalar half is nullable-with-a-default throughout, because "this field was not visible"
