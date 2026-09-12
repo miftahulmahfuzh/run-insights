@@ -30,7 +30,7 @@ export interface ChatViewerPhoto {
  * ── WHY THE LABEL COMES FROM `photoSideOf` AND NOT FROM THE MESSAGE'S ROLE ────────────────────
  * `message.role` is a near-proxy and wrong in exactly the case R10 creates more of. A runner who
  * re-attaches one of Nina's selfies writes a row whose `kind` is still `'generated'`
- * (`lib/nina/actions.ts:183-189`) onto a message whose `role` is `'user'` — so `role` would put her
+ * (`lib/nina/actions/send.ts`'s `resolveAttachment`) onto a message whose `role` is `'user'` — so `role` would put her
  * photograph under his name. `photoSideOf`'s own docstring exists to keep that honest, and this is
  * the surface that makes it visible: without a `label`, `PhotoViewer` falls back to
  * `SCREEN_KIND_LABEL[kind] ?? kind` and the dot row announces "generated foto".

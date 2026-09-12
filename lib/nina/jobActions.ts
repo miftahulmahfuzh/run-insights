@@ -13,7 +13,7 @@ import { NINA_JOBS_HREF, type NinaJobRefusal } from './jobview'
  * **The `/nina/jobs` row's mutations. Phase 1 puts `redoNinaImageJob` here; phase 2 appends
  * `deleteNinaImageJob` beside it.**
  *
- * ── WHY A NEW FILE AND NOT `lib/nina/actions.ts` ──────────────────────────────────────────────
+ * ── WHY A NEW FILE AND NOT `lib/nina/actions/` ─────────────────────────────────────────────────
  * The isolation argument `lib/nina/sessionActions.ts` and `lib/nina/albumActions.ts` each make in
  * their own headers, and it holds here for the same reason: `actions.ts` is the chat's mutation
  * surface, it is long, and every future chat phase opens it. These functions are read by one

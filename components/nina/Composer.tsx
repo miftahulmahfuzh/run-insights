@@ -314,7 +314,7 @@ export function Composer({
    *
    * **This is the FOURTH and LAST disjunct of the refusal rule printed above**, and the rule is
    * now complete on both sides: `attachExisting != null` was already the server's fourth clause
-   * (`lib/nina/actions.ts:277`) and had no client counterpart until this phase, because the only
+   * (`lib/nina/actions/send.ts`) and had no client counterpart until this phase, because the only
    * caller so far — `/nina/about`'s "Kirim ke chat" — never went through this composer. It does
    * now, so `canSend` gains the matching clause in the same commit. Nobody rewrites that
    * condition, they extend it; there is nothing left to extend it with.
@@ -354,7 +354,7 @@ export function Composer({
   /* `|| attachment !== null` is phase 8's clause and `|| photo !== null` is F34 R2's — the fourth
    * and final one. Phase 6's image clause was already in the disjunction when it landed; nobody
    * rewrites this condition, they extend it. Mirrors the server rule in `sendNinaMessage`
-   * (`lib/nina/actions.ts:277`) exactly, clause for clause: text, tickets, run, existing blob. */
+   * (`lib/nina/actions/send.ts`) exactly, clause for clause: text, tickets, run, existing blob. */
   const canSend =
     (value.trim().length > 0 || ready.length > 0 || attachment !== null || photo !== null) &&
     !inFlight &&
@@ -601,7 +601,7 @@ export function Composer({
 
         {/* F34 R2. Between the run chip and the picked tiles, because that is the order the message
             carries: the run, then the photo already in the album, then anything picked here — the
-            same order `lib/nina/actions.ts` writes the image rows in (`sortOrder: images.length`
+            same order `lib/nina/actions/send.ts` writes the image rows in (`sortOrder: images.length`
             puts the pinned one after the picked ones, and this strip is above the tile row). */}
         {photo !== null && onClearPhoto !== undefined && (
           <PhotoAttachmentChip photo={photo} onClear={onClearPhoto} />

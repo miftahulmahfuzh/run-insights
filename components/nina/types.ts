@@ -95,7 +95,7 @@ export interface ChatMessage {
    *
    * NOT derivable from `message.role`, which is the whole reason it is here: a runner who
    * re-attaches one of Nina's selfies writes a `kind: 'generated'` row onto a `role: 'user'`
-   * message (`lib/nina/actions.ts:183-189`), and reading the role would announce her photograph as
+   * message (`lib/nina/actions/send.ts`'s `resolveAttachment`), and reading the role would announce her photograph as
    * his. R10's attach control makes that case common rather than theoretical.
    *
    * This is the KIND COLUMN, not `NinaPhotoKind`. `attachExisting` takes `'avatar' | 'image'`,

@@ -138,7 +138,7 @@ export const OCCURRENCE_CAP = 3
  * Whatever arrived from a client, as one line of at most `SEARCH_QUERY_MAX_CHARS`.
  *
  * `unknown` in, `string` out: a Server Action is an untrusted POST endpoint
- * (`lib/nina/actions.ts`'s point 3), so the action's first act on its own argument is to run it
+ * (`lib/nina/actions/send.ts`'s point 3), so the action's first act on its own argument is to run it
  * through here rather than to trust its declared type.
  */
 export function normalizeSearchQuery(raw: unknown): string {

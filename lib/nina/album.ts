@@ -144,7 +144,7 @@ export const NINA_ADMIN_BATCH_MAX = 50
  * It lives HERE and not in `albumActions.ts` because that file carries `'use server'`, and a
  * `'use server'` module may export **only async functions**: a runtime `const` there is rejected
  * by the Server Actions compiler, not merely frowned upon. Types are fine (they erase), which is
- * why `lib/nina/actions.ts` can declare interfaces beside its action and this cannot declare a
+ * why `lib/nina/actions/send.ts` can declare interfaces beside its action and this cannot declare a
  * number beside its own.
  *
  * 600 is generous for one line and far short of `MAX_RUNNER_MESSAGE_CHARS` (4000), which is the

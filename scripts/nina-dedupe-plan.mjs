@@ -313,7 +313,7 @@ export function buildFillOps(rows) {
 /* ── THE PERCEPTUAL SIGNATURE COLUMNS (media-dedupe follow-up, 2026-09-10) ──────────────────────
  * `nina_message_images.perceptual_hash` (64-bit dHash, 16 lowercase hex) and `.perceptual_sig`
  * (the 16x16 grayscale thumbnail, base64) are now WRITTEN-TIME columns: the send-time twin check
- * (`lib/nina/actions.ts` STEP 1b) and the generated store sign the rows they create, and the twin
+ * (`lib/nina/actions/send.ts` STEP 1b) and the generated store sign the rows they create, and the twin
  * gates they answer live in `lib/nina/perceptual.ts`. The sweep's part is narrower and changed:
  *   · a row that already carries a stored signature is DECODED, not re-signed — no GET, no sharp;
  *   · a row the sweep signs fresh gets a `fill-perceptual` op, so the measurement outlives the

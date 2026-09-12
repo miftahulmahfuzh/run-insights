@@ -20,7 +20,7 @@ import { readRepoCode } from './support/importGraph'
  *      asserting on this file this way.
  *
  * Mocking a `'use server'` module is ordinary `vi.mock` — the directive is a bundler concern, and
- * suites that import `lib/nina/actions.ts` directly (`tests/nina.chatPhotoReattach.test.ts`)
+ * suites that import `lib/nina/actions` directly (`tests/nina.chatPhotoReattach.test.ts`)
  * already prove these modules load fine under Vitest. Mocking the two collaborators whole also
  * keeps `requireUserId`, `next/cache` and the database client out of this suite entirely.
  */

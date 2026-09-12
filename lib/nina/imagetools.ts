@@ -125,8 +125,8 @@ const handleGenerateImage: NinaToolHandler = async (
  *
  * PHASE 13: extend **THIS**, not the core set —
  * `extendToolSet(NINA_CHAT_TOOL_SET, [{ tool: SET_AVATAR_TOOL, handler: handleSetAvatar }])` — and
- * update the same one line in `lib/nina/actions.ts`. Extending the core set instead would produce a
- * second set without `generate_image`, and whichever of the two phases wired `actions.ts` last would
+ * update the same one line in `lib/nina/turnrun.ts`. Extending the core set instead would produce a
+ * second set without `generate_image`, and whichever of the two phases wired `lib/nina/turnrun.ts` last would
  * silently delete the other's tool.
  */
 export const NINA_CHAT_TOOL_SET: NinaToolSet = extendToolSet(NINA_CORE_TOOL_SET, [

@@ -31,7 +31,7 @@ import type { NinaTuning } from './tuning'
  *
  *  `lib/llm/narrate.ts`'s contract, with a tool loop bolted inside the same deadline: **nothing
  *  in this file throws for an LLM problem.** A turn that cannot be completed returns
- *  `source: 'unavailable'` with a null payload, `lib/nina/actions.ts` returns
+ *  `source: 'unavailable'` with a null payload, `lib/nina/actions/` returns
  *  `{ unavailable: true }`, and phase 4's screen says she is not answering right now — with the
  *  runner's own message already persisted, so nothing he typed is lost.
  *
@@ -218,7 +218,7 @@ export interface NinaTurnResult {
    *
    * ── ON THE RESULT, RATHER THAN RECOMPUTED BY THE CALLER ─────────────────────────────────────
    * `matchNinaShortcuts` runs exactly ONCE per turn — in `runNinaTurnWith`, against the
-   * `NinaTurnInput` this file actually assembled — and `lib/nina/actions.ts` reads what it decided
+   * `NinaTurnInput` this file actually assembled — and `lib/nina/turnrun.ts` reads what it decided
    * instead of matching again. A second run in the action would take slightly different inputs
    * (its own view of the window, its own idea of which message is current) and could disagree with
    * the block the model was sent. The bug that produces is "`/admin/shortcuts` says 🍑 fired and
@@ -305,7 +305,7 @@ export interface NinaTurnInput {
   imageDescriptions?: readonly string[]
   /**
    * R12 (phase 7). The message he is replying to, resolved and ownership-checked by
-   * `lib/nina/actions.ts`. Null on an ordinary turn and on every proactive turn.
+   * `lib/nina/actions/send.ts`. Null on an ordinary turn and on every proactive turn.
    *
    * It is passed EXPLICITLY rather than left to be joined out of `context.conversation.window[]`
    * by the model, for two reasons: the window is 40 messages, so a reply to anything older is an
@@ -340,7 +340,7 @@ export interface NinaTurnInput {
    * ── OPTIONAL, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT ───────────────────────────────
    * Contrast `tuning` directly above, which is required for a stated reason: a forgotten call site
    * would ship the DEFAULT character and nothing would fail. Nothing of the kind is true here.
-   * `runNinaTurn` has one production call site (`lib/nina/actions.ts:821`), three more in
+   * `runNinaTurn` has one production call site (`lib/nina/turnrun.ts`), three more in
    * `tests/live/` and `tests/integration/`, and `lib/nina/proactive.ts` — which has no runner text
    * at all, so nothing there could ever fire. A required field would make every one of them
    * rewrite a fixture to land a feature they do not exercise, and the failure it would guard
@@ -437,7 +437,7 @@ function attachedRunFact(input: NinaTurnInput): NinaRunFact | null {
  * ── IT RUNS EXACTLY ONCE PER TURN, AND NOTHING MAY RUN IT A SECOND TIME ─────────────────────
  * `runNinaTurnWith` calls this before it builds the first message and threads the answer into BOTH
  * `userTurnText` (which renders the block) and `NinaTurnResult.firedShortcutIds` (which
- * `lib/nina/actions.ts` bumps). Two runs over two slightly different inputs is exactly the failure
+ * `lib/nina/turnrun.ts` bumps). Two runs over two slightly different inputs is exactly the failure
  * this shape exists to make impossible — see `NinaTurnResult.firedShortcutIds`' own note.
  *
  * ── IT CANNOT THROW. INVARIANT 7. ───────────────────────────────────────────────────────────
@@ -503,7 +503,7 @@ function shortcutBlock(hits: NinaShortcutHits): string | null {
  * a function of how long he is willing to type. Six bounds the absolute worst case at
  * 6 × 4 000 = 24 KB, which is still only arithmetic worst case: the bursts this app actually
  * produces are two or three messages of a few words each ("eh", "nina", "gimana" — the chain
- * block's own example in `lib/nina/actions.ts`), so the common cost of the block is one header and
+ * block's own example in `lib/nina/actions/send.ts`), so the common cost of the block is one header and
  * two short lines.
  *
  * Six and not fewer, because it is the same "how far back is still one thought" distance
@@ -517,7 +517,7 @@ function shortcutBlock(hits: NinaShortcutHits): string | null {
  * truncating or dropping one turns "answer ALL of them" into a lie in exactly the case the
  * requirement is about. The count is the bound; the messages under it go whole.
  *
- * Lives in THIS file and not in `lib/nina/actions.ts` for the reason
+ * Lives in THIS file and not in `lib/nina/actions/` for the reason
  * `NINA_SHORTCUT_LOOKBACK` lives in `lib/nina/shortcuts.ts`: it is the prompt layer's policy about
  * what she is told, applied by the caller that owns the window — one authority, testable from
  * `lib/nina/turn.test.ts`.
@@ -854,7 +854,7 @@ export async function runNinaTurnWith(
    * that defines this turn must be fixed before its first model call and must not change between
    * the up-to-four calls it may make. These hits feed BOTH the user turn built thirty lines below
    * and `finish`'s `firedShortcutIds`, so the block the model was actually sent and the rows
-   * `lib/nina/actions.ts` bumps afterwards can never disagree.
+   * `lib/nina/turnrun.ts` bumps afterwards can never disagree.
    */
   const hits = shortcutHits(input)
   const firedShortcutIds: readonly string[] = hits.fired.map((hit) => hit.id)
@@ -1103,7 +1103,7 @@ async function attemptNinaRepair(
 
 /**
  * **`export`ed, and the keyword is a ruling.** It would be private if nothing outside this file
- * needed it, and it is not: phase 12's work in `lib/nina/actions.ts` must pass its own `toolSet`
+ * needed it, and it is not: phase 12's work in `lib/nina/turnrun.ts` must pass its own `toolSet`
  * (the core set plus `generate_image`) while keeping every other production dep — client, model,
  * gateway, store — exactly as defined here. With the export that is
  * `{ ...productionDeps(), toolSet: withImageTool }` and phase 12 touches nothing in this file.
@@ -1136,7 +1136,7 @@ export async function productionDeps(userId: string | null = null): Promise<Nina
 }
 
 /**
- * **The one function `lib/nina/actions.ts`, `lib/nina/proactive.ts` (phase 10) and
+ * **The one function `lib/nina/turnrun.ts`, `lib/nina/proactive.ts` (phase 10) and
  * `app/api/cron/nina/route.ts` (phase 10) call.** Never throws for an LLM problem.
  *
  * ── DO NOT AWAIT THIS FROM A PAGE'S OWN RENDER PATH (INVARIANT 4) ─────────────────────────────
@@ -1145,7 +1145,7 @@ export async function productionDeps(userId: string | null = null): Promise<Nina
  * action from a client event handler afterwards, exactly as `components/insights/InsightTrigger.tsx`
  * fires `ensureRunInsight`. **`scripts/check-llm-payload-boundary.mjs`'s `GUARDED_CALLS` table
  * enforces it** — phase 1 owns that file and ships this symbol's entry whole, with
- * `lib/nina/turn.ts`, `lib/nina/actions.ts`, `lib/nina/proactive.ts` and
+ * `lib/nina/turn.ts`, `lib/nina/actions/startTurn.ts`, `lib/nina/turnrun.ts`, `lib/nina/proactive.ts` and
  * `app/api/cron/nina/route.ts` as its sanctioned callers. The guard greps for the literal string
  * `runNinaTurn`, so **this function's name is part of the contract**; rename it and the guard
  * silently stops guarding. The rule exists because the failure mode looks fine in dev and hangs in

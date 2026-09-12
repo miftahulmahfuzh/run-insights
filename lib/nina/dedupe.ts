@@ -17,14 +17,14 @@ import type { NinaExistingPhoto } from './attach'
  *
  *   · `components/nina/Composer.tsx` — a `'use client'` component that decides, per picked tile,
  *     whether to PUT bytes or to attach the existing photograph;
- *   · `lib/nina/actions.ts` — a `'use server'` module that re-checks at insert time (the
+ *   · `lib/nina/actions/send.ts` — a `'use server'` module that re-checks at insert time (the
  *     race-close) and shapes every row;
  *   · `tests/nina.dedupe.test.ts` — the vitest node suite, which asserts the decisions with no
  *     database, no DOM and no mock.
  *
  * So the imports are exactly two, both pure by their own headers: `attach.ts` (the provenance
  * rule) and `lib/photos/contentHash.ts` (the hash format, phase 1). Everything that talks to
- * Postgres or Blob stays in `actions.ts`; everything that DECIDES lives here.
+ * Postgres or Blob stays in `lib/nina/actions/`; everything that DECIDES lives here.
  *
  * ── THE TRUST MODEL IS THE CLAIM MODEL ────────────────────────────────────────────────────────
  * A hash arriving from the browser is a claim, the same class of claim `width`/`height`/`bytes`
@@ -94,7 +94,7 @@ export interface NinaUploadClaim {
   contentHash: string | null
   /**
    * The SERVER's measurement of the stored bytes' perceptual signature — the send-time race-close
-   * (`lib/nina/actions.ts` STEP 1b) fetched the just-landed object back and signed it with the one
+   * (`lib/nina/actions/send.ts` STEP 1b) fetched the just-landed object back and signed it with the one
    * signer (`lib/nina/perceptualSign.ts`). Never a client claim: the browser computes no
    * signature, and the whole point of the perceptual layer is that both sides of every comparison
    * come from the same sharp pipeline. Null = unsigned, the row lands without one, and the send

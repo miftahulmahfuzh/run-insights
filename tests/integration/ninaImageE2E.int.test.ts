@@ -313,7 +313,7 @@ async function readTurn(jobId: string) {
 
 /**
  * One scripted turn: she calls `tool`, is told what happened, and then says something. The tool set
- * is `NINA_FULL_TOOL_SET` — the same object `lib/nina/actions.ts` passes — so this drives the real
+ * is `NINA_FULL_TOOL_SET` — the same object `lib/nina/turnrun.ts` passes — so this drives the real
  * dispatch table and the real handler, and only the model's token stream is fabricated.
  */
 async function scriptedTurn(input: {
@@ -344,7 +344,7 @@ async function scriptedTurn(input: {
   expect(result.source).not.toBe('unavailable')
   expect(result.payload?.bubbles.length ?? 0).toBeGreaterThan(0)
 
-  /* Her bubbles, persisted the way `lib/nina/actions.ts` persists them, so the conversation this
+  /* Her bubbles, persisted the way `lib/nina/actions/send.ts` persists them, so the conversation this
    * test asserts against is a real one. */
   await q.insertNinaMessages(
     U1,
@@ -735,7 +735,7 @@ describe.skipIf(!enabled)('nina image pipeline, end to end, against a real datab
     CASE_TIMEOUT_MS,
   )
 
-  /* ══ The one line of `lib/nina/actions.ts` this suite cannot drive ═══════════════════════════ */
+  /* ══ The one line of `lib/nina/actions/send.ts` this suite cannot drive ═════════════════════ */
 
   it('the full tool set the chat action passes carries both image tools', () => {
     /*

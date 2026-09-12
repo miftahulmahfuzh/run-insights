@@ -125,7 +125,7 @@ describe('ninaAwaitingByMessage', () => {
 
 describe('the cold load and the poll agree on "unanswered"', () => {
   /**
-   * `pollNinaReply`'s disjunct, transcribed from `lib/nina/actions.ts:2045` and `:2052`:
+   * `pollNinaReply`'s disjunct, transcribed from `lib/nina/actions/poll.ts`:
    *
    *     const expired = pending !== null && now - pending.createdAt.getTime() >= NINA_TURN_STALE_MS
    *     const live = pending !== null && !expired

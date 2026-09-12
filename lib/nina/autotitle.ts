@@ -33,10 +33,10 @@ import {
  *  double the deadline of a label.
  *
  *  ── AND WHY THE CALL IS NEVER AWAITED (invariant 2) ─────────────────────────────────────────
- *  It runs from `lib/nina/actions.ts` inside `after()`, which is also why THIS file exports a
+ *  It runs from `lib/nina/turnrun.ts` inside `after()`, which is also why THIS file exports a
  *  plain async function and never calls `after()` itself: `after()` throws E468 outside a request
  *  scope — the lesson `scheduleDistillation` records. `scripts/check-llm-payload-boundary.mjs`
- *  names `titleNinaSessionIfNeeded` and sanctions exactly this file and `actions.ts`.
+ *  names `titleNinaSessionIfNeeded` and sanctions this file, `lib/nina/turnrun.ts` and the actions' `startTurn.ts` seam.
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 

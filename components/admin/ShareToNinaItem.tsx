@@ -37,7 +37,7 @@ import { ninaPhotoShareUrl } from '@/lib/admin/shareToNina'
  * ── WHY THE DESCRIBE IS FIRED AND NOT AWAITED ─────────────────────────────────────────────────
  * Phase 4 took the `glm-4.6v` pre-pass off the upload path, because *"i will put hundreds of
  * profile pics in there"* against a ~8-11 s round trip is not an upload, it is an afternoon. So a
- * freshly uploaded photo has `description = null`, and `lib/nina/actions.ts` is explicit that the
+ * freshly uploaded photo has `description = null`, and `lib/nina/actions/send.ts` is explicit that the
  * description is the only way she can say anything true about a photograph — she is never sent the
  * image itself (invariant 5). This is the moment it is needed, so this is where it is requested.
  *

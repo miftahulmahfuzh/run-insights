@@ -225,7 +225,7 @@ async function storeNinaImage(
    * media-dedupe follow-up: THE SIGNATURE HAPPENS HERE TOO, for the same reason the hash does —
    * the bytes are in hand. This is the half that keeps the collection's GENERATED photographs
    * matchable: the recurring defect is one of these downloaded, re-encoded on a phone, and
-   * re-uploaded through the composer, and the write-time twin check (`lib/nina/actions.ts` STEP
+   * re-uploaded through the composer, and the write-time twin check (`lib/nina/actions/send.ts` STEP
    * 1b) can only answer if THIS row was signed when it was born. `null` on any sharp failure —
    * the row lands unsigned and the sweep fills it, never a lost photograph.
    */

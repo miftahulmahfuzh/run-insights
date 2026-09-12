@@ -27,8 +27,8 @@ import {
  * The user asked for exactly this — "nina will keep using previous history as context, so we need
  * to give user the capability to make this context more 'accurate'".
  *
- * ── WHY THIS FILE AND NOT `lib/nina/actions.ts` ───────────────────────────────────────────────
- * `lib/nina/albumActions.ts`'s argument, verbatim in spirit: isolation. `actions.ts` is another
+ * ── WHY THIS FILE AND NOT `lib/nina/actions/` ──────────────────────────────────────────────────
+ * `lib/nina/albumActions.ts`'s argument, verbatim in spirit: isolation. `lib/nina/actions/` is another
  * phase's file with another phase's `after()` hook going into it. These two functions share
  * nothing with `sendNinaMessage` except `requireUserId`.
  *
@@ -39,7 +39,7 @@ import {
  *   2. shape-check the id (`isValidId`) — a `/nina` id that cannot be one of ours should never
  *      reach the database.
  *   3. an OWNER-SCOPED read, then a mutation whose own WHERE carries `user_id` again.
- *      `resolveAttachment` in `actions.ts` is the pattern: prove ownership before the write, and
+ *      `resolveAttachment` in `lib/nina/actions/send.ts` is the pattern: prove ownership before the write, and
  *      **refuse rather than degrade** on a miss, because an edit of a message he cannot see is not
  *      a mistake to absorb quietly. Invariant 3: a message id from a client is a claim.
  *   4. **NO `revalidatePath`, and that is a considered choice rather than an omission.**

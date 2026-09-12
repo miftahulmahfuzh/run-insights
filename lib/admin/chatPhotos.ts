@@ -180,7 +180,7 @@ export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
  * surface, because `NINA_NOTES_MAX` is also 2000 for the reason given at its declaration:
  * "roughly a screen of notes … small enough that it cannot drown the canon it is appended to."
  *
- * It is not decoration. `lib/nina/actions.ts:634-637` puts this string into
+ * It is not decoration. `lib/nina/actions/send.ts` puts this string into
  * `NinaBackgroundTurnInput.imageDescriptions` verbatim, so it is prompt text paid for on every turn
  * that carries the photograph — ~670 tokens at the conversion above, against the ~150 a real row
  * costs today.
@@ -230,7 +230,7 @@ export function isAdminChatPhotoPathname(pathname: string, userId: string): bool
 }
 
 /**
- * `https:` and nothing else. `lib/nina/actions.ts:816` is the precedent — it pairs a pathname
+ * `https:` and nothing else. `lib/nina/actions/describe.ts` is the precedent — it pairs a pathname
  * predicate with `blobUrl.startsWith('https://')` at ticket-mint time, and this is the same pair at
  * action time.
  */
@@ -289,7 +289,7 @@ export function blobUrlMatchesPathname(blobUrl: string, pathname: string): boole
  * TWO clauses, and both are load-bearing:
  *
  *   · `role === 'nina'` protects HIS message. The R26 re-attach path
- *     (`lib/nina/actions.ts:518-530`) writes a `kind = 'generated'` image row onto a `role =
+ *     (`lib/nina/actions/send.ts` STEP 0d) writes a `kind = 'generated'` image row onto a `role =
  *     'runner'` message that carries his own words. That message is his; only the image row goes.
  *   · `photoOnly` protects HER words — and it is a fact about the row now, not a guess about its
  *     text. Every writer of a photo bubble sets it: `addChatPhotoAction`, `finishSelfie`, and

@@ -46,7 +46,7 @@ import { runNinaBackgroundTurn, type NinaBackgroundTurnInput } from './turnrun'
  * way: an image job's row carries its own reproducible args, so a revive RE-FIRES the row. A chat
  * claim is only a LEASE on a process — the reproducible thing is the `nina_messages` row underneath
  * it — so a chat revive reads the MESSAGE and re-derives the turn input the way `resendNinaMessage`
- * does (`lib/nina/actions.ts:1919–1933`), field by field, with the same `NINA_DESCRIPTION_UNAVAILABLE`
+ * does (`lib/nina/actions/resend.ts`), field by field, with the same `NINA_DESCRIPTION_UNAVAILABLE`
  * substitution for an undescribed photograph (invariant 5: text, never an image part).
  *
  * ── WHY THE COUNT RUNS BEFORE THE OPEN ─────────────────────────────────────────────────────────
@@ -105,8 +105,8 @@ export async function reviveNinaChatTurn(
 
   /*
    * (a) The sweep. The page render is the one moment a dead claim's deadness starts to matter —
-   * the same reasoning that puts it first on the send path (`actions.ts:917`) and on a resend
-   * (`actions.ts:1861`). `openNinaChatTurn` applies `NINA_TURN_STALE_MS` itself, so even a failed
+   * the same reasoning that puts it first on the send path (`lib/nina/actions/send.ts`) and on a resend
+   * (`lib/nina/actions/resend.ts`). `openNinaChatTurn` applies `NINA_TURN_STALE_MS` itself, so even a failed
    * sweep cannot block the open below; the sweep is what makes the LEDGER honest.
    */
   try {
@@ -117,7 +117,7 @@ export async function reviveNinaChatTurn(
 
   /*
    * (b) The candidate: the newest row of THIS session. `limit: 1`, owner-scoped, newest first —
-   * the same single read the chain uses to pick up a burst (`actions.ts:1658`). Read here rather
+   * the same single read the chain uses to pick up a burst (`lib/nina/actions/resend.ts`'s cursor read). Read here rather
    * than reused from the page's history list because the revive's own sweep may have just changed
    * what "the turn state" is, and because the page's list is capped at CHAT_HISTORY_LIMIT while
    * this is the authoritative newest at this instant.
@@ -160,7 +160,7 @@ export async function reviveNinaChatTurn(
   }
 
   /*
-   * (d) His photographs, read off THE ROW exactly as a resend reads them (`actions.ts:1810`): the
+   * (d) His photographs, read off THE ROW exactly as a resend reads them (`lib/nina/actions/resend.ts`): the
    * 40-row window would carry them for a recent message, but the newest unanswered row can be
    * days old, and a turn rebuilt from the row must not depend on window membership. An undescribed
    * row becomes the honest "her eyes failed" sentence (invariant 5). A failed read degrades to []
@@ -175,7 +175,7 @@ export async function reviveNinaChatTurn(
   }
 
   /*
-   * (e) `resendNinaMessage`'s 'empty' guard, asked of the row (`actions.ts:1837`): a runner row
+   * (e) `resendNinaMessage`'s 'empty' guard, asked of the row (`lib/nina/actions/resend.ts`): a runner row
    * with no text, no photograph and no run is nothing for her to answer, and a revive that spent a
    * model call to be told nothing would be the one unbounded-feeling spend left on this path.
    * Reachable without any client bug — an operator can strip the photo from a caption-less message.
@@ -185,7 +185,7 @@ export async function reviveNinaChatTurn(
 
   /*
    * (f) The quote, re-resolved against owner scope — resend's shape and its degradation
-   * (`actions.ts:1849`): a since-deleted target (`reply_to_id` is `ON DELETE SET NULL`) or a read
+   * (`lib/nina/actions/resend.ts`): a since-deleted target (`reply_to_id` is `ON DELETE SET NULL`) or a read
    * that fails both mean "no quote", and the answer still happens.
    */
   let quotedRow: NinaMessageRow | null = null
@@ -224,7 +224,7 @@ export async function reviveNinaChatTurn(
    * `depth: 0` — this is a turn answering HIS message, not a chained follow-up; the chain bound is
    * measured from `startedAtMs`, which is NOW, not the message's `created_at` (the message may be
    * days old — dating the budget from it would exhaust it before the first link ran, which is
-   * exactly the arithmetic the resend's note rejects at `actions.ts:1929`).
+   * exactly the arithmetic the resend's note rejects (`lib/nina/actions/resend.ts`).
    */
   const input: NinaBackgroundTurnInput = {
     userId,

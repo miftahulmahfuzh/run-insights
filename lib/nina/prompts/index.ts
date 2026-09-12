@@ -76,7 +76,7 @@
  * reply as hers to answer together with `'HE JUST SAID:'`, rendered by `burstBlock` and pushed
  * after the shortcut block and immediately before `'HE JUST SAID:'` — fed by one new OPTIONAL
  * field on `NinaTurnInput`, `earlierRunnerTexts`, computed by `runNinaBackgroundTurn` from the
- * context window it already loaded (`lib/nina/actions.ts`) and capped by
+ * context window it already loaded (`lib/nina/turnrun.ts`) and capped by
  * `NINA_BURST_MAX_MESSAGES`. A turn with no unanswered burst pushes nothing at all and is
  * byte-for-byte version 6's user turn, which `lib/nina/turn.test.ts` asserts three ways (field
  * absent, `[]`, and a list whose every entry is empty).
