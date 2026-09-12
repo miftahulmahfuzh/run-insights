@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-llm-fallback-error-logs",
   "coordinator_session_id": "21b7d26e-989c-4f31-b2cf-6917e91ce2cf",
   "created": "2026-09-12T01:12:14+00:00",
+  "landed": {
+    "at": "2026-09-12T03:06:43+00:00",
+    "base": "main",
+    "commit": "de2c9e7c70769d8154d9c3df9f220cd3c94f04b9",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -103,7 +109,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-llm-fallback-error-logs",
-  "updated": "2026-09-12T02:56:32+00:00",
+  "updated": "2026-09-12T03:06:43+00:00",
   "verified_at": "2026-09-12T02:31:23+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
 }
