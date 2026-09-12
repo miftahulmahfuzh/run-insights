@@ -72,12 +72,12 @@ export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type JsWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
 /** ISO -> JS. The whole difference between the two conventions, in one expression. */
-export function isoToJsWeekday(day: IsoWeekday): JsWeekday {
+function isoToJsWeekday(day: IsoWeekday): JsWeekday {
   return (day === 7 ? 0 : day) as JsWeekday
 }
 
 /** The canonical display spelling. Indonesian, because that is the register she writes in. */
-export const WEEKDAY_ID: Readonly<Record<IsoWeekday, string>> = {
+const WEEKDAY_ID: Readonly<Record<IsoWeekday, string>> = {
   1: 'Senin',
   2: 'Selasa',
   3: 'Rabu',
@@ -85,17 +85,6 @@ export const WEEKDAY_ID: Readonly<Record<IsoWeekday, string>> = {
   5: 'Jumat',
   6: 'Sabtu',
   7: 'Minggu',
-}
-
-/** Exported for a caller that wants the English rendering; nothing in this phase uses it. */
-export const WEEKDAY_EN_SHORT: Readonly<Record<IsoWeekday, string>> = {
-  1: 'Mon',
-  2: 'Tue',
-  3: 'Wed',
-  4: 'Thu',
-  5: 'Fri',
-  6: 'Sat',
-  7: 'Sun',
 }
 
 /**
@@ -516,7 +505,7 @@ function clippedForms(word: string): string[] {
   })
 }
 
-export const NICKNAME_CANDIDATE_LIMIT = 4
+const NICKNAME_CANDIDATE_LIMIT = 4
 
 /**
  * The candidates she offers. `"Miftahul Mahfuzh"` -> `['mif', 'tah', 'hul', 'mah']`, which
@@ -576,7 +565,7 @@ export function canonicaliseNickname(raw: string): string | null {
  * call him and simply does without a name — asking on message forty is not warmth, it is a bot
  * that never listened. Twelve is roughly three turns of his plus her 1-4 bubbles each (RU-5).
  */
-export const FIRST_CONVERSATION_MESSAGE_LIMIT = 12
+const FIRST_CONVERSATION_MESSAGE_LIMIT = 12
 
 export interface NameSlotInput {
   /** `users.name` as the OAuth provider gave it. */
@@ -671,7 +660,7 @@ export function isNinaSlotKey(key: string): key is NinaSlotKey {
  *              `pending_promises`, and the reason is ruling (c) rule 3: a merge cannot discard,
  *              so it needs no admin exception.
  */
-export type SlotWritePolicy = 'replace' | 'merge'
+type SlotWritePolicy = 'replace' | 'merge'
 
 export interface SlotSpec {
   readonly key: NinaSlotKey
@@ -839,12 +828,12 @@ const _categoriesExhaustive: _ExhaustiveCategories = true
 void _categoriesExhaustive
 
 /** `nina_memory_facts.text` is one fact, one sentence. Matches phase 3's `NinaMemoryWrite.text`. */
-export const FACT_TEXT_MAX = 400
+const FACT_TEXT_MAX = 400
 
 /** Twelve is generous for one exchange and still a bound. Enforced by the schema, not by a slice. */
 export const MAX_DISTILLED_CANDIDATES = 12
 
-export const DistilledCandidateSchema = z.object({
+const DistilledCandidateSchema = z.object({
   /** The fact, one sentence, in the language he said it in. */
   text: z.string().trim().min(1).max(FACT_TEXT_MAX),
   category: z.enum(NINA_FACT_CATEGORIES),
@@ -858,15 +847,13 @@ export const DistilledCandidateSchema = z.object({
   slotKey: z.string().trim().min(1).max(60).optional(),
 })
 
-export type DistilledCandidate = z.infer<typeof DistilledCandidateSchema>
-
 /**
  * One promise, as the distiller reports it. `metric` plus `target`/`targetKey` is what makes it
  * CHECKABLE by phase 13 against numbers the app already computed, rather than re-asked of a model
  * — invariant 2, applied to a promise. `'free'` is the escape hatch for one no field can decide;
  * phase 13 leaves those pending and she may ask him about it.
  */
-export const PromiseCandidateSchema = z.object({
+const PromiseCandidateSchema = z.object({
   /** Her promise in her own words, display-ready. */
   text: z.string().trim().min(1).max(300),
   /** The condition in HIS terms, display-ready — "kalau lo lari 10k besok". */
@@ -938,7 +925,7 @@ export function verifyQuote(quote: string, haystack: string): boolean {
  * Twelve open promises is already more than a person tracks. The cap drops RESOLVED entries first
  * (see `mergePendingPromises`) so a full slot never silences a live promise.
  */
-export const MAX_PENDING_PROMISES = 12
+const MAX_PENDING_PROMISES = 12
 
 export interface PromiseMergeContext {
   /** Jakarta `'YYYY-MM-DD'`. Passed in, never read from a clock — this file is pure. */
@@ -1052,14 +1039,14 @@ export function mergePendingPromises(
  * ==========================================================================*/
 
 /** One append-only ledger row, ready for `appendNinaMemoryFacts`. */
-export interface PlannedFact {
+interface PlannedFact {
   category: NinaFactCategory
   text: string
   sourceMessageId: string | null
 }
 
 /** One slot upsert, ready for `upsertNinaMemorySlot`. */
-export interface PlannedSlot {
+interface PlannedSlot {
   key: NinaSlotKey
   value: NinaSlotValue
   /**
@@ -1072,13 +1059,13 @@ export interface PlannedSlot {
 }
 
 /** A slot write that was NOT applied because a human owns the row. Ruling (c) rule 2. */
-export interface DeferredSlot {
+interface DeferredSlot {
   key: NinaSlotKey
   reason: 'admin-owned'
 }
 
 /** A slot write that became a ledger fact instead. Nothing is ever dropped; this says why. */
-export interface DemotedWrite {
+interface DemotedWrite {
   key: string
   reason: 'unknown-key' | 'unparseable-value' | 'unverified-quote' | 'bad-promise-shape'
 }
@@ -1110,7 +1097,7 @@ export interface MemoryPlanInput {
 }
 
 /** A bound on one turn's ledger writes. Twelve distilled + six of hers + promises, with slack. */
-export const MAX_PLANNED_FACTS = 24
+const MAX_PLANNED_FACTS = 24
 
 /**
  * ── THE ORDER OF PRECEDENCE, STATED ONCE ──────────────────────────────────────────────────────

@@ -191,10 +191,6 @@ export const NINA_IMAGE_FOCUS_KEYS = ['face', 'skin', 'boobs', 'butt', 'thighs',
 
 export type NinaImageFocusKey = (typeof NINA_IMAGE_FOCUS_KEYS)[number]
 
-export function isNinaImageFocusKey(key: string): key is NinaImageFocusKey {
-  return (NINA_IMAGE_FOCUS_KEYS as readonly string[]).includes(key)
-}
-
 /**
  * One focus option, fully described. The `NINA_TRAIT_SPECS` idiom: a key array for the order, a
  * spec record for everything about each key.
@@ -385,7 +381,7 @@ export function coerceNinaImageText(key: NinaImageTextKey, value: unknown): stri
  */
 export const NINA_IMAGE_REFERENCE_SOURCES = ['none', 'album', 'chat'] as const
 
-export type NinaImageReferenceSource = (typeof NINA_IMAGE_REFERENCE_SOURCES)[number]
+type NinaImageReferenceSource = (typeof NINA_IMAGE_REFERENCE_SOURCES)[number]
 
 /** Ids in this repo are `lib/id.ts` nanoids; 64 is a defensive ceiling, not a shape claim. */
 export const NINA_IMAGE_REFERENCE_ID_MAX = 64
@@ -395,7 +391,7 @@ export const NINA_IMAGE_REFERENCE_ID_MAX = 64
  * same ids. An id outside it is not a row we could ever read, so it coerces to no reference at all
  * rather than to a query that returns nothing.
  */
-export const NINA_IMAGE_REFERENCE_ID_RE = /^[0-9A-Za-z_-]{1,64}$/
+const NINA_IMAGE_REFERENCE_ID_RE = /^[0-9A-Za-z_-]{1,64}$/
 
 /**
  * The chosen photograph, as the row stores it: which set, and its id in that set. **Never a blob
@@ -468,7 +464,7 @@ export const NINA_PHOTO_REF_PAGE_SIZE = 48
 export const NINA_PHOTO_REF_SCAN_MAX = 480
 
 /** The two sets a photograph can come from. `'none'` is not one of them, so it is excluded. */
-export type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
+type NinaPhotoRefSource = Exclude<NinaImageReferenceSource, 'none'>
 
 /**
  * One selectable photograph, from either set, in the ONE shape the grid draws.
