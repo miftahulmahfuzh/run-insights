@@ -39,10 +39,7 @@
     all twelve F34 repeal sites were verified claim-by-claim and *held* — future
     sessions should not re-audit those parts from scratch.
 - **Branch:** `token-maxxing-2026-09-12-docs-nina-persona-audit`
-- **Merge status:** on branch — worker session of coordinator
-  `tokenmax-orch-2026-09-12` (slug `docs-nina-persona-audit`); landing to `main`
-  is the coordinator's job. The doc itself is committed on the branch by this
-  session before reporting.
+- **Merge status:** merged (commit `25ac6d6`)
 - **Approx token burn:** moderate-high — both files read in full (a 29.8KB prose
   doc plus `persona.ts`), then every file-path, constant, table and count claim
   the doc makes verified against ~15 implementation files across `lib/nina`,

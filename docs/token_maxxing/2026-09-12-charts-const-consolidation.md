@@ -52,8 +52,7 @@
     guard guarded nothing. The bug was caught by the positive control, not by luck, and the fixed
     arm returns the missing members themselves so the compile error names them.
 - **Branch:** `token-maxxing-2026-09-12-charts-const-consolidation`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches.
+- **Merge status:** merged (commit `6d71857`)
 - **Approx token burn:** moderate-high (est. ~0.6M, input-dominated) — the burn went into
   full-file reads of both `BUCKET_ORDER` contexts, the union/bucketing inertness proof, the guard
   design + positive-control iterations (including catching the vacuous-never bug), and the full

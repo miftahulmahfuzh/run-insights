@@ -38,8 +38,7 @@
     fully resolved by the adoption). That census IS the next YAGNI session's task list,
     costing zero setup for the first time in the campaign.
 - **Branch:** `token-maxxing-2026-09-12-dead-export-tooling`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches (worker commit `4f4fa3f`).
+- **Merge status:** merged (commit `4605076`)
 - **Approx token burn:** high (est. ~1M, input-dominated) — includes the first attempt of
   this session, which died to an API-429 before any work was done; the redo started clean
   and reached the same verdict. 🔥

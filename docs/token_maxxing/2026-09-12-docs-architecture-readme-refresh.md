@@ -42,8 +42,7 @@
     on a heavy-merge day inherits a drift window measured in **hours** — the
     fix is a mechanical gate, not another careful read.
 - **Branch:** `token-maxxing-2026-09-12-docs-architecture-readme-refresh`
-- **Merge status:** on branch (worker session; the coordinator owns the merge
-  — Worker Mode W4: report, never merge).
+- **Merge status:** merged (commit `d60e249`)
 - **Approx token burn:** high, deliberately — the full 5,093-test suite re-run
   to own the README's headline number, per-symbol greps over two docs, a
   70-path existence check, and diff archaeology across the 9 code commits in
@@ -236,6 +235,4 @@ c643878 docs: drift-correct architecture.md and README after the same-day dead-c
 3 files changed, 43 insertions(+), 29 deletions(-) — `docs/architecture.md`,
 `README.md`, `components/admin/AdminNav.tsx`.
 
-**Merge status:** on worker branch, NOT merged — coordinator
-`tokenmax-orch-2026-09-12` owns the merge to main (Worker Mode W4: report,
-never merge).
+**Merge status:** merged (commit `d60e249`).

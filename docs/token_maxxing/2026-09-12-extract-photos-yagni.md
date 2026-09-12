@@ -41,8 +41,7 @@
     caller ever passed, so the `if (opts.signal?.aborted) throw cause` rethrow could never
     fire.
 - **Branch:** `token-maxxing-2026-09-12-extract-photos-yagni`
-- **Merge status:** on branch, **NOT merged** — worker session; the coordinator owns
-  landing worker branches.
+- **Merge status:** merged (commit `faace78`)
 - **Approx token burn:** high 🔥 — the diff is tiny (+13/−36) but the burn went into
   reading all 20 files end to end, the ~60-symbol repo-wide census with per-hit
   classification, the trap checks (twin names, barrel re-exports, file-path string

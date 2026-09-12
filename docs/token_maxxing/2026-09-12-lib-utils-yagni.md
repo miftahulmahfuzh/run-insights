@@ -60,10 +60,7 @@
     three packages produce no findings); prettier clean on all three touched files.
 - **Branch:** `token-maxxing-2026-09-12-lib-utils-yagni` (worktree
   `tokenmax-2026-09-12-lib-utils-yagni`), head `cf71d15`, two commits on top of `6759f26`.
-- **Merge status:** on branch `token-maxxing-2026-09-12-lib-utils-yagni`, **awaiting
-  coordinator landing** — the worker does not merge to main; coordinator
-  `tokenmax-orch-2026-09-12` owns the merge (same contract as the other 2026-09-12 worker
-  sessions).
+- **Merge status:** merged (commit `47fb802`)
 - **Approx token burn:** no meter was read; by shape this was a mid-weight worker session
   whose spend is audit-dominant over a small diff — full knip pass, a per-symbol grep
   cross-check over all 21 exported symbols, three verifier-trap triages each requiring

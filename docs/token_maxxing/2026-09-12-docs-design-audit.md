@@ -59,9 +59,7 @@
     slipped past. The name-aware 25/25 gate caught it, and tokens.css's header now spells the
     wrinkle out for the next auditor.
 - **Branch:** `token-maxxing-2026-09-12-docs-design-audit`
-- **Merge status:** on branch — this was a coordinator-spawned **worker session**
-  (`tokenmax-docs-design-audit`, spawned by coordinator `tokenmax-orch-2026-09-12` alongside
-  sibling workers); the worker does NOT merge or push. The coordinator owns all merges.
+- **Merge status:** merged (commit `d0a3ea8`)
 - **Approx token burn:** modest — a docs-only worker session (three comment/prose files, no
   test or build gates beyond prettier and the manual verification sweeps), a fraction of a full
   fanned-out build session. 🔥

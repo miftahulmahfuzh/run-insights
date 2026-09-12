@@ -53,9 +53,7 @@
     flagged for a future session whose scope may touch `tests/`.
 - **Branch:** `token-maxxing-2026-09-12-insights-metrics-panel-yagni` (worktree session;
   single commit `7f07c41` on base `4fe9d01`).
-- **Merge status:** on branch — **NOT merged, deliberately**. Coordinator
-  `tokenmax-orch-2026-09-12` owns landing all of the day's worker branches; this session
-  does not merge its own work.
+- **Merge status:** merged (commit `9ac4f2f`)
 - **Approx token burn:** the defining asymmetry again, one notch heavier than the
   `lib/admin` audit — a 705-module compiler-API graph built and then debugged (the BFS
   bug), a positive control planted and cleared, every candidate cross-validated against
