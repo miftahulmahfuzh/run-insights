@@ -78,8 +78,7 @@
     the constant ever in that file? — no").
 - **Branch:** `token-maxxing-2026-09-12-scripts-readme-compact`
   (coordinator-assigned worker worktree).
-- **Merge status:** on branch — the coordinator owns merging; this session
-  committed the work and stopped.
+- **Merge status:** merged (commit `ce484ff`)
 - **Approx token burn:** moderate — the doc itself is small (226 lines), but
   it was read against its entire enforcement surface: all seven CI guards
   in full rather than grepped, every npm mapping, every flag default, every

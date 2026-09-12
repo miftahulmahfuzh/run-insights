@@ -51,8 +51,7 @@
   symlink to the main checkout — fine for tsc/vitest/knip, but a Turbopack build rejects it,
   so `next build` was deliberately **not** a gate.
 - **Branch:** `token-maxxing-2026-09-12-schema-yagni-readme` (HEAD `2473ace`)
-- **Merge status:** on branch, **NOT merged** — worker mode; coordinator
-  `tokenmax-orch-2026-09-12` owns the landing.
+- **Merge status:** merged (commit `95b29ba`)
 - **Approx token burn:** high (est. ~1M, input-dominated) 🔥
 
 ## Context & Motivation

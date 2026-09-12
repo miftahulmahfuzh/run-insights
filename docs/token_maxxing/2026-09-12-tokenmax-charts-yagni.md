@@ -52,8 +52,7 @@
     (`SplitsTable` reading `timeSec`) and a different-purpose duplicate (`BUCKET_ORDER` in
     `lib/insights/load.ts`) each looked dead on a naive grep and are alive.
 - **Branch:** `token-maxxing-2026-09-12-charts-yagni`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches.
+- **Merge status:** merged (commit `a9a4c24`)
 - **Approx token burn:** moderate (est. ~0.5M, input-dominated) — the burn went into the
   45-symbol per-consumer classification sweep, full-file reads of every chart module to
   separate callers from prose mentions, the twin-name disambiguation greps, and the gate

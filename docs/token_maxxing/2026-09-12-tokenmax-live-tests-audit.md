@@ -76,8 +76,7 @@
     with `ninaImageE2E.live` correctly ABSENT (its `TEST_DATABASE_URL` gate holds even
     with real keys present).
 - **Branch:** `token-maxxing-2026-09-12-live-tests-audit`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches (worker commits `1cee232`, `8fbca54`).
+- **Merge status:** merged (commit `af073e3`)
 - **Approx token burn:** high (est. ~1M, input-dominated) — the burn went into reading all
   9 suite/helper files end to end (the ninaImageE2E twins alone are 10.4 KB + 37.3 KB), a
   full `vitest list` collection census (5,187 tests), the claim-by-claim documentation

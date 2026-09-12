@@ -50,9 +50,7 @@
 - **Branch:** `token-maxxing-2026-09-12-tools-package-hygiene` (worker session of
   coordinator `tokenmax-orch-2026-09-12`, one of that day's parallel fan-out;
   sibling sessions the same day included `badges-records-yagni`)
-- **Merge status:** **NOT MERGED** — awaiting coordinator landing. The worker
-  rule applies: the coordinator merges per its C7 step; this session does not
-  push to `main`.
+- **Merge status:** merged (commit `e755cb7`)
 - **Approx token burn:** est. ~0.8–1M, input-dominated — the burn went into the
   full read of all nine scripts (~4,128 lines measured 2026-09-12, before any
   verdict), the exhaustive per-basename reference census, per-file git

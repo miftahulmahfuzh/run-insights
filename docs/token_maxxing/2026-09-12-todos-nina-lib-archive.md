@@ -35,8 +35,7 @@
     **byte-identical** — diff-verified, not hand-copied.
 - **Branch:** `token-maxxing-2026-09-12-todos-nina-lib-archive` (worker session of
   coordinator `tokenmax-orch-2026-09-12`, slug `todos-nina-lib-archive`)
-- **Merge status:** on branch at `d81aa7f`, tree clean, NOT merged, NOT pushed —
-  Worker Mode reports DONE to the coordinator, which owns the merge.
+- **Merge status:** merged (commit `8ae483b`)
 - **Approx token burn:** moderate — a docs-only single-commit session with no build or
   test cycles, but the burn went into the inventory, plan-pointer archaeology across two
   path bases, an assert-heavy refuse-on-surprise rewrite, and a verification battery

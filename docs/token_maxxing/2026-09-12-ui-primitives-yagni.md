@@ -46,8 +46,7 @@
     comments can't quietly mislead the next reader the way the barrel's "ten client
     components" (actually 32) was doing.
 - **Branch:** `token-maxxing-2026-09-12-ui-primitives-yagni`
-- **Merge status:** committed locally on the worker branch, **NOT merged** — the
-  coordinator (`tokenmax-orch-2026-09-12`) owns landing worker branches to main.
+- **Merge status:** merged (commit `735a68d`)
 - **Approx token burn:** high (est. ~0.7M, input-dominated) — the burn went into the
   classifier build and its positive control, per-call-site classification of every verdict,
   and three verification runs (components/ui suite, the full sweep, and a stash-based

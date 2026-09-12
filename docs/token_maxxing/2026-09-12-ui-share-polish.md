@@ -50,8 +50,7 @@
     path-like reference in `lib/share/copy.ts` finds no other unresolved
     citation.
 - **Branch:** `token-maxxing-2026-09-12-ui-share-polish`
-- **Merge status:** on branch (worker session; the coordinator owns the merge
-  — report, never merge).
+- **Merge status:** merged (commit `5d168da`)
 - **Approx token burn:** moderate, and deliberately so — the assignment was
   two comment lines, and the burn went almost entirely into verification
   archaeology (reading the upstream commit's diff, a symbol census with all
