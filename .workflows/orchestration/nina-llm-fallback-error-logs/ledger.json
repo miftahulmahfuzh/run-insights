@@ -82,28 +82,28 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "2d1bbd3",
       "depends_on": [
         1
       ],
       "difficulty": "HARD",
       "n": 5,
-      "note": null,
+      "note": "admin error-logs page + 7th nav cell landed; decisions: AdminNavLinks.test.tsx also pinned the bar so the 6-7 move extended there (plan missed the file); plan's multi-line getByText popup asserts replaced with exact textContent equality; mid-run client-secret-guard red was p3's then-uncommitted vision.test.ts:33 (p3 has since committed); manual 375px visual check + prod-seeding left to operator (DATABASE_URL is production)",
       "package": "app/admin`, `components/admin`, `lib/admin",
       "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-5.md",
-      "reported_at": null,
+      "reported_at": "2026-09-12T02:34:58+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-ADM-A002",
       "title": "Admin Error Logs page"
     }
   ],
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-llm-fallback-error-logs",
-  "updated": "2026-09-12T02:31:23+00:00",
+  "updated": "2026-09-12T02:34:58+00:00",
   "verified_at": "2026-09-12T02:31:23+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
 }
