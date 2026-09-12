@@ -10,7 +10,7 @@ fixture. Its 108-field hand-transcribed ground truth is `research/schema.mjs`'s 
 |---|---|
 | `screenshots/{1,2,3}.png` | The three originals as captured: **739 × 1600**, 1.3 MB total. 1 = summary, 2 = splits, 3 = heart rate — the order `research/run-extract.mjs` has always used. |
 | `screenshots/shipped/{1,2,3}.jpg` | The same three at the **shipped recipe** — 560 px short edge, JPEG q80, **560 × 1212**, 183 KB total. This is what a browser upload actually puts on the wire. |
-| `scripts/shipped-image-recipe.py` | Regenerates `shipped/` from the PNGs. Reimplements `lib/photos/resizeTarget.ts` + `TARGET_QUALITY` in Pillow, because the real compressor runs in a browser Web Worker and cannot be called from a script. |
+| repo-root `scripts/shipped-image-recipe.py` | Regenerates `shipped/` from the PNGs. Reimplements `lib/photos/resizeTarget.ts` + `TARGET_QUALITY` in Pillow, because the real compressor runs in a browser Web Worker and cannot be called from a script. |
 
 **These were committed on 2026-08-21.** They had previously lived only in
 `/home/miftah/.claude/image-cache/…`, which was cleared — which cost F04 its live suite for a day
@@ -18,8 +18,9 @@ and left three tasks open. They live in the repo now so that cannot happen again
 stays in the repo") always intended this.
 
 The `shipped/` variant exists because sending the originals measures the wrong thing. The
-originals cost **5,494** input tokens; the shipped recipe costs **3,628**. Production sends the
-latter, so that is what the live suite sends.
+originals cost **5,494** input tokens; the shipped recipe costs **3,628** — both measured with
+the production prompt (`results-downscale.json`'s 5,143 / 3,277 are the same two sizes under
+the shorter research prompt). Production sends the latter, so that is what the live suite sends.
 
 > Regenerating `shipped/` with a different encoder will change the bytes by a few percent —
 > Pillow's JPEG is not the browser's. It will **not** change the pixel dimensions, and dimensions
@@ -33,7 +34,7 @@ are exactly as the endpoint returned them; the rest of the envelope (request ids
 dropped so the committed file does not churn on recapture.
 
 ```
-in=3628  out=1070  finish_reason=stop  score=108/108
+in=3628  out=940  finish_reason=stop  score=108/108
 ```
 
 `tests/research/goldenFixture.test.ts` is F04's **offline** regression gate (D13, §4.9, plan Tasks
@@ -47,8 +48,11 @@ wrapper, so the fence stripper stays exercised even though this capture happens 
 ### What it does and does not prove
 
 - ✅ The scorer, the JSON extractor, the Zod schema and the provenance guard, on real model output.
-- ✅ That the production prompt — RULES 1–7 verbatim from the scored recipe, **plus** the additive
-  6a/8/9 and the per-image labels — reaches 108/108 at the compressed size that ships.
+- ✅ That the production prompt as it stood at capture — RULES 1–7 verbatim from the scored
+  recipe, **plus** the then-additive 6a/8/9 and the per-image labels — reaches 108/108 at the
+  compressed size that ships. F30's rule 10 (the dot-separator clock conversion) was added
+  2026-08-26, five days after this capture: today's prompt is that superset, and whether the
+  vendor still earns 108/108 under it is a question only the next live run answers.
 - ❌ That the vendor still returns 108/108 **today**. Only `npm run test:live:vision` can say that,
   and it costs money. This file is a snapshot of one good run, frozen.
 

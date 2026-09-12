@@ -14,7 +14,10 @@ Cadence fade = cadence of km10 minus cadence of km1.`
 const res = await fetch(ANT, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
-  body: JSON.stringify({ model: 'glm-5.2', max_tokens: 4000, system: SYSTEM,
+  body: JSON.stringify({
+    // Production narrative is the glm-5.3 family (lib/llm/catalog.ts); the original 2026-08-20
+    // control run measured glm-5.2. LLM_NARRATE_MODEL reproduces it.
+    model: process.env.LLM_NARRATE_MODEL ?? 'glm-5.3', max_tokens: 4000, system: SYSTEM,
     messages: [{ role: 'user', content: JSON.stringify({
       distanceKm: TRUTH.distanceKm, durationSec: TRUTH.durationSec, avgHrBpm: TRUTH.avgHrBpm,
       splits: TRUTH.splits, hrZones: TRUTH.hrZones }) }] }),

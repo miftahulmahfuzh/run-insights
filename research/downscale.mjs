@@ -1,12 +1,17 @@
 import { createRequire } from 'node:module'
-const sharp = createRequire(import.meta.url)('/home/miftah/expense-tracking/node_modules/sharp/dist/index.cjs')
+// sharp is a dependency of this repo (0.35.3); this used to reach into another
+// project's node_modules by absolute path, which only worked on one machine.
+const sharp = createRequire(import.meta.url)('sharp')
 import { writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { SYSTEM, SHAPE } from './schema.mjs'
 import { score, extractJson } from './score.mjs'
 
 const KEY = process.env.LLM_API_KEY
 const CODING_V4 = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
-const DIR = '/home/miftah/.claude/image-cache/3a4e3940-26e9-4619-8bb5-9e0f6c5e0ad9'
+// Committed fixtures by default; RI_FIXTURE_DIR overrides (see lib.mjs).
+const DIR = process.env.RI_FIXTURE_DIR
+  ?? fileURLToPath(new URL('./fixtures/screenshots', import.meta.url))
 const USER_TEXT = `These are screenshots of ONE running workout: the summary, the full splits table, and the heart-rate detail.\n\nReturn one JSON object with exactly this shape:\n${SHAPE}`
 
 async function prep(file, variant) {

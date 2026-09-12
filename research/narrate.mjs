@@ -61,7 +61,9 @@ const res = await fetch(ANT, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
   body: JSON.stringify({
-    model: 'glm-5.2', max_tokens: 3000, system: SYSTEM,
+    // results-narrative.json was captured against glm-5.2 on 2026-08-20; production narrative
+    // is the glm-5.3 family since (lib/llm/catalog.ts). LLM_NARRATE_MODEL reproduces old runs.
+    model: process.env.LLM_NARRATE_MODEL ?? 'glm-5.3', max_tokens: 3000, system: SYSTEM,
     messages: [{ role: 'user', content: 'Analyse this run.\n\n' + JSON.stringify(facts, null, 2) }],
     tools: [{ name: 'report', description: 'Return the coaching report.', input_schema: {
       type: 'object', additionalProperties: false,
