@@ -24,7 +24,6 @@ import type { StoredRecord } from '@/lib/records/types'
 const EVENT: RunChangeEvent = {
   runId: 'run123456789',
   userId: 'user_1',
-  changedFieldPaths: ['splits.0.timeSec'],
   occurredOn: '2026-08-20',
   previousOccurredOn: null,
   phase: 'review',

@@ -227,7 +227,6 @@ export async function commitReview(
     const outcome = await invalidate({
       runId: committedRunId,
       userId,
-      changedFieldPaths,
       occurredOn: draft.occurredOn,
       previousOccurredOn:
         context.baseline.occurredOn !== draft.occurredOn ? context.baseline.occurredOn : null,
