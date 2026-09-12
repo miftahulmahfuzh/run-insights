@@ -4,6 +4,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 
 | Date | Title | Achievement | Doc |
 |------|-------|-------------|-----|
+| 2026-09-12 | Review Component Tests | Gave the review screen its first component tests: twelve suites over the real parsers and the TRUTH fixture. | [link](./2026-09-12-review-component-tests.md) |
 | 2026-09-12 | lib/llm package_readme (First Map + README Fold) | Wrote lib/llm's first package readme, folding in its stray old README and closing a stale audit question. | [link](./2026-09-12-pkg-readme-llm.md) |
 | 2026-09-12 | Extract/Photos Package-Readme Creation (One Pipeline Map) | Created the extract/photos upload pipeline's first combined package readme, hosted at lib/extract. | [link](./2026-09-12-pkg-readme-extract-photos.md) |
 | 2026-09-12 | Badges/Records Combined Package Readme | Wrote badges/records' first combined readme, correcting two false claims found during verification. | [link](./2026-09-12-pkg-readme-badges-records.md) |
