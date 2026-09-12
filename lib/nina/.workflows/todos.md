@@ -11,7 +11,7 @@
 - P2 Medium: 6
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 7
+- Blocked: 0
 - Completed: 39
 - Archived: 35
 
@@ -33,21 +33,21 @@
   - **Method**: /implement (swarm wave 1)
   - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
 
-- [ ] **P1-NIN-A043** Phase 4: Images module (§5 + §5a-2 + §5b) + script/test pointer fixes
+- [x] **P1-NIN-A043** Phase 4: Images module (§5 + §5a-2 + §5b) + script/test pointer fixes
   - **Difficulty**: HARD
   - **Type**: Refactor
   - **Context**: Owns moving §5 (old 1567–2105) + §5a-2 (2107–2197) + §5b (2199–2491; delete 1566–2491) into `queries/images.ts` (19 exports: 18 functions + the `NinaChatPhotoBlobPatch` interface); `isOriginalPhoto` and `generatedChatPhotoScope` become internal-shared module exports (doc noted) so the frozen barrel snapshot grows 83 → 85; fourth `export *` line plus the `./queries/images` import-back for §10b; repoints the live line-pointer comments in `scripts/nina-dedupe-media.mjs:60`, `scripts/nina-dedupe-plan.mjs:71,93`, and `tests/nina.imageprefs.test.ts:566–567` (path + `export `-keyword anchor); rewrites the two §9 §-pointers inside the moved span. Does not touch §6 onward or any script logic (comments only). Exit: scoped gates green; snapshot green with exactly the two documented additions; script comments cite the new module.
-  - **Status**: blocked
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 4 of 8)
   - **Satisfies**: R1, R2, R4, R6, R7, R11 — the images domain moves under `lib/nina/queries/` with its banner prose traveling verbatim; §x cross-references rewritten to module names; historical records untouched — only live prose that becomes false is fixed; the barrel keeps re-exporting all 113 public symbols; zero behavior change
   - **Depends on**: `P1-NIN-A042`
   - **Plan**: `.workflows/plan/P1-NIN-A043.md`
 
-- [ ] **P1-NIN-A045** Phase 6: Avatars module (§9 + §9b)
+- [x] **P1-NIN-A045** Phase 6: Avatars module (§9 + §9b)
   - **Difficulty**: HARD
   - **Type**: Refactor
   - **Context**: Owns moving §9 (old 2991–3252) + §9b (3254–3843; delete through 3844) into `queries/avatars.ts` (23 exports; `folderSubtree` stays private — its five callers are intra-module; §9b's six §9-symbol mentions are COMMENT-ONLY, zero code-level calls, so they become intra-module prose with no import); ninth `export *` line; wholesale replacement of the barrel's import block with the exact minimal requirement of the remaining §10–§12 code — PRESERVING phase 4's `./queries/images` import-back (§10b still calls it) and adding `import { countNinaAvatars } from './queries/avatars'`; two "this module's rule 1" pointer rewrites + the internal-shared marker on `countNinaAvatars`. Does not touch §10 onward. Exit: scoped gates green; snapshot green unmodified; barrel surface unchanged (no new name — `countNinaAvatars` was already public).
-  - **Status**: blocked
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 6 of 8)
   - **Satisfies**: R1, R2, R4, R6, R11 — the avatars domain moves under `lib/nina/queries/` with its banner prose traveling verbatim; §x cross-references rewritten to module names; the barrel keeps re-exporting all 113 public symbols; zero behavior change
   - **Depends on**: `P1-NIN-A044`
@@ -65,51 +65,51 @@
   - **Depends on**: —
   - **Plan**: `.workflows/plan/P1-NIN-A040.md`
 
-- [ ] **P1-NIN-A041** Phase 2: Sessions module (§3 + §4 group banner + §4a)
+- [x] **P1-NIN-A041** Phase 2: Sessions module (§3 + §4 group banner + §4a)
   - **Difficulty**: NORMAL
   - **Type**: Refactor
   - **Context**: Owns moving §3 (old 685–710) + the §4 group banner (712–714) + §4a (716–1131; delete 684–1132) into `queries/sessions.ts` (9 exports incl. `getNinaIdentity`; private `readNinaSessionsWithActivity`) with exactly three pointer rewrites; barrel gains its second `export *` line plus the `getNinaSession` import-back (sole §4b+ call :1327); prunes `ne`/`exists`/`max` from drizzle-orm (all §4a-only), `NINA_SLOT_PENDING_PROMISES`/`ninaChatSessions`/`users` from schema, the whole `@/lib/nina/sessions` statement, and the 3 session types + `sessionColumns` from phase 1's import-backs; moved §-refs rewritten to module names. Does not touch §4b onward. Exit: scoped gates green; phase 1's snapshot test green unmodified; barrel surface unchanged.
-  - **Status**: in_progress
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 2 of 8)
   - **Satisfies**: R1, R2, R4, R6, R11 — the sessions domain moves under `lib/nina/queries/` with its banner prose traveling verbatim; §x cross-references rewritten to module names; the barrel keeps re-exporting all 113 public symbols; zero behavior change
   - **Depends on**: `P1-NIN-A040`
   - **Plan**: `.workflows/plan/P1-NIN-A041.md`
 
-- [ ] **P1-NIN-A042** Phase 3: Messages module (§4b + §4c)
+- [x] **P1-NIN-A042** Phase 3: Messages module (§4b + §4c)
   - **Difficulty**: NORMAL
   - **Type**: Refactor
   - **Context**: Owns moving §4b (old 1133–1427; 7 exports + private `messageScope`) + §4c (1429–1565; 2 exports) into `queries/messages.ts` (imports `getNinaSession` from `./sessions`, `messageColumns` from `./columns`; `hasProactiveMessageForRun` :1581 is §5's, NOT §4b's); two §-pointer rewrites (Rewrite A intra-module docstring, Rewrite B the :1433 §5 pointer); third `export *` line; removes the `getNinaSession` import-back and prunes `gt`, `messageColumns`, `NinaMessageInsert`, `NinaMessageRow`. Does not touch §5 onward. Exit: scoped gates green; snapshot green unmodified; barrel surface unchanged.
-  - **Status**: blocked
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 3 of 8)
   - **Satisfies**: R1, R2, R4, R6, R11 — the messages domain moves under `lib/nina/queries/` with its banner prose traveling verbatim; §x cross-references rewritten to module names; the barrel keeps re-exporting all 113 public symbols; zero behavior change
   - **Depends on**: `P1-NIN-A041`
   - **Plan**: `.workflows/plan/P1-NIN-A042.md`
 
-- [ ] **P1-NIN-A044** Phase 5: Memory, shortcuts, nags, turns modules (§6, §6b, §7, §8)
+- [x] **P1-NIN-A044** Phase 5: Memory, shortcuts, nags, turns modules (§6, §6b, §7, §8)
   - **Difficulty**: NORMAL
   - **Type**: Refactor
   - **Context**: Owns moving §6 (old 2493–2674) → `queries/memory.ts` (8 exports), §6b (2676–2878) → `queries/shortcuts.ts` (5), §7 (2880–2926) → `queries/nags.ts` (2), §8 (2928–2989) → `queries/turns.ts` (2); zero prose rewrites; NO import-backs (comment-stripped scan: zero code-level callers in §9–§12); each module keeps its private helpers (`renderSlotValue`, `shortcutColumns`, `toShortcutRecord`, `derivedTrigger`) module-private; four barrel lines (block reaches 8); prunes 9 schema members + the whole `@/lib/nina/shortcuts` statement + the 10 moved types from the shapes back-import. Does not touch §9 onward. Exit: scoped gates green; snapshot green unmodified; barrel surface unchanged.
-  - **Status**: blocked
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 5 of 8)
   - **Satisfies**: R1, R2, R4, R6, R11 — the memory, shortcuts, nags and turns domains move under `lib/nina/queries/` with their banner prose traveling verbatim; §x cross-references rewritten to module names; the barrel keeps re-exporting all 113 public symbols; zero behavior change
   - **Depends on**: `P1-NIN-A043`
   - **Plan**: `.workflows/plan/P1-NIN-A044.md`
 
-- [ ] **P1-NIN-A046** Phase 7: Tuning, imageprefs, jobphotos modules (§10, §10b, §11, §12)
+- [x] **P1-NIN-A046** Phase 7: Tuning, imageprefs, jobphotos modules (§10, §10b, §11, §12)
   - **Difficulty**: NORMAL
   - **Type**: Refactor
   - **Context**: Owns moving §10 (old 3845–4018) → `queries/tuning.ts` (2 exports; a code-level leaf), §10b (4020–4335) → `queries/imageprefs.ts` (4 exports; imports `countNinaChatPhotos` + `generatedChatPhotoScope` from `./images` and `countNinaAvatars` from `./avatars` — the DAG's only cross edges), §11 (4337–4385) + §12 (4387–4573) → `queries/jobphotos.ts` (2 functions + 2 interfaces; imports NOTHING from `./columns` — the §12→§2 edge was docstring-only); deletes the barrel's whole residual import block (incl. both import-backs) — barrel completes as header + exactly 12 `export *` lines, ZERO imports, no SQL; repoints `tests/nina.imageprefs.test.ts:546` and `tests/db.schema.nina.test.ts:525,705` to the new module paths. Does not touch the sibling model layers (`lib/nina/tuning.ts`, `lib/nina/imageprefs.ts` — distinct paths, deliberate mirror naming). Exit: scoped gates green; snapshot green unmodified (85 names, column lists absent); `queries.ts` contains no SQL and no imports.
-  - **Status**: blocked
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 7 of 8)
   - **Satisfies**: R1, R2, R4, R6, R11 — the tuning, imageprefs and jobphotos domains move under `lib/nina/queries/` with their banner prose traveling verbatim; §x cross-references rewritten to module names; the barrel keeps re-exporting all 113 public symbols; zero behavior change
   - **Depends on**: `P1-NIN-A045`
   - **Plan**: `.workflows/plan/P1-NIN-A046.md`
 
-- [ ] **P1-NIN-A047** Phase 8: Final sweep: §-ref audit, package readme, barrel module map, full gates incl. build
+- [x] **P1-NIN-A047** Phase 8: Final sweep: §-ref audit, package readme, barrel module map, full gates incl. build
   - **Difficulty**: NORMAL
   - **Type**: Refactor
   - **Context**: Owns the barrel header's 19-line module map (which domain lives where; invariant prose byte-identical; opening line `module`→`layer`); the moved-prose pointer sweep — 9 line-pointer instances in `shapes.ts`/`messages.ts`/`images.ts`/`imageprefs.ts` (rows 3–5, 8–17; rows 6/7/10 are phase 3's/phase 4's own rewrites, verify-only here) plus 3 live-code pointers outside the moved file (`lib/admin/folderOps.ts:320`, `lib/admin/ninaAlbumActions.ts:635`, `lib/nina/imageprefs.ts:456`) and the one live §-pointer (`lib/nina/searchActions.ts:40`) — repoint, never reword the argument; `lib/nina/.workflows/package_readme.md` updated (8 edits: rules not state, date-stamped counts, barrel test named); `lib/.workflows/package_readme.md` VERIFIED NO-OP (grep evidence recorded in the commit body); verifies zero diff under `*/.workflows/plan/` and `docs/plans/archive/`; the audit greps (no `nina/queries.ts:NNN` survivor; §-allowlist inside the layer) and the full gate set: full vitest, `npm run typecheck`, `npm run lint`, prettier check, `npm run knip`, `next build`. Does not touch source semantics or historical records. Exit: every gate green on the finished tree; readme states the new rule; the barrel is header + map + 12 re-export lines, zero imports.
-  - **Status**: blocked
+  - **Status**: done
   - **Plan Set**: `NINA_QUERIES_SPLIT_PLAN.md` (phase 8 of 8)
   - **Satisfies**: R2, R3, R6, R7, R8, R10 — the barrel keeps re-exporting all 113 public symbols and gains the layer-wide module map on its header; residual §x cross-references swept; historical records untouched, only live prose that becomes false fixed; `lib/nina/.workflows/package_readme.md` updated (rules not state, dated counts); full gate set incl. `next build`
   - **Depends on**: `P1-NIN-A046`

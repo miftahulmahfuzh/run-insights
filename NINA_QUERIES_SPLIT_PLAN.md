@@ -6,7 +6,7 @@
 **Worktree:** none — planned in place at `/home/miftah/.worktrees/run-insights/tokenmax-2026-09-12-nina-queries-split`
 **Branch:** `token-maxxing-2026-09-12-nina-queries-split` (base: origin/main @ `2c823eb`; `--no-worktree`)
 **Phases:** 8
-**Status:** planned
+**Status:** done
 **Coordinator:** —
 
 ## Why
@@ -82,13 +82,13 @@ package_readme is the living doc).
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | Foundations: shapes + columns modules, barrel contract test, real install + build smoke ✓ | R1, R2, R3, R5, R9, R10, R11 | `lib/nina` | 4 | — | NORMAL | `.workflows/plan/nina-queries-split/phase-1.md` | P1-NIN-A040 | — |
-| 2 | Sessions module (§3 + §4 group banner + §4a) | R1, R2, R4, R6, R11 | `lib/nina` | 2 | 1 | NORMAL | `.workflows/plan/nina-queries-split/phase-2.md` | P1-NIN-A041 | — |
-| 3 | Messages module (§4b + §4c) | R1, R2, R4, R6, R11 | `lib/nina` | 2 | 2 | NORMAL | `.workflows/plan/nina-queries-split/phase-3.md` | P1-NIN-A042 | — |
-| 4 | Images module (§5 + §5a-2 + §5b) + script/test pointer fixes | R1, R2, R4, R6, R7, R11 | `lib/nina`, `scripts`, `tests` | 6 | 3 | HARD | `.workflows/plan/nina-queries-split/phase-4.md` | P1-NIN-A043 | — |
-| 5 | Memory, shortcuts, nags, turns modules (§6, §6b, §7, §8) | R1, R2, R4, R6, R11 | `lib/nina` | 5 | 4 | NORMAL | `.workflows/plan/nina-queries-split/phase-5.md` | P1-NIN-A044 | — |
-| 6 | Avatars module (§9 + §9b) | R1, R2, R4, R6, R11 | `lib/nina` | 2 | 5 | HARD | `.workflows/plan/nina-queries-split/phase-6.md` | P1-NIN-A045 | — |
-| 7 | Tuning, imageprefs, jobphotos modules (§10, §10b, §11, §12) | R1, R2, R4, R6, R11 | `lib/nina`, `tests` | 6 | 6 | NORMAL | `.workflows/plan/nina-queries-split/phase-7.md` | P1-NIN-A046 | — |
-| 8 | Final sweep: §-ref audit, package readme, barrel module map, full gates incl. build | R2, R3, R6, R7, R8, R10 | `lib/nina`, `lib/admin` | 10 | 7 | NORMAL | `.workflows/plan/nina-queries-split/phase-8.md` | P1-NIN-A047 | — |
+| 2 | Sessions module (§3 + §4 group banner + §4a) ✓ | R1, R2, R4, R6, R11 | `lib/nina` | 2 | 1 | NORMAL | `.workflows/plan/nina-queries-split/phase-2.md` | P1-NIN-A041 | — |
+| 3 | Messages module (§4b + §4c) ✓ | R1, R2, R4, R6, R11 | `lib/nina` | 2 | 2 | NORMAL | `.workflows/plan/nina-queries-split/phase-3.md` | P1-NIN-A042 | — |
+| 4 | Images module (§5 + §5a-2 + §5b) + script/test pointer fixes ✓ | R1, R2, R4, R6, R7, R11 | `lib/nina`, `scripts`, `tests` | 6 | 3 | HARD | `.workflows/plan/nina-queries-split/phase-4.md` | P1-NIN-A043 | — |
+| 5 | Memory, shortcuts, nags, turns modules (§6, §6b, §7, §8) ✓ | R1, R2, R4, R6, R11 | `lib/nina` | 5 | 4 | NORMAL | `.workflows/plan/nina-queries-split/phase-5.md` | P1-NIN-A044 | — |
+| 6 | Avatars module (§9 + §9b) ✓ | R1, R2, R4, R6, R11 | `lib/nina` | 2 | 5 | HARD | `.workflows/plan/nina-queries-split/phase-6.md` | P1-NIN-A045 | — |
+| 7 | Tuning, imageprefs, jobphotos modules (§10, §10b, §11, §12) ✓ | R1, R2, R4, R6, R11 | `lib/nina`, `tests` | 6 | 6 | NORMAL | `.workflows/plan/nina-queries-split/phase-7.md` | P1-NIN-A046 | — |
+| 8 | Final sweep: §-ref audit, package readme, barrel module map, full gates incl. build ✓ | R2, R3, R6, R7, R8, R10 | `lib/nina`, `lib/admin` | 10 | 7 | NORMAL | `.workflows/plan/nina-queries-split/phase-8.md` | P1-NIN-A047 | — |
 
 ### Phase 1 — Foundations
 **Satisfies:** R1, R2, R3, R5, R9, R10, R11
