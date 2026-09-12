@@ -21,8 +21,8 @@ import { avatarIdSchema, folderPathSchema } from '@/lib/admin/schema'
  * one chance to be wrong.
  *
  * ── WHY A SEPARATE MODULE AND NOT `lib/admin/schema.ts` OR THE ACTION FILE ───────────────────
- * `lib/admin/ninaAlbumActions.ts` carries `'use server'`, and a `'use server'` module may export
- * **only async functions** — `lib/nina/album.ts:49-62` states that rule and why it forced
+ * `lib/admin/ninaAlbumFolderActions.ts` carries `'use server'`, and a `'use server'` module may
+ * export **only async functions** — `lib/nina/album.ts:144-148` states that rule and why it forced
  * `NINA_ATTACH_MAX_CHARS` out of `albumActions.ts`. A Zod schema and a pure predicate are not
  * async functions, so they cannot be exported from there; and invariant 6 wants them exported
  * *somewhere*, because "UI behaviour worth testing is a pure function in `lib/`" and a rule like
@@ -318,9 +318,10 @@ export function describeCurrentPhoto(current: CurrentPhotoRef): string {
  * ── THE CURRENT PHOTO CANNOT BE REMOVED ─────────────────────────────────────────────────────
  * `deleteNinaAvatar`'s WHERE clause has refused it since F33 and says why in as many words
  * (`lib/nina/queries.ts:1116-1128`): *"`eq(ninaAvatars.isCurrent, false)` in the WHERE clause is
- * what makes 'zero current avatars' unreachable rather than repaired."* The action file repeats
- * it at `lib/admin/ninaAlbumActions.ts:182-184`: *"the current photo cannot be removed... which is
- * what makes 'zero current avatars' unreachable rather than repaired."* Phase 1's recursive and
+ * what makes 'zero current avatars' unreachable rather than repaired."* The avatar action file's
+ * `deleteNinaAvatarAction` repeats it (`lib/admin/ninaAlbumAvatarActions.ts`): *"the current photo
+ * cannot be removed... which is what makes 'zero current avatars' unreachable rather than
+ * repaired."* Phase 1's recursive and
  * batch deletes carry the same clause, so at the SQL layer a folder delete over four hundred rows
  * already cannot take her face.
  *

@@ -2027,10 +2027,11 @@ function isOriginalPhoto(): SQL | undefined {
  * ── AND NOT ONE THE ALBUM HAS ALREADY ADOPTED. THIS IS THE SAME DUPLICATE, MIRRORED ──────────
  * `isOriginalPhoto()` catches ALBUM → CHAT: a chat row that POINTS at a photograph living
  * elsewhere. It cannot catch CHAT → ALBUM, and that is not an oversight in it — it is a fact about
- * how the adoption is written. `setChatPhotoAsAvatarAction` (`lib/admin/ninaAlbumActions.ts:278`)
- * COPIES the bytes (`copyChatPhotoIntoAlbum`, `:332`) into a brand-new `nina_avatars` row and
- * writes the only link there is onto the COPY — `source_key = 'chat-photo:' + <the chat row's
- * id>`, `:301`. The chat row it copied from is never touched: both provenance columns stay NULL,
+ * how the adoption is written. `setChatPhotoAsAvatarAction`
+ * (`lib/admin/ninaAlbumAvatarActions.ts`) COPIES the bytes (`copyChatPhotoIntoAlbum`, same module)
+ * into a brand-new `nina_avatars` row and writes the only link there is onto the COPY —
+ * `source_key = 'chat-photo:' + <the chat row's id>`. The chat row it copied from is never
+ * touched: both provenance columns stay NULL,
  * `isOriginalPhoto()` keeps (correctly, by its own definition) calling it original, and the picker
  * showed the photograph twice — once as the chat row, once as its album twin, adjacent at the top
  * of a newest-first list because the two were written seconds apart. Measured in production on
@@ -2052,7 +2053,8 @@ function isOriginalPhoto(): SQL | undefined {
  * `(user_id, source_key)` is `nina_avatars_user_source_key_unq` (`lib/db/schema.ts:1781`), so this
  * is an index-backed equality probe per candidate row, not a scan. **No index is being added.**
  *
- * **The literal `'chat-photo:'` is spelled here and at `lib/admin/ninaAlbumActions.ts:301`, with
+ * **The literal `'chat-photo:'` is spelled here and in `setChatPhotoAsAvatarAction`
+ * (`lib/admin/ninaAlbumAvatarActions.ts`), with
  * no shared constant between them** — a `'use server'` module may export only async actions, so it
  * cannot export the prefix, and the db layer must not import from an actions module. The two
  * spellings are held together by `tests/nina.photoRefs.test.ts`, which pins this exact text, and

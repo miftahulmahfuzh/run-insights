@@ -118,7 +118,7 @@ import { isValidContentHash } from '@/lib/photos/contentHash'
  * its place in the conversation — so the bubble that already exists shows the new picture.
  *
  * ── ROW FIRST, OLD BLOB SECOND ──────────────────────────────────────────────────────────────
- * `deleteNinaAvatarAction`'s rule (`lib/admin/ninaAlbumActions.ts:186-191`), and it points the same
+ * `deleteNinaAvatarAction`'s rule (`lib/admin/ninaAlbumAvatarActions.ts`), and it points the same
  * way here: a failed `del` leaves an orphan, which is recoverable; a deleted blob under a live row
  * is a permanently broken image in the runner's chat. It also does a second job — by the time the
  * release runs, this row already points at the NEW pathname, so it is out of the reference answer
@@ -748,7 +748,7 @@ async function loadPhotoCarrier(
  * nothing to parallelise.
  *
  * ── WHY `after()` AND NOT `await`, RESTATED BECAUSE IT NOW MATTERS TWICE AS MUCH ────────────
- * `lib/admin/ninaAlbumActions.ts:300-320`'s `scheduleDescribe`, same shape and same measurement.
+ * `scheduleDescribe` (`lib/admin/ninaAlbumDeferredDescribe.ts`), same shape and same measurement.
  * Next dispatches Server Actions **one at a time per client** (the Server Actions guide, quoted at
  * `lib/nina/actions.ts:1201-1206`), so an awaited pair would put ~15-25 s on every add, in series:
  * five photographs would be two minutes of a spinner. Non-fatal by design — the row exists, the
