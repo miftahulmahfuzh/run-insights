@@ -192,9 +192,7 @@ export function FileExplorer({
     const previous = lastSelectedId.current
     lastSelectedId.current = selectedId
     if (previous == null || selectedId != null) return
-    const tile = contentRef.current?.querySelector<HTMLElement>(
-      `[data-photo-id="${previous}"]`,
-    )
+    const tile = contentRef.current?.querySelector<HTMLElement>(`[data-photo-id="${previous}"]`)
     if (tile != null) tile.focus()
     else contentRef.current?.focus()
   }, [selectedId])
@@ -478,10 +476,15 @@ export function FileExplorer({
         </div>
 
         {/* The focus anchor for the pane-close restoration above: `tabIndex={-1}` makes it
-            reachable only by that fallback (a removed tile's landing pad), never by Tab, and
-            `focus:outline-none` keeps the programmatic focus invisible — it is a place to stand,
-            not a control. */}
-        <div ref={contentRef} tabIndex={-1} className="min-w-0 focus:outline-none" {...dropHandlers}>
+         * reachable only by that fallback (a removed tile's landing pad), never by Tab, and
+         * `focus:outline-none` keeps the programmatic focus invisible — it is a place to stand,
+         * not a control. */}
+        <div
+          ref={contentRef}
+          tabIndex={-1}
+          className="min-w-0 focus:outline-none"
+          {...dropHandlers}
+        >
           <div
             className={cn(
               'rounded-card border p-4 transition-colors',

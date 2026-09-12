@@ -272,8 +272,8 @@ export function FolderMenu({
               value={target}
               disabled={pending}
               /* The menu row that opened this panel unmounted with the menu, so without this the
-                 keyboard operator is dropped on <body> and the next Tab restarts the page. The
-                 create and rename panels autoFocus their field; this is the same courtesy. */
+               * keyboard operator is dropped on <body> and the next Tab restarts the page. The
+               * create and rename panels autoFocus their field; this is the same courtesy. */
               autoFocus
               onChange={(event) => setTarget(event.target.value)}
             >
@@ -351,9 +351,9 @@ export function FolderMenu({
               </Button>
             )}
             {/* Focus lands here, NOT on "Delete the folder" — the panel's first control in DOM
-                order is the destructive verb, and resting focus on it would make a stray Enter
-                fire the delete. Cancel is the safe default; the next Tab reaches the verb on
-                purpose. */}
+             * order is the destructive verb, and resting focus on it would make a stray Enter
+             * fire the delete. Cancel is the safe default; the next Tab reaches the verb on
+             * purpose. */}
             <Button
               size="md"
               variant="ghost"
