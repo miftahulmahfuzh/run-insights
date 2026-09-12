@@ -20,7 +20,7 @@ export type RecordKey =
   | 'best_paced_run'
   | 'earliest_start'
 
-export type RecordDirection = 'max' | 'min'
+type RecordDirection = 'max' | 'min'
 
 /**
  * `'bp'` is basis points — see `best_paced_run` in `catalog.ts` for why that unit exists.
@@ -31,7 +31,7 @@ export type RecordDirection = 'max' | 'min'
  * formats as `1:12:30`, where this formats as a wall clock. Two units over the same primitive,
  * because the two sentences they print are not interchangeable.
  */
-export type RecordUnit = 'm' | 's' | 's_per_km' | 'kcal' | 'spm' | 'bpm' | 'bp' | 'clock'
+type RecordUnit = 'm' | 's' | 's_per_km' | 'kcal' | 'spm' | 'bpm' | 'bp' | 'clock'
 
 /**
  * Everything `computeRecords` needs about one run, and nothing else. Built by `recompute.ts` from

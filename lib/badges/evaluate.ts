@@ -83,7 +83,7 @@ export interface BadgeAwardResult {
 
 const NOTHING: BadgeAwardResult = { newlyEarned: [], qualified: [] }
 
-export interface CommitBadgeOptions {
+interface CommitBadgeOptions {
   /**
    * From F06's `RecomputeResult.changed`, filtered to rows whose `run_id` is this run: the keys
    * whose record **moved to this run on this very commit**. `long_way_home` and `new_ceiling` are
