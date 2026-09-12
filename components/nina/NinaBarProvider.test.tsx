@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { useEffect } from 'react'
 import { describe, expect, it } from 'vitest'
 
 // Real `nextBarState`: the provider's whole job is to hold ONE state and forward the machine's own
@@ -12,7 +13,9 @@ let latest: ReturnType<typeof useNinaBar> | null = null
 /** Reads the context every render, so assertions see the provider's state as consumers do. */
 function Probe({ id }: { id?: string }) {
   const ctx = useNinaBar()
-  latest = ctx
+  useEffect(() => {
+    latest = ctx
+  })
   return (
     <button type="button" data-testid={id ?? 'probe'} onClick={() => ctx?.dispatch('toggle')}>
       {ctx?.bar ?? 'null'}

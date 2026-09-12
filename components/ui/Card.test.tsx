@@ -87,7 +87,7 @@ describe('Stat', () => {
         label="Pace"
         value={
           <>
-            7'22"<span className="sr-only"> per kilometre</span>
+            7&apos;22&quot;<span className="sr-only"> per kilometre</span>
           </>
         }
       />,

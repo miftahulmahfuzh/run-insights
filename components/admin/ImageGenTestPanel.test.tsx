@@ -132,13 +132,11 @@ describe('ImageGenTestPanel', () => {
   })
 
   it('dispatches on one click — no confirmation dialog — and starts watching the job', async () => {
-    readAction
-      .mockResolvedValueOnce(readResult())
-      .mockResolvedValue(
-        readResult({
-          job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }),
-        }),
-      )
+    readAction.mockResolvedValueOnce(readResult()).mockResolvedValue(
+      readResult({
+        job: job({ status: 'pending', errorCode: 'running', attempts: 1, prompt: null }),
+      }),
+    )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
     await advance(0)
@@ -195,13 +193,11 @@ describe('ImageGenTestPanel', () => {
   })
 
   it('reads a requeued first attempt as "retrying", never as a refusal', async () => {
-    readAction
-      .mockResolvedValueOnce(readResult())
-      .mockResolvedValue(
-        readResult({
-          job: job({ status: 'pending', errorCode: 'queued', attempts: 1, prompt: null }),
-        }),
-      )
+    readAction.mockResolvedValueOnce(readResult()).mockResolvedValue(
+      readResult({
+        job: job({ status: 'pending', errorCode: 'queued', attempts: 1, prompt: null }),
+      }),
+    )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
     await advance(0)
@@ -233,13 +229,11 @@ describe('ImageGenTestPanel', () => {
   })
 
   it('keeps a timeout failure honest: inconclusive, with the not-a-refusal clause and the reason', async () => {
-    readAction
-      .mockResolvedValueOnce(readResult())
-      .mockResolvedValue(
-        readResult({
-          job: job({ status: 'failed', errorCode: 'timeout', attempts: 2, prompt: null }),
-        }),
-      )
+    readAction.mockResolvedValueOnce(readResult()).mockResolvedValue(
+      readResult({
+        job: job({ status: 'failed', errorCode: 'timeout', attempts: 2, prompt: null }),
+      }),
+    )
     runAction.mockResolvedValue({ ok: true, jobId: 'j1', quotaLeft: 4 })
     render(<ImageGenTestPanel />)
     await advance(0)

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { render } from '@testing-library/react'
+import { useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // The hook's DOM half: `next/navigation` is the one mock (the URL reads come through
@@ -16,7 +17,10 @@ import { CHAT_SCROLL_PARAM, type ChatScrollMark } from '@/lib/nina/scroll'
 let latest: { mark: ChatScrollMark | null; saveMark: () => void } | null = null
 
 function Probe() {
-  latest = useChatScrollMark()
+  const ctx = useChatScrollMark()
+  useEffect(() => {
+    latest = ctx
+  })
   return null
 }
 

@@ -29,12 +29,7 @@ export type {
 export { roundSharesTo100 } from './round'
 export { avgPaceSecPerKm } from './pace'
 export { computeSessionMetrics } from './session'
-export {
-  evaluateSessionFlags,
-  FLAG_THRESHOLDS,
-  type Flag,
-  type FlagCode,
-} from './flags'
+export { evaluateSessionFlags, FLAG_THRESHOLDS, type Flag, type FlagCode } from './flags'
 export {
   bucketForDistanceM,
   computeVolumeDelta,
@@ -45,10 +40,7 @@ export {
   type VolumeDelta,
   type WeekRunSummary,
 } from './week'
-export {
-  computeMonthMetrics,
-  type MonthRunSummary,
-} from './month'
+export { computeMonthMetrics, type MonthRunSummary } from './month'
 export {
   ACWR_OUT_OF_RANGE,
   ACWR_SWEET_SPOT,
