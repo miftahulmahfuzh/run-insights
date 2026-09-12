@@ -52,9 +52,7 @@
 - **Branch:** `token-maxxing-2026-09-12-metrics-hrmax-yagni` (worktree session; exactly two
   commits ahead of origin/main tip `a088491` — `git log --oneline origin/main..HEAD` shows
   only `d41ed8a` and `3964416`).
-- **Merge status:** on branch — **NOT merged, deliberately**. Coordinator
-  `tokenmax-orch-2026-09-12` owns landing the day's worker branches; this session does not
-  merge its own work.
+- **Merge status:** merged (commit `cbf803e`)
 - **Approx token burn:** the heaviest kind of light diff — multi-round per-symbol caller
   verification (namespace-call and barrel-path traps, twin-name check `getRun` vs
   `getRunDetail`), a removal cascade traced to depth 3 (detection → queries → query options →

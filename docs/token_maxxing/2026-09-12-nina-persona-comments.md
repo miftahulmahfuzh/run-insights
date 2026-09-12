@@ -58,8 +58,7 @@
 - **Branch:** `token-maxxing-2026-09-12-nina-persona-comments` (worktree
   `tokenmax-2026-09-12-nina-persona-comments`), two commits `c048108` + `f7d50e7` on top
   of `b39c6e5`.
-- **Merge status:** on branch, **not merged — awaiting coordinator landing**. Worker mode:
-  this session reports to coordinator `tokenmax-orch-2026-09-12`, which owns the merge.
+- **Merge status:** merged (commit `65cee72`)
 - **Approx token burn:** no meter was read; by shape a mid-weight worker session whose
   spend is audit-dominant over a modest diff — two knip passes (the first silently
   truncated, see the gotcha), ~36 findings each individually cross-checked by

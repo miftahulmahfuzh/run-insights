@@ -54,9 +54,7 @@
     source files).
 - **Branch:** `token-maxxing-2026-09-12-nina-memory-prefs-yagni` (worktree
   `tokenmax-2026-09-12-nina-memory-prefs-yagni`), head `d05505f`.
-- **Merge status:** on branch, **NOT merged — awaiting coordinator landing**. The worker
-  does not merge to main; coordinator `tokenmax-orch-2026-09-12` owns merges (the worker
-  reports DONE and stops).
+- **Merge status:** merged (commit `bd67d87`)
 - **Approx token burn:** no meter was read; by shape a mid-weight worker session whose
   spend is verification-dominant over a small diff — a full knip pass, 20 per-symbol
   cross-checks each requiring a separate grep strategy (prose copies excluded, twin names

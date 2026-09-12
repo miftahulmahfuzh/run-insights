@@ -44,9 +44,7 @@
     `package-readme-volatile-numbers-rot` rule; the readme's header line 6 says the counts
     were "read and measured from the tree on this date".
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-auth-push-runs`
-- **Merge status:** on branch, **NOT merged** — Worker Mode; the coordinator
-  (`tokenmax-orch-2026-09-12`) verifies and lands worker branches. The DONE report
-  (slug / branch / commit / doc path) goes to the coordinator once this session doc lands.
+- **Merge status:** merged (commit `63025d7`)
 - **Approx token burn:** ~200k 🔥 (22 full file reads, the census greps, a 658-line doc
   written claim-by-claim from the reads, and the prettier + guard verification).
 

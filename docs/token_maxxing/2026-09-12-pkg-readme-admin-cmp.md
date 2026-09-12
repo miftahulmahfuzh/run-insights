@@ -65,9 +65,7 @@
     line reduced to one.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-admin-cmp` (coordinator-
   assigned worker branch, base `7899385`).
-- **Merge status:** on branch — **NOT merged** (worker; the coordinator
-  `tokenmax-orch-2026-09-12` owns landing). This session committed the work
-  and this doc, and stopped.
+- **Merge status:** merged (commit `66bfcaf`)
 - **Approx token burn:** high — a full-file read of 1,950 lines, ~25
   component/lib files read or grepped, claim-by-claim constant verification,
   an import census, and a production query batch. 🔥

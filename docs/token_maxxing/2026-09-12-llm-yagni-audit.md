@@ -43,8 +43,7 @@
     no-head-cutoff hard gate — and four real twin-name near-misses were caught and
     dismissed during verification (see Code / Design Details).
 - **Branch:** `token-maxxing-2026-09-12-llm-yagni-audit`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches (worker commit `5421e6b`).
+- **Merge status:** merged (commit `e54c299`)
 - **Approx token burn:** high (est. ~1M, input-dominated) — the burn went into the
   enumerate-every-export census, per-symbol repo-wide word-boundary grep classification,
   the four-trap disambiguation passes, and the gates, including a serial full-suite sweep

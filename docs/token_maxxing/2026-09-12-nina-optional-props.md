@@ -51,8 +51,7 @@
     dismissal carries its verified reason (see Decisions), so none of them gets
     re-litigated from scratch.
 - **Branch:** `token-maxxing-2026-09-12-nina-optional-props`
-- **Merge status:** committed locally on the worker branch, **NOT merged** — the
-  coordinator (`tokenmax-orch-2026-09-12`) owns landing worker branches to main.
+- **Merge status:** merged (commit `c9792ac`)
 - **Approx token burn:** high (est. ~0.7M, input-dominated) — the burn went into the
   classifier build and its positive controls, per-site classification of every optional prop
   across 34 components, and four gate runs (`next typegen` + `tsc --noEmit`, the nina suite,

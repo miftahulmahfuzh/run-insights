@@ -59,9 +59,7 @@
     changed files; knip re-run still zero scoped findings.
 - **Branch:** `token-maxxing-2026-09-12-nina-turn-jobs-yagni` (worktree
   `tokenmax-2026-09-12-nina-turn-jobs-yagni`), head `86f40fd`.
-- **Merge status:** on branch, **awaiting coordinator landing** — the worker does not
-  merge to main; coordinator `tokenmax-orch-2026-09-12` owns the merge (same contract
-  as the other 2026-09-12 worker sessions).
+- **Merge status:** merged (commit `6f7f8ea`)
 - **Approx token burn:** no meter was read; by shape this was a mid-weight worker
   session whose spend is verification-dominant over a tiny diff — the full 44-symbol
   inventory and per-symbol prod-vs-test grep, the knip adoption memory's extra steps

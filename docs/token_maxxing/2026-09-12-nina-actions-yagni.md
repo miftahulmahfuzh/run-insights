@@ -53,9 +53,7 @@
 - **Branch:** `token-maxxing-2026-09-12-nina-actions-yagni` (worktree
   `tokenmax-2026-09-12-nina-actions-yagni`), code head `b533b7f`; the session-doc commit
   becomes the branch tip afterwards.
-- **Merge status:** on branch, **awaiting coordinator landing** — the worker does not
-  merge to main; coordinator `tokenmax-orch-2026-09-12` owns the merge (same contract as
-  the other 2026-09-12 worker sessions).
+- **Merge status:** merged (commit `100c292`)
 - **Approx token burn:** no meter was read; by shape a mid-to-heavy worker session,
   verification-dominant over its diff — a full knip census plus a re-run, 181 per-symbol
   word-boundary greps each requiring a read of the surrounding contract (guard scripts,
