@@ -229,9 +229,9 @@ export async function loadSessionFacts(
   const [run, hrMax, profile] = await Promise.all([
     getRunDetail(userId, runId),
     /*
-     * `resolveHrMax`, not `resolveHrMaxAsOf(run.occurredOn)`. The run detail page renders
-     * `avgHrPctMax` against the CURRENT resolution, and the prose sits directly beneath that
-     * number — an insight quoting 91.5% under a stat tile reading 92.5% is worse than either
+     * The CURRENT resolution, deliberately not what was true on `run.occurredOn`. The run detail
+     * page renders `avgHrPctMax` against this same number, and the prose sits directly beneath
+     * that figure — an insight quoting 91.5% under a stat tile reading 92.5% is worse than either
      * being slightly stale. R-11 then freezes whichever value was used into the payload, so the
      * pair stays consistent for that row forever.
      */

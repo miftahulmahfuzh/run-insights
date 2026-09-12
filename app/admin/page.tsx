@@ -85,7 +85,7 @@ export default async function AdminHomePage() {
       </header>
 
       {/* `min-h-11` on each card's link is `docs/design-brief.md`'s 44 pt minimum, spelled where
-          it is easiest to lose: a 13 px line of text is a 18 px target, and these five links are
+          it is easiest to lose: a 13 px line of text is a 18 px target, and these four links are
           the only navigation on this page that is not the nav bar. `mb-3` rather than `mb-4`
           above them, so the taller control does not make every card 26 px longer. */}
       <div className="grid gap-4 sm:grid-cols-2">

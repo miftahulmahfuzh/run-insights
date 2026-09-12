@@ -86,17 +86,6 @@ describe('reviewed-only queries', () => {
     expect(params).toContain(187)
   })
 
-  it('getObservedMaxHrRun adds the asOf cutoff only when asked for one', async () => {
-    fake.enqueue([])
-    await q.getObservedMaxHrRun('u1')
-    expect(fake.only().sql).not.toContain('"occurred_on" <=')
-
-    fake.reset()
-    fake.enqueue([])
-    await q.getObservedMaxHrRun('u1', { asOf: '2026-08-19' })
-    expect(fake.only().sql).toContain('"runs"."occurred_on" <= $')
-  })
-
   it('getReviewedRunsWithChildren filters reviewed_at on the run AND on both child reads', async () => {
     // Three statements in one batch. The children carry no user_id and no reviewed_at of their
     // own, so each proves BOTH through a correlated EXISTS back to `runs` — miss it on the splits
@@ -110,17 +99,6 @@ describe('reviewed-only queries', () => {
     }
     expect(fake.sqlAt(1)).toContain('"run_splits"')
     expect(fake.sqlAt(2)).toContain('"run_zones"')
-  })
-
-  it('getPreviousReviewedRun filters on reviewed_at and takes the nearest earlier day', async () => {
-    fake.enqueue([])
-    await q.getPreviousReviewedRun('u1', '2026-08-20')
-    const { sql, params } = fake.only()
-    expect(sql).toContain('"reviewed_at" is not null')
-    expect(sql).toContain('"runs"."occurred_on" < $')
-    expect(sql).toContain('order by "runs"."occurred_on" desc')
-    expect(sql).toContain('limit $')
-    expect(params).toContain('2026-08-20')
   })
 
   it('getReviewedRunWindow filters reviewed_at, orders by the R-5 position, and limits', async () => {
@@ -290,15 +268,6 @@ describe('draft-visible queries', () => {
     fake.enqueue([])
     await q.getRunIdForExtraction('u1', 'x1')
     expect(fake.only().sql).not.toContain('"reviewed_at" is not null')
-  })
-
-  it('getRun does NOT filter reviewed_at — "show me this row" is not an aggregate', async () => {
-    fake.enqueue([])
-    await q.getRun('u1', 'r1')
-    const { sql, params } = fake.only()
-    expect(sql).not.toContain('"reviewed_at" is not null')
-    expect(sql).toContain('"runs"."user_id" = $')
-    expect(params).toContain('r1')
   })
 
   it('getRunDetail does NOT filter reviewed_at', async () => {

@@ -71,8 +71,6 @@ function runInput(occurredOn: string, startedAt: string, maxHr: number | null) {
 }
 
 describe.skipIf(!enabled)('resolveHrMax against a real database', () => {
-  let fixtureRunId = ''
-
   beforeAll(async () => {
     vi.useFakeTimers()
     vi.setSystemTime(FIXTURE_NOW)
@@ -117,13 +115,12 @@ describe.skipIf(!enabled)('resolveHrMax against a real database', () => {
   })
 
   it('takes an observation that exceeds the estimate, and attributes it (R-3)', async () => {
-    fixtureRunId = (await q.commitExtractedRun(U1, runInput('2026-08-20', '05:12:00', 189))).runId
+    await q.commitExtractedRun(U1, runInput('2026-08-20', '05:12:00', 189))
 
     const resolved = await hrMax.resolveHrMax(U1)
     expect(resolved).toEqual({
       bpm: 189,
       source: 'observed',
-      observedRunId: fixtureRunId,
       observedOn: '2026-08-20',
     })
     // occurred_on must come back as a plain 'YYYY-MM-DD' string (D6 — no timezone reasoning).
@@ -161,50 +158,8 @@ describe.skipIf(!enabled)('resolveHrMax against a real database', () => {
     expect(await hrMax.resolveHrMax(U1)).toMatchObject({ source: 'observed' })
   })
 
-  it('resolveHrMaxAsOf sees only what had happened by the cutoff', async () => {
-    expect(await hrMax.resolveHrMaxAsOf(U1, '2026-08-19')).toEqual({
-      bpm: TANAKA,
-      source: 'estimated',
-    })
-    expect(await hrMax.resolveHrMaxAsOf(U1, '2026-08-20')).toMatchObject({
-      bpm: 189,
-      source: 'observed',
-    })
-    expect(await hrMax.resolveHrMaxAsOf(U1, '2026-08-22')).toMatchObject({ bpm: 191 })
-  })
-
-  it('hrMaxTransitionAt fires exactly once — on the run that first overtook the estimate', async () => {
-    const transition = await hrMax.hrMaxTransitionAt(U1, fixtureRunId)
-    expect(transition).toEqual({
-      from: { bpm: TANAKA, source: 'estimated' },
-      to: {
-        bpm: 189,
-        source: 'observed',
-        observedRunId: fixtureRunId,
-        observedOn: '2026-08-20',
-      },
-    })
-  })
-
-  it('hrMaxTransitionAt stays quiet on a run that changed nothing', async () => {
-    const before = await q.getPreviousReviewedRun(U1, '2026-08-12')
-    expect(before?.occurredOn).toBe('2026-08-10')
-    // 2026-08-12's max of 180 is below the 187 estimate, so nothing moved.
-    const runs = await q.listRuns(U1)
-    const quietRun = runs.find((r) => r.occurredOn === '2026-08-12')
-    expect(await hrMax.hrMaxTransitionAt(U1, quietRun!.id)).toBeNull()
-  })
-
-  it('hrMaxTransitionAt returns null on the runner’s first run', async () => {
-    const runs = await q.listRuns(U1)
-    const first = runs.find((r) => r.occurredOn === '2026-08-10')
-    expect(await hrMax.hrMaxTransitionAt(U1, first!.id)).toBeNull()
-  })
-
   it('is invisible across users — U2 sees none of U1’s ceiling (D8)', async () => {
     expect(await hrMax.resolveHrMax(U2)).toBeNull()
-    expect(await hrMax.hrMaxTransitionAt(U2, fixtureRunId)).toBeNull()
     expect(await q.getObservedMaxHrRun(U2)).toBeNull()
-    expect(await q.getRun(U2, fixtureRunId)).toBeNull()
   })
 })

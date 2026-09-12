@@ -23,14 +23,13 @@ import { canonicalSession } from './fixtures/canonicalRun'
  *   173 / 187 = 92.51%  — a formula estimate the same screenshot disproves
  *
  * §4.4 resolves observed-first, never formula-first. Scoring against a contradicted estimate is
- * not conservatism, it is ignoring the evidence on screen. `resolveHrMaxExcludingRun` still ships,
- * for F09's `new_ceiling` badge — "did this beat the previous best" genuinely needs the previous
- * best — but never for a run's own metrics.
+ * not conservatism, it is ignoring the evidence on screen — the run's own max_hr feeds its own
+ * metrics, and there is no excluding variant: F09's `new_ceiling` compares records, not HRmax
+ * (it reads the recompute's `changed` set, never a resolver).
  */
 const OBSERVED_189: HrMax = {
   bpm: 189,
   source: 'observed',
-  observedRunId: canonicalSession.runId,
   observedOn: '2026-08-20',
 }
 
