@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -20,7 +20,6 @@ import {
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
-import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
 import { composerBottomCss, composerPadBottomCss } from '@/lib/nina/chatview'
 import {
   applyMessageDeletion,
@@ -46,12 +45,13 @@ import {
 } from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
-import { NOTICE_TEXT, type Notice } from './chatScreenCopy'
+import { NOTICE_TEXT, RESEND_REFUSAL_TEXT, type Notice } from './chatScreenCopy'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
 import type { ChatAvatar, ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
+import { usePhotoViewer } from './usePhotoViewer'
 
 /**
  * The interactive half of `/nina`: one turn, from the runner pressing send to Nina's last bubble.
@@ -321,24 +321,6 @@ export function ChatScreen({
    */
   const [photo, setPhoto] = useState<NinaExistingPhoto | null>(pendingPhoto)
 
-  /**
-   * R10. Which bubble's photographs the full-screen overlay is showing, and which of them is on
-   * screen. `null` is closed.
-   *
-   * ── A MESSAGE ID AND AN INDEX, NOT A SNAPSHOT OF THE PHOTO LIST ──────────────────────────────
-   * Because `messages` changes underneath an open overlay, in two ways that both really happen: a
-   * service-worker push calls `router.refresh()` and the server hands down a new list, and R8's
-   * delete takes a bubble and its photo rows with it. A snapshot would keep showing a photo whose
-   * row is gone; a derived list plus `viewerIndex` closes or clamps, which is the only shape that
-   * does not end in `PhotoViewer`'s `photos[index]!` throwing.
-   */
-  const [viewer, setViewer] = useState<{ messageId: string; index: number } | null>(null)
-
-  const handleOpenImage = useCallback((messageId: string, index: number) => {
-    setNotice(null)
-    setViewer({ messageId, index })
-  }, [])
-
   /* R14's mark on this history entry, decoded from `?at=`. Passed down; the arithmetic is in
    * `lib/nina/scroll.ts` and the DOM half is in `MessageList`. */
   const { mark } = useChatScrollMark()
@@ -426,7 +408,10 @@ export function ChatScreen({
 
   // Every timed step checks this before touching state. StrictMode double-invokes effects in
   // development and a runner can navigate away mid-reveal; both would otherwise set state on an
-  // unmounted tree. `InsightTrigger` uses the same guard for the same reason.
+  // unmounted tree. `InsightTrigger` uses the same guard for the same reason. Each extracted hook
+  // keeps its own flag via `useAliveRef` — the flag is only ever written at mount and unmount, so
+  // per-owner flags with this component's lifetime are indistinguishable from one shared one, and
+  // a ref the compiler can see stays exempt from every deps array.
   const alive = useRef(true)
   const timer = useRef<number | null>(null)
   /*
@@ -515,32 +500,20 @@ export function ChatScreen({
   }
 
   /*
-   * R10's overlay, derived rather than stored — see `viewer` above.
-   *
-   * `useMemo` on the message identity, not on `messages`: this component re-renders on every state
-   * change the screen makes (typing, keyboard, reveal, flash), and the overlay's list only depends
-   * on the one row it is showing.
+   * R10's overlay state and its derivations, in `usePhotoViewer`. The attach action a photo's
+   * overlay offers stays below, in the render — it arms THIS screen's `photo` slot.
    */
-  const viewerMessage =
-    viewer === null
-      ? null
-      : (messages.find((candidate) => candidate.id === viewer.messageId) ?? null)
-  const viewerPhotos = useMemo(() => chatViewerPhotos(viewerMessage), [viewerMessage])
-  const shownIndex = viewer === null ? null : viewerIndex(viewer.index, viewerPhotos.length)
-  /*
-   * The message went away under the open overlay — deleted, or gone from a refreshed window. Close
-   * it DURING RENDER rather than in an effect, for the reason the `seenInitial` block above gives
-   * at length: `react-hooks/set-state-in-effect` rejects the effect form, correctly, and React
-   * discards this render and restarts with the new state before committing, so nothing is painted
-   * twice. It terminates immediately: `viewer === null` makes the condition false.
-   */
-  if (viewer !== null && shownIndex === null) setViewer(null)
-  /*
-   * R10's attach. `null` when the id never reached the client, which is exactly the optimistic row
-   * — and `ChatPhotoActions` renders no attach control for it rather than one that cannot work.
-   */
-  const viewerAttachId =
-    shownIndex === null ? null : attachableIdAt(viewerMessage?.imageIds, shownIndex)
+  const { viewer, viewerPhotos, shownIndex, viewerAttachId, openViewer, setViewerIndex, closeViewer } =
+    usePhotoViewer(messages)
+
+  /** R10's open gesture. Clearing the notice travels with the gesture, not with the overlay. */
+  const handleOpenImage = useCallback(
+    (messageId: string, index: number) => {
+      setNotice(null)
+      openViewer(messageId, index)
+    },
+    [openViewer],
+  )
 
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
@@ -1533,8 +1506,8 @@ export function ChatScreen({
         <PhotoViewer
           photos={viewerPhotos}
           index={shownIndex}
-          onIndex={(next) => setViewer({ messageId: viewer.messageId, index: next })}
-          onClose={() => setViewer(null)}
+          onIndex={(next) => setViewerIndex(viewer.messageId, next)}
+          onClose={closeViewer}
           /* `'foto'`, as the album passes — "upload screenshot" is not a thing. */
           subject="foto"
           actions={
@@ -1578,7 +1551,7 @@ export function ChatScreen({
                         url: viewerPhotos[shownIndex]!.url,
                       })
                       setNotice(null)
-                      setViewer(null)
+                      closeViewer()
                     }
               }
             />
