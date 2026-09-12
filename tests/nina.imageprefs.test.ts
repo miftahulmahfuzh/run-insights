@@ -563,8 +563,10 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
      * is the total for. Asserted as source text like the case above, because this file has no
      * database harness — the generated-SQL proof is `tests/nina.photoRefs.test.ts`'s
      * `ADOPTED_SKIPPED`. */
-    const source = readSource('lib/nina/queries.ts')
-    const fn = source.slice(source.indexOf('\nfunction generatedChatPhotoScope(userId: string) {'))
+    const source = readSource('lib/nina/queries/images.ts')
+    const fn = source.slice(
+      source.indexOf('\nexport function generatedChatPhotoScope(userId: string) {'),
+    )
     const body = fn.slice(0, fn.indexOf('\n}\n'))
     expect(body).toContain('notExists(')
     expect(body).toContain('ninaAvatars.sourceKey')

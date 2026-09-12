@@ -46,6 +46,9 @@ const BARREL_VALUE_EXPORTS = [
   'ensureNinaSession',
   'findNinaImageByContentHash',
   'findNinaSignedOriginals',
+  // queries-split phase 4: internal — shared with sibling query modules (plan index Decisions),
+  // surfacing through the barrel's `export *` — the set's only documented growth (83 → 85).
+  'generatedChatPhotoScope',
   'getCurrentNinaAvatar',
   'getNinaAvatar',
   'getNinaAvatarBySourceKey',
@@ -69,6 +72,7 @@ const BARREL_VALUE_EXPORTS = [
   'insertNinaShortcut',
   'insertNinaTurn',
   'isBlobPathnameReferenced',
+  'isOriginalPhoto',
   'listNinaAvatarFolders',
   'listNinaAvatarManifest',
   'listNinaAvatars',
