@@ -12,6 +12,27 @@ import type { Notice } from './chatScreenCopy'
 import type { ChatMessage } from './types'
 
 /**
+ * The resolved input one send runs with — the typed send's draft plus the composer arms, or a
+ * retry's row contents. `useMessageActions`'s retry passes the same shape so the typed send and
+ * the retry cannot drift into two send paths.
+ */
+export type SendAndTrackInput = {
+  body: string
+  images: readonly ComposerDraftImage[]
+  replyToMessageId: string | null
+  runAttachment: RunAttachment | null
+  existingPhoto: NinaExistingPhoto | null
+  /**
+   * The failed row a retry replaces, IN PLACE — a retried message keeps its position in the
+   * conversation and its day divider, because it is the same message tried again, not a new
+   * one at the bottom of a conversation that has moved on. Null appends, which is what a
+   * typed send is.
+   */
+  replacesId: string | null
+  dayISO: string
+}
+
+/**
  * The send: the optimistic row, the busy window, the failure marking and the id adoption.
  *
  * `sendAndTrack` is factored out of `handleSend` (and was out of the screen before this file
@@ -75,21 +96,7 @@ export function useNinaSend({
   }, [])
 
   const sendAndTrack = useCallback(
-    async (input: {
-      body: string
-      images: readonly ComposerDraftImage[]
-      replyToMessageId: string | null
-      runAttachment: RunAttachment | null
-      existingPhoto: NinaExistingPhoto | null
-      /**
-       * The failed row a retry replaces, IN PLACE — a retried message keeps its position in the
-       * conversation and its day divider, because it is the same message tried again, not a new
-       * one at the bottom of a conversation that has moved on. Null appends, which is what a
-       * typed send is.
-       */
-      replacesId: string | null
-      dayISO: string
-    }): Promise<boolean> => {
+    async (input: SendAndTrackInput): Promise<boolean> => {
       /*
        * The client half of RULING B1's ONE refusal rule, restated against the resolved input — the
        * same four disjuncts `sendNinaMessage` checks, in the same order. A retry re-runs it because
