@@ -15,7 +15,7 @@
   - **Every suite is mutation-verified.** This is the methodological headline: TDD adapted to characterization testing. For each route, ONE load-bearing line was flipped (chat cap → the other constant; ext cross-check dropped; 500→200; 202→200; `isValidId` early return bypassed) and exactly the test(s) written for that line failed — then reverted. A characterization test that survives a mutation of the thing it characterizes is decoration; none of these are.
   - **A reusable mocking pattern written down** for the next route-handler suite: `@vercel/blob/client`'s `handleUpload` faked thinly, with the tests driving `onBeforeGenerateToken` directly (real signature takes **three** args including `multipart: boolean` — found via tsc, not guessed); auth modules mocked wholesale so the heavy `@/auth` graph never loads; but the pathname predicates left **real**, so every accepted pathname in the tests passed the production regexes.
 - **Branch:** `token-maxxing-2026-09-12-api-route-tests`
-- **Merge status:** on branch — Worker Mode, coordinator `tokenmax-orch-2026-09-12` verifies and lands.
+- **Merge status:** merged (commit `ecfb499` — "merge: token-maxxing session api-route-tests")
 - **Approx token burn:** ~350k 🔥 (five route handlers + their lib collaborators read in full before any test; 896 lines written; five mutation flip→targeted-run→revert cycles; a 5,229-test full sweep on top of typegen/tsc/eslint/prettier gates)
 
 ## Context & Motivation

@@ -57,8 +57,7 @@
     `beforeEach` hook 10 s timeouts in `tests/admin.imageGenActions.test.ts` and
     `tests/admin.settingsActions.test.ts`, observed once under 4× oversubscription only.
 - **Branch:** `token-maxxing-2026-09-12-admin-flake-stale-docs`
-- **Merge status:** on branch — this was a coordinator-spawned **worker session** in run
-  `tokenmax-orch-2026-09-12`; the worker does NOT merge or push. The coordinator owns all merges.
+- **Merge status:** merged (commit `523337b` — "merge: token-maxxing session admin-flake-stale-docs")
 - **Approx token burn:** heavy for a two-commit session — the reproduction loop dominated:
   full-suite sweeps run solo, three-at-once, serially, and again after the fix (each sweep
   ~1125 tests), plus temporary probe-test cycles and two citation-verification

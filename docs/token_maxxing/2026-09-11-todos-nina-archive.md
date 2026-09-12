@@ -39,7 +39,7 @@
     to record the resolution — historical dated log lines keep their dates.
 - **Branch:** `token-maxxing-2026-09-11-todos-nina-archive` (worker session of
   coordinator `tokenmax-orch-2026-09-11`)
-- **Merge status:** on branch (not merged, not pushed — the coordinator lands it)
+- **Merge status:** merged (commit `332b736` — "merge: token-maxxing session todos-nina-archive")
 - **Approx token burn:** moderate — a docs-only two-commit session with no code or
   test churn, but the burn went into archaeology: blob forensics across two parallel
   branches, byte-identity verification of both file moves, `todos.py` behavior probes,

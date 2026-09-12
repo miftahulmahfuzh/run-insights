@@ -54,9 +54,7 @@
 - **Branch:** `token-maxxing-2026-09-12-badges-records-yagni` (worktree
   `tokenmax-2026-09-12-badges-records-yagni`), head `f903ef4`, one commit ahead of base
   `4fe9d01`.
-- **Merge status:** on branch — **NOT merged, deliberately**. The worker does not merge
-  to main; the coordinator `tokenmax-orch-2026-09-12` lands it (same contract as the
-  other 2026-09-12 worker sessions).
+- **Merge status:** merged (commit `bf9eaf6` — "merge: token-maxxing session badges-records-yagni")
 - **Approx token burn:** audit-dominant over a tiny diff, the defining shape of a YAGNI
   session — a liveness map over 82 exports + all private top-level declarations across
   six grep corpora, two automated passes whose disagreement had to be adjudicated by

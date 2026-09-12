@@ -81,8 +81,7 @@
 - **Branch:** `token-maxxing-2026-09-11-ui-primitives-tests`
   (coordinator-assigned worker branch, base `a1ab59f`, the
   admin-file-explorer session's merge).
-- **Merge status:** on branch — the coordinator owns merging; this session
-  committed the doc and stopped.
+- **Merge status:** merged (commit `3c5afbc` — "merge: token-maxxing session ui-primitives-tests")
 - **Approx token burn:** high — 16 components/hooks traced against their
   props and collaborators before any test was written, 205 tests authored
   across 16 new files (~2,741 lines), one typecheck-hardening pass, and a

@@ -9,7 +9,7 @@
   - A verified-alive ledger worth more than the deletions: the sweep's honest finding is that these packages are *clean*, and several things a naive "is this used?" pass would have deleted are load-bearing decisions with comments saying so. Each was checked and is now written down (see Decisions).
   - Method traps recorded for the next sweep: zsh's no-word-split loop bug and the comment-vs-code classification requirement (below) both silently produce wrong "no consumers" verdicts.
 - **Branch:** `token-maxxing-2026-09-12-auth-push-runs-trends-yagni`
-- **Merge status:** on branch — Worker Mode, coordinator `tokenmax-orch-2026-09-12` verifies and merges.
+- **Merge status:** merged (commit `8bd8f08` — "merge: token-maxxing session auth-push-runs-trends-yagni")
 - **Approx token burn:** ~250k 🔥 (all 22 files read in full rather than grepped; every export censused individually; ambiguous hits classified line-by-line; full test sweep run twice plus a serial rerun to settle a flake verdict)
 
 ## Context & Motivation

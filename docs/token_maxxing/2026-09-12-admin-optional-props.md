@@ -67,8 +67,7 @@
     typegen (the compiler votes on every "no other setter exists" claim at once), and the
     touched + consumer suites 167/167.
 - **Branch:** `token-maxxing-2026-09-12-admin-optional-props`
-- **Merge status:** work commit `1fec595` committed locally on the worker branch, **NOT
-  merged** — the coordinator (`tokenmax-orch-2026-09-12`) owns landing worker branches.
+- **Merge status:** merged (commit `cb210af` — "merge: token-maxxing session admin-optional-props")
 - **Approx token burn:** high (est. **~0.6M**, input-dominated) — the classifier build and
   its positive controls, per-callsite manual reads of every candidate, the stash-protocol
   clean-HEAD repro, and two full `tsc` runs. 🔥

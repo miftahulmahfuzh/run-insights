@@ -40,8 +40,7 @@
     (the A020 precedent) comes back as a collision.
 - **Branch:** `token-maxxing-2026-09-11-todos-root-archive` (Worker Mode — the session
   does NOT merge to main itself)
-- **Merge status:** on branch at `0798fc4`, awaiting the coordinator's merge
-  (`tokenmax-orch-2026-09-11` owns landing the parallel fan-out)
+- **Merge status:** merged (commit `32c239d` — "merge: token-maxxing session todos-root-archive")
 - **Approx token burn:** moderate — an 844-line parse with assert-heavy verification,
   whole-tree ID greps, and 9 readme sites re-pointed; no build or test cycles. 🔥
 

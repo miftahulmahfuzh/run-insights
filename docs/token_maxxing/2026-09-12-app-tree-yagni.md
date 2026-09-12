@@ -65,9 +65,7 @@
     untouched by the diff.
 - **Branch:** `token-maxxing-2026-09-12-app-tree-yagni` (worktree
   `tokenmax-2026-09-12-app-tree-yagni`), head `4f17bfe`, one commit on top of `b39c6e5`.
-- **Merge status:** on branch, **awaiting coordinator landing** — the worker does not
-  merge to main; coordinator `tokenmax-orch-2026-09-12` owns the merge (same contract
-  as the other 2026-09-12 worker sessions).
+- **Merge status:** merged (commit `a088491` — "merge: token-maxxing session app-tree-yagni")
 - **Approx token burn:** no meter was read; by shape a mid-weight worker session whose
   spend is evidence-dominant over a tiny diff — a knip pass over the whole page/layout
   tree, an orphan-route census, a TODO sweep, then the citation audit proper: grepping
