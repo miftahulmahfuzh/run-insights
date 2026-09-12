@@ -8,10 +8,10 @@ import { signOutAction } from '@/lib/auth/actions'
  * `ghost`, not `primary`: the design's rule is one filled button per screen, and leaving is never
  * the screen's main action.
  */
-export function SignOutButton({ fullWidth = false }: { fullWidth?: boolean }) {
+export function SignOutButton() {
   return (
     <form action={signOutAction}>
-      <Button type="submit" variant="ghost" size="md" fullWidth={fullWidth}>
+      <Button type="submit" variant="ghost" size="md">
         Sign out
       </Button>
     </form>

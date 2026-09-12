@@ -54,7 +54,7 @@ function configureVapid(): void {
   vapidConfigured = true
 }
 
-export interface PushSendReport {
+interface PushSendReport {
   attempted: number
   delivered: number
   /** Subscriptions revoked by this send — terminal status, or the consecutive-failure ceiling. */
@@ -90,7 +90,7 @@ function hostOf(endpoint: string): string {
  * function in this phase that decides whether a subscription is dead, and the report agrees with
  * the database because both ask it.
  */
-export async function sendPushToSubscription(
+async function sendPushToSubscription(
   userId: string,
   subscription: LivePushSubscription,
   payload: NinaPushPayload,

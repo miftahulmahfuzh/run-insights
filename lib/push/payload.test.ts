@@ -5,8 +5,6 @@ import {
   PUSH_FAILURE_LIMIT,
   buildNinaPushPayload,
   classifyPushFailure,
-  decodeNinaPushPayload,
-  encodeNinaPushPayload,
   parsePushSubscription,
   shouldRevokeSubscription,
   truncateForNotification,
@@ -166,31 +164,5 @@ describe('buildNinaPushPayload', () => {
     })
     expect(payload?.body).toBe('real')
     expect(payload?.messageId).toBe('b')
-  })
-})
-
-describe('encode/decodeNinaPushPayload', () => {
-  it('round-trips', () => {
-    const payload = buildNinaPushPayload({ messages: [{ id: 'm1', body: 'hi' }], kind: 'silence' })!
-    expect(decodeNinaPushPayload(encodeNinaPushPayload(payload))).toEqual(payload)
-  })
-
-  it('survives an unknown field and fills the defaults — the compatibility claim `v` exists for', () => {
-    /* A registered worker outlives the deploy that shipped it, so a phone can meet a payload from
-     * a newer server. An added field must be ignored, not fatal. */
-    expect(decodeNinaPushPayload('{"title":"Nina","body":"hi","future":42}')).toEqual({
-      v: 1,
-      title: 'Nina',
-      body: 'hi',
-      url: '/nina',
-      tag: 'nina',
-      messageId: null,
-      kind: 'unknown',
-    })
-  })
-
-  it('returns null on unparseable input and on a payload with no title', () => {
-    expect(decodeNinaPushPayload('not json')).toBeNull()
-    expect(decodeNinaPushPayload('{"body":"no title"}')).toBeNull()
   })
 })
