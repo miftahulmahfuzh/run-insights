@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -356,9 +356,18 @@ describe('the move left the action surface exactly as wide as it was', () => {
     }
   })
 
-  it('actions.ts no longer declares the runner, and still exports the SentBubble type', () => {
-    const source = readFileSync('lib/nina/actions.ts', 'utf8')
-    expect(source).not.toMatch(/function runNinaBackgroundTurn\(/)
-    expect(source).toMatch(/export type \{ SentBubble \}/)
+  it('the action modules never declare the runner, and the barrel still exports the SentBubble type', () => {
+    /* `lib/nina/actions.ts` split per concern (2026-09-12): the assertion walks every module the
+     * split produced rather than one file, so no concern module can quietly grow its own runner
+     * copy either. The SentBubble re-export stays pinned to the barrel — the public address
+     * `ChatScreen` imports the type from. */
+    const actionModules = readdirSync('lib/nina/actions').map((name) => `lib/nina/actions/${name}`)
+    expect(actionModules.length).toBeGreaterThan(0)
+    for (const path of actionModules) {
+      expect(readFileSync(path, 'utf8')).not.toMatch(/function runNinaBackgroundTurn\(/)
+    }
+    expect(readFileSync('lib/nina/actions/index.ts', 'utf8')).toMatch(
+      /export type \{ SentBubble \}/,
+    )
   })
 })

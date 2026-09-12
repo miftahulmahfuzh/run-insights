@@ -39,7 +39,8 @@
 //     same shape as `components/insights/InsightTrigger.tsx` firing `ensureRunInsight`.
 //   · `distillNinaMemory` — a SECOND model call on top of the turn that triggered it, so a turn
 //     that awaited it would double its own latency for a write the runner never sees. It runs
-//     from `lib/nina/actions.ts` inside `after()`.
+//     from `lib/nina/turnrun.ts` inside `after()` — reached from the chat actions through the
+//     `after()` seam in `lib/nina/actions/startTurn.ts`.
 //   · `resolveNinaPromises` — the promise sweep asks `generateNinaAvatar` for a photograph, so it
 //     is a model call behind two indexed reads. It runs from the nightly cron route and nowhere
 //     else. This bullet was missing while the table entry was not, which is the kind of drift a
@@ -50,7 +51,7 @@
 //   · `titleNinaSessionIfNeeded` — F35 R3's titler. A THIRD model call in the same invocation as
 //     a turn and its distillation, so its own ceiling is 600 tokens and its timeout 12 s rather
 //     than the turn's 2400/22 s — sized to fit beside `distillNinaMemory` under one 60 s
-//     function, not to be fast. It runs from `lib/nina/actions.ts` inside `after()`. A render
+//     function, not to be fast. It runs from `lib/nina/turnrun.ts` inside `after()`. A render
 //     that awaited it would make the runner wait for a label he cannot see yet.
 //   · `rankNinaSearchHits` — F35 R6's semantic search pass over SQL-narrowed candidates. A search
 //     BOX is the one surface where a 10-16 s await is most tempting and most wrong: the text
@@ -115,7 +116,10 @@ const GUARDED_CALLS = [
       // Its own module, because a guard that fails on the definition site is a guard that
       // forces the definition to be renamed. `lib/db/queries.ts` is greppable the same way.
       join('lib', 'nina', 'turn.ts'),
-      join('lib', 'nina', 'actions.ts'),
+      // The chat actions' after() seam — `lib/nina/actions.ts` split per concern (2026-09-12);
+      // the send and resend actions schedule their turn through ./actions/startTurn.ts, which
+      // hands the turn to runNinaBackgroundTurn in `lib/nina/turnrun.ts` below.
+      join('lib', 'nina', 'actions', 'startTurn.ts'),
       join('lib', 'nina', 'proactive.ts'),
       // nina-offline-reply phase 2 moved `runNinaBackgroundTurn` here (a server-only module,
       // not a Server Action module — its input carries a raw userId and must not become a
@@ -126,16 +130,20 @@ const GUARDED_CALLS = [
     ],
     advice:
       'A Nina turn is a 10-16 s model call plus tool round trips (F33 plan invariant 4). Call ' +
-      'it from lib/nina/actions.ts (a Server Action, fired from the composer), from ' +
+      'it from lib/nina/turnrun.ts (the chat actions reach it through the after() seam in ' +
+      'lib/nina/actions/startTurn.ts, a Server Action layer fired from the composer), from ' +
       'lib/nina/proactive.ts inside after(), or from the cron route. app/nina/page.tsx renders ' +
       'stored messages and awaits no model.',
   },
   {
     symbol: 'distillNinaMemory',
-    sanctioned: [join('lib', 'nina', 'distill.ts'), join('lib', 'nina', 'actions.ts')],
+    // The distill call moved to the background turn (nina-offline-reply phase 2): turnrun.ts
+    // awaits `runTurnDistillation` inside after(), reached from the chat actions through
+    // lib/nina/actions/startTurn.ts — `lib/nina/actions.ts` split per concern (2026-09-12).
+    sanctioned: [join('lib', 'nina', 'distill.ts'), join('lib', 'nina', 'actions', 'startTurn.ts')],
     advice:
       'Distillation is a second model call on top of the turn that triggered it (F33 phase 5). ' +
-      'It runs from lib/nina/actions.ts inside after(), never on a render path and never ' +
+      'It runs from lib/nina/turnrun.ts inside after(), never on a render path and never ' +
       'awaited before the reply is returned to the composer.',
   },
   {
@@ -151,7 +159,12 @@ const GUARDED_CALLS = [
   },
   {
     symbol: 'describeNinaImage',
-    sanctioned: [join('lib', 'nina', 'actions.ts'), join('components', 'nina', 'Composer.tsx')],
+    // `lib/nina/actions.ts` split per concern (2026-09-12): the Server Action that defines this
+    // symbol now lives in its own describe module.
+    sanctioned: [
+      join('lib', 'nina', 'actions', 'describe.ts'),
+      join('components', 'nina', 'Composer.tsx'),
+    ],
     advice:
       'A glm-4.6v describe pass is a 5-15 s vision call (F33 phase 6). The composer fires it ' +
       'from a client event handler on pick, so the description is already in hand when he hits ' +
@@ -163,13 +176,15 @@ const GUARDED_CALLS = [
       // Its own module, because a guard that fails on the definition site is a guard that forces
       // the definition to be renamed — the reason `runNinaTurn` sanctions `lib/nina/turn.ts`.
       join('lib', 'nina', 'autotitle.ts'),
-      join('lib', 'nina', 'actions.ts'),
+      // The chat actions' after() seam — `lib/nina/actions.ts` split per concern (2026-09-12);
+      // see the `runNinaTurn` entry.
+      join('lib', 'nina', 'actions', 'startTurn.ts'),
       // Moved here with `runNinaBackgroundTurn` (nina-offline-reply phase 2) — see that entry.
       join('lib', 'nina', 'turnrun.ts'),
     ],
     advice:
       'The session titler is a third model call in an invocation that already made two (F35 R3). ' +
-      "It runs from lib/nina/actions.ts inside after(), on sendNinaMessage's success path only, " +
+      "It runs from lib/nina/turnrun.ts inside after(), on a chat turn's success path only, " +
       'and never on a render path. The pure rules it needs are in lib/nina/title.ts, which is ' +
       'client-safe and imports no model client — import from there, not from here.',
   },
