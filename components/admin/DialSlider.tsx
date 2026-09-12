@@ -61,7 +61,8 @@ import { cn } from '@/lib/cn'
  *
  * ── TOUCH (INHERITED FROM THE RESPONSIVE PHASE — DO NOT UNDO) ───────────────────────────────
  * `h-11` on the track, `TOUCH_TARGET` on the reset and `TOUCH_ICON` around the checkbox are the
- * 44 px rule (`docs/design-brief.md:175`); a range input's hit area is its box, and Safari draws
+ * 44 px rule (`docs/design-brief.md`, "Minimum 44 × 44pt tap targets"); a range input's hit area is
+ * its box, and Safari draws
  * the track vertically centred in whatever height it is given, so the control looks the same and is
  * far easier to hit with a thumb. The header row is `items-center` with the readout pushed right by
  * `ml-auto` **precisely so the checkbox can sit at its head without dragging the label's baseline

@@ -9,7 +9,8 @@ import { cn } from '@/lib/cn'
  * package readme still binds this picker to that by name, and where `AdminNav` grew a client leaf
  * for its active cell (`AdminNavLinks.tsx`, the owner's own order), this picker's callers already
  * know their route, so the client trade buys nothing here. The same "a plain-text link, never an
- * icon button" stance from `docs/design-brief.md`.
+ * icon button" stance `AppShell`'s screen-title row established (`components/ui/AppShell.tsx`) —
+ * `docs/design-brief.md` states no such stance.
  *
  * It renders even when there is one account, because the page is per-user by contract (invariant
  * 7) and hiding the picker would make that invisible. One row is a fine list.
