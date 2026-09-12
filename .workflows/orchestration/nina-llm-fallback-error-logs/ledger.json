@@ -6,20 +6,20 @@
   "phases": [
     {
       "card": null,
-      "commit": null,
+      "commit": "96f65af",
       "depends_on": [],
       "difficulty": "NORMAL",
       "n": 1,
-      "note": null,
+      "note": "0021 applied additively, db green; DECIDED: ci:openrouter-guard narrowed to source-extension grep after this phase's adopted plan copy tripped it on PROSE mentioning OPENROUTER_API_KEY (script shared with badges:check); nina_error_logs.user_id landed NULLABLE per the reconciled index; phase 1 unblocks 3/4/5, phase 2 still waits on 3",
       "package": "lib/db`, `lib/nina",
       "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-1.md",
-      "reported_at": null,
+      "reported_at": "2026-09-12T01:56:27+00:00",
       "satisfies": [
         "R1",
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-DB-A007",
       "title": "Error-log schema + writer/reader"
     },
     {
@@ -57,7 +57,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "OpenRouter fallback \u2014 vision/multimodal"
     },
@@ -76,7 +76,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Image-generation error logging"
     },
@@ -95,7 +95,7 @@
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
+      "status": "spawned",
       "task_id": null,
       "title": "Admin Error Logs page"
     }
@@ -103,6 +103,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-llm-fallback-error-logs",
-  "updated": "2026-09-12T01:12:14+00:00",
+  "updated": "2026-09-12T01:57:54+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
 }
