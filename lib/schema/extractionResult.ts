@@ -26,7 +26,7 @@ import { ScreenKindSchema, type ExtractedSession, type ScreenKind } from './extr
  * actually created. `url` must be an absolute Blob URL: it is fetched server-side by the
  * background job, so an attacker-supplied `http://169.254.169.254/…` would be an SSRF primitive.
  */
-export const ExtractionBlobRefSchema = z.object({
+const ExtractionBlobRefSchema = z.object({
   url: z
     .url('blob url must be absolute')
     .refine(
