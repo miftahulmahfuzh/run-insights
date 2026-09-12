@@ -3,6 +3,12 @@
   "coordinator": "orch-photo-reference-dedup-album-adoption",
   "coordinator_session_id": "bf48c5e5-92cb-4321-8229-dccb130da9f1",
   "created": "2026-09-12T05:12:39+00:00",
+  "landed": {
+    "at": "2026-09-12T05:42:36+00:00",
+    "base": "main",
+    "commit": "5d0cc1b8ce00dd66c9ad69d578286930156c479f",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -25,6 +31,6 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/photo-reference-dedup-album-adoption/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "photo-reference-dedup-album-adoption",
-  "updated": "2026-09-12T05:36:36+00:00",
+  "updated": "2026-09-12T05:42:36+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/photo-reference-dedup-album-adoption"
 }
