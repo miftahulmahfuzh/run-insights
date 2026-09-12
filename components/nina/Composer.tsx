@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 
 import { cn } from '@/lib/cn'
 import { NINA_MAX_CHAT_IMAGES } from '@/lib/nina/images'
@@ -9,6 +9,7 @@ import type { QuoteView } from '@/lib/nina/reply'
 import { AttachmentChip } from './AttachmentChip'
 import { PhotoAttachmentChip } from './PhotoAttachmentChip'
 import { QuoteStub } from './QuoteStub'
+import { isPhoneReturn, useComposerDraft } from './useComposerDraft'
 import { useComposerPhotos, type ComposerDraftImage } from './useComposerPhotos'
 
 /**
@@ -16,8 +17,8 @@ import { useComposerPhotos, type ComposerDraftImage } from './useComposerPhotos'
  * and, since phase 6, an eye.
  *
  * ── IT OWNS ITS OWN TEXT, AND THAT IS A BUG FIX WRITTEN IN ADVANCE ────────────────────────────
- * `value` lives here, not in `ChatScreen`, so a keystroke re-renders this component and nothing
- * above it. `components/ui/Sheet.tsx` carries the report of what happens otherwise: an unstable
+ * `value` lives in this component's tree — in `useComposerDraft`, this file's text hook — not in
+ * `ChatScreen`, so a keystroke re-renders this component and nothing above it. `components/ui/Sheet.tsx` carries the report of what happens otherwise: an unstable
  * dependency reaching a focused input made "focus leave the input and iOS dropped the keyboard —
  * one digit per keyboard". A composer is that bug's natural habitat. The rules that follow from it:
  * this component is never given a `key` that changes, and `onSend` is a `useCallback` upstream.
@@ -110,26 +111,6 @@ import { useComposerPhotos, type ComposerDraftImage } from './useComposerPhotos'
  * hashing and `planNinaPicked` arguments that went with it.
  */
 
-/** Roughly five lines at 16px, after which the textarea scrolls instead of growing. */
-const TEXTAREA_MAX_PX = 132
-
-/**
- * Whether the return key in question is a phone's: `(pointer: coarse)`, resolved once on first
- * use. Never at module scope — a `'use client'` component still renders on the server for the
- * initial HTML, and `matchMedia` does not exist there.
- *
- * The pointer type and not a user-agent string, because it is the honest question: the rule below
- * is about WHICH RETURN KEY THE USER HAS, not about which browser shipped the device. A laptop
- * with a touchscreen reports a fine primary pointer and keeps Enter-to-send, which is right.
- */
-let phoneReturn: boolean | null = null
-function isPhoneReturn(): boolean {
-  if (phoneReturn === null) {
-    phoneReturn = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
-  }
-  return phoneReturn
-}
-
 export function Composer({
   onSend,
   busy,
@@ -209,9 +190,13 @@ export function Composer({
   /** Unpin it. `ChatScreen` owns the state; this only reports the tap. */
   onClearPhoto?: () => void
 }) {
-  const [value, setValue] = useState('')
-  const ref = useRef<HTMLTextAreaElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const {
+    value,
+    ref,
+    handleChange,
+    clear: clearDraft,
+  } = useComposerDraft({ replyTargetId: reply?.targetId ?? null })
   const {
     tiles,
     notice,
@@ -223,16 +208,6 @@ export function Composer({
     reset: resetPhotos,
   } = useComposerPhotos({ userId })
 
-  /*
-   * Arming a reply focuses the box, which is the whole point of the gesture: swipe, type, send.
-   * Keyed on the target id and not on the object, so re-resolving the same quote during an
-   * unrelated re-render does not steal focus back from wherever it has gone.
-   */
-  const replyTargetId = reply?.targetId ?? null
-  useEffect(() => {
-    if (replyTargetId !== null) ref.current?.focus()
-  }, [replyTargetId])
-
   /* `|| attachment !== null` is phase 8's clause and `|| photo !== null` is F34 R2's — the fourth
    * and final one. Phase 6's image clause was already in the disjunction when it landed; nobody
    * rewrites this condition, they extend it. Mirrors the server rule in `sendNinaMessage`
@@ -242,41 +217,20 @@ export function Composer({
     !inFlight &&
     !busy
 
-  function resize() {
-    const el = ref.current
-    if (el == null) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_PX)}px`
-  }
-
   function submit() {
     if (!canSend) return
     void onSend({
       body: value.trim(),
       images: collectDraft(),
     })
-    setValue('')
+    /*
+     * Both reset halves run here, grouped by owner rather than by the epilogue's old
+     * interleaving: `clearDraft` is the text half (empty the draft, collapse the box, release
+     * the keyboard), `resetPhotos` the photo half (revoke the previews, drop the tiles and the
+     * notice). Every step is synchronous, so the interleaving is unobservable.
+     */
+    clearDraft()
     resetPhotos()
-    const el = ref.current
-    if (el != null) {
-      el.style.height = 'auto'
-      /*
-       * Then RELEASE the composer, on the repo owner's explicit ask: "can you automatically hide
-       * the keyboard after user press send? right now i have to manually click Done everytime to
-       * hide this stupid keyboard". The line here used to keep focus — "he is going to type again —
-       * that is what a conversation is" — and keeping it had a second cost the owner had already
-       * reported as a bug: `ChatChrome` hides the floating `<` and `^` while focus is anywhere
-       * inside this bar, so a send that left focus behind (Enter leaves it in the textarea; a
-       * click leaves it on the Send button) also left the conversation without its controls until
-       * something else was tapped — and on desktop Chrome, reading her reply taps nothing. Blurring
-       * whatever INSIDE this bar holds focus folds the keyboard and puts the controls back in the
-       * same frame. The reply-arming effect above still focuses the box, because arming a reply is
-       * the start of typing, which is a different moment than the end of sending one.
-       */
-      const host = el.closest('#nina-composer')
-      const active = document.activeElement
-      if (host != null && active instanceof HTMLElement && host.contains(active)) active.blur()
-    }
   }
 
   return (
@@ -402,10 +356,7 @@ export function Composer({
             ref={ref}
             rows={1}
             value={value}
-            onChange={(event) => {
-              setValue(event.target.value)
-              resize()
-            }}
+            onChange={handleChange}
             onKeyDown={(event) => {
               /*
                * WhatsApp's split, asked for by name ("can you change the keyboard, so it has a
