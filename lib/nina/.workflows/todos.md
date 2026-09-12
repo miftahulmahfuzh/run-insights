@@ -3,15 +3,15 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-12
-**Total Active Tasks**: 1
+**Total Active Tasks**: 4
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 1
+- P1 High: 4
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
-- Blocked: 0
+- Blocked: 1
 - Completed: 35
 - Archived: 35
 
@@ -32,6 +32,36 @@
   - **Plan**: `.workflows/plan/nina-instructor-character/phase-3.md`
   - **Method**: /implement (swarm wave 1)
   - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
+
+- [ ] **P1-NIN-A036** Phase 2: OpenRouter fallback — text chat
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new OpenRouter-backed `NinaLlmClientLike` implementation in `lib/nina/llmFallbackText.ts` (Anthropic⇄OpenAI-Chat-Completions request/response translation, including forced single-tool `tool_choice` and tool-result round-trips), wired into `productionDeps(userId)` so both of `turn.ts`'s existing catch sites transparently retry via OpenRouter on a z.ai throw; writes a `nina_error_logs` row (`category:'text'`) for each failed attempt (z.ai and/or OpenRouter). Does not touch `turn.ts`'s loop/repair control flow itself, `nina_turns` writes, any admin UI, `lib/nina/openrouter.ts` (read-only here — Phase 3 owns and writes it; this phase must not redeclare either constant, it imports `OPENROUTER_CHAT_URL` / `NINA_FALLBACK_TEXT_MODEL` from the `lib/nina/openrouter.ts` module Phase 3 creates). Exit: existing `lib/nina/turn.ts`/`chatturn` tests still pass unmodified in behavior when the fallback is never exercised (z.ai succeeds); a new test simulates a z.ai throw and asserts the OpenRouter path is called and its result flows through `findSendBlock`/`findToolUses` unchanged; a double-failure test asserts both attempts are logged and the turn still ends `'unavailable'`.
+  - **Status**: blocked
+  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
+  - **Depends on**: `P1-DB-A007`, `P1-NIN-A037`
+  - **Plan**: `.workflows/plan/P1-NIN-A036.md`
+
+- [ ] **P1-NIN-A037** Phase 3: OpenRouter fallback — vision/multimodal
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns retry logic inside the vision/describe path: on a z.ai throw, `NinaVisionTokenFloorError`, or `NinaVisionTransportError`, retry once against OpenRouter (`z-ai/glm-5.3-flash`, same OpenAI-Chat-Completions shape, no translation layer needed) without applying the glm-4.6v-calibrated token floor to the fallback's response; logs a `nina_error_logs` row (`category:'multimodal'`, with `imageUrl`, `userId` NULL) for each failed attempt. Also owns `lib/nina/openrouter.ts` — the new zero-import constants module holding `OPENROUTER_CHAT_URL` and `NINA_FALLBACK_TEXT_MODEL`, shared with Phase 2, created here and written by no one else. Does not touch `lib/llm/vision.ts` (the unrelated `extractions`/screenshot feature), `describeNinaImagesWithFetch` (byte-identical), any admin UI. Exit: existing vision tests pass unmodified when z.ai succeeds; a new test simulates a z.ai token-floor trip and a transport failure, asserting the OpenRouter retry fires and its plain non-empty check (not the floor) gates acceptance; a double-failure test asserts both attempts are logged with the photo's Blob URL.
+  - **Status**: pending
+  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
+  - **Depends on**: `P1-DB-A007`
+  - **Plan**: `.workflows/plan/P1-NIN-A037.md`
+
+- [ ] **P1-NIN-A038** Phase 4: Image-generation error logging
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns threading the currently-discarded `detail` (raw provider text) and the actual configured timeout through `failNinaImageJob`'s call chain into a `nina_error_logs` write (`category:'image_generation'`, `fullInput` = `args.prompt`, `imageUrl` = `args.referenceUrl` when present). Does not touch the retry/requeue/revival logic itself, `nina_turns`'s own `error_code` classification, any provider/model choice. Exit: a test that forces a terminal image-generation failure asserts a `nina_error_logs` row is written with the raw detail text and the correct timeout value for that host/anchoring combination; existing image-job tests unaffected.
+  - **Status**: pending
+  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R2 — New admin "Error logs" tab, 3 sub-tabs, with the specified columns/behaviors
+  - **Depends on**: `P1-DB-A007`
+  - **Plan**: `.workflows/plan/P1-NIN-A038.md`
 
 ### [P2] Medium
 

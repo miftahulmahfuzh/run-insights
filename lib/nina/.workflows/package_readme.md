@@ -31,7 +31,10 @@ modules into `'use client'` components.
   under a photograph of hers from what is actually in it.
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
   timing, idempotent appends, scroll, gestures, chrome geometry), kept out of the components.
-- **Persistence** — `queries.ts` is the single home for every `nina_*` table access.
+- **Persistence** — `queries.ts` is the single home for every `nina_*` table access — except the
+  failure log, whose write and read sides live in `errorlogs.ts`, because that file's stated
+  contract is ownership-scoped reads (every row belongs to a runner, so `userId` leads) and this
+  log's one list read is an operator's diagnostic scoped by category with no per-user filter.
 
 ## The standing rules of the package
 
@@ -76,7 +79,7 @@ modules into `'use client'` components.
    imported constant is invisible to the analyser, so the literal is load-bearing.
 10. **Committed drizzle migrations are applied post-merge with `npm run db:migrate`** — and
     `.env.local`'s `DATABASE_URL` is the instance production reads, so read before running. The
-    tip as of this rewrite is `0020_image_gen_controls.sql`. Package rule: **no stored value
+    tip as of this rewrite is `0021_nina_error_logs.sql`. Package rule: **no stored value
     carries a SQL default** — defaults live in the TS constants (`NINA_TUNING_DEFAULTS`,
     `NINA_IMAGE_PREFS_DEFAULTS`) and nowhere else; a nullable column's NULL means exactly one
     thing, and the coercer defines what.
@@ -417,10 +420,10 @@ path permanently uses the canned fallback (no z.ai key) — all three are true s
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet) |
+| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; nothing calls it until the fallback phases land) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (28 of them, all over the pure
-modules; integration lives in 48 `tests/nina.*.test.ts` files).
+modules; integration lives in 49 `tests/nina.*.test.ts` files).
 
 ## Dataflow
 
@@ -452,7 +455,7 @@ dynamic import: `distill.ts` → `./gateway`.
 ## Reverse dependencies
 
 101 files outside the package import from it (measured 2026-09-12): `app/`, `components/`,
-`lib/{admin,photos,push,review}`, `scripts/` — plus the 48 `tests/nina.*` files. Widest:
+`lib/{admin,photos,push,review}`, `scripts/` — plus the 49 `tests/nina.*` files. Widest:
 `components/nina/ChatScreen.tsx` (ten submodules), `app/nina/page.tsx`,
 `scripts/nina-image-worker.ts`, `lib/admin/*` (memory, album, chat photos, shortcuts, image-gen
 test view). `persona.ts` and `tuning.ts` are the least-depended-upon modules — the point of the
@@ -529,10 +532,23 @@ never a stack trace.
 - **`*/10` inside a JSDoc block closes the comment.** Write `*\/10` (the worker and the render
   tests carry the convention). Harmless in `//` comments and YAML; escaping it there is noise a
   later reader will try to "fix".
+- **`logNinaError` cannot throw, and nothing calls it yet.** It is invoked from inside the catch
+  blocks of the very calls it records, so it is one try/catch, one `console.warn`, no rethrow —
+  and it is awaited rather than fired and forgotten, because Vercel can drop an un-awaited
+  promise inside `after()`. Its writers (the text fallback, the vision fallback, the
+  image-generation failure) and the `/admin/error-logs` reader are later phases of
+  `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md`; until they land, no code path writes or reads
+  `nina_error_logs`.
+- **The error-log read is unscoped on purpose and bounded twice.** `listNinaErrorLogs` filters by
+  category only — no `userId` parameter — and `NINA_ERROR_LOG_PAGE_SIZE` (25) is the read's
+  CEILING as well as its default, so a hand-edited `?limit=` cannot unpaginate it.
+  `NINA_ERROR_LOG_TEXT_MAX` (64 000) is a storage guard against a JSON-stringified base64
+  `data:` URI, not a contract — the clamp annotates the truncation in the stored text rather
+  than hiding it.
 
 ## Tests
 
-28 colocated suites over the pure modules; 48 repo-level `tests/nina.*.test.ts`. The guards that
+28 colocated suites over the pure modules; 49 repo-level `tests/nina.*.test.ts`. The guards that
 can actually catch a regression, by mechanism:
 
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
@@ -547,6 +563,12 @@ can actually catch a regression, by mechanism:
 - **SQL-shape tests** (`tests/support/fakeDb`) split emitted statements into SET/WHERE halves:
   the soft-delete predicate per function, the supersede WHERE, the claim's state machine,
   `getNinaJobPhoto`'s two-table owner scope and `{ id }` projection.
+- **The failure log is pinned at both ends**: `tests/db.schema.errorlogs.test.ts` holds the table
+  to its promised shape (`user_id` nullable in the generated SQL too, exactly one index and not
+  on the user, `category` text with no CHECK) and `tests/nina.errorlogs.test.ts` holds the writer
+  to best-effort (`logNinaError` RESOLVES on a failed insert and sends NULL, not undefined, for
+  the optional columns) and the reader to its ceiling (a `?limit=` above 25 clamps; an over-shot
+  page returns `rows: []` with a truthful total).
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`

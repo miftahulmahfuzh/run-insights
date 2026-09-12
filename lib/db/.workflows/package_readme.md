@@ -16,7 +16,9 @@ go looking for a function: `schema.ts` declares tables for the whole product, in
 whose queries live elsewhere, while `queries.ts` covers only the run / extraction / insight /
 share domain. Nina's reads and writes live in `lib/nina/queries.ts` against tables declared here —
 `lib/db/queries.ts` touches no `nina_*` table at all — and `app_settings`' reader is
-`lib/llm/textModel.ts`.
+`lib/llm/textModel.ts`. The asymmetry's newest instance is `nina_error_logs`: declared here, read
+and written by `lib/nina/errorlogs.ts` — deliberately not in that Nina queries file, because its
+reads carry no `userId` at all (an operator's diagnostic log, not conversation).
 
 **Key Responsibilities:**
 
@@ -97,6 +99,7 @@ R-13, R-22, R-28 — ten in all). Where this file and a feature plan disagree, t
 | `ninaFolders` | `nina_folders` | Asserts a folder exists even when empty | PK `(user_id, folder)` |
 | `ninaTuning` | `nina_tuning` | Nina's per-user character: twelve trait dials, the relationship, the four extra dials, seventeen enable flags and a notes field | PK `user_id` |
 | `ninaImagePrefs` | `nina_image_prefs` | How she is photographed: the prompt-length slider, six focus flags, four lines of free text, `prompt_template` + `model` (the image-gen controls), the chosen photo reference | PK `user_id` |
+| `ninaErrorLogs` | `nina_error_logs` | Best-effort log of every FAILED Nina model call (written by `lib/nina/errorlogs.ts`, not `lib/nina/queries.ts`; `user_id` nullable — some failing seams hold no runner) | `nina_error_logs_category_created_idx` |
 | `appSettings` | `app_settings` | Operator decisions persisted without a redeploy — first key `text_model`, read by `lib/llm/textModel.ts` | PK `key` |
 | `pushSubscriptions` | `push_subscriptions` | Web Push subscription per browser endpoint | `push_subscriptions_endpoint_unq`, `push_subscriptions_user_idx` |
 
@@ -132,11 +135,13 @@ omit `withTimezone`, consistent with keeping that block verbatim.
 TypeScript change and not a migration. The exported unions are `Sex`, `ExtractionStatus`,
 `PhotoKind`, `RunIntent`, `RunSource`, `InsightScope`, `NinaTurnKind`, `NinaTurnStatus`,
 `NinaRole`, `NinaMessageSource`, `NinaImageKind`, `NinaMemorySource`, `NinaPromiseMetric`,
-`NinaPromiseReward`, `NinaFactCategory`, `NinaAvatarSource` and `NinaSessionTitleSource`
-(`AdapterAccountType`, the `account.type` union, is deliberately not exported — nothing outside
-the file narrows it). `badges.key`, `records.key`, `nina_turns.trigger`/`error_code`,
-`nina_shortcuts.kind`, `nina_tuning.relationship` and `nina_image_prefs.reference_source` are left
-as plain `text` pointing at an external catalog, for the same "adding a member is not a migration"
+`NinaPromiseReward`, `NinaFactCategory`, `NinaAvatarSource`, `NinaSessionTitleSource` and
+`NinaErrorCategory` (`AdapterAccountType`, the `account.type` union, is deliberately not exported
+— nothing outside the file narrows it). `badges.key`, `records.key`,
+`nina_turns.trigger`/`error_code`,
+`nina_shortcuts.kind`, `nina_tuning.relationship`, `nina_image_prefs.reference_source` and
+`nina_error_logs.provider` are left as plain `text` pointing at an external catalog, for the same
+"adding a member is not a migration"
 reason taken one step further — `relationship`'s catalog is `NINA_RELATIONSHIPS` in
 `lib/nina/tuning.ts`, and a sixth relationship is a one-line edit there rather than a migration
 here. The other two are the same shape with a second, harder reason on top: their catalogs live in
@@ -318,9 +323,10 @@ Notably **not** a dependency: `@/lib/env`. See the client notes above.
 
 ## Reverse Dependencies
 
-72 files import from this package statically — 60 source files plus 12 test-side (eleven suites
-and the `tests/fixtures/ninaTurn.ts` fixture) — and most of the rest of the test suite loads it
-with a dynamic `import()` in the test body instead, taking the total to 90 files. All of them go
+78 files import from this package statically (grep-measured 2026-09-12) — 62 source files plus 16
+test-side (fourteen suites, `tests/support/fakeDb.ts` and the `tests/fixtures/ninaTurn.ts`
+fixture) — and most of the rest of the test suite loads it with a dynamic `import()` in the test
+body instead (18 more files), taking the total to 96 files. All of them go
 through the `@/lib/db*` alias; there is not one relative import of it anywhere.
 
 ### Primary consumers
@@ -339,6 +345,10 @@ through the `@/lib/db*` alias; there is not one relative import of it anywhere.
   store half: these import `db` and write `nina_turns` / read `nina_chat_sessions` and
   `nina_messages` directly rather than going through `lib/nina/queries.ts` (`turnrun.ts` and
   `turn.ts` drive them without touching this package).
+- **`lib/nina/errorlogs.ts`** — `nina_error_logs`' entire production access: it imports `db` and
+  the table directly and no other production file touches either, deliberately outside
+  `lib/nina/queries.ts` because its reads are the first Nina reads with no `userId` in them (see
+  the Overview and the table's own header in `schema.ts`).
 - **`lib/nina/*`** (`gateway`, `load`, `distill`, `memory`, `promises`, `actions`, `context`,
   `tools`) — heavy consumers of the run-domain rollups (`getAllTimeTotals`,
   `getReviewedRunsWithChildren`, `getReviewedRunWindow`, `getBadgeAwards`, `getRecords`,
@@ -364,23 +374,25 @@ typing: `components/profile/ProfileForm.tsx` (`SEX_VALUES`, `Sex`), `components/
 
 ### Test consumers
 
-Twelve test-side files import statically. The notable ones: `tests/db.schema.test.ts` and
-`tests/db.schema.nina.test.ts` assert on the schema *objects* themselves — table names, column
-names and SQL types, index names, FK on-delete behaviour — via `getTableConfig`, with no database
-involved. `tests/support/fakeDb.ts` builds the recording fake that the wider suite uses, and
-`tests/db.client.test.ts` asserts that `@/lib/db` re-exports the schema — those two (like most of
-the suite) load the package with a dynamic `import()` inside the test body.
+Sixteen test-side files import statically. The notable ones: `tests/db.schema.test.ts`,
+`tests/db.schema.nina.test.ts` and `tests/db.schema.errorlogs.test.ts` assert on the schema
+*objects* themselves — table names, column names and SQL types, index names, FK on-delete
+behaviour — via `getTableConfig`, with no database involved. `tests/support/fakeDb.ts` builds the
+recording fake that the wider suite uses, and `tests/db.client.test.ts` asserts that `@/lib/db`
+re-exports the schema — those two (like most of the suite) load the package with a dynamic
+`import()` inside the test body.
 
 ### Two facts worth knowing
 
-**Direct `db` use outside this package is the exception, but no longer a short list.** Ten files
-import the instance: `auth.ts` (the NextAuth adapter tables), `lib/admin/users.ts`,
+**Direct `db` use outside this package is the exception, but no longer a short list.** Eleven
+files import the instance: `auth.ts` (the NextAuth adapter tables), `lib/admin/users.ts`,
 `lib/admin/memoryStore.ts` (admin memory-ledger writes beside `lib/nina/queries.ts`'s),
 `lib/push/queries.ts`, `lib/llm/textModel.ts` (the `app_settings` reader), `lib/nina/imagejobs.ts`,
-`lib/nina/queries.ts`, and the turn pipeline's `lib/nina/chatturn.ts`, `lib/nina/turnrevive.ts` and
-`lib/nina/searchActions.ts` — the one place the queries.ts indirection is not used. The other
-fifty source files call named functions; `lib/nina/queries.ts` remains the choke point for
-conversation, avatar, folder, shortcut and image-prefs access.
+`lib/nina/queries.ts`, the turn pipeline's `lib/nina/chatturn.ts`, `lib/nina/turnrevive.ts` and
+`lib/nina/searchActions.ts`, and `lib/nina/errorlogs.ts` — each bypassing the queries.ts
+indirection for a stated reason (the error-log module's is that its reads are deliberately not
+user-scoped). The other fifty-one source files call named functions; `lib/nina/queries.ts` remains
+the choke point for conversation, avatar, folder, shortcut and image-prefs access.
 
 **`scripts/` imports nothing from here.** Every script that touches Postgres (`db-smoke.mjs`, the
 two backfills, `nina-profpic.mjs`, `nina-image-worker.ts`, `blob-reap.mjs`, the probes and capture
@@ -456,9 +468,9 @@ or calls `process.exit`, and no error is swallowed.
   table sized in hundreds, and a second index would be maintained on every insert for a query that
   runs when a human drags something.
 
-No benchmark files exist for this package. Correctness is covered by twelve suites:
-`db.client.test.ts`, `db.ownership.test.ts`, `db.schema.test.ts`, `db.schema.nina.test.ts`, and
-eight `db.queries.*.test.ts` files.
+No benchmark files exist for this package. Correctness is covered by thirteen suites:
+`db.client.test.ts`, `db.ownership.test.ts`, `db.schema.test.ts`, `db.schema.nina.test.ts`,
+`db.schema.errorlogs.test.ts`, and eight `db.queries.*.test.ts` files.
 
 ## Usage
 
@@ -536,11 +548,12 @@ migration is silently skipped by the migrator; regeneration restamps `when`, whi
 apply.
 
 **Deploy state (verified 2026-09-12 against production, by the migrations table and
-`information_schema`):** 20 of the 21 journal entries are applied. Production has no
+`information_schema`):** 21 of the 22 journal entries are applied. Production has no
 `nina_tuning.revision`, no `nina_turns.tuning_revision`, no `nina_image_prefs.revision`; it does
-have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model` and
-`app_settings`. The one unapplied entry is **`0011_rare_blockbuster`**
-(`ALTER TABLE nina_memory_facts DROP COLUMN confidence`) — and it is not "pending" but
+have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model`,
+`app_settings` and `nina_error_logs` (with its one index). The one unapplied entry is
+**`0011_rare_blockbuster`** (`ALTER TABLE nina_memory_facts DROP COLUMN confidence`) — and it is
+not "pending" but
 **skipped**: its journal `when` is older than the newest applied row, and the migrator only applies
 entries beyond that watermark, so `db:migrate` will never apply it and will never complain.
 Production still holds the orphaned `nina_memory_facts.confidence` column — schema.ts declares none
@@ -624,7 +637,7 @@ cannot see it and will not emit it.
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-twice has): see **Migrations → Deploy state** above — verified 2026-09-12: 20 of 21 entries
+twice has): see **Migrations → Deploy state** above — verified 2026-09-12: 21 of 22 entries
 applied; `0011_rare_blockbuster` unapplied and watermark-skipped; production still holds the
 orphaned `nina_memory_facts.confidence`.
 
@@ -655,3 +668,4 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-10 | media-dedupe p2 | `nina_message_images` + `perceptual_hash`/`perceptual_sig` | `0019_massive_dracula` (applied) |
 | 2026-09-10 | image-gen controls | new `app_settings`; `nina_image_prefs` + `prompt_template`/`model` | `0020_image_gen_controls` (applied) |
 | 2026-09-11 | lib-db-queries-yagni | removed dead code: `getMonthlyTotals`/`fillZeroMonths` (and `MonthlyTotal`), `getObservedMaxHr`/`getObservedMaxHrExcludingRun`, `listExtractions`, `deletePhoto` | — |
+| 2026-09-12 | nina-llm-fallback-error-logs p1 | new `nina_error_logs` — one best-effort row per failed Nina model call (`user_id` nullable, one index, no backfill) | `0021_nina_error_logs` (applied) |
