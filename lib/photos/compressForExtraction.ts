@@ -22,18 +22,14 @@ import { longEdgeTargetFor } from './resizeTarget'
  * recipe or explains why it deviates from `expense-tracking`'s otherwise-identical compressor.
  */
 
-export interface CompressedShot {
+interface CompressedShot {
   file: File
   width: number
   height: number
-  originalBytes: number
   compressedBytes: number
 }
 
-export async function compressForExtraction(
-  file: File,
-  opts: { signal?: AbortSignal; onProgress?: (percent: number) => void } = {},
-): Promise<CompressedShot> {
+export async function compressForExtraction(file: File): Promise<CompressedShot> {
   const source = await readDimensions(file)
   if (!source.width || !source.height) {
     throw new Error(
@@ -73,11 +69,8 @@ export async function compressForExtraction(
       // unauthenticated /s/[token] page (D9), and re-encoding from a canvas removes the block
       // entirely rather than trusting that there was nothing in it.
       preserveExif: false,
-      signal: opts.signal,
-      onProgress: opts.onProgress,
     })
   } catch (cause) {
-    if (opts.signal?.aborted) throw cause
     throw new Error(`“${file.name}” could not be processed in this browser.`)
   }
 
@@ -98,7 +91,6 @@ export async function compressForExtraction(
     file: out,
     width: dims.width,
     height: dims.height,
-    originalBytes: file.size,
     compressedBytes: out.size,
   }
 }

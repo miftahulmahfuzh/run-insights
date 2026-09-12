@@ -31,11 +31,10 @@ import { longEdgeTargetFor } from './resizeTarget'
  * a dense night shot can genuinely hit, which is the case iteration exists for.
  */
 
-export interface CompressedNinaImage {
+interface CompressedNinaImage {
   file: File
   width: number
   height: number
-  originalBytes: number
   compressedBytes: number
 }
 
@@ -71,10 +70,7 @@ async function readDimensions(file: File): Promise<{ width: number; height: numb
   }
 }
 
-export async function compressForNina(
-  file: File,
-  opts: { signal?: AbortSignal } = {},
-): Promise<CompressedNinaImage> {
+export async function compressForNina(file: File): Promise<CompressedNinaImage> {
   const source = await readDimensions(file)
   if (!source.width || !source.height) {
     throw new Error(
@@ -102,7 +98,6 @@ export async function compressForNina(
      * the block entirely rather than trusting that there was nothing in it.
      */
     preserveExif: false,
-    signal: opts.signal,
   })
 
   if (out.size > NINA_CHAT_MAX_UPLOAD_BYTES) {
@@ -115,7 +110,6 @@ export async function compressForNina(
     file: out,
     width: compressed.width,
     height: compressed.height,
-    originalBytes: file.size,
     compressedBytes: out.size,
   }
 }

@@ -32,13 +32,13 @@ export interface KindHolder {
   kind: ScreenKind
 }
 
-export interface AcceptedPick {
+interface AcceptedPick {
   file: File
   /** Distinct from every kind already held, and from every other pick in the same batch. */
   kind: ScreenKind
 }
 
-export interface PickPlan {
+interface PickPlan {
   /** In pick order, capped at the remaining room, rejects dropped. */
   accepted: AcceptedPick[]
   /**

@@ -16,7 +16,7 @@
  * and is not one is worse than no control, which is why the strategy is chosen rather than assumed.
  */
 
-export type SaveStrategy =
+type SaveStrategy =
   /**
    * `navigator.share({ files: [file] })`. The platform's own sheet, whose first action for an image
    * on iOS is **Save Image** — which lands the photo in Photos, where a photograph belongs, rather

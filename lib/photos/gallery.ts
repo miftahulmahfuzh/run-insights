@@ -67,7 +67,7 @@ export interface SwipeGesture {
   zoomScale: number
 }
 
-export type SwipeDecision = 'next' | 'prev' | 'none'
+type SwipeDecision = 'next' | 'prev' | 'none'
 
 /**
  * `visualViewport.scale` is a float and lands on 1.0000000000000002-style values after a

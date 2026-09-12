@@ -34,7 +34,7 @@
  */
 
 /** One hash input. `Blob` covers the browser (`File` IS a Blob); the array forms cover server and script. */
-export type ContentHashInput = Blob | ArrayBuffer | Uint8Array
+type ContentHashInput = Blob | ArrayBuffer | Uint8Array
 
 /** sha-256 over these exact bytes, as 64 lowercase hex characters. Rejects only if the platform has no `crypto.subtle`. */
 export async function contentHashOf(input: ContentHashInput): Promise<string> {
