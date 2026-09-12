@@ -60,9 +60,7 @@
     fossil.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-ui` (coordinator-assigned
   worker branch; measurement point `6759f26`, work commit `fbcb1db`).
-- **Merge status:** on branch — **NOT merged** (worker; the coordinator
-  `tokenmax-orch-2026-09-12` owns landing). This session committed the work
-  and this doc, and stopped.
+- **Merge status:** merged (commit `e0c2b70`)
 - **Approx token burn:** high (~0.5M est., input-dominated — 16 source
   modules + the barrel read in full, a ~1,300-line sibling readme absorbed
   for house style, and a full repo import graph built and cross-checked). 🔥

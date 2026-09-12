@@ -66,9 +66,7 @@
     **post-drop count 0, production database never touched**. The recipe is inlined in
     the test file's header so the next reader needs no archaeology.
 - **Branch:** `token-maxxing-2026-09-12-push-queries-tests`
-- **Merge status:** on branch — worker session; the code commit `006130d` is in, this
-  doc and its README row are deliberately **left uncommitted** for the coordinator to
-  collect and land.
+- **Merge status:** merged (commit `4915e6b`)
 - **Approx token burn:** ~400k 🔥 (the whole `lib/push` module graph plus both existing
   integration suites read before writing; 302 lines; four flip→targeted-run→revert
   mutation cycles; the integration suite run **twice** on the final bytes against real

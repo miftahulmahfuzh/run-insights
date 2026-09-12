@@ -50,8 +50,7 @@
   - The map is written as **rules, not state**: volatile counts (4,062 lines; 9 of 12) are
     stamped with their measure date, per the house rule that package-readme numbers rot.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-review`
-- **Merge status:** on branch, **NOT merged** — worker session; the coordinator
-  (`tokenmax-orch-2026-09-12`) owns landing worker branches (C7).
+- **Merge status:** merged (commit `e5064ff`)
 - **Approx token burn:** ~700k 🔥 — one full worker session dominated by reading all 4,062
   source lines of both directories in full, plus the two mounting pages, two prior session
   docs, two format-anchor readmes, reverse-dependency greps and an eight-suite test survey —

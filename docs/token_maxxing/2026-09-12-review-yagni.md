@@ -34,8 +34,7 @@
     specifically to dodge the four known verifier traps — and the trap list, the
     kept-and-why notes, and the follow-ups are all written down for the next pass.
 - **Branch:** `token-maxxing-2026-09-12-review-yagni`
-- **Merge status:** on branch (code commit `38ac737`, docs commit on top; not merged
-  to main — a worker session under coordinator `tokenmax-orch-2026-09-12`)
+- **Merge status:** merged (commit `c2487e8`)
 - **Approx token burn:** a full worker session's burn — the inventory phase
   dominated (parse-every-file sweep authoring + every verdict re-checked). Estimate
   ~1.5M. 🔥

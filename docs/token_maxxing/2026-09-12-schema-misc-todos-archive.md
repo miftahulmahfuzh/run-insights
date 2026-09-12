@@ -79,8 +79,7 @@
   session of coordinator `tokenmax-orch-2026-09-12`, slug
   `schema-misc-todos-archive`, worktree
   `~/.worktrees/run-insights/tokenmax-2026-09-12-schema-misc-todos-archive`)
-- **Merge status:** on branch at `a1db572`, NOT merged — Worker Mode reports
-  DONE to the coordinator, which owns the merge to main.
+- **Merge status:** merged (commit `4a237d5`)
 - **Approx token burn:** high — the burn went into the 51-export census with a
   multiline-aware full-import-block verification of every consumer, the
   test-re-anchoring rewrites, four-ledger git archaeology for closure dates,

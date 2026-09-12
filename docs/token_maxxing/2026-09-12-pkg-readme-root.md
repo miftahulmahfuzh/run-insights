@@ -75,8 +75,7 @@
     header** rather than using the shared one.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-root`
   (coordinator-assigned worker branch).
-- **Merge status:** on branch — the coordinator owns merging; this session
-  committed the work and this doc, and stopped.
+- **Merge status:** merged (commit `b003d52`)
 - **Approx token burn:** high — the whole 1359-line doc read against the
   tree it describes, every constant / route / version / count / consumer
   grep-verified in source, a full rewrite drafted under the repo's

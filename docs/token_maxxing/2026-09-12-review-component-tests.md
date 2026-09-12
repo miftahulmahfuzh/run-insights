@@ -42,11 +42,7 @@
     session starts from these instead of re-deriving them.
   - Three stale self-descriptions retired from the codebase's own docs.
 - **Branch:** `token-maxxing-2026-09-12-review-component-tests`
-- **Merge status:** on branch — six commits (`0818027` leaf trio, `ca078c0`
-  ParsedInput, `c110df7` HeroFields+MoreDetails, `616f6a6` three block components,
-  `def25f1` RetryExtraction+ReviewClient+ReviewScreen, `94901e1` docs drift); the
-  coordinator session (`tokenmax-orch-2026-09-12`) owns the merge, and this doc
-  commit is the only one this session adds on top.
+- **Merge status:** merged (commit `5ceec3b`)
 - **Approx token burn:** a full worker session — survey of 11 components + the
   existing ui/nina conventions + lib/review, a harness probe phase, then twelve
   suites written and debugged against happy-dom quirks. Estimate ~1.8M. 🔥

@@ -51,8 +51,7 @@
     forbidden from making, one is a consolidation candidate, not dead code
     (see Follow-ups).
 - **Branch:** `token-maxxing-2026-09-12-profile-share-yagni`
-- **Merge status:** unmerged — this worker does not merge; the coordinator
-  (`tokenmax-orch-2026-09-12`) owns the landing.
+- **Merge status:** merged (commit `3f838fa`)
 - **Approx token burn:** the burn is in the reading, not the writing — 68
   exported symbols each word-boundary-grepped repo-wide, every import edge
   into the 17 modules mapped, all 17 files read in full, plus typegen + tsc +

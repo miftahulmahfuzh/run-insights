@@ -33,8 +33,7 @@
     (app code, tests, scripts).
 - **Branch:** `token-maxxing-2026-09-12-review-followup-cleanup` (HEAD `644ec6c`,
   tree clean)
-- **Merge status:** on branch — NOT merged; worker session under coordinator
-  `tokenmax-orch-2026-09-12` (slug `review-followup-cleanup`), which owns the merge (C7)
+- **Merge status:** merged (commit `6e1c75b`)
 - **Approx token burn:** a full worker session — two-file census, two new suites
   authored against real fixtures, tsc rounds. Estimate ~1M. 🔥
 
