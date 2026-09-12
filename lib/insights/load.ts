@@ -42,6 +42,7 @@ import {
   computeAcwr,
   computeSessionMetrics,
   computeWeekMetrics,
+  DISTANCE_BUCKETS,
   evaluateSessionFlags,
   isAcwrOutOfRange,
   paceByBucket,
@@ -136,11 +137,15 @@ function inRange<T extends { occurredOn: string }>(
  * "Pace at matched distance" is the only pace worth comparing across periods (a week of 5Ks is
  * not slower than a week of half-marathons, it is a different kind of week), and picking the
  * *dominant* bucket rather than a fixed one means the comparison follows the runner's actual
- * habit instead of a constant somebody chose. Ties break toward more distance covered, then on
- * the fixed order below so the answer never depends on row order.
+ * habit instead of a constant somebody chose.
+ *
+ * Ties break toward more distance covered, and that second key is decisive, not decorative: the
+ * buckets are threshold-disjoint distance ranges, so two buckets with the same count `n` cannot
+ * also tie on metres — the lower one's n runs each sit below the boundary every one of the
+ * higher one's n runs reaches, making its sum strictly smaller. The walk order is therefore
+ * provably inert, and `DISTANCE_BUCKETS` — the union's one canonical, completeness-guarded
+ * enumeration — is walked directly instead of a second hand-kept copy of it.
  */
-const BUCKET_ORDER: DistanceBucket[] = ['10k', '5k', 'half', 'full', 'other']
-
 function dominantBucket(runs: readonly { distanceM: number }[]): DistanceBucket | null {
   if (runs.length === 0) return null
   const tally = new Map<DistanceBucket, { count: number; distanceM: number }>()
@@ -154,7 +159,7 @@ function dominantBucket(runs: readonly { distanceM: number }[]): DistanceBucket 
 
   let best: DistanceBucket | null = null
   let bestAcc = { count: -1, distanceM: -1 }
-  for (const bucket of BUCKET_ORDER) {
+  for (const bucket of DISTANCE_BUCKETS) {
     const acc = tally.get(bucket)
     if (acc == null) continue
     if (

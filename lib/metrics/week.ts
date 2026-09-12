@@ -9,6 +9,40 @@ import type { ZoneRow } from './types'
 export type DistanceBucket = '5k' | '10k' | 'half' | 'full' | 'other'
 
 /**
+ * Every `DistanceBucket` member, in the type's own spelling order — the union's one canonical
+ * enumeration, completeness-guarded below. Walk it when every bucket must be considered and the
+ * order provably decides nothing. When order IS the semantics — a display row, a tie-break —
+ * write that order locally and guard it with `EveryBucketListed` the way `lib/charts/paceTrend.ts`
+ * does, rather than borrowing this one.
+ */
+export const DISTANCE_BUCKETS = ['5k', '10k', 'half', 'full', 'other'] as const
+
+/**
+ * Type-only assertion: an alias of this type fails to compile unless `Fact` resolves to `true`.
+ * Pairs with `EveryBucketListed` to hold a hand-kept bucket list complete.
+ */
+export type AssertTrue<Fact extends true> = Fact
+
+/**
+ * `true` when every `DistanceBucket` member is named in `Members`; otherwise the missing members
+ * themselves. A union member that skips a hand-kept list is otherwise silent — a band the chip
+ * row cannot select, a bucket that can never win a comparison — so assert the result, as in
+ * `type _ok = AssertTrue<EveryBucketListed<typeof BUCKET_ORDER>>`: complete lists compile,
+ * incomplete ones fail while naming what is absent. (The failing arm must NOT be `never`: never
+ * is assignable to everything, so an assertion over it would pass vacuously.)
+ */
+export type EveryBucketListed<Members extends readonly DistanceBucket[]> = [
+  Exclude<DistanceBucket, Members[number]>,
+] extends [never]
+  ? true
+  : Exclude<DistanceBucket, Members[number]>
+
+/** The canonical list's own completeness assertion. The `export` is the point: an unexported
+ * assertion alias reads as dead to `no-unused-vars`, and an assertion the linter deletes is an
+ * assertion that guards nothing. */
+export type _distanceBucketsComplete = AssertTrue<EveryBucketListed<typeof DISTANCE_BUCKETS>>
+
+/**
  * Training-run buckets around race-EQUIVALENT efforts, not race distances.
  *
  * An 8 km run and an 11 km run are the same kind of session to a runner, and comparing "this
