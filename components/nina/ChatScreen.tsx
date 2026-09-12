@@ -7,12 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { todayInJakarta } from '@/lib/date/ranges'
 import { isValidId } from '@/lib/id'
-import {
-  pollNinaReply,
-  resendNinaMessage,
-  sendNinaMessage,
-  type SentBubble,
-} from '@/lib/nina/actions'
+import { resendNinaMessage, sendNinaMessage } from '@/lib/nina/actions'
 import {
   ATTACH_PARAM,
   PHOTO_PARAM,
@@ -26,16 +21,11 @@ import {
   canActOnMessage,
   type EditTarget,
 } from '@/lib/nina/edit'
-import { appendNewBubbles, SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
+import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
 import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
 import { JOB_JUMP_PARAM } from '@/lib/nina/jobview'
 import { buildQuote, type QuoteView } from '@/lib/nina/reply'
-import { planReveal } from '@/lib/nina/reveal'
-import {
-  NINA_TURN_POLL_GIVE_UP_MS,
-  ninaPollDelayFor,
-  type NinaFlightView,
-} from '@/lib/nina/turnflight'
+import { type NinaFlightView } from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
 import { Composer, type ComposerDraftImage } from './Composer'
 import { NOTICE_TEXT, RESEND_REFUSAL_TEXT, type Notice } from './chatScreenCopy'
@@ -46,6 +36,7 @@ import type { ChatAvatar, ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
 import { usePhotoViewer } from './usePhotoViewer'
 import { COMPOSER_CLEARANCE_PX, useQuoteLanding } from './useQuoteLanding'
+import { useTurnArrival } from './useTurnArrival'
 
 /**
  * The interactive half of `/nina`: one turn, from the runner pressing send to Nina's last bubble.
@@ -239,26 +230,11 @@ export function ChatScreen({
   flashBlinks: number
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
-  /** Mid-reveal: the pause between two of her bubbles. Distinct from `awaiting`; see the render. */
-  const [typing, setTyping] = useState(false)
-  /**
-   * F36 R6. She has a message of his that she has not answered, so the poll is running and the
-   * indicator is up. Seeded from the server so a cold load mid-turn already shows it.
+  /*
+   * `awaiting` (the poll runs), `typing` (mid-reveal), the live conversation id, the poll cursor
+   * and `showTyping` all live in `useTurnArrival`, below. The send and resend reach into it
+   * through its five verbs and never touch the machinery itself.
    */
-  const [awaiting, setAwaiting] = useState(flight.awaiting)
-  /**
-   * F36 R6. The conversation the poll asks about. Seeded from the prop and REPLACED by the send's
-   * answer, because `sessionId` may legitimately be `null` — "he has no sessions at all" — and the
-   * ACTION is what resolves or creates one. Without adopting it, the first message of a brand-new
-   * runner would send fine and then be polled for in a conversation the client cannot name.
-   */
-  const [liveSessionId, setLiveSessionId] = useState(sessionId)
-  /**
-   * F36 R6. `nina_messages.seq` of the newest row this screen holds — the poll's cursor. A REF and
-   * not state: it is read inside the poll loop and written by both the send and the poll, and a
-   * stale closure over it would re-read the same rows for ever. Nothing renders from it.
-   */
-  const cursorRef = useRef(flight.cursor)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   /* `flashId`, the landing tint a jump leaves on one bubble, lives in `useQuoteLanding` — R8's
@@ -301,6 +277,14 @@ export function ChatScreen({
    * hook's ref, one-shot by `useRef`'s keep-the-first-initialiser semantics.
    */
   const { flashId, handleJumpToQuote, clearFlashId } = useQuoteLanding({ flashBlinks, setNotice })
+
+  /*
+   * The arrival loop, the staggered reveal and the typing indicator, in `useTurnArrival`. Seeded
+   * from the server's `flight` so a cold load mid-turn already polls; the send and resend drive it
+   * through `adoptSession` / cursor writes / `beginAwaiting` after the action answers.
+   */
+  const { showTyping, adoptSession, takeCursor, raiseCursor, beginAwaiting, endTurn } =
+    useTurnArrival({ flight, sessionId, setMessages, setNotice })
 
   /*
    * **`?attach=`, `?photo=` AND `?jump=` are consumed, not left lying on the entry.** They have done their
@@ -363,24 +347,16 @@ export function ChatScreen({
 
   // Every timed step checks this before touching state. StrictMode double-invokes effects in
   // development and a runner can navigate away mid-reveal; both would otherwise set state on an
-  // unmounted tree. `InsightTrigger` uses the same guard for the same reason. Each extracted hook
-  // keeps its own flag via `useAliveRef` — the flag is only ever written at mount and unmount, so
-  // per-owner flags with this component's lifetime are indistinguishable from one shared one, and
-  // a ref the compiler can see stays exempt from every deps array.
+  // unmounted tree. `InsightTrigger` uses the same guard for the same reason. The reveal and poll
+  // timers keep their own flag and handles in `useTurnArrival`, and `useQuoteLanding` its own —
+  // a `useRef` created at the owner, not a flag from a custom hook, is what keeps both react-hooks
+  // rules content, and per-owner flags are indistinguishable from one shared one because the flag
+  // is only ever written at mount and unmount.
   const alive = useRef(true)
-  const timer = useRef<number | null>(null)
-  /*
-   * Separate from `timer` on purpose. `timer` is the reveal's `setTimeout` handle; sharing it
-   * would mean a quote tap mid-reveal cancels the reveal's `sleep` and strands the remaining
-   * bubbles behind a typing indicator that never resolves.
-   */
-  const pollTimer = useRef<number | null>(null)
   useEffect(() => {
     alive.current = true
     return () => {
       alive.current = false
-      if (timer.current !== null) window.clearTimeout(timer.current)
-      if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
     }
   }, [])
 
@@ -451,8 +427,15 @@ export function ChatScreen({
    * R10's overlay state and its derivations, in `usePhotoViewer`. The attach action a photo's
    * overlay offers stays below, in the render — it arms THIS screen's `photo` slot.
    */
-  const { viewer, viewerPhotos, shownIndex, viewerAttachId, openViewer, setViewerIndex, closeViewer } =
-    usePhotoViewer(messages)
+  const {
+    viewer,
+    viewerPhotos,
+    shownIndex,
+    viewerAttachId,
+    openViewer,
+    setViewerIndex,
+    closeViewer,
+  } = usePhotoViewer(messages)
 
   /** R10's open gesture. Clearing the notice travels with the gesture, not with the overlay. */
   const handleOpenImage = useCallback(
@@ -462,11 +445,6 @@ export function ChatScreen({
     },
     [openViewer],
   )
-
-  const sleep = (ms: number) =>
-    new Promise<void>((resolve) => {
-      timer.current = window.setTimeout(resolve, ms)
-    })
 
   /**
    * Arm a reply (R12). `buildQuote` rather than `resolveQuote`, because the target is the message
@@ -573,43 +551,46 @@ export function ChatScreen({
    * A quote whose target was deleted therefore renders as a plain message rather than throwing,
    * which `resolveQuote` documents as the designed outcome and which is this phase's exit test.
    */
-  const handleDeleteMessage = useCallback(async (id: string): Promise<boolean> => {
-    /* A client-minted `local-` id names a row the server has never heard of — a failed send, or
-     * one still in flight. There is nothing to call: `removeNinaMessage` would refuse the id, and
-     * the honest outcome of deleting a message that was never delivered is that it stops being on
-     * screen. Local state only, same cleanup as the confirmed path. */
-    if (!isValidId(id)) {
+  const handleDeleteMessage = useCallback(
+    async (id: string): Promise<boolean> => {
+      /* A client-minted `local-` id names a row the server has never heard of — a failed send, or
+       * one still in flight. There is nothing to call: `removeNinaMessage` would refuse the id, and
+       * the honest outcome of deleting a message that was never delivered is that it stops being on
+       * screen. Local state only, same cleanup as the confirmed path. */
+      if (!isValidId(id)) {
+        setNotice(null)
+        setMessages((current) => applyMessageDeletion(current, id) as ChatMessage[])
+        setDraftQuote((current) => (current?.targetId === id ? null : current))
+        clearFlashId(id)
+        return true
+      }
+
+      let result: Awaited<ReturnType<typeof removeNinaMessage>> | null = null
+      try {
+        result = await removeNinaMessage({ messageId: id })
+      } catch {
+        result = null
+      }
+      if (!alive.current) return false
+
+      if (result === null || !result.ok || result.deletedId === null) {
+        setNotice('delete-failed')
+        return false
+      }
+
+      const deletedId = result.deletedId
       setNotice(null)
-      setMessages((current) => applyMessageDeletion(current, id) as ChatMessage[])
-      setDraftQuote((current) => (current?.targetId === id ? null : current))
-      clearFlashId(id)
+      setMessages((current) => applyMessageDeletion(current, deletedId) as ChatMessage[])
+      /* If the deleted message was the one a reply was armed against, the draft strip in the
+       * composer now points at something that does not exist. Unpin it rather than let a send write
+       * a `reply_to_id` the database would immediately null. */
+      setDraftQuote((current) => (current?.targetId === deletedId ? null : current))
+      /* Same argument for the landing tint: nothing left to flash. */
+      clearFlashId(deletedId)
       return true
-    }
-
-    let result: Awaited<ReturnType<typeof removeNinaMessage>> | null = null
-    try {
-      result = await removeNinaMessage({ messageId: id })
-    } catch {
-      result = null
-    }
-    if (!alive.current) return false
-
-    if (result === null || !result.ok || result.deletedId === null) {
-      setNotice('delete-failed')
-      return false
-    }
-
-    const deletedId = result.deletedId
-    setNotice(null)
-    setMessages((current) => applyMessageDeletion(current, deletedId) as ChatMessage[])
-    /* If the deleted message was the one a reply was armed against, the draft strip in the
-     * composer now points at something that does not exist. Unpin it rather than let a send write
-     * a `reply_to_id` the database would immediately null. */
-    setDraftQuote((current) => (current?.targetId === deletedId ? null : current))
-    /* Same argument for the landing tint: nothing left to flash. */
-    clearFlashId(deletedId)
-    return true
-  }, [clearFlashId])
+    },
+    [clearFlashId],
+  )
 
   /**
    * R5, resending. Resolves `null` when the turn was claimed — the sheet's cue to close — and
@@ -638,196 +619,29 @@ export function ChatScreen({
    * almost always 'no-reply', which is exactly the sentence that sent him here. Leaving it up while
    * she is answering again would contradict the indicator.
    */
-  const handleResendMessage = useCallback(async (id: string): Promise<string | null> => {
-    let result: Awaited<ReturnType<typeof resendNinaMessage>> | null = null
-    try {
-      result = await resendNinaMessage({ messageId: id })
-    } catch {
-      result = null
-    }
-    if (!alive.current) return null
-
-    if (result === null || !result.ok) {
-      /* A thrown action has no reason to report, and 'failed' is what it means: the row is
-       * untouched and one more tap is the whole recovery. */
-      return RESEND_REFUSAL_TEXT[result?.reason ?? 'failed']
-    }
-
-    setNotice(null)
-    if (result.cursor !== null) {
-      cursorRef.current = Math.max(cursorRef.current, result.cursor)
-    }
-    setAwaiting(true)
-    return null
-  }, [])
-
-  /**
-   * RU-5's staggered reveal, lifted verbatim out of `handleSend` so the SEND path and the POLL path
-   * cannot drift into two different rhythms. It is the only writer of `typing` besides the poll's
-   * own start and stop.
-   *
-   * It guards on `alive.current` at every timed step, and on `id` presence at the append — the one
-   * other guard it has, and the reason it can share a list with `mergeServerMessages`. Callers are
-   * sequential by construction — the poll loop awaits this before deciding whether to keep polling
-   * — so there is no second reveal to interleave with, and the single `timer` handle stays safe.
-   *
-   * ── WHY THE APPEND SKIPS IDS ALREADY ON SCREEN (prod "gj", 2026-09-11: 4 rows, 7 bubbles) ────
-   * Every bubble here used to be appended unconditionally, and on prod session "gj" that rendered
-   * seven bubbles from the four rows the database holds. A full-route RSC delivery of `/nina` had
-   * landed mid-reveal — its `read_at` sits 14 ms after the turn's INSERT, so its payload carried
-   * all four committed rows — and `mergeServerMessages`, correctly by its own rule, delivered the
-   * three bubbles the reveal had not reached yet. The reveal then appended its own copies of the
-   * same `nina_messages.id`s: two channels into one list, and only the merge deduped. The guard
-   * sits INSIDE the updater (`appendNewBubbles`), so the check reads the list as React will commit
-   * it — a merge that lands in any gap between two sleeps is already on screen for the next
-   * iteration.
-   *
-   * ── WHY THE GUARD LIVES HERE AND NOT IN THE MERGE ────────────────────────────────────────────
-   * Because the merge is already correct: server order, local content, id-deduped — the sanctioned
-   * ONE-FRAME delivery for a refresh, whose contract the header above documents for a COMPLETED
-   * list. The defect was the other writer holding no contract at all, and that defect is one
-   * missing `id` check wide. Making the merge reveal-aware (routing new nina rows through the
-   * stagger) would put a second writer on the reveal's rhythm to fix it. What a mid-reveal merge
-   * still does — collapse the remaining stagger into one frame — is cosmetic, and explicitly
-   * accepted (invariant 4 of `NINA_DUP_BUBBLE_REVEAL_PLAN.md`); what it can no longer do is render
-   * an id twice.
-   */
-  const revealBubbles = useCallback(async (bubbles: readonly SentBubble[]) => {
-    const plan = planReveal(bubbles.map((b) => b.body))
-    for (const [index, bubble] of bubbles.entries()) {
-      const gap = plan[index] ?? 0
-      if (gap > 0) {
-        setTyping(true)
-        await sleep(gap)
-        if (!alive.current) return
+  const handleResendMessage = useCallback(
+    async (id: string): Promise<string | null> => {
+      let result: Awaited<ReturnType<typeof resendNinaMessage>> | null = null
+      try {
+        result = await resendNinaMessage({ messageId: id })
+      } catch {
+        result = null
       }
-      // The indicator stays up while there is another thought coming, and drops with the last.
-      setTyping(index < bubbles.length - 1)
-      /*
-       * The APPEND alone is idempotent — `appendNewBubbles` returns the list untouched when the
-       * merge has already delivered this id. The SLEEP above is not skipped: the stagger is keyed
-       * to the batch as the poll received it, and pruning the plan for ids already on screen would
-       * need a synchronous read of `messages` that this updater-only shape deliberately refuses as
-       * a second source of truth. So a mid-reveal merge can leave a gap where a bubble already
-       * sits — the accepted collapse — while the id itself can no longer appear twice.
-       */
-      setMessages((current) => appendNewBubbles(current, [bubble], todayInJakarta()))
-    }
-    setTyping(false)
-  }, [])
+      if (!alive.current) return null
 
-  /**
-   * **The arrival loop (F36 R6).** Runs while `awaiting` is true and stops itself the moment the
-   * server says there is nothing outstanding.
-   *
-   * ── ONE SEQUENTIAL ASYNC LOOP, NOT A `setInterval` ───────────────────────────────────────────
-   * Because a tick must not fire while the previous request is in flight, and — the part that
-   * matters — because a tick must not fire while a REVEAL is in progress. An interval would race
-   * the reveal's own `sleep` for the shared timer handle and could deliver a second batch of
-   * bubbles into the middle of the first batch's stagger. Awaiting each step in order makes both
-   * impossible by construction rather than by a guard someone has to remember.
-   *
-   * ── WHY IT DOES NOT STOP ON THE FIRST BUBBLES ────────────────────────────────────────────────
-   * Because a burst chains: the server may answer his first message, then open a second turn for
-   * the two he sent while she was typing. The stop condition is the server's `awaiting`, which is
-   * "is anything of his unanswered", not "did I just receive something".
-   *
-   * ── THE GIVE-UP ─────────────────────────────────────────────────────────────────────────────
-   * `NINA_TURN_POLL_GIVE_UP_MS` is `NINA_BACKGROUND_BUDGET_MS` — the server's honest wall clock —
-   * and no longer the 90 s stale deadline it was identical to before (asserted as the pairing in
-   * `lib/nina/turnflight.test.ts`). The real stop for a DEAD turn is the server's own
-   * `awaiting: false`: the claim read is authoritative, the sweep closes a dead row within
-   * `NINA_TURN_STALE_MS`, and the next poll says stop within ~90 s without this backstop's help.
-   * What is left for the backstop is the poll that cannot reach the server at all — an offline
-   * phone, where every request fails and no server answer is ever coming — and it must span the
-   * longest HONEST run so it never fires over a living turn: the first turn plus
-   * `NINA_TURN_CHAIN_MAX` (2) chained follow-ups at ~50 s each is ~210 s, inside
-   * `NINA_BACKGROUND_BUDGET_MS` = 240 s. At the old 90 s this loop called a living chain dead,
-   * raised the notice, and her remaining replies landed unobserved.
-   */
-  useEffect(() => {
-    if (!awaiting) return
-    let cancelled = false
-
-    const wait = (ms: number) =>
-      new Promise<void>((resolve) => {
-        pollTimer.current = window.setTimeout(resolve, ms)
-      })
-
-    const stop = (raised: Notice | null) => {
-      setAwaiting(false)
-      setTyping(false)
-      if (raised !== null) setNotice(raised)
-    }
-
-    const run = async () => {
-      const startedAt = Date.now()
-      let attempts = 0
-
-      while (!cancelled && alive.current) {
-        await wait(ninaPollDelayFor(attempts))
-        if (cancelled || !alive.current) return
-        attempts += 1
-
-        let result: Awaited<ReturnType<typeof pollNinaReply>> | null = null
-        try {
-          result = await pollNinaReply({
-            sessionId: liveSessionId,
-            afterSeq: cursorRef.current,
-          })
-        } catch {
-          result = null
-        }
-        if (cancelled || !alive.current) return
-
-        const expired = Date.now() - startedAt >= NINA_TURN_POLL_GIVE_UP_MS
-
-        if (result === null || !result.ok) {
-          /* The poll itself failed. It has learned nothing, so it says nothing and tries again —
-           * until the give-up, which is the only thing that ends an offline wait. */
-          if (expired) {
-            stop('no-reply')
-            return
-          }
-          continue
-        }
-
-        cursorRef.current = result.cursor
-
-        if (result.bubbles.length > 0) {
-          setNotice(null)
-          /*
-           * `setAwaiting(false)` BEFORE the reveal when the server says nothing is outstanding, so
-           * the indicator is owned by `typing` alone for the duration of the stagger. Flipping it
-           * re-runs this effect's cleanup and sets `cancelled`, which is harmless: `revealBubbles`
-           * guards on `alive.current`, and this iteration returns immediately afterwards.
-           */
-          if (!result.awaiting) setAwaiting(false)
-          await revealBubbles(result.bubbles)
-          if (cancelled || !alive.current) return
-          if (!result.awaiting) return
-          continue
-        }
-
-        if (!result.awaiting) {
-          /* Nothing outstanding and nothing new: she said nothing, or the turn is dead and the
-           * server has closed it. One notice covers all of it — see NOTICE_TEXT's comment. */
-          stop('no-reply')
-          return
-        }
-        if (expired) {
-          stop('no-reply')
-          return
-        }
+      if (result === null || !result.ok) {
+        /* A thrown action has no reason to report, and 'failed' is what it means: the row is
+         * untouched and one more tap is the whole recovery. */
+        return RESEND_REFUSAL_TEXT[result?.reason ?? 'failed']
       }
-    }
 
-    void run()
-    return () => {
-      cancelled = true
-      if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
-    }
-  }, [awaiting, liveSessionId, revealBubbles])
+      setNotice(null)
+      raiseCursor(result.cursor)
+      beginAwaiting()
+      return null
+    },
+    [raiseCursor, beginAwaiting],
+  )
 
   /*
    * The send itself: optimistic row, busy window, failure marking, id adoption. Factored out of
@@ -984,8 +798,7 @@ export function ChatScreen({
       setBusy(false)
 
       if (result === null || !result.ok) {
-        setAwaiting(false)
-        setTyping(false)
+        endTurn()
         setMessages((current) =>
           current.map((m) => (m.id === localId ? { ...m, state: 'failed' } : m)),
         )
@@ -1012,12 +825,12 @@ export function ChatScreen({
        * id means a turn was already running and will chain onto this message, so something is very
        * much still coming.
        */
-      if (result.sessionId !== null) setLiveSessionId(result.sessionId)
-      if (result.cursor !== null) cursorRef.current = result.cursor
-      setAwaiting(true)
+      adoptSession(result.sessionId)
+      takeCursor(result.cursor)
+      beginAwaiting()
       return true
     },
-    [sessionId],
+    [sessionId, adoptSession, takeCursor, beginAwaiting, endTurn],
   )
 
   const handleSend = useCallback(
@@ -1095,17 +908,10 @@ export function ChatScreen({
   }, [acting, busy, sendAndTrack])
 
   /*
-   * F36 R6. The indicator is up while the SERVER owes an answer (`awaiting`) and between two of her
-   * bubbles mid-reveal (`typing`). Two pieces of state and one derived flag, rather than one
-   * overloaded boolean, because the poll and the reveal legitimately own different stretches of the
-   * same wait and each must be able to end its own without ending the other's.
-   *
-   * This is the honest signal R6 asks for: it means "she is answering", where the grey bubble it
-   * replaces meant "your message has not been saved yet" — which was never what the runner read it
-   * as, and is no longer true for even a second.
+   * F36 R6. `showTyping` — the indicator the screen renders — is up while the SERVER owes an
+   * answer (`awaiting`) and between two of her bubbles mid-reveal (`typing`); its two-state
+   * reasoning lives on the hook.
    */
-  const showTyping = awaiting || typing
-
   return (
     <>
       {/*
