@@ -14,6 +14,8 @@ import {
 import { hrDomain, kmAxisTicks, paceDomain, type PaceHrPoint } from '@/lib/charts'
 import { formatBpm, formatPace } from '@/lib/format'
 
+import { PACE_AXIS_LABEL } from './paceAxisLabel'
+
 /**
  * §3.1 — pace and heart rate per kilometre. **The signature chart, and the app's only dual-axis
  * one.** §12 is the waiver in full and R-25 upholds it; the short version is that the two series
@@ -29,9 +31,6 @@ import { formatBpm, formatPace } from '@/lib/format'
  * Everything Recharts-shaped lives in this file, behind the outer component's `dynamic()` import,
  * so a session that never opens a run never downloads the library (§7).
  */
-
-/** Up is always faster, everywhere in this app. The axis says so in words, not only by reversal. */
-const PACE_AXIS_LABEL = 'PACE (FASTER ↑)'
 
 export function PaceHrChartInner({ points }: { points: readonly PaceHrPoint[] }) {
   const data = [...points]
@@ -82,7 +81,7 @@ export function PaceHrChartInner({ points }: { points: readonly PaceHrPoint[] })
           axisLine={false}
           width={46}
           tickFormatter={(sec: number) => formatPace(sec)}
-          label={{ value: PACE_AXIS_LABEL, angle: -90, position: 'insideLeft', offset: 8 }}
+          label={PACE_AXIS_LABEL}
         />
 
         {hasHr && (
