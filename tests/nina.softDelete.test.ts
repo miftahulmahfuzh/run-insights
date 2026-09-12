@@ -77,12 +77,6 @@ describe('every read that shows a job or schedules work on one skips a hidden ro
     expect(fake.only().sql).toContain(HIDDEN_SKIPPED)
   })
 
-  it('getNinaImageJob — a poll answers "no such job"', async () => {
-    fake.enqueue([])
-    await expect(jobs.getNinaImageJob('u1', JOB)).resolves.toBeNull()
-    expect(fake.only().sql).toContain(HIDDEN_SKIPPED)
-  })
-
   it('listOpenNinaImageJobs — the in-flight strip AND the sweep it runs first', async () => {
     fake.enqueue([], []) // the sweep's SELECT, then the strip's
     await jobs.listOpenNinaImageJobs('u1')

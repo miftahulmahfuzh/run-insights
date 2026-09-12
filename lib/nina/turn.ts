@@ -94,8 +94,11 @@ export const NINA_MIN_ROUND_BUDGET_MS = 14_000
  * Below this much remaining budget, the repair is skipped rather than started. Same rule and same
  * number as F04's extraction path and F07's narrative: a repair fired with two seconds left cannot
  * finish.
+ *
+ * Module-local since the 2026-09-12 YAGNI sweep: no file outside this one has ever read it, and
+ * the skip decision it gates is made here and only here.
  */
-export const NINA_MIN_REPAIR_BUDGET_MS = 3_000
+const NINA_MIN_REPAIR_BUDGET_MS = 3_000
 
 /**
  * Two rounds, not more, and the reason is the budget above and not a philosophy of agents. Round 1
@@ -181,12 +184,16 @@ export interface NinaLlmClientLike {
 
 export type NinaTurnSource = 'llm' | 'llm_repair' | 'unavailable'
 
-export interface NinaTurnUsage {
+/** Module-local since the 2026-09-12 YAGNI sweep: no other file has ever named it; callers of
+ * `runNinaTurn` read `result.usage` by inference. */
+interface NinaTurnUsage {
   inputTokens: number
   outputTokens: number
 }
 
-export interface NinaTurnTrace {
+/** Module-local since the 2026-09-12 YAGNI sweep: no other file has ever named it — `nina_turns`
+ * records the flattened row (`NinaTurnRow`), and the unit suite reads `result.trace` by inference. */
+interface NinaTurnTrace {
   model: string
   promptVersion: number
   /** Tool rounds actually completed. 0 for a turn she answered straight away. */

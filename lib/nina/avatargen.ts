@@ -22,8 +22,8 @@ import { readNinaImagePrefs, readNinaTuning } from './queries'
  * already fires on `announced_at IS NULL` at the next cron tick, so the announcement path needs no
  * change at all — the promise evaluator dispatches, the worker generates, and the next tick has her
  * announce it. What phase 13 must NOT do is read the new avatar back in the same invocation.
- * `getNinaImageJob(userId, jobId)` is provided for polling and `listOpenNinaImageJobs(userId)`
- * reports what is in flight; RULING C3 put `jobId`, `firedOn` and `attempts` on
+ * `listOpenNinaImageJobs(userId)` reports what is in flight; RULING C3 put `jobId`, `firedOn` and
+ * `attempts` on
  * `NinaPendingPromise` for exactly this.
  *
  * `source` is the caller's own provenance and it goes onto `nina_avatars.source`: `'generated'` for
