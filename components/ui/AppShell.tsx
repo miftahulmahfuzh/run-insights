@@ -41,7 +41,7 @@ import { TabBar } from './TabBar'
  * Renamed from `bottomGap` / `AppShellBottomGap` in this phase, because the value now selects the
  * chrome as well as the gap and the old name described half of what it does.
  */
-export type AppShellScreen = 'tabs' | 'chat'
+type AppShellScreen = 'tabs' | 'chat'
 
 const BOTTOM_GAP: Record<AppShellScreen, string> = {
   /*
@@ -95,11 +95,9 @@ const BOTTOM_GAP: Record<AppShellScreen, string> = {
 
 export function AppShell({
   children,
-  className,
   screen = 'tabs',
 }: {
   children: React.ReactNode
-  className?: string
   screen?: AppShellScreen
 }) {
   /*
@@ -138,9 +136,7 @@ export function AppShell({
    */
   const shell = (
     <>
-      <main
-        className={cn('mx-auto min-h-dvh w-full max-w-[470px] p-5', BOTTOM_GAP[screen], className)}
-      >
+      <main className={cn('mx-auto min-h-dvh w-full max-w-[470px] p-5', BOTTOM_GAP[screen])}>
         {children}
       </main>
       {/* F33 phase 10. `AppShell` has no `'use client'`, so it can construct the server-rendered
@@ -150,8 +146,9 @@ export function AppShell({
 
           R1 adds one hop for the conversation screen and keeps the same seam: `ChatChrome` is the
           client component that owns the reveal state, and it renders `TabBar` with the badge it
-          was handed. The state cannot live here (this file must stay a Server Component — five
-          pages import it, and `tests/share.bundle.test.ts` exists because this import graph leaked
+          was handed. The state cannot live here (this file must stay a Server Component — nine
+          pages, a layout and two loading states import it, measured 2026-09-12, and
+          `tests/share.bundle.test.ts` exists because this import graph leaked
           a session read once already) and it cannot live in `TabBar` either, because a hidden bar
           is translated off screen and a control inside it would be unreachable. */}
       {screen === 'chat' ? (

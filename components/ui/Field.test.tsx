@@ -87,16 +87,6 @@ describe('Field + Input wiring', () => {
     expect(suffix).toHaveAttribute('aria-hidden', 'true')
     expect(suffix.parentElement).toContainElement(screen.getByRole('textbox', { name: 'Height' }))
   })
-
-  it('merges a caller className onto the field wrapper', () => {
-    render(
-      <Field label="Height" className="mb-4">
-        <Input />
-      </Field>,
-    )
-
-    expect(screen.getByText('Height').parentElement).toHaveClass('mb-4')
-  })
 })
 
 describe('Input overrides', () => {

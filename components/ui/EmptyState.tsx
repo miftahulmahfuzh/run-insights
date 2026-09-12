@@ -1,7 +1,5 @@
 import type * as React from 'react'
 
-import { cn } from '@/lib/cn'
-
 /**
  * The one shape absence takes in this app: a dashed outline, a title, one sentence, and at most one
  * action.
@@ -14,25 +12,22 @@ import { cn } from '@/lib/cn'
  *
  * Zero client JS and zero chart imports. §9's first row is explicit that a brand-new user with no
  * runs must not download Recharts to be told they have no runs.
+ *
+ * No `className` prop: all nine callers want the same card, and a prop with no caller is a second
+ * way to render an absence, waiting (the rule `RunDateLink` applied when its `label` override came
+ * back out).
  */
 export function EmptyState({
   title,
   description,
   action,
-  className,
 }: {
   title: string
   description?: React.ReactNode
   action?: React.ReactNode
-  className?: string
 }) {
   return (
-    <div
-      className={cn(
-        'rounded-card border border-dashed border-rule px-6 py-8 text-center',
-        className,
-      )}
-    >
+    <div className="rounded-card border border-dashed border-rule px-6 py-8 text-center">
       <p className="text-[17px] font-semibold text-ink">{title}</p>
       {description && (
         <p className="mx-auto mt-1.5 max-w-[32ch] text-[13px] font-medium text-ink-2">

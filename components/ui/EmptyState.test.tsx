@@ -54,12 +54,6 @@ describe('EmptyState', () => {
     const action = screen.getByRole('button', { name: 'Upload a run' })
     expect(action.parentElement).toHaveClass('mt-6')
   })
-
-  it('merges a caller className', () => {
-    render(<EmptyState title="Empty" className="my-8" />)
-
-    expect(screen.getByText('Empty').closest('div')).toHaveClass('my-8')
-  })
 })
 
 describe('EmptySlot', () => {
