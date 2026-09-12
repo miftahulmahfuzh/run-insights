@@ -291,7 +291,9 @@ export async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Pro
         earlierRunnerTexts,
       },
       {
-        ...(await productionDeps()),
+        /* `userId` so the fallback client can attribute its `nina_error_logs` rows to this runner;
+         * it is the same id passed as `input.userId` twelve lines above. */
+        ...(await productionDeps(userId)),
         toolSet: NINA_FULL_TOOL_SET,
         store: ninaChatTurnStore(turnId),
       },

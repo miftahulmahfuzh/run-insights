@@ -3,16 +3,16 @@
 **Package Path**: `lib/nina`
 **Package Code**: NIN
 **Last Updated**: 2026-09-12
-**Total Active Tasks**: 2
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 2
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 37
+- Completed: 38
 - Archived: 35
 
 ---
@@ -32,16 +32,6 @@
   - **Plan**: `.workflows/plan/nina-instructor-character/phase-3.md`
   - **Method**: /implement (swarm wave 1)
   - **Files**: lib/nina/persona.ts, lib/nina/prompts/system.ts, lib/nina/prompts/index.ts, tests/nina.prompts.test.ts
-
-- [ ] **P1-NIN-A036** Phase 2: OpenRouter fallback — text chat
-  - **Difficulty**: HARD
-  - **Type**: Feature
-  - **Context**: Owns a new OpenRouter-backed `NinaLlmClientLike` implementation in `lib/nina/llmFallbackText.ts` (Anthropic⇄OpenAI-Chat-Completions request/response translation, including forced single-tool `tool_choice` and tool-result round-trips), wired into `productionDeps(userId)` so both of `turn.ts`'s existing catch sites transparently retry via OpenRouter on a z.ai throw; writes a `nina_error_logs` row (`category:'text'`) for each failed attempt (z.ai and/or OpenRouter). Does not touch `turn.ts`'s loop/repair control flow itself, `nina_turns` writes, any admin UI, `lib/nina/openrouter.ts` (read-only here — Phase 3 owns and writes it; this phase must not redeclare either constant, it imports `OPENROUTER_CHAT_URL` / `NINA_FALLBACK_TEXT_MODEL` from the `lib/nina/openrouter.ts` module Phase 3 creates). Exit: existing `lib/nina/turn.ts`/`chatturn` tests still pass unmodified in behavior when the fallback is never exercised (z.ai succeeds); a new test simulates a z.ai throw and asserts the OpenRouter path is called and its result flows through `findSendBlock`/`findToolUses` unchanged; a double-failure test asserts both attempts are logged and the turn still ends `'unavailable'`.
-  - **Status**: open
-  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 2 of 5)
-  - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
-  - **Depends on**: `P1-DB-A007`, `P1-NIN-A037`
-  - **Plan**: `.workflows/plan/P1-NIN-A036.md`
 
 ### [P2] Medium
 
@@ -93,6 +83,26 @@ per-task detail — Context, Drift, Decided, Files — survives in git history a
     `npm run lint` reports 4 errors + 8 warnings, all in files ABSENT from this branch's diff vs origin/main (`components/nina/NinaBarProvider.test.tsx`, `components/nina/useChatScroll.test.tsx`, `components/ui/Card.test.tsx` + unused-var warnings) — pre-existing state inherited from main, not moved by this phase; this phase's five files produce no lint findings.
   - **Decided**: Step 6 no-key sub-case unreachable via env var (`ninaEnv` memoizes) → `vi.resetModules()` + fresh dynamic import in the test, preserving the plan's asserted intent (`timeoutMs` null when nothing was sent) — rung 3: the plan's code-block intent kept; mechanism corrected to the file's memoized reality; recorded as a comment in the test.
   - **Verified**: `npm run typecheck` clean (next typegen + `tsc --noEmit`); `npx vitest run` over the five image suites 96/96 (`nina.imagelog` 6 new tests, `nina.imagecall` 8 incl. the new R2-timeout case, `nina.imagerun`, `nina.jobActions`, `nina.imageworker`); `npm test` 5132+ passed with only the pre-existing MemoryTable flake red; `npm run format:check`, `ci:openrouter-guard`, `ci:llm-payload-guard`, `db:check` all green. Store ('store: …') and finish ('finish: …') failures deliberately do NOT log (D2 — the model call succeeded); `scripts/nina-image-worker.ts` out of scope per Handoffs.
+
+- [x] **P1-NIN-A036** Phase 2: OpenRouter fallback — text chat
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns a new OpenRouter-backed `NinaLlmClientLike` implementation in `lib/nina/llmFallbackText.ts` (Anthropic⇄OpenAI-Chat-Completions request/response translation, including forced single-tool `tool_choice` and tool-result round-trips), wired into `productionDeps(userId)` so both of `turn.ts`'s existing catch sites transparently retry via OpenRouter on a z.ai throw; writes a `nina_error_logs` row (`category:'text'`) for each failed attempt (z.ai and/or OpenRouter). Does not touch `turn.ts`'s loop/repair control flow itself, `nina_turns` writes, any admin UI, `lib/nina/openrouter.ts` (read-only here — Phase 3 owns and writes it; this phase must not redeclare either constant, it imports `OPENROUTER_CHAT_URL` / `NINA_FALLBACK_TEXT_MODEL` from the `lib/nina/openrouter.ts` module Phase 3 creates). Exit: existing `lib/nina/turn.ts`/`chatturn` tests still pass unmodified in behavior when the fallback is never exercised (z.ai succeeds); a new test simulates a z.ai throw and asserts the OpenRouter path is called and its result flows through `findSendBlock`/`findToolUses` unchanged; a double-failure test asserts both attempts are logged and the turn still ends `'unavailable'`.
+  - **Status**: done
+  - **Plan Set**: `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — OpenRouter (`z-ai/glm-5.3-flash`, multimodal) fallback when a z.ai-backed LLM call fails
+  - **Depends on**: `P1-DB-A007`, `P1-NIN-A037`
+  - **Plan**: `.workflows/plan/P1-NIN-A036.md`
+  - **Completed**: 2026-09-12 09:44
+  - **Method**: /do
+  - **Files**: lib/nina/llmFallbackText.ts, lib/nina/turn.ts, lib/nina/turnrun.ts, tests/nina.llmFallbackText.test.ts
+  - **Drift**: The plan's failing-test code block had an index arithmetic slip (case 'carries is_error into the tool text and drops thinking blocks'): its input has no leading user turn, so the translated array is [system, assistant, tool] (indices 0/1/2), but the plan asserted the assistant at messages[2] and the tool at messages[3]. Fixed the two indices and added a one-line comment; the CONTENT of every assertion is unchanged (thinking block dropped, is_error folded into 'ERROR: bad date'). The plan's implementation code was correct — the sibling test 'replays a completed tool round' asserts the full array and passed byte-for-byte.
+    The plan's manual grep 'deps.client.messages.create returns exactly two hits' now returns three: :911 and :1075 are the code (unchanged count, no third call site); the third at :1112 is prose inside the docblock paragraph the plan's own Step 2b appends.
+    `npm run lint` fails with 4 PRE-EXISTING errors on HEAD, in files byte-identical to HEAD and owned by no phase of this set (`components/nina/NinaBarProvider.test.tsx`, `components/nina/useChatScroll.test.tsx`, `components/ui/Card.test.tsx` x2 react/no-unescaped-entities). eslint scoped to this phase's four files is CLEAN — not fixed: widening scope to unrelated files is forbidden, and the baseline failure predates this plan set.
+    Full vitest run 5182/5184: the 2 failures are the documented MemoryTable add-row flake under parallel file load (varies run to run; 20/20 with --no-file-parallelism) — unrelated to this diff, file untouched by this set.
+  - **Decided**: Plan's failing test index arithmetic vs plan's implementation code → fixed the test's indices, assertion content unchanged (rung 3: phase plan code blocks; implementation corroborated by the sibling full-array test that passed byte-for-byte)
+    npm run lint gate vs 4 pre-existing HEAD errors in files no phase owns → scoped eslint clean on this phase's four files; did not widen scope to fix unrelated test files (tie-break: never widen scope; narrower blast radius)
+  - **Verified**: re-measured in the shared worktree after p4/p5 landed: `tests/nina.llmFallbackText.test.ts` 15/15, `lib/nina/turn.test.ts` 59/59, `tests/nina.turnrevive.test.ts` + `lib/nina/turnflight.test.ts` 36/36 (turnrevive is `turnrun.ts`'s real under-test suite — it mocks `@/lib/nina/turn` and drives `turnrun` for real, including the server-only pin on `turnrun.ts`), `lib/nina/chatturn.test.ts` 10/10; `npm run typecheck` exit 0, `ci:openrouter-guard` OK, `format:check` exit 0; full suite 5182/5184 with only the documented MemoryTable parallel-load flake. The completion report's quoted `tests/nina.turnrun.test.ts` does not exist — vitest silently ignores a non-matching filter, so its "74/74" was turn (59) + fallback (15).
 
 ---
 

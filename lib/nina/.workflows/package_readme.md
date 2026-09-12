@@ -13,7 +13,10 @@ P1-NIN-A037 (LLM-fallback phase 3): `openrouter.ts` added, `vision.ts` gained th
 describe fallback, `errorlogs.ts` gained its first writer — see Vision. Restated again the same
 day for P1-NIN-A038 (phase 4): every failed image-generation CALL writes a `nina_error_logs` row
 (`imagerun.ts`'s `recordImageCallFailure`) and `NinaImageCallResult`'s failure variant reports the
-abort budget that actually applied (`timeoutMs`) — see Images.
+abort budget that actually applied (`timeoutMs`) — see Images. Restated a third time the same day
+for P1-NIN-A036 (phase 2): `llmFallbackText.ts` added — `productionDeps` now hands the turn a
+z.ai-first/OpenRouter-second client, one best-effort `nina_error_logs` row (category `text`) per
+failed CALL — see The chat turn.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -30,7 +33,8 @@ modules into `'use client'` components.
 - **The canon** — identity, register, anger ladder and prohibitions as text (`persona.ts`), and
   the stored per-user character that varies it (`tuning.ts`).
 - **The turn** — assemble a context, run the tool-use loop, validate the reply, persist the
-  bubbles, distil memory afterwards — as a background job that survives the response.
+  bubbles, distil memory afterwards — as a background job that survives the response, with every
+  model call behind a z.ai-first/OpenRouter-second fallback client (`llmFallbackText.ts`).
 - **Proactive speech** — whether she opens a conversation, and on what.
 - **Images** — her selfies and avatars, prompt → job row → Blob, plus the caption she writes
   under a photograph of hers from what is actually in it.
@@ -196,6 +200,58 @@ shortcut in it is what most turns are). `recentRunnerTexts` (shortcut lookback) 
 query — two lists, deliberately not one: the first feeds the matcher regardless of answeredness,
 the second only what THIS reply must answer. Then `runNinaTurn` → persist bubbles → close →
 distillation + auto-title. It calls no `after()` itself: callers own their scheduling.
+
+**The fallback client** (`llmFallbackText.ts`, server-only): `productionDeps(userId)` no longer
+hands the turn the z.ai client — it hands it `ninaFallbackTextClient(ninaClient(), { userId })`, a
+wrapper that is itself a `NinaLlmClientLike`, so `turn.ts` cannot tell the difference and NO line
+of the loop changed. That is the whole reason the fallback is a client and not a branch in the
+loop: one construction covers all FIVE model calls a turn can make (primary, two continuations,
+the prose re-ask, `attemptNinaRepair`'s), because every one of them goes through
+`deps.client.messages.create`; inlining a retry at each `catch` would be five edits to the most
+carefully-reasoned control flow in this repo. The client is stateless per call, so a multi-round
+turn may answer round 1 from z.ai and round 2 from OpenRouter — the tool-id rules below are what
+make that safe. It exists because of a measured incident: 2026-09-11, eleven consecutive
+`nina_turns` rows `failed`/`unavailable` on a transient z.ai condition with zero automatic
+recovery. No second fallback, no retry of the fallback, no chain, and still no fallback bubble —
+both providers failing ends the turn `'unavailable'` with a runner who sees no reply, exactly as
+before.
+
+The contract, attempt by attempt. On a z.ai throw: one `nina_error_logs` row (category `text`,
+provider `zai`, `fullInput` = the Anthropic-shaped body verbatim, `errorMessage` = `describeCause`
+— `name: message | status | body | cause`, written against the error's SHAPE because it must
+describe an `AbortError`, a plain `Error` and an SDK error alike without importing any of them),
+then ONE retry against OpenRouter (`z-ai/glm-5.3-flash` over `OPENROUTER_CHAT_URL`). The
+translation (`toOpenRouterChatBody`) is pure and total — no throw, so the logged `fullInput` is
+the payload that actually went on the wire — and it discards `body.model` (a z.ai id means
+nothing to OpenRouter), carries `max_tokens` unchanged, emits a turn's `tool_result`s BEFORE its
+own text (adjacent to the assistant `tool_calls`, per OpenAI's protocol), folds a tool result's
+`is_error` into its text (`ERROR: ` prefix — OpenAI's `tool` role has no error flag, and a failed
+lookup must not read as a successful empty one), drops thinking blocks, and spells the forced
+send (`{ type: 'tool', name: 'send' }` — the loop's termination property) as an OpenAI function
+choice. `reasoning: { enabled: false }` is the request-side translation of the measured
+`thinking: disabled`. Tool-call ids round-trip deterministically both ways — `openAiToolCallId`
+(OpenAI's 40-char ceiling) on the way in, `toolu_or_`-prefixed Anthropic-SHAPED ids on the way
+out, so z.ai never sees a foreign id shape when a turn changes providers mid-flight. The response
+side (`toAnthropicMessage`) synthesizes a full SDK `Message` (nulls for every field OpenRouter
+does not know), maps ONLY `finish_reason: 'length'` → `max_tokens` (the one `stop_reason`
+`turn.ts` compares; a truncated completion degrades the turn, it is never repaired), lets a
+`tool_use` beat a `finish_reason` of `'stop'`, and THROWS on an empty completion — a 200 with no
+usable content is a failure, the same rule as the image call, not a success with nothing in it.
+
+Two gates and the logging rules. The fallback is DECLINED — and the z.ai error rethrown as-is —
+when the caller's remaining `timeout` is under `NINA_FALLBACK_MIN_BUDGET_MS` (5 s): a second call
+started with two seconds cannot finish and only writes a junk row; the incident this feature
+exists for was z.ai failing FAST, so the gate declines the hopeless case, not the failure case.
+(`NINA_FALLBACK_DEFAULT_TIMEOUT_MS` 20 s is reached only by a caller passing no `timeout`;
+`turn.ts` always passes one.) When BOTH providers fail, both rows are written and the OPENROUTER
+cause is rethrown — the deliberate mirror image of the vision fallback's rethrow-the-primary
+rule, and safe precisely because `turn.ts`'s catch branches on nothing. Every `logNinaError` is
+awaited and `.catch()`-ed (the second lock over a writer that already cannot throw); `userId`
+rides `productionDeps`' optional parameter, threaded from `runNinaTurn`'s own input so the rows
+join the `nina_turns` row for the same turn (nullable for callers that have none); and a missing
+`OPENROUTER_API_KEY` — read via `ninaEnv()` inside the POST, never at module scope — is itself
+caught and logged as an OpenRouter failure, so an unwired safety net is a visible row, not a
+silence that looks like an outage.
 
 **The claim** (`chatturn.ts`): open, read, cancel, record, close, sweep — the lifecycle and its
 SQL-shape tests live here. `sweepStaleNinaChatTurns` closes a dead turn `failed`/`stale` and
@@ -454,8 +510,8 @@ contracts:
 
 **`openrouter.ts` is the constants' single home** — `OPENROUTER_CHAT_URL` and
 `NINA_FALLBACK_TEXT_MODEL`, zero imports like the rest of the roster. The vision fallback is its
-sole owner today; the text-chat fallback (phase 2 of `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md`) will
-import from it and must not redeclare — `imagerecipe.ts`' standing rule for
+sole owner no longer: the text-chat client (`llmFallbackText.ts`) imports the same two constants,
+and neither module redeclares — `imagerecipe.ts`' standing rule for
 `OPENROUTER_IMAGE_URL`/`NINA_IMAGE_MODEL`, now package-wide. The `OPENROUTER_API_KEY` read stays
 inside `lib/nina/` (`ninaEnv()`, inside the function and inside a try, so a missing key costs the
 fallback and never an import-time crash of the working z.ai path);
@@ -491,25 +547,26 @@ files.
 | Area | Files |
 |---|---|
 | Server Actions | `actions.ts` (send/describe/poll/resend — the chat's mutation surface), `jobActions.ts`, `sessionActions.ts`, `albumActions.ts`, `searchActions.ts`, `messageActions.ts` (each a one-screen surface) |
-| Turn pipeline | `turnrun.ts`*, `turnrevive.ts`*, `turn.ts`(T), `tools.ts`(T), `schema.ts`(T), `gateway.ts`, `load.ts`, `context.ts`, `dates.ts`(T), `chatturn.ts`(T), `turnflight.ts` |
+| Turn pipeline | `turnrun.ts`*, `turnrevive.ts`*, `turn.ts`(T), `llmFallbackText.ts`* (the z.ai-first/OpenRouter-second client `productionDeps` wraps), `tools.ts`(T), `schema.ts`(T), `gateway.ts`, `load.ts`, `context.ts`, `dates.ts`(T), `chatturn.ts`(T), `turnflight.ts` |
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
 | Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
-| Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `NINA_FALLBACK_TEXT_MODEL` — the vision fallback reads it today, the text fallback next) |
+| Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `NINA_FALLBACK_TEXT_MODEL` — the vision fallback and the text-chat fallback client both read it) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, and `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, both 2026-09-12) |
+| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (28 of them, all over the pure
-modules; integration lives in 50 `tests/nina.*.test.ts` files, both counted 2026-09-12).
+modules; integration lives in 51 `tests/nina.*.test.ts` files, both counted 2026-09-12).
 
 ## Dataflow
 
 - **Send**: `Composer.tsx` (optional `describeNinaImage` pre-pass → signed `imageTicket`) →
   `sendNinaMessage` → persist + claim + `after()` → `runNinaBackgroundTurn` (context/tuning/
-  shortcuts live) → `runNinaTurn` (shortcut match once, burst framing, tool rounds via
+  shortcuts live) → `runNinaTurn` (shortcut match once, burst framing, every model call through
+  `productionDeps`' fallback-wrapped client — z.ai, then OpenRouter once; tool rounds via
   `dispatchNinaTool`; `generate_image` opens a job and fires `fireNinaImageGeneration`) →
   validated send payload → bubbles → metrics → distillation. Client renders through
   `reveal.ts`/`chatview.ts`/`reply.ts` and polls `pollNinaReply`; refresh merges via
@@ -525,7 +582,8 @@ modules; integration lives in 50 `tests/nina.*.test.ts` files, both counted 2026
 
 **External:** `@anthropic-ai/sdk` (type-only; the client is `@/lib/llm/client`), `zod`, `drizzle-orm`,
 `next/server`'s `after()`, `next/cache`'s `revalidatePath` (jobActions only), `server-only`
-(24 modules as of this rewrite), `node:crypto`. **Internal:** `@/lib/db` + `@/lib/db/schema`
+(25 modules as of this rewrite — `llmFallbackText.ts` is the newest), `node:crypto`.
+**Internal:** `@/lib/db` + `@/lib/db/schema`
 (heaviest), `@/lib/photos/contentHash` (the sha-256 hex format the whole dedupe set answers
 from), `@/lib/date/ranges` (the Jakarta day model behind nags/patterns/promises/proactive),
 `@/lib/format`, `@/lib/metrics/*`, `@/lib/llm/client`, `@/lib/env`, `@/lib/id`, `@/lib/auth`,
@@ -535,7 +593,7 @@ dynamic import: `distill.ts` → `./gateway`.
 ## Reverse dependencies
 
 101 files outside the package import from it (measured 2026-09-12): `app/`, `components/`,
-`lib/{admin,photos,push,review}`, `scripts/` — plus the 50 `tests/nina.*` files. Widest:
+`lib/{admin,photos,push,review}`, `scripts/` — plus the 51 `tests/nina.*` files. Widest:
 `components/nina/ChatScreen.tsx` (ten submodules), `app/nina/page.tsx`,
 `scripts/nina-image-worker.ts`, `lib/admin/*` (memory, album, chat photos, shortcuts, image-gen
 test view). `persona.ts` and `tuning.ts` are the least-depended-upon modules — the point of the
@@ -565,7 +623,10 @@ the longer self prompt raises it toward "I could not see it"; `NinaVisionTranspo
 the z.ai attempt and the OpenRouter fallback have BOTH failed, the describe orchestrator rethrows
 the PRIMARY error — every caller's `instanceof` branching survives unchanged — and each failed
 attempt has already written its best-effort `nina_error_logs` row (see Vision); a failed
-image-generation call has already written its own (see Images); `imagefail.ts` classifies failures
+image-generation call has already written its own (see Images); a failed TEXT call has written one
+row per attempt (see The chat turn, whose wrapper rethrows the OPENROUTER cause instead —
+`turn.ts`'s catch branches on nothing, so the asymmetry costs no caller its classification);
+`imagefail.ts` classifies failures
 and picks what she says — a failure is a message from Nina, never a stack trace.
 
 ## Gotchas
@@ -617,13 +678,15 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   later reader will try to "fix".
 - **`logNinaError` cannot throw, and every writer wraps it in its own try/catch.** It is invoked
   from inside the failure path of the very call it records (a catch block in `vision.ts`, the
-  `!outcome.ok` branch in `imagerun.ts`), so it is one try/catch, one `console.warn`, no rethrow —
+  `!outcome.ok` branch in `imagerun.ts`, the two catch sites in `llmFallbackText.ts`), so it is
+  one try/catch, one `console.warn`, no rethrow —
   and it is awaited rather than fired and forgotten, because Vercel can drop an un-awaited promise
   inside `after()`. The vision fallback became its first writer on 2026-09-12 (`vision.ts`, with a
   second catch of its own so a phase-1 regression cannot cost a description); the image-generation
-  call became its second the same day (`imagerun.ts`'s `recordImageCallFailure`); the text
-  fallback and the `/admin/error-logs` reader are the remaining phases of
-  `NINA_LLM_FALLBACK_ERROR_LOGS_PLAN.md`.
+  call became its second the same day (`imagerun.ts`'s `recordImageCallFailure`); the text call
+  became its third the same day (`llmFallbackText.ts`'s wrapper — category `text`, one row per
+  failed ATTEMPT, not per turn); the set's last phase, the `/admin/error-logs` reader, lives in
+  `lib/admin`.
 - **The `glm-4.6v` token floor gates the z.ai describe response ONLY.** It is a measurement of one
   model's tokens-per-pixel, not a property of images; the OpenRouter fallback's response is
   accepted on a plain non-empty check and returns `floor: 0`. Porting the floor to a new provider
@@ -637,6 +700,11 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 - **The describe fallback rethrows the PRIMARY error, never the fallback's** — every caller
   branches on the original class (`dropped` vs `transport`), and the fallback only ever raises
   transport errors.
+- **The TEXT fallback rethrows the FALLBACK's cause — the mirror image, on purpose.** The wrapper
+  (`llmFallbackText.ts`) rethrows OpenRouter's error when both providers fail, because `turn.ts`'s
+  catch branches on nothing (every failure ends the turn `'unavailable'`); the describe
+  orchestrator must rethrow the primary because every caller `instanceof`-branches. "Unifying"
+  the two rules silently reclassifies a failure in one direction or the other.
 - **The error-log read is unscoped on purpose and bounded twice.** `listNinaErrorLogs` filters by
   category only — no `userId` parameter — and `NINA_ERROR_LOG_PAGE_SIZE` (25) is the read's
   CEILING as well as its default, so a hand-edited `?limit=` cannot unpaginate it.
@@ -646,9 +714,9 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 
 ## Tests
 
-28 colocated suites over the pure modules; 50 repo-level `tests/nina.*.test.ts` (counted
-2026-09-12; phase 4 added `nina.imagelog.test.ts`). The guards that
-can actually catch a regression, by mechanism:
+28 colocated suites over the pure modules; 51 repo-level `tests/nina.*.test.ts` (counted
+2026-09-12; phase 4 added `nina.imagelog.test.ts`, phase 2 `nina.llmFallbackText.test.ts`). The
+guards that can actually catch a regression, by mechanism:
 
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
   `persona.ts`/`prompts/system.ts`/`proactive.ts` name a raw tuning field;
@@ -686,6 +754,20 @@ can actually catch a regression, by mechanism:
   call with the same body, and its floor-tripping body would sail through the (correctly)
   floor-free fallback check, green for the wrong reason. `describeLogInput`/`describeErrorText` are
   pinned so no data URI ever reaches a row and a floor trip stays diagnosable weeks later.
+- **The text fallback is pinned in three layers** (`tests/nina.llmFallbackText.test.ts`, 15 cases
+  as of 2026-09-12). The two pure translators get direct cases: `toOpenRouterChatBody` (the
+  envelope `ninaBody` builds; the forced send as a function choice — the termination property; a
+  completed tool round replayed as assistant `tool_calls` then a matching `tool` message;
+  `is_error` folded into the text; thinking blocks dropped) and `toAnthropicMessage` (the fields
+  `findSendBlock` and `usageOf` actually read; `length` → `max_tokens`; an empty completion
+  THROWS; a tool-call id surviving the round trip). The client cases drive
+  `ninaFallbackTextClient` with a scripted primary: z.ai answering touches neither OpenRouter nor
+  the log; the z.ai rescue logs one row and recovers; a double failure writes two rows and still
+  rejects; a sub-`NINA_FALLBACK_MIN_BUDGET_MS` timeout skips the fallback and rethrows z.ai's OWN
+  error; a rejecting `logNinaError` costs nothing; and one client instance serves a whole
+  multi-round turn (the statelessness property). The loop's own suite stays out of the way:
+  `lib/nina/turn.test.ts` injects its scripted client through `fakeTurnDeps`, so it never
+  exercises the wrapper — the seam is what keeps both suites honest.
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`
