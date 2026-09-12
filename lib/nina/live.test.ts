@@ -71,7 +71,7 @@ describe('mergeServerMessages', () => {
 
 describe('appendNewBubbles', () => {
   /**
-   * The poll's DTO (`SentBubble` in `lib/nina/actions.ts`), restated structurally for the same
+   * The poll's DTO (`SentBubble`, re-exported by `lib/nina/actions/index.ts`), restated structurally for the same
    * reason `Row` above is: the real one lives in a `'use server'` module, and a test of a pure
    * rule needs none of it.
    */

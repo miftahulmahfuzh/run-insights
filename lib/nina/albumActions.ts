@@ -16,7 +16,7 @@ import { isValidId } from '@/lib/id'
  * two icon sends (photo-send-chat-icons R1/R2).
  *
  * ── WHY THIS FILE EXISTS AT ALL, GIVEN IT IS ONE CALL ─────────────────────────────────────────
- * Isolation. `lib/nina/actions.ts` is phase 3's file and phases 5, 6, 12 and 13 all edit it; the
+ * Isolation. `lib/nina/actions/` is phase 3's action layer and phases 5, 6, 12 and 13 all edit it; the
  * album importing from here instead means the only thing this phase asks of that file is one
  * optional input field and one word of tool set. If the reconciler moves `sendNinaMessage`, this
  * is the single call site that follows it.
@@ -165,7 +165,7 @@ export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<Nin
  * tidak memenuhi-memuhi storage di production") is really about.
  *
  * ── WHY THIS FILE, AND WHY THE ACTION IS THIS SMALL ───────────────────────────────────────────
- * Isolation, the same reason `attachNinaPhotoToChat` above gives: `lib/nina/actions.ts` is another
+ * Isolation, the same reason `attachNinaPhotoToChat` above gives: `lib/nina/actions/` is another
  * phase's file, and this is the screen's own action module. The rule worth the storage — "row
  * first, blob second, and only if nothing else points at it" — is not re-implemented here at all;
  * it is `releaseBlobIfUnreferenced` (`lib/nina/blobRelease.ts`), the ONE shared implementation the
@@ -183,7 +183,7 @@ export async function attachNinaPhotoToChat(input: NinaAttachInput): Promise<Nin
  * `removeChatPhotoAction`'s header argues it twice: the photo path must NOT delete a runner
  * message, because the message is his and may carry his text (the R26 re-attach path writes rows
  * like these onto messages that are mostly words). His uploads attach to HIS rows
- * (`lib/nina/actions.ts` STEP 1b) and `isNinaPhotoCarrierMessage` is false for every one of them,
+ * (`lib/nina/actions/send.ts` STEP 1b) and `isNinaPhotoCarrierMessage` is false for every one of them,
  * so there is no photo-only-carrier case to handle and none is handled. A bubble left empty by the
  * removal of its last photograph still has its own delete, in the chat's message menu.
  *

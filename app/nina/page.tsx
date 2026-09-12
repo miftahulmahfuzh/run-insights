@@ -284,7 +284,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
     /*
      * **The claim read (offline-reply set, R2 — analysis gap G1).** The session's pending
      * `nina_turns` row: the SAME indexed read `pollNinaReply` makes as the third leg of its own
-     * `Promise.all` (`lib/nina/actions.ts:2016`), so the cold load answers "is she thinking" from
+     * `Promise.all` (`lib/nina/actions/poll.ts`), so the cold load answers "is she thinking" from
      * the same truth the open tab polls. `null` when there is no active session, on the
      * `?photo=` branch's `Promise.resolve(null)` idiom right above — a runner with no conversation
      * pays nothing at all.
@@ -335,7 +335,7 @@ export default async function NinaPage({ searchParams }: PageProps<'/nina'>) {
    * painting?**
    *
    * Two disjuncts, and `ninaFlightView` owns both, spelled exactly the way `pollNinaReply` spells
-   * its own answer (`lib/nina/actions.ts:2052`): a FRESH live claim for this session —
+   * its own answer (`lib/nina/actions/poll.ts`): a FRESH live claim for this session —
    * `pendingTurn` above, whose expiry the flight view applies because `getPendingNinaChatTurn`
    * hands back expired rows too — OR the message window (the newest row is his and younger than
    * `NINA_TURN_STALE_MS`, which covers the half-second hand-off gap between two chained turns

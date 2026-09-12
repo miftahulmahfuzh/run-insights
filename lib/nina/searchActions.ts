@@ -32,7 +32,7 @@ import { rankNinaSearchHits } from './semantic'
  * ── WHY AN ACTION AND NOT A ROUTE HANDLER ─────────────────────────────────────────────────────
  * D7 fixes the route-handler list at `/api/extract`, `/api/upload`, `/api/auth/[...nextauth]` and
  * `/api/cron/*`; everything else is a Server Action. This one writes nothing, but it does reach a
- * model, and `lib/nina/actions.ts` already establishes the shape for that.
+ * model, and `lib/nina/actions/` already establishes the shape for that.
  *
  * ── WHY THE QUERY IS HERE AND NOT IN `lib/nina/queries.ts` ────────────────────────────────────
  * Two reasons, and the first is the binding one. `lib/nina/search.ts` is imported by a **client**
@@ -40,7 +40,7 @@ import { rankNinaSearchHits } from './semantic'
  * phase 1 owns `lib/nina/queries.ts` §4; this set's whole concurrency discipline is that two phases
  * never want the same file, because a shared git index across concurrent sessions has already
  * destroyed committed work on this repo once. So the narrowing lives here, as a private
- * non-exported helper, which is exactly `lib/nina/actions.ts`'s shape for `scheduleDistillation`.
+ * non-exported helper, which is exactly `lib/nina/turnrun.ts`'s shape for `scheduleDistillation`.
  *
  * `searchNinaChats` is the ONLY export, so this module surfaces exactly one endpoint.
  *
@@ -203,7 +203,7 @@ async function narrowSearchCandidates(
  * to say that the ranking degraded.
  *
  * Every input is re-validated here even though the caller is our own component: a Server Action is
- * an untrusted POST endpoint (`lib/nina/actions.ts`'s point 3). `normalizeSearchQuery` takes
+ * an untrusted POST endpoint (`lib/nina/actions/send.ts`'s point 3). `normalizeSearchQuery` takes
  * `unknown`, so a client that sends a number, an object or nothing at all gets an empty query
  * rather than a stack trace.
  */

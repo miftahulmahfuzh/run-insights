@@ -579,7 +579,7 @@ async function loadProactiveFacts(
  * a friend who forgot.
  *
  * **This function persists, because `runNinaTurn` does not.** Phase 3 kept the turn loop free of
- * writes and put the INSERT in `lib/nina/actions.ts`'s `sendNinaMessage`; this is the proactive
+ * writes and put the INSERT in `lib/nina/actions/send.ts`'s `sendNinaMessage`; this is the proactive
  * counterpart of that STEP 5, down to the one multi-row batch that makes `seq` — and therefore
  * reveal order — a fact Postgres assigns rather than a convention this loop remembers.
  */

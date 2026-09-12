@@ -4,7 +4,7 @@
  *
  * PURE ON PURPOSE, exactly as `lib/extract/constants.ts` is pure on purpose. No imports, no
  * `server-only`, no `@/lib/env`. This module is read by a `'use client'` composer, by
- * `app/api/upload/route.ts`, by `lib/nina/actions.ts` and by the unit suite. One import of
+ * `app/api/upload/route.ts`, by `lib/nina/actions/` and by the unit suite. One import of
  * anything server-side and the client half of this phase stops compiling.
  *
  * AND BY THREE LATER PHASES, which is why the rule above is now permanent (RULING A6): phase 12's
@@ -73,7 +73,7 @@ const NINA_CHAT_ID_RE = /^[A-Za-z0-9_-]{12}$/
 /**
  * What Vercel actually STORED. `addRandomSuffix: true` (`app/api/upload/route.ts:91`) rewrites the
  * pathname, appending `-` plus a run of URL-safe symbols, and `describeNinaImage`
- * (`lib/nina/actions.ts:1237`) re-validates THAT form — so `isNinaChatRequestPathname` has to answer
+ * (`lib/nina/actions/describe.ts`) re-validates THAT form — so `isNinaChatRequestPathname` has to answer
  * for both windows, and this is the second one.
  *
  * MEASURED against the prod store, not intended: `chat/<12>-<30>.jpg`, id segment
@@ -134,7 +134,7 @@ export function ninaChatPathname(userId: string, id: string): string {
  * data, and data does not belong in a pattern.
  *
  * TWO WINDOWS, despite the `Request` in the name: `app/api/upload/route.ts:87` calls this with the
- * REQUESTED pathname and `lib/nina/actions.ts:1237` calls it with the one Blob STORED, so the id
+ * REQUESTED pathname and `lib/nina/actions/describe.ts` calls it with the one Blob STORED, so the id
  * segment is matched against `NINA_CHAT_ID_RE` or `NINA_CHAT_STORED_ID_RE`. Two patterns rather
  * than one widened range, because a widened range would also let the mint authorise a 43-symbol
  * requested id, and because the suffix length is not ours to fix.

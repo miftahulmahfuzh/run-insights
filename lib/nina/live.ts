@@ -63,12 +63,13 @@ export function mergeServerMessages<T extends LiveMessage>(
  * from inside a state updater — so what it appends must be decided against the list AS REACT WILL
  * COMMIT IT, not as the caller last saw it: a merge can land in any gap between two sleeps. Both
  * shapes below are restated structurally rather than imported, for the same reason `LiveMessage`
- * above is: `SentBubble` lives in the `'use server'` module `lib/nina/actions.ts`, `ChatMessage`
+ * above is: `SentBubble` lives in the `'server-only'` module `lib/nina/turnrun.ts` — its client-safe
+ * address is the `lib/nina/actions` barrel's type re-export — `ChatMessage`
  * in `components/nina/types.ts`, and this file keeps to the conversation's rule with neither.
  */
 
 /**
- * The poll's DTO for one of her rows — `SentBubble` in `lib/nina/actions.ts`, restated. A
+ * The poll's DTO for one of her rows — `SentBubble` in `lib/nina/turnrun.ts`, restated. A
  * structural twin, held to the real thing by `tsc` at the call site rather than by an import: the
  * caller passes `SentBubble[]`, so if that type ever stops matching, the caller stops compiling.
  */

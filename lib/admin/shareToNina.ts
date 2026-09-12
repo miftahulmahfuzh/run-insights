@@ -9,7 +9,7 @@ import { formatNinaPhotoParam, PHOTO_PARAM } from '@/lib/nina/attach'
  * pointer to the existing file"*, and this is that pointer in its entirety: a kind and a
  * twelve-character id in a query string. No bytes move, no blob is copied, no Server Action runs,
  * and `nina_avatars` is not read on this side at all. `sendNinaMessage`'s `resolveAttachment`
- * (`lib/nina/actions.ts`) turns the id back into a row when the message is actually sent —
+ * (`lib/nina/actions/send.ts`) turns the id back into a row when the message is actually sent —
  * owner-scoped, so *"a URL from a client is a claim, and an id resolved against `user_id` is a
  * fact"* keeps holding. Nothing in this file could weaken it if it tried; there is no URL of a
  * blob anywhere in it.

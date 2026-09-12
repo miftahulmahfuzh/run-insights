@@ -144,7 +144,7 @@ export const dbNinaSourceGateway: NinaSourceGateway = {
      *
      * ── THE PHOTOGRAPHS (R3, 2026-09-10) ────────────────────────────────────────────────────────
      * This read hardcoded `imageDescriptions: []` from the day it landed, so a photograph attached
-     * to an EARLIER message never reached her again — while `lib/nina/actions.ts`'s chain comment
+     * to an EARLIER message never reached her again — while `lib/nina/actions/send.ts`'s chain comment
      * claimed `loadNinaContext` covered it, and `tests/nina.resend.test.ts` documented the lie.
      * RU-12 exists precisely so `glm-5.3` can react to photographs; the hardcoded `[]` defeated it
      * for every turn after the attaching one.

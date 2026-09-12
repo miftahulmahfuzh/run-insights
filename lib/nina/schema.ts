@@ -37,7 +37,7 @@ export const MAX_BUBBLE_CHARS = 700
 const MAX_MEMORY_WRITES = 6
 
 /**
- * The runner's own message cap, checked in `lib/nina/actions.ts` before anything is persisted.
+ * The runner's own message cap, checked in `lib/nina/actions/send.ts` before anything is persisted.
  * Server Actions are capped at a 1 MB body by the framework; this is the app's own smaller,
  * earlier limit so a paste of a whole article fails at the boundary instead of inside a prompt.
  */

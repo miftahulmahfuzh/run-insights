@@ -46,7 +46,7 @@ import { NINA_TUNING_DEFAULTS, type NinaRelationship } from './tuning'
  *
  *  ── AND WHY IT IS NEVER AWAITED BY THE ACTION ───────────────────────────────────────────────
  *  Invariant 4, plus 10-20 s of silence after the bubbles are already on screen. It runs in
- *  `after()` from `lib/nina/actions.ts`. `after()` throws E468 outside a request scope, which is
+ *  `after()` from `lib/nina/turnrun.ts`. `after()` throws E468 outside a request scope, which is
  *  why the CALL sits in the Server Action and this file only exports a plain async function —
  *  callable from a test, and from phase 10's cron route, with no request scope of its own.
  *
@@ -135,7 +135,7 @@ export interface DistillInput {
    * What Nina is set to be to him right now, so the librarian can recognise the couple's own
    * register and leave it out of his biography (F33 / R6 — see `prompts/distill.ts`'s header).
    *
-   * **Optional on purpose.** The caller inside `after()` lives in `lib/nina/actions.ts`, which a
+   * **Optional on purpose.** The caller inside `after()` lives in `lib/nina/turnrun.ts`, which a
    * different phase of this set owns, so this field lands ahead of the value that fills it: omit
    * it and the librarian is told the default relationship, which is the behaviour that shipped
    * before the dials existed. Passing `tuning.relationship` here is the one line that closes it.
@@ -334,7 +334,7 @@ export interface TurnDistillationInput {
    *
    * Optional for the same reason `DistillInput.relationship` is: omitted, the librarian is told
    * the default relationship, which is the behaviour that shipped before the dials existed. The
-   * caller that fills it is `scheduleDistillation` in `lib/nina/actions.ts`.
+   * caller that fills it is `scheduleDistillation` in `lib/nina/turnrun.ts`.
    */
   relationship?: NinaRelationship
   gateway?: NinaMemoryGateway
@@ -343,7 +343,7 @@ export interface TurnDistillationInput {
 }
 
 /**
- * The whole pass, and the only thing `lib/nina/actions.ts` calls. Never throws: a distillation
+ * The whole pass, and the only thing `lib/nina/turnrun.ts` calls. Never throws: a distillation
  * that failed is a turn whose facts are still re-derivable from a persisted message.
  */
 export async function runTurnDistillation(input: TurnDistillationInput): Promise<void> {

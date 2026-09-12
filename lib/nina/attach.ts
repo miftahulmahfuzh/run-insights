@@ -75,7 +75,7 @@ export function indexAttachments(rows: readonly RunAttachmentInput[]): Map<strin
 
 /**
  * Which table the id addresses. **Structurally identical to `NinaAttachExisting`'s `kind`** in
- * `lib/nina/actions.ts:128`, and declared here rather than imported for the reason
+ * `lib/nina/actions/send.ts`, and declared here rather than imported for the reason
  * `RunAttachmentInput` gives forty lines up: this module is read by a client component
  * (`Composer`), a Server Component (`app/nina/page.tsx`) and a unit suite, and it stays pure by
  * stating what it needs instead of reaching into a `'use server'` module for it. A widening of

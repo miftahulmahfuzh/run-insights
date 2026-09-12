@@ -785,7 +785,7 @@ describe('NinaTurnResult.firedShortcutIds — what the usage bump reads', () => 
   })
 
   it('is present even on a turn that produced no reply at all', async () => {
-    /* `lib/nina/actions.ts` bumps BEFORE it checks whether the session still exists or whether she
+    /* `lib/nina/turnrun.ts` bumps BEFORE it checks whether the session still exists or whether she
      * answered, so an `unavailable` result still has to carry the ids. */
     const result = await runNinaTurnWith(
       fakeTurnDeps(scriptedClient([new Error('502 upstream')])),
@@ -797,7 +797,7 @@ describe('NinaTurnResult.firedShortcutIds — what the usage bump reads', () => 
 })
 
 /* ============================================================================
- * R2 (the burst-cancel set) — the accumulated messages. The WALK lives in `lib/nina/actions.ts`
+ * R2 (the burst-cancel set) — the accumulated messages. The WALK lives in `lib/nina/turnrun.ts`
  * and is proven through the drained background turn in `tests/nina.resend.test.ts`; this block
  * proves the prompt layer's half: the cap's bound, and the WORDS the walk's output becomes.
  * ========================================================================= */

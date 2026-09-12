@@ -30,7 +30,7 @@ import { NINA_BURST_MAX_MESSAGES } from '@/lib/nina/turn'
  * ── WHAT IS MOCKED, AND WHY IT IS ONLY THE EDGES ──────────────────────────────────────────────
  * `next/server`, `@/lib/auth/requireUserId`, `@/lib/nina/queries`, `@/lib/nina/chatturn`, and — for
  * the LAST block only, which drains the deferred turn — `@/lib/nina/load`, `@/lib/nina/gateway`,
- * `@/lib/nina/turn`, `@/lib/nina/distill` and `@/lib/nina/autotitle`. `lib/nina/actions.ts` itself
+ * `@/lib/nina/turn`, `@/lib/nina/distill` and `@/lib/nina/autotitle`. `lib/nina/actions/` itself
  * is the real module, which is the point: `tests/nina.jobActions.test.ts` established this exact
  * arrangement one feature over, and its reason applies verbatim — mocking the module under test
  * would have made every property above untestable.
@@ -63,7 +63,8 @@ const readNinaTuning = vi.fn()
 
 vi.mock('@/lib/auth/requireUserId', () => ({ requireUserId: () => requireUserId() }))
 
-/* Every name `lib/nina/actions.ts` imports from `./queries`. A factory replaces the whole module,
+/* Every name the `lib/nina/actions/` modules import from `@/lib/nina/queries`. A factory replaces
+ * the whole module,
  * so a missing one is an import error rather than an undefined at call time. */
 vi.mock('@/lib/nina/queries', () => ({
   bumpNinaShortcutUses: vi.fn(),

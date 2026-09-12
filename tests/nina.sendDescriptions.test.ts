@@ -6,7 +6,7 @@ import { NINA_DESCRIPTION_UNAVAILABLE } from '@/lib/nina/prompts/describe'
 /**
  * **R3's send half: what is attached to THIS message reaches the turn's `imageDescriptions`.**
  *
- * `sendNinaMessage` assembles the field from two sources (`lib/nina/actions.ts:958-968`): the
+ * `sendNinaMessage` assembles the field from two sources (`lib/nina/actions/send.ts`): the
  * verified ticket claims (his composer uploads, whose descriptions the composer's `glm-4.6v`
  * pre-pass earned) and the resolved attachments (a `?photo=` pointer's row, or a deduplicated
  * tile's keeper — both carrying COPIED descriptions). No test pinned either half, which is the
@@ -19,7 +19,7 @@ import { NINA_DESCRIPTION_UNAVAILABLE } from '@/lib/nina/prompts/describe'
  * so a missing name fails at import time rather than as an undefined at call time),
  * `@/lib/nina/chatturn`, and the background turn's own edges (`@/lib/nina/load`, `@/lib/nina/gateway`,
  * `@/lib/nina/turn` minus `NINA_BURST_MAX_MESSAGES` and the assembly itself, `@/lib/nina/distill`,
- * `@/lib/nina/autotitle`). `lib/nina/actions.ts` is the real module — that is the point.
+ * `@/lib/nina/autotitle`). `lib/nina/actions/` is the real module — that is the point.
  *
  * Draining the captured `after()` callback is the only way to read the input
  * `startNinaBackgroundTurn` closed over; `runNinaTurn` answers `payload: null`, the honest

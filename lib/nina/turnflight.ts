@@ -2,7 +2,7 @@
  * **When is Nina still answering, how often do we ask, and when do we stop asking.**
  *
  * ── WHY THIS IS A ZERO-IMPORT MODULE ──────────────────────────────────────────────────────────
- * Three runtimes read these numbers and they must not drift: `lib/nina/actions.ts` (the server's
+ * Three runtimes read these numbers and they must not drift: `lib/nina/actions/` (the server's
  * deadline and its sweep), `components/nina/ChatScreen.tsx` (the client's poll schedule and its
  * give-up), and `app/nina/page.tsx` (the cold-load heuristic that decides whether a freshly
  * rendered screen should start polling at all). `lib/nina/imagerecipe.ts` is the precedent — the
@@ -107,7 +107,7 @@ export const NINA_TURN_CHAIN_MAX = 2
  *   A DEAD turn — the server stops it, inside ~90 s. The sweep closes the claim at
  *               `NINA_TURN_STALE_MS`, the next poll reads `getPendingNinaChatTurn`, finds no fresh
  *               claim and an old message, and answers the authoritative `awaiting: false`
- *               (`pollNinaReply`, `lib/nina/actions.ts:2045` + `:2052`). The give-up is not needed
+ *               (`pollNinaReply`, `lib/nina/actions/poll.ts`). The give-up is not needed
  *               and does not fire.
  *   A LIVE turn — the server stops it too, when her rows land and nothing of his is unanswered.
  *   NO SERVER   — the give-up is the only thing that ends it: the poll that cannot reach the
@@ -148,7 +148,7 @@ export interface NinaFlightRow {
  * forever and start a poll on every page load for the rest of time.
  *
  * **It is one disjunct of the shared answer, never the whole answer.** `pollNinaReply` ORs it
- * with the live claim (`lib/nina/actions.ts:2052`) and, since the offline-reply set, so does the
+ * with the live claim (`lib/nina/actions/poll.ts`) and, since the offline-reply set, so does the
  * cold load — `ninaFlightView` takes the claim's `createdAt` and ORs the same way. The claim
  * covers a turn honestly still running past this deadline (a chained burst runs to
  * `NINA_BACKGROUND_BUDGET_MS`); this window covers the half-second hand-off gap between two
@@ -185,7 +185,7 @@ export interface NinaFlightView {
  * is no claim or no session at all. That read returns an EXPIRED pending row too (its docstring
  * says so), so the freshness comparison below is load-bearing, and it is the same one
  * `pollNinaReply` applies before trusting its own claim read: fresh claim OR the message window —
- * exactly the disjunct at `lib/nina/actions.ts:2052`. ONE definition of "unanswered" for the cold
+ * exactly the disjunct in `lib/nina/actions/poll.ts`. ONE definition of "unanswered" for the cold
  * load and the poll, asserted as page/poll agreement in `lib/nina/turnflight.test.ts` (plan
  * invariant 5).
  *
@@ -206,7 +206,7 @@ export function ninaFlightView(
   liveClaimCreatedAt: Date | null = null,
 ): NinaFlightView {
   const newest = rows.length === 0 ? null : (rows[rows.length - 1] ?? null)
-  /* The poll's own freshness line (`actions.ts:2029`), pointed at the claim instead of the row —
+  /* The poll's own freshness line (`lib/nina/actions/poll.ts`), pointed at the claim instead of the row —
    * exclusive at the boundary, exactly like `ninaAwaitingByMessage`'s. */
   const claimLive =
     liveClaimCreatedAt !== null && nowMs - liveClaimCreatedAt.getTime() < NINA_TURN_STALE_MS

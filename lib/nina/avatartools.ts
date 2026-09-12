@@ -105,7 +105,7 @@ export const handleSetAvatar: NinaToolHandler = async (args, ctx): Promise<NinaT
 }
 
 /**
- * All six tools, and the set `lib/nina/actions.ts` actually passes.
+ * All six tools, and the set `lib/nina/turnrun.ts` actually passes.
  *
  * Layered rather than redefined: phase 3 ships four, phase 12 adds `generate_image`, this adds
  * `set_avatar`. `extendToolSet` throws at module load on a duplicate name, in the phase that added

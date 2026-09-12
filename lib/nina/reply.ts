@@ -17,7 +17,7 @@ import type { ScrollGeometry } from './chatview'
  * one" — but they measure the same three numbers off the same document, and two structurally
  * identical interfaces would eventually disagree.
  *
- * No `import 'server-only'`, deliberately: `lib/nina/actions.ts` (a Server Action) and
+ * No `import 'server-only'`, deliberately: `lib/nina/actions/` (Server Action modules) and
  * `components/nina/*` (client) both import this, which is only safe because there is nothing in
  * here but arithmetic and string handling — no db, no env, no DOM types in any signature.
  */

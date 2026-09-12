@@ -24,8 +24,8 @@ import { NINA_DESCRIPTION_UNAVAILABLE } from '@/lib/nina/prompts/describe'
  *      less than a lost reply, and the open's refusal is the safety net.
  *   6. **It can never take the render down.** Every read's failure resolves 0 instead of throwing.
  *   7. **Invariant 4 held through the move.** `turnrun.ts` and `turnrevive.ts` are `'server-only'`
- *      and neither is a Server Action module; `actions.ts` declares no runner and still exports
- *      the `SentBubble` type `ChatScreen` imports.
+ *      and neither is a Server Action module; the `lib/nina/actions/` modules declare no runner
+ *      and the barrel still exports the `SentBubble` type `ChatScreen` imports.
  *
  * ── WHAT IS MOCKED, AND WHY IT IS ONLY THE EDGES ──────────────────────────────────────────────
  * `next/server`, `@/lib/db`, `@/lib/nina/queries`, `@/lib/nina/chatturn` and — to DRAIN the

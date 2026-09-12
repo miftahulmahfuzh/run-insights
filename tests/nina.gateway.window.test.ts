@@ -8,7 +8,7 @@ import { getNinaMessageImagesForMessages, getNinaMessageWindow } from '@/lib/nin
  *
  * `dbNinaSourceGateway.readMessageWindow` hardcoded `imageDescriptions: []` from the day it landed
  * — so a photograph attached to an earlier message reached her ONCE (the send path's own
- * `imageDescriptions`) and never again, while `lib/nina/actions.ts`'s chain comment claimed the
+ * `imageDescriptions`) and never again, while `lib/nina/actions/send.ts`'s chain comment claimed the
  * context load covered it and `tests/nina.resend.test.ts:375` documented the gap. The property
  * under test is the phase-boundary one, the same style `tests/nina.gateway.patterns.test.ts` uses
  * for the patterns stub: **a described photograph on a window row comes back through THIS read**,

@@ -7,7 +7,7 @@ import { ensureNinaSession, getNinaMessagesByIds } from './queries'
  *
  * Three writers of `nina_messages` exist and two of them run with nobody looking:
  * `lib/nina/proactive.ts`'s cron and `after()` triggers, and `lib/nina/imagejobs.ts`'s R22 apology.
- * `lib/nina/actions.ts` is the third and it normally has a session from the URL — except in the one
+ * `lib/nina/actions/send.ts` is the third and it normally has a session from the URL — except in the one
  * state R11 creates, where the runner has removed every session and the screen has no id to send.
  * All three land here, and there is exactly one policy so they cannot disagree.
  *

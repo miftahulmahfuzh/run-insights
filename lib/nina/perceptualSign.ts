@@ -7,7 +7,7 @@ import { dhashHexOf, sig16ToBase64 } from './perceptual'
 /**
  * **The ONE signer** — `sharp`, over bytes, to the exact signature pair the perceptual twin gates
  * compare (`lib/nina/perceptual.ts`). Server-only because sharp is a native module and the two
- * callers (`lib/nina/actions.ts`'s send-time race-close, `lib/nina/imagerun.ts`'s generated store)
+ * callers (`lib/nina/actions/send.ts`'s send-time race-close, `lib/nina/imagerun.ts`'s generated store)
  * are both server hosts.
  *
  * ── WHY THIS PIPELINE, AND WHY IT MUST NOT GROW AN OPTION ─────────────────────────────────────

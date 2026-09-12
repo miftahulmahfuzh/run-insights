@@ -13,7 +13,7 @@ import { isBlobPathnameReferenced } from './queries'
  * how the copy becomes the one that forgot the check.
  *
  * ── WHY THE CHECK EXISTS ──────────────────────────────────────────────────────────────────────
- * `resolveAttachment` (`lib/nina/actions.ts:143-192`) implements R26 by copying `blob_url` and
+ * `resolveAttachment` (`lib/nina/actions/send.ts`) implements R26 by copying `blob_url` and
  * `pathname` onto a new row. No bytes are copied. So one object can be behind a chat row AND
  * another chat row AND a `nina_avatars` row — including the one that IS her current profile
  * picture. An unconditional `del` here blanks her face, or an older bubble, while the rows still
