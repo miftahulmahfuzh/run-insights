@@ -42,7 +42,7 @@ through `toISO`, throwing `RangeError` when the day does not exist.
 
 ## Exported API
 
-### `lib/date/ranges.ts` — calendar math (157 lines)
+### `lib/date/ranges.ts` — calendar math (168 lines)
 
 Two rules govern the file (stated in its header and enforced by its shape):
 
