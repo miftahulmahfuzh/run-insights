@@ -11,9 +11,10 @@ import { defineConfig } from 'vitest/config'
  */
 const integration = process.env.VITEST_INTEGRATION === '1'
 /**
- * `tests/live/**` calls the real `glm-4.6v` endpoint: it costs money, it takes ~35 s per case, and
- * it can flake on vendor availability (`IMPLEMENTATION_PLAN.md` §1.2's overload note). Excluded
- * from every default run; `npm run test:live:vision` sets this and opts in. §4.9's "no test may
+ * `tests/live/**` calls the real LLM endpoints — `glm-4.6v` for vision, `glm-5.3` for prose and
+ * Nina's turns: it costs money, cases take tens of seconds, and it can flake on vendor
+ * availability (`IMPLEMENTATION_PLAN.md` §1.2's overload note). Excluded from every default run;
+ * `npm run test:live` and each `test:live:*` variant set this and opt in. §4.9's "no test may
  * call a live LLM except the explicitly-tagged live suites" is enforced here, not by convention.
  */
 const live = process.env.LLM_LIVE_TEST === '1'
