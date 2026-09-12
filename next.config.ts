@@ -1,9 +1,6 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Every route in this app runs on the Node.js runtime — see docs/plans/archive/F01-foundation.md §6.
-  reactStrictMode: true,
-
   /**
    * sharp is a native module — the bundler must REQUIRE it, not trace it into the server bundle
    * (`01-app/02-guides/package-bundling.md`: "opt specific packages out of bundling"). It is the
@@ -121,6 +118,12 @@ const nextConfig: NextConfig = {
 
   // No `eslint` key: `next build` no longer runs the linter in Next 16.
   // No `webpack` key: Turbopack is the default bundler.
+  // No `reactStrictMode` key: Strict Mode has been `true` by default with the app router since
+  // Next 13.5.1 (docs: 01-app/03-api-reference/05-config/01-next-config-js/reactStrictMode.md),
+  // and this app has no `pages/` directory — the only place the flag still does anything. The
+  // note that used to sit above the removed key stands on its own: every route runs on the
+  // Node.js runtime (docs/plans/archive/F01-foundation.md §6); no per-route `runtime` override
+  // is set for it.
 }
 
 export default nextConfig
