@@ -18,10 +18,10 @@ import { cn } from '@/lib/cn'
  *
  * ── WHERE IT LIVES, AND WHY IT IS NOT IN `components/ui/` ───────────────────────────────────
  * `components/ui/index.ts` is the shared client-safe kit, and three arguments keep this control
- * out of it. It has exactly one caller and one audience — the runner's app has no slider and the
+ * out of it. It is operator-only by construction — the runner's app has no slider and the
  * design brief names none, while every operator-only control so far (`CropStudio`, `FolderMenu`,
  * `PhotoMoveBar`, `SelectionPane`, `UserPicker`) has lived here. The barrel is a load-bearing
- * bundle boundary: ten `'use client'` files import it, and the `AppShell` precedent records what
+ * bundle boundary: forty-plus files import it (43 measured 2026-09-12), and the `AppShell` precedent records what
  * happens when something with a different graph joins. And the nearest precedent already chose
  * `components/admin/`. If a runner-facing slider ever appears, moving this file is one rename plus
  * one line in the barrel, and that is the moment to make the case.
@@ -69,7 +69,7 @@ import { cn } from '@/lib/cn'
  * arbitrary height. That row shape exists for this toggle; it is not incidental.
  */
 
-export interface DialSliderProps {
+interface DialSliderProps {
   label: string
   hint?: string
   value: number
@@ -77,8 +77,6 @@ export interface DialSliderProps {
   defaultValue: number
   min: number
   max: number
-  step?: number
-  disabled?: boolean
   /** The draft differs from the saved row for this dial — its value OR its toggle. */
   unsaved?: boolean
   /** R4: whether this parameter reaches the assembled prompt at all. */
@@ -95,8 +93,6 @@ export function DialSlider({
   defaultValue,
   min,
   max,
-  step = 1,
-  disabled = false,
   unsaved = false,
   enabled = true,
   onEnabledChange,
@@ -131,9 +127,8 @@ export function DialSlider({
             <input
               type="checkbox"
               checked={enabled}
-              disabled={disabled}
               onChange={(event) => onEnabledChange(event.target.checked)}
-              className="size-4 accent-accent disabled:opacity-50"
+              className="size-4 accent-accent"
             />
             <span className="sr-only">Include {label} in her prompt</span>
           </label>
@@ -171,14 +166,16 @@ export function DialSlider({
         type="range"
         min={min}
         max={max}
-        step={step}
+        /* Whole-integer steps, hardcoded: no caller ever wanted otherwise (2026-09-12 sweep —
+           the old `step` prop was set by no call site; the old `disabled` prop by none either,
+           so a dial can no longer be rendered inert from outside). */
+        step={1}
         value={value}
-        disabled={disabled}
         aria-describedby={hintId}
         onChange={(event) => onChange(Number(event.target.value))}
         /* `h-11` is the 44 px tap target; `touch-none` keeps a slightly diagonal thumb drag from
            being claimed by the page's scroll partway through. Both inherited — do not shrink. */
-        className="mt-0.5 h-11 w-full touch-none accent-accent disabled:opacity-50"
+        className="mt-0.5 h-11 w-full touch-none accent-accent"
       />
 
       <div className="mt-1 flex items-center justify-between gap-3">
@@ -189,7 +186,7 @@ export function DialSlider({
         ) : (
           <span />
         )}
-        {deviates && !disabled && (
+        {deviates && (
           <button
             type="button"
             onClick={() => onChange(defaultValue)}

@@ -178,14 +178,6 @@ describe('PhotoReferencePicker', () => {
     expect(onChange).toHaveBeenCalledWith(PHOTO_REFERENCE_NONE)
   })
 
-  it('disables every tile and both buttons while the save transition runs', () => {
-    picker({ value: 'a', disabled: true })
-    for (const tile of screen.getAllByRole('button', { name: /Nina photo/ })) {
-      expect(tile).toBeDisabled()
-    }
-    expect(screen.getByRole('button', { name: 'Clear reference' })).toBeDisabled()
-  })
-
   it('names no caption and no provenance anywhere in a tile — only the check glyph when selected', () => {
     // `tests/admin.photoReference.test.ts` asserted this by grepping the JSX source; that never
     // renders, so a conditional that only LOOKS like it strips this text would still pass. This

@@ -48,16 +48,15 @@ describe('DialSlider', () => {
     expect(label).toHaveAttribute('for', input?.id)
   })
 
-  it('passes min, max, step and the current value to the native control', () => {
-    const { container } = dial({ min: 10, max: 90, step: 5, value: 45 })
+  it('passes min, max and the current value to the native control', () => {
+    const { container } = dial({ min: 10, max: 90, value: 45 })
     const input = container.querySelector('input[type="range"]')!
     expect(input).toHaveAttribute('min', '10')
     expect(input).toHaveAttribute('max', '90')
-    expect(input).toHaveAttribute('step', '5')
     expect(input).toHaveValue('45')
   })
 
-  it('defaults step to 1', () => {
+  it('steps in whole integers — hardcoded, not a prop (no caller ever wanted otherwise)', () => {
     const { container } = dial()
     expect(container.querySelector('input[type="range"]')).toHaveAttribute('step', '1')
   })
@@ -158,15 +157,6 @@ describe('DialSlider', () => {
   it('renders NO toggle when onEnabledChange is omitted — absent means "no toggle", not "always on"', () => {
     dial()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
-  })
-
-  it('disables track, checkbox and undo when the `disabled` prop is set', () => {
-    const { container } = dial({ disabled: true, onEnabledChange: vi.fn(), value: 40 })
-    expect(container.querySelector('input[type="range"]')).toBeDisabled()
-    expect(screen.getByRole('checkbox')).toBeDisabled()
-    // A disabled dial loses the undo — but note `enabled=false` above keeps it; the two flags
-    // mean different things and this is where the difference shows.
-    expect(screen.queryByRole('button', { name: 'default 60' })).not.toBeInTheDocument()
   })
 
   it('keeps the 44px floor on the track and the undo (the touch contract, do not shrink)', () => {

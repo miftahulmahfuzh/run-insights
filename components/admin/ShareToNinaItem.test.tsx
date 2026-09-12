@@ -49,11 +49,11 @@ describe('ShareToNinaItem', () => {
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('borrows the squared secondary icon-button look and passes its own className through', () => {
+  it('borrows the squared secondary icon-button look — `w-11 px-0`, closed to the host', () => {
     openSpy()
-    item({ className: 'my-host-class' })
+    item()
     const button = screen.getByRole('button', { name: 'Share link to Nina' })
-    expect(button).toHaveClass('w-11', 'px-0', 'my-host-class')
+    expect(button).toHaveClass('w-11', 'px-0')
   })
 
   it('opens the chat in a NEW tab with noopener — the whole security posture in three arguments', async () => {
@@ -115,16 +115,6 @@ describe('ShareToNinaItem', () => {
     await act(async () => {
       gate.resolve({ ok: true })
     })
-  })
-
-  it('calls onOpened after the tab is open, so the host menu can close itself', async () => {
-    const user = userEvent.setup()
-    const open = openSpy()
-    const onOpened = vi.fn()
-    item({ onOpened })
-    await user.click(screen.getByRole('button', { name: 'Share link to Nina' }))
-    expect(open).toHaveBeenCalled()
-    expect(onOpened).toHaveBeenCalledTimes(1)
   })
 
   it('shows busy state while the describe transition runs, then the send glyph again', async () => {

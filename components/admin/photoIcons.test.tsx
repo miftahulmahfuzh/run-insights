@@ -5,10 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BrushIcon,
   CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   DownloadIcon,
-  EyeIcon,
   PersonFrameIcon,
   PlusIcon,
   RotateCcwIcon,
@@ -19,7 +16,7 @@ import {
 } from './photoIcons'
 
 /**
- * Thirteen glyphs, one contract. The file header names the two invariants that can actually
+ * Ten glyphs, one contract. The file header names the two invariants that can actually
  * regress: every glyph is `aria-hidden` (the accessible name is the control's `aria-label`, never
  * the picture — an un-hidden icon would double-announce every button on the page), and the size
  * belongs to the caller via `className`. Below that, each glyph pins ONE signature substring of
@@ -38,19 +35,12 @@ const GLYPHS: ReadonlyArray<{
   { name: 'SwapIcon', Icon: SwapIcon, signature: '<path d="M21 12a9 9 0 0 0-15-6.7L3 8">' },
   { name: 'TrashIcon', Icon: TrashIcon, signature: '<path d="M3 6h18">' },
   { name: 'CheckIcon', Icon: CheckIcon, signature: '<path d="M20 6 9 17l-5-5">' },
-  {
-    name: 'EyeIcon',
-    Icon: EyeIcon,
-    signature: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z">',
-  },
   { name: 'BrushIcon', Icon: BrushIcon, signature: '<path d="m9.06 11.9 8.07-8.06' },
   {
     name: 'PersonFrameIcon',
     Icon: PersonFrameIcon,
     signature: '<circle cx="12" cy="12" r="10">',
   },
-  { name: 'ChevronLeftIcon', Icon: ChevronLeftIcon, signature: '<path d="m15 18-6-6 6-6">' },
-  { name: 'ChevronRightIcon', Icon: ChevronRightIcon, signature: '<path d="m9 18 6-6-6-6">' },
   { name: 'DownloadIcon', Icon: DownloadIcon, signature: '<path d="M12 15V3">' },
   { name: 'RotateCcwIcon', Icon: RotateCcwIcon, signature: '<path d="M3 12a9 9 0 1 0 9-9' },
   { name: 'SendIcon', Icon: SendIcon, signature: '<path d="M14.536 21.686' },

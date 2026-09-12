@@ -6,7 +6,6 @@ import { SendIcon } from '@/components/admin/photoIcons'
 import { buttonClasses, LoadingDots } from '@/components/ui'
 import { ensureNinaAvatarDescriptionAction } from '@/lib/admin/ninaAlbumActions'
 import { ninaPhotoShareUrl } from '@/lib/admin/shareToNina'
-import { cn } from '@/lib/cn'
 
 /**
  * "Share link to Nina" — R2, one item in the explorer's per-photo menu.
@@ -101,8 +100,6 @@ export function ShareToNinaItem({
   photoId,
   described,
   shareOrigin,
-  className,
-  onOpened,
 }: {
   /** `nina_avatars.id` of the selected photo. */
   photoId: string
@@ -110,10 +107,6 @@ export function ShareToNinaItem({
   described: boolean
   /** `shareOrigin()`'s output, threaded from `app/admin/nina/page.tsx`. Never `window.location`. */
   shareOrigin: string
-  /** So the host menu can style this item exactly like its own. */
-  className?: string
-  /** Called after the tab is opened, so the host menu can close itself. */
-  onOpened?: () => void
 }) {
   const [describing, startTransition] = useTransition()
 
@@ -136,23 +129,26 @@ export function ShareToNinaItem({
     }
 
     window.open(ninaPhotoShareUrl(shareOrigin, photoId), '_blank', 'noopener')
-    onOpened?.()
   }
 
   /*
    * A plain `<button>` wearing `Button`'s look, which is what `buttonClasses` is exported for
-   * (`components/ui/Button.tsx`: *"Exported so a non-`<button>` element can borrow the look"*).
+   * (`components/ui/Button.tsx`: *"Exported so a non-`<button>` element can borrow the look"`).
    * Rendering `Button` itself would work, but this item must stay one element with `onClick`
    * straight on it: `window.open` runs inside the click's user activation and nothing may sit
    * between the gesture and the call. Since R6 of 2026-09-10 (`SelectionPane`'s one icon row) the
    * look it borrows is the squared icon button its rail neighbours wear — `secondary`/`md` squared
-   * to `w-11 px-0` — and the words became the accessible name, verbatim.
+   * to `w-11 px-0` — and the words became the accessible name, verbatim. The class string is
+   * closed here on purpose: the old `className`/`onOpened` host-menu props (2026-09-12 sweep)
+   * had no caller — the R6 look converged into this constant, and the item moved out of the menu
+   * that was supposed to close itself — and a prop with no caller is a second way to render,
+   * waiting (the `RunDateLink` round-3 rule).
    */
   return (
     <button
       type="button"
       onClick={share}
-      className={cn(buttonClasses({ variant: 'secondary', size: 'md' }), 'w-11 px-0', className)}
+      className={`${buttonClasses({ variant: 'secondary', size: 'md' })} w-11 px-0`}
       aria-busy={describing || undefined}
       aria-label="Share link to Nina"
       title="Share link to Nina"
