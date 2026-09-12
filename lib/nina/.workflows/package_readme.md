@@ -36,7 +36,8 @@ modules into `'use client'` components.
 
 **Key responsibilities:**
 
-- **The canon** — identity, register, anger ladder and prohibitions as text (`persona.ts`), and
+- **The canon** — identity, register, anger ladder and prohibitions as text (`persona.ts`, a
+  barrel over the `persona/` modules), and
   the stored per-user character that varies it (`tuning.ts`).
 - **The turn** — assemble a context, run the tool-use loop, validate the reply, persist the
   bubbles, distil memory afterwards — as a background job that survives the response, with every
@@ -62,11 +63,12 @@ modules into `'use client'` components.
    `scripts/nina-shortcuts-import.mjs` load them by relative path under
    `--experimental-strip-types` (one runtime-value import stops the worker booting), and
    `'use client'` panels (`/admin/nina`, `/admin/shortcuts`) need the constants in the browser.
-   Source-reading tests enforce the property. `persona.ts` is nearly the same: pure text, no
-   I/O, no `server-only`; it imports `./tuning` for the vocabulary plus a type-only import from
-   `./imageprefs` (erases at compile time).
-3. **The prompt side never reads the raw tuning.** `persona.ts`, `prompts/system.ts` and
-   `proactive.ts` go through `ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`
+   Source-reading tests enforce the property. `persona.ts` — and every module under `persona/` with
+   it — is nearly the same: pure text, no I/O, no `server-only`; they import `./tuning` for the
+   vocabulary plus a type-only import from `./imageprefs` (erases at compile time).
+3. **The prompt side never reads the raw tuning.** Every `persona/` module (the source-reading
+   test discovers the directory, so a module added later is scanned the moment it exists),
+   `prompts/system.ts` and `proactive.ts` go through `ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`
    (`tuning.ts`) — a direct read of `tuning.traits`/`dials`/`relationship` compiles and produces
    a checkbox the operator can clear with no effect, so `tests/nina.prompts.test.ts` reads the
    sources and fails on one. The store is the exception: `tuningToColumns` (`queries.ts`) keeps
@@ -132,8 +134,10 @@ flooring the nag ladder. `relationship` has a toggle (disabling means `best_frie
 `nobody` is active cold instruction, not an off switch); `notes` deliberately does not (`''` is
 already its absence).
 
-**`persona.ts`** — the text. No logic beyond string assembly, no I/O, so tests can assert rule
-text and `/admin/nina` can render a preview. `docs/nina/persona.md` is the prose canon the user
+**`persona.ts`** — the text: a barrel that defines nothing, fronting nine modules under
+`persona/` (bands = the R4 gate; identity; appearance; voice; instructor; anger; verbosity;
+never-say; tuning-blocks). No logic beyond string assembly and no I/O in any of them, so tests
+can assert rule text and `/admin/nina` can render a preview. `docs/nina/persona.md` is the prose canon the user
 redlines; when the two disagree, the document is the intent and this file is what ships. The
 organising idea: **every block that varies is a function of `NinaTuning`; every block that does
 not is still a constant** — the frozen-text constants (`NINA_IDENTITY`, `NAME_RULES`,
@@ -580,7 +584,7 @@ files.
 | Server Actions | `actions.ts` (send/describe/poll/resend — the chat's mutation surface), `jobActions.ts`, `sessionActions.ts`, `albumActions.ts`, `searchActions.ts`, `messageActions.ts` (each a one-screen surface) |
 | Turn pipeline | `turnrun.ts`*, `turnrevive.ts`*, `turn.ts`(T), `llmFallbackText.ts`* (the z.ai-first/OpenRouter-second client `productionDeps` wraps), `tools.ts`(T), `schema.ts`(T), `gateway.ts`, `load.ts`, `context.ts`, `dates.ts`(T), `chatturn.ts`(T), `turnflight.ts` |
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
-| Character | `tuning.ts`, `persona.ts` |
+| Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
 | Images | `imagerecipe.ts`, `imagegen.ts`, `imageprefs.ts`, `imagejobs.ts`, `imagecall.ts`, `imageDedupe.ts`, `perceptual.ts`/`perceptualSign.ts`, `imagerun.ts`, `imagefail.ts`, `caption.ts`, `imagetools.ts`/`avatartools.ts`, `selfiegen.ts`/`avatargen.ts`/`imagetest.ts`, `jobview.ts`(T) |
 | Vision/intake | `vision.ts`(T), `imageTicket.ts`(T) (HMAC carrier, `node:crypto`), `images.ts`(T), `crop.ts`(T) |
@@ -750,7 +754,7 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 guards that can actually catch a regression, by mechanism:
 
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
-  `persona.ts`/`prompts/system.ts`/`proactive.ts` name a raw tuning field;
+  the `persona/` modules (auto-discovered)/`prompts/system.ts`/`proactive.ts` name a raw tuning field;
   `lib/nina/shortcuts.test.ts` fails on any `import` line; `tests/nina.softDelete.test.ts`
   asserts `countNinaTurnsSince`'s predicate ABSENCE and that no statement `DELETE`s a turn;
   `tests/nina.imagerun.test.ts` asserts `vision` is absent from `imagerun`'s import graph (a spy
