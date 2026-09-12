@@ -31,6 +31,7 @@ const HREFS = [
   '/admin/image-generation',
   '/admin/memory',
   '/admin/shortcuts',
+  '/admin/error-logs',
 ]
 
 beforeEach(() => {
@@ -39,7 +40,7 @@ beforeEach(() => {
 })
 
 describe('AdminNavLinks', () => {
-  it('renders the six admin routes, in bar order', () => {
+  it('renders the seven admin routes, in bar order', () => {
     const { container } = render(<AdminNavLinks />)
     expect([...container.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(HREFS)
   })
@@ -66,6 +67,7 @@ describe('AdminNavLinks', () => {
       ['/admin/image-generation', 'Images', 'Image Generation'],
       ['/admin/memory', 'Memory', 'Memory'],
       ['/admin/shortcuts', 'Shortcut', 'Shortcuts'],
+      ['/admin/error-logs', 'Errors', 'Error logs'],
     ]
     for (const [href, short, label] of pairs) {
       const a = container.querySelector(`a[href="${href}"]`)!
@@ -131,14 +133,14 @@ describe('AdminNavLinks', () => {
     expect(idle).toHaveClass('lg:hover:bg-card')
   })
 
-  it('is one row of six 56px cells below lg, and the grid goes inert at lg', () => {
-    // The bar is one row of cells for its six routes (`grid-cols-6`, h-14); at lg the list
+  it('is one row of seven 56px cells below lg, and the grid goes inert at lg', () => {
+    // The bar is one row of cells for its seven routes (`grid-cols-7`, h-14); at lg the list
     // becomes a plain stacked block and the grid stops mattering.
     const { container } = render(<AdminNavLinks />)
     const list = container.querySelector('ul')!
-    expect(list).toHaveClass('grid', 'grid-cols-6', 'h-14')
+    expect(list).toHaveClass('grid', 'grid-cols-7', 'h-14')
     expect(list).toHaveClass('lg:block')
-    expect(container.querySelectorAll('li')).toHaveLength(6)
+    expect(container.querySelectorAll('li')).toHaveLength(7)
   })
 
   it('keeps the 470px TabBar row cap and the one-pixel row padding the owner prescribed', () => {

@@ -44,12 +44,12 @@ import { usePathname } from 'next/navigation'
  *
  * The match itself: `/admin` is compared EXACT — a prefix match there would mark every cell
  * active — and every other href by prefix, so a route keeps its cell through whatever nested
- * paths grow under it later. All six routes are flat today; `startsWith` is the forward-safe
+ * paths grow under it later. All seven routes are flat today; `startsWith` is the forward-safe
  * spelling, not a current necessity.
  */
 
 /**
- * The six routes, longest label first in each pair.
+ * The seven routes, longest label first in each pair.
  *
  * **`short` stopped being rendered text and became the accessible name** (`admin-bottom-bar-icons`
  * R2): below `lg` it is the sr-only span beside each glyph — the string a screen reader announces
@@ -97,17 +97,31 @@ const LINKS = [
   },
   { href: '/admin/memory', label: 'Memory', short: 'Memory', icon: BrainIcon },
   /*
-   * `nina-emoji-shortcuts` R1's route, and it goes LAST because it is the newest surface and
-   * Memory is the one it grew out of: most of the rows in the production memory ledger were
-   * shortcuts written in prose, for want of anywhere else to put them, and this page is where they
-   * stop being that. Adjacency to Memory is the whole of what tells the operator these two are
-   * related.
+   * `nina-emoji-shortcuts` R1's route, and it sits directly after Memory because Memory is the one
+   * it grew out of: most of the rows in the production memory ledger were shortcuts written in
+   * prose, for want of anywhere else to put them, and this page is where they stop being that.
+   * Adjacency to Memory is the whole of what tells the operator these two are related. (It was the
+   * LAST cell until `nina-llm-fallback-error-logs` R2 appended the diagnostics tab below.)
    *
    * The phone name is the singular "Shortcut" — a true short form, not an invented abbreviation,
    * and it reads as a name for the thing you will be looking at rather than as a count. It is the
    * only pair here where the two strings differ by grammatical number rather than by word.
    */
   { href: '/admin/shortcuts', label: 'Shortcuts', short: 'Shortcut', icon: ZapIcon },
+  /*
+   * `nina-llm-fallback-error-logs` R2: *"tolong buat satu tab baru di admin page: Error logs"*.
+   *
+   * It goes LAST, and not beside Memory or Shortcuts, because it is the only cell in this bar that
+   * is not a thing the operator EDITS. The first six are two pairs of configuration surfaces and
+   * two collections he curates; this one is a read-only record of what the providers did to him
+   * overnight, and it belongs at the end of the bar the way a log belongs at the end of a console.
+   *
+   * The phone name is "Errors" — a true short form of the label rather than an invented
+   * abbreviation, and distinct from "Images" and "Photos", which is the property
+   * `tests/admin.shell.test.ts` pins (two cells announcing the same name would make one of them
+   * ambiguous to a screen reader).
+   */
+  { href: '/admin/error-logs', label: 'Error logs', short: 'Errors', icon: TriangleAlertIcon },
 ] as const
 
 export function AdminNavLinks() {
@@ -150,7 +164,7 @@ export function AdminNavLinks() {
      * `grid-cols-7` is inert at `lg`, where `lg:block` takes the list out of grid layout
      * entirely — the same way `grid-cols-4` was before it.
      */
-    <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-6 px-[7px] lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1 lg:px-0">
+    <ul className="mx-auto grid h-14 w-full max-w-[470px] grid-cols-7 px-[7px] lg:mx-0 lg:block lg:h-auto lg:max-w-none lg:space-y-1 lg:px-0">
       {LINKS.map((link) => {
         const Icon = link.icon
         /* `/admin` exact: a prefix match there would light every cell. See the file header. */
@@ -346,6 +360,26 @@ function ZapIcon({ className }: { className: string }) {
       aria-hidden="true"
     >
       <path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" />
+    </svg>
+  )
+}
+
+/** Errors: the record of what the providers did overnight. */
+function TriangleAlertIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
     </svg>
   )
 }

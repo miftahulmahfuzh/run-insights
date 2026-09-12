@@ -14,7 +14,8 @@ database — what a folder upload or a folder maintenance operation is allowed t
 
 The surfaces: `/admin/nina` (the explorer: her album **and** the media collection formerly
 mounted at `/admin/photos`), `/admin/personality` (character panel + text-model select),
-`/admin/memory`, `/admin/shortcuts`, `/admin/image-generation`. There is no `/admin/photos`
+`/admin/memory`, `/admin/shortcuts`, `/admin/image-generation`, `/admin/error-logs` (read-only:
+every failed LLM call, tabbed Text / Multimodal / Image generation). There is no `/admin/photos`
 route any more; `ADMIN_CHAT_PHOTOS_PATH` is `'/admin/nina'`.
 
 It is a *boundary-plus-actions* package. Nothing in it is a general utility: every export exists
@@ -39,6 +40,9 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
   forged POST — to supply a `match_key` or a `kind` that disagrees with its own trigger.
 - Decide an upload or a folder operation in pure, import-free (or zod-only) modules that a
   `'use client'` explorer can share verbatim with the server.
+- Give `/admin/error-logs` — the one read-only surface here, no Server Action of its own — its
+  pure half (URL grammar, row→prop mapping) with **zero imports**, so the client list never
+  bundles a database module or a Zod schema.
 
 ## Module map
 
@@ -68,6 +72,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 | `imageGenTestView.ts` | pure | The test job's verdict vocabulary and poll schedule — a lookup over `nina_turns.error_code`, never a second classifier. |
 | `textModelActions.ts` | `'use server'` | One action: save the narrative text model (`app_settings`, not `nina_tuning`). |
 | `shareToNina.ts` | pure | `ninaPhotoShareUrl` — the album photo → her chat link, as a URL. |
+| `errorLogModel.ts` | pure, **zero imports** | `/admin/error-logs`' pure half: the `?tab=`/`?page=` grammar, the Jakarta timestamp, the timeout fold, row→prop. |
 
 ## Exported API
 
@@ -645,6 +650,63 @@ bytes move and no blob is copied; `sendNinaMessage`'s `resolveAttachment` turns 
 a row, owner-scoped, when the message is actually sent. The `origin` argument is
 `shareOrigin()`'s output, never `window.location.origin`.
 
+### `errorLogModel.ts` — `/admin/error-logs`' pure half
+
+```ts
+export const ADMIN_ERROR_LOGS_PATH = '/admin/error-logs'
+export const ADMIN_ERROR_LOG_PAGE_SIZE = 25        // = the reader's clamp ceiling, on purpose
+export const ADMIN_ERROR_LOG_PAGE_CEILING = 1000   // a hand-typed ?page= cannot ask for an offset no log reaches
+export const ADMIN_ERROR_CATEGORIES = ['text', 'multimodal', 'image_generation'] as const
+export type AdminErrorCategory = (typeof ADMIN_ERROR_CATEGORIES)[number]
+export const ADMIN_ERROR_CATEGORY_LABEL: Record<AdminErrorCategory, string>
+export function readErrorCategory(raw: string | string[] | undefined): AdminErrorCategory  // first value; unknown → 'text'
+export function readErrorLogPage(raw: string | string[] | undefined): number               // 1-based, floored at 1, capped
+export function errorLogHref(category, page): string   // the default is the ABSENCE of the parameter
+export interface ErrorLogSource { … }   // the eight rendered columns — STRUCTURAL, not imported
+export interface ErrorLogListItem { … } // id, stamp, stampISO, provider, model, fullInput, errorText, imageUrl
+export function formatErrorLogStamp(at: Date): string              // '12/09 07:31', Asia/Jakarta, no year
+export function formatErrorTimeout(timeoutMs: number | null): string | null  // 300000 → '300s'
+export function composeErrorText(errorMessage, timeoutMs): string  // the timeout is the error text's FIRST line
+export function toErrorLogListItem(row: ErrorLogSource): ErrorLogListItem
+export function buildErrorLogItems(rows): ErrorLogListItem[]       // maps, never sorts
+```
+
+Load-bearing facts:
+
+- **The file has no import statement at all — not even a type.** Its client consumer
+  (`components/admin/ErrorLogList.tsx`, `'use client'`) imports it, and the row type's real home
+  `lib/nina/errorlogs.ts` imports `@/lib/db` — so `ErrorLogSource` is DECLARED here, structurally,
+  naming the eight columns the page renders. A `NinaErrorLog` satisfies it, so the reader's rows
+  pass into `buildErrorLogItems` with no adapter, and `lib/nina/errorlogs` stays named by exactly
+  one file on the server side of the bundle line: the page. `filetree.ts` is this rule's precedent.
+  **Unlike `shortcutModel.ts`'s one-door boundary, this one has no import-list assertion** — what
+  guards it today is the module header and the page-size pin's dynamic import (below), which is
+  why the dynamic import is load-bearing and not a style choice.
+- **`ADMIN_ERROR_LOG_PAGE_SIZE` duplicates the reader's ceiling deliberately.** The page reads
+  `nina_error_logs` ONLY through Phase 1's `listNinaErrorLogs(category, { limit, offset })` →
+  `{ rows, total }` — no `userId` argument (the read is an operator's cross-user diagnostic, and
+  two of the three writers store `user_id` NULL by design), no SELECT of its own. The reader
+  CLAMPS `limit` to `NINA_ERROR_LOG_PAGE_SIZE` (25), so a larger page size would render 25 rows
+  while advancing the offset further — silently skipping every row in between. If the page size
+  ever changes, the reader's ceiling moves first; a test pins
+  `ADMIN_ERROR_LOG_PAGE_SIZE <= NINA_ERROR_LOG_PAGE_SIZE`, importing the reader DYNAMICALLY so the
+  module under test keeps its import graph clean.
+- **The timestamp is formatted on the server, in Jakarta.** A log row is an instant, not a
+  calendar day, so it does not go through `jakartaDayOf` — but one operator in one timezone reads
+  it, and a client-side `toLocaleString()` would render two strings for one row. The formatter is
+  module-level (one `Intl.DateTimeFormat`, not one per row) and `en-GB` for what it buys, not as a
+  preference: `dd/mm` and an h23 hour cycle (`00:00`, never some ICU build's `24:00`). Eleven
+  characters, no year; every item crosses the RSC boundary as a finished string.
+- **The timeout is folded into the error text, first.** `composeErrorText` puts `Timeout: 300s` on
+  top of the raw provider error — a provider error can be a kilobyte of HTML, and the number the
+  operator came for must not sit at the bottom of a scroll. Seconds, because that is the unit the
+  requirement was written in; `null` (and no line at all) for anything that is not a positive
+  finite number of milliseconds.
+- `buildErrorLogItems` maps and never sorts — the reader's SQL already ordered newest-first.
+  `errorLogHref` spells every link INTO the page (tab strip and pager share it), with Text and
+  page 1 as the ABSENCE of a parameter, so the canonical URL and a navigated-back-to first page
+  are the same URL.
+
 ## Internal Architecture
 
 ### Data flow — a folder upload, end to end
@@ -727,11 +789,14 @@ to her, is described on demand — and then either in-band (the two describe act
 - `@/lib/db`, `@/lib/db/schema`, `@/lib/db/queries` — `users.ts` and the memory type imports;
   `isUniqueViolation` (shortcuts' 23505 catch).
 
-`filetree.ts` imports **nothing**.
+`filetree.ts` and `errorLogModel.ts` import **nothing** — the latter not even a type, which is
+why `ErrorLogSource` is declared structurally (see its section).
 
 ## Reverse Dependencies
 
-Import-site census (`grep "from '@/lib/admin/<m>'"` over `app/ components/ lib/ tests/`):
+Import-site census (`grep "from '@/lib/admin/<m>'"` over `app/ components/ lib/ tests/`;
+measured 2026-09-12 — counts include co-located tests and `vi.mock` factories, and exclude
+`.workflows/` plan copies):
 
 | Module | Importers | Module | Importers |
 |---|---|---|---|
@@ -739,9 +804,9 @@ Import-site census (`grep "from '@/lib/admin/<m>'"` over `app/ components/ lib/ 
 | `requireAdmin` | 15 | `imageGenTestView` | 4 |
 | `schema` | 10 | `imageGenActions` | 4 |
 | `ninaAlbumActions` | 10 | `chatPhotoActions` | 4 |
-| `chatPhotos` | 10 | `memoryVocab` | 3 |
-| `avatars` | 8 | everything else | ≤2 each |
-| `tuningModel` / `shortcutModel` / `imageGenModel` | 7 each | | |
+| `chatPhotos` | 10 | `errorLogModel` | 4 |
+| `avatars` | 8 | `memoryVocab` | 3 |
+| `tuningModel` / `shortcutModel` / `imageGenModel` | 7 each | everything else | ≤2 each |
 | `memoryModel` | 6 | | |
 | `users` | 5 | | |
 
@@ -755,6 +820,14 @@ Named primary consumers:
 - `app/admin/nina/page.tsx` — `requireAdmin`, `filetree` (`readExplorerView`), `ninaAlbumActions`.
 - `app/admin/{memory,shortcuts,personality,image-generation}/page.tsx` — their module groups as
   in the map above, plus `users.ts`' pickers.
+- `app/admin/error-logs/page.tsx` — `requireAdmin` as its first statement (nothing destructured
+  off it: the read is deliberately not user-scoped), `errorLogModel`'s URL grammar and row→prop
+  mapping, and the one `@/lib/nina/errorlogs` import — which is what keeps that reader on the
+  server side of the bundle line.
+- `components/admin/{ErrorLogList,LogTextDialog}.tsx` — the compact one-row-per-entry list
+  (`min-w-0 truncate` on the half that gives, `shrink-0` on the icon group; client state is which
+  text is in the popup and which photo the `PhotoViewer` shows) and the read-only native
+  `<dialog>` over props.
 - `lib/admin/folderOps.ts` → imported by `ninaAlbumActions.ts` (the folder actions call the
   planners); `lib/admin/schema.ts` imports `chatPhotoSchema.ts`.
 - `components/admin/{TextModelSelect,ImageGenTestPanel,ImageGenPanel,CharacterPanel,ShortcutTable,MemoryTable}.tsx` — their action/model pairs.
@@ -766,10 +839,14 @@ Test consumers — every suite under `tests/` whose name starts `admin.` (24 fil
 `admin.imagegen`, `admin.imageGenActions`, `admin.imagegenTest`, `admin.photoGrid`,
 `admin.photoReference`, `admin.mediaPane`, `admin.requireAdmin`, `admin.settingsActions`,
 `admin.shareToNina`, `admin.shell`, `admin.users`, `env.admin`), plus the co-located
-`components/admin/**/*.test.tsx` suites, many of which reach `lib/admin` through `vi.mock`
-factories — a factory's export list is a real dependency: it must name every export the
-component imports. This readme deliberately carries no per-suite test counts; they rot within a
-week. Ask the suite.
+`components/admin/**/*.test.tsx` suites and — since 2026-09-12 — a co-located suite inside this
+package itself (`lib/admin/errorLogModel.test.ts`, beside its module; the co-located suites grew
+by three that day: it plus `ErrorLogList.test.tsx` and `LogTextDialog.test.tsx`), many of which
+reach `lib/admin` through `vi.mock` factories — a factory's export list is a real dependency: it
+must name every export the component imports. `tests/admin.shell.test.ts` is the one that pins
+the admin bar's GEOMETRY against the layout's clearance, and it counts the nav's cells by reading
+`AdminNavLinks.tsx`'s source — see the gotcha before touching that bar. This readme deliberately
+carries no per-suite test counts; they rot within a week. Ask the suite.
 
 ## Concurrency
 
@@ -789,8 +866,10 @@ No thread primitives; the relevant facts are the runtime's:
   is an optimisation, the hash lookup at write time is the decision.
 - The pure modules (`filetree.ts`, `avatars.ts`, `folderOps.ts`, `schema.ts`, `chatPhotos.ts`,
   `chatPhotoSchema.ts`, `memoryModel.ts`, `shortcutModel.ts`, `imageGenModel.ts`,
-  `imageGenTestView.ts`, `shareToNina.ts`) hold no state. `NINA_FOLDER_FORBIDDEN_RE` has no `g`
-  flag specifically so sharing one regex object across callers is safe.
+  `imageGenTestView.ts`, `shareToNina.ts`, `errorLogModel.ts`) hold no state.
+  `NINA_FOLDER_FORBIDDEN_RE` has no `g` flag specifically so sharing one regex object across
+  callers is safe; `errorLogModel.ts`'s one shared object, the module-level
+  `Intl.DateTimeFormat`, is likewise safe to share and exists so a row never constructs one.
 
 ## Error Handling
 
@@ -819,6 +898,10 @@ No thread primitives; the relevant facts are the runtime's:
 - `planFolderUpload` is O(files) with two `Set`s; `folderCounts`/`buildTree` are single passes;
   `planRelocation` is one pass over the folder list. A folder rename writes N rows and copies
   zero bytes.
+- **`/admin/error-logs` ships its payload up front, bounded.** The list carries the FULL input and
+  the FULL error text with every row, because the popup is a dialog over props rather than a
+  second round trip; the payload's ceiling is the reader's own arithmetic — 25 rows × the
+  64,000-character per-column clamp — and the dialog renders nothing while shut.
 - Benchmark coverage: none. The unit suites are correctness suites.
 
 ## Usage
@@ -866,6 +949,22 @@ export default async function Page() {
   `content_hash` describes the bytes its `blob_url` serves — the keeper's own measured hash wins.
 - **Renaming a folder onto an occupied path must stay refused.** A merge of the folder column is
   the one operation here with no inverse.
+- **Do not add an import to `errorLogModel.ts` — not even a type.** The `'use client'` list
+  imports it; `lib/nina/errorlogs.ts` imports `@/lib/db`. `ErrorLogSource` is declared
+  structurally so the browser bundle names no database module. There is no import-list assertion
+  on this file (unlike `shortcutModel.ts`), so the discipline is on the reader: anything this
+  module needs from `lib/nina` crosses as an argument or arrives through a dynamically imported
+  test-only read, never through the module's own import graph.
+- **Do not raise `ADMIN_ERROR_LOG_PAGE_SIZE` past the reader's clamp.** `listNinaErrorLogs`
+  CLAMPS `limit` to `NINA_ERROR_LOG_PAGE_SIZE` (25), so a bigger page size renders fewer rows
+  than the offset advances by and silently skips everything in between — nothing errors. The
+  reader's ceiling moves first; a test pins the inequality by importing the reader dynamically.
+- **The admin bar's cell count is pinned in THREE places that must move together**:
+  `components/admin/AdminNavLinks.tsx` (the `LINKS` array and its `grid-cols-<n>` row), its
+  co-located test (renders the bar and counts cells, glyphs and accessible names), and
+  `tests/admin.shell.test.ts` (counts the `short:` entries in the source and asserts the grid
+  has a cell per route, against the layout's clearance). Add the route to all three or the
+  shell's geometry guard fails — which is the point.
 
 ## Notes
 
@@ -876,6 +975,15 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-12** — `nina-llm-fallback-error-logs` phase 5 (P1-ADM-A002): added
+  `errorLogModel.ts`, `/admin/error-logs`' pure half — zero imports, a structural
+  `ErrorLogSource` (the bundle-boundary rule), the Asia/Jakarta server-side stamp, the timeout
+  folded into the error text, and `ADMIN_ERROR_LOG_PAGE_SIZE` deliberately equal to the reader's
+  clamp ceiling `NINA_ERROR_LOG_PAGE_SIZE`, pinned by a test that imports the reader dynamically.
+  The admin bar grew its seventh cell (Error logs, `/admin/error-logs`), a count pinned in three
+  files together (`AdminNavLinks.tsx`, `AdminNavLinks.test.tsx`, `tests/admin.shell.test.ts`).
+  Phases 2–4 of that plan set (the OpenRouter fallback writer code) are peer phases still in
+  flight in the same worktree and are deliberately not documented here.
 - **2026-09-12** — full compaction/verification pass (token-maxxing session
   `pkg-readme-lib-admin`, worker branch `token-maxxing-2026-09-12-pkg-readme-lib-admin`): every
   export block, signature, constant, dependency and reverse dependency re-verified against the
