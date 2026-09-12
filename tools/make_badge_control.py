@@ -44,7 +44,14 @@ try:
 except ImportError:  # pragma: no cover
     sys.exit("error: this tool needs Pillow (`python3 -c 'import PIL'` must work)")
 
-SIZE = 1024
+# The masters' own frame, NOT the square this tool was born drawing. F10 shipped
+# 1024² controls against 1024² masters; F15 moved the deck to 1024×768 (the
+# BadgeDialog band's own 4:3, see check_badge_art.py's MASTER_W/H), and check 1 now
+# rejects any other ratio — measured 2026-09-12: a 1024² "good" control died on check 1
+# before a single band was measured, which had silently turned the free-fixture loop
+# off. A control is graded by exactly the checker it exercises, so it tracks the
+# master contract, not this file's history.
+W, H = 1024, 768
 
 # style.md's STYLE BLOCK v1, verbatim — the same seven colours check_badge_art.py
 # measures against. Imported by copy rather than by import because these two
@@ -61,7 +68,7 @@ def shade(rgb, k):
     return tuple(max(0, min(255, int(round(c * k)))) for c in rgb)
 
 
-def twill_ground(size, base, weave=True, seed=7):
+def twill_ground(w, h, base, weave=True, seed=7):
     """Navy cloth: a diagonal weave under a raking light from the upper left.
 
     Three components, each answering one band in check 3 or check 10: a fine
@@ -70,10 +77,10 @@ def twill_ground(size, base, weave=True, seed=7):
     raking light, which is what the inter-strip SPREAD band tolerates).
     """
     rnd = random.Random(seed)
-    img = Image.new("RGB", (size, size))
+    img = Image.new("RGB", (w, h))
     px = img.load()
-    for y in range(size):
-        for x in range(size):
+    for y in range(h):
+        for x in range(w):
             k = 1.0
             if weave:
                 # 4 px diagonal repeat — a twill line, not a plain weave.
@@ -94,7 +101,7 @@ def twill_ground(size, base, weave=True, seed=7):
                 # the six approved masters cluster.
                 k += rnd.uniform(-0.45, 0.45)
             # The raking light: brightest at the upper left, ~8% across the frame.
-            k += 0.08 * (1.0 - (x + y) / (2.0 * size))
+            k += 0.08 * (1.0 - (x + y) / (w + h))
             px[x, y] = shade(base, k)
     return img
 
@@ -143,16 +150,29 @@ CONTROLS = {
 
 
 def build(name):
+    # The patch is sized to the DECK'S MEASURED BOX, not to this file's square-era
+    # pixels. Real masters run ~61% of frame width × ~90% of frame height (the
+    # substrate_stats header's table; early_bird, the anchor, measures 61.3×90.2),
+    # and a hexagon spanning `2 × half` vertically hits 90% of H at half = 0.45*H.
+    # The first 4:3 attempt kept the square-era half = 0.40*W = 410: the hexagon's
+    # vertices then land 26px OUTSIDE the 768-tall frame, the bone border slices
+    # the outer strips, and the "good" control fails check 3 (strip sd 56.4,
+    # "cluttered") with box height 100.0% — the control reading as all subject and
+    # no cloth. Measured, not guessed: `check_badge_art.py` on the rebuilt controls.
+    half = H * 0.45
     if name == "flat":
-        img = twill_ground(SIZE, TWILL, weave=False)
-        return draw_patch(img, SIZE / 2, SIZE / 2, SIZE * 0.40)
+        img = twill_ground(W, H, TWILL, weave=False)
+        return draw_patch(img, W / 2, H / 2, half)
     if name == "bleached":
-        img = twill_ground(SIZE, shade(TWILL, 2.6))
-        return draw_patch(img, SIZE / 2, SIZE / 2, SIZE * 0.40)
-    img = twill_ground(SIZE, TWILL)
+        img = twill_ground(W, H, shade(TWILL, 2.6))
+        return draw_patch(img, W / 2, H / 2, half)
+    img = twill_ground(W, H, TWILL)
     if name == "offcentre":
-        return draw_patch(img, SIZE * 0.59, SIZE * 0.53, SIZE * 0.36)
-    return draw_patch(img, SIZE / 2, SIZE / 2, SIZE * 0.40)
+        # Same-size patch as `good`, pushed ~9% of the frame off centre — a
+        # smaller patch would dodge check 8a by shrinking the displacement's
+        # salience rather than by staying inside its band.
+        return draw_patch(img, W * 0.59, H * 0.53, half)
+    return draw_patch(img, W / 2, H / 2, half)
 
 
 def main():
