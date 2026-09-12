@@ -76,7 +76,15 @@ RULES — these matter more than anything else:
 Return ONLY a JSON object. No markdown fences, no commentary, no text before or after the
 JSON object.`
 
-/** Byte-identical to `research/schema.mjs`'s `SHAPE`, plus the two comments rule 9 needs. */
+/**
+ * Byte-identical to `research/schema.mjs`'s `SHAPE`, plus the two comments rule 9 needs.
+ *
+ * knip reports this export as unused, and that is EXPECTED — do not "fix" it. `npm run
+ * probe:f04` scrapes this constant out of this file's SOURCE TEXT by regex, because the probe
+ * deliberately replays the extraction job without a TS loader (`@/` alias + `server-only`), so
+ * no import graph can see that consumer. Dropping the `export` keyword would silently change
+ * what the probe reads while `tsc` stays green either way.
+ */
 export const EXTRACTION_SHAPE = `{
   "activityType": string|null,          // "Outdoor Run"
   "goal": string|null,                  // "Open Goal"
