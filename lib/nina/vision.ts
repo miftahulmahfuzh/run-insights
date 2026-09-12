@@ -588,8 +588,10 @@ async function describeNinaImagesWithOpenRouter(
  * `const dropped = cause instanceof NinaVisionTokenFloorError`, logs `console.error('[nina] TOKEN
  * FLOOR TRIPPED …')` versus `console.warn('[nina] could not describe a chat image', …)`, and returns
  * `reason: dropped ? 'dropped' : 'transport'` on a ticket whose `description` is null.
- * `lib/admin/chatPhotoActions.ts:645+` and `:805+` and `lib/admin/ninaAlbumActions.ts:152+`,
- * `:557+` do the same. The fallback's own failure is always a `NinaVisionTransportError`, so
+ * `lib/admin/chatPhotoActions.ts:645+` and `:805+`, `describeNinaAvatarAction`
+ * (`lib/admin/ninaAlbumDescribeActions.ts`) and `scheduleDescribe`
+ * (`lib/admin/ninaAlbumDeferredDescribe.ts`) do the same. The fallback's own failure is always a
+ * `NinaVisionTransportError`, so
  * rethrowing IT would silently reclassify every floor trip as a transport failure and lose the one
  * signal the floor exists to raise. **Today's failure behaviour is preserved exactly: same error
  * instance, same class, same message, same `dropped`/`transport`/`rejected` branching, same null

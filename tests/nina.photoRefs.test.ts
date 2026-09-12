@@ -66,8 +66,9 @@ const REFERENCE_SKIPPED = ['"source_avatar_id" is null', '"source_image_id" is n
  * indentation reach the statement verbatim and a multi-line expectation would pin the author's
  * formatting rather than the meaning.
  *
- * The `'chat-photo:'` literal is the coupling this file exists to hold: the writer spells it at
- * `lib/admin/ninaAlbumActions.ts:301` and the reader spells it in `generatedChatPhotoScope`, with
+ * The `'chat-photo:'` literal is the coupling this file exists to hold: the writer spells it in
+ * `setChatPhotoAsAvatarAction` (`lib/admin/ninaAlbumAvatarActions.ts`) and the reader spells it in
+ * `generatedChatPhotoScope`, with
  * no shared constant possible between a `'use server'` module and the db layer.
  */
 const ADOPTED_SKIPPED = [
