@@ -24,6 +24,11 @@ import { cn } from '@/lib/cn'
  * at its target size, so `next/image` would re-optimise a finished file on a paid transform quota
  * — the same argument `PhotoViewer` makes in its own eslint-disable. And the crop transform sets
  * `position`/`width`/`height`/`left`/`top`, which is exactly what `next/image fill` sets itself.
+ *
+ * ── NO `className` PROP ────────────────────────────────────────────────────────────────────────
+ * All three callers want the same circle — the one real variation is the size, and the size is
+ * already a prop — so a styling override has no caller: a prop with no caller is a second way to
+ * render a face, waiting (the rule `RunDateLink` applied when its `label` override came back out).
  */
 
 /** `public/nina/avatar-001.png`, re-exported so phase 4's importers do not change. */
@@ -43,23 +48,17 @@ export function NinaAvatar({
   src = NINA_AVATAR_FALLBACK_SRC,
   natural = null,
   crop = null,
-  className,
 }: {
   size?: keyof typeof SIZES
   src?: string
   natural?: { width: number | null; height: number | null } | null
   crop?: NinaCropInput | null
-  className?: string
 }) {
   const isFallback = src === NINA_AVATAR_FALLBACK_SRC && crop == null
 
   return (
     <span
-      className={cn(
-        'relative block shrink-0 overflow-hidden rounded-pill bg-paper-2',
-        SIZES[size],
-        className,
-      )}
+      className={cn('relative block shrink-0 overflow-hidden rounded-pill bg-paper-2', SIZES[size])}
     >
       {isFallback ? (
         <Image src={src} alt="" fill sizes="128px" className="object-cover" />

@@ -52,13 +52,17 @@ import { NinaJobElapsed } from './NinaJobElapsed'
  * A RENDER-PROP would have been the more flexible shape — `renderActions?: (item) => ReactNode` —
  * and it is impossible here: `app/nina/jobs/page.tsx` is a Server Component, and a function is not
  * a serialisable prop across that boundary. A boolean is what the seam supports.
+ *
+ * ── NO `className` PROP ────────────────────────────────────────────────────────────────────────
+ * Both callers want the same list — the empty sentence's wording is the caller's whole say (see
+ * above) — so a styling override has no caller: a prop with no caller is a second way to render a
+ * list, waiting (the rule `RunDateLink` applied when its `label` override came back out).
  */
 export function NinaJobList({
   items,
   nowMs,
   emptyText,
   actions,
-  className,
 }: {
   /** Already ordered newest-first by `listNinaImageJobs`. Never re-sorted below this line. */
   items: readonly NinaJobListItem[]
@@ -74,16 +78,10 @@ export function NinaJobList({
    * is the one that should need no edit.
    */
   actions?: boolean
-  className?: string
 }) {
   if (items.length === 0) {
     return (
-      <p
-        className={cn(
-          'rounded-field border border-dashed border-rule px-4 py-6 text-center text-[12px] font-medium text-ink-2',
-          className,
-        )}
-      >
+      <p className="rounded-field border border-dashed border-rule px-4 py-6 text-center text-[12px] font-medium text-ink-2">
         {emptyText}
       </p>
     )
@@ -92,7 +90,7 @@ export function NinaJobList({
   const withActions = actions === true
 
   return (
-    <ul className={cn('space-y-1.5', className)}>
+    <ul className="space-y-1.5">
       {items.map((item) => {
         /* `Card.tsx`'s one surface for a row that is still doing something; bare paper for a row
            that has finished. `SessionRow` makes the same distinction the same way. It moves from

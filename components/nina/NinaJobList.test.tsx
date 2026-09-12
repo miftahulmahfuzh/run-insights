@@ -169,16 +169,4 @@ describe('NinaJobList', () => {
         ?.contains(openLi?.querySelector('[data-testid="job-actions"]') ?? null),
     ).toBe(false)
   })
-
-  it('className rides the ul — or the empty sentence, whichever shape this render took', () => {
-    const { container: empty } = render(
-      <NinaJobList items={[]} nowMs={NOW_MS} emptyText="x" className="my-2" />,
-    )
-    expect((empty.querySelector('p') as HTMLElement).className).toContain('my-2')
-
-    const { container: rows } = render(
-      <NinaJobList items={[item()]} nowMs={NOW_MS} emptyText="x" className="my-2" />,
-    )
-    expect((rows.querySelector('ul') as HTMLElement).className).toContain('my-2')
-  })
 })

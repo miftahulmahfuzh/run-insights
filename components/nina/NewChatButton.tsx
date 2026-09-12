@@ -50,14 +50,17 @@ import { createNinaChatSession } from '@/lib/nina/sessionActions'
  * It never creates a second empty session: `createNinaChatSession` returns the newest session
  * unchanged when that one holds no messages, so a runner who taps twice gets one empty row. Nothing
  * is re-decided here.
+ *
+ * It takes no `className` either. The disc's skin is the rail's own policy — `NINA_CHROME_CONTROL_CLASS`
+ * at `size-11`, argued in R5 above — and the one caller has never dressed it differently: a prop
+ * with no caller is a second way to render a button, waiting (the rule `RunDateLink` applied when
+ * its `label` override came back out).
  */
 export function NewChatButton({
   onNavigate,
-  className,
 }: {
   /** Close the sidebar when the action refuses and there is nothing to navigate to. */
   onNavigate: () => void
-  className?: string
 }) {
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
@@ -83,7 +86,7 @@ export function NewChatButton({
       aria-label="Chat baru"
       aria-busy={pending}
       disabled={pending}
-      className={cn(NINA_CHROME_CONTROL_CLASS, 'size-11', 'disabled:opacity-60', className)}
+      className={cn(NINA_CHROME_CONTROL_CLASS, 'size-11', 'disabled:opacity-60')}
     >
       {/*
         Lucide's `plus` (`M5 12h14`, `M12 5v14`), the glyph AdminNav's collection note covers —

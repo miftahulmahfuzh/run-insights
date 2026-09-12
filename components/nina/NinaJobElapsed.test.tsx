@@ -73,16 +73,4 @@ describe('NinaJobElapsed', () => {
     expect(elapsed().textContent).toBe(formatJobSeconds(jobElapsedSeconds(START, Date.now())))
     expect(elapsed().textContent).toBe(formatJobSeconds(0))
   })
-
-  it('className rides the span', () => {
-    render(
-      <NinaJobElapsed
-        startedAtMs={START}
-        nowMs={RENDER_NOW}
-        running={false}
-        className="tabular-nums"
-      />,
-    )
-    expect(elapsed().className).toContain('tabular-nums')
-  })
 })
