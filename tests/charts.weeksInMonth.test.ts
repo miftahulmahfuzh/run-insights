@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ChartRun } from '@/lib/charts'
-import { monthWeekBucketRanges, weeksInMonth } from '@/lib/charts'
+import { weeksInMonth } from '@/lib/charts'
 import { addDays, monthRange } from '@/lib/date/ranges'
 
 /**
@@ -79,7 +79,9 @@ describe('the sum invariant — every kilometre in the month, in exactly one buc
 })
 
 describe('February 2026 — a month that starts on a Sunday', () => {
-  const buckets = monthWeekBucketRanges('2026-02', '2026-08-21')
+  // Ranges read through the public function with no runs — the range shape is what's under test,
+  // and the ranges helper stays module-internal.
+  const buckets = weeksInMonth('2026-02', [], '2026-08-21')
 
   it('produces a single-day first bucket, clipped to the 1st', () => {
     expect(buckets[0]).toMatchObject({
@@ -96,7 +98,7 @@ describe('February 2026 — a month that starts on a Sunday', () => {
 })
 
 describe('August 2026 — a month that ends on a Monday', () => {
-  const buckets = monthWeekBucketRanges('2026-08', '2026-08-21')
+  const buckets = weeksInMonth('2026-08', [], '2026-08-21')
 
   it('does not drop the final bucket, whose Monday IS the last day of the month', () => {
     // The §6 loop condition is `bucketStart <= monthEnd`, not `bucketEnd <= monthEnd`. Getting that
@@ -112,7 +114,7 @@ describe('August 2026 — a month that ends on a Monday', () => {
   it('labels the fixture’s own week as the current one, and only in the current month', () => {
     // 21 Aug 2026 falls in the 17–23 Aug bucket.
     expect(buckets.map((b) => b.isCurrent)).toEqual([false, false, false, true, false, false])
-    expect(monthWeekBucketRanges('2026-08', '2026-09-04').some((b) => b.isCurrent)).toBe(false)
+    expect(weeksInMonth('2026-08', [], '2026-09-04').some((b) => b.isCurrent)).toBe(false)
   })
 
   it('marks only the two boundary weeks partial', () => {

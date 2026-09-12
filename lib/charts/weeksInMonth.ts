@@ -26,8 +26,11 @@ import type { ChartRun, MonthWeekBucket } from './types'
  * **Do not import this into `volumeTrend.ts`.** The 12-week rolling window has no month boundary
  * to respect; sharing the clipping logic between them would be a bug waiting for a month that
  * starts on a Sunday.
+ *
+ * Module-internal: `weeksInMonth` below is the only consumer and the public face — the ranges are
+ * reachable through it (no runs in, pure ranges out), which is how the tests read them too.
  */
-export function monthWeekBucketRanges(
+function monthWeekBucketRanges(
   month: MonthKey,
   todayISO: DateISO,
 ): Omit<MonthWeekBucket, 'distanceM' | 'runCount'>[] {

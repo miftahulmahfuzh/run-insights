@@ -25,8 +25,8 @@ export {
   paceDomain,
   toPaceHrPoints,
 } from './paceHr'
-export { aggregateZones, toZoneShares, zoneOfHr, zoneTotalSec } from './zones'
-export { monthWeekBucketRanges, weeksInMonth } from './weeksInMonth'
+export { aggregateZones, toZoneShares, zoneOfHr } from './zones'
+export { weeksInMonth } from './weeksInMonth'
 export { lastIsoWeeks } from './window'
 export { ROLLING_MEAN_WEEKS, toVolumeTrend, weeksWithRuns } from './volumeTrend'
 export {
