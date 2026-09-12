@@ -1,57 +1,34 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
-import { TAB_BAR_OUTER_HEIGHT_PX } from '@/components/ui/TabBar'
-import { todayInJakarta } from '@/lib/date/ranges'
-import { isValidId } from '@/lib/id'
-import {
-  pollNinaReply,
-  resendNinaMessage,
-  sendNinaMessage,
-  type NinaResendRefusal,
-  type SentBubble,
-} from '@/lib/nina/actions'
 import {
   ATTACH_PARAM,
   PHOTO_PARAM,
   type NinaExistingPhoto,
   type RunAttachment,
 } from '@/lib/nina/attach'
-import { attachableIdAt, chatViewerPhotos, viewerIndex } from '@/lib/nina/chatphotos'
 import { composerBottomCss, composerPadBottomCss } from '@/lib/nina/chatview'
-import {
-  applyMessageDeletion,
-  applyMessageEdit,
-  canActOnMessage,
-  type EditTarget,
-} from '@/lib/nina/edit'
-import { appendNewBubbles, SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
-import { editNinaMessage, removeNinaMessage } from '@/lib/nina/messageActions'
-import { JOB_JUMP_PARAM, nextSoftNavJump, parseNinaJumpParam } from '@/lib/nina/jobview'
-import {
-  buildQuote,
-  flashHoldMs,
-  planQuoteScroll,
-  type QuoteScroll,
-  type QuoteView,
-} from '@/lib/nina/reply'
-import { planReveal } from '@/lib/nina/reveal'
-import {
-  NINA_TURN_POLL_GIVE_UP_MS,
-  ninaPollDelayFor,
-  type NinaFlightView,
-} from '@/lib/nina/turnflight'
+import { SW_MESSAGE_TYPE, mergeServerMessages } from '@/lib/nina/live'
+import { JOB_JUMP_PARAM } from '@/lib/nina/jobview'
+import { buildQuote, type QuoteView } from '@/lib/nina/reply'
+import { type NinaFlightView } from '@/lib/nina/turnflight'
 import { ChatPhotoActions } from './ChatPhotoActions'
-import { Composer, type ComposerDraftImage } from './Composer'
+import { Composer } from './Composer'
+import { NOTICE_TEXT, type Notice } from './chatScreenCopy'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
 import { MessageActionsSheet } from './MessageActionsSheet'
 import { MessageList } from './MessageList'
 import type { ChatAvatar, ChatMessage } from './types'
 import { useChatScrollMark } from './useChatScroll'
+import { useMessageActions } from './useMessageActions'
+import { useNinaSend } from './useNinaSend'
+import { usePhotoViewer } from './usePhotoViewer'
+import { COMPOSER_CLEARANCE_PX, useQuoteLanding } from './useQuoteLanding'
+import { useTurnArrival } from './useTurnArrival'
 
 /**
  * The interactive half of `/nina`: one turn, from the runner pressing send to Nina's last bubble.
@@ -115,86 +92,33 @@ import { useChatScrollMark } from './useChatScroll'
  * Its existing copy is now more true than it was: his message really was persisted before the model
  * was called, and `loadNinaContext` reads the session window, so "send another and she will pick it
  * up" describes a mechanism rather than a hope.
+ *
+ * ── WHAT THE SPLIT MOVED WHERE (2026-09-12) ──────────────────────────────────────────────────
+ * This file was 1645 lines before it was decomposed along the concerns its comments already
+ * drew. What remains here is the skeleton: the props' contracts, the conversation state and its
+ * server merge, the one-shot URL strip, the composer arms, and the render that wires it all.
+ * The machinery now lives beside it, one concern per module, every comment travelling with the
+ * code it explains:
+ *
+ *   - `chatScreenCopy.ts` — every sentence this screen says (`Notice`, `NOTICE_TEXT`,
+ *     `RESEND_REFUSAL_TEXT`).
+ *   - `usePhotoViewer.ts` — R10's overlay: which photos are showing, derived so a row vanishing
+ *     underneath closes or clamps.
+ *   - `useQuoteLanding.ts` — R1's `?jump=` deep link (mount and soft-nav arrivals, with their
+ *     deliberately different cleanup policies), R12's quote tap, the landing flash, and the
+ *     composer-clearance geometry `planQuoteScroll` measures against.
+ *   - `useTurnArrival.ts` — F36 R6's arrival half: `awaiting` and `typing`, the live session id,
+ *     the poll cursor, the staggered reveal, and the sequential poll loop.
+ *   - `useNinaSend.ts` — the send: busy window, optimistic row, id adoption, and the composer
+ *     arms a typed send reads and unpins.
+ *   - `useMessageActions.ts` — R8's sheet: the acting row and the edit/delete/resend/retry
+ *     gestures.
+ *
+ * The hooks share nothing mutable: the message list and the notice strip are this component's,
+ * patched through setters, and each hook keeps its own mount-alive flag (a `useRef` created at
+ * the owner — the one shape both react-hooks rules accept, and indistinguishable from one shared
+ * flag because it is only ever written at mount and unmount).
  */
-
-type Notice =
-  | 'send-failed'
-  | 'no-reply'
-  | 'quote-missing'
-  | 'edit-failed'
-  | 'delete-failed'
-  | 'edit-unavailable'
-
-const NOTICE_TEXT: Record<Notice, string> = {
-  'send-failed': 'That didn’t send. Check your connection and try it again.',
-  /* Raised by the POLL, not by the send (F36 R6). Three states read the same to the runner and are
-   * deliberately not told apart in the copy: she answered with nothing, the model was unavailable,
-   * or the background turn died and the sweep closed it. He does not care which; he cares that his
-   * message is safe and that one more tap gets him an answer. Both halves are now literally true. */
-  'no-reply':
-    'Nina went quiet on that one. Your message is saved — send another and she will pick it up.',
-  /* R12's honest end of the degradation. The quote rendered, so the target existed when the page
-   * loaded; it is simply not among the rows on screen — deleted since, or further back than this
-   * screen goes. Saying so beats a tap that does nothing. */
-  'quote-missing': 'That message isn’t on this screen any more, so there’s nowhere to jump to.',
-  /* R8. Both of these mean the WRITE did not happen, so the bubble on screen is still the truth.
-   * They are told apart because a failed edit leaves something to try again and a failed delete
-   * leaves the message where it was — different next actions, different sentences. */
-  'edit-failed': 'That edit didn’t save. The message is unchanged — try it again.',
-  'delete-failed': 'That message could not be deleted. It is still here, and still in her context.',
-  /* The one refusal that is not a failure: an optimistic row has no database row behind it yet. */
-  'edit-unavailable':
-    'Give that one a moment to send — there is nothing to edit until Nina has it.',
-}
-
-/**
- * R5's five refusals, in the runner's language.
- *
- * ── WHY THIS IS NOT A `Notice` ────────────────────────────────────────────────────────────────
- * `Notice` gains no member, and that is a decision rather than an omission. Every sentence here is
- * read while the actions sheet is covering the screen, and the notice strip renders underneath it —
- * a notice raised from a sheet interaction is a sentence delivered to nobody until the sheet
- * closes. So these go back to the sheet, through `handleResendMessage`'s return value, and land in
- * the `refusal` line the sheet already had for locally-decided refusals.
- *
- * The COPY lives here rather than in the sheet for the reason `NOTICE_TEXT` lives here: the sheet
- * must not learn the action's vocabulary, and this file already owns every sentence this screen
- * says.
- *
- * 'turn-live' is the one that is not a failure, and its wording says so: nothing went wrong, and
- * the message he is looking at is going to be answered without him doing anything else.
- */
-const RESEND_REFUSAL_TEXT: Record<NinaResendRefusal, string> = {
-  'not-found': 'That message isn’t on the server any more, so there’s nothing to resend.',
-  'not-mine': 'Only your own messages can be resent.',
-  empty: 'There’s nothing left in that message for her to answer.',
-  'turn-live': 'She’s already working on this chat — that one is next, give her a moment.',
-  failed: 'That couldn’t be resent just now. Try it again in a moment.',
-}
-
-/**
- * The chrome the composer sits above: the bar's **outer** height — its 39 px grid plus the 1 px
- * `border-t` the grid sits under, which is the bar's actual top edge.
- *
- * MEASURED (R2): the border was never in this sum, so the composer's bottom edge landed a pixel
- * below the bar's top border and the scrolling conversation showed through the seam between them.
- * `ChatChrome`'s `BAR_CLEARANCE_PX` is the same constant for the same reason.
- */
-const COMPOSER_CLEARANCE_PX = TAB_BAR_OUTER_HEIGHT_PX
-
-/**
- * Fallback for `obstructedBottomPx` if `#nina-composer` cannot be measured — the clearance plus
- * one composer row. Only reachable if the composer has not mounted, which it always has by the
- * time a quote is tappable.
- *
- * 60 is `COMPOSER_RESTING_PX` in `lib/nina/chrome.ts`, written again here because this module
- * cannot import a `lib/nina/chrome` constant without pulling the chrome state machine into the
- * screen's module graph for one number. It is one of four sites that hand-copy it — the markup in
- * `Composer.tsx` (`py-2` + `min-h-11`), that constant, this literal, and `BOTTOM_GAP.chat` in
- * `components/ui/AppShell.tsx` — and a change to any of them changes all four. It was 68, from
- * `py-3`, until the repo owner asked for the query field to take less space.
- */
-const COMPOSER_FALLBACK_PX = COMPOSER_CLEARANCE_PX + 60
 
 export function ChatScreen({
   initial,
@@ -324,28 +248,15 @@ export function ChatScreen({
   flashBlinks: number
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [...initial])
-  /** Mid-reveal: the pause between two of her bubbles. Distinct from `awaiting`; see the render. */
-  const [typing, setTyping] = useState(false)
-  /**
-   * F36 R6. She has a message of his that she has not answered, so the poll is running and the
-   * indicator is up. Seeded from the server so a cold load mid-turn already shows it.
+  /*
+   * `awaiting` (the poll runs), `typing` (mid-reveal), the live conversation id, the poll cursor
+   * and `showTyping` all live in `useTurnArrival`, below. The send and resend reach into it
+   * through its five verbs and never touch the machinery itself.
    */
-  const [awaiting, setAwaiting] = useState(flight.awaiting)
-  /**
-   * F36 R6. The conversation the poll asks about. Seeded from the prop and REPLACED by the send's
-   * answer, because `sessionId` may legitimately be `null` — "he has no sessions at all" — and the
-   * ACTION is what resolves or creates one. Without adopting it, the first message of a brand-new
-   * runner would send fine and then be polled for in a conversation the client cannot name.
-   */
-  const [liveSessionId, setLiveSessionId] = useState(sessionId)
-  /**
-   * F36 R6. `nina_messages.seq` of the newest row this screen holds — the poll's cursor. A REF and
-   * not state: it is read inside the poll loop and written by both the send and the poll, and a
-   * stale closure over it would re-read the same rows for ever. Nothing renders from it.
-   */
-  const cursorRef = useRef(flight.cursor)
-  const [busy, setBusy] = useState(false)
+  /* `busy` — the send's action window — and both send handlers live in `useNinaSend`. */
   const [notice, setNotice] = useState<Notice | null>(null)
+  /* `flashId`, the landing tint a jump leaves on one bubble, lives in `useQuoteLanding` — R8's
+   * delete un-tints through the hook's `clearFlashId`. */
   /**
    * The keyboard's overlap in px, measured by `KeyboardOverlapPublisher` below. The publisher owns
    * the subscription and the `:root` broadcast; this is a MIRROR of the number, kept because this
@@ -355,17 +266,7 @@ export function ChatScreen({
   const [overlap, setOverlap] = useState(0)
   /** Phase 7 (R12). The message being replied to, or null for an ordinary send. */
   const [draftQuote, setDraftQuote] = useState<QuoteView | null>(null)
-  /** Phase 7. The message a jump just landed on. Held for `QUOTE_FLASH_MS`, then cleared. */
-  const [flashId, setFlashId] = useState<string | null>(null)
-  /**
-   * R8. The message whose action sheet is open, or null.
-   *
-   * The `ChatMessage` itself and not an id, so the sheet can render the text being acted on and
-   * disclose the photo count without a second lookup — and so that a row that vanishes from
-   * `messages` under it (a push-driven refresh, a delete in another tab) does not leave the sheet
-   * pointing at nothing it can describe.
-   */
-  const [acting, setActing] = useState<ChatMessage | null>(null)
+  /* `acting`, the row whose actions sheet is open, and every gesture the sheet offers live in `useMessageActions`. */
   /** Phase 8 (R13). The run the next message will carry. Seeded from the server's `?attach=`. */
   const [attachment, setAttachment] = useState<RunAttachment | null>(pending)
   /**
@@ -376,49 +277,69 @@ export function ChatScreen({
    */
   const [photo, setPhoto] = useState<NinaExistingPhoto | null>(pendingPhoto)
 
-  /**
-   * R10. Which bubble's photographs the full-screen overlay is showing, and which of them is on
-   * screen. `null` is closed.
-   *
-   * ── A MESSAGE ID AND AN INDEX, NOT A SNAPSHOT OF THE PHOTO LIST ──────────────────────────────
-   * Because `messages` changes underneath an open overlay, in two ways that both really happen: a
-   * service-worker push calls `router.refresh()` and the server hands down a new list, and R8's
-   * delete takes a bubble and its photo rows with it. A snapshot would keep showing a photo whose
-   * row is gone; a derived list plus `viewerIndex` closes or clamps, which is the only shape that
-   * does not end in `PhotoViewer`'s `photos[index]!` throwing.
-   */
-  const [viewer, setViewer] = useState<{ messageId: string; index: number } | null>(null)
-
-  const handleOpenImage = useCallback((messageId: string, index: number) => {
-    setNotice(null)
-    setViewer({ messageId, index })
-  }, [])
-
   /* R14's mark on this history entry, decoded from `?at=`. Passed down; the arithmetic is in
    * `lib/nina/scroll.ts` and the DOM half is in `MessageList`. */
   const { mark } = useChatScrollMark()
 
   /*
-   * ── R1's DEEP LINK: `?jump=<messageId>` ───────────────────────────────────────────────────
-   * `/nina/jobs/[id]`'s "Buka chat-nya" lands here with `?s=<session>&jump=<message>`. The session
-   * opened the right conversation on the server; this is the bubble to pinpoint.
-   *
-   * **READ ON THE FIRST RENDER AND HELD IN A REF**, for two reasons that both bite:
-   *
-   *   - the layout effect below CONSUMES the parameter (see its header), so by the time the jump
-   *     runs `useSearchParams()` no longer has it. `useRef`'s initialiser is evaluated on every
-   *     render and React keeps only the first result, which is precisely the one-shot semantics
-   *     this needs;
-   *   - `useSearchParams()` resolves during the SERVER render on this dynamically rendered route,
-   *     so the first client render agrees with it and nothing here is a hydration hazard.
-   *
-   * The ref is cleared inside the animation frame rather than in the effect body. StrictMode
-   * double-invokes effects in development: clearing it up front would let the first (immediately
-   * torn down) run consume the target and the second run find nothing — the jump would work in
-   * production and never in dev, which is the worst of the two ways to be wrong.
+   * R1's deep link, R12's quote tap and the landing flash, in `useQuoteLanding`. The hook calls
+   * `useSearchParams` itself — the jump parameter is read on the first render and held in the
+   * hook's ref, one-shot by `useRef`'s keep-the-first-initialiser semantics.
    */
-  const searchParams = useSearchParams()
-  const jumpRef = useRef<string | null>(parseNinaJumpParam(searchParams.get(JOB_JUMP_PARAM)))
+  const { flashId, handleJumpToQuote, clearFlashId } = useQuoteLanding({ flashBlinks, setNotice })
+
+  /*
+   * The arrival loop, the staggered reveal and the typing indicator, in `useTurnArrival`. Seeded
+   * from the server's `flight` so a cold load mid-turn already polls; the send and resend drive it
+   * through `adoptSession` / cursor writes / `beginAwaiting` after the action answers.
+   */
+  const { showTyping, adoptSession, takeCursor, raiseCursor, beginAwaiting, endTurn } =
+    useTurnArrival({ flight, sessionId, setMessages, setNotice })
+
+  /*
+   * The send: optimistic row, busy window, id adoption, and the composer arms it reads and
+   * unpins, in `useNinaSend`. The retry path (below, on the actions sheet) reuses the same
+   * `sendAndTrack` with `replacesId` set, so a retried row and a typed send cannot drift.
+   */
+  const { busy, handleSend, sendAndTrack } = useNinaSend({
+    sessionId,
+    setMessages,
+    setNotice,
+    adoptSession,
+    takeCursor,
+    beginAwaiting,
+    endTurn,
+    draftQuote,
+    setDraftQuote,
+    attachment,
+    setAttachment,
+    photo,
+    setPhoto,
+  })
+
+  /*
+   * R8's surface, in `useMessageActions`: which row the sheet is open on and every gesture it
+   * offers. The retry re-runs the send hook's `sendAndTrack` with `replacesId` set, so a retried
+   * row and a typed send share one path by construction.
+   */
+  const {
+    acting,
+    closeSheet,
+    handleRequestActions,
+    handleEditMessage,
+    handleDeleteMessage,
+    handleResendMessage,
+    handleRetrySendMessage,
+  } = useMessageActions({
+    setMessages,
+    setNotice,
+    setDraftQuote,
+    clearFlashId,
+    busy,
+    sendAndTrack,
+    raiseCursor,
+    beginAwaiting,
+  })
 
   /*
    * **`?attach=`, `?photo=` AND `?jump=` are consumed, not left lying on the entry.** They have done their
@@ -477,33 +398,6 @@ export function ChatScreen({
     params.delete(JOB_JUMP_PARAM)
     const query = params.toString()
     window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
-  }, [])
-
-  // Every timed step checks this before touching state. StrictMode double-invokes effects in
-  // development and a runner can navigate away mid-reveal; both would otherwise set state on an
-  // unmounted tree. `InsightTrigger` uses the same guard for the same reason.
-  const alive = useRef(true)
-  const timer = useRef<number | null>(null)
-  /*
-   * Separate from `timer` on purpose. `timer` is the reveal's `setTimeout` handle; sharing it
-   * would mean a quote tap mid-reveal cancels the reveal's `sleep` and strands the remaining
-   * bubbles behind a typing indicator that never resolves.
-   */
-  const flashTimer = useRef<number | null>(null)
-  /*
-   * Its own handle, on `flashTimer`'s exact reasoning. The poll's backoff wait and the reveal's
-   * `sleep` never overlap — the loop awaits one then the other — but sharing `timer` would mean the
-   * next person to add a cancel path silently cancels the wrong one.
-   */
-  const pollTimer = useRef<number | null>(null)
-  useEffect(() => {
-    alive.current = true
-    return () => {
-      alive.current = false
-      if (timer.current !== null) window.clearTimeout(timer.current)
-      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
-      if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
-    }
   }, [])
 
   const router = useRouter()
@@ -570,37 +464,27 @@ export function ChatScreen({
   }
 
   /*
-   * R10's overlay, derived rather than stored — see `viewer` above.
-   *
-   * `useMemo` on the message identity, not on `messages`: this component re-renders on every state
-   * change the screen makes (typing, keyboard, reveal, flash), and the overlay's list only depends
-   * on the one row it is showing.
+   * R10's overlay state and its derivations, in `usePhotoViewer`. The attach action a photo's
+   * overlay offers stays below, in the render — it arms THIS screen's `photo` slot.
    */
-  const viewerMessage =
-    viewer === null
-      ? null
-      : (messages.find((candidate) => candidate.id === viewer.messageId) ?? null)
-  const viewerPhotos = useMemo(() => chatViewerPhotos(viewerMessage), [viewerMessage])
-  const shownIndex = viewer === null ? null : viewerIndex(viewer.index, viewerPhotos.length)
-  /*
-   * The message went away under the open overlay — deleted, or gone from a refreshed window. Close
-   * it DURING RENDER rather than in an effect, for the reason the `seenInitial` block above gives
-   * at length: `react-hooks/set-state-in-effect` rejects the effect form, correctly, and React
-   * discards this render and restarts with the new state before committing, so nothing is painted
-   * twice. It terminates immediately: `viewer === null` makes the condition false.
-   */
-  if (viewer !== null && shownIndex === null) setViewer(null)
-  /*
-   * R10's attach. `null` when the id never reached the client, which is exactly the optimistic row
-   * — and `ChatPhotoActions` renders no attach control for it rather than one that cannot work.
-   */
-  const viewerAttachId =
-    shownIndex === null ? null : attachableIdAt(viewerMessage?.imageIds, shownIndex)
+  const {
+    viewer,
+    viewerPhotos,
+    shownIndex,
+    viewerAttachId,
+    openViewer,
+    setViewerIndex,
+    closeViewer,
+  } = usePhotoViewer(messages)
 
-  const sleep = (ms: number) =>
-    new Promise<void>((resolve) => {
-      timer.current = window.setTimeout(resolve, ms)
-    })
+  /** R10's open gesture. Clearing the notice travels with the gesture, not with the overlay. */
+  const handleOpenImage = useCallback(
+    (messageId: string, index: number) => {
+      setNotice(null)
+      openViewer(messageId, index)
+    },
+    [openViewer],
+  )
 
   /**
    * Arm a reply (R12). `buildQuote` rather than `resolveQuote`, because the target is the message
@@ -621,863 +505,6 @@ export function ChatScreen({
       }),
     )
   }, [])
-
-  /**
-   * Where the page has to move so `targetId` is comfortably readable — or `null` when that message
-   * is not in the document.
-   *
-   * The DOM read is deliberate and is the only DOM read on this screen besides the keyboard's.
-   * `getElementById` on phase 4's `nina-msg-${id}` anchor is the one honest source for where a
-   * message actually is: React knows the order of the rows, not their pixel heights, which depend
-   * on wrapping, on a quote stub, and on an image. A missing element is the degradation path, not
-   * an error — the row was on screen when the page rendered and is not now, or (F35 phase 4's deep
-   * link) it is further back than `CHAT_HISTORY_LIMIT` reaches.
-   *
-   * `getBoundingClientRect().top` on the composer, rather than a constant, because the obstruction
-   * is the composer's height (which the reply strip, a tile row and a multi-line draft all change)
-   * plus its offset (clearance, or the keyboard).
-   *
-   * **Extracted from `handleJumpToQuote` so R1's deep link reuses the same arithmetic rather than
-   * inventing a second scroll-and-flash.** `planQuoteScroll` stays the one decision function.
-   */
-  const measureQuoteScroll = useCallback((targetId: string): QuoteScroll | null => {
-    const element = document.getElementById(`nina-msg-${targetId}`)
-    if (element === null) return null
-
-    const composer = document.getElementById('nina-composer')
-    const obstructedBottomPx =
-      composer === null
-        ? COMPOSER_FALLBACK_PX
-        : Math.max(0, window.innerHeight - composer.getBoundingClientRect().top)
-
-    const rect = element.getBoundingClientRect()
-    return planQuoteScroll({
-      targetTop: rect.top + window.scrollY,
-      targetHeight: rect.height,
-      scrollTop: window.scrollY,
-      scrollHeight: document.documentElement.scrollHeight,
-      clientHeight: window.innerHeight,
-      /* This screen's header scrolls away with the document; nothing is fixed at the top. */
-      obstructedTopPx: 0,
-      obstructedBottomPx,
-      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    })
-  }, [])
-
-  /**
-   * The landing flash, held for `flashHoldMs(flashBlinks)`.
-   *
-   * It runs whether or not the page moved: `kind: 'none'` means the target was already on screen,
-   * which is exactly the case where a scroll alone would identify nothing. Since 2026-09-09 the
-   * visible effect is `nina-flash-blink` in `MessageBubble` — hard blinks of a 2px ring, the
-   * count owner-tuned through `NINA_FLASH_BLINKS` — with a still redefinition under
-   * `@media (prefers-reduced-motion: reduce)` that `tests/motion.reducedMotion.test.ts` guards.
-   * The timer outlives the blink train by one full cycle on purpose: it is what bounds the state,
-   * so a second landing inside its window restarts the flash rather than racing a clearing timer.
-   *
-   * `flashBlinks` is a dep and that is safe rather than incidental: it is constant per mount (a
-   * server-resolved number), and the effects that key on this callback's identity re-run to
-   * no-ops — the mount path returns on the cleared `jumpRef`, the watcher on the stripped URL.
-   */
-  const flashMessage = useCallback(
-    (targetId: string) => {
-      setNotice(null)
-      setFlashId(targetId)
-      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
-      flashTimer.current = window.setTimeout(() => {
-        if (alive.current) setFlashId(null)
-      }, flashHoldMs(flashBlinks))
-    },
-    [flashBlinks],
-  )
-
-  /**
-   * R12's second half: tapping a quote scrolls to the message it names, and says which one it
-   * landed on.
-   */
-  const handleJumpToQuote = useCallback(
-    (targetId: string) => {
-      const plan = measureQuoteScroll(targetId)
-      if (plan === null) {
-        setNotice('quote-missing')
-        return
-      }
-      if (plan.kind === 'scroll') window.scrollTo({ top: plan.top, behavior: plan.behavior })
-      flashMessage(targetId)
-    },
-    [measureQuoteScroll, flashMessage],
-  )
-
-  /**
-   * **The landing: something said "this bubble", so pinpoint it.** One callback so the two ways a
-   * `?jump=` can arrive — a MOUNT (`/nina/jobs/[id]`'s "Buka chat-nya", or a search hit for a
-   * different conversation) and a same-session SOFT NAVIGATION (a search hit for the conversation
-   * already on screen, handled by the watcher below) — cannot drift into two
-   * scroll-and-flash arithmetics. The extraction follows `measureQuoteScroll`'s own precedent one
-   * position up: that one was pulled out of `handleJumpToQuote` so the mount landing would reuse
-   * the quote tap's arithmetic rather than invent a second one, and this callback now sits under
-   * both arrivals for the same reason.
-   *
-   * ── WHY IT REUSES `planQuoteScroll` ───────────────────────────────────────────────────────
-   * The user asked for it in those words — "just like how we can click and directly pinpoint
-   * reply_to message". A second scroll-and-flash would be a second set of rules about the band the
-   * composer leaves over, and the two would drift the first time the composer's geometry changed.
-   *
-   * ── WHY `'instant'`, OVERRIDING THE PLAN'S OWN `behavior` ─────────────────────────────────
-   * `planQuoteScroll` chooses `'smooth'` because a quote tap is a movement WITHIN a screen the
-   * runner is already reading, and watching the page travel is what tells them they went backwards.
-   * This is an ARRIVAL: the runner navigated here from elsewhere and has not seen this
-   * conversation yet, so there is no "from" to animate out of — smooth-scrolling a screen that
-   * just painted only shows them the bottom of the chat on the way past. `MessageList`'s R14
-   * restore takes `'instant'` for the same reason and says so. (`handleJumpToQuote` keeps the
-   * plan's `'smooth'` on purpose: it is the within-screen case.)
-   *
-   * ── WHY AN ANIMATION FRAME, AND WHY TWICE ─────────────────────────────────────────────────
-   * The callers schedule this inside one `requestAnimationFrame` so layout has settled; the second
-   * application below is `MessageList`'s restore idiom, verbatim and for its reason: a web font
-   * settling or an image finishing decode moves the target after the first measurement, and
-   * re-deriving the same pure number from the element's new position is cheap. When nothing moved,
-   * `planQuoteScroll` returns `'none'` under its 8px tolerance and the second call is a no-op.
-   *
-   * ── IT MUST NOT CALL `revealBubbles` ──────────────────────────────────────────────────────
-   * That callback is phase 3's staggered reveal of rows Nina has just sent, and it is the SOLE
-   * appender of her bubbles. This callback appends nothing: every row it can land on was already
-   * rendered. Scrolling is not arriving.
-   *
-   * A missing element is the `'quote-missing'` notice, which is already the right sentence: the
-   * message is real (the job page resolved it against the database; the search SQL read it) but it
-   * is not among the `CHAT_HISTORY_LIMIT` rows this screen renders.
-   */
-  const landOn = useCallback(
-    (targetId: string) => {
-      const plan = measureQuoteScroll(targetId)
-      if (plan === null) {
-        setNotice('quote-missing')
-        return
-      }
-      if (plan.kind === 'scroll') window.scrollTo({ top: plan.top, behavior: 'instant' })
-      flashMessage(targetId)
-
-      window.requestAnimationFrame(() => {
-        if (!alive.current) return
-        const again = measureQuoteScroll(targetId)
-        if (again !== null && again.kind === 'scroll') {
-          window.scrollTo({ top: again.top, behavior: 'instant' })
-        }
-      })
-    },
-    [measureQuoteScroll, flashMessage],
-  )
-
-  /* R1's mount landing. `jumpRef`'s block above states the one-shot reasoning; the short version:
-   * the ref is cleared inside the frame rather than the effect body so StrictMode's first,
-   * immediately torn-down run leaves the target for the second run, and the frame is cancelled on
-   * cleanup so a navigation away mid-flight lands on nothing. The landing itself is `landOn`'s —
-   * this effect only decides WHEN, never HOW. */
-  useEffect(() => {
-    if (jumpRef.current === null) return
-
-    const frame = window.requestAnimationFrame(() => {
-      const targetId = jumpRef.current
-      if (targetId === null || !alive.current) return
-      jumpRef.current = null
-      landOn(targetId)
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [landOn])
-
-  /*
-   * ── R1's OTHER ARRIVAL: A `?jump=` THAT DOES NOT REMOUNT ─────────────────────────────────
-   * `app/nina/page.tsx` keys this component by the session id, so a jump naming a DIFFERENT
-   * conversation remounts and the effect above delivers it. A jump naming the one already open —
-   * a search hit tapped while its own session is on screen — is a soft navigation: same key, no
-   * remount, `jumpRef`'s initialiser never runs, and the strip effect at the top of this file
-   * (deps `[]`) never re-runs. Before search switched onto `?jump=`, `?at=` covered this case
-   * through `MessageList`'s restore, so leaving it unhandled would be a regression, not a gap.
-   *
-   * ── WHY THE GUARD REF IS INITIALISED TO THE MOUNT VALUE ────────────────────────────────────
-   * On a mount that CARRIES a `?jump=`, this effect's first run sees the same raw string its ref
-   * was initialised to, `nextSoftNavJump` answers "already seen", and the landing belongs to the
-   * mount path above. Without the initialised ref, a deep-linked mount would scroll and flash
-   * TWICE. `nextSoftNavJump` (in `lib/nina/jobview.ts`, tested there because `vitest` has no
-   * jsdom) owns the rest of the rule: the ref records the raw value after every run, and a `null`
-   * raw resets it — so once the strip has consumed the parameter, a FRESH navigation to the same
-   * id still counts as new (a genuine second tap on the same hit lands again).
-   *
-   * ── WHY THE STRIP RUNS BEFORE THE FRAME ───────────────────────────────────────────────────
-   * The landing reads the DOM (`measureQuoteScroll` → `getElementById`), never the URL, so
-   * removing the parameter first cannot starve it — and stripping in the same tick closes the
-   * re-arm window a frame earlier. It deletes BY NAME on a `URLSearchParams` copy of
-   * `window.location.search`, the idiom of the mount-time strip above, so `?s=` and `?at=`
-   * survive; it reads `window.location.search` rather than the `searchParams` snapshot for the
-   * reason `saveMark` states ("the write has to be against whatever the URL is at the moment");
-   * and it skips itself when the key is already gone, which is the case where the mount-time
-   * strip won the race on a freshly mounted screen. `replaceState`, not a navigation, for the
-   * reason that header gives — this entry is where we already are — and Next 16 patches it so
-   * `useSearchParams` stays in sync afterwards, which is what delivers the `null` render that
-   * resets the guard.
-   *
-   * RESIDUAL EDGE, accepted: a second tap of the SAME hit re-navigates to a byte-identical URL,
-   * which the router may deduplicate into no render at all — no re-land. The first tap landed,
-   * so nothing is lost; telling a repeat tap from a repeat render is not worth a nonce in the URL.
-   *
-   * ── WHY THE LANDING FRAME IS NEVER CANCELLED (measured in production, 2026-09-09) ─────────
-   * This effect has no cleanup, and that is load-bearing. The strip ABOVE schedules its own
-   * teardown: Next's patched `replaceState` dispatches an `ACTION_RESTORE` in a transition, which
-   * re-renders this component with `jumpRaw === null` and re-runs this effect — the very
-   * re-run that resets `softNavSeen`. With a `return () => cancelAnimationFrame(frame)` cleanup,
-   * that second run first tore down the frame the FIRST run had just scheduled, and whether the
-   * landing survived was a race between the rAF and the transition: a cold navigation (the first
-   * tap of a hit — RSC over the wire, slow commit) usually landed; a warm one (the same hit
-   * tapped again, payload already in the segment cache, fast commit) reliably did not. The owner
-   * measured it as "search ↔ chat ↔ search, the second and third tap never flash". The frame
-   * therefore guards itself and nothing else: `alive.current` inside it is the unmount
-   * protection, and a newer arrival re-lands on top of an older frame's landing, which is the
-   * correct final state. The MOUNT landing above keeps its cleanup — its deps are `[landOn]`,
-   * a stable callback, so nothing in this file can re-run it mid-frame; only unmount can, and
-   * StrictMode's dev double-run is exactly what its `jumpRef`-cleared-inside-the-frame shape is
-   * written against. Do not "symmetrise" this file onto one shape: the two effects have
-   * different re-run surfaces, and each cleanup policy is load-bearing for its own.
-   */
-  const jumpRaw = searchParams.get(JOB_JUMP_PARAM)
-  const softNavSeen = useRef<string | null>(jumpRaw)
-  useEffect(() => {
-    const targetId = nextSoftNavJump(softNavSeen.current, jumpRaw)
-    softNavSeen.current = jumpRaw
-    if (targetId === null) return
-
-    const params = new URLSearchParams(window.location.search)
-    if (params.has(JOB_JUMP_PARAM)) {
-      params.delete(JOB_JUMP_PARAM)
-      const query = params.toString()
-      window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
-    }
-
-    /* Deliberately NOT cancelled — see the header paragraph above. `alive` is the unmount
-     * guard; a second run of this effect with a fresh target supersedes rather than cancels. */
-    window.requestAnimationFrame(() => {
-      if (alive.current) landOn(targetId)
-    })
-  }, [jumpRaw, landOn])
-
-  /**
-   * R8, arming. The gesture (or the focus-revealed button) picked a message; decide whether it can
-   * be acted on at all, and open the sheet if it can.
-   *
-   * `canActOnMessage` is the gate and it is in `lib/`, because "which messages are editable" is a
-   * rule with two real exclusions — an optimistic row whose id is client-minted, and a row whose
-   * send threw — and both of them are states this screen produces and no other screen does. A
-   * refusal here is a NOTICE rather than silence: the runner performed a deliberate gesture and a
-   * gesture that does nothing reads as a broken screen.
-   */
-  const handleRequestActions = useCallback((message: ChatMessage) => {
-    /* A FAILED own row opens the sheet as a retry surface rather than being refused. The gate
-     * below lumps it with 'sending' rows (neither is confirmed), and the notice it answers with —
-     * "nothing to edit until Nina has it" — is true of EDIT and false of RETRY, which is the
-     * thing the owner was actually reaching for on a red-outlined bubble. A row still in
-     * 'sending' keeps the notice: its send is in flight, and offering a retry of an in-flight
-     * send is how two sends of one message happen. */
-    if (message.role === 'user' && message.state === 'failed') {
-      setNotice(null)
-      setActing(message)
-      return
-    }
-    const target: EditTarget = {
-      id: message.id,
-      mine: message.role === 'user',
-      body: message.body,
-      hasImage: (message.imageUrls?.length ?? 0) > 0,
-      hasRun: message.attachment != null,
-      confirmed: message.state === 'sent',
-    }
-    if (!canActOnMessage(target)) {
-      setNotice('edit-unavailable')
-      return
-    }
-    setNotice(null)
-    setActing(message)
-  }, [])
-
-  /**
-   * R8, editing. Returns true when the row was written, which is the sheet's cue to close.
-   *
-   * ── THE LIST IS PATCHED FROM THE RETURN VALUE, AND NOT BY A REFRESH ───────────────────────────
-   * This component's header explains why it does not `router.refresh()` after a send. An edit has a
-   * second, sharper reason: `mergeServerMessages` is "server order, LOCAL content", so for any id
-   * this component already holds, the local copy WINS over the server's. A refresh literally cannot
-   * deliver an edited body — it would re-render the page and then be discarded. So the action
-   * returns the canonical text and it is mapped onto local state here, exactly as this file already
-   * adopts `result.userMessageId` after a send. Two mechanisms, not three.
-   *
-   * `applyMessageEdit` returns the same array reference when nothing changed, so the `'unchanged'`
-   * case costs no render.
-   */
-  const handleEditMessage = useCallback(async (id: string, body: string): Promise<boolean> => {
-    let result: Awaited<ReturnType<typeof editNinaMessage>> | null = null
-    try {
-      result = await editNinaMessage({ messageId: id, body })
-    } catch {
-      result = null
-    }
-    if (!alive.current) return false
-
-    if (result === null || !result.ok || result.body === null) {
-      setNotice('edit-failed')
-      return false
-    }
-
-    const written = result.body
-    setNotice(null)
-    setMessages((current) => applyMessageEdit(current, id, written) as ChatMessage[])
-    return true
-  }, [])
-
-  /**
-   * R8, deleting. Returns true when the row is gone.
-   *
-   * `applyMessageDeletion` does both halves in one pass: it drops the row AND nulls every
-   * `replyToId` that pointed at it — which is the client-side expression of the database's
-   * `ON DELETE SET NULL` on `nina_messages.reply_to_id`. Without the second half the screen would
-   * still look right (`resolveQuote` resolves against the rows on screen, and the target is gone),
-   * but the local rows would carry a pointer the database no longer has, and `mergeServerMessages`
-   * keeps local content — so that stale pointer would survive every later refresh.
-   *
-   * A quote whose target was deleted therefore renders as a plain message rather than throwing,
-   * which `resolveQuote` documents as the designed outcome and which is this phase's exit test.
-   */
-  const handleDeleteMessage = useCallback(async (id: string): Promise<boolean> => {
-    /* A client-minted `local-` id names a row the server has never heard of — a failed send, or
-     * one still in flight. There is nothing to call: `removeNinaMessage` would refuse the id, and
-     * the honest outcome of deleting a message that was never delivered is that it stops being on
-     * screen. Local state only, same cleanup as the confirmed path. */
-    if (!isValidId(id)) {
-      setNotice(null)
-      setMessages((current) => applyMessageDeletion(current, id) as ChatMessage[])
-      setDraftQuote((current) => (current?.targetId === id ? null : current))
-      setFlashId((current) => (current === id ? null : current))
-      return true
-    }
-
-    let result: Awaited<ReturnType<typeof removeNinaMessage>> | null = null
-    try {
-      result = await removeNinaMessage({ messageId: id })
-    } catch {
-      result = null
-    }
-    if (!alive.current) return false
-
-    if (result === null || !result.ok || result.deletedId === null) {
-      setNotice('delete-failed')
-      return false
-    }
-
-    const deletedId = result.deletedId
-    setNotice(null)
-    setMessages((current) => applyMessageDeletion(current, deletedId) as ChatMessage[])
-    /* If the deleted message was the one a reply was armed against, the draft strip in the
-     * composer now points at something that does not exist. Unpin it rather than let a send write
-     * a `reply_to_id` the database would immediately null. */
-    setDraftQuote((current) => (current?.targetId === deletedId ? null : current))
-    /* Same argument for the landing tint: nothing left to flash. */
-    setFlashId((current) => (current === deletedId ? null : current))
-    return true
-  }, [])
-
-  /**
-   * R5, resending. Resolves `null` when the turn was claimed — the sheet's cue to close — and
-   * otherwise the sentence for the sheet to show.
-   *
-   * ── IT PRODUCES THE SAME AWAITING STATE A SEND PRODUCES, AND THAT IS THE WHOLE UI ─────────────
-   * `handleSend`'s last three lines are `setLiveSessionId` / `cursorRef.current = result.cursor` /
-   * `setAwaiting(true)`, and everything after that is machinery this phase reuses untouched: the
-   * arrival loop starts on `awaiting`, `showTyping` raises the indicator, and `revealBubbles` runs
-   * `planReveal` on whatever the poll returns. So a resend adds no poll, no timer and no second
-   * rhythm — it just tells the shipped one that something is coming.
-   *
-   * `liveSessionId` is deliberately NOT adopted from the result: the message being resent is on
-   * this screen, so it is in the conversation this screen is already polling. A resend cannot
-   * create a session the way a first send can.
-   *
-   * ── THE CURSOR IS TAKEN AS A MAXIMUM ─────────────────────────────────────────────────────────
-   * `result.cursor` is the newest `seq` the server saw when it accepted the resend, which is `>=`
-   * every row this screen holds — so resuming there asks for exactly the rows the resent turn
-   * produces and cannot re-deliver a bubble of hers that is already on screen. `Math.max` covers
-   * the two ways it could still arrive stale: the action degrades to the resent row's own `seq` if
-   * its cursor read fails, and a poll may legitimately land between the server's read and this
-   * assignment, because `awaiting` can be true while a resend is accepted.
-   *
-   * `setNotice(null)` matters more here than it looks: the notice on screen when he taps Resend is
-   * almost always 'no-reply', which is exactly the sentence that sent him here. Leaving it up while
-   * she is answering again would contradict the indicator.
-   */
-  const handleResendMessage = useCallback(async (id: string): Promise<string | null> => {
-    let result: Awaited<ReturnType<typeof resendNinaMessage>> | null = null
-    try {
-      result = await resendNinaMessage({ messageId: id })
-    } catch {
-      result = null
-    }
-    if (!alive.current) return null
-
-    if (result === null || !result.ok) {
-      /* A thrown action has no reason to report, and 'failed' is what it means: the row is
-       * untouched and one more tap is the whole recovery. */
-      return RESEND_REFUSAL_TEXT[result?.reason ?? 'failed']
-    }
-
-    setNotice(null)
-    if (result.cursor !== null) {
-      cursorRef.current = Math.max(cursorRef.current, result.cursor)
-    }
-    setAwaiting(true)
-    return null
-  }, [])
-
-  /**
-   * RU-5's staggered reveal, lifted verbatim out of `handleSend` so the SEND path and the POLL path
-   * cannot drift into two different rhythms. It is the only writer of `typing` besides the poll's
-   * own start and stop.
-   *
-   * It guards on `alive.current` at every timed step, and on `id` presence at the append — the one
-   * other guard it has, and the reason it can share a list with `mergeServerMessages`. Callers are
-   * sequential by construction — the poll loop awaits this before deciding whether to keep polling
-   * — so there is no second reveal to interleave with, and the single `timer` handle stays safe.
-   *
-   * ── WHY THE APPEND SKIPS IDS ALREADY ON SCREEN (prod "gj", 2026-09-11: 4 rows, 7 bubbles) ────
-   * Every bubble here used to be appended unconditionally, and on prod session "gj" that rendered
-   * seven bubbles from the four rows the database holds. A full-route RSC delivery of `/nina` had
-   * landed mid-reveal — its `read_at` sits 14 ms after the turn's INSERT, so its payload carried
-   * all four committed rows — and `mergeServerMessages`, correctly by its own rule, delivered the
-   * three bubbles the reveal had not reached yet. The reveal then appended its own copies of the
-   * same `nina_messages.id`s: two channels into one list, and only the merge deduped. The guard
-   * sits INSIDE the updater (`appendNewBubbles`), so the check reads the list as React will commit
-   * it — a merge that lands in any gap between two sleeps is already on screen for the next
-   * iteration.
-   *
-   * ── WHY THE GUARD LIVES HERE AND NOT IN THE MERGE ────────────────────────────────────────────
-   * Because the merge is already correct: server order, local content, id-deduped — the sanctioned
-   * ONE-FRAME delivery for a refresh, whose contract the header above documents for a COMPLETED
-   * list. The defect was the other writer holding no contract at all, and that defect is one
-   * missing `id` check wide. Making the merge reveal-aware (routing new nina rows through the
-   * stagger) would put a second writer on the reveal's rhythm to fix it. What a mid-reveal merge
-   * still does — collapse the remaining stagger into one frame — is cosmetic, and explicitly
-   * accepted (invariant 4 of `NINA_DUP_BUBBLE_REVEAL_PLAN.md`); what it can no longer do is render
-   * an id twice.
-   */
-  const revealBubbles = useCallback(async (bubbles: readonly SentBubble[]) => {
-    const plan = planReveal(bubbles.map((b) => b.body))
-    for (const [index, bubble] of bubbles.entries()) {
-      const gap = plan[index] ?? 0
-      if (gap > 0) {
-        setTyping(true)
-        await sleep(gap)
-        if (!alive.current) return
-      }
-      // The indicator stays up while there is another thought coming, and drops with the last.
-      setTyping(index < bubbles.length - 1)
-      /*
-       * The APPEND alone is idempotent — `appendNewBubbles` returns the list untouched when the
-       * merge has already delivered this id. The SLEEP above is not skipped: the stagger is keyed
-       * to the batch as the poll received it, and pruning the plan for ids already on screen would
-       * need a synchronous read of `messages` that this updater-only shape deliberately refuses as
-       * a second source of truth. So a mid-reveal merge can leave a gap where a bubble already
-       * sits — the accepted collapse — while the id itself can no longer appear twice.
-       */
-      setMessages((current) => appendNewBubbles(current, [bubble], todayInJakarta()))
-    }
-    setTyping(false)
-  }, [])
-
-  /**
-   * **The arrival loop (F36 R6).** Runs while `awaiting` is true and stops itself the moment the
-   * server says there is nothing outstanding.
-   *
-   * ── ONE SEQUENTIAL ASYNC LOOP, NOT A `setInterval` ───────────────────────────────────────────
-   * Because a tick must not fire while the previous request is in flight, and — the part that
-   * matters — because a tick must not fire while a REVEAL is in progress. An interval would race
-   * the reveal's own `sleep` for the shared timer handle and could deliver a second batch of
-   * bubbles into the middle of the first batch's stagger. Awaiting each step in order makes both
-   * impossible by construction rather than by a guard someone has to remember.
-   *
-   * ── WHY IT DOES NOT STOP ON THE FIRST BUBBLES ────────────────────────────────────────────────
-   * Because a burst chains: the server may answer his first message, then open a second turn for
-   * the two he sent while she was typing. The stop condition is the server's `awaiting`, which is
-   * "is anything of his unanswered", not "did I just receive something".
-   *
-   * ── THE GIVE-UP ─────────────────────────────────────────────────────────────────────────────
-   * `NINA_TURN_POLL_GIVE_UP_MS` is `NINA_BACKGROUND_BUDGET_MS` — the server's honest wall clock —
-   * and no longer the 90 s stale deadline it was identical to before (asserted as the pairing in
-   * `lib/nina/turnflight.test.ts`). The real stop for a DEAD turn is the server's own
-   * `awaiting: false`: the claim read is authoritative, the sweep closes a dead row within
-   * `NINA_TURN_STALE_MS`, and the next poll says stop within ~90 s without this backstop's help.
-   * What is left for the backstop is the poll that cannot reach the server at all — an offline
-   * phone, where every request fails and no server answer is ever coming — and it must span the
-   * longest HONEST run so it never fires over a living turn: the first turn plus
-   * `NINA_TURN_CHAIN_MAX` (2) chained follow-ups at ~50 s each is ~210 s, inside
-   * `NINA_BACKGROUND_BUDGET_MS` = 240 s. At the old 90 s this loop called a living chain dead,
-   * raised the notice, and her remaining replies landed unobserved.
-   */
-  useEffect(() => {
-    if (!awaiting) return
-    let cancelled = false
-
-    const wait = (ms: number) =>
-      new Promise<void>((resolve) => {
-        pollTimer.current = window.setTimeout(resolve, ms)
-      })
-
-    const stop = (raised: Notice | null) => {
-      setAwaiting(false)
-      setTyping(false)
-      if (raised !== null) setNotice(raised)
-    }
-
-    const run = async () => {
-      const startedAt = Date.now()
-      let attempts = 0
-
-      while (!cancelled && alive.current) {
-        await wait(ninaPollDelayFor(attempts))
-        if (cancelled || !alive.current) return
-        attempts += 1
-
-        let result: Awaited<ReturnType<typeof pollNinaReply>> | null = null
-        try {
-          result = await pollNinaReply({
-            sessionId: liveSessionId,
-            afterSeq: cursorRef.current,
-          })
-        } catch {
-          result = null
-        }
-        if (cancelled || !alive.current) return
-
-        const expired = Date.now() - startedAt >= NINA_TURN_POLL_GIVE_UP_MS
-
-        if (result === null || !result.ok) {
-          /* The poll itself failed. It has learned nothing, so it says nothing and tries again —
-           * until the give-up, which is the only thing that ends an offline wait. */
-          if (expired) {
-            stop('no-reply')
-            return
-          }
-          continue
-        }
-
-        cursorRef.current = result.cursor
-
-        if (result.bubbles.length > 0) {
-          setNotice(null)
-          /*
-           * `setAwaiting(false)` BEFORE the reveal when the server says nothing is outstanding, so
-           * the indicator is owned by `typing` alone for the duration of the stagger. Flipping it
-           * re-runs this effect's cleanup and sets `cancelled`, which is harmless: `revealBubbles`
-           * guards on `alive.current`, and this iteration returns immediately afterwards.
-           */
-          if (!result.awaiting) setAwaiting(false)
-          await revealBubbles(result.bubbles)
-          if (cancelled || !alive.current) return
-          if (!result.awaiting) return
-          continue
-        }
-
-        if (!result.awaiting) {
-          /* Nothing outstanding and nothing new: she said nothing, or the turn is dead and the
-           * server has closed it. One notice covers all of it — see NOTICE_TEXT's comment. */
-          stop('no-reply')
-          return
-        }
-        if (expired) {
-          stop('no-reply')
-          return
-        }
-      }
-    }
-
-    void run()
-    return () => {
-      cancelled = true
-      if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
-    }
-  }, [awaiting, liveSessionId, revealBubbles])
-
-  /*
-   * The send itself: optimistic row, busy window, failure marking, id adoption. Factored out of
-   * `handleSend` so a RETRY of a failed row runs byte-for-byte the same path a typed send does
-   * rather than a second copy of it drifting — the failure marking and the id adoption are the
-   * halves a copy would get subtly wrong, and both are what makes a retried row behave identically
-   * to a fresh one afterwards (the poll, a quote, the actions sheet).
-   *
-   * What it deliberately does NOT own is the composer's armed state. Unpinning a reply chip, a run
-   * chip or a pinned album photo is right for a typed send — the optimistic row now carries them —
-   * and wrong for a retry, which must leave whatever is armed NOW alone: a runner can be mid-draft
-   * on his next message while he retries the last one.
-   */
-  const sendAndTrack = useCallback(
-    async (input: {
-      body: string
-      images: readonly ComposerDraftImage[]
-      replyToMessageId: string | null
-      runAttachment: RunAttachment | null
-      existingPhoto: NinaExistingPhoto | null
-      /**
-       * The failed row a retry replaces, IN PLACE — a retried message keeps its position in the
-       * conversation and its day divider, because it is the same message tried again, not a new
-       * one at the bottom of a conversation that has moved on. Null appends, which is what a
-       * typed send is.
-       */
-      replacesId: string | null
-      dayISO: string
-    }): Promise<boolean> => {
-      /*
-       * The client half of RULING B1's ONE refusal rule, restated against the resolved input — the
-       * same four disjuncts `sendNinaMessage` checks, in the same order. A retry re-runs it because
-       * a failed row can legitimately be run-only (R13: a run with no words is a message) and this
-       * guard must not be the thing that refuses it.
-       */
-      if (
-        input.body.length === 0 &&
-        input.images.length === 0 &&
-        input.runAttachment === null &&
-        input.existingPhoto === null
-      ) {
-        return false
-      }
-
-      const body = input.body
-      const localId = `local-${crypto.randomUUID()}`
-      setNotice(null)
-      /*
-       * Bubble order, client and server, is the same three-part order: the fresh uploads he
-       * picked, then the tiles the pre-check deduplicated (each a reference the server writes
-       * after the originals, at `sortOrder: images.length + position`), then the pinned album
-       * photo, which keeps the LAST position it has always had. One array, so the optimistic
-       * bubble and every later server render of the same message agree about the order inside it.
-       * Already on the CDN in every case — the describe pre-pass uploaded the picked ones before
-       * send was possible, and the deduplicated and pinned ones have been in Blob since their
-       * first upload — so there is no object URL to revoke and no flicker when the real row lands.
-       */
-      const uploads = input.images.filter(
-        (image): image is Extract<ComposerDraftImage, { source: 'upload' }> =>
-          image.source === 'upload',
-      )
-      const deduped = input.images.filter(
-        (image): image is Extract<ComposerDraftImage, { source: 'deduped' }> =>
-          image.source === 'deduped',
-      )
-      const optimisticUrls = [
-        ...uploads.map((image) => image.url),
-        ...deduped.map((image) => image.url),
-        ...(input.existingPhoto === null ? [] : [input.existingPhoto.url]),
-      ]
-      setMessages((current) => {
-        const row: ChatMessage = {
-          id: localId,
-          role: 'user',
-          body,
-          dayISO: input.dayISO,
-          state: 'sending',
-          replyToId: input.replyToMessageId,
-          imageUrls: optimisticUrls.length > 0 ? optimisticUrls : undefined,
-          /* R13. The card renders from client state on this row and from `nina_messages.run_id` on
-           * every later load; both go through the same `RunAttachment`, so there is no lag and no
-           * second shape. */
-          attachment: input.runAttachment,
-        }
-        if (input.replacesId !== null) {
-          return current.map((m) => (m.id === input.replacesId ? row : m))
-        }
-        return [...current, row]
-      })
-      /* No `setTyping(true)` here (F36 R6): `awaiting` drives the indicator from the moment the
-       * action RETURNS, and raising it before the round trip would show Nina typing in response to
-       * a message that had not been accepted yet. */
-      setBusy(true)
-
-      let result: Awaited<ReturnType<typeof sendNinaMessage>> | null = null
-      try {
-        result = await sendNinaMessage({
-          body,
-          imageTickets: uploads.map((image) => image.ticket),
-          /*
-           * media-dedupe P2. The hash of the exact bytes behind each ticket, keyed by the STORED
-           * pathname the ticket itself carries — so the pairing survives the server's
-           * dedupe-by-pathname in STEP 0 whatever order the claims arrive in. A claim with no
-           * entry dedups as NULL (inactive), which is the honest state for a hash that could not
-           * be computed.
-           */
-          contentHashes: Object.fromEntries(
-            uploads.flatMap((image): Array<[string, string]> =>
-              image.contentHash === null ? [] : [[image.pathname, image.contentHash]],
-            ),
-          ),
-          /*
-           * media-dedupe P2. Tiles whose bytes the pre-check proved are already in the
-           * collection: ids, never URLs — `resolveAttachment` proves ownership before a row is
-           * written, exactly as it does for the pinned album photo below. The `url` this
-           * component holds is for the optimistic bubble; it is not sent.
-           */
-          dedupedImageIds: deduped.map((image) => image.imageId),
-          replyToMessageId: input.replyToMessageId,
-          runId: input.runAttachment?.runId ?? null,
-          /*
-           * F34 R2, and the whole of "we dont actually reupload the photo into the chat, but just
-           * some kind of pointer to the existing file". An id and a kind, never a URL: the field
-           * has existed since F33 phase 13 and `resolveAttachment` proves ownership against
-           * `user_id` before a row is written, which is strictly more than a signed ticket could
-           * prove. The `url` this component holds is for the chip and for the optimistic bubble;
-           * it is not sent, and a tampered one buys nothing.
-           */
-          attachExisting:
-            input.existingPhoto === null
-              ? null
-              : { kind: input.existingPhoto.kind, id: input.existingPhoto.id },
-          /*
-           * F35 R2. The conversation this message joins. Read from the prop rather than from the
-           * URL, because the server already proved this session is his — re-reading `?s=` here
-           * would re-introduce an untrusted claim the page has already resolved. `null` passes
-           * through deliberately: it means he has no sessions, and the action resolves-or-creates;
-           * refusing on the client instead would leave the composer enabled with nowhere to send.
-           */
-          sessionId,
-        })
-      } catch {
-        result = null
-      }
-      if (!alive.current) return false
-
-      /*
-       * **`busy` is released HERE (F36 R6).** It used to be held for the whole 13-45 s turn, and
-       * that is the grey composer R6 is about. The action's own round trip is one insert and one
-       * conditional insert, so this is well under a second and the Send button is live again while
-       * she is still answering — which is what WhatsApp does. The server's claim on `nina_turns` is
-       * what stops the next message becoming a second concurrent model call.
-       */
-      setBusy(false)
-
-      if (result === null || !result.ok) {
-        setAwaiting(false)
-        setTyping(false)
-        setMessages((current) =>
-          current.map((m) => (m.id === localId ? { ...m, state: 'failed' } : m)),
-        )
-        setNotice('send-failed')
-        return false
-      }
-
-      // Adopt the server's id for the runner's own row, so a quote can name it and the actions
-      // sheet can act on it. Until this point it carried a client-minted `local-` id.
-      const confirmedId = result.userMessageId
-      setMessages((current) =>
-        current.map((m) =>
-          m.id === localId ? { ...m, id: confirmedId ?? m.id, state: 'sent' } : m,
-        ),
-      )
-
-      /*
-       * The three things the poll needs, all of them facts the server just established.
-       *
-       * `sessionId` is adopted because the prop may have been `null` — "he has no sessions at all"
-       * is a real state and the ACTION resolves or creates one. `cursor` is his row's `seq`, so the
-       * first poll asks for everything strictly after his own message. `awaiting` goes true
-       * unconditionally on a successful send, INCLUDING when `result.turnId` is null: a null turn
-       * id means a turn was already running and will chain onto this message, so something is very
-       * much still coming.
-       */
-      if (result.sessionId !== null) setLiveSessionId(result.sessionId)
-      if (result.cursor !== null) cursorRef.current = result.cursor
-      setAwaiting(true)
-      return true
-    },
-    [sessionId],
-  )
-
-  const handleSend = useCallback(
-    async (draft: { body: string; images: readonly ComposerDraftImage[] }) => {
-      if (busy) return
-      /* R13's floor, and the client half of RULING B1's ONE refusal rule: a message with no words,
-       * no photo, no run and no pinned album photo is a mis-tap. `canSend` already refuses it; this
-       * is the guard that means the action can trust its own input. The four disjuncts here are the
-       * same four `sendNinaMessage` checks, in the same order, and they must stay that way — a
-       * fifth on one side only is an enabled Send button that silently refuses. */
-      if (
-        draft.body.length === 0 &&
-        draft.images.length === 0 &&
-        attachment === null &&
-        photo === null
-      ) {
-        return
-      }
-
-      /* Read once, then unpinned below — the same shape `draftQuote` uses, and for the same
-       * reason: the optimistic row has to carry what the action will persist. */
-      const replyToMessageId = draftQuote?.targetId ?? null
-      setDraftQuote(null)
-      /*
-       * Unpinned the moment it joins the conversation, even though the send may still fail. The
-       * failed bubble keeps its card — that is where the run is now — and showing the chip as well
-       * would put the same run on screen twice and invite a second send of it.
-       */
-      setAttachment(null)
-      /* The same argument, and it is stronger here: the photo is in the album either way, so a
-       * chip left armed after a failed send is an invitation to attach it twice. */
-      setPhoto(null)
-      await sendAndTrack({
-        body: draft.body,
-        images: draft.images,
-        replyToMessageId,
-        runAttachment: attachment,
-        existingPhoto: photo,
-        replacesId: null,
-        dayISO: todayInJakarta(),
-      })
-    },
-    [busy, draftQuote, attachment, photo, sendAndTrack],
-  )
-
-  /*
-   * The RETRY of a failed send — not R5's resend, which is `handleResendMessage` above and acts on
-   * a row that DID reach the server. The owner's report: a typed message failed (the red
-   * hairline), and the actions sheet answered "there is nothing to edit until Nina has it" —
-   * which was true of EDIT and false of RETRY, the thing he actually wanted.
-   *
-   * What a retry can honestly carry: the body, the reply pointer and the run card, because all
-   * three are still on the row. What it cannot: the PHOTOS. Their tickets were signed server-side
-   * by `describeNinaImage`, held in `Composer`'s tiles, and spent or lost the moment `submit()`
-   * cleared them; a Blob URL is neither a ticket nor a re-attachable pointer — `attachExisting`
-   * needs a `nina_message_images` id, and a failed send never wrote one. So a failed row with
-   * photos is offered no retry at all rather than one that silently drops them, and the sheet says
-   * so in words.
-   */
-  const handleRetrySendMessage = useCallback(async (): Promise<boolean> => {
-    const row = acting
-    if (row == null) return false
-    if (busy) return false
-    if (row.role !== 'user' || row.state !== 'failed') return false
-    if ((row.imageUrls?.length ?? 0) > 0) return false
-    return sendAndTrack({
-      body: row.body,
-      images: [],
-      replyToMessageId: row.replyToId,
-      runAttachment: row.attachment ?? null,
-      existingPhoto: null,
-      replacesId: row.id,
-      dayISO: row.dayISO,
-    })
-  }, [acting, busy, sendAndTrack])
-
-  /*
-   * F36 R6. The indicator is up while the SERVER owes an answer (`awaiting`) and between two of her
-   * bubbles mid-reveal (`typing`). Two pieces of state and one derived flag, rather than one
-   * overloaded boolean, because the poll and the reveal legitimately own different stretches of the
-   * same wait and each must be able to end its own without ending the other's.
-   *
-   * This is the honest signal R6 asks for: it means "she is answering", where the grey bubble it
-   * replaces meant "your message has not been saved yet" — which was never what the runner read it
-   * as, and is no longer true for even a second.
-   */
-  const showTyping = awaiting || typing
 
   return (
     <>
@@ -1572,7 +599,7 @@ export function ChatScreen({
           (acting.imageUrls?.length ?? 0) === 0
         }
         onRetry={handleRetrySendMessage}
-        onClose={() => setActing(null)}
+        onClose={closeSheet}
         onSubmitEdit={handleEditMessage}
         onDelete={handleDeleteMessage}
         onResend={handleResendMessage}
@@ -1588,8 +615,8 @@ export function ChatScreen({
         <PhotoViewer
           photos={viewerPhotos}
           index={shownIndex}
-          onIndex={(next) => setViewer({ messageId: viewer.messageId, index: next })}
-          onClose={() => setViewer(null)}
+          onIndex={(next) => setViewerIndex(viewer.messageId, next)}
+          onClose={closeViewer}
           /* `'foto'`, as the album passes — "upload screenshot" is not a thing. */
           subject="foto"
           actions={
@@ -1633,7 +660,7 @@ export function ChatScreen({
                         url: viewerPhotos[shownIndex]!.url,
                       })
                       setNotice(null)
-                      setViewer(null)
+                      closeViewer()
                     }
               }
             />

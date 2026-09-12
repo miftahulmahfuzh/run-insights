@@ -11,6 +11,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 | 2026-09-12 | Admin Filetree Split | Split the admin filetree monolith into seven cohesive modules behind an unchanged barrel import path. | [link](./2026-09-12-admin-filetree-split.md) |
 | 2026-09-12 | Nina Image-Worker Split | Split Nina's off-platform image worker into cohesive modules behind its unchanged import path, entry guard kept. | [link](./2026-09-12-nina-worker-split.md) |
 | 2026-09-12 | Badge Pipeline Follow-ups | Gated the badge grader's self-test loop in CI and resolved the records' zero-reference size constant as kept. | [link](./2026-09-12-badge-pipeline-followups.md) |
+| 2026-09-12 | Nina ChatScreen Seven-Module Split | Split the Nina chat screen into cohesive per-concern hooks, solving an unsatisfiable React Compiler lint conflict. | [link](./2026-09-12-tokenmax-chat-screen-split.md) |
 | 2026-09-12 | Charts Pair Package Readme (Half-Stale Premise) | Wrote the charting pair's first combined package readme, verifying its assigned consolidation was already landed. | [link](./2026-09-12-charts-readme-yagni.md) |
 | 2026-09-12 | Nina Memory/ImagePrefs YAGNI Sweep | knip-swept lib/nina memory+imageprefs: 3 dead symbols deleted, 17 un-exported; zero flags left; 317 targeted tests green | [link](./2026-09-12-nina-memory-prefs-yagni.md) |
 | 2026-09-12 | App Tree YAGNI Sweep & Citation Repair | Swept the app tree for dead code and repaired false design-brief citations, one born wrong at birth. | [link](./2026-09-12-app-tree-yagni.md) |
