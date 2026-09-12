@@ -354,5 +354,5 @@ npx vitest run            # final: 265 files / 5,107 tests green
 - The diff contains no runtime change (4 `export` keywords + one comment),
   which is what makes attributing the flake to load, not the change, sound.
 
-**Branch:** `token-maxxing-2026-09-11-components-dead-code-b` — on branch,
-NOT merged by the worker; landing is the coordinator's step.
+**Branch:** `token-maxxing-2026-09-11-components-dead-code-b` — merged
+(commit `74096a7`).

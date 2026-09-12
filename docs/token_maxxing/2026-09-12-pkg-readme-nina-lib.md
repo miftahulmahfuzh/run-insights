@@ -249,6 +249,6 @@ prettier commit). Calibration reference: `b049bb7` (2026-09-11,
 
 **Session identity:** worker session `pkg-readme-nina-lib`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-pkg-readme-nina-lib`; final commit `0b7020e`; not merged
-(coordinator lands worker branches). Session interrupted once by a transient 429 rate
+`token-maxxing-2026-09-12-pkg-readme-nina-lib`; final commit `0b7020e`; merged
+(commit `ea8dc98`). Session interrupted once by a transient 429 rate
 limit after the commit landed; doc + index written after resume from the clean tree.

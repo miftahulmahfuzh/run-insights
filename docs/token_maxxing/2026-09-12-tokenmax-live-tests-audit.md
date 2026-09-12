@@ -384,6 +384,5 @@ worktree's history before the session started).
 
 **Session identity:** worker session `live-tests-audit`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-live-tests-audit`; this docs commit is the branch tip at
-writing time, with the coordinator's `8714456` directly below it; NOT merged (the
-coordinator lands worker branches).
+`token-maxxing-2026-09-12-live-tests-audit`; this docs commit was the branch tip at
+writing time, with the coordinator's `8714456` directly below it; merged (commit `af073e3`).

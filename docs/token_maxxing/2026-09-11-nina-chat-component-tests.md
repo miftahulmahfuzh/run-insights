@@ -135,8 +135,8 @@ session.
    `test(nina): stand up React component testing, cover ChatScreen + NinaSidebar`
    — 6 files changed: `package.json`, `package-lock.json`, `vitest.config.ts`,
    `tests/support/setup.ts`, `components/nina/ChatScreen.test.tsx` (new),
-   `components/nina/NinaSidebar.test.tsx` (new). Left sitting on
-   `token-maxxing-2026-09-11`, not merged — for the user to review.
+   `components/nina/NinaSidebar.test.tsx` (new). Merged directly on `main`'s
+   mainline (commit `fdc7653`), no separate merge commit.
 
 ## Code / Design Details
 
@@ -238,4 +238,4 @@ test(nina): stand up React component testing, cover ChatScreen + NinaSidebar
 `tests/support/setup.ts`, `components/nina/ChatScreen.test.tsx` (new),
 `components/nina/NinaSidebar.test.tsx` (new).
 
-**Branch:** `token-maxxing-2026-09-11` — unmerged, awaiting user review.
+**Branch:** `token-maxxing-2026-09-11` — merged directly on `main`'s mainline (commit `fdc7653`).

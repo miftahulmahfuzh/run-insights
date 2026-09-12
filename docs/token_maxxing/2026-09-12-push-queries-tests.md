@@ -365,6 +365,6 @@ file header now carries an inlined copy specialized to `run_insights_itest_push`
 
 **Session identity:** worker session `push-queries-tests`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-push-queries-tests`; code commit `006130d` is the branch tip;
-this doc and its README row are intentionally uncommitted for the coordinator to
-collect; NOT merged (the coordinator lands worker branches).
+`token-maxxing-2026-09-12-push-queries-tests`; code commit `006130d` was the branch tip;
+this doc and its README row were intentionally left uncommitted for the coordinator to
+collect; merged (commit `4915e6b`).

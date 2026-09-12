@@ -78,5 +78,5 @@ Un-export list (keyword dropped, code untouched) with the verifier that backs ea
 ## Appendix
 - Commit: `04e79fe` — 5 files, +13/−64 (`lib/push/payload.ts` −26 net, `lib/push/payload.test.ts` −28, `lib/push/send.ts` ±2, `lib/push/actions.ts` ±1, `components/auth/SignOutButton.tsx` ±2).
 - Gates: `npx next typegen` → `npx tsc --noEmit` exit 0; `npx vitest run` targeted 42/42; full sweep 5,090/5,090 with `--no-file-parallelism` (parallel runs showed 1 then 3 reds in `components/admin` — the known flake, files untouched by this diff); `npx eslint` and `npx prettier --check` clean on all five touched files.
-- Scope compliance: zero `package_readme.md` edits (checked: no doc references `decodeNinaPushPayload` anywhere in `docs/` — no drift left behind); zero DB access; branch not merged (coordinator lands it).
+- Scope compliance: zero `package_readme.md` edits (checked: no doc references `decodeNinaPushPayload` anywhere in `docs/` — no drift left behind); zero DB access; branch merged (commit `8bd8f08`).
 - Coordinator: `tokenmax-orch-2026-09-12`; report sent as `DONE slug=auth-push-runs-trends-yagni branch=token-maxxing-2026-09-12-auth-push-runs-trends-yagni commit=04e79fe`.

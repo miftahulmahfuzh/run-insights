@@ -349,5 +349,4 @@ git log --oneline -5
 0459212 test(admin): cover FileExplorer, the explorer's own orchestrator
 ```
 
-**Branch:** `token-maxxing-2026-09-11` — on branch, not yet merged (merge
-happens as a separate step outside this session).
+**Branch:** `token-maxxing-2026-09-11` — merged (commit `a1ab59f`).

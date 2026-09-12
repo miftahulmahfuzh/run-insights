@@ -247,8 +247,7 @@ barrel, the definition, and the consumer as three separate sites to disambiguate
   +25/−46: `caption.ts` 10/11, `describe.ts` 2/2, `distill.ts` 3/9, `index.ts` 0/6,
   `system.ts` 10/16, `tools.ts` 0/2). Branch base `b39c6e5`; head `f7d50e7`.
 - **Branch:** `token-maxxing-2026-09-12-nina-persona-comments`, worktree
-  `tokenmax-2026-09-12-nina-persona-comments`. NOT merged — worker reports to coordinator
-  `tokenmax-orch-2026-09-12`, which owns merges.
+  `tokenmax-2026-09-12-nina-persona-comments`. Merged (commit `65cee72`).
 - **Knip numbers:** unused exports 150 → 114 repo-wide (36 findings resolved by this
   sweep across the deletions, un-exports, and the barrel re-export removals); findings
   attributable to `persona.ts` + `prompts/` now zero.

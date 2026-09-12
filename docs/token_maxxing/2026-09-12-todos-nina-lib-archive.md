@@ -222,8 +222,7 @@ to show both suffix kinds and both path bases:
 
 ## Appendix
 - **Branch / commit:** `token-maxxing-2026-09-12-todos-nina-lib-archive` @ `d81aa7f`
-  (1 file, +45/−658). Not merged, not pushed — Worker Mode reports DONE to coordinator
-  `tokenmax-orch-2026-09-12`, which owns the merge.
+  (1 file, +45/−658). Merged (commit `8ae483b`).
 - **Assigned idea's Why (verbatim intent):** same YAGNI/compaction pattern as
   yesterday's root and nina-component todos archival sessions, applied to the one
   ledger still bloated (703 lines vs siblings of 53–157).

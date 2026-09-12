@@ -237,5 +237,5 @@ old readme claimed had never happened).
 
 **Session identity:** worker session `scripts-package-hygiene`, spawned by coordinator
 `tokenmax-orch-2026-09-11` on 2026-09-11; branch
-`token-maxxing-2026-09-11-scripts-package-hygiene`; final commit `b049bb7`; not merged
-(coordinator lands worker branches).
+`token-maxxing-2026-09-11-scripts-package-hygiene`; final commit `b049bb7`; merged
+(commit `2ecaf7f`).

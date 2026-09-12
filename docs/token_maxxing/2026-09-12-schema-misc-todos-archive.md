@@ -271,15 +271,13 @@ lib/admin −97-side, scripts −59-side.
   characterized a second time, by a second session, with the same
   2-fail-intermittent signature); the fix belongs in the harness/parallelism
   layer, outside this session's scope.
-- **Not merged by design** — Worker Mode reports to the coordinator
-  `tokenmax-orch-2026-09-12`, which owns the merge to main; nothing here
-  should be pushed independently.
+- **Merged (commit `4a237d5`)** — landed by the coordinator
+  `tokenmax-orch-2026-09-12`, per the Worker Mode contract.
 
 ## Appendix
 - **Branch / commits:** `token-maxxing-2026-09-12-schema-misc-todos-archive` @
   `f332d1a` (5 files, +33/−66) and `a1db572` (4 files, +86/−368) — 9 files,
-  +119/−434 total. Not merged, not pushed; tree clean at doc time. Worker
-  session of coordinator `tokenmax-orch-2026-09-12`.
+  +119/−434 total. Merged (commit `4a237d5`).
 - **Files touched:**
   - `f332d1a`: `lib/schema/extractedSession.ts`,
     `lib/schema/extractedSession.test.ts`, `lib/schema/extractionResult.ts`,

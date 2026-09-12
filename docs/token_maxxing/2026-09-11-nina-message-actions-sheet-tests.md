@@ -358,5 +358,4 @@ f2e62da test(nina): cover MessageActionsSheet's menu, retry, resend, edit and de
 ```
 1 file changed, 440 insertions(+) — `components/nina/MessageActionsSheet.test.tsx`.
 
-**Branch:** `token-maxxing-2026-09-11` — on branch, not yet merged (merge
-happens as a separate step outside this session, per Step 8).
+**Branch:** `token-maxxing-2026-09-11` — merged (commit `ae749f6`).

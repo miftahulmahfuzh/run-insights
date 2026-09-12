@@ -245,5 +245,5 @@ verified no `.workflows/` existed in any of the four dirs); `6b5cd47` (drift clo
 
 **Session identity:** worker session `pkg-readme-profile-share`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-pkg-readme-profile-share`; final commit `c0883b4`; not merged — the
-coordinator lands worker branches.
+`token-maxxing-2026-09-12-pkg-readme-profile-share`; final commit `c0883b4`; merged
+(commit `a2bc44f`).

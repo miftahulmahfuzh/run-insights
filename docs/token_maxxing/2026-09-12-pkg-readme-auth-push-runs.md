@@ -258,5 +258,5 @@ doc inherits); `f268e07` (this session's readme commit).
 
 **Session identity:** worker session `pkg-readme-auth-push-runs`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-pkg-readme-auth-push-runs`; work commit `f268e07`; not merged
-(coordinator lands worker branches).
+`token-maxxing-2026-09-12-pkg-readme-auth-push-runs`; work commit `f268e07`; merged
+(commit `63025d7`).

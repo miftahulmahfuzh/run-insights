@@ -271,5 +271,4 @@ no prior sweep commit touches `lib/llm`.
 
 **Session identity:** worker session `llm-yagni-audit`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-llm-yagni-audit`; final commit `5421e6b`; NOT merged (the
-coordinator lands worker branches).
+`token-maxxing-2026-09-12-llm-yagni-audit`; final commit `5421e6b`; merged (commit `e54c299`).

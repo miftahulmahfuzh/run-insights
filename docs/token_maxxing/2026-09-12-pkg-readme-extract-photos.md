@@ -261,7 +261,7 @@ Notes / historical context (F04/F05 + F16/F16b/F17/F18/F29/F33 + media-dedupe li
 
 **Session identity:** worker session `pkg-readme-extract-photos`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-pkg-readme-extract-photos`; final commit `2397e88`; not merged —
-the coordinator lands worker branches. First run of this session died on a transient API 429
+`token-maxxing-2026-09-12-pkg-readme-extract-photos`; final commit `2397e88`; merged
+(commit `1a0cd03`). First run of this session died on a transient API 429
 pre-work; the retry reproduced the assignment from the coordinator's re-send and completed
 with no lost state.

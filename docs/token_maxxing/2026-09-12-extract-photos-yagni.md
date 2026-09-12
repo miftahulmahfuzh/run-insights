@@ -269,6 +269,5 @@ assertion checked before editing); positive controls (`MAX_IMAGES` alive,
 
 **Session identity:** worker session `extract-photos-yagni`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-extract-photos-yagni`; not merged (the coordinator lands worker
-branches). Constraints honored: edits confined to `lib/extract`, `components/extract`,
+`token-maxxing-2026-09-12-extract-photos-yagni`; merged (commit `faace78`). Constraints honored: edits confined to `lib/extract`, `components/extract`,
 `lib/photos`; no `package_readme.md` touched; no database accessed all session.

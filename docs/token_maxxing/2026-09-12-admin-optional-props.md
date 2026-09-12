@@ -314,8 +314,8 @@ conflicting files.
 
 **Session identity:** worker session `admin-optional-props`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-admin-optional-props`; work commit `1fec595`; not merged
-(coordinator lands worker branches).
+`token-maxxing-2026-09-12-admin-optional-props`; work commit `1fec595`; merged
+(commit `cb210af`).
 
 **Related sessions:** `2026-09-12-ui-primitives-yagni.md` (the same-day scan this session
 extends — its four verifier traps are the foundation this pass added four lessons to, and

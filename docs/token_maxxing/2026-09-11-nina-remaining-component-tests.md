@@ -397,6 +397,5 @@ npx prettier --write components/nina/*.test.tsx   # 17ca853
   non-reproducing failure recorded in Follow-ups #7.
 - `next typegen` + `tsc --noEmit`: clean. Prettier: clean on all new files.
 
-**Branch:** `token-maxxing-2026-09-11-nina-remaining-component-tests` — work
-committed locally, **not merged**; the coordinator (`tokenmax-orch-2026-09-11`)
-owns the merge.
+**Branch:** `token-maxxing-2026-09-11-nina-remaining-component-tests` — merged
+(commit `c50d580`).

@@ -281,5 +281,5 @@ docs); `0020_image_gen_controls` (added `app_settings`, absent from the old inve
 
 **Session identity:** worker session `pkg-readme-lib-db`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-pkg-readme-lib-db`; final commit `356c5f4`; not merged (coordinator
-lands worker branches).
+`token-maxxing-2026-09-12-pkg-readme-lib-db`; final commit `356c5f4`; merged
+(commit `4fe9d01`).

@@ -199,7 +199,7 @@ rules (replace vs push) are written down.
   breadcrumb the decider needs. The readme carries the truth instead.
 - **Prettier as the md gate.** `prettier --check` clean on both touched files — the
   repo's `format:check` covers markdown, so a doc-only diff is still format-gated.
-- **Not merged.** The coordinator owns landing; Worker Mode contract.
+- **Merged (commit `56cecc9`).**
 
 ## Follow-ups & YAGNI notes
 

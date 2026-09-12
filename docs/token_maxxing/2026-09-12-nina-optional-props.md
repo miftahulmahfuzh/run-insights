@@ -369,8 +369,8 @@ documented-seam TEST-ONLY rows remaining.
 
 **Session identity:** worker session `nina-optional-props`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-nina-optional-props`; work commit `4f655e0`; not merged
-(coordinator lands worker branches). Mid-session 429 → ~9 idle minutes, recovered by the
+`token-maxxing-2026-09-12-nina-optional-props`; work commit `4f655e0`; merged
+(commit `c9792ac`). Mid-session 429 → ~9 idle minutes, recovered by the
 coordinator's resume ping with no lost work.
 
 **Related sessions:** `2026-09-12-ui-primitives-yagni.md` (the session that industrialized

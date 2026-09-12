@@ -256,8 +256,7 @@ line instead, the format the rewrite script explicitly allowed for.)
 
 ## Appendix
 - **Branch / commit:** `token-maxxing-2026-09-11-todos-root-archive` @ `0798fc4`
-  (8 files, +55/−814). Not merged to main — Worker Mode reports DONE to coordinator
-  `tokenmax-orch-2026-09-11`, which owns the merge.
+  (8 files, +55/−814). Merged (commit `32c239d`).
 - **Assigned idea's Why (verbatim intent):** duplicate TaskIDs break tooling that keys
   off them (task-locator, plan index), and an 843-line todos file makes it expensive
   to see what's actually open.

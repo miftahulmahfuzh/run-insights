@@ -312,8 +312,8 @@ mandate); prettier clean after one `--write` reflow.
 
 **Session identity:** worker session `ui-primitives-yagni`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-ui-primitives-yagni`; work commit `dba8f17`; not merged
-(coordinator lands worker branches).
+`token-maxxing-2026-09-12-ui-primitives-yagni`; work commit `dba8f17`; merged
+(commit `735a68d`).
 
 **Related sessions:** `2026-09-11-ui-primitives-tests.md` (the coverage that made this pass
 safe); `2026-09-11-components-dead-code-a.md` (the prior sweep that curated the barrel and

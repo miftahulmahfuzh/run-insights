@@ -164,9 +164,9 @@ sections, the **export table**, **dependencies**, **reverse dependencies**,
   branch keeps history honest without a reverts-on-reverts commit chain.
 
 ## Follow-ups & YAGNI notes
-- **Not merged here by design** — the coordinator owns the merge for the
+- **Merged (commit `0438cbb`)** — landed by the coordinator for the
   2026-09-12 set; concurrent-set landing collisions (add/add on
-  `docs/token_maxxing/README.md` rows are the known pattern) are its
+  `docs/token_maxxing/README.md` rows are the known pattern) were its
   problem, not this branch's.
 - The remaining `package_readme.md` files that still carry the same
   duplicated-changelog shape are candidates for the same treatment if the

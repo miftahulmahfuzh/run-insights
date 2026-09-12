@@ -330,5 +330,4 @@ expected), reverted, confirmed green.
 ```
 1 file changed, 411 insertions(+) — `tests/admin.folderActions.test.ts`.
 
-**Branch:** `token-maxxing-2026-09-11` — on branch, not yet merged (merge
-happens as a separate step outside this session).
+**Branch:** `token-maxxing-2026-09-11` — merged (commit `b110d40`).

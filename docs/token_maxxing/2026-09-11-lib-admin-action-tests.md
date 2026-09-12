@@ -380,5 +380,4 @@ d66856b test(admin): execute remove, describe and findDuplicate chat photo actio
 ```
 
 **Branch:** `token-maxxing-2026-09-11-lib-admin-action-tests` (tip
-`7b2c058`) — on branch, deliberately NOT merged or pushed by this session;
-the coordinator (`tokenmax-orch-2026-09-11`) lands it.
+`7b2c058`) — merged (commit `a62baba`).

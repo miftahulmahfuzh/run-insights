@@ -348,5 +348,5 @@ re-controlled both directions before trusting the guard anywhere.
 **Session identity:** worker session `tokenmax-charts-const-consolidation`, spawned by
 coordinator `tokenmax-orch-2026-09-12` on 2026-09-12; branch
 `token-maxxing-2026-09-12-charts-const-consolidation`; final commits `ff51184`, `50985dd`,
-`e9d1cfa`; not merged (coordinator lands worker branches). Continues the follow-ups section of
+`e9d1cfa`; merged (commit `6d71857`). Continues the follow-ups section of
 `docs/token_maxxing/2026-09-12-tokenmax-charts-yagni.md`.

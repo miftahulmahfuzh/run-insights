@@ -402,6 +402,5 @@ eb93607 components/ui: de-export symbols with zero callers, trim unused barrel r
  7 files changed, 46 insertions(+), 38 deletions(-)
 ```
 
-**Branch:** `token-maxxing-2026-09-11-components-dead-code-a` — on branch,
-not merged (the coordinator owns merging; this session committed the work
-and this doc and stopped).
+**Branch:** `token-maxxing-2026-09-11-components-dead-code-a` — merged
+(commit `3155019`).

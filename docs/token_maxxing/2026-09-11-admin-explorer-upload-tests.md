@@ -408,5 +408,5 @@ f44ed9f test(admin): cover PhotoMoveBar and PhotoReferencePicker with real DOM t
 (Per-commit test counts: 39, 66, 29, 32, 17, 32, 15, 17, 20, 19, 18, 20 —
 summing to 324 with the fix commit adding tests to none.)
 
-**Branch:** `token-maxxing-2026-09-11-admin-explorer-upload-tests` — on
-branch, NOT merged by the worker; landing is the coordinator's step.
+**Branch:** `token-maxxing-2026-09-11-admin-explorer-upload-tests` — merged
+(commit `2d60162`).

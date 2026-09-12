@@ -280,5 +280,5 @@ of `zoneTotalSec`).
 
 **Session identity:** worker session `tokenmax-charts-yagni`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12; branch
-`token-maxxing-2026-09-12-charts-yagni`; final commits `4dd4abe` + `c0f0cff`; not merged
-(coordinator lands worker branches).
+`token-maxxing-2026-09-12-charts-yagni`; final commits `4dd4abe` + `c0f0cff`; merged
+(commit `a9a4c24`).

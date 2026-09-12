@@ -139,7 +139,7 @@ accumulate because every phase of a plan "might" want them.
    (varying-count full-sweep reds, clean under serial), i.e. pre-existing and not this
    diff.
 8. **Commit and stop.** `d05505f`, 2 files, +17/−34, message recording all 20 verdicts by
-   name. Not merged — the coordinator owns landing; worker reports DONE.
+   name. Merged (commit `bd67d87`).
 
 ## Code / Design Details
 The entire diff is demotion and deletion; here is its whole vocabulary, three shapes:
@@ -261,7 +261,7 @@ behavior delta is the cheapest possible correctness-preserving diff.
   the 11-line `WEEKDAY_EN_SHORT` deletion; `lib/nina/imageprefs.ts` 10 lines net
   removed). Branch `token-maxxing-2026-09-12-nina-memory-prefs-yagni`, worktree
   `tokenmax-2026-09-12-nina-memory-prefs-yagni`, head `d05505f` on top of `b39c6e5`.
-  **Not merged** — coordinator `tokenmax-orch-2026-09-12` owns landing.
+  **Merged** (commit `bd67d87`).
 - **The 20 knip flags** = 14 unused exports + 6 unused exported types. Disposition:
   3 deleted (`WEEKDAY_EN_SHORT`, `DistilledCandidate`, `isNinaImageFocusKey`), 17
   un-exported (14 in memory.ts: `isoToJsWeekday`, `WEEKDAY_ID`,

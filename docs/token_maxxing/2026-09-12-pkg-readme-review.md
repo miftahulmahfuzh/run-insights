@@ -296,4 +296,4 @@ claim stale-on-arrival at 14:21); `8af2412` (this session).
 **Session identity:** worker session `pkg-readme-review`, spawned by coordinator
 `tokenmax-orch-2026-09-12` on 2026-09-12 (idle at launch, resumed on the coordinator's ping
 with zero prior work); branch `token-maxxing-2026-09-12-pkg-readme-review`; final commit
-`8af2412`; not merged (coordinator lands worker branches per C7).
+`8af2412`; merged (commit `e5064ff`).
