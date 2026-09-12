@@ -146,8 +146,8 @@ export function AppShell({
 
           R1 adds one hop for the conversation screen and keeps the same seam: `ChatChrome` is the
           client component that owns the reveal state, and it renders `TabBar` with the badge it
-          was handed. The state cannot live here (this file must stay a Server Component — nine
-          pages, a layout and two loading states import it, measured 2026-09-12, and
+          was handed. The state cannot live here (this file must stay a Server Component — eight
+          pages and two loading states import it, measured 2026-09-12, and
           `tests/share.bundle.test.ts` exists because this import graph leaked
           a session read once already) and it cannot live in `TabBar` either, because a hidden bar
           is translated off screen and a control inside it would be unreachable. */}
