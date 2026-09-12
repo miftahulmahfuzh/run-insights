@@ -1,6 +1,6 @@
 // MUST be first: it loads .env.local before any import below reaches lib/env.ts, which parses
 // process.env eagerly. See the comment in that file — this ordering is the whole point.
-import './loadEnvLocal'
+import { hasRealLlmKey } from './loadEnvLocal'
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -57,9 +57,8 @@ const FILES: Array<{ file: string; kind: ScreenKind }> = [
 
 const haveFixtures =
   FIXTURE_DIR !== '' && FILES.every((f) => existsSync(path.join(FIXTURE_DIR, f.file)))
-/** A key that is neither absent nor one of the two placeholders this repo ships. */
-const PLACEHOLDER_KEYS = new Set(['', 'ci-dummy-key', 'unit-test-key-never-sent'])
-const haveKey = !PLACEHOLDER_KEYS.has(process.env.LLM_API_KEY ?? '')
+/** Absent, or one of the two placeholders this repo ships — shared with the other live suites. */
+const haveKey = hasRealLlmKey(process.env.LLM_API_KEY)
 const runnable = haveFixtures && haveKey
 
 const ALL_KINDS: ReadonlySet<ScreenKind> = new Set(['summary', 'splits', 'heartrate'])

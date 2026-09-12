@@ -1,6 +1,6 @@
 // MUST be first: it loads .env.local before any import below reaches lib/env.ts, which parses
 // process.env eagerly. See that file's comment — this ordering is the whole point.
-import './loadEnvLocal'
+import { hasRealLlmKey } from './loadEnvLocal'
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -34,11 +34,7 @@ import { describeNinaImagesWithFetch } from '@/lib/nina/vision'
  * a SMALLER image makes reading the digits harder, not easier — so a pass here is a conservative
  * pass, and the token floor is checked against what the request actually carried either way.
  */
-const HAS_KEY =
-  process.env.LLM_API_KEY != null &&
-  process.env.LLM_API_KEY !== '' &&
-  process.env.LLM_API_KEY !== 'unit-test-key-never-sent' &&
-  process.env.LLM_API_KEY !== 'ci-dummy-key'
+const HAS_KEY = hasRealLlmKey(process.env.LLM_API_KEY)
 
 const FIXTURE = path.join('research/fixtures/screenshots/shipped', '1.jpg')
 
@@ -53,8 +49,8 @@ describe.skipIf(!HAS_KEY)('nina vision live', () => {
     // The floor is a property of the response, and clearing it is what proves the image arrived.
     expect(result.promptTokens).toBeGreaterThanOrEqual(result.floor)
 
-    // 60-140 words, one paragraph. Wide bounds: this pins "a paragraph, not a caption and not an
-    // essay", not an exact length the prompt already asks for.
+    // The prompt asks 60-140 words; the bounds below are the loose CHARACTER envelope around
+    // that — a paragraph, not a caption and not an essay — measured on the string we keep.
     expect(result.description.length).toBeGreaterThan(200)
     expect(result.description.length).toBeLessThan(1_200)
 

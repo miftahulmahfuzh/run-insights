@@ -1,6 +1,6 @@
 // MUST be first: it loads .env.local before any import below reaches lib/env.ts, which parses
 // process.env eagerly. See the comment in that file — this ordering is the whole point.
-import './loadEnvLocal'
+import { hasRealLlmKey } from './loadEnvLocal'
 
 import { describe, expect, it } from 'vitest'
 
@@ -35,11 +35,7 @@ import { canonicalRecordRun, canonicalSession } from '../fixtures/canonicalRun'
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-const HAS_KEY =
-  process.env.LLM_API_KEY != null &&
-  process.env.LLM_API_KEY !== '' &&
-  process.env.LLM_API_KEY !== 'unit-test-key-never-sent' &&
-  process.env.LLM_API_KEY !== 'ci-dummy-key'
+const HAS_KEY = hasRealLlmKey(process.env.LLM_API_KEY)
 
 const ESTIMATED_HR_MAX: HrMax = { bpm: 187, source: 'estimated' }
 

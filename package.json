@@ -19,7 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:int": "VITEST_INTEGRATION=1 vitest run tests/integration",
-    "test:live": "LLM_LIVE_TEST=1 vitest run --dir . --testNamePattern=live",
+    "test:live": "LLM_LIVE_TEST=1 vitest run tests/live",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
