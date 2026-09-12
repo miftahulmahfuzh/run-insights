@@ -128,16 +128,18 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
   const returnTo = decodeAboutReturnTo(returnParam)
 
   /*
-   * ── `react-hooks/purity` IS A FALSE POSITIVE ON AN ASYNC SERVER COMPONENT ────────────────────
-   * Identical to `app/nina/jobs/page.tsx:41-56`, which phase 4 argued in full: the rule guards
-   * render IDEMPOTENCY, and this function is an async Server Component that runs once per request
-   * and is never re-rendered, so there is no second render for the value to differ between.
-   * Hoisting is also what makes one reading of the clock shared by every ticking row — the reason
-   * the prop exists at all. The plan's draft wrote `jobsNowMs={Date.now()}` inline; the rule flags
-   * a JSX prop where it lets `ninaFlightView(rows, Date.now())` past on `app/nina/page.tsx`, so
-   * this is phase 4's shape rather than a new one.
+   * ── THE DIRECTIVE THAT USED TO SIT ON THIS BINDING ──────────────────────────────────────────
+   * From `3912cec` until 2026-09-12 this read carried `eslint-disable-next-line
+   * react-hooks/purity`, on the argument `app/nina/jobs/page.tsx` makes for its identical
+   * binding: the rule guards render IDEMPOTENCY, and an async Server Component runs once per
+   * request and is never re-rendered, so there is no second render for the value to differ
+   * between. The directive is gone because eslint reports it UNUSED here — nothing to
+   * suppress, under the same plugin version (7.1.1) it was written under — while jobs' own
+   * suppression still holds a live flag. Why the same shape flags there and not here is
+   * undiagnosed (this function's analysis is the suspect, not an exemption) and left so: the
+   * operative check is one lint run, not a mechanism story. If the flag ever fires here, that
+   * file's comment block is the argument for restoring the directive.
    */
-  // eslint-disable-next-line react-hooks/purity -- server render, once per request; see above.
   const jobsNowMs = Date.now()
 
   return (

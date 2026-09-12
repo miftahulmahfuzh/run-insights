@@ -356,8 +356,9 @@ export default async function RunPage({ params }: PageProps<'/r/[id]'>) {
           caption={
             metrics.hardPct == null
               ? undefined
-              : /* The design brief asks for 90.6% to be unmissable "without scolding me about it".
-                   One plain sentence, no colour, no icon, no bold: the number is the emphasis. */
+              : /* The brief's example run is 90.6% zones 4+5 — the "ninety percent" it rounds to —
+                   and asks for that share to be unmissable "without scolding me about it". One
+                   plain sentence, no colour, no icon, no bold: the number is the emphasis. */
                 `${formatPercent(metrics.hardPct, 1)} of this run was zone 4 or harder.`
           }
         />
