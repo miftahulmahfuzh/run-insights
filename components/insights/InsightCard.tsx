@@ -53,7 +53,7 @@ function strings(value: unknown): string[] {
 }
 
 /** Tolerant, non-throwing, and total: every branch returns something renderable or nothing. */
-export function readInsightPayload(payload: unknown): InsightPayloadish | null {
+function readInsightPayload(payload: unknown): InsightPayloadish | null {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
   const p = payload as Record<string, unknown>
 

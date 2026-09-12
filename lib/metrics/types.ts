@@ -46,7 +46,7 @@ export interface ZoneRow {
  * screenshot whose heart-rate screen was not uploaded. The +2 min reading the extractor also
  * captures has no column and no metric; see R-9.
  */
-export interface RecoveryInput {
+interface RecoveryInput {
   endHrBpm: number | null
   hrAt1MinBpm: number | null
 }

@@ -22,7 +22,7 @@ export type FlagCode =
   | 'SLOW_HR_RECOVERY'
   | 'FAST_START'
 
-export type FlagSeverity = 'info' | 'warn'
+type FlagSeverity = 'info' | 'warn'
 
 export interface Flag {
   code: FlagCode
