@@ -516,8 +516,9 @@ pipeline (`lib/extract` + `lib/photos` + `components/extract`), the badges/recor
 (`lib/badges` + `lib/records`), the date/flags/derived utilities (`lib/.workflows/package_readme.md`),
 the profile/share estate (`lib/share` + `lib/profile` + `components/profile` + `components/share`),
 the insights/metrics dashboard layer (`lib/metrics` + `lib/insights` + `components/insights` +
-`lib/panel`), and the auth/push/runs/trends cluster (`lib/auth` + `lib/push` + `lib/runs` +
-`components/auth` + `components/push` + `components/runs` + `components/trends`).
+`lib/panel`), the auth/push/runs/trends cluster (`lib/auth` + `lib/push` + `lib/runs` +
+`components/auth` + `components/push` + `components/runs` + `components/trends`), and the
+charting pair (`lib/charts` + `components/charts`, anchored at `lib/charts`).
 
 ### Internal (root → packages)
 
