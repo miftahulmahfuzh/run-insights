@@ -36,13 +36,13 @@ import {
  * ── IT IS A FUNCTION NOW, AND THAT IS THE WHOLE OF THE CHARACTER TUNING ──────────────────────
  * `NINA_SYSTEM_PROMPT` used to be a module-level template literal. It is now
  * `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)`, and the name survives because it is the
- * COMPATIBILITY CONTRACT: until a slider on `/admin/nina` moves, the string this module produces
- * is the string it produced before the tuning existed. `tests/nina.prompts.test.ts` asserts that
- * in both directions — every unchanged block is still in the default render, and no tuned clause
- * is.
+ * COMPATIBILITY CONTRACT: until a slider on `/admin/personality` moves, the string this module
+ * produces is the string it produced before the tuning existed. `tests/nina.prompts.test.ts`
+ * asserts that in both directions — every unchanged block is still in the default render, and no
+ * tuned clause is.
  *
- * **This function is imported by a Server Component** (`app/admin/nina/page.tsx`) to render a
- * preview of the assembled prompt. `scripts/check-llm-payload-boundary.mjs` Rule 2 is why it must
+ * **This function is imported by a Server Component** (`app/admin/personality/page.tsx`) to render
+ * a preview of the assembled prompt. `scripts/check-llm-payload-boundary.mjs` Rule 2 is why it must
  * stay pure: a preview that awaited a model call would be a 13-45 s page render.
  *
  * ── WHY THIS FILE AND `persona.ts` ARE SEPARATE ──────────────────────────────────────────
@@ -115,7 +115,7 @@ function systemDials(tuning: NinaTuning): SystemDials {
  * whatever phase 1 chose for the defaults, and a disagreement would ship as "she greets him now
  * and nobody asked her to".
  *
- * Phase 1's band resolution is the authority for the ELEVEN traits, in `persona.ts`. These three
+ * Phase 1's band resolution is the authority for the TWELVE traits, in `persona.ts`. These three
  * predicates are prompt-assembly gates for three dials and are deliberately not a second band
  * scheme: `raised` means "the operator moved it up at all", `loud` means "moved it up by a quarter
  * of the range or more".
@@ -132,7 +132,7 @@ function loud(value: number, base: number): boolean {
   return value >= base + 25
 }
 
-export const LANGUAGE_RULE = `Reply in the language of his last message. R2 is not a preference, it is the requirement:
+const LANGUAGE_RULE = `Reply in the language of his last message. R2 is not a preference, it is the requirement:
 - Indonesian -> the Jakarta register below. Always. Never formal Indonesian. Never "Anda".
 - English -> your English register below.
 - Mixed -> follow whichever language carries his actual question.
@@ -203,9 +203,6 @@ An "estimated" HRmax is a formula, not a measurement — say so whenever a perce
 
 "recentRuns[].flags[].detail" is written in English because the app's screens are in English. When you are speaking Indonesian, say the same thing in your own words — but the NUMBER inside it stays spelled exactly as it is.`
 }
-
-/** Today's rule, retained under the name this file has always exported. */
-export const NUMBERS_RULE = buildNumbersRule(NINA_TUNING_DEFAULTS)
 
 /**
  * ── THE IRON RULE, FINDING 3 OF 4. THE SECOND COMPUTED-ONLY-ANGER STATEMENT ──────────────────
@@ -279,9 +276,6 @@ export function buildContextGuide(tuning: NinaTuning): string {
 
 "avatar" — your own profile picture right now. "description" is what the photo actually shows: treat it as your own memory of where you were and what you were doing, not as a caption someone wrote for you. If he asks where you are in it, or what was going on, tell him — invent the details that are not in the description, keep them consistent with the photo AND with what you two have been talking about, and keep it short, the way anyone answers a question about their own photo. Do not repeat a story you already told word for word. "changedOn" is the day it became your picture. If "isSeed" is true you have never changed it, so do not talk as if you had. Never comment on your own face changing between photos, and never compare one photo of yourself to another — that is not a thing you would notice about yourself.`
 }
-
-/** Today's guide, retained under the name this file has always exported. */
-export const CONTEXT_GUIDE = buildContextGuide(NINA_TUNING_DEFAULTS)
 
 /**
  * **The bubble PREFERENCE, not the bubble CAP.** The cap is `1..4` and it is enforced in two places
@@ -379,7 +373,7 @@ export const OUTPUT_RULE = buildOutputRule(NINA_TUNING_DEFAULTS)
  * Empty at the default tuning, so the section disappears entirely and the default render is
  * today's prompt.
  */
-export function buildCameraBlock(tuning: NinaTuning): string {
+function buildCameraBlock(tuning: NinaTuning): string {
   const dials = systemDials(tuning)
   if (!raised(dials.photos, dials.photosBase)) return ''
 
@@ -491,7 +485,7 @@ export function buildNinaSystemPrompt(tuning: NinaTuning): string {
       blocks: [
         LANGUAGE_RULE,
         JAKARTA_REGISTER,
-        /* R2, admin-responsive-nina-intimacy. Empty at four of the five relationships, and
+        /* R2, admin-responsive-nina-intimacy. Empty at five of the six relationships, and
          * `renderSections` drops an empty block — which is why adding it here cannot perturb the
          * default render. It sits DIRECTLY under the register it amends: it lifts that block's
          * "Never aku" and one-emoji lines for `girlfriend` and nowhere else, and an amendment two

@@ -65,7 +65,7 @@ HOW TO WRITE IT:
 export const NINA_DESCRIBE_REQUEST_TEXT = `Describe this photo.`
 
 /** The plural variant, for when a batched call is ever added. See `vision.ts`'s image-count note. */
-export const NINA_DESCRIBE_REQUEST_TEXT_MANY = `Describe these photos, one paragraph each, in the order they are given, separated by a blank line.`
+const NINA_DESCRIBE_REQUEST_TEXT_MANY = `Describe these photos, one paragraph each, in the order they are given, separated by a blank line.`
 
 /**
  * What rides on `NinaTurnInput.imageDescriptions` when the describe call FAILED and the runner
@@ -128,7 +128,7 @@ export type NinaDescribeSubject = 'runner' | 'self'
  * layer is redundant: this one stops the number being produced, that one stops it being said.
  *
  * ── IT DESCRIBES WHAT SHE IS WEARING, PLAINLY, WHATEVER IT IS ───────────────────────────────
- * Her photographs are not all track photographs. `/admin/nina`'s dials go up to `steamy` and
+ * Her photographs are not all track photographs. `/admin/personality`'s dials go up to `steamy` and
  * `horny`, `NINA_RELATIONSHIP_BLOCKS.girlfriend` exists, and the photograph that produced this
  * whole plan is a swimsuit. A witness that gets coy about swimwear returns a paragraph with a hole
  * where the subject was, and she then captions the hole. So: name the clothing the way a clothing
