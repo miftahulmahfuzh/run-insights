@@ -5,6 +5,7 @@ import * as React from 'react'
 import { PhotoViewer } from '@/components/ui/PhotoViewer'
 import { SCREEN_KIND_LABEL, type ScreenKind } from '@/lib/extract/constants'
 import type { ReviewPhoto } from '@/lib/review/loadReview'
+import { PHOTO_ZOOM_HINT } from '@/lib/share/copy'
 
 /**
  * The evidence, always on screen.
@@ -142,7 +143,7 @@ export function SheetSource({ photos, section }: { photos: ReviewPhoto[]; sectio
               ? `From your ${SCREEN_KIND_LABEL[section]} screenshot`
               : 'Not in the screenshots you uploaded — here is what you did upload'}
           </span>
-          <span className="text-[10px] font-medium text-ink-3">tap to zoom</span>
+          <span className="text-[10px] font-medium text-ink-3">{PHOTO_ZOOM_HINT}</span>
         </div>
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1">
           {sources.map((photo, i) => (
