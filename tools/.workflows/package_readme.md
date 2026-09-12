@@ -143,10 +143,12 @@ records sheet needs the `--deck` treatment first.**
 Draws four synthetic patches by arithmetic — `good`, `flat`, `offcentre`,
 `bleached` — so `check_badge_art.py` can be exercised with no API call: good must
 pass every hard check; each failure control must fail EXACTLY its designed check
-and nothing else. Not art, never a grading fixture, never a source for re-deriving
-a band. Controls are drawn from `style.md`'s tokens by copy (a shared import shim
-would be more coupling than the duplication costs) — if the palette moves, both
-files move.
+and nothing else. CI runs this loop on every push —
+`tools/check_badge_controls.py` (via `npm run badges:controls`) asserts all four
+designed outcomes. Not art, never a grading fixture, never a source for
+re-deriving a band. Controls are drawn from `style.md`'s tokens by copy (a shared
+import shim would be more coupling than the duplication costs) — if the palette
+moves, both files move.
 
 ### `gen_app_icon.py` — app-icon generator (spends money)
 Same plumbing as `gen_badge_art.py` (key read, WSL DNS workaround, hand-built
@@ -170,8 +172,11 @@ header stops at `/badges|records/*` — do not move icons under those paths).
 - **CI** (`.github/workflows/ci.yml`) runs `npm run badges:check`
   → `scripts/check-badge-art.mjs` reads `tools/decks.json`, both catalogs,
   `style.md`, both manifests and both `public/` trees, and asserts the API-key
-  boundary via `scripts/check-openrouter-boundary.mjs`.
-- **`package.json`**: `badges:check`, `icon:assets`.
+  boundary via `scripts/check-openrouter-boundary.mjs`. Its separate
+  `badge-art-controls` job runs `npm run badges:controls` →
+  `check_badge_controls.py` (stdlib + a pinned Pillow, no npm ci) — the four
+  designed control outcomes, asserted on every push.
+- **`package.json`**: `badges:check`, `badges:controls`, `icon:assets`.
 - **`next.config.ts`**: the immutable headers' comments credit `tools/decks.py` (the
   header matchers are per-deck ON PURPOSE so a third deck must be added consciously)
   and `make_badge_assets.py`'s orphan sweep.
@@ -184,18 +189,25 @@ header stops at `/badges|records/*` — do not move icons under those paths).
 
 ## Gotchas
 
-- **The control loop has no automated gate.** Nothing in CI runs
-  `make_badge_control.py` → `check_badge_art.py --no-anchor`, and F15 proved the
-  cost: the frame contract moved to 4:3 and the controls stayed square, silently
-  failing check 1 for three weeks until a session actually RAN the loop (2026-09-12;
-  re-cut in the same pass). After any change to a check's contract or band, re-run
-  all four controls and confirm each fails exactly its designed check.
-- **`RECORD_ART_SMALL_SIZE` is a known, standing zero-reference constant.** The
+- **The control loop is CI-gated (2026-09-12).** The `badge-art-controls` job runs
+  `make_badge_control.py` → `check_badge_art.py --no-anchor` on all four patches
+  and asserts each one's designed outcome — the gate whose absence let F15's frame
+  move silently kill the loop for three weeks (the controls stayed square, `good`
+  died on check 1, nothing noticed until a session RAN the loop; re-cut in the
+  same pass). The designed outcomes live in `check_badge_controls.py`'s EXPECTED
+  table, stamped with their measure date and Pillow pin: after any change to a
+  check's contract or band, re-run the loop and re-stamp — never widen EXPECTED
+  to make red go away.
+- **`RECORD_ART_SMALL_SIZE` is zero-reference and KEPT — decided 2026-09-12.** The
   generator emits `{deck.const_name}_SMALL_SIZE` unconditionally per deck; only the
-  badges deck consumes it. Hand-deleting it from the manifest fights the generator;
-  the fix belongs in `make_badge_assets.py` (or a records shelf ships). Recorded so
-  no future sweep re-litigates it (full analysis:
-  `docs/token_maxxing/2026-09-12-badges-records-yagni.md`).
+  badges deck consumes it today. Resolution: keep, documented at the symbol —
+  `emit_manifest` now writes the records deck's sizes block with the why (it is the
+  contract half of the same F25 bet as the `small` field; the future shelf imports
+  it exactly as `BadgeShelf` imports the badge deck's). Stopping emission would need
+  a per-deck flag keyed on a product fact the generator cannot observe, and the
+  constant is one line riding a derivative already decided to ship. The generated
+  manifest's own docblock is the decision record; no future sweep re-litigates it
+  (full analysis: `docs/token_maxxing/2026-09-12-badges-records-yagni.md`).
 - **The records `.sm.webp` set ships unrendered** — the F25 plan pre-generated them
   deliberately (regenerating later would re-hash every filename); a product call,
   not dead code.
@@ -211,13 +223,14 @@ header stops at `/badges|records/*` — do not move icons under those paths).
 
 ## Verification stamp
 
-2026-09-12, this tree: all nine scripts compile under Python 3.12.7 (PIL 12.3.0
+2026-09-12, this tree: all ten scripts compile under Python 3.12.7 (PIL 12.3.0
 present); `decks.py --selftest` all green; `badges:check` green with both decks
 complete (22 badges, 11 records, style v2, one shared anchor); both decks'
 `gen_badge_art.py --dry-run --all` assemble (22 + 11 prompts, parity guards green);
 both promoters `--dry-run` clean; `gen_app_icon.py --all --dry-run` clean; the sheet
-builds 22/22; the four controls grade exactly as designed (good passes; flat →
-check 3 sd floor; offcentre → 8a; bleached → check 3 grey band). Counts are
+builds 22/22; the four controls grade exactly as designed and
+`check_badge_controls.py` asserts that on every push (good passes; flat → check 3
+sd floor; offcentre → 8a; bleached → check 3 grey band). Counts are
 as-of-this-date state, not rules — the live count is whatever `badges:check` says.
 
 ## Notes
@@ -227,8 +240,8 @@ which audited every script in the directory for dead/unused status. Verdict: **n
 dead scripts** — every entry is either CI/npm-wired, part of the SKILL.md loop, or a
 documented free review/control tool whose next use is foreseeable (the audit's
 method and the one repair it produced are in
-`docs/token_maxxing/2026-09-12-tools-package-hygiene.md`). The honest hygiene
-findings are the two hardcoded-deck limitations (sheet, extend), the ungated control
-loop, and the standing zero-ref constant above — all recorded here rather than
-"fixed" by drive-by, because each has a design decision attached that belongs to the
-session that next touches that tool.
+`docs/token_maxxing/2026-09-12-tools-package-hygiene.md`). Of that session's four
+hygiene findings, the two hardcoded-deck limitations (sheet, extend) still stand
+recorded above; the other two were resolved the same day — the control loop is now
+CI-gated (`check_badge_controls.py`, added by `tokenmax-badge-pipeline-followups`),
+and the zero-ref `_SMALL_SIZE` emission is decided and documented in the generator.

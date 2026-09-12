@@ -51,7 +51,16 @@ export interface RecordArt {
   styleVersion: string
 }
 
-/** Intrinsic pixel sizes, so a consumer never has to restate them. */
+/** Intrinsic pixel sizes, so a consumer never has to restate them.
+ *
+ *  `RECORD_ART_SMALL_SIZE` is zero-reference today and KEPT on purpose. It
+ *  is the contract half of the same F25 bet the `small` field above makes: the
+ *  derivative ships whether or not the not-yet-built records shelf draws it,
+ *  because adding it later would re-hash every master's filename. When that shelf
+ *  exists, its shelf-mark component imports this constant exactly as `BadgeShelf`
+ *  imports the badge deck's; deleting it now would leave that component restating
+ *  192 by hand — the exact thing this block exists to prevent. Verified
+ *  zero-reference 2026-09-12; recorded here so no sweep re-litigates it. */
 export const RECORD_ART_WIDTH = 768
 export const RECORD_ART_HEIGHT = 576
 export const RECORD_ART_SMALL_SIZE = 192

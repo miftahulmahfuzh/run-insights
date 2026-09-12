@@ -106,3 +106,33 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+  # The badge grader's own regression test, exercised for free. tools/make_badge_control.py
+  # draws four synthetic patches by arithmetic and tools/check_badge_controls.py runs each
+  # through the checker, asserting the exact outcome each was drawn to produce: `good`
+  # passes every hard check; `flat` fails check 3's sd floor (and warns check 10);
+  # `offcentre` fails 8a; `bleached` fails check 3's grey band. Free, offline, Pillow-only,
+  # ~5 s — and it is the exact gate that would have caught F15's three-week silent break,
+  # where the masters' frame moved to 4:3, the controls stayed 1024² squares, and `good`
+  # died on check 1 before a single band was measured, with nothing to notice.
+  #
+  # This job runs the two tools DIRECTLY: no npm ci (npm is only the launcher here, and
+  # Node is preinstalled on the runner), no database, no env — the script needs nothing
+  # but stdlib and Pillow.
+  badge-art-controls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned together with Pillow below on purpose: the controls' pixels are DRAWN and
+      # MEASURED by this library, and check_badge_controls.py's EXPECTED table is stamped
+      # against this pair (see its header). Bump both together, after re-running the loop.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow (pinned to the EXPECTED stamp)
+        run: pip install pillow==12.3.0
+
+      - name: Badge art control loop
+        run: npm run badges:controls
