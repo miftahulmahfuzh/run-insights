@@ -12,7 +12,6 @@
 /** The only heading. No name, no avatar, no "shared by" — a shared run is a run, not a profile. */
 export const PUBLIC_TITLE = 'Run Insights'
 
-export const SECTION_CHART = 'Pace & heart rate'
 export const SECTION_ZONES = 'Time in zone'
 export const SECTION_SPLITS = 'Splits'
 export const SECTION_ANALYSIS = 'What happened'
