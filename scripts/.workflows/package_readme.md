@@ -1,8 +1,9 @@
 # Package: scripts
 
 **Location**: `scripts`
-**Last Updated**: 2026-09-12 (verification pass — every claim re-checked against the tree; see
-Notes for the documentation history)
+**Last Updated**: 2026-09-12 (nina-image-worker split into a barrel + `nina-image-worker/`
+directory; prior: verification pass — every claim re-checked against the tree; see Notes for the
+documentation history)
 
 ## Overview
 
@@ -10,7 +11,8 @@ Notes for the documentation history)
 production data and Blob storage, the CI boundary guards, Nina's off-platform image-generation
 worker, and the capture toolkit that photographs the app for the README. Nothing here is imported
 by the app, and none of it runs under `npm test`. The reverse is deliberate in three cases —
-`nina-dedupe-plan.mjs`, `nina-image-worker.ts` and `nina-shortcuts-import.mjs` are importable BY
+`nina-dedupe-plan.mjs`, `nina-image-worker.ts` (a re-export barrel over `nina-image-worker/`
+since 2026-09-12) and `nina-shortcuts-import.mjs` are importable BY
 the test suite (`tests/nina.dedupeMedia.test.ts`, `tests/nina.imageworker.test.ts`,
 `tests/nina.shortcutsImport.test.ts`), which is why each separates its pure, judgment-bearing half
 from its I/O half.
@@ -129,7 +131,7 @@ extraction accuracy — only that every seam holds. Spends real money.
 
 ## The image worker
 
-### `nina-image-worker.ts` — `npm run nina:worker` / `npm run nina:worker:dry`
+### `nina-image-worker.ts` (+ `nina-image-worker/`) — `npm run nina:worker` / `npm run nina:worker:dry`
 Nina's camera, off-platform (RU-19/RU-20): shipping generation measured 78.2 s against Vercel
 Hobby's 60 s cap, so GitHub Actions hosts the worker (`.github/workflows/nina-image.yml`). `--job
 <id>` runs one job (the `workflow_dispatch` path); no flag drains up to `NINA_IMAGE_SWEEP_BUDGET`
@@ -137,8 +139,16 @@ actionable jobs (the `schedule:` backstop for a lost dispatch). Imports the zero
 modules so the payload shape, pathname convention and thresholds are not duplicated; writes its
 own SQL and validates env by hand, with the `information_schema` preflight as the drift alarm.
 `main()` runs only when this file is the process entry point, which is what lets the test drive
-`parseArgv` and `generate` with no network. The only `.ts` in the directory, and the precedent for
-the strip-types import rule.
+`parseArgv` and `generate` with no network. The precedent for the strip-types import rule.
+
+Since 2026-09-12 the implementation lives in `scripts/nina-image-worker/`, one module per
+responsibility (`sql`, `preflight`, `claim`, `dedupe`, `generate`, `store`, `session`, `finish`,
+`cleanup`, `run`, `main`); the file at `scripts/nina-image-worker.ts` is the entry point npm and
+the workflow execute, the test's import path, and a re-export barrel whose published surface is
+exactly the old single file's, so no importer changed. The `main()` entry guard MUST stay in the
+barrel: it compares `import.meta.url` against `process.argv[1]`, and only the barrel's path is
+ever `argv[1]` — moving it into the directory would silently stop `npm run nina:worker` from
+ever running a job.
 
 ## CI boundary guards
 
