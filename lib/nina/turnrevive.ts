@@ -46,7 +46,7 @@ import { runNinaBackgroundTurn, type NinaBackgroundTurnInput } from './turnrun'
  * way: an image job's row carries its own reproducible args, so a revive RE-FIRES the row. A chat
  * claim is only a LEASE on a process — the reproducible thing is the `nina_messages` row underneath
  * it — so a chat revive reads the MESSAGE and re-derives the turn input the way `resendNinaMessage`
- * does (`lib/nina/actions.ts:1919–1933`), field by field, with the same `NINA_DESCRIPTION_UNAVAILABLE`
+ * does (`lib/nina/actions/resend.ts`), field by field, with the same `NINA_DESCRIPTION_UNAVAILABLE`
  * substitution for an undescribed photograph (invariant 5: text, never an image part).
  *
  * ── WHY THE COUNT RUNS BEFORE THE OPEN ─────────────────────────────────────────────────────────

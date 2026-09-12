@@ -27,7 +27,7 @@ import {
  * The user asked for exactly this — "nina will keep using previous history as context, so we need
  * to give user the capability to make this context more 'accurate'".
  *
- * ── WHY THIS FILE AND NOT `lib/nina/actions.ts` ───────────────────────────────────────────────
+ * ── WHY THIS FILE AND NOT `lib/nina/actions/` ──────────────────────────────────────────────────
  * `lib/nina/albumActions.ts`'s argument, verbatim in spirit: isolation. `lib/nina/actions/` is another
  * phase's file with another phase's `after()` hook going into it. These two functions share
  * nothing with `sendNinaMessage` except `requireUserId`.

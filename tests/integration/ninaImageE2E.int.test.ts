@@ -735,7 +735,7 @@ describe.skipIf(!enabled)('nina image pipeline, end to end, against a real datab
     CASE_TIMEOUT_MS,
   )
 
-  /* ══ The one line of `lib/nina/actions.ts` this suite cannot drive ═══════════════════════════ */
+  /* ══ The one line of `lib/nina/actions/send.ts` this suite cannot drive ═════════════════════ */
 
   it('the full tool set the chat action passes carries both image tools', () => {
     /*

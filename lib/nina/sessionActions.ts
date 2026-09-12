@@ -18,7 +18,7 @@ import {
 /**
  * **The session lifecycle: create (R2), rename (R3's manual half), pin (R4), remove (R11).**
  *
- * ── WHY A SEPARATE FILE FROM `lib/nina/actions.ts` ────────────────────────────────────────────
+ * ── WHY A SEPARATE FILE FROM `lib/nina/actions/` ───────────────────────────────────────────────
  * The same isolation argument `lib/nina/albumActions.ts` makes in its own header, and it is
  * stronger here: `lib/nina/actions/` is edited by phases 3, 4 and (through `SentBubble`) 7, while these
  * four functions are read by phase 5 and nothing else. Keeping them apart means phase 5's sidebar
