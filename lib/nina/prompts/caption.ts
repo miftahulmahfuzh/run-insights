@@ -32,9 +32,6 @@ import type { NinaTuning } from '../tuning'
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-/** Bumped by hand whenever the prompt or the tool schema below changes. Logged, never sent. */
-export const NINA_CAPTION_PROMPT_VERSION = 1
-
 /**
  * How long a caption may be, in characters, after sanitising.
  *
@@ -55,7 +52,7 @@ export const NINA_CAPTION_MAX_CHARS = 120
  * measured when a prompt "spent three of four prose fields on the one scalar that happened to be in
  * front of it".
  */
-export const NINA_CAPTION_SEEN_CHARS = 900
+const NINA_CAPTION_SEEN_CHARS = 900
 
 /** ASCII control characters -> a space. `lib/nina/title.ts`'s class, and its reasoning. */
 const CONTROL_RE = /[\u0000-\u001F\u007F]/g

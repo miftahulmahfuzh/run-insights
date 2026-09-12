@@ -79,18 +79,7 @@ import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from 
  * mirror-selfie with an invented street sign and a cat on the wall — so this style block is
  * verified output, not a guess.
  */
-export const NINA_SELFIE_STYLE = `A casual smartphone photograph, as if taken and sent in a chat app. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
-
-/**
- * The short form, spent at rungs `off`, `low` and `mid`. It keeps every instruction that changes
- * what the provider RETURNS — a phone photograph, daylight, real skin, no text, no watermark, no
- * border, a photograph and not a render — and drops the three that only refine it: the imperfect
- * framing, the shallow depth of field, and the two negations already implied by "no retouching".
- *
- * It still contains `Realistic photograph`, which is what
- * `tests/nina.imagerecipe.test.ts:67-72` asserts, so the style guarantee holds at every rung.
- */
-export const NINA_SELFIE_STYLE_SHORT = `A casual smartphone photograph, as if taken and sent in a chat app. Natural daylight, visible skin texture, no text, no watermark, no border. Realistic photograph, not an illustration and not a render.`
+const NINA_SELFIE_STYLE = `A casual smartphone photograph, as if taken and sent in a chat app. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
 
 /**
  * The avatar variant. Same camera, tighter crop, because the result is rendered inside a 28-44 px
@@ -98,14 +87,14 @@ export const NINA_SELFIE_STYLE_SHORT = `A casual smartphone photograph, as if ta
  * exists to let an operator re-frame one by hand; this is the framing that means it usually does not
  * have to.
  */
-export const NINA_AVATAR_STYLE = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, visible skin texture, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
+const NINA_AVATAR_STYLE = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, visible skin texture, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
 
 /**
  * The avatar's short form. The CROP sentence is untouched at every rung — it is the whole reason
  * this style block exists, and `tests/nina.imagerecipe.test.ts:83-85` asserts
  * `head and shoulders` — so the saving comes out of the lighting refinements only.
  */
-export const NINA_AVATAR_STYLE_SHORT = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, no text, no watermark, no border. Realistic photograph, not an illustration and not a render.`
+const NINA_AVATAR_STYLE_SHORT = `A casual smartphone photograph framed as a profile picture: head and shoulders, her face filling most of the frame, looking at the camera. Natural daylight, no text, no watermark, no border. Realistic photograph, not an illustration and not a render.`
 
 /**
  * **Where a dial becomes photographic — and it is phase 1's band, not a private number.**
@@ -282,7 +271,7 @@ export const NINA_PROMPT_RUNGS: Readonly<Record<NinaBandName, NinaPromptRung>> =
  * A stored `promptLength` resolved to a rung, through phase 1's band and no private threshold —
  * the fork this file already settled once for `isDialHigh` (see its docblock).
  */
-export function ninaPromptRung(promptLength: number): NinaPromptRung {
+function ninaPromptRung(promptLength: number): NinaPromptRung {
   return NINA_PROMPT_RUNGS[ninaBand(promptLength).name]
 }
 

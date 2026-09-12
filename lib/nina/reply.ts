@@ -40,7 +40,7 @@ export const QUOTE_PREVIEW_MAX_CHARS = 120
  * `MAX_RUNNER_MESSAGE_CHARS`, i.e. a whole bubble, because the model needs the message and not a
  * taste of it — this is the difference between "reply as context" and reply as decoration.
  */
-export const QUOTE_CONTEXT_MAX_CHARS = 700
+const QUOTE_CONTEXT_MAX_CHARS = 700
 
 /**
  * What the quoted message carries besides text.
@@ -75,7 +75,7 @@ export const QUOTE_MEDIA_LABEL: Record<Exclude<QuoteMedia, 'none'>, string> = {
 export const QUOTE_EMPTY_LABEL = 'Message'
 
 /** Whose message is being quoted, from the runner's point of view. */
-export type QuoteAuthor = 'you' | 'nina'
+type QuoteAuthor = 'you' | 'nina'
 
 /**
  * A message a quote could point at. Structural, so `lib/` never imports from `components/` — the
@@ -313,7 +313,7 @@ export function decideReplySwipe(gesture: ReplySwipeGesture): ReplySwipeDecision
 /* ── the scroll target ─────────────────────────────────────────────────────────────────────── */
 
 /** Under this much movement the page is left alone; the flash alone identifies the target. */
-export const QUOTE_SCROLL_TOLERANCE_PX = 8
+const QUOTE_SCROLL_TOLERANCE_PX = 8
 
 /** The gap above a target too tall to centre. One 4pt step up from the bubble gap. */
 export const QUOTE_SCROLL_TOP_MARGIN_PX = 16

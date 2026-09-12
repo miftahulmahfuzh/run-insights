@@ -28,7 +28,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
  */
 
 /** Bumped if `NinaImageClaims` ever changes shape, so an old ticket fails closed rather than open. */
-export const NINA_TICKET_VERSION = 1
+const NINA_TICKET_VERSION = 1
 
 /**
  * Half an hour. Long enough to pick a photo, get distracted, come back and send; short enough that
@@ -38,7 +38,7 @@ export const NINA_TICKET_VERSION = 1
 export const NINA_TICKET_TTL_MS = 30 * 60 * 1000
 
 /** A description is 60-140 words; 4,000 characters of ticket is generous and bounds the parse. */
-export const NINA_MAX_TICKET_CHARS = 4_000
+const NINA_MAX_TICKET_CHARS = 4_000
 
 export interface NinaImageClaims {
   v: number

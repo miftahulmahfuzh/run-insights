@@ -62,7 +62,7 @@ export const NAG_RULES = {
 export const MAX_NAG_LEVEL = NAG_RULES.maxLevel
 
 /** Why a decision came out the way it did. Logged by phase 10; never shown to the model. */
-export type NagReason =
+type NagReason =
   /** No ledger row at all — she has never raised this. */
   | 'first_time'
   /** Raised before, cooldown is past, the level goes up. */

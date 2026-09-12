@@ -61,7 +61,7 @@ import { getCurrentNinaAvatar } from './queries'
  * the window is larger than the threshold it is compared against; at 40 vs 12 there is plenty of
  * headroom, and below 12 the first-conversation branch would latch on forever.
  */
-export const CONTEXT_MESSAGE_WINDOW = 40
+const CONTEXT_MESSAGE_WINDOW = 40
 
 /**
  * Twenty runs — about five weeks at four a week.
@@ -73,10 +73,10 @@ export const CONTEXT_MESSAGE_WINDOW = 40
  * shape of the month, and short enough that the ledger and the window still read as the point.
  * Anything older is what `lookup_runs` and `compare_runs` are for.
  */
-export const RECENT_RUN_LIMIT = 20
+const RECENT_RUN_LIMIT = 20
 
 /** The ledger's newest 60 facts. Older ones stay in the table; she asks or looks them up. */
-export const MEMORY_FACT_LIMIT = 60
+const MEMORY_FACT_LIMIT = 60
 
 export interface NinaSourceGateway {
   /** `users.name` as the OAuth provider gave it, plus the nickname phase 5 confirmed. */

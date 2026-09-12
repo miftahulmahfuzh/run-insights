@@ -70,13 +70,13 @@ import { NINA_TUNING_DEFAULTS, type NinaRelationship } from './tuning'
  * it, and `findRecordBlock` SCANS the content array instead of reading `content[0]` — a reader
  * that read the first block would have failed on round 1 of that very probe.
  */
-export const DISTILL_PRIMARY_MS = 20_000
-export const DISTILL_REPAIR_MS = 12_000
-export const DISTILL_OVERALL_MS = 34_000
+const DISTILL_PRIMARY_MS = 20_000
+const DISTILL_REPAIR_MS = 12_000
+const DISTILL_OVERALL_MS = 34_000
 export const DISTILL_MAX_TOKENS = 2_000
 
 /** Same rule and same number as `narrate.ts`: a repair with two seconds left cannot finish. */
-export const MIN_DISTILL_REPAIR_BUDGET_MS = 3_000
+const MIN_DISTILL_REPAIR_BUDGET_MS = 3_000
 
 /**
  * The gateway this file needs. **`dbNinaToolGateway` (phase 3) satisfies it** — the two writes are
@@ -143,7 +143,7 @@ export interface DistillInput {
   relationship?: NinaRelationship
 }
 
-export type DistillSource = 'llm' | 'llm_repair' | 'unavailable'
+type DistillSource = 'llm' | 'llm_repair' | 'unavailable'
 
 export interface DistillResult {
   payload: DistillPayload | null
@@ -254,7 +254,7 @@ export async function distillWith(
  * The wired call. **This is the symbol the payload-boundary guard names**, because it is the one
  * that costs 10-20 s and must never sit in a render path.
  */
-export async function distillNinaMemory(deps: {
+async function distillNinaMemory(deps: {
   input: DistillInput
   client?: DistillClientLike
   model?: string

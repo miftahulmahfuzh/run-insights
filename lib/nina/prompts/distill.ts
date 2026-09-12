@@ -30,9 +30,9 @@ export const NINA_DISTILL_PROMPT_VERSION = 3
  * The vocabulary, rendered from `NINA_SLOT_SPECS` rather than retyped. One list, so a tenth slot
  * key is a one-line edit to `memory.ts` and the prompt follows it.
  */
-export const SLOT_VOCABULARY_BLOCK = NINA_SLOT_KEYS.map(
-  (key) => `- ${NINA_SLOT_SPECS[key].prompt}`,
-).join('\n')
+const SLOT_VOCABULARY_BLOCK = NINA_SLOT_KEYS.map((key) => `- ${NINA_SLOT_SPECS[key].prompt}`).join(
+  '\n',
+)
 
 /**
  * What each relationship *is*, in one clause the librarian can read — deliberately including the
@@ -115,9 +115,6 @@ Use "promises" when NINA promised him something conditional in this exchange —
 
 If he revealed nothing at all, return the tool with empty arrays. That is a correct answer.`
 }
-
-/** This function at the default relationship. The only value every existing caller ever needed. */
-export const DISTILL_SYSTEM_PROMPT = buildDistillSystemPrompt(NINA_TUNING_DEFAULTS.relationship)
 
 export const DISTILL_REPAIR_PREAMBLE = `That did not fit the schema. Return the "record" tool again, reusing exactly the facts you already had and fixing only these problems:\n`
 

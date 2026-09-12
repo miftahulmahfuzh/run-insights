@@ -83,8 +83,6 @@ import {
 } from './tuning'
 import type { NinaImagePrefs } from './imageprefs'
 
-export const NINA_NAME = 'Nina'
-
 /**
  * The two — and only two — places the SHAPE of `NinaTuning` is read for a score. Everything below
  * asks for a band NAME, never for a number, so a change to how the tuning is stored is a two-line
@@ -142,7 +140,7 @@ const atDialIdentityBand = (tuning: NinaTuning, dial: NinaDial): boolean =>
  * `prompts/system.ts` and a second definition of "turned up" is how the two halves of one repeal
  * come to disagree.
  */
-export const isTurnedUp = (tuning: NinaTuning, trait: NinaTrait): boolean => {
+const isTurnedUp = (tuning: NinaTuning, trait: NinaTrait): boolean => {
   const band = traitBand(tuning, trait)
   return band === 'high' || band === 'max'
 }
@@ -183,7 +181,7 @@ export const anyTurnedUp = (tuning: NinaTuning, traits: readonly NinaTrait[]): b
  * one array can be walked against the prompt AND rendered by the panel — the `JAKARTA_SLANG`
  * argument, applied to R2's five address forms, from the one module both readers can import.
  */
-export interface NinaRelationshipSpec {
+interface NinaRelationshipSpec {
   relationship: NinaRelationship
   /** Paragraph 1 of the identity block, sentence by sentence. Who she is TO HIM. */
   identity: readonly string[]
@@ -204,7 +202,7 @@ export interface NinaRelationshipSpec {
  * it cannot reproduce today's `NINA_IDENTITY`, whose relationship clause is in paragraph 1 and
  * whose history sentence is paragraph 5, with three fixed paragraphs in between.
  */
-export const NINA_RELATIONSHIP_BLOCKS: Readonly<Record<NinaRelationship, NinaRelationshipSpec>> = {
+const NINA_RELATIONSHIP_BLOCKS: Readonly<Record<NinaRelationship, NinaRelationshipSpec>> = {
   nobody: {
     relationship: 'nobody',
     identity: [
@@ -344,7 +342,7 @@ export function ninaIdentity(tuning: NinaTuning): string {
  * replaces the reference with `ninaIdentity(tuning)`; until it does, this file's change is
  * behaviourally empty and the tree builds.
  */
-export const NINA_IDENTITY = ninaIdentity(NINA_TUNING_DEFAULTS)
+const NINA_IDENTITY = ninaIdentity(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * What she looks like
@@ -423,7 +421,7 @@ export const NINA_BODY_AVATAR = `She is voluptuous — big boobs, a bubble butt,
  * `NaN` from a coercion that got away — every one of them still returns element 0, and element 0
  * names all four facts.
  */
-export function ninaBodyBlock(sentences: number): string {
+function ninaBodyBlock(sentences: number): string {
   const wanted = Number.isFinite(sentences) ? Math.floor(sentences) : 1
   const take = Math.min(NINA_BODY_SENTENCES.length, Math.max(1, wanted))
   return NINA_BODY_SENTENCES.slice(0, take).join(' ')
@@ -445,7 +443,7 @@ export function ninaBodyBlock(sentences: number): string {
  */
 export const NINA_FACE = `A woman in her late twenties, mixed Southeast Asian and Mediterranean features, olive skin with a warm undertone. Long dark brown hair pulled into a high ponytail with loose strands at the temples. Dark brown eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty.`
 
-export const NINA_DEFAULT_OUTFIT = `Her default outfit is a heather-grey racerback tank, black fitted running shorts, white running shoes, and a black digital watch on her left wrist. Often a white towel over one shoulder and a blue water bottle in one hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`
+const NINA_DEFAULT_OUTFIT = `Her default outfit is a heather-grey racerback tank, black fitted running shorts, white running shoes, and a black digital watch on her left wrist. Often a white towel over one shoulder and a blue water bottle in one hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`
 
 /**
  * **The default outfit as a VALUE**, for the template's `{{wardrobe}}` slot: what fills
@@ -466,7 +464,7 @@ export const NINA_DEFAULT_OUTFIT_VALUE =
  * built-in assembly writes, rather than a hand-copied second spelling; `ninaAppearance` uses this
  * constant directly, so there is one home and no drift to check.
  */
-export const NINA_OUTFIT_SUFFIX =
+const NINA_OUTFIT_SUFFIX =
   'She still has the black digital watch on her left wrist unless the outfit says otherwise. ' +
   'Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.'
 
@@ -525,7 +523,7 @@ export interface NinaAppearanceDetail {
 
 /** Everything, which is what `NINA_APPEARANCE` is. `ninaAppearance(prefs)` with an empty wardrobe
  * returns exactly that constant, and `tests/nina.imagerecipe.test.ts` asserts the identity. */
-export const NINA_APPEARANCE_FULL_DETAIL: NinaAppearanceDetail = Object.freeze({
+const NINA_APPEARANCE_FULL_DETAIL: NinaAppearanceDetail = Object.freeze({
   body: NINA_BODY,
   face: true,
   outfit: true,
@@ -678,7 +676,7 @@ export const JAKARTA_REGISTER = `Jakarta, spoken, the way people actually type i
  * reads `ninaActiveRelationship`, so clearing the relationship's checkbox makes her the
  * `best_friend` who shipped and this whole register leaves the prompt with her.
  */
-export const isGirlfriend = (tuning: NinaTuning): boolean =>
+const isGirlfriend = (tuning: NinaTuning): boolean =>
   ninaActiveRelationship(tuning) === 'girlfriend'
 
 /**
@@ -795,7 +793,7 @@ ${address.addressFallback}`
  * `best_friend` is the default. Plan invariant 2 is scoped to blocks whose shape does not change,
  * and this block's shape is the repeal.
  */
-export const NAME_RULES = ninaNameRules(NINA_TUNING_DEFAULTS)
+const NAME_RULES = ninaNameRules(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * The target voice
@@ -1026,7 +1024,7 @@ export function ninaInstructorCoachingBlock(tuning: NinaTuning): string {
  * The anger ladder
  * ==========================================================================*/
 
-export type AngerRungName = 'warm' | 'sharp' | 'pointed' | 'irritated' | 'shouting'
+type AngerRungName = 'warm' | 'sharp' | 'pointed' | 'irritated' | 'shouting'
 
 export interface AngerRung {
   level: 0 | 1 | 2 | 3 | 4
@@ -1153,7 +1151,7 @@ export const ANGER_LADDER: readonly AngerRung[] = [
  * and naming the shared one is what says out loud that the band count and the rung count are
  * coupled. `tests/nina.tuning.test.ts` (phase 1) asserts that coupling by length.
  */
-export const ANGER_FLOOR_BY_BAND: Readonly<Record<NinaBandName, NinaBandIndex>> = {
+const ANGER_FLOOR_BY_BAND: Readonly<Record<NinaBandName, NinaBandIndex>> = {
   off: 0,
   low: 0,
   mid: 0,
@@ -1180,7 +1178,7 @@ export const ANGER_FLOOR_BY_BAND: Readonly<Record<NinaBandName, NinaBandIndex>> 
  * consequence of `anger` defaulting to 0: at the bottom of the scale, "untouched" and "turned all
  * the way down" are the same number, and only one of them can win.
  */
-export const ANGER_CEILING_BY_BAND: Readonly<Record<NinaBandName, NinaBandIndex>> = {
+const ANGER_CEILING_BY_BAND: Readonly<Record<NinaBandName, NinaBandIndex>> = {
   off: 4,
   low: 3,
   mid: 4,
@@ -1249,7 +1247,7 @@ ${cap}`
 }
 
 /** The default render, under the name `system.ts` imports. Identical to the text that shipped. */
-export const ANGER_LADDER_BLOCK = ninaAngerLadderBlock(NINA_TUNING_DEFAULTS)
+const ANGER_LADDER_BLOCK = ninaAngerLadderBlock(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * The verbosity floor — R3's `horny`
@@ -1355,7 +1353,7 @@ export function ninaEffectiveVerbosity(tuning: NinaTuning): number {
  * injury, an illness, a death, a bad day at work. The tough love is only ever about choices he
  * controls.' No dial asks her to mock an injury.
  */
-export interface NeverSayEntry {
+interface NeverSayEntry {
   /** The sentence the model can pattern-match against itself. */
   phrase: string
   /** The dials whose top band repeals this entry. `null` means nothing repeals it. */
@@ -1375,7 +1373,7 @@ export interface NeverSayEntry {
  */
 export const BODY_REPEALED_BY: readonly NinaTrait[] = ['flirty', 'steamy', 'concerned', 'horny']
 
-export const THREAT_REPEALED_BY: readonly NinaTrait[] = ['anger', 'annoying', 'sad']
+const THREAT_REPEALED_BY: readonly NinaTrait[] = ['anger', 'annoying', 'sad']
 
 /**
  * The sentences that break the illusion. Every one of them is a real failure mode of a
@@ -1386,7 +1384,7 @@ export const THREAT_REPEALED_BY: readonly NinaTrait[] = ['anger', 'annoying', 's
  * The order is the order they reach the prompt, and it is the order that shipped — which is what
  * makes `ninaNeverSayBlock(NINA_TUNING_DEFAULTS)` byte-identical rather than merely equivalent.
  */
-export const NEVER_SAY_ENTRIES: readonly NeverSayEntry[] = [
+const NEVER_SAY_ENTRIES: readonly NeverSayEntry[] = [
   { phrase: 'As an AI', repealedBy: null },
   { phrase: "I'm sorry to hear that", repealedBy: null },
   { phrase: 'Is there anything else I can help you with?', repealedBy: null },
@@ -1410,12 +1408,12 @@ export const NEVER_SAY_ENTRIES: readonly NeverSayEntry[] = [
  * this array against the assembled prompt, and it is the unconditional set precisely so that walk
  * keeps proving something true at every setting rather than only at the default.
  */
-export const NEVER_SAY: readonly string[] = NEVER_SAY_ENTRIES.filter(
+const NEVER_SAY: readonly string[] = NEVER_SAY_ENTRIES.filter(
   (entry) => entry.repealedBy === null,
 ).map((entry) => entry.phrase)
 
 /** The entries that reach the prompt at this tuning, in order. */
-export function ninaNeverSay(tuning: NinaTuning): readonly string[] {
+function ninaNeverSay(tuning: NinaTuning): readonly string[] {
   return NEVER_SAY_ENTRIES.filter(
     (entry) => entry.repealedBy === null || !anyTurnedUp(tuning, entry.repealedBy),
   ).map((entry) => entry.phrase)
@@ -1460,7 +1458,7 @@ ${body}`
 }
 
 /** The default render, under the name `system.ts` imports. Identical to the text that shipped. */
-export const NEVER_SAY_BLOCK = ninaNeverSayBlock(NINA_TUNING_DEFAULTS)
+const NEVER_SAY_BLOCK = ninaNeverSayBlock(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * The tuning — R1's eleven traits, R3's `horny` and R3's dials, as prompt text
@@ -1509,13 +1507,13 @@ export const NEVER_SAY_BLOCK = ninaNeverSayBlock(NINA_TUNING_DEFAULTS)
  * empty bands rather than being omitted, so that a walk over `NINA_TRAIT_BANDS` covers all twelve
  * of the sliders on the panel and the reason is written down where the hole is.
  */
-export interface NinaTraitBands {
+interface NinaTraitBands {
   trait: NinaTrait
   /** Band-selected prompt text. The key's own identity band is deliberately absent. */
   bands: Partial<Record<NinaBandName, string>>
 }
 
-export const NINA_TRAIT_BANDS: readonly NinaTraitBands[] = [
+const NINA_TRAIT_BANDS: readonly NinaTraitBands[] = [
   {
     trait: 'anger',
     bands: {},
@@ -1665,12 +1663,12 @@ export const NINA_TRAIT_BANDS: readonly NinaTraitBands[] = [
  * to lift a fence. The identity band (`low`) is undefined, so the glosses stand exactly as written
  * for the Nina who ships — which is what makes this dial free.
  */
-export interface NinaDialBands {
+interface NinaDialBands {
   dial: NinaDial
   bands: Partial<Record<NinaBandName, string>>
 }
 
-export const NINA_DIAL_BANDS: readonly NinaDialBands[] = [
+const NINA_DIAL_BANDS: readonly NinaDialBands[] = [
   {
     /* Identity band **`low`** (default 30). `low` is undefined; `mid` is a real step up. */
     dial: 'profanity',
