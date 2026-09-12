@@ -38,7 +38,7 @@
       "satisfies": [
         "R1"
       ],
-      "status": "spawned",
+      "status": "pending",
       "task_id": null,
       "title": "OpenRouter fallback \u2014 text chat"
     },
@@ -63,21 +63,21 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "35e08ec",
       "depends_on": [
         1
       ],
       "difficulty": "NORMAL",
       "n": 4,
-      "note": null,
+      "note": "imagegen failures now write nina_error_logs (per failed call, not per job); timeoutMs reported by the call itself; store/finish failures deliberately unlogged. Drift fix: ninaEnv() memoizes, so Step 6 no-key test sub-case reaches the cold registry via vi.resetModules()+re-import \u2014 asserted intent unchanged.",
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-4.md",
-      "reported_at": null,
+      "reported_at": "2026-09-12T02:30:52+00:00",
       "satisfies": [
         "R2"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A038",
       "title": "Image-generation error logging"
     },
     {
@@ -103,7 +103,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-llm-fallback-error-logs",
-  "updated": "2026-09-12T02:26:31+00:00",
-  "verified_at": "2026-09-12T02:26:06+00:00",
+  "updated": "2026-09-12T02:31:23+00:00",
+  "verified_at": "2026-09-12T02:31:23+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
 }

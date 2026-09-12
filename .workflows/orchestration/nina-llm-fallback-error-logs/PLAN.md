@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs`
 **Branch:** `feature/nina-llm-fallback-error-logs` (base: `origin/main` @ `faace78`)
 **Phases:** 5
-**Status:** reconciled
+**Status:** phase 4/5 complete
 **Coordinator:** —
 
 ---
@@ -79,7 +79,7 @@ R1 by phases 1/2/3, R2 by phases 1/4/5. Nothing is parked.)*
 | 1 | Error-log schema + writer/reader | R1, R2 | `lib/db`, `lib/nina` | 7 | — | NORMAL | `.workflows/plan/nina-llm-fallback-error-logs/phase-1.md` | P1-DB-A007 | — |
 | 2 | OpenRouter fallback — text chat | R1 | `lib/nina` | 4 | 1, 3 | HARD | `.workflows/plan/nina-llm-fallback-error-logs/phase-2.md` | P1-NIN-A036 | — |
 | 3 | OpenRouter fallback — vision/multimodal | R1 | `lib/nina` | 3 | 1 | NORMAL | `.workflows/plan/nina-llm-fallback-error-logs/phase-3.md` | P1-NIN-A037 | — |
-| 4 | Image-generation error logging | R2 | `lib/nina` | 5 | 1 | NORMAL | `.workflows/plan/nina-llm-fallback-error-logs/phase-4.md` | P1-NIN-A038 | — |
+| 4 | [x] Image-generation error logging | R2 | `lib/nina` | 5 | 1 | NORMAL | `.workflows/plan/nina-llm-fallback-error-logs/phase-4.md` | P1-NIN-A038 | — |
 | 5 | Admin Error Logs page | R2 | `app/admin`, `components/admin`, `lib/admin` | 9 | 1 | HARD | `.workflows/plan/nina-llm-fallback-error-logs/phase-5.md` | P1-ADM-A002 | — |
 
 **Concurrency after reconciliation.** Phase 1 is the root. Once it lands, **3, 4 and 5 can run
