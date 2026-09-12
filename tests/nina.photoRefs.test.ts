@@ -56,6 +56,27 @@ afterEach(() => {
 
 const REFERENCE_SKIPPED = ['"source_avatar_id" is null', '"source_image_id" is null'] as const
 
+/**
+ * The album-adoption half of the same duplicate class, pinned as text for `REFERENCE_SKIPPED`'s
+ * reason. `setChatPhotoAsAvatarAction` COPIES a chat photograph into `nina_avatars` and writes
+ * `source_key = 'chat-photo:<image id>'` on the COPY, never on the original — so `isOriginalPhoto()`
+ * still calls the chat row original and the picker's union offered the photograph twice.
+ *
+ * Single-line fragments only: the predicate is a raw `sql` template, so its newlines and
+ * indentation reach the statement verbatim and a multi-line expectation would pin the author's
+ * formatting rather than the meaning.
+ *
+ * The `'chat-photo:'` literal is the coupling this file exists to hold: the writer spells it at
+ * `lib/admin/ninaAlbumActions.ts:301` and the reader spells it in `generatedChatPhotoScope`, with
+ * no shared constant possible between a `'use server'` module and the db layer.
+ */
+const ADOPTED_SKIPPED = [
+  'not exists (',
+  'from "nina_avatars"',
+  '"nina_avatars"."user_id" = $',
+  `"nina_avatars"."source_key" = 'chat-photo:' || "nina_message_images"."id"`,
+] as const
+
 /** NIST FIPS 180-4's SHA-256("abc") — any 64-lowercase-hex literal would do for the shape tests. */
 const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 
@@ -90,6 +111,81 @@ describe('the collection listings skip a reference (R1, R3)', () => {
 
     const where = whereOf(fake.only().sql)
     for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
+  })
+})
+
+describe('the picker drops a photograph her album has already adopted', () => {
+  it('countNinaChatPhotos — the chat-side total stops counting an adopted photograph', async () => {
+    fake.enqueue([[0]])
+    await expect(queries.countNinaChatPhotos('u1')).resolves.toBe(0)
+
+    const { sql, params } = fake.only()
+    const where = whereOf(sql)
+    for (const predicate of ADOPTED_SKIPPED) expect(where, predicate).toContain(predicate)
+    /* BOTH halves, in one scope: the F37 reference filter and the adoption filter. The bug was
+     * that the first one alone looked like the whole rule. */
+    for (const predicate of REFERENCE_SKIPPED) expect(where, predicate).toContain(predicate)
+    /* The owner id is bound TWICE — once on the outer table, once inside the subquery. An
+     * unscoped subquery would let another operator's album hide this operator's photographs, and
+     * a missing third parameter is exactly what that regression would look like from here. */
+    expect(params).toEqual(['u1', 'generated', 'u1'])
+  })
+
+  it('listNinaPhotoReferences — the chat page carries it and the ALBUM page must not', async () => {
+    /* Four statements. Q0 `countNinaAvatars` and Q1 `countNinaChatPhotos` are function CALLS and
+     * dispatch while the `Promise.all` array is being built; Q2 the album page and Q3 the chat
+     * page are lazy drizzle thenables that only run when `Promise.all` awaits them, in array
+     * order. Recorded, not assumed. */
+    fake.enqueue([[3]], [[4]], [], [])
+    await queries.listNinaPhotoReferences('u1')
+
+    expect(fake.queries).toHaveLength(4)
+    const chat = whereOf(fake.sqlAt(3))
+    for (const predicate of ADOPTED_SKIPPED) expect(chat, predicate).toContain(predicate)
+    /* The page and the total read one scope, so they cannot disagree about who is adopted. */
+    const count = whereOf(fake.sqlAt(1))
+    for (const predicate of ADOPTED_SKIPPED) expect(count, predicate).toContain(predicate)
+
+    /* An ABSENCE, and it is the user's other half: the album COPY is the row that SURVIVES the
+     * dedup, so the album statement must keep listing it. Filtering both sides "for consistency"
+     * would delete the photograph from the picker entirely. */
+    const album = whereOf(fake.sqlAt(2))
+    expect(album).not.toContain('source_key')
+    expect(album).not.toContain('not exists')
+  })
+
+  it('resolveNinaPhotoReference — a saved chat id resolves through the same scope', async () => {
+    /* The shared scope makes this free, which is why it is worth asserting: a selection saved
+     * before the adoption must not resolve to a tile the picker can no longer offer. The function
+     * already degrades an unresolvable reference to `null` (an unanchored generation) — its own
+     * documented contract for "the photograph was deleted", and an adoption gets the same
+     * treatment on purpose. */
+    fake.enqueue([])
+    await expect(
+      queries.resolveNinaPhotoReference('u1', { source: 'chat', id: IMAGE }),
+    ).resolves.toBeNull()
+
+    const where = whereOf(fake.only().sql)
+    for (const predicate of ADOPTED_SKIPPED) expect(where, predicate).toContain(predicate)
+  })
+
+  it('the Media view and /nina/about keep the adopted photograph — absence on purpose', async () => {
+    /* The user asked for the PICKER to deduplicate, and only the picker. These reads take
+     * `isOriginalPhoto()` directly (`listNinaMessageImages`) or through `mediaCollectionScope`
+     * (`listNinaMediaPhotos`), and must not grow the album lookup: an adopted chat row is still a
+     * real photograph in a real bubble, and the Media view is the only place it can be Replaced
+     * or Removed. */
+    fake.enqueue([])
+    await queries.listNinaMessageImages('u1', { limit: 200 })
+    expect(whereOf(fake.only().sql)).not.toContain('source_key')
+
+    fake.reset()
+    fake.enqueue([], [[0]])
+    await queries.listNinaMediaPhotos('u1')
+    expect(fake.queries).toHaveLength(2)
+    for (const query of fake.queries) {
+      expect(whereOf(query.sql), query.sql).not.toContain('source_key')
+    }
   })
 })
 
