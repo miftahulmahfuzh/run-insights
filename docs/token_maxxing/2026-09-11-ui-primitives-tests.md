@@ -343,6 +343,5 @@ fa2e391 test(ui): cover usePanelParam and useSavePhoto
 e5e2a4b test(ui): satisfy tsc — the suite runs vitest only, but tsc reads these too
 ```
 
-**Branch:** `token-maxxing-2026-09-11-ui-primitives-tests` — on branch, not
-merged (the coordinator owns merging; this session committed the doc and
-stopped).
+**Branch:** `token-maxxing-2026-09-11-ui-primitives-tests` — merged
+(commit `3c5afbc`).

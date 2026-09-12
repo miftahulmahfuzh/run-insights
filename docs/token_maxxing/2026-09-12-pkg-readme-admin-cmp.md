@@ -284,6 +284,5 @@ e30ddce docs(components/admin): compact package_readme to load-bearing-only, re-
  1 file changed, 1144 insertions(+), 1803 deletions(-)
 ```
 
-**Branch:** `token-maxxing-2026-09-12-pkg-readme-admin-cmp` — on branch, NOT
-merged (worker session; the coordinator `tokenmax-orch-2026-09-12` owns
-landing).
+**Branch:** `token-maxxing-2026-09-12-pkg-readme-admin-cmp` — merged
+(commit `66bfcaf`).

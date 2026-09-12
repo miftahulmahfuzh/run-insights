@@ -48,8 +48,7 @@
     `lib/admin/*.ts` is fully covered under that method before ruling out
     an admin-side candidate for this session's menu.
 - **Branch:** `token-maxxing-2026-09-11` (reused, same as sessions 1–3).
-- **Merge status:** on branch — merged to main as a separate step after this
-  doc was written (see Appendix for the merge commit once available).
+- **Merge status:** merged (commit `ae749f6`).
 - **Approx token burn:** medium — a subagent-run Step 2 recall across three
   prior docs, a Step 3 import-grep survey re-confirming admin coverage, a
   5-item Step 4 menu, then close tracing of `MessageActionsSheet.tsx`'s

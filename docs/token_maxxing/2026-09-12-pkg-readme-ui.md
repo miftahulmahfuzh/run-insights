@@ -289,6 +289,5 @@ fbcb1db docs(components/ui): first package_readme — the reverse-wiring map for
  2 files changed, 549 insertions(+), 2 deletions(-)
 ```
 
-**Branch:** `token-maxxing-2026-09-12-pkg-readme-ui` — on branch, NOT
-merged (worker session; the coordinator `tokenmax-orch-2026-09-12` owns
-landing).
+**Branch:** `token-maxxing-2026-09-12-pkg-readme-ui` — merged
+(commit `e0c2b70`).
