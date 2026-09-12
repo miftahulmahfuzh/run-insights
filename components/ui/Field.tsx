@@ -33,7 +33,11 @@ interface FieldProps {
 export function Field({ label, hint, error, suffix, children }: FieldProps) {
   const base = React.useId()
   const inputId = `${base}-input`
-  const hintId = hint ? `${base}-hint` : undefined
+  /* The hint's id exists only while the hint renders (`hint && !error`, the rule the markup
+   * below follows). Referencing a suppressed hint left a dangling id in `aria-describedby` —
+   * and with both ids listed, the joined attribute matched NEITHER element. Found by
+   * ProfileForm.test.tsx, which asserts the error description actually resolves. */
+  const hintId = hint && !error ? `${base}-hint` : undefined
   const errorId = error ? `${base}-error` : undefined
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined
 
