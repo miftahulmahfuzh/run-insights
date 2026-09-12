@@ -68,8 +68,7 @@
     twice**; `npx next typegen && npx tsc --noEmit` clean; prettier clean on
     all new files.
 - **Branch:** `token-maxxing-2026-09-11-nina-remaining-component-tests`
-- **Merge status:** on branch, **NOT merged** — the coordinator
-  (`tokenmax-orch-2026-09-11`) owns the merge.
+- **Merge status:** merged (commit `c50d580`)
 - **Approx token burn:** high — 25 components traced against their props and
   collaborators before any test was written, 193 tests authored across 25 new
   files in four batches, several non-obvious testability problems worked

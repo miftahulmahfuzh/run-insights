@@ -28,7 +28,7 @@
     assertion and watching it fail, before being reverted to green — so this is
     verified coverage, not vacuous coverage.
 - **Branch:** `token-maxxing-2026-09-11`
-- **Merge status:** on branch, **not merged to main** — awaiting user review.
+- **Merge status:** merged — directly on `main`'s mainline (commit `fdc7653`), no separate merge commit.
 - **Approx token burn:** high — full research pass over component structure,
   iterative TDD-style test writing across two large/complex components with
   mocked dependencies, plus a full gate run (vitest + typecheck + eslint +

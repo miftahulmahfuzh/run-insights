@@ -85,9 +85,7 @@
 - **Branch:** `token-maxxing-2026-09-11-lib-admin-action-tests` (dedicated
   per-session branch — this session ran under a coordinator, unlike sessions
   1–5 which shared `token-maxxing-2026-09-11`).
-- **Merge status:** on branch — 9 commits, tip `7b2c058`, NOT merged and not
-  to be merged by this session; the coordinator (`tokenmax-orch-2026-09-11`)
-  lands the branch.
+- **Merge status:** merged (commit `a62baba`)
 - **Approx token burn:** high — an 18-file per-export coverage survey before
   any test was written, ~2,950 lines of test code authored across 12 suites,
   a real 23505 unique-violation scripted through drizzle's error wrap, three

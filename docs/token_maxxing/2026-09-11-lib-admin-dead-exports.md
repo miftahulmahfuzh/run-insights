@@ -46,9 +46,7 @@
     scratch or, worse, blame a future diff for it.
 - **Branch:** `token-maxxing-2026-09-11-lib-admin-dead-exports` (worktree session;
   session name `tokenmax-lib-admin-dead-exports`)
-- **Merge status:** on branch — **NOT merged, deliberately**. The coordinator
-  `tokenmax-orch-2026-09-11` owns merging all of the day's worker branches; this session
-  must not merge its own work (see Decisions).
+- **Merge status:** merged (commit `b0a2166`)
 - **Approx token burn:** heavy audit phase over a tiny diff — the defining shape of this
   session. 74 exports enumerated and individually traced, ~20 import sites extracted
   symbol-by-symbol, repo-wide word-boundary greps with manual code-vs-prose

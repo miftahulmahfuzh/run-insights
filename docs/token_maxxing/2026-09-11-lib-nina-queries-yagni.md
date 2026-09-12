@@ -35,10 +35,7 @@
     vitest `lib/nina` + `tests/nina` 76 files / 1,925 tests green; **full suite
     265 files / 5,107 tests green**.
 - **Branch:** `token-maxxing-2026-09-11-lib-nina-queries-yagni`
-- **Merge status:** on branch — worker session of coordinator
-  `tokenmax-orch-2026-09-11` (slug `lib-nina-queries-yagni`); landing to `main`
-  is the coordinator's job (Worker Mode W4: never merge, only report). The doc
-  itself is committed on the branch by this session before reporting.
+- **Merge status:** merged (commit `c2d7abc`)
 - **Approx token burn:** high — a per-name word-boundary grep audit of 114 exports
   across the whole repo, hit-by-hit verification of every single-reference
   function, commit archaeology for two timestamps, plus the full gate ladder

@@ -52,8 +52,7 @@
   - Zero schema drift: the diff contains no `lib/db/schema.ts` change, no migration,
     no table/column rename — provable from the 8-file diffstat alone.
 - **Branch:** `token-maxxing-2026-09-11-lib-db-queries-yagni`
-- **Merge status:** on branch (4 gated code commits, `7bd9b85` → `84ae30f`; docs commit
-  on top; not yet merged to main)
+- **Merge status:** merged (commit `b9527e7`)
 - **Approx token burn:** a full fanned-out session's burn — the audit phase dominated:
   80 exports each word-boundary-grepped repo-wide, the intra-file call graph mapped,
   and every candidate's "zero callers" claim re-verified before its commit. No precise

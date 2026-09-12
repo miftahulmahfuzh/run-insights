@@ -36,8 +36,7 @@
     **from the code** (every script was read, headers at minimum, several in full), not
     from file names.
 - **Branch:** `token-maxxing-2026-09-11-scripts-package-hygiene`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches.
+- **Merge status:** merged (commit `2ecaf7f`)
 - **Approx token burn:** moderate — the diff is only 2 files, but the burn went into
   reading all 27 scripts, git archaeology across four commits (`aee6b75`, `8018065`,
   `62727a2`, `c2c2ca5`), and two production queries. 🔥
