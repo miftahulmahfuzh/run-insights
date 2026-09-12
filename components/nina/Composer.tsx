@@ -109,6 +109,25 @@ import { useComposerPhotos, type ComposerDraftImage } from './useComposerPhotos'
  * The photograph pipeline — everything between a picked `File` and the ready draft images the
  * send carries — lives in `useComposerPhotos`, beside this file, with the picker-latency,
  * hashing and `planNinaPicked` arguments that went with it.
+ *
+ * ── WHAT THE SPLIT MOVED WHERE (2026-09-12) ──────────────────────────────────────────────────
+ * This file was 752 lines before it was decomposed along the concerns its own comments drew, the
+ * way `ChatScreen.tsx` was split earlier today. What remains here is the bar itself: the render
+ * contract (geometry, glass, the 16px rule, the 44px send button, the reply strip), the props'
+ * contracts, `canSend`, and `submit` — the junction where the draft meets the photos. The two
+ * state machines moved beside it, one concern per module, every comment travelling with the code
+ * it explains:
+ *
+ *   - `useComposerDraft.ts` — the text half: the draft string, the auto-growing textarea, the
+ *     reply-arming focus, the send-time keyboard release, and the phone-return probe the Enter
+ *     split reads.
+ *   - `useComposerPhotos.ts` — the photo half: the pick pipeline (compress → hash → dedupe
+ *     pre-check → upload → describe), the tile state machine, the rejection copy, and the
+ *     `ComposerDraftImage` payload union `useNinaSend` consumes.
+ *
+ * The hooks share nothing mutable: each owns its state outright, and the one code that sees both
+ * is this component's `canSend` and `submit`. The props contract never changed, so `ChatScreen`'s
+ * call site is untouched.
  */
 
 export function Composer({
