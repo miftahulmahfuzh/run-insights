@@ -8,16 +8,18 @@
  * No logic beyond string assembly, no I/O, no `server-only`. The same shape as
  * `lib/llm/prompts/narrate.ts` and for the same reason: a test asserts the text of a rule
  * without importing the client that sends it. `./tuning` is types and plain data only, so this
- * file stays importable from a `'use client'` module and `/admin/nina` can render a preview.
+ * file stays importable from a `'use client'` module and `/admin/personality` can render a preview.
  *
  * ── WHY HALF OF THIS FILE IS NOW A FUNCTION ───────────────────────────────────────────────────
  * Her character is a stored, per-user `NinaTuning` (F34 R1-R3). A frozen string cannot answer
  * "what is she like when flirty is 90", so every block that varies with a dial is a function of
  * the tuning and every block that does not is still a constant. The constants that USED to be
- * frozen text — `NINA_IDENTITY`, `NAME_RULES`, `ANGER_LADDER_BLOCK`, `NEVER_SAY_BLOCK` — are kept
- * under their old names, defined as the DEFAULT RENDER of their own function. That is what makes
- * the change reviewable: `NINA_TUNING_DEFAULTS` reproduces the text that shipped, so the diff to
- * her behaviour is empty until a slider moves (plan invariant 2).
+ * frozen text — `NINA_IDENTITY`, `NAME_RULES`, `ANGER_LADDER_BLOCK`, `NEVER_SAY_BLOCK` — were
+ * kept under their old names as the DEFAULT RENDER of their own function until the 2026-09-12
+ * YAGNI sweep deleted them: nothing imported them any more, and a caller wanting the shipping
+ * text composes `fn(NINA_TUNING_DEFAULTS)` itself. The reviewability property is unchanged:
+ * `NINA_TUNING_DEFAULTS` reproduces the text that shipped, so the diff to her behaviour is empty
+ * until a slider moves (plan invariant 2).
  *
  * ── WHY THE IDENTITY BAND CONTRIBUTES NOTHING ─────────────────────────────────────────────────
  * Every key has an IDENTITY BAND — the band containing its own `defaultScore` in
@@ -25,14 +27,15 @@
  * held by construction: at `NINA_TUNING_DEFAULTS` every key is in its identity band, so the whole
  * tuning section is empty and the shipping prompt is what ships.
  *
- * **The identity band is NOT always `mid`.** `anger`, `sad`, `flirty`, `steamy`, `annoying` and
- * `anxious` default to 0 and identify at `off`; `profanity` defaults to 30 and identifies at
- * `low`; the other eight default to 50 and identify at `mid`. Today's Nina is warm-by-default with
+ * **The identity band is NOT always `mid`.** `anger`, `sad`, `flirty`, `steamy`, `annoying`,
+ * `anxious` and R3's `horny` default to 0 and identify at `off`; `profanity` defaults to 30 and
+ * identifies at `low`; the other eight default to 50 and identify at `mid`. Today's Nina is warm-by-default with
  * computed anger and fenced swearing — that is where she actually sits on each axis, and a uniform
  * 50 would have shipped a Nina angrier and filthier than the one that exists.
  *
- * `low` is left undefined on every trait, and `mid` on the six that identify at `off`: a paragraph
- * for the middle of every slider would be fifteen paragraphs of "she is normal", the largest
+ * `low` is left undefined on every trait, and `mid` on the six that identify at `off` — `horny`
+ * is the one deliberate exception, and its entry says why: a paragraph
+ * for the middle of every slider would be sixteen paragraphs of "she is normal", the largest
  * possible prompt carrying the least possible information, and "slightly less flirty than usual"
  * is not a behaviour a model can act on. So a default-`off` trait is today's Nina from 0 to 59 and
  * speaks from 60 up — which is exactly the shape the user asked in: *"if flirty is set to HIGH"*.
@@ -42,8 +45,8 @@
  * beside each is `.map().join()` over that data. R-42's argument, one layer over: a paragraph that
  * restates a list is a second source of truth for the list, and the failure mode is silent — a
  * word added to the array and forgotten in the paragraph is a word the model never sees. The
- * arrays are also what `tests/nina.prompts.test.ts` walks to prove every entry reached the prompt,
- * so keep them walkable: `NINA_TRAIT_BANDS`, `NINA_DIAL_BANDS` and `NINA_RELATIONSHIP_BLOCKS` are
+ * arrays `tests/nina.prompts.test.ts` walks to prove every entry reached the prompt —
+ * `JAKARTA_SLANG`, `VOICE_EXAMPLES`, `GIRLFRIEND_VOICE_EXAMPLES` and `ANGER_LADDER` — stay
  * walkable for exactly the same reason.
  *
  * ── WHY THE PERSONA AND THE PAYLOAD RULES ARE IN DIFFERENT FILES ──────────────────────────────
@@ -61,7 +64,7 @@
  * `anger: 100` with `chill: 100` puts both paragraphs in the prompt and the model blends them.
  * There is deliberately no arbitration: sixteen dials is 120 pairwise rules, a spec nobody could
  * review, and every one of them would be a rule that quietly cancels a slider — the exact thing
- * R6 forbids. `/admin/nina` renders the assembled prompt, so the operator reads the contradiction
+ * R6 forbids. `/admin/personality` renders the assembled prompt, so the operator reads the contradiction
  * they wrote and moves a slider. That feedback loop is the arbitration.
  */
 
@@ -75,7 +78,6 @@ import {
   NINA_ADDRESS,
   NINA_DIAL_SPECS,
   NINA_TRAIT_SPECS,
-  NINA_TUNING_DEFAULTS,
   ninaActiveRelationship,
   ninaBand,
   ninaDialScore,
@@ -118,9 +120,9 @@ const dialBand = (tuning: NinaTuning, dial: NinaDial): NinaBandName =>
  * tuning contributes nothing and the shipping prompt is untouched.
  *
  * **It is computed, not tabulated, and that is the point.** The defaults are not uniform: `anger`,
- * `sad`, `flirty`, `steamy`, `annoying` and `anxious` identify at `off`; `profanity` identifies at
- * `low`; the other eight identify at `mid`. Fifteen hand-checked "leave this band undefined"
- * decisions is fifteen chances to ship a paragraph of "she is normal" into the prompt that shipped
+ * `sad`, `flirty`, `steamy`, `annoying`, `anxious` and R3's `horny` identify at `off`; `profanity`
+ * identifies at `low`; the other eight identify at `mid`. Sixteen hand-checked "leave this band
+ * undefined" decisions is sixteen chances to ship a paragraph of "she is normal" into the prompt that shipped
  * — and the failure is silent, because the default IS the shipping character and a leaked paragraph
  * reads as "she has always said that". Asking phase 1's own spec removes the chance.
  */
@@ -136,9 +138,9 @@ const atDialIdentityBand = (tuning: NinaTuning, dial: NinaDial): boolean =>
  * `high` or `max` — a score of 60 or more, since phase 1's bands are five equal widths of 20.
  * What "a dial is turned up" means everywhere a rule is repealed by one.
  *
- * **Exported**, because phase 3 needs the same test for `NUMBERS_RULE`'s surviving body clause in
- * `prompts/system.ts` and a second definition of "turned up" is how the two halves of one repeal
- * come to disagree.
+ * **One definition, private to this file**: `prompts/system.ts` composes its own repeals with
+ * `anyTurnedUp` and `BODY_REPEALED_BY`, and a second definition of "turned up" is how the two
+ * halves of one repeal come to disagree.
  */
 const isTurnedUp = (tuning: NinaTuning, trait: NinaTrait): boolean => {
   const band = traitBand(tuning, trait)
@@ -192,7 +194,7 @@ interface NinaRelationshipSpec {
 /**
  * **RECONCILED: what she CALLS him is not in here.** `NINA_ADDRESS[rel]` in `./tuning` owns the
  * address form, the fallback, the words and the panel label — one home for the words the user
- * named, and it is a client-importable module so `/admin/nina` can show them without importing the
+ * named, and it is a client-importable module so `/admin/personality` can show them without importing the
  * canon. `ninaNameRules` (Step 4) composes those strings; nothing here restates them.
  *
  * This record owns the half phase 1 deliberately does not: who she IS at each level. `identity` is
@@ -337,13 +339,6 @@ export function ninaIdentity(tuning: NinaTuning): string {
   ].join('\n\n')
 }
 
-/**
- * The default render, under the name `lib/nina/prompts/system.ts` has always imported. Phase 3
- * replaces the reference with `ninaIdentity(tuning)`; until it does, this file's change is
- * behaviourally empty and the tree builds.
- */
-const NINA_IDENTITY = ninaIdentity(NINA_TUNING_DEFAULTS)
-
 /* ============================================================================
  * What she looks like
  * ==========================================================================*/
@@ -360,8 +355,8 @@ const NINA_IDENTITY = ninaIdentity(NINA_TUNING_DEFAULTS)
  *
  * ── WHY IT IS AN ARRAY AND NOT A PARAGRAPH ────────────────────────────────────────────────────
  * R4 asks for a prompt-length slider where "the longer the prompt, the more detailed the prompt
- * would be". `ninaBodyBlock(n)` spends the first `n` of these, so the slider buys body detail
- * rather than buying whether there is a body at all. **Element 0 names all four facts on its own**,
+ * would be". `imagegen.ts`'s rung table spends the first `n` of these, so the slider buys body
+ * detail rather than buying whether there is a body at all. **Element 0 names all four facts on its own**,
  * which is what makes PLAN INVARIANT 4 structural: the lowest rung of the shortest possible prompt
  * still carries `big boobs`, `bubble butt`, `big thighs` and `very long calves`.
  *
@@ -414,20 +409,6 @@ export const NINA_BODY = NINA_BODY_SENTENCES.join(' ')
 export const NINA_BODY_AVATAR = `She is voluptuous — big boobs, a bubble butt, big thighs and very long calves — even though this photograph is cropped to her head and shoulders and shows almost none of it.`
 
 /**
- * The first `sentences` elements of the body canon, joined.
- *
- * **Clamped to at least one, always.** That clamp is PLAN INVARIANT 4 held by construction rather
- * than by every caller remembering: a rung table with a typo, a `0` from a hand-run SQL update, a
- * `NaN` from a coercion that got away — every one of them still returns element 0, and element 0
- * names all four facts.
- */
-function ninaBodyBlock(sentences: number): string {
-  const wanted = Number.isFinite(sentences) ? Math.floor(sentences) : 1
-  const take = Math.min(NINA_BODY_SENTENCES.length, Math.max(1, wanted))
-  return NINA_BODY_SENTENCES.slice(0, take).join(' ')
-}
-
-/**
  * The anchor image in words, minus the body clause that moved to `NINA_BODY_SENTENCES`.
  *
  * Transcribed from `nina.png` rather than invented, because R20 makes that image the anchor for
@@ -460,9 +441,8 @@ export const NINA_DEFAULT_OUTFIT_VALUE =
 
 /**
  * The two sentences that follow an outfit wherever it is stated — the watch and her home ground.
- * Extracted from `ninaAppearance` so the editable template interpolates the SAME sentences the
- * built-in assembly writes, rather than a hand-copied second spelling; `ninaAppearance` uses this
- * constant directly, so there is one home and no drift to check.
+ * Extracted from `ninaAppearance` so the suffix has one home rather than a hand-copied second
+ * spelling; `ninaAppearance` interpolates this constant directly.
  */
 const NINA_OUTFIT_SUFFIX =
   'She still has the black digital watch on her left wrist unless the outfit says otherwise. ' +
@@ -552,8 +532,8 @@ const NINA_APPEARANCE_FULL_DETAIL: NinaAppearanceDetail = Object.freeze({
  * mode `lib/db/schema.ts`'s `nina_tuning` header argues against (*"a control that silently does
  * nothing"*). Same rule as `VENUE`, `TIME` and `NOTES` in `imagegen.ts`.
  *
- * This does NOT reach the system prompt. `NINA_APPEARANCE` never did — `prompts/system.ts:1-21`
- * imports twenty names from this file and none of these four is among them — and a paragraph
+ * This does NOT reach the system prompt. `NINA_APPEARANCE` never did — `prompts/system.ts`
+ * imports its twenty-one names from this file and none of these four is among them — and a paragraph
  * telling her what she is wearing would be a fact about a photograph that has not been taken yet.
  */
 export function ninaAppearance(
@@ -669,8 +649,8 @@ export const JAKARTA_REGISTER = `Jakarta, spoken, the way people actually type i
 /**
  * **The gate for every girlfriend-only block in this file, in one expression.**
  *
- * Exported rather than inlined at its two call sites for the reason `isTurnedUp` is exported: a
- * second definition of "she is his girlfriend" is how two halves of one rule come to disagree. It
+ * One definition rather than inlined at its two call sites: a second definition of "she is his
+ * girlfriend" is how two halves of one rule come to disagree. It
  * was also the ONE line R4 had to edit to put this register behind the per-parameter enable
  * toggle, instead of hunting for three comparisons — and R4 did exactly that: the comparison now
  * reads `ninaActiveRelationship`, so clearing the relationship's checkbox makes her the
@@ -761,7 +741,7 @@ export const ENGLISH_REGISTER = `Your English is the same person speaking a diff
  * GO AGAINST THIS FREEDOM"*. The final clause — *"do not use the full name at him"* — forbade the
  * `nobody` setting outright, in so many words.
  *
- * The rule is not gone, it is now FIVE rules, one per relationship, and the clause that forbade the
+ * The rule is not gone, it is now SIX rules, one per relationship, and the clause that forbade the
  * full name survives at the four levels where it is still right. `casual_friend`'s entry is the old
  * text character for character; `best_friend`'s is the old text plus one sentence about "bestie",
  * which R2 names and which is therefore the one place the default render deviates from the prompt
@@ -785,15 +765,6 @@ export function ninaNameRules(tuning: NinaTuning): string {
 
 ${address.addressFallback}`
 }
-
-/**
- * The default render, under the name `system.ts` imports. **This is the one block whose default
- * text is not byte-identical to the prompt that shipped**: it gains `Sometimes "bestie" instead of
- * the nickname — you two are that close.`, because R2 names `bestie` for `best_friend` and
- * `best_friend` is the default. Plan invariant 2 is scoped to blocks whose shape does not change,
- * and this block's shape is the repeal.
- */
-const NAME_RULES = ninaNameRules(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * The target voice
@@ -886,7 +857,7 @@ export const GIRLFRIEND_VOICE_EXAMPLES: readonly VoiceExample[] = [
  * Rendered as a SECOND block under `EXACTLY HOW YOU SOUND`, after `VOICE_EXAMPLES_BLOCK` rather
  * than merged into it: the first set is who she is at every level, this set is who she is at one,
  * and a merged list would have to be rebuilt from two arrays on every call to say the same thing.
- * Empty at the other four levels, and `renderSections` drops an empty block.
+ * Empty at the other five levels, and `renderSections` drops an empty block.
  */
 export function ninaGirlfriendVoiceBlock(tuning: NinaTuning): string {
   if (!isGirlfriend(tuning)) return ''
@@ -901,8 +872,8 @@ ${GIRLFRIEND_VOICE_EXAMPLES.map((v) => `  "${v.line}"\n    ^ ${v.teaches}`).join
 /**
  * **The gate for every instructor-only block, in one expression.**
  *
- * Exported and shaped exactly like `isGirlfriend` above, for the reason that one is exported: a
- * second definition of "she is his coach" is how the two halves of one register come to disagree.
+ * Exported — `prompts/system.ts` composes with it — and shaped exactly like `isGirlfriend` above:
+ * a second definition of "she is his coach" is how the two halves of one register come to disagree.
  * `ninaActiveRelationship` and not `tuning.relationship`, so clearing the relationship's checkbox
  * (R4) makes her the `best_friend` who shipped and this whole register leaves the prompt with her —
  * and `tests/nina.prompts.test.ts`'s source scan forbids the raw field in this file anyway.
@@ -944,7 +915,7 @@ export const isInstructor = (tuning: NinaTuning): boolean =>
  * recognisable coach.
  *
  * ── D4: SHE PRESCRIBES TRAINING, NEVER PHYSIOLOGY, AND IT IS STRUCTURAL ──────────────────────
- * `NINA_NOT_A_DOCTOR` (`:403`) and `'the name of a medical condition'` in `NEVER_SAY_ENTRIES` are
+ * `NINA_NOT_A_DOCTOR` and `'the name of a medical condition'` in `NEVER_SAY_ENTRIES` are
  * unedited, ungated and unsoftened at this level. `:1016` records the ruling that kept them through
  * a plan set whose stated iron rule was to repeal rules, and `lib/llm/facts.ts` records the measured
  * failure the arithmetic rules exist to contain. R3 asks her to advise on a HEART RATE, which raises
@@ -961,7 +932,7 @@ export const isInstructor = (tuning: NinaTuning): boolean =>
  *   3. **The block says the rule TIGHTENS**, in as many words, so the register cannot be read as a
  *      licence that came with the promotion.
  *
- * **And it does NOT contradict `NINA_EXPERTISE` (`:391`), which is ungated at every level and says
+ * **And it does NOT contradict `NINA_EXPERTISE`, which is ungated at every level and says
  * she answers the real physiology when he asks.** That would be the loudest possible failure in this
  * file — a permission and a prohibition on the same subject, three blocks apart, with the model
  * picking. The seam is explicit in the text: explaining mechanism when he ASKS is hers and unchanged;
@@ -1169,7 +1140,7 @@ const ANGER_FLOOR_BY_BAND: Readonly<Record<NinaBandName, NinaBandIndex>> = {
  * Invariant 2 wins, on the user's decision and on phase 1's landed evidence. `NINA_TRAIT_SPECS.anger`
  * says of this axis, in `./tuning`: *"At 0 the ladder is untouched"*, and its `defaultBecause` says
  * today is reproduced arithmetically. `anger` DEFAULTS to 0, so a ceiling of 0 would ship a Nina who
- * can never rise above rung 0 to every user who has never opened `/admin/nina` — a behaviour change
+ * can never rise above rung 0 to every user who has never opened `/admin/personality` — a behaviour change
  * nobody asked for, and precisely the silent kind invariant 2 exists to catch.
  *
  * **The cost, stated rather than hidden: no band means "she never gets angry".** The bottom of the
@@ -1205,7 +1176,7 @@ const ANGER_CAP_DEFAULT = `THE CAP: at most one CAPS clause in a whole turn, and
 /**
  * The rungs are `ANGER_LADDER`'s, mapped, unchanged. Only three sentences around them vary, and at
  * the default tuning (floor 0, ceiling 4) all three are the strings that shipped — so this function
- * returns today's `ANGER_LADDER_BLOCK` byte for byte at `NINA_TUNING_DEFAULTS`.
+ * returns the ladder text that shipped byte for byte at `NINA_TUNING_DEFAULTS`.
  */
 export function ninaAngerLadderBlock(tuning: NinaTuning): string {
   const floor = ninaAngerFloor(tuning)
@@ -1245,9 +1216,6 @@ ${decay}
 
 ${cap}`
 }
-
-/** The default render, under the name `system.ts` imports. Identical to the text that shipped. */
-const ANGER_LADDER_BLOCK = ninaAngerLadderBlock(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * The verbosity floor — R3's `horny`
@@ -1403,15 +1371,6 @@ const NEVER_SAY_ENTRIES: readonly NeverSayEntry[] = [
   { phrase: 'the name of a medical condition', repealedBy: null },
 ]
 
-/**
- * **The entries no dial can repeal.** Twelve of the thirteen. `tests/nina.prompts.test.ts` walks
- * this array against the assembled prompt, and it is the unconditional set precisely so that walk
- * keeps proving something true at every setting rather than only at the default.
- */
-const NEVER_SAY: readonly string[] = NEVER_SAY_ENTRIES.filter(
-  (entry) => entry.repealedBy === null,
-).map((entry) => entry.phrase)
-
 /** The entries that reach the prompt at this tuning, in order. */
 function ninaNeverSay(tuning: NinaTuning): readonly string[] {
   return NEVER_SAY_ENTRIES.filter(
@@ -1456,9 +1415,6 @@ ${threat} ${SETBACK_CLAUSE}
 
 ${body}`
 }
-
-/** The default render, under the name `system.ts` imports. Identical to the text that shipped. */
-const NEVER_SAY_BLOCK = ninaNeverSayBlock(NINA_TUNING_DEFAULTS)
 
 /* ============================================================================
  * The tuning — R1's eleven traits, R3's `horny` and R3's dials, as prompt text

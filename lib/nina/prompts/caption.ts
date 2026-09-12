@@ -20,15 +20,17 @@ import type { NinaTuning } from '../tuning'
  *  below is unit-testable under `environment: 'node'` without importing a client.
  *
  *  ── NO `import 'server-only'`, EVER ─────────────────────────────────────────────────────────
- *  `../persona` and `../tuning` are both pure by their own headers, and `/admin/nina` renders a
- *  character preview from `persona.ts` in a client component. A runtime import from `@/lib/llm/*`,
+ *  `../persona` and `../tuning` are both pure by their own headers, and `/admin/personality`
+ *  renders a character preview from `persona.ts`. A runtime import from `@/lib/llm/*`,
  *  `@/lib/env` or `./queries` does not belong here.
  *
  *  ── AND IT IS NOT COVERED BY `NINA_PROMPT_VERSION` ──────────────────────────────────────────
  *  `prompts/index.ts` states that version's scope — the system text and every tool schema in
  *  `./tools.ts` — and `describe.ts` is the precedent for a prompt deliberately outside it. A
- *  caption is closer to what she says than a description is, so this file carries its OWN version,
- *  on `NINA_TITLE_PROMPT_VERSION`'s precedent. Bump that below, never hers.
+ *  caption is closer to what she says than a description is, and it still ships without a version
+ *  constant of its own: the `NINA_CAPTION_PROMPT_VERSION` that once lived here was deleted by the
+ *  2026-09-12 YAGNI sweep because nothing ever consumed it — the titler's version is wired into
+ *  `lib/nina/autotitle.ts`'s log, this one never was. Reintroduce it together with its consumer.
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -242,7 +244,7 @@ export function buildNinaCaptionRequest(
  * IS the deliverable, and a caption written by an indexer reads as alt text. So this prompt is
  * hers, and it carries only the blocks that decide how a single line SOUNDS — the register, the
  * slang, the voice examples, the never-say list, and the two intimacy blocks that render empty at
- * four of the five relationships.
+ * five of the six relationships.
  *
  * ── WHAT IT DELIBERATELY DOES NOT CARRY ─────────────────────────────────────────────────────
  * Not `ninaIdentity`, not `NINA_EXPERTISE`, not `NINA_NOT_A_DOCTOR`, not the anger ladder, not the
@@ -283,7 +285,7 @@ NEVER
     ninaNeverSayBlock(tuning),
     `If the observation is too vague to say anything true about — or if it says the photo could not be seen at all — return the tool with an empty string. That is a correct answer. A line that invents what is in the picture is the one outcome worse than a dull one.`,
   ]
-  /* `renderSections`'s filter, inlined: two of the blocks above render `''` at four of the five
+  /* `renderSections`'s filter, inlined: two of the blocks above render `''` at five of the six
    * relationships, and a blank paragraph in a prompt reads as a missing instruction. */
   return blocks
     .map((block) => block.trim())
@@ -294,7 +296,7 @@ NEVER
 /**
  * `maxLength` is a JSON Schema keyword inside `input_schema`, not a request field —
  * `NINA_TITLE_TOOL` already sends one to this endpoint. The property description is part of the
- * prompt, so an edit to it bumps `NINA_CAPTION_PROMPT_VERSION`.
+ * prompt: treat an edit to it as a prompt edit, and review it as one.
  */
 export const NINA_CAPTION_TOOL: Anthropic.Tool = {
   name: 'caption',

@@ -36,13 +36,13 @@ import {
  * ── IT IS A FUNCTION NOW, AND THAT IS THE WHOLE OF THE CHARACTER TUNING ──────────────────────
  * `NINA_SYSTEM_PROMPT` used to be a module-level template literal. It is now
  * `buildNinaSystemPrompt(NINA_TUNING_DEFAULTS)`, and the name survives because it is the
- * COMPATIBILITY CONTRACT: until a slider on `/admin/nina` moves, the string this module produces
- * is the string it produced before the tuning existed. `tests/nina.prompts.test.ts` asserts that
- * in both directions — every unchanged block is still in the default render, and no tuned clause
- * is.
+ * COMPATIBILITY CONTRACT: until a slider on `/admin/personality` moves, the string this module
+ * produces is the string it produced before the tuning existed. `tests/nina.prompts.test.ts`
+ * asserts that in both directions — every unchanged block is still in the default render, and no
+ * tuned clause is.
  *
- * **This function is imported by a Server Component** (`app/admin/nina/page.tsx`) to render a
- * preview of the assembled prompt. `scripts/check-llm-payload-boundary.mjs` Rule 2 is why it must
+ * **This function is imported by a Server Component** (`app/admin/personality/page.tsx`) to render
+ * a preview of the assembled prompt. `scripts/check-llm-payload-boundary.mjs` Rule 2 is why it must
  * stay pure: a preview that awaited a model call would be a 13-45 s page render.
  *
  * ── WHY THIS FILE AND `persona.ts` ARE SEPARATE ──────────────────────────────────────────
@@ -115,7 +115,7 @@ function systemDials(tuning: NinaTuning): SystemDials {
  * whatever phase 1 chose for the defaults, and a disagreement would ship as "she greets him now
  * and nobody asked her to".
  *
- * Phase 1's band resolution is the authority for the ELEVEN traits, in `persona.ts`. These three
+ * Phase 1's band resolution is the authority for the TWELVE traits, in `persona.ts`. These three
  * predicates are prompt-assembly gates for three dials and are deliberately not a second band
  * scheme: `raised` means "the operator moved it up at all", `loud` means "moved it up by a quarter
  * of the range or more".
@@ -485,7 +485,7 @@ export function buildNinaSystemPrompt(tuning: NinaTuning): string {
       blocks: [
         LANGUAGE_RULE,
         JAKARTA_REGISTER,
-        /* R2, admin-responsive-nina-intimacy. Empty at four of the five relationships, and
+        /* R2, admin-responsive-nina-intimacy. Empty at five of the six relationships, and
          * `renderSections` drops an empty block — which is why adding it here cannot perturb the
          * default render. It sits DIRECTLY under the register it amends: it lifts that block's
          * "Never aku" and one-emoji lines for `girlfriend` and nowhere else, and an amendment two

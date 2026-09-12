@@ -6,7 +6,7 @@ import {
   NINA_SLOT_KEYS,
   NINA_SLOT_SPECS,
 } from '../memory'
-import { NINA_TUNING_DEFAULTS, type NinaRelationship } from '../tuning'
+import type { NinaRelationship } from '../tuning'
 
 /**
  * Bumped by hand whenever the text or the tool schema below changes. Logged, never sent.
@@ -42,7 +42,7 @@ const SLOT_VOCABULARY_BLOCK = NINA_SLOT_KEYS.map((key) => `- ${NINA_SLOT_SPECS[k
  * Module-private and written out here rather than imported from `lib/nina/tuning.ts`: that file's
  * `NINA_ADDRESS` is written FOR NINA, in the second person, and is the single source of truth for
  * what she is TOLD to call him — composed by `persona.ts`'s `ninaNameRules` and rendered by
- * `/admin/nina`. This is a third-person gloss for a different reader (a librarian being told what
+ * `/admin/personality`. This is a third-person gloss for a different reader (a librarian being told what
  * it is looking at), and the two will not change together. `satisfies` is what keeps them in step
  * on the only thing that matters — the six keys — and the words themselves are quoted from
  * `NINA_ADDRESS[rel].words` so a reviewer can check them against the one place they live.
@@ -79,9 +79,6 @@ const RELATIONSHIP_GLOSS = {
  * "do not record that" rule here would be a fresh prohibition against the freedom this set exists
  * to grant. If that is ever wanted it is one paragraph, and it should be a stated decision rather
  * than one taken quietly inside a sweep.
- *
- * `DISTILL_SYSTEM_PROMPT` below is this function at the default relationship, so every existing
- * importer keeps compiling and a caller that has no tuning to hand still gets a coherent prompt.
  */
 export function buildDistillSystemPrompt(relationship: NinaRelationship): string {
   return `You read one finished exchange between a runner and Nina — she is set, right now, to be ${RELATIONSHIP_GLOSS[relationship]} — and you record what the RUNNER revealed about himself. You are a librarian, not a participant. You never speak to him and you never write in Nina's voice.
