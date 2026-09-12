@@ -25,10 +25,13 @@
  *   RULE 2  ANY file under app/ lib/ components/ reading `process.env.<SECRET>` directly. This is
  *           the `server-only` bypass, and it is wrong even in a server file: `lib/env.ts` is the
  *           single validated reader (a raw read skips the Zod check that turns a missing key into
- *           a build failure instead of a runtime `undefined`). Two deliberate exemptions, both
- *           documented at their call site: `lib/env.ts` itself, and `lib/db/index.ts`, which
- *           reads `DATABASE_URL` raw on purpose so importing it does not drag `server-only` into
- *           every unit test (F03's execution record, "do not tidy that").
+ *           a build failure instead of a runtime `undefined`). Three deliberate exemptions, each
+ *           documented at their call site: `lib/env.ts` itself; `lib/db/index.ts`, which reads
+ *           `DATABASE_URL` raw on purpose so importing it does not drag `server-only` into every
+ *           unit test (F03's execution record, "do not tidy that"); and `lib/nina/vision.test.ts`,
+ *           a colocated test file setting a dummy `OPENROUTER_API_KEY` default for its own fixtures
+ *           — every other test file doing the same thing lives under `tests/`, which this guard
+ *           does not scan, so this one needs its own line.
  *
  *   RULE 3  `NEXT_PUBLIC_` anywhere in app/ lib/ components/. §4.1 forbids it outright, so this
  *           one needs no nuance.
@@ -59,7 +62,7 @@ const SECRETS = [
   'VAPID_PRIVATE_KEY',
 ]
 /** Raw-read exemptions. Each is deliberate and commented at its call site. */
-const RAW_READ_ALLOWED = new Set(['lib/env.ts', 'lib/db/index.ts'])
+const RAW_READ_ALLOWED = new Set(['lib/env.ts', 'lib/db/index.ts', 'lib/nina/vision.test.ts'])
 
 /**
  * The extensions that can actually reach a bundle. Everything all three rules below reason
