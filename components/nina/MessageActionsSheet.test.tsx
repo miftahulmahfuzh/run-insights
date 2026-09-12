@@ -263,6 +263,30 @@ describe('MessageActionsSheet', () => {
       expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     })
 
+    it('shows a clear button in the textarea, absent when the draft is empty', async () => {
+      const user = userEvent.setup()
+      const props = baseProps()
+      render(<MessageActionsSheet {...props} target={target({ body: 'original text' })} />)
+
+      await user.click(screen.getByRole('button', { name: /^edit/i }))
+      expect(screen.getByRole('button', { name: 'Clear text' })).toBeInTheDocument()
+
+      await user.clear(screen.getByRole('textbox'))
+      expect(screen.queryByRole('button', { name: 'Clear text' })).not.toBeInTheDocument()
+    })
+
+    it('clears the whole draft and refocuses the textarea on one click', async () => {
+      const user = userEvent.setup()
+      const props = baseProps()
+      render(<MessageActionsSheet {...props} target={target({ body: 'original text' })} />)
+
+      await user.click(screen.getByRole('button', { name: /^edit/i }))
+      await user.click(screen.getByRole('button', { name: 'Clear text' }))
+
+      expect(screen.getByRole('textbox')).toHaveValue('')
+      expect(screen.getByRole('textbox')).toHaveFocus()
+    })
+
     it('caps the textarea length at EDIT_MAX_CHARS_MINE for his own message', async () => {
       const user = userEvent.setup()
       const props = baseProps()
