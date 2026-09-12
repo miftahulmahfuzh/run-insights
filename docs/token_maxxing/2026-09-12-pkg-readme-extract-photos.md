@@ -69,8 +69,7 @@
     not normalised; the repair path is rationed, not broken).
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-extract-photos` (the worker's own
   worktree; branch tip `2397e88`)
-- **Merge status:** on branch, **NOT merged** — worker mode reports to the coordinator,
-  which owns the merge. Expect `2397e88` to be landed by `tokenmax-orch-2026-09-12`.
+- **Merge status:** merged (commit `1a0cd03`)
 - **Approx token burn:** est. ~0.6M, input-dominated 🔥 — the burn went into reading all 20
   files of the three packages IN FULL, the 4 route/page files at the seams, and the wire
   schema before writing a word, then re-verifying every claim (including two

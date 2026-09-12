@@ -50,8 +50,7 @@
     risky counts **independently** with specifier-exact parsing and found seven
     discrepancies, four substantive, all fixed in the same commit.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-lib-db`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches.
+- **Merge status:** merged (commit `4fe9d01`)
 - **Approx token burn:** high for a docs-only diff (est. ~0.6M, input-dominated) — the burn
   went into the full re-derivation of ~40 claims across schema, migrations, tests, and
   importers, git archaeology from `0798fc4`, one production measurement, and an independent

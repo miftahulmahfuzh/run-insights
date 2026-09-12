@@ -36,8 +36,7 @@
   - **The per-migration applied/not-applied table dropped entirely** — it rots per
     deploy; the *rule* it documented stays.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-nina-lib`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator
-  owns landing worker branches.
+- **Merge status:** merged (commit `ea8dc98`)
 - **Approx token burn:** high — the diff is one doc file, but the burn went into reading
   the full 3,767-line target, yesterday's 226-line calibration file, and ~40 exhaustive
   verification greps across the package (no head cutoffs). 🔥

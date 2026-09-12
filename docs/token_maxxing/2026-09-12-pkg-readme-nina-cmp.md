@@ -41,8 +41,7 @@
     usage + gotchas, and notes are all still there; the file is smaller
     because it says each true thing once, in present tense.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-nina-cmp`
-- **Merge status:** on branch — **not merged**; the coordinator owns the
-  merge.
+- **Merge status:** merged (commit `0438cbb`)
 - **Approx token burn:** high — the full 1,017-line file read twice (once to
   inventory claims, once to rewrite), a dated git log for two packages since
   2026-09-10, per-commit diffs for all seven post-readme commits, and

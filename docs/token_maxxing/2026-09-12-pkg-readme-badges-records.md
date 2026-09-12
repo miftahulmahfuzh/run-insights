@@ -51,8 +51,7 @@
   `tokenmax-pkg-readme-badges-records` under coordinator
   `tokenmax-orch-2026-09-12`; the yagni sweep `f903ef4` is an ancestor of this
   branch).
-- **Merge status:** **NOT MERGED** — the coordinator `tokenmax-orch-2026-09-12`
-  owns landing (worker contract; this session does not push to `main`).
+- **Merge status:** merged (commit `6d4b139`)
 - **Approx token burn:** 🔥🔥 — audit-dominant over a docs diff: all 17 source
   files across both packages read **in full** before a line of the doc was
   written, plus the grep passes (broken first reverse-dep grep, exact-quote

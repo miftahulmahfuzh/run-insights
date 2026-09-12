@@ -46,9 +46,7 @@
     trust.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-lib-admin` (session name
   `tokenmax-pkg-readme-lib-admin`)
-- **Merge status:** on branch — **NOT merged, deliberately**. The coordinator
-  `tokenmax-orch-2026-09-12` owns landing all of the day's worker branches; this session
-  reports DONE and goes idle. Branch is 1 commit ahead of its base (`7899385`).
+- **Merge status:** merged (commit `c0b6918`)
 - **Approx token burn:** the defining asymmetry again, in doc form — 24 modules' exports
   extracted, every `@/lib/admin/*` import site in the repo censused per module, every
   documented module read, every load-bearing claim spot-checked against the tree, and an

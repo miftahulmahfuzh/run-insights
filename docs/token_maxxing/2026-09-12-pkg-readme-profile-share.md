@@ -38,8 +38,7 @@
     9 vs the measured 4, and badge/record counts were re-derived from the catalogs rather than
     trusted from doc comments.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-profile-share`
-- **Merge status:** on branch, **NOT merged** — this is a worker session; the coordinator owns
-  landing worker branches (report, never merge).
+- **Merge status:** merged (commit `a2bc44f`)
 - **Approx token burn:** ~1M (est.), and the burn's *character* is the point: it went into the
   READING (all 17 estate files + ScreenshotStrip in full before documenting; both same-day
   session docs' follow-ups read; reverse-dep greps; claim-by-claim verification of the readme

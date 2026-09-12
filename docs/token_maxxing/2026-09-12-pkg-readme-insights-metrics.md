@@ -59,8 +59,7 @@ Worker session `pkg-readme-insights-metrics` of coordinator `tokenmax-orch-2026-
     whoever ships or kills the banner.
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-insights-metrics` (its own worktree;
   single session commit `8a6ce16` on base `6759f26`).
-- **Merge status:** on branch — **NOT merged, deliberately**. Coordinator
-  `tokenmax-orch-2026-09-12` owns landing all worker branches (Worker Mode contract).
+- **Merge status:** merged (commit `56cecc9`)
 - **Approx token burn:** 🔥🔥 — and the burn is **reading, not writing**: every line of
   the vertical's source, the full reverse-dep grep across the repo, house-style
   calibration against two existing readmes, and claims verified against the tree — all

@@ -68,8 +68,7 @@
 - **Branch:** `token-maxxing-2026-09-12-pkg-readme-llm` (worker session `pkg-readme-llm`
   of coordinator `tokenmax-orch-2026-09-12`; sibling sessions that day included the
   other pkg-readme workers, the optional-props pair, and dead-export-tooling)
-- **Merge status:** **on branch, NOT merged** — the coordinator owns landing
-  worker branches; DONE reported to the coordinator.
+- **Merge status:** merged (commit `15fe85b`)
 - **Approx token burn:** est. ~0.7–1M, input-dominated — the full read of all 13
   source files (~2.5k lines) plus the llm-yagni-audit session doc before writing,
   the guard-script and CI-workflow verification reads, and the doc itself at 543
