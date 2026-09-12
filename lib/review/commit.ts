@@ -56,7 +56,7 @@ import {
  * confirmed save.
  */
 
-export interface CommitDeps {
+interface CommitDeps {
   now?: () => Date
   /** Overridable so the contract test can assert it is called exactly once, with what. */
   invalidate?: typeof onRunCommitted
@@ -76,7 +76,7 @@ export interface CommitDeps {
  * `commitReviewAction` is the consumer. It redirects, so the review screen has no response to
  * render these into; instead it schedules F33's reaction in `after()` from the three of them.
  */
-export type CommitOutcome =
+type CommitOutcome =
   | {
       ok: true
       runId: string

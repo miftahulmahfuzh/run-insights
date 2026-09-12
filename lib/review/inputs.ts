@@ -25,7 +25,7 @@
  * PURE MODULE.
  */
 
-export interface ParseResult {
+interface ParseResult {
   value: number | null
   invalid?: true
 }

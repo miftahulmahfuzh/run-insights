@@ -45,7 +45,7 @@ export interface DraftZone {
   maxBpm: number | null
 }
 
-export interface DraftPostWorkoutHr {
+interface DraftPostWorkoutHr {
   label: string
   /**
    * Nullable, unlike the extractor's own `ExtractedPostWorkoutHr`, and the array is POSITIONAL:
@@ -231,7 +231,7 @@ export function hydrateDraftFromExtraction(
 }
 
 /** Just enough of a committed run to rebuild its draft. Structural, so tests need no DB. */
-export interface StoredRunShape {
+interface StoredRunShape {
   occurredOn: string
   activityType: string
   location: string | null
@@ -253,7 +253,7 @@ export interface StoredRunShape {
   note: string | null
 }
 
-export interface StoredSplitShape {
+interface StoredSplitShape {
   km: number
   timeSec: number
   paceSec: number
@@ -262,7 +262,7 @@ export interface StoredSplitShape {
   partial: boolean
 }
 
-export interface StoredZoneShape {
+interface StoredZoneShape {
   zone: number
   durationSec: number
   minBpm: number | null
@@ -414,7 +414,7 @@ export function flattenDraft(draft: ReviewDraft): Map<FieldPath, unknown> {
   return out
 }
 
-export interface DiffOptions {
+interface DiffOptions {
   phase: CorrectionEvent['phase']
   /** ISO instant stamped on every event produced by this commit. */
   correctedAt: string

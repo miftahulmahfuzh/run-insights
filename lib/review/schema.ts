@@ -50,7 +50,7 @@ const MAX_DURATION_SEC = 86_400
 /** 300 km. Wide enough for an ultra, narrow enough to catch metres typed into a km field. */
 const MAX_DISTANCE_KM = 300
 
-export const DraftSplitSchema = z.object({
+const DraftSplitSchema = z.object({
   km: z.number().int().positive().max(500),
   timeSec: z.number().int().positive().max(MAX_DURATION_SEC),
   paceSecPerKm: z.number().int().positive().max(MAX_DURATION_SEC),
@@ -59,7 +59,7 @@ export const DraftSplitSchema = z.object({
   partial: z.boolean(),
 })
 
-export const DraftZoneSchema = z.object({
+const DraftZoneSchema = z.object({
   zone: z.number().int().min(1).max(5),
   durationSec: z.number().int().min(0).max(MAX_DURATION_SEC),
   minBpm: z.number().int().min(30).max(230).nullable(),
@@ -67,7 +67,7 @@ export const DraftZoneSchema = z.object({
 })
 
 /** Positional (R-9), so a cleared slot is `null` and not a removed element. */
-export const DraftPostWorkoutHrSchema = z.object({
+const DraftPostWorkoutHrSchema = z.object({
   label: z.string().trim().min(1).max(20),
   bpm: bpm,
 })
@@ -172,7 +172,7 @@ export const ReviewDraftSchema = z
     }
   })
 
-export type ReviewDraftInput = z.infer<typeof ReviewDraftSchema>
+type ReviewDraftInput = z.infer<typeof ReviewDraftSchema>
 
 /* ============================================================================
  * §3 The commit payload
@@ -199,8 +199,6 @@ export const CommitReviewEnvelopeSchema = z.object({
 export const CommitReviewPayloadSchema = CommitReviewEnvelopeSchema.extend({
   draft: ReviewDraftSchema,
 })
-
-export type CommitReviewPayload = z.infer<typeof CommitReviewPayloadSchema>
 
 /* ============================================================================
  * §4 Draft -> the row
@@ -270,7 +268,7 @@ export function toRunInput(
  * ==========================================================================*/
 
 /** Keyed by the same dot-path syntax `lib/review/draft.ts` §3 defines, so a field finds its own. */
-export type ReviewFieldErrors = Record<string, string>
+type ReviewFieldErrors = Record<string, string>
 
 export function fieldErrorsOf(error: z.ZodError): ReviewFieldErrors {
   const out: ReviewFieldErrors = {}

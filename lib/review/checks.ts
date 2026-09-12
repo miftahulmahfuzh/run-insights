@@ -35,7 +35,7 @@ import type { DraftSplit, DraftZone, FieldPath, ReviewDraft } from './draft'
  * again on the server at commit time to attribute `checkId`s.
  */
 
-export type CheckId =
+type CheckId =
   | 'splits_sum_vs_duration'
   | 'zones_sum_vs_duration'
   | 'distance_pace_vs_duration'
