@@ -18,8 +18,9 @@ import { ADMIN_INSTALL, APPLE_WEB_APP } from '@/lib/pwa'
  * ── WHAT IT IS NOT ──────────────────────────────────────────────────────────────────────────
  * No `AppShell`: that component hardcodes `max-w-[470px]` and pairs itself with `<TabBar />`.
  * Both are wrong here. The tab bar is the runner's five-cell navigation and an admin tool that
- * borrows it invites the runner to tap into it; the 470 px column is `docs/design-brief.md`'s
- * iPhone XS Max target, and the album manager's content is genuinely side-by-side.
+ * borrows it invites the runner to tap into it; the 470 px column is `AppShell`'s own choice, not
+ * the brief's — `docs/design-brief.md` targets an iPhone XS Max at 414 × 896 — and the album
+ * manager's content is genuinely side-by-side.
  *
  * ── WHAT IT KEEPS ──────────────────────────────────────────────────────────────────────────
  * Every design token: `--paper`, `--paper-2`, `--card`, `--ink*`, `--rule`, `--accent`,
