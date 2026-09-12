@@ -43,7 +43,7 @@ function renderDetails(
     rerenderProps.draft = draft
     rerender()
   })
-  let rerenderProps = {
+  const rerenderProps = {
     draft,
     open: overrides.open ?? false,
     editedPaths: overrides.editedPaths ?? new Set<string>(),
