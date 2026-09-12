@@ -403,7 +403,7 @@ that aged correctly.
 Google-only Auth.js v5, JWT sessions, `proxy.ts` positive matcher, `requireUserId()`/`requireUserIdApi()`,
 `profiles` + skippable onboarding, `/me`, and **`lib/metrics/hrMax.ts`** — the single HRmax
 resolver (measured → observed-beats-estimate → Tanaka → null, never a constant). As built: the
-three resolver queries live in `lib/db/queries.ts` (F03's convention) not inline; the never-shipped
+three resolver queries live in `lib/db/queries/` (F03's convention) not inline; the never-shipped
 §4.5 transition banner (`hrMaxTransitionAt`/`resolveHrMaxAsOf`) was removed on 2026-09-12; the runs
 list *is* `/` (decision b); `AUTH_URL=''` treated as unset.
 Still true and load-bearing: observed-only-reviewed (D16 at the resolver), the null-degradation

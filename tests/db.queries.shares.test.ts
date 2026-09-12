@@ -191,28 +191,39 @@ describe('getRunByShareToken — THE one unscoped read', () => {
     expect(shared?.insightPayload).toBeNull()
   })
 
-  it('is one of exactly three exported functions that do not take userId first', async () => {
-    const source = (await import('node:fs')).readFileSync('lib/db/queries.ts', 'utf8')
+  it('is one of exactly four exported functions that do not take userId first', async () => {
+    // The layer is the barrel plus the domain modules behind it; scan all of them, since a
+    // barrel-only read would pass vacuously (it re-exports and declares nothing).
+    const fs = await import('node:fs')
+    const files = ['lib/db/queries.ts'].concat(
+      fs
+        .readdirSync('lib/db/queries', { recursive: true })
+        .filter((f) => String(f).endsWith('.ts'))
+        .map((f) => `lib/db/queries/${String(f)}`),
+    )
+    const source = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n')
     const exported = [...source.matchAll(/export (?:async )?function (\w+)\(([^)]*)/g)]
     const unscoped = exported
       .filter(([, , args]) => !/^\s*userId/.test(args ?? ''))
       .map(([, name]) => name)
     /*
      * One of these touches no database at all (`isUniqueViolation` is a predicate over an error
-     * object), so the unscoped READS are two:
+     * object), and one is not a query at all (`runBatch` executes caller-built statements and
+     * scopes nothing itself), so the unscoped READS are two:
      *
      *   · `getRunByShareToken` — roadmap D9, where the token IS the credential;
      *   · `listActiveUserIds`  — F07's cron, which has no session and whose whole job is to
      *     enumerate users. It returns ids and nothing else, and every read inside the cron's loop
      *     is scoped to one of them.
      *
-     * A FOURTH name appearing here is the thing to argue about in review — see
+     * A FIFTH name appearing here is the thing to argue about in review — see
      * `scripts/check-data-layer-invariants.mjs`, which fails CI on the same list.
      */
     expect(unscoped.sort()).toEqual([
       'getRunByShareToken',
       'isUniqueViolation',
       'listActiveUserIds',
+      'runBatch',
     ])
   })
 })
