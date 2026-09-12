@@ -33,8 +33,6 @@ import type { RecordKey } from '@/lib/records/types'
 export interface RunChangeEvent {
   runId: string
   userId: string
-  /** The field paths that got a new corrections entry on this commit (R-7 keys). */
-  changedFieldPaths: string[]
   /** `runs.occurred_on` as it stands after the write. */
   occurredOn: string
   /** Set only when `occurred_on` itself moved — the week and month it left must be swept too. */

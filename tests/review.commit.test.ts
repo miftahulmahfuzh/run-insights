@@ -136,7 +136,6 @@ describe('the golden path — TRUTH committed unmodified', () => {
     expect(invalidate).toHaveBeenCalledWith({
       runId: 'run123456789',
       userId: USER,
-      changedFieldPaths: [],
       occurredOn: '2026-08-20',
       previousOccurredOn: null,
       phase: 'review',
@@ -180,15 +179,6 @@ describe('the corrected path — the §1.3 misread, fixed by a human', () => {
 
     const [, , corrections] = queries.recordCorrections.mock.calls[0]!
     expect(corrections['location']![0]).not.toHaveProperty('checkId')
-  })
-
-  it('passes the changed paths to onRunCommitted so F06/F09 know what moved', async () => {
-    const invalidate = vi.fn()
-    const draft = baselineDraft()
-    draft.distanceKm = 10.7
-    await commitReview(USER, payload(draft), { now, invalidate })
-
-    expect(invalidate.mock.calls[0]![0].changedFieldPaths).toEqual(['distanceKm'])
   })
 
   it('reports a moved date so the week and month it LEFT can be swept too', async () => {
