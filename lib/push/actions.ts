@@ -23,7 +23,7 @@ import { sendNinaPush } from './send'
  * error, which is the wrong shape for "your browser said no". Same reasoning as phase 3's
  * `sendNinaMessage` returning a result rather than throwing.
  */
-export interface PushActionResult {
+interface PushActionResult {
   ok: boolean
   /** Copy the card renders verbatim. Never a stack trace, never a status code. */
   message: string | null

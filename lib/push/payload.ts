@@ -14,10 +14,10 @@ import { z } from 'zod'
  */
 
 /** The notification's title. Not the message body — see `buildNinaPushPayload`. */
-export const PUSH_TITLE = 'Nina'
+const PUSH_TITLE = 'Nina'
 
 /** Where a tap lands. Also the URL the service worker looks for among open windows to focus. */
-export const PUSH_TARGET_URL = '/nina'
+const PUSH_TARGET_URL = '/nina'
 
 /**
  * One tag for every Nina notification, so a second one REPLACES the first in the tray instead of
@@ -25,7 +25,7 @@ export const PUSH_TARGET_URL = '/nina'
  * is the behaviour that makes people turn notifications off. `renotify` is set alongside it in the
  * worker so a replacement still buzzes rather than landing silently.
  */
-export const PUSH_NOTIFICATION_TAG = 'nina'
+const PUSH_NOTIFICATION_TAG = 'nina'
 
 /**
  * A notification body is truncated by the OS anyway — iOS shows roughly four lines on a locked
@@ -61,7 +61,7 @@ export const PUSH_FAILURE_LIMIT = 5
  *     deleting the runner's subscription to hide it; the failure count will surface it.
  *   - no status code at all (DNS, socket, timeout) — the network, not the endpoint.
  */
-export const TERMINAL_PUSH_STATUS_CODES = [404, 410] as const
+const TERMINAL_PUSH_STATUS_CODES = [404, 410] as const
 
 /** What a failed send tells us about the subscription itself. */
 export type PushFailureVerdict = 'gone' | 'retry'
@@ -98,7 +98,7 @@ export function shouldRevokeSubscription(input: {
  * would turn `webpush.sendNotification` into a request-forgery primitive, which is why the scheme
  * check below is `https:` and not a regex over the whole URL.
  */
-export const pushSubscriptionSchema = z.object({
+const pushSubscriptionSchema = z.object({
   endpoint: z
     .string()
     .min(1, 'endpoint is required')
@@ -204,32 +204,9 @@ export function buildNinaPushPayload(input: {
   }
 }
 
+/** Stringify for the wire. The service worker does NOT import this module — it cannot import from
+ * `lib/` in a way that survives being a separate bundle entry, so it keeps its own defensive
+ * reader of this same shape there; that file's constants say "kept in step" with the ones above. */
 export function encodeNinaPushPayload(payload: NinaPushPayload): string {
   return JSON.stringify(payload)
-}
-
-/**
- * The inverse, for the test and for anybody debugging a payload out of a log line. The service
- * worker does NOT use this — it cannot import from `lib/` in a way that survives being a separate
- * bundle entry, and duplicating six lines of defensive reads there is cheaper than a shared module
- * that has to be safe in three runtimes.
- */
-export function decodeNinaPushPayload(raw: string): NinaPushPayload | null {
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== 'object') return null
-    const candidate = parsed as Partial<NinaPushPayload>
-    if (typeof candidate.title !== 'string' || typeof candidate.body !== 'string') return null
-    return {
-      v: 1,
-      title: candidate.title,
-      body: candidate.body,
-      url: typeof candidate.url === 'string' ? candidate.url : PUSH_TARGET_URL,
-      tag: typeof candidate.tag === 'string' ? candidate.tag : PUSH_NOTIFICATION_TAG,
-      messageId: typeof candidate.messageId === 'string' ? candidate.messageId : null,
-      kind: typeof candidate.kind === 'string' ? candidate.kind : 'unknown',
-    }
-  } catch {
-    return null
-  }
 }
