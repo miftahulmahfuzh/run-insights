@@ -11,9 +11,9 @@ import {
   type ProfileFormValues,
 } from '@/lib/profile/schema'
 
-export type ProfileFormMode = 'onboarding' | 'edit'
+type ProfileFormMode = 'onboarding' | 'edit'
 
-export interface ProfileFormProps {
+interface ProfileFormProps {
   mode: ProfileFormMode
   values: ProfileFormValues
   /** `saveOnboardingAction` or `updateProfileAction` — both `(prev, formData) => state`. */

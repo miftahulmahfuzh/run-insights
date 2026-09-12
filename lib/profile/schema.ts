@@ -63,7 +63,7 @@ export const profileFormSchema = z
     path: ['restingHr'],
   })
 
-export type ProfileFormInput = z.infer<typeof profileFormSchema>
+type ProfileFormInput = z.infer<typeof profileFormSchema>
 
 /**
  * What `lib/db` writes to `profiles`. `birth_year` replaces `age`; everything else passes through.
@@ -79,7 +79,7 @@ export const profileWriteSchema = z.object({
   maxHr: z.number().int().min(100).max(230).nullable(),
 })
 
-export type ProfileWrite = z.infer<typeof profileWriteSchema>
+type ProfileWrite = z.infer<typeof profileWriteSchema>
 
 /**
  * The single `age -> birth_year` conversion point in the codebase. Pure, and unit-tested, so it can
