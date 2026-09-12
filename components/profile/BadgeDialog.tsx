@@ -234,15 +234,22 @@ function EarnedDatesTrigger({
 /**
  * The dates themselves — **exported, and stateless, so a test can reach it.**
  *
- * This repo has no jsdom and no testing library (`vitest.config.ts` runs node-env only), so a tap on
- * the expander above cannot be simulated and `renderToStaticMarkup` only ever renders the collapsed
- * half. F21 hit exactly this and set the precedent: `commitStatusLine` was JSX private to
- * `ReviewClient.tsx` and shipped a grammar bug into two screenshots and a README GIF because nothing
- * could render it. The fix was to move it somewhere reachable.
+ * When this split was made, the repo had no component harness (`vitest.config.ts` ran node-env
+ * only), a tap on the expander above could not be simulated, and `renderToStaticMarkup` only ever
+ * rendered the collapsed half. F21 was the precedent: `commitStatusLine` was JSX private to
+ * `ReviewClient.tsx` and shipped a grammar bug into two screenshots and a README GIF because
+ * nothing could render it. The fix was to move it somewhere reachable.
  *
- * So the split here is not decoration. `EarnedDates` owns the one thing that needs state — is it
+ * The harness has since arrived (`@vitest-environment happy-dom` + `@testing-library/react`, per
+ * file), and the tap is now simulated: `BadgeDialog.test.tsx` drives the expander through the real
+ * `DetailPanel` chrome — `aria-expanded` flipping, `aria-controls` resolving to the list in the
+ * document, both not-recorded branches — and `BadgeShelf.test.tsx` opens the list from the URL.
+ * The export stays for a second reason: `tests/badges.render.test.ts` renders this directly in the
+ * node env, where the chrome's effects do not run.
+ *
+ * So the split here is not decoration. The trigger owns the one thing that needs state — is it
  * open — and this owns everything that can be got wrong: the order, the two link branches, and the
- * count that does not match the list. `tests/badges.render.test.ts` renders it directly.
+ * count that does not match the list.
  */
 export function EarnedDayList({
   id,
