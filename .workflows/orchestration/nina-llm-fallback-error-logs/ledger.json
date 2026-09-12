@@ -1,0 +1,108 @@
+{
+  "branch": "feature/nina-llm-fallback-error-logs",
+  "coordinator": "orch-nina-llm-fallback-error-logs",
+  "coordinator_session_id": "21b7d26e-989c-4f31-b2cf-6917e91ce2cf",
+  "created": "2026-09-12T01:12:14+00:00",
+  "phases": [
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [],
+      "difficulty": "NORMAL",
+      "n": 1,
+      "note": null,
+      "package": "lib/db`, `lib/nina",
+      "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-1.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1",
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Error-log schema + writer/reader"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1,
+        3
+      ],
+      "difficulty": "HARD",
+      "n": 2,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-2.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "OpenRouter fallback \u2014 text chat"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 3,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-3.md",
+      "reported_at": null,
+      "satisfies": [
+        "R1"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "OpenRouter fallback \u2014 vision/multimodal"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "NORMAL",
+      "n": 4,
+      "note": null,
+      "package": "lib/nina",
+      "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-4.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Image-generation error logging"
+    },
+    {
+      "card": null,
+      "commit": null,
+      "depends_on": [
+        1
+      ],
+      "difficulty": "HARD",
+      "n": 5,
+      "note": null,
+      "package": "app/admin`, `components/admin`, `lib/admin",
+      "plan": ".workflows/plan/nina-llm-fallback-error-logs/phase-5.md",
+      "reported_at": null,
+      "satisfies": [
+        "R2"
+      ],
+      "status": "pending",
+      "task_id": null,
+      "title": "Admin Error Logs page"
+    }
+  ],
+  "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-llm-fallback-error-logs/PLAN.md",
+  "repo": "/home/miftah/run-insights",
+  "slug": "nina-llm-fallback-error-logs",
+  "updated": "2026-09-12T01:12:14+00:00",
+  "worktree": "/home/miftah/.worktrees/run-insights/nina-llm-fallback-error-logs"
+}
