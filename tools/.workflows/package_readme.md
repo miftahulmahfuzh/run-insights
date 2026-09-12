@@ -132,12 +132,20 @@ this** — regenerating `public/**` changes what ships and belongs in its own co
 alongside `badges:check` and `typecheck`.
 
 ### `make_badge_sheet.py` — whole-deck contact sheet (needs PIL; free)
-All masters on one sheet at shelf (40px) and panel (160px) size, both `--paper`
-themes. Answers the three questions no per-badge tool can ask: do any two badges
-collide at shelf size, is it one bolt of cloth, does the shelf read as a set.
-Session-invoked review tool — deliberately not part of the SKILL.md loop.
-**Known limit: reads `lib/badges/catalog.ts` directly (pre-`decks.py`), so a
-records sheet needs the `--deck` treatment first.**
+All masters of one deck on a single sheet at shelf (40px) and panel (160px) size,
+both paper themes — `--deck` selects the deck (default `badges`, like everywhere
+else), `--out` defaults to that deck's own gitignored `_candidates/`. Answers the
+three questions no per-patch tool can ask: do any two patches collide at shelf
+size, is it one bolt of cloth, does the set read as a set. Reads its catalog
+array, key pattern and masters dir from `decks.py` like every other tool (the
+last hardcoded-deck tool, converted 2026-09-12 — the records deck's F32 growth
+across sessions is what retired the one-phase premise that had deferred it).
+`--selftest` checks the sheet's INPUTS for every deck in the table — extraction,
+key uniqueness, and the two drifts nothing else guards: a catalog key with no
+promoted master (drawn as a silent gap) and a promoted master whose catalog row
+is gone (never drawn at all). Session-invoked review tool — deliberately not part
+of the SKILL.md loop, and deliberately not CI-gated: a sheet has no designed
+failure to assert, only inputs that must be complete.
 
 ### `make_badge_control.py` — free fixtures for the grader (needs PIL)
 Draws four synthetic patches by arithmetic — `good`, `flat`, `offcentre`,
@@ -227,10 +235,11 @@ header stops at `/badges|records/*` — do not move icons under those paths).
 present); `decks.py --selftest` all green; `badges:check` green with both decks
 complete (22 badges, 11 records, style v2, one shared anchor); both decks'
 `gen_badge_art.py --dry-run --all` assemble (22 + 11 prompts, parity guards green);
-both promoters `--dry-run` clean; `gen_app_icon.py --all --dry-run` clean; the sheet
-builds 22/22; the four controls grade exactly as designed and
-`check_badge_controls.py` asserts that on every push (good passes; flat → check 3
-sd floor; offcentre → 8a; bleached → check 3 grey band). Counts are
+both promoters `--dry-run` clean; `gen_app_icon.py --all --dry-run` clean; both
+decks' sheets build (`make_badge_sheet.py` 22/22, `--deck records` 11/11) and its
+`--selftest` is green for every deck; the four controls grade exactly as designed
+and `check_badge_controls.py` asserts that on every push (good passes; flat →
+check 3 sd floor; offcentre → 8a; bleached → check 3 grey band). Counts are
 as-of-this-date state, not rules — the live count is whatever `badges:check` says.
 
 ## Notes
@@ -241,7 +250,9 @@ dead scripts** — every entry is either CI/npm-wired, part of the SKILL.md loop
 documented free review/control tool whose next use is foreseeable (the audit's
 method and the one repair it produced are in
 `docs/token_maxxing/2026-09-12-tools-package-hygiene.md`). Of that session's four
-hygiene findings, the two hardcoded-deck limitations (sheet, extend) still stand
-recorded above; the other two were resolved the same day — the control loop is now
-CI-gated (`check_badge_controls.py`, added by `tokenmax-badge-pipeline-followups`),
-and the zero-ref `_SMALL_SIZE` emission is decided and documented in the generator.
+hygiene findings, only the `extend_badge_art.py` hardcoded-deck limitation still
+stands recorded above (records don't need widening, so neither does its flag);
+the other three were resolved the same day — the control loop is now CI-gated
+(`check_badge_controls.py`, added by `tokenmax-badge-pipeline-followups`), the
+zero-ref `_SMALL_SIZE` emission is decided and documented in the generator, and
+the sheet reads the deck table (`--deck`, added by `tokenmax-badge-ci-followups`).
