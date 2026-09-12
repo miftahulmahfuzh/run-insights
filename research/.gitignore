@@ -1,0 +1,3 @@
+# run-extract.mjs's output: rewritten on every rerun, cited by nothing. The four committed
+# results-*.json are the opposite — kept deliberately, tests and docs read them (README.md).
+/results-extract.json
