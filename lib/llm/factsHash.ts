@@ -49,5 +49,3 @@ export function factsHash(facts: unknown): string {
     .update(JSON.stringify(canonicalize(facts)))
     .digest('hex')
 }
-
-export { canonicalize as canonicalizeForHash }

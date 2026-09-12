@@ -24,7 +24,7 @@ import type { HrMaxSource } from '@/lib/metrics/hrMax'
  * generation (a model that starts listing every split in `whatHappened`), not to police style.
  */
 
-export const Observation = z.object({
+const Observation = z.object({
   title: z.string().trim().min(1).max(80),
   detail: z.string().trim().min(1).max(500),
   metric: z.string().trim().min(1).max(120),
@@ -39,9 +39,7 @@ export const InsightPayloadSchema = z.object({
   questionForRunner: z.string().trim().min(1).max(300),
 })
 
-export type Observation = z.infer<typeof Observation>
 export type InsightPayload = z.infer<typeof InsightPayloadSchema>
-export type Verdict = InsightPayload['verdict']
 
 /**
  * **R-11.** What actually lands in `insights.payload` for a session-scope row: the validated

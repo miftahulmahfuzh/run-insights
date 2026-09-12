@@ -24,11 +24,11 @@ import { NARRATIVE_TEXT_MODEL_IDS, type NarrativeTextModelId } from './catalog'
  * would have kept that seam and reintroduced the deploy; an override that edited seven call sites
  * would have been seven seams. The seam stays; what it reads changes.
  *
- * ── THE DEGRADE, AND WHY IT LANDS ON ENV RATHER THAN THE CATALOG DEFAULT ─────────────────────
- * `NARRATIVE_TEXT_MODEL_DEFAULT` is the shipped id, but the ENV is what this deploy was verified
- * against — the catalog is the dropdown's vocabulary, the env is the operator's infrastructure
- * decision. So: a row holding a declared id wins; a row holding anything else is a loud warning
- * plus `env.LLM_MODEL`; no row at all is `env.LLM_MODEL`. An unknown id must never reach the
+ * ── THE DEGRADE, AND WHY IT LANDS ON ENV RATHER THAN THE CATALOG ─────────────────────────────
+ * The shipped id is in the catalog, but the ENV is what this deploy was verified against — the
+ * catalog is the dropdown's vocabulary, the env is the operator's infrastructure decision. So: a
+ * row holding a declared id wins; a row holding anything else is a loud warning plus
+ * `env.LLM_MODEL`; no row at all is `env.LLM_MODEL`. An unknown id must never reach the
  * provider — it would fail after the turn's tokens were spent — and it must not fail silently,
  * because a silent model swap is Nina waking up with a different voice.
  */

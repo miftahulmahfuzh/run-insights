@@ -107,8 +107,8 @@ const IMAGE_LABEL: Record<ScreenKind, string> = {
   heartrate: 'HEART RATE screen',
 }
 
-export type VisionTextPart = { type: 'text'; text: string }
-export type VisionImagePart = { type: 'image_url'; image_url: { url: string } }
+type VisionTextPart = { type: 'text'; text: string }
+type VisionImagePart = { type: 'image_url'; image_url: { url: string } }
 export type VisionContentPart = VisionTextPart | VisionImagePart
 
 export interface PromptImage {

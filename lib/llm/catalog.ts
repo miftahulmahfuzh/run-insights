@@ -25,13 +25,13 @@ export const NARRATIVE_TEXT_MODEL_IDS = ['glm-5.3', 'glm-5.3-flash'] as const
 export type NarrativeTextModelId = (typeof NARRATIVE_TEXT_MODEL_IDS)[number]
 
 /**
- * The model that shipped, and the value every unreadable setting degrades to. The DEPLOYED
- * fallback is `env.LLM_MODEL`, and `tests/llm.textModel.test.ts` pins this constant to be an id
- * the env spells too — the two names for "the default" must agree.
+ * The deployed fallback is `env.LLM_MODEL`, and `tests/llm.textModel.test.ts` pins it to be an id
+ * this catalog declares — the resolver's degrade target and the dropdown's vocabulary must
+ * describe the same set. The shipped id is deliberately not duplicated here as a constant: the
+ * degrade always lands on the LIVE env value (`textModel.ts`), so a second spelling of "the
+ * default" would be one more name that can drift, not one more guarantee.
  */
-export const NARRATIVE_TEXT_MODEL_DEFAULT: NarrativeTextModelId = 'glm-5.3'
-
-export interface NarrativeTextModelSpec {
+interface NarrativeTextModelSpec {
   readonly id: NarrativeTextModelId
   /** The dropdown's label. Sentence case, the provider's product name. */
   readonly label: string
@@ -53,11 +53,3 @@ export const NARRATIVE_TEXT_MODEL_SPECS: Readonly<
     hint: 'The faster, cheaper sibling. Same endpoint, same tools — watch her voice for the trade.',
   }),
 })
-
-/** A model id, made safe. Anything unreadable is the default — never an unverified id. */
-export function coerceNarrativeTextModel(value: unknown): NarrativeTextModelId {
-  if (typeof value !== 'string') return NARRATIVE_TEXT_MODEL_DEFAULT
-  return (NARRATIVE_TEXT_MODEL_IDS as readonly string[]).includes(value)
-    ? (value as NarrativeTextModelId)
-    : NARRATIVE_TEXT_MODEL_DEFAULT
-}

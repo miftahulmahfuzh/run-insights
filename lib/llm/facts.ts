@@ -87,7 +87,7 @@ export interface NarrativeProfile {
  * key and a `null` key canonicalise differently, so an optional field would mean two hashes for
  * one runner.
  */
-export interface ProfileFacts {
+interface ProfileFacts {
   age: number | null
   heightCm: number | null
   /** Self-reported, and every prompt says so. RULING C5. */
@@ -103,7 +103,7 @@ export interface ProfileFacts {
   hrMax: { bpm: number; source: HrMaxSource } | null
 }
 
-export interface SplitFact {
+interface SplitFact {
   km: number
   pace: string
   hr: number | null
@@ -122,7 +122,7 @@ export interface FlagFact {
  * Session
  * ==========================================================================*/
 
-export interface SessionFacts {
+interface SessionFacts {
   /** A display label only — "Thu, 20 Aug 2026". Never used for date math by anyone. */
   date: string
   distanceKm: number
@@ -142,7 +142,7 @@ export interface SessionFacts {
   intent: RunIntent | null
 }
 
-export interface ComputedFacts {
+interface ComputedFacts {
   avgHrPctOfMax: number | null
   aerobicDecouplingPct: number | null
   firstToSecondHalfDriftSecPerKm: number | null
@@ -155,7 +155,7 @@ export interface ComputedFacts {
   zoneBreakdown: Array<{ zone: number; pct: number; duration: string }>
 }
 
-export interface WeeklyContextFacts {
+interface WeeklyContextFacts {
   runsPerWeek: number
   typicalDistanceKm: number
   monthlyVolumeKm: number
@@ -177,7 +177,7 @@ export interface WeeklyContextFacts {
  * model to average by hand, which is the precise thing this boundary exists to prevent. What
  * survives is the one aggregate that decides the advice: how hard the run was.
  */
-export interface RecentRunFact {
+interface RecentRunFact {
   date: string
   /** Whole days from this run to the session being narrated. Always >= 0. */
   daysBefore: number
@@ -208,7 +208,7 @@ export interface SessionNarrateFacts {
 }
 
 /** The scalar columns of `runs` a narrative reads. Deliberately not `Run` — see `note` above. */
-export interface SessionRunFacts {
+interface SessionRunFacts {
   occurredOn: string
   distanceM: number
   durationSec: number
@@ -236,7 +236,7 @@ export interface RecentRunInput {
   zones: readonly { zone: number; durationSec: number }[]
 }
 
-export interface BuildSessionFactsInput {
+interface BuildSessionFactsInput {
   run: SessionRunFacts
   /** F06's output. Every number below is copied from it; none is recomputed here. */
   metrics: SessionMetrics
@@ -399,7 +399,7 @@ export interface PreviousInsightSummary {
  * strings and inferring what changed, which would be the arithmetic-by-LLM mistake §0.2 exists to
  * prevent, wearing a different hat.
  */
-export interface TrendSincePrevious {
+interface TrendSincePrevious {
   flagsNew: string[]
   flagsResolved: string[]
   flagsPersisting: string[]
@@ -508,7 +508,7 @@ export function aggregatePeriodFlags(
  * Week
  * ==========================================================================*/
 
-export interface WeekMetricsFacts {
+interface WeekMetricsFacts {
   isoWeek: string
   runCount: number
   volumeKm: number
@@ -534,7 +534,7 @@ export interface WeekNarrateFacts {
   promptVersion: number
 }
 
-export interface BuildWeekFactsInput {
+interface BuildWeekFactsInput {
   isoWeek: string
   profile: NarrativeProfile | null
   hrMax: HrMax | null
@@ -608,7 +608,7 @@ export function buildWeekFacts(input: BuildWeekFactsInput): WeekNarrateFacts {
  * Month
  * ==========================================================================*/
 
-export interface MonthMetricsFacts {
+interface MonthMetricsFacts {
   monthKey: string
   runCount: number
   volumeKm: number
@@ -630,7 +630,7 @@ export interface MonthNarrateFacts {
   promptVersion: number
 }
 
-export interface BuildMonthFactsInput {
+interface BuildMonthFactsInput {
   monthKey: string
   profile: NarrativeProfile | null
   hrMax: HrMax | null

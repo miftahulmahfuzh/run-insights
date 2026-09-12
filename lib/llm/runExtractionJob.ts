@@ -53,7 +53,7 @@ async function toDataUri(ref: ExtractionBlobRef, signal: AbortSignal): Promise<P
   }
 }
 
-export interface RunExtractionJobInput {
+interface RunExtractionJobInput {
   userId: string
   extractionId: string
   images: ExtractionBlobRef[]

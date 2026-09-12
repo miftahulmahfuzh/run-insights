@@ -109,7 +109,7 @@ interface CallOptions {
  * the only honest way to test the guard is to hand it a `fetch` that returns the measured
  * failure body.
  */
-export async function callVisionWithFetch(
+async function callVisionWithFetch(
   fetchImpl: FetchLike,
   messages: Message[],
   opts: CallOptions,

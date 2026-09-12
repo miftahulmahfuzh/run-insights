@@ -4,8 +4,10 @@ import type { InsightScope } from '@/lib/db/schema'
 
 /**
  * The three system prompts, the one tool schema, and the three prompt versions. **Constants only
- * — no logic, no I/O, no `server-only`** (the same shape as `./extraction.ts`), so a test can
- * assert the text of a rule without importing the client that sends it.
+ * — no logic, no I/O, no `server-only`** (the same shape as `./extraction.ts`). The exported
+ * surface is what tests pin — `REPORT_TOOL` and `REPAIR_PREAMBLE`; the prompts and versions are
+ * read only through `systemPromptFor`/`promptVersionFor`, so a rule's text lives in exactly one
+ * place and no caller can reach past the scope switch.
  *
  * ── WHY THE SESSION PROMPT IS ALMOST VERBATIM FROM `research/narrate.mjs` ──────────────────────
  * That file's `SYSTEM` constant is the only prompt in this repo with a measured output attached
@@ -44,11 +46,11 @@ import type { InsightScope } from '@/lib/db/schema'
  * test can catch — only review can.
  */
 
-export const SESSION_PROMPT_VERSION = 3
-export const WEEK_PROMPT_VERSION = 2
-export const MONTH_PROMPT_VERSION = 2
+const SESSION_PROMPT_VERSION = 3
+const WEEK_PROMPT_VERSION = 2
+const MONTH_PROMPT_VERSION = 2
 
-export const SESSION_SYSTEM_PROMPT = `You are a running coach reading ONE workout from a recreational runner, together with a short history of the runs before it. You see only the numbers in the JSON below — nothing else is known about this runner.
+const SESSION_SYSTEM_PROMPT = `You are a running coach reading ONE workout from a recreational runner, together with a short history of the runs before it. You see only the numbers in the JSON below — nothing else is known about this runner.
 
 HARD RULES
 - Every number you state must appear verbatim in the JSON you are given. Do NOT compute
@@ -104,7 +106,7 @@ Return a JSON object via the report tool:
   "questionForRunner": string      // one thing the data cannot tell you
 }`
 
-export const WEEK_SYSTEM_PROMPT = `You are a running coach reviewing ONE runner's week. You see pre-computed numbers for this week, the previous week's totals, and — if available — a short memory of what you told this runner last week and how the issues you flagged have moved since. Nothing else is known about this runner.
+const WEEK_SYSTEM_PROMPT = `You are a running coach reviewing ONE runner's week. You see pre-computed numbers for this week, the previous week's totals, and — if available — a short memory of what you told this runner last week and how the issues you flagged have moved since. Nothing else is known about this runner.
 
 HARD RULES (same as session-level coaching)
 - Every number you state must appear verbatim in the JSON you are given.
@@ -145,7 +147,7 @@ Return a JSON object via the report tool:
   "questionForRunner": string
 }`
 
-export const MONTH_SYSTEM_PROMPT = `You are a running coach reviewing ONE runner's month. You see pre-computed numbers for this month, the previous month's totals, a week-by-week trend within the month, and — if available — a short memory of last month's advice and how things have moved since. Nothing else is known about this runner.
+const MONTH_SYSTEM_PROMPT = `You are a running coach reviewing ONE runner's month. You see pre-computed numbers for this month, the previous month's totals, a week-by-week trend within the month, and — if available — a short memory of last month's advice and how things have moved since. Nothing else is known about this runner.
 
 HARD RULES (same as session- and week-level coaching)
 - Every number you state must appear verbatim in the JSON you are given.
