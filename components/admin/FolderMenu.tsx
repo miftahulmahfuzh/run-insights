@@ -25,6 +25,11 @@ import { cn } from '@/lib/cn'
  * none of that describes a text field and two buttons. A tree row is also the operator's *place*
  * in a hundreds-deep album, and a modal is precisely the thing that loses it.
  *
+ * The price of no modal is that the panel owes the focus management a `<dialog>` would supply for
+ * free: the clicked menu row unmounts with the menu, so every panel autoFocuses one control on
+ * open (create/rename their field, move its select, delete the Cancel — never the destructive
+ * verb) or the keyboard operator is dropped on `<body>` and the next Tab restarts the page.
+ *
  * ── WHY "MOVE TO…" IS A TARGET LIST AND NOT A DRAG ──────────────────────────────────────────
  * Dragging a folder onto another folder is the gesture a file manager suggests, and it is
  * deliberately not built here. Phase 5 owns `dragover`/`drop` on this explorer, and its handler
@@ -266,6 +271,10 @@ export function FolderMenu({
               className={CONTROL_CLASS}
               value={target}
               disabled={pending}
+              /* The menu row that opened this panel unmounted with the menu, so without this the
+               * keyboard operator is dropped on <body> and the next Tab restarts the page. The
+               * create and rename panels autoFocus their field; this is the same courtesy. */
+              autoFocus
               onChange={(event) => setTarget(event.target.value)}
             >
               {moveTargets.map((candidate) => (
@@ -341,7 +350,17 @@ export function FolderMenu({
                 Delete the rest, keep her photo
               </Button>
             )}
-            <Button size="md" variant="ghost" disabled={pending} onClick={() => setMode('idle')}>
+            {/* Focus lands here, NOT on "Delete the folder" — the panel's first control in DOM
+             * order is the destructive verb, and resting focus on it would make a stray Enter
+             * fire the delete. Cancel is the safe default; the next Tab reaches the verb on
+             * purpose. */}
+            <Button
+              size="md"
+              variant="ghost"
+              disabled={pending}
+              autoFocus
+              onClick={() => setMode('idle')}
+            >
               Cancel
             </Button>
           </div>

@@ -128,6 +128,13 @@ describe('ImageGenPanel — chrome', () => {
     expect(select).toHaveValue('qwen/qwen-image-3')
   })
 
+  it('names the template textarea — the one control whose heading is not a label', () => {
+    panel()
+    // The four fields above it sit inside wrapping <label>s; the template's <h3> labels nothing.
+    // Without an explicit accessible name it is the panel's one anonymous control.
+    expect(screen.getByRole('textbox', { name: 'Prompt template' })).toBe(templateBox())
+  })
+
   it('shows the template with its char counter and the placeholder legend', () => {
     panel()
     expect(templateBox()).toHaveValue('SHELL {{scene}}')

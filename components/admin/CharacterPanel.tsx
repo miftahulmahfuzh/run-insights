@@ -610,7 +610,9 @@ export function CharacterPanel({ userId, tuning, defaults, promptPreview }: Char
          * operator needs to act on.
          */}
         {result?.ok === false && (
-          <p className="mb-3 text-[12px] font-semibold text-red">{result.error}</p>
+          <p role="alert" className="mb-3 text-[12px] font-semibold text-red">
+            {result.error}
+          </p>
         )}
       </div>
     </section>

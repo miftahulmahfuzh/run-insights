@@ -45,10 +45,30 @@ vi.mock('./explorer/MediaAdd', () => ({
 }))
 
 vi.mock('./explorer/PhotoGrid', () => ({
-  PhotoGrid: ({ onSelect }: { onSelect: (id: string) => void }) => (
-    <button type="button" onClick={() => onSelect('p1')} data-testid="photo-grid-tile">
-      select-p1
-    </button>
+  PhotoGrid: ({
+    photos,
+    onSelect,
+  }: {
+    photos: readonly { id: string }[]
+    onSelect: (id: string) => void
+  }) => (
+    <>
+      {/*
+       * Shaped like the real grid's tiles: one button per row carrying `data-photo-id`, because
+       * the pane's close flow hands focus back to the selected tile by that attribute.
+       */}
+      {photos.map((entry) => (
+        <button
+          key={entry.id}
+          type="button"
+          data-testid="photo-grid-tile"
+          data-photo-id={entry.id}
+          onClick={() => onSelect(entry.id)}
+        >
+          select-{entry.id}
+        </button>
+      ))}
+    </>
   ),
 }))
 
@@ -219,6 +239,38 @@ describe('FileExplorer', () => {
 
     await user.click(screen.getByRole('button', { name: 'close-pane' }))
     expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+  })
+
+  it('hands focus back to the selected tile when the pane closes', async () => {
+    /*
+     * The pane's × is the focused element when it unmounts, so without an explicit restoration
+     * the keyboard operator is dropped on <body> and the next Tab restarts the page — the same
+     * focus-management duty a `<dialog>` supplies for free. The tile the selection came from is
+     * where focus goes back.
+     */
+    const user = userEvent.setup()
+    render(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })] })} />)
+    const tile = screen.getByTestId('photo-grid-tile')
+
+    await user.click(tile)
+    expect(screen.getByTestId('selection-pane')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'close-pane' }))
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+    expect(tile).toHaveFocus()
+  })
+
+  it('hands focus back to the tile after a removal closes the pane', async () => {
+    const user = userEvent.setup()
+    render(<FileExplorer {...baseProps({ photos: [photo({ id: 'p1' })] })} />)
+    const tile = screen.getByTestId('photo-grid-tile')
+
+    await user.click(tile)
+    await user.click(screen.getByRole('button', { name: 'remove-p1' }))
+
+    expect(screen.queryByTestId('selection-pane')).not.toBeInTheDocument()
+    expect(screen.getByText('kept elsewhere')).toBeInTheDocument()
+    expect(tile).toHaveFocus()
   })
 
   it('drops the selection and shows the note when the pane reports a removal', async () => {

@@ -44,6 +44,13 @@ import { cn } from '@/lib/cn'
  * on the first click. The test asserts the absence of every dialog and second-click API by name,
  * because "no second step" is a property a future edit can quietly reintroduce.
  *
+ * ── THE RESULT LINES ARE LIVE REGIONS ──────────────────────────────────────────────────────
+ * A cell saves on BLUR, which is also the moment focus LEAVES it — so the sentence a refused
+ * save renders under that cell appears after a screen-reader operator has already tabbed away,
+ * and would never be heard. `role="alert"` on the refusal and `role="status"` on the note make
+ * both arrive without a hunt — the same duty `CharacterPanel.tsx`'s status line records for
+ * "the one line that changes on its own".
+ *
  * **A note for the next editor of this docstring.** That test reads this file whole, so the two
  * paragraphs above must not SPELL the specifiers and the API names they are talking about — the
  * guard cannot tell an explanation from a reintroduction. `tests/admin.shell.test.ts`'s
@@ -382,10 +389,14 @@ function Row({
           onKeyDown={(event) => keys(event, revertExpansion)}
         />
         {result?.ok === false && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-red">{result.error}</p>
+          <p role="alert" className="mt-1 px-2 text-[11px] font-semibold text-red">
+            {result.error}
+          </p>
         )}
         {result?.ok === true && result.note !== undefined && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
+          <p role="status" className="mt-1 px-2 text-[11px] font-semibold text-accent">
+            {result.note}
+          </p>
         )}
       </td>
 
@@ -535,10 +546,14 @@ function AddRow({
           }}
         />
         {result?.ok === false && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-red">{result.error}</p>
+          <p role="alert" className="mt-1 px-2 text-[11px] font-semibold text-red">
+            {result.error}
+          </p>
         )}
         {result?.ok === true && result.note !== undefined && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
+          <p role="status" className="mt-1 px-2 text-[11px] font-semibold text-accent">
+            {result.note}
+          </p>
         )}
       </td>
 

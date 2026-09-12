@@ -175,6 +175,28 @@ export function FileExplorer({
 
   const selected = photos.find((photo) => photo.id === selectedId) ?? null
 
+  /*
+   * Focus restoration for the details pane (the 2026-09-12 a11y pass). Every close — the pane's
+   * ×, and the unmount that follows a successful remove — takes the focused button with it, and
+   * a focused element that leaves the DOM drops the operator on `<body>`, where the next Tab
+   * restarts the page. The tile the selection came from takes focus back; a tile that is gone
+   * with its row falls back to the content pane itself.
+   *
+   * Keyed on `selectedId` and never on the derived `selected`: a folder change closes the pane by
+   * leaving `selectedId` pointing at a photograph the new page does not hold, and THAT transition
+   * must not steal focus from the link the operator just used to navigate.
+   */
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const lastSelectedId = useRef<string | null>(null)
+  useEffect(() => {
+    const previous = lastSelectedId.current
+    lastSelectedId.current = selectedId
+    if (previous == null || selectedId != null) return
+    const tile = contentRef.current?.querySelector<HTMLElement>(`[data-photo-id="${previous}"]`)
+    if (tile != null) tile.focus()
+    else contentRef.current?.focus()
+  }, [selectedId])
+
   const hrefFor = useCallback((next: string) => hrefForFolder(next, 1), [])
   /* The pager follows the view: a media page 2 must link to `?view=media&page=2`, not silently
      drop the operator back into the album. */
@@ -453,7 +475,16 @@ export function FileExplorer({
           />
         </div>
 
-        <div className="min-w-0" {...dropHandlers}>
+        {/* The focus anchor for the pane-close restoration above: `tabIndex={-1}` makes it
+         * reachable only by that fallback (a removed tile's landing pad), never by Tab, and
+         * `focus:outline-none` keeps the programmatic focus invisible — it is a place to stand,
+         * not a control. */}
+        <div
+          ref={contentRef}
+          tabIndex={-1}
+          className="min-w-0 focus:outline-none"
+          {...dropHandlers}
+        >
           <div
             className={cn(
               'rounded-card border p-4 transition-colors',
