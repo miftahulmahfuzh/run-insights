@@ -508,8 +508,10 @@ React tree; the suites are ~270 flat files — ~160 under `tests/`, ~40 co-locat
 operational scripts and the seven `check-*` CI guards; `tools/` holds the Python badge and icon
 art pipeline; `drizzle/` holds generated SQL migrations; `types/` holds one module augmentation;
 `docs/plans/archive/` holds the landed feature plans; `research/` is the pre-build feasibility
-harness (excluded from `tsconfig` and `eslint`). Six packages have package readmes of their own:
-`lib/db`, `lib/admin`, `lib/nina`, `components/admin`, `components/nina`, `scripts`.
+harness (excluded from `tsconfig` and `eslint`). Six packages have per-package readmes of their own:
+`lib/db`, `lib/admin`, `lib/nina`, `components/admin`, `components/nina`, `scripts` — plus the
+combined `lib/metrics` readme, which also covers `lib/insights`, `components/insights` and
+`lib/panel`.
 
 ### Internal (root → packages)
 
