@@ -4,9 +4,12 @@
  * It used to live inside `ReviewClient` as a small JSX component, and that placement is the reason
  * it shipped saying **`1 check still disagree`** for as long as it did. Two facts combined:
  *
- *   - This repo has no jsdom and no `@testing-library/react`; vitest runs node-env only. A private
- *     function inside a `'use client'` file is therefore not merely untested but *unreachable* from
- *     a test, so there was nowhere to put the assertion that would have caught it.
+ *   - At the time, this repo had no jsdom and no `@testing-library/react`; vitest ran node-env
+ *     only, so a private function inside a `'use client'` file was not merely untested but
+ *     *unreachable* from a test — there was nowhere to put the assertion that would have caught
+ *     it. (The happy-dom component harness postdates the bug; `ReviewScreen.test.tsx` now pins
+ *     this exact sentence as rendered in the bar. The function stays a function regardless —
+ *     see the note below.)
  *   - The bug then rode out on the front page. The sticky bar is `position: fixed`, so every
  *     photograph of the review screen carries this sentence — F19 committed two stills and a GIF,
  *     and `README.md` quoted the broken string as though it were the intended copy.
