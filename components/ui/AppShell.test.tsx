@@ -116,12 +116,11 @@ describe('AppShell', () => {
     expect(screen.queryByTestId('sidebar-provider')).not.toBeInTheDocument()
   })
 
-  it('renders the page’s children inside main, and forwards a caller className to it', () => {
-    const { container } = renderAppShell({ className: 'px-0' })
+  it('renders the page’s children inside main', () => {
+    const { container } = renderAppShell()
 
     const main = container.querySelector('main')!
     expect(main).toContainElement(screen.getByTestId('page-content'))
-    expect(main).toHaveClass('px-0')
   })
 })
 

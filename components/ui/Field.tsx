@@ -19,7 +19,6 @@ interface FieldProps {
   error?: string
   /** Right-aligned unit label inside the control — 'cm', 'kg', 'bpm'. */
   suffix?: string
-  className?: string
   children: React.ReactNode
 }
 
@@ -27,8 +26,11 @@ interface FieldProps {
  * Owns the label / hint / error / `aria-describedby` / `id` wiring so the controls do not have to.
  * `Input` reads it from context, which means a feature cannot accidentally ship an unlabelled
  * input, or one whose error text is invisible to a screen reader.
+ *
+ * No `className` prop: spacing around a field belongs to the form that lays the fields out, and no
+ * caller reached for it — a prop with no caller is a second way to lay a field out, waiting.
  */
-export function Field({ label, hint, error, suffix, className, children }: FieldProps) {
+export function Field({ label, hint, error, suffix, children }: FieldProps) {
   const base = React.useId()
   const inputId = `${base}-input`
   const hintId = hint ? `${base}-hint` : undefined
@@ -42,7 +44,7 @@ export function Field({ label, hint, error, suffix, className, children }: Field
 
   return (
     <FieldContext.Provider value={value}>
-      <div className={className}>
+      <div>
         <label
           htmlFor={inputId}
           className="mb-1.5 block text-xs font-semibold tracking-[0.02em] text-ink-2"

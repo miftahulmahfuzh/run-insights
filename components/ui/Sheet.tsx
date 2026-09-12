@@ -22,7 +22,7 @@ import { cn } from '@/lib/cn'
  *    The source screenshot lives in the scrolling body; `Save` must never be below the fold.
  */
 
-export interface SheetProps {
+interface SheetProps {
   open: boolean
   onClose: () => void
   title: string
@@ -48,8 +48,9 @@ export function Sheet({ open, onClose, title, subtitle, footer, children }: Shee
    * per keyboard, on the screen whose whole purpose is careful correction.
    *
    * The listener never needed a dependency on `onClose`; it needed the *latest* one. So it reads
-   * this ref, and the effect keys on `open` alone. Fixing it here rather than memoising at the two
-   * call sites is the point: a `useCallback` in `ZoneBar` would leave the trap armed for the next
+   * this ref, and the effect keys on `open` alone. Fixing it here rather than memoising at the
+   * three call sites (MessageActionsSheet, and the review SplitsTable and ZoneBar) is the point:
+   * a `useCallback` in `ZoneBar` would leave the trap armed for the next
    * component that opens a sheet, which has no reason to know it exists.
    */
   const onCloseRef = React.useRef(onClose)

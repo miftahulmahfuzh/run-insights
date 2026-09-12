@@ -73,7 +73,7 @@ import {
  * objected to. `close`'s replace branch drops both parameters, so a closed panel never leaves a
  * stray `?dates=1` on `/me`.
  */
-export interface PanelParam {
+interface PanelParam {
   /** What the URL currently says is open, or null. */
   selection: PanelSelection | null
   /** Is the open panel's date list expanded? Meaningless, and false, with no panel open. */
