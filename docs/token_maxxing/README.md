@@ -13,6 +13,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 | 2026-09-12 | Extract Component Tests | Gave the extract component layer its first tests, pinning the provenance race and the polling clock's runtime. | [link](./2026-09-12-extract-component-tests.md) |
 | 2026-09-12 | Charts Component Tests | Gave the chart package its first tests: 102 co-located tests pinning captions, axes, bubbles and keyboard tooltips. | [link](./2026-09-12-charts-component-tests.md) |
 | 2026-09-12 | Profile Component Tests | Gave the profile directory its first component tests, exposing a dangling aria-describedby in the shared Field. | [link](./2026-09-12-profile-component-tests.md) |
+| 2026-09-12 | Small Feature Component Tests | Gave five small component directories their first real tests, pinning each surface's documented behavior contracts. | [link](./2026-09-12-small-feature-component-tests.md) |
 | 2026-09-12 | Google Auth Setup Doc Drift Audit | Audited the Google sign-in setup doc against current code and closed all four drifts from its three-week gap. | [link](./2026-09-12-google-auth-doc-audit.md) |
 | 2026-09-12 | Nina Persona Monolith Split | Split Nina's persona monolith into nine cohesive modules behind a barrel, a contract test pinning its exports. | [link](./2026-09-12-nina-persona-split.md) |
 | 2026-09-12 | DB Schema Split Into Domain Modules | Split the monolithic database schema into domain modules behind an unchanged barrel, proven no-op by drizzle-kit. | [link](./2026-09-12-db-schema-split.md) |
