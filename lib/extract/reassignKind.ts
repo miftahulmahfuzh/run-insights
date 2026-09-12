@@ -33,7 +33,7 @@ export interface KindHolder {
   kind: ScreenKind
 }
 
-export interface Reassignment<T extends KindHolder> {
+interface Reassignment<T extends KindHolder> {
   /** The whole set, in input order. A fresh array; elements are only cloned where kind changed. */
   entries: T[]
   /**
