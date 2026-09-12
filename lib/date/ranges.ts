@@ -22,7 +22,9 @@ export type IsoWeekKey = string
 
 const MONTH_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/
 const WEEK_RE = /^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+// Field ranges, like its two siblings above — not realness. '2026-02-30' is shape-legal here;
+// proving the DAY EXISTS is utcDay's job (a regex cannot, and Date normalization lies).
+const DATE_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/
 
 export function isValidMonthKey(v: unknown): v is MonthKey {
   return typeof v === 'string' && MONTH_RE.test(v)
@@ -48,7 +50,16 @@ function utcDay(dateISO: DateISO): Date {
   if (!isValidDateISO(dateISO)) {
     throw new RangeError(`Invalid ISO date: ${JSON.stringify(dateISO)}`)
   }
-  return new Date(`${dateISO}T00:00:00Z`)
+  const d = new Date(`${dateISO}T00:00:00Z`)
+  // The regex above proves each field is in range; it cannot prove the day exists, and
+  // `new Date` will not tell: '2026-02-30' silently NORMALISES to 2026-03-02, and
+  // '2026-99-99' (already rejected by the tightened DATE_RE, but belt-and-braces for any
+  // direct construction) yields Invalid Date whose every field reads NaN. One round trip
+  // through the module's own toISO rejects both classes instead of emitting garbage.
+  if (Number.isNaN(+d) || toISO(d) !== dateISO) {
+    throw new RangeError(`Not a real calendar day: ${JSON.stringify(dateISO)}`)
+  }
+  return d
 }
 
 /** addMonths('2026-01', -1) === '2025-12'. Integer math on a month ordinal; no Date involved. */
