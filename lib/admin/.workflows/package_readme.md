@@ -10,7 +10,8 @@ this file used to carry inline now lives in `git log -- lib/admin`, see *Recent 
 `lib/admin` is everything behind `/admin/**`: the authorization boundary itself, the admin
 surfaces' Server Actions, the Zod schemas that validate every byte those actions accept from a
 browser, and the pure planning libraries (`filetree.ts`, `folderOps.ts`) that decide — without a
-database — what a folder upload or a folder maintenance operation is allowed to do.
+database — what a folder upload or a folder maintenance operation is allowed to do. (`filetree`
+is a directory of pure modules behind the `filetree.ts` re-export barrel since 2026-09-12.)
 
 The surfaces: `/admin/nina` (the explorer: her album **and** the media collection formerly
 mounted at `/admin/photos`), `/admin/personality` (character panel + text-model select),
@@ -50,7 +51,7 @@ exactly one definition — `schema.ts` imports every bound it enforces rather th
 |---|---|---|
 | `requireAdmin.ts` | `server-only` | The boundary. Page/action flavour, Route Handler flavour, canonical refusal body. |
 | `avatars.ts` | pure | Album blob pathname shapes, content types, size caps, id regex, TTLs — original and thumbnail. |
-| `filetree.ts` | pure, **zero imports** | Folder-path grammar, file classification, dedupe key, `planFolderUpload`, tree building, the explorer's album/Media view switch. |
+| `filetree.ts` + `filetree/` | pure, **import-pure** (`./` siblings only) | Folder-path grammar (`pathGrammar`), file classification (`classify`), dedupe key (`sourceKey`), `planFolderUpload` (`uploadPlan`), tree building (`folderTree`), the explorer's album/Media view switch (`mediaView`), the limits (`bounds`). `filetree.ts` is the re-export barrel. |
 | `folderOps.ts` | pure (zod) | Folder *maintenance*: the six operations' schemas and the planners that refuse without a database. |
 | `schema.ts` | pure | Every Zod schema `/admin/**` accepts. Imports every bound; declares none. |
 | `ninaAlbumActions.ts` | `'use server'` | The album's write side: 15 actions — describe/edit prose, face, crop, delete, folder register/manifest, folder maintenance. |
@@ -125,12 +126,25 @@ request regex is a different shape from the stored pathname because `addRandomSu
 Blob rewrites what it was asked for. `NINA_BLOB_PREFIX` is imported from `lib/nina/images.ts` —
 the store layout has one spelling.
 
-### `filetree.ts` — the file manager's decisions, before anything touches the network
+### `filetree.ts` (barrel) + `filetree/` — the file manager's decisions, before anything touches the network
 
-**This module has no imports at all, and must not acquire one.** Its readers are a `'use client'`
-explorer, a `'use server'` action module, a Route Handler and the unit suites; one server-side
-import and the client half stops compiling. Do not import `avatars.ts` for the byte cap —
-`planFolderUpload` takes `maxBytes` as an argument precisely so the cap keeps one home.
+Since 2026-09-12 the former single 1,151-line module is seven cohesive files under `filetree/`
+(`bounds`, `classify`, `pathGrammar`, `sourceKey`, `uploadPlan`, `folderTree`, `mediaView`), and
+`filetree.ts` stays a real file as their barrel — module resolution puts the file before a
+`filetree/index.ts`, so `@/lib/admin/filetree` is unambiguous and every importer (and the ~17
+in-code comments naming this path) keeps pointing at a file that exists. The barrel is an
+explicit re-export shell: helpers shared between modules (`sanitiseSegment`, `compareFolded`,
+`FolderPathRejection`, `FileRejection`) are exported sibling-only and stay off the public
+surface, preserving the 2026-09-11 dead-exports audit. `tests/admin.filetreeBarrel.test.ts`
+pins the exact public surface (13 constants + 22 functions + 7 types) and enforces the layout
+rule below.
+
+**Import-purity, restated per file: every file in `filetree/` imports only `./` siblings, and
+the barrel only `./filetree/` — no package specifier, no `../`, and never a server-side or
+client-only module.** Its readers are a `'use client'` explorer, a `'use server'` action
+module, a Route Handler and the unit suites; one server-side import and the client half stops
+compiling. Do not import `avatars.ts` for the byte cap — `planFolderUpload` takes `maxBytes` as
+an argument precisely so the cap keeps one home.
 
 ```ts
 // bounds and grammar
@@ -682,7 +696,8 @@ Load-bearing facts:
   `lib/nina/errorlogs.ts` imports `@/lib/db` — so `ErrorLogSource` is DECLARED here, structurally,
   naming the eight columns the page renders. A `NinaErrorLog` satisfies it, so the reader's rows
   pass into `buildErrorLogItems` with no adapter, and `lib/nina/errorlogs` stays named by exactly
-  one file on the server side of the bundle line: the page. `filetree.ts` is this rule's precedent.
+  one file on the server side of the bundle line: the page. `filetree/` is the nearest precedent —
+its modules import only `./` siblings, enforced by `tests/admin.filetreeBarrel.test.ts`.
   **Unlike `shortcutModel.ts`'s one-door boundary, this one has no import-list assertion** — what
   guards it today is the module header and the page-size pin's dynamic import (below), which is
   why the dynamic import is load-bearing and not a style choice.
@@ -748,7 +763,7 @@ to her, is described on demand — and then either in-band (the two describe act
 
 ### Where each check lives, and why it lives there
 
-| Concern | Client (`filetree.ts`/`folderOps.ts`) | Route Handler | Server Action |
+| Concern | Client (`filetree/`/`folderOps.ts`) | Route Handler | Server Action |
 |---|---|---|---|
 | Path normalisation | yes — the mess is here | — | **never** (refuse instead) |
 | Path validity | yes | — | yes, as identity against the normaliser |
@@ -793,8 +808,9 @@ to her, is described on demand — and then either in-band (the two describe act
 - `@/lib/db`, `@/lib/db/schema`, `@/lib/db/queries` — `users.ts` and the memory type imports;
   `isUniqueViolation` (shortcuts' 23505 catch).
 
-`filetree.ts` and `errorLogModel.ts` import **nothing** — the latter not even a type, which is
-why `ErrorLogSource` is declared structurally (see its section).
+`errorLogModel.ts` imports **nothing** — not even a type, which is why `ErrorLogSource` is
+declared structurally (see its section). `filetree/`'s modules import only their `./` siblings;
+the directory stays import-pure, enforced by `tests/admin.filetreeBarrel.test.ts`.
 
 ## Reverse Dependencies
 
