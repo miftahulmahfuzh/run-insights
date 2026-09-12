@@ -382,7 +382,7 @@ describe('the prompt', () => {
      * constant and the opposite of what the user asked for. The repeal record lives in canon
      * sentence 4 ("never lean and never slight"); the template shell spends sentences 0-2, so the
      * NEGATIONS are asserted on the render — gone at every band — and the positive record against
-     * the canon it lives in. The facts enumeration {{bodyFacts}} expands to is the canon's own. */
+     * the canon it lives in. The facts enumeration the SUBJECT line spells out is the canon's own. */
     for (const promptLength of BAND_FLOORS) {
       const atRung = buildNinaImagePrompt({
         purpose: 'selfie',
@@ -627,15 +627,16 @@ describe('the prompt', () => {
     /*
      * The measured defect, from the dump he sent: `long pants She still has the black digital
      * watch`. `persona.ts:401` interpolated with no terminating punctuation, so the provider read
-     * two sentences as one.
+     * two sentences as one. The selfie template no longer appends that watch sentence, but the
+     * wardrobe value still needs its own stop — it is the last thing on its template line, and a
+     * missing full stop there is still a sentence that never ends.
      */
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'on the track',
       prefs: prefsWith({ wardrobe: 'long pants' }),
     })
-    expect(prompt).toContain('long pants. She still has')
-    expect(prompt).not.toContain('long pants She still has')
+    expect(prompt).toContain('Her outfit for this photograph: long pants.')
   })
 
   it('R6: and it does not double a stop the operator wrote himself', () => {
@@ -644,8 +645,10 @@ describe('the prompt', () => {
       scene: 'x',
       prefs: prefsWith({ wardrobe: 'long hugging leggings with a string bra.' }),
     })
-    expect(prompt).toContain('string bra. She still has')
-    expect(prompt).not.toContain('string bra.. She still has')
+    expect(prompt).toContain(
+      'Her outfit for this photograph: long hugging leggings with a string bra.',
+    )
+    expect(prompt).not.toContain('string bra..')
   })
 
   it('R6: the PREFS wardrobe reaches the photograph and the TUNING wardrobe does NOT', () => {
@@ -654,7 +657,8 @@ describe('the prompt', () => {
      * mean"*. `nina_tuning.wardrobe` is GONE as of F41 R3 — phase 7 dropped the column — so the
      * `tuning:` line this test used to pass is deleted rather than rewritten, exactly as the
      * instruction left here said. Every other assertion stands unchanged: the prefs wardrobe still
-     * has to reach the photograph, and it still may not take the person or her home ground with it.
+     * has to reach the photograph, and it still may not take the person with it. (The home-ground
+     * sentence itself was dropped from the selfie template — see the {{venue}}/{{time}} tests.)
      */
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
@@ -663,10 +667,9 @@ describe('the prompt', () => {
     })
     expect(prompt).toContain('very short white running shorts')
     expect(prompt).not.toContain('a beige trench coat')
-    // The wardrobe replaces the canon OUTFIT, never the person and never her home ground.
+    // The wardrobe replaces the canon OUTFIT, never the person.
     expect(prompt).not.toContain('heather-grey racerback tank')
     expect(prompt).toContain('high ponytail')
-    expect(prompt).toContain('red 400 m athletics track')
   })
 
   /* ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1162,10 +1165,13 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'on the track at dusk',
-      prefs: prefsWith({ promptTemplate: '{{scene}}\n\n{{bodyFacts}}' }),
+      prefs: prefsWith({
+        wardrobe: 'a distinctive lilac crop top',
+        promptTemplate: '{{scene}}\n\n{{wardrobe}}',
+      }),
     })
     expect(prompt.indexOf('on the track at dusk')).toBe(0)
-    expect(prompt).toContain('big boobs')
+    expect(prompt).toContain('a distinctive lilac crop top')
   })
 
   it('a dropped line is dropped on purpose — notes set, no {{notes}} in the shell', () => {
@@ -1174,13 +1180,11 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
       scene: 'x',
       prefs: prefsWith({
         notes: 'nina is full of sweat',
-        promptTemplate: '{{bodyFacts}}\n\n{{scene}}',
+        promptTemplate: '{{scene}}',
       }),
     })
     expect(prompt).not.toContain('NOTES:')
     expect(prompt).not.toContain('nina is full of sweat')
-    /* Invariant 4 survives any valid shell: {{bodyFacts}} is a required token. */
-    expect(prompt).toContain('big boobs')
   })
 
   it('the DEFAULT shell drops its own optional lines when their values are empty', () => {
@@ -1206,8 +1210,7 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
       scene: 'x',
       tuning: NINA_TUNING_DEFAULTS,
       prefs: prefsWith({
-        promptTemplate:
-          '{{bodyFacts}}\n\n{{scene}}\n\nPOSE AND PRESENCE: dia lagi nungging diatas kasur',
+        promptTemplate: '{{scene}}\n\nPOSE AND PRESENCE: dia lagi nungging diatas kasur',
       }),
     })
     expect(prompt).toContain('POSE AND PRESENCE: dia lagi nungging diatas kasur')
@@ -1219,7 +1222,7 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'x',
-      prefs: prefsWith({ promptTemplate: '{{bodyFacts}}\n\n\n\n{{scene}}' }),
+      prefs: prefsWith({ promptTemplate: '{{wardrobe}}\n\n\n\n{{scene}}' }),
     })
     expect(prompt).not.toMatch(/\n{3,}/)
   })
@@ -1228,7 +1231,7 @@ describe('the editable prompt template — rendering (the 2026-09-10 ask)', () =
     const prompt = buildNinaImagePrompt({
       purpose: 'selfie',
       scene: 'x',
-      prefs: prefsWith({ promptTemplate: '{{scene}}\n\n{{bodyFacts}}\n\n{{scene}}' }),
+      prefs: prefsWith({ promptTemplate: '{{scene}}\n\n{{wardrobe}}\n\n{{scene}}' }),
     })
     expect(prompt.match(/\bx\b/g)).toHaveLength(2)
   })

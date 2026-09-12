@@ -218,7 +218,7 @@ describe('changedImageGenFields — what the operator sees as unsaved', () => {
       venue: 'Kuta streets in Bali',
       time: 'rainy night',
       notes: 'nina is full of sweat',
-      promptTemplate: '{{bodyFacts}}\n\n{{scene}}',
+      promptTemplate: '{{scene}}\n\nHer outfit: {{wardrobe}}',
       /* The id that is NOT the default — DEFAULTS.model rides NINA_IMAGE_MODEL_DEFAULT, so an
        * edit equal to the default is by definition not a changed field. */
       model: 'qwen/qwen-image-3-pro',
@@ -438,13 +438,13 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     expect(ninaImagePrefsWriteSchema.safeParse(payload({ promptTemplate: '' })).success).toBe(true)
     expect(
       ninaImagePrefsWriteSchema.safeParse(
-        payload({ promptTemplate: '{{bodyFacts}}\n\nHer outfit: {{wardrobe}}\n\n{{scene}}' }),
+        payload({ promptTemplate: 'Her outfit: {{wardrobe}}\n\n{{scene}}' }),
       ).success,
     ).toBe(true)
     /* The boundary cases must be VALID templates — prose padding around the required tokens, not
      * bare filler, which the validator refuses for its own (missing-placeholder) reason. */
     const validAt = (n: number): string => {
-      const base = '{{bodyFacts}}\n\n{{scene}}'
+      const base = '{{scene}}'
       return base + 'p'.repeat(n - base.length)
     }
     expect(
@@ -463,7 +463,7 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     for (const broken of [
       '{{camera}}\n\n{{scene}}\n\n{{wordrobe}}', // a typo'd placeholder
       '{{camera}}\n\n{{subject}}', // missing the required {{scene}}
-      '{{scene}}', // missing camera and subject — invariant 4's line
+      '{{wardrobe}}', // missing the required {{scene}}
       '{camera}', // a stray single brace
       '{{camera}\n\n{{scene}}\n\n{{subject}}', // an unbalanced closer
     ]) {
@@ -482,7 +482,7 @@ describe('ninaImagePrefsWriteSchema — the boundary', () => {
     expect(
       ninaImagePrefsWriteSchema.safeParse(
         payload({
-          promptTemplate: '{{scene}}\n\nSHOT ON FILM.\n\n{{bodyFacts}}\n\n{{scene}}',
+          promptTemplate: '{{scene}}\n\nSHOT ON FILM.\n\n{{wardrobe}}\n\n{{scene}}',
         }),
       ).success,
     ).toBe(true)

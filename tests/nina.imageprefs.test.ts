@@ -556,11 +556,10 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
   /* The template IS the prompt: full prose with placeholders only where a VALUE goes. See §6 of
    * lib/nina/imageprefs.ts for the vocabulary and lib/nina/imagegen.ts for the default shell. */
 
-  const VALID_MINIMAL = '{{bodyFacts}}\n\n{{scene}}'
+  const VALID_MINIMAL = '{{scene}}'
 
-  it('the vocabulary is the nine value slots, and the required two are bodyFacts and scene', () => {
+  it('the vocabulary is the eight value slots, and the required one is scene', () => {
     expect([...NINA_IMAGE_TEMPLATE_KEYS].sort()).toEqual([
-      'bodyFacts',
       'focus',
       'mood',
       'notes',
@@ -570,7 +569,7 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
       'venue',
       'wardrobe',
     ])
-    expect([...NINA_IMAGE_TEMPLATE_REQUIRED_KEYS].sort()).toEqual(['bodyFacts', 'scene'])
+    expect([...NINA_IMAGE_TEMPLATE_REQUIRED_KEYS].sort()).toEqual(['scene'])
     for (const key of NINA_IMAGE_TEMPLATE_KEYS) {
       expect(NINA_IMAGE_TEMPLATE_SPECS[key].description.length).toBeGreaterThan(0)
     }
@@ -582,29 +581,26 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
   })
 
   it('an unknown token is refused, and the error names it', () => {
-    const verdict = validateNinaImageTemplate('{{bodyFacts}}\n\n{{wordrobe}}\n\n{{scene}}')
+    const verdict = validateNinaImageTemplate('{{wordrobe}}\n\n{{scene}}')
     expect(verdict.ok).toBe(false)
     if (!verdict.ok) expect(verdict.error).toContain('wordrobe')
   })
 
   it('a stray brace is refused — doubled braces are the whole syntax', () => {
-    for (const bad of ['{bodyFacts}', '{{bodyFacts}', '{{bodyFacts}}}', '{{{bodyFacts}}}']) {
+    for (const bad of ['{scene}', '{{scene}', '{{scene}}}', '{{{scene}}}']) {
       expect(validateNinaImageTemplate(bad).ok).toBe(false)
     }
   })
 
   it('a missing required token is refused, and the error names it', () => {
-    const noScene = validateNinaImageTemplate('{{bodyFacts}}')
+    const noScene = validateNinaImageTemplate('{{wardrobe}}')
     expect(noScene.ok).toBe(false)
     if (!noScene.ok) expect(noScene.error).toContain('scene')
-    const noFacts = validateNinaImageTemplate('{{scene}}')
-    expect(noFacts.ok).toBe(false)
-    if (!noFacts.ok) expect(noFacts.error).toContain('bodyFacts')
   })
 
   it('coerce normalises CRLF, trims the ends and keeps internal newlines', () => {
-    expect(coerceNinaImageTemplate('  {{bodyFacts}}\r\n\r\n{{scene}}\r\n')).toBe(
-      '{{bodyFacts}}\n\n{{scene}}',
+    expect(coerceNinaImageTemplate('  {{scene}}\r\n\r\n{{wardrobe}}\r\n')).toBe(
+      '{{scene}}\n\n{{wardrobe}}',
     )
   })
 
@@ -615,8 +611,7 @@ describe('the editable prompt template (the 2026-09-10 ask, second revision)', (
 
   it('coerce degrades an invalid template to empty — the default — and never throws', () => {
     expect(coerceNinaImageTemplate('{{wordrobe}}')).toBe('')
-    expect(coerceNinaImageTemplate('{{bodyFacts')).toBe('')
-    expect(coerceNinaImageTemplate('{{scene}}')).toBe('')
+    expect(coerceNinaImageTemplate('{{scene')).toBe('')
     expect(coerceNinaImageTemplate(42)).toBe('')
     expect(coerceNinaImageTemplate(null)).toBe('')
   })

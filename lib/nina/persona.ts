@@ -390,10 +390,10 @@ export const NINA_BODY_SENTENCES: readonly string[] = [
 /**
  * **The four facts, as the enumeration the canon spends them in** — *"big boobs, a bubble butt,
  * big thighs and very long calves"*, the user's own list. Extracted so the editable template's
- * `{{bodyFacts}}` slot can expand to the SAME words the built-in assembly used, instead of a
- * second spelling drifting away from the canon; `tests/nina.imagerecipe.test.ts` asserts this
- * string really is the enumeration inside `NINA_BODY_SENTENCES[0]`, so the extraction cannot
- * silently stop agreeing with the sentence it came from.
+ * SUBJECT line can splice in the SAME words the built-in assembly used, instead of a second
+ * spelling drifting away from the canon; `tests/nina.imagerecipe.test.ts` asserts this string
+ * really is the enumeration inside `NINA_BODY_SENTENCES[0]`, so the extraction cannot silently
+ * stop agreeing with the sentence it came from.
  */
 export const NINA_BODY_FACTS = 'big boobs, a bubble butt, big thighs and very long calves'
 

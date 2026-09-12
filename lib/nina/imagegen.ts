@@ -4,7 +4,6 @@ import {
   NINA_BODY_SENTENCES,
   NINA_DEFAULT_OUTFIT_VALUE,
   NINA_FACE,
-  NINA_OUTFIT_SUFFIX,
   ninaAppearance,
   withSentenceStop,
   type NinaAppearanceDetail,
@@ -417,16 +416,23 @@ function ninaMoodBlock(mood: string | null | undefined): string {
 /**
  * **The shell that ships — the user's own sketch, canon-interpolated.** This is the string the
  * template field holds before the operator touches it: the REAL prompt prose (camera paragraph,
- * body canon, face paragraph, the outfit and watch sentences, every label) with a placeholder
- * only where a per-generation or per-preference VALUE is spliced in. The prose pieces are
- * INTERPOLATED from the canon constants (`NINA_SELFIE_STYLE`, `NINA_BODY_SENTENCES`, `NINA_FACE`,
- * `NINA_OUTFIT_SUFFIX`) rather than hand-copied, so the template cannot drift from the words the
- * built-in assembly uses — there is one home for each sentence.
+ * body canon, face paragraph, the outfit sentence, every label) with a placeholder only where a
+ * per-generation or per-preference VALUE is spliced in. The prose pieces are INTERPOLATED from
+ * the canon constants (`NINA_SELFIE_STYLE`, `NINA_BODY_SENTENCES`, `NINA_FACE`) rather than
+ * hand-copied, so the template cannot drift from the words the built-in assembly uses — there is
+ * one home for each sentence.
  *
- * The body paragraph carries the first THREE canon sentences: sentence 0 with its enumeration
- * replaced by `{{bodyFacts}}`, then sentences 1 and 2 — the mid-rung body, which is the shipped
- * default. The length dial no longer re-cuts THIS text; the template is the prompt, and the dial
- * drives the avatar path's built-in assembly.
+ * The body paragraph carries the first THREE canon sentences, verbatim — sentence 0's own
+ * enumeration (`NINA_BODY_FACTS`), then sentences 1 and 2 — the mid-rung body, which is the
+ * shipped default. The four facts are prose here, not a token: `{{bodyFacts}}` was dropped
+ * because it could only ever expand to this one constant, which made it a decoration on
+ * `{{focus}}`'s real job rather than a second control. The length dial no longer re-cuts THIS
+ * text; the template is the prompt, and the dial drives the avatar path's built-in assembly.
+ *
+ * The outfit line no longer appends the canon's watch-and-track sentence — that was fixed prose
+ * ("a red 400 m athletics track", "flat morning sun") competing with the operator's own
+ * `{{venue}}`, `{{time}}` and `{{notes}}` lines a few lines below. One place to say where and
+ * when is enough.
  *
  * Line semantics (the renderer below): a line containing a token that expanded to empty is
  * dropped ENTIRE, so the FOCUS line vanishes when nothing is ticked, POSE AND PRESENCE vanishes
@@ -437,13 +443,12 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   NINA_SELFIE_STYLE,
   '',
   'SUBJECT:',
-  'She is voluptuous: {{bodyFacts}}. This silhouette is the point of the photograph and it must ' +
-    'be visible in it. ' +
-    `${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[2]}`,
+  `She is voluptuous: ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
+    `must be visible in it. ${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[2]}`,
   '',
   NINA_FACE,
   '',
-  `Her outfit for this photograph: {{wardrobe}} ${NINA_OUTFIT_SUFFIX}`,
+  'Her outfit for this photograph: {{wardrobe}}',
   '',
   'FOCUS: Emphasise {{focus}} above everything else in this photograph.',
   '',
@@ -626,11 +631,12 @@ export function buildNinaImagePrompt(input: {
 
   /*
    * THE SELFIE PATH — the operator's template, the one the field edits. The value blocks are
-   * exactly §6's vocabulary: the four-facts enumeration (invariant 4's slot), the wardrobe (with
-   * the canon default outfit standing in when the field is empty, so the sentence always has a
-   * subject), the ticked focus terms as the emphasis sentence's object, the dials' pose clauses,
-   * the three free-text fields verbatim, and the per-photograph scene and mood. Labels are
-   * TEMPLATE text now — "VENUE:" lives in the shell, so only the bare values are blocks.
+   * exactly §6's vocabulary: the wardrobe (with the canon default outfit standing in when the
+   * field is empty, so the sentence always has a subject), the ticked focus terms as the
+   * emphasis sentence's object, the dials' pose clauses, the three free-text fields verbatim, and
+   * the per-photograph scene and mood. Labels are TEMPLATE text now — "VENUE:" lives in the
+   * shell, so only the bare values are blocks. The four-facts enumeration is no longer a block —
+   * it is static prose in the default template's SUBJECT line.
    */
   const focusTerms = joinTerms(
     NINA_IMAGE_FOCUS_KEYS.filter((key) => prefs.focus[key] === true).map(
@@ -640,8 +646,7 @@ export function buildNinaImagePrompt(input: {
   const wardrobe = prefs.wardrobe.trim()
 
   const blocks: Record<string, string> = {
-    bodyFacts: NINA_BODY_FACTS,
-    wardrobe: wardrobe.length > 0 ? withSentenceStop(wardrobe) : NINA_DEFAULT_OUTFIT_VALUE,
+    wardrobe: withSentenceStop(wardrobe.length > 0 ? wardrobe : NINA_DEFAULT_OUTFIT_VALUE),
     focus: focusTerms,
     presence: ninaPhotoPresence('selfie', tuning) ?? '',
     venue: prefs.venue.trim(),

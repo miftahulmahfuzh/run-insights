@@ -582,7 +582,6 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
  * placeholders only where a per-generation or per-preference value is spliced in. So the
  * vocabulary below is VALUES, not blocks:
  *
- *   {{bodyFacts}}  — the four facts, in the canon's own enumeration (PLAN INVARIANT 4's slot)
  *   {{wardrobe}}   — the Wardrobe field, or the canon default outfit when it is empty
  *   {{focus}}      — the selected Focus-on terms, as the emphasis sentence's object
  *   {{presence}}   — the Pose-and-presence clauses the Personality dials add
@@ -603,7 +602,6 @@ function compareNinaPhotoRefs(a: NinaPhotoRef, b: NinaPhotoRef): number {
  * the assembler must all read one list.
  */
 export const NINA_IMAGE_TEMPLATE_KEYS = [
-  'bodyFacts',
   'wardrobe',
   'focus',
   'presence',
@@ -617,21 +615,18 @@ export const NINA_IMAGE_TEMPLATE_KEYS = [
 export type NinaImageTemplateKey = (typeof NINA_IMAGE_TEMPLATE_KEYS)[number]
 
 /**
- * **The two a template may not omit.**
+ * **The one a template may not omit.**
  *
- * `{{bodyFacts}}` is PLAN INVARIANT 4 made template-shaped: *always explicitly instruct these*,
- * so the four facts must reach the prompt wherever this token sits, and a template without the
- * token is a template that can delete the body — refused. `{{scene}}` is what the photograph is
- * OF: the chat model chooses it per photograph, and a prompt with no slot for it cannot describe
- * the picture he asked for — which is also why the SCENE line's {{scene}} is a TOKEN and not the
- * stand-in sentence the preview shows; freezing that sentence would make every photograph
- * "at arm's length, standing". The other seven are droppable by choice, and the save error says
- * so rather than pretending otherwise.
+ * `{{scene}}` is what the photograph is OF: the chat model chooses it per photograph, and a
+ * prompt with no slot for it cannot describe the picture he asked for — which is also why the
+ * SCENE line's {{scene}} is a TOKEN and not the stand-in sentence the preview shows; freezing
+ * that sentence would make every photograph "at arm's length, standing". The other seven are
+ * droppable by choice, and the save error says so rather than pretending otherwise. The four
+ * body facts are no longer a token — they are static prose in the default template's SUBJECT
+ * line, same as `{{focus}}`'s emphasis sentences, and an operator who rewrites that line owns
+ * the result the same way they own any other rewritten sentence.
  */
-export const NINA_IMAGE_TEMPLATE_REQUIRED_KEYS: readonly NinaImageTemplateKey[] = [
-  'bodyFacts',
-  'scene',
-]
+export const NINA_IMAGE_TEMPLATE_REQUIRED_KEYS: readonly NinaImageTemplateKey[] = ['scene']
 
 /**
  * One template token, described for the panel's legend. `description` is operator copy: it says
@@ -647,11 +642,6 @@ export interface NinaImageTemplateSpec {
 export const NINA_IMAGE_TEMPLATE_SPECS: Readonly<
   Record<NinaImageTemplateKey, NinaImageTemplateSpec>
 > = Object.freeze({
-  bodyFacts: Object.freeze({
-    key: 'bodyFacts',
-    description:
-      "The four facts, in the canon's own words: big boobs, a bubble butt, big thighs and very long calves. Required.",
-  }),
   wardrobe: Object.freeze({
     key: 'wardrobe',
     description:
@@ -698,7 +688,7 @@ export const NINA_PROMPT_TEMPLATE_MAX = 4000
 
 /**
  * The one token shape: `{{` + letters + `}}`. Letters admit both cases because the vocabulary
- * names them that way (`{{bodyFacts}}`), and the validator checks the NAME against the
+ * names them that way (`{{presence}}`), and the validator checks the NAME against the
  * vocabulary anyway — the class is a shape, not the guard. Anything brace-like outside a valid
  * token is refused: there is no legitimate `{` in a photograph prompt, and a single stray one is
  * exactly the "broken placeholder formatting" the user asked this feature to make impossible.
