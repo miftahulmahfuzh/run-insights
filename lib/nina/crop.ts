@@ -90,10 +90,10 @@ export const NINA_CROP_MIN_SCALE = 1
 export const NINA_CROP_MAX_SCALE = 4
 
 /** `numeric(5,3)` — three decimals is what the column stores, so it is what we round to. */
-export const NINA_CROP_SCALE_DECIMALS = 3
+const NINA_CROP_SCALE_DECIMALS = 3
 
 /** Offsets are thousandths of the frame's width. Phase 1's column comment, as a constant. */
-export const NINA_CROP_OFFSET_UNITS_PER_FRAME = 1000
+const NINA_CROP_OFFSET_UNITS_PER_FRAME = 1000
 
 /**
  * A hard cap the server can apply WITHOUT knowing the image's dimensions.
@@ -107,10 +107,10 @@ export const NINA_CROP_MAX_ABS_OFFSET = 5_000
 export const NINA_CROP_KEY_STEP = 10
 
 /** Wheel sensitivity: `deltaY` of 400 (about three notches) is one e-fold of zoom. */
-export const NINA_CROP_WHEEL_DIVISOR = 400
+const NINA_CROP_WHEEL_DIVISOR = 400
 
 /** No single wheel event may more than double or halve the scale — trackpads emit huge deltas. */
-export const NINA_CROP_WHEEL_MAX_FACTOR = 2
+const NINA_CROP_WHEEL_MAX_FACTOR = 2
 
 /** "No transform", as the value every pre-phase-15 row means. */
 export const NINA_CROP_IDENTITY: NinaCrop = { scale: NINA_CROP_MIN_SCALE, x: 0, y: 0 }

@@ -59,7 +59,7 @@ export const NINA_CHAT_ALLOWED_CONTENT_TYPES = ['image/jpeg'] as const
  */
 export const NINA_BLOB_PREFIX = 'nina/'
 /** The one segment this phase claims. `nina/<userId>/chat/<id>.jpg`. */
-export const NINA_CHAT_SEGMENT = 'chat'
+const NINA_CHAT_SEGMENT = 'chat'
 /**
  * What the browser may ASK for. `lib/id.ts`'s `newId()` is 12 symbols over the URL-safe alphabet,
  * and `{12}` exactly is all `ninaChatPathname` below is ever handed —
@@ -68,7 +68,7 @@ export const NINA_CHAT_SEGMENT = 'chat'
  * This read `{12,24}` until the stored form was measured, on the theory that one range could cover
  * both windows. It could not: see `NINA_CHAT_STORED_ID_RE` directly below.
  */
-export const NINA_CHAT_ID_RE = /^[A-Za-z0-9_-]{12}$/
+const NINA_CHAT_ID_RE = /^[A-Za-z0-9_-]{12}$/
 
 /**
  * What Vercel actually STORED. `addRandomSuffix: true` (`app/api/upload/route.ts:91`) rewrites the
@@ -91,7 +91,7 @@ export const NINA_CHAT_ID_RE = /^[A-Za-z0-9_-]{12}$/
  * itself contain and end with `-`, as `shots/Ve394_KsZZ7--Rb9EznPf5OE150rEwy1evUqr6Hbixd.jpg` does
  * with its doubled `--`, and splitting the id on `-` would mis-read it.
  */
-export const NINA_CHAT_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
+const NINA_CHAT_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
 
 /**
  * A user id is a path segment here, so it must be one. Auth.js's adapter mints `crypto.randomUUID()`
@@ -156,7 +156,7 @@ export function isNinaChatRequestPathname(pathname: string, userId: string): boo
 
 export type NinaPickRejectionReason = 'not_an_image' | 'too_large' | 'too_many'
 
-export interface NinaPickRejection {
+interface NinaPickRejection {
   name: string
   reason: NinaPickRejectionReason
 }

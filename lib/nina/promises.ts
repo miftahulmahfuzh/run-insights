@@ -74,7 +74,7 @@ import type { NinaTuning } from './tuning'
  * hundreds of milliseconds, not the 78 s the generation itself takes, so twelve open promises
  * still fit comfortably inside phase 10's route budget of 60 s.
  */
-export const NINA_PROMISE_SWEEP_BUDGET_MS = 20_000
+const NINA_PROMISE_SWEEP_BUDGET_MS = 20_000
 
 /** Injected so the whole sweep is drivable from a test with no database and no network. */
 export interface NinaPromiseDeps {
@@ -140,7 +140,7 @@ export interface NinaPromiseSweep {
   wrote: boolean
 }
 
-export function productionPromiseDeps(): NinaPromiseDeps {
+function productionPromiseDeps(): NinaPromiseDeps {
   return {
     readSlot: (userId) => getNinaMemorySlot(userId, NINA_SLOT_PENDING_PROMISES),
     writeSlot: (userId, input) => upsertNinaMemorySlot(userId, input),
@@ -218,7 +218,7 @@ function firedOnOfEntry(promise: NinaPendingPromise): DateISO | null {
  * indexed range scan on `(user_id, occurred_on)`. `conditionMet` re-filters per promise, so
  * over-fetching is free and under-fetching is the only failure mode there is.
  */
-export async function loadPromiseFacts(
+async function loadPromiseFacts(
   userId: string,
   promises: readonly NinaPendingPromise[],
   todayISO: DateISO,

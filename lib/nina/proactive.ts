@@ -25,8 +25,6 @@ import { resolveNinaWriteSession } from './sessionResolve'
 import { runNinaTurn } from './turn'
 import type { NinaTuning } from './tuning'
 
-export type { ProactiveTriggerKind }
-
 /* ══════════════════════════════════════════════════════════════════════════════════════════════
  * PROACTIVITY — R3's iron rule, made mechanical
  *
@@ -69,9 +67,9 @@ export type { ProactiveTriggerKind }
 /** Sunday = 0, matching `Date#getUTCDay()`, so no mapping table is needed anywhere here. */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
-export const JAKARTA_UTC_OFFSET_HOURS = 7
+const JAKARTA_UTC_OFFSET_HOURS = 7
 
-export const PROACTIVE_PRIORITY: readonly ProactiveTriggerKind[] = [
+const PROACTIVE_PRIORITY: readonly ProactiveTriggerKind[] = [
   'avatar_changed',
   'pattern_crossed',
   'missed_usual_day',
@@ -86,7 +84,7 @@ export const PROACTIVE_PRIORITY: readonly ProactiveTriggerKind[] = [
  * string so a typo fails the build against phase 5's vocabulary instead of silently disabling
  * trigger 2 for good. `lib/nina/gateway.ts` spells the same key the same way, for the same reason.
  */
-export const RUNNING_DAYS_SLOT_KEY: NinaSlotKey = 'running_days'
+const RUNNING_DAYS_SLOT_KEY: NinaSlotKey = 'running_days'
 
 /**
  * The window in which "by evening, and there is still no run" is a fair thing to ask. The cron is
@@ -102,7 +100,7 @@ export const SILENCE_NO_RUN_DAYS = 5
 export const SILENCE_NO_CHAT_DAYS = 4
 export const SILENCE_COOLDOWN_DAYS = 3
 
-export const TRIGGER_MARKER_PREFIX = 'trigger:'
+const TRIGGER_MARKER_PREFIX = 'trigger:'
 export const MISSED_DAY_MARKER_CODE = `${TRIGGER_MARKER_PREFIX}missed_usual_day`
 export const SILENCE_MARKER_CODE = `${TRIGGER_MARKER_PREFIX}silence`
 
@@ -126,7 +124,7 @@ export interface TriggerMarker {
  * the already-spelled value instead means this module never formats anything and the value she
  * quotes is character-for-character the value the context gave her.
  */
-export interface ProactivePattern {
+interface ProactivePattern {
   code: string
   value: string
   nagLevel: number
@@ -148,7 +146,7 @@ export interface ProactiveFacts {
   unannouncedAvatarId: string | null
 }
 
-export interface RunCommittedDetail {
+interface RunCommittedDetail {
   kind: 'run_committed'
   runId: string
   occurredOn: DateISO
@@ -157,13 +155,13 @@ export interface RunCommittedDetail {
   badgeKeys: readonly string[]
 }
 
-export interface MissedUsualDayDetail {
+interface MissedUsualDayDetail {
   kind: 'missed_usual_day'
   todayISO: DateISO
   weekday: Weekday
 }
 
-export interface PatternCrossedDetail {
+interface PatternCrossedDetail {
   kind: 'pattern_crossed'
   code: string
   value: string
@@ -180,13 +178,13 @@ export interface PatternCrossedDetail {
   marker: TriggerMarker
 }
 
-export interface SilenceDetail {
+interface SilenceDetail {
   kind: 'silence'
   daysSinceLastRun: number | null
   daysSinceRunnerSpoke: number | null
 }
 
-export interface AvatarChangedDetail {
+interface AvatarChangedDetail {
   kind: 'avatar_changed'
   avatarId: string
 }
@@ -486,9 +484,6 @@ export type ProactiveNotifier = (
   kind: ProactiveTriggerKind,
 ) => Promise<void>
 
-/** The hermetic default a test passes explicitly. Phase 11 moved the *fallback* to `pushNotifier`. */
-export const NOOP_NOTIFIER: ProactiveNotifier = async () => {}
-
 export interface ProactiveDeps {
   now?: () => Date
   notify?: ProactiveNotifier
@@ -527,7 +522,7 @@ const NOT_EMITTED = (reason: string): EmitResult => ({
  * 20-run window by construction, so the two dedicated queries the plan proposed would have
  * re-asked a question the context had already answered.
  */
-export async function loadProactiveFacts(
+async function loadProactiveFacts(
   userId: string,
   context: NinaContext,
   now: Date,
@@ -588,7 +583,7 @@ export async function loadProactiveFacts(
  * counterpart of that STEP 5, down to the one multi-row batch that makes `seq` — and therefore
  * reveal order — a fact Postgres assigns rather than a convention this loop remembers.
  */
-export async function emitProactiveMessage(
+async function emitProactiveMessage(
   userId: string,
   /**
    * **Which conversation she speaks into (assumption A3, F35 phase 3).**
@@ -818,6 +813,3 @@ export async function evaluateAndEmitForUser(
 
   return emitProactiveMessage(userId, sessionId, decision.detail, facts, context, tuning, deps)
 }
-
-/** Re-exported so a caller can log a decision's reasoning without importing phase 9 as well. */
-export type { NagDecision }

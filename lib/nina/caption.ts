@@ -48,7 +48,7 @@ import type { NinaTuning } from './tuning'
  * 60 s function. A `max_tokens` stop is treated as "no caption" and the fallback stands — F07
  * settled that raising a ceiling is not the fix for a thinking model.
  */
-export const NINA_CAPTION_MAX_TOKENS = 400
+const NINA_CAPTION_MAX_TOKENS = 400
 
 /**
  * Twelve seconds, `NINA_TITLE_TIMEOUT_MS`'s number and its reasoning. Fifteen measured calls on
@@ -56,7 +56,7 @@ export const NINA_CAPTION_MAX_TOKENS = 400
  * real round at 6.2 s. This request carries one paragraph and returns one line, so it sits at the
  * bottom of that range — and 12 s is what leaves the describe call whole inside one segment.
  */
-export const NINA_CAPTION_TIMEOUT_MS = 12_000
+const NINA_CAPTION_TIMEOUT_MS = 12_000
 
 /**
  * The injection seam, declared here rather than imported from `lib/nina/autotitle.ts` —

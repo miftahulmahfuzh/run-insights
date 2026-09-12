@@ -332,8 +332,8 @@ describe('the bar and the padding that clears it', () => {
   })
 
   it('gives every cell a tap target past the 44pt minimum, on both axes', () => {
-    // docs/design-brief.md:175 — "Minimum 44 × 44pt tap targets", and the iOS constraints win over
-    // any conflicting design output (line 18). The bar is one row (no `grid-rows`, asserted
+    // docs/design-brief.md — "Minimum 44 × 44pt tap targets", and the iOS constraints block wins
+    // over any conflicting design output. The bar is one row (no `grid-rows`, asserted
     // above), so a cell's height is the bar's height; a column is 414px -- the XS Max portrait
     // width -- minus the row's own `px` dial (see `rowPad`) over its column count: 57.1px at
     // `px-[7px]`, still past the minimum with 13px to spare.

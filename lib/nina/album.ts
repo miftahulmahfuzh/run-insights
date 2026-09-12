@@ -166,7 +166,7 @@ export const NINA_SIDE_LABEL: Readonly<Record<NinaPhotoSide, string>> = {
 }
 
 /** The album's own label. Not a `NinaPhotoSide`: an avatar is not a chat photograph. */
-export const NINA_ALBUM_LABEL = 'Foto profil Nina'
+const NINA_ALBUM_LABEL = 'Foto profil Nina'
 
 /**
  * `'generated'` is phase 12's kind and `'upload'` is phase 6's. Anything else — a kind added

@@ -50,7 +50,7 @@ const GenerateImageArgsSchema = z.object({
   mood: z.string().trim().max(200).optional(),
 })
 
-export const handleGenerateImage: NinaToolHandler = async (
+const handleGenerateImage: NinaToolHandler = async (
   args: unknown,
   ctx: NinaToolContext,
 ): Promise<NinaToolAnswer> => {

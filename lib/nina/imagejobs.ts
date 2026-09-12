@@ -53,9 +53,12 @@ import { resolveNinaSessionForMessage } from './sessionResolve'
  * against `runs`, and there is no `runs` here.
  */
 
-export const JOB_PHASE_QUEUED: NinaImageJobPhase = 'queued'
-export const JOB_PHASE_DISPATCHED: NinaImageJobPhase = 'dispatched'
-export const JOB_PHASE_RUNNING: NinaImageJobPhase = 'running'
+/* Module-local since the 2026-09-12 YAGNI sweep: nothing outside this file reads them, and the
+ * worker (`scripts/nina-image-worker.ts`) never could — it spells its own phases, and the claim
+ * predicates below are this file's only writers. */
+const JOB_PHASE_QUEUED: NinaImageJobPhase = 'queued'
+const JOB_PHASE_DISPATCHED: NinaImageJobPhase = 'dispatched'
+const JOB_PHASE_RUNNING: NinaImageJobPhase = 'running'
 
 const PENDING_PHASES: readonly string[] = [
   JOB_PHASE_QUEUED,
@@ -72,7 +75,9 @@ const PENDING_PHASES: readonly string[] = [
  */
 const IMAGE_TOOL_CALL = 'generate_image'
 
-export interface NinaImageJobRow {
+/** Module-local since the 2026-09-12 YAGNI sweep: callers of the reads below take their rows by
+ * inference; no file has ever named this type. */
+interface NinaImageJobRow {
   id: string
   phase: NinaImageJobPhase
   purpose: NinaImagePurpose
@@ -160,7 +165,9 @@ export async function openNinaImageJob(userId: string, args: NinaImageJobArgs): 
  * whose job is to hand a refusal code back to a button — `generateNinaSelfie`'s `NinaSelfieResult`
  * is the same shape for the same reason.
  */
-export type NinaImageReopen =
+/** Module-local since the 2026-09-12 YAGNI sweep: `reopenNinaImageJob`'s caller consumes the union
+ * by inference and has never named it. */
+type NinaImageReopen =
   | {
       ok: true
       /** The NEW row. The failed one keeps its own id and its own numbers. */
@@ -226,7 +233,8 @@ export async function reopenNinaImageJob(userId: string, jobId: string): Promise
   }
 }
 
-export interface NinaImageClaim {
+/** Module-local since the 2026-09-12 YAGNI sweep: `claimNinaImageJob`'s callers never named it. */
+interface NinaImageClaim {
   jobId: string
   args: NinaImageJobArgs
   /** After the increment. 1 on a first claim. */
@@ -405,7 +413,8 @@ export async function requeueNinaImageJob(
     )
 }
 
-export interface NinaImageRevivable {
+/** Module-local since the 2026-09-12 YAGNI sweep: `listRevivableNinaImageJobs`' caller never named it. */
+interface NinaImageRevivable {
   id: string
   purpose: NinaImagePurpose
   replyToId: string | null
@@ -586,8 +595,11 @@ export async function failNinaImageJob(input: {
  * six times a day (the generation cap), so its cost is not worth optimising away by threading a
  * session through `NinaImageJobArgs` — which would also mean a schema-shaped decision about rows
  * already in flight, and `jsonb` args written before this phase carry no session at all.
+ *
+ * Module-local since the 2026-09-12 YAGNI sweep: `failNinaImageJob` and the stale sweep below are
+ * its only callers — R22's surface is her sentence in the chat, not this helper's name.
  */
-export async function postNinaApologyMessage(input: {
+async function postNinaApologyMessage(input: {
   userId: string
   jobId: string
   kind: NinaImageFailure
@@ -736,31 +748,15 @@ export async function listOpenNinaImageJobs(userId: string): Promise<NinaImageJo
   return rows.map((row) => toJobRow(row))
 }
 
-/** One job, for phase 13's and phase 15's polling. No sweep: a caller polling one job wants a fact. */
-export async function getNinaImageJob(
-  userId: string,
-  jobId: string,
-): Promise<NinaImageJobRow | null> {
-  const [row] = await db
-    .select({
-      id: ninaTurns.id,
-      phase: ninaTurns.errorCode,
-      args: ninaTurns.args,
-      createdAt: ninaTurns.createdAt,
-    })
-    .from(ninaTurns)
-    // R2: a poll on a hidden job answers "no such job" — which is what a poller should do with a
-    // row that has left every screen it could report into.
-    .where(
-      and(
-        eq(ninaTurns.userId, userId),
-        eq(ninaTurns.id, jobId),
-        eq(ninaTurns.kind, 'image'),
-        isNull(ninaTurns.deletedAt),
-      ),
-    )
-  return row == null ? null : toJobRow(row)
-}
+/*
+ * `getNinaImageJob` — one job, "for phase 13's and phase 15's polling" — was deleted 2026-09-12 as
+ * dead: neither phase ever polled a single job (the jobs page polls `listNinaImageJobs`; the chat
+ * page polls its turn), so the read existed only for its own test, and its docstring's claim that
+ * it was "provided for polling" was prose about a consumer that never arrived. Git history has it
+ * if a single-job poll ever does. Its hidden-job rule is not lost: `getNinaImageJobDetail` carries
+ * the identical `deletedAt` clause and the identical anti-oracle property, and pins it in
+ * `tests/nina.softDelete.test.ts`.
+ */
 
 function toJobRow(row: {
   id: string
@@ -815,7 +811,9 @@ function toJobRow(row: {
  * reasoning, one table over. A real `LIMIT`, not a `slice`: this
  * table grows forever and a tracking page has no business reading all of it.
  */
-export const NINA_JOB_LIST_LIMIT = 60
+/* Module-local since the 2026-09-12 YAGNI sweep: it bounds this file's own list read, and nothing
+ * else has ever read it. */
+const NINA_JOB_LIST_LIMIT = 60
 
 /**
  * One image job, as R1's screens need it — strictly wider than `NinaImageJobRow`.

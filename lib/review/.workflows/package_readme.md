@@ -607,10 +607,36 @@ Two structural facts worth keeping: the commit suite drives `commitReview()` **d
 request scope** — which is precisely why `after()` lives in `actions.ts` and not in `commit.ts`
 (ruling E3; `after` throws `E468` outside a request scope); and `loadReview`'s suite stubs the
 queries but runs `draft.ts`'s hydrators for real, because the mapping IS the feature — stubbing
-it would let provenance rot while the suite stayed green. Component-level interaction tests for
-`components/review` do not exist yet (the repo's happy-dom component harness postdates this
-package); the pure logic the components would otherwise need lives in `lib/review` so it stays
-assertable in node.
+it would let provenance rot while the suite stayed green.
+
+### Component suites — `components/review/*.test.tsx` (happy-dom)
+
+Twelve suites, 2,549 lines, **157 passing** (measured 2026-09-12, the session that wrote them).
+They arrived after the table above — the repo's happy-dom harness postdated this package — and
+they run the REAL parsers/spellers from `lib/review/inputs` under every control, so the two
+halves of the package cannot drift: a parser change that breaks the screen breaks a component
+test in the same commit.
+
+| suite | posture | what it actually pins |
+|---|---|---|
+| `HonestyChip` | render | word + explanation carried twice (title, sr-only); label override; per-state fill |
+| `RawResponseDisclosure` | render + hostile payloads | null-guard; closed by default; `safeStringify`'s both exits (truncation, cyclic) |
+| `ConsistencyBanner` | render | all-clear as `role="status"` (the only proof the checks ran); failures as `role="alert"` with the 1/many grammar; Jump carries the check's own path or doesn't exist; save-anyway on both states |
+| `ParsedInput` | the behavioral core | value contract (blank is null, a typo never becomes null); re-seed only on parsed disagreement (the reviewer's spelling survives); right-to-left mask (idempotent, clearable, caret pinned); deferError's three phases; server error outranks and never defers |
+| `HeroFields` | section | all seven fields by accessible name; scan suppressed per field (hint takes the slot); check > edited; date guess carries its evidence; wiring through the real parsers incl. comma decimals |
+| `MoreDetails` | section | closed by default; controlled details; intent pills press-to-clear; **R-9 positional slots** — hole held, never promoted, both-cleared collapses |
+| `ScreenshotStrip` | section | tiles kind-labelled (unknown kinds survive); SheetSource's R-45 resolver: exact kind or honest fallback; PhotoViewer handed the right photos/index |
+| `SplitsTable` | section + real Sheet | rows as summaries in the screenshot's spellings; per-row quoted edit labels; D14's hint in both states; append-from-empty starts at km 1; the row sheet: seed, mask edit, partial toggle, Delete, Escape |
+| `ZoneBar` | section + real Sheet | the bar's aria-label reading every zone's share; no bar on zero total; five-row scaffold; floorless zone 1 / ceilingless zone 5 stated in words |
+| `RetryExtraction` | fetch + router mocked | asks first, inline; POSTs blob refs verbatim; routes to the new extraction; refused/network failures are messages with re-armed buttons |
+| `ReviewClient` | children stubbed, wiring real | checks re-run per keystroke (a slowed duration fails CHK-1+2+3); edited diffing; banner suppressed on all-null drafts; three banner states; never-disabled bar; error/duplicate states |
+| `ReviewScreen` | **the real tree**, action mocked | the golden one-tap payload over `TRUTH`; a misread pace flips the banner, flags all three CHK-3 inputs, and still allows the save; the stateless round trip; the action's two failure states |
+
+Two harness rules these suites paid for: a controlled section needs a parent mock that
+**feeds patches back through a re-render** (React suppresses a change whose DOM value already
+equals the rendered one, and a test that only records `onChange` lies to the component); and an
+async action left pending across RTL cleanup poisons the next `useActionState` mount in the
+file — nothing may leave a transition in flight when a test ends.
 
 ## Notes
 

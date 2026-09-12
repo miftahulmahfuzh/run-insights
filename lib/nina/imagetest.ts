@@ -60,7 +60,7 @@ import type { NinaTuning } from './tuning'
  *
  * Full body in frame, deliberately: R1's body canon is what this test is testing.
  */
-export const NINA_IMAGE_TEST_SCENE =
+const NINA_IMAGE_TEST_SCENE =
   'Nina taking a photograph of herself at arm’s length, standing, her whole body in frame, ' +
   'the phone visible in one hand.'
 

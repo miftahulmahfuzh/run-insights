@@ -231,7 +231,7 @@ export const NINA_JOB_STAGE_LABEL: Record<NinaJobStage, string> = {
  * has to be migrated when a fifth kind appears. `jobErrorLabel` falls through to the raw code,
  * which is ugly and true — the two properties a diagnostic string should have in that order.
  */
-export const NINA_JOB_ERROR_LABEL: Readonly<Record<string, string>> = {
+const NINA_JOB_ERROR_LABEL: Readonly<Record<string, string>> = {
   timeout: 'Kelamaan — waktunya habis sebelum fotonya jadi',
   policy: 'Ditolak filter konten provider',
   transport: 'Koneksi ke provider putus',

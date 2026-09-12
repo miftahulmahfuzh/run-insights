@@ -107,8 +107,14 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+/*
+ * RESET, not clear: `clearAllMocks` wipes call history but leaves `mockResolvedValueOnce` queues
+ * standing, so a test that fails before consuming its once-values leaks a ghost `{ok: true}` into
+ * the NEXT test's fresh `mockResolvedValue` — the refusal test below would then see a successful
+ * insert and fail in a way that blames the component.
+ */
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 })
 
 describe('MemoryTable — structure', () => {
@@ -393,6 +399,17 @@ describe('MemoryTable — the add row', () => {
       }),
     )
     await waitFor(() => expect(input).toHaveValue(''))
+    /*
+     * The add row disables its controls for the flight, and React settles an async transition in
+     * TWO commits: the results render (cleared text, the note) and only then the `isPending` flip
+     * that re-enables them. Waiting for the value alone can therefore resolve while the input is
+     * still disabled — and every keystroke typed into a disabled input is silently dropped, which
+     * turned the second add below into a 1s timeout whenever the machine was loaded enough to
+     * spread those two commits across a waitFor poll. Gating on the re-enable waits out the whole
+     * settle, in the green case at zero extra cost: both commits normally land before the first
+     * poll either way.
+     */
+    await waitFor(() => expect(input).toBeEnabled())
     expect(screen.getByText('Written.')).toBeInTheDocument()
     expect(select).toHaveValue('training') // survives, so three rows are three Enters
 

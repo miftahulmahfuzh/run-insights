@@ -74,7 +74,7 @@ import type { NinaLlmClientLike } from './turn'
 export const NINA_FALLBACK_MIN_BUDGET_MS = 5_000
 
 /** Only reached by a caller that passes no `timeout`; `turn.ts` always passes one. */
-export const NINA_FALLBACK_DEFAULT_TIMEOUT_MS = 20_000
+const NINA_FALLBACK_DEFAULT_TIMEOUT_MS = 20_000
 
 /* ============================================================================
  * The OpenAI-Chat-Completions envelope, as far as this file needs it

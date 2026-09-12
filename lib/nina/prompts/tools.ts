@@ -272,5 +272,3 @@ export const NINA_TOOLS: readonly Anthropic.Tool[] = [
   GENERATE_IMAGE_TOOL,
   SET_AVATAR_TOOL,
 ]
-
-export const NINA_TOOL_NAMES: readonly string[] = NINA_TOOLS.map((t) => t.name)

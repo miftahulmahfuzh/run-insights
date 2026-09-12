@@ -141,9 +141,11 @@ export function toDistanceInput(km: number | null): string {
  * says `invalid` because only the leading field may exceed 59, and that is exactly the answer the
  * mask's intermediate states need.
  *
- * It lives here rather than in `ParsedInput` because `vitest.config.ts` runs `environment: 'node'`
- * and its `include` matches `*.test.ts` only — this repo has no component tests, so logic inside a
- * component is logic no test can reach.
+ * It lives here rather than in `ParsedInput` because it is a pure string→string function with no
+ * React in it — this module's own suite asserts its shapes directly in node, and the component
+ * suite (`components/review/ParsedInput.test.tsx`) exercises it again through the input. The
+ * comment here once read "this repo has no component tests", which stopped being true the day
+ * the happy-dom harness landed; the placement, unlike the comment, was never about that.
  */
 export type TimeMaskShape = 'mm:ss' | 'hh:mm:ss'
 

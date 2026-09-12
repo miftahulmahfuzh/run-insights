@@ -130,7 +130,7 @@ export type NinaImageCallResult =
  *      every writer already bounds, checked twice: once against the declared `content-length`
  *      (cheap, and Vercel Blob serves one) and once against the bytes actually read.
  */
-export async function fetchNinaImageReference(url: string): Promise<string | null> {
+async function fetchNinaImageReference(url: string): Promise<string | null> {
   const startedAt = Date.now()
   try {
     const res = await fetch(url, {
