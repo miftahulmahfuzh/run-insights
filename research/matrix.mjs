@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 const KEY = process.env.LLM_API_KEY
-const DIR = '/home/miftah/.claude/image-cache/3a4e3940-26e9-4619-8bb5-9e0f6c5e0ad9'
+// Committed fixtures by default; RI_FIXTURE_DIR overrides (see lib.mjs).
+const DIR = process.env.RI_FIXTURE_DIR
+  ?? fileURLToPath(new URL('./fixtures/screenshots', import.meta.url))
 const B64 = readFileSync(`${DIR}/1.png`).toString('base64')
 const PROMPT = 'What is the Distance and Avg Pace shown? Answer in one line.'
 

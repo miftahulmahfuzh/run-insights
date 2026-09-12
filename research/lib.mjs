@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 export const KEY = process.env.LLM_API_KEY
 export const CODING_V4 = 'https://api.z.ai/api/coding/paas/v4/chat/completions'
-const DIR = '/home/miftah/.claude/image-cache/3a4e3940-26e9-4619-8bb5-9e0f6c5e0ad9'
+// The committed fixtures, not the wiped image-cache dir this pointed at until 2026-09-12.
+// RI_FIXTURE_DIR is the same override tests/live/vision.live.test.ts honors.
+const DIR = process.env.RI_FIXTURE_DIR
+  ?? fileURLToPath(new URL('./fixtures/screenshots', import.meta.url))
 export const dataUri = (n) => `data:image/png;base64,${readFileSync(`${DIR}/${n}`).toString('base64')}`
 export const imgPart = (n) => ({ type: 'image_url', image_url: { url: dataUri(n) } })
 
