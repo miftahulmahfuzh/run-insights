@@ -1,7 +1,10 @@
 import { addDays, isoWeekKeyOf, isoWeekRange, type DateISO } from '@/lib/date/ranges'
 
-/** One whole ISO week of a rolling window. Unclipped, by definition — see `weeksInMonth.ts`. */
-export interface TrendWeek {
+/**
+ * One whole ISO week of a rolling window. Unclipped, by definition — see `weeksInMonth.ts`.
+ * Unexported: no consumer names it (both trend charts read `lastIsoWeeks`'s output by inference).
+ */
+interface TrendWeek {
   isoWeekKey: string
   weekStartISO: DateISO
   /** Inclusive Sunday. Half-open ranges are for SQL; a chart bucket's label needs its last day. */

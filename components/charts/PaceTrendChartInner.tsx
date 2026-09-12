@@ -34,12 +34,13 @@ export function PaceTrendChartInner({
   points,
   startISO,
   days,
-  showTrendLine = true,
+  showTrendLine,
 }: {
   points: readonly PaceTrendPoint[]
   startISO: string
   days: number
-  showTrendLine?: boolean
+  /** Required: the §9 gate is the outer's decision (`allowTrendLine`), never the inner's default. */
+  showTrendLine: boolean
 }) {
   const line = showTrendLine ? paceTrendLine(points) : null
 

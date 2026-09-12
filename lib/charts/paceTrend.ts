@@ -49,9 +49,8 @@ export const BUCKET_LABELS: Record<DistanceBucket, { label: string; range: strin
 export function toPaceTrendPoints(
   runs: readonly ChartRun[],
   anchorISO: DateISO,
-  weeks = TREND_WEEKS,
 ): { points: PaceTrendPoint[]; startISO: DateISO; endISO: DateISO; days: number } {
-  const window = lastIsoWeeks(anchorISO, weeks)
+  const window = lastIsoWeeks(anchorISO, TREND_WEEKS)
   const startISO = window[0]!.weekStartISO
   const endISO = window[window.length - 1]!.weekEndISO
 
@@ -109,7 +108,12 @@ export function defaultBucket(points: readonly PaceTrendPoint[]): DistanceBucket
   return best
 }
 
-export interface PaceTrendLine {
+/**
+ * Named by no consumer — the only reader is `paceTrendLine`'s own return type, and both chart
+ * components consume that by inference. Kept unexported so the barrel doesn't advertise a shape
+ * nobody addresses by name.
+ */
+interface PaceTrendLine {
   /** Seconds per km per DAY. Negative means getting faster. */
   slopeSecPerDay: number
   interceptSec: number

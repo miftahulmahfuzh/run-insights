@@ -25,9 +25,7 @@ export function ChartFrame({
   legend,
   caption,
   table,
-  tableSummary = 'Table view',
   children,
-  className,
 }: {
   title: string
   controls?: React.ReactNode
@@ -37,12 +35,10 @@ export function ChartFrame({
   caption?: React.ReactNode
   /** The `<details>` twin, or `null` when an adjacent table already IS the twin. */
   table: React.ReactNode | null
-  tableSummary?: string
   children: React.ReactNode
-  className?: string
 }) {
   return (
-    <Card className={cn('p-5', className)}>
+    <Card className="p-5">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <Eyebrow>{title}</Eyebrow>
         {controls}
@@ -59,7 +55,7 @@ export function ChartFrame({
       {table && (
         <details className="mt-3">
           <summary className="cursor-pointer text-[11px] font-semibold text-ink-3">
-            {tableSummary}
+            Table view
           </summary>
           <div className="mt-2 overflow-x-auto">{table}</div>
         </details>
@@ -80,7 +76,7 @@ export function LegendKey({
 }: {
   /** A chart colour class from `charts.css` — never an inline hex. */
   className: string
-  variant?: 'line' | 'bar' | 'dashed'
+  variant?: 'line' | 'bar'
   children: React.ReactNode
 }) {
   return (
@@ -96,7 +92,6 @@ export function LegendKey({
             y2="4"
             strokeWidth="2"
             strokeLinecap="round"
-            strokeDasharray={variant === 'dashed' ? '3 3' : undefined}
             className={className}
           />
         )}

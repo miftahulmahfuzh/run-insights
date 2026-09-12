@@ -41,14 +41,18 @@ export function toPaceHrPoints(splits: readonly SplitRow[], runDistanceM: number
  * expands with a run's own variance, which is exactly the "domain tuned for drama" the dual-axis
  * waiver (§12) promises not to do.
  */
-export function paceDomain(points: readonly PaceHrPoint[], padSec = 20): [number, number] | null {
+export function paceDomain(points: readonly PaceHrPoint[]): [number, number] | null {
+  // A constant, not a parameter: the pad is policy (the anti-drama rule above), and policy is not
+  // per-call tunable. No caller ever varied it.
+  const padSec = 20
   const paces = points.map((p) => p.paceSec).filter((p) => Number.isFinite(p))
   if (paces.length === 0) return null
   return [Math.min(...paces) - padSec, Math.max(...paces) + padSec]
 }
 
 /** The HR axis's domain, standard orientation, fixed 10 bpm pad. Same anti-drama rule as above. */
-export function hrDomain(points: readonly PaceHrPoint[], padBpm = 10): [number, number] | null {
+export function hrDomain(points: readonly PaceHrPoint[]): [number, number] | null {
+  const padBpm = 10
   const hrs = points.map((p) => p.hr).filter((h): h is number => h != null)
   if (hrs.length === 0) return null
   return [Math.min(...hrs) - padBpm, Math.max(...hrs) + padBpm]
@@ -129,15 +133,15 @@ const STRIDES = [1, 2, 5, 10, 20, 50] as const
  * On the reported 21.2 km run: stride 2 gives 1,3,…,21, then km 22 displaces km 21 → eleven labels,
  * ending `19` and `22*`.
  */
-export function kmAxisTicks(points: readonly PaceHrPoint[], maxLabels = MAX_AXIS_LABELS): number[] {
+export function kmAxisTicks(points: readonly PaceHrPoint[]): number[] {
   if (points.length === 0) return []
 
   const stride =
-    STRIDES.find((s) => Math.ceil(points.length / s) <= maxLabels) ??
+    STRIDES.find((s) => Math.ceil(points.length / s) <= MAX_AXIS_LABELS) ??
     /* Past 550 splits the ladder runs out. Cannot arise through F04/F05 — the same "cannot happen
        is not the same as produces a plausible wrong number" reasoning as the partial remainder
        above — so the budget is honoured with an unround stride rather than silently exceeded. */
-    Math.ceil(points.length / maxLabels)
+    Math.ceil(points.length / MAX_AXIS_LABELS)
 
   const lastIndex = points.length - 1
   const indices: number[] = []
