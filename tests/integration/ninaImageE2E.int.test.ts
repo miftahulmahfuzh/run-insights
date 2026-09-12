@@ -35,12 +35,18 @@ import {
  * `channel_binding=require   # pooled…`, which dies with "invalid channel_binding value":
  *
  *     psql "$UNPOOLED" -c 'CREATE DATABASE run_insights_itest'
- *     DATABASE_URL_UNPOOLED="${UNPOOLED/\/neondb/\/run_insights_itest}" npm run db:migrate
- *     TEST_DATABASE_URL="${POOLED/\/neondb/\/run_insights_itest}" \
+ *     swap() { printf '%s' "$1" | sed -E 's#^(postgresql://[^/?]+)/[^?]+(\?.*)$#\1/run_insights_itest\2#'; }
+ *     DATABASE_URL_UNPOOLED="$(swap "$UNPOOLED")" npm run db:migrate
+ *     TEST_DATABASE_URL="$(swap "$POOLED")" \
  *       BLOB_READ_WRITE_TOKEN=… npm run test:int
  *     psql "$UNPOOLED" -c "select pg_terminate_backend(pid) from pg_stat_activity
  *                          where datname='run_insights_itest'"
  *     psql "$UNPOOLED" -c 'DROP DATABASE run_insights_itest'
+ *
+ * The swap is anchored to `postgresql://host/` on purpose. A bare `${POOLED/\/neondb/…}`
+ * substring replace matches the `/neondb` inside this project's `neondb_owner` USERNAME first
+ * and corrupts the URL — measured 2026-09-12: the old recipe produced
+ * `postgresql:/run_insights_itest_owner:…/neondb`, and the migrate spun on a hostless URL.
  *
  * The terminate is not optional: the pooler holds connections open and `DROP DATABASE` fails with
  * "is being accessed by other users" without it.

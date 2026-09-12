@@ -491,7 +491,7 @@ node research/show-metrics.mjs # deterministic metrics, no API key needed
 
 npm run db:smoke               # is Neon reachable on the pooled string?
 npm run db:migrate             # apply drizzle/ to the database
-npm test                       # 5,093 unit tests; never touches a database, never calls an LLM
+npm test                       # 5,187 unit tests (measured 2026-09-12); never touches a database, never calls an LLM
 TEST_DATABASE_URL=<pooled url> npm run test:int   # the real-Postgres suite
 npm run test:live              # opt-in: vision, narration and Nina live against real models. Costs money
 

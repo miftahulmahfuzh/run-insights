@@ -20,4 +20,15 @@ import { config } from 'dotenv'
  */
 config({ path: '.env.local', override: true, quiet: true })
 
-export {}
+/**
+ * The one predicate every live suite gates its `describe.skipIf` on: a key that is present and is
+ * neither of the two sentinels `tests/support/setup.ts` fills in — `unit-test-key-never-sent`
+ * locally, `ci-dummy-key` mirroring the CI env block. It lives here, next to the load, because
+ * the two are a pair: the sentinel is what a key reads as UNTIL the override above replaces it.
+ * Each suite used to hand-roll its own copy of this check (a Set in one file, a variadic
+ * `realKey` in another); a new sentinel added to one copy and not the others would silently
+ * change which suites run where, so they now all ask this one function.
+ */
+export function hasRealLlmKey(key: string | undefined): boolean {
+  return key != null && key !== '' && key !== 'unit-test-key-never-sent' && key !== 'ci-dummy-key'
+}

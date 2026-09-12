@@ -1,6 +1,6 @@
 // MUST be first: it loads .env.local before any import below reaches lib/env.ts, which parses
 // process.env eagerly. Same ordering rule as tests/live/nina.live.test.ts.
-import './loadEnvLocal'
+import { hasRealLlmKey } from './loadEnvLocal'
 
 import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -56,7 +56,7 @@ const enabled =
   TEST_DATABASE_URL != null &&
   TEST_DATABASE_URL !== '' &&
   TEST_DATABASE_URL !== DOTENV_DATABASE_URL &&
-  realKey(process.env.LLM_API_KEY, 'unit-test-key-never-sent', 'ci-dummy-key') &&
+  hasRealLlmKey(process.env.LLM_API_KEY) &&
   realKey(process.env.OPENROUTER_API_KEY) &&
   realKey(process.env.BLOB_READ_WRITE_TOKEN, 'vercel_blob_rw_unit_test')
 

@@ -1,7 +1,7 @@
 // MUST be first: it loads .env.local before any import below reaches lib/env.ts, which parses
 // process.env eagerly. See that file's comment — this ordering is the whole point, and the
 // narrate suite failed with `401 token expired or incorrect` before it existed.
-import './loadEnvLocal'
+import { hasRealLlmKey } from './loadEnvLocal'
 
 import { LOOKUP_RUNS_TOOL, SEND_TOOL } from '@/lib/nina/prompts'
 import { NinaSendPayloadSchema } from '@/lib/nina/schema'
@@ -31,13 +31,10 @@ import { describe, expect, it } from 'vitest'
  * she can reach. The symptom is "she stopped looking anything up", with nothing failing. That is
  * why this had to be a live test rather than a production discovery.
  *
- * Named `live` so `npm run test:live` picks it up; excluded from every default run.
+ * Lives in `tests/live/`, which `npm run test:live` runs as a directory; excluded from every
+ * default run.
  */
-const HAS_KEY =
-  process.env.LLM_API_KEY != null &&
-  process.env.LLM_API_KEY !== '' &&
-  process.env.LLM_API_KEY !== 'unit-test-key-never-sent' &&
-  process.env.LLM_API_KEY !== 'ci-dummy-key'
+const HAS_KEY = hasRealLlmKey(process.env.LLM_API_KEY)
 
 describe.skipIf(!HAS_KEY)('nina live', () => {
   it('live: completes a real tool round trip and returns a valid send payload', async () => {
