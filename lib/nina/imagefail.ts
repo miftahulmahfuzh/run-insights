@@ -46,14 +46,14 @@ export type NinaImageFailure = (typeof NINA_IMAGE_FAILURES)[number]
  * reachable". 429 is deliberately NOT here: a rate limit is a transport condition — waiting fixes
  * it — and telling the runner she was refused when she was throttled is a lie in her mouth.
  */
-export const POLICY_STATUSES: readonly number[] = [400, 403, 422, 451]
+const POLICY_STATUSES: readonly number[] = [400, 403, 422, 451]
 
 /**
  * The vocabulary an image provider uses when it declines. Matched against the RESPONSE BODY, not the
  * status, because a 400 is also what a malformed payload gets — and a malformed payload is our bug,
  * which is `transport` (she is not at fault and should not imply she is).
  */
-export const POLICY_BODY_RE =
+const POLICY_BODY_RE =
   /polic|safety|moderat|content[_ -]?filter|prohibit|not[_ -]?allowed|refus|blocked|flagged|nsfw|violat/i
 
 export function classifyImageFailure(input: {

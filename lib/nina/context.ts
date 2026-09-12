@@ -87,9 +87,9 @@ import type { RecordKey } from '@/lib/records/types'
  * Now — R16
  * ==========================================================================*/
 
-export const JAKARTA_TIME_ZONE = 'Asia/Jakarta'
+const JAKARTA_TIME_ZONE = 'Asia/Jakarta'
 
-export type PartOfDay = 'pagi' | 'siang' | 'sore' | 'malam'
+type PartOfDay = 'pagi' | 'siang' | 'sore' | 'malam'
 
 /**
  * The Indonesian parts of day, as data, because `pagi` is load-bearing: `"pagi mif"` at four in
@@ -99,7 +99,7 @@ export type PartOfDay = 'pagi' | 'siang' | 'sore' | 'malam'
  *
  * `malam` wraps midnight: everything from 18:30 to 03:59 is night.
  */
-export const PART_OF_DAY_BOUNDS = {
+const PART_OF_DAY_BOUNDS = {
   /** 04:00 */ pagiFromMin: 4 * 60,
   /** 11:00 */ siangFromMin: 11 * 60,
   /** 15:00 */ soreFromMin: 15 * 60,
@@ -127,7 +127,7 @@ export const WEEKDAY_EN = [
 
 export const WEEKDAY_ID = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'] as const
 
-export interface NowFacts {
+interface NowFacts {
   /** Always `'Asia/Jakarta'`. Named in the payload so a reader can see which clock this is. */
   timeZone: typeof JAKARTA_TIME_ZONE
   /** `'2026-09-03'`. The day SHE emits into `lookup_runs` (RU-13), and the origin of every gap. */
@@ -175,7 +175,7 @@ export interface NinaProfile {
   restingHr: number | null
 }
 
-export interface RunnerFacts {
+interface RunnerFacts {
   /** `users.name` as the OAuth provider gave it, or null. */
   fullName: string | null
   /** The confirmed short form (R7 / RU-8). Null until she has asked — phase 5 fills it. */
@@ -220,7 +220,7 @@ export interface MemoryFactInput {
   createdAt: Date
 }
 
-export interface MemorySlotFact {
+interface MemorySlotFact {
   /** Phase 5 owns this vocabulary. She is handed the slots that exist; she never coins a key. */
   key: string
   value: string
@@ -229,7 +229,7 @@ export interface MemorySlotFact {
   daysAgo: number
 }
 
-export interface MemoryFact {
+interface MemoryFact {
   id: string
   text: string
   sourceMessageId: string | null
@@ -237,7 +237,7 @@ export interface MemoryFact {
   daysAgo: number
 }
 
-export interface MemoryFacts {
+interface MemoryFacts {
   /** The upserted standing facts that drive proactivity. */
   slots: MemorySlotFact[]
   /** The append-only ledger, **newest first**, that gives her colour. */
@@ -283,7 +283,7 @@ export interface ConversationTurn {
   imageDescriptions: string[]
 }
 
-export interface ConversationFacts {
+interface ConversationFacts {
   /**
    * **OLDEST FIRST** — reading order, so she reads the conversation forwards the way he did.
    * `[]` (never null) when they have never spoken; `CONTEXT_GUIDE` says what empty means so it
@@ -325,7 +325,7 @@ export interface NinaRunInput {
   flags: readonly Flag[]
 }
 
-export interface NinaFlagFact {
+interface NinaFlagFact {
   /** F06 owns the catalog. She is handed codes that fired; she never coins one. */
   code: string
   severity: 'info' | 'warn'
@@ -388,7 +388,7 @@ export interface StoredRecordInput {
  * for. A `null` `value` means no run has ever qualified — it is emphatically not 0 and never
  * `'—'`, which is a character for a screen and not a value she may quote.
  */
-export interface RecordFact {
+interface RecordFact {
   key: RecordKey
   /** `RECORD_LABELS[key]` — carries the qualifier, so "fastest 10 km+ run", never "10k PB". */
   label: string
@@ -406,7 +406,7 @@ export interface RecordFact {
  * Badges — all 22
  * ==========================================================================*/
 
-export interface HeldBadgeFact {
+interface HeldBadgeFact {
   key: BadgeKey
   title: string
   /** `BADGE_META[key].condition` — R-42: never a hand-written threshold. */
@@ -425,13 +425,13 @@ export interface HeldBadgeFact {
   earnedDaysOnRecord: number
 }
 
-export interface LockedBadgeFact {
+interface LockedBadgeFact {
   key: BadgeKey
   title: string
   condition: string
 }
 
-export interface BadgeFacts {
+interface BadgeFacts {
   /** Held keys, in catalog order. */
   held: HeldBadgeFact[]
   /** The keys he has never earned, in catalog order, with their condition so she can dare him. */
@@ -462,7 +462,7 @@ export interface BadgeFacts {
  * accepted and deliberate. `CONTEXT_GUIDE` instructs her not to comment on it, and this type
  * carries no field she could comment from: there is nothing here about a previous face.
  */
-export interface AvatarFacts {
+interface AvatarFacts {
   /** What the photograph shows, in prose. Null when nobody has described it. */
   description: string | null
   /** Jakarta day it became her photograph. Null for the committed seed. */
@@ -493,10 +493,9 @@ export interface AvatarInput {
  * and should not gain one — "5 runs" is a sentence the model writes, not a quantity with a unit
  * convention.
  */
-export type PatternUnit =
-  'clock' | 'bpm' | 'pace' | 'paceDelta' | 'percent' | 'metres' | 'count' | 'days'
+type PatternUnit = 'clock' | 'bpm' | 'pace' | 'paceDelta' | 'percent' | 'metres' | 'count' | 'days'
 
-export const PATTERN_VALUE_FORMAT: Record<PatternUnit, (value: number) => string> = {
+const PATTERN_VALUE_FORMAT: Record<PatternUnit, (value: number) => string> = {
   clock: (v) => formatClockSec(v),
   bpm: (v) => formatBpm(v),
   pace: (v) => formatPace(v, true),
@@ -536,7 +535,7 @@ export interface NagState {
   lastMentionedOn: DateISO | null
 }
 
-export interface PatternFact {
+interface PatternFact {
   code: string
   severity: 'info' | 'warn'
   /** Spelled through `PATTERN_VALUE_FORMAT`. */

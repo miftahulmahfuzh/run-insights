@@ -30,9 +30,9 @@ import {
 } from './context'
 
 /** Matches `LOOKUP_RUNS_TOOL.input_schema.properties.dates.maxItems`. Kept in sync by hand. */
-export const MAX_LOOKUP_DATES = 5
+const MAX_LOOKUP_DATES = 5
 
-export interface DateInvalid {
+interface DateInvalid {
   kind: 'invalid'
   /** Echoed back verbatim so the tool result can name what she actually sent. */
   input: string
@@ -40,7 +40,7 @@ export interface DateInvalid {
   reason: string
 }
 
-export interface DateFuture {
+interface DateFuture {
   kind: 'future'
   dateISO: DateISO
   dayLabel: string
@@ -48,7 +48,7 @@ export interface DateFuture {
   daysAhead: number
 }
 
-export interface DateAbsence {
+interface DateAbsence {
   kind: 'no_run'
   dateISO: DateISO
   /** `'Tue, 1 Sep 2026'` — `formatDay`, the spelling every screen uses. */
@@ -104,7 +104,7 @@ export function isRealCalendarDate(value: unknown): value is DateISO {
 }
 
 /** `null` rather than a throw: every caller here is answering a model, not a programmer. */
-export function parseCalendarDate(value: unknown): DateISO | null {
+function parseCalendarDate(value: unknown): DateISO | null {
   return isRealCalendarDate(value) ? value : null
 }
 

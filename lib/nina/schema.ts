@@ -34,7 +34,7 @@ export const MAX_BUBBLES = 4
 export const MAX_BUBBLE_CHARS = 700
 
 /** `SEND_TOOL`'s `maxItems`, enforced. Six facts from one turn is already a lot of revelation. */
-export const MAX_MEMORY_WRITES = 6
+const MAX_MEMORY_WRITES = 6
 
 /**
  * The runner's own message cap, checked in `lib/nina/actions.ts` before anything is persisted.
@@ -43,7 +43,7 @@ export const MAX_MEMORY_WRITES = 6
  */
 export const MAX_RUNNER_MESSAGE_CHARS = 4000
 
-export const NinaMemoryWriteSchema = z.object({
+const NinaMemoryWriteSchema = z.object({
   kind: z.enum(['slot', 'fact']),
   /**
    * Phase 5 owns the vocabulary (ruling b). Until it lands, any non-empty key is accepted and
@@ -93,10 +93,6 @@ export const CompareRunsArgsSchema = z.object({
 })
 
 export const SaveMemoryArgsSchema = NinaMemoryWriteSchema
-
-export type LookupRunsArgs = z.infer<typeof LookupRunsArgsSchema>
-export type CompareRunsArgs = z.infer<typeof CompareRunsArgsSchema>
-export type SaveMemoryArgs = z.infer<typeof SaveMemoryArgsSchema>
 
 /**
  * The issue list that goes into the repair turn. Byte-for-byte the same helper as

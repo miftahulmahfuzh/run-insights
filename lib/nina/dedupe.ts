@@ -51,7 +51,7 @@ import type { NinaExistingPhoto } from './attach'
  * a compile error at the one place that bridges them (`ninaUploadInsertRow`'s callers, which
  * hand rows to `insertNinaMessageImages`).
  */
-export type NinaDedupeImageKind = 'upload' | 'generated'
+type NinaDedupeImageKind = 'upload' | 'generated'
 
 /**
  * A claim's hash, as the server may trust it: a string whose SHA-256 hex form is exact, or null.
@@ -104,9 +104,6 @@ export interface NinaUploadClaim {
    */
   perceptual?: { dhashHex: string; sig16Base64: string } | null
 }
-
-/** A claim that is definitely carrying a hash — the only kind that can become a reference. */
-export type NinaHashedUploadClaim = NinaUploadClaim & { contentHash: string }
 
 /**
  * The row a reference points at: the fields `ninaUploadInsertRow` copies, and nothing else.

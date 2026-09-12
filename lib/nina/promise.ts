@@ -84,7 +84,7 @@ export function promiseRewardFor(steamy: number): NinaPromiseReward {
 }
 
 /** One reviewed run, reduced to what a condition can be about. */
-export interface PromiseRunFact {
+interface PromiseRunFact {
   /** Jakarta calendar day, `'YYYY-MM-DD'`. */
   occurredOn: DateISO
   /** `runs.distance_m`. Metres, as stored — the conversion to km happens once, below. */
@@ -151,7 +151,7 @@ export interface PromiseEvalInput {
  *   - `expire`  `status: 'expired'`. The deadline plus grace has passed unfulfilled, or the
  *               attempt ceiling is reached, or an open-ended promise has aged out.
  */
-export type PromiseVerdictKind = 'wait' | 'fire' | 'settle' | 'retry' | 'expire'
+type PromiseVerdictKind = 'wait' | 'fire' | 'settle' | 'retry' | 'expire'
 
 export interface PromiseVerdict {
   id: string

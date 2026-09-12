@@ -64,10 +64,10 @@ export const NINA_TOKEN_FLOOR_PER_IMAGE = 150
  * the correct direction: the degraded path asks him what the photo is, and the other direction
  * puts words in Nina's mouth about a picture she never received.
  */
-export const NINA_DESCRIBE_CHARS_PER_TOKEN = 3
+const NINA_DESCRIBE_CHARS_PER_TOKEN = 3
 
 /** 60-140 words plus slack. Not a target; the prompt sets the length. */
-export const NINA_DESCRIBE_MAX_TOKENS = 500
+const NINA_DESCRIBE_MAX_TOKENS = 500
 
 /**
  * MEASURED-DERIVED. F04 measured this vendor at ~26-33 ms per completion token with ~2-3 s of
@@ -78,7 +78,7 @@ export const NINA_DESCRIBE_MAX_TOKENS = 500
 export const NINA_DESCRIBE_TIMEOUT_MS = 25_000
 
 /** A ~200 KB GET from a CDN in the same region. If Blob is slower than this, describing is moot. */
-export const NINA_BLOB_FETCH_TIMEOUT_MS = 8_000
+const NINA_BLOB_FETCH_TIMEOUT_MS = 8_000
 
 /**
  * **The OpenRouter fallback's own ceiling, and it is NOT `NINA_DESCRIBE_TIMEOUT_MS`.**
@@ -119,7 +119,7 @@ export const NINA_DESCRIBE_FALLBACK_TIMEOUT_MS = 30_000
  * 60-140 word paragraph the prompt asks for, which is what stops a preamble from consuming the
  * budget and handing back an empty completion that the non-empty check would then reject.
  */
-export const NINA_DESCRIBE_FALLBACK_MAX_TOKENS = 900
+const NINA_DESCRIBE_FALLBACK_MAX_TOKENS = 900
 
 /**
  * The guard tripped: the response reported so little input that the image cannot have reached the
@@ -466,7 +466,7 @@ async function recordDescribeFailure(entry: {
  *  which is the honest value: no floor was applied, and the log line says so.
  * ════════════════════════════════════════════════════════════════════════════════════════════
  */
-export async function describeNinaImagesWithOpenRouter(
+async function describeNinaImagesWithOpenRouter(
   fetchImpl: FetchLike,
   images: readonly NinaDescribeImage[],
   opts: NinaDescribeOptions = {},

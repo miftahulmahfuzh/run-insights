@@ -63,7 +63,7 @@ import {
  * whole in the measured case.
  */
 export const NINA_TITLE_MAX_TOKENS = 600
-export const NINA_TITLE_TIMEOUT_MS = 12_000
+const NINA_TITLE_TIMEOUT_MS = 12_000
 
 /**
  * The injection seam, declared here rather than imported from `lib/llm/narrate.ts` —

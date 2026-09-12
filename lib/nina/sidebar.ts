@@ -56,7 +56,7 @@ export interface SidebarSession {
   dayLabel: string | null
 }
 
-export interface SidebarRow {
+interface SidebarRow {
   session: SidebarSession
   /** True for the one session open behind the panel. See D-9 for how that reads. */
   active: boolean

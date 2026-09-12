@@ -62,7 +62,7 @@ import {
  * The bilingual instruction is load-bearing, not decoration: the conversation is mixed Indonesian
  * and English, which is the same fact that ruled out `to_tsvector` for the text half.
  */
-export const NINA_SEARCH_SYSTEM_PROMPT = `You rank search results over a private chat log between a runner ("HIM") and Nina, his running coach ("HER"). The log is a mix of Indonesian and English; treat both as the same language for the purpose of meaning.
+const NINA_SEARCH_SYSTEM_PROMPT = `You rank search results over a private chat log between a runner ("HIM") and Nina, his running coach ("HER"). The log is a mix of Indonesian and English; treat both as the same language for the purpose of meaning.
 
 You receive a QUERY and a numbered list of CANDIDATES, one per line, tab separated:
 
@@ -86,7 +86,7 @@ If nothing is genuinely relevant, reply {"ranked": []}.`
  * `@/lib/env` through the client, so the only honest way to test the parse and the failure paths is
  * to hand it a client.
  */
-export interface SemanticRankerClient {
+interface SemanticRankerClient {
   messages: {
     create(
       body: Anthropic.MessageCreateParamsNonStreaming,
@@ -123,7 +123,7 @@ function textOf(message: Anthropic.Message): string {
  * tool_choice · thinking` and nothing else — no `temperature`, no `cache_control`. It is
  * Anthropic-*compatible*, not Anthropic.
  */
-export async function rankNinaSearchHitsWith(
+async function rankNinaSearchHitsWith(
   client: SemanticRankerClient,
   model: string,
   input: { query: string; candidates: readonly NinaSearchCandidate[] },

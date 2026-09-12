@@ -101,7 +101,7 @@ export const SEMANTIC_RECENCY_WINDOW = 80
 export const SEMANTIC_SNIPPET_CHARS = 240
 
 /** Per-candidate session-title budget in the prompt. A title is 3-4 words (R3); 60 is generous. */
-export const SEMANTIC_TITLE_CHARS = 60
+const SEMANTIC_TITLE_CHARS = 60
 
 /**
  * The output is `{"ranked":[12,3,40]}` and nothing else, so 400 tokens is roomy.
@@ -127,8 +127,8 @@ export const SNIPPET_MAX_CHARS = 140
 /** A session-title hit outranks every message hit. Titles are the coarse answer; group them first. */
 export const SESSION_HIT_BONUS = 1_000
 /** The whole query present as a contiguous phrase beats the same words scattered. */
-export const PHRASE_HIT_BONUS = 100
-export const OCCURRENCE_WEIGHT = 2
+const PHRASE_HIT_BONUS = 100
+const OCCURRENCE_WEIGHT = 2
 /** Past three occurrences of one term, a fourth says nothing new about relevance. */
 export const OCCURRENCE_CAP = 3
 
@@ -253,7 +253,7 @@ export function snippetAround(
 }
 
 /** A title hit points at a session; a text hit points at one message inside one. */
-export type NinaSearchHitKind = 'session' | 'message'
+type NinaSearchHitKind = 'session' | 'message'
 
 /**
  * A row the search may return, as the pure layer wants it.
@@ -370,10 +370,7 @@ export function searchHitHref(hit: { sessionId: string; messageId: string | null
   })
 }
 
-export function toSearchHit(
-  candidate: NinaSearchCandidate,
-  terms: readonly string[],
-): NinaSearchHit {
+function toSearchHit(candidate: NinaSearchCandidate, terms: readonly string[]): NinaSearchHit {
   return {
     kind: candidate.kind,
     sessionId: candidate.sessionId,

@@ -167,8 +167,8 @@ export const NINA_IMAGE_DAILY_CAP = 30
  * her behaviour, whereas a mistyped `0` here would ban them silently. **200, not ∞**: the variable
  * is a MONEY number and a dropped digit should fail toward the modest side, not the ruinous one.
  */
-export const NINA_IMAGE_DAILY_CAP_MIN = 1
-export const NINA_IMAGE_DAILY_CAP_MAX = 200
+const NINA_IMAGE_DAILY_CAP_MIN = 1
+const NINA_IMAGE_DAILY_CAP_MAX = 200
 
 /**
  * **The daily cap, as the environment has it — the one reader.**
@@ -351,8 +351,6 @@ export const NINA_IMAGE_REFERENCE_MAX_BYTES = 8 * 1024 * 1024
  * Only `image/png` is VERIFIED on this endpoint (`tools/gen_badge_art.py:349`). See the header.
  */
 export const NINA_IMAGE_REFERENCE_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
-
-export type NinaImageReferenceContentType = (typeof NINA_IMAGE_REFERENCE_CONTENT_TYPES)[number]
 
 /**
  * **Which of the two in-platform ceilings this call gets.** One function so that neither host, nor

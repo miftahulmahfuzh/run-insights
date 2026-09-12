@@ -79,7 +79,7 @@ export function isPatternCode(value: unknown): value is PatternCode {
  * `runs: 5` is a little over a week at this app's ~17 runs a month: recent enough that he
  * remembers every run in it, long enough that one bad Tuesday cannot trip a pattern.
  */
-export const PATTERN_WINDOW = {
+const PATTERN_WINDOW = {
   /** How many of the most recent reviewed runs the two `REPEATED_*` codes look at. */
   runs: 5,
   /**
@@ -219,7 +219,7 @@ export interface PatternInput {
 export type FiredNinaPattern = FiredPattern
 
 /** A run's start, or null when it has none or the string is not a clock. */
-export function startSecOf(startedAt: string | null): number | null {
+function startSecOf(startedAt: string | null): number | null {
   if (startedAt == null) return null
   const sec = clockStringToSec(startedAt)
   return Number.isFinite(sec) ? sec : null

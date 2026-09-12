@@ -82,7 +82,7 @@ export function indexAttachments(rows: readonly RunAttachmentInput[]): Map<strin
  * that union without a widening of this one is then a compile error at the one call site that
  * bridges them, which is exactly where it should be.
  */
-export type NinaPhotoKind = 'avatar' | 'image'
+type NinaPhotoKind = 'avatar' | 'image'
 
 /** What the URL carries: a kind and an id, and nothing that could be a claim. */
 export interface NinaPhotoPointer {

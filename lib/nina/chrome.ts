@@ -77,7 +77,7 @@ export const CHROME_AUTOHIDE_MS = 5_000
  * `BOTTOM_GAP.chat` in `components/ui/AppShell.tsx`, which is the one other place the number
  * lives.
  */
-export const CHROME_CONTROL_PX = 32
+const CHROME_CONTROL_PX = 32
 
 /** Between the control's box and the composer's top edge. Enough to read as floating, not as chrome. */
 export const CHROME_CONTROL_GAP_PX = 8

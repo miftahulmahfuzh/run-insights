@@ -233,7 +233,7 @@ export async function dispatchNinaTool(
  * lookup_runs — ruling (d): splits live here
  * ==========================================================================*/
 
-export interface NinaSplitFact {
+interface NinaSplitFact {
   km: number
   /** `'04:32'` — `formatDuration`. */
   time: string
@@ -245,7 +245,7 @@ export interface NinaSplitFact {
   partial: boolean
 }
 
-export interface NinaZoneFact {
+interface NinaZoneFact {
   zone: 1 | 2 | 3 | 4 | 5
   duration: string
   /** `'34%'` — `formatPercent(pct, 0)`. Copied from F06's raw float, rounded once, here. */
@@ -253,7 +253,7 @@ export interface NinaZoneFact {
 }
 
 /** Phase 2's run fact, plus the detail that only a tool call is worth paying for. */
-export interface NinaLookupRunFact extends NinaRunFact {
+interface NinaLookupRunFact extends NinaRunFact {
   splits: NinaSplitFact[]
   fastestKm: { km: number; pace: string } | null
   slowestKm: { km: number; pace: string } | null
@@ -265,7 +265,7 @@ export interface NinaLookupRunFact extends NinaRunFact {
  * `kind` as a clause addressed to her, so an absence cannot be read as a run with no numbers —
  * which is R15's actual requirement and the reason this tool does not simply return an array.
  */
-export type LookupDay =
+type LookupDay =
   | { kind: 'invalid'; input: string; situation: string }
   | { kind: 'future'; dateISO: DateISO; dayLabel: string; daysAhead: number; situation: string }
   | {
@@ -289,7 +289,7 @@ export type LookupDay =
       situation: string
     }
 
-export interface LookupRunsAnswer {
+interface LookupRunsAnswer {
   /** Repeated so the answer is self-contained if she re-reads it three turns later. */
   todayISO: DateISO
   days: LookupDay[]
@@ -427,7 +427,7 @@ export async function handleLookupRuns(
  * save_memory — ruling (b)'s explicit path
  * ==========================================================================*/
 
-export interface SaveMemoryAnswer {
+interface SaveMemoryAnswer {
   saved: true
   kind: 'slot' | 'fact'
   /** Echoed so her reply can quote the write, which is the only reason this tool exists. */
@@ -480,7 +480,7 @@ export async function handleSaveMemory(
  * ==========================================================================*/
 
 /** B relative to A. `'unknown'` when either side has no value — never conflated with `'same'`. */
-export type DeltaDirection = 'up' | 'down' | 'same' | 'unknown'
+type DeltaDirection = 'up' | 'down' | 'same' | 'unknown'
 
 export interface RunDelta {
   /** Stable machine key, so a later phase can pick one delta out without string matching a label. */
@@ -697,7 +697,7 @@ export function compareRunFacts(a: NinaDetailedRunInput, b: NinaDetailedRunInput
   })
 }
 
-export interface CompareSide {
+interface CompareSide {
   dateISO: DateISO
   dayLabel: string
   weekdayId: string
@@ -710,7 +710,7 @@ export interface CompareSide {
   note: string | null
 }
 
-export interface CompareRunsAnswer {
+interface CompareRunsAnswer {
   kind: 'comparison'
   todayISO: DateISO
   a: CompareSide
@@ -721,7 +721,7 @@ export interface CompareRunsAnswer {
 }
 
 /** Every answer `compare_runs` can give. Union, so no branch can return "nothing". */
-export type CompareRunsResult =
+type CompareRunsResult =
   | CompareRunsAnswer
   | DateAmbiguous
   | { kind: 'invalid'; input: string; situation: string }

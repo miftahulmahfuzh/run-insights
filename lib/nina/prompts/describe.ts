@@ -65,7 +65,7 @@ HOW TO WRITE IT:
 export const NINA_DESCRIBE_REQUEST_TEXT = `Describe this photo.`
 
 /** The plural variant, for when a batched call is ever added. See `vision.ts`'s image-count note. */
-export const NINA_DESCRIBE_REQUEST_TEXT_MANY = `Describe these photos, one paragraph each, in the order they are given, separated by a blank line.`
+const NINA_DESCRIBE_REQUEST_TEXT_MANY = `Describe these photos, one paragraph each, in the order they are given, separated by a blank line.`
 
 /**
  * What rides on `NinaTurnInput.imageDescriptions` when the describe call FAILED and the runner
