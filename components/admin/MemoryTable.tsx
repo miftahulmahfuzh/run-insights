@@ -60,6 +60,12 @@ import { cn } from '@/lib/cn'
  * imports only `lib/admin/memoryModel.ts` — which has zero value imports. `AdminFactCategory` is
  * derived from `ADMIN_FACT_CATEGORIES` rather than imported from the drizzle schema for exactly
  * that reason, and `tests/admin.memory.test.ts` asserts the module names neither.
+ *
+ * ── THE RESULT LINES ARE LIVE REGIONS ──────────────────────────────────────────────────────
+ * A cell saves on BLUR, which is also the moment focus LEAVES it — so the sentence a refused
+ * save renders under that cell appears after a screen-reader operator has already tabbed away,
+ * and would never be heard. `role="alert"` on the refusal and `role="status"` on the note make
+ * both arrive without a hunt; `ShortcutTable.tsx` carries the same paragraph for its own cells.
  */
 
 /** The row id under which the add row's result is stored. Not a `MemoryRow`; it has no target yet. */
@@ -457,10 +463,14 @@ function Row({
           <p className="mt-1 px-2 text-[11px] font-medium text-ink-3">{row.hint}</p>
         )}
         {result?.ok === false && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-red">{result.error}</p>
+          <p role="alert" className="mt-1 px-2 text-[11px] font-semibold text-red">
+            {result.error}
+          </p>
         )}
         {result?.ok === true && result.note !== undefined && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
+          <p role="status" className="mt-1 px-2 text-[11px] font-semibold text-accent">
+            {result.note}
+          </p>
         )}
       </td>
 
@@ -578,10 +588,14 @@ function AddRow({
           }}
         />
         {result?.ok === false && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-red">{result.error}</p>
+          <p role="alert" className="mt-1 px-2 text-[11px] font-semibold text-red">
+            {result.error}
+          </p>
         )}
         {result?.ok === true && result.note !== undefined && (
-          <p className="mt-1 px-2 text-[11px] font-semibold text-accent">{result.note}</p>
+          <p role="status" className="mt-1 px-2 text-[11px] font-semibold text-accent">
+            {result.note}
+          </p>
         )}
       </td>
 

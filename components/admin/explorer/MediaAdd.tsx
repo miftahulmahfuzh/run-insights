@@ -98,7 +98,7 @@ export function MediaAdd({ userId }: { userId: string }) {
       />
 
       {errors.length > 0 && (
-        <ul className="text-[12px] font-medium text-red">
+        <ul role="alert" className="text-[12px] font-medium text-red">
           {errors.map((message) => (
             <li key={message}>{message}</li>
           ))}

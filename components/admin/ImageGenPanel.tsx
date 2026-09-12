@@ -779,7 +779,11 @@ export function ImageGenPanel({
             placeholder can never be saved broken — rewrite any sentence, delete any line, add your
             own; it saves when you leave the field.
           </p>
+          {/* The one control here a wrapping `<label>` cannot name — it sits beside an `<h3>`,
+           * which labels nothing — so it names itself, the way the table cells
+           * (`MemoryTable.tsx`) do. */}
           <textarea
+            aria-label="Prompt template"
             className={cn(
               CONTROL_CLASS,
               'min-h-[220px] resize-y py-2 font-mono text-[12px] leading-snug',
@@ -859,7 +863,9 @@ export function ImageGenPanel({
          * needs to act on.
          */}
         {result?.ok === false && (
-          <p className="mb-3 text-[12px] font-semibold text-red">{result.error}</p>
+          <p role="alert" className="mb-3 text-[12px] font-semibold text-red">
+            {result.error}
+          </p>
         )}
       </div>
     </section>

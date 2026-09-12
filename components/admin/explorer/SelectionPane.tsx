@@ -381,7 +381,7 @@ function AlbumSelectionPane({
         </Button>
 
         {saver.notice !== null && (
-          <p className="basis-full text-[12px] font-medium text-ink-3">
+          <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
             {SAVE_NOTICE_TEXT[saver.notice]}
           </p>
         )}

@@ -202,7 +202,11 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
         </p>
       )}
 
-      {error !== null && <p className="mb-3 text-[12px] font-semibold text-red">{error}</p>}
+      {error !== null && (
+        <p role="alert" className="mb-3 text-[12px] font-semibold text-red">
+          {error}
+        </p>
+      )}
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Button disabled={busy || capped || open} loading={busy} onClick={() => void onTest()}>
@@ -223,7 +227,12 @@ export function ImageGenTestPanel({ dirty = false }: { dirty?: boolean }) {
        * only lines a comment scanner recognises, which `app/admin/personality/page.tsx` records.
        */}
       <div className="mb-6 rounded-card bg-paper-2 p-4">
-        <h3 className="text-[13px] font-semibold text-ink">
+        {/* The verdict is the panel's whole output and lands minutes after the click, so it is
+         * the one line here that must announce itself (`aria-live="polite"`). It rides the H3
+         * alone and not the block around it: the job line under this heading changes on EVERY
+         * poll (attempt count, latency), and a live region around that would read each poll
+         * out loud every few seconds. */}
+        <h3 aria-live="polite" className="text-[13px] font-semibold text-ink">
           {NINA_IMAGE_TEST_VERDICT_LINE[verdict]}
         </h3>
         <p className="mt-1 max-w-[70ch] text-[11px] font-medium text-ink-3">

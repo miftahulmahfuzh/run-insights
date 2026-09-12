@@ -137,8 +137,18 @@ export function MediaControls({
         onChange={(event) => void onPick(event)}
       />
 
-      {error !== null && <p className="basis-full text-[12px] font-medium text-red">{error}</p>}
-      {note !== null && <p className="basis-full text-[12px] font-medium text-ink-3">{note}</p>}
+      {/* Both lines answer an awaited write, so both are live regions — the pane's own error
+       * already carried `role="alert"`; the note and this refusal now match it. */}
+      {error !== null && (
+        <p role="alert" className="basis-full text-[12px] font-medium text-red">
+          {error}
+        </p>
+      )}
+      {note !== null && (
+        <p role="status" className="basis-full text-[12px] font-medium text-ink-3">
+          {note}
+        </p>
+      )}
     </>
   )
 }

@@ -155,6 +155,9 @@ export function DialSlider({
           {unsaved && (
             <span className="mr-1 text-accent" title="Unsaved">
               &bull;
+              {/* The dot is colour plus a hover tooltip, and neither reaches a screen reader
+               * inside the `<output>` — the word does. */}
+              <span className="sr-only">unsaved</span>
             </span>
           )}
           {value}

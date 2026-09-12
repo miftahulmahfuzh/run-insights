@@ -220,8 +220,18 @@ export function PhotoDescription({
         <p className="mt-1.5 text-[12px] leading-relaxed font-medium text-ink-3">{emptyNote}</p>
       )}
 
-      {error !== null && <p className="mt-1.5 text-[12px] font-medium text-red">{error}</p>}
-      {note !== null && <p className="mt-1.5 text-[12px] font-medium text-ink-3">{note}</p>}
+      {/* Both lines answer an awaited write, so both are live regions — the action resolved
+       * after focus already moved on (`MemoryTable`'s result-line rule). */}
+      {error !== null && (
+        <p role="alert" className="mt-1.5 text-[12px] font-medium text-red">
+          {error}
+        </p>
+      )}
+      {note !== null && (
+        <p role="status" className="mt-1.5 text-[12px] font-medium text-ink-3">
+          {note}
+        </p>
+      )}
     </section>
   )
 }
