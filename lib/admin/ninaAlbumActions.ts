@@ -632,7 +632,7 @@ interface AdminManifestResult extends AdminActionResult {
  * bookkeeping batches, and `NINA_ADMIN_BATCH_MAX` is where that line is drawn.
  *
  * ── WHY NOT `insertNinaAvatarAsCurrent`, THE ONE INSERT THAT EXISTED ────────────────────────
- * Because it un-currents and re-currents on EVERY insert (`lib/nina/queries.ts:955`), and it has
+ * Because it un-currents and re-currents on EVERY insert (`lib/nina/queries/avatars.ts`), and it has
  * to: `nina_avatars_user_current_unq` is a partial unique index on `(user_id) WHERE is_current`, so
  * the statement order is load-bearing. Three hundred calls would rewrite the current row three
  * hundred times, re-arm `announced_at` three hundred times, and make her comment on a face nobody

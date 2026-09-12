@@ -559,7 +559,7 @@ export function isOriginalPhoto(): SQL | undefined {
  */
 export function generatedChatPhotoScope(userId: string) {
   /* The outer parentheses are load-bearing and hand-written, for `removeNinaSession`'s measured
-   * reason (:1025-1030): `notExists()` emits `not exists ` followed by its argument's chunks
+   * reason (`queries/sessions.ts`): `notExists()` emits `not exists ` followed by its argument's chunks
    * verbatim — it only LOOKS like it brackets them, because a subquery BUILDER serialises itself
    * with brackets. A raw `sql` template does not, and without the pair below the generated
    * statement is `... and not exists select 1 from ...`, which Postgres rejects. */
@@ -582,7 +582,7 @@ export function generatedChatPhotoScope(userId: string) {
  * How many photographs the collection holds, as a number rather than as a list of rows.
  *
  * One caller needs the integer and nothing else: `listNinaPhotoReferences`, whose picker total is
- * the album count plus this one — the mistake `countNinaAvatars` (:2336) was written to undo, not
+ * the album count plus this one — the mistake `countNinaAvatars` (`queries/avatars.ts`) was written to undo, not
  * repeated here. (The `/admin` hub card and the `/admin/photos` page that used to read it are gone
  * with the surface merge; the Media view counts with its own all-kinds read.)
  *

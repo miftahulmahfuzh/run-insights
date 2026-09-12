@@ -194,8 +194,8 @@ export async function getNinaMessageWindow(
  * `sendNinaMessage`'s INPUT is `string | null`, because "he has no sessions yet" is a real state a
  * client can be in; by the time a row reaches this function that has been resolved to an id.
  *
- * ── AND IT IS THE SECOND PLACE IN THIS FILE THAT VALIDATES AN FK BY HAND ────────────────────
- * `insertNinaMessageImages` was the first, for the same reason: the foreign key proves the session
+ * ── AND IT IS THE SECOND PLACE IN THE LAYER THAT VALIDATES AN FK BY HAND ────────────────────
+ * `insertNinaMessageImages` (`queries/images.ts`) was the first, for the same reason: the foreign key proves the session
  * EXISTS, and a session id that exists but is someone else's is exactly what invariant 3 is about. A
  * write that trusted it would file his message into a stranger's conversation, where a cascade could
  * later delete it. So an unowned session returns `[]`, the convention that function set — and

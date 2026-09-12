@@ -173,19 +173,19 @@ export async function writeNinaImagePrefs(
  * `ninaPhotoRefBounds` clamps `limit` to `NINA_PHOTO_REF_PAGE_SIZE` (both default and CEILING, so a
  * hand-edited request cannot widen it) and caps the reachable depth at `NINA_PHOTO_REF_SCAN_MAX`,
  * which is also the per-side `LIMIT`. An unbounded read over *"hundreds of profile pics"* is the
- * mistake `countNinaAvatars` exists to undo, and `listNinaAvatars` (:2314) is that unbounded read —
+ * mistake `countNinaAvatars` exists to undo, and `listNinaAvatars` (`queries/avatars.ts`) is that unbounded read —
  * it is deliberately NOT reused here.
  *
  * ── FOUR STATEMENTS, RUN CONCURRENTLY ────────────────────────────────────────────────────────
  * Two pages and two counts, in one `Promise.all`. The counts are their own statements rather than
  * `count(*) OVER ()` windows for `listNinaChatPhotos`'s reason: a window reports `total: 0` for an
  * over-shot page, which the picker has to tell apart from an empty collection. The chat count is
- * literally `countNinaChatPhotos` (:1713) rather than a second copy of its predicate.
+ * literally `countNinaChatPhotos` (`queries/images.ts`) rather than a second copy of its predicate.
  *
  * ── WHICH ROWS, AND WHICH INDEX ──────────────────────────────────────────────────────────────
  * The album side is EVERY folder — *"all photos in Nina's album"* — so there is no `folder`
  * predicate and it reads `nina_avatars_user_created_idx on (user_id, created_at desc)`, which is
- * exactly this shape. The chat side is `generatedChatPhotoScope` (:1649), i.e. `kind = 'generated'`
+ * exactly this shape. The chat side is `generatedChatPhotoScope` (`queries/images.ts`), i.e. `kind = 'generated'`
  * only: HIS uploads share that table and are not photographs of her. `kind` stays a residual
  * predicate over `nina_message_images_user_created_idx` for the reason that function's docstring
  * gives, and **no index is added** — nothing has measured a need for one.
@@ -206,11 +206,11 @@ export async function writeNinaImagePrefs(
  * screen.
  *
  * It does not, and the reason is structural rather than lucky: `generatedChatPhotoScope`
- * (`lib/nina/queries.ts:1649-1655`) is `and(eq(userId), eq(kind, 'generated'), isOriginalPhoto())`,
- * and `isOriginalPhoto()` (`:1616-1618`) is
- * `and(isNull(sourceAvatarId), isNull(sourceImageId))`. `countNinaChatPhotos` (:1713) shares that
+ * (`queries/images.ts`) is `and(eq(userId), eq(kind, 'generated'), isOriginalPhoto())`,
+ * and `isOriginalPhoto()` (`queries/images.ts`) is
+ * `and(isNull(sourceAvatarId), isNull(sourceImageId))`. `countNinaChatPhotos` (`queries/images.ts`) shares that
  * same private scope, so the page and the `total` cannot disagree — which is the argument that
- * function's own docstring makes at `:1642-1647`.
+ * function's own docstring makes in `queries/images.ts`.
  *
  * **DO NOT INLINE THE PREDICATE.** Replacing `generatedChatPhotoScope(userId)` with a hand-written
  * `and(eq(ninaMessageImages.userId, userId), eq(ninaMessageImages.kind, 'generated'))` — the

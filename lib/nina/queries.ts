@@ -1,5 +1,26 @@
 /**
- * Every Nina read and write, in one module — `lib/db/queries.ts` for `lib/nina/`.
+ * Every Nina read and write, in one layer — `lib/db/queries.ts` for `lib/nina/`.
+ *
+ * ## Where each domain lives (the 2026-09-12 split into `lib/nina/queries/`)
+ *
+ * The layer is `lib/nina/queries/*.ts`, one module per domain; THIS file is the public barrel —
+ * one `export * from './queries/<module>'` line per module below, zero imports, no SQL of its
+ * own. `queries/columns.ts` (the four shared column lists) is module-internal and deliberately
+ * NOT re-exported. The § numbers below are the pre-split section banners, which persist inside
+ * each module: a `§4b` title inside `messages.ts` is by design, not staleness.
+ *
+ *   queries/shapes.ts      §1               the DTO types — ruling A1 lives here
+ *   queries/sessions.ts    §3 + §4a         identity and the sessions
+ *   queries/messages.ts    §4b + §4c        the messages and their mutation
+ *   queries/images.ts      §5, §5a-2, §5b   images, the media view, the admin photo writes
+ *   queries/memory.ts      §6               memory slots and the facts ledger
+ *   queries/shortcuts.ts   §6b              the trigger → expansion registry
+ *   queries/nags.ts        §7               the escalation ledger
+ *   queries/turns.ts       §8               the turn audit trail
+ *   queries/avatars.ts     §9 + §9b         her album and its file-manager reads
+ *   queries/tuning.ts      §10              character tuning
+ *   queries/imageprefs.ts  §10b             image-gen prefs + photo references
+ *   queries/jobphotos.ts   §11 + §12        the job → photograph link
  *
  * ## The two invariants it inherits
  *

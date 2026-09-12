@@ -46,7 +46,7 @@ export interface NinaIdentity {
  *   1. `lib/db/schema.ts` — the COLUMNS: `text`, `sent_at` (`ninaMessages.text`,
  *      `ninaMessages.sentAt`). Phase 2's spelling, and a column name is forever.
  *   2. THIS FILE — the data-access DTO: **`body`** and **`createdAt`**, uniformly, in EVERY
- *      function, because every function selects `messageColumns` (§2) and that is where the alias
+ *      function, because every function selects `messageColumns` (`queries/columns.ts`) and that is where the alias
  *      is written. There is no function in this module that returns `text`/`sentAt`.
  *   3. `lib/nina/context.ts` (phase 2) — the prompt-layer input `MessageInput`: `text`, `sentAt`.
  *

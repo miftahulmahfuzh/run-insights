@@ -46,7 +46,9 @@ modules into `'use client'` components.
   under a photograph of hers from what is actually in it.
 - **Chat UI logic** — the pure, node-testable decisions the chat screen makes (grouping, reveal
   timing, idempotent appends, scroll, gestures, chrome geometry), kept out of the components.
-- **Persistence** — `queries.ts` is the single home for every `nina_*` table access — except the
+- **Persistence** — the `queries/` directory is the single home for every `nina_*` table access
+  — 12 domain modules + a module-internal `columns.ts` behind the `queries.ts` barrel (one
+  `export *` per module, zero imports; 12 + columns + barrel, measured 2026-09-12) — except the
   failure log, whose write and read sides live in `errorlogs.ts`, because that file's stated
   contract is ownership-scoped reads (every row belongs to a runner, so `userId` leads) and this
   log's one list read is an operator's diagnostic scoped by category with no per-user filter.
@@ -69,7 +71,7 @@ modules into `'use client'` components.
    `proactive.ts` go through `ninaTraitScore` / `ninaDialScore` / `ninaActiveRelationship`
    (`tuning.ts`) — a direct read of `tuning.traits`/`dials`/`relationship` compiles and produces
    a checkbox the operator can clear with no effect, so `tests/nina.prompts.test.ts` reads the
-   sources and fails on one. The store is the exception: `tuningToColumns` (`queries.ts`) keeps
+   sources and fails on one. The store is the exception: `tuningToColumns` (`queries/tuning.ts`) keeps
    the value the operator PARKED, not the value the prompt uses.
 4. **A `nina_turns` row is money and audit.** Never `DELETE` one; the trash icon writes
    `deleted_at` (a flag, not a cancel, not a refund — see Images). `countNinaTurnsSince`, the
@@ -446,7 +448,7 @@ Avatar is out of scope in both hosts. The sweep's `scripts/nina-dedupe-plan.mjs`
 in raw SQL with `REQUIRED_COLUMNS` naming every column it touches — drift takes the workflow red.
 
 **The reference picker's chat side skips a photograph her album already adopted** (since
-2026-09-12, P1-NIN-A039). `generatedChatPhotoScope` (`queries.ts`) is the one definition of "her
+2026-09-12, P1-NIN-A039). `generatedChatPhotoScope` (`queries/images.ts`) is the one definition of "her
 chat photographs" — `userId`, `kind = 'generated'`, `isOriginalPhoto()` — plus a fourth arm: a
 correlated `NOT EXISTS` against `nina_avatars` on
 `source_key = 'chat-photo:' || nina_message_images.id`, `user_id` bound INSIDE the subquery (an
@@ -551,7 +553,7 @@ files.
 
 ## Memory, promises, patterns, proactive
 
-- **Deleting a session takes what it taught her.** `removeNinaSession` (`queries.ts`) purges the
+- **Deleting a session takes what it taught her.** `removeNinaSession` (`queries/sessions.ts`) purges the
   session's `nina_memory_facts`, `nina_memory_slots` and `pending_promises` entries in the SAME
   transaction (five statements over one snapshot), because `loadNinaContext` reads the whole
   relationship's ledger — the one channel a deleted conversation could still reach her through.
@@ -587,10 +589,12 @@ files.
 | Provider constants | `openrouter.ts` (zero imports; the ONE home of `OPENROUTER_CHAT_URL` + `NINA_FALLBACK_TEXT_MODEL` — the vision fallback and the text-chat fallback client both read it) |
 | Album/attachments | `album.ts`(T), `albumActions.ts`, `attach.ts`(T) |
 | Chat UI logic | `chatview.ts`(T), `reply.ts`(T), `reveal.ts`(T), `scroll.ts`(T), `live.ts`(T), `edit.ts`(T), `chrome.ts`(T) |
-| Persistence | `queries.ts` (every `nina_*` access; `tuningFromRow`/`tuningToColumns` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
+| Persistence | `queries/` — 12 domain modules + module-internal `columns.ts` behind the `queries.ts` barrel (`export *` per module, zero imports; every `nina_*` access; `tuningFromRow`/`tuningToColumns` in `queries/tuning.ts` are the one place the flat row and the nested model meet), `errorlogs.ts` (`nina_error_logs` write/read — the deliberate unscoped exception, server-side db-touching; its writers are `vision.ts`'s fallback orchestrator, category `multimodal`, `imagerun.ts`'s `recordImageCallFailure`, category `image_generation`, and `llmFallbackText.ts`'s `ninaFallbackTextClient`, category `text` — all three 2026-09-12) |
 
 \* server-only, not Server Actions. (T) = colocated `*.test.ts` (28 of them, all over the pure
-modules; integration lives in 51 `tests/nina.*.test.ts` files, both counted 2026-09-12).
+modules; integration lives in 51 `tests/nina.*.test.ts` files; 28 + 51 re-counted 2026-09-12
+after the queries split — unchanged. `lib/nina/queries.test.ts` also sits at this level but is
+not a (T): it is the barrel contract test, not a pure module's suite.
 
 ## Dataflow
 
@@ -689,7 +693,7 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   fixture suffix — a 3-symbol one hid a shipped-broken feature behind a green suite.
 - **The five `PERCEPTUAL_*` gates move in TWO files or not at all.**
 - **Do not merge the three dedup decision modules**, and never grow `planNinaImageWrite` into
-  `queries.ts` — the worker would lose its one shared decision.
+  the query layer (`lib/nina/queries/`) — the worker would lose its one shared decision.
 - **A NULL `content_hash` on a reference row is expected**, not drift; fill it by hand and you
   have written a claim nobody made.
 - **`bumpNinaShortcutUses` is telemetry** — `.catch()` it. **`matchNinaShortcuts` runs once per
@@ -745,9 +749,16 @@ and picks what she says — a failure is a message from Nina, never a stack trac
 
 ## Tests
 
-28 colocated suites over the pure modules; 51 repo-level `tests/nina.*.test.ts` (counted
-2026-09-12; phase 4 added `nina.imagelog.test.ts`, phase 2 `nina.llmFallbackText.test.ts`). The
-guards that can actually catch a regression, by mechanism:
+28 colocated suites over the pure modules; 51 repo-level `tests/nina.*.test.ts` (re-counted
+2026-09-12 after the queries split — unchanged; phase 4 added `nina.imagelog.test.ts`, phase 2
+`nina.llmFallbackText.test.ts`; plus the barrel contract test `lib/nina/queries.test.ts`, which
+freezes the barrel's 85 runtime value exports and is not a (T): the barrel is not a pure
+module). The guards that can actually catch a regression, by mechanism:
+
+`tests/admin.memory.test.ts` asserts admin-memory isolation with a ONE-LEVEL
+`readdirSync('lib/nina')` walk: since 2026-09-12's queries split, `lib/nina/queries/` is a
+subdirectory outside its scan, so the guarantee over `lib/nina` files is enumerated, not
+recursive — a new module under `queries/` does not automatically join the walk.
 
 - **Source-reading tests** (read the file, strip nothing): `tests/nina.prompts.test.ts` fails if
   `persona.ts`/`prompts/system.ts`/`proactive.ts` name a raw tuning field;
