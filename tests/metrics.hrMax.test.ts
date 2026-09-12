@@ -14,7 +14,7 @@ import {
  * Roadmap §4.4: "No feature may compute HRmax any other way." Every %HRmax figure, every zone-
  * relative badge, every `VERY_HIGH_AVG_HR` flag and every narrative sentence about effort traces
  * back here. The failure mode is silent — a wrong denominator produces a plausible number, not an
- * error — so these nine cases are the only thing standing between D11 and a quietly dishonest app.
+ * error — so these six cases are the only thing standing between D11 and a quietly dishonest app.
  *
  * The dates are pinned rather than mocked at the global level so the Tanaka branch keeps giving 187
  * for the fixture runner in 2027 and beyond.
@@ -69,7 +69,7 @@ describe('resolveHrMax — the resolution order (roadmap §4.4)', () => {
     expect(fake.queries).toHaveLength(1)
   })
 
-  it('2. an observation that EXCEEDS the estimate wins, and names the run it came from', async () => {
+  it('2. an observation that EXCEEDS the estimate wins, and carries the day it came from', async () => {
     fake.enqueue(
       await profileRow({ maxHr: null, birthYear: FIXTURE_BIRTH_YEAR }),
       observedRow('run_fixture', OBSERVED, '2026-08-20'),
@@ -78,7 +78,6 @@ describe('resolveHrMax — the resolution order (roadmap §4.4)', () => {
     expect(await hrMax.resolveHrMax('u1')).toEqual({
       bpm: OBSERVED,
       source: 'observed',
-      observedRunId: 'run_fixture',
       observedOn: '2026-08-20',
     })
   })
@@ -142,14 +141,6 @@ describe('resolveHrMax — the query it emits', () => {
     await hrMax.resolveHrMax('u1')
     expect(fake.queries).toHaveLength(2)
   })
-
-  it('resolveHrMaxAsOf adds a cutoff and changes nothing else', async () => {
-    fake.enqueue(await profileRow({ maxHr: null, birthYear: FIXTURE_BIRTH_YEAR }), [])
-    await hrMax.resolveHrMaxAsOf('u1', '2026-08-19')
-
-    expect(fake.sqlAt(1)).toContain('"runs"."occurred_on" <= $')
-    expect(fake.queries[1]?.params).toContain('2026-08-19')
-  })
 })
 
 describe('tanakaEstimate', () => {
@@ -160,69 +151,5 @@ describe('tanakaEstimate', () => {
   it('rounds, so the estimate is always an integer bpm', () => {
     expect(hrMax.tanakaEstimate(1996, new Date('2027-08-20T00:00:00+07:00'))).toBe(186) // age 31
     expect(Number.isInteger(hrMax.tanakaEstimate(1999))).toBe(true)
-  })
-})
-
-describe('hrMaxTransitionAt — telling the runner when the denominator moved', () => {
-  /**
-   * Five statements, in a deterministic order: getRun, getPreviousReviewedRun, then two
-   * resolutions of two statements each. Sequential rather than a Promise.all precisely so this
-   * enqueue order is assertable without a database.
-   */
-  async function enqueueTransition(previousObserved: unknown[][], currentObserved: unknown[][]) {
-    const { runs, profiles } = await import('@/lib/db/schema')
-    const profile = [
-      tableRow(profiles, { userId: 'u1', maxHr: null, birthYear: FIXTURE_BIRTH_YEAR }),
-    ]
-    fake.enqueue(
-      [tableRow(runs, { id: 'run_fixture', userId: 'u1', occurredOn: '2026-08-20' })],
-      [tableRow(runs, { id: 'run_prev', userId: 'u1', occurredOn: '2026-08-18' })],
-      profile,
-      previousObserved,
-      profile,
-      currentObserved,
-    )
-  }
-
-  it('7. fires on the run where observed first overtakes estimated', async () => {
-    await enqueueTransition([], observedRow('run_fixture', OBSERVED, '2026-08-20'))
-
-    expect(await hrMax.hrMaxTransitionAt('u1', 'run_fixture')).toEqual({
-      from: { bpm: TANAKA, source: 'estimated' },
-      to: {
-        bpm: OBSERVED,
-        source: 'observed',
-        observedRunId: 'run_fixture',
-        observedOn: '2026-08-20',
-      },
-    })
-  })
-
-  it('8. stays quiet when nothing changed — the overwhelmingly common case', async () => {
-    await enqueueTransition([], [])
-    expect(await hrMax.hrMaxTransitionAt('u1', 'run_fixture')).toBeNull()
-  })
-
-  it('8b. stays quiet when the same observed value holds on both sides', async () => {
-    const rows = observedRow('run_earlier', OBSERVED, '2026-08-10')
-    await enqueueTransition(rows, rows)
-    expect(await hrMax.hrMaxTransitionAt('u1', 'run_fixture')).toBeNull()
-  })
-
-  it('9. returns null on the runner’s very first run — nothing to transition FROM', async () => {
-    const { runs } = await import('@/lib/db/schema')
-    fake.enqueue(
-      [tableRow(runs, { id: 'run_first', userId: 'u1', occurredOn: '2026-08-20' })],
-      [], // no predecessor
-    )
-
-    expect(await hrMax.hrMaxTransitionAt('u1', 'run_first')).toBeNull()
-    expect(fake.queries).toHaveLength(2) // and it stops there
-  })
-
-  it('returns null for a run that is not this user’s — the ownership predicate is in the query', async () => {
-    fake.enqueue([])
-    expect(await hrMax.hrMaxTransitionAt('u1', 'someone_elses_run')).toBeNull()
-    expect(fake.only().sql).toContain('"runs"."user_id" = $')
   })
 })

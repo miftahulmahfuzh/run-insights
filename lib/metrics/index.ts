@@ -8,13 +8,10 @@
  */
 
 export {
-  hrMaxTransitionAt,
   resolveHrMax,
-  resolveHrMaxAsOf,
   tanakaEstimate,
   type HrMax,
   type HrMaxSource,
-  type HrMaxTransition,
 } from './hrMax'
 
 export type {
