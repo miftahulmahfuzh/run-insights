@@ -64,8 +64,7 @@
 - **Branch:** `token-maxxing-2026-09-11-components-dead-code-a`
   (coordinator-assigned worker branch, base `41b297e`, main's tip at
   session start).
-- **Merge status:** on branch — the coordinator owns merging; this session
-  committed the work and this doc, and stopped.
+- **Merge status:** merged (commit `3155019`)
 - **Approx token burn:** high — thousands of exports enumerated and
   individually grep-verified, a bespoke verifier script written and
   debugged through four layers of false-signal filtering, two forensic

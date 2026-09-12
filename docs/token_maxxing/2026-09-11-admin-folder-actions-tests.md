@@ -39,8 +39,7 @@
     that would otherwise keep generating false-positive "untested package"
     menu items in future sessions.
 - **Branch:** `token-maxxing-2026-09-11` (reused, same as sessions 1 and 2).
-- **Merge status:** on branch — merging to main happens in a separate step,
-  not part of this session.
+- **Merge status:** merged (commit `b110d40`)
 - **Approx token burn:** medium-high — most of the burn went into the
   corrected survey (two false-positive candidates read and ruled out before
   finding the real one) and into tracing `folderOps.ts`'s planners closely

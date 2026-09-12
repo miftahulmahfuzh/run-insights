@@ -43,8 +43,7 @@
     F27 R3 min-count rule; the F<N+1> plan-number race history.
 - **Branch:** `token-maxxing-2026-09-11-fxx-architecture-doc` (worker
   branch; the coordinator's fan-out gave each worker its own).
-- **Merge status:** NOT merged — worker session; the coordinator owns the
-  merge to main (Worker Mode W4: report, never merge).
+- **Merge status:** merged (commit `571d248`)
 - **Approx token burn:** very high, deliberately — all 36 plan docs read in
   full (~19.2k lines), the current implementation surveyed across 672
   commits / 28 tables / 204 lib modules / 165 components / 192 test files,
@@ -202,6 +201,4 @@ would otherwise rediscover the hard way.
 `docs/architecture.md | 622 ++++++++++++++++++++` — 1 file changed, 622
 insertions.
 
-**Merge status:** on worker branch, NOT merged — coordinator
-`tokenmax-orch-2026-09-11` owns the merge to main (Worker Mode W4:
-report, never merge).
+**Merge status:** merged (commit `571d248`).

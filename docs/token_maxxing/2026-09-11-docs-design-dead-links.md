@@ -47,9 +47,7 @@
     in the directory — every remaining mention of the two filenames sits inside the
     retrieval-note framing that explains where they went.
 - **Branch:** `token-maxxing-2026-09-11-docs-design-dead-links`
-- **Merge status:** on branch — this was a coordinator-spawned **worker session**
-  (`tokenmax-docs-design-dead-links`, spawned by coordinator `tokenmax-orch-2026-09-11`);
-  the worker does NOT merge or push. The coordinator owns all merges.
+- **Merge status:** merged (commit `20d92f1`)
 - **Approx token burn:** modest — a docs-only worker session (two comment/pointer files, no
   test or build gates beyond prettier and a path-resolution sweep); a fraction of a full
   fanned-out build session. 🔥

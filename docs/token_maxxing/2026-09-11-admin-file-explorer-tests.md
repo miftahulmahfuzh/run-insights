@@ -60,8 +60,7 @@
     `npx vitest run` green across 199 test files; `npx tsc --noEmit` clean;
     `npx eslint` on the new files clean.
 - **Branch:** `token-maxxing-2026-09-11` (reused, same as sessions 1–4).
-- **Merge status:** on branch — merged to main as a separate step after this
-  doc was written (see Appendix for the merge commit once available).
+- **Merge status:** merged (commit `a1ab59f`)
 - **Approx token burn:** high — nine components traced against their
   props/collaborators before any test was written, 119 tests authored
   across 9 new files, two non-obvious debugging detours (an `importOriginal`

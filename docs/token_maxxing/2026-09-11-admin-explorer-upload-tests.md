@@ -100,8 +100,7 @@
 - **Branch:** `token-maxxing-2026-09-11-admin-explorer-upload-tests`
   (worker-named branch, per-worker for this coordinated set — unlike
   sessions 1–5, which shared `token-maxxing-2026-09-11`).
-- **Merge status:** on branch — landing is the **coordinator's** step, not
-  the worker's; the worker does not merge its own branch.
+- **Merge status:** merged (commit `2d60162`)
 - **Approx token burn:** high — 18 surfaces traced against their props,
   state machines, and collaborators before testing, 324 tests authored
   across 18 new files (4,271 lines), four mutation checks run to prove the

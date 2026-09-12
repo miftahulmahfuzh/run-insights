@@ -57,8 +57,7 @@
     reads are what separated the two.
 - **Branch:** `token-maxxing-2026-09-11-components-dead-code-b`
   (worker-named branch, per-worker for this coordinated set).
-- **Merge status:** on branch — landing is the **coordinator's** step, not
-  the worker's; the worker does not merge its own branch.
+- **Merge status:** merged (commit `74096a7`)
 - **Approx token burn:** moderate — the burn is in the reading, not the
   writing: 27 exported symbols each grepped repo-wide, every candidate file
   read in full to separate real callers from prose mentions, typegen + tsc +

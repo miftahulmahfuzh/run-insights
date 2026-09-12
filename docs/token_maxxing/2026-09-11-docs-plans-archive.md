@@ -44,8 +44,7 @@
     — currently reports ~48 pre-existing dirty files, proven inherited from the base commit
     `41b297e` (before any of this branch's commits). See Follow-ups.
 - **Branch:** `token-maxxing-2026-09-11-docs-plans-archive` (base `41b297e`)
-- **Merge status:** on branch — worker session; the coordinator commits/lands it. Not merged
-  or pushed by this session.
+- **Merge status:** merged (commit `a210552`)
 - **Approx token burn:** moderate — no multi-thousand-line plan reads this time (§13 had
   already read all 36 plans earlier the same day); the burn went into the exhaustive
   reference inventory (grepping the whole tree for every form of plan-path string, twice,
