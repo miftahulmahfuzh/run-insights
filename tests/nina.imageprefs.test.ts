@@ -550,6 +550,28 @@ describe("the picker's union cannot contain the same photograph twice (plan inva
     expect(body).not.toMatch(/ninaMessageImages\.kind/)
     expect(body).toContain('countNinaChatPhotos(userId)')
   })
+
+  it('and the shared scope itself excludes a photograph already copied into her album', () => {
+    /* THE SAME INVARIANT, THE OTHER DIRECTION. `isOriginalPhoto()` catches album → chat (a chat
+     * row that POINTS at an album face). It cannot catch chat → album:
+     * `setChatPhotoAsAvatarAction` copies the bytes into a new `nina_avatars` row and leaves the
+     * chat row's provenance NULL, so the photograph came back as two tiles — which is what the
+     * user reported on 2026-09-12 ("the first 2 are duplicates").
+     *
+     * The fix is one more arm on `generatedChatPhotoScope`, and it must STAY there: a copy of it
+     * inside `listNinaPhotoReferences` would let `countNinaChatPhotos` disagree with the page it
+     * is the total for. Asserted as source text like the case above, because this file has no
+     * database harness — the generated-SQL proof is `tests/nina.photoRefs.test.ts`'s
+     * `ADOPTED_SKIPPED`. */
+    const source = readSource('lib/nina/queries.ts')
+    const fn = source.slice(source.indexOf('\nfunction generatedChatPhotoScope(userId: string) {'))
+    const body = fn.slice(0, fn.indexOf('\n}\n'))
+    expect(body).toContain('notExists(')
+    expect(body).toContain('ninaAvatars.sourceKey')
+    expect(body).toContain("'chat-photo:'")
+    /* And the F37 arm is still there — the new one is an ADDITION, not a swap. */
+    expect(body).toContain('isOriginalPhoto()')
+  })
 })
 
 describe('the editable prompt template (the 2026-09-10 ask, second revision)', () => {

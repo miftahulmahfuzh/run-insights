@@ -16,7 +16,13 @@ day for P1-NIN-A038 (phase 4): every failed image-generation CALL writes a `nina
 abort budget that actually applied (`timeoutMs`) — see Images. Restated a third time the same day
 for P1-NIN-A036 (phase 2): `llmFallbackText.ts` added — `productionDeps` now hands the turn a
 z.ai-first/OpenRouter-second client, one best-effort `nina_error_logs` row (category `text`) per
-failed CALL — see The chat turn.
+failed CALL — see The chat turn. Restated a fourth time the same day for P1-NIN-A039
+(photo-reference dedup): `generatedChatPhotoScope` gained a fourth arm — a correlated `NOT EXISTS`
+against `nina_avatars` on `source_key = 'chat-photo:' || nina_message_images.id` — so a chat
+photograph her album has adopted ("Set as her profile picture") is offered by the admin
+image-reference picker exactly once, as its album copy (four production tiles stopped being
+double-shown, measured 2026-09-12); the Media view and `/nina/about` are deliberately unchanged —
+see Images.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -438,6 +444,31 @@ survive). A deduped GENERATED row keeps its own description and prompt (`args.sc
 describes ITS bytes); a deduped admin ADD copies the keeper's (the `resolveAttachment` case).
 Avatar is out of scope in both hosts. The sweep's `scripts/nina-dedupe-plan.mjs` restates policy
 in raw SQL with `REQUIRED_COLUMNS` naming every column it touches — drift takes the workflow red.
+
+**The reference picker's chat side skips a photograph her album already adopted** (since
+2026-09-12, P1-NIN-A039). `generatedChatPhotoScope` (`queries.ts`) is the one definition of "her
+chat photographs" — `userId`, `kind = 'generated'`, `isOriginalPhoto()` — plus a fourth arm: a
+correlated `NOT EXISTS` against `nina_avatars` on
+`source_key = 'chat-photo:' || nina_message_images.id`, `user_id` bound INSIDE the subquery (an
+unscoped one would let another operator's album hide these photographs; the probe is index-backed
+via `nina_avatars_user_source_key_unq`). The arm exists because adoption COPIES:
+`setChatPhotoAsAvatarAction` (`lib/admin`) writes the only link there is onto the new album row,
+the chat row it copied from keeps both provenance columns NULL, and `isOriginalPhoto()` — which
+catches ALBUM → CHAT — cannot see CHAT → ALBUM, so the picker showed the photograph twice. All
+three readers of the scope change together: `listNinaPhotoReferences` (the picker's chat page),
+`countNinaChatPhotos` (its total) and `resolveNinaPhotoReference` (the stored selection — a saved
+chat id whose row has since been adopted resolves to nothing). **The album copy is the survivor**:
+it is the row the adoption made current and the one the picker can still offer after the chat row
+is deleted. Deliberately unchanged: `mediaCollectionScope` (the Media view) and
+`listNinaMessageImages` (`/nina/about`) must NOT grow the arm — an adopted chat row is still a real
+photograph in a real bubble, and the Media view is the operator's only Replace/Remove handle on it;
+un-adopted photographs are unaffected. Read-path only: no migration, no back-reference column
+("bytes copied, not shared" is the write side's own rule). The `'chat-photo:'` literal is spelled
+at the reader and the writer with no shared constant (a `'use server'` module may export only
+actions), held together by `tests/nina.photoRefs.test.ts` (the emitted `not exists` SQL, the
+writer's side, and the Media/about absence asserted as an absence) and
+`tests/nina.imageprefs.test.ts` (the scope's body must keep `notExists(` and the literal — the
+do-not-inline guard).
 
 **The perceptual twin gate** (`perceptual.ts`, zero imports): signatures (64-bit dHash +
 16×16 grayscale mean-abs from `perceptualSign.ts`) see through re-encodes that `content_hash`

@@ -11,6 +11,7 @@ import {
   isNull,
   max,
   ne,
+  notExists,
   or,
   sql,
   type SQL,
@@ -1962,6 +1963,14 @@ export async function findNinaSignedOriginals(userId: string): Promise<
  *                                 generated pair, sharing THIS predicate so a reference cannot
  *                                 sneak into one view while another hides it.
  *
+ * ONE DIRECTION ONLY, and the gap is by design rather than by omission: this reads columns on the
+ * CHAT row, so it catches a chat row pointing at an album face (album → chat) and cannot catch a
+ * chat photograph the album COPIED (chat → album), where the only link is `source_key` on the new
+ * `nina_avatars` row. That second direction is excluded one caller up, in
+ * `generatedChatPhotoScope` and nowhere else — see its docstring. Do not "complete" this predicate
+ * by adding the album lookup here: `mediaCollectionScope` and `/nina/about` read it too, and an
+ * adopted photograph must keep its tile in the Media view.
+ *
  * NOT filtered, and a future "consistency" cleanup that adds it here is a data-loss bug —
  * these are what makes a photograph RENDER and what Nina is given to look at (invariant 2):
  *   · `getNinaMessageImagesForMessages` → every bubble, and the delete log
@@ -2014,12 +2023,65 @@ function isOriginalPhoto(): SQL | undefined {
  * image-reference picker's — `listNinaPhotoReferences` (page side) and `countNinaChatPhotos` (its
  * total) and `resolveNinaPhotoReference` (the stored selection) — a picker grid that shows her
  * GENERATED photographs only, which is the one set this scope still names.
+ *
+ * ── AND NOT ONE THE ALBUM HAS ALREADY ADOPTED. THIS IS THE SAME DUPLICATE, MIRRORED ──────────
+ * `isOriginalPhoto()` catches ALBUM → CHAT: a chat row that POINTS at a photograph living
+ * elsewhere. It cannot catch CHAT → ALBUM, and that is not an oversight in it — it is a fact about
+ * how the adoption is written. `setChatPhotoAsAvatarAction` (`lib/admin/ninaAlbumActions.ts:278`)
+ * COPIES the bytes (`copyChatPhotoIntoAlbum`, `:332`) into a brand-new `nina_avatars` row and
+ * writes the only link there is onto the COPY — `source_key = 'chat-photo:' + <the chat row's
+ * id>`, `:301`. The chat row it copied from is never touched: both provenance columns stay NULL,
+ * `isOriginalPhoto()` keeps (correctly, by its own definition) calling it original, and the picker
+ * showed the photograph twice — once as the chat row, once as its album twin, adjacent at the top
+ * of a newest-first list because the two were written seconds apart. Measured in production on
+ * 2026-09-12: 5 `nina_avatars` rows carry a `chat-photo:` key, and all 5 of the chat rows they name
+ * still have both columns NULL.
+ *
+ * So the exclusion has to read the link from the side that HAS it, which is what the correlated
+ * `NOT EXISTS` below does. The copy is the survivor and the original is the one hidden, because
+ * the copy is the row the operator just made current and the one the picker can keep offering
+ * after the chat row is deleted.
+ *
+ * **The copy is not being un-copied, and no back-reference column is being added.** "Bytes copied,
+ * not shared" is deliberate (an album delete calls `del` with no reference check, so a shared
+ * object would blank the chat bubble the day the album row went away), and a new column would be a
+ * migration for a fact `nina_avatars.source_key` already states.
+ *
+ * **It is scoped and it is indexed.** `nina_avatars.user_id` is spelled inside the subquery — an
+ * unscoped subquery would let another operator's album hide this one's photographs — and the pair
+ * `(user_id, source_key)` is `nina_avatars_user_source_key_unq` (`lib/db/schema.ts:1781`), so this
+ * is an index-backed equality probe per candidate row, not a scan. **No index is being added.**
+ *
+ * **The literal `'chat-photo:'` is spelled here and at `lib/admin/ninaAlbumActions.ts:301`, with
+ * no shared constant between them** — a `'use server'` module may export only async actions, so it
+ * cannot export the prefix, and the db layer must not import from an actions module. The two
+ * spellings are held together by `tests/nina.photoRefs.test.ts`, which pins this exact text, and
+ * by `tests/admin.chatPhotoAdoption.test.ts:132`, which pins the writer's.
+ *
+ * ── WHY THE OTHER TWO SCOPES DO NOT GET THIS ARM ─────────────────────────────────────────────
+ * `mediaCollectionScope` and `listNinaMessageImages` must NOT grow it. An adopted chat row is
+ * still a real photograph in a real bubble, and the Media view is where the operator goes to
+ * Replace or Remove it; hiding it there would take away the only handle on it. The user asked for
+ * the PICKER to deduplicate, and the picker is the only surface that changes.
  */
 function generatedChatPhotoScope(userId: string) {
+  /* The outer parentheses are load-bearing and hand-written, for `removeNinaSession`'s measured
+   * reason (:1025-1030): `notExists()` emits `not exists ` followed by its argument's chunks
+   * verbatim — it only LOOKS like it brackets them, because a subquery BUILDER serialises itself
+   * with brackets. A raw `sql` template does not, and without the pair below the generated
+   * statement is `... and not exists select 1 from ...`, which Postgres rejects. */
+  const alreadyAdoptedIntoAlbum = sql`(
+    select 1
+      from ${ninaAvatars}
+     where ${ninaAvatars.userId} = ${userId}
+       and ${ninaAvatars.sourceKey} = 'chat-photo:' || ${ninaMessageImages.id}
+  )`
+
   return and(
     eq(ninaMessageImages.userId, userId),
     eq(ninaMessageImages.kind, 'generated'),
     isOriginalPhoto(),
+    notExists(alreadyAdoptedIntoAlbum),
   )
 }
 

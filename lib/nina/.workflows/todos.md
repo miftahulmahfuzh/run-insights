@@ -12,7 +12,7 @@
 - P3 Low: 0
 - P4 Backlog: 0
 - Blocked: 0
-- Completed: 38
+- Completed: 39
 - Archived: 35
 
 ---
@@ -103,6 +103,18 @@ per-task detail — Context, Drift, Decided, Files — survives in git history a
   - **Decided**: Plan's failing test index arithmetic vs plan's implementation code → fixed the test's indices, assertion content unchanged (rung 3: phase plan code blocks; implementation corroborated by the sibling full-array test that passed byte-for-byte)
     npm run lint gate vs 4 pre-existing HEAD errors in files no phase owns → scoped eslint clean on this phase's four files; did not widen scope to fix unrelated test files (tie-break: never widen scope; narrower blast radius)
   - **Verified**: re-measured in the shared worktree after p4/p5 landed: `tests/nina.llmFallbackText.test.ts` 15/15, `lib/nina/turn.test.ts` 59/59, `tests/nina.turnrevive.test.ts` + `lib/nina/turnflight.test.ts` 36/36 (turnrevive is `turnrun.ts`'s real under-test suite — it mocks `@/lib/nina/turn` and drives `turnrun` for real, including the server-only pin on `turnrun.ts`), `lib/nina/chatturn.test.ts` 10/10; `npm run typecheck` exit 0, `ci:openrouter-guard` OK, `format:check` exit 0; full suite 5182/5184 with only the documented MemoryTable parallel-load flake. The completion report's quoted `tests/nina.turnrun.test.ts` does not exist — vitest silently ignores a non-matching filter, so its "74/74" was turn (59) + fallback (15).
+
+- [x] **P1-NIN-A039** Phase 1: Exclude album-adopted photographs from the chat side of the reference picker
+  - **Difficulty**: NORMAL
+  - **Type**: Bug
+  - **Context**: Owns generatedChatPhotoScope in lib/nina/queries.ts, its docstring and isOriginalPhoto's neighbouring prose; tests/nina.imageprefs.test.ts's plan-invariant-13 describe block; a check that tests/nina.photoRefs.test.ts's REFERENCE_SKIPPED-based assertions still pass. Exit criteria: a chat photograph adopted into the album (an nina_avatars row with source_key = 'chat-photo:<id>') no longer appears via the chat side of listNinaPhotoReferences, and countNinaChatPhotos agrees; an un-adopted chat photograph is unaffected; mediaCollectionScope-driven reads are unaffected; tests pass; typecheck passes.
+  - **Status**: done
+  - **Plan Set**: `PHOTO_REFERENCE_DEDUP_ALBUM_ADOPTION_PLAN.md` (phase 1 of 1)
+  - **Satisfies**: R1 — Diagnose why Photo reference shows duplicate photos (the first two), and deduplicate Photo reference so a photo present in both Image collection's Album and Media views is shown once
+  - **Plan**: `.workflows/plan/P1-NIN-A039.md`
+  - **Completed**: 2026-09-12 12:28
+  - **Method**: /do
+  - **Files**: lib/nina/queries.ts, tests/nina.photoRefs.test.ts, tests/nina.imageprefs.test.ts
 
 ---
 

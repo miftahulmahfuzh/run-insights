@@ -362,6 +362,10 @@ reference rows (`source_avatar_id`/`source_image_id` — make the original hers 
 the framing against the row's REAL dimensions server-side, copies the row into the album under
 the stable `sourceKey` `` `chat-photo:<id>` `` (idempotent — a second adoption finds the existing
 row via `getNinaAvatarBySourceKey`), and schedules a describe only if the copied row has none.
+Since 2026-09-12 (P1-NIN-A039) that key has a second reader: the admin image-reference picker's
+chat side (`lib/nina/queries.ts`'s `generatedChatPhotoScope`) reads it in a correlated
+`NOT EXISTS` to exclude the adopted original, so the picker offers the photograph once — as its
+album copy.
 
 **`registerNinaAvatarsAction`** — the album's *only* writer of new rows (the singular action was
 deleted with `UploadAvatar.tsx`; nothing lands a row without a `folder` and a `source_key`).
