@@ -109,17 +109,6 @@ export interface OpenRouterChatBody {
   messages: OpenRouterMessage[]
   tools?: OpenRouterTool[]
   tool_choice?: OpenRouterToolChoice
-  /**
-   * OpenRouter's unified reasoning switch, and it is this file's translation of
-   * `thinking: { type: 'disabled' }` — which `ninaBody`'s docblock calls MEASURED and NEVER
-   * REMOVE, with the numbers: thinking on cost 18-73 s and returned `stop_reason: 'max_tokens'`
-   * with nothing but a thinking block, thinking off answered in 17 s with the tool call.
-   *
-   * As on the z.ai side it is a REQUEST and not a guarantee, and nothing below assumes it was
-   * honoured: `toAnthropicMessage` ignores `message.reasoning` entirely rather than trying to
-   * account for it.
-   */
-  reasoning: { enabled: false }
 }
 
 /** What comes back. Every field optional, because a provider error is also a 200 sometimes. */
@@ -405,7 +394,17 @@ export function toOpenRouterChatBody(
     ...(tools.length > 0 ? { tools } : {}),
     /* A `tool_choice` with no `tools` is a 400 at every provider that validates it. */
     ...(tools.length > 0 && toolChoice != null ? { tool_choice: toolChoice } : {}),
-    reasoning: { enabled: false },
+    /*
+     * No reasoning-control field. MEASURED 2026-09-12 13:11 WIB: sending the once-standard
+     * `reasoning: { enabled: false }` now gets a `400 "Reasoning is mandatory for this endpoint
+     * and cannot be disabled."` from `z-ai/glm-5.3-flash` — the fallback this codebase relies on
+     * for a z.ai outage failed itself, on the exact incident it exists to survive. Omitting the
+     * field entirely follows `vision.ts:112-117`'s already-established rule for this same
+     * provider/model: an unprobed reasoning-control shape is not something to trust against a
+     * vendor whose behaviour here has now changed once already, and `NINA_MAX_TOKENS` (2400,
+     * carried across unchanged) already budgets slack for a reasoning preamble the z.ai side
+     * itself does not guarantee suppressing.
+     */
   }
 }
 
