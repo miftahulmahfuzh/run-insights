@@ -83,7 +83,7 @@ collected here:
 
 | Module | Job | I/O |
 |---|---|---|
-| `hrMax.ts` | THE HRmax resolver — the only module in the package that touches the database | 4 indexed queries |
+| `hrMax.ts` | THE HRmax resolver — the only module in the package that touches the database | 2 indexed queries |
 | `session.ts` | `computeSessionMetrics` — every number a run detail page shows | none |
 | `flags.ts` | `evaluateSessionFlags` — the closed seven-code catalog of per-run observations | none |
 | `week.ts` | Weekly rollups, distance buckets, volume delta, the bucket-enumeration device | none |
@@ -99,9 +99,9 @@ collected here:
 
 ```
 resolveHrMax(userId)            1. profiles.max_hr      → 'measured'
-resolveHrMaxAsOf(userId, asOf)  2. MAX(runs.max_hr)     → 'observed'  only if > the Tanaka estimate
+                                2. MAX(runs.max_hr)     → 'observed'  only if > the Tanaka estimate
 tanakaEstimate(birthYear, now)  3. 208 − 0.7 × age      → 'estimated' only if birth_year is set
-hrMaxTransitionAt(userId, runId) 4. null                               no birth year, no observation
+                                4. null                               no birth year, no observation
 ```
 
 The rules that are easy to get wrong, all documented in the file:
@@ -111,22 +111,19 @@ The rules that are easy to get wrong, all documented in the file:
   better signal.
 - **`measured` wins even when lower than `observed`.** A number a human typed is assumed
   intentional; the asymmetry is deliberate and documented so nobody "fixes" it.
-- **`resolveHrMaxAsOf` is a thin wrapper, not a second algorithm** — the only difference is one
-  predicate on the observed-max query. Its Tanaka branch still uses the *current* wall clock on
-  purpose: an age that drifts with the cutoff would fire transition detection on birthdays.
 - **No caching, deliberately.** Two indexed queries, called at most once per render; the file's
   header explains why a request-scoped cache would be a fix for a non-problem. A future hot-loop
   caller resolves ONCE and reuses the value across the loop.
 
-**Known state of `hrMaxTransitionAt` / `resolveHrMaxAsOf` / `HrMaxTransition` (measured
-2026-09-12, the yagni sweep):** zero production callers. The F06 §4.5 HRmax transition banner
-was planned and documented but never shipped; the trio is kept alive only by
-`tests/metrics.hrMax.test.ts` and `tests/integration/hrMax.int.test.ts`, and `hrMax.ts`'s own
-doc comment still claims "F06's run detail page calls it once per render", which is false as of
-that measurement. Shipping the banner or removing the trio are the two recorded resolutions;
-neither is a drive-by, and both are out of this file's scope. Everything else above about the
-resolver proper is unaffected — `resolveHrMax` itself is called from `/me`, the insights
-loaders, `lib/nina/load.ts` and the run page.
+**Removed 2026-09-12 (`metrics-hrmax-yagni` session):** `hrMaxTransitionAt`, `resolveHrMaxAsOf`
+and `HrMaxTransition` — the never-shipped F06 §4.5 transition banner's machinery, which the
+day's earlier yagni sweep had measured at zero production callers, alive only behind its own two
+test suites. The recorded "ship F06 §4.5 or remove" decision was resolved to REMOVE; the full
+banner contract lives in the F02 plan archive and in git history if a future feature ever wants
+it. Removed with it, for the same reason: `HrMax.observedRunId` (written, never read — the
+attribution copy reads `observedOn`), and the `asOf` cutoff option on `getObservedMaxHrRun`.
+Everything else above about the resolver proper is unaffected — `resolveHrMax` itself is called
+from `/me`, the insights loaders, `lib/nina/load.ts` and the run page.
 
 ### `session.ts` — `computeSessionMetrics`
 
