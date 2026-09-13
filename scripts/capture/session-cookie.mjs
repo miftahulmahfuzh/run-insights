@@ -28,7 +28,7 @@ import { encode } from 'next-auth/jwt'
  * not decrypt, `requireUserId()` redirects to `/`, and the capture lands on the sign-in screen
  * instead of quietly capturing a half-authenticated page.
  */
-export function cookieNameFor(origin) {
+function cookieNameFor(origin) {
   return new URL(origin).protocol === 'https:'
     ? '__Secure-authjs.session-token'
     : 'authjs.session-token'
