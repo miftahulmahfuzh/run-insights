@@ -1,17 +1,17 @@
 # Package: date, flags & derived (combined — three single-file lib utilities)
 
 **Location**: `lib/date`, `lib/flags`, `lib/derived`
-**Last Updated**: 2026-09-12 (first audit; every consumer count and verdict below measured in the
-tree on that date)
+**Last Updated**: 2026-09-13 (reverse-dependency counts re-measured; everything else audited
+2026-09-12 and still verified accurate)
 
 ## Why one readme covers three packages
 
-Each of these is a single file under 240 lines — alone, none ever crossed the size threshold that
-triggered one of the per-package audits, so all three fell through every sweep. They are audited
-together here because together they form one layer: **the pure seams the write path hangs on**.
-`lib/date` owns every calendar decision, `lib/flags` owns the human sentence for each metric
-verdict, and `lib/derived` owns what happens after a run's numbers change. None imports another's
-data; the only edge between them is `lib/derived` → `lib/date` (`isoWeekKeyOf`, `monthKey`).
+Each file is under 240 lines — alone, none ever crossed the size threshold that triggers a
+per-package audit, so all three fell through every sweep. They're audited together because
+together they form one layer, **the pure seams the write path hangs on**: `lib/date` owns every
+calendar decision, `lib/flags` owns the human sentence for each metric verdict, `lib/derived` owns
+what happens after a run's numbers change. None imports another's data; the only edge between them
+is `lib/derived` → `lib/date` (`isoWeekKeyOf`, `monthKey`).
 
 ## YAGNI verdict (2026-09-12)
 
@@ -99,16 +99,19 @@ my longest". `evaluate.ts`'s `isNews` keeps a re-commit of an unchanged run from
   `lib/derived/invalidate` → `lib/date/ranges`, `lib/badges/{evaluate,gateway}`,
   `lib/records/{recompute,gateway,types}`, `lib/db/queries`.
 
-## Reverse dependencies (measured 2026-09-12)
+## Reverse dependencies (re-measured 2026-09-13; grep counts drift fast, treat as a snapshot)
 
-- `lib/date/ranges` — **45 production importers**: 7 app routes, 3 components, and 35 files
-  across 11 lib areas (nina 11, charts 6, badges 6, review 2, records 2, metrics 2, insights 2,
-  llm 1, format 1, derived 1, db 1) — plus 9 test files. Quietly the most-depended-on utility in
-  `lib/`; any signature change here is a fleet-wide event.
+- `lib/date/ranges` — **50 production importers**: 7 app routes, 4 components, and 39 files
+  across 11 lib areas (nina 11, badges 6, charts 6, db 5, review 2, records 2, metrics 2,
+  insights 2, llm 1, format 1, derived 1) — plus 10 test files. The 2026-09-12 count (45; db 1,
+  components 3) went stale same-day when `c312fb0` split `lib/db/queries.ts` into 14 domain
+  modules, 5 of which import `ranges`. Quietly the most-depended-on utility in `lib/`; any
+  signature change here is a fleet-wide event.
 - `lib/flags/copy` — `components/ui/Flag.tsx` (the flag chip), `lib/nina/context.ts` (her
-  commentary quotes the same sentence the screen shows), `tests/flags.copy.test.ts`.
+  commentary quotes the same sentence the screen shows), `tests/flags.copy.test.ts`. Unchanged.
 - `lib/derived/invalidate` — `lib/review/commit.ts` only (plus `tests/derived.invalidate.test.ts`).
-  No regex-scrape consumer in `scripts/` or `tools/` (checked against the knip blind-spot class).
+  No regex-scrape consumer in `scripts/` or `tools/` (checked against the knip blind-spot class;
+  three `scripts/*.mjs` comments *mention* `onRunCommitted` in prose but none imports it). Unchanged.
 
 ## Tests
 
