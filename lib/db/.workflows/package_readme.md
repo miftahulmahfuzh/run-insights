@@ -1,29 +1,48 @@
 # Package: db
 
 **Location**: `lib/db`
-**Last Updated**: 2026-09-12 (compacted from 1,098 lines; every claim re-verified against the tree
-and against production — see Notes for the documentation history)
+**Last Updated**: 2026-09-13 (file-layout section refreshed after `db-schema-split` and
+`db-queries-split` landed later on 2026-09-12, past this page's own compaction pass that morning —
+see Notes for the documentation history)
 
 ## Overview
 
 `lib/db` is the entire persistence layer of Run Insights: one Drizzle client (`index.ts`), the
-whole Postgres schema in one file (`schema.ts`), and every read and write the run-tracking
-application performs (`queries.ts`). Nothing above it opens a connection, and there is no
-repository layer, DAO or second client beneath it.
+whole Postgres schema (`schema.ts` plus the domain modules behind it), and every read and write the
+run-tracking application performs (`queries.ts` plus its own domain modules). Nothing above it
+opens a connection, and there is no repository layer, DAO or second client beneath it.
 
-It is a *declaration-plus-access* package with one deliberate asymmetry worth knowing before you
-go looking for a function: `schema.ts` declares tables for the whole product, including features
-whose queries live elsewhere, while `queries.ts` covers only the run / extraction / insight /
-share domain. Nina's reads and writes live in `lib/nina/queries.ts` against tables declared here —
-`lib/db/queries.ts` touches no `nina_*` table at all — and `app_settings`' reader is
-`lib/llm/textModel.ts`. The asymmetry's newest instance is `nina_error_logs`: declared here, read
-and written by `lib/nina/errorlogs.ts` — deliberately not in that Nina queries file, because its
-reads carry no `userId` at all (an operator's diagnostic log, not conversation).
+**`schema.ts` and `queries.ts` are barrels, not monoliths — `db-schema-split` and
+`db-queries-split` (both 2026-09-12) split them into one file per domain, each re-exported through
+`export *`.** `schema.ts` now does nothing but `export * from './schema/auth'` /
+`'./schema/runs'` / `'./schema/nina/chat'` / `'./schema/nina/memory'` / `'./schema/nina/avatars'` /
+`'./schema/nina/config'` / `'./schema/admin'` / `'./schema/push'`, and `queries.ts` does the same
+over thirteen `queries/*.ts` modules (`errors`, `ownership`, `runs`, `rollups`, `badgeReads`,
+`extractions`, `photos`, `profile`, `insights`, `records`, `badges`, `shares`, `sharedRun` — plus
+`queries/internal.ts`, deliberately **not** re-exported: `runBatch`/`Statement` are plumbing for
+sibling modules, not public surface). Both barrels stay the single import path on purpose — every
+consumer still imports `'@/lib/db/schema'` or `'@/lib/db/queries'` (or `'@/lib/db'`, which
+re-exports both) and none may reach into a domain module directly — so nothing below this
+paragraph about table shapes, invariants or call sites changed; only which physical file declares
+each piece did. `drizzle.config.ts`'s `schema` path is unaffected: it still names
+`'./lib/db/schema.ts'`, which still exists and still re-exports everything drizzle-kit needs to
+introspect.
+
+It is a *declaration-plus-access* package with one deliberate asymmetry worth knowing before you go
+looking for a function: the schema modules declare tables for the whole product, including
+features whose queries live elsewhere, while the `queries.ts` modules cover only the run /
+extraction / insight / share domain. Nina's reads and writes live in `lib/nina/queries.ts` against
+tables declared here — nothing under `lib/db/queries/` touches a `nina_*` table at all — and
+`app_settings`' reader is `lib/llm/textModel.ts`. The asymmetry's newest instance is
+`nina_error_logs`: declared here, read and written by `lib/nina/errorlogs.ts` — deliberately not in
+that Nina queries file, because its reads carry no `userId` at all (an operator's diagnostic log,
+not conversation).
 
 **Key Responsibilities:**
 
 - Own the single `neon-http` Drizzle instance, cached on `globalThis`, plus the `Database` type.
-- Declare every table, column, index, constraint and row type in one authoritative file.
+- Declare every table, column, index, constraint and row type, one domain per module, behind the
+  `schema.ts` barrel that is still the one authoritative import path.
 - Enforce two application-wide invariants in SQL rather than in caller code: userId scoping and
   the reviewed-data gate.
 - Express correctness invariants as Postgres constraints — partial and total unique indexes,
@@ -64,10 +83,17 @@ The URL must be the **pooled** one (`-pooler` in the host). `DATABASE_URL_UNPOOL
 
 ### `schema.ts` — the whole database
 
+**A barrel over eight domain modules** (`schema/auth.ts`, `schema/runs.ts`, `schema/nina/chat.ts`,
+`schema/nina/memory.ts`, `schema/nina/avatars.ts`, `schema/nina/config.ts`, `schema/admin.ts`,
+`schema/push.ts`), not a single file — see the Overview. Everything below describes the schema as a
+whole; where a table lives is a module lookup (the inventory below names the variable and SQL
+table, and the module layout comment at the top of `schema.ts` names which file owns it), not a
+line number in one file.
+
 The v0.1.0 contract docs (`ROADMAP_v0.1.0.md` §4.3 for every column; `RECONCILIATION_v0.1.0.md`)
 are retired — the rulings survive in `.workflows/plan/nina-chatbot/RECONCILIATION_RULINGS.md`, and
-each amendment is marked in `schema.ts` with its ruling (R-1, R-5, R-7, R-8, R-9, R-11, R-12,
-R-13, R-22, R-28 — ten in all). Where this file and a feature plan disagree, the rulings win.
+each amendment is marked in the owning module with its ruling (R-1, R-5, R-7, R-8, R-9, R-11, R-12,
+R-13, R-22, R-28 — ten in all). Where a module and a feature plan disagree, the rulings win.
 
 #### Table inventory
 
@@ -224,7 +250,13 @@ minimum the matcher needs — a subset the record satisfies with no mapping step
 
 ### `queries.ts` — every run-domain read and write
 
-Two invariants govern the file:
+**A barrel over thirteen `queries/*.ts` modules plus one un-re-exported plumbing module** — see
+the Overview. The § numbers below are the original monolith's sections, kept as the modules'
+own header comments name them, so an old reference to "§7" still means the photo-lifecycle
+functions even though they now live in `queries/photos.ts` rather than a numbered block of one
+file.
+
+Two invariants govern every module:
 
 **1. The userId-scoping invariant (roadmap D8).** Every exported function that reads or writes one
 user's data takes `userId` as its first parameter and that value appears in the `WHERE` of every
@@ -402,12 +434,19 @@ it names `'./lib/db/schema.ts'` as a config string. **A schema change is therefo
 reflected in a script**, and a script writing a `nina_*` table is writing raw SQL that no type
 checks.
 
-`NinaAvatar`, `NewNinaAvatar`, `NinaFolder`, `NewNinaFolder`, `NinaChatSession`,
-`NewNinaChatSession`, `NinaShortcutRow` and `NewNinaShortcutRow` currently have **no importers** —
-callers pass around the shapes `lib/nina/queries.ts` returns instead (`lib/nina/queries.ts`'s own
-comment explains why it names `NinaShortcutRecord`, not the row). (The string `NinaAvatar` also
-names an unrelated React component, `components/nina/NinaAvatar.tsx`; that is a coincidence, not an
-import of the row type.)
+`NinaAvatar`, `NewNinaAvatar`, `NinaFolder`, `NewNinaFolder`, `NinaTurn`, `NewNinaTurn`,
+`NinaMessage`, `NewNinaMessage`, `NinaMessageImage`, `NewNinaMessageImage`, `NinaChatSession`,
+`NewNinaChatSession`, `NinaShortcutRow` and `NewNinaShortcutRow` currently have **no importers**
+(grep-verified 2026-09-13, repo-wide, `components/` included) — callers pass around the shapes
+`lib/nina/queries.ts` returns instead (`lib/nina/queries.ts`'s own comment explains why it names
+`NinaShortcutRecord`, not the row). `knip` does not flag any of these: it does not treat an
+`$inferSelect`/`$inferInsert` type alias as unused while the table it derives from is still
+imported, so a plain grep — not `npm run knip` — is what finds this particular gap. That is a
+reason to keep grep-verifying this specific list, not a reason to delete the types: they are the
+row-type half of `schema.ts`'s "Row types" contract ("import these instead of re-deriving
+`$inferSelect` at a call site"), kept for whichever future caller needs the shape Nina's own query
+layer does not currently expose. (The string `NinaAvatar` also names an unrelated React component,
+`components/nina/NinaAvatar.tsx`; that is a coincidence, not an import of the row type.)
 
 ## Concurrency
 
@@ -669,3 +708,6 @@ history, and the decisions worth keeping are folded into the sections above. The
 | 2026-09-10 | image-gen controls | new `app_settings`; `nina_image_prefs` + `prompt_template`/`model` | `0020_image_gen_controls` (applied) |
 | 2026-09-11 | lib-db-queries-yagni | removed dead code: `getMonthlyTotals`/`fillZeroMonths` (and `MonthlyTotal`), `getObservedMaxHr`/`getObservedMaxHrExcludingRun`, `listExtractions`, `deletePhoto` | — |
 | 2026-09-12 | nina-llm-fallback-error-logs p1 | new `nina_error_logs` — one best-effort row per failed Nina model call (`user_id` nullable, one index, no backfill) | `0021_nina_error_logs` (applied) |
+| 2026-09-12 | db-schema-split | `schema.ts` split into eight domain modules behind an `export *` barrel; no table, column or behavior changed | — |
+| 2026-09-12 | nina-queries-split, db-queries-split | `queries.ts` split into thirteen `queries/*.ts` modules (+ `queries/internal.ts`, not re-exported) behind an `export *` barrel; `lib/nina/queries.ts` split in parallel; no query behavior changed | — |
+| 2026-09-13 | schema-llm-insights (doc-drift fix) | this page's file-layout language updated to match the two splits above, which landed after that morning's compaction pass; the "no importers" row-type list extended from 2 to 8 entries (grep-verified, `components/` included) | — |
