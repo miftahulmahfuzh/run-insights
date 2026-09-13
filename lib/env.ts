@@ -4,8 +4,9 @@ import { z } from 'zod'
 /**
  * Environment contract for Run Insights.
  *
- * ROADMAP_v0.1.0.md section 4.1 is authoritative for variable names. Every variable is
- * server-only; none is prefixed NEXT_PUBLIC_.
+ * This file is authoritative for variable names; see `docs/architecture.md` (F01) for how the
+ * six-var eager core / lazy-group shape came to be. Every variable is server-only; none is
+ * prefixed NEXT_PUBLIC_.
  *
  * TWO LLM ENDPOINTS, ONE CREDENTIAL (R-40). The two base URLs genuinely differ; the keys
  * never did. There is deliberately NO LLM_VISION_API_KEY here — a second variable holding a
@@ -15,7 +16,8 @@ import { z } from 'zod'
  *   - LLM_VISION_BASE_URL / LLM_VISION_MODEL -> glm-4.6v, OpenAI-shaped chat/completions on
  *     the CODING endpoint. Authenticated with LLM_API_KEY via `Authorization: Bearer`.
  *     Never point this at api.z.ai/api/anthropic — that endpoint accepts image blocks,
- *     returns HTTP 200, and silently drops the image. See IMPLEMENTATION_PLAN.md section 1.1.
+ *     returns HTTP 200, and silently drops the image. See
+ *     `docs/plans/archive/F04-ingest-extraction.md` §1.
  *     The prompt_tokens floor guard in lib/llm/vision.ts (F04) is the runtime half of this
  *     defence; this schema's URL + non-empty checks are the boot-time half.
  *   - LLM_BASE_URL / LLM_MODEL -> glm-5.3, Anthropic-compatible endpoint, @anthropic-ai/sdk.
@@ -45,7 +47,8 @@ const coreSchema = z.object({
   // endpoint; F07 hands it to @anthropic-ai/sdk for the Anthropic-compatible one.
   LLM_API_KEY: nonEmpty('LLM_API_KEY'),
 
-  // F04 — glm-4.6v, OpenAI-shaped, coding/paas/v4. Plain fetch, no SDK (roadmap section 3).
+  // F04 — glm-4.6v, OpenAI-shaped, coding/paas/v4. Plain fetch, no SDK
+  // (docs/plans/archive/F04-ingest-extraction.md §2).
   LLM_VISION_BASE_URL: z.url('LLM_VISION_BASE_URL must be an absolute URL'),
   LLM_VISION_MODEL: nonEmpty('LLM_VISION_MODEL'),
 
@@ -66,7 +69,8 @@ const authSchema = z.object({
   AUTH_GOOGLE_ID: nonEmpty('AUTH_GOOGLE_ID'),
   AUTH_GOOGLE_SECRET: nonEmpty('AUTH_GOOGLE_SECRET'),
   /**
-   * PRODUCTION ONLY (roadmap §4.1). Locally and on preview it must be left unset so Auth.js infers
+   * PRODUCTION ONLY (`docs/plans/archive/F02-auth-profile.md`, item 7). Locally and on preview
+   * it must be left unset so Auth.js infers
    * the origin from the request — a hardcoded origin on a preview deployment sends the OAuth
    * callback to the wrong host.
    *
