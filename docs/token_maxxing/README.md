@@ -10,6 +10,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 | 2026-09-13 | Admin Explorer Components Deep Read | Closed two real test-coverage gaps in FileExplorer and CharacterPanel; dead code and docs verified clean. | [link](./2026-09-13-admin-explorer-components.md) |
 | 2026-09-13 | Repo-Wide Lint Sweep | Verified Card.test.tsx already fixed; cleared all 22 real eslint warnings repo-wide, one a real bug. | [link](./2026-09-13-repo-lint-doc-fix.md) |
 | 2026-09-13 | Nina Todos Audit | Audited nina's active todos against git and code; closed all 9 stale entries, including one falsely marked pending. | [link](./2026-09-13-nina-todos-audit.md) |
+| 2026-09-13 | Nina Sidebar/Imagerun Doc-Drift Audit | Fixed a stale scroll-citation left by the chat-screen split; verified ~20 other doc claims. | [link](./2026-09-13-nina-sidebar-imagerun.md) |
 | 2026-09-13 | Scripts Capture YAGNI | Closed 4 knip-flagged unused exports in scripts/capture and nina-dedupe-plan; verified readme accurate. | [link](./2026-09-13-scripts-capture-yagni.md) |
 | 2026-09-13 | Badges/Records Cleanup | Caught a stale deferred decision already shipped on main; fixed a knip-flagged export and updated the shared readme. | [link](./2026-09-13-badges-records-cleanup.md) |
 | 2026-09-13 | Tools CI Gate (Already Shipped) | Verified the badge CI gate was already shipped twice, then closed a real SKILL.md doc gap instead. | [link](./2026-09-13-tools-ci-gate.md) |
