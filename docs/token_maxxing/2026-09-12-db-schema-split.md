@@ -57,8 +57,7 @@
   **292 files / 5,386 tests passed**; working tree clean after the commit.
 - **Branch:** `token-maxxing-2026-09-12-db-schema-split` (HEAD `716ee98`, exactly one commit
   ahead of `main` at doc-writing time; this doc's commit is the branch's second).
-- **Merge status:** **on branch — landing owned by coordinator** `tokenmax-orch-2026-09-12`.
-  The session does not merge its own branch; the doc deliberately does not claim merged status.
+- **Merge status:** merged (commit `01bfffc`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** moderate-to-high (input-dominated; the launch alone burned three
   coordinator-asked retries through 429 rate-limit stalls before any file was read) 🔥
 

@@ -36,8 +36,7 @@
     was still running at the worker's doc time **completed successfully** (BUILD_ID
     `m9dapQfHsMWzp0VC7slNL` written 21:08) — verified on the branch before being quoted here.
 - **Branch:** `token-maxxing-2026-09-12-chat-screen-split`
-- **Merge status:** on branch (worker branch, awaiting coordinator landing; not in origin/main
-  at doc time — origin/main's tip is a different session's merge)
+- **Merge status:** merged (commit `af9bbd0`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** heavy (est. ~0.9M, input-dominated) — the burn went into full-file
   reads of the 1645-line original, the bundled Next 16 guide read, seven gate rounds (each a
   vitest + eslint + `tsc --noEmit`), the full 313-test nina sweep, knip, typegen+tsc, and a

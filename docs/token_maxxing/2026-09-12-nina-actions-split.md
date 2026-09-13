@@ -85,8 +85,7 @@
     references in both graphs.
 - **Branch:** `token-maxxing-2026-09-12-nina-actions-split` (worktree
   `tokenmax-2026-09-12-nina-actions-split`), head `c0302f3`.
-- **Merge status:** on branch — the coordinator owns landing; this session must not
-  merge, push, or amend.
+- **Merge status:** merged (commit `214f018`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** no meter was read; by shape this was a mid-to-heavy worker
   session whose spend is split between a mechanical-but-paranoid refactor (every moved
   symbol re-checked against its new module's directive rules), a ~107-site citation

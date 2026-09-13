@@ -50,9 +50,7 @@
   - Five load-bearing claims survived verification unchanged and are now
     confirmed rather than assumed (details below).
 - **Branch:** `token-maxxing-2026-09-12-google-auth-doc-audit`
-- **Merge status:** on branch — worker does not merge in worker mode;
-  coordinator `tokenmax-orch-2026-09-12` owns the landing of `f15c272`
-  immediately after this report.
+- **Merge status:** merged (commit `55c6ba5`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high, deliberately — ~10 ground-truth files read in
   full, roadmap archaeology in git history, a full claim-by-claim findings
   table, and byte-level verification of the coordinator's on-behalf commit. 🔥
@@ -236,5 +234,4 @@ from git.
 **Gates run:** `npx prettier --check` on the doc — clean. No code changed, so
 no tsc/vitest/build run.
 
-**Merge status:** on branch — coordinator `tokenmax-orch-2026-09-12` merges
-`f15c272` to main immediately after this report.
+**Merge status:** merged (commit `55c6ba5`, landed by coordinator `tokenmax-orch-2026-09-12`).

@@ -55,7 +55,7 @@
     decision log — executed end to end without a single behavior-change escape.
 - **Branch:** `token-maxxing-2026-09-12-nina-queries-split` (worker does NOT merge — the
   coordinator set `tokenmax-orch-2026-09-12` lands it).
-- **Merge status:** on branch (worker session; coordinator lands).
+- **Merge status:** merged (commit `fa13041`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** very high (est. ~2.5M, input-dominated) 🔥 — the burn went into
   `/analyze` with 8 parallel planner subagents (6 of them rate-limited and resumed
   staggered), a plan-reconciler over 15 cross-plan conflicts, then 8 sequential implement

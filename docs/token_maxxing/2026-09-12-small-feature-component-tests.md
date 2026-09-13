@@ -39,9 +39,7 @@
   - Full-repo sweep grew ~5,402 → **5,527 tests across 311 files, all green**; `tsc --noEmit`
     clean apart from the documented pre-existing typegen noise; prettier clean on all 15 files.
 - **Branch:** `token-maxxing-2026-09-12-small-feature-component-tests`
-- **Merge status:** on branch — this was a WORKER session of coordinator
-  `tokenmax-orch-2026-09-12`; the coordinator merges, so the doc and suites are committed on
-  the branch and left for it.
+- **Merge status:** merged (commit `8acee95`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** a full worker session — read all 15 components + their libs
   (lib/share, lib/push, lib/insights, lib/trends' ACWR math), then 15 suites written and
   debugged against the happy-dom/React 19 harness. Estimate ~1.5M. 🔥

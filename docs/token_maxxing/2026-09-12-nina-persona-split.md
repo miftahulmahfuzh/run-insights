@@ -31,8 +31,7 @@
     `bands.ts` but is only used within it — de-exported to restore the monolith's visibility
     exactly.
 - **Branch:** token-maxxing-2026-09-12-nina-persona-split
-- **Merge status:** on branch (Worker Mode — spawned by coordinator tokenmax-orch-2026-09-12;
-  landing owned by the coordinator)
+- **Merge status:** merged (commit `c47402c`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** ~500k 🔥 (estimate: full monolith read + nine-module write, contract
   test TDD loop, two full-suite verifications, doc re-pointing)
 

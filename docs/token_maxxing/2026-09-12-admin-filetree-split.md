@@ -53,9 +53,7 @@
     restated as the per-file rule the test enforces against the directory **as it is** — an
     eighth module added tomorrow inherits the rule automatically, with no hand-maintained list.
 - **Branch:** `token-maxxing-2026-09-12-admin-filetree-split`
-- **Merge status:** on branch — **NOT merged**; the coordinator owns all merges and will land
-  this worker branch (alongside the sibling ninaAlbumActions worker's branch, whose diff shares
-  no files with this one).
+- **Merge status:** merged (commit `8076814`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high (est. ~0.6M, input-dominated) — the burn went into writing the
   surface pin against the UNCHANGED single file first, the mutation proof, the split itself,
   and the full gate battery including a real `npm install` + `next build` (Turbopack) that a

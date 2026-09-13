@@ -42,8 +42,7 @@
     (`ninaAlbum{Describe,Avatar,Upload,Folder}Actions`) — the registered Server Actions are the
     split modules', not a barrel fantasy.
 - **Branch:** `token-maxxing-2026-09-12-admin-album-actions-split`
-- **Merge status:** Pending — coordinator `tokenmax-orch-2026-09-12` lands the branch; the worker
-  never merges. (Accurate at time of writing: commit `6c2e583` sits on the worker branch only.)
+- **Merge status:** merged (commit `4d67112`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high (est. ~1M, input-dominated) — the burn went into reading a
   1222-line monolith plus its callers' citation web, writing six new files and an 88-line pin
   test, and the full gate stack including a real `npm ci` and a production `next build`. 🔥

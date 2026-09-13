@@ -65,8 +65,7 @@
     `tests/llm.schema.test.ts`, `lib/llm/extractJson.test.ts`, `tests/format.test.ts`,
     `lib/llm/vision.test.ts`). Tree clean.
 - **Branch:** `token-maxxing-2026-09-12-research-hygiene-audit`
-- **Merge status:** on branch (worker session — the coordinator merges; W4 report went to
-  `tokenmax-orch-2026-09-12`)
+- **Merge status:** merged (commit `4d318d3`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high (est. ~1M, input-dominated) — the burn went into reading
   all 24 committed files end to end, deriving every staleness window from git instead of
   trusting headers, re-running the scorers and metrics tooling against the committed
