@@ -265,7 +265,7 @@ export function evaluateLifetimeBadges(ctx: LifetimeBadgeContext): BadgeKey[] {
 }
 
 /* ============================================================================
- * Helpers — all pure, all exported for their own tests
+ * Helpers — all pure, all internal to this file
  * ==========================================================================*/
 
 /**
@@ -278,7 +278,7 @@ export function evaluateLifetimeBadges(ctx: LifetimeBadgeContext): BadgeKey[] {
  * pattern merely continues. The `size + 1`-th entry in `ctx.window` exists for exactly this check
  * and for nothing else.
  */
-export function windowEdgeFires(
+function windowEdgeFires(
   window: readonly WindowRun[],
   size: number,
   qualifies: (runs: readonly WindowRun[]) => boolean,
