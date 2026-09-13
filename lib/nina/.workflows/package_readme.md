@@ -22,7 +22,11 @@ against `nina_avatars` on `source_key = 'chat-photo:' || nina_message_images.id`
 photograph her album has adopted ("Set as her profile picture") is offered by the admin
 image-reference picker exactly once, as its album copy (four production tiles stopped being
 double-shown, measured 2026-09-12); the Media view and `/nina/about` are deliberately unchanged —
-see Images.
+see Images. Restated 2026-09-13: `turnflight.ts`'s `NINA_TURN_POLL_GIVE_UP_MS = NINA_BACKGROUND_BUDGET_MS`
+was knip's one genuine "duplicate exports" finding across the repo — a bare-identifier initializer
+pointing at another export in the same file. It carries a `@alias` JSDoc tag now (knip's own
+escape hatch for a deliberate value alias — see The chat turn's Flight paragraph for why the two
+names must stay equal), not a suppression or a merge of the two names.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
