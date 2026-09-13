@@ -45,6 +45,7 @@
     "badges:check": "node scripts/check-badge-art.mjs",
     "badges:controls": "python3 tools/check_badge_controls.py",
     "ci:data-layer-guard": "node scripts/check-data-layer-invariants.mjs",
+    "ci:schema-drift-guard": "node --env-file-if-exists=.env.local scripts/check-schema-drift.mjs",
     "ci:client-secret-guard": "node scripts/check-client-secret-boundary.mjs",
     "ci:f08-guard": "node scripts/check-f08-boundaries.mjs",
     "ci:llm-payload-guard": "node scripts/check-llm-payload-boundary.mjs",
