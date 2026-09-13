@@ -112,6 +112,19 @@ describe('CharacterPanel — chrome', () => {
     panel()
     expect(screen.getByRole('textbox')).toHaveAttribute('maxLength', String(NINA_NOTES_MAX))
   })
+
+  /*
+   * `loud` (`loudestDials(draft, defaults)`) drives the header's dial-summary line, and every
+   * other test in this file either starts at defaults (the empty-list branch, above) or never
+   * asserts this line after a change — so the `loud.length > 0` branch that names an actual dial
+   * and value had no coverage. It reads the LIVE draft, not the saved row, so it updates before
+   * the debounce settles.
+   */
+  it('names the loudest diverging dial and its value in the header once it differs from default', () => {
+    panel()
+    fireEvent.change(traitSlider('anger'), { target: { value: '75' } })
+    expect(screen.getByText(/anger 75/)).toBeInTheDocument()
+  })
 })
 
 describe('CharacterPanel — the commit moments', () => {

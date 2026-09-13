@@ -24,12 +24,21 @@ vi.mock('./explorer/FolderTree', () => ({
     onNavigate,
     onFolderCreated,
     allFolders,
+    hrefFor,
+    mediaHref,
   }: {
     onNavigate: (folder: string) => void
     onFolderCreated: (folder: string) => void
     allFolders: readonly string[]
+    hrefFor: (folder: string) => string
+    mediaHref: string
   }) => (
-    <div data-testid="folder-tree" data-all-folders={allFolders.join(',')}>
+    <div
+      data-testid="folder-tree"
+      data-all-folders={allFolders.join(',')}
+      data-href-bali={hrefFor('bali')}
+      data-media-href={mediaHref}
+    >
       <button type="button" onClick={() => onNavigate('bali')}>
         navigate-bali
       </button>
@@ -48,11 +57,17 @@ vi.mock('./explorer/PhotoGrid', () => ({
   PhotoGrid: ({
     photos,
     onSelect,
+    hrefForPage,
   }: {
     photos: readonly { id: string }[]
     onSelect: (id: string) => void
+    hrefForPage: (page: number) => string
   }) => (
-    <>
+    <div
+      data-testid="photo-grid"
+      data-href-page-1={hrefForPage(1)}
+      data-href-page-2={hrefForPage(2)}
+    >
       {/*
        * Shaped like the real grid's tiles: one button per row carrying `data-photo-id`, because
        * the pane's close flow hands focus back to the selected tile by that attribute.
@@ -68,7 +83,7 @@ vi.mock('./explorer/PhotoGrid', () => ({
           select-{entry.id}
         </button>
       ))}
-    </>
+    </div>
   ),
 }))
 
@@ -348,5 +363,65 @@ describe('FileExplorer', () => {
     fireEvent.drop(dropZone(container), { dataTransfer: { items: [], files: [] } })
 
     expect(upload.start).toHaveBeenCalledWith([{ path: 'flat.jpg', file: expect.any(File) }])
+  })
+})
+
+/*
+ * The header's own words for `hrefForFolder`/`hrefForMediaView`: "The URL grammar, in one place
+ * so the tree, the breadcrumb and the pager cannot spell it differently" — and
+ * `tests/admin.filetree.test.ts:803` leans on `hrefForMediaView` and its own reader agreeing by
+ * construction. Both grammar functions are private to this file, and `FolderTree` / `PhotoGrid`
+ * are fully mocked above, so nothing exercised them until now: a mock that ignores `hrefFor`,
+ * `mediaHref` or `hrefForPage` would still pass every test above it, even if the real functions
+ * dropped a param or mis-ordered `folder`/`page`.
+ */
+describe('FileExplorer — the URL grammar (hrefFor / hrefForPage / mediaHref)', () => {
+  it('omits the folder param at root and the page param at page 1, and includes both otherwise', () => {
+    const { rerender } = render(<FileExplorer {...baseProps({ page: page({ folder: '' }) })} />)
+    expect(screen.getByTestId('folder-tree')).toHaveAttribute(
+      'data-href-bali',
+      '/admin/nina?folder=bali',
+    )
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute('data-href-page-1', '/admin/nina')
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute(
+      'data-href-page-2',
+      '/admin/nina?page=2',
+    )
+
+    rerender(<FileExplorer {...baseProps({ page: page({ folder: 'bali' }) })} />)
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute(
+      'data-href-page-1',
+      '/admin/nina?folder=bali',
+    )
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute(
+      'data-href-page-2',
+      '/admin/nina?folder=bali&page=2',
+    )
+  })
+
+  it('the media arm never drops ?view=media turning pages, and the tree link matches it at page 1', () => {
+    render(<FileExplorer {...baseProps({ view: 'media', page: page({ folder: '' }) })} />)
+    expect(screen.getByTestId('folder-tree')).toHaveAttribute(
+      'data-media-href',
+      '/admin/nina?view=media',
+    )
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute(
+      'data-href-page-1',
+      '/admin/nina?view=media',
+    )
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute(
+      'data-href-page-2',
+      '/admin/nina?view=media&page=2',
+    )
+  })
+
+  it('the album pager never carries view=media, even when a folder is open', () => {
+    render(
+      <FileExplorer {...baseProps({ view: 'album', page: page({ folder: 'bali', page: 2 }) })} />,
+    )
+    expect(screen.getByTestId('photo-grid')).toHaveAttribute(
+      'data-href-page-2',
+      '/admin/nina?folder=bali&page=2',
+    )
   })
 })
