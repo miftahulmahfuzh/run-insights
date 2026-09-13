@@ -55,7 +55,7 @@ export const ADMIN_CHAT_PHOTO_LONG_EDGE_PX = 1024
  * `glm-4.6v` needs to resolve a face at 768 px on a phone upload, and this is a photograph the
  * operator chose deliberately and will look at full-screen.
  */
-export const ADMIN_CHAT_PHOTO_QUALITY = 0.9
+const ADMIN_CHAT_PHOTO_QUALITY = 0.9
 
 export interface UploadedChatPhoto {
   blobUrl: string
@@ -87,7 +87,7 @@ export interface UploadedChatPhoto {
  * on the control; there is no silent fallback, because a photograph that could not be re-encoded
  * cannot be stored under the `.jpg` pathname the predicate requires.
  */
-export async function encodeChatPhotoJpeg(
+async function encodeChatPhotoJpeg(
   file: File,
 ): Promise<{ blob: Blob; width: number; height: number }> {
   if (typeof OffscreenCanvas === 'undefined') {
