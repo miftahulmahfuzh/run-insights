@@ -79,7 +79,7 @@ import { NINA_IMAGE_ASPECT, NINA_IMAGE_RESOLUTION, type NinaImagePurpose } from 
  * mirror-selfie with an invented street sign and a cat on the wall — so this style block is
  * verified output, not a guess.
  */
-const NINA_SELFIE_STYLE = `A casual smartphone photograph, as if taken and sent in a chat app. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
+const NINA_SELFIE_STYLE = `A DSLR photograph, as if taken and sent in a chat app. Natural daylight, slightly imperfect framing, shallow depth of field, visible skin texture, no studio lighting, no retouching, no text, no watermark, no logo, no border. Realistic photograph, not an illustration and not a render.`
 
 /**
  * The avatar variant. Same camera, tighter crop, because the result is rendered inside a 28-44 px
@@ -432,7 +432,7 @@ export const NINA_PROMPT_TEMPLATE_DEFAULT = [
   NINA_SELFIE_STYLE,
   '',
   'SUBJECT:',
-  `She is voluptuous: ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
+  `She has got an alluring body, ${NINA_BODY_FACTS}. This silhouette is the point of the photograph and it ` +
     `must be visible in it. ${NINA_BODY_SENTENCES[1]} ${NINA_BODY_SENTENCES[2]}`,
   '',
   NINA_FACE,

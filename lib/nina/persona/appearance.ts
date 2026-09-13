@@ -46,8 +46,8 @@ import type { NinaImagePrefs } from '../imageprefs'
  * verbatim below; what changed is that the body is now read first.
  */
 export const NINA_BODY_SENTENCES: readonly string[] = [
-  `She is voluptuous: big boobs, a bubble butt, big thighs and very long calves. This silhouette is the point of the photograph and it must be visible in it.`,
-  `Her chest is full and heavy, her hips are wide and her waist is narrow, so the curve from waist to hip reads clearly through whatever she is wearing.`,
+  `She has got an alluring body, big boobs and very long calves. This silhouette is the point of the photograph and it must be visible in it.`,
+  `Her chest is full and heavy, her hips are wide and her waist is narrow.`,
   `Her butt is round, high and prominent, standing out from her back rather than flattening into it.`,
   `Her thighs are thick and strong, filling whatever she is wearing, with a runner's muscle visible under soft skin.`,
   `Her calves are very long and full, defined all the way down to a narrow ankle, on legs that are unusually long for her height. She is curvy and heavy-bodied, never lean and never slight.`,
@@ -61,7 +61,7 @@ export const NINA_BODY_SENTENCES: readonly string[] = [
  * really is the enumeration inside `NINA_BODY_SENTENCES[0]`, so the extraction cannot silently
  * stop agreeing with the sentence it came from.
  */
-export const NINA_BODY_FACTS = 'big boobs, a bubble butt, big thighs and very long calves'
+export const NINA_BODY_FACTS = 'big boobs and very long calves'
 
 /** The full render. Every sentence, in order. */
 export const NINA_BODY = NINA_BODY_SENTENCES.join(' ')
@@ -79,7 +79,7 @@ export const NINA_BODY = NINA_BODY_SENTENCES.join(' ')
  * sentence naming all four facts as facts about HER, and the crop is reconciled out loud in the
  * clause after the dash rather than left for the model to guess at.
  */
-export const NINA_BODY_AVATAR = `She is voluptuous — big boobs, a bubble butt, big thighs and very long calves — even though this photograph is cropped to her head and shoulders and shows almost none of it.`
+export const NINA_BODY_AVATAR = `She is voluptuous — big boobs and very long calves — even though this photograph is cropped to her head and shoulders and shows almost none of it.`
 
 /**
  * The anchor image in words, minus the body clause that moved to `NINA_BODY_SENTENCES`.
@@ -95,7 +95,7 @@ export const NINA_BODY_AVATAR = `She is voluptuous — big boobs, a bubble butt,
  * a change fights the reference. Three concerns, three paragraph boundaries, one source for each
  * sentence — `NINA_APPEARANCE` is derived from the three halves rather than written a fourth time.
  */
-export const NINA_FACE = `A woman in her late twenties, mixed Southeast Asian and Mediterranean features, olive skin with a warm undertone. Long dark brown hair pulled into a high ponytail with loose strands at the temples. Dark brown eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty.`
+export const NINA_FACE = `A woman in her late twenties. Long dark brown hair pulled into a high ponytail with loose strands at the temples. Dark brown eyes, thick straight eyebrows, no makeup, a wide open smile. Usually a little sweaty.`
 
 const NINA_DEFAULT_OUTFIT = `Her default outfit is a heather-grey racerback tank, black fitted running shorts, white running shoes, and a black digital watch on her left wrist. Often a white towel over one shoulder and a blue water bottle in one hand. Her home ground is a red 400 m athletics track beside a green field, in flat morning sun.`
 

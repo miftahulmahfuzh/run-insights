@@ -184,8 +184,11 @@ describe('the payload — the two surviving ported facts, and the reference that
 })
 
 describe('the prompt', () => {
-  /** The four facts R1 says must ALWAYS be explicitly instructed, in the user's own words. */
-  const BODY_FACTS = ['big boobs', 'bubble butt', 'big thighs', 'very long calves'] as const
+  /** The two facts R1 (narrowed 2026-09-13, promote-image-prompt) says must ALWAYS be explicitly
+   * instructed. Was four (`big boobs`, `bubble butt`, `big thighs`, `very long calves`); the
+   * operator's live-tuned prompt dropped `bubble butt` and `big thighs` from the unconditional
+   * canon and was promoted to the shipped default with the drop intact. */
+  const BODY_FACTS = ['big boobs', 'very long calves'] as const
 
   /** One field moved off the defaults, everything else exactly as it ships. */
   function tuned(over: Partial<NinaTuning>): NinaTuning {
@@ -307,7 +310,7 @@ describe('the prompt', () => {
    * R1 — THE BODY CANON
    * ──────────────────────────────────────────────────────────────────────────────────────────*/
 
-  it('PLAN INVARIANT 4: EVERY combination of prefs names all four body facts', () => {
+  it('PLAN INVARIANT 4: EVERY combination of prefs names both body facts', () => {
     /*
      * The requirement the user actually wrote down — *"always explicitly instruct these in the
      * prompt"* — proved as a PROPERTY over the whole input space rather than as four examples,
