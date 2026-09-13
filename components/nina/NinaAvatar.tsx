@@ -31,9 +31,6 @@ import { cn } from '@/lib/cn'
  * render a face, waiting (the rule `RunDateLink` applied when its `label` override came back out).
  */
 
-/** `public/nina/avatar-001.png`, re-exported so phase 4's importers do not change. */
-export { NINA_AVATAR_FALLBACK_SRC as NINA_AVATAR_SRC } from '@/lib/nina/album'
-
 const SIZES = {
   /** 28px — the typing indicator and the message list. */
   sm: 'size-7',

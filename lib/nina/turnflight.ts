@@ -122,6 +122,9 @@ export const NINA_TURN_CHAIN_MAX = 2
  * not stretch an outage: the client treats a failed poll as "try again", and the server's
  * `awaiting: false` still ends every wait it can reach. The backstop now only stops the tab
  * lying about a live chain.
+ *
+ * @alias intentionally equal to `NINA_BACKGROUND_BUDGET_MS` — a second name for the same wall
+ * clock as it is honoured on the client, not an independent budget that happens to match today.
  */
 export const NINA_TURN_POLL_GIVE_UP_MS = NINA_BACKGROUND_BUDGET_MS
 
