@@ -168,7 +168,7 @@ const GUARDED_CALLS = [
     ],
     advice:
       'A glm-4.6v describe pass is a 5-15 s vision call (F33 phase 6). ' +
-      "useComposerPhotos fires it from a client event handler on pick, so the description is " +
+      'useComposerPhotos fires it from a client event handler on pick, so the description is ' +
       'already in hand when he hits send; no page render may await it.',
   },
   {
