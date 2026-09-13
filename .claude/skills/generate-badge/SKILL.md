@@ -254,7 +254,10 @@ Then judge in this order, because the order is roughly the frequency of failure:
   something, a vertical post standing alone, a single light source, a liquid drip, a disc? The
   collision audit at the foot of `style.md` names the adjacencies already checked at design time
   — read it before generating anything past the badge you are on, because a convergence noticed
-  on badge sixteen is a convergence that cost fifteen badges of hindsight.
+  on badge sixteen is a convergence that cost fifteen badges of hindsight. `python3
+  tools/make_badge_sheet.py --deck <badges|records>` draws every promoted master of that deck onto
+  one contact sheet (`_candidates/_shelf.png`, gitignored) — read it before generating, the same
+  way, to see the tally as a picture instead of a mental list.
 - **Does the signature thread read as a second pass?** One small satin-stitch mark, in the one
   colour (`#F2600C`, described in the style block) that appears nowhere else on the badge. If it
   has become the colour of the whole subject, an outline, a second subject, or more than one mark,
