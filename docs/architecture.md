@@ -1,9 +1,12 @@
 # Run Insights — Current-State Architecture
 
-**Written 2026-09-11; drift-corrected 2026-09-12** — the same-day dead-code sweeps over `lib/db`,
-`lib/nina`, `lib/admin` and `components/ui` landed after the first write and invalidated a
+**Written 2026-09-11; drift-corrected 2026-09-12, 2026-09-13** — the same-day dead-code sweeps over
+`lib/db`, `lib/nina`, `lib/admin` and `components/ui` landed after the first write and invalidated a
 handful of this document's citations; each is fixed in place below, and the Scale row was
-re-measured. This is the one document that describes the system **as it actually
+re-measured. The 2026-09-13 pass fixed a second-order case of the same problem: `nina_error_logs`
+and the `db-schema-split`/`db-queries-split` file layout both landed *later* on 2026-09-12, after
+that morning's correction pass, so §4.1's table count and file citations had drifted again by the
+next day. This is the one document that describes the system **as it actually
 exists today** — not as any plan proposed it. Every plan under `docs/plans/archive/` is a
 point-in-time artifact; several of them were overruled by reconciliation rulings, by measurements
 taken during execution, or by later features. Where a plan and this document disagree, this
@@ -95,7 +98,9 @@ probe before the move).
 
 ## 4. Data model
 
-### 4.1 Table inventory (28, in `lib/db/schema.ts`)
+### 4.1 Table inventory (29, in `lib/db/schema.ts` — a barrel over `lib/db/schema/*.ts` since
+2026-09-12's `db-schema-split`; the count below includes `nina_error_logs`, added the same day by
+`nina-llm-fallback-error-logs p1` after this document's last drift-correction pass)
 
 | Domain | Tables |
 |---|---|
@@ -104,7 +109,7 @@ probe before the move).
 | Extraction audit | `extractions` — **append-only**: no query ever deletes a row; `corrections` jsonb holds `Record<path, CorrectionEvent[]>` with `phase: 'review' \| 'post-review-edit' \| 'manual'` |
 | Derived / coaching | `insights` (UNIQUE user+scope+scope_key+facts_hash; `insights_latest_idx` for the recency read), `records` (PK user_id+key; value always int — `earliest_start` encodes seconds-past-midnight as `unit: 'clock'`), `badges` (**award ledger**: PK user_id+key+dedupe_key since F13), `shares` (token PK, partial unique `run_id WHERE revoked_at IS NULL`) |
 | Nina | `nina_turns` (one row per model call — chat AND image jobs share it, incl. daily-cap accounting), `nina_chat_sessions`, `nina_messages` (`seq bigserial` = the total order; FKs to quoted messages / attached runs are `set null`), `nina_message_images`, `nina_memory_slots` (10 slots incl. `training_plan`), `nina_memory_facts` (the distilled ledger), `nina_shortcuts`, `nina_nags` (the nag ladder), `nina_avatars` (current-face pointer; `source_key` unique index makes chat-photo adoption idempotent), `nina_folders`, `nina_tuning` (per-account character dials — persona reads it live, no cache), `nina_image_prefs` (prompt template, image model, quota is env) |
-| Platform | `push_subscriptions` (Web Push), `app_settings` (PK `key`; row `text_model` selects glm-5.3 vs glm-5.3-flash for *all* narrative including Nina) |
+| Platform | `push_subscriptions` (Web Push), `app_settings` (PK `key`; row `text_model` selects glm-5.3 vs glm-5.3-flash for *all* narrative including Nina), `nina_error_logs` (best-effort row per FAILED Nina model call; `user_id` nullable; written by `lib/nina/errorlogs.ts`, deliberately outside `lib/nina/queries.ts`) |
 
 ### 4.2 The invariants that shape every query
 
