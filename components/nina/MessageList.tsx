@@ -78,16 +78,21 @@ export function MessageList({
    * caller that never sent one.
    */
   flashBlinks: number
-  /** Phase 7. A swipe, or the focus-revealed button, arming a reply to this message. */
-  onReply?: (message: ChatMessage) => void
-  /** Phase 7. A tap on a quote stub: scroll to the message it names. */
-  onJumpToQuote?: (targetId: string) => void
+  /**
+   * Phase 7. A swipe, or the focus-revealed button, arming a reply to this message.
+   *
+   * REQUIRED, not optional, on RULING E2b's habit shared with `flashBlinks`/`avatar` below:
+   * `ChatScreen` is the one caller and always passes it, so `tsc` should notice if it stops.
+   */
+  onReply: (message: ChatMessage) => void
+  /** Phase 7. A tap on a quote stub: scroll to the message it names. REQUIRED — see `onReply`. */
+  onJumpToQuote: (targetId: string) => void
   /**
    * R8. A LEFT swipe, or the second focus-revealed button, asking to edit or delete this message.
    * Threaded straight through, exactly as `onReply` is: this component composes bubbles and does
-   * not decide what a bubble's actions are.
+   * not decide what a bubble's actions are. REQUIRED — see `onReply`.
    */
-  onRequestActions?: (message: ChatMessage) => void
+  onRequestActions: (message: ChatMessage) => void
   /**
    * Phase 9 (R10). A tap on a photograph inside a bubble.
    *

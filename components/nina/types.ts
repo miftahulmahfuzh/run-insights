@@ -12,9 +12,9 @@
 import type { RunAttachment } from '@/lib/nina/attach'
 import type { NinaCropInput } from '@/lib/nina/crop'
 
-export type ChatRole = 'user' | 'nina'
+type ChatRole = 'user' | 'nina'
 
-export type ChatMessageState =
+type ChatMessageState =
   /** An optimistic row: the runner pressed send and the action has not answered. */
   | 'sending'
   /** The server has it. Every row the page renders starts here. */

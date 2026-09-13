@@ -71,7 +71,7 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 
 | File | Kind | Purpose |
 |---|---|---|
-| `types.ts` | types only | `ChatMessage`, `ChatAvatar`, `ChatMessageState`, `ChatRole` — the client shape of the conversation, mapped from `lib/nina/queries`'s rows on the server so no component knows a column name. No runtime export. |
+| `types.ts` | types only | `ChatMessage`, `ChatAvatar` — the client shape of the conversation, mapped from `lib/nina/queries`'s rows on the server so no component knows a column name. `ChatRole`/`ChatMessageState` are `ChatMessage`'s own field types, un-exported (2026-09-13) once knip showed no importer named them directly — they are read only through `ChatMessage.role`/`.state`. No runtime export. |
 | `ChatScreen.tsx` | `'use client'` | The interactive half of `/nina`. One turn: optimistic send → action returns → poll → idempotent staggered reveal — the turn section is its contract. Mounts `KeyboardOverlapPublisher` and keeps only the numeric mirror; owns the deep-link landings (`?jump=`), the photo viewer state, and every notice sentence. |
 | `KeyboardOverlapPublisher.tsx` | `'use client'` | The ONE `visualViewport` subscription in the app and the keyboard's ONE broadcast — empty-deps, `--nina-kb-overlap` on `:root` (removed, not zeroed, at rest), optional `onOverlap` mirror. Renders null. A component, not a hook: its consumers are two ROUTES, and `rg KeyboardOverlapPublisher` must answer "who measures the keyboard". |
 | `MessageList.tsx` | `'use client'` | The conversation, grouped by day. The page scrolls — no `overflow-y-auto` panel — and `decideAutoScroll` is fed by a passive scroll *sample*. Honours R14's `?at=` scroll mark with a `useLayoutEffect` restore; sets `--nina-flash-count` from the server-resolved `flashBlinks` prop. |
@@ -94,7 +94,7 @@ blink) both live in `app/globals.css` and are both redefined under `prefers-redu
 | `NewChatButton.tsx` | `'use client'` | The rail's `+`. A `<button>` and not a `<Link>` because the id does not exist until the action runs; `replace`, not `push`; never mints a second empty session (the action reuses the newest empty one). |
 | `NinaAboutScreen.tsx` | `'use client'` | `/nina/about`. One `PhotoViewer` over two sections, open state derived from `?photo=album.<id>` / `?photo=chat.<id>` — never mirrored into state; the codec lives in `lib/nina/album.ts`. Optional `resolvedPhoto` (the server's answer for a `chat.<id>` the 200-newest window dropped) and `returnTo` (the deep link's decoded origin page). The strip — two icon-only sends on one flight, a `useSavePhoto` download, ending at the keyboard var — is the about section. |
 | `NinaPhotoGrid.tsx` | `'use client'` | One square grid for both sections — they differ in exactly two ways (the current-photo ring; the gallery's two parties). `alt=""` on every cell; the `<button>` carries the accessible name. |
-| `NinaAvatar.tsx` | no directive | Her face in a circle at three sizes (28 / 44 / 128 px). The only `next/image` call site among Nina's images — the committed fallback PNG is a build asset; an album Blob URL gets a plain `<img>` under `ninaCropStyle`. Re-exports `NINA_AVATAR_SRC` (the fallback constant from `lib/nina/album`). |
+| `NinaAvatar.tsx` | no directive | Her face in a circle at three sizes (28 / 44 / 128 px). The only `next/image` call site among Nina's images — the committed fallback PNG is a build asset; an album Blob URL gets a plain `<img>` under `ninaCropStyle`. Imports `NINA_AVATAR_FALLBACK_SRC` from `lib/nina/album` directly — the `NINA_AVATAR_SRC` re-export kept here "so phase 4's importers do not change" outlived every importer and was removed 2026-09-13 once knip showed it unused. |
 | `NinaJobList.tsx` | `'use client'` | The job list, rendered by `/nina/jobs` **and** summarised under `/nina/about`'s Media. Every prop serializable; `actions?: boolean` (not a render-prop — a Server Component caller cannot receive one) draws the per-row mutations on the console surface alone. |
 | `NinaJobActions.tsx` | `'use client'` | Redo, one tap, no dialog — and delete. `NOTE` is a `Record` over the whole `NinaJobRefusal` union, so a fifth refusal is a build error until it has a sentence. The accessible name names the row (`Coba lagi <title>`), not the button. |
 | `NinaJobDetail.tsx` | `'use client'` | `/nina/jobs/[id]`'s card. Every prop serializable; both facts arrive already decided — `planJobJump` (targets the EARLIEST bubble carrying the photograph, which also rescues rows whose `replyToId` dangled) and `planJobPhoto` (`NinaJobPhoto`, REQUIRED; `kind: 'none'` renders nothing — the icon's absence is the statement). One "Catatan foto" section renders `sidecar ?? prompt`; the separate Prompt section is gone — it repeated the sidecar the prompt already ships inside. |
@@ -390,14 +390,14 @@ The package has no barrel; consumers import per file. What crosses its boundary:
 | `ChatChrome` | `ChatChrome.tsx` | `{ ninaBadge?: ReactNode }` — mounted by `AppShell`, which constructs the badge slot on the server and passes the node in. |
 | `NinaUnreadBadge`, `NinaUnreadBadgeSlot` | `NinaUnreadBadge.tsx` | The async Server Component and its `Suspense` slot. |
 | `NinaUnreadSync` | `NinaUnreadSync.tsx` | `{ hadUnread }`; renders null. |
-| `NinaAvatar`, `NINA_AVATAR_SRC` | `NinaAvatar.tsx` | `size` `'sm' \| 'md' \| 'xl'` (28/44/128); passing nothing renders the committed face. |
+| `NinaAvatar` | `NinaAvatar.tsx` | `size` `'sm' \| 'md' \| 'xl'` (28/44/128); passing nothing renders the committed face. |
 | `ChatImages` | `ChatImages.tsx` | `{ urls, kinds?, onOpen? }` — absent `onOpen` means not interactive. |
 | `ChatPhotoActions` | `ChatPhotoActions.tsx` | `{ url, label, onAttach: (() => void) \| null }`; rendered through `PhotoViewer`'s `actions` slot; `null` hides the attach control. |
-| `MessageList`, `MessageBubble`, `MessageActionsSheet` | their files | Internal to the screen except `MessageList`'s callbacks (`flashBlinks` among its props); `MessageActionsSheet` is keyed by `acting?.id` upstream. |
-| `Composer`, `ComposerDraftImage` | `Composer.tsx` | `onSend` must be referentially stable; `bottomCss`/`padBottomCss` are a PAIR and neither is optional. `ComposerDraftImage` is a discriminated union — `upload` (ticket, url, stored pathname, contentHash) or `deduped` (url, imageId); a `deduped` entry's `url` is for the optimistic bubble, the payload is the id. |
+| `MessageList`, `MessageBubble`, `MessageActionsSheet` | their files | Internal to the screen. `MessageList`'s `flashBlinks`/`avatar`/`onReply`/`onJumpToQuote`/`onRequestActions` are all REQUIRED (RULING E2b — `ChatScreen` is the one caller and always passes them; the three callbacks were hardened from optional 2026-09-13, matching their signature siblings). `MessageActionsSheet` is keyed by `acting?.id` upstream. |
+| `Composer`, `ComposerDraftImage` | `Composer.tsx` | `onSend` must be referentially stable; `bottomCss`/`padBottomCss` are a PAIR and neither is optional. `reply`/`onCancelReply`/`attachment`/`onClearAttachment`/`photo`/`onClearPhoto` are also all REQUIRED (hardened 2026-09-13 — `ChatScreen`'s one call site always supplied all six; two now-dead `!== undefined` runtime guards were the tell). `ComposerDraftImage` is a discriminated union — `upload` (ticket, url, stored pathname, contentHash) or `deduped` (url, imageId); a `deduped` entry's `url` is for the optimistic bubble, the payload is the id. |
 | `AttachmentChip`, `PhotoAttachmentChip`, `QuoteStub`, `RunAttachmentCard`, `TypingIndicator` | their files | Leaf renderers; `QuoteStub`'s `mine` is whose bubble it sits INSIDE, not whose message is quoted. |
 | `readAnchorRows`, `useChatScrollMark` | `useChatScroll.ts` | The scroll mark's DOM half; `RunAttachmentCard` and `ChatScreen` are its consumers. |
-| `ChatMessage`, `ChatAvatar`, `ChatMessageState`, `ChatRole` | `types.ts` | Types only — the serialization boundary between `app/nina/page.tsx` and this package. |
+| `ChatMessage`, `ChatAvatar` | `types.ts` | Types only — the serialization boundary between `app/nina/page.tsx` and this package. `ChatRole`/`ChatMessageState` are `ChatMessage`'s own field types and do not cross the boundary on their own (un-exported 2026-09-13). |
 
 ## Dependencies
 
@@ -673,6 +673,17 @@ pinned the window (P1-CN-A005) and made the rail's `up` the bar toggle through t
 
 ## Recent changes
 
+- **2026-09-13 — knip YAGNI + optional-prop re-scan.** Removed 3 dead knip-flagged exports:
+  `NinaAvatar.tsx`'s `NINA_AVATAR_SRC` re-export (both real importers already read
+  `NINA_AVATAR_FALLBACK_SRC` from `lib/nina/album` directly) and `types.ts`'s `ChatRole`/
+  `ChatMessageState` (only ever used inside `ChatMessage` in the same file, un-exported).
+  Re-ran the optional-prop-vs-callsite sweep (last done 4f655e0, 2026-09-12, before
+  `ChatScreen`/`Composer` were split into 8 hooks) against today's tree: the 4 prior
+  KEEP verdicts still hold; the 8 new hooks have zero optional option-object fields; and
+  `Composer`'s 6 reply/attachment/photo props plus `MessageList`'s `onReply`/
+  `onJumpToQuote`/`onRequestActions` were hardened from optional to REQUIRED (RULING
+  E2b) — each had exactly one caller (`ChatScreen`) always supplying every one of them,
+  evidenced by two now-dead `!== undefined` runtime guards in `Composer.tsx`.
 - **2026-09-12 — this compaction.** Cut from 1017 lines to ~half by converting phase narrative to
   present tense and merging the duplicated changelogs (the old header blob and the four
   `Documentation Created` entries said the same things twice). Every claim re-verified against the
