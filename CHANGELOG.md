@@ -10,8 +10,64 @@ tree in September 2026, readable in git history.
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-09-13
+
+No new user-facing surface this time — one small feature, one real bug fix, and a
+resend-fallback safety net for the model calls Nina already depends on. Nearly everything
+else is the app getting easier to keep correct: the two biggest files in the tree
+(`lib/db/queries.ts` at 2,500+ lines and `lib/nina/actions.ts`) came apart into per-concern
+modules behind stable barrels, `knip` was adopted as a durable dead-export detector and run to
+zero findings across every package, and `package_readme.md` now exists for every directory in
+the repo — none of which changes what runs in production, all of which changes how fast the
+next change can be trusted. React component testing was stood up from zero.
+
+491 commits, 797 files changed (+126,730/-33,449 lines), 5,758 unit tests across 332 files —
+up from 3,948 tests at v1.0.0. Live at **[runins.site](https://runins.site)**.
+
+### Added
+
+- **A OpenRouter fallback for every model call Nina makes, and a place to see what failed
+  (`nina-llm-fallback-error-logs`, 5 phases).** Text chat, vision/`describe` calls, and image
+  generation each now retry once against `z-ai/glm-5.3-flash` on OpenRouter before giving up,
+  and every failed attempt — including generation failures, which have no fallback — writes a
+  best-effort row to a new `nina_error_logs` table (migration 0021) rather than vanishing into
+  a server log. `/admin/error-logs` reads those rows through a paginated reader, three tabs
+  (text / multimodal / image generation), one row per failure, full detail on tap.
+- **A clear (×) button on the edit-message textarea.** Sits top-right, appears only once the
+  draft has text, clears it and refocuses the field in one tap — a plain click would otherwise
+  blur it and dismiss the on-screen keyboard.
+
 ### Changed
 
+- **Six of the largest files in the tree split into per-concern modules behind stable
+  barrels**, each landed as its own reconciled multi-phase plan set: `lib/db/queries.ts`
+  (2,500+ lines → 14 domain modules), `lib/db/schema.ts` (2,522 lines), `lib/nina/actions.ts`,
+  `lib/nina/persona.ts`, `lib/admin/filetree.ts` (7 modules), `components/admin`'s
+  `ninaAlbumActions`, and `scripts/nina-image-worker.ts`. `components/nina/ChatScreen` came
+  apart into seven modules plus a run of extracted hooks — `useComposerDraft`,
+  `useComposerPhotos`, `useChatPageScroll`, `useQuoteLanding`, `usePhotoViewer`,
+  `useMessageActions`, `useNinaSend`, `useTurnArrival` — each with its own test file. Every
+  split repointed its own path-pinned CI guards and doc citations in the same commit; one
+  split's guard update was itself the cause of a later CI break, fixed in the same run.
+- **`knip` adopted as the durable dead-export detector**, replacing ad hoc greps, then run
+  package by package (`lib/nina`, `lib/db`, `lib/admin`, `lib/badges`, `lib/records`,
+  `lib/llm`, `lib/charts`, `lib/metrics`, `components/ui`, `components/admin`, `scripts`,
+  `app/`, and more) to zero findings — hundreds of dead exports, props, and types removed, one
+  package at a time, each sweep re-verified against the tree rather than trusted from a prior
+  count.
+- **React component testing stood up from zero and taken to comprehensive coverage**: Nina's
+  chat surfaces (`ChatScreen`, `NinaSidebar`, `Composer`, `MessageBubble`, `MessageList`,
+  `MessageActionsSheet`), the admin explorer/album/memory/shortcuts/image-generation surfaces,
+  every `components/ui` primitive, the charts and review screens, and the profile/share/push
+  directories. The suite grew from 3,948 to 5,758 tests without a corresponding drop in test
+  files reviewed for actual behavior — several suites caught real bugs during writing (see
+  Fixed).
+- **`package_readme.md` written or compacted for every package in the repo** — first-time docs
+  for `lib/schema`, the auth/push/runs/trends cluster, the insights/metrics/panel cluster,
+  `components/ui`, `lib/badges` + `lib/records`, the extract/photos pipeline, `lib/llm`,
+  `lib/review`, `lib/charts`, `tools/`, `lib/db`, `components/admin`, and both `lib/nina` and
+  `components/nina` — plus a compaction pass on the root README and `docs/architecture.md`
+  against the tree's actual current state.
 - **`docs/plans/` archived to [`docs/plans/archive/`](docs/plans/archive/).** All 36 remaining
   plan documents (F01–F33 plus the two 2026-09-10 design docs) are SHIPPED or SHIPPED+AMENDED
   per the plan-by-plan cross-reference in `docs/architecture.md` §13, so the primary docs tree
@@ -20,6 +76,37 @@ tree in September 2026, readable in git history.
   F16 on 2026-08-21) is renumbered `F16b-upload-kind-swap.md`. Content is byte-identical —
   nothing was deleted — and every live reference (this changelog, README, the CI guards' error
   strings, source comments, the badge-art tools and skill) points at the archive location.
+  `.workflows/todos.md` across `lib/db`, `lib/admin`, `lib/nina`, `components/nina`, and the
+  repo root were archived alongside it, duplicate TaskIDs deduped.
+- **Badge/patch tooling gained a CI control-loop gate** — four designed controls asserted on
+  every push — and `make_badge_sheet.py` now reads the deck table directly (`--deck`,
+  `--selftest`) instead of a second hardcoded list.
+
+### Fixed
+
+- **A soft-deleted Nina image job's two TOCTOU races** (`lib/nina/imagejobs.ts`): a retry could
+  post an apology into a chat the runner had just tidied away, and a job hidden mid-retry could
+  become an invisible `pending` ghost that no sweep ever reclaimed. Both are now checked
+  against the row's own `deleted_at` at the point of write, not at the point of claim.
+- **A chat photo adopted into the album as Nina's profile picture no longer appears twice** in
+  the admin reference picker — once as the chat photo, once as its album copy. The dedup scope
+  gained a fourth arm excluding album-adopted originals; the album view itself is unchanged.
+- **`MemoryTable`'s add-row flake, confirmed real** — a genuine race under parallel test load,
+  not attributable to any one diff; gated on `toBeEnabled` before re-typing rather than papered
+  over with a retry.
+- Nina's OpenRouter fallback dropped the `reasoning`-control field the provider started
+  rejecting on `glm-5.3-flash`.
+- An integration test's URL-swap recipe was corrupting this project's own real database
+  credentials on a first-match string substitution; anchored to the connection string's
+  authority instead.
+- A suppressed hint left referenced in `aria-describedby`, an unlabeled control announcing
+  nothing to assistive tech, and focus dropped by pane closes and `FolderMenu` panels — each
+  closed with a real DOM assertion, not a visual check.
+- `lib/date` now rejects impossible calendar days instead of emitting `NaN` or silently
+  shifting into the next month.
+- Assorted CI green-keeping: prettier reformatting sweeps, `tsc --noEmit` strictness fixes, and
+  two path-pinned guards (`llm-payload-guard`, the client-secret raw-read guard) repointed at
+  files a split had moved.
 
 ## [v1.0.0] - 2026-09-11
 
@@ -427,5 +514,6 @@ phone.
   excluded unless `VITEST_INTEGRATION=1` / `LLM_LIVE_TEST=1` are set, so a green `npm test` is not a
   statement about Postgres or about the model.
 
+[v1.1.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.1.0
 [v1.0.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v1.0.0
 [v0.1.0]: https://github.com/miftahulmahfuzh/run-insights/releases/tag/v0.1.0
