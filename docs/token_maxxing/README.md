@@ -4,6 +4,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 
 | Date | Title | Achievement | Doc |
 |------|-------|-------------|-----|
+| 2026-09-13 | Scripts Capture YAGNI | Closed 4 knip-flagged unused exports in scripts/capture and nina-dedupe-plan; verified readme accurate. | [link](./2026-09-13-scripts-capture-yagni.md) |
 | 2026-09-12 | Research Directory Hygiene Audit | First audit of the untouched research corner: revived its dead harness, fixed README drift, certified results current. | [link](./2026-09-12-research-hygiene-audit.md) |
 | 2026-09-12 | Badge CI Follow-ups | Taught the badge contact sheet the shared deck table, drew the first records sheet, and self-tested both decks. | [link](./2026-09-12-badge-ci-followups.md) |
 | 2026-09-12 | Env & Config Hygiene Census | Swept the env contract, dependencies, and build config against real usage, deleting the dead, documenting the live. | [link](./2026-09-12-tokenmax-env-config-hygiene.md) |
