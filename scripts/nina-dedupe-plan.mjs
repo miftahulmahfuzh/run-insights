@@ -74,7 +74,7 @@ export function isOriginalRow(row) {
 }
 
 /** `created_at` arrives as a Date from neon (timestamptz); tests pass ISO strings. Both allowed. */
-export function createdMs(row) {
+function createdMs(row) {
   const t =
     row.createdAt instanceof Date ? row.createdAt.getTime() : new Date(row.createdAt).getTime()
   if (!Number.isFinite(t)) throw new Error(`row ${row.id} carries an unreadable created_at`)

@@ -42,7 +42,7 @@ const ZONE_BOUNDS = [
 ]
 
 /** Zone 4's floor — `warmup_who` fires when km 1's HR is at or above it. */
-export const ZONE4_FLOOR = 171
+const ZONE4_FLOOR = 171
 
 /* ============================================================================
  * Run shapes. One name selects the pace profile, the heart-rate profile, the cadence profile and
