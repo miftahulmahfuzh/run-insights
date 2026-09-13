@@ -179,13 +179,13 @@ export type NinaFactCategory =
  * statement REPLACES the slot and leaves both ledger rows, which is what lets her say "lo bilang
  * benci lari pagi bulan lalu" three months after the slot moved on.
  *
- * **There was a `confidence` column and task #135 dropped it from THIS file** (`drizzle/0011_rare_blockbuster.sql`),
- * on the user's explicit instruction to make the pipeline carry no confidence at all. That
- * migration has never run in production — it lost a two-branch race and sits below the migrator's
- * `max(created_at)` watermark permanently, so the live table still carries the column (`integer
- * NOT NULL DEFAULT 100`, every row 100, nothing reading it). `npm run ci:schema-drift-guard`
- * reports it; see lib/db/.workflows/package_readme.md for the repair, which destroys data and is
- * therefore not automated. What promotes a statement
+ * **There was a `confidence` column and task #135 dropped it** (`drizzle/0011_rare_blockbuster.sql`),
+ * on the user's explicit instruction to make the pipeline carry no confidence at all. Worth
+ * knowing because it is the repo's worked example of a stranded migration: that file lost a
+ * two-branch race and sat below the migrator's `max(created_at)` watermark for six days, so the
+ * column survived in production long after this file stopped declaring it, with `db:migrate`
+ * exiting 0 the whole time. Applied by hand 2026-09-13; `npm run ci:schema-drift-guard` is what
+ * would now catch the next one. What promotes a statement
  * to a standing slot is now `lib/nina/memory.ts`'s quote gate alone — the fact's own text had to
  * be a verbatim span of his message — which was always the load-bearing half of the pair.
  *

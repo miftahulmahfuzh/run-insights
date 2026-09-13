@@ -121,6 +121,8 @@ have been the easy version of this doc and the wrong one.
 4. **Found the ledger gap**: 21 of 22 journal entries present in `drizzle.__drizzle_migrations`,
    with `0011_rare_blockbuster` absent — and `nina_memory_facts.confidence` still present in
    production as `integer NOT NULL DEFAULT 100`, six days after the DROP COLUMN was committed.
+   (Repaired later in the same session on the user's explicit authorisation — see *Production
+   remediation* below. The ledger now reads 22/22 and the guard reports zero drift.)
 5. **Derived the mechanism from drizzle-orm's own source rather than inferring it.** Confirmed
    `drizzle-kit migrate` delegates to `drizzle-orm/<driver>/migrator`, then read
    `node_modules/drizzle-orm/pg-core/dialect.js`:
@@ -278,19 +280,40 @@ been.
 
 ## Follow-ups & YAGNI notes
 
-### Production remediation — deliberately NOT done, needs explicit human authorisation
-The repair is two statements and is **irreversible**:
-```sql
-ALTER TABLE nina_memory_facts DROP COLUMN confidence;
--- plus, into drizzle.__drizzle_migrations, the (hash, created_at) pair
--- for 0011_rare_blockbuster  (created_at = 1788786634959)
-```
-It **destroys data** — 4 rows carry a value — so it is left to the user, by design.
+### Production remediation — DONE, on explicit human authorisation (later in the same session)
+It was first written up here as deliberately not done, because it is irreversible and destroys
+data. The user then authorised it directly ("do prod repair yourself"), and it was executed as a
+single transaction over the **unpooled** connection:
 
-**Backfilling that ledger row is SAFE with respect to the watermark**, and this was checked
-rather than assumed: the watermark is `max(created_at)`, and this row's `created_at`
-(`1788786634959`) is **below** the current max, so inserting it cannot lower the watermark and
-cannot cause any migration to re-apply.
+```sql
+BEGIN;
+ALTER TABLE public.nina_memory_facts DROP COLUMN confidence;
+INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+SELECT 'c9cedf9ac958e05890591ba4cf8bf008b8f4e5a3f4ffb3387b8c52760c60f057', 1788786634959
+WHERE NOT EXISTS (SELECT 1 FROM drizzle.__drizzle_migrations WHERE hash = 'c9ce…f057');
+COMMIT;
+```
+
+**Backfilling that ledger row is watermark-safe**, checked rather than assumed: the watermark is
+`max(created_at)`, and this row's `created_at` (`1788786634959`) is **below** the current max
+(`1789176119493`), so it cannot raise the watermark and cannot cause any migration to re-apply.
+The `WHERE NOT EXISTS` makes a re-run a no-op instead of a duplicate row.
+
+**Pre-flight, before touching anything:** the four values were dumped to
+`~/confidence-backup-20260913.sql` (outside the repo, so it cannot be committed); all four were
+confirmed to be the `DEFAULT 100`, so no information was actually at risk; and the drizzle table
+definition was confirmed to declare **7** columns with no `confidence`, which is what makes the
+drop runtime-safe — `select().from(t)` expands to the columns the TypeScript schema names, so it
+could never have named the dropped one.
+
+**Verified by effect, not by exit code:** `information_schema` shows 7 columns with `confidence`
+gone; all 4 rows intact; ledger at 22/22 with the watermark unchanged; a live `select *` returns
+exactly the 7 declared columns; the guard reports 308 columns and **zero drift, exit 0**; unit
+suite 5800 green.
+
+The integration suite was **deliberately not run** against production: it inserts test users and
+deletes them in `afterAll`, which is a write nobody asked for and would leave orphans if it
+aborted. The direct verification above is stronger and has no side effects.
 
 ### Not a bug: the guard's local exit 1
 It exits 1 locally against production **by design** — that is the live finding. It exits 0 in CI

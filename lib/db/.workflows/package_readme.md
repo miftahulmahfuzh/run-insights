@@ -596,20 +596,28 @@ diffs the snapshot tip against `information_schema` — every table, column, typ
 foreign key, unique constraint and index. With no reachable `DATABASE_URL` it runs the static half
 only and says so, which is how it also runs in CI.
 
-**Deploy state (verified 2026-09-12 against production, by the migrations table and
-`information_schema`; re-verified 2026-09-13 by the guard, unchanged):** 21 of the 22 journal
-entries are applied. Production has no
+**Deploy state (2026-09-13: all 22 of 22 journal entries applied, zero drift — run the guard,
+do not trust this line):** Production has no
 `nina_tuning.revision`, no `nina_turns.tuning_revision`, no `nina_image_prefs.revision`; it does
 have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model`,
-`app_settings` and `nina_error_logs` (with its one index). The one unapplied entry is
-**`0011_rare_blockbuster`** (`ALTER TABLE nina_memory_facts DROP COLUMN confidence`) — and it is
-not "pending" but
-**skipped**: its journal `when` is older than the newest applied row, and the migrator only applies
-entries beyond that watermark, so `db:migrate` will never apply it and will never complain.
-Production still holds the orphaned `nina_memory_facts.confidence` column — schema.ts declares none
-(the table's own comment records the drop), and nothing reads or writes it, so it is inert. If it
-is ever to go, that is a hand-run `DROP COLUMN` plus a constructed journal fix — `db:generate`
-cannot see it and will not emit it.
+`app_settings` and `nina_error_logs` (with its one index).
+
+**`0011_rare_blockbuster` was the one stranded entry, and on 2026-09-13 it was repaired by hand.**
+For six days it sat journalled-but-unapplied: its journal `when` (1788786634959) is older than the
+ledger watermark (1789176119493), and the migrator applies an entry only beyond that watermark, so
+`db:migrate` would never have run it and would never have complained. The repair was the only one
+available — `db:generate` cannot see the column and will not emit it — and it was two statements in
+one transaction: the migration's own `ALTER TABLE nina_memory_facts DROP COLUMN confidence`, then
+an `INSERT` of its `(hash, created_at)` into `drizzle.__drizzle_migrations` so the ledger stops
+lying. Backfilling that row is watermark-safe *because* its `created_at` is below the current max:
+it cannot raise the watermark and so cannot cause anything to re-apply. Verified after the fact —
+22/22 applied, watermark unchanged, 308 columns, guard exit 0. All four rows held the `DEFAULT 100`
+and nothing read the column, so no information was lost; the values are backed up at
+`~/confidence-backup-20260913.sql` anyway.
+
+The lesson outlives the incident: **a stranded migration is not a pending one.** Nothing in drizzle
+draws that distinction, which is why `npm run ci:schema-drift-guard` exists and why this paragraph
+should never again be the thing you rely on.
 
 **And it is the ONLY drift.** The 2026-09-12 pass checked the columns it had reason to suspect; the
 2026-09-13 guard run compared the whole surface — 29 tables, 309 columns, 37 foreign keys, 31
@@ -694,9 +702,9 @@ not re-derive this by hand either — the counts are what the guard prints on a 
 ### Deploy state of the journal
 
 Kept short because it is the fact most likely to have changed since this page was written (and
-twice has): see **Migrations → Deploy state** above — verified 2026-09-12: 21 of 22 entries
-applied; `0011_rare_blockbuster` unapplied and watermark-skipped; production still holds the
-orphaned `nina_memory_facts.confidence`.
+three times has): see **Migrations → Deploy state** above — as of 2026-09-13, 22 of 22 entries
+applied and no drift, `0011_rare_blockbuster` repaired by hand. Do not read that paragraph for a
+current answer; run `npm run ci:schema-drift-guard`, which is the whole point of it existing.
 
 ### Documentation history
 
@@ -716,7 +724,7 @@ history, and the decisions worth keeping are folded into the sections above. The
 | — | F13 (badge ledger) | `badges.dedupe_key` backfilled, then made the third PK column | `0001_badge_award_ledger` |
 | — | early Nina tables | `nina_avatars` base table; `nina_tuning` enable toggles; `horny` dial | `0002_nina`, `0006`, `0007` |
 | — | turn soft delete | `nina_turns.deleted_at` | `0008_thankful_cardiac` |
-| — | drop shortcut/ledger confidence | `nina_memory_facts` − `confidence` | `0011_rare_blockbuster` — **unapplied; see Deploy state** |
+| — | drop shortcut/ledger confidence | `nina_memory_facts` − `confidence` | `0011_rare_blockbuster` — stranded below the watermark for six days; applied by hand 2026-09-13 |
 | 2026-09-09 | — | `nina_message_images.message_id` becomes nullable, FK `set null` | `0013_fixed_serpent_society` |
 | 2026-09-09 | F41 R3 | `nina_tuning` − `wardrobe` | `0015_retire_nina_tuning_wardrobe` |
 | 2026-09-09 | P1-RI-A040 (simplify-personality p1) | `nina_tuning` − `revision`; `nina_turns` − `tuning_revision` | `0016_retire_tuning_revision` (applied) |
