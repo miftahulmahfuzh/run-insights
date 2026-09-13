@@ -85,6 +85,9 @@ function baseProps(overrides?: Partial<React.ComponentProps<typeof MessageList>>
     restoreMark: null,
     flashBlinks: 4,
     avatar: AVATAR,
+    onReply: () => {},
+    onJumpToQuote: () => {},
+    onRequestActions: () => {},
     ...overrides,
   }
 }

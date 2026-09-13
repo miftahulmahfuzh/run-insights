@@ -58,6 +58,12 @@ function baseProps(overrides?: Partial<React.ComponentProps<typeof Composer>>) {
     bottomCss: '0px',
     padBottomCss: '0px',
     userId: USER_ID,
+    reply: null,
+    onCancelReply: () => {},
+    attachment: null,
+    onClearAttachment: () => {},
+    photo: null,
+    onClearPhoto: () => {},
     ...overrides,
   }
 }

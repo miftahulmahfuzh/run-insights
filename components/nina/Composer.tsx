@@ -136,11 +136,11 @@ export function Composer({
   bottomCss,
   padBottomCss,
   userId,
-  reply = null,
+  reply,
   onCancelReply,
-  attachment = null,
+  attachment,
   onClearAttachment,
-  photo = null,
+  photo,
   onClearPhoto,
 }: {
   /**
@@ -166,10 +166,17 @@ export function Composer({
   /** Needed to build `nina/<userId>/chat/<id>.jpg`. Not a capability — see `useComposerPhotos`'s
    *  header, which is what builds it. */
   userId: string
-  /** Phase 7 (R12). The message this draft answers. Null is the ordinary composer. */
-  reply?: QuoteView | null
-  /** Drop the reply and keep the draft text. Required whenever `reply` can be non-null. */
-  onCancelReply?: () => void
+  /**
+   * Phase 7 (R12). The message this draft answers. Null is the ordinary composer.
+   *
+   * REQUIRED (with `onCancelReply`/`attachment`/`onClearAttachment`/`photo`/`onClearPhoto` below),
+   * on RULING E2b's habit: `ChatScreen` is the one caller and always passes all six, so `tsc`
+   * should notice if it stops passing any of them, rather than this component silently falling
+   * back to a null/no-op it never actually needs to.
+   */
+  reply: QuoteView | null
+  /** Drop the reply and keep the draft text. REQUIRED whenever `reply` can be non-null — see `reply`. */
+  onCancelReply: () => void
   /**
    * Phase 8 (R13). The run pinned to the next message, or null. **Its presence is what makes an
    * empty message sendable**: "then user can ask something, or not include any text at all, then
@@ -185,9 +192,9 @@ export function Composer({
    * The attachment itself is NOT passed back through `onSend`. `ChatScreen` owns the state and
    * reads it from there, so the composer's callback keeps the one shape it had.
    */
-  attachment?: RunAttachment | null
-  /** Unpin it. `ChatScreen` owns the state; this only reports the tap. */
-  onClearAttachment?: () => void
+  attachment: RunAttachment | null
+  /** Unpin it. `ChatScreen` owns the state; this only reports the tap. REQUIRED — see `reply`. */
+  onClearAttachment: () => void
   /**
    * F34 R2. The album photo pinned to the next message, or null — a blob the server already owns,
    * arrived on `?photo=avatar:<id>` and resolved owner-scoped by `app/nina/page.tsx`.
@@ -205,9 +212,9 @@ export function Composer({
    * Like `attachment`, it is NOT passed back through `onSend` — `ChatScreen` owns the state and
    * reads it there, so this component's callback keeps the one shape it has had since phase 6.
    */
-  photo?: NinaExistingPhoto | null
-  /** Unpin it. `ChatScreen` owns the state; this only reports the tap. */
-  onClearPhoto?: () => void
+  photo: NinaExistingPhoto | null
+  /** Unpin it. `ChatScreen` owns the state; this only reports the tap. REQUIRED — see `reply`. */
+  onClearPhoto: () => void
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
   const {
@@ -286,7 +293,7 @@ export function Composer({
 
         {/* Phase 8 (R13). Below the reply strip and above the tiles, which is the order the bubble
             itself renders in: what he is answering, then what he is handing over. */}
-        {attachment !== null && onClearAttachment !== undefined && (
+        {attachment !== null && (
           <AttachmentChip attachment={attachment} onClear={onClearAttachment} />
         )}
 
@@ -294,9 +301,7 @@ export function Composer({
             carries: the run, then the photo already in the album, then anything picked here — the
             same order `lib/nina/actions/send.ts` writes the image rows in (`sortOrder: images.length`
             puts the pinned one after the picked ones, and this strip is above the tile row). */}
-        {photo !== null && onClearPhoto !== undefined && (
-          <PhotoAttachmentChip photo={photo} onClear={onClearPhoto} />
-        )}
+        {photo !== null && <PhotoAttachmentChip photo={photo} onClear={onClearPhoto} />}
 
         {tiles.length > 0 && (
           <ul className="mb-2 flex gap-2">
