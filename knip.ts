@@ -23,13 +23,19 @@ import type { KnipConfig } from 'knip'
  * version's root `proxy.ts`), vitest tests via vitest.config.ts (tests/** plus co-located
  * *.test.ts), drizzle.config.ts, and the eslint/prettier/postcss configs.
  *
- * One documented false positive lives in the report BY DESIGN: `EXTRACTION_SHAPE`
- * (lib/llm/prompts/extraction.ts). `npm run probe:f04` reads it straight out of that module's
- * SOURCE TEXT by regex — deliberately, because the probe replays the job without a TS loader
- * (`@/` alias + `server-only`), so no import-graph tool can ever see that consumer. Do not
- * "fix" the flag by deleting the export: dropping `export` silently changes what the probe
- * scrapes while `tsc` stays green either way. Everything else reported is triaged backlog for
- * the next YAGNI session, not noise to suppress.
+ * Two documented false positives live in the report BY DESIGN:
+ *
+ *  - `EXTRACTION_SHAPE` (lib/llm/prompts/extraction.ts). `npm run probe:f04` reads it straight
+ *    out of that module's SOURCE TEXT by regex — deliberately, because the probe replays the job
+ *    without a TS loader (`@/` alias + `server-only`), so no import-graph tool can ever see that
+ *    consumer. Do not "fix" the flag by deleting the export: dropping `export` silently changes
+ *    what the probe scrapes while `tsc` stays green either way.
+ *  - `_distanceBucketsComplete` (lib/metrics/week.ts). A type-level completeness assertion over
+ *    `DISTANCE_BUCKETS`, never imported anywhere by design — its own file comment explains why the
+ *    `export` keyword is the point (an unexported assertion alias reads as dead to
+ *    `no-unused-vars`, and an assertion the linter deletes is an assertion that guards nothing).
+ *
+ * Everything else reported is triaged backlog for the next YAGNI session, not noise to suppress.
  */
 const config: KnipConfig = {
   ignore: [

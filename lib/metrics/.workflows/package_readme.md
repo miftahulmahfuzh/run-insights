@@ -2,8 +2,11 @@
 
 **Locations**: `lib/metrics` (this file's anchor), `lib/insights`, `components/insights`,
 `lib/panel`
-**Last Updated**: 2026-09-12 (initial creation — one combined readme for the four packages the
-2026-09-12 `insights-metrics-panel-yagni` sweep handled as one unit; see Charter)
+**Last Updated**: 2026-09-13 (`lib/metrics`'s barrel and `types.ts` trimmed of 5 knip-flagged
+unused re-exported values and 8 unused re-exported types by the `lib-metrics-yagni` session; see
+"`types.ts` and the barrel" and Notes below. Everything else here is the 2026-09-12 combined
+readme for the four packages the `insights-metrics-panel-yagni` sweep handled as one unit; see
+Charter)
 
 ## Charter: why one readme covers four directories
 
@@ -226,16 +229,41 @@ with the sweet spot. `tests/metrics.acwr.test.ts` pins exactly this.
 the boundary vocabulary. Field names match the Drizzle columns exactly (`distanceM`, `paceSec`,
 `hr`, `cadence`) so a query result feeds `computeSessionMetrics` with no adapter; the one
 deliberate respelling is `SessionInput.avgHrBpm` (column `runs.avgHr`), unit-suffixed because a
-bare `avgHr` next to `avgHrPctMax` reads ambiguously in formulas. `HrMax`/`HrMaxSource` are
-re-exported here and in the barrel, never redeclared — a second structurally-identical
-declaration would compile and then drift.
+bare `avgHr` next to `avgHrPctMax` reads ambiguously in formulas.
+
+**`HrMax`/`HrMaxSource` have exactly one declaration, in `hrMax.ts` — never redeclared here or
+anywhere.** Until 2026-09-13 `types.ts` also re-exported both under that rule; a
+`lib-metrics-yagni` investigation (prompted by knip flagging that re-export as unused) confirmed
+it was never a second *definition* — `export type { HrMax, HrMaxSource } from './hrMax'` is
+structurally a re-export, not a redeclaration, so there was no drift risk. But nothing imported
+either name from `@/lib/metrics/types` specifically (every consumer reaches the barrel or
+`./hrMax` directly), so the redundant re-export was removed; `types.ts` now only `import type`s
+`HrMax` for its own internal use (`SessionMetrics.hrMaxUsed`). The barrel (`index.ts`) still
+re-exports `HrMax`, and any consumer of `HrMaxSource` type-imports it straight from `./hrMax`.
 
 The barrel's own header states its purpose: import from `@/lib/metrics`, not from its files, so
 a later split or rename inside the directory is invisible to F07/F08/F09. In the wider repo the
-reality is looser, measured 2026-09-12: `lib/badges`, `lib/charts`, `lib/llm`, `lib/records` and
-`lib/nina` import leaf files directly, almost always **type-only** (`types.ts` most of all). A
-new consumer of *computed values* should use the barrel; a type-only deep import matches
-existing practice in the infrastructure packages.
+reality is looser, measured 2026-09-12 and re-confirmed 2026-09-13: `lib/badges`, `lib/charts`,
+`lib/llm`, `lib/records` and `lib/nina` import leaf files directly, almost always **type-only**
+(`types.ts` most of all) — `lib/share/types.ts`'s `HrMaxSource` import is deliberately type-only
+for a second reason too, so `/s/[token]`'s runtime import graph never reaches the HRmax resolver
+(`tests/share.bundle.test.ts` asserts it). `app/me/page.tsx` is the one **value**-level exception,
+importing `resolveHrMax`/`tanakaEstimate` straight from `./hrMax` rather than the barrel — a
+pre-existing deep import, not something this session introduced. A new consumer of *computed
+values* should use the barrel; a type-only deep import matches existing practice in the
+infrastructure packages.
+
+**2026-09-13 barrel trim**: the barrel and `types.ts` re-exported several values and types that
+knip flagged as unused — meaning no consumer imported them through *that specific* barrel/`types.ts`
+path, even though every one of them has real consumers reaching the defining submodule directly.
+Removed from the barrel: `tanakaEstimate`, `roundSharesTo100`, `avgPaceSecPerKm`,
+`FLAG_THRESHOLDS`, `computeVolumeDelta` (values), and `HrMaxSource`, `FastestSlowestKm`,
+`SessionMetrics`, `FlagCode`, `WeekRunSummary`, `MonthRunSummary`, `DailyLoadPoint` (types);
+removed from `types.ts`: the `HrMax`/`HrMaxSource` re-export (see above). All thirteen names still
+exist and are still exported from their owning submodule — this trimmed only the barrel's/`types.ts`'s
+redundant second export surface, never a definition. `week.ts`'s `_distanceBucketsComplete` looks
+like the same pattern (an exported type nothing imports) but is a deliberate completeness
+assertion, not dead re-export weight, and was left alone — see `knip.ts`'s config comment for why.
 
 ---
 
@@ -533,6 +561,14 @@ const { selection, expanded, open, setExpanded, close } = usePanelParam()
 ## Notes
 
 ### Provenance
+
+**2026-09-13** (`tokenmax-lib-metrics-yagni`, worker of coordinator `tokenmax-orch-2026-09-13`):
+removed the barrel's and `types.ts`'s 13 knip-flagged unused re-exports (5 values, 8 types —
+see "`types.ts` and the barrel" above) and confirmed the `HrMaxSource` dual-location flag was a
+redundant-re-export finding, not a redeclaration/drift bug. Verified with `npm run knip`
+(lib/metrics clean except the pre-existing, now-documented `_distanceBucketsComplete` false
+positive), `npx tsc --noEmit`, and the full `vitest run` suite (332 files / 5744 tests, all
+green) — none of the removed re-exports had a live consumer through that path.
 
 Documentation created 2026-09-12 by a token-maxxing worker session
 (`tokenmax-pkg-readme-insights-metrics`), the idea assigned by that day's coordinator

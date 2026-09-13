@@ -11,6 +11,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 | 2026-09-13 | Session-Doc Link & Merge-Status Audit | Audited all 91 README links and merge-status claims against git; fixed 17 stale statuses. | [link](./2026-09-13-session-log-audit.md) |
 | 2026-09-13 | Test Fixtures YAGNI | Audited 4 knip-flagged test-fixture exports: three were dead, one was a live helper nobody had adopted yet. | [link](./2026-09-13-test-fixtures-yagni.md) |
 | 2026-09-13 | Admin Explorer YAGNI & Package-Readme Doc-Drift Close | Un-exported explorer's dead exports and fixed stale readme claims an already-landed sweep left. | [link](./2026-09-13-admin-explorer-yagni.md) |
+| 2026-09-13 | lib/metrics YAGNI Sweep + HrMaxSource Drift Investigation | Investigated a suspected type-drift bug, found it false, then knip-cleaned lib/metrics' barrel re-exports. | [link](./2026-09-13-lib-metrics-yagni.md) |
 | 2026-09-12 | Research Directory Hygiene Audit | First audit of the untouched research corner: revived its dead harness, fixed README drift, certified results current. | [link](./2026-09-12-research-hygiene-audit.md) |
 | 2026-09-12 | Badge CI Follow-ups | Taught the badge contact sheet the shared deck table, drew the first records sheet, and self-tested both decks. | [link](./2026-09-12-badge-ci-followups.md) |
 | 2026-09-12 | Env & Config Hygiene Census | Swept the env contract, dependencies, and build config against real usage, deleting the dead, documenting the live. | [link](./2026-09-12-tokenmax-env-config-hygiene.md) |
