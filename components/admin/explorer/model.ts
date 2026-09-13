@@ -156,7 +156,7 @@ export interface ExplorerPageInfo {
  * *"i will put hundreds of profile pics in there"* means hundreds of ~8–11 s vendor round trips —
  * so the terminal state before `done` is `registering`.
  */
-export type QueueItemState =
+type QueueItemState =
   'waiting' | 'thumbnailing' | 'uploading' | 'registering' | 'done' | 'error'
 
 export interface QueueItem {

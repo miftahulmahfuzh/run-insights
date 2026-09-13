@@ -63,7 +63,7 @@ import { EXPLORER_THUMB_CONTENT_TYPE, measureAndThumbnail } from './thumbnail'
  */
 
 /** Four parallel PUTs. See the header. */
-export const EXPLORER_UPLOAD_CONCURRENCY = 4
+const EXPLORER_UPLOAD_CONCURRENCY = 4
 
 /**
  * How many records go into one `registerNinaAvatarsAction` call.

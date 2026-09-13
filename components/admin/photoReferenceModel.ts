@@ -58,7 +58,7 @@ export interface PhotoReferenceItem {
 }
 
 /** What the grid draws. Built by `photoReferenceView`; the component adds no field to it. */
-export interface PhotoReferenceTile {
+interface PhotoReferenceTile {
   key: string
   /** `thumbUrl` when the row has one, the original when it does not. */
   src: string
