@@ -62,7 +62,7 @@
   import blocks); knip **zero findings in any touched file**; **`next build`** — the barrel's
   bundler-level proving gate, run for real (real `node_modules`, not the symlink).
 - **Branch:** `token-maxxing-2026-09-12-db-queries-split` (HEAD `c312fb0`)
-- **Merge status:** on branch — the **coordinator lands the merge; this worker never merges**.
+- **Merge status:** merged (commit `476a6ae`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high (est. ~1M, input-dominated — repeated full-file reads of the
   1735-line monolith and its consumers, plus the 5,402-test sweep) 🔥
 

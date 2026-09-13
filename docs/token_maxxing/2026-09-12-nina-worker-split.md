@@ -65,10 +65,7 @@
     re-proven with exit codes.
 - **Branch:** `token-maxxing-2026-09-12-nina-worker-split`
   (coordinator-assigned worker worktree).
-- **Merge status:** **NOT merged — worker mode.** The coordinator
-  (`tokenmax-orch-2026-09-12`) owns the merge to main. (Verify via git,
-  not this line — a doc written at session end cannot know the merge that
-  follows it.)
+- **Merge status:** merged (commit `8f7b623`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high — one full 1333-line read plus a dependency
   map, an 11-module rewrite with verbatim comment preservation, then a
   5386-test full sweep, six CI guards, a knip baseline control, and three

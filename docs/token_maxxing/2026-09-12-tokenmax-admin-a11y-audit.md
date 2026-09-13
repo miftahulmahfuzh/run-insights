@@ -48,9 +48,7 @@
     tests 443 → 448; `next typegen` + `tsc --noEmit` clean; prettier clean;
     `check-client-secret-boundary.mjs` passes. (Counts measured 2026-09-12 at session close.)
 - **Branch:** `token-maxxing-2026-09-12-admin-a11y-audit`
-- **Merge status:** On branch — coordinator `tokenmax-orch-2026-09-12` owns landing; the worker
-  never merges. (Accurate at time of writing: commits `935f847`, `d39052e`, `43572bd` sit on the
-  worker branch only.)
+- **Merge status:** merged (commit `bd283ec`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high (est. ~1M, input-dominated) — the burn went into reading all ~40
   non-test source files of components/admin in full (16.7k lines including tests), the pattern
   sweeps, and the full 3752-test sweep. 🔥

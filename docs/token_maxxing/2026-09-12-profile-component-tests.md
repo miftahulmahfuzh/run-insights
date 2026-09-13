@@ -42,8 +42,7 @@
     the full suite **301 files / 5,454 tests, all passing**; `npm run typecheck`
     (next typegen + tsc) clean; prettier run on exactly the touched files.
 - **Branch:** `token-maxxing-2026-09-12-profile-component-tests`
-- **Merge status:** on branch (the coordinator owns the merge to main; this worker
-  does not merge or push)
+- **Merge status:** merged (commit `04e1406`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** ~900k 🔥 (the five components and their two existing render
   suites read in full, the ui/nina/review harness conventions re-derived, five suites
   written and debugged against happy-dom and React 19 quirks, one accessibility bug

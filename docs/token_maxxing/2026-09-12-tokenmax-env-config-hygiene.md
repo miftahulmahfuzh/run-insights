@@ -49,8 +49,7 @@
     vercel.json's cron paths both resolving to real `CRON_SECRET`-guarded routes. The
     env/config layer is certified alive, which is itself the sweep's deliverable.
 - **Branch:** `token-maxxing-2026-09-12-env-config-hygiene`
-- **Merge status:** on branch at `1c57520`, tree clean — this worker does NOT merge; the
-  coordinator (`tokenmax-orch-2026-09-12`) lands the merge.
+- **Merge status:** merged (commit `e50e0eb`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** high (est. ~0.8–1M, input-dominated) — the census methodology is
   grep-heavy over the whole tree, plus two full typegen+tsc runs, a full vitest sweep, and a
   `next build`. 🔥

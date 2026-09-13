@@ -36,8 +36,7 @@
     before this doc was written, unlike the predecessor session whose build landed after
     doc time.
 - **Branch:** `token-maxxing-2026-09-12-nina-composer-messagelist-split`
-- **Merge status:** on branch (worker branch, awaiting coordinator landing per Worker Mode
-  W4; not in origin/main at doc time)
+- **Merge status:** merged (commit `a1bd919`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** heavy (est. ~0.8M, input-dominated) — the burn went into reading
   both source files in full plus their header-comment seams, the bundled Next 16 guide
   re-read, four gate rounds (each vitest + eslint + typegen+tsc), the full 313-test nina

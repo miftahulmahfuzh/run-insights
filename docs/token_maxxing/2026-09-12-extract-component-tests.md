@@ -41,9 +41,7 @@
     terminal guard, a stale "no component tests by design" premise in an existing
     test file, and two harness lessons that cost the session its only red turns.
 - **Branch:** `token-maxxing-2026-09-12-extract-component-tests`
-- **Merge status:** on branch (worker session inside coordinator fan-out
-  `tokenmax-orch-2026-09-12`, slug `extract-component-tests`; the coordinator lands
-  the set's branches)
+- **Merge status:** merged (commit `0991385`, landed by coordinator `tokenmax-orch-2026-09-12`).
 - **Approx token burn:** a full worker session — 838 lines of source read, five
   suites written and debugged under fake timers and deferred-promise gating, one
   mutation check, plus two transient 429 restarts re-booting the worker.
