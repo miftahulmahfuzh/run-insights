@@ -58,14 +58,14 @@
     then broken one at a time and each was killed by **exactly its own test**, with the
     unmutated control green at 42/42.
 - **Branch:** `token-maxxing-2026-09-13`
-- **Merge status:** **landing in progress.** At the time this doc was written, `ed98d63` is on
-  `token-maxxing-2026-09-13` and is **not** an ancestor of `main` — verified by
-  `git merge-base --is-ancestor ed98d63 main` (false) and by `git log --oneline main | head`,
-  whose tip is `a5c4ab0`, showing no merge commit for this session. This is a **solo** session
-  that lands its own work, so this line is expected to become "merged" once the merge commit
-  exists — but it is deliberately **not** claimed here in advance. (Context: every one of
-  today's other 20 session docs asserted a merge status speculatively, and a prior session
-  `session-log-audit` had to repair 17 of them. Verify by git, never by this line.)
+- **Merge status:** **merged and pushed** as `75f85dd`
+  (`merge: token-maxxing session schema-drift-guard`), onto `e836926`. Verified after the fact,
+  not in advance: `git merge-base --is-ancestor token-maxxing-2026-09-13 origin/main` returns
+  true, and the branch was deleted only once that held. The four commits are `ed98d63`,
+  `3230a84`, `93a0a7c`, `223fe1d`. (This line was written as "landing in progress" while the
+  merge was still pending and updated once it existed — deliberately in that order, because
+  every one of today's other 20 session docs asserted a merge status speculatively and a prior
+  session `session-log-audit` had to repair 17 of them. Verify by git, never by this line.)
 - **Approx token burn:** high 🔥 — a full recall pass over all 20 same-day session docs plus all
   71 prior ones to establish the "never audited" premise; reading drizzle-orm's migrator source
   to derive the watermark rule rather than guess it; a 309-column live schema sweep with eight
@@ -335,8 +335,15 @@ $ git merge-base --is-ancestor ed98d63 main   # → NOT IN MAIN
 $ git log --oneline main | head -1
 a5c4ab0 docs: update changelog for v1.1.0
 ```
-No merge commit for this session exists on `main` yet — hence **landing in progress**, not
-"merged". Re-derive from git rather than trusting this line.
+That was the state while this doc was being written. The merge landed afterwards:
+
+```
+$ git merge-base --is-ancestor token-maxxing-2026-09-13 origin/main && echo ancestor
+ancestor
+$ git log --oneline -1 main
+75f85dd merge: token-maxxing session schema-drift-guard
+```
+Re-derive from git rather than trusting either block.
 
 **The collision-era fingerprint in `drizzle/`:** 22 `.sql` files, two numbered `0011`
 (`0011_natural_nico_minoru.sql`, `0011_rare_blockbuster.sql`), and no `0014` — yet the snapshot
