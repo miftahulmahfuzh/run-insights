@@ -15,8 +15,6 @@ import {
 } from '@/tests/fixtures/ninaTurn'
 import { describe, expect, it } from 'vitest'
 
-import type { ConversationTurn } from './context'
-
 import { LOOKUP_RUNS_TOOL, NINA_SYSTEM_PROMPT, SEND_TOOL, buildNinaSystemPrompt } from './prompts'
 import { normalizeNinaTrigger, type NinaShortcutMatchable } from './shortcuts'
 import {
@@ -801,27 +799,6 @@ describe('NinaTurnResult.firedShortcutIds — what the usage bump reads', () => 
  * and is proven through the drained background turn in `tests/nina.resend.test.ts`; this block
  * proves the prompt layer's half: the cap's bound, and the WORDS the walk's output becomes.
  * ========================================================================= */
-
-/** A `ConversationTurn` as `conversationFacts` builds one (`lib/nina/context.ts:693`). */
-function windowTurn(
-  id: string,
-  role: 'runner' | 'nina',
-  text: string,
-  over: Partial<ConversationTurn> = {},
-): ConversationTurn {
-  return {
-    id,
-    role,
-    text,
-    sentOnISO: '2026-09-10',
-    sentAtLabel: 'Thu 10 Sep 09:00',
-    daysAgo: 0,
-    replyToId: null,
-    runId: null,
-    imageDescriptions: [],
-    ...over,
-  }
-}
 
 describe('NINA_BURST_MAX_MESSAGES — the cap', () => {
   it('bounds the block to a handful — the payload must not be a function of how long he types', () => {

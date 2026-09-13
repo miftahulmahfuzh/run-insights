@@ -349,33 +349,6 @@ async function warm(context) {
  * Pass 2 — the stills
  * ==========================================================================*/
 
-/**
- * Scroll a subject into view and photograph it there.
- *
- * By selector, never by pixel offset. A fixed `scrollBy(0, 700)` is a promise about how tall the
- * insight card is, and that card's height is model output — it was three paragraphs on the first
- * capture run and five on the second, which silently turned "the pace/HR chart" into "the middle of
- * a paragraph". `scrollIntoView` asks the page where the thing is.
- */
-async function shotOf(page, name, selector, { block = 'center' } = {}) {
-  const found = await page.evaluate(
-    ([sel, blk]) => {
-      const el = document.querySelector(sel)
-      if (!el) return false
-      el.scrollIntoView({ block: blk })
-      return true
-    },
-    [selector, block],
-  )
-  if (!found) {
-    log(`    SKIPPED ${name} — nothing matched ${selector}`)
-    return false
-  }
-  await page.waitForTimeout(650)
-  await shot(page, name)
-  return true
-}
-
 async function stills(context, browser) {
   const page = await context.newPage()
 
@@ -639,7 +612,6 @@ async function step(page, dy) {
 
 async function seek(page, locate) {
   const found = await page.evaluate((fn) => {
-    // eslint-disable-next-line no-new-func
     const el = new Function(`return (${fn})()`)()
     if (!el) return false
     el.scrollIntoView({ block: 'center' })

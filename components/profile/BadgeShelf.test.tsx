@@ -33,7 +33,10 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('next/image', () => ({
-  default: ({ src }: { src: string }) => <img src={src} data-testid="badge-art" />,
+  default: ({ src }: { src: string }) => (
+    // eslint-disable-next-line @next/next/no-img-element -- the mock, not a caller
+    <img src={src} alt="" data-testid="badge-art" />
+  ),
 }))
 
 const FACTS: PeriodFacts = {

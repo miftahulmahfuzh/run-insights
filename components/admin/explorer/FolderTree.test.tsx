@@ -15,10 +15,6 @@ vi.mock('@/components/admin/FolderMenu', () => ({
 import { FolderTree } from './FolderTree'
 import type { ExplorerFolder } from './model'
 
-function row(label: string) {
-  return screen.getByText(label).closest('div') as HTMLElement
-}
-
 describe('FolderTree', () => {
   it('renders the root row labelled Album with its total count', () => {
     render(
