@@ -1204,11 +1204,11 @@ export function planMemoryWrites(input: MemoryPlanInput): MemoryPlan {
   }
 
   /* ── 4. the promises (R19, for phase 13) ───────────────────────────────────────────────────── */
-  const promiseCandidates = (input.distilled?.promises ?? []).filter((candidate) =>
-    verifyQuote(candidate.quote, input.runnerText),
-  )
+  const promiseCandidates: PromiseCandidate[] = []
   for (const candidate of input.distilled?.promises ?? []) {
-    if (!verifyQuote(candidate.quote, input.runnerText)) {
+    if (verifyQuote(candidate.quote, input.runnerText)) {
+      promiseCandidates.push(candidate)
+    } else {
       demoted.push({ key: 'pending_promises', reason: 'unverified-quote' })
       addFact('other', candidate.text)
     }

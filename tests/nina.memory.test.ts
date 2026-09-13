@@ -524,6 +524,71 @@ describe('planMemoryWrites — ruling (d), the quote gate', () => {
     expect(gear?.value).toBe('Nike Pegasus 41')
     expect(plan.facts[0]).toMatchObject({ category: 'training', text: 'Nike Pegasus 41' })
   })
+
+  it('demotes HER own slot write when the key is not in the vocabulary', () => {
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'pagi',
+        memoryWrites: [{ kind: 'slot', slotKey: 'favourite_colour', text: 'ijo' }],
+      }),
+    )
+    expect(plan.slots.map((slot) => slot.key)).toEqual(['name'])
+    expect(plan.demoted).toEqual([{ key: 'favourite_colour', reason: 'unknown-key' }])
+    expect(plan.facts[0]).toMatchObject({ category: 'other', text: 'ijo' })
+  })
+
+  it('appends a plain fact-kind write as a ledger row, coining no slot and no demotion', () => {
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'pagi',
+        memoryWrites: [{ kind: 'fact', text: 'dia lagi seneng banget' }],
+      }),
+    )
+    expect(plan.slots.map((slot) => slot.key)).toEqual(['name'])
+    expect(plan.demoted).toEqual([])
+    expect(plan.facts[0]).toMatchObject({ category: 'other', text: 'dia lagi seneng banget' })
+  })
+})
+
+/* ============================================================================
+ * §6b planMemoryWrites — the nickname (R7), the whole channel its confirmation travels down
+ * ==========================================================================*/
+
+describe('planMemoryWrites — the distilled nickname', () => {
+  it('writes the slot and a ledger fact when he actually said it', () => {
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'panggil gw mif aja',
+        distilled: { nickname: 'mif' },
+      }),
+    )
+    const nickname = plan.slots.find((slot) => slot.key === 'nickname')
+    expect(nickname?.value).toBe('mif')
+    expect(plan.demoted).toEqual([])
+    expect(plan.facts.some((fact) => fact.text === 'Dia mau dipanggil "mif".')).toBe(true)
+  })
+
+  it('demotes a reported nickname that fails its own canonicaliser', () => {
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'panggil gw m aja',
+        distilled: { nickname: 'm' },
+      }),
+    )
+    expect(plan.slots.map((slot) => slot.key)).not.toContain('nickname')
+    expect(plan.demoted).toEqual([{ key: 'nickname', reason: 'unparseable-value' }])
+  })
+
+  it('demotes a canonicalisable nickname he never actually said', () => {
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'pagi, gimana progress lo',
+        distilled: { nickname: 'tah' },
+      }),
+    )
+    expect(plan.slots.map((slot) => slot.key)).not.toContain('nickname')
+    expect(plan.demoted).toEqual([{ key: 'nickname', reason: 'unverified-quote' }])
+  })
 })
 
 /* ============================================================================
@@ -648,5 +713,42 @@ describe('mergePendingPromises', () => {
       status: 'pending',
       resolvedOn: null,
     })
+  })
+
+  it('via planMemoryWrites, demotes a promise candidate he never actually said', () => {
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'pagi, gimana progress lo',
+        distilled: { promises: [promiseCandidate()] },
+      }),
+    )
+    expect(plan.slots.map((slot) => slot.key)).toEqual(['name'])
+    expect(plan.demoted).toEqual([{ key: 'pending_promises', reason: 'unverified-quote' }])
+    expect(plan.facts[0]!.text).toBe('gw ganti foto profil')
+  })
+
+  it('via planMemoryWrites, writes no slot when every candidate restates an already-open promise', () => {
+    const existing: NinaPendingPromise = {
+      id: 'existing-1',
+      text: 'gw ganti foto profil',
+      condition: 'kalau lo lari 10k besok',
+      metric: 'distance_km_total',
+      target: 10,
+      targetKey: null,
+      byDate: null,
+      promisedOn: '2026-09-01',
+      sourceMessageId: null,
+      status: 'pending',
+      resolvedOn: null,
+    }
+    const plan = planMemoryWrites(
+      planInput({
+        runnerText: 'kalo gw lari 10k besok lo ganti foto profil ya',
+        currentPromises: { promises: [existing] },
+        distilled: { promises: [promiseCandidate()] },
+      }),
+    )
+    expect(plan.slots.map((slot) => slot.key)).toEqual(['name'])
+    expect(plan.demoted).toEqual([])
   })
 })
