@@ -83,9 +83,10 @@ import { isValidContentHash } from '@/lib/photos/contentHash'
  *
  * ── A BLOB OBJECT MAY BE SHARED. NOTHING HERE CALLS `del` DIRECTLY. ─────────────────────────
  * R26's re-attach path copies `blob_url`/`pathname` onto a new row rather than copying bytes
- * (`lib/nina/actions.ts:143-192`), so a chat photograph's object can also be another chat row's or
- * a `nina_avatars` row's — possibly HER CURRENT PROFILE PICTURE. Every delete in this file goes
- * through `releaseBlobIfUnreferenced` (`lib/nina/blobRelease.ts`, the one shared implementation —
+ * (`lib/nina/actions/send.ts:216-247`, since the 2026-09-12 split of `lib/nina/actions.ts`), so a
+ * chat photograph's object can also be another chat row's or a `nina_avatars` row's — possibly
+ * HER CURRENT PROFILE PICTURE. Every delete in this file goes through `releaseBlobIfUnreferenced`
+ * (`lib/nina/blobRelease.ts`, the one shared implementation —
  * this file's former private helper, extracted when the runner-facing delete needed the same
  * rule), which asks `isBlobPathnameReferenced` first. Invariant 8 (no orphaned blobs) yields to
  * that: an orphan costs storage, a deleted-but-referenced object is visible data loss.
@@ -241,7 +242,8 @@ export async function replaceChatPhotoAction(input: unknown): Promise<ChatPhotoA
  *     this message later. Her words keep exactly one definition in the repo.
  *   · `turnId` — NULL. `nina_turns` holds no message text and asserts that a model call happened
  *     and what it cost; none did and nothing was paid. Nothing renders the column
- *     (`lib/db/schema.ts:799`).
+ *     (`lib/db/schema/nina/chat.ts:448`, since `lib/db/schema.ts` is now a barrel over the domain
+ *     modules — see that file's own header).
  *   · `replyToId` — NULL. The worker's subselect resolves *the runner message that asked*; nobody
  *     asked. `resolveQuote` degrades a null to a plain message by design.
  *   · `sessionId` — `resolveNinaWriteSession`. `nina_messages.session_id` is `NOT NULL` with an FK,
@@ -423,7 +425,7 @@ export async function findChatPhotoDuplicateAction(
  * a deleted SESSION must not take the photographs, and one FK cannot tell the two paths apart.)
  *
  * It must NOT delete a RUNNER message that merely carried her re-attached photograph
- * (`lib/nina/actions.ts:518-530`, the R26 path): that message is his and carries his text. Both
+ * (`lib/nina/actions/resend.ts:144-158`, the R26 path): that message is his and carries his text. Both
  * clauses of that rule live in `isNinaPhotoCarrierMessage` and are argued at its definition.
  *
  * ── AND THE PHOTOGRAPH MAY HAVE NO MESSAGE AT ALL (R1) ──────────────────────────────────────
@@ -501,7 +503,7 @@ export async function removeChatPhotoAction(input: unknown): Promise<ChatPhotoAc
  * this field editable by user"*.
  *
  * `nina_message_images.description` is `glm-4.6v`'s prose and it is the only text on that row that
- * reaches Nina's prompt (`lib/nina/actions.ts:634-637`). Until now nothing could write it by hand,
+ * reaches Nina's prompt (`lib/nina/gateway.ts:62-63,198`). Until now nothing could write it by hand,
  * so a wrong description was a wrong belief with no correction available. This is the correction.
  *
  * ── NO MODEL CALL, NO `after()`, AND THAT IS THE POINT ────────────────────────────────────
@@ -750,7 +752,7 @@ async function loadPhotoCarrier(
  * ── WHY `after()` AND NOT `await`, RESTATED BECAUSE IT NOW MATTERS TWICE AS MUCH ────────────
  * `scheduleDescribe` (`lib/admin/ninaAlbumDeferredDescribe.ts`), same shape and same measurement.
  * Next dispatches Server Actions **one at a time per client** (the Server Actions guide, quoted at
- * `lib/nina/actions.ts:1201-1206`), so an awaited pair would put ~15-25 s on every add, in series:
+ * `lib/nina/actions/describe.ts:51-53`), so an awaited pair would put ~15-25 s on every add, in series:
  * five photographs would be two minutes of a spinner. Non-fatal by design — the row exists, the
  * grid renders, and the caption already on the bubble is one of `NINA_IMAGE_CAPTION_POOL`'s
  * scene-agnostic lines.
@@ -802,8 +804,8 @@ function scheduleChatPhotoCaption(userId: string, id: string): void {
         } catch (cause) {
           /* The floor tripping is its own class and is logged LOUDLY: it means the vendor answered
            * 200 with an image it silently dropped, and the text of such a response is exactly where
-           * an invented description would be. `lib/nina/actions.ts:1268-1276` does this and says
-           * why. Either way the caption is skipped and the pool line stands. */
+           * an invented description would be. `lib/nina/actions/describe.ts:119-133` does this and
+           * says why. Either way the caption is skipped and the pool line stands. */
           if (cause instanceof NinaVisionTokenFloorError) {
             console.error('[f36] TOKEN FLOOR TRIPPED on a chat photo', {
               pathname: row.pathname,
