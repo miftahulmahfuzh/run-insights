@@ -419,7 +419,7 @@ async function main() {
       'SKIP  live     no reachable DATABASE_URL — ledger and schema comparison not run. ' +
         '(CI sets a dummy connection string on purpose; run this locally to check production.)',
     )
-    report(failures)
+    report(failures, { liveRan: false })
     return
   }
 
@@ -499,12 +499,22 @@ async function main() {
   )
   void watermark
 
-  report(failures)
+  report(failures, { liveRan: true })
 }
 
-function report(failures) {
+/**
+ * The success line must name what was actually checked. A run that never opened a connection
+ * saying "no drift against the database" would be this script committing the exact sin it was
+ * written to catch: a green light for a question nobody asked. CI only ever runs the static half,
+ * so that is the line CI must print.
+ */
+function report(failures, { liveRan }) {
   if (failures.length === 0) {
-    console.log('OK    no drift between the committed schema and the database.')
+    console.log(
+      liveRan
+        ? 'OK    no drift between the committed schema and the database.'
+        : 'OK    migration folder is self-consistent. The database was NOT checked.',
+    )
     return
   }
   console.error(`\nFAIL  ${failures.length} drift finding(s):\n`)
