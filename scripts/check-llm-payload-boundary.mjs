@@ -45,7 +45,7 @@
 //     is a model call behind two indexed reads. It runs from the nightly cron route and nowhere
 //     else. This bullet was missing while the table entry was not, which is the kind of drift a
 //     table with a prose header invites; the count above is now the length of the array below.
-//   · `describeNinaImage` — a `glm-4.6v` describe pass, 5-15 s. `components/nina/Composer.tsx`
+//   · `describeNinaImage` — a `glm-4.6v` describe pass, 5-15 s. `components/nina/useComposerPhotos.ts`
 //     fires it on pick, from a client event handler, so the description is already in hand by
 //     the time he hits send. A render that awaited it would block the chat on a thumbnail.
 //   · `titleNinaSessionIfNeeded` — F35 R3's titler. A THIRD model call in the same invocation as
@@ -160,15 +160,16 @@ const GUARDED_CALLS = [
   {
     symbol: 'describeNinaImage',
     // `lib/nina/actions.ts` split per concern (2026-09-12): the Server Action that defines this
-    // symbol now lives in its own describe module.
+    // symbol now lives in its own describe module. The composer's photo pipeline was extracted
+    // into its own hook the same week (b401b95); the call moved with it, out of Composer.tsx.
     sanctioned: [
       join('lib', 'nina', 'actions', 'describe.ts'),
-      join('components', 'nina', 'Composer.tsx'),
+      join('components', 'nina', 'useComposerPhotos.ts'),
     ],
     advice:
-      'A glm-4.6v describe pass is a 5-15 s vision call (F33 phase 6). The composer fires it ' +
-      'from a client event handler on pick, so the description is already in hand when he hits ' +
-      'send; no page render may await it.',
+      'A glm-4.6v describe pass is a 5-15 s vision call (F33 phase 6). ' +
+      "useComposerPhotos fires it from a client event handler on pick, so the description is " +
+      'already in hand when he hits send; no page render may await it.',
   },
   {
     symbol: 'titleNinaSessionIfNeeded',
