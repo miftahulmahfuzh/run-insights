@@ -254,7 +254,7 @@ describe('the four free-text fields (R6-R9)', () => {
     expect(NINA_IMAGE_TEXT_SPECS.notes.max).toBe(NINA_IMAGE_NOTES_MAX)
     // 200 is `nina_tuning.wardrobe`'s cap, because it is the same field moving house — so the
     // migration's copy cannot truncate a value. Asserted as the NUMBER and not against
-    // NINA_WARDROBE_MAX, which phase 7 deletes.
+    // NINA_WARDROBE_MAX, which phase 7 deleted along with the column.
     expect(NINA_IMAGE_WARDROBE_MAX).toBe(200)
   })
 

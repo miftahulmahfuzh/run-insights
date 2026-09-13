@@ -6,6 +6,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 |------|-------|-------------|-----|
 | 2026-09-13 | Admin ImageGenPanel + ChatPhotoActions Audit | Audited ImageGenPanel and chatPhotoActions as clean, then repaired doc citations broken by a file split. | [link](./2026-09-13-admin-imagegen-actions.md) |
 | 2026-09-13 | Nina Image Queries Audit | Audited two never-individually-reviewed Nina query modules; fixed one dated stale-comment doc-drift bug. | [link](./2026-09-13-nina-image-queries-audit.md) |
+| 2026-09-13 | Nina ImagePrefs/Tuning Doc-Drift & Dead-Code Audit | Found imageprefs.ts doc drift from an unrelated wardrobe retirement; tuning.ts's instructor docs held up. | [link](./2026-09-13-nina-imageprefs-tuning.md) |
 | 2026-09-13 | Scripts Capture YAGNI | Closed 4 knip-flagged unused exports in scripts/capture and nina-dedupe-plan; verified readme accurate. | [link](./2026-09-13-scripts-capture-yagni.md) |
 | 2026-09-13 | Badges/Records Cleanup | Caught a stale deferred decision already shipped on main; fixed a knip-flagged export and updated the shared readme. | [link](./2026-09-13-badges-records-cleanup.md) |
 | 2026-09-13 | Tools CI Gate (Already Shipped) | Verified the badge CI gate was already shipped twice, then closed a real SKILL.md doc gap instead. | [link](./2026-09-13-tools-ci-gate.md) |
