@@ -28,7 +28,7 @@ import type { SessionInput } from '@/lib/metrics/types'
  * zones 4–5, +41 s/km positive split, −18 spm cadence fade — which makes it a far better fixture
  * than a good run would be: every flag in the catalog has something to bite on.
  */
-export const CANONICAL_RUN_ID = 'run_canonical'
+const CANONICAL_RUN_ID = 'run_canonical'
 
 export const canonicalSession: SessionInput = {
   runId: CANONICAL_RUN_ID,

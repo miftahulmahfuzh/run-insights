@@ -1,10 +1,11 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { GET as adminManifestRoute } from '@/app/admin/manifest.webmanifest/route'
 import manifest from '@/app/manifest'
 import { ADMIN_INSTALL, ADMIN_PWA_ICONS, APPLE_WEB_APP, INSTALL, PWA_ICONS } from '@/lib/pwa'
+
+import { repoRoot } from './support/importGraph'
 
 /**
  * The regression guard for "Add to Home Screen gave me a bookmark with an 'R' on it".
@@ -23,7 +24,7 @@ import { ADMIN_INSTALL, ADMIN_PWA_ICONS, APPLE_WEB_APP, INSTALL, PWA_ICONS } fro
  * case below is what stops the layout from quietly drifting away from it.
  */
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const ROOT = repoRoot
 
 /**
  * Width, height and "does it have an alpha channel" straight out of the PNG header — 8-byte

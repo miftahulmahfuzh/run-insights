@@ -15,7 +15,7 @@ import { canonicalRecordRun, canonicalSession } from './canonicalRun'
  * `daysAgo` in the payload would be one short. UTC+7 has no DST, so this instant is the only kind
  * of boundary this app has and it is the one worth pinning.
  */
-export const NINA_FIXTURE_NOW = new Date('2026-09-03T17:03:00Z')
+const NINA_FIXTURE_NOW = new Date('2026-09-03T17:03:00Z')
 export const NINA_FIXTURE_TODAY = '2026-09-04'
 
 /** The fixture's own denominator: Tanaka on a 30-year-old is 208 − 0.7 × 30 = 187. */

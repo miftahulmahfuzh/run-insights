@@ -18,7 +18,7 @@ import * as schema from '@/lib/db/schema'
  * `installFakeDb()` and then `await import('@/lib/db/queries')` inside the test.
  */
 
-export interface RecordedQuery {
+interface RecordedQuery {
   sql: string
   params: unknown[]
   /** True when this statement was one member of a db.batch. */

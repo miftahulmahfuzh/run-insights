@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+import { repoRoot } from './support/importGraph'
 
 /**
  * R4's borderless sheet, pinned where it landed: `components/admin/explorer/PhotoGrid.tsx`.
@@ -21,7 +22,7 @@ import { describe, expect, it } from 'vitest'
  * than breaking it.
  */
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const ROOT = repoRoot
 const read = (path: string) => readFileSync(`${ROOT}${path}`, 'utf8')
 
 const grid = read('components/admin/explorer/PhotoGrid.tsx')
