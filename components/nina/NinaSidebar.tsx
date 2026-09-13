@@ -424,9 +424,11 @@ export function NinaSidebar({
      * `nearest` on an already-visible element computes zero scroll.
      *
      * ── THE WINDOW IS THE CHANNEL THAT ASSERT CANNOT SEE, AND THE REPORT SURVIVED IT ─────────────
-     * The conversation behind this opaque panel scrolls the WINDOW (`MessageList` calls
-     * `window.scrollTo` — MessageList.tsx:163,223), so the document carries real scrollable
-     * overflow while the panel is open, and the keyboard reveal's second act pans the layout
+     * The conversation behind this opaque panel scrolls the WINDOW (the chat page's scroll
+     * machinery calls `window.scrollTo` — moved out of `MessageList.tsx` into
+     * `useChatPageScroll.ts:120,180` by the 2026-09-12 split; MessageList's own header records the
+     * move), so the document carries real scrollable overflow while the panel is open, and the
+     * keyboard reveal's second act pans the layout
      * viewport itself: `window.scrollY` moves, and every `position: fixed` element on the glass
      * moves with it — this panel included, which is the lift the owner sees. `nearest` is
      * structurally blind to that channel: it is a no-op whenever the scroll it is asked to
