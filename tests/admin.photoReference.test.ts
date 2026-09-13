@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -16,6 +15,8 @@ import {
   photoReferenceView,
 } from '@/components/admin/photoReferenceModel'
 import type { PhotoReferenceItem } from '@/components/admin/photoReferenceModel'
+
+import { repoRoot } from './support/importGraph'
 
 /**
  * R10's model half — `photoReferenceModel.ts`'s pure functions, exercised directly — plus the
@@ -37,7 +38,7 @@ import type { PhotoReferenceItem } from '@/components/admin/photoReferenceModel'
  * the explanation of the property it is asserting.
  */
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const ROOT = repoRoot
 const read = (path: string) => readFileSync(`${ROOT}${path}`, 'utf8')
 
 const model = read('components/admin/photoReferenceModel.ts')

@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+import { repoRoot } from './support/importGraph'
 
 /**
  * The regression guard for "I asked my OS to reduce motion and the app pulsed at me for 35 seconds"
@@ -33,7 +34,7 @@ import { describe, expect, it } from 'vitest'
  * documents, and it made card #17's own premise wrong.
  */
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const ROOT = repoRoot
 const SOURCE_DIRS = ['app', 'components']
 const REDUCED_MOTION_QUERY = '@media (prefers-reduced-motion: reduce)'
 

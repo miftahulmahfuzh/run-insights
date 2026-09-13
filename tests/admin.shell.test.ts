@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+import { repoRoot } from './support/importGraph'
 
 /**
  * The regression guard for "`/admin` was built desktop-first and I use it from an XS Max"
@@ -25,7 +26,7 @@ import { describe, expect, it } from 'vitest'
  * form, so the sorter produces it rather than breaking it.
  */
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url))
+const ROOT = repoRoot
 const read = (path: string) => readFileSync(`${ROOT}${path}`, 'utf8')
 
 const globals = read('app/globals.css')
