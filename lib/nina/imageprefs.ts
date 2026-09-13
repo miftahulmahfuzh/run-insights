@@ -49,8 +49,9 @@
  * ── ALL FOUR TEXT FIELDS ARE ONE LINE, INCLUDING `notes` ────────────────────────────────────
  * Unlike `coerceNinaNotes` in `lib/nina/tuning.ts`, which keeps newlines because it feeds a
  * seven-kilobyte SYSTEM prompt where paragraphs are prose. These four are interpolated into an
- * IMAGE prompt, where a newline splits a sentence the provider reads as two — `coerceNinaWardrobe`'s
- * own argument, applied to all four rather than to one.
+ * IMAGE prompt, where a newline splits a sentence the provider reads as two — the same argument
+ * `coerceNinaWardrobe` in `lib/nina/tuning.ts` made before phase 7 retired it and moved the field
+ * here, applied to all four rather than to one.
  *
  * ── THE REFERENCE IS AN ID PLUS A SET, NOT A URL ────────────────────────────────────────────
  * `reference_source` + `reference_id`, and the reason is `updateNinaChatPhotoBlob`: replacing a
@@ -265,13 +266,15 @@ export function ninaImageFocusKeysOn(prefs: NinaImagePrefs): NinaImageFocusKey[]
  * ==========================================================================*/
 
 /**
- * One line about clothes. **200, the same as `NINA_WARDROBE_MAX` in `lib/nina/tuning.ts`, and it is
- * the same field moving house** — every existing value was capped at 200 by `coerceNinaWardrobe`,
- * so the migration's copy in step 3 cannot truncate anything.
+ * One line about clothes. **200, the same as `nina_tuning.wardrobe` capped at before phase 7
+ * retired that column, and it is the same field moving house** — every existing value was capped
+ * at 200 by the now-retired `coerceNinaWardrobe` in `lib/nina/tuning.ts`, so the migration's copy
+ * in step 3 could not truncate anything.
  *
- * Deliberately NOT asserted equal to `NINA_WARDROBE_MAX` in a test: phase 7 deletes that constant,
- * and an assertion against it would be a phase-1 test that fails in phase 7 for no phase-7 reason.
- * The number and its argument are here; the old constant's grave is phase 7's business.
+ * Deliberately never asserted equal to a constant in `lib/nina/tuning.ts`: phase 7 deleted
+ * `NINA_WARDROBE_MAX` along with the column, and an assertion against it would have been a
+ * phase-1 test that failed in phase 7 for no phase-7 reason. The number and its argument are
+ * here; the old constant's grave is `git log -S NINA_WARDROBE_MAX`'s business now.
  */
 export const NINA_IMAGE_WARDROBE_MAX = 200
 
@@ -289,10 +292,10 @@ export const NINA_IMAGE_TIME_MAX = 120
  * The escape hatch. *"nina is full of sweat"*.
  *
  * **600, and deliberately far below `NINA_NOTES_MAX`'s 2000.** That field is appended to a
- * seven-kilobyte system prompt; this one is spliced into an image prompt of a few hundred words,
- * where a paragraph fights the style block for the model's attention and loses money doing it —
- * `NINA_WARDROBE_MAX`'s own argument (`lib/nina/tuning.ts:684-689`), applied at the scale this
- * field actually needs.
+ * seven-kilobyte system prompt, where 2000 characters is small enough that it cannot drown the
+ * canon it is appended to (`lib/nina/tuning.ts`'s own reasoning for that cap); this one is
+ * spliced into an image prompt of a few hundred words, where the same "small enough not to drown
+ * what it joins" argument lands at a much smaller number.
  */
 export const NINA_IMAGE_NOTES_MAX = 600
 
