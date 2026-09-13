@@ -17,6 +17,7 @@ A log of deliberately high-token-consumption sessions and the real value each de
 | 2026-09-13 | lib/metrics YAGNI Sweep + HrMaxSource Drift Investigation | Investigated a suspected type-drift bug, found it false, then knip-cleaned lib/metrics' barrel re-exports. | [link](./2026-09-13-lib-metrics-yagni.md) |
 | 2026-09-13 | Lib Admin YAGNI Sweep (knip Exports/Types) | Swept lib/admin's heaviest knip dead-code cluster: 18 types deleted, 8 unexported, readme synced to match. | [link](./2026-09-13-lib-admin-yagni.md) |
 | 2026-09-13 | Nina Turnflight YAGNI | Removed dead nina exports, fixed the repo's one real duplicate-export finding, hardened drifted props to required. | [link](./2026-09-13-nina-turnflight-yagni.md) |
+| 2026-09-13 | Nina Memory Audit | Deep-read Nina memory distiller, deduped a repeated quote-verification call, and closed five untested branches. | [link](./2026-09-13-nina-memory-audit.md) |
 | 2026-09-12 | Research Directory Hygiene Audit | First audit of the untouched research corner: revived its dead harness, fixed README drift, certified results current. | [link](./2026-09-12-research-hygiene-audit.md) |
 | 2026-09-12 | Badge CI Follow-ups | Taught the badge contact sheet the shared deck table, drew the first records sheet, and self-tested both decks. | [link](./2026-09-12-badge-ci-followups.md) |
 | 2026-09-12 | Env & Config Hygiene Census | Swept the env contract, dependencies, and build config against real usage, deleting the dead, documenting the live. | [link](./2026-09-12-tokenmax-env-config-hygiene.md) |
