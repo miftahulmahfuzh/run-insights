@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { DraftSplit, ReviewDraft } from '@/lib/review/draft'
+import type { DraftSplit } from '@/lib/review/draft'
 import { hydrateDraftFromExtraction } from '@/lib/review/draft'
 import { TRUTH } from '../../research/schema.mjs'
 

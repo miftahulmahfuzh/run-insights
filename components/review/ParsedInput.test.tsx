@@ -131,19 +131,6 @@ describe('ParsedInput — the value contract', () => {
 })
 
 describe('ParsedInput — re-seeding', () => {
-  function renderIntAt(value: number | null) {
-    render(
-      <ParsedInput<number | null>
-        value={value}
-        toText={toIntInput}
-        parse={(t) => parseIntInput(t)}
-        onChange={() => {}}
-        aria-label="field"
-      />,
-    )
-    return screen.getByLabelText('field') as HTMLInputElement
-  }
-
   const rerenderAt = (value: number | null) => (
     <ParsedInput<number | null>
       value={value}

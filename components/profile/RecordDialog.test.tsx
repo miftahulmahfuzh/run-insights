@@ -23,7 +23,8 @@ import { RecordDialog } from './RecordDialog'
 vi.mock('next/image', () => ({
   // `className` forwarded: asserting that the dim treatment is ABSENT needs the class to arrive.
   default: ({ src, className }: { src: string; className?: string }) => (
-    <img src={src} className={className} data-testid="panel-art" />
+    // eslint-disable-next-line @next/next/no-img-element -- the mock, not a caller
+    <img src={src} alt="" className={className} data-testid="panel-art" />
   ),
 }))
 

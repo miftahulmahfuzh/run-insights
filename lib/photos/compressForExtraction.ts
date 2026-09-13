@@ -71,7 +71,7 @@ export async function compressForExtraction(file: File): Promise<CompressedShot>
       preserveExif: false,
     })
   } catch (cause) {
-    throw new Error(`“${file.name}” could not be processed in this browser.`)
+    throw new Error(`“${file.name}” could not be processed in this browser.`, { cause })
   }
 
   const dims = await readDimensions(out)

@@ -27,7 +27,8 @@ vi.mock('next/image', () => ({
   // `className` is forwarded because the locked-badge dim lives there — `DetailPanel` hangs
   // `opacity-50 grayscale` on the Image, and a mock that dropped it would hide the treatment.
   default: ({ src, className }: { src: string; className?: string }) => (
-    <img src={src} className={className} data-testid="panel-art" />
+    // eslint-disable-next-line @next/next/no-img-element -- the mock, not a caller
+    <img src={src} alt="" className={className} data-testid="panel-art" />
   ),
 }))
 

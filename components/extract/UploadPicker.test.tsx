@@ -80,7 +80,7 @@ function gateCompress() {
 /** Same for the Blob PUT. */
 function gateUpload() {
   const gates: Array<ReturnType<typeof deferred<Uploaded>>> = []
-  upload.mockImplementation((pathname: string) => {
+  upload.mockImplementation(() => {
     const gate = deferred<Uploaded>()
     gates.push(gate)
     return gate.promise

@@ -26,7 +26,10 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('next/image', () => ({
-  default: ({ src }: { src: string }) => <img src={src} data-testid="panel-art" />,
+  default: ({ src }: { src: string }) => (
+    // eslint-disable-next-line @next/next/no-img-element -- the mock, not a caller
+    <img src={src} alt="" data-testid="panel-art" />
+  ),
 }))
 
 /* Two rows chosen so both body branches and two different formatters are exercised:

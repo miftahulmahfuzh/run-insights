@@ -71,11 +71,6 @@ function disclosure() {
   return screen.getByRole('button', { name: 'Aksi untuk Morning runs' })
 }
 
-function openMenu() {
-  // Returns nothing; the caller asserts on the menu buttons it exposes.
-  return disclosure()
-}
-
 describe('SessionRow', () => {
   beforeEach(() => {
     setNinaChatSessionPinned.mockReset().mockResolvedValue({ ok: true, next: null })

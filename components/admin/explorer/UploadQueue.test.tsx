@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { UploadQueue } from './UploadQueue'
 import type { QueueItem, QueueReport } from './model'
-import type { UploadPhase } from './useFolderUpload'
 
 function item(overrides?: Partial<QueueItem>): QueueItem {
   return {

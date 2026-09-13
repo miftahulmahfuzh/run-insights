@@ -10,7 +10,7 @@ import type { NinaContext } from './context'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { loadNinaContext } from './load'
 import { parseRunningDaysAsJsWeekday, type NinaSlotKey } from './memory'
-import { decideNag, type NagDecision } from './nags'
+import { decideNag } from './nags'
 import { buildProactiveInstruction, type ProactiveTriggerKind } from './prompts'
 import {
   getNinaNags,
