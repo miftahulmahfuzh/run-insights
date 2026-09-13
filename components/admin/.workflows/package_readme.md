@@ -1,11 +1,13 @@
 # Package: components/admin
 
 **Location**: `components/admin`
-**Last Updated**: 2026-09-12 (compaction pass: every claim re-verified against the tree at
-`7899385` — the `/admin/memory` section rewritten for the one-table rebuild, `TextModelSelect`
-and the image-generation template/model controls documented for the first time, the
-no-component-tests claim replaced with the colocated-suite reality, and the "migration not
-applied" note replaced with a measured database state. Change log at the foot.)
+**Last Updated**: 2026-09-13 (doc-drift fix: the 2026-09-12 optional-prop-vs-callsite AST sweep
+— commit `1fec595`, `components/admin` in full — landed after this file's same-day compaction
+and left two claims stale, `photoIcons.tsx`'s deleted `EyeIcon` and an `export`-keyword code
+sample for the now-un-exported `EXPLORER_UPLOAD_CONCURRENCY`; both corrected. Also folded in
+5 knip-flagged dead exports un-exported the same day in `explorer/`. The 2026-09-12 compaction
+pass otherwise stands: every other claim was re-verified against the tree at `7899385`. Change
+log at the foot.)
 
 ## Overview
 
@@ -98,7 +100,7 @@ see Test consumers under Reverse Dependencies.
 | `ShareToNinaItem.tsx` | `'use client'` | "Share link to Nina". Fires the describe, opens the tab inside the click's activation, awaits neither. |
 | `CropStudio.tsx` | `'use client'` | Drag / pinch / wheel / slider / arrows. Every pointer tracked by `pointerId` in a Map: one pans, two pinch. Contains one subtraction and one `Math.hypot`. |
 | `CircleFrame.tsx` | **no directive** | A stored crop as a circle at any size. `ninaCropStyle` + a square box; percentages, never `translate()`. |
-| `photoIcons.tsx` | **no directive** | The shared inline-SVG glyph set — one home so one trash cannot grow two silhouettes. `EyeIcon` is exported with no consumer today (its toggle left with R3). |
+| `photoIcons.tsx` | **no directive** | The shared inline-SVG glyph set — one home so one trash cannot grow two silhouettes. 10 glyphs (`EyeIcon`, `ChevronLeftIcon`, `ChevronRightIcon` deleted 2026-09-12: rendered nowhere, imported only by this file's own test). |
 | `AdminNav.tsx` | **no directive** | The nav shell: `<nav>`, desktop eyebrow/footer, breakpoint mechanics (`fixed bottom-0` + `pb-[calc(var(--safe-bottom)/2)]` below `lg`, `lg:sticky lg:top-8` above). The list is `AdminNavLinks`. |
 | `AdminNavLinks.tsx` | `'use client'` | The nav's LIST, both renditions from one markup: below `lg`, `grid h-14 max-w-[470px] grid-cols-6 px-[7px]` — six cells, each a 24 px inlined Lucide glyph named by its sr-only `short` (Overview · Photos · Persona · Images · Memory · Shortcut); at `lg`, the sticky text rail. `usePathname()` paints the active glyph `text-accent` + `aria-current="page"`; at `lg` the active cell fills the `bg-accent-soft` pill with explicit `lg:hover:` twins. `/admin/nina`'s label is **"Image collection"** (short "Photos") since the p4 rename. |
 | `ShortcutTable.tsx` | `'use client'` | `/admin/shortcuts` — `MemoryTable`'s mechanics with different columns; on/off checkbox leads the row; only the delete is optimistic. |
@@ -186,7 +188,7 @@ readable reason, whereas a walk that stops early just makes files vanish; one un
 ### The upload queue
 
 ```ts
-export const EXPLORER_UPLOAD_CONCURRENCY = 4
+const EXPLORER_UPLOAD_CONCURRENCY = 4   // un-exported 2026-09-13: zero repo-wide importers
 export const EXPLORER_REGISTER_CHUNK = NINA_ADMIN_BATCH_MAX
 // FolderUpload: phase idle|reading|planning|uploading|finished, items, report, error,
 // start(walked), startWalk(entries), dismiss()
@@ -1289,3 +1291,24 @@ to her.
   27-suite colocated reality; the not-applied-migration note replaced with a measured database
   state; the header changelog and this log compressed from ~250 lines of duplicated narrative;
   every claim above re-verified against the tree at `7899385`.
+- **2026-09-13** — closed a doc-drift gap this compaction couldn't have caught: it landed
+  06:00, and a same-day sibling worker's optional-prop-vs-callsite AST sweep
+  (`2026-09-12-admin-optional-props.md`, commit `1fec595`, 13:22 — the same classifier method
+  `2026-09-12-ui-primitives-yagni.md` built, extended over all 73 `components/admin`
+  components) landed after, with its own readme update explicitly deferred as "another
+  session's assignment." Two claims here had gone stale in the interval: the `photoIcons.tsx`
+  row named `EyeIcon` as a live no-consumer export (deleted, along with `ChevronLeftIcon` /
+  `ChevronRightIcon` — 13 glyphs → 10) and the upload-queue code sample still showed
+  `EXPLORER_UPLOAD_CONCURRENCY` as `export`ed (un-exported the same sweep). Both fixed here;
+  everything else that sweep touched (`CircleFrame.sizeClass` required, `ring`/`className`
+  dropped; `DialSlider.step`/`disabled` dropped and `DialSliderProps` un-exported;
+  `ShareToNinaItem.className`/`onOpened` dropped; `PhotoReferencePicker.disabled` dropped) was
+  never asserted in this file to begin with, so nothing else needed correction. Also un-exported
+  5 knip-flagged dead exports found the same day in `explorer/`: `chatPhotoUpload.ts`'s
+  `ADMIN_CHAT_PHOTO_QUALITY` + `encodeChatPhotoJpeg`, `useFolderUpload.ts`'s
+  `EXPLORER_UPLOAD_CONCURRENCY`, `model.ts`'s `QueueItemState`, `photoReferenceModel.ts`'s
+  `PhotoReferenceTile` — all used only within their own file, zero repo-wide importers,
+  verified by grep and `tsc --noEmit`. **The optional-prop-vs-callsite scan itself is not
+  re-run here** — it already covers the entire directory (export-level AND prop-level,
+  "zero dead exports in the whole directory" was its own headline verdict) and re-running it
+  would re-litigate a settled, landed result.
