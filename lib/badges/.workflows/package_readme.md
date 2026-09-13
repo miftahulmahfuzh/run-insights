@@ -113,7 +113,7 @@ database column and nothing else". A third shared parse, if ever needed, belongs
 | `progress.ts` | R-44's locked-tile line for the five accumulating badges. Second person **deliberately** differs from `meta.ts`' register: a progress line exists only in the locked state and is only about the reader's standing. Never a percentage, never a bar. |
 | `shelf.ts` | `buildShelf` — the `/me` shelf as pure data. All 22 slots always shown with condition and gloss (no redaction: hiding a threshold relocates min-maxing, doesn't remove it); catalog order, not earned-first (earned-first is a progress bar). Retired keys drop out by non-iteration. |
 | `gateway.ts` | `server-only`. The only db door. `loadCommitFacts` asserts the reviewed-data invariant **structurally** (`reviewedAt == null` → null; `getRunDetail` is draft-visible by design, so the guard lives here), loads window/location/period in parallel, and computes session metrics with `hrMax: null` — no rule reads `avgHrPctMax`. `STREAK_LOOKBACK_WEEKS = 26` must comfortably exceed the longest streak it measures (gremlin re-fires at 4-week multiples; a lookback at the horizon would fire on the window's edge). `badgesForRun` is the per-run inline read — **test-only in production as of 2026-09-12** (kept and recorded by the yagni sweep; F11's shared-run page is its intended consumer). |
-| `badge-art.ts` | **Generated.** `Record<BadgeKey, BadgeArt>`, same shape as the records deck. `BADGE_ART_SMALL_SIZE` is consumed by `BadgeShelf` (the records deck's twin constant is the standing zero-ref one — see gotchas). |
+| `badge-art.ts` | **Generated.** `Record<BadgeKey, BadgeArt>`, same shape as the records deck. `BADGE_ART_SMALL_SIZE` is consumed by `BadgeShelf` (the records deck's twin constant is zero-ref by a resolved, documented decision — see gotchas). |
 
 ## The commit pipeline, as data
 
@@ -251,16 +251,30 @@ genuinely earned badge is not made less true by the next one failing.
   per heartbeat is as well-paced as one that held level. Both `bp` and `clock` units exist so
   `records.value` stays an integer for all eleven keys; `clock` is a time of day, emphatically
   not `'s'`.
-- **`RECORD_ART_SMALL_SIZE` is a standing zero-reference constant** — the generator
-  (`tools/make_badge_assets.py`) emits `{deck.const_name}_SMALL_SIZE` unconditionally; only the
-  badges deck consumes its twin. Hand-deleting it fights the generator; the fix belongs in the
-  generator (or a records shelf ships). Likewise the records `.small` derivatives ship
-  unrendered — the F25 plan's open deliberate bet (pre-generate now, avoid re-hashing masters
-  later). Both recorded so no future sweep re-litigates them
-  (`docs/token_maxxing/2026-09-12-badges-records-yagni.md`).
+- **`RECORD_ART_SMALL_SIZE` is zero-reference and KEPT — decided 2026-09-12** (`6795893`,
+  following the badges-records-yagni sweep that found it and the tools-package-hygiene audit
+  that traced it to the emitter). The generator (`tools/make_badge_assets.py`) emits
+  `{deck.const_name}_SMALL_SIZE` unconditionally per deck; only the badges deck consumes its
+  twin today. Resolution: keep, documented at the symbol — `emit_manifest`'s records-deck sizes
+  block states the why (contract half of the same F25 bet the `small` field makes; the future
+  records shelf imports it exactly as `BadgeShelf` imports the badge deck's). Stopping emission
+  was considered and rejected: it needs a per-deck flag keyed on a product fact the generator
+  cannot observe, more machinery than the one-line constant it would gate. The generated
+  manifest's own docblock is the decision record, so a future sweep reads it there rather than
+  re-deriving it (full history: `tools/.workflows/package_readme.md`'s gotchas,
+  `docs/token_maxxing/2026-09-12-badges-records-yagni.md`,
+  `docs/token_maxxing/2026-09-12-tools-package-hygiene.md`). Likewise the records `.small`
+  derivatives ship unrendered — the F25 plan's own deliberate bet (pre-generate now, avoid
+  re-hashing masters later); unaffected by this decision, and not itself re-litigated here.
 - **Test-only exports, recorded not fought**: `isBadgeKey`, `previousIsoWeek` (self-used too),
   and `badgesForRun` exist in production code with zero production callers, solely because
   tests import them. Un-exporting requires touching tests; a sweep should record, not delete.
+- **`windowEdgeFires` was over-exported, not dead** — knip flagged it unused because its only
+  callers are the two `evaluateSessionBadges` call sites inside `rules.ts` itself; no test or
+  outside module ever imported it directly, despite the file's old "all exported for their own
+  tests" helpers comment. Fixed 2026-09-13 by dropping the `export` keyword rather than deleting
+  the function — the opposite move from the test-only exports above, since here nothing needed
+  the export to begin with.
 - **Verifying consumers of this pair by static import grep alone under-reports**: the gateway
   tests use dynamic `await import('@/lib/badges/gateway')` behind `vi.mock`. Include dynamic
   imports in any liveness census (this bit someone on 2026-09-12 while writing this doc).
