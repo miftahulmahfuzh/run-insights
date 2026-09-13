@@ -7,38 +7,26 @@
  * from.
  */
 
-export { resolveHrMax, tanakaEstimate, type HrMax, type HrMaxSource } from './hrMax'
+export { resolveHrMax, type HrMax } from './hrMax'
 
-export type {
-  FastestSlowestKm,
-  SessionInput,
-  SessionMetrics,
-  SplitRow,
-  ZonePctRow,
-  ZoneRow,
-} from './types'
+export type { SessionInput, SplitRow, ZonePctRow, ZoneRow } from './types'
 
-export { roundSharesTo100 } from './round'
-export { avgPaceSecPerKm } from './pace'
 export { computeSessionMetrics } from './session'
-export { evaluateSessionFlags, FLAG_THRESHOLDS, type Flag, type FlagCode } from './flags'
+export { evaluateSessionFlags, type Flag } from './flags'
 export {
   bucketForDistanceM,
-  computeVolumeDelta,
   computeWeekMetrics,
   DISTANCE_BUCKETS,
   paceByBucket,
   VOLUME_JUMP,
   type DistanceBucket,
   type VolumeDelta,
-  type WeekRunSummary,
 } from './week'
-export { computeMonthMetrics, type MonthRunSummary } from './month'
+export { computeMonthMetrics } from './month'
 export {
   ACWR_OUT_OF_RANGE,
   ACWR_SWEET_SPOT,
   computeAcwr,
   isAcwrOutOfRange,
   type Acwr,
-  type DailyLoadPoint,
 } from './acwr'

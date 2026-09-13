@@ -3,9 +3,13 @@
  *
  * Two rules govern this file, and both are load-bearing:
  *
- *  1. **`HrMax` / `HrMaxSource` are RE-EXPORTED, never redeclared.** F02's `./hrMax` owns the only
- *     definition. A second, structurally-identical declaration would compile fine and then drift
- *     the day one of them gains a field — which is exactly how two "sources of truth" are born.
+ *  1. **`HrMax` is IMPORTED for internal use, never redeclared.** F02's `./hrMax` owns the only
+ *     definition of `HrMax` and `HrMaxSource`. A second, structurally-identical declaration would
+ *     compile fine and then drift the day one of them gains a field — which is exactly how two
+ *     "sources of truth" are born. This file does not re-export either name: the barrel
+ *     (`lib/metrics/index.ts`) re-exports `HrMax` from `./hrMax` directly, and every consumer that
+ *     needs `HrMaxSource` type-imports it straight from `./hrMax` too (see `lib/share/types.ts` for
+ *     why that one in particular must stay a type-only import).
  *
  *  2. **Nothing here is formatted for display.** Every field is a plain `number | null`,
  *     JSON-serialisable, and crosses the server→client boundary as-is. No `"7'22\""` strings, no
@@ -18,7 +22,6 @@
  * `avgHr` next to `avgHrPctMax` reads ambiguously in the formulas.
  */
 
-export type { HrMax, HrMaxSource } from './hrMax'
 import type { HrMax } from './hrMax'
 
 /** One `run_splits` row. `partial` is roadmap D14's flag, and §3.1 is why it exists. */
