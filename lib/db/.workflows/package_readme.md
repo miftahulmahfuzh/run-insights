@@ -550,6 +550,7 @@ catch (err) {
 | `npm run db:migrate` | Applies pending `drizzle/*.sql` to the database |
 | `npm run db:studio` | Drizzle Studio, a local DB browser |
 | `npm run db:smoke` | Connectivity check against the pooled string |
+| `npm run ci:schema-drift-guard` | Read-only. Asks whether the database MATCHES this folder — stranded migrations, undeclared columns, missing indexes. The only command here that compares the two; `db:check` never opens a connection |
 
 Editing `schema.ts` is only half of a schema change: `npm run db:generate` must run in the same
 commit, and `db:check` must be clean. `drizzle.config.ts` reads `DATABASE_URL_UNPOOLED` and
@@ -586,8 +587,18 @@ journal (`drizzle/meta/_journal.json`) and the file it names.** A renamed-but-no
 migration is silently skipped by the migrator; regeneration restamps `when`, which is what makes it
 apply.
 
+**Do not hand-verify this again — run `npm run ci:schema-drift-guard`.** Everything in the
+paragraph below was established by hand on 2026-09-12 and re-established by hand on 2026-09-13,
+which is precisely the kind of dated claim that rots between readings. `scripts/check-schema-drift.mjs`
+now asks the database the same questions on demand: it classifies every journal entry as applied,
+pending or **stranded** (the distinction that matters, and the one no drizzle command makes), and
+diffs the snapshot tip against `information_schema` — every table, column, type, nullability,
+foreign key, unique constraint and index. With no reachable `DATABASE_URL` it runs the static half
+only and says so, which is how it also runs in CI.
+
 **Deploy state (verified 2026-09-12 against production, by the migrations table and
-`information_schema`):** 21 of the 22 journal entries are applied. Production has no
+`information_schema`; re-verified 2026-09-13 by the guard, unchanged):** 21 of the 22 journal
+entries are applied. Production has no
 `nina_tuning.revision`, no `nina_turns.tuning_revision`, no `nina_image_prefs.revision`; it does
 have `content_hash`, `perceptual_hash`, `perceptual_sig`, `prompt_template`, `model`,
 `app_settings` and `nina_error_logs` (with its one index). The one unapplied entry is
@@ -599,6 +610,13 @@ Production still holds the orphaned `nina_memory_facts.confidence` column — sc
 (the table's own comment records the drop), and nothing reads or writes it, so it is inert. If it
 is ever to go, that is a hand-run `DROP COLUMN` plus a constructed journal fix — `db:generate`
 cannot see it and will not emit it.
+
+**And it is the ONLY drift.** The 2026-09-12 pass checked the columns it had reason to suspect; the
+2026-09-13 guard run compared the whole surface — 29 tables, 309 columns, 37 foreign keys, 31
+indexes, 1 unique constraint — and `nina_memory_facts.confidence` is the single divergence. That is
+the useful half of the result: the stranded migration did not take anything else with it, and the
+snapshot chain is unbroken (every `prevId` links, despite the collision-era renumbering above). Do
+not re-derive this by hand either — the counts are what the guard prints on a clean run.
 
 ### Gotchas
 

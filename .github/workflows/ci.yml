@@ -66,6 +66,20 @@ jobs:
       - name: Data-layer invariant guard
         run: npm run ci:data-layer-guard
 
+      # 2026-09-13. `drizzle/0011_rare_blockbuster.sql` sat committed, journalled and UNAPPLIED in
+      # production for six days while `db:check` and `db:migrate` both stayed green, because
+      # neither of them opens a connection to ask what the database actually looks like. The
+      # migrator applies an entry only when its `when` beats max(created_at), so a migration that
+      # loses a two-branch race is stranded below the watermark permanently.
+      #
+      # In CI this runs the STATIC half only — journal/file bijection, duplicate tags, `when`
+      # monotonicity, and the snapshot prevId chain — because DATABASE_URL above is a dummy
+      # string. That half is what catches the arrangement before it reaches production. The live
+      # ledger-and-schema comparison runs from a developer machine, where the connection is real;
+      # the script says which half it ran and exits 0 rather than failing when it cannot look.
+      - name: Schema drift guard (static half)
+        run: npm run ci:schema-drift-guard
+
       # F04 Task 24. LLM_API_KEY is the one credential sent to a paid endpoint, and `lib/env.ts`'s
       # server-only poison pill is bypassed entirely by reading process.env directly in a client
       # file. A name-level grep over app/ and components/ catches that in the diff. It also fails

@@ -107,8 +107,10 @@ const CELL = 'border-t border-rule px-2 py-2 align-top'
  * remove one row easily"*.
  *
  * It was six columns and four survivors until task #135 retired `Conf.`, and that was a field
- * removal rather than a column removal: `nina_memory_facts.confidence` is gone from the database,
- * so there is nothing left for a cell to show.
+ * removal rather than a column removal: `nina_memory_facts.confidence` is gone from `schema.ts`,
+ * so there is nothing left for a cell to show. (It is still PRESENT in production — `drizzle/0011_rare_blockbuster.sql`
+ * is stranded below the migrator's watermark and has never run. Nothing reads it, so the table is
+ * unaffected; `npm run ci:schema-drift-guard` is what tracks it.)
  *
  * ── WHY THE `<colgroup>` HAD TO GO ──────────────────────────────────────────────────────────
  * A `<col>` maps to a column by POSITION among the cells that are actually rendered. Hiding two
