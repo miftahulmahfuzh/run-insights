@@ -526,31 +526,7 @@ export async function failNinaImageJob(input: {
 
   console.warn('[nina] image job failed', { jobId, kind, purpose, detail: input.detail ?? null })
 
-  /*
-   * ── THE APOLOGY MAY NOT SWALLOW THE LEDGER (PLAN INVARIANT 9) ─────────────────────────────
-   * This used to be an unguarded `await` before the UPDATE, which is the app-side twin of the bug
-   * the analysis measured in `scripts/nina-image-worker.ts`: `closeFailed` threw on its
-   * `nina_messages` INSERT and took the process down BEFORE `update nina_turns … set
-   * status='failed'` ever ran, so the job stayed `pending`, a later sweep marked it `stale` with
-   * `cost_micro_usd: null`, and $0.04 was recorded as free. Money spent must be written down even
-   * when her sentence cannot be. The apology is worth a lot; the ledger is not optional.
-   *
-   * The one exception is structural rather than a special case: an AVATAR job has no pending
-   * bubble, because nobody asked for it in the chat, so a message would be Nina apologising for
-   * something the runner never requested. See `avatargen.ts`.
-   */
-  if (purpose === 'selfie') {
-    try {
-      await postNinaApologyMessage({ userId, jobId, kind, replyToId: input.replyToId ?? null })
-    } catch (cause) {
-      console.error('[nina] image apology could not be written; closing the job anyway', {
-        jobId,
-        error: String(cause),
-      })
-    }
-  }
-
-  /* The added amount, or `null` meaning "do not touch the column at all". See the block above. */
+  /* The added amount, or `null` meaning "do not touch the column at all". See below. */
   const addend: number | null =
     input.costMicroUsd !== undefined
       ? (input.costMicroUsd ?? NINA_IMAGE_COST_MICRO_USD)
@@ -558,7 +534,23 @@ export async function failNinaImageJob(input: {
         ? null
         : NINA_IMAGE_COST_MICRO_USD
 
-  await db
+  /*
+   * ── THE LEDGER WRITES FIRST, AND UNCONDITIONALLY (PLAN INVARIANT 9) ────────────────────────
+   * This used to apologise BEFORE this UPDATE. The analysis measured the app-side twin of that bug
+   * in `scripts/nina-image-worker.ts`: `closeFailed` threw on its `nina_messages` INSERT and took
+   * the process down BEFORE `update nina_turns … set status='failed'` ever ran, so the job stayed
+   * `pending`, a later sweep marked it `stale` with `cost_micro_usd: null`, and $0.04 was recorded
+   * as free. That specific crash was already closed by wrapping the apology in its own try/catch;
+   * writing the ledger first removes the dependency on that catch entirely.
+   *
+   * `.returning({ deletedAt })` is what the apology below is gated on, and that closes a SEPARATE
+   * race: `claimNinaImageJob` only ever claims a row while `deleted_at IS NULL`, but nothing stops
+   * the runner from hiding the job in the seconds between that claim and this terminal write — the
+   * exact TOCTOU `sweepStaleNinaImageJobs` already re-checks at its own UPDATE. Reading `deletedAt`
+   * off THIS statement's own row is the only way to answer "is it still hidden right now" without
+   * a second, separately-racing SELECT.
+   */
+  const [closed] = await db
     .update(ninaTurns)
     .set({
       status: 'failed',
@@ -571,6 +563,24 @@ export async function failNinaImageJob(input: {
         : { costMicroUsd: sql`coalesce(${ninaTurns.costMicroUsd}, 0) + ${addend}` }),
     })
     .where(and(eq(ninaTurns.userId, userId), eq(ninaTurns.id, jobId)))
+    .returning({ deletedAt: ninaTurns.deletedAt })
+
+  /*
+   * ── R2: NEVER APOLOGISE IN THE CHAT FOR A JOB HE HID ───────────────────────────────────────
+   * The other exception is structural rather than a special case: an AVATAR job has no pending
+   * bubble, because nobody asked for it in the chat, so a message would be Nina apologising for
+   * something the runner never requested. See `avatargen.ts`.
+   */
+  if (purpose === 'selfie' && closed?.deletedAt == null) {
+    try {
+      await postNinaApologyMessage({ userId, jobId, kind, replyToId: input.replyToId ?? null })
+    } catch (cause) {
+      console.error('[nina] image apology could not be written; closing the job anyway', {
+        jobId,
+        error: String(cause),
+      })
+    }
+  }
 }
 
 /**
@@ -624,7 +634,8 @@ async function postNinaApologyMessage(input: {
 
 /**
  * **The app-side give-up, and the last line of R22.** A `pending` row older than
- * `NINA_IMAGE_STALE_MS` (20 min) is closed as `failed`/`stale` **and apologised for**.
+ * `NINA_IMAGE_STALE_MS` (20 min) is closed as `failed`/`stale` **and apologised for** — unless the
+ * runner already hid it (R2), in which case it is still closed, just silently.
  *
  * ── WHY IT SURVIVES ALONGSIDE THE BACKSTOP SCHEDULE ───────────────────────────────────────────
  * The workflow's `schedule:` is a RETRY engine: it finds a job whose dispatch was lost and
@@ -651,6 +662,18 @@ export async function sweepStaleNinaImageJobs(
 ): Promise<number> {
   const olderThan = new Date(now.getTime() - NINA_IMAGE_STALE_MS)
 
+  /*
+   * No `isNull(ninaTurns.deletedAt)` here, deliberately — and that is a FIX, not the original
+   * shape. `claimNinaImageJob` and `listRevivableNinaImageJobs` both require `deleted_at IS NULL`
+   * to pick a job up again, but `requeueNinaImageJob` does not touch the flag when it sends a
+   * failed attempt back to `queued`. So a job hidden while it still had retry budget left — the
+   * runner taps the trash icon on `/nina/jobs` between a claim and that attempt's failure, both of
+   * which `deleteNinaImageJob`'s own docstring says is allowed with no status gate — could never be
+   * reclaimed, never be revived, and, with the filter that used to live here, never be swept
+   * either. That is an immortal `pending` row: invisible on every screen, its retry never
+   * resolving, forever. This is the ONLY mechanism left that still finds such a row, so it must not
+   * exclude it. What it must still do is never apologise about it — see the per-row check below.
+   */
   const stale = await db
     .select({ id: ninaTurns.id, args: ninaTurns.args })
     .from(ninaTurns)
@@ -659,10 +682,6 @@ export async function sweepStaleNinaImageJobs(
         eq(ninaTurns.userId, userId),
         eq(ninaTurns.kind, 'image'),
         eq(ninaTurns.status, 'pending'),
-        /* R2: never APOLOGISE in the chat for a job he hid. The sweep's whole visible output is
-         * `postNinaApologyMessage`, and a sentence from Nina about a row that is no longer on any
-         * screen is the one thing tidying the list must not produce. */
-        isNull(ninaTurns.deletedAt),
         lt(ninaTurns.createdAt, olderThan),
       ),
     )
@@ -674,7 +693,9 @@ export async function sweepStaleNinaImageJobs(
        * The UPDATE's own `WHERE status='pending'` is what makes the sweep safe against a job the
        * worker finished between the SELECT above and now. `returning` length 0 means somebody else
        * closed it, and apologising for a photograph that just arrived is the one wrong thing this
-       * could do.
+       * could do. `deletedAt` travels on the same `returning`: R2's answer to "was it hidden before
+       * this loop started, or in the race since the SELECT" is identical either way — no apology —
+       * but unlike a `status` race, a hidden row still gets closed here, not skipped.
        */
       const closed = await db
         .update(ninaTurns)
@@ -684,20 +705,16 @@ export async function sweepStaleNinaImageJobs(
             eq(ninaTurns.userId, userId),
             eq(ninaTurns.id, row.id),
             eq(ninaTurns.status, 'pending'),
-            /* R2, and the same race the `status` guard above covers: he may have hidden the row
-             * between the SELECT and this statement. `returning` length 0 then means "somebody
-             * else closed it OR he hid it", and both want the same answer — skip, apologise for
-             * nothing. */
-            isNull(ninaTurns.deletedAt),
           ),
         )
-        .returning({ id: ninaTurns.id })
+        .returning({ id: ninaTurns.id, deletedAt: ninaTurns.deletedAt })
 
       if (closed.length === 0) continue
 
       const args = (row.args ?? null) as NinaImageJobArgs | null
-      // An avatar job has no pending bubble. See `failNinaImageJob`.
-      if (args?.purpose !== 'avatar') {
+      // An avatar job has no pending bubble (`failNinaImageJob`'s rule), and a hidden job gets no
+      // sentence at all (R2) — either way the row above is already closed.
+      if (args?.purpose !== 'avatar' && closed[0]!.deletedAt == null) {
         await postNinaApologyMessage({
           userId,
           jobId: row.id,

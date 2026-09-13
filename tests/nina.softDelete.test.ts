@@ -12,16 +12,26 @@ import { installFakeDb, uninstallFakeDb, type FakeDb } from './support/fakeDb'
  * cannot tell "the function was called" from "the predicate was in the WHERE". So this file
  * installs the recording driver and reads the statements.
  *
- * Three properties, and the second is the one most likely to rot:
+ * Four properties, and the second is the one most likely to rot:
  *
- *   1. Every read that describes a job to a human, or that schedules work on one, carries
- *      `deleted_at is null`. EIGHT functions, NINE statements — the eighth is
- *      `reopenNinaImageJob`, R1's redo, which is a read that SCHEDULES.
+ *   1. Every read that describes a job to a human, or that schedules NEW work on one, carries
+ *      `deleted_at is null`. SIX functions: `listNinaImageJobs`, `getNinaImageJobDetail`,
+ *      `listOpenNinaImageJobs`'s own strip read (not the sweep it runs first — see 4),
+ *      `listRevivableNinaImageJobs`, `claimNinaImageJob`, and `reopenNinaImageJob` (R1's redo,
+ *      which is a read that SCHEDULES).
  *   2. `countNinaTurnsSince` — the daily image cap — carries NO such predicate, deliberately. The
  *      cap is a money cap; hiding a row does not un-spend $0.04. The assertion is written as an
  *      ABSENCE on purpose: a future "consistency" cleanup that adds the filter here turns one tap
  *      into a quota refund, and this is the only thing that would notice.
  *   3. The write is an UPDATE that touches nothing but the flag. `nina_turns` is the money ledger.
+ *   4. `sweepStaleNinaImageJobs` is the DELIBERATE EXCEPTION to rule 1, and the fix this file was
+ *      widened for (2026-09-13): its own SELECT carries no `deleted_at` predicate, because
+ *      `requeueNinaImageJob` sends a failed-with-budget-left attempt back to `queued` WITHOUT
+ *      touching the flag, and every other recovery path (`claimNinaImageJob`,
+ *      `listRevivableNinaImageJobs`) requires `deleted_at IS NULL` to pick a row up again. Filtering
+ *      the sweep the same way left a job hidden mid-retry as an immortal `pending` row — invisible
+ *      everywhere, never reclaimed, never closed. The sweep still never APOLOGISES for a hidden
+ *      job (R2), it just does not use the SELECT to avoid seeing one.
  *
  * Deliberately NOT in `tests/nina.jobActions.test.ts`. That file does NOT mock
  * `@/lib/nina/imagejobs` — it runs it for real — but it does install its own
@@ -77,11 +87,15 @@ describe('every read that shows a job or schedules work on one skips a hidden ro
     expect(fake.only().sql).toContain(HIDDEN_SKIPPED)
   })
 
-  it('listOpenNinaImageJobs — the in-flight strip AND the sweep it runs first', async () => {
+  it('listOpenNinaImageJobs — the strip skips a hidden row; the sweep it runs first does not', async () => {
     fake.enqueue([], []) // the sweep's SELECT, then the strip's
     await jobs.listOpenNinaImageJobs('u1')
     expect(fake.queries).toHaveLength(2)
-    for (const query of fake.queries) expect(query.sql).toContain(HIDDEN_SKIPPED)
+    // The sweep (index 0) is the deliberate exception — see property 4 above and
+    // `sweepStaleNinaImageJobs`'s own describe block below. The strip's own read (index 1) still
+    // must never show a hidden job.
+    expect(fake.queries[0]!.sql).not.toContain(HIDDEN_SKIPPED)
+    expect(fake.queries[1]!.sql).toContain(HIDDEN_SKIPPED)
   })
 
   it('listRevivableNinaImageJobs — a hidden job is never re-fired', async () => {
@@ -90,12 +104,6 @@ describe('every read that shows a job or schedules work on one skips a hidden ro
       queuedBefore: new Date('2026-09-07T00:00:00Z'),
       runningBefore: new Date('2026-09-07T00:00:00Z'),
     })
-    expect(fake.only().sql).toContain(HIDDEN_SKIPPED)
-  })
-
-  it('sweepStaleNinaImageJobs — she never apologises in the chat for a job he hid', async () => {
-    fake.enqueue([])
-    await expect(jobs.sweepStaleNinaImageJobs('u1')).resolves.toBe(0)
     expect(fake.only().sql).toContain(HIDDEN_SKIPPED)
   })
 
@@ -205,5 +213,96 @@ describe('"but just soft delete in neon db" — asserted against the module, not
   it('and neither does lib/nina/jobActions.ts', () => {
     const source = readFileSync('lib/nina/jobActions.ts', 'utf8')
     expect(source).not.toMatch(/\.delete\(/)
+  })
+})
+
+/**
+ * **2026-09-13 fix: a job hidden mid-retry must not become an immortal `pending` ghost.**
+ *
+ * `deleteNinaImageJob` has no status gate (`jobActions.ts`'s own docstring: "an in-flight
+ * generation still finishes and still delivers"), so a runner can hide a job that is currently
+ * claimed. If that attempt then fails with retry budget left, `requeueNinaImageJob` sends it back
+ * to `queued` WITHOUT touching `deleted_at` — and every path that could ever claim it again
+ * (`claimNinaImageJob`, `listRevivableNinaImageJobs`) requires `deleted_at IS NULL`. Before this
+ * fix, `sweepStaleNinaImageJobs`'s own SELECT carried the same requirement, so the row was excluded
+ * from the one mechanism (the 20-minute deadline) that could still have closed it — it would have
+ * sat `pending` forever, invisible on every screen. The fix removes that filter from the SELECT and
+ * the per-row UPDATE, and gates the apology on the row's own `deletedAt`, read via `returning`.
+ */
+describe('sweepStaleNinaImageJobs — the deliberate exception now closes a hidden ghost, silently', () => {
+  it('closes a stale HIDDEN job to failed/stale and posts no apology', async () => {
+    fake.enqueue([[JOB, { purpose: 'selfie', prompt: 'p', seed: 1, replyToId: null }]]) // the SELECT
+    fake.enqueue([[JOB, '2026-09-13 00:20:00+00']]) // the UPDATE...RETURNING: still hidden
+
+    await expect(jobs.sweepStaleNinaImageJobs('u1')).resolves.toBe(1)
+
+    // Exactly the sweep's own two statements — closing a hidden job must never reach the chat
+    // (an apology would cost at least one more statement, resolving the session and inserting).
+    expect(fake.queries).toHaveLength(2)
+    expect(fake.queries[0]!.sql).not.toContain(HIDDEN_SKIPPED)
+    const update = fake.queries[1]!
+    expect(update.sql).toMatch(/^update "nina_turns" set/)
+    expect(update.sql).toContain('"error_code" = $')
+    expect(update.params).toContain('stale')
+  })
+
+  it('still closes and still apologises for an ordinary (visible) stale job', async () => {
+    fake.enqueue([[JOB, { purpose: 'avatar', prompt: 'p', seed: 1, replyToId: null }]]) // the SELECT
+    fake.enqueue([[JOB, null]]) // the UPDATE...RETURNING: deletedAt is null — never hidden
+
+    // `purpose: 'avatar'` sidesteps the apology plumbing (session resolve, message insert) so this
+    // test can isolate the ONE thing this file changed — that a visible row still gets closed —
+    // without re-implementing the whole apology chain that `tests/nina.imagerun.test.ts` mocks out
+    // wholesale. `failNinaImageJob`'s own describe block below covers the apology-gating decision
+    // directly.
+    await expect(jobs.sweepStaleNinaImageJobs('u1')).resolves.toBe(1)
+    expect(fake.queries).toHaveLength(2)
+  })
+})
+
+describe('failNinaImageJob — the terminal give-up must not apologise for a job hidden mid-flight', () => {
+  /**
+   * The race this closes: `claimNinaImageJob` only ever claims a row while `deleted_at IS NULL`,
+   * but nothing stops the runner from hiding the job in the seconds between that claim and this
+   * terminal write. Before this fix, the apology was posted unconditionally (guarded only by
+   * `purpose !== 'avatar'`), so a hidden SELFIE job whose last attempt burned its retry budget
+   * would still get a sentence from Nina in a chat the runner had just tidied away — exactly what
+   * R2 exists to prevent everywhere else in this file.
+   */
+  it('writes the terminal status/ledger but skips the apology when the row comes back hidden', async () => {
+    fake.enqueue([['2026-09-13 00:05:00+00']]) // the UPDATE...RETURNING: deletedAt is set
+
+    await jobs.failNinaImageJob({
+      userId: 'u1',
+      jobId: JOB,
+      kind: 'timeout',
+      purpose: 'selfie',
+      replyToId: null,
+    })
+
+    // Only the terminal UPDATE ran — no session resolve, no message insert, i.e. no apology.
+    expect(fake.queries).toHaveLength(1)
+    const { sql, params } = fake.only()
+    expect(sql).toMatch(/^update "nina_turns" set/)
+    expect(sql).toContain('"status" = $')
+    expect(sql).toContain('"error_code" = $')
+    expect(params).toContain('failed')
+    expect(params).toContain('timeout')
+  })
+
+  it('still writes the terminal status/ledger for an avatar job (no apology surface either way)', async () => {
+    fake.enqueue([[null]]) // the UPDATE...RETURNING: deletedAt is null — never hidden
+
+    await jobs.failNinaImageJob({
+      userId: 'u1',
+      jobId: JOB,
+      kind: 'policy',
+      purpose: 'avatar',
+    })
+
+    // No apology for an avatar job regardless of hidden state (structural, not this fix), so this
+    // is the same one-statement shape — but for the opposite reason, and worth telling apart.
+    expect(fake.queries).toHaveLength(1)
+    expect(fake.only().params).toContain('policy')
   })
 })
