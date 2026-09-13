@@ -105,10 +105,10 @@ export const ADMIN_CHAT_PHOTOS_PATH = '/admin/nina'
  * is the same "checked rather than merely intended" mitigation `tests/nina.imagerecipe.test.ts`
  * uses for `NINA_BLOB_PREFIX`.
  */
-export const ADMIN_CHAT_PHOTO_PURPOSE = 'selfie'
+const ADMIN_CHAT_PHOTO_PURPOSE = 'selfie'
 
 /** JPEG, always, whatever the operator picked. See the header. */
-export const ADMIN_CHAT_PHOTO_EXT = 'jpg'
+const ADMIN_CHAT_PHOTO_EXT = 'jpg'
 export const ADMIN_CHAT_PHOTO_CONTENT_TYPE = 'image/jpeg'
 
 /**
@@ -120,7 +120,7 @@ export const ADMIN_CHAT_PHOTO_CONTENT_TYPE = 'image/jpeg'
  * This used to read `{12,24}` and try to cover the stored form with the same range. It could not:
  * see `ADMIN_CHAT_PHOTO_STORED_ID_RE` and the header's "one predicate, two windows".
  */
-export const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12}$/
+const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12}$/
 
 /**
  * What Blob actually STORED, which is what `lib/admin/chatPhotoActions.ts` re-validates: the
@@ -139,7 +139,7 @@ export const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12}$/
  * POSITION and never by splitting on `-`, and the first group cannot be greedy enough to swallow
  * part of the suffix.
  */
-export const ADMIN_CHAT_PHOTO_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
+const ADMIN_CHAT_PHOTO_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
 
 /**
  * 2 MB, and it is a FOURTH number on purpose — none of the three in the store was inherited.

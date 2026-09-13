@@ -82,7 +82,6 @@ export const cropWriteSchema = z.object({
   x: z.number().int().min(-NINA_CROP_MAX_ABS_OFFSET).max(NINA_CROP_MAX_ABS_OFFSET),
   y: z.number().int().min(-NINA_CROP_MAX_ABS_OFFSET).max(NINA_CROP_MAX_ABS_OFFSET),
 })
-export type CropWrite = z.infer<typeof cropWriteSchema>
 
 /**
  * **"Rewrite what she can see in one of her album photographs."** R3 — the album's
@@ -101,8 +100,6 @@ export const avatarDescriptionSchema = z.object({
   description: chatPhotoDescriptionField,
 })
 
-export type AvatarDescriptionInput = z.infer<typeof avatarDescriptionSchema>
-
 /**
  * What the browser reports after a successful PUT. Every field is checked, including the two the
  * browser measured itself — `width`/`height` come from the decoded bitmap, which is trustworthy in
@@ -119,7 +116,6 @@ export const avatarRegisterSchema = z.object({
   /** Make it hers immediately, or just park it in the album. The checkbox on the picker. */
   makeCurrent: z.boolean(),
 })
-export type AvatarRegister = z.infer<typeof avatarRegisterSchema>
 
 /* ============================================================================
  * Phase 16 — /admin/memory. Reshaped by admin-memory-and-chat-photos phase 1
@@ -142,10 +138,10 @@ export type AvatarRegister = z.infer<typeof avatarRegisterSchema>
  * schema refuses a payload the UI could not have produced; a confirmation asks a question the
  * operator has already answered. The purge gate's `confirm` field was the second kind and is gone.
  */
-export const userIdSchema = z.string().trim().min(1).max(64)
+const userIdSchema = z.string().trim().min(1).max(64)
 
 /** A slot key. Membership in phase 5's ten is checked by `canonicaliseSlotValue`, not here. */
-export const slotKeySchema = z
+const slotKeySchema = z
   .string()
   .trim()
   .min(1)
@@ -161,7 +157,6 @@ export const slotEditSchema = z.object({
   key: slotKeySchema,
   value: z.string().min(1).max(ADMIN_SLOT_VALUE_MAX),
 })
-export type SlotEdit = z.infer<typeof slotEditSchema>
 
 const factCategorySchema = z.enum(ADMIN_FACT_CATEGORIES)
 
@@ -175,7 +170,6 @@ export const factInsertSchema = z.object({
   category: factCategorySchema,
   text: z.string().trim().min(1).max(ADMIN_FACT_TEXT_MAX),
 })
-export type FactInsert = z.infer<typeof factInsertSchema>
 
 /**
  * A cell save on a ledger row. Both editable fields every time, because the table sends the row's
@@ -189,7 +183,6 @@ export const factEditSchema = z.object({
   category: factCategorySchema,
   text: z.string().trim().min(1).max(ADMIN_FACT_TEXT_MAX),
 })
-export type FactEdit = z.infer<typeof factEditSchema>
 
 /**
  * **The one delete this page has.** A discriminated union rather than three schemas, because there
@@ -206,7 +199,6 @@ export const memoryDeleteSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('promise'), userId: userIdSchema, target: memoryIdSchema }),
   z.object({ kind: z.literal('fact'), userId: userIdSchema, target: memoryIdSchema }),
 ])
-export type MemoryDelete = z.infer<typeof memoryDeleteSchema>
 
 /* ============================================================================
  * admin-album-file-manager phase 4 — the folder-aware upload boundary.
@@ -329,7 +321,7 @@ export const albumFilenameSchema = z
  * some unpredictable path length instead of failing validation at the boundary. Phase 2's computed
  * worst case is 745 — a 512-character folder, a 200-character filename, a size and a timestamp.
  */
-export const sourceKeySchema = z
+const sourceKeySchema = z
   .string()
   .min(1)
   .max(NINA_SOURCE_KEY_MAX_CHARS)
@@ -366,7 +358,7 @@ const avatarThumbSchema = z.object({
  * There is no `makeCurrent`. A folder upload never makes three hundred photos her face, and
  * `insertNinaAvatars` writes `isCurrent: false` for every row by construction.
  */
-export const avatarBatchRecordSchema = z.object({
+const avatarBatchRecordSchema = z.object({
   folder: folderPathSchema,
   filename: albumFilenameSchema,
   sourceKey: sourceKeySchema,
@@ -416,14 +408,12 @@ export type AvatarBatchRecord = z.infer<typeof avatarBatchRecordSchema>
 export const avatarBatchRegisterSchema = z.object({
   records: z.array(avatarBatchRecordSchema).min(1).max(NINA_ADMIN_BATCH_MAX),
 })
-export type AvatarBatchRegister = z.infer<typeof avatarBatchRegisterSchema>
 
 /** What the client asks for before walking a folder: the subtree it is about to diff. */
 export const albumManifestSchema = z.object({
   /** `''` means the whole album, which is what a drop onto the root asks for. */
   folder: folderPathSchema,
 })
-export type AlbumManifestRequest = z.infer<typeof albumManifestSchema>
 
 /* ============================================================================
  * nina-character-tuning phase 5 — ONE whole-tuning write.
@@ -560,7 +550,6 @@ export const shortcutInsertSchema = z.object({
   label: shortcutLabelSchema,
   expansion: shortcutExpansionSchema,
 })
-export type ShortcutInsert = z.infer<typeof shortcutInsertSchema>
 
 /**
  * **One cell.** A discriminated union rather than three optional strings, for the reason
@@ -594,7 +583,6 @@ export const shortcutCellSchema = z.discriminatedUnion('field', [
     value: shortcutExpansionSchema,
   }),
 ])
-export type ShortcutCell = z.infer<typeof shortcutCellSchema>
 
 /** On or off. A boolean and not a toggle-what-it-is-not: the client sends the state it wants. */
 export const shortcutToggleSchema = z.object({
@@ -602,14 +590,12 @@ export const shortcutToggleSchema = z.object({
   id: shortcutIdSchema,
   enabled: z.boolean(),
 })
-export type ShortcutToggle = z.infer<typeof shortcutToggleSchema>
 
 /** The one destructive action, and it takes an id and nothing else. No `confirm` field. */
 export const shortcutDeleteSchema = z.object({
   userId: userIdSchema,
   id: shortcutIdSchema,
 })
-export type ShortcutDelete = z.infer<typeof shortcutDeleteSchema>
 
 /* ============================================================================
  * nina-image-generation-tab phase 4 — ONE whole-prefs write.

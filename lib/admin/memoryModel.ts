@@ -81,7 +81,7 @@ export type SlotProtection = 'deferred' | 'sticky' | 'none'
  * Which table a row came out of. It decides what an edit MEANS at the storage layer; it no longer
  * decides what the row LOOKS like, which is the whole of R1's *"one simple table"*.
  */
-export type MemoryRowKind = 'slot' | 'promise' | 'fact'
+type MemoryRowKind = 'slot' | 'promise' | 'fact'
 
 /**
  * **One row of `/admin/memory`, whatever it is made of.** Three shapes across two tables — the

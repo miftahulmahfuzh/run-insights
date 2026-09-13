@@ -163,9 +163,4 @@ export const chatPhotoSetAvatarSchema = z.object({
   y: z.number().int().min(-NINA_CROP_MAX_ABS_OFFSET).max(NINA_CROP_MAX_ABS_OFFSET),
 })
 
-export type ChatPhotoAddInput = z.infer<typeof chatPhotoAddSchema>
-export type ChatPhotoReplaceInput = z.infer<typeof chatPhotoReplaceSchema>
-export type ChatPhotoRemoveInput = z.infer<typeof chatPhotoRemoveSchema>
-export type ChatPhotoDescribeInput = z.infer<typeof chatPhotoDescribeSchema>
-export type ChatPhotoDescriptionInput = z.infer<typeof chatPhotoDescriptionSchema>
 export type ChatPhotoSetAvatarInput = z.infer<typeof chatPhotoSetAvatarSchema>
