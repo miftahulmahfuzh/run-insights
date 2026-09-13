@@ -55,7 +55,7 @@ import { avatarIdSchema, folderPathSchema } from '@/lib/admin/schema'
  * radius: it is the number of rows one mis-click can move or destroy, and 500 is already more than
  * a screenful of the paginated grid phase 5 renders.
  */
-export const ADMIN_FOLDER_OP_MAX_IDS = 500
+const ADMIN_FOLDER_OP_MAX_IDS = 500
 
 /* ============================================================================
  * The six operations' input schemas
@@ -79,26 +79,22 @@ export const folderCreateSchema = z.object({
   parent: folderPathSchema,
   name: folderNameSchema,
 })
-export type FolderCreateInput = z.infer<typeof folderCreateSchema>
 
 export const folderRenameSchema = z.object({
   folder: folderPathSchema,
   name: folderNameSchema,
 })
-export type FolderRenameInput = z.infer<typeof folderRenameSchema>
 
 export const folderMoveSchema = z.object({
   folder: folderPathSchema,
   /** The new containing folder. `''` moves it to the album root. */
   parent: folderPathSchema,
 })
-export type FolderMoveInput = z.infer<typeof folderMoveSchema>
 
 export const photoMoveSchema = z.object({
   ids: avatarIdsSchema,
   folder: folderPathSchema,
 })
-export type PhotoMoveInput = z.infer<typeof photoMoveSchema>
 
 /**
  * `keepCurrent` is the operator's explicit second answer to the refusal in `currentPhotoRefusal`,
@@ -115,13 +111,11 @@ export const folderDeleteSchema = z.object({
   folder: folderPathSchema,
   keepCurrent: z.boolean(),
 })
-export type FolderDeleteInput = z.infer<typeof folderDeleteSchema>
 
 export const photoRemoveSchema = z.object({
   ids: avatarIdsSchema,
   keepCurrent: z.boolean(),
 })
-export type PhotoRemoveInput = z.infer<typeof photoRemoveSchema>
 
 /* ============================================================================
  * The planners

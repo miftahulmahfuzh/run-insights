@@ -198,7 +198,8 @@ same grammar the server does.
 ### `folderOps.ts` — folder maintenance, decided without a database
 
 ```ts
-export const ADMIN_FOLDER_OP_MAX_IDS = 500    // blast radius of one move/remove, not a body bound
+// ADMIN_FOLDER_OP_MAX_IDS = 500 — blast radius of one move/remove, not a body bound;
+//   module-private since 2026-09-13, used only by avatarIdsSchema in this file
 export const folderCreateSchema  // { parent, name }
 export const folderRenameSchema  // { folder, name }
 export const folderMoveSchema    // { folder, parent }
@@ -245,29 +246,40 @@ The design facts worth keeping:
 ### `schema.ts` — the boundary's Zod layer
 
 ```ts
-export const avatarIdSchema            // type AvatarDescriptionInput via avatarDescriptionSchema
-export const cropWriteSchema           // type CropWrite
+export const avatarIdSchema
+export const cropWriteSchema
 export const avatarDescriptionSchema   // { id, description } — the album prose edit
-export const avatarRegisterSchema      // type AvatarRegister — live caller: explorer/thumbnail.ts
-export const userIdSchema
-export const slotKeySchema
-export const slotEditSchema            // type SlotEdit
-export const factInsertSchema          // type FactInsert
-export const factEditSchema            // type FactEdit
-export const memoryDeleteSchema        // type MemoryDelete — discriminated union on kind
+export const avatarRegisterSchema      // live caller: explorer/thumbnail.ts
+// userIdSchema, slotKeySchema — module-private since 2026-09-13; no reader outside this file
+export const slotEditSchema
+export const factInsertSchema
+export const factEditSchema
+export const memoryDeleteSchema        // discriminated union on kind
 export const folderPathSchema
 export const albumFilenameSchema
-export const sourceKeySchema
-export const avatarBatchRecordSchema   // type AvatarBatchRecord
-export const avatarBatchRegisterSchema // type AvatarBatchRegister
-export const albumManifestSchema       // type AlbumManifestRequest
+// sourceKeySchema, avatarBatchRecordSchema — module-private since 2026-09-13 (type AvatarBatchRecord
+// stays exported and public: it has a live reader, explorer/useFolderUpload.ts)
+export const avatarBatchRegisterSchema
+export const albumManifestSchema
 export const ninaTuningWriteSchema     // type NinaTuningWriteInput
-export const shortcutInsertSchema      // type ShortcutInsert
-export const shortcutCellSchema        // type ShortcutCell — discriminated union on `field`
-export const shortcutToggleSchema      // type ShortcutToggle
-export const shortcutDeleteSchema      // type ShortcutDelete
+export const shortcutInsertSchema
+export const shortcutCellSchema        // discriminated union on `field`
+export const shortcutToggleSchema
+export const shortcutDeleteSchema
 export const ninaImagePrefsWriteSchema // type NinaImagePrefsWriteInput
 ```
+
+**2026-09-13 dead-export sweep.** A knip pass flagged 13 `z.infer` type aliases in this file
+(`CropWrite`, `AvatarDescriptionInput`, `AvatarRegister`, `SlotEdit`, `FactInsert`, `FactEdit`,
+`MemoryDelete`, `AvatarBatchRegister`, `AlbumManifestRequest`, `ShortcutInsert`, `ShortcutCell`,
+`ShortcutToggle`, `ShortcutDelete`) and 4 schema consts (`userIdSchema`, `slotKeySchema`,
+`sourceKeySchema`, `avatarBatchRecordSchema`) as exported with no importer anywhere under
+`app/ components/ lib/ tests/` — every action file that calls the corresponding schema (e.g.
+`memoryActions.ts` importing `factInsertSchema`) infers its own input type from the schema value
+rather than importing the `z.infer` alias, so the alias had never had a reader. The types were
+deleted outright; the four schema consts are still used *inside this file* by the schemas above
+them, so only their `export` keyword came off — grep before deleting an "unused export": an
+unused EXPORT is not always an unused VALUE.
 
 **Every bound here is imported, none is declared**: the folder bounds from `filetree.ts`,
 `NINA_ADMIN_BATCH_MAX` from `lib/nina/album.ts`, the crop range from `lib/nina/crop.ts`, the
@@ -411,11 +423,11 @@ are discarded by `ON CONFLICT DO NOTHING`. Slower, never wrong.
 ```ts
 // chatPhotos.ts — the ceilings and the shapes
 export const ADMIN_CHAT_PHOTOS_PATH = '/admin/nina'   // the collection lives in the explorer now
-export const ADMIN_CHAT_PHOTO_PURPOSE = 'selfie'
-export const ADMIN_CHAT_PHOTO_EXT = 'jpg'
+// ADMIN_CHAT_PHOTO_PURPOSE ('selfie'), ADMIN_CHAT_PHOTO_EXT ('jpg'), ADMIN_CHAT_PHOTO_ID_RE and
+// ADMIN_CHAT_PHOTO_STORED_ID_RE ("one predicate, two windows" — the requested id shape and the
+// Blob-suffixed stored shape) are module-private since 2026-09-13: every reader was this file's
+// own adminChatPhotoPathname/isAdminChatPhotoPathname, never an external import.
 export const ADMIN_CHAT_PHOTO_CONTENT_TYPE = 'image/jpeg'
-export const ADMIN_CHAT_PHOTO_ID_RE = /^[A-Za-z0-9_-]{12}$/
-export const ADMIN_CHAT_PHOTO_STORED_ID_RE = /^[A-Za-z0-9_-]{12}-[A-Za-z0-9_-]{16,64}$/
 export const ADMIN_CHAT_PHOTO_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 export const ADMIN_CHAT_PHOTO_MAX_EDGE_PX = 12_000
 export const ADMIN_CHAT_PHOTO_MAX_URL_CHARS = 2048
@@ -523,6 +535,8 @@ edit reaches Nina: the tuning is read live on every turn, no cache on that path.
 serializable shape the table renders, with the fields that carry meaning (`editable`, `deletable`,
 `reappears`, `note`). `reappears` is the honest-delete flag: only the closed vocabulary's slot
 keys come back as blank rows, and the table has to say so or it reads as a failed delete.
+`MemoryRowKind` (the row's `kind` field) went module-private 2026-09-13 — it typed `MemoryRow.kind`
+in this file and nowhere else; `SlotEditKind` stays exported, `memoryVocab.ts` imports it.
 
 `memoryVocab.ts` is the only file here that imports `lib/nina/memory.ts`, and only as a READER:
 `slotEditKind`, `slotProtection`, `describeSlot`, `canonicaliseSlotValue` (the round trip runs on
@@ -566,7 +580,8 @@ export { NINA_SHORTCUT_EXPANSION_MAX, NINA_SHORTCUT_LABEL_MAX, NINA_TRIGGER_MAX 
 export const ADMIN_SHORTCUT_PAGE = 200
 export const SHORTCUT_FIELDS = ['trigger', 'label', 'expansion'] as const
 export type ShortcutField = (typeof SHORTCUT_FIELDS)[number]
-export type AdminShortcutKind = NinaShortcutMatchable['kind']   // a TYPE read of phase 1's union
+// AdminShortcutKind = NinaShortcutMatchable['kind'] — a TYPE read of phase 1's union, module-private
+//   since 2026-09-13 (used only as ShortcutRow/ShortcutSource's `kind` field, never imported)
 export interface ShortcutRow { … }  // id, trigger, matchKey, kind, label, expansion, enabled, uses, lastUsedAt, createdAt
 export interface ShortcutSource { … }
 export function buildShortcutRows(sources): ShortcutRow[]   // the one Date→ISO conversion
@@ -995,6 +1010,28 @@ registered) is real and belongs to the reaper, not to this package.
 
 ## Recent Changes
 
+- **2026-09-13** — dead-export sweep (token-maxxing session `lib-admin-yagni`): a knip
+  `exports`/`types` pass flagged 26 items across `schema.ts`, `folderOps.ts`, `chatPhotoSchema.ts`,
+  `chatPhotos.ts`, `memoryModel.ts` and `shortcutModel.ts` — every one verified by grep against
+  `app/ components/ lib/ tests/` before touching it (a `.workflows/` plan-doc mention is not a
+  reader). 18 `z.infer`/derived type aliases with no importer anywhere were deleted outright
+  (`CropWrite`, `AvatarDescriptionInput`, `AvatarRegister`, `SlotEdit`, `FactInsert`, `FactEdit`,
+  `MemoryDelete`, `AvatarBatchRegister`, `AlbumManifestRequest`, `ShortcutInsert`, `ShortcutCell`,
+  `ShortcutToggle`, `ShortcutDelete`, `ChatPhotoAddInput`, `ChatPhotoReplaceInput`,
+  `ChatPhotoRemoveInput`, `ChatPhotoDescribeInput`, `ChatPhotoDescriptionInput`); 8 schema consts
+  and vocabulary types still used *inside* their own file lost only their `export` keyword
+  (`userIdSchema`, `slotKeySchema`, `sourceKeySchema`, `avatarBatchRecordSchema`,
+  `ADMIN_FOLDER_OP_MAX_IDS`, `ADMIN_CHAT_PHOTO_PURPOSE`, `ADMIN_CHAT_PHOTO_EXT`,
+  `ADMIN_CHAT_PHOTO_ID_RE`, `ADMIN_CHAT_PHOTO_STORED_ID_RE`, `MemoryRowKind`, `AdminShortcutKind`
+  — an unused *export* is not the same claim as an unused *value*). `AvatarBatchRecord`,
+  `ChatPhotoSetAvatarInput` and `SlotEditKind` were flagged similarly-named but are NOT in this
+  list: each has a live external reader (`useFolderUpload.ts`, a test, `memoryVocab.ts`) and knip
+  did not flag them. `npx knip --include exports,types` reports zero remaining flags under
+  `lib/admin/`; `npx tsc --noEmit` and the full `vitest run` are clean (one pre-existing flake
+  under parallel load, passing in isolation — unrelated, a React 19 transition-settle timing issue
+  named in this repo's own engineering memory). No runtime behaviour changed: every edit either
+  deleted a type nothing referenced or removed an `export` keyword from a value still used in the
+  same module.
 - **2026-09-12** — `nina-llm-fallback-error-logs` phase 5 (P1-ADM-A002): added
   `errorLogModel.ts`, `/admin/error-logs`' pure half — zero imports, a structural
   `ErrorLogSource` (the bundle-boundary rule), the Asia/Jakarta server-side stamp, the timeout

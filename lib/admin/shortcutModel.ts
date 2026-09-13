@@ -61,7 +61,7 @@ export type ShortcutField = (typeof SHORTCUT_FIELDS)[number]
  * zero-import module, so indexing its `kind` field is a pure TYPE read that cannot drift and
  * cannot put a value in the bundle.
  */
-export type AdminShortcutKind = NinaShortcutMatchable['kind']
+type AdminShortcutKind = NinaShortcutMatchable['kind']
 
 /* ── the row model ──────────────────────────────────────────────────────────────────────────── */
 
