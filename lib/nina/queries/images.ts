@@ -133,7 +133,10 @@ export async function insertNinaMessageImages(
          * media-dedupe P1. Coalesced through the validator rather than trusted, for the same
          * one-shape reason as the two columns above — and because the value is a CLIENT CLAIM on
          * the upload path (invariant 9): a claim that is not 64 lowercase hex binds NULL, dedup
-         * goes inactive for that row, and the send does not fail. No caller sends one yet.
+         * goes inactive for that row, and the send does not fail. Since P2 (2026-09-10),
+         * `lib/nina/dedupe.ts`'s `ninaUploadInsertRow` is the one caller that sends one — on a
+         * fresh upload's own row only; its reference rows deliberately carry none (see that
+         * file's header for why).
          */
         contentHash: isValidContentHash(row.contentHash) ? row.contentHash : null,
         /*
