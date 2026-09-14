@@ -21,10 +21,6 @@ const { attachNinaPhotoToChat, deleteNinaChatPhoto } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/nina/albumActions', () => ({ attachNinaPhotoToChat, deleteNinaChatPhoto }))
 
-// The job list's mutations are transitive imports of ./NinaJobList (through ./NinaJobActions) and
-// pull the auth boundary (next-auth → next/server); this screen renders the list read-only.
-vi.mock('@/lib/nina/jobActions', () => ({ redoNinaImageJob: vi.fn(), deleteNinaImageJob: vi.fn() }))
-
 const { useSavePhoto } = vi.hoisted(() => ({ useSavePhoto: vi.fn() }))
 // The save ladder is useSavePhoto's, covered by the ChatPhotoActions file from its own seam. Only
 // the hook is stubbed; the shared notice wording stays real.
@@ -45,9 +41,8 @@ vi.mock('@/components/ui/PhotoViewer', () => ({
   ),
 }))
 
-// Real everything else: the codec, `aboutViewerLists`, the grids, the job list, the avatar.
+// Real everything else: the codec, `aboutViewerLists`, the grids, the avatar.
 import { NinaAboutScreen } from './NinaAboutScreen'
-import { NINA_JOBS_HREF, type NinaJobListItem } from '@/lib/nina/jobview'
 import {
   NINA_ABOUT_PHOTO_PARAM,
   NINA_ATTACH_MAX_CHARS,
@@ -87,24 +82,6 @@ function galleryPhoto(id: string, side: 'his' | 'hers' = 'his'): NinaGalleryPhot
   }
 }
 
-function job(overrides?: Partial<NinaJobListItem>): NinaJobListItem {
-  return {
-    id: 'job-1',
-    href: '/nina/jobs?jump=job-1',
-    stage: 'done',
-    stageLabel: 'Selesai',
-    purpose: 'selfie',
-    scene: 'sore di kos',
-    attempts: 1,
-    createdAtMs: 1_790_000_000_000,
-    errorLabel: null,
-    latencyMs: 74_000,
-    open: false,
-    canRedo: false,
-    ...overrides,
-  }
-}
-
 type Props = Parameters<typeof NinaAboutScreen>[0]
 
 function props(overrides?: Partial<Props>): Props {
@@ -112,8 +89,6 @@ function props(overrides?: Partial<Props>): Props {
     avatar: AVATAR,
     album: [albumPhoto('a1'), albumPhoto('a2', true)],
     gallery: [galleryPhoto('c1', 'his'), galleryPhoto('c2', 'hers')],
-    jobs: [],
-    jobsNowMs: 1_790_000_000_000,
     resolvedPhoto: null,
     returnTo: null,
     ...overrides,
@@ -157,33 +132,36 @@ describe('NinaAboutScreen — the page', () => {
     expect(img.getAttribute('src')).toBe(AVATAR.src)
   })
 
-  it('both grids render: the album rings its current face, Media labels both sides', () => {
+  it('opens on the Foto profil tab, marked active — Media is not shown until tapped', () => {
     renderScreen()
+    expect(screen.getByRole('tab', { name: 'Foto profil' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByRole('tab', { name: 'Media' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByRole('button', { name: 'Foto kamu' })).not.toBeInTheDocument()
+  })
+
+  it('tapping the Media tab shows its grid and flips which tab is marked active', () => {
+    renderScreen()
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
+
+    expect(screen.getByRole('tab', { name: 'Media' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Foto profil' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    )
     // Media, not absence: the gallery has rows, so the grid is there with honest labels.
     expect(screen.getByRole('button', { name: 'Foto kamu' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Foto Nina' })).toBeInTheDocument()
   })
 
-  it('an empty Media section says so in its own sentence', () => {
+  it('an empty Media tab says so in its own sentence', () => {
     renderScreen({ gallery: [] })
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
     expect(
       screen.getByText('Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.'),
     ).toBeInTheDocument()
-  })
-
-  it('the job section is the /nina/jobs list with this surface’s own empty words', () => {
-    renderScreen({ jobs: [] })
-    expect(
-      screen.getByText('Belum ada foto yang dibuat. Minta Nina kirim foto lewat chat.'),
-    ).toBeInTheDocument()
-    // "Semua" goes to the full list only when there is something to summarise — no count claims.
-    expect(screen.queryByRole('link', { name: 'Semua' })).not.toBeInTheDocument()
-  })
-
-  it('with jobs, the Semua link and the rows are the console’s own components', () => {
-    renderScreen({ jobs: [job()] })
-    expect(screen.getByRole('link', { name: 'Semua' }).getAttribute('href')).toBe(NINA_JOBS_HREF)
-    expect(screen.getByRole('link', { name: /sore di kos/ })).toBeInTheDocument()
   })
 })
 
@@ -212,6 +190,7 @@ describe('NinaAboutScreen — the viewer', () => {
     at('chat', 'c-old')
     const resolved = galleryPhoto('c-old')
     renderScreen({ resolvedPhoto: resolved })
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }))
     // The grid keeps mapping the gallery prop; the VIEWER carries the appended row.
     expect(screen.getAllByRole('button', { name: 'Foto kamu' }).length).toBe(1)
     expect(viewer()?.getAttribute('data-count')).toBe('3')

@@ -1,14 +1,13 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { Button } from '@/components/ui/Button'
 import { PhotoViewer, type ViewerPhoto } from '@/components/ui/PhotoViewer'
 import { SAVE_NOTICE_TEXT, useSavePhoto } from '@/components/ui/useSavePhoto'
+import { cn } from '@/lib/cn'
 import { attachStripPadBottomCss, NINA_KEYBOARD_OVERLAP_VAR } from '@/lib/nina/chatview'
-import { NinaJobList } from './NinaJobList'
 import { NinaPhotoGrid, type NinaGridCell } from './NinaPhotoGrid'
 import { NinaAvatar } from './NinaAvatar'
 import { KeyboardOverlapPublisher } from './KeyboardOverlapPublisher'
@@ -28,7 +27,6 @@ import {
   type NinaGalleryPhoto,
   type NinaViewerSection,
 } from '@/lib/nina/album'
-import { NINA_JOBS_HREF, type NinaJobListItem } from '@/lib/nina/jobview'
 
 /**
  * `/nina/about` — her detail page, the WhatsApp shape R17 asked for.
@@ -74,27 +72,12 @@ export function NinaAboutScreen({
   avatar,
   album,
   gallery,
-  jobs,
-  jobsNowMs,
   resolvedPhoto,
   returnTo,
 }: {
   avatar: NinaAvatarView
   album: readonly NinaAlbumPhoto[]
   gallery: readonly NinaGalleryPhoto[]
-  /**
-   * **R3's rows, in phase 4's own shape and never in this screen's words.**
-   *
-   * This section is a summary of `/nina/jobs`, so the one thing it must never do is describe a job
-   * row for itself — that is how two surfaces start disagreeing about what `dispatched` looks like,
-   * and the one the runner sees is whichever page he happened to open. `NinaJobListItem` is
-   * `lib/nina/jobview.ts`'s, already mapped by `toNinaJobListItems` on the server (its
-   * `createdAtMs` is a number precisely so it can cross this boundary), and when phase 4 widens the
-   * projection again nothing here changes.
-   */
-  jobs: readonly NinaJobListItem[]
-  /** The server's clock at render, for the elapsed tickers. See the page. */
-  jobsNowMs: number
   /**
    * **A photograph the URL names but the gallery window dropped — resolved on the server, or
    * null.** Optional and nullable, and both absences are the SAME answer downstream.
@@ -128,6 +111,8 @@ export function NinaAboutScreen({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  /** Which of the two photo sections is showing. Local UI state — the URL stays for the viewer. */
+  const [activeTab, setActiveTab] = React.useState<'profile' | 'media'>('profile')
   const [question, setQuestion] = React.useState('')
   /* Which send is in flight — `'recent'` or `'new'` — or `null` when neither is. One flight for
    * two controls: it names the button that shows the dots and disables the other one. */
@@ -392,85 +377,70 @@ export function NinaAboutScreen({
         </p>
       </div>
 
-      <section className="mb-7">
-        <h2 className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-          Foto profil
-        </h2>
-        <NinaPhotoGrid cells={album.map(toCell)} onOpen={(index) => openAt('album', index)} />
-      </section>
-
-      <section className="mb-7">
-        <h2 className="mb-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-          Media
-        </h2>
-        {gallery.length === 0 ? (
-          <p className="text-[13px] text-ink-3">
-            Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.
-          </p>
-        ) : (
-          <NinaPhotoGrid cells={gallery.map(toCell)} onOpen={(index) => openAt('chat', index)} />
-        )}
-      </section>
-
       {/*
-        ── R3: THE IMAGE-GENERATION TRACKING SECTION, DIRECTLY BELOW MEDIA ─────────────────────
-        Verbatim: *"put this image generation tracking section below media section (after user
-        click nina profpic)"*. "After user click nina profpic" is this route, and "below media
-        section" is this position — the last section on the page, after the album and the chat
-        photos, which is also the honest ordering: the album is what she has, Media is what the
-        conversation has, and this is what is still on its way.
-
-        ── IT REUSES PHASE 4'S LIST, IT DOES NOT REIMPLEMENT IT ───────────────────────────────
-        `NinaJobList` is `/nina/jobs`'s own list component and `listNinaImageJobs` is `/nina/jobs`'s
-        own read, bounded here by `ABOUT_JOB_LIMIT`. A second row renderer is exactly the drift F18
-        unified away for `ScreenshotStrip`'s arrows and their swipe, and the same argument holds
-        harder for a job's stage: two renderers means two opinions about what `dispatched` looks
-        like, and the one the runner sees is whichever page he happened to open.
-
-        ── AND THAT INCLUDES THE EMPTY CASE ──────────────────────────────────────────────────
-        There is no `jobs.length === 0` branch here, deliberately. `NinaJobList` renders absence
-        itself and takes the WORDS from `emptyText`, which is the division of labour its own
-        docstring sets out: "absence is one sentence, worded by the CALLER — /nina/jobs says
-        something different from a section under Media." So this screen supplies its sentence and
-        phase 4 supplies the markup. Branching here would be a second empty renderer for job rows,
-        which is the same drift one element down.
-
-        The section still renders when there is nothing to show. Media, twelve lines up, renders
-        its caption and a sentence rather than disappearing, and two adjacent sections disagreeing
-        about that is louder than either choice on its own. It is also the likelier render than it
-        looks: `nina_message_images` has had zero rows for the life of the app, which is the whole
-        reason this plan set exists.
-
-        NOT `components/ui/EmptyState.tsx`, and nothing here reaches for it. That component is a
-        dashed *card outline* for a whole screen; this screen has no cards.
-
-        ── "SEMUA" IS NAVIGATION, NOT A COUNT ────────────────────────────────────────────────
-        It goes to the full list; it does not claim more exist. Knowing that would cost a count
-        query or a `limit + 1` probe, and this page's docstring is a promise about how few reads it
-        makes. `NINA_JOBS_HREF` rather than the literal, so this link, the sidebar entry and the
-        detail page's "SEMUA JOB" cannot drift apart. Hidden when there are no jobs, because
-        `/nina/jobs` is empty then too and a link into a blank page is worse than no link.
+        Foto profil and Media used to be two stacked sections, Media scrolled well below the
+        fold. They are the same two photo lists as before — same grids, same empty sentence, same
+        `openAt` targets — just switched by a tab bar instead of by scrolling past one to reach
+        the other. `aria-selected` on the tab itself is the active-state signal a screen reader
+        wants; the `bg-ink` slab is the same "chosen" look `Chip` and `Button`'s primary already
+        use elsewhere on this screen.
       */}
-      <section>
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h2 className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-            Pembuatan foto
-          </h2>
-          {jobs.length > 0 && (
-            <Link
-              href={NINA_JOBS_HREF}
-              className="text-[11px] font-semibold text-ink-2 transition-colors hover:text-ink"
-            >
-              Semua
-            </Link>
+      <div role="tablist" aria-label="Bagian Nina" className="mb-4 flex gap-1 rounded-pill bg-paper-2 p-1">
+        <button
+          type="button"
+          role="tab"
+          id="nina-about-tab-profile"
+          aria-selected={activeTab === 'profile'}
+          aria-controls="nina-about-panel-profile"
+          onClick={() => setActiveTab('profile')}
+          className={cn(
+            'flex-1 rounded-pill px-4 py-2 text-[13px] font-semibold transition-colors',
+            activeTab === 'profile' ? 'bg-ink text-card' : 'text-ink-2',
           )}
-        </div>
-        <NinaJobList
-          items={jobs}
-          nowMs={jobsNowMs}
-          emptyText="Belum ada foto yang dibuat. Minta Nina kirim foto lewat chat."
-        />
-      </section>
+        >
+          Foto profil
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="nina-about-tab-media"
+          aria-selected={activeTab === 'media'}
+          aria-controls="nina-about-panel-media"
+          onClick={() => setActiveTab('media')}
+          className={cn(
+            'flex-1 rounded-pill px-4 py-2 text-[13px] font-semibold transition-colors',
+            activeTab === 'media' ? 'bg-ink text-card' : 'text-ink-2',
+          )}
+        >
+          Media
+        </button>
+      </div>
+
+      {activeTab === 'profile' ? (
+        <section
+          id="nina-about-panel-profile"
+          role="tabpanel"
+          aria-labelledby="nina-about-tab-profile"
+          className="mb-7"
+        >
+          <NinaPhotoGrid cells={album.map(toCell)} onOpen={(index) => openAt('album', index)} />
+        </section>
+      ) : (
+        <section
+          id="nina-about-panel-media"
+          role="tabpanel"
+          aria-labelledby="nina-about-tab-media"
+          className="mb-7"
+        >
+          {gallery.length === 0 ? (
+            <p className="text-[13px] text-ink-3">
+              Belum ada foto di chat. Kirim satu ke Nina, atau minta dia kirim.
+            </p>
+          ) : (
+            <NinaPhotoGrid cells={gallery.map(toCell)} onOpen={(index) => openAt('chat', index)} />
+          )}
+        </section>
+      )}
 
       {open != null && (
         <>

@@ -11,32 +11,23 @@ import {
   galleryPhotos,
   ninaAvatarView,
 } from '@/lib/nina/album'
-import { listNinaImageJobs } from '@/lib/nina/imagejobs'
-import { toNinaJobListItems } from '@/lib/nina/jobview'
 import { getNinaMessageImage, listNinaAvatars, listNinaMessageImages } from '@/lib/nina/queries'
 
 /**
  * `/nina/about` — her detail page (R17), reached by tapping her avatar in the chat header.
  *
- * ── THREE INDEXED READS — AND A FOURTH, ONLY WHEN A DEEP LINK NEEDS IT ────────────────────────
- * It was two until R3 put the image-generation tracking section below Media, and the claim it
- * replaces is the one worth keeping intact: every read here is an index lookup, none of them
- * joins, and none of them writes. The fourth read, `getNinaMessageImage`, is a single-row lookup
- * scoped to `(user_id, id)` — and it runs ONLY when `?photo=chat.<id>` names an id the gallery
- * window (the newest `NINA_GALLERY_LIMIT`) does not hold, decided by `aboutPhotoIdOutsideGallery`
- * over rows already in hand. The common case — no parameter, or a parameter the gallery holds —
- * costs exactly the three reads it always cost.
+ * ── TWO INDEXED READS — AND A THIRD, ONLY WHEN A DEEP LINK NEEDS IT ───────────────────────────
+ * Every read here is an index lookup, none of them joins, and none of them writes. The third
+ * read, `getNinaMessageImage`, is a single-row lookup scoped to `(user_id, id)` — and it runs
+ * ONLY when `?photo=chat.<id>` names an id the gallery window (the newest `NINA_GALLERY_LIMIT`)
+ * does not hold, decided by `aboutPhotoIdOutsideGallery` over rows already in hand. The common
+ * case — no parameter, or a parameter the gallery holds — costs exactly the two reads it always
+ * cost.
  *
  * `listNinaAvatars` reads `nina_avatars_user_created_idx`; `listNinaMessageImages` reads
  * `nina_message_images_user_created_idx` with no join, which is phase 1's stated reason for that
- * table existing rather than a `jsonb` column; `listNinaImageJobs` reads `nina_turns` scoped to
- * `(user_id, kind = 'image')` and bounded by `ABOUT_JOB_LIMIT`. No model call, so invariant 4 is
- * satisfied structurally: there is nothing here for the payload-boundary grep to object to.
- *
- * **The job read is deliberately the non-sweeping one.** `listOpenNinaImageJobs` sweeps stale jobs
- * before it answers, and `app/nina/page.tsx` awaits it for exactly that side effect — but a page
- * reached by tapping her face is not a place to write terminal UPDATEs and an apology message. The
- * sweep already runs on every `/nina` render and on the backstop schedule; this page only looks.
+ * table existing rather than a `jsonb` column. No model call, so invariant 4 is satisfied
+ * structurally: there is nothing here for the payload-boundary grep to object to.
  *
  * ── THE DEEP LINK IS RESOLVED ON THE SERVER, AND `description` STAYS HERE ─────────────────────
  * `?photo=chat.<id>` used to open only when the id sat inside the gallery list, so a photograph
@@ -70,31 +61,14 @@ import { getNinaMessageImage, listNinaAvatars, listNinaMessageImages } from '@/l
  * surfaces cannot disagree about which face is hers.
  */
 
-/**
- * How many image jobs the tracking section shows before deferring to `/nina/jobs`.
- *
- * **A summary, not the list.** `/nina/jobs` is the full history with its stages, elapsed times and
- * errors; this is the head of it on a page whose subject is her album. Five is one screen-third
- * under a three-column grid — the head of a single day's output at the daily cap
- * (`ninaImageDailyCap()`, env-tunable), which is the window a runner who just asked for a photo is
- * actually looking at.
- *
- * Module-local on purpose. `NINA_GALLERY_LIMIT` lives in `lib/nina/album.ts` because it is tied by
- * its own docstring to `CHAT_HISTORY_LIMIT`, so that the gallery and the chat describe the same
- * conversation. This number has no second reader and no such coupling: it is one route's render
- * budget, and a constant with one caller belongs beside that caller.
- */
-const ABOUT_JOB_LIMIT = 5
-
 export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/about'>) {
   const userId = await requireUserId()
   const { [NINA_ABOUT_PHOTO_PARAM]: photoParam, [NINA_ABOUT_RETURN_PARAM]: returnParam } =
     await searchParams
 
-  const [avatars, images, jobs] = await Promise.all([
+  const [avatars, images] = await Promise.all([
     listNinaAvatars(userId),
     listNinaMessageImages(userId, { limit: NINA_GALLERY_LIMIT }),
-    listNinaImageJobs(userId, { limit: ABOUT_JOB_LIMIT }),
   ])
 
   const current = avatars.find((row) => row.isCurrent) ?? null
@@ -127,38 +101,8 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
    */
   const returnTo = decodeAboutReturnTo(returnParam)
 
-  /*
-   * ── THE DIRECTIVE THAT USED TO SIT ON THIS BINDING ──────────────────────────────────────────
-   * From `3912cec` until 2026-09-12 this read carried `eslint-disable-next-line
-   * react-hooks/purity`, on the argument `app/nina/jobs/page.tsx` makes for its identical
-   * binding: the rule guards render IDEMPOTENCY, and an async Server Component runs once per
-   * request and is never re-rendered, so there is no second render for the value to differ
-   * between. The directive is gone because eslint reports it UNUSED here — nothing to
-   * suppress, under the same plugin version (7.1.1) it was written under — while jobs' own
-   * suppression still holds a live flag. Why the same shape flags there and not here is
-   * undiagnosed (this function's analysis is the suspect, not an exemption) and left so: the
-   * operative check is one lint run, not a mechanism story. If the flag ever fires here, that
-   * file's comment block is the argument for restoring the directive.
-   */
-  const jobsNowMs = Date.now()
-
   return (
     <AppShell>
-      {/*
-        **The mapping happens HERE, on the server, and it is not plumbing.**
-        `NinaImageJobRecord.createdAt` is a `Date`; `NinaJobListItem.createdAtMs` is a number.
-        `NinaAboutScreen` is a Client Component and never sees a `Date`, so `toNinaJobListItems` is
-        what makes the rows crossable — and calling phase 4's mapper rather than writing a second
-        one is what keeps this section and `/nina/jobs` from ever naming the same stage two ways.
-
-        `jobsNowMs` is ONE reading of the clock for this render, shared by every ticking row, so two
-        rows a millisecond apart cannot show two different elapsed times for jobs opened in the same
-        second. It is the SERVER's clock on purpose: phase 4's `NinaJobElapsed` uses it for its
-        first render on both sides of the boundary, and reading `Date.now()` in the browser instead
-        is a hydration mismatch on a component whose whole content is a number. The same move
-        `app/nina/page.tsx` makes with `todayInJakarta()`.
-      */}
-
       {/*
         The deep link's own answer. `null` unless `?photo=` named a `chat.<id>` the gallery window
         missed AND the row still exists — the mapping that stripped `description` happened above,
@@ -168,8 +112,6 @@ export default async function NinaAboutPage({ searchParams }: PageProps<'/nina/a
         avatar={ninaAvatarView(current)}
         album={albumPhotos(avatars)}
         gallery={gallery}
-        jobs={toNinaJobListItems(jobs)}
-        jobsNowMs={jobsNowMs}
         resolvedPhoto={resolvedPhoto}
         returnTo={returnTo}
       />
