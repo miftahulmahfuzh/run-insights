@@ -3,6 +3,12 @@
   "coordinator": "orch-nina-push-every-message",
   "coordinator_session_id": "b677f81f-001d-4a68-b031-ee6892e62a35",
   "created": "2026-09-14T04:09:11+00:00",
+  "landed": {
+    "at": "2026-09-14T04:42:07+00:00",
+    "base": "main",
+    "commit": "b3644d9547ab65c89dfb661c660816dbd7eb04ee",
+    "machine": "pc"
+  },
   "phases": [
     {
       "card": null,
@@ -102,7 +108,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-push-every-message/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-push-every-message",
-  "updated": "2026-09-14T04:40:57+00:00",
+  "updated": "2026-09-14T04:42:07+00:00",
   "verified_at": "2026-09-14T04:34:18+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-push-every-message"
 }
