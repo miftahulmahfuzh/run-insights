@@ -1,5 +1,8 @@
 import 'server-only'
 
+import type { NinaPushKind } from '@/lib/push/payload'
+import { notifyNinaPush } from '@/lib/push/send'
+
 import { titleNinaSessionIfNeeded } from './autotitle'
 import { NINA_FULL_TOOL_SET } from './avatartools'
 import {
@@ -112,6 +115,38 @@ export interface NinaBackgroundTurnInput {
   startedAtMs: number
 }
 
+/**
+ * **The notification seam — `lib/nina/proactive.ts`'s `ProactiveNotifier` shape, one union wider.**
+ *
+ * `ProactiveNotifier` (`proactive.ts:481`) narrows `kind` to `ProactiveTriggerKind`, which is the
+ * single type-level reason the reactive path could not simply import `pushNotifier` and call it
+ * with `'chat_reply'`. Phase 1 widened `lib/push` rather than that file (plan invariant 1), so this
+ * declares the same three parameters against `NinaPushKind` and nothing else differs.
+ *
+ * **`Promise<unknown>` and not `Promise<void>` is deliberate.** This file awaits the notifier and
+ * discards whatever comes back — a phone being reachable has nothing to do with whether a chat turn
+ * succeeded. Declaring `Promise<void>` would make this module's type depend on whether phase 1's
+ * notifier reports (`Promise<PushSendReport>` is NOT assignable to `Promise<void>`), which is a
+ * coupling with no upside: `unknown` accepts both and the value is never read.
+ */
+export type NinaTurnNotifier = (
+  userId: string,
+  messages: ReadonlyArray<{ id: string; body: string }>,
+  kind: NinaPushKind,
+) => Promise<unknown>
+
+/**
+ * The background turn's injectable edges — today exactly one, and `ProactiveDeps`'s shape
+ * (`proactive.ts:487`) on purpose so there is one convention in `lib/nina` and not two.
+ *
+ * **It is a second, DEFAULTED parameter and not a field on `NinaBackgroundTurnInput`** — see the
+ * runner's own signature below for the reason.
+ */
+export interface NinaTurnDeps {
+  /** Defaults to `notifyNinaPush`. A test passes its own and reaches no network (invariant 7). */
+  notify?: NinaTurnNotifier
+}
+
 /* ── MOVED VERBATIM from lib/nina/actions.ts:1232–1698; the ONLY change is `export` below ──── */
 /**
  * **The turn, after the response has gone out.**
@@ -126,8 +161,35 @@ export interface NinaBackgroundTurnInput {
  * mode ends in a closed `nina_turns` row with a reason on it and a warning in the log, which is
  * what the ledger is for.
  */
-export async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Promise<void> {
+export async function runNinaBackgroundTurn(
+  input: NinaBackgroundTurnInput,
+  /*
+   * **A SECOND, DEFAULTED PARAMETER — not a field on `NinaBackgroundTurnInput`.**
+   *
+   * Two reasons, and the second is the load-bearing one:
+   *
+   *   · every existing caller keeps compiling untouched. `startNinaBackgroundTurn`
+   *     (`./actions/startTurn.ts:44`), `reviveNinaChatTurn` (`./turnrevive.ts:249`) and the chain
+   *     below all pass the input positionally, and this plan set's scope says editing them would be
+   *     duplicate work and three more chances to get it wrong;
+   *   · `NinaBackgroundTurnInput` is a **DTO**, and two of its three builders assemble it from
+   *     DATABASE ROWS — the revive rebuilds a dead turn's input out of `nina_messages`, and the
+   *     chain rebuilds one out of `listNinaMessages`' newest row. A function has no column to be
+   *     rebuilt from, so putting the seam on that type would make every builder decide what to do
+   *     about a field none of them can source.
+   */
+  deps: NinaTurnDeps = {},
+): Promise<void> {
   const { userId, sessionId, turnId, runnerMessageId } = input
+  /* The default is the real Web Push sender and it never throws — because `notifyNinaPush` has its
+   * OWN catch (phase 1, `send.ts`), not because the machinery under it is safe. `sendNinaPush`
+   * itself CAN reject: `listLivePushSubscriptions` is a database round trip outside its `try`. What
+   * IS free is the no-keys case — with no VAPID in the environment `sendNinaPush` catches
+   * `pushEnv()` and returns `skipped` before touching the database, so a suite with neither keys
+   * nor a network keeps passing against the real notifier. Note the difference from
+   * `proactive.ts:615-619`, whose default is `pushNotifier` and DOES propagate; that is why the
+   * call site below has a `try` of its own as well. */
+  const notify = deps.notify ?? notifyNinaPush
   let source: NinaTurnSource = 'unavailable'
   let failure: string | undefined = 'crashed'
   let closed = false
@@ -469,6 +531,52 @@ export async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Pro
     closed = true
 
     /*
+     * ── R1: THE PUSH. The reply is committed and the claim is closed; now tell the phone. ───────
+     *
+     * **This one site covers four entry points.** `sendNinaMessage` (`./actions/send.ts:927`),
+     * `resendNinaTurn` (`./actions/resend.ts:237`), `reviveNinaChatTurn` (`./turnrevive.ts:249`)
+     * and the chain below all converge on this function, and the chain's follow-up bubbles land at
+     * the same `insertNinaMessages` twenty lines above. A fifth copy in each of those files would
+     * be four chances to get the ordering wrong.
+     *
+     * ── THE POSITION IS THE DESIGN, IN BOTH DIRECTIONS ──────────────────────────────────────────
+     * BELOW the close, because `/nina`'s poll asks two questions — "is a turn in flight" and "is
+     * there anything after my cursor" — and BOTH flip at `closeNinaChatTurn` and nowhere else. A
+     * push sent one statement earlier wakes him, he taps, and the screen he lands on is still
+     * showing a typing indicator for a reply that is already in the database.
+     *
+     * ABOVE the distillation, because `runNinaDistillation` is a second model call of 10-20 s and
+     * `titleNinaSessionIfNeeded` under it is a third. This reply is already 13-45 s old — the whole
+     * point of the nina-offline-reply design is that he put the phone down — and spending another
+     * half minute before buzzing it would give the delay back.
+     *
+     * ── IT CAN NEVER FIRE FOR A MESSAGE THAT DOES NOT EXIST ─────────────────────────────────────
+     * Three exits above write no bubble and all three `return` before this line: the supersession
+     * discard (`:353`), the deleted-session abandon (`:387`), and the null payload (`:392`). The
+     * fourth case is NOT structural and is what `bubbles.length` guards: `insertNinaMessages`
+     * degrades to `[]` rather than throwing for a session that is not this user's (see `:369`), so
+     * a turn CAN reach here with nothing committed. Phase 1's `buildNinaPushPayload` would also
+     * return null for an empty list, but the guard belongs at the site that knows what an empty
+     * `bubbles` MEANS, not two modules away.
+     *
+     * ── ITS OWN `try`, AND IT LOGS RATHER THAN THROWS (plan invariant 2) ─────────────────────────
+     * `proactive.ts:702-706` exactly. A push that fails must not cost him the distillation, the
+     * auto-title or the chain, and it must certainly not turn a turn that SUCCEEDED into one the
+     * ledger records as 'crashed' — `closed` is already true, so the `finally` below will not
+     * re-close the row, but the enclosing `catch` at `:496` would still log this turn as failed.
+     * Awaited rather than fire-and-forget, again like proactive: two subscriptions is the realistic
+     * maximum, we are inside `after()`'s 240 s budget with a 10-20 s model call still to come, and
+     * a deterministic order is what makes this testable at all.
+     */
+    if (bubbles.length > 0) {
+      try {
+        await notify(userId, bubbles, 'chat_reply')
+      } catch (cause) {
+        console.warn('[nina] reply notify failed', { turnId, error: String(cause) })
+      }
+    }
+
+    /*
      * STEP 6 — the distillation (R4). AWAITED here rather than scheduled in a nested `after()`,
      * and the change is a simplification rather than a reversal. The original reason for `after()`
      * was that awaiting a 10-20 s model call would leave him "watching an idle screen after the
@@ -570,18 +678,27 @@ export async function runNinaBackgroundTurn(input: NinaBackgroundTurnInput): Pro
      * already been answered, and re-quoting it on a follow-up would put the same quote header on
      * two turns.
      */
-    await runNinaBackgroundTurn({
-      userId,
-      sessionId,
-      turnId: nextTurnId,
-      runnerMessageId: newest.id,
-      runnerText: newest.body.length > 0 ? newest.body : null,
-      imageDescriptions: [],
-      quotedRow: null,
-      attachedRunId: newest.runId,
-      depth: input.depth + 1,
-      startedAtMs: input.startedAtMs,
-    })
+    await runNinaBackgroundTurn(
+      {
+        userId,
+        sessionId,
+        turnId: nextTurnId,
+        runnerMessageId: newest.id,
+        runnerText: newest.body.length > 0 ? newest.body : null,
+        imageDescriptions: [],
+        quotedRow: null,
+        attachedRunId: newest.runId,
+        depth: input.depth + 1,
+        startedAtMs: input.startedAtMs,
+      },
+      /* The chain inherits the caller's seam. In production this is `{}` and the default resolves
+       * to the same `notifyNinaPush` either way — but a test that injects a notifier and then never
+       * sees the chained link's push would be asserting the wrong thing, and a future dep that is
+       * NOT interchangeable with its default would silently revert to production behaviour one
+       * link in. The link is a full turn: it commits its own bubbles at the same insert and it
+       * sends its own push. */
+      deps,
+    )
   } catch (cause) {
     console.warn('[nina] chained turn failed', { turnId, error: String(cause) })
   }

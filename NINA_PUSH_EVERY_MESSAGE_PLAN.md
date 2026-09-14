@@ -6,7 +6,7 @@
 **Worktree:** `/home/miftah/.worktrees/run-insights/nina-push-every-message`
 **Branch:** `feature/nina-push-every-message` (base: `origin/main` @ `0c53636`)
 **Phases:** 5
-**Status:** reconciled
+**Status:** in progress — phases 1, 2 and 4 complete; 3 and 5 in flight (as of 2026-09-14 12:05). Phases run concurrently, so the ✅ ticks in the Phases table below are the authoritative per-phase record, not this line.
 **Coordinator:** —
 
 ---
@@ -109,7 +109,7 @@ Every phase must hold all of these.
 | # | Title | Satisfies | Package | Files | Depends on | Difficulty | Plan | TaskID | Card |
 |---|-------|-----------|---------|-------|-----------|------------|------|--------|------|
 | 1 | The notify seam every message writer can call | R1, R2 | `lib/push` | 4 | — | NORMAL | `.workflows/plan/nina-push-every-message/phase-1.md` | — | — |
-| 2 | Push when she replies to him | R1 | `lib/nina` | 2 | 1 | HARD | `.workflows/plan/nina-push-every-message/phase-2.md` | — | — |
+| 2 ✅ | Push when she replies to him | R1 | `lib/nina` | 2 | 1 | HARD | `.workflows/plan/nina-push-every-message/phase-2.md` | `P1-NIN-A048` | — |
 | 3 | Push when the photo lands, and when it cannot | R1 | `lib/nina` | 4 | 1 | NORMAL | `.workflows/plan/nina-push-every-message/phase-3.md` | — | — |
 | 4 | Push when a photo is added to her chat from `/admin` | R2 | `lib/admin` | 2 | 1 | EASY | `.workflows/plan/nina-push-every-message/phase-4.md` | — | — |
 | 5 | Push from the off-platform backstop worker | R1 | `scripts` | 4 | 1 | HARD | `.workflows/plan/nina-push-every-message/phase-5.md` | — | — |

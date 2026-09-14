@@ -29,7 +29,11 @@ escape hatch for a deliberate value alias — see The chat turn's Flight paragra
 names must stay equal), not a suppression or a merge of the two names. Restated 2026-09-14 for
 P1-NIN-A049 (NINA_PUSH_EVERY_MESSAGE phase 3): the image path now knocks — `finishSelfie` notifies
 `'photo_delivered'` as its last statement, and the module-private `postNinaApologyMessage` notifies
-`'photo_apology'` once for both of its callers — see Images.
+`'photo_apology'` once for both of its callers — see Images. Restated again 2026-09-14 for
+P1-NIN-A048 (the same set's phase 2): the reply knocks too — `runNinaBackgroundTurn` sends ONE
+`'chat_reply'` push per committed reply, after the claim is closed and before the distillation,
+through a defaulted `notify` seam (`NinaTurnDeps` / `NinaTurnNotifier`), which is how all four
+entry points into the turn are covered by a single call site — see The chat turn.
 **Documentation Created**: 2026-09-05 (`NINA_CHARACTER_TUNING_PLAN.md` phase 2)
 
 ## Overview
@@ -217,8 +221,47 @@ shortcuts entry is the one whose rejection is swallowed (invariant-7 garnish: a 
 shortcut in it is what most turns are). `recentRunnerTexts` (shortcut lookback) and
 `earlierRunnerTexts` (the burst) are both derived from the already-loaded window with no new
 query — two lists, deliberately not one: the first feeds the matcher regardless of answeredness,
-the second only what THIS reply must answer. Then `runNinaTurn` → persist bubbles → close →
+the second only what THIS reply must answer. Then `runNinaTurn` → persist bubbles → close → push →
 distillation + auto-title. It calls no `after()` itself: callers own their scheduling.
+
+**The reply knocks, exactly once, from ONE site** (since 2026-09-14, P1-NIN-A048) — `notifyNinaPush`
+(`lib/push/send`), kind `'chat_reply'`. Four rules hold it:
+
+- **One call site covers four entry points.** `sendNinaMessage`, `resendNinaTurn`,
+  `reviveNinaChatTurn` and the burst chain all converge on this function, so the push is written
+  once; a copy per action would be four chances to get the ordering wrong. The chain is a FULL turn
+  — it commits its own bubbles at the same insert and sends its own push — and it forwards `deps`
+  rather than defaulting, so an injected notifier cannot silently revert to the production one link
+  in.
+- **The position is the design, in both directions.** BELOW `closeNinaChatTurn`, because the poll's
+  two questions ("is a turn in flight", "is there anything past my cursor") both flip there and
+  nowhere else: a push sent one statement earlier wakes him onto a typing indicator for a reply
+  already in the database. ABOVE the distillation, because `runNinaDistillation` is a second model
+  call (10–20 s) and `titleNinaSessionIfNeeded` a third — the reply is already 13–45 s old, and the
+  whole premise is that he put the phone down.
+- **No bubble, no push.** Three no-bubble exits `return` above the line (the supersession discard,
+  the deleted-session abandon, the null payload); the fourth is not structural and is what
+  `bubbles.length > 0` guards — `insertNinaMessages` degrades to `[]` for a session that is not his,
+  so a turn CAN reach here with nothing committed. The guard sits at the site that knows what an
+  empty list MEANS, not in the payload builder two modules away.
+- **Its own `try`, logging rather than throwing** (`proactive.ts`'s shape). A failed push must not
+  cost the distillation, the auto-title or the chain — and must not let the enclosing catch file a
+  turn that SUCCEEDED as crashed. Awaited rather than fire-and-forget: a handful of subscriptions
+  inside a 240 s budget, and a deterministic order is what makes it assertable.
+
+**The seam is a second, DEFAULTED parameter, not a field on the input.** `NinaTurnDeps`
+(`{ notify?: NinaTurnNotifier }`) defaults to `{}`, so every existing caller keeps compiling
+untouched; and `NinaBackgroundTurnInput` is a DTO two of whose three builders assemble it from
+DATABASE ROWS (the revive rebuilds a dead turn from `nina_messages`, the chain from
+`listNinaMessages`' newest row) — a function has no column to be rebuilt from, so a `notify` field
+there would make every builder decide what to do about a field none of them can source.
+`NinaTurnNotifier` restates `ProactiveNotifier`'s three parameters ONE union wider (`NinaPushKind`,
+not `ProactiveTriggerKind` — that narrowing is the single type-level reason the reactive path could
+not just call `pushNotifier`), and returns `Promise<unknown>` so this module's type does not depend
+on whether the notifier reports. The phone shows the FIRST bubble's body: the pre-existing
+`bubbles = rows.map(…)` projection narrows the rows to `SentBubble` (`{ id, body, replyToId }`), so
+**`seq` is not available at the notify call site** — anything that needs turn ordering must be handed
+it, not derived here.
 
 **The fallback client** (`llmFallbackText.ts`, server-only): `productionDeps(userId)` no longer
 hands the turn the z.ai client — it hands it `ninaFallbackTextClient(ninaClient(), { userId })`, a
@@ -621,7 +664,7 @@ files.
 | Area | Files |
 |---|---|
 | Server Actions | `actions.ts` (send/describe/poll/resend — the chat's mutation surface), `jobActions.ts`, `sessionActions.ts`, `albumActions.ts`, `searchActions.ts`, `messageActions.ts` (each a one-screen surface) |
-| Turn pipeline | `turnrun.ts`*, `turnrevive.ts`*, `turn.ts`(T), `llmFallbackText.ts`* (the z.ai-first/OpenRouter-second client `productionDeps` wraps), `tools.ts`(T), `schema.ts`(T), `gateway.ts`, `load.ts`, `context.ts`, `dates.ts`(T), `chatturn.ts`(T), `turnflight.ts` |
+| Turn pipeline | `turnrun.ts`* (also the ONE `'chat_reply'` push site; `NinaTurnDeps.notify` is its only injectable edge), `turnrevive.ts`*, `turn.ts`(T), `llmFallbackText.ts`* (the z.ai-first/OpenRouter-second client `productionDeps` wraps), `tools.ts`(T), `schema.ts`(T), `gateway.ts`, `load.ts`, `context.ts`, `dates.ts`(T), `chatturn.ts`(T), `turnflight.ts` |
 | Prompts | `prompts/index.ts`, `prompts/system.ts`, `prompts/tools.ts`, `prompts/distill.ts`, `prompts/describe.ts` (two witness prompts behind a `Record` — a third subject is a compile error, and `subject` defaults to `'runner'` so existing callers are byte-identical), `prompts/caption.ts` |
 | Character | `tuning.ts`, `persona.ts` (barrel) + `persona/` (bands, identity, appearance, voice, instructor, anger, verbosity, never-say, tuning-blocks) |
 | Memory/behaviour | `memory.ts`, `distill.ts`, `promise.ts`(T)/`promises.ts`, `nags.ts`, `patterns.ts`, `shortcuts.ts`(T), `title.ts`/`autotitle.ts` |
@@ -644,7 +687,8 @@ not a (T): it is the barrel contract test, not a pure module's suite.
   shortcuts live) → `runNinaTurn` (shortcut match once, burst framing, every model call through
   `productionDeps`' fallback-wrapped client — z.ai, then OpenRouter once; tool rounds via
   `dispatchNinaTool`; `generate_image` opens a job and fires `fireNinaImageGeneration`) →
-  validated send payload → bubbles → metrics → distillation. Client renders through
+  validated send payload → bubbles → metrics → close → `notifyNinaPush(…, 'chat_reply')` (one per
+  committed reply, guarded by `bubbles.length`) → distillation. Client renders through
   `reveal.ts`/`chatview.ts`/`reply.ts` and polls `pollNinaReply`; refresh merges via
   `mergeServerMessages`.
 - **Died turn**: sweep closes it `stale`; next render of `/nina` revives it (`turnrevive.ts`);
@@ -668,8 +712,10 @@ not a (T): it is the barrel contract test, not a pure module's suite.
 (heaviest), `@/lib/photos/contentHash` (the sha-256 hex format the whole dedupe set answers
 from), `@/lib/date/ranges` (the Jakarta day model behind nags/patterns/promises/proactive),
 `@/lib/format`, `@/lib/metrics/*`, `@/lib/llm/client`, `@/lib/env`, `@/lib/id`, `@/lib/auth`,
-`@/lib/push/send` (`proactive.ts`'s own notifier, plus — since 2026-09-14 — `imagerun.ts` and
-`imagejobs.ts` through its `notifyNinaPush` seam; the seam exists because `proactive.ts`'s
+`@/lib/push/send` (`proactive.ts`'s own notifier, plus — since 2026-09-14 — `imagerun.ts`,
+`imagejobs.ts` and `turnrun.ts` (the last through its defaulted `notify` dep) through its
+`notifyNinaPush` seam, with `@/lib/push/payload`'s `NinaPushKind` imported type-only by
+`turnrun.ts`; the seam exists because `proactive.ts`'s
 `ProactiveNotifier` infers the narrower `ProactiveTriggerKind`, and that file must stay untouched).
 One benign cycle: `proactive.ts` → `lib/push/send` → type-only back. One
 dynamic import: `distill.ts` → `./gateway`.
@@ -743,7 +789,15 @@ and picks what she says — a failure is a message from Nina, never a stack trac
   sooner" — that trades a few hundred milliseconds for a window where a killed instance leaves a
   delivered photograph looking like a job to apologise for. And never hoist the apology's notify up
   into `failNinaImageJob` or the stale sweep: the avatar gate and the `deleted_at` gate are the
-  callers', and `postNinaApologyMessage` inherits both by being the one site below them.
+  callers', and `postNinaApologyMessage` inherits both by being the one site below them. The chat
+  reply obeys the same rule from the other end: `'chat_reply'` sits BELOW `closeNinaChatTurn` (the
+  poll's two flags flip there, so an earlier push wakes him onto a typing indicator) and ABOVE the
+  distillation (two more model calls he should not wait through) — and it is guarded by
+  `bubbles.length`, never by "the turn succeeded".
+- **Every message writer's push is written ONCE, at the writer, not at the action.** Four entry
+  points (`sendNinaMessage`, `resendNinaTurn`, `reviveNinaChatTurn`, the burst chain) converge on
+  `runNinaBackgroundTurn`; a push added to one of the actions is a second copy free to drift, and
+  the chain link would then double-notify. Same shape as the apology's one site.
 - **Never widen a blob-pathname range to cover the stored form**, and never write an invented
   fixture suffix — a 3-symbol one hid a shipped-broken feature behind a green suite.
 - **The five `PERCEPTUAL_*` gates move in TWO files or not at all.**
@@ -879,6 +933,18 @@ recursive — a new module under `queries/` does not automatically join the walk
   makes the kind and body assertable instead of resting on an unset environment variable. **What no
   test pins is the ORDERING** (the notify sitting after `completeNinaImageJob`): it is held by the
   docstring and by review, so read the Gotcha before moving that line.
+- **The reply push is pinned through the injected seam, and the ORDERING with it**
+  (`tests/nina.turnpush.test.ts`, new 2026-09-14). It drives `runNinaBackgroundTurn` with every edge
+  mocked and a `notify` of its own, and pins: one call carrying the committed rows and
+  `'chat_reply'`; the call landing after the insert and after `closeNinaChatTurn` but before
+  `runNinaDistillation` (the property the image side has no test for — here the seam makes it cheap,
+  so it is asserted rather than reviewed); NOTHING on each of the four no-bubble paths
+  (superseded, deleted session, null payload, empty insert) with the turn still closing and
+  distilling; a chained follow-up sending its OWN push through the forwarded `deps`; a rejecting
+  notifier costing neither the rows, the closed claim, the distillation nor the auto-title. The last
+  case is the one that needs the module mock: `@/lib/push/send` is mocked so the DEFAULT seam can be
+  observed when no `deps` are passed, instead of resting on an unset `VAPID_*` making the real
+  sender inert.
 - **Known-answer vectors** pin the perceptual gates in BOTH copies of the predicate
   (`tests/nina.perceptual.test.ts`, `tests/nina.dedupeMedia.test.ts`), so the two cannot drift.
 - **Real-module integration**: `tests/nina.resend.test.ts` and `tests/nina.burstCancel.test.ts`
