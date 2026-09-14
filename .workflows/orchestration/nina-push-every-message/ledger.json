@@ -24,7 +24,7 @@
     },
     {
       "card": null,
-      "commit": null,
+      "commit": "0e6b047",
       "depends_on": [
         1
       ],
@@ -33,12 +33,12 @@
       "note": null,
       "package": "lib/nina",
       "plan": ".workflows/plan/nina-push-every-message/phase-2.md",
-      "reported_at": null,
+      "reported_at": "2026-09-14T04:40:57+00:00",
       "satisfies": [
         "R1"
       ],
-      "status": "pending",
-      "task_id": null,
+      "status": "done",
+      "task_id": "P1-NIN-A048",
       "title": "Push when she replies to him"
     },
     {
@@ -102,7 +102,7 @@
   "plan": "/home/miftah/run-insights/.workflows/orchestration/nina-push-every-message/PLAN.md",
   "repo": "/home/miftah/run-insights",
   "slug": "nina-push-every-message",
-  "updated": "2026-09-14T04:39:47+00:00",
+  "updated": "2026-09-14T04:40:57+00:00",
   "verified_at": "2026-09-14T04:34:18+00:00",
   "worktree": "/home/miftah/.worktrees/run-insights/nina-push-every-message"
 }
