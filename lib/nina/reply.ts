@@ -212,6 +212,14 @@ export interface QuotedMessageInput {
   mine: boolean
   text: string
   sentAtLabel: string | null
+  /**
+   * What the quoted message's photograph(s) showed, `glm-4.6v`'s prose (invariant 5 — text, never
+   * an image part). Resolved by the caller from the target row's OWN `nina_message_images`, never
+   * from `conversation.window` — the window is the last 40 messages and a reply may point at one
+   * older than that, the exact case this field exists to cover. `[]` when the quoted message carried
+   * no photograph, or its target is unresolvable.
+   */
+  imageDescriptions: readonly string[]
 }
 
 /**
@@ -229,11 +237,26 @@ export function quoteContextBlock(quoted: QuotedMessageInput): string {
   const whose = quoted.mine ? 'one of HIS earlier messages' : 'one of YOUR earlier messages'
   const when = quoted.sentAtLabel == null ? '' : `, sent ${quoted.sentAtLabel}`
   const text = quotePreview(quoted.text, QUOTE_CONTEXT_MAX_CHARS)
-  return [
-    `HE IS REPLYING TO A SPECIFIC MESSAGE — ${whose}${when}. This is it:`,
-    `"${text}"`,
+  const lines = [`HE IS REPLYING TO A SPECIFIC MESSAGE — ${whose}${when}. This is it:`, `"${text}"`]
+
+  /*
+   * The same framing `userTurnText` uses for a photo attached to the CURRENT message
+   * (`lib/nina/turn.ts`'s `'HE SENT AN IMAGE...'` block) — "react to the picture, never to this
+   * description as a description" — because to her this is the same fact about a photograph, only
+   * the message it hangs off is an older one.
+   */
+  if (quoted.imageDescriptions.length > 0) {
+    const plural = quoted.imageDescriptions.length > 1
+    lines.push(
+      `${plural ? 'IT HAD IMAGES' : 'IT HAD AN IMAGE'} ATTACHED. This is what ${plural ? 'they' : 'it'} showed — react to the picture, never to this description as a description:`,
+      ...quoted.imageDescriptions.map((description) => `- ${description}`),
+    )
+  }
+
+  lines.push(
     'Answer what he says next AS A REPLY TO THAT MESSAGE. Do not answer that message again from scratch.',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 /* ── the gesture ───────────────────────────────────────────────────────────────────────────── */

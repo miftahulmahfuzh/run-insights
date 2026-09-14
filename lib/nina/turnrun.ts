@@ -16,8 +16,10 @@ import type { NinaContext } from './context'
 import { runTurnDistillation } from './distill'
 import { dbNinaSourceGateway, dbNinaToolGateway } from './gateway'
 import { loadNinaContext } from './load'
+import { NINA_DESCRIPTION_UNAVAILABLE } from './prompts/describe'
 import {
   bumpNinaShortcutUses,
+  getNinaMessageImagesForMessages,
   insertNinaMessages,
   listNinaMessages,
   listNinaShortcuts,
@@ -208,7 +210,7 @@ export async function runNinaBackgroundTurn(
      *
      * **This runs AFTER his row is committed and that has not changed** — see STEP 1c's note.
      */
-    const [loadedContext, history, tuning, shortcuts] = await Promise.all([
+    const [loadedContext, history, tuning, shortcuts, quotedImages] = await Promise.all([
       loadNinaContext(userId, sessionId, dbNinaSourceGateway),
       dbNinaToolGateway.loadRunHistory(userId),
       /* THE TUNING, read LIVE on every turn with no cache — which is what makes a slider on
@@ -241,6 +243,25 @@ export async function runNinaBackgroundTurn(
         })
         return []
       }),
+      /*
+       * THE QUOTED MESSAGE'S OWN PHOTOGRAPHS. Fifth in the same `Promise.all` — one indexed read,
+       * scoped to a single id, against a connection this turn is opening anyway.
+       *
+       * **Read from the row's own `nina_message_images`, never from `conversation.window`.** The
+       * window is `CONTEXT_MESSAGE_WINDOW` (40) messages; a reply can point at one older than that,
+       * and `resend.ts`'s own comment states the reason this path cannot depend on window
+       * membership either: the turn is being built for THE ROW he pointed at, not for whatever
+       * happens to still be on screen. Skipped entirely when there is no quote — the ordinary turn,
+       * which costs nothing extra. */
+      input.quotedRow === null
+        ? Promise.resolve([])
+        : getNinaMessageImagesForMessages(userId, [input.quotedRow.id]).catch((cause) => {
+            console.warn('[nina] could not read the quoted message’s photographs', {
+              turnId,
+              error: String(cause),
+            })
+            return []
+          }),
     ])
 
     /*
@@ -248,6 +269,13 @@ export async function runNinaBackgroundTurn(
      * when it is not. That is invariant 3 rather than laziness: `'Tue 2 Sep 07:14'` is spelled by
      * `conversationFacts`, and formatting a second one here would make this the app's second
      * authority on how an instant is written.
+     *
+     * `imageDescriptions` carries the SAME substitution `resend.ts` uses for the message being
+     * answered right now (`NINA_DESCRIPTION_UNAVAILABLE`): a quote is an active reference to one
+     * specific bubble, not a scan of history, so an undescribed photo on it earns the honest
+     * sentence rather than the window's silent drop (`gateway.ts`'s `readMessageWindow`, which is
+     * answering a different question — every row, every turn, most of which nobody just pointed
+     * at).
      */
     const target = input.quotedRow
     const quoted: QuotedMessageInput | null =
@@ -260,6 +288,9 @@ export async function runNinaBackgroundTurn(
             sentAtLabel:
               loadedContext.conversation.window.find((turn) => turn.id === target.id)
                 ?.sentAtLabel ?? null,
+            imageDescriptions: quotedImages.map(
+              (image) => image.description ?? NINA_DESCRIPTION_UNAVAILABLE,
+            ),
           }
 
     /*

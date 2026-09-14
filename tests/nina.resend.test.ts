@@ -385,6 +385,70 @@ describe('the background turn is rebuilt from the persisted row', () => {
     expect(insertNinaMessages).not.toHaveBeenCalled()
   })
 
+  it('carries the quoted message’s own photo description, not the resent message’s', async () => {
+    getNinaMessagesByIds
+      /* the resend target */
+      .mockResolvedValueOnce([runnerRow({ replyToId: QUOTED })])
+      /* the quote target, resolved second */
+      .mockResolvedValueOnce([
+        runnerRow({ id: QUOTED, seq: 12, role: 'nina', body: 'ini fotomu?' }),
+      ])
+    /* The two ids ask for DIFFERENT rows' photographs — the resent message's own (empty here) and
+     * the quoted message's (a photo of Nina asleep). Distinguishing by the `ids` argument is what
+     * proves `turnrun.ts` reads the QUOTED row's own images rather than reusing whatever the resend
+     * path already fetched for the message being resent. */
+    getNinaMessageImagesForMessages.mockImplementation(async (_userId: string, ids: string[]) => {
+      if (ids[0] === QUOTED) {
+        return [
+          {
+            id: 'img000000003',
+            description: 'a woman asleep on a couch, a cat on her lap',
+            sortOrder: 0,
+          },
+        ]
+      }
+      return []
+    })
+
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    const quoted = turnInput.quoted as { imageDescriptions: readonly string[] } | null
+    expect(quoted?.imageDescriptions).toEqual(['a woman asleep on a couch, a cat on her lap'])
+  })
+
+  it('substitutes the honest sentence when the quoted photo has no description yet', async () => {
+    getNinaMessagesByIds
+      .mockResolvedValueOnce([runnerRow({ replyToId: QUOTED })])
+      .mockResolvedValueOnce([runnerRow({ id: QUOTED, seq: 12, role: 'nina', body: '' })])
+    getNinaMessageImagesForMessages.mockImplementation(async (_userId: string, ids: string[]) => {
+      if (ids[0] === QUOTED) return [{ id: 'img000000004', description: null, sortOrder: 0 }]
+      return []
+    })
+
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    const quoted = turnInput.quoted as { imageDescriptions: readonly string[] } | null
+    expect(quoted?.imageDescriptions[0]).toContain('could not see it')
+  })
+
+  it('carries no photograph when the quoted message had none', async () => {
+    getNinaMessagesByIds
+      .mockResolvedValueOnce([runnerRow({ replyToId: QUOTED })])
+      .mockResolvedValueOnce([runnerRow({ id: QUOTED, seq: 12, role: 'nina', body: 'gimana?' })])
+    getNinaMessageImagesForMessages.mockResolvedValue([])
+
+    await actions.resendNinaMessage({ messageId: HIS })
+    await deferred[0]!()
+
+    const [turnInput] = runNinaTurn.mock.calls[0]! as [Record<string, unknown>]
+    const quoted = turnInput.quoted as { imageDescriptions: readonly string[] } | null
+    expect(quoted?.imageDescriptions).toEqual([])
+  })
+
   it('passes runnerText as null for a photo-only message, not as an empty string', async () => {
     getNinaMessagesByIds.mockResolvedValue([runnerRow({ body: '' })])
     getNinaMessageImagesForMessages.mockResolvedValue([

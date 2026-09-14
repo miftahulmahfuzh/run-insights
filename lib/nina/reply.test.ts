@@ -155,6 +155,7 @@ describe('quoteContextBlock', () => {
       mine: true,
       text: 'gw lari 10k pagi ini',
       sentAtLabel: 'Tue 2 Sep 07:14',
+      imageDescriptions: [],
     })
     expect(block).toContain('one of HIS earlier messages')
     expect(block).toContain('sent Tue 2 Sep 07:14')
@@ -163,16 +164,64 @@ describe('quoteContextBlock', () => {
   })
 
   it('tells her when the quoted message is one of her own', () => {
-    const block = quoteContextBlock({ id: 'm2', mine: false, text: 'lo telat', sentAtLabel: null })
+    const block = quoteContextBlock({
+      id: 'm2',
+      mine: false,
+      text: 'lo telat',
+      sentAtLabel: null,
+      imageDescriptions: [],
+    })
     expect(block).toContain('one of YOUR earlier messages')
     expect(block).not.toContain('sent ')
   })
 
   it('gives the model the whole bubble, not the stub’s two lines', () => {
     const long = 'a'.repeat(400)
-    expect(quoteContextBlock({ id: 'm', mine: true, text: long, sentAtLabel: null })).toContain(
-      long,
-    )
+    expect(
+      quoteContextBlock({
+        id: 'm',
+        mine: true,
+        text: long,
+        sentAtLabel: null,
+        imageDescriptions: [],
+      }),
+    ).toContain(long)
+  })
+
+  it('says nothing about a photo when the quoted message had none', () => {
+    const block = quoteContextBlock({
+      id: 'm4',
+      mine: true,
+      text: 'gw lari 10k',
+      sentAtLabel: null,
+      imageDescriptions: [],
+    })
+    expect(block).not.toContain('IMAGE')
+  })
+
+  it('gives her what the quoted photo showed, so a reply to a photo bubble carries its eyes', () => {
+    const block = quoteContextBlock({
+      id: 'm3',
+      mine: true,
+      text: 'ini larian gw',
+      sentAtLabel: null,
+      imageDescriptions: ['a man in a blue singlet, mid-stride on a paved trail'],
+    })
+    expect(block).toContain('a man in a blue singlet, mid-stride on a paved trail')
+    /* Before the answering instruction, same order the send-path image block already keeps. */
+    expect(block.indexOf('mid-stride')).toBeLessThan(block.indexOf('AS A REPLY TO THAT MESSAGE'))
+  })
+
+  it('numbers more than one attached photo the quoted message carried', () => {
+    const block = quoteContextBlock({
+      id: 'm5',
+      mine: false,
+      text: '',
+      sentAtLabel: null,
+      imageDescriptions: ['a sunrise over a track', 'a finisher medal on a table'],
+    })
+    expect(block).toContain('- a sunrise over a track')
+    expect(block).toContain('- a finisher medal on a table')
   })
 })
 
