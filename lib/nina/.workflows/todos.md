@@ -2,12 +2,12 @@
 
 **Package Path**: `lib/nina`
 **Package Code**: NIN
-**Last Updated**: 2026-09-13
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-14
+**Total Active Tasks**: 2
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 2
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -20,6 +20,26 @@
 ## Active Tasks
 
 ### [P1] High
+
+- [ ] **P1-NIN-A048** Phase 2: Push when she replies to him
+  - **Difficulty**: HARD
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/turnrun.ts` and its test (`tests/nina.turnpush.test.ts`, created) — adds one notify call in `runNinaBackgroundTurn` stamped `'chat_reply'`, after the bubbles are committed and the claim is closed and before the distillation's model call, covering `sendNinaMessage`, `resendNinaTurn`, `reviveNinaChatTurn` and the burst chain through the one function they all converge on. Exit: a committed reply sends exactly one push carrying the first bubble; a chained follow-up sends its own; none of the four no-bubble paths (supersession, deleted-session, null payload, empty insert) sends anything; a notify failure leaves the rows, the closed claim, the distillation and the auto-title untouched.
+  - **Status**: active
+  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 2 of 5)
+  - **Satisfies**: R1 — When Nina answers something the runner said, a push notification is sent
+  - **Depends on**: `P1-PSH-A000`
+  - **Plan**: `.workflows/plan/P1-NIN-A048.md`
+
+- [ ] **P1-NIN-A049** Phase 3: Push when the photo lands, and when it cannot
+  - **Difficulty**: NORMAL
+  - **Type**: Feature
+  - **Context**: Owns `lib/nina/imagerun.ts` and `lib/nina/imagejobs.ts` (plus `tests/nina.imagerun.test.ts` modified and the new `tests/nina.imagepush.test.ts`) — notifies `'photo_delivered'` as the last statement of `finishSelfie`, and `'photo_apology'` inside the shared `postNinaApologyMessage` reached by both `failNinaImageJob` and `sweepStaleNinaImageJobs`, inheriting both callers' avatar/hidden gates. Exit: a delivered photograph pushes its caption; a failed or swept selfie job pushes her apology from either caller; an avatar job and a hidden job push nothing by not reaching the helper; a notify failure never fails or reopens a job and never under-counts the sweep.
+  - **Status**: active
+  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 3 of 5)
+  - **Satisfies**: R1 — When Nina answers something the runner said, a push notification is sent
+  - **Depends on**: `P1-PSH-A000`
+  - **Plan**: `.workflows/plan/P1-NIN-A049.md`
 
 ### [P2] Medium
 

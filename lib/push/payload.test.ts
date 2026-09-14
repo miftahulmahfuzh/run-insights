@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
+import type { ProactiveTriggerKind } from '@/lib/nina/prompts'
+
 import {
+  NINA_PUSH_KINDS,
   PUSH_BODY_MAX_CHARS,
   PUSH_FAILURE_LIMIT,
   buildNinaPushPayload,
@@ -8,6 +11,7 @@ import {
   parsePushSubscription,
   shouldRevokeSubscription,
   truncateForNotification,
+  type NinaPushKind,
 } from './payload'
 
 /**
@@ -164,5 +168,89 @@ describe('buildNinaPushPayload', () => {
     })
     expect(payload?.body).toBe('real')
     expect(payload?.messageId).toBe('b')
+  })
+})
+
+describe('NINA_PUSH_KINDS', () => {
+  /**
+   * ── THE ONE THING IN THIS PHASE THAT CAN DRIFT ────────────────────────────────────────────
+   * `payload.ts` may not import `ProactiveTriggerKind`: phase 5's off-platform worker loads that
+   * module through a relative `../../lib/push/payload.ts` specifier under
+   * `node --experimental-strip-types`, which cannot resolve `@/lib/nina/*`. So the five trigger
+   * names are spelled out there by hand, and a hand-copied list needs a pin.
+   *
+   * This map is exhaustive in BOTH directions at compile time — a trigger added to
+   * `ProactiveTriggerKind` and not here is a missing property, one removed is an excess property —
+   * and it is the READABLE half of the guarantee. The load-bearing half is the `NinaPushKind`
+   * annotation in `send.ts`'s `pushNotifier`, which `npx tsc --noEmit` checks whether or not this
+   * file is ever run.
+   */
+  const TRIGGER_KINDS: Record<ProactiveTriggerKind, NinaPushKind> = {
+    run_committed: 'run_committed',
+    missed_usual_day: 'missed_usual_day',
+    pattern_crossed: 'pattern_crossed',
+    silence: 'silence',
+    avatar_changed: 'avatar_changed',
+  }
+
+  /** One bubble with words in it, for the kind-passthrough case at the end of this block. */
+  const BUBBLE = [{ id: 'm1', body: 'udah sampai rumah?' }]
+
+  it('carries every proactive trigger, under its own name', () => {
+    /* The values equalling the keys IS the assertion. `emitProactiveMessage` passes `detail.kind`
+     * straight through to the notifier and on to the payload, so a trigger whose push kind were
+     * renamed would change what a push says it is without changing anything that sends it. */
+    expect(Object.values(TRIGGER_KINDS)).toEqual(Object.keys(TRIGGER_KINDS))
+    for (const kind of Object.values(TRIGGER_KINDS)) {
+      expect(NINA_PUSH_KINDS).toContain(kind)
+    }
+  })
+
+  it("carries the /me test button's literal", () => {
+    /* `lib/push/actions.ts` passes `'manual_test'` as a bare string and is deliberately not typed
+     * to this union. Listing it means narrowing that call site one day is a rename, not a
+     * decision about whether the value belongs. */
+    expect(NINA_PUSH_KINDS).toContain('manual_test')
+  })
+
+  it('carries one kind per message write — THESE SIX NAMES ARE AN API', () => {
+    /* Phases 2–5 import these literals: the chat reply, the photograph, R22's apology, the admin
+     * chat photo, and the off-platform worker's photograph AND its apology. A rename that missed a
+     * call site stops here rather than in a log line nobody reads for a month. */
+    expect(NINA_PUSH_KINDS).toContain('chat_reply')
+    expect(NINA_PUSH_KINDS).toContain('photo_delivered')
+    expect(NINA_PUSH_KINDS).toContain('photo_apology')
+    expect(NINA_PUSH_KINDS).toContain('admin_chat_photo')
+    expect(NINA_PUSH_KINDS).toContain('worker_photo_delivered')
+    expect(NINA_PUSH_KINDS).toContain('worker_photo_apology')
+  })
+
+  it('gives the two hosts DIFFERENT kinds for the same event, on purpose', () => {
+    /* `photo_delivered` is the app's, `worker_photo_delivered` the GitHub runner's; same for the
+     * two apologies. The worker only runs when the app's own invocation was killed, so the
+     * `worker_*` value is the one diagnostic that says the backstop fired — and reaching the log
+     * line is the only thing `kind` is for. A future tidy-up that collapsed either pair into one
+     * value would pass every other test in this file, which is why this one is here: both members
+     * of each pair are present, so neither can be quietly dropped in favour of the other. */
+    expect(NINA_PUSH_KINDS).toEqual(
+      expect.arrayContaining([
+        'photo_delivered',
+        'worker_photo_delivered',
+        'photo_apology',
+        'worker_photo_apology',
+      ]),
+    )
+    expect(new Set(['photo_delivered', 'worker_photo_delivered']).size).toBe(2)
+  })
+
+  it('lists each kind exactly once', () => {
+    expect(new Set(NINA_PUSH_KINDS).size).toBe(NINA_PUSH_KINDS.length)
+  })
+
+  it('stamps a non-proactive kind onto the payload unchanged', () => {
+    /* The wire field stays an opaque string (invariant 5), so the new vocabulary must pass through
+     * `buildNinaPushPayload` exactly the way `'some_future_trigger'` already does above. */
+    const payload = buildNinaPushPayload({ messages: BUBBLE, kind: 'chat_reply' })
+    expect(payload?.kind).toBe('chat_reply')
   })
 })

@@ -8,6 +8,7 @@ import {
   classifyPushFailure,
   encodeNinaPushPayload,
   shouldRevokeSubscription,
+  type NinaPushKind,
   type NinaPushPayload,
 } from './payload'
 import {
@@ -194,6 +195,55 @@ export async function sendNinaPush(
 }
 
 /**
+ * ── THE SEAM EVERY MESSAGE WRITER CALLS ───────────────────────────────────────────────────────
+ * `sendNinaPush` above is the mechanism; this is the door. Four modules outside `lib/push` are
+ * about to knock on it — the chat turn, the delivered photograph, R22's apology and the `/admin`
+ * chat photo — and all four are in the same position: the rows are already committed, the
+ * notification is a courtesy, and nothing they do afterwards may depend on it.
+ *
+ * ── WHY NOT JUST EXPORT `pushNotifier` AND BE DONE ────────────────────────────────────────────
+ * Because `pushNotifier` is declared `satisfies ProactiveNotifier`, which INFERS its `kind`
+ * parameter as `ProactiveTriggerKind`. `pushNotifier(userId, bubbles, 'chat_reply')` is a compile
+ * error, and widening `ProactiveNotifier` to fix that would edit `lib/nina/proactive.ts` — the one
+ * file this plan set may not touch, because it is already correct and is the pattern the other
+ * four writers copy. This function takes the wider `NinaPushKind` instead and leaves that file
+ * alone.
+ *
+ * ── IT SWALLOWS, AND THAT IS NOT BELT-AND-BRACES ──────────────────────────────────────────────
+ * `sendNinaPush` catches the VAPID failure and every per-subscription failure, but
+ * `listLivePushSubscriptions` is a database round trip OUTSIDE its `try` — a dropped connection
+ * rejects straight out of it. Every caller is still expected to wrap this in its own `try`, the
+ * way `proactive.ts:702` does; this `catch` is what makes forgetting survivable instead of turning
+ * an unreachable phone into a failed turn.
+ */
+export type NinaPushNotifier = (
+  userId: string,
+  messages: ReadonlyArray<{ id: string; body: string }>,
+  kind: NinaPushKind,
+) => Promise<void>
+
+/**
+ * Annotated rather than `satisfies`, unlike `pushNotifier` below: the type it conforms to is
+ * declared three lines up, so there is no other file for a mismatch to surface in, and the
+ * annotation types the three parameters contextually instead of restating them.
+ *
+ * **Returns `void`, not the report.** A caller that branched on `delivered` would be making a
+ * message's success depend on a phone's reachability, which is exactly the coupling invariant 2
+ * forbids. The numbers go to the log line, which is the only consumer they have ever had.
+ */
+export const notifyNinaPush: NinaPushNotifier = async (userId, messages, kind) => {
+  try {
+    const report = await sendNinaPush(userId, messages, kind)
+    console.info('[push] notified', { userId, kind, ...report })
+  } catch (cause) {
+    /* The message row is already committed and the caller has already moved on: there is nothing
+     * to retry against and nobody left to tell. This line is the whole of the error handling, and
+     * it is deliberate. */
+    console.warn('[push] notify failed', { userId, kind, error: String(cause) })
+  }
+}
+
+/**
  * Phase 10's `ProactiveDeps.notify` default. `satisfies` rather than an annotation so a change to
  * `ProactiveNotifier`'s shape is a compile error here, at the seam, rather than at the assignment
  * in `proactive.ts`.
@@ -203,6 +253,17 @@ export async function sendNinaPush(
  * in the log line below, which is the only consumer they have.
  */
 export const pushNotifier = (async (userId, messages, kind) => {
-  const report = await sendNinaPush(userId, messages, kind)
+  /* ── THE SUBSET PIN, AND WHY IT IS AN ANNOTATION AND NOT A COMMENT ─────────────────────────
+   * `kind` here is `ProactiveTriggerKind` (inferred from the `satisfies` below), and
+   * `NINA_PUSH_KINDS` in `payload.ts` spells those five trigger names out by hand because that
+   * module may not import from `lib/nina/*` — phase 5's off-platform worker loads it through a
+   * relative specifier under `node --experimental-strip-types` and cannot resolve `@/`.
+   *
+   * This annotation is what stops the two lists drifting. Add a sixth trigger to
+   * `ProactiveTriggerKind` without adding it to `NINA_PUSH_KINDS` and `npx tsc --noEmit` fails
+   * HERE, at the only seam that knows about both. It is erased at runtime: `sendNinaPush` receives
+   * exactly the string it received before. */
+  const pushKind: NinaPushKind = kind
+  const report = await sendNinaPush(userId, messages, pushKind)
   console.info('[push] notified', { userId, kind, ...report })
 }) satisfies ProactiveNotifier

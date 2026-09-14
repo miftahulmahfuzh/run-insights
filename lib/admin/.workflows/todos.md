@@ -2,12 +2,12 @@
 
 **Package Path**: `lib/admin`
 **Package Code**: ADM
-**Last Updated**: 2026-09-12
-**Total Active Tasks**: 0
+**Last Updated**: 2026-09-14
+**Total Active Tasks**: 1
 
 ## Quick Stats
 - P0 Critical: 0
-- P1 High: 0
+- P1 High: 1
 - P2 Medium: 0
 - P3 Low: 0
 - P4 Backlog: 0
@@ -22,6 +22,16 @@
 ### [P0] Critical
 
 ### [P1] High
+
+- [ ] **P1-ADM-A003** Phase 4: Push when a photo is added to her chat from `/admin`
+  - **Difficulty**: EASY
+  - **Type**: Feature
+  - **Context**: Owns `lib/admin/chatPhotoActions.ts` and its test (`tests/admin.chatPhotos.test.ts`, modified) — adds one notify call stamped `'admin_chat_photo'` after the photo bubble and its image row are written, past all four of the action's refusal returns, with the bubble's caption hoisted so the row and the notification carry the same string by construction. Exit: adding a photo from `/admin` buzzes the phone with the bubble's caption; all four `{ ok: false }` returns push nothing; a notify failure never fails the add and never costs the photograph its deferred caption.
+  - **Status**: active
+  - **Plan Set**: `NINA_PUSH_EVERY_MESSAGE_PLAN.md` (phase 4 of 5)
+  - **Satisfies**: R2 — When Nina speaks on her own initiative, a push notification is sent
+  - **Depends on**: `P1-PSH-A000`
+  - **Plan**: `.workflows/plan/P1-ADM-A003.md`
 
 ### [P2] Medium
 
